@@ -17,6 +17,7 @@ kagikae/
       gemini/
       agy/
     artifact/             # artifact primitives: json-pointer / file / keychain
+    keychain/             # security-CLI access to upstream tools' keychain items
     config/               # TOML config parse/validate/defaults
     constants/            # JSON contract vocabulary (status, codes, drivers)
     paths/                # XDG resolution for config/data/state/locks
@@ -26,6 +27,7 @@ kagikae/
     backup/               # backup create/list/prune/restore
     state/                # state.json load/save
     runner/               # subprocess seam (template standard)
+    testutil/runnertest/  # shared canned-response runner fake for tests
 ```
 
 ## Layering

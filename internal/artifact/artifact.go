@@ -27,7 +27,8 @@ type Spec struct {
 	Pointer string // JSON pointer for json-pointer and keychain kinds
 	// KeychainAccount is the account attribute used when the keychain item
 	// must be created from scratch (normally the existing item's account is
-	// reused).
+	// reused). Every KindKeychain spec must set it, or new items fall back
+	// to the literal account "kagikae".
 	KeychainAccount string
 }
 

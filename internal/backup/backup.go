@@ -3,7 +3,6 @@
 package backup
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -66,14 +65,11 @@ func Save(dir string, meta Meta) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create backups dir: %w", err)
 	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetIndent("", "  ")
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(meta); err != nil {
+	data, err := patch.EncodeJSON(meta)
+	if err != nil {
 		return err
 	}
-	return patch.WriteFileAtomic(metaPath(dir, meta.ID), buf.Bytes(), 0o600)
+	return patch.WriteFileAtomic(metaPath(dir, meta.ID), data, 0o600)
 }
 
 // Get loads one backup's metadata.

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -69,19 +70,11 @@ func printTable(header []string, rows [][]string) {
 	}
 }
 
+var sgrRE = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
 // stripANSI removes SGR sequences for width calculation.
 func stripANSI(s string) string {
-	for {
-		start := strings.Index(s, "\x1b[")
-		if start < 0 {
-			return s
-		}
-		end := strings.Index(s[start:], "m")
-		if end < 0 {
-			return s
-		}
-		s = s[:start] + s[start+end+1:]
-	}
+	return sgrRE.ReplaceAllString(s, "")
 }
 
 // displayPath shortens an absolute path under home to ~/... for output.

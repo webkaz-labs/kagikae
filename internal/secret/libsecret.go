@@ -2,7 +2,6 @@ package secret
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -27,11 +26,11 @@ func (libsecretBackend) Get(ctx context.Context, key string) ([]byte, bool, erro
 		if strings.TrimSpace(stderr) == "" {
 			return nil, false, nil
 		}
-		return nil, false, fmt.Errorf("secret-tool lookup failed (exit %d): %s", code, redactStderr(stderr))
+		return nil, false, fmt.Errorf("secret-tool lookup failed (exit %d): %s", code, runner.Snippet(stderr))
 	}
-	value, err := base64.StdEncoding.DecodeString(strings.TrimSpace(stdout))
+	value, err := decodePayload(BackendLibsecret, key, stdout)
 	if err != nil {
-		return nil, false, fmt.Errorf("libsecret entry %s is not kagikae-encoded: %w", key, err)
+		return nil, false, err
 	}
 	return value, true, nil
 }
@@ -40,11 +39,10 @@ func (libsecretBackend) Set(ctx context.Context, key string, value []byte) error
 	if err := validateKey(key); err != nil {
 		return err
 	}
-	encoded := base64.StdEncoding.EncodeToString(value)
-	_, stderr, code := runner.RunInput(ctx, encoded, "secret-tool",
+	_, stderr, code := runner.RunInput(ctx, encodePayload(value), "secret-tool",
 		"store", "--label", Service+"/"+key, "service", Service, "key", key)
 	if code != 0 {
-		return fmt.Errorf("secret-tool store failed (exit %d): %s", code, redactStderr(stderr))
+		return fmt.Errorf("secret-tool store failed (exit %d): %s", code, runner.Snippet(stderr))
 	}
 	return nil
 }
@@ -56,7 +54,7 @@ func (libsecretBackend) Delete(ctx context.Context, key string) error {
 	_, stderr, code := runner.Run(ctx, "secret-tool",
 		"clear", "service", Service, "key", key)
 	if code != 0 && strings.TrimSpace(stderr) != "" {
-		return fmt.Errorf("secret-tool clear failed (exit %d): %s", code, redactStderr(stderr))
+		return fmt.Errorf("secret-tool clear failed (exit %d): %s", code, runner.Snippet(stderr))
 	}
 	return nil
 }

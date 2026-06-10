@@ -24,7 +24,9 @@ type Env struct {
 	Getenv   func(string) string
 	LookPath func(string) (string, error)
 	// WarnAntigravityTransition propagates the Gemini transition-notice
-	// config flag into doctor checks.
+	// config flag into doctor checks. If a second adapter ever needs its own
+	// policy flag, replace these with a per-adapter config parameter instead
+	// of growing Env.
 	WarnAntigravityTransition bool
 }
 

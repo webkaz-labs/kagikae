@@ -16,13 +16,17 @@ import (
 
 var acctRE = regexp.MustCompile(`"acct"<blob>="((?:[^"\\]|\\.)*)"`)
 
+// NotFoundMarker is the stable substring the security CLI prints on stderr
+// when a generic-password item does not exist. internal/secret reuses it.
+const NotFoundMarker = "could not be found"
+
 // ReadItem returns the generic-password payload for service. The security
 // CLI prints non-ASCII payloads as hex; both forms are handled.
 func ReadItem(ctx context.Context, service string) (payload []byte, found bool, err error) {
 	stdout, stderr, code := runner.Run(ctx, "security",
 		"find-generic-password", "-s", service, "-w")
 	if code != 0 {
-		if strings.Contains(stderr, "could not be found") {
+		if strings.Contains(stderr, NotFoundMarker) {
 			return nil, false, nil
 		}
 		return nil, false, fmt.Errorf("security find-generic-password %q failed (exit %d)", service, code)
@@ -62,7 +66,7 @@ func ItemAccount(ctx context.Context, service string) (string, bool, error) {
 	stdout, stderr, code := runner.Run(ctx, "security",
 		"find-generic-password", "-s", service)
 	if code != 0 {
-		if strings.Contains(stderr, "could not be found") {
+		if strings.Contains(stderr, NotFoundMarker) {
 			return "", false, nil
 		}
 		return "", false, fmt.Errorf("security find-generic-password %q failed (exit %d)", service, code)
@@ -79,11 +83,7 @@ func WriteItem(ctx context.Context, service, account string, payload []byte) err
 	_, stderr, code := runner.Run(ctx, "security",
 		"add-generic-password", "-U", "-s", service, "-a", account, "-w", string(payload))
 	if code != 0 {
-		diag := strings.TrimSpace(stderr)
-		if len(diag) > 200 {
-			diag = diag[:200] + "..."
-		}
-		return fmt.Errorf("security add-generic-password %q failed (exit %d): %s", service, code, diag)
+		return fmt.Errorf("security add-generic-password %q failed (exit %d): %s", service, code, runner.Snippet(stderr))
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ package secret
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -63,6 +64,20 @@ func Resolve(configured, goos, secretsDir string, lookPath func(string) (string,
 	default:
 		return nil, fmt.Errorf("unknown secret_backend %q", configured)
 	}
+}
+
+// encodePayload/decodePayload are the single place defining how payloads are
+// wrapped for storage (base64, so every backend round-trips printable ASCII).
+func encodePayload(value []byte) string {
+	return base64.StdEncoding.EncodeToString(value)
+}
+
+func decodePayload(backendName, key, stored string) ([]byte, error) {
+	value, err := base64.StdEncoding.DecodeString(strings.TrimSpace(stored))
+	if err != nil {
+		return nil, fmt.Errorf("%s entry %s is not kagikae-encoded: %w", backendName, key, err)
+	}
+	return value, nil
 }
 
 // validateKey rejects keys that could escape storage namespaces.

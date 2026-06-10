@@ -31,7 +31,7 @@ type statusReport struct {
 
 func CmdStatus(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, _, ok := parseCommon("status", flags, false)
+	opts, ok := parseCommon("status", flags, false, nil)
 	if !ok {
 		return constants.ExitUsage
 	}
@@ -130,16 +130,15 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		rows = append(rows, []string{ts.Tool, accountName, ts.Driver, auth, notes})
 	}
 	printTable([]string{"Tool", "Account", "Driver", "Auth", "Notes"}, rows)
+	warned := false
 	for _, ts := range report.Tools {
 		for _, warning := range ts.Warnings {
 			fmt.Printf("\n%s: %s", ts.Tool, paint(constants.StatusWarn, warning, color))
+			warned = true
 		}
 	}
-	for _, ts := range report.Tools {
-		if len(ts.Warnings) > 0 {
-			fmt.Println()
-			break
-		}
+	if warned {
+		fmt.Println()
 	}
 }
 
@@ -151,7 +150,7 @@ type currentReport struct {
 
 func CmdCurrent(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, _, ok := parseCommon("current", flags, false)
+	opts, ok := parseCommon("current", flags, false, nil)
 	if !ok {
 		return constants.ExitUsage
 	}
@@ -211,7 +210,7 @@ type accountsReport struct {
 
 func CmdAccounts(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, _, ok := parseCommon("accounts", flags, false)
+	opts, ok := parseCommon("accounts", flags, false, nil)
 	if !ok {
 		return constants.ExitUsage
 	}

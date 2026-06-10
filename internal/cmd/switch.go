@@ -30,7 +30,7 @@ type switchReport struct {
 
 func CmdSwitch(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, _, ok := parseCommon("switch", flags, true)
+	opts, ok := parseCommon("switch", flags, true, nil)
 	if !ok {
 		return constants.ExitUsage
 	}

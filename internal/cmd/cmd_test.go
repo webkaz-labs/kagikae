@@ -60,11 +60,11 @@ func TestSplitArgs(t *testing.T) {
 }
 
 func TestParseCommonJSONShorthand(t *testing.T) {
-	opts, _, ok := parseCommon("x", []string{"--json"}, false)
+	opts, ok := parseCommon("x", []string{"--json"}, false, nil)
 	if !ok || opts.Format != formatJSON {
 		t.Fatalf("unexpected: %+v ok=%v", opts, ok)
 	}
-	_, _, ok = parseCommon("x", []string{"--format", "yaml"}, false)
+	_, ok = parseCommon("x", []string{"--format", "yaml"}, false, nil)
 	if ok {
 		t.Fatal("expected parse failure for unsupported format")
 	}

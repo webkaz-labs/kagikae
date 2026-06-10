@@ -105,21 +105,16 @@ type versionReport struct {
 }
 
 func CmdVersion(args []string) int {
-	format := formatText
-	switch {
-	case len(args) == 0:
-	case len(args) == 1 && (args[0] == "--json" || args[0] == "-json"):
-		format = formatJSON
-	case len(args) == 2 && (args[0] == "--format" || args[0] == "-format"):
-		format = args[1]
-	default:
+	flags, positionals := splitArgs(args)
+	opts, ok := parseCommon("version", flags, false, nil)
+	if !ok {
+		return constants.ExitUsage
+	}
+	if len(positionals) != 0 {
 		return usageError("usage: %s version [--format text|json]", toolName)
 	}
-	if format != formatText && format != formatJSON {
-		return usageError("unsupported format: %s", format)
-	}
 	report := buildVersionReport()
-	if format == formatJSON {
+	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
 	fmt.Printf("%s %s\n", report.Tool, report.Version)

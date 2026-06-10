@@ -177,10 +177,14 @@ func plansFromBackupMeta(meta backup.Meta) []toolPlan {
 	}
 	plans := make([]toolPlan, 0, len(order))
 	for _, tool := range order {
-		plans = append(plans, toolPlan{Tool: tool, Specs: specsByTool[tool], Warnings: []string{}})
+		plans = append(plans, toolPlan{Tool: tool, Specs: specsByTool[tool]})
 	}
 	return plans
 }
+
+// Error convention in this file: use errf only where a specific stable exit
+// code applies (not_found, auth_missing, ...); plain fmt.Errorf flows through
+// exitOf's default branch as a general error.
 
 // applySnapshot applies one captured account to the live state.
 func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error {

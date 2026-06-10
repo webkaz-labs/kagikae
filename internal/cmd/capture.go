@@ -28,7 +28,7 @@ type captureReport struct {
 
 func CmdCapture(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, _, ok := parseCommon("capture", flags, true)
+	opts, ok := parseCommon("capture", flags, true, nil)
 	if !ok {
 		return constants.ExitUsage
 	}

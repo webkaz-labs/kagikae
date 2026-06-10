@@ -19,7 +19,7 @@ type doctorReport struct {
 
 func CmdDoctor(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, _, ok := parseCommon("doctor", flags, false)
+	opts, ok := parseCommon("doctor", flags, false, nil)
 	if !ok {
 		return constants.ExitUsage
 	}
@@ -38,6 +38,8 @@ func CmdDoctor(ctx context.Context, args []string) int {
 	return runDoctor(ctx, app, opts, toolFilter)
 }
 
+// runDoctor exits 0/1 (health pass/fail) by design, not via the general
+// exit-code table — see docs/CLI.md.
 func runDoctor(ctx context.Context, app *App, opts commonOpts, toolFilter string) int {
 	report := buildDoctor(ctx, app, toolFilter)
 	exit := constants.ExitOK

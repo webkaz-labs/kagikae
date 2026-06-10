@@ -29,7 +29,7 @@ func CmdBackup(ctx context.Context, args []string) int {
 		return usageError("usage: %s backup list [--json]", toolName)
 	}
 	flags, positionals := splitArgs(args[1:])
-	opts, _, ok := parseCommon("backup list", flags, false)
+	opts, ok := parseCommon("backup list", flags, false, nil)
 	if !ok {
 		return constants.ExitUsage
 	}
@@ -91,25 +91,12 @@ type rollbackReport struct {
 
 func CmdRollback(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	var opts commonOpts
 	var toID string
-	fs := flag.NewFlagSet("rollback", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	fs.StringVar(&opts.Format, "format", formatText, "output format: text or json")
-	jsonFlag := fs.Bool("json", false, "shorthand for --format json")
-	fs.BoolVar(&opts.Yes, "yes", false, "non-interactive confirmation (reserved)")
-	fs.BoolVar(&opts.NoColor, "no-color", false, "disable color in human text output")
-	fs.StringVar(&opts.ConfigPath, "config", "", "explicit config file path")
-	fs.BoolVar(&opts.DryRun, "dry-run", false, "print planned actions without writing")
-	fs.StringVar(&toID, "to", "", "backup id to restore (default: most recent)")
-	if err := fs.Parse(flags); err != nil {
+	opts, ok := parseCommon("rollback", flags, true, func(fs *flag.FlagSet) {
+		fs.StringVar(&toID, "to", "", "backup id to restore (default: most recent)")
+	})
+	if !ok {
 		return constants.ExitUsage
-	}
-	if *jsonFlag {
-		opts.Format = formatJSON
-	}
-	if opts.Format != formatText && opts.Format != formatJSON {
-		return usageError("unsupported format: %s", opts.Format)
 	}
 	if len(positionals) != 0 {
 		return usageError("usage: %s rollback [--to <backup-id>] [--dry-run] [--json]", toolName)

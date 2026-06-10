@@ -2,7 +2,6 @@ package secret
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,9 +32,9 @@ func (b fileBackend) Get(_ context.Context, key string) ([]byte, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	value, err := base64.StdEncoding.DecodeString(string(data))
+	value, err := decodePayload(BackendFile, key, string(data))
 	if err != nil {
-		return nil, false, fmt.Errorf("secret file for %s is not kagikae-encoded: %w", key, err)
+		return nil, false, err
 	}
 	return value, true, nil
 }
@@ -48,8 +47,7 @@ func (b fileBackend) Set(_ context.Context, key string, value []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create secret dir: %w", err)
 	}
-	encoded := []byte(base64.StdEncoding.EncodeToString(value))
-	return patch.WriteFileAtomic(path, encoded, 0o600)
+	return patch.WriteFileAtomic(path, []byte(encodePayload(value)), 0o600)
 }
 
 func (b fileBackend) Delete(_ context.Context, key string) error {

@@ -6,26 +6,11 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
-type fakeRunner struct {
-	stdout string
-	stderr string
-	code   int
-	args   []string
-}
-
-func (f *fakeRunner) Run(_ context.Context, _ string, args ...string) (string, string, int) {
-	f.args = append([]string(nil), args...)
-	return f.stdout, f.stderr, f.code
-}
-
-func (f *fakeRunner) RunInput(ctx context.Context, _ string, name string, args ...string) (string, string, int) {
-	return f.Run(ctx, name, args...)
-}
-
 func TestReadItemPlain(t *testing.T) {
-	fake := &fakeRunner{stdout: `{"claudeAiOauth":{"a":1}}` + "\n"}
+	fake := &runnertest.Fake{Stdout: `{"claudeAiOauth":{"a":1}}` + "\n"}
 	runner.With(fake, func() {
 		payload, found, err := ReadItem(context.Background(), "Claude Code-credentials")
 		if err != nil || !found || string(payload) != `{"claudeAiOauth":{"a":1}}` {
@@ -36,7 +21,7 @@ func TestReadItemPlain(t *testing.T) {
 
 func TestReadItemHexEncoded(t *testing.T) {
 	payload := `{"claudeAiOauth":{"name":"日本語"}}`
-	fake := &fakeRunner{stdout: hex.EncodeToString([]byte(payload)) + "\n"}
+	fake := &runnertest.Fake{Stdout: hex.EncodeToString([]byte(payload)) + "\n"}
 	runner.With(fake, func() {
 		got, found, err := ReadItem(context.Background(), "svc")
 		if err != nil || !found || string(got) != payload {
@@ -46,7 +31,7 @@ func TestReadItemHexEncoded(t *testing.T) {
 }
 
 func TestReadItemNotFound(t *testing.T) {
-	fake := &fakeRunner{stderr: "security: ... could not be found ...", code: 44}
+	fake := &runnertest.Fake{Stderr: "security: ... could not be found ...", Code: 44}
 	runner.With(fake, func() {
 		_, found, err := ReadItem(context.Background(), "svc")
 		if err != nil || found {
@@ -56,7 +41,7 @@ func TestReadItemNotFound(t *testing.T) {
 }
 
 func TestItemAccountParsesAcct(t *testing.T) {
-	fake := &fakeRunner{stdout: "keychain: \"login\"\nattributes:\n    \"acct\"<blob>=\"alice\"\n"}
+	fake := &runnertest.Fake{Stdout: "keychain: \"login\"\nattributes:\n    \"acct\"<blob>=\"alice\"\n"}
 	runner.With(fake, func() {
 		acct, found, err := ItemAccount(context.Background(), "svc")
 		if err != nil || !found || acct != "alice" {

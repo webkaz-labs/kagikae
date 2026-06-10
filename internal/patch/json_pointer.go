@@ -23,7 +23,9 @@ func decodeDoc(doc []byte) (any, error) {
 	return v, nil
 }
 
-func encodeDoc(v any) ([]byte, error) {
+// EncodeJSON is the single JSON-file encoding policy (2-space indent, no
+// HTML escaping, trailing newline). state and backup metadata use it too.
+func EncodeJSON(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -124,7 +126,7 @@ func rewritePointer(doc []byte, pointer string, value json.RawMessage, remove bo
 		child, exists := node[tok]
 		if !exists {
 			if remove {
-				return encodeDoc(root) // nothing to remove
+				return EncodeJSON(root) // nothing to remove
 			}
 			created := map[string]any{}
 			node[tok] = created
@@ -147,5 +149,5 @@ func rewritePointer(doc []byte, pointer string, value json.RawMessage, remove bo
 		}
 		node[leaf] = parsed
 	}
-	return encodeDoc(root)
+	return EncodeJSON(root)
 }

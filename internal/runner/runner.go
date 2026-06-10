@@ -29,6 +29,16 @@ func RunInput(ctx context.Context, stdin, name string, args ...string) (string, 
 	return Default.RunInput(ctx, stdin, name, args...)
 }
 
+// Snippet truncates subprocess stderr for safe inclusion in diagnostics.
+// It must never be applied to stdout of credential reads, which is secret.
+func Snippet(stderr string) string {
+	s := strings.TrimSpace(stderr)
+	if len(s) > 200 {
+		s = s[:200] + "..."
+	}
+	return s
+}
+
 // With replaces the process-wide runner for a single test. Do not use it from
 // tests that call t.Parallel; inject Runner directly when parallelism matters.
 func With(r Runner, fn func()) {

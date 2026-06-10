@@ -9,27 +9,8 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
-
-type fakeRunner struct {
-	stdout string
-	stderr string
-	code   int
-	name   string
-	args   []string
-	stdin  string
-}
-
-func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string, string, int) {
-	f.name = name
-	f.args = append([]string(nil), args...)
-	return f.stdout, f.stderr, f.code
-}
-
-func (f *fakeRunner) RunInput(ctx context.Context, stdin, name string, args ...string) (string, string, int) {
-	f.stdin = stdin
-	return f.Run(ctx, name, args...)
-}
 
 func lookPathFound(string) (string, error)   { return "/usr/bin/x", nil }
 func lookPathMissing(string) (string, error) { return "", errors.New("not found") }
@@ -126,18 +107,18 @@ func TestKeychainBackend(t *testing.T) {
 	payload := []byte(`{"v":1}`)
 	encoded := base64.StdEncoding.EncodeToString(payload)
 
-	fake := &fakeRunner{stdout: encoded + "\n"}
+	fake := &runnertest.Fake{Stdout: encoded + "\n"}
 	runner.With(fake, func() {
 		got, found, err := b.Get(ctx, "claude/work/oauth")
 		if err != nil || !found || string(got) != string(payload) {
 			t.Fatalf("get: %s %v %v", got, found, err)
 		}
 	})
-	if fake.name != "security" || fake.args[0] != "find-generic-password" {
-		t.Fatalf("unexpected command: %s %v", fake.name, fake.args)
+	if fake.Name != "security" || fake.Args[0] != "find-generic-password" {
+		t.Fatalf("unexpected command: %s %v", fake.Name, fake.Args)
 	}
 
-	fake = &fakeRunner{stderr: "security: ... could not be found ...", code: 44}
+	fake = &runnertest.Fake{Stderr: "security: ... could not be found ...", Code: 44}
 	runner.With(fake, func() {
 		_, found, err := b.Get(ctx, "claude/work/oauth")
 		if err != nil || found {
@@ -145,17 +126,17 @@ func TestKeychainBackend(t *testing.T) {
 		}
 	})
 
-	fake = &fakeRunner{}
+	fake = &runnertest.Fake{}
 	runner.With(fake, func() {
 		if err := b.Set(ctx, "claude/work/oauth", payload); err != nil {
 			t.Fatal(err)
 		}
 	})
-	if fake.args[len(fake.args)-1] != encoded {
-		t.Fatalf("payload not base64 in argv: %v", fake.args)
+	if fake.Args[len(fake.Args)-1] != encoded {
+		t.Fatalf("payload not base64 in argv: %v", fake.Args)
 	}
 
-	fake = &fakeRunner{stderr: "could not be found", code: 44}
+	fake = &runnertest.Fake{Stderr: "could not be found", Code: 44}
 	runner.With(fake, func() {
 		if err := b.Delete(ctx, "claude/work/oauth"); err != nil {
 			t.Fatal("delete of missing entry should be safe:", err)
@@ -169,7 +150,7 @@ func TestLibsecretBackend(t *testing.T) {
 	payload := []byte(`{"v":1}`)
 	encoded := base64.StdEncoding.EncodeToString(payload)
 
-	fake := &fakeRunner{stdout: encoded}
+	fake := &runnertest.Fake{Stdout: encoded}
 	runner.With(fake, func() {
 		got, found, err := b.Get(ctx, "codex/work/auth")
 		if err != nil || !found || string(got) != string(payload) {
@@ -178,7 +159,7 @@ func TestLibsecretBackend(t *testing.T) {
 	})
 
 	// exit 1 with empty stderr means not found
-	fake = &fakeRunner{code: 1}
+	fake = &runnertest.Fake{Code: 1}
 	runner.With(fake, func() {
 		_, found, err := b.Get(ctx, "codex/work/auth")
 		if err != nil || found {
@@ -187,23 +168,23 @@ func TestLibsecretBackend(t *testing.T) {
 	})
 
 	// exit 1 with stderr means error
-	fake = &fakeRunner{code: 1, stderr: "cannot connect to secret service"}
+	fake = &runnertest.Fake{Code: 1, Stderr: "cannot connect to secret service"}
 	runner.With(fake, func() {
 		if _, _, err := b.Get(ctx, "codex/work/auth"); err == nil {
 			t.Fatal("expected error")
 		}
 	})
 
-	fake = &fakeRunner{}
+	fake = &runnertest.Fake{}
 	runner.With(fake, func() {
 		if err := b.Set(ctx, "codex/work/auth", payload); err != nil {
 			t.Fatal(err)
 		}
 	})
-	if fake.stdin != encoded {
-		t.Fatalf("payload must go via stdin, got argv=%v stdin=%q", fake.args, fake.stdin)
+	if fake.Stdin != encoded {
+		t.Fatalf("payload must go via stdin, got argv=%v stdin=%q", fake.Args, fake.Stdin)
 	}
-	for _, arg := range fake.args {
+	for _, arg := range fake.Args {
 		if arg == encoded {
 			t.Fatal("payload leaked into argv")
 		}

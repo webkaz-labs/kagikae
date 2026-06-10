@@ -19,7 +19,7 @@ type initReport struct {
 
 func CmdInit(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, _, ok := parseCommon("init", flags, false)
+	opts, ok := parseCommon("init", flags, false, nil)
 	if !ok {
 		return constants.ExitUsage
 	}

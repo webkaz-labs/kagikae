@@ -94,15 +94,13 @@ func (app *App) enabledTools() []string {
 // acquireLocks takes per-tool locks in canonical order; on failure it
 // releases everything taken so far.
 func (app *App) acquireLocks(tools []string) ([]*lock.Lock, error) {
+	wanted := map[string]bool{}
+	for _, tool := range tools {
+		wanted[tool] = true
+	}
 	locks := []*lock.Lock{}
 	for _, tool := range constants.Tools {
-		wanted := false
-		for _, t := range tools {
-			if t == tool {
-				wanted = true
-			}
-		}
-		if !wanted {
+		if !wanted[tool] {
 			continue
 		}
 		l, err := lock.Acquire(app.Paths.LocksDir(), tool)
@@ -195,8 +193,10 @@ type commonOpts struct {
 	ConfigPath string
 }
 
-// parseCommon parses args and normalizes --json into Format.
-func parseCommon(name string, args []string, withDryRun bool) (commonOpts, []string, bool) {
+// parseCommon parses the flag portion of a command line (positionals are
+// separated beforehand by splitArgs) and normalizes --json into Format.
+// extra, when non-nil, registers command-specific flags on the same set.
+func parseCommon(name string, args []string, withDryRun bool, extra func(*flag.FlagSet)) (commonOpts, bool) {
 	var opts commonOpts
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -208,15 +208,18 @@ func parseCommon(name string, args []string, withDryRun bool) (commonOpts, []str
 	if withDryRun {
 		fs.BoolVar(&opts.DryRun, "dry-run", false, "print planned actions without writing")
 	}
+	if extra != nil {
+		extra(fs)
+	}
 	if err := fs.Parse(args); err != nil {
-		return opts, nil, false
+		return opts, false
 	}
 	if *jsonFlag {
 		opts.Format = formatJSON
 	}
 	if opts.Format != formatText && opts.Format != formatJSON {
 		usageError("unsupported format: %s", opts.Format)
-		return opts, nil, false
+		return opts, false
 	}
-	return opts, fs.Args(), true
+	return opts, true
 }

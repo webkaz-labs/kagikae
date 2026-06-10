@@ -49,6 +49,8 @@ this experimental until proven.
 
 - Windows support (paths defined in design; needs Credential Manager backend
   and `%APPDATA%` layout)
+- performance polish: combine/cache the multiple `security` subprocess calls
+  per macOS switch, run per-tool `Detect` concurrently in `status`
 - localized human output (Japanese)
 - richer TTY (routed review surface) if daily use shows the need
 - shell completion

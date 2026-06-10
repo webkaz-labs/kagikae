@@ -3,7 +3,6 @@
 package state
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -51,12 +50,9 @@ func Save(path string, st *State) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
 	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetIndent("", "  ")
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(st); err != nil {
+	data, err := patch.EncodeJSON(st)
+	if err != nil {
 		return err
 	}
-	return patch.WriteFileAtomic(path, buf.Bytes(), 0o600)
+	return patch.WriteFileAtomic(path, data, 0o600)
 }

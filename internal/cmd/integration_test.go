@@ -413,12 +413,29 @@ func TestCodexKeyringRefusedOnSwitchPath(t *testing.T) {
 	mustExit(t, constants.ExitUnsafeRefused, code, out)
 }
 
-func TestAgyCaptureUnsupported(t *testing.T) {
+func TestAgyCaptureSwitchFileSnapshot(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
+
+	// without a credential file, capture reports missing auth
 	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "agy", "work") })
-	mustExit(t, constants.ExitUnsupported, code, out)
+	mustExit(t, constants.ExitAuthMissing, code, out)
+
+	credPath := filepath.Join(app.Env.Home, ".gemini", "antigravity-cli", "credentials.enc")
+	writeFile(t, credPath, "opaque-work-blob")
+	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "agy", "work") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	writeFile(t, credPath, "opaque-personal-blob")
+	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "agy", "personal") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "agy", "work") })
+	mustExit(t, constants.ExitOK, code, out)
+	if got := readFile(t, credPath); got != "opaque-work-blob" {
+		t.Fatalf("agy credential not switched: %s", got)
+	}
 }
 
 func TestCaptureWithoutLiveAuth(t *testing.T) {

@@ -84,7 +84,7 @@ func (app *App) miseBlock(profileName string) string {
 	fmt.Fprintln(&b, `run = "kae current"`)
 	for _, tool := range app.enabledTools() {
 		if tool == constants.ToolAgy {
-			continue // detect-only adapter; no run task yet
+			continue // experimental adapter; no generated run task yet
 		}
 		fmt.Fprintln(&b, "")
 		fmt.Fprintf(&b, "[tasks.%s]\n", tool)

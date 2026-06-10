@@ -210,13 +210,38 @@ func TestGeminiArtifactsAndDoctor(t *testing.T) {
 	}
 }
 
-func TestAgyDetectOnly(t *testing.T) {
+func TestAgyExperimentalFileSnapshot(t *testing.T) {
 	env := testEnv(t, "darwin", nil)
-	if _, err := agyAdapter.Artifacts(context.Background(), env); !errors.Is(err, adapter.ErrUnsupported) {
-		t.Fatalf("expected unsupported: %v", err)
+	specs, err := agyAdapter.Artifacts(context.Background(), env)
+	if err != nil || len(specs) != 3 {
+		t.Fatalf("unexpected specs: %+v %v", specs, err)
 	}
+	if specs[0].Kind != constants.KindFile ||
+		specs[0].Target != filepath.Join(env.Home, ".gemini", "antigravity-cli", "credentials.enc") {
+		t.Fatalf("unexpected spec: %+v", specs[0])
+	}
+
 	info, err := agyAdapter.Detect(context.Background(), env)
 	if err != nil || info.AuthPresent {
-		t.Fatalf("unexpected: %+v %v", info, err)
+		t.Fatalf("expected no auth: %+v %v", info, err)
+	}
+
+	// keyring-likely warning when the CLI dir exists without credential files
+	write(t, filepath.Join(env.Home, ".gemini", "antigravity-cli", "settings.json"), `{}`)
+	info, _ = agyAdapter.Detect(context.Background(), env)
+	keyringWarned := false
+	for _, warning := range info.Warnings {
+		if strings.Contains(warning, "keyring") {
+			keyringWarned = true
+		}
+	}
+	if !keyringWarned {
+		t.Fatalf("expected keyring warning: %+v", info.Warnings)
+	}
+
+	write(t, filepath.Join(env.Home, ".gemini", "antigravity-cli", "credentials.enc"), "opaque")
+	info, _ = agyAdapter.Detect(context.Background(), env)
+	if !info.AuthPresent || info.Driver != constants.DriverAgyFileSnapshot {
+		t.Fatalf("unexpected: %+v", info)
 	}
 }

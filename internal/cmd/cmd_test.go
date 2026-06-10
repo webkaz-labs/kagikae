@@ -59,6 +59,25 @@ func TestSplitArgs(t *testing.T) {
 	}
 }
 
+func TestSplitArgsValueFlags(t *testing.T) {
+	cases := map[string][2]string{
+		"--mode":    {"env", "run"},
+		"--profile": {"work", "mise"},
+		"--to":      {"20260611T000000Z", "rollback"},
+		"--format":  {"json", "any"},
+		"--config":  {"/tmp/c.toml", "any"},
+	}
+	for flagName, pair := range cases {
+		flags, positionals := splitArgs([]string{flagName, pair[0], "tool", "account"})
+		if len(flags) != 2 || flags[1] != pair[0] {
+			t.Fatalf("%s: value not kept with flag: flags=%v", flagName, flags)
+		}
+		if strings.Join(positionals, " ") != "tool account" {
+			t.Fatalf("%s: positionals broken: %v", flagName, positionals)
+		}
+	}
+}
+
 func TestParseCommonJSONShorthand(t *testing.T) {
 	opts, ok := parseCommon("x", []string{"--json"}, false, nil)
 	if !ok || opts.Format != formatJSON {

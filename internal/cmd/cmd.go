@@ -82,10 +82,14 @@ func Root(args []string) int {
 // positionals (kae switch all work --json). --format and --config take a
 // value; all other flags are boolean.
 func splitArgs(args []string) (flags, positionals []string) {
+	// Every value-taking flag of every command must be listed here, or its
+	// value is misparsed as a positional (covered by TestSplitArgsValueFlags).
 	takesValue := map[string]bool{
 		"--format": true, "-format": true,
 		"--config": true, "-config": true,
 		"--to": true, "-to": true,
+		"--mode": true, "-mode": true,
+		"--profile": true, "-profile": true,
 	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]

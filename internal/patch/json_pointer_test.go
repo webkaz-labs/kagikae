@@ -116,13 +116,14 @@ func TestInvalidPointer(t *testing.T) {
 	}
 }
 
-func TestWriteFileAtomicPreservesMode(t *testing.T) {
+func TestWriteFileAtomicEnforcesMode(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cred.json")
-	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
+	// an existing world-readable credential file must be tightened on write
+	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteFileAtomic(path, []byte("new"), 0o644); err != nil {
+	if err := WriteFileAtomic(path, []byte("new"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(path)
@@ -130,7 +131,7 @@ func TestWriteFileAtomicPreservesMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("mode not preserved: %v", info.Mode())
+		t.Fatalf("mode not enforced: %v", info.Mode())
 	}
 	data, _ := os.ReadFile(path)
 	if string(data) != "new" {

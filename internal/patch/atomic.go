@@ -11,12 +11,10 @@ import (
 const CredentialFileMode fs.FileMode = 0o600
 
 // WriteFileAtomic writes data via a temp file + rename in the same directory.
-// If the destination exists its file mode is preserved; otherwise mode is
-// used. Parent directories are not created implicitly.
+// The given mode is always enforced, even when the destination existed with
+// looser permissions (credential files must end up 0600). Parent directories
+// are not created implicitly.
 func WriteFileAtomic(path string, data []byte, mode fs.FileMode) error {
-	if info, err := os.Stat(path); err == nil {
-		mode = info.Mode().Perm()
-	}
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {

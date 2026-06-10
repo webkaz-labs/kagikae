@@ -78,11 +78,17 @@ environment, the adapter uses it as the live base path.
 | `codex-keyring` | detect-only in v0.1.0 | OS credential store entry |
 
 The keyring item naming used by Codex is not a documented contract, so v0.1.0
-only detects the keyring configuration. When the effective store is `keyring`
-(explicit, or `auto` with no `auth.json` present), `doctor` reports it and
-`capture` / `switch` refuse with exit code 10 and guidance to either use
-`cli_auth_credentials_store = "file"` upstream or wait for the keyring driver
-(see [ROADMAP.md](ROADMAP.md)).
+only detects the keyring configuration:
+
+- explicit `cli_auth_credentials_store = "keyring"`: `doctor` flags it as an
+  error and `capture` / `switch` refuse with exit code 10 and guidance to set
+  `cli_auth_credentials_store = "file"` upstream or wait for the keyring
+  driver (see [ROADMAP.md](ROADMAP.md));
+- `auto` (or unset) with no `auth.json`: indistinguishable from "not logged
+  in", so `capture` fails with `auth_missing` (exit 3) including a keyring
+  hint, while `switch` proceeds normally — switching to a captured account
+  legitimately creates `auth.json`. `doctor` and `status` carry the same
+  hint as a warning.
 
 ### Preserved
 

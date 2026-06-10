@@ -174,7 +174,15 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		updates[plan.Tool] = plan.Account
 	}
 	if err := app.saveActive(st, updates, profileName); err != nil {
-		return nil, err
+		// live state changed but the record failed: restore so state.json and
+		// reality cannot diverge.
+		if restoreErr := applyBackup(ctx, be, meta, nil); restoreErr != nil {
+			return nil, errf(constants.ExitError,
+				"recording state failed (%v) and restore also failed (%v); run: kae rollback --to %s",
+				err, restoreErr, meta.ID)
+		}
+		return nil, errf(constants.ExitError,
+			"recording state failed, live state restored from backup %s: %v", meta.ID, err)
 	}
 	if _, err := backup.Prune(ctx, be, app.Paths.BackupsDir(), app.Config.Security.BackupKeep); err != nil {
 		fmt.Fprintf(os.Stderr, "kae: warning: backup pruning failed: %v\n", err)

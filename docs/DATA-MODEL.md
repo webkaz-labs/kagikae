@@ -148,7 +148,8 @@ set diverge from that profile's mapping.
 ## Backups
 
 Before any live mutation, `switch` and `rollback` capture the current live
-artifacts into a backup:
+artifacts into a backup (`reason` is `"switch"` or `"rollback"`), so a
+rollback is itself reversible:
 
 - metadata: `backups/<id>.json` (id format `YYYYMMDDTHHMMSSZ`, suffixed
   `-2`, `-3`, ... on collision)

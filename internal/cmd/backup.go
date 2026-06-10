@@ -192,13 +192,25 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	}
 	defer releaseLocks(locks)
 
-	if err := applyBackup(ctx, be, meta, nil); err != nil {
-		return nil, err
-	}
-
 	st, err := app.loadState()
 	if err != nil {
 		return nil, err
+	}
+	// rollback is itself a live mutation: back up the current state first so
+	// it stays reversible.
+	preMeta, err := app.createBackup(ctx, be, plansFromBackupMeta(meta), st, "rollback")
+	if err != nil {
+		return nil, err
+	}
+
+	if err := applyBackup(ctx, be, meta, nil); err != nil {
+		if restoreErr := applyBackup(ctx, be, preMeta, nil); restoreErr != nil {
+			return nil, errf(exitOf(err),
+				"rollback failed (%v) and restore also failed (%v); inspect backups %s and %s",
+				err, restoreErr, meta.ID, preMeta.ID)
+		}
+		return nil, errf(exitOf(err),
+			"rollback failed, live state restored from backup %s: %v", preMeta.ID, err)
 	}
 	for _, tool := range meta.Tools {
 		if before, ok := meta.ActiveBefore[tool]; ok {
@@ -210,7 +222,12 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	st.ActiveProfile = app.Config.MatchProfile(st.Active)
 	st.UpdatedAt = app.Now().UTC()
 	if err := state.Save(app.Paths.StateFile(), st); err != nil {
-		return nil, err
+		return nil, errf(constants.ExitError,
+			"live state was rolled back but recording it failed (%v); verify with kae status, undo with: kae rollback --to %s",
+			err, preMeta.ID)
+	}
+	if _, err := backup.Prune(ctx, be, app.Paths.BackupsDir(), app.Config.Security.BackupKeep); err != nil {
+		fmt.Fprintf(os.Stderr, "kae: warning: backup pruning failed: %v\n", err)
 	}
 	return report, nil
 }

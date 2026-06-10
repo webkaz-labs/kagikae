@@ -88,8 +88,9 @@ normative allowlists live in [ADAPTERS.md](ADAPTERS.md).
 ## Atomicity And Guards
 
 - JSON pointer patches read the full document, modify only the allowlisted
-  pointer, and write via temp-file + `rename` in the same directory,
-  preserving original file mode (default `0600` for new credential files).
+  pointer, and write via temp-file + `rename` in the same directory. Writes
+  always enforce `0600` on credential files, even when the previous file had
+  looser permissions.
 - Keychain patches read the payload, guard that it parses as the expected
   JSON shape, patch the pointer, and write back through `security -U`.
 - Structure guards refuse (exit 10) rather than "best effort" write.
@@ -107,6 +108,10 @@ None in v0.1.0. Commands are short-lived and each re-reads live state.
 
 ## Known Traps
 
+- JSON pointer patching re-encodes the whole document (sorted keys, 2-space
+  indent, `json.Number` for exact numeric round-trip). Sibling values are
+  preserved exactly, but byte-level formatting is normalized — never promise
+  byte-identical output for patched files.
 - `~/.claude.json` can be large and is rewritten by Claude Code itself; always
   re-read immediately before patching inside the lock, never reuse a value
   read earlier in the process.

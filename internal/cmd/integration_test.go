@@ -154,6 +154,20 @@ func TestCaptureSwitchRollbackClaude(t *testing.T) {
 	if st.Active["claude"] != "personal" {
 		t.Fatalf("rollback did not restore state: %+v", st)
 	}
+
+	// rollback is itself reversible: it created a "rollback" backup of the
+	// pre-rollback (work) state, so rolling back again returns to work.
+	code, out = captureStdout(t, func() int { return runBackupList(ctx, app, opts) })
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(out, "rollback") {
+		t.Fatalf("expected a rollback-reason backup: %s", out)
+	}
+	code, out = captureStdout(t, func() int { return runRollback(ctx, app, opts, "") })
+	mustExit(t, constants.ExitOK, code, out)
+	creds = readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"))
+	if !strings.Contains(creds, workToken) {
+		t.Fatalf("rollback of rollback did not restore work state: %s", creds)
+	}
 }
 
 func TestSwitchAllProfileAndDivergence(t *testing.T) {

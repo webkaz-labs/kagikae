@@ -36,8 +36,10 @@ Claude:
 
 - `capture` / `switch` between two accounts changes only
   `/claudeAiOauth` (file or keychain payload) and `/oauthAccount`;
-  `settings.json`, `skills/`, `agents/`, and every other `~/.claude.json` key
-  are byte-identical afterwards.
+  `settings.json`, `skills/`, and `agents/` are byte-identical afterwards,
+  and every other `~/.claude.json` key keeps its exact value (the document
+  is re-encoded with normalized formatting; values are preserved via
+  `json.Number`).
 - Linux `.credentials.json` stays `0600`. macOS path uses the keychain
   driver; unknown payload structure is refused (exit 10).
 

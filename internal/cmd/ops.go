@@ -162,6 +162,26 @@ func applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only 
 	return nil
 }
 
+// plansFromBackupMeta rebuilds per-tool artifact plans from backup records
+// so a rollback can itself be backed up before it overwrites live state.
+func plansFromBackupMeta(meta backup.Meta) []toolPlan {
+	specsByTool := map[string][]artifact.Spec{}
+	order := []string{}
+	for _, rec := range meta.Artifacts {
+		if _, seen := specsByTool[rec.Tool]; !seen {
+			order = append(order, rec.Tool)
+		}
+		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], artifact.Spec{
+			Name: rec.Name, Kind: rec.Kind, Target: rec.Target, Pointer: rec.Pointer,
+		})
+	}
+	plans := make([]toolPlan, 0, len(order))
+	for _, tool := range order {
+		plans = append(plans, toolPlan{Tool: tool, Specs: specsByTool[tool], Warnings: []string{}})
+	}
+	return plans
+}
+
 // applySnapshot applies one captured account to the live state.
 func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error {
 	for _, sp := range plan.Specs {

@@ -37,9 +37,14 @@ here are part of the command contract.
 - `security`, `secret-tool`, and binary detection run through
   `internal/runner` with `exec.CommandContext` and argv arrays (no shell
   strings).
-- Keychain payloads are passed to `security` via argv, not stdin echo through
-  a shell; stdout of `security find-generic-password -w` is treated as secret
-  and redacted from any diagnostics.
+- Keychain payloads are passed to `security` via argv: the security CLI has
+  no non-interactive stdin password input. This is an accepted, documented
+  trade-off — on macOS, another user cannot read a process's argv
+  (`ps -E`/`ps -ww` show arguments only for the same user or root), and any
+  same-user process could read the keychain through `security` anyway, so
+  argv exposure grants no privilege beyond what the keychain itself grants.
+  stdout of `security find-generic-password -w` is treated as secret and
+  redacted from any diagnostics.
 - User-controlled account/profile names are validated against
   `[a-zA-Z0-9._-]{1,64}` before use in paths, lock names, or secret keys.
 

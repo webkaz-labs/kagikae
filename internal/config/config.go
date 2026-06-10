@@ -45,6 +45,8 @@ type Security struct {
 type Tool struct {
 	Enabled                   *bool `toml:"enabled"`
 	WarnAntigravityTransition *bool `toml:"warn_antigravity_transition"`
+	HomeModeEnabled           *bool `toml:"home_mode_enabled"`
+	OverlayModeEnabled        *bool `toml:"overlay_mode_enabled"`
 }
 
 // Profile bundles per-tool accounts under one name.
@@ -128,6 +130,26 @@ func (c *Config) ToolEnabled(tool string) bool {
 		return true
 	}
 	return *t.Enabled
+}
+
+// HomeModeEnabled reports whether home mode is allowed for a tool
+// (default true).
+func (c *Config) HomeModeEnabled(tool string) bool {
+	t, ok := c.Tools[tool]
+	if !ok || t.HomeModeEnabled == nil {
+		return true
+	}
+	return *t.HomeModeEnabled
+}
+
+// OverlayModeEnabled reports whether the experimental overlay mode is
+// explicitly enabled for a tool (default false).
+func (c *Config) OverlayModeEnabled(tool string) bool {
+	t, ok := c.Tools[tool]
+	if !ok || t.OverlayModeEnabled == nil {
+		return false
+	}
+	return *t.OverlayModeEnabled
 }
 
 // WarnAntigravity reports whether the Gemini transition notice is active.

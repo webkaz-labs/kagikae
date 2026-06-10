@@ -49,6 +49,24 @@ func (p Paths) AccountsDir() string { return filepath.Join(p.DataDir, "accounts"
 // SecretsDir returns the opt-in file-backend secret root.
 func (p Paths) SecretsDir() string { return filepath.Join(p.DataDir, "secrets") }
 
+// EnvProfileDir returns the metadata directory for one env profile.
+func (p Paths) EnvProfileDir(tool, account string) string {
+	return filepath.Join(p.DataDir, "env", tool, account)
+}
+
+// EnvProfilesDir returns the root of all env profiles.
+func (p Paths) EnvProfilesDir() string { return filepath.Join(p.DataDir, "env") }
+
+// HomeModeDir returns the isolated tool home for home mode.
+func (p Paths) HomeModeDir(tool, account string) string {
+	return filepath.Join(p.DataDir, "homes", tool, account)
+}
+
+// OverlayDir returns the partially-isolated tool home for overlay mode.
+func (p Paths) OverlayDir(tool, account string) string {
+	return filepath.Join(p.DataDir, "overlays", tool, account)
+}
+
 // StateFile returns the state.json path.
 func (p Paths) StateFile() string { return filepath.Join(p.StateDir, "state.json") }
 

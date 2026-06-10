@@ -6,6 +6,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -27,6 +28,27 @@ func Run(ctx context.Context, name string, args ...string) (string, string, int)
 
 func RunInput(ctx context.Context, stdin, name string, args ...string) (string, string, int) {
 	return Default.RunInput(ctx, stdin, name, args...)
+}
+
+// RunInteractive runs a command with inherited stdio for login flows and
+// kae run children. extraEnv entries (KEY=VALUE) are appended to the current
+// environment. Overridable in tests.
+var RunInteractive = func(ctx context.Context, extraEnv []string, name string, args ...string) (int, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
+	err := cmd.Run()
+	if err == nil {
+		return 0, nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode(), nil
+	}
+	return 1, err
 }
 
 // Snippet truncates subprocess stderr for safe inclusion in diagnostics.

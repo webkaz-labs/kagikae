@@ -58,41 +58,17 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		return nil, err
 	}
 
-	var plans []toolPlan
-	var profileName string
-	if target == "all" {
-		profile, ok := app.Config.Profiles[name]
-		if !ok {
-			return nil, errf(constants.ExitNotFound,
-				"profile %q is not defined in %s", name, app.ConfigPath)
-		}
-		if len(profile.Accounts) == 0 {
-			return nil, errf(constants.ExitNotFound, "profile %q maps no tools", name)
-		}
-		profileName = name
-		for _, tool := range app.enabledTools() {
-			accountName, mapped := profile.Accounts[tool]
-			if !mapped {
-				continue
-			}
-			plan, err := app.planTool(ctx, tool, accountName)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", tool, err)
-			}
-			plans = append(plans, plan)
-		}
-		if len(plans) == 0 {
-			return nil, errf(constants.ExitNotFound, "profile %q maps no enabled tools", name)
-		}
-	} else {
-		if err := validateToolAccount(target, name, "account"); err != nil {
-			return nil, err
-		}
-		plan, err := app.planTool(ctx, target, name)
+	targets, profileName, err := app.resolveTargets(target, name)
+	if err != nil {
+		return nil, err
+	}
+	plans := make([]toolPlan, 0, len(targets))
+	for _, tgt := range targets {
+		plan, err := app.planTool(ctx, tgt.Tool, tgt.Account)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s: %w", tgt.Tool, err)
 		}
-		plans = []toolPlan{plan}
+		plans = append(plans, plan)
 	}
 
 	// Every target account must be captured before anything is written.

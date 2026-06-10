@@ -1,0 +1,154 @@
+# Tool Adapters
+
+This document defines, per upstream tool, what `auth` mode switches and what it
+must preserve. The allowlists here are the normative contract; the adapters
+implement exactly this and refuse anything outside it.
+
+Upstream credential layouts are not stable public APIs. Every adapter must
+guard on the expected structure (`kae doctor <tool>` reports what was
+detected) and refuse to write when the live layout is unrecognized
+(exit code 10, `unsafe operation refused`).
+
+## Claude Code
+
+### Live auth locations
+
+| Platform | Credential storage |
+|----------|--------------------|
+| macOS | Keychain generic password, service `Claude Code-credentials`; payload is JSON containing `claudeAiOauth` |
+| Linux | `~/.claude/.credentials.json` (mode `0600`), key `claudeAiOauth` |
+| Windows | `%USERPROFILE%\.claude\.credentials.json` (not supported in v0.1.0) |
+
+In addition, `~/.claude.json` holds the account identity under `oauthAccount`.
+This file is **mixed state**: it also contains `projects`, `mcpServers`,
+onboarding, and cache keys. It is patched via JSON Pointer only, never
+replaced.
+
+If `CLAUDE_CONFIG_DIR` is already set in the environment, the adapter uses it
+as the live base path for `.credentials.json`. `auth` mode never sets or
+changes `CLAUDE_CONFIG_DIR` itself.
+
+### Drivers
+
+| Driver | Platform | Switched artifacts |
+|--------|----------|--------------------|
+| `claude-file-patch` | Linux | `~/.claude/.credentials.json` pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
+| `claude-keychain-patch` | macOS | Keychain item `Claude Code-credentials` payload pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
+
+The macOS driver reads and writes the keychain through the `security` CLI via
+the runner seam. Before writing, the existing payload must parse as a JSON
+object containing `claudeAiOauth`; otherwise the driver refuses.
+
+### Preserved (never touched in auth mode)
+
+```text
+~/.claude/settings.json        ~/.claude/CLAUDE.md
+~/.claude/skills/              ~/.claude/agents/
+~/.claude/.credentials.json    -> all keys except /claudeAiOauth
+~/.claude.json                 -> all keys except /oauthAccount
+project/.claude/  project/CLAUDE.md  project/.mcp.json
+MCP / hooks / permissions / trust state / session history / plugins
+```
+
+### Environment conflicts
+
+`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN`
+override subscription login inside Claude Code. `kae doctor` warns when any of
+them is set, because a switch would silently have no effect.
+
+## Codex CLI
+
+### Live auth locations
+
+Codex keeps everything under `CODEX_HOME` (default `~/.codex`). Credentials
+live in `~/.codex/auth.json` or in the OS credential store, selected by
+`cli_auth_credentials_store = "file" | "keyring" | "auto"` in
+`~/.codex/config.toml`. `auth.json` contains only authentication state
+(tokens, account id, last refresh), so unlike `~/.claude.json` it may be
+swapped as a whole file.
+
+`auth` mode never sets or changes `CODEX_HOME`. If it is already set in the
+environment, the adapter uses it as the live base path.
+
+### Drivers
+
+| Driver | Status | Switched artifacts |
+|--------|--------|--------------------|
+| `codex-auth-json` | implemented | whole `~/.codex/auth.json` (file mode `0600`) |
+| `codex-keyring` | detect-only in v0.1.0 | OS credential store entry |
+
+The keyring item naming used by Codex is not a documented contract, so v0.1.0
+only detects the keyring configuration. When the effective store is `keyring`
+(explicit, or `auto` with no `auth.json` present), `doctor` reports it and
+`capture` / `switch` refuse with exit code 10 and guidance to either use
+`cli_auth_credentials_store = "file"` upstream or wait for the keyring driver
+(see [ROADMAP.md](ROADMAP.md)).
+
+### Preserved
+
+```text
+~/.codex/config.toml  ~/.codex/*.config.toml  ~/.codex/hooks.json
+~/.codex/history.jsonl  ~/.codex/logs/  ~/.codex/cache
+project/.codex/  AGENTS.md  rules / hooks / MCP / skills
+```
+
+## Gemini CLI
+
+### Live auth locations
+
+Google-login state is cached under `~/.gemini`:
+
+| Artifact | Purpose |
+|----------|---------|
+| `~/.gemini/oauth_creds.json` | Google OAuth tokens |
+| `~/.gemini/google_accounts.json` | active Google account identity |
+
+Both are auth-only files and are swapped whole. Either may be absent for
+API-key or Vertex configurations; the adapter captures what exists and records
+which artifacts were present.
+
+### Drivers
+
+| Driver | Status | Switched artifacts |
+|--------|--------|--------------------|
+| `gemini-oauth-cache` | implemented | `oauth_creds.json`, `google_accounts.json` (mode `0600`) |
+
+API-key (`GEMINI_API_KEY`) and Vertex (`GOOGLE_APPLICATION_CREDENTIALS`,
+`GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`) profiles are environment
+based and belong to the planned `env` mode, not to credential-cache switching.
+`doctor` distinguishes the configured auth type and warns when `GEMINI_API_KEY`
+or Vertex variables are set, since they take precedence over the OAuth cache.
+
+### Preserved
+
+```text
+~/.gemini/settings.json  ~/.gemini/GEMINI.md  ~/.gemini/skills/
+~/.gemini/installation_id  project/.gemini/
+MCP / tools / context config
+```
+
+### Antigravity transition
+
+Personal Gemini CLI serving (Google AI Pro / Ultra and free tier) is scheduled
+to move to Antigravity CLI on 2026-06-18; Code Assist Standard / Enterprise
+and Google Cloud paths continue. When `warn_antigravity_transition = true`
+(default), `doctor` and `switch` surface a transition notice for Google-login
+Gemini accounts.
+
+## Antigravity CLI (`agy`)
+
+Detect-only in v0.1.0. `kae doctor agy` reports whether the `agy` binary and
+its config directory exist. `capture` / `switch` return exit code 5
+(`unsupported`) with a pointer to the roadmap. The full adapter (auth snapshot,
+switch, Gemini migration helper) is Phase 5.
+
+## Adding A New Adapter
+
+1. Document the live auth locations, drivers, preserved paths, and environment
+   conflicts in this file first.
+2. Implement `adapter.Adapter` with capture/apply/verify built from `artifact`
+   primitives (`json-pointer`, `file`, `keychain`) so backup/rollback and
+   redaction come for free.
+3. Add structure guards: refuse unknown layouts instead of writing.
+4. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
+   guard-refusal paths.

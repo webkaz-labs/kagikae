@@ -1,31 +1,190 @@
 # Data Model
 
-Describe config files, desired/live state, cache files, reports, and status
-vocabulary.
+Config schema, on-disk layout, state, backups, secret references, and status
+vocabulary for `kae`.
 
-## Config
+## Directory Layout (XDG)
 
-Normal user policy should live at:
+`kagikae` itself is XDG-compliant on every platform, including macOS:
 
-```text
-${XDG_CONFIG_HOME:-~/.config}/dotfiles-tool/config.toml
+| Purpose | Path |
+|---------|------|
+| config | `${XDG_CONFIG_HOME:-~/.config}/kagikae/config.toml` |
+| account snapshots (metadata) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/accounts/<tool>/<account>/account.toml` |
+| file-backend secrets (opt-in) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/secrets/...` |
+| state | `${XDG_STATE_HOME:-~/.local/state}/kagikae/state.json` |
+| backups (metadata) | `${XDG_STATE_HOME:-~/.local/state}/kagikae/backups/<id>.json` |
+| locks | `${XDG_RUNTIME_DIR}/kagikae/locks/<tool>.lock`, falling back to `${XDG_STATE_HOME:-~/.local/state}/kagikae/locks/` when `XDG_RUNTIME_DIR` is unset |
+
+Directories holding metadata or secrets are created `0700`; secret and
+metadata files are written `0600`. Windows paths are defined in the design
+but not implemented in v0.1.0.
+
+## Config Schema
+
+`config.toml`, created by `kae init`:
+
+```toml
+version = 1
+default_profile = "personal"   # optional
+
+[security]
+secret_backend = "auto"        # auto | keychain | libsecret | file
+backup_keep = 30               # backups retained per pruning pass
+
+[tools.claude]
+enabled = true
+
+[tools.codex]
+enabled = true
+
+[tools.gemini]
+enabled = true
+warn_antigravity_transition = true
+
+[tools.agy]
+enabled = true
+
+[profiles.work]
+label = "Work"
+
+[profiles.work.accounts]
+claude = "work"
+codex = "work"
+gemini = "work"
+
+[profiles.personal]
+label = "Personal"
+
+[profiles.personal.accounts]
+claude = "personal"
+codex = "personal"
+gemini = "personal"
 ```
 
-Precedence:
+Precedence: defaults, then config file, then environment overrides
+(secrets/CI only), then CLI flags. Unknown keys produce a warning (not an
+error) while the schema is pre-1.0. `version` greater than the supported
+schema is an error (`invalid_config`).
 
-1. defaults
-2. config file
-3. environment overrides for CI/debug/secrets
-4. CLI flags
+A profile may omit tools; `switch all <profile>` switches only the tools the
+profile maps and reports the others as `skipped`.
 
-Document unknown-key behavior here before shipping config support.
+## Account Snapshot Metadata
 
-## Reports
+`accounts/<tool>/<account>/account.toml` holds metadata only — never secret
+values:
 
-Stable JSON reports include `schema_version`. Agent-facing arrays should encode
-as `[]`, not `null`.
+```toml
+version = 1
+tool = "claude"
+account = "work"
+driver = "claude-keychain-patch"
+captured_at = 2026-06-11T01:23:45Z
+
+[artifacts.claude_ai_oauth]
+kind = "keychain"              # json-pointer | file | keychain
+target = "Claude Code-credentials"
+pointer = "/claudeAiOauth"
+secret_ref = "claude/work/claude_ai_oauth"
+
+[artifacts.oauth_account]
+kind = "json-pointer"
+target = "~/.claude.json"
+pointer = "/oauthAccount"
+secret_ref = "claude/work/oauth_account"
+```
+
+`kind` semantics:
+
+| Kind | Capture | Apply |
+|------|---------|-------|
+| `json-pointer` | read pointer value from JSON file | patch pointer in JSON file atomically, preserving all other keys |
+| `file` | read whole file | atomic replace, mode `0600` |
+| `keychain` | read pointer value from keychain item payload | patch pointer inside keychain item payload |
+
+## Secret References
+
+Secret payloads live in the secret backend, keyed by:
+
+```text
+service: kagikae
+key:     <tool>/<account>/<artifact>          # account snapshots
+key:     backup/<backup-id>/<tool>/<artifact> # backups
+```
+
+Backends:
+
+| Backend | Platform | Mechanism |
+|---------|----------|-----------|
+| `keychain` | macOS | `security` CLI generic passwords (via runner) |
+| `libsecret` | Linux | `secret-tool` (via runner) |
+| `file` | any (opt-in) | plaintext JSON under `data/secrets/`, file mode `0600` |
+
+`auto` resolves to `keychain` on macOS, `libsecret` on Linux when
+`secret-tool` is available, otherwise the command fails with exit code 9 and
+guidance to either install libsecret tools or opt in to the file backend with
+`secret_backend = "file"`.
+
+## State
+
+`state.json`:
+
+```json
+{
+  "schema_version": 1,
+  "active_profile": "work",
+  "active": {"claude": "work", "codex": "work", "gemini": "work"},
+  "updated_at": "2026-06-11T01:23:45Z"
+}
+```
+
+`active` records what kae last applied (or captured from a matching live
+state); it is kae's belief, not upstream truth. `status` re-verifies
+`auth_present` against the live state. `active_profile` is set by
+`switch all <profile>` and cleared when a single-tool switch makes the active
+set diverge from that profile's mapping.
+
+## Backups
+
+Before any live mutation, `switch` and `rollback` capture the current live
+artifacts into a backup:
+
+- metadata: `backups/<id>.json` (id format `YYYYMMDDTHHMMSSZ`, suffixed
+  `-2`, `-3`, ... on collision)
+- payloads: secret backend under `backup/<id>/...`
+
+```json
+{
+  "schema_version": 1,
+  "id": "20260611T012345Z",
+  "created_at": "2026-06-11T01:23:45Z",
+  "reason": "switch",
+  "tools": ["claude"],
+  "active_before": {"claude": "personal"},
+  "artifacts": [
+    {"tool": "claude", "name": "claude_ai_oauth", "kind": "keychain",
+     "target": "Claude Code-credentials", "pointer": "/claudeAiOauth",
+     "secret_ref": "backup/20260611T012345Z/claude/claude_ai_oauth",
+     "present": true}
+  ]
+}
+```
+
+`present: false` records that the artifact did not exist live (so rollback
+removes/skips it instead of writing an empty value). After a successful
+switch, backups beyond `backup_keep` are pruned oldest-first (metadata and
+secret payloads together).
 
 ## Status Vocabulary
 
-Keep status and decision tokens in constants before multiple commands depend on
-them.
+Defined in `internal/constants`; JSON uses exactly these tokens:
+
+- check status: `ok`, `warn`, `error`, `skipped`
+- error codes: `ok`, `error`, `invalid_config`, `auth_missing`, `lock_busy`,
+  `unsupported`, `cli_missing`, `not_found`, `permission`, `secret_store`,
+  `unsafe_refused`, `usage`
+- artifact kinds: `json-pointer`, `file`, `keychain`
+- drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
+  `gemini-oauth-cache`
+- modes: `auth` (others reserved: `env`, `home`, `overlay`)

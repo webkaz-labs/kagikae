@@ -1,7 +1,7 @@
-# Claude Code guide for dotfiles-tool
+# Claude Code guide for kagikae
 
-This file is loaded when Claude Code reads or edits files in this tool
-directory. The shared tool guidance lives in `AGENTS.md` so Codex, Claude Code,
-Copilot, and Gemini use the same rules.
+This file is loaded when Claude Code works in this repository. The shared
+guidance lives in `AGENTS.md` so Codex, Claude Code, Copilot, and Gemini use
+the same rules.
 
 @AGENTS.md

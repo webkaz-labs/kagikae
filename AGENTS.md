@@ -1,51 +1,53 @@
-# dotfiles-tool working guide
+# kagikae working guide
 
-Follow the repository root `AGENTS.md` plus these tool-local rules.
+Standalone public repository. Follow the bundled Go CLI standard in
+[.claude/skills/go-cli-tooling/](.claude/skills/go-cli-tooling/SKILL.md)
+(references under `references/`), plus these local rules.
 
 ## Documentation Map
 
 | Document | When To Read |
 |----------|--------------|
 | [README.md](README.md) | user-facing command or setup changes |
-| [docs/DESIGN.md](docs/DESIGN.md) | mission, product boundary, or completion goal changes |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, runner, provider, cache changes |
-| [docs/CLI.md](docs/CLI.md) | command flags, text/JSON/TUI output, exit codes |
-| [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | config, report, cache, or status vocabulary changes |
-| [docs/SECURITY.md](docs/SECURITY.md) | secrets, subprocesses, external scanner/API, or security evidence changes |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | long-term ordering or later target changes |
-| [docs/RELEASE.md](docs/RELEASE.md) | current release target, non-goals, release-ready criteria |
+| [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, terminology, boundary changes |
+| [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, adapter interface, transaction, lock changes |
+| [docs/CLI.md](docs/CLI.md) | command flags, output, exit codes, JSON contract changes |
+| [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | config, snapshot, state, backup, secret-ref changes |
+| [docs/SECURITY.md](docs/SECURITY.md) | secrets, subprocess, permission, redaction changes |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | long-term ordering changes |
+| [docs/RELEASE.md](docs/RELEASE.md) | active release target changes |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | before commit and release checks |
-| [../../docs/go-cli-architecture.md](../../docs/go-cli-architecture.md) | shared Go CLI standard |
 
 ## Validation
 
 ```bash
-mise -C tools/dotfiles-tool run check
+mise run check
 git diff --check
 ```
 
-Run `chezmoi apply --dry-run` from the repository root when wrappers,
-templates, settings, or deploy integration change.
+Never run tests or smoke checks against the real `$HOME`; every test uses
+`t.TempDir()` HOME/XDG roots, and smoke checks export a temp HOME
+([docs/VALIDATION.md](docs/VALIDATION.md)).
 
-## Implementation Rules
+## Implementation Boundaries
 
-- Keep `main.go` as dispatch only.
-- Keep command handlers and report builders in `internal/cmd`.
-- Run subprocesses through `internal/runner`.
-- Keep JSON reports stable and deterministic.
-- Keep TTY views separate from report computation.
+- Keep `main.go` as dispatch only; handlers and report builders in
+  `internal/cmd`.
+- All subprocesses (`security`, `secret-tool`, binary detection) go through
+  `internal/runner`.
+- Adapters declare artifact specs; capture/apply/backup/rollback IO lives in
+  `internal/artifact` and generic layers. Do not duplicate IO in adapters.
+- The per-tool switched/preserved allowlists in `docs/ADAPTERS.md` are the
+  normative contract: code must match that document, and any change requires
+  updating it in the same commit.
+- Secret values must never reach stdout/stderr/JSON/metadata/logs. New output
+  paths need a redaction test.
+- Mixed-state files are patched by JSON Pointer only; whole-file replacement
+  of `~/.claude.json` is forbidden in code review, not just in docs.
+- JSON contract tokens live in `internal/constants`; never inline literals.
 
 ## Documentation Update Checklist
 
-For every change, decide whether each local doc needs an update:
-
-- `README.md`
-- `AGENTS.md`
-- `docs/DESIGN.md`
-- `docs/ARCHITECTURE.md`
-- `docs/CLI.md`
-- `docs/DATA-MODEL.md`
-- `docs/SECURITY.md`
-- `docs/ROADMAP.md`
-- `docs/RELEASE.md`
-- `docs/VALIDATION.md`
+For every change, decide and report "changed / no change needed" for each:
+`README.md`, `AGENTS.md`, and every file under `docs/`.

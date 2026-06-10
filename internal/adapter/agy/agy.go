@@ -34,7 +34,7 @@ func cliDir(env adapter.Env) string {
 }
 
 func artifactName(file string) string {
-	return strings.NewReplacer(".", "_").Replace(file)
+	return strings.ReplaceAll(file, ".", "_")
 }
 
 func (Agy) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, error) {

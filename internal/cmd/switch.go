@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
@@ -62,27 +61,11 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	if err != nil {
 		return nil, err
 	}
-	plans := make([]toolPlan, 0, len(targets))
-	for _, tgt := range targets {
-		plan, err := app.planTool(ctx, tgt.Tool, tgt.Account)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", tgt.Tool, err)
-		}
-		plans = append(plans, plan)
-	}
-
-	// Every target account must be captured before anything is written.
-	for i := range plans {
-		acc, found, err := account.Load(app.Paths.AccountDir(plans[i].Tool, plans[i].Account))
-		if err != nil {
-			return nil, err
-		}
-		if !found {
-			return nil, errf(constants.ExitNotFound,
-				"account %s/%s is not captured yet (run: kae capture %s %s)",
-				plans[i].Tool, plans[i].Account, plans[i].Tool, plans[i].Account)
-		}
-		plans[i].Meta = acc
+	// Plans include each captured snapshot; uncaptured targets fail before
+	// anything is written.
+	plans, err := app.loadPlansWithSnapshots(ctx, targets)
+	if err != nil {
+		return nil, err
 	}
 
 	report := &switchReport{
@@ -134,9 +117,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		if err := applySnapshot(ctx, be, plan); err != nil {
 			appliedTools[plan.Tool] = true // partially-applied tool needs restore too
 			if restoreErr := applyBackup(ctx, be, meta, appliedTools); restoreErr != nil {
-				return nil, errf(exitOf(err),
-					"switch %s failed (%v) and rollback also failed (%v); run: kae rollback --to %s",
-					plan.Tool, err, restoreErr, meta.ID)
+				return nil, doubleFailure("switch "+plan.Tool, err, restoreErr, meta.ID)
 			}
 			return nil, errf(exitOf(err),
 				"switch %s failed, previous state restored from backup %s: %v",
@@ -153,9 +134,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		// live state changed but the record failed: restore so state.json and
 		// reality cannot diverge.
 		if restoreErr := applyBackup(ctx, be, meta, nil); restoreErr != nil {
-			return nil, errf(constants.ExitError,
-				"recording state failed (%v) and restore also failed (%v); run: kae rollback --to %s",
-				err, restoreErr, meta.ID)
+			return nil, doubleFailure("recording state", err, restoreErr, meta.ID)
 		}
 		return nil, errf(constants.ExitError,
 			"recording state failed, live state restored from backup %s: %v", meta.ID, err)

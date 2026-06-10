@@ -79,17 +79,19 @@ func Root(args []string) int {
 }
 
 // splitArgs separates flags from positionals so flags may follow
-// positionals (kae switch all work --json). --format and --config take a
-// value; all other flags are boolean.
-func splitArgs(args []string) (flags, positionals []string) {
-	// Every value-taking flag of every command must be listed here, or its
-	// value is misparsed as a positional (covered by TestSplitArgsValueFlags).
+// positionals (kae switch all work --json). The shared value-taking flags
+// (--format, --config) are always recognized; commands with their own
+// value flags pass the names via valueFlags (e.g. splitArgs(args, "--mode")),
+// or their value is misparsed as a positional.
+func splitArgs(args []string, valueFlags ...string) (flags, positionals []string) {
 	takesValue := map[string]bool{
 		"--format": true, "-format": true,
 		"--config": true, "-config": true,
-		"--to": true, "-to": true,
-		"--mode": true, "-mode": true,
-		"--profile": true, "-profile": true,
+	}
+	for _, name := range valueFlags {
+		base := strings.TrimLeft(name, "-")
+		takesValue["--"+base] = true
+		takesValue["-"+base] = true
 	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]

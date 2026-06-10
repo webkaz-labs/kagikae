@@ -59,7 +59,8 @@ func (app *App) homeModeEnv(tool, accountName string) ([]string, error) {
 // overlaySharedItems lists the real-home entries shared (symlinked) into an
 // overlay home. Everything else, notably credentials, sessions, history, and
 // the mixed-state identity file, stays private to the overlay.
-// The normative list is docs/ADAPTERS.md.
+// docs/ADAPTERS.md "Isolation" is the normative source for this table (as
+// for isolationEnvVar and realToolHome); update both together.
 func overlaySharedItems(tool string) []string {
 	switch tool {
 	case constants.ToolClaude:
@@ -119,22 +120,20 @@ func (app *App) overlayModeEnv(tool, accountName string) ([]string, error) {
 		if _, err := os.Stat(source); err != nil {
 			continue // share only what exists in the real home
 		}
-		info, err := os.Lstat(target)
-		switch {
-		case err == nil && info.Mode()&os.ModeSymlink != 0:
-			current, readErr := os.Readlink(target)
-			if readErr == nil && current == source {
+		if info, err := os.Lstat(target); err == nil {
+			if info.Mode()&os.ModeSymlink == 0 {
+				// A real file/dir in the overlay would be silently shadowed
+				// by a link; refuse instead of destroying overlay-local data.
+				return nil, errf(constants.ExitUnsafeRefused,
+					"overlay item %s exists as a real file/directory; move it aside or delete the overlay dir %s",
+					target, overlayDir)
+			}
+			if current, readErr := os.Readlink(target); readErr == nil && current == source {
 				continue // already linked correctly
 			}
 			if err := os.Remove(target); err != nil {
 				return nil, fmt.Errorf("refresh overlay link %s: %w", target, err)
 			}
-		case err == nil:
-			// A real file/dir in the overlay would be silently shadowed by a
-			// link; refuse instead of destroying overlay-local data.
-			return nil, errf(constants.ExitUnsafeRefused,
-				"overlay item %s exists as a real file/directory; move it aside or delete the overlay dir %s",
-				target, overlayDir)
 		}
 		if err := os.Symlink(source, target); err != nil {
 			return nil, fmt.Errorf("link overlay item %s: %w", target, err)

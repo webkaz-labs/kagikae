@@ -6,28 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/webkaz-labs/kagikae/internal/testutil/secrettest"
 )
-
-type memBackend struct{ values map[string][]byte }
-
-func newMem() *memBackend { return &memBackend{values: map[string][]byte{}} }
-
-func (m *memBackend) Name() string { return "mem" }
-
-func (m *memBackend) Get(_ context.Context, key string) ([]byte, bool, error) {
-	v, ok := m.values[key]
-	return v, ok, nil
-}
-
-func (m *memBackend) Set(_ context.Context, key string, value []byte) error {
-	m.values[key] = append([]byte(nil), value...)
-	return nil
-}
-
-func (m *memBackend) Delete(_ context.Context, key string) error {
-	delete(m.values, key)
-	return nil
-}
 
 func TestValidVarName(t *testing.T) {
 	for _, ok := range []string{"ANTHROPIC_API_KEY", "_X", "A1"} {
@@ -45,7 +26,7 @@ func TestValidVarName(t *testing.T) {
 func TestSaveLoadListDelete(t *testing.T) {
 	root := t.TempDir()
 	ctx := context.Background()
-	be := newMem()
+	be := secrettest.NewMem()
 	dir := filepath.Join(root, "claude", "ci")
 	profile := Profile{
 		Version: 1, Tool: "claude", Account: "ci",
@@ -83,14 +64,14 @@ func TestSaveLoadListDelete(t *testing.T) {
 	if _, found, _ := Load(dir); found {
 		t.Fatal("profile not deleted")
 	}
-	if len(be.values) != 0 {
-		t.Fatalf("secrets not deleted: %v", be.values)
+	if len(be.Values) != 0 {
+		t.Fatalf("secrets not deleted: %v", be.Values)
 	}
 }
 
 func TestEnvStringsMissingValue(t *testing.T) {
 	profile := Profile{Tool: "claude", Account: "ci", Vars: []string{"GONE"}}
-	if _, err := EnvStrings(context.Background(), newMem(), profile); err == nil {
+	if _, err := EnvStrings(context.Background(), secrettest.NewMem(), profile); err == nil {
 		t.Fatal("expected error for missing secret")
 	}
 }

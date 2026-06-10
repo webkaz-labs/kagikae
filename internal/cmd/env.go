@@ -160,17 +160,18 @@ func runEnvUnset(ctx context.Context, app *App, opts commonOpts, positionals []s
 	}
 	keys := positionals[2:]
 	if len(keys) == 0 {
+		// no keys = delete the whole profile (metadata + every secret)
 		if err := envprofile.Delete(ctx, be, dir, profile); err != nil {
 			return finish(opts, err)
 		}
 		fmt.Printf("Deleted env profile %s/%s\n", tool, accountName)
 		return constants.ExitOK
 	}
-	remaining := []string{}
 	remove := map[string]bool{}
 	for _, key := range keys {
 		remove[key] = true
 	}
+	remaining := []string{}
 	for _, name := range profile.Vars {
 		if remove[name] {
 			if err := be.Delete(ctx, envprofile.SecretRef(tool, accountName, name)); err != nil {
@@ -180,6 +181,7 @@ func runEnvUnset(ctx context.Context, app *App, opts commonOpts, positionals []s
 			remaining = append(remaining, name)
 		}
 	}
+	// The removed secrets are gone; what survives is exactly `remaining`.
 	profile.Vars = remaining
 	profile.UpdatedAt = app.Now().UTC()
 	if len(remaining) == 0 {

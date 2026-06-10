@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/envprofile"
 	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
 // CmdRun executes a child command with a temporarily applied account:
@@ -27,7 +27,7 @@ func CmdRun(ctx context.Context, args []string) int {
 	if len(childCmd) == 0 {
 		return usageError("usage: %s run [--mode auth|env|home|overlay] <tool|all> <name> -- <cmd...>", toolName)
 	}
-	flags, positionals := splitArgs(kaeArgs)
+	flags, positionals := splitArgs(kaeArgs, "--mode")
 	mode := modeAuth
 	opts, ok := parseCommon("run", flags, false, func(fs *flag.FlagSet) {
 		fs.StringVar(&mode, "mode", modeAuth, "switch mode: auth, env, home, or overlay")
@@ -59,44 +59,45 @@ func runRun(ctx context.Context, app *App, opts commonOpts, mode, target, name s
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
 	}
-	targets, profileName, err := app.resolveTargets(target, name)
+	targets, _, err := app.resolveTargets(target, name)
 	if err != nil {
 		return finish(opts, err)
 	}
-	_ = profileName
-	switch mode {
-	case modeAuth:
+	if mode == modeAuth {
 		code, err := app.runAuthTransaction(ctx, targets, childCmd)
 		if err != nil {
 			return finish(opts, err)
 		}
 		return code
-	case modeEnv, modeHome, modeOverlay:
-		extraEnv := []string{}
-		for _, tgt := range targets {
-			var entries []string
-			var err error
-			switch mode {
-			case modeEnv:
-				entries, err = app.envModeEnv(ctx, tgt.Tool, tgt.Account)
-			case modeHome:
-				entries, err = app.homeModeEnv(tgt.Tool, tgt.Account)
-			case modeOverlay:
-				entries, err = app.overlayModeEnv(tgt.Tool, tgt.Account)
-			}
-			if err != nil {
-				return finish(opts, fmt.Errorf("%s: %w", tgt.Tool, err))
-			}
-			extraEnv = append(extraEnv, entries...)
-		}
-		code, err := runner.RunInteractive(ctx, extraEnv, childCmd[0], childCmd[1:]...)
-		if err != nil {
-			return finish(opts, fmt.Errorf("run %s: %w", childCmd[0], err))
-		}
-		return code
-	default:
-		return usageError("unsupported mode %q", mode)
 	}
+	// env/home/overlay never mutate live state; they only build child env.
+	var be secret.Backend
+	if mode == modeEnv {
+		if be, err = app.secretBackend(); err != nil {
+			return finish(opts, err)
+		}
+	}
+	var extraEnv []string
+	for _, tgt := range targets {
+		var entries []string
+		switch mode {
+		case modeEnv:
+			entries, err = app.envModeEnv(ctx, be, tgt.Tool, tgt.Account)
+		case modeHome:
+			entries, err = app.homeModeEnv(tgt.Tool, tgt.Account)
+		case modeOverlay:
+			entries, err = app.overlayModeEnv(tgt.Tool, tgt.Account)
+		}
+		if err != nil {
+			return finish(opts, fmt.Errorf("%s: %w", tgt.Tool, err))
+		}
+		extraEnv = append(extraEnv, entries...)
+	}
+	code, err := runner.RunInteractive(ctx, extraEnv, childCmd[0], childCmd[1:]...)
+	if err != nil {
+		return finish(opts, fmt.Errorf("run %s: %w", childCmd[0], err))
+	}
+	return code
 }
 
 // runTarget is one tool/account pair resolved from CLI arguments.
@@ -131,7 +132,7 @@ func (app *App) resolveTargets(target, name string) ([]runTarget, string, error)
 }
 
 // envModeEnv resolves one tool/account env profile into KEY=VALUE entries.
-func (app *App) envModeEnv(ctx context.Context, tool, accountName string) ([]string, error) {
+func (app *App) envModeEnv(ctx context.Context, be secret.Backend, tool, accountName string) ([]string, error) {
 	profile, found, err := envprofile.Load(app.Paths.EnvProfileDir(tool, accountName))
 	if err != nil {
 		return nil, err
@@ -141,34 +142,18 @@ func (app *App) envModeEnv(ctx context.Context, tool, accountName string) ([]str
 			"env profile %s/%s does not exist (create it with: kae env set %s %s KEY=VALUE)",
 			tool, accountName, tool, accountName)
 	}
-	be, err := app.secretBackend()
-	if err != nil {
-		return nil, err
-	}
 	return envprofile.EnvStrings(ctx, be, profile)
 }
 
 // runAuthTransaction is the auth-mode kae run: lock, backup, apply the
 // target accounts, run the child, recapture refreshed credentials into the
-// account snapshots, then restore the previous live state.
+// account snapshots, then restore the previous live state. It shares the
+// lock-backup-apply-restore skeleton with buildSwitch (docs/ARCHITECTURE.md
+// "Run Transaction") but diverges after apply, so the two stay separate.
 func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, childCmd []string) (int, error) {
-	plans := make([]toolPlan, 0, len(targets))
-	for _, tgt := range targets {
-		plan, err := app.planTool(ctx, tgt.Tool, tgt.Account)
-		if err != nil {
-			return 0, fmt.Errorf("%s: %w", tgt.Tool, err)
-		}
-		acc, found, err := account.Load(app.Paths.AccountDir(tgt.Tool, tgt.Account))
-		if err != nil {
-			return 0, err
-		}
-		if !found {
-			return 0, errf(constants.ExitNotFound,
-				"account %s/%s is not captured yet (run: kae capture %s %s)",
-				tgt.Tool, tgt.Account, tgt.Tool, tgt.Account)
-		}
-		plan.Meta = acc
-		plans = append(plans, plan)
+	plans, err := app.loadPlansWithSnapshots(ctx, targets)
+	if err != nil {
+		return 0, err
 	}
 
 	be, err := app.secretBackend()
@@ -201,9 +186,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 		if err := applySnapshot(ctx, be, plan); err != nil {
 			appliedTools[plan.Tool] = true
 			if restoreErr := applyBackup(ctx, be, meta, appliedTools); restoreErr != nil {
-				return 0, errf(exitOf(err),
-					"apply %s failed (%v) and restore also failed (%v); run: kae rollback --to %s",
-					plan.Tool, err, restoreErr, meta.ID)
+				return 0, doubleFailure("apply "+plan.Tool, err, restoreErr, meta.ID)
 			}
 			return 0, errf(exitOf(err),
 				"apply %s failed, previous state restored from backup %s: %v", plan.Tool, meta.ID, err)

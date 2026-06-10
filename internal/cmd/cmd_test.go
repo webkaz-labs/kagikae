@@ -60,21 +60,30 @@ func TestSplitArgs(t *testing.T) {
 }
 
 func TestSplitArgsValueFlags(t *testing.T) {
-	cases := map[string][2]string{
-		"--mode":    {"env", "run"},
-		"--profile": {"work", "mise"},
-		"--to":      {"20260611T000000Z", "rollback"},
-		"--format":  {"json", "any"},
-		"--config":  {"/tmp/c.toml", "any"},
-	}
-	for flagName, pair := range cases {
-		flags, positionals := splitArgs([]string{flagName, pair[0], "tool", "account"})
-		if len(flags) != 2 || flags[1] != pair[0] {
+	// shared value flags are always recognized
+	for _, flagName := range []string{"--format", "--config"} {
+		flags, positionals := splitArgs([]string{flagName, "value", "tool", "account"})
+		if len(flags) != 2 || flags[1] != "value" {
 			t.Fatalf("%s: value not kept with flag: flags=%v", flagName, flags)
 		}
 		if strings.Join(positionals, " ") != "tool account" {
 			t.Fatalf("%s: positionals broken: %v", flagName, positionals)
 		}
+	}
+	// command-specific value flags are passed by the call site (both dash forms)
+	for _, form := range []string{"--mode", "-mode"} {
+		flags, positionals := splitArgs([]string{form, "env", "tool", "account"}, "--mode")
+		if len(flags) != 2 || flags[1] != "env" {
+			t.Fatalf("%s: value not kept with flag: flags=%v", form, flags)
+		}
+		if strings.Join(positionals, " ") != "tool account" {
+			t.Fatalf("%s: positionals broken: %v", form, positionals)
+		}
+	}
+	// without registration the value is (correctly) a positional
+	flags, positionals := splitArgs([]string{"--mode", "env"})
+	if len(flags) != 1 || len(positionals) != 1 {
+		t.Fatalf("unregistered flag must not consume a value: %v %v", flags, positionals)
 	}
 }
 

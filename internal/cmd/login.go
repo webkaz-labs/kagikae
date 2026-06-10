@@ -12,6 +12,7 @@ import (
 
 // loginCommand returns the interactive official login invocation per tool.
 // kae never reimplements a login flow; it launches the upstream one.
+// docs/ADAPTERS.md "Login Commands" is the normative source for this table.
 func loginCommand(tool string) []string {
 	switch tool {
 	case constants.ToolClaude:
@@ -93,9 +94,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, accountName 
 		// matter what; put it back even when the capture failed.
 		if restore {
 			if restoreErr := applyBackup(ctx, be, meta, nil); restoreErr != nil {
-				return finish(opts, errf(exitOf(err),
-					"capture after login failed (%v) and restoring the previous login also failed (%v); run: kae rollback --to %s",
-					err, restoreErr, meta.ID))
+				return finish(opts, doubleFailure("capture after login", err, restoreErr, meta.ID))
 			}
 			return finish(opts, errf(exitOf(err),
 				"capture after login failed, previous login restored from backup %s: %v", meta.ID, err))

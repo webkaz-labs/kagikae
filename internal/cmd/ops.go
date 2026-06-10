@@ -186,6 +186,40 @@ func plansFromBackupMeta(meta backup.Meta) []toolPlan {
 // code applies (not_found, auth_missing, ...); plain fmt.Errorf flows through
 // exitOf's default branch as a general error.
 
+// doubleFailure reports the catastrophic case: the primary operation failed
+// AND restoring from the backup failed too. The manual escape hatch is
+// always the same.
+func doubleFailure(op string, opErr, restoreErr error, backupID string) error {
+	return errf(exitOf(opErr),
+		"%s failed (%v) and restore also failed (%v); run: kae rollback --to %s",
+		op, opErr, restoreErr, backupID)
+}
+
+// loadPlansWithSnapshots resolves adapter plans for the targets and loads
+// each captured account snapshot, failing before anything is written when a
+// target was never captured.
+func (app *App) loadPlansWithSnapshots(ctx context.Context, targets []runTarget) ([]toolPlan, error) {
+	plans := make([]toolPlan, 0, len(targets))
+	for _, tgt := range targets {
+		plan, err := app.planTool(ctx, tgt.Tool, tgt.Account)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", tgt.Tool, err)
+		}
+		acc, found, err := account.Load(app.Paths.AccountDir(tgt.Tool, tgt.Account))
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, errf(constants.ExitNotFound,
+				"account %s/%s is not captured yet (run: kae capture %s %s)",
+				tgt.Tool, tgt.Account, tgt.Tool, tgt.Account)
+		}
+		plan.Meta = acc
+		plans = append(plans, plan)
+	}
+	return plans, nil
+}
+
 // applySnapshot applies one captured account to the live state.
 func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error {
 	for _, sp := range plan.Specs {

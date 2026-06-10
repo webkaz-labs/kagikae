@@ -27,7 +27,7 @@ func CmdMise(ctx context.Context, args []string) int {
 	if len(args) == 0 || args[0] != "init" {
 		return usageError("usage: %s mise init [--profile NAME] [--write]", toolName)
 	}
-	flags, positionals := splitArgs(args[1:])
+	flags, positionals := splitArgs(args[1:], "--profile")
 	var profileName string
 	write := false
 	opts, ok := parseCommon("mise init", flags, false, func(fs *flag.FlagSet) {
@@ -78,7 +78,7 @@ func (app *App) miseBlock(profileName string) string {
 	fmt.Fprintln(&b, "[tasks.ai-use]")
 	fmt.Fprintln(&b, `description = "Switch AI CLI accounts to this project's profile"`)
 	fmt.Fprintln(&b, `run = "kae switch all $KAE_PROFILE"`)
-	fmt.Fprintln(&b, "")
+	fmt.Fprintln(&b)
 	fmt.Fprintln(&b, "[tasks.ai-current]")
 	fmt.Fprintln(&b, `description = "Show active AI CLI accounts"`)
 	fmt.Fprintln(&b, `run = "kae current"`)
@@ -86,7 +86,7 @@ func (app *App) miseBlock(profileName string) string {
 		if tool == constants.ToolAgy {
 			continue // experimental adapter; no generated run task yet
 		}
-		fmt.Fprintln(&b, "")
+		fmt.Fprintln(&b)
 		fmt.Fprintf(&b, "[tasks.%s]\n", tool)
 		fmt.Fprintf(&b, "description = \"Run %s with this project's account\"\n", tool)
 		fmt.Fprintf(&b, "run = \"kae run %s $KAE_PROFILE -- %s\"\n", tool, tool)

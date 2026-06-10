@@ -34,6 +34,14 @@ With fixture credentials (see `internal/cmd` tests for the fixture shapes):
 /tmp/kae switch claude work --json
 /tmp/kae backup list --json
 /tmp/kae rollback
+
+# v0.2.0 surfaces:
+/tmp/kae run claude work -- /usr/bin/true        # auth transaction + restore
+echo sk-test | /tmp/kae env set claude ci ANTHROPIC_API_KEY
+/tmp/kae env list --json
+/tmp/kae run --mode env claude ci -- /usr/bin/env  # var visible to child only
+/tmp/kae run --mode home claude a -- /usr/bin/true
+/tmp/kae mise init --profile work                  # preview, no write
 ```
 
 Use `secret_backend = "file"` in the temp config for smoke checks so no real

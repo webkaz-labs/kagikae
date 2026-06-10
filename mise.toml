@@ -1,3 +1,6 @@
+[tools]
+go = "1.26.4"
+
 [tasks.test]
 description = "Run Go tests with cache and wall time"
 run = "/usr/bin/time -p go test ./..."
@@ -17,3 +20,11 @@ run = "go mod verify"
 [tasks.check]
 description = "Run the standard local validation suite"
 depends = ["test", "vet", "mod-verify"]
+
+[tasks.install]
+description = "Build and install kae into ~/.local/bin for real-machine use"
+run = "go build -o ${HOME}/.local/bin/kae ."
+
+[tasks.build]
+description = "Build the kae binary into ./dist"
+run = "mkdir -p dist && go build -o dist/kae ."

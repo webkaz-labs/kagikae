@@ -66,11 +66,33 @@ user thinks they are switching: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
 itself, but cannot stop the upstream CLI from refreshing tokens concurrently.
 Therefore:
 
-- locks are held across the whole switch transaction;
+- locks are held across the whole switch transaction, and across the entire
+  child run for `kae run` (auth mode);
 - simultaneous different accounts for one tool are unsupported in `auth`
   mode (documented; `home` mode is the supported path);
-- the planned `kae run` recaptures refreshed credentials before restoring
-  the previous state (Phase 2).
+- `kae run` (auth mode) recaptures refreshed credentials into the account
+  snapshot before restoring the previous state, so token refreshes during
+  the child run are never lost.
+
+## Env Profiles And kae run
+
+- `kae env set ... KEY=VALUE` receives the value via argv, which also lands
+  in shell history. For secrets prefer the stdin form
+  (`kae env set <tool> <account> KEY < file`, or piped).
+- Profile metadata stores variable names only; values live in the secret
+  backend and are injected solely into the child process environment of
+  `kae run --mode env`. `kae env list` never prints values.
+- `kae login` and `kae run` launch upstream CLIs with inherited stdio; kae
+  passes no secrets on their command lines.
+
+## Overlay Mode (experimental)
+
+Overlay homes mix symlinks into the real home with overlay-private files.
+Rules: only allowlisted items are linked (docs/ADAPTERS.md); a real file at
+a link location is refused, never replaced; the upstream tool writes
+credentials/sessions into the overlay, so overlay dirs are created `0700`
+and treated as credential-bearing. Per-tool explicit opt-in
+(`overlay_mode_enabled = true`).
 
 ## External Tools
 

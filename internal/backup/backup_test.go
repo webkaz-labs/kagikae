@@ -4,31 +4,9 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/webkaz-labs/kagikae/internal/testutil/secrettest"
 )
-
-// memBackend is an in-memory secret.Backend for tests.
-type memBackend struct {
-	values map[string][]byte
-}
-
-func newMem() *memBackend { return &memBackend{values: map[string][]byte{}} }
-
-func (m *memBackend) Name() string { return "mem" }
-
-func (m *memBackend) Get(_ context.Context, key string) ([]byte, bool, error) {
-	v, ok := m.values[key]
-	return v, ok, nil
-}
-
-func (m *memBackend) Set(_ context.Context, key string, value []byte) error {
-	m.values[key] = append([]byte(nil), value...)
-	return nil
-}
-
-func (m *memBackend) Delete(_ context.Context, key string) error {
-	delete(m.values, key)
-	return nil
-}
 
 func meta(id string, present bool) Meta {
 	return Meta{
@@ -94,7 +72,7 @@ func TestListEmptyDir(t *testing.T) {
 
 func TestPruneDeletesPayloads(t *testing.T) {
 	dir := t.TempDir()
-	be := newMem()
+	be := secrettest.NewMem()
 	ctx := context.Background()
 	ids := []string{"20260611T010000Z", "20260611T020000Z", "20260611T030000Z"}
 	for _, id := range ids {
@@ -113,7 +91,7 @@ func TestPruneDeletesPayloads(t *testing.T) {
 	if len(removed) != 1 || removed[0] != ids[0] {
 		t.Fatalf("unexpected removed: %v", removed)
 	}
-	if _, ok := be.values[SecretRef(ids[0], "claude", "oauth")]; ok {
+	if _, ok := be.Values[SecretRef(ids[0], "claude", "oauth")]; ok {
 		t.Fatal("pruned payload still in backend")
 	}
 	metas, _ := List(dir)

@@ -141,12 +141,66 @@ and Google Cloud paths continue. When `warn_antigravity_transition = true`
 (default), `doctor` and `switch` surface a transition notice for Google-login
 Gemini accounts.
 
-## Antigravity CLI (`agy`)
+## Antigravity CLI (`agy`) — experimental
 
-Detect-only in v0.1.0. `kae doctor agy` reports whether the `agy` binary and
-its config directory exist. `capture` / `switch` return exit code 5
-(`unsupported`) with a pointer to the roadmap. The full adapter (auth snapshot,
-switch, Gemini migration helper) is Phase 5.
+Antigravity CLI keeps its state under `~/.gemini/antigravity-cli/`
+(`settings.json`, `log/`, `skills/`). Credentials go to the OS keyring when
+available, falling back to a credential file on platforms without one
+(observed on WSL/headless setups). The keyring item contract is undocumented.
+
+### Driver
+
+| Driver | Status | Switched artifacts |
+|--------|--------|--------------------|
+| `agy-file-snapshot` | experimental | whole files `credentials.enc`, `credentials.json`, `oauth_creds.json` under `~/.gemini/antigravity-cli/` (whichever exist; names cover observed versions) |
+
+When no credential file exists, `capture` fails with `auth_missing`; if the
+CLI directory exists, `doctor` warns that agy is likely using the OS keyring,
+which kae cannot switch yet (see [ROADMAP.md](ROADMAP.md)). `kae login agy`
+is not supported. `ANTIGRAVITY_API_KEY` can be handled through env profiles
+(`kae env set agy ...`).
+
+### Preserved
+
+```text
+~/.gemini/antigravity-cli/settings.json
+~/.gemini/antigravity-cli/skills/  ~/.gemini/antigravity-cli/log/
+plugins / MCP / hooks / subagents
+```
+
+## Isolation (home / overlay Modes)
+
+`kae run --mode home|overlay` points a tool at an alternate home directory:
+
+| Tool | Isolation env var | home mode | overlay mode |
+|------|-------------------|-----------|--------------|
+| claude | `CLAUDE_CONFIG_DIR` | supported | experimental opt-in |
+| codex | `CODEX_HOME` | supported | experimental opt-in |
+| gemini | none stable | refused | refused |
+| agy | none stable | refused | refused |
+
+Overlay shared items (symlinked from the real home; everything else —
+credentials, sessions, history, and the mixed-state `.claude.json` — stays
+private to the overlay):
+
+```text
+claude: settings.json, CLAUDE.md, skills/, agents/, commands/, plugins/
+codex:  config.toml, AGENTS.md, hooks.json, prompts/, skills/
+```
+
+Only items that exist in the real home are linked; a real file occupying a
+link location in the overlay is refused (`unsafe_refused`), never replaced.
+
+## Login Commands
+
+`kae login` launches the official flow and captures the result:
+
+| Tool | Command |
+|------|---------|
+| claude | `claude /login` |
+| codex | `codex login` |
+| gemini | `gemini` (auth flow runs on startup) |
+| agy | unsupported |
 
 ## Adding A New Adapter
 

@@ -29,6 +29,7 @@ const (
 	DriverCodexAuthJSON       = "codex-auth-json"
 	DriverCodexKeyring        = "codex-keyring"
 	DriverGeminiOAuthCache    = "gemini-oauth-cache"
+	DriverAgyFileSnapshot     = "agy-file-snapshot"
 )
 
 // Artifact kinds.

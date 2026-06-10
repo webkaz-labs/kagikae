@@ -22,7 +22,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.1.0"
+	toolVersion = "v0.2.0"
 )
 
 // Root dispatches the command line.
@@ -50,6 +50,14 @@ func Root(args []string) int {
 		return CmdCapture(ctx, args[1:])
 	case "switch", "s":
 		return CmdSwitch(ctx, args[1:])
+	case "run":
+		return CmdRun(ctx, args[1:])
+	case "login":
+		return CmdLogin(ctx, args[1:])
+	case "env":
+		return CmdEnv(ctx, args[1:])
+	case "mise":
+		return CmdMise(ctx, args[1:])
 	case "current":
 		return CmdCurrent(ctx, args[1:])
 	case "accounts":
@@ -71,13 +79,19 @@ func Root(args []string) int {
 }
 
 // splitArgs separates flags from positionals so flags may follow
-// positionals (kae switch all work --json). --format and --config take a
-// value; all other flags are boolean.
-func splitArgs(args []string) (flags, positionals []string) {
+// positionals (kae switch all work --json). The shared value-taking flags
+// (--format, --config) are always recognized; commands with their own
+// value flags pass the names via valueFlags (e.g. splitArgs(args, "--mode")),
+// or their value is misparsed as a positional.
+func splitArgs(args []string, valueFlags ...string) (flags, positionals []string) {
 	takesValue := map[string]bool{
 		"--format": true, "-format": true,
 		"--config": true, "-config": true,
-		"--to": true, "-to": true,
+	}
+	for _, name := range valueFlags {
+		base := strings.TrimLeft(name, "-")
+		takesValue["--"+base] = true
+		takesValue["-"+base] = true
 	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -161,6 +175,11 @@ Usage:
   kae switch <tool> <account>          apply a captured account
   kae switch all <profile>             switch every tool in a profile
   kae s <...>                          alias of switch
+  kae run [--mode M] <t|all> <n> -- C  run C with an account applied; auth
+                                       mode restores the previous login after
+  kae login <tool> <account>           official login flow + capture
+  kae env set|unset|list ...           env-mode profiles (API keys)
+  kae mise init [--profile P] [--write] project mise tasks (KAE_PROFILE)
   kae current [--json]                 active account per tool
   kae accounts [--json]                captured accounts
   kae status [--json]                  full status report

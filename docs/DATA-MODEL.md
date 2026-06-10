@@ -11,6 +11,9 @@ vocabulary for `kae`.
 |---------|------|
 | config | `${XDG_CONFIG_HOME:-~/.config}/kagikae/config.toml` |
 | account snapshots (metadata) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/accounts/<tool>/<account>/account.toml` |
+| env profiles (metadata) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/env/<tool>/<account>/env.toml` |
+| home-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/homes/<tool>/<account>/` |
+| overlay-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/overlays/<tool>/<account>/` |
 | file-backend secrets (opt-in) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/secrets/...` |
 | state | `${XDG_STATE_HOME:-~/.local/state}/kagikae/state.json` |
 | backups (metadata) | `${XDG_STATE_HOME:-~/.local/state}/kagikae/backups/<id>.json` |
@@ -44,6 +47,10 @@ warn_antigravity_transition = true
 
 [tools.agy]
 enabled = true
+
+# Per tool (any [tools.<tool>] section):
+# home_mode_enabled = true       # allow kae run --mode home
+# overlay_mode_enabled = false   # experimental; explicit opt-in
 
 [profiles.work]
 label = "Work"
@@ -147,9 +154,10 @@ set diverge from that profile's mapping.
 
 ## Backups
 
-Before any live mutation, `switch` and `rollback` capture the current live
-artifacts into a backup (`reason` is `"switch"` or `"rollback"`), so a
-rollback is itself reversible:
+Before any live mutation, `switch`, `rollback`, `run` (auth mode), and
+`login` capture the current live artifacts into a backup (`reason` is
+`"switch"`, `"rollback"`, `"run"`, or `"login"`), so every mutation is
+reversible:
 
 - metadata: `backups/<id>.json` (id format `YYYYMMDDTHHMMSSZ`, suffixed
   `-2`, `-3`, ... on collision)
@@ -187,5 +195,21 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
   `unsafe_refused`, `usage`
 - artifact kinds: `json-pointer`, `file`, `keychain`
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
-  `gemini-oauth-cache`
-- modes: `auth` (others reserved: `env`, `home`, `overlay`)
+  `gemini-oauth-cache`, `agy-file-snapshot`
+- modes: `auth`, `env`, `home`, `overlay`
+- backup reasons: `switch`, `rollback`, `run`, `login`
+
+## Env Profiles
+
+`env/<tool>/<account>/env.toml` holds variable **names** only:
+
+```toml
+version = 1
+tool = "claude"
+account = "ci"
+updated_at = 2026-06-11T01:23:45Z
+vars = ["ANTHROPIC_API_KEY"]
+```
+
+Values live in the secret backend under `env/<tool>/<account>/<VAR>`.
+Variable names must match `[A-Z_][A-Z0-9_]{0,127}`.

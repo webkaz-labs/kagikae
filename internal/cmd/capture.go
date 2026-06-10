@@ -8,6 +8,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
 type captureResult struct {
@@ -85,49 +86,7 @@ func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, accountN
 	}
 	defer releaseLocks(locks)
 
-	values := make([]artifact.Value, len(plan.Specs))
-	anyPresent := false
-	for i, sp := range plan.Specs {
-		value, err := artifact.ReadLive(ctx, sp)
-		if err != nil {
-			return nil, err
-		}
-		values[i] = value
-		if value.Present {
-			anyPresent = true
-		}
-	}
-	if !anyPresent {
-		message := fmt.Sprintf("no live %s auth state found; log in with the official CLI first", tool)
-		if len(plan.Warnings) > 0 {
-			message += " (" + strings.Join(plan.Warnings, "; ") + ")"
-		}
-		return nil, errf(constants.ExitAuthMissing, "%s", message)
-	}
-
-	acc := account.Account{
-		Version:    1,
-		Tool:       tool,
-		Name:       accountName,
-		Driver:     plan.Driver,
-		CapturedAt: app.Now().UTC(),
-		Artifacts:  map[string]account.Artifact{},
-	}
-	for i, sp := range plan.Specs {
-		ref := account.SecretRef(tool, accountName, sp.Name)
-		if values[i].Present {
-			if err := be.Set(ctx, ref, values[i].Data); err != nil {
-				return nil, fmt.Errorf("store captured payload: %w", err)
-			}
-		} else if err := be.Delete(ctx, ref); err != nil {
-			return nil, fmt.Errorf("clear stale payload: %w", err)
-		}
-		acc.Artifacts[sp.Name] = account.Artifact{
-			Kind: sp.Kind, Target: sp.Target, Pointer: sp.Pointer,
-			SecretRef: ref, Present: values[i].Present,
-		}
-	}
-	if err := account.Save(app.Paths.AccountDir(tool, accountName), acc); err != nil {
+	if err := app.captureSnapshot(ctx, be, plan); err != nil {
 		return nil, err
 	}
 	st, err := app.loadState()
@@ -138,6 +97,55 @@ func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, accountN
 		return nil, err
 	}
 	return report, nil
+}
+
+// captureSnapshot reads the live auth artifacts of plan's tool and persists
+// them as the plan's account snapshot. Callers hold the tool lock and update
+// state themselves.
+func (app *App) captureSnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error {
+	values := make([]artifact.Value, len(plan.Specs))
+	anyPresent := false
+	for i, sp := range plan.Specs {
+		value, err := artifact.ReadLive(ctx, sp)
+		if err != nil {
+			return err
+		}
+		values[i] = value
+		if value.Present {
+			anyPresent = true
+		}
+	}
+	if !anyPresent {
+		message := fmt.Sprintf("no live %s auth state found; log in with the official CLI first", plan.Tool)
+		if len(plan.Warnings) > 0 {
+			message += " (" + strings.Join(plan.Warnings, "; ") + ")"
+		}
+		return errf(constants.ExitAuthMissing, "%s", message)
+	}
+
+	acc := account.Account{
+		Version:    1,
+		Tool:       plan.Tool,
+		Name:       plan.Account,
+		Driver:     plan.Driver,
+		CapturedAt: app.Now().UTC(),
+		Artifacts:  map[string]account.Artifact{},
+	}
+	for i, sp := range plan.Specs {
+		ref := account.SecretRef(plan.Tool, plan.Account, sp.Name)
+		if values[i].Present {
+			if err := be.Set(ctx, ref, values[i].Data); err != nil {
+				return fmt.Errorf("store captured payload: %w", err)
+			}
+		} else if err := be.Delete(ctx, ref); err != nil {
+			return fmt.Errorf("clear stale payload: %w", err)
+		}
+		acc.Artifacts[sp.Name] = account.Artifact{
+			Kind: sp.Kind, Target: sp.Target, Pointer: sp.Pointer,
+			SecretRef: ref, Present: values[i].Present,
+		}
+	}
+	return account.Save(app.Paths.AccountDir(plan.Tool, plan.Account), acc)
 }
 
 func printCaptureReport(app *App, report *captureReport) {

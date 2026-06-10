@@ -1,0 +1,19 @@
+[tasks.test]
+description = "Run Go tests with cache and wall time"
+run = "/usr/bin/time -p go test ./..."
+
+[tasks.test-fresh]
+description = "Run Go tests without cache and show wall time"
+run = "/usr/bin/time -p go test -count=1 ./..."
+
+[tasks.vet]
+description = "Run Go vet"
+run = "go vet ./..."
+
+[tasks.mod-verify]
+description = "Verify downloaded Go modules"
+run = "go mod verify"
+
+[tasks.check]
+description = "Run the standard local validation suite"
+depends = ["test", "vet", "mod-verify"]

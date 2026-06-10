@@ -39,6 +39,30 @@ kae rollback                   # undo the last switch
 `kae switch` backs up the live state before every write and `kae rollback`
 restores it. `--dry-run` previews exactly what would be patched.
 
+## Beyond Switching
+
+```bash
+# run one command as another account, then restore the previous login
+# (refreshed OAuth tokens are captured back into the account snapshot):
+kae run codex work -- codex exec "go test ./..."
+
+# add a new account: official login flow + capture in one step
+kae login claude work            # --restore puts the old login back
+
+# API-key profiles, injected into the child process only:
+kae env set claude ci ANTHROPIC_API_KEY    # value read from stdin
+kae run --mode env claude ci -- claude -p "review this"
+
+# fully isolated tool homes (concurrent accounts, per-client separation):
+kae run --mode home claude clientA -- claude
+
+# per-project mise tasks (KAE_PROFILE + ai-use/claude/codex/gemini tasks):
+kae mise init --profile work --write
+```
+
+`--mode overlay` (share skills/settings, separate auth/session) exists as an
+experimental per-tool opt-in — see [docs/CLI.md](docs/CLI.md).
+
 ## Safety Model
 
 - Auth-only by default: mixed-state files like `~/.claude.json` are patched

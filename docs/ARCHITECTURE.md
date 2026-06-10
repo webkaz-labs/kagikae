@@ -25,6 +25,7 @@ kagikae/
     patch/                # JSON Pointer get/set + atomic file writes
     lock/                 # per-tool advisory file locks
     backup/               # backup create/list/prune/restore
+    envprofile/           # env-mode profiles (var names; values in secret backend)
     state/                # state.json load/save
     runner/               # subprocess seam (template standard)
     testutil/runnertest/  # shared canned-response runner fake for tests
@@ -86,6 +87,21 @@ normative allowlists live in [ADAPTERS.md](ADAPTERS.md).
 ```
 
 `--dry-run` runs steps 1–3 and prints the plan from the artifact specs.
+
+## Run Transaction (auth mode)
+
+`kae run` extends the switch transaction around a child process:
+
+```text
+lock (held for the entire child run) -> backup (reason "run") -> apply
+-> child runs with inherited stdio -> recapture refreshed credentials into
+the account snapshots -> restore the backup -> prune -> unlock
+```
+
+state.json is untouched: the temporary switch is invisible to `kae current`.
+`env` / `home` / `overlay` modes never mutate live state; they only build
+child environment entries (`internal/cmd/modes.go`). Interactive children
+run through the `runner.RunInteractive` seam.
 
 ## Atomicity And Guards
 

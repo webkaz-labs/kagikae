@@ -1,73 +1,56 @@
-# Release Target: kae v0.1.0
+# Release Target: kae v0.2.0
 
-Phase 1 — auth-mode MVP on macOS and Linux. Pre-stable: contracts may still
-change with clear release notes.
+Modes and workflow release: `run` / `login` / `env` / `mise init` plus the
+`env` / `home` / `overlay` modes and an experimental agy adapter. Pre-stable:
+contracts may still change with clear release notes.
+
+Previous baseline: v0.1.0 (auth-mode MVP — `init`, `doctor`, `capture`,
+`switch`, `current`, `accounts`, `status`, `backup list`, `rollback`, with
+locks, backups, atomic writes, OS-credential-store secrets; see git tag
+v0.1.0).
 
 ## Scope
 
-Commands: `init`, `doctor`, `capture`, `switch` (single tool and `all`
-profile), `current`, `accounts`, `status`, `backup list`, `rollback`,
-`version`, `help`, with `--dry-run`, `--json` / `--format`, `--yes`,
-`--no-color`, `--config`.
-
-Adapters and drivers:
-
-| Tool | v0.1.0 coverage |
-|------|------------------|
-| claude | `claude-file-patch` (Linux), `claude-keychain-patch` (macOS) |
-| codex | `codex-auth-json`; keyring store detect-only with refusal guidance |
-| gemini | `gemini-oauth-cache`; auth-type detection; Antigravity transition warning |
-| agy | detect-only (`doctor`); capture/switch refuse with `unsupported` |
-
-Infrastructure: XDG paths, TOML config with unknown-key warnings, per-tool
-locks, atomic writes, pre-write backups with retention pruning, secret
-backends (macOS Keychain, Linux libsecret, opt-in file), full redaction,
-deterministic exit codes, stable `schema_version: 1` JSON.
+- `kae run [--mode auth|env|home|overlay] <tool|all> <name> -- <cmd...>`
+  - auth: lock across the child run, backup (`reason: "run"`), apply,
+    recapture refreshed credentials, restore; child exit code passthrough
+  - env: inject env profile into the child only
+  - home: isolated tool home via `CLAUDE_CONFIG_DIR` / `CODEX_HOME`
+  - overlay: experimental per-tool opt-in; shared symlinks + private auth
+- `kae login <tool> <account> [--restore]` wrapping the official flows
+- `kae env set|unset|list` with stdin value input and names-only listing
+- `kae mise init [--profile P] [--write]` with marker-block updates
+- `agy-file-snapshot` adapter (experimental; keyring storage detect-only)
+- config keys `home_mode_enabled` / `overlay_mode_enabled`
+- mise `[tools]` pinning and `install` / `build` tasks
 
 ## Non-Goals (this release)
 
-`login`, `run`, `env` / `home` / `overlay` modes, mise integration, Codex
-keyring writes, Windows, TTY browsers, localization, shell completion. See
-[ROADMAP.md](ROADMAP.md).
+Codex/agy keyring drivers, Windows, gemini/agy home isolation, dotenv value
+export, TTY, completion. See [ROADMAP.md](ROADMAP.md).
 
 ## Acceptance Criteria
 
-Claude:
-
-- `capture` / `switch` between two accounts changes only
-  `/claudeAiOauth` (file or keychain payload) and `/oauthAccount`;
-  `settings.json`, `skills/`, and `agents/` are byte-identical afterwards,
-  and every other `~/.claude.json` key keeps its exact value (the document
-  is re-encoded with normalized formatting; values are preserved via
-  `json.Number`).
-- Linux `.credentials.json` stays `0600`. macOS path uses the keychain
-  driver; unknown payload structure is refused (exit 10).
-
-Codex:
-
-- only `auth.json` (or its captured snapshot) changes; `config.toml`,
-  `hooks.json`, `history.jsonl` untouched.
-- effective keyring store is detected and capture/switch refuse with
-  actionable guidance.
-
-Gemini:
-
-- only `oauth_creds.json` / `google_accounts.json` change;
-  `settings.json` untouched; auth type reported by `doctor`.
-
-Common:
-
-- `switch all work --dry-run` prints the plan and writes nothing.
-- `switch all work --yes --json` emits the documented report; no secret value
-  appears in any output (tested).
-- a second kae process during a switch gets exit 4 (`lock_busy`).
-- `kae rollback` restores the pre-switch live state, including artifacts that
-  did not exist before (removed again on rollback).
-- `mise run check` (test, vet, mod-verify) passes; JSON regression tests
-  cover `schema_version`, token stability, ordering, and `[]` encoding.
+- `kae run claude work -- <cmd>` (auth): work account live during the child,
+  refreshed token persisted into the snapshot, previous login restored
+  afterwards, child exit code returned; lock held throughout (second kae
+  gets exit 4).
+- `kae run --mode env` injects exactly the stored variables; values never
+  appear in stdout/stderr/metadata (regression-tested).
+- `kae run --mode home claude a` and `... b` produce disjoint
+  `CLAUDE_CONFIG_DIR`s; gemini/agy refused with exit 5.
+- overlay refuses without opt-in, links only the documented allowlist,
+  refuses (not replaces) real files at link locations, is idempotent.
+- `kae login claude work --restore` captures the new login and restores the
+  previous one; both states applyable afterwards.
+- `kae mise init --write` never modifies a file lacking the marker block.
+- agy: capture/switch round-trips a file-based credential; keyring-likely
+  setups get a doctor warning and `auth_missing` guidance.
+- `mise run check` passes; new JSON reports keep `schema_version: 1`,
+  stable tokens, `[]` arrays.
 
 ## Release Steps
 
-1. All acceptance criteria green; `docs/VALIDATION.md` checklist done.
+1. Acceptance criteria green; `docs/VALIDATION.md` checklist done.
 2. README examples verified against the built binary.
-3. Tag `v0.1.0`, GitHub release with notes (initial public release).
+3. Tag `v0.2.0`, GitHub release with notes.

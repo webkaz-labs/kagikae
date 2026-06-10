@@ -54,9 +54,9 @@ kae switch all work          # resolves the "work" profile
 | Mode | Status | Tool home | Use case |
 |------|--------|-----------|----------|
 | `auth` | default, implemented | unchanged | switch only the subscription account; share skills / hooks / memory / MCP / trust |
-| `env` | planned (Phase 2) | unchanged | inject API key / long-lived token into a child process only (CI, non-interactive) |
-| `home` | planned (Phase 3) | separate | full isolation: concurrent accounts, CI, per-client separation |
-| `overlay` | planned (Phase 4) | partially separate | separate auth/session/cache, share settings/skills/hooks/MCP |
+| `env` | implemented (`kae run --mode env`) | unchanged | inject API key / long-lived token into a child process only (CI, non-interactive) |
+| `home` | implemented for claude / codex | separate | full isolation: concurrent accounts, CI, per-client separation |
+| `overlay` | experimental, per-tool opt-in | partially separate | separate auth/session/cache, share settings/skills/hooks/MCP |
 
 See [ROADMAP.md](ROADMAP.md) for ordering and [ADAPTERS.md](ADAPTERS.md) for
 the per-tool definition of what `auth` mode touches and preserves.
@@ -119,9 +119,8 @@ A developer with work and personal subscriptions for several AI CLIs can:
 
 ## Current State
 
-`kae v0.1.0` implements Phase 1 (auth mode MVP) for macOS and Linux:
-`init`, `doctor`, `capture`, `switch`, `current`, `accounts`, `status`,
-`backup list`, `rollback`, `version`, with `--dry-run` / `--json` / `--yes`,
-per-tool locking, atomic writes, backups, and OS-credential-store secret
-storage. Windows support, `login`, `run`, `mise init`, and the `env` / `home` /
-`overlay` modes are roadmap items.
+`kae v0.2.0` implements the full mode set for macOS and Linux: the v0.1.0
+auth-mode commands plus `run` (auth transaction with recapture-and-restore,
+`env` / `home` / `overlay` modes), `login`, `env` profiles, `mise init`, and
+an experimental file-snapshot adapter for Antigravity CLI. Windows support,
+the Codex keyring driver, and gemini/agy home isolation are roadmap items.

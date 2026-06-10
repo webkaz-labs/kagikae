@@ -14,6 +14,13 @@ kae capture <tool> <account>         # snapshot the live auth state into an acco
 kae switch <tool> <account>          # apply a captured account to the live state
 kae switch all <profile>             # switch every enabled tool in a profile
 kae s <...>                          # alias of switch
+kae run [--mode M] <tool|all> <name> -- <cmd...>   # run cmd with an account applied
+kae login <tool> <account> [--restore]             # official login flow + capture
+kae env set <tool> <account> KEY=VALUE...          # store env-mode variables
+kae env set <tool> <account> KEY                   # value read from stdin
+kae env unset <tool> <account> [KEY...]            # remove variables / the profile
+kae env list [--json]                              # profiles (names only, no values)
+kae mise init [--profile P] [--write]              # project mise tasks (KAE_PROFILE)
 kae current [--json]                 # active account per tool (short)
 kae accounts [--json]                # captured accounts, active markers
 kae status [--json]                  # full status report
@@ -36,6 +43,36 @@ match `[a-zA-Z0-9._-]+` (max 64 chars); anything else is a usage error.
 | `--yes` | all | non-interactive confirmation (reserved; no prompts exist yet) |
 | `--no-color` | all | disable color in human text output |
 | `--config <path>` | all | explicit config file path (overrides XDG lookup) |
+| `--mode auth\|env\|home\|overlay` | `run` | switch mode (default `auth`) |
+| `--restore` | `login` | restore the previous login after capturing |
+| `--profile <name>` / `--write` | `mise init` | profile for `KAE_PROFILE`; write/update `.mise.toml` |
+| `--to <backup-id>` | `rollback` | backup to restore (default: most recent) |
+
+## kae run Semantics
+
+`kae run` executes the child with inherited stdio and returns the **child's
+exit code verbatim** on success; the exit-code table below applies only to
+failures before the child starts (and to a failed restore afterwards, which
+returns `1` with rollback guidance on stderr). Per mode:
+
+- `auth` (default): per-tool locks are held for the entire child run; the
+  live state is backed up (`reason: "run"`), the target accounts applied,
+  and after the child exits kae **recaptures refreshed credentials into the
+  account snapshots** and restores the previous live state.
+- `env`: injects the tool/account env profile (`kae env set`) into the child
+  only; no live mutation, no locks.
+- `home`: points the tool at an isolated home
+  (`CLAUDE_CONFIG_DIR` / `CODEX_HOME` under kae's data dir); gemini and agy
+  have no stable isolation mechanism yet and are refused.
+- `overlay` (experimental, per-tool opt-in via
+  `tools.<tool>.overlay_mode_enabled`): like `home`, but shared items
+  (settings, skills, ...; see docs/ADAPTERS.md) are symlinked from the real
+  home while auth/session/history stay private.
+
+`kae login` backs up the live state (`reason: "login"`), launches the
+official login flow (`claude /login`, `codex login`, `gemini`), captures the
+result into the account, and makes it active — or restores the previous
+login with `--restore`. agy is not supported yet.
 
 ## Exit Codes
 
@@ -212,6 +249,20 @@ Ordering: newest first.
   ]
 }
 ```
+
+### `kae env list --json`
+
+```json
+{
+  "schema_version": 1,
+  "profiles": [
+    {"tool": "claude", "account": "ci", "vars": ["ANTHROPIC_API_KEY"],
+     "updated_at": "2026-06-11T01:23:45Z"}
+  ]
+}
+```
+
+Variable values never appear in any output.
 
 ### `kae version --format json`
 

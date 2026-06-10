@@ -52,8 +52,9 @@ match `[a-zA-Z0-9._-]+` (max 64 chars); anything else is a usage error.
 
 `kae run` executes the child with inherited stdio and returns the **child's
 exit code verbatim** on success; the exit-code table below applies only to
-failures before the child starts (and to a failed restore afterwards, which
-returns `1` with rollback guidance on stderr). Per mode:
+failures before the child starts and to a failed restore afterwards (which
+returns the kae error code of the failure cause, with `kae rollback`
+guidance). Per mode:
 
 - `auth` (default): per-tool locks are held for the entire child run; the
   live state is backed up (`reason: "run"`), the target accounts applied,

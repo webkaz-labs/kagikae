@@ -106,6 +106,12 @@ func (app *App) overlayModeEnv(tool, accountName string) ([]string, error) {
 	if err := os.MkdirAll(overlayDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create overlay dir: %w", err)
 	}
+	// A symlinked overlay dir would redirect the link maintenance below to
+	// an arbitrary location; refuse it.
+	if info, err := os.Lstat(overlayDir); err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return nil, errf(constants.ExitUnsafeRefused,
+			"overlay dir %s is not a real directory; remove it and retry", overlayDir)
+	}
 	realHome := app.realToolHome(tool)
 	for _, item := range overlaySharedItems(tool) {
 		source := filepath.Join(realHome, item)

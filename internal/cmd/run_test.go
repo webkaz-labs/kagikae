@@ -289,6 +289,52 @@ func TestLoginCapturesAndRestores(t *testing.T) {
 	}
 }
 
+func TestLoginRestoreOnCaptureFailure(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+	seedClaude(t, app, personalToken, "personal-uuid")
+
+	// the "login flow" logs the user out entirely, so the capture fails
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		if err := os.Remove(credsPath); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(app.Env.Home, ".claude.json")); err != nil {
+			t.Fatal(err)
+		}
+		return 0, nil
+	})
+	code, out := captureStdout(t, func() int { return runLogin(ctx, app, opts, "claude", "work", true) })
+	mustExit(t, constants.ExitAuthMissing, code, out)
+	if live := readFile(t, credsPath); !strings.Contains(live, personalToken) {
+		t.Fatalf("--restore must put the previous login back even when capture fails: %s", live)
+	}
+}
+
+func TestOverlayDirSymlinkRefused(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	enabled := true
+	app.Config.Tools["claude"] = config.Tool{OverlayModeEnabled: &enabled}
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) { return 0, nil })
+
+	elsewhere := t.TempDir()
+	overlayDir := app.Paths.OverlayDir("claude", "evil")
+	if err := os.MkdirAll(filepath.Dir(overlayDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, overlayDir); err != nil {
+		t.Fatal(err)
+	}
+	code, out := captureStdout(t, func() int {
+		return runRun(ctx, app, opts, modeOverlay, "claude", "evil", []string{"claude"})
+	})
+	mustExit(t, constants.ExitUnsafeRefused, code, out)
+}
+
 func TestLoginUnsupportedTool(t *testing.T) {
 	app := testApp(t, nil)
 	code, out := captureStdout(t, func() int {

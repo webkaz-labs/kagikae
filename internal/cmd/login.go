@@ -89,6 +89,17 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, accountName 
 	}
 
 	if err := app.captureSnapshot(ctx, be, plan); err != nil {
+		// With --restore the user asked to end up on the previous login no
+		// matter what; put it back even when the capture failed.
+		if restore {
+			if restoreErr := applyBackup(ctx, be, meta, nil); restoreErr != nil {
+				return finish(opts, errf(exitOf(err),
+					"capture after login failed (%v) and restoring the previous login also failed (%v); run: kae rollback --to %s",
+					err, restoreErr, meta.ID))
+			}
+			return finish(opts, errf(exitOf(err),
+				"capture after login failed, previous login restored from backup %s: %v", meta.ID, err))
+		}
 		return finish(opts, fmt.Errorf("capture after login failed (previous state is in backup %s): %w", meta.ID, err))
 	}
 

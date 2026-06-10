@@ -1,40 +1,60 @@
 # Validation
 
-Run the standard local validation suite before committing:
+## Standard Suite (before every commit)
 
 ```bash
-mise -C tools/dotfiles-tool run check
+mise run check     # go test ./..., go vet ./..., go mod verify
 git diff --check
 ```
 
-The `check` task runs:
-
-- `go test ./...`
-- `go vet ./...`
-- `go mod verify`
-
 Run `go mod tidy` before committing dependency changes.
 
-Run smoke checks for user-facing commands:
+## Smoke Checks (built binary, isolated env)
+
+All smoke checks run against a temp HOME so the real credential state is never
+touched:
 
 ```bash
-go run . --no-color
-go run . --format json
-go run . check --format json
+go build -o /tmp/kae .
+export HOME=$(mktemp -d) XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share \
+       XDG_STATE_HOME=$HOME/.local/state NO_COLOR=1
+
+/tmp/kae init
+/tmp/kae doctor --json
+/tmp/kae status --json
+/tmp/kae version --format json
 ```
 
-When text output wraps detail, URLs, paths, or other long unbroken tokens, add
-unit tests for both the fallback width and a narrow terminal width.
+With fixture credentials (see `internal/cmd` tests for the fixture shapes):
 
-If the tool has a TTY, keep two validation tiers:
+```bash
+# seed ~/.claude/.credentials.json + ~/.claude.json fixtures, then:
+/tmp/kae capture claude work
+/tmp/kae switch claude work --dry-run
+/tmp/kae switch claude work --json
+/tmp/kae backup list --json
+/tmp/kae rollback
+```
 
-- fast local smoke: built binary, fixture data, one representative route,
-  Back/Home, and clean exit;
-- release acceptance: fuller routed navigation, write confirmations, and
-  real-terminal readability.
+Use `secret_backend = "file"` in the temp config for smoke checks so no real
+keychain entries are created.
 
-Avoid blind sleeps in PTY tests. Wait for a screen predicate and capture the
-screen/log on failure.
+## Real-Machine Acceptance (release only)
 
-Run `chezmoi apply --dry-run` from the repository root when wrappers,
-templates, settings, or deploy integration change.
+Manual, on macOS, with real logged-in accounts and a fresh backup of
+`~/.claude.json`:
+
+1. `kae capture claude <current-account>`
+2. log in to the other account with the official CLI, `kae capture` it
+3. `kae switch claude <first>` / back, verifying upstream CLI identity each
+   time and `git`-diffing `~/.claude.json` for non-allowlist drift
+4. `kae rollback` and verify identity returns
+
+Never run real-machine acceptance with uncommitted work in progress in the
+live tool sessions.
+
+## Secret Leak Regression
+
+`go test ./... -run Redact` includes tests asserting that captured fixture
+secret values never appear in text output, JSON output, error messages, or
+metadata files written by capture/switch/rollback.

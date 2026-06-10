@@ -1,39 +1,97 @@
+// Package cmd owns command parsing, report builders, and text/JSON output
+// for kae. main.go dispatches here; adapters and IO live below.
 package cmd
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
+
+	// Tool adapters register themselves with internal/adapter.
+	_ "github.com/webkaz-labs/kagikae/internal/adapter/agy"
+	_ "github.com/webkaz-labs/kagikae/internal/adapter/claude"
+	_ "github.com/webkaz-labs/kagikae/internal/adapter/codex"
+	_ "github.com/webkaz-labs/kagikae/internal/adapter/gemini"
+
+	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
 const (
-	exitOK    = 0
-	exitError = 1
-	exitUsage = 64
-
 	formatText = "text"
 	formatJSON = "json"
 
-	statusOK = "ok"
-
-	toolName    = "dotfiles-tool"
+	toolName    = "kae"
 	toolVersion = "v0.1.0"
 )
 
-type checkOptions struct {
-	Format  string
-	NoColor bool
+// Root dispatches the command line.
+func Root(args []string) int {
+	ctx := context.Background()
+	if len(args) == 0 {
+		return CmdStatus(ctx, nil)
+	}
+	if args[0] == "--help" || args[0] == "-h" {
+		printHelp()
+		return constants.ExitOK
+	}
+	if args[0] == "--version" || args[0] == "-v" {
+		return CmdVersion(args[1:])
+	}
+	if strings.HasPrefix(args[0], "-") {
+		return CmdStatus(ctx, args)
+	}
+	switch args[0] {
+	case "init":
+		return CmdInit(ctx, args[1:])
+	case "doctor":
+		return CmdDoctor(ctx, args[1:])
+	case "capture":
+		return CmdCapture(ctx, args[1:])
+	case "switch", "s":
+		return CmdSwitch(ctx, args[1:])
+	case "current":
+		return CmdCurrent(ctx, args[1:])
+	case "accounts":
+		return CmdAccounts(ctx, args[1:])
+	case "status":
+		return CmdStatus(ctx, args[1:])
+	case "backup":
+		return CmdBackup(ctx, args[1:])
+	case "rollback":
+		return CmdRollback(ctx, args[1:])
+	case "version":
+		return CmdVersion(args[1:])
+	case "help":
+		printHelp()
+		return constants.ExitOK
+	default:
+		return usageError("unknown command: %s (see kae help)", args[0])
+	}
 }
 
-type checkReport struct {
-	SchemaVersion int    `json:"schema_version"`
-	Status        string `json:"status"`
-	Message       string `json:"message"`
-	Findings      []item `json:"findings"`
-	Errors        []item `json:"errors"`
+// splitArgs separates flags from positionals so flags may follow
+// positionals (kae switch all work --json). --format and --config take a
+// value; all other flags are boolean.
+func splitArgs(args []string) (flags, positionals []string) {
+	takesValue := map[string]bool{
+		"--format": true, "-format": true,
+		"--config": true, "-config": true,
+		"--to": true, "-to": true,
+	}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") {
+			positionals = append(positionals, arg)
+			continue
+		}
+		flags = append(flags, arg)
+		if takesValue[arg] && i+1 < len(args) {
+			i++
+			flags = append(flags, args[i])
+		}
+	}
+	return flags, positionals
 }
 
 type versionReport struct {
@@ -46,104 +104,21 @@ type versionReport struct {
 	Contract      string `json:"contract"`
 }
 
-type item struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-func Root(args []string) int {
-	ctx := context.Background()
-	if len(args) == 0 {
-		return CmdCheck(ctx, nil)
-	}
-	if isHelpAlias(args[0]) {
-		printHelp()
-		return exitOK
-	}
-	if isVersionAlias(args[0]) {
-		return CmdVersion(args[1:])
-	}
-	if strings.HasPrefix(args[0], "-") {
-		return CmdCheck(ctx, args)
-	}
-	switch args[0] {
-	case "check", "ck":
-		return CmdCheck(ctx, args[1:])
-	case "version":
-		return CmdVersion(args[1:])
-	case "help":
-		printHelp()
-		return exitOK
-	default:
-		return usageError("unknown command: %s", args[0])
-	}
-}
-
-func isVersionAlias(arg string) bool {
-	return arg == "--version" || arg == "-v"
-}
-
-func isHelpAlias(arg string) bool {
-	return arg == "--help" || arg == "-h"
-}
-
 func CmdVersion(args []string) int {
-	format := formatText
-	if len(args) > 0 {
-		if len(args) == 2 && args[0] == "--format" {
-			format = args[1]
-		} else {
-			return usageError("usage: %s version [--format text|json]", toolName)
-		}
+	flags, positionals := splitArgs(args)
+	opts, ok := parseCommon("version", flags, false, nil)
+	if !ok {
+		return constants.ExitUsage
 	}
-	if format != formatText && format != formatJSON {
-		return usageError("unsupported format: %s", format)
+	if len(positionals) != 0 {
+		return usageError("usage: %s version [--format text|json]", toolName)
 	}
 	report := buildVersionReport()
-	if format == formatJSON {
-		return encodeJSON(report)
-	}
-	fmt.Printf("%s %s\n", report.Tool, report.Version)
-	return exitOK
-}
-
-func CmdCheck(ctx context.Context, args []string) int {
-	opts, ok := parseCheckOptions(args)
-	if !ok {
-		return exitUsage
-	}
-	report := buildCheckReport(ctx, opts)
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
-	fmt.Printf("%s: %s\n", report.Status, report.Message)
-	return exitOK
-}
-
-func parseCheckOptions(args []string) (checkOptions, bool) {
-	var opts checkOptions
-	fs := flag.NewFlagSet("check", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	fs.StringVar(&opts.Format, "format", formatText, "output format: text or json")
-	fs.BoolVar(&opts.NoColor, "no-color", false, "disable color in human text output")
-	if err := fs.Parse(args); err != nil {
-		return opts, false
-	}
-	if opts.Format != formatText && opts.Format != formatJSON {
-		usageError("unsupported format: %s", opts.Format)
-		return opts, false
-	}
-	return opts, true
-}
-
-func buildCheckReport(_ context.Context, _ checkOptions) checkReport {
-	return checkReport{
-		SchemaVersion: 1,
-		Status:        statusOK,
-		Message:       "no checks implemented yet",
-		Findings:      []item{},
-		Errors:        []item{},
-	}
+	fmt.Printf("%s %s\n", report.Tool, report.Version)
+	return constants.ExitOK
 }
 
 func buildVersionReport() versionReport {
@@ -153,7 +128,7 @@ func buildVersionReport() versionReport {
 		contract = "pre_stable"
 	}
 	return versionReport{
-		SchemaVersion: 1,
+		SchemaVersion: constants.SchemaVersion,
 		Tool:          toolName,
 		Version:       toolVersion,
 		Major:         major,
@@ -176,12 +151,31 @@ func parseToolVersion(version string) (int, int, int) {
 }
 
 func printHelp() {
-	fmt.Println(`dotfiles-tool
+	fmt.Println(`kae - switch AI coding CLI subscription accounts (kagikae)
 
 Usage:
-  dotfiles-tool [--format text|json] [--no-color]
-  dotfiles-tool check|ck [--format text|json] [--no-color]
-  dotfiles-tool version [--format text|json]
-  dotfiles-tool --version | -v
-  dotfiles-tool help | --help | -h`)
+  kae                                  status summary
+  kae init                             create config and directories
+  kae doctor [tool] [--json]           environment / auth health checks
+  kae capture <tool> <account>         snapshot the live auth state
+  kae switch <tool> <account>          apply a captured account
+  kae switch all <profile>             switch every tool in a profile
+  kae s <...>                          alias of switch
+  kae current [--json]                 active account per tool
+  kae accounts [--json]                captured accounts
+  kae status [--json]                  full status report
+  kae backup list [--json]             list switch backups
+  kae rollback [--to <backup-id>]      restore a backup
+  kae version | --version | -v
+  kae help | --help | -h
+
+Flags (structured commands):
+  --json                shorthand for --format json
+  --format text|json    output format
+  --dry-run             preview without writing (capture/switch/rollback)
+  --yes                 non-interactive confirmation (reserved)
+  --no-color            disable color
+  --config <path>       explicit config file path
+
+Tools: claude, codex, gemini, agy`)
 }

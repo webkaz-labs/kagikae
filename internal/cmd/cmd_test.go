@@ -1,80 +1,72 @@
 package cmd
 
 import (
-	"context"
 	"io"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
 func TestRootUnknownCommand(t *testing.T) {
-	if got := Root([]string{"missing"}); got != exitUsage {
+	if got := Root([]string{"missing"}); got != constants.ExitUsage {
 		t.Fatalf("expected usage exit, got %d", got)
 	}
 }
 
-func TestBuildCheckReport(t *testing.T) {
-	report := buildCheckReport(context.Background(), checkOptions{})
-	if report.SchemaVersion != 1 || report.Status != statusOK {
-		t.Fatalf("unexpected report: %#v", report)
-	}
-	if report.Findings == nil || report.Errors == nil {
-		t.Fatalf("expected empty slices, got findings=%#v errors=%#v", report.Findings, report.Errors)
+func TestRootVersionAliases(t *testing.T) {
+	for _, alias := range [][]string{{"version"}, {"--version"}, {"-v"}} {
+		got, output := captureStdout(t, func() int { return Root(alias) })
+		if got != constants.ExitOK {
+			t.Fatalf("%v: expected ok exit, got %d", alias, got)
+		}
+		if output != toolName+" "+toolVersion+"\n" {
+			t.Fatalf("%v: unexpected output: %q", alias, output)
+		}
 	}
 }
 
 func TestBuildVersionReport(t *testing.T) {
 	report := buildVersionReport()
-	if report.SchemaVersion != 1 || report.Tool != toolName || report.Version != toolVersion {
-		t.Fatalf("unexpected version report: %#v", report)
+	if report.SchemaVersion != constants.SchemaVersion || report.Tool != toolName {
+		t.Fatalf("unexpected: %+v", report)
 	}
 	if report.Major != 0 || report.Minor != 1 || report.Patch != 0 || report.Contract != "pre_stable" {
-		t.Fatalf("unexpected version semantics: %#v", report)
-	}
-}
-
-func TestRootVersion(t *testing.T) {
-	got, output := captureStdout(t, func() int { return Root([]string{"version"}) })
-	if got != exitOK {
-		t.Fatalf("expected ok exit, got %d", got)
-	}
-	if output != toolName+" "+toolVersion+"\n" {
-		t.Fatalf("unexpected version output: %q", output)
-	}
-	got, output = captureStdout(t, func() int { return Root([]string{"--version"}) })
-	if got != exitOK {
-		t.Fatalf("expected ok exit for --version, got %d", got)
-	}
-	if output != toolName+" "+toolVersion+"\n" {
-		t.Fatalf("unexpected --version output: %q", output)
-	}
-	for _, alias := range []string{"-v"} {
-		got, output = captureStdout(t, func() int { return Root([]string{alias}) })
-		if got != exitOK {
-			t.Fatalf("expected ok exit for %s, got %d", alias, got)
-		}
-		if output != toolName+" "+toolVersion+"\n" {
-			t.Fatalf("unexpected %s output: %q", alias, output)
-		}
-	}
-}
-
-func TestRootCheckAlias(t *testing.T) {
-	if got := Root([]string{"ck", "--no-color"}); got != exitOK {
-		t.Fatalf("expected ok exit for ck alias, got %d", got)
+		t.Fatalf("unexpected version semantics: %+v", report)
 	}
 }
 
 func TestRootHelpAliases(t *testing.T) {
 	for _, alias := range []string{"help", "--help", "-h"} {
 		got, output := captureStdout(t, func() int { return Root([]string{alias}) })
-		if got != exitOK {
+		if got != constants.ExitOK {
 			t.Fatalf("expected ok exit for %s, got %d", alias, got)
 		}
-		if !strings.Contains(output, "dotfiles-tool help") {
+		if !strings.Contains(output, "kae switch <tool> <account>") {
 			t.Fatalf("unexpected help output for %s: %q", alias, output)
 		}
+	}
+}
+
+func TestSplitArgs(t *testing.T) {
+	flags, positionals := splitArgs([]string{"all", "work", "--yes", "--format", "json", "--dry-run"})
+	if strings.Join(positionals, " ") != "all work" {
+		t.Fatalf("positionals: %v", positionals)
+	}
+	if strings.Join(flags, " ") != "--yes --format json --dry-run" {
+		t.Fatalf("flags: %v", flags)
+	}
+}
+
+func TestParseCommonJSONShorthand(t *testing.T) {
+	opts, ok := parseCommon("x", []string{"--json"}, false, nil)
+	if !ok || opts.Format != formatJSON {
+		t.Fatalf("unexpected: %+v ok=%v", opts, ok)
+	}
+	_, ok = parseCommon("x", []string{"--format", "yaml"}, false, nil)
+	if ok {
+		t.Fatal("expected parse failure for unsupported format")
 	}
 }
 
@@ -96,20 +88,4 @@ func captureStdout(t *testing.T, run func() int) (int, string) {
 		t.Fatal(err)
 	}
 	return code, string(output)
-}
-
-func TestRootAcceptsBareFlags(t *testing.T) {
-	if got := Root([]string{"--no-color"}); got != exitOK {
-		t.Fatalf("expected ok exit, got %d", got)
-	}
-}
-
-func TestParseNoColor(t *testing.T) {
-	opts, ok := parseCheckOptions([]string{"--no-color"})
-	if !ok {
-		t.Fatal("expected parse success")
-	}
-	if !opts.NoColor {
-		t.Fatal("expected no-color option")
-	}
 }

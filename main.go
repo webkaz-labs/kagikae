@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"example.com/dotfiles-tool/internal/cmd"
+	"github.com/webkaz-labs/kagikae/internal/cmd"
 )
 
 func main() {

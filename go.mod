@@ -1,3 +1,3 @@
-module example.com/dotfiles-tool
+module github.com/webkaz-labs/kagikae
 
-go 1.25.8
+go 1.25

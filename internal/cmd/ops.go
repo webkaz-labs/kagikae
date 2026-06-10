@@ -1,0 +1,192 @@
+package cmd
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/webkaz-labs/kagikae/internal/account"
+	"github.com/webkaz-labs/kagikae/internal/adapter"
+	"github.com/webkaz-labs/kagikae/internal/artifact"
+	"github.com/webkaz-labs/kagikae/internal/backup"
+	"github.com/webkaz-labs/kagikae/internal/config"
+	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/secret"
+	"github.com/webkaz-labs/kagikae/internal/state"
+)
+
+// action is the JSON shape of one planned/performed artifact write.
+type action struct {
+	Kind    string `json:"kind"`
+	Target  string `json:"target"`
+	Pointer string `json:"pointer,omitempty"`
+}
+
+func (app *App) actionsOf(specs []artifact.Spec) []action {
+	actions := make([]action, 0, len(specs))
+	for _, sp := range specs {
+		target := sp.Target
+		if sp.Kind != constants.KindKeychain {
+			target = app.displayPath(target)
+		}
+		actions = append(actions, action{Kind: sp.Kind, Target: target, Pointer: sp.Pointer})
+	}
+	return actions
+}
+
+// validateToolAccount checks CLI-provided tool and account/profile names.
+func validateToolAccount(tool, name, nameKind string) error {
+	if !constants.IsTool(tool) {
+		return errf(constants.ExitUsage, "unknown tool %q (tools: claude, codex, gemini, agy)", tool)
+	}
+	if !config.ValidName(name) {
+		return errf(constants.ExitUsage, "invalid %s name %q (allowed: [a-zA-Z0-9._-], max 64 chars)", nameKind, name)
+	}
+	return nil
+}
+
+// toolPlan is one tool's resolved switch/capture plan.
+type toolPlan struct {
+	Tool    string
+	Account string
+	Driver  string
+	Specs   []artifact.Spec
+	Meta    account.Account // populated for switch (captured snapshot)
+	Warnings []string
+}
+
+// planTool resolves adapter, driver, and artifact specs for one tool.
+func (app *App) planTool(ctx context.Context, tool, accountName string) (toolPlan, error) {
+	plan := toolPlan{Tool: tool, Account: accountName, Warnings: []string{}}
+	ad, err := adapter.ForTool(tool)
+	if err != nil {
+		return plan, err
+	}
+	info, err := ad.Detect(ctx, app.Env)
+	if err != nil {
+		return plan, err
+	}
+	plan.Driver = info.Driver
+	plan.Warnings = append(plan.Warnings, info.Warnings...)
+	specs, err := ad.Artifacts(ctx, app.Env)
+	if err != nil {
+		return plan, err
+	}
+	plan.Specs = specs
+	return plan, nil
+}
+
+// loadState reads state.json.
+func (app *App) loadState() (*state.State, error) {
+	return state.Load(app.Paths.StateFile())
+}
+
+// saveActive updates the active map and recomputes the matching profile.
+// explicitProfile overrides recomputation (used by switch all).
+func (app *App) saveActive(st *state.State, updates map[string]string, explicitProfile string) error {
+	for tool, accountName := range updates {
+		st.Active[tool] = accountName
+	}
+	if explicitProfile != "" {
+		st.ActiveProfile = explicitProfile
+	} else {
+		st.ActiveProfile = app.Config.MatchProfile(st.Active)
+	}
+	st.UpdatedAt = app.Now().UTC()
+	return state.Save(app.Paths.StateFile(), st)
+}
+
+// createBackup snapshots the live values of every plan into one backup.
+func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []toolPlan, st *state.State, reason string) (backup.Meta, error) {
+	id := backup.NewID(app.Paths.BackupsDir(), app.Now())
+	meta := backup.Meta{
+		SchemaVersion: constants.SchemaVersion,
+		ID:            id,
+		CreatedAt:     app.Now().UTC(),
+		Reason:        reason,
+		Tools:         []string{},
+		ActiveBefore:  map[string]string{},
+		Artifacts:     []backup.ArtifactRecord{},
+	}
+	for _, plan := range plans {
+		meta.Tools = append(meta.Tools, plan.Tool)
+		if current, ok := st.Active[plan.Tool]; ok {
+			meta.ActiveBefore[plan.Tool] = current
+		}
+		for _, sp := range plan.Specs {
+			value, err := artifact.ReadLive(ctx, sp)
+			if err != nil {
+				return meta, fmt.Errorf("backup %s: %w", plan.Tool, err)
+			}
+			ref := backup.SecretRef(id, plan.Tool, sp.Name)
+			if value.Present {
+				if err := be.Set(ctx, ref, value.Data); err != nil {
+					return meta, fmt.Errorf("store backup payload: %w", err)
+				}
+			}
+			meta.Artifacts = append(meta.Artifacts, backup.ArtifactRecord{
+				Tool: plan.Tool, Name: sp.Name, Kind: sp.Kind,
+				Target: sp.Target, Pointer: sp.Pointer,
+				SecretRef: ref, Present: value.Present,
+			})
+		}
+	}
+	if err := backup.Save(app.Paths.BackupsDir(), meta); err != nil {
+		return meta, fmt.Errorf("save backup metadata: %w", err)
+	}
+	return meta, nil
+}
+
+// applyBackup restores live state from a backup, optionally limited to the
+// given tools (nil = all).
+func applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only map[string]bool) error {
+	for _, rec := range meta.Artifacts {
+		if only != nil && !only[rec.Tool] {
+			continue
+		}
+		value := artifact.Value{}
+		if rec.Present {
+			data, found, err := be.Get(ctx, rec.SecretRef)
+			if err != nil {
+				return fmt.Errorf("read backup payload %s: %w", rec.SecretRef, err)
+			}
+			if !found {
+				return errf(constants.ExitNotFound, "backup payload %s is missing from the secret store", rec.SecretRef)
+			}
+			value = artifact.Value{Data: data, Present: true}
+		}
+		sp := artifact.Spec{Name: rec.Name, Kind: rec.Kind, Target: rec.Target, Pointer: rec.Pointer}
+		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
+			return fmt.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
+		}
+	}
+	return nil
+}
+
+// applySnapshot applies one captured account to the live state.
+func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error {
+	for _, sp := range plan.Specs {
+		metaArt, ok := plan.Meta.Artifacts[sp.Name]
+		if !ok {
+			return errf(constants.ExitError,
+				"snapshot %s/%s lacks artifact %s; re-run kae capture %s %s",
+				plan.Tool, plan.Account, sp.Name, plan.Tool, plan.Account)
+		}
+		value := artifact.Value{}
+		if metaArt.Present {
+			data, found, err := be.Get(ctx, metaArt.SecretRef)
+			if err != nil {
+				return fmt.Errorf("read snapshot payload %s: %w", metaArt.SecretRef, err)
+			}
+			if !found {
+				return errf(constants.ExitError,
+					"snapshot payload %s is missing; re-run kae capture %s %s",
+					metaArt.SecretRef, plan.Tool, plan.Account)
+			}
+			value = artifact.Value{Data: data, Present: true}
+		}
+		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}

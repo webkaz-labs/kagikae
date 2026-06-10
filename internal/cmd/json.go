@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+
+	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
 func encodeJSON(value any) int {
@@ -10,7 +13,8 @@ func encodeJSON(value any) int {
 	encoder.SetIndent("", "  ")
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(value); err != nil {
-		return fail(err)
+		fmt.Fprintln(os.Stderr, "kae:", err)
+		return constants.ExitError
 	}
-	return exitOK
+	return constants.ExitOK
 }

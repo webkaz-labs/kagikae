@@ -108,7 +108,7 @@ secret_ref = "claude/work/oauth_account"
 |------|---------|-------|
 | `json-pointer` | read pointer value from JSON file | patch pointer in JSON file atomically, preserving all other keys |
 | `file` | read whole file | atomic replace, mode `0600` |
-| `keychain` | read pointer value from keychain item payload | patch pointer inside keychain item payload |
+| `keychain` | read whole item payload verbatim (pointer guards the shape) | write captured bytes back verbatim via `security -U`; absent value deletes the item |
 
 ## Secret References
 

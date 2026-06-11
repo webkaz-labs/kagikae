@@ -24,7 +24,12 @@ type Spec struct {
 	Name    string // stable artifact name, e.g. "oauth_account"
 	Kind    string // constants.KindJSONPointer | KindFile | KindKeychain
 	Target  string // file path, or keychain service name
-	Pointer string // JSON pointer for json-pointer and keychain kinds
+	// Pointer is a JSON pointer. For KindJSONPointer it selects the
+	// sub-value to capture and apply. For KindKeychain it is only a
+	// structure guard: the item's bytes are captured and restored verbatim
+	// (the owning tool rejects a re-serialized payload), and the pointer
+	// just asserts the expected shape is present.
+	Pointer string
 	// KeychainAccount is the account attribute used when the keychain item
 	// must be created from scratch (normally the existing item's account is
 	// reused). Every KindKeychain spec must set it, or new items fall back

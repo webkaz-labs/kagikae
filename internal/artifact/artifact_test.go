@@ -142,7 +142,17 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string
 		acct := f.accounts[service]
 		return `    "acct"<blob>="` + acct + `"` + "\n", "", 0
 	case "add-generic-password":
-		service, account, payload := args[3], args[5], args[7]
+		var service, account, payload string
+		for i := 0; i+1 < len(args); i++ {
+			switch args[i] {
+			case "-s":
+				service = args[i+1]
+			case "-a":
+				account = args[i+1]
+			case "-w":
+				payload = args[i+1]
+			}
+		}
 		f.payloads[service] = payload
 		f.accounts[service] = account
 		f.writes = append(f.writes, service)

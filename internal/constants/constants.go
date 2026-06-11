@@ -74,6 +74,7 @@ const (
 	ExitPermission    = 8
 	ExitSecretStore   = 9
 	ExitUnsafeRefused = 10
+	ExitAuthUnchanged = 11
 	ExitUsage         = 64
 )
 
@@ -90,6 +91,7 @@ const (
 	CodePermission    = "permission"
 	CodeSecretStore   = "secret_store"
 	CodeUnsafeRefused = "unsafe_refused"
+	CodeAuthUnchanged = "auth_unchanged"
 	CodeUsage         = "usage"
 )
 
@@ -116,6 +118,8 @@ func ErrorCode(exit int) string {
 		return CodeSecretStore
 	case ExitUnsafeRefused:
 		return CodeUnsafeRefused
+	case ExitAuthUnchanged:
+		return CodeAuthUnchanged
 	case ExitUsage:
 		return CodeUsage
 	default:

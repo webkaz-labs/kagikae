@@ -15,7 +15,8 @@ and platform coverage, reordered below by user impact.
 - **agy keyring support**: same problem as Codex — the default macOS/Linux
   storage is the keyring; today only the file-based fallback is switchable.
 - **Login UX polish**: verify `claude /login` behavior across versions,
-  detect "login flow exited without changing auth" and say so, support agy.
+  support agy. (The "login flow exited without changing auth" case is now
+  detected and refused with exit `11`.)
 - **`kae env export --dotenv --reveal`**: explicit-flag value export for CI
   bootstrapping (today values are injection-only by design).
 - **Performance polish**: combine/cache the multiple `security` subprocess

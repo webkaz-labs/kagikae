@@ -358,10 +358,10 @@ func TestMiseInitPrintAndWrite(t *testing.T) {
 	t.Cleanup(func() { os.Chdir(cwd) })
 
 	// no profile anywhere -> usage error
-	code, out := captureStdout(t, func() int { return runMiseInit(ctx, app, opts, "", false) })
+	code, out := captureStdout(t, func() int { return runMiseInit(ctx, app, opts, "", constants.ModeAuth, false, false) })
 	mustExit(t, constants.ExitUsage, code, out)
 
-	code, out = captureStdout(t, func() int { return runMiseInit(ctx, app, opts, "work", false) })
+	code, out = captureStdout(t, func() int { return runMiseInit(ctx, app, opts, "work", constants.ModeAuth, false, false) })
 	mustExit(t, constants.ExitOK, code, out)
 	for _, want := range []string{`KAE_PROFILE = "work"`, "[tasks.ai-use]", "kae run claude $KAE_PROFILE -- claude"} {
 		if !strings.Contains(out, want) {
@@ -375,7 +375,7 @@ func TestMiseInitPrintAndWrite(t *testing.T) {
 		t.Fatal("print must not write")
 	}
 
-	code, out = captureStdout(t, func() int { return runMiseInit(ctx, app, opts, "work", true) })
+	code, out = captureStdout(t, func() int { return runMiseInit(ctx, app, opts, "work", constants.ModeAuth, false, true) })
 	mustExit(t, constants.ExitOK, code, out)
 	first := readFile(t, ".mise.toml")
 	if !strings.Contains(first, miseBlockStart) || !strings.Contains(first, `KAE_PROFILE = "work"`) {
@@ -383,7 +383,7 @@ func TestMiseInitPrintAndWrite(t *testing.T) {
 	}
 
 	// rewrite with another profile replaces the block in place
-	code, out = captureStdout(t, func() int { return runMiseInit(ctx, app, opts, "personal", true) })
+	code, out = captureStdout(t, func() int { return runMiseInit(ctx, app, opts, "personal", constants.ModeAuth, false, true) })
 	mustExit(t, constants.ExitOK, code, out)
 	second := readFile(t, ".mise.toml")
 	if strings.Contains(second, `"work"`) || !strings.Contains(second, `KAE_PROFILE = "personal"`) {
@@ -395,7 +395,7 @@ func TestMiseInitPrintAndWrite(t *testing.T) {
 
 	// an existing file without markers is refused
 	writeFile(t, ".mise.toml", "[tasks.custom]\nrun = \"echo hi\"\n")
-	code, out = captureStdout(t, func() int { return runMiseInit(ctx, app, opts, "work", true) })
+	code, out = captureStdout(t, func() int { return runMiseInit(ctx, app, opts, "work", constants.ModeAuth, false, true) })
 	mustExit(t, constants.ExitUnsafeRefused, code, out)
 	if !strings.Contains(readFile(t, ".mise.toml"), "tasks.custom") {
 		t.Fatal("unmarked file must not be modified")

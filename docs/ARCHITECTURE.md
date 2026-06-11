@@ -88,6 +88,11 @@ normative allowlists live in [ADAPTERS.md](ADAPTERS.md).
 
 `--dry-run` runs steps 1–3 and prints the plan from the artifact specs.
 
+`kae use` enters this transaction directly (an alias of `switch all`).
+`kae sync` prepends a lock-free belief check — state.json against the
+profile mapping — and enters the transaction only on divergence; the
+matching case returns before step 2 (no locks, no backup).
+
 ## Run Transaction (auth mode)
 
 `kae run` extends the switch transaction around a child process:

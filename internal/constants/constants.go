@@ -17,10 +17,15 @@ const (
 // Tools is the canonical tool ordering for reports and iteration.
 var Tools = []string{ToolClaude, ToolCodex, ToolGemini, ToolAgy}
 
-// Switch modes. Only ModeAuth is implemented in v0.1.0.
+// Switch modes.
 const (
 	ModeAuth = "auth"
+	ModeHome = "home"
 )
+
+// EnvKaeProfile is the environment variable that pins a kae profile to a
+// directory (rendered by kae mise init, read by kae sync).
+const EnvKaeProfile = "KAE_PROFILE"
 
 // Driver identifiers.
 const (

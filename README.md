@@ -28,9 +28,9 @@ kae capture codex work
 kae capture gemini work
 
 # daily use:
+kae use work                   # every tool in the "work" profile (alias: kae u)
 kae switch claude personal     # one tool
-kae switch all work            # every tool in the "work" profile
-kae s personal                 # alias
+kae s personal                 # alias of switch
 
 kae current                    # what is active
 kae rollback                   # undo the last switch
@@ -58,6 +58,18 @@ kae run --mode home claude clientA -- claude
 
 # per-project mise tasks (KAE_PROFILE + ai-use/claude/codex/gemini tasks):
 kae mise init --profile work --write
+
+# opt-in: auto-switch on directory entry (needs `mise activate`, a trusted
+# config, and `mise settings experimental=true`; auth mode switches the
+# global live state for every terminal):
+kae mise init --profile work --auto --write
+
+# per-directory isolated tool homes instead: account + config dir switch
+# inside the directory only, no global state touched:
+kae mise init --profile clientA --mode home --write
+
+# idempotent apply for your own hooks/scripts (no-op when already active):
+kae sync --quiet
 ```
 
 `--mode overlay` (share skills/settings, separate auth/session) exists as an

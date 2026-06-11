@@ -64,6 +64,15 @@ Manual, on macOS, with real logged-in accounts and a fresh backup of
    time and `git`-diffing `~/.claude.json` for non-allowlist drift
 4. `kae rollback` and verify identity returns
 
+**Verifying identity means launching a fresh tool process and confirming it is
+actually authenticated** — e.g. `claude -p "say hi" </dev/null` returns a
+reply, not "Not logged in". Hash-comparing the stored credential or relying on
+a still-running session is **not** sufficient: the payload can be byte-correct
+yet unreadable by the tool (a re-serialized keychain payload, or one written by
+a process outside the item's ACL, makes Claude Code report "not logged in"
+despite an intact token). A past acceptance pass that skipped the fresh-process
+check missed exactly this class of bug.
+
 Never run real-machine acceptance with uncommitted work in progress in the
 live tool sessions.
 

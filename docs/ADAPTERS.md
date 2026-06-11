@@ -36,8 +36,13 @@ changes `CLAUDE_CONFIG_DIR` itself.
 | `claude-keychain-patch` | macOS | Keychain item `Claude Code-credentials` payload pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
 
 The macOS driver reads and writes the keychain through the `security` CLI via
-the runner seam. Before writing, the existing payload must parse as a JSON
-object containing `claudeAiOauth`; otherwise the driver refuses.
+the runner seam. The captured keychain item is stored and restored
+**verbatim** — the pointer `/claudeAiOauth` is only a structure guard (the
+payload must parse as a JSON object containing it; otherwise the driver
+refuses), never an extraction-and-re-encode path. Claude Code stores compact,
+unsorted JSON and rejects a re-serialized payload, so the bytes must round-trip
+unchanged. Because the claude keychain item has `claudeAiOauth` as its single
+top-level key, capturing the whole item is equivalent to capturing that key.
 
 ### Preserved (never touched in auth mode)
 

@@ -109,8 +109,15 @@ run through the `runner.RunInteractive` seam.
   pointer, and write via temp-file + `rename` in the same directory. Writes
   always enforce `0600` on credential files, even when the previous file had
   looser permissions.
-- Keychain patches read the payload, guard that it parses as the expected
-  JSON shape, patch the pointer, and write back through `security -U`.
+- Keychain items are captured and restored **verbatim**: the item's bytes
+  are stored as-is and written back unchanged through `security -U`. The
+  pointer is only a structure guard (the payload must parse as JSON
+  containing it). kagikae must not re-serialize the payload — Claude Code
+  stores compact, unsorted JSON and rejects a pretty-printed or key-sorted
+  payload even when it is semantically identical, reporting "not logged in".
+  The write must go through the `security` CLI (not the Security.framework
+  API directly): `/usr/bin/security` is in the item's ACL trusted-app list,
+  so the owning tool can still read the item without a keychain prompt.
 - Structure guards refuse (exit 10) rather than "best effort" write.
 
 ## Locking

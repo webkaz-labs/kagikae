@@ -78,26 +78,24 @@ func buildSync(ctx context.Context, app *App, opts commonOpts, profileName strin
 	if err != nil {
 		return nil, err
 	}
+	report := &syncReport{
+		SchemaVersion: constants.SchemaVersion,
+		OK:            true,
+		Profile:       &profileName,
+		Results:       []switchResult{},
+	}
 	if recordedMatch(st.Active, targets) {
-		return &syncReport{
-			SchemaVersion: constants.SchemaVersion,
-			OK:            true,
-			Profile:       &profileName,
-			Results:       []switchResult{},
-		}, nil
+		return report, nil
 	}
 	sw, err := buildSwitch(ctx, app, opts, "all", profileName)
 	if err != nil {
 		return nil, err
 	}
-	return &syncReport{
-		SchemaVersion: constants.SchemaVersion,
-		OK:            true,
-		Changed:       true,
-		Profile:       sw.Profile,
-		BackupID:      sw.BackupID,
-		Results:       sw.Results,
-	}, nil
+	report.Changed = true
+	report.Profile = sw.Profile
+	report.BackupID = sw.BackupID
+	report.Results = sw.Results
+	return report, nil
 }
 
 // resolveSyncProfile resolves the profile to sync: explicit flag, then

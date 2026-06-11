@@ -119,8 +119,10 @@ A developer with work and personal subscriptions for several AI CLIs can:
 
 ## Current State
 
-`kae v0.2.0` implements the full mode set for macOS and Linux: the v0.1.0
+`kae v0.3.0` implements the full mode set for macOS and Linux: the v0.1.0
 auth-mode commands plus `run` (auth transaction with recapture-and-restore,
 `env` / `home` / `overlay` modes), `login`, `env` profiles, `mise init`, and
-an experimental file-snapshot adapter for Antigravity CLI. Windows support,
-the Codex keyring driver, and gemini/agy home isolation are roadmap items.
+an experimental file-snapshot adapter for Antigravity CLI. Keychain items
+are captured and restored verbatim, and `login` refuses flows that exit
+without changing auth. Windows support, the Codex keyring driver, and
+gemini/agy home isolation are roadmap items.

@@ -24,7 +24,12 @@ type Spec struct {
 	Name    string // stable artifact name, e.g. "oauth_account"
 	Kind    string // constants.KindJSONPointer | KindFile | KindKeychain
 	Target  string // file path, or keychain service name
-	Pointer string // JSON pointer for json-pointer and keychain kinds
+	// Pointer is a JSON pointer. For KindJSONPointer it selects the
+	// sub-value to capture and apply. For KindKeychain it is only a
+	// structure guard: the item's bytes are captured and restored verbatim
+	// (the owning tool rejects a re-serialized payload), and the pointer
+	// just asserts the expected shape is present.
+	Pointer string
 	// KeychainAccount is the account attribute used when the keychain item
 	// must be created from scratch (normally the existing item's account is
 	// reused). Every KindKeychain spec must set it, or new items fall back
@@ -77,14 +82,14 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 		if !found {
 			return Value{}, nil
 		}
-		raw, ok, err := patch.GetPointer(payload, sp.Pointer)
-		if err != nil {
+		// Store the item's bytes verbatim. The owning tool (Claude Code)
+		// writes compact JSON and rejects a re-serialized payload, so the
+		// pointer is used only as a structure guard here, never to extract
+		// and later re-encode a sub-value.
+		if _, ok, err := patch.GetPointer(payload, sp.Pointer); err != nil || !ok {
 			return Value{}, fmt.Errorf("%w: keychain item %q payload is not the expected JSON shape", ErrUnsafe, sp.Target)
 		}
-		if !ok {
-			return Value{}, nil
-		}
-		return Value{Data: raw, Present: true}, nil
+		return Value{Data: payload, Present: true}, nil
 
 	default:
 		return Value{}, fmt.Errorf("unknown artifact kind %q", sp.Kind)
@@ -132,35 +137,25 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		return patch.WriteFileAtomic(sp.Target, updated, patch.CredentialFileMode)
 
 	case constants.KindKeychain:
-		payload, found, err := keychain.ReadItem(ctx, sp.Target)
-		if err != nil {
-			return err
+		if !v.Present {
+			// The captured account had no keychain item; applying it removes
+			// the live item (mirrors the file/json-pointer absent cases).
+			return keychain.DeleteItem(ctx, sp.Target)
 		}
-		if !found {
-			if !v.Present {
-				return nil
-			}
-			payload = []byte("{}")
-		}
-		var updated []byte
-		if v.Present {
-			updated, err = patch.SetPointer(payload, sp.Pointer, v.Data)
-		} else {
-			updated, err = patch.DeletePointer(payload, sp.Pointer)
-		}
-		if err != nil {
-			return fmt.Errorf("%w: keychain item %q payload is not the expected JSON shape", ErrUnsafe, sp.Target)
+		// Write the captured bytes verbatim (see ReadLive): re-serializing
+		// the JSON would make the owning tool reject the credential. The
+		// pointer is a structure guard, not an extraction path.
+		if _, ok, err := patch.GetPointer(v.Data, sp.Pointer); err != nil || !ok {
+			return fmt.Errorf("%w: keychain payload for %q is not the expected JSON shape", ErrUnsafe, sp.Target)
 		}
 		account := sp.KeychainAccount
-		if found {
-			if existing, _, err := keychain.ItemAccount(ctx, sp.Target); err == nil && existing != "" {
-				account = existing
-			}
+		if existing, _, err := keychain.ItemAccount(ctx, sp.Target); err == nil && existing != "" {
+			account = existing
 		}
 		if account == "" {
 			account = "kagikae"
 		}
-		return keychain.WriteItem(ctx, sp.Target, account, updated)
+		return keychain.WriteItem(ctx, sp.Target, account, v.Data)
 
 	default:
 		return fmt.Errorf("unknown artifact kind %q", sp.Kind)

@@ -1,53 +1,72 @@
-# Release Target: kae v0.3.0
+# Release Target: kae v0.4.0
 
-Daily-use hardening release: keychain credentials survive switch round-trips
-byte-for-byte, and `kae login` refuses to record a login flow that did not
-actually change auth. Pre-stable: contracts may still change with clear
-release notes.
+Project-scoped switching and ergonomics: one short command to switch a
+profile, opt-in per-directory auto-switching through mise, and per-directory
+isolation of account **and** config directory. Pre-stable: contracts may
+still change with clear release notes.
 
-Previous baseline: v0.2.0 (modes and workflow release — `run` / `login` /
-`env` / `mise init`, `env` / `home` / `overlay` modes, experimental agy
-adapter; see git tag v0.2.0).
+Previous baseline: v0.3.0 (daily-use hardening — verbatim keychain
+capture/restore, login auth-unchanged detection; see git tag v0.3.0).
 
 ## Scope
 
-- **Keychain items captured and restored verbatim.** Raw item bytes are
-  stored and written back unchanged; kae no longer re-serializes the JSON
-  payload (2-space indent, sorted keys), which Claude Code rejected as
-  "Not logged in" despite a semantically identical token. Pointer fields
-  are now structure guards only.
-- **`kae login` auth-unchanged detection.** When the spawned login flow
-  exits without changing the tool's credentials (e.g. the tool refuses
-  `/login` in the current environment), kae refuses to capture, exits `11`,
-  and reports `auth_unchanged` instead of silently duplicating the previous
-  account under the new name.
-- **Validation hardening (docs).** Real-machine acceptance now requires a
-  fresh-process identity check (`claude -p ... </dev/null` must answer, not
-  "Not logged in"); macOS smoke checks are documented as unable to isolate
-  the claude keychain (Linux-only for the claude fixture block).
+- **`kae use <profile>` (alias `kae u`)** — ergonomic short form of
+  `kae switch all <profile>`: same behavior, JSON report, and exit codes.
+- **`kae sync [--profile P] [--quiet]`** — idempotent profile apply for
+  hooks and scripts. Profile resolution: `--profile`, then `KAE_PROFILE`,
+  then `default_profile`. On a match it exits `0` with `"changed": false`,
+  taking no locks and writing no backups; otherwise it performs a normal
+  `switch all`. The match compares kae's recorded active state (kae's
+  belief, not upstream truth — DATA-MODEL.md); external drift is neither
+  verified nor repaired. `kae use` forces an apply.
+- **mise auto-switch (opt-in)** — `kae mise init --auto` additionally
+  renders a mise `[hooks.enter]` entry running `kae sync --quiet`. Opt-in
+  with an inline caveat comment because auth mode mutates the global live
+  state (DESIGN.md, Concurrency Boundary). Hook firing requires
+  `mise activate` and a trusted config — verify against the installed mise
+  during implementation.
+- **`kae mise init --mode auth|home`** — `home` renders `[env]` entries
+  pointing `CLAUDE_CONFIG_DIR` / `CODEX_HOME` at the per-account kae home
+  directories (DATA-MODEL.md) instead of auth-mode hooks/tasks:
+  directory-scoped switching of account and config directory with no live
+  mutation, safe across concurrent terminals. Default `auth`. The mode is
+  per-invocation (per directory), deliberately not a profile property —
+  the same profile stays usable for global auth switching and isolated
+  project homes. Tools without a stable home env var (gemini, agy) are
+  omitted with an inline warning comment and keep their real home; the
+  exit-`5` refusal of `kae run --mode home` for them and the per-tool
+  `home_mode_enabled` gate are unchanged.
+- **Docs** — DESIGN.md scope × mode map (shipped ahead in this branch);
+  README quick start gains the `use` / mise flows; CLI.md and ADAPTERS.md
+  gain the new command contracts.
 
 ## Non-Goals (this release)
 
-Codex/agy keyring drivers, remaining login UX polish (claude `/login`
-version differences, agy), `env export --dotenv --reveal`, performance
-polish, claude file-driver override for isolated smoke checks, Windows,
-gemini/agy home isolation. See [ROADMAP.md](ROADMAP.md).
+Codex/agy keyring drivers, login UX polish, `env export --dotenv --reveal`,
+performance polish, claude file-driver override, Windows, gemini/agy home
+isolation — see [ROADMAP.md](ROADMAP.md). `kae sync` does not watch
+directories or daemonize; it runs only when invoked. No shell-rc
+integration beyond what mise provides.
 
 ## Acceptance Criteria
 
-- Real-machine (macOS, real accounts): `kae switch claude <account>` between
-  two accounts, `kae login claude <account> --restore`, and `kae rollback`
-  all leave a **fresh** claude process authenticated (AUTH-OK), with
-  `~/.claude.json` drift limited to the allowlist.
-- A login flow that exits without changing auth yields exit `11` /
-  `auth_unchanged` and captures nothing (regression-tested).
-- Snapshots from the pre-verbatim format are refused by the structure guard
-  with exit `10` (re-capture resolves).
-- `mise run check` passes; JSON reports keep `schema_version: 1`, stable
+- `kae use work` and `kae u work` behave identically to
+  `kae switch all work` (same JSON report shape, exit codes, backups).
+- `kae sync` with matching recorded state exits `0`, takes no lock, writes
+  no backup, and reports `"changed": false`; with diverging state it
+  switches and reports per-tool results. Profile resolution order is
+  regression-tested.
+- `kae mise init --auto --write` produces a marker block whose enter hook
+  auto-switches on directory entry in a mise-activated shell, and re-entry
+  is a no-op (manual verification on the real machine).
+- `kae mise init --mode home` renders the `[env]` home entries and no auth
+  hook/task; running claude inside the directory uses the isolated home
+  (manual verification; requires `home_mode_enabled = true`).
+- `mise run check` passes; new JSON keeps `schema_version: 1`, stable
   tokens, `[]` arrays.
 
 ## Release Steps
 
 1. Acceptance criteria green; `docs/VALIDATION.md` checklist done.
 2. README examples verified against the built binary.
-3. Tag `v0.3.0`, GitHub release with notes.
+3. Tag `v0.4.0`, GitHub release with notes.

@@ -61,6 +61,21 @@ kae switch all work          # resolves the "work" profile
 See [ROADMAP.md](ROADMAP.md) for ordering and [ADAPTERS.md](ADAPTERS.md) for
 the per-tool definition of what `auth` mode touches and preserves.
 
+## Switch Surface Map
+
+Every switching feature combines a mode (**what** is switched, above) with
+a scope (**where** it applies):
+
+| Scope | Surface | Effect |
+|-------|---------|--------|
+| global (live state) | `kae switch` / `kae s`, `kae login` | every terminal sees the change until the next switch |
+| per-process | `kae run [--mode M] ... -- <cmd>` | only the spawned child; live state restored afterwards (auth) or never touched (env / home / overlay) |
+| per-directory | `kae mise init` (mise `[env]` + tasks) | a project directory is associated with a profile via `KAE_PROFILE`; switching is invoked through mise |
+
+Global scope supports `auth` mode only (the concurrency boundary below).
+Per-process scope supports all modes. Per-directory scope composes with
+either: mise tasks call the global or per-process surfaces.
+
 ## Subscription-First Authentication Model
 
 `kae` assumes login/subscription accounts as the primary target, not API keys:

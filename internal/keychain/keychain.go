@@ -79,11 +79,34 @@ func ItemAccount(ctx context.Context, service string) (string, bool, error) {
 }
 
 // WriteItem creates or updates (-U) the generic password for service.
+//
+// Callers must pass the payload exactly as the owning tool wrote it: Claude
+// Code stores compact JSON and refuses a re-serialized (pretty-printed or
+// key-sorted) payload even when it is semantically identical, so kagikae
+// preserves the captured bytes verbatim instead of round-tripping through a
+// JSON encoder. The write must go through this `security` CLI path (not the
+// Security.framework API directly): `/usr/bin/security` is in the item's ACL
+// trusted-application list, so the owning tool can still read the item
+// afterwards without a keychain prompt.
 func WriteItem(ctx context.Context, service, account string, payload []byte) error {
 	_, stderr, code := runner.Run(ctx, "security",
 		"add-generic-password", "-U", "-s", service, "-a", account, "-w", string(payload))
 	if code != 0 {
 		return fmt.Errorf("security add-generic-password %q failed (exit %d): %s", service, code, runner.Snippet(stderr))
+	}
+	return nil
+}
+
+// DeleteItem removes the generic password for service. A missing item is not
+// an error (the live artifact is already absent).
+func DeleteItem(ctx context.Context, service string) error {
+	_, stderr, code := runner.Run(ctx, "security",
+		"delete-generic-password", "-s", service)
+	if code != 0 {
+		if strings.Contains(stderr, NotFoundMarker) {
+			return nil
+		}
+		return fmt.Errorf("security delete-generic-password %q failed (exit %d): %s", service, code, runner.Snippet(stderr))
 	}
 	return nil
 }

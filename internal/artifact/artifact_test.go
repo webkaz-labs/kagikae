@@ -147,6 +147,15 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string
 		f.accounts[service] = account
 		f.writes = append(f.writes, service)
 		return "", "", 0
+	case "delete-generic-password":
+		service := args[2]
+		if _, ok := f.payloads[service]; !ok {
+			return "", "security: ... could not be found ...", 44
+		}
+		delete(f.payloads, service)
+		delete(f.accounts, service)
+		f.writes = append(f.writes, service)
+		return "", "", 0
 	}
 	return "", "unexpected args", 1
 }
@@ -157,8 +166,9 @@ func (f *fakeRunner) RunInput(ctx context.Context, _ string, name string, args .
 
 func TestKeychainKindRoundTrip(t *testing.T) {
 	ctx := context.Background()
+	const liveItem = `{"claudeAiOauth":{"accessToken":"old"}}`
 	fake := &fakeRunner{
-		payloads: map[string]string{"Claude Code-credentials": `{"claudeAiOauth":{"accessToken":"old"},"other":1}`},
+		payloads: map[string]string{"Claude Code-credentials": liveItem},
 		accounts: map[string]string{"Claude Code-credentials": "realuser"},
 	}
 	sp := Spec{
@@ -166,24 +176,67 @@ func TestKeychainKindRoundTrip(t *testing.T) {
 		Target: "Claude Code-credentials", Pointer: "/claudeAiOauth",
 		KeychainAccount: "fallback",
 	}
+	const newItem = `{"claudeAiOauth":{"accessToken":"new"}}`
 	runner.With(fake, func() {
 		v, err := ReadLive(ctx, sp)
 		if err != nil || !v.Present {
 			t.Fatalf("read: %+v %v", v, err)
 		}
-		if !strings.Contains(string(v.Data), `"old"`) {
-			t.Fatalf("unexpected value: %s", v.Data)
+		// ReadLive stores the whole item verbatim, not an extracted sub-value.
+		if string(v.Data) != liveItem {
+			t.Fatalf("item not captured verbatim: %s", v.Data)
 		}
-		if err := ApplyLive(ctx, sp, Value{Data: []byte(`{"accessToken":"new"}`), Present: true}); err != nil {
+		if err := ApplyLive(ctx, sp, Value{Data: []byte(newItem), Present: true}); err != nil {
 			t.Fatal(err)
 		}
 	})
-	payload := fake.payloads["Claude Code-credentials"]
-	if !strings.Contains(payload, `"new"`) || !strings.Contains(payload, `"other"`) {
-		t.Fatalf("payload not patched or sibling lost: %s", payload)
+	if got := fake.payloads["Claude Code-credentials"]; got != newItem {
+		t.Fatalf("payload not written verbatim: %s", got)
 	}
 	if fake.accounts["Claude Code-credentials"] != "realuser" {
 		t.Fatalf("existing account not reused: %s", fake.accounts["Claude Code-credentials"])
+	}
+}
+
+// TestKeychainKindWritesVerbatim guards the core fix: the captured bytes are
+// written exactly as-is. Claude Code stores compact, unsorted JSON and rejects
+// a re-serialized payload, so kagikae must not pretty-print or sort keys.
+func TestKeychainKindWritesVerbatim(t *testing.T) {
+	ctx := context.Background()
+	// Deliberately compact and NOT key-sorted ("z" before "a").
+	const item = `{"claudeAiOauth":{"z":1,"accessToken":"t"}}`
+	fake := &fakeRunner{payloads: map[string]string{}, accounts: map[string]string{}}
+	sp := Spec{
+		Name: "claude_ai_oauth", Kind: constants.KindKeychain,
+		Target: "Claude Code-credentials", Pointer: "/claudeAiOauth",
+		KeychainAccount: "u",
+	}
+	runner.With(fake, func() {
+		if err := ApplyLive(ctx, sp, Value{Data: []byte(item), Present: true}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if got := fake.payloads["Claude Code-credentials"]; got != item {
+		t.Fatalf("payload was re-serialized (formatting/key order changed):\n got: %s\nwant: %s", got, item)
+	}
+}
+
+// TestKeychainKindAbsentDeletesItem: applying an absent value removes the
+// live item (mirrors the file/json-pointer absent cases).
+func TestKeychainKindAbsentDeletesItem(t *testing.T) {
+	ctx := context.Background()
+	fake := &fakeRunner{
+		payloads: map[string]string{"Claude Code-credentials": `{"claudeAiOauth":{}}`},
+		accounts: map[string]string{"Claude Code-credentials": "u"},
+	}
+	sp := Spec{Name: "x", Kind: constants.KindKeychain, Target: "Claude Code-credentials", Pointer: "/claudeAiOauth"}
+	runner.With(fake, func() {
+		if err := ApplyLive(ctx, sp, Value{Present: false}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if _, ok := fake.payloads["Claude Code-credentials"]; ok {
+		t.Fatal("absent apply must delete the keychain item")
 	}
 }
 
@@ -217,7 +270,7 @@ func TestKeychainKindCreatesWithFallbackAccount(t *testing.T) {
 		KeychainAccount: "fallbackuser",
 	}
 	runner.With(fake, func() {
-		if err := ApplyLive(ctx, sp, Value{Data: []byte(`{"a":1}`), Present: true}); err != nil {
+		if err := ApplyLive(ctx, sp, Value{Data: []byte(`{"claudeAiOauth":{"a":1}}`), Present: true}); err != nil {
 			t.Fatal(err)
 		}
 	})

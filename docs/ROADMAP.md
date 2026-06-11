@@ -3,11 +3,11 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The original phase plan (Phase 2 login/run/env/mise, Phase 3 home, Phase 4
-overlay, Phase 5 agy) shipped together in v0.2.0; what remains is hardening
-and platform coverage, reordered below by user impact.
+The active target (v0.4.0, project-scoped switching and ergonomics) lives
+in [RELEASE.md](RELEASE.md); what remains beyond it is hardening and
+platform coverage, ordered below by user impact.
 
-## v0.3.x candidates — daily-use hardening
+## Hardening backlog — daily-use robustness
 
 - **Codex keyring driver**: pin down the OS-credential-store item contract
   used by `cli_auth_credentials_store = "keyring"`, add structure guards,

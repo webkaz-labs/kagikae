@@ -10,17 +10,38 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
+// newLoginTestApp seeds a claude work login and replaces the interactive
+// login flow with flow (nil = a flow that exits without touching auth,
+// e.g. claude: "/login isn't available in this environment.").
+func newLoginTestApp(t *testing.T, flow func(credsPath string)) (*App, string) {
+	t.Helper()
+	app := testApp(t, nil)
+	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+	seedClaude(t, app, workToken, "work-uuid")
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		if flow != nil {
+			flow(credsPath)
+		}
+		return 0, nil
+	})
+	return app, credsPath
+}
+
+// swapToPersonalToken simulates a login flow that switches to another
+// account by rewriting the live credential.
+func swapToPersonalToken(t *testing.T) func(string) {
+	return func(credsPath string) {
+		live := readFile(t, credsPath)
+		writeFile(t, credsPath, strings.Replace(live, workToken, personalToken, 1))
+	}
+}
+
 // TestLoginUnchangedAuthRefused: a login flow that exits without touching
 // the credential state must not be captured as a new account.
 func TestLoginUnchangedAuthRefused(t *testing.T) {
-	app := testApp(t, nil)
+	app, _ := newLoginTestApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatJSON}
-
-	seedClaude(t, app, workToken, "work-uuid")
-	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
-		return 0, nil // e.g. claude: "/login isn't available in this environment."
-	})
 
 	code, out := captureStdout(t, func() int { return runLogin(ctx, app, opts, "claude", "work", false) })
 	mustExit(t, constants.ExitAuthUnchanged, code, out)
@@ -38,15 +59,9 @@ func TestLoginUnchangedAuthRefused(t *testing.T) {
 // TestLoginUnchangedAuthWithRestore: --restore with an unchanged login flow
 // still refuses and leaves the (untouched) live state alone.
 func TestLoginUnchangedAuthWithRestore(t *testing.T) {
-	app := testApp(t, nil)
+	app, credsPath := newLoginTestApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatJSON}
-	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
-
-	seedClaude(t, app, workToken, "work-uuid")
-	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
-		return 0, nil
-	})
 
 	code, out := captureStdout(t, func() int { return runLogin(ctx, app, opts, "claude", "work", true) })
 	mustExit(t, constants.ExitAuthUnchanged, code, out)
@@ -58,17 +73,9 @@ func TestLoginUnchangedAuthWithRestore(t *testing.T) {
 // TestLoginCapturesChangedAuth: a login flow that rewrites the credential is
 // captured and becomes active.
 func TestLoginCapturesChangedAuth(t *testing.T) {
-	app := testApp(t, nil)
+	app, _ := newLoginTestApp(t, swapToPersonalToken(t))
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
-	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
-
-	seedClaude(t, app, workToken, "work-uuid")
-	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
-		live := readFile(t, credsPath)
-		writeFile(t, credsPath, strings.Replace(live, workToken, personalToken, 1))
-		return 0, nil
-	})
 
 	code, out := captureStdout(t, func() int { return runLogin(ctx, app, opts, "claude", "work", false) })
 	mustExit(t, constants.ExitOK, code, out)
@@ -83,17 +90,9 @@ func TestLoginCapturesChangedAuth(t *testing.T) {
 // TestLoginRestorePutsPreviousLoginBack: --restore captures the new login
 // and ends on the previous one.
 func TestLoginRestorePutsPreviousLoginBack(t *testing.T) {
-	app := testApp(t, nil)
+	app, credsPath := newLoginTestApp(t, swapToPersonalToken(t))
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
-	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
-
-	seedClaude(t, app, workToken, "work-uuid")
-	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
-		live := readFile(t, credsPath)
-		writeFile(t, credsPath, strings.Replace(live, workToken, personalToken, 1))
-		return 0, nil
-	})
 
 	code, out := captureStdout(t, func() int { return runLogin(ctx, app, opts, "claude", "work", true) })
 	mustExit(t, constants.ExitOK, code, out)

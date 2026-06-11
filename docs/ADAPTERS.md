@@ -175,7 +175,9 @@ plugins / MCP / hooks / subagents
 
 ## Isolation (home / overlay Modes)
 
-`kae run --mode home|overlay` points a tool at an alternate home directory:
+`kae run --mode home|overlay` points a tool at an alternate home directory;
+`kae mise init --mode home` renders the same home-mode mapping as mise
+`[env]` entries scoped to a project directory (docs/CLI.md):
 
 | Tool | Isolation env var | home mode | overlay mode |
 |------|-------------------|-----------|--------------|
@@ -183,6 +185,10 @@ plugins / MCP / hooks / subagents
 | codex | `CODEX_HOME` | supported | experimental opt-in |
 | gemini | none stable | refused | refused |
 | agy | none stable | refused | refused |
+
+"Refused" means exit `5` from `kae run`; `kae mise init --mode home` instead
+omits those tools with an inline warning comment (they keep the real home).
+`tools.<tool>.home_mode_enabled = false` disables both surfaces for a tool.
 
 Overlay shared items (symlinked from the real home; everything else —
 credentials, sessions, history, and the mixed-state `.claude.json` — stays

@@ -192,7 +192,7 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
 - check status: `ok`, `warn`, `error`, `skipped`
 - error codes: `ok`, `error`, `invalid_config`, `auth_missing`, `lock_busy`,
   `unsupported`, `cli_missing`, `not_found`, `permission`, `secret_store`,
-  `unsafe_refused`, `usage`
+  `unsafe_refused`, `auth_unchanged`, `usage`
 - artifact kinds: `json-pointer`, `file`, `keychain`
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
   `gemini-oauth-cache`, `agy-file-snapshot`

@@ -1,13 +1,17 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
 	"os"
 
+	"github.com/webkaz-labs/kagikae/internal/artifact"
+	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
 // loginCommand returns the interactive official login invocation per tool.
@@ -89,17 +93,18 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, accountName 
 		fmt.Fprintf(os.Stderr, "kae: %s exited with %d; capturing whatever auth state is live now\n", command[0], code)
 	}
 
+	if changed, err := loginChangedAuth(ctx, be, meta, plan); err != nil {
+		return finishLoginFailure(ctx, opts, be, meta, restore, "compare auth after login", err)
+	} else if !changed {
+		// The live state is still the pre-login state, so there is nothing
+		// to capture and (with --restore) nothing to put back.
+		return finish(opts, errf(constants.ExitAuthUnchanged,
+			"%s login flow exited without changing auth; nothing captured (to snapshot the current login as %s/%s, run: kae capture %s %s)",
+			tool, tool, accountName, tool, accountName))
+	}
+
 	if err := app.captureSnapshot(ctx, be, plan); err != nil {
-		// With --restore the user asked to end up on the previous login no
-		// matter what; put it back even when the capture failed.
-		if restore {
-			if restoreErr := applyBackup(ctx, be, meta, nil); restoreErr != nil {
-				return finish(opts, doubleFailure("capture after login", err, restoreErr, meta.ID))
-			}
-			return finish(opts, errf(exitOf(err),
-				"capture after login failed, previous login restored from backup %s: %v", meta.ID, err))
-		}
-		return finish(opts, fmt.Errorf("capture after login failed (previous state is in backup %s): %w", meta.ID, err))
+		return finishLoginFailure(ctx, opts, be, meta, restore, "capture after login", err)
 	}
 
 	if restore {
@@ -116,4 +121,52 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, accountName 
 	}
 	fmt.Printf("Captured %s/%s (now active)\n", tool, accountName)
 	return constants.ExitOK
+}
+
+// loginChangedAuth reports whether any live artifact differs from the
+// pre-login backup, i.e. whether the login flow actually changed auth.
+// A missing backup payload counts as changed so an internal inconsistency
+// never blocks a legitimate capture.
+func loginChangedAuth(ctx context.Context, be secret.Backend, meta backup.Meta, plan toolPlan) (bool, error) {
+	records := map[string]backup.ArtifactRecord{}
+	for _, rec := range meta.Artifacts {
+		if rec.Tool == plan.Tool {
+			records[rec.Name] = rec
+		}
+	}
+	for _, sp := range plan.Specs {
+		live, err := artifact.ReadLive(ctx, sp)
+		if err != nil {
+			return false, fmt.Errorf("read live %s/%s: %w", plan.Tool, sp.Name, err)
+		}
+		rec, ok := records[sp.Name]
+		if !ok || live.Present != rec.Present {
+			return true, nil
+		}
+		if !live.Present {
+			continue
+		}
+		prev, found, err := be.Get(ctx, rec.SecretRef)
+		if err != nil {
+			return false, fmt.Errorf("read backup payload %s: %w", rec.SecretRef, err)
+		}
+		if !found || !bytes.Equal(live.Data, prev) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// finishLoginFailure reports a failed post-login step. With --restore the
+// user asked to end up on the previous login no matter what; put it back
+// even when the failed step leaves auth in the post-login state.
+func finishLoginFailure(ctx context.Context, opts commonOpts, be secret.Backend, meta backup.Meta, restore bool, op string, err error) int {
+	if restore {
+		if restoreErr := applyBackup(ctx, be, meta, nil); restoreErr != nil {
+			return finish(opts, doubleFailure(op, err, restoreErr, meta.ID))
+		}
+		return finish(opts, errf(exitOf(err),
+			"%s failed, previous login restored from backup %s: %v", op, meta.ID, err))
+	}
+	return finish(opts, fmt.Errorf("%s failed (previous state is in backup %s): %w", op, meta.ID, err))
 }

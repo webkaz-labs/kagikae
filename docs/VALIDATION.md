@@ -21,7 +21,10 @@ commands and non-claude tools.
 
 ```bash
 go build -o /tmp/kae .
-export HOME=$(mktemp -d) XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share \
+# Two separate export lines: in `export A=new B=$A`, $A expands to A's OLD
+# value, so a single line would point every XDG_* path at the real HOME.
+export HOME=$(mktemp -d)
+export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share \
        XDG_STATE_HOME=$HOME/.local/state NO_COLOR=1
 
 /tmp/kae init

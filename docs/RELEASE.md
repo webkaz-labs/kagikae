@@ -23,8 +23,10 @@ capture/restore, login auth-unchanged detection; see git tag v0.3.0).
   renders a mise `[hooks.enter]` entry running `kae sync --quiet`. Opt-in
   with an inline caveat comment because auth mode mutates the global live
   state (DESIGN.md, Concurrency Boundary). Hook firing requires
-  `mise activate` and a trusted config — verify against the installed mise
-  during implementation.
+  `mise activate`, a trusted config, and `mise settings experimental=true`
+  (mise hooks are experimental — verified against mise 2026.6.2 during
+  implementation; firing and re-entry no-op confirmed in a temp-HOME smoke,
+  see VALIDATION.md).
 - **`kae mise init --mode auth|home`** — `home` renders `[env]` entries
   pointing `CLAUDE_CONFIG_DIR` / `CODEX_HOME` at the per-account kae home
   directories (DATA-MODEL.md) instead of auth-mode hooks/tasks:

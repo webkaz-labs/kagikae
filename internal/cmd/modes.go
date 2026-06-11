@@ -12,7 +12,7 @@ import (
 const (
 	modeAuth    = constants.ModeAuth
 	modeEnv     = "env"
-	modeHome    = "home"
+	modeHome    = constants.ModeHome
 	modeOverlay = "overlay"
 )
 
@@ -26,6 +26,9 @@ func validMode(mode string) bool {
 
 // isolationEnvVar returns the env var that points a tool at an alternate
 // home directory, or "" when the tool has no stable isolation mechanism.
+// Consumers: homeModeEnv/overlayModeEnv (kae run, refuse with exit 5) and
+// miseHomeBlock (kae mise init --mode home, skip with a warning comment);
+// docs/ADAPTERS.md "Isolation" is the normative table — update together.
 func isolationEnvVar(tool string) string {
 	switch tool {
 	case constants.ToolClaude:

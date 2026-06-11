@@ -150,7 +150,7 @@ func (app *App) miseBlock(profileName string, auto bool) string {
 // directories to create on --write.
 func (app *App) miseHomeBlock(profileName string, targets []runTarget) (string, []string) {
 	var b strings.Builder
-	dirs := []string{}
+	var dirs []string
 	fmt.Fprintln(&b, miseBlockStart)
 	fmt.Fprintln(&b, "# Directory-scoped isolation (kae mise init --mode home): account and")
 	fmt.Fprintln(&b, "# config directory switch inside this directory only; the global live")

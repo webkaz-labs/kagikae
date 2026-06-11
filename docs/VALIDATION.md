@@ -51,7 +51,25 @@ echo sk-test | /tmp/kae env set claude ci ANTHROPIC_API_KEY
 /tmp/kae run --mode env claude ci -- /usr/bin/env  # var visible to child only
 /tmp/kae run --mode home claude a -- /usr/bin/true
 /tmp/kae mise init --profile work                  # preview, no write
+
+# v0.4.0 surfaces (on macOS use codex-only profiles — see the keychain
+# warning above; codex auth.json is file-based and fully isolated):
+/tmp/kae use work --json                           # = switch all work
+/tmp/kae sync --profile work --json                # re-run: "changed": false
+KAE_PROFILE=personal /tmp/kae sync --json          # env resolution
+/tmp/kae sync --quiet                              # prints nothing on success
+/tmp/kae mise init --profile work --auto           # preview: [hooks.enter]
+/tmp/kae mise init --profile work --mode home      # preview: [env] tool homes
 ```
+
+Enter-hook firing (`mise init --auto --write`) needs a live mise:
+`mise settings experimental=true` (hooks are experimental; the global config
+this writes must itself be `mise trust`-ed), `mise trust` on the project
+`.mise.toml`, and a shell with `mise activate`. In a temp-HOME smoke, point
+`ZDOTDIR` at a temp dir whose `.zshrc` exports PATH and evals
+`mise activate zsh`, then run `zsh -i -c 'cd <project> && true'` from a
+neutral directory (the repo's own untrusted mise.toml otherwise aborts
+hook-env) and assert the switch happened and that re-entry adds no backup.
 
 Use `secret_backend = "file"` in the temp config for smoke checks so no real
 keychain entries are created.

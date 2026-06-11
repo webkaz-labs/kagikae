@@ -40,6 +40,26 @@ func CmdSwitch(ctx context.Context, args []string) int {
 	return runSwitch(ctx, app, opts, positionals[0], positionals[1])
 }
 
+// CmdUse is the ergonomic short form of `kae switch all <profile>`:
+//
+//	kae use <profile>     (alias: kae u)
+//
+// Same behavior, JSON report, and exit codes as switch all; it always
+// applies, even when the recorded state already matches (kae sync is the
+// idempotent variant).
+func CmdUse(ctx context.Context, args []string) int {
+	flags, positionals := splitArgs(args)
+	opts, ok := parseCommon("use", flags, true, nil)
+	if !ok {
+		return constants.ExitUsage
+	}
+	if len(positionals) != 1 {
+		return usageError("usage: %s use <profile>", toolName)
+	}
+	app := newApp(opts.ConfigPath)
+	return runSwitch(ctx, app, opts, "all", positionals[0])
+}
+
 func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name string) int {
 	report, err := buildSwitch(ctx, app, opts, target, name)
 	if err != nil {

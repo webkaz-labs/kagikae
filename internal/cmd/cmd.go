@@ -50,6 +50,10 @@ func Root(args []string) int {
 		return CmdCapture(ctx, args[1:])
 	case "switch", "s":
 		return CmdSwitch(ctx, args[1:])
+	case "use", "u":
+		return CmdUse(ctx, args[1:])
+	case "sync":
+		return CmdSync(ctx, args[1:])
 	case "run":
 		return CmdRun(ctx, args[1:])
 	case "login":
@@ -175,11 +179,15 @@ Usage:
   kae switch <tool> <account>          apply a captured account
   kae switch all <profile>             switch every tool in a profile
   kae s <...>                          alias of switch
+  kae use <profile>                    short form of switch all (alias: kae u)
+  kae sync [--profile P] [--quiet]     idempotent profile apply for hooks;
+                                       no-op when already recorded as active
   kae run [--mode M] <t|all> <n> -- C  run C with an account applied; auth
                                        mode restores the previous login after
   kae login <tool> <account>           official login flow + capture
   kae env set|unset|list ...           env-mode profiles (API keys)
-  kae mise init [--profile P] [--write] project mise tasks (KAE_PROFILE)
+  kae mise init [--profile P] [--mode auth|home] [--auto] [--write]
+                                       project mise integration (KAE_PROFILE)
   kae current [--json]                 active account per tool
   kae accounts [--json]                captured accounts
   kae status [--json]                  full status report

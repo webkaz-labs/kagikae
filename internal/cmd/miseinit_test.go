@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -94,6 +95,26 @@ func TestMiseInitHomeMode(t *testing.T) {
 	}
 	if !strings.Contains(readFile(t, ".mise.toml"), miseBlockStart) {
 		t.Fatal(".mise.toml not written")
+	}
+}
+
+func TestMiseInitHomeModeDirFailureLeavesTomlUntouched(t *testing.T) {
+	app := testApp(t, nil)
+	app.Config.Profiles = map[string]config.Profile{
+		"work": {Accounts: map[string]string{constants.ToolClaude: "work"}},
+	}
+	chdirTemp(t)
+	// Occupy the homes root with a file so MkdirAll fails; the block must
+	// not be written when its directories cannot exist.
+	writeFile(t, filepath.Join(app.Paths.DataDir, "homes"), "not a dir")
+	code, out := captureStdout(t, func() int {
+		return runMiseInit(context.Background(), app, commonOpts{Format: formatText}, "work", modeHome, false, true)
+	})
+	if code == constants.ExitOK {
+		t.Fatalf("expected failure, got ok: %s", out)
+	}
+	if _, err := os.Stat(".mise.toml"); !os.IsNotExist(err) {
+		t.Fatal(".mise.toml must not be written when home dirs cannot be created")
 	}
 }
 

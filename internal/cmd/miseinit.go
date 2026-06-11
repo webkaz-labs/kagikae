@@ -90,15 +90,16 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 		fmt.Fprintln(os.Stderr, "\nkae: preview only; apply with: "+hint+" --write")
 		return constants.ExitOK
 	}
-	if err := writeMiseBlock(".mise.toml", block); err != nil {
-		return finish(opts, err)
-	}
-	// Pre-create the isolated homes so the tools start from an existing,
-	// kae-owned 0700 directory (same layout kae run --mode home prepares).
+	// Pre-create the isolated homes before touching .mise.toml so a failure
+	// here cannot leave the block exporting directories that do not exist
+	// (a stray kae-owned 0700 dir is harmless; the reverse is not).
 	for _, dir := range homeDirs {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return finish(opts, fmt.Errorf("create home-mode dir: %w", err))
 		}
+	}
+	if err := writeMiseBlock(".mise.toml", block); err != nil {
+		return finish(opts, err)
 	}
 	fmt.Println("Updated .mise.toml (kagikae block)")
 	return constants.ExitOK

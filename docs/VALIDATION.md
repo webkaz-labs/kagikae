@@ -11,8 +11,13 @@ Run `go mod tidy` before committing dependency changes.
 
 ## Smoke Checks (built binary, isolated env)
 
-All smoke checks run against a temp HOME so the real credential state is never
-touched:
+All smoke checks run against a temp HOME. On Linux this isolates every
+credential path. **On macOS it does not isolate claude**: the claude adapter
+always selects the keychain driver and the `security` CLI ignores `$HOME`,
+so claude capture/switch/login against a temp HOME still read — and switch
+**writes** — the real login keychain item. Run the claude fixture block
+below on Linux only (e.g. in a container); on macOS stick to the read-only
+commands and non-claude tools.
 
 ```bash
 go build -o /tmp/kae .
@@ -25,7 +30,8 @@ export HOME=$(mktemp -d) XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.loca
 /tmp/kae version --format json
 ```
 
-With fixture credentials (see `internal/cmd` tests for the fixture shapes):
+With fixture credentials (see `internal/cmd` tests for the fixture shapes;
+Linux only — see the macOS keychain warning above):
 
 ```bash
 # seed ~/.claude/.credentials.json + ~/.claude.json fixtures, then:

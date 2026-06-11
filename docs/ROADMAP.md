@@ -15,11 +15,17 @@ and platform coverage, reordered below by user impact.
 - **agy keyring support**: same problem as Codex — the default macOS/Linux
   storage is the keyring; today only the file-based fallback is switchable.
 - **Login UX polish**: verify `claude /login` behavior across versions,
-  detect "login flow exited without changing auth" and say so, support agy.
+  support agy. (The "login flow exited without changing auth" case is now
+  detected and refused with exit `11`.)
 - **`kae env export --dotenv --reveal`**: explicit-flag value export for CI
   bootstrapping (today values are injection-only by design).
 - **Performance polish**: combine/cache the multiple `security` subprocess
   calls per macOS switch; run per-tool `Detect` concurrently in `status`.
+- **claude driver override for isolated smoke checks**: on macOS the
+  keychain driver ignores temp `$HOME`s, so claude switch smoke checks can
+  only run safely on Linux today; provide an explicit file-driver override
+  (env var or config) so containers and smoke environments never touch the
+  real login keychain.
 
 ## Platform coverage
 

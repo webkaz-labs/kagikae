@@ -73,7 +73,11 @@ guidance). Per mode:
 `kae login` backs up the live state (`reason: "login"`), launches the
 official login flow (`claude /login`, `codex login`, `gemini`), captures the
 result into the account, and makes it active — or restores the previous
-login with `--restore`. agy is not supported yet.
+login with `--restore`. If the flow exits without changing the live auth
+state (login refused, window closed, already cancelled), kae refuses to
+capture and exits `11` (`auth_unchanged`) instead of recording a duplicate
+of the previous account; `kae capture` remains the explicit way to snapshot
+the current login under a new name. agy is not supported yet.
 
 ## Exit Codes
 
@@ -90,6 +94,7 @@ login with `--restore`. agy is not supported yet.
 | `8` | `permission` | file permission or access error |
 | `9` | `secret_store` | secret backend unavailable |
 | `10` | `unsafe_refused` | live state failed a structure guard; write refused |
+| `11` | `auth_unchanged` | login flow exited without changing auth; nothing captured |
 | `64` | `usage` | usage / flag error |
 
 These codes diverge intentionally from the minimal shared standard (`0/1/2/64`)

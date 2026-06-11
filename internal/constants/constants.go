@@ -22,6 +22,10 @@ const (
 	ModeAuth = "auth"
 )
 
+// EnvKaeProfile is the environment variable that pins a kae profile to a
+// directory (rendered by kae mise init, read by kae sync).
+const EnvKaeProfile = "KAE_PROFILE"
+
 // Driver identifiers.
 const (
 	DriverClaudeFilePatch     = "claude-file-patch"

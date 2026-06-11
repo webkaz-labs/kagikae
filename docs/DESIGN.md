@@ -68,13 +68,14 @@ a scope (**where** it applies):
 
 | Scope | Surface | Effect |
 |-------|---------|--------|
-| global (live state) | `kae switch` / `kae s`, `kae login` | every terminal sees the change until the next switch |
+| global (live state) | `kae switch` / `kae s`, `kae use` / `kae u`, `kae sync`, `kae login` | every terminal sees the change until the next switch; `sync` is the idempotent form (no-op when kae's recorded state already matches) |
 | per-process | `kae run [--mode M] ... -- <cmd>` | only the spawned child; live state restored afterwards (auth) or never touched (env / home / overlay) |
-| per-directory | `kae mise init` (mise `[env]` + tasks) | a project directory is associated with a profile via `KAE_PROFILE`; switching is invoked through mise |
+| per-directory | `kae mise init` (mise `[env]` + tasks; `--auto` enter hook; `--mode home` env entries) | a project directory is associated with a profile via `KAE_PROFILE`; switching is invoked through mise — explicitly via tasks, automatically on entry (`--auto` runs `kae sync --quiet`, global auth scope), or as directory-local isolated homes (`--mode home`, no global mutation) |
 
 Global scope supports `auth` mode only (the concurrency boundary below).
 Per-process scope supports all modes. Per-directory scope composes with
-either: mise tasks call the global or per-process surfaces.
+either: mise tasks and the `--auto` hook call the global surface, while
+`--mode home` maps the directory onto home-mode isolation.
 
 ## Subscription-First Authentication Model
 

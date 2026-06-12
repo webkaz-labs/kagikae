@@ -11,9 +11,9 @@ import (
 // Switch modes accepted by kae run --mode.
 const (
 	modeAuth    = constants.ModeAuth
-	modeEnv     = "env"
+	modeEnv     = constants.ModeEnv
 	modeHome    = constants.ModeHome
-	modeOverlay = "overlay"
+	modeOverlay = constants.ModeOverlay
 )
 
 func validMode(mode string) bool {
@@ -52,11 +52,22 @@ func (app *App) homeModeEnv(tool, accountName string) ([]string, error) {
 		return nil, errf(constants.ExitUnsupported,
 			"%s has no stable home-isolation mechanism yet (see docs/ROADMAP.md)", tool)
 	}
-	dir := app.Paths.HomeModeDir(tool, accountName)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("create home-mode dir: %w", err)
+	dir, err := app.prepareHome(tool, accountName)
+	if err != nil {
+		return nil, err
 	}
 	return []string{envVar + "=" + dir}, nil
+}
+
+// prepareHome creates the fully separate home-mode directory for one
+// tool/account. Shared by kae run --mode home and the pin / mise init
+// write path; like prepareOverlay it does not check the per-tool gate.
+func (app *App) prepareHome(tool, accountName string) (string, error) {
+	dir := app.Paths.HomeModeDir(tool, accountName)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create home-mode dir: %w", err)
+	}
+	return dir, nil
 }
 
 // overlaySharedItems lists the real-home entries shared (symlinked) into an

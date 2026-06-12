@@ -97,17 +97,15 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 	// Prepare the isolated homes before touching .mise.toml so a failure
 	// here cannot leave the block exporting directories that do not exist
 	// (a stray kae-owned 0700 dir is harmless; the reverse is not).
+	prepare := app.prepareHome
+	if mode == modeOverlay {
+		prepare = app.prepareOverlay
+	}
 	for _, entry := range entries {
 		if entry.Warning != "" {
 			continue
 		}
-		var err error
-		if mode == modeOverlay {
-			_, err = app.prepareOverlay(entry.Tool, entry.Account)
-		} else {
-			err = os.MkdirAll(entry.Dir, 0o700)
-		}
-		if err != nil {
+		if _, err := prepare(entry.Tool, entry.Account); err != nil {
 			return finish(opts, fmt.Errorf("prepare %s-mode dir for %s: %w", mode, entry.Tool, err))
 		}
 	}
@@ -170,7 +168,7 @@ type isolationEntry struct {
 // Gates mirror kae run: no stable env var or a disabled per-tool mode
 // becomes a warning (kae run refuses the same cases with exit 5).
 func (app *App) isolationEntries(mode string, targets []runTarget) []isolationEntry {
-	entries := []isolationEntry{}
+	entries := make([]isolationEntry, 0, len(targets))
 	for _, tgt := range targets {
 		entry := isolationEntry{Tool: tgt.Tool, Account: tgt.Account}
 		entry.EnvVar = isolationEnvVar(tgt.Tool)
@@ -230,6 +228,18 @@ func (app *App) miseIsolationBlock(profileName, mode string, entries []isolation
 	return b.String()
 }
 
+// cutMiseBlock splits content around the marker-delimited kagikae block:
+// the text before the start marker and after the end marker (its trailing
+// newline consumed). ok is false when the markers are missing or malformed.
+func cutMiseBlock(content string) (before, after string, ok bool) {
+	start := strings.Index(content, miseBlockStart)
+	end := strings.Index(content, miseBlockEnd)
+	if start < 0 || end < 0 || end < start {
+		return "", "", false
+	}
+	return content[:start], strings.TrimPrefix(content[end+len(miseBlockEnd):], "\n"), true
+}
+
 // writeMiseBlock creates .mise.toml or replaces an existing kagikae block.
 // Files without the markers are left untouched (refused with guidance).
 func writeMiseBlock(path, block string) error {
@@ -240,17 +250,11 @@ func writeMiseBlock(path, block string) error {
 	if err != nil {
 		return err
 	}
-	content := string(data)
-	start := strings.Index(content, miseBlockStart)
-	end := strings.Index(content, miseBlockEnd)
-	if start < 0 || end < 0 || end < start {
+	before, after, ok := cutMiseBlock(string(data))
+	if !ok {
 		return errf(constants.ExitUnsafeRefused,
 			"%s exists without a kagikae marker block; append the --print output manually or add the markers %q ... %q",
 			path, miseBlockStart, miseBlockEnd)
 	}
-	// Replace everything from the start marker through the end marker
-	// (inclusive) with the freshly rendered block.
-	rest := strings.TrimPrefix(content[end+len(miseBlockEnd):], "\n")
-	updated := content[:start] + block + rest
-	return patch.WriteFileAtomic(path, []byte(updated), 0o644)
+	return patch.WriteFileAtomic(path, []byte(before+block+after), 0o644)
 }

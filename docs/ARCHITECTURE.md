@@ -14,7 +14,6 @@ kagikae/
     adapter/              # Adapter interface + tool adapters
       claude/
       codex/
-      gemini/
       agy/
     artifact/             # artifact primitives: json-pointer / file / keychain
     keychain/             # security-CLI access to upstream tools' keychain items

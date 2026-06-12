@@ -142,9 +142,6 @@ func (app *App) miseBlock(profileName string, auto bool) string {
 	fmt.Fprintln(&b, `description = "Show active AI CLI accounts"`)
 	fmt.Fprintln(&b, `run = "kae"`)
 	for _, tool := range app.enabledTools() {
-		if tool == constants.ToolAgy {
-			continue // experimental adapter; no generated run task yet
-		}
 		fmt.Fprintln(&b)
 		fmt.Fprintf(&b, "[tasks.%s]\n", tool)
 		fmt.Fprintf(&b, "description = \"Run %s with this project's account\"\n", tool)

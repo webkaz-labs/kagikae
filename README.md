@@ -1,18 +1,17 @@
 # kagikae
 
 `kae` switches **subscription accounts** for AI coding CLIs — Claude Code,
-Codex CLI, Gemini CLI (and Antigravity CLI, planned) — without touching your
-working environment.
+Codex CLI, and Antigravity CLI — without touching your working environment.
 
-Switching `~/.claude`, `~/.codex`, or `~/.gemini` wholesale also switches your
-skills, hooks, memory, MCP servers, project trust, and session history. `kae`
-doesn't. By default it patches **only the authentication artifacts** (an
-explicit allowlist) and preserves everything else:
+Switching `~/.claude` or `~/.codex` wholesale also switches your skills,
+hooks, memory, MCP servers, project trust, and session history. `kae` doesn't.
+By default it patches **only the authentication artifacts** (an explicit
+allowlist) and preserves everything else:
 
 ```text
 work Claude Max  <->  personal Claude Pro
 company ChatGPT Team Codex  <->  personal ChatGPT Plus Codex
-work Google account  <->  personal Google account (Gemini)
+work Google account  <->  personal Google account (Antigravity)
 ```
 
 ## Quick Start
@@ -123,7 +122,6 @@ Profiles bundle per-tool accounts:
 [profiles.work.accounts]
 claude = "work"
 codex = "work"
-gemini = "work"
 ```
 
 Full schema: [docs/DATA-MODEL.md](docs/DATA-MODEL.md).

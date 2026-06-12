@@ -41,7 +41,7 @@ func TestLoadMissing(t *testing.T) {
 
 func TestListCanonicalOrder(t *testing.T) {
 	root := t.TempDir()
-	for _, pair := range [][2]string{{"gemini", "work"}, {"claude", "zeta"}, {"claude", "alpha"}} {
+	for _, pair := range [][2]string{{"agy", "work"}, {"claude", "zeta"}, {"claude", "alpha"}} {
 		if err := Save(filepath.Join(root, pair[0], pair[1]), sample(pair[0], pair[1])); err != nil {
 			t.Fatal(err)
 		}
@@ -54,7 +54,7 @@ func TestListCanonicalOrder(t *testing.T) {
 	for _, acc := range accounts {
 		got = append(got, acc.Tool+"/"+acc.Name)
 	}
-	want := "claude/alpha claude/zeta gemini/work"
+	want := "claude/alpha claude/zeta agy/work"
 	if strings.Join(got, " ") != want {
 		t.Fatalf("ordering: got %v want %s", got, want)
 	}

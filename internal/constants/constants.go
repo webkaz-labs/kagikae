@@ -10,12 +10,17 @@ const SchemaVersion = 1
 const (
 	ToolClaude = "claude"
 	ToolCodex  = "codex"
-	ToolGemini = "gemini"
 	ToolAgy    = "agy"
 )
 
 // Tools is the canonical tool ordering for reports and iteration.
-var Tools = []string{ToolClaude, ToolCodex, ToolGemini, ToolAgy}
+var Tools = []string{ToolClaude, ToolCodex, ToolAgy}
+
+// RemovedTools maps tools kae no longer supports to their successor, for
+// error messages and config tolerance (docs/RELEASE.md Breaking Changes).
+var RemovedTools = map[string]string{
+	"gemini": ToolAgy, // upstream retired Gemini CLI for Antigravity (2026-05)
+}
 
 // Switch modes.
 const (
@@ -35,7 +40,6 @@ const (
 	DriverClaudeKeychainPatch = "claude-keychain-patch"
 	DriverCodexAuthJSON       = "codex-auth-json"
 	DriverCodexKeyring        = "codex-keyring"
-	DriverGeminiOAuthCache    = "gemini-oauth-cache"
 	DriverAgyFileSnapshot     = "agy-file-snapshot"
 )
 
@@ -63,7 +67,6 @@ const (
 	CheckCredentialStore  = "credential_store"
 	CheckSecretBackend    = "secret_backend"
 	CheckConfigValid      = "config_valid"
-	CheckTransitionNotice = "transition_notice"
 	CheckUnsupported      = "unsupported"
 	CheckFileMode         = "file_mode"
 )

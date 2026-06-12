@@ -57,7 +57,7 @@ func TestMiseInitHomeMode(t *testing.T) {
 		"work": {Accounts: map[string]string{
 			constants.ToolClaude: "work",
 			constants.ToolCodex:  "work",
-			constants.ToolGemini: "work",
+			constants.ToolAgy: "work",
 		}},
 	}
 	ctx := context.Background()
@@ -75,8 +75,8 @@ func TestMiseInitHomeMode(t *testing.T) {
 	if strings.Contains(out, "CODEX_HOME =") || !strings.Contains(out, "home mode is disabled for codex") {
 		t.Fatalf("disabled codex must keep the real home with a warning: %s", out)
 	}
-	if !strings.Contains(out, "gemini has no stable home-isolation env var") {
-		t.Fatalf("gemini must be omitted with a warning: %s", out)
+	if !strings.Contains(out, "agy has no stable home-isolation env var") {
+		t.Fatalf("agy must be omitted with a warning: %s", out)
 	}
 	if strings.Contains(out, "[tasks.") || strings.Contains(out, "[hooks") {
 		t.Fatalf("home mode must render no auth hooks/tasks: %s", out)

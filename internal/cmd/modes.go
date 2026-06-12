@@ -146,17 +146,27 @@ func (app *App) pinnedStatus() *pinnedStatus {
 		return nil
 	}
 	mode := constants.ModeAuth
+	if kind := app.firstKaeManagedIsolation(); kind != "" {
+		mode = kind
+	}
+	return &pinnedStatus{Profile: profile, Mode: mode}
+}
+
+// firstKaeManagedIsolation returns the isolation kind (modeOverlay /
+// modeHome) the directory's environment redirects any tool into, or ""
+// when no isolation env var points into kae's data roots. A pin is a
+// single mode, so the first tool that resolves decides.
+func (app *App) firstKaeManagedIsolation() string {
 	for _, tool := range constants.Tools {
 		envVar := isolationEnvVar(tool)
 		if envVar == "" {
 			continue
 		}
 		if kind := app.kaeManagedHomeKind(app.Env.Getenv(envVar)); kind != "" {
-			mode = kind
-			break
+			return kind
 		}
 	}
-	return &pinnedStatus{Profile: profile, Mode: mode}
+	return ""
 }
 
 // pathWithin reports whether dir lies inside root (lexical; symlinks are
@@ -164,6 +174,51 @@ func (app *App) pinnedStatus() *pinnedStatus {
 func pathWithin(dir, root string) bool {
 	rel, err := filepath.Rel(root, filepath.Clean(dir))
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// pinnedIsolationGuard enforces the pinned-directory boundary for the
+// global-scope commands (use / add / sync). Inside a directory whose
+// environment redirects a tool into a kae-managed isolation home, a global
+// apply would split across three states — the isolated paths the adapters
+// resolve, the global credential stores, and the global state.json belief —
+// so it is refused with guidance. With --global the kae-managed
+// redirections are hidden instead, so the adapters resolve the real
+// (global) base paths; genuinely user-set custom homes stay honored.
+func (app *App) pinnedIsolationGuard(global bool) error {
+	if global {
+		app.applyGlobalScope()
+		return nil
+	}
+	if kind := app.firstKaeManagedIsolation(); kind != "" {
+		return errf(constants.ExitUnsupported,
+			"this directory is pinned (%s isolation): change its accounts with `kae pin <profile>`, or pass --global to act on the real home",
+			kind)
+	}
+	return nil
+}
+
+// applyGlobalScope hides kae-managed isolation env values from everything
+// resolved through app.Env. Idempotent: the guard runs once per command
+// path but may be reached twice (buildSync delegates to buildSwitch).
+func (app *App) applyGlobalScope() {
+	if app.globalScope {
+		return
+	}
+	app.globalScope = true
+	isolated := map[string]bool{}
+	for _, tool := range constants.Tools {
+		if envVar := isolationEnvVar(tool); envVar != "" {
+			isolated[envVar] = true
+		}
+	}
+	inner := app.Env.Getenv
+	app.Env.Getenv = func(key string) string {
+		value := inner(key)
+		if isolated[key] && app.isKaeManagedHome(value) {
+			return ""
+		}
+		return value
+	}
 }
 
 // overlayModeEnv prepares the overlay home and returns the child env

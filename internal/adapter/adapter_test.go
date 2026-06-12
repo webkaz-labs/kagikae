@@ -12,7 +12,6 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter/agy"
 	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
 	"github.com/webkaz-labs/kagikae/internal/adapter/codex"
-	"github.com/webkaz-labs/kagikae/internal/adapter/gemini"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
@@ -20,7 +19,6 @@ import (
 var (
 	claudeAdapter = claude.Claude{}
 	codexAdapter  = codex.Codex{}
-	geminiAdapter = gemini.Gemini{}
 	agyAdapter    = agy.Agy{}
 )
 
@@ -171,42 +169,6 @@ func TestCodexDetectMissingAuthWarnsAboutKeyring(t *testing.T) {
 	}
 	if len(info.Warnings) != 1 || !strings.Contains(info.Warnings[0], "keyring") {
 		t.Fatalf("expected keyring-possibility warning: %+v", info.Warnings)
-	}
-}
-
-func TestGeminiArtifactsAndDoctor(t *testing.T) {
-	env := testEnv(t, "linux", nil)
-	env.WarnAntigravityTransition = true
-	specs, err := geminiAdapter.Artifacts(context.Background(), env)
-	if err != nil || len(specs) != 2 {
-		t.Fatalf("unexpected: %+v %v", specs, err)
-	}
-	write(t, filepath.Join(env.Home, ".gemini", "oauth_creds.json"), `{"access_token":"x"}`)
-	write(t, filepath.Join(env.Home, ".gemini", "settings.json"),
-		`{"security":{"auth":{"selectedType":"oauth-personal"}}}`)
-	info, err := geminiAdapter.Detect(context.Background(), env)
-	if err != nil || !info.AuthPresent {
-		t.Fatalf("unexpected: %+v %v", info, err)
-	}
-	checks := geminiAdapter.Doctor(context.Background(), env)
-	var hasTransition, hasAuthType bool
-	for _, check := range checks {
-		if check.Code == constants.CheckTransitionNotice {
-			hasTransition = true
-		}
-		if check.Code == constants.CheckCredentialStore && strings.Contains(check.Message, "oauth-personal") {
-			hasAuthType = true
-		}
-	}
-	if !hasTransition || !hasAuthType {
-		t.Fatalf("missing doctor checks: %+v", checks)
-	}
-
-	env.WarnAntigravityTransition = false
-	for _, check := range geminiAdapter.Doctor(context.Background(), env) {
-		if check.Code == constants.CheckTransitionNotice {
-			t.Fatal("transition notice should be suppressed")
-		}
 	}
 }
 

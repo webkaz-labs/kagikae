@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -29,7 +30,7 @@ func CmdDoctor(ctx context.Context, args []string) int {
 	case 1:
 		toolFilter = positionals[0]
 		if !constants.IsTool(toolFilter) {
-			return usageError("unknown tool %q (tools: claude, codex, gemini, agy)", toolFilter)
+			return usageError("unknown tool %q (tools: %s)", toolFilter, strings.Join(constants.Tools, ", "))
 		}
 	default:
 		return usageError("usage: %s doctor [tool] [--json]", toolName)

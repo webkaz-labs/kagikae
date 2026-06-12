@@ -28,6 +28,10 @@ type App struct {
 	ConfigErr      error
 	Env            adapter.Env
 	Now            func() time.Time
+
+	// globalScope records that applyGlobalScope already wrapped Env.Getenv
+	// (set by --global; modes.go).
+	globalScope bool
 }
 
 // newApp resolves the live environment and loads config. A config problem is
@@ -52,11 +56,10 @@ func newApp(configPath string) *App {
 		ConfigWarnings: warnings,
 		ConfigErr:      cfgErr,
 		Env: adapter.Env{
-			GOOS:                      runtime.GOOS,
-			Home:                      home,
-			Getenv:                    os.Getenv,
-			LookPath:                  exec.LookPath,
-			WarnAntigravityTransition: cfg.WarnAntigravity(),
+			GOOS:     runtime.GOOS,
+			Home:     home,
+			Getenv:   os.Getenv,
+			LookPath: exec.LookPath,
 		},
 		Now: time.Now,
 	}
@@ -184,13 +187,15 @@ func finish(opts commonOpts, err error) int {
 	return exit
 }
 
-// commonOpts are flags shared by every structured command.
+// commonOpts are flags shared by every structured command. Global is set
+// only by the commands that register --global (use / add / sync).
 type commonOpts struct {
 	Format     string
 	DryRun     bool
 	Yes        bool
 	NoColor    bool
 	ConfigPath string
+	Global     bool
 }
 
 // parseCommon parses the flag portion of a command line (positionals are

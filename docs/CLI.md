@@ -6,26 +6,29 @@ forward compatibility and currently changes nothing.
 
 ## Commands
 
+One verb per scope: `use` switches now (global), `pin` binds a directory,
+`run` wraps one process.
+
 ```bash
 kae                                  # status summary (same as kae status)
 kae init                             # create config and data directories
 kae doctor [tool] [--json]           # environment / auth health checks
-kae capture <tool> <account>         # snapshot the live auth state into an account
-kae switch <tool> <account>          # apply a captured account to the live state
-kae switch all <profile>             # switch every enabled tool in a profile
-kae s <...>                          # alias of switch
-kae use <profile>                    # short form of `kae switch all` (alias: kae u)
+kae add <tool> <account> [--restore] # register an account: official login flow + snapshot
+kae add --no-login <tool> <account>  # snapshot the current live auth state instead
+kae use <profile>                    # switch every enabled tool now (alias: kae u)
+kae use <tool> <account>             # switch one tool now
+kae pin [<profile>] [--mode overlay|home|auth] [--auto]
+                                     # bind this directory (writes .mise.toml)
+kae unpin                            # remove the kagikae block from .mise.toml
 kae sync [--profile P] [--quiet]     # idempotent profile apply for hooks/scripts
 kae run [--mode M] <tool|all> <name> -- <cmd...>   # run cmd with an account applied
-kae login <tool> <account> [--restore]             # official login flow + capture
 kae env set <tool> <account> KEY=VALUE...          # store env-mode variables
 kae env set <tool> <account> KEY                   # value read from stdin
 kae env unset <tool> <account> [KEY...]            # remove variables / the profile
 kae env list [--json]                              # profiles (names only, no values)
-kae mise init [--profile P] [--mode auth|home] [--auto] [--write]
-                                     # project mise integration (KAE_PROFILE)
-kae current [--json]                 # active account per tool (short)
-kae accounts [--json]                # captured accounts, active markers
+kae mise init [--profile P] [--mode auth|home|overlay] [--auto] [--write]
+                                     # low-level form of pin (preview first)
+kae accounts [--json]                # registered accounts, active markers
 kae status [--json]                  # full status report
 kae backup list [--json]             # list switch backups
 kae rollback [--to <backup-id>]      # restore the most recent (or given) backup
@@ -36,20 +39,24 @@ kae help | --help | -h
 Tool names: `claude`, `codex`, `gemini`, `agy`. Account and profile names must
 match `[a-zA-Z0-9._-]+` (max 64 chars); anything else is a usage error.
 
+Removed in v0.5.0 (each still prints its replacement with exit `64` for one
+release): `switch`/`s` → `use`, `login` → `add`, `capture` →
+`add --no-login`, `current` → bare `kae`.
+
 ## Global Flags
 
 | Flag | Commands | Meaning |
 |------|----------|---------|
 | `--json` | structured commands | shorthand for `--format json` |
 | `--format text\|json` | structured commands | output format |
-| `--dry-run` | `capture`, `switch`, `rollback` | print planned actions, write nothing |
+| `--dry-run` | `add --no-login`, `use`, `rollback` | print planned actions, write nothing |
 | `--yes` | all | non-interactive confirmation (reserved; no prompts exist yet) |
 | `--no-color` | all | disable color in human text output |
 | `--config <path>` | all | explicit config file path (overrides XDG lookup) |
 | `--mode auth\|env\|home\|overlay` | `run` | switch mode (default `auth`) |
-| `--restore` | `login` | restore the previous login after capturing |
+| `--restore` / `--no-login` | `add` | restore the previous login after capturing (login flow only); snapshot without a login flow |
 | `--profile <name>` / `--write` | `mise init` | profile for `KAE_PROFILE`; write/update `.mise.toml` |
-| `--mode auth\|home` / `--auto` | `mise init` | rendered integration (default `auth`); `--auto` adds the enter hook (auth only) |
+| `--mode auth\|home\|overlay` / `--auto` | `mise init`, `pin` | rendered integration (`mise init` defaults to `auth`, `pin` to `overlay`); `--auto` adds the enter hook (auth only) |
 | `--profile <name>` / `--quiet` | `sync` | profile override; suppress the success report (for hooks) |
 | `--to <backup-id>` | `rollback` | backup to restore (default: most recent) |
 
@@ -70,25 +77,31 @@ guidance). Per mode:
 - `home`: points the tool at an isolated home
   (`CLAUDE_CONFIG_DIR` / `CODEX_HOME` under kae's data dir); gemini and agy
   have no stable isolation mechanism yet and are refused.
-- `overlay` (experimental, per-tool opt-in via
-  `tools.<tool>.overlay_mode_enabled`): like `home`, but shared items
-  (settings, skills, ...; see docs/ADAPTERS.md) are symlinked from the real
-  home while auth/session/history stay private.
+- `overlay` (default-enabled since v0.5.0; per-tool opt-out via
+  `tools.<tool>.overlay_mode_enabled = false`): like `home`, but shared
+  items (settings, skills, ...; see docs/ADAPTERS.md) are symlinked from the
+  real home while auth/session/history stay private.
 
-`kae login` backs up the live state (`reason: "login"`), launches the
-official login flow (`claude /login`, `codex login`, `gemini`), captures the
-result into the account, and makes it active — or restores the previous
-login with `--restore`. If the flow exits without changing the live auth
-state (login refused, window closed, already cancelled), kae refuses to
+## kae add Semantics
+
+`kae add <tool> <account>` backs up the live state (`reason: "login"`),
+launches the official login flow (`claude /login`, `codex login`, `gemini`),
+captures the result into the account, and makes it active — or restores the
+previous login with `--restore`. If the flow exits without changing the live
+auth state (login refused, window closed, already cancelled), kae refuses to
 capture and exits `11` (`auth_unchanged`) instead of recording a duplicate
-of the previous account; `kae capture` remains the explicit way to snapshot
-the current login under a new name. agy is not supported yet.
+of the previous account. The agy login flow is not supported yet.
+
+`kae add --no-login <tool> <account>` snapshots the current live auth state
+under the name without launching anything (it supports `--dry-run`; the
+login flow does not, and `--restore` requires the login flow).
 
 ## kae use and kae sync Semantics
 
-`kae use <profile>` (alias `kae u`) is the ergonomic short form of
-`kae switch all <profile>`: same behavior, JSON report shape, exit codes, and
-backups. It always applies, even when the recorded state already matches.
+`kae use` switches now, in global scope (alias `kae u`): one positional is a
+profile (every enabled tool it maps), two are a tool and an account. Same
+JSON report shape, exit codes, and backups as the removed `switch`. It
+always applies, even when the recorded state already matches.
 
 `kae sync [--profile P] [--quiet]` is the idempotent variant for hooks and
 scripts. Profile resolution order: `--profile`, then `$KAE_PROFILE`, then
@@ -96,35 +109,47 @@ config `default_profile` (none of them set is a usage error). When kae's
 recorded active state (state.json — kae's belief, not upstream truth, see
 docs/DATA-MODEL.md) already matches the profile, it exits `0` with
 `"changed": false`, taking no locks and writing no backups; external drift is
-neither verified nor repaired. Otherwise it performs a normal `switch all`
+neither verified nor repaired. Otherwise it performs a normal full apply
 and reports the per-tool results with `"changed": true`. `--quiet` suppresses
 the success report entirely (both formats); errors are still reported.
 
-## mise init Semantics
+## kae pin and mise init Semantics
 
-`kae mise init` renders (or with `--write` creates/replaces) the
-marker-delimited kagikae block of `.mise.toml` in the current directory.
+`kae pin [<profile>]` binds the current directory to a profile by writing
+the marker-delimited kagikae block of `.mise.toml` immediately (profile
+defaults to `default_profile`). `kae mise init` is the low-level form: same
+flags plus `--write`; without `--write` it previews the block on stdout.
+`kae unpin` removes only the block, leaving the rest of `.mise.toml` — and
+any overlay/home directories with their login state — intact.
 
-- `--mode auth` (default): `[env]` sets `KAE_PROFILE`, plus tasks
-  (`ai-use`, `ai-current`, per-tool `kae run` wrappers).
+- `--mode overlay` (`pin` default): renders `[env]` entries pointing
+  `CLAUDE_CONFIG_DIR` / `CODEX_HOME` at the per-account **overlay** homes
+  (docs/DATA-MODEL.md): auth and session state are private to the
+  directory while the shared items (settings, skills, ...;
+  docs/ADAPTERS.md Isolation) are symlinked from the real home. Writing
+  prepares the overlay dirs and links; re-running `pin` refreshes links
+  after new shared items appear in the real home (there is no on-entry
+  refresh — mise hooks stay experimental). Log in once inside the
+  directory per account; the login persists in the overlay.
+- `--mode home`: same `[env]` shape but pointing at the fully separate
+  home-mode directories — nothing is shared with the real home. `--write`
+  pre-creates the directories.
+- `--mode auth` (`mise init` default): `[env]` sets `KAE_PROFILE`, plus
+  tasks (`ai-use`, `ai-current`, per-tool `kae run` wrappers).
 - `--auto` (auth mode only): adds a `[hooks.enter]` entry running
   `kae sync --quiet`, auto-switching on directory entry. Opt-in with an
   inline caveat comment because auth mode mutates the global live state
   shared by every terminal. Firing requires `mise activate`, a trusted
   config, and `mise settings experimental=true` (mise hooks are experimental
-  as of mise 2026.6). Combining `--auto` with `--mode home` is a usage
-  error: home mode already takes effect on directory entry via `[env]`.
-- `--mode home`: renders `[env]` entries pointing `CLAUDE_CONFIG_DIR` /
-  `CODEX_HOME` at the per-account kae home directories (docs/DATA-MODEL.md)
-  instead of the auth-mode hook/tasks: directory-scoped switching of account
-  **and** config directory with no live mutation, safe across concurrent
-  terminals. The profile must be defined (its accounts pick the home paths);
-  `--write` pre-creates the home directories. Tools without a stable home
-  env var (gemini, agy) keep their real home and are noted with an inline
-  warning comment, as are tools with `home_mode_enabled = false`. The mode
-  is per-invocation (per directory), deliberately not a profile property:
-  the same profile stays usable for global auth switching and isolated
-  project homes.
+  as of mise 2026.6). Combining `--auto` with an isolation mode is a usage
+  error: overlay/home already take effect on directory entry via `[env]`.
+
+Isolation modes require the profile to be defined (its accounts pick the
+per-account paths). Tools without a stable home env var (gemini, agy) keep
+their real home and are noted with an inline warning comment, as are tools
+with the per-tool mode disabled in config. The mode is per-invocation (per
+directory), deliberately not a profile property: the same profile stays
+usable for global switching and isolated project homes.
 
 ## Exit Codes
 
@@ -152,9 +177,10 @@ because agents need to branch on switch failures; the token column appears as
 and `1` when at least one check has `status: "error"`. The specific codes above
 are reserved for operations where a single cause fails the command.
 
-`switch all` applies per-tool results independently; if any tool fails, the
-command exits with the first failing tool's code after attempting rollback of
-the tools already switched in the same transaction.
+A profile-wide `use` (and the applying path of `sync`) applies per-tool
+results independently; if any tool fails, the command exits with the first
+failing tool's code after attempting rollback of the tools already switched
+in the same transaction.
 
 ## Output Rules
 
@@ -243,7 +269,7 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
 `transition_notice`, `unsupported`.
 
-### `kae switch ... --json`
+### `kae use ... --json` (the switch report)
 
 ```json
 {
@@ -268,10 +294,10 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 }
 ```
 
-`capture --json` uses the same shape with `"captured": true` instead of
-`"applied"` and no `backup_id`. With `--dry-run`, `ok` reflects whether the
-plan is valid and `actions` lists what would change. `kae use` emits exactly
-this switch report.
+`profile` is `null` for the tool+account form. `kae add --no-login --json`
+uses the same shape with `"captured": true` instead of `"applied"` and no
+`backup_id`. With `--dry-run`, `ok` reflects whether the plan is valid and
+`actions` lists what would change.
 
 ### `kae sync --json`
 
@@ -288,7 +314,7 @@ The switch report plus a `changed` marker (no `dry_run`):
 ```
 
 When the profile is applied, `changed` is `true` and `backup_id` / `results`
-carry the same per-tool shape as `kae switch`. With `--quiet`, the success
+carry the same per-tool shape as `kae use`. With `--quiet`, the success
 report is suppressed entirely.
 
 ### `kae backup list --json`
@@ -345,7 +371,7 @@ Template-standard shape: `schema_version`, `tool`, `version`, `major`,
 
 - Summary first: active profile, then a per-tool table
   (`Tool / Account / Driver / Auth / Notes`).
-- `switch --dry-run` prints a `Would switch` plan grouped per tool with the
+- `use --dry-run` prints a `Would switch` plan grouped per tool with the
   patched targets and an explicit `preserved` reminder line.
 - Color is semantic only (ok green, warn yellow, error red) and disabled for
   non-TTY or `--no-color` / `NO_COLOR`.

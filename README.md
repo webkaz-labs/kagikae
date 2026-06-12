@@ -17,27 +17,51 @@ work Google account  <->  personal Google account (Gemini)
 
 ## Quick Start
 
+One verb per scope: **`use`** switches now (global), **`pin`** binds a
+directory, **`run`** wraps one process.
+
 ```bash
 kae init                       # create config
 kae doctor                     # check environment and live auth
 
-# while logged in to each account with the official CLI:
-kae capture claude work
-kae capture claude personal
-kae capture codex work
-kae capture gemini work
+# register accounts (official login flow + snapshot; or --no-login to
+# snapshot the login you are already on):
+kae add claude work
+kae add claude personal
+kae add --no-login codex work
 
-# daily use:
+# switch now (global):
 kae use work                   # every tool in the "work" profile (alias: kae u)
-kae switch claude personal     # one tool
-kae s personal                 # alias of switch
+kae use claude personal        # one tool
 
-kae current                    # what is active
+kae                            # what is active
 kae rollback                   # undo the last switch
 ```
 
-`kae switch` backs up the live state before every write and `kae rollback`
+`kae use` backs up the live state before every write and `kae rollback`
 restores it. `--dry-run` previews exactly what would be patched.
+
+## Pin a Directory
+
+```bash
+cd ~/code/client-a
+kae pin clientA                # this directory now uses the clientA profile
+```
+
+Inside the pinned directory (with [mise](https://mise.jdx.dev) activated)
+claude and codex run as the `clientA` accounts; everywhere else keeps the
+global login. The default **overlay** mode keeps settings, skills, and
+memory shared with your real home while auth and session state stay private
+— log in once inside the directory per account, and it persists. Variants:
+
+```bash
+kae pin clientA --mode home    # fully separate tool homes (nothing shared)
+kae pin work --mode auth --auto  # global auto-switch on entry (opt-in;
+                               # needs mise activate + trusted config +
+                               # `mise settings experimental=true`)
+kae unpin                      # remove the binding (.mise.toml block only)
+kae mise init --profile clientA  # preview what pin writes
+```
 
 ## Beyond Switching
 
@@ -46,34 +70,16 @@ restores it. `--dry-run` previews exactly what would be patched.
 # (refreshed OAuth tokens are captured back into the account snapshot):
 kae run codex work -- codex exec "go test ./..."
 
-# add a new account: official login flow + capture in one step
-kae login claude work            # --restore puts the old login back
-
 # API-key profiles, injected into the child process only:
 kae env set claude ci ANTHROPIC_API_KEY    # value read from stdin
 kae run --mode env claude ci -- claude -p "review this"
 
-# fully isolated tool homes (concurrent accounts, per-client separation):
+# one-off isolated homes (the per-process form of pin's modes):
 kae run --mode home claude clientA -- claude
-
-# per-project mise tasks (KAE_PROFILE + ai-use/claude/codex/gemini tasks):
-kae mise init --profile work --write
-
-# opt-in: auto-switch on directory entry (needs `mise activate`, a trusted
-# config, and `mise settings experimental=true`; auth mode switches the
-# global live state for every terminal):
-kae mise init --profile work --auto --write
-
-# per-directory isolated tool homes instead: account + config dir switch
-# inside the directory only, no global state touched:
-kae mise init --profile clientA --mode home --write
 
 # idempotent apply for your own hooks/scripts (no-op when already active):
 kae sync --quiet
 ```
-
-`--mode overlay` (share skills/settings, separate auth/session) exists as an
-experimental per-tool opt-in — see [docs/CLI.md](docs/CLI.md).
 
 ## Safety Model
 

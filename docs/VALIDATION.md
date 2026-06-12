@@ -38,9 +38,9 @@ Linux only — see the macOS keychain warning above):
 
 ```bash
 # seed ~/.claude/.credentials.json + ~/.claude.json fixtures, then:
-/tmp/kae capture claude work
-/tmp/kae switch claude work --dry-run
-/tmp/kae switch claude work --json
+/tmp/kae add --no-login claude work
+/tmp/kae use claude work --dry-run
+/tmp/kae use claude work --json
 /tmp/kae backup list --json
 /tmp/kae rollback
 
@@ -52,14 +52,25 @@ echo sk-test | /tmp/kae env set claude ci ANTHROPIC_API_KEY
 /tmp/kae run --mode home claude a -- /usr/bin/true
 /tmp/kae mise init --profile work                  # preview, no write
 
-# v0.4.0 surfaces (on macOS use codex-only profiles — see the keychain
-# warning above; codex auth.json is file-based and fully isolated):
-/tmp/kae use work --json                           # = switch all work
+# v0.4.0 surfaces (on macOS use codex-only profiles for live switching —
+# see the keychain warning above; codex auth.json is file-based):
+/tmp/kae use work --json
 /tmp/kae sync --profile work --json                # re-run: "changed": false
 KAE_PROFILE=personal /tmp/kae sync --json          # env resolution
 /tmp/kae sync --quiet                              # prints nothing on success
 /tmp/kae mise init --profile work --auto           # preview: [hooks.enter]
 /tmp/kae mise init --profile work --mode home      # preview: [env] tool homes
+
+# v0.5.0 surfaces (pin/overlay never mutate live state, so claude is safe
+# to include in the pinned profile even on macOS):
+/tmp/kae add --no-login codex work --json          # old capture shape
+/tmp/kae use codex work --json                     # tool+account form
+/tmp/kae pin clientA                               # writes .mise.toml (overlay)
+#   assert: overlay env entries; shared-item symlinks under
+#   $XDG_DATA_HOME/kagikae/overlays/<tool>/<account>; re-running pin links
+#   items added to the real home afterwards
+/tmp/kae unpin                                     # removes only the block
+/tmp/kae switch x y; echo $?                       # 64 + replacement pointer
 ```
 
 Enter-hook firing (`mise init --auto --write`) needs a live mise:
@@ -79,9 +90,9 @@ keychain entries are created.
 Manual, on macOS, with real logged-in accounts and a fresh backup of
 `~/.claude.json`:
 
-1. `kae capture claude <current-account>`
-2. log in to the other account with the official CLI, `kae capture` it
-3. `kae switch claude <first>` / back, verifying upstream CLI identity each
+1. `kae add --no-login claude <current-account>`
+2. log in to the other account with the official CLI, `kae add --no-login` it
+3. `kae use claude <first>` / back, verifying upstream CLI identity each
    time and `git`-diffing `~/.claude.json` for non-allowlist drift
 4. `kae rollback` and verify identity returns
 

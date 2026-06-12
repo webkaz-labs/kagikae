@@ -366,15 +366,6 @@ func TestStatusAccountsCurrentJSON(t *testing.T) {
 		t.Fatalf("accounts must encode []: %s", out)
 	}
 
-	code, out = captureStdout(t, func() int { return runCurrent(ctx, app, jsonOpts) })
-	mustExit(t, constants.ExitOK, code, out)
-	var current map[string]any
-	if err := json.Unmarshal([]byte(out), &current); err != nil {
-		t.Fatal(err)
-	}
-	if current["schema_version"].(float64) != 1 {
-		t.Fatalf("unexpected current: %s", out)
-	}
 }
 
 func TestDoctorReportsConfigError(t *testing.T) {

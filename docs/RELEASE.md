@@ -91,5 +91,6 @@ replacement named in the message for one release.
 1. Acceptance criteria green; `docs/VALIDATION.md` checklist done (smoke
    uses codex-only profiles on macOS — keychain warning).
 2. README examples verified against the built binary.
-3. Bump `toolVersion` (and its test), tag `v0.5.0`, GitHub release with
-   breaking-changes table in the notes.
+3. Tag `v0.5.0`, GitHub release with the breaking-changes table in the
+   notes. (`toolVersion` is already bumped: the removed-command pointers
+   name v0.5.0, so the binary must agree from the first dev build.)

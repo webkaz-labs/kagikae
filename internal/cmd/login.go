@@ -31,22 +31,38 @@ func loginCommand(tool string) []string {
 	}
 }
 
-// CmdLogin backs up the current auth state, launches the official login
+// CmdAdd registers an account:
+//
+//	kae add <tool> <account> [--restore]      official login flow + snapshot
+//	kae add --no-login <tool> <account>       snapshot the current live state
+//
+// The default backs up the current auth state, launches the official login
 // flow, captures the result into the account, and (with --restore) puts the
-// previous login back.
-func CmdLogin(ctx context.Context, args []string) int {
+// previous login back. --no-login skips the flow and snapshots whatever is
+// live now (it supports --dry-run; the login flow does not).
+func CmdAdd(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	restore := false
-	opts, ok := parseCommon("login", flags, false, func(fs *flag.FlagSet) {
-		fs.BoolVar(&restore, "restore", false, "restore the previous login after capturing")
+	restore, noLogin := false, false
+	opts, ok := parseCommon("add", flags, true, func(fs *flag.FlagSet) {
+		fs.BoolVar(&restore, "restore", false, "restore the previous login after capturing (login flow only)")
+		fs.BoolVar(&noLogin, "no-login", false, "snapshot the current live auth state without launching a login flow")
 	})
 	if !ok {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 2 {
-		return usageError("usage: %s login <tool> <account> [--restore]", toolName)
+		return usageError("usage: %s add [--no-login] <tool> <account> [--restore]", toolName)
+	}
+	if noLogin && restore {
+		return usageError("--restore needs the login flow; it cannot be combined with --no-login")
+	}
+	if !noLogin && opts.DryRun {
+		return usageError("--dry-run applies to --no-login snapshots only")
 	}
 	app := newApp(opts.ConfigPath)
+	if noLogin {
+		return runCapture(ctx, app, opts, positionals[0], positionals[1])
+	}
 	return runLogin(ctx, app, opts, positionals[0], positionals[1], restore)
 }
 
@@ -60,7 +76,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, accountName 
 	command := loginCommand(tool)
 	if command == nil {
 		return finish(opts, errf(constants.ExitUnsupported,
-			"kae login does not support %s yet (see docs/ROADMAP.md)", tool))
+			"the kae add login flow does not support %s yet (see docs/ROADMAP.md)", tool))
 	}
 	plan, err := app.planTool(ctx, tool, accountName)
 	if err != nil {
@@ -99,7 +115,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, accountName 
 		// The live state is still the pre-login state, so there is nothing
 		// to capture and (with --restore) nothing to put back.
 		return finish(opts, errf(constants.ExitAuthUnchanged,
-			"%s login flow exited without changing auth; nothing captured (to snapshot the current login as %s/%s, run: kae capture %s %s)",
+			"%s login flow exited without changing auth; nothing captured (to snapshot the current login as %s/%s, run: kae add --no-login %s %s)",
 			tool, tool, accountName, tool, accountName))
 	}
 

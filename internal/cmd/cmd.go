@@ -22,7 +22,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.4.0"
+	toolVersion = "v0.5.0"
 )
 
 // Root dispatches the command line.
@@ -46,24 +46,32 @@ func Root(args []string) int {
 		return CmdInit(ctx, args[1:])
 	case "doctor":
 		return CmdDoctor(ctx, args[1:])
-	case "capture":
-		return CmdCapture(ctx, args[1:])
-	case "switch", "s":
-		return CmdSwitch(ctx, args[1:])
+	case "add":
+		return CmdAdd(ctx, args[1:])
 	case "use", "u":
 		return CmdUse(ctx, args[1:])
+	case "pin":
+		return CmdPin(ctx, args[1:])
+	case "unpin":
+		return CmdUnpin(ctx, args[1:])
 	case "sync":
 		return CmdSync(ctx, args[1:])
 	case "run":
 		return CmdRun(ctx, args[1:])
-	case "login":
-		return CmdLogin(ctx, args[1:])
 	case "env":
 		return CmdEnv(ctx, args[1:])
 	case "mise":
 		return CmdMise(ctx, args[1:])
+	// Removed in v0.5.0 (docs/RELEASE.md Breaking Changes); the pointers
+	// stay for one release.
+	case "switch", "s":
+		return removedCommand(args[0], "kae use <profile> | kae use <tool> <account>")
+	case "login":
+		return removedCommand(args[0], "kae add <tool> <account>")
+	case "capture":
+		return removedCommand(args[0], "kae add --no-login <tool> <account>")
 	case "current":
-		return CmdCurrent(ctx, args[1:])
+		return removedCommand(args[0], "kae (the bare status summary)")
 	case "accounts":
 		return CmdAccounts(ctx, args[1:])
 	case "status":
@@ -171,25 +179,30 @@ func parseToolVersion(version string) (int, int, int) {
 func printHelp() {
 	fmt.Println(`kae - switch AI coding CLI subscription accounts (kagikae)
 
+One verb per scope: use = switch now (global), pin = bind this directory,
+run = one process.
+
 Usage:
   kae                                  status summary
   kae init                             create config and directories
   kae doctor [tool] [--json]           environment / auth health checks
-  kae capture <tool> <account>         snapshot the live auth state
-  kae switch <tool> <account>          apply a captured account
-  kae switch all <profile>             switch every tool in a profile
-  kae s <...>                          alias of switch
-  kae use <profile>                    short form of switch all (alias: kae u)
-  kae sync [--profile P] [--quiet]     idempotent profile apply for hooks;
-                                       no-op when already recorded as active
+  kae add <tool> <account>             register an account (official login
+                                       flow + snapshot; --no-login snapshots
+                                       the current login instead)
+  kae use <profile>                    switch every tool now (alias: kae u)
+  kae use <tool> <account>             switch one tool now
+  kae pin [<profile>]                  bind this directory to a profile;
+                                       default mode overlay = settings and
+                                       skills shared, auth private
+  kae unpin                            remove the binding from .mise.toml
   kae run [--mode M] <t|all> <n> -- C  run C with an account applied; auth
                                        mode restores the previous login after
-  kae login <tool> <account>           official login flow + capture
+  kae sync [--profile P] [--quiet]     idempotent profile apply for hooks;
+                                       no-op when already recorded as active
   kae env set|unset|list ...           env-mode profiles (API keys)
-  kae mise init [--profile P] [--mode auth|home] [--auto] [--write]
-                                       project mise integration (KAE_PROFILE)
-  kae current [--json]                 active account per tool
-  kae accounts [--json]                captured accounts
+  kae mise init [--profile P] [--mode auth|home|overlay] [--auto] [--write]
+                                       low-level form of pin (preview first)
+  kae accounts [--json]                registered accounts
   kae status [--json]                  full status report
   kae backup list [--json]             list switch backups
   kae rollback [--to <backup-id>]      restore a backup
@@ -199,10 +212,16 @@ Usage:
 Flags (structured commands):
   --json                shorthand for --format json
   --format text|json    output format
-  --dry-run             preview without writing (capture/switch/rollback)
+  --dry-run             preview without writing (add --no-login/use/rollback)
   --yes                 non-interactive confirmation (reserved)
   --no-color            disable color
   --config <path>       explicit config file path
 
 Tools: claude, codex, gemini, agy`)
+}
+
+// removedCommand reports a command removed in v0.5.0 and names its
+// replacement (kept for one release; docs/RELEASE.md Breaking Changes).
+func removedCommand(old, replacement string) int {
+	return usageError("kae %s was removed in v0.5.0; use: %s", old, replacement)
 }

@@ -352,8 +352,8 @@ func TestStatusAccountsCurrentJSON(t *testing.T) {
 		t.Fatalf("unexpected status: %s", out)
 	}
 	tools := status["tools"].([]any)
-	if len(tools) != 3 {
-		t.Fatalf("expected 3 tools: %s", out)
+	if len(tools) != len(constants.Tools) {
+		t.Fatalf("expected %d tools: %s", len(constants.Tools), out)
 	}
 	first := tools[0].(map[string]any)
 	if first["tool"] != "claude" || first["account"] != nil || first["accounts"] == nil {

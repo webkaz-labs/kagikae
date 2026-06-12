@@ -23,6 +23,8 @@ func loginCommand(tool string) []string {
 		return []string{"claude", "/login"}
 	case constants.ToolCodex:
 		return []string{"codex", "login"}
+	case constants.ToolOpencode:
+		return []string{"opencode", "auth", "login"}
 	default:
 		return nil
 	}

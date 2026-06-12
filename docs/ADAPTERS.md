@@ -135,6 +135,45 @@ is not supported. `ANTIGRAVITY_API_KEY` can be handled through env profiles
 plugins / MCP / hooks / subagents
 ```
 
+## OpenCode
+
+### Live auth locations
+
+OpenCode keeps credentials in `$XDG_DATA_HOME/opencode/auth.json` (default
+`~/.local/share/opencode/auth.json`, mode `0600`), one top-level key per
+provider. The ChatGPT-subscription login (native since the OpenAI
+partnership; the Claude subscription login was removed upstream in 2026-01)
+is the `openai` key: `{type, refresh, access, expires, accountId}`.
+
+This file is **mixed state**: sibling keys are independent provider
+credentials (API keys added via `opencode auth login`), which belong to env
+mode and must survive an account switch. It is patched via JSON Pointer
+only, never replaced.
+
+If `XDG_DATA_HOME` is already set in the environment, the adapter uses it as
+the live base path. `auth` mode never sets or changes it.
+
+### Driver
+
+| Driver | Platform | Switched artifacts |
+|--------|----------|--------------------|
+| `opencode-file-patch` | all | `auth.json` pointer `/openai` |
+
+An `auth.json` that does not parse as JSON fails the structure guard on
+read, and one whose root is not a JSON object is refused on write (both
+exit 10) — the file is never replaced wholesale. An `auth.json` without an
+`openai` entry is "not logged in" for kae: `capture` fails with
+`auth_missing` (exit 3), and `doctor` / `status` explain that only the
+ChatGPT subscription login is switched.
+
+### Preserved
+
+```text
+~/.local/share/opencode/auth.json -> all keys except /openai
+~/.config/opencode/               -> settings, skills, plugins
+~/.local/share/opencode/storage/  -> projects, sessions
+```
+
 ## Isolation (home / overlay Modes)
 
 `kae run --mode home|overlay` points a tool at an alternate home directory;
@@ -146,6 +185,7 @@ mise `[env]` entries scoped to a project directory (docs/CLI.md):
 | claude | `CLAUDE_CONFIG_DIR` | supported | supported (pin default) |
 | codex | `CODEX_HOME` | supported | supported (pin default) |
 | agy | none stable | refused | refused |
+| opencode | none stable | refused | refused |
 
 "Refused" means exit `5` from `kae run`; `kae pin` / `kae mise init` instead
 omit those tools with an inline warning comment (they keep the real home).
@@ -189,6 +229,12 @@ artifacts are refused at config load — docs/DATA-MODEL.md).
 | claude | `claude /login` |
 | codex | `codex login` |
 | agy | unsupported |
+| opencode | `opencode auth login` |
+
+The opencode flow is a provider picker; picking a provider other than the
+OpenAI subscription leaves `/openai` unchanged, so `kae add` correctly
+refuses with `auth_unchanged` (exit 11) — kae switches only the
+subscription login.
 
 ## Adding A New Adapter
 
@@ -204,17 +250,7 @@ artifacts are refused at config load — docs/DATA-MODEL.md).
 ## v0.6.0 Adapter Discovery Notes (pre-implementation)
 
 Real-machine findings (macOS, 2026-06-13); these become normative sections
-above when each adapter lands.
-
-### opencode
-
-- Credentials: `~/.local/share/opencode/auth.json` (mode `0600`), one key
-  per provider; the ChatGPT-subscription login is `/openai` with
-  `{type, refresh, access, expires, accountId}`. File-based — the codex
-  auth.json pattern applies (pointer `/openai` as the structure guard).
-- Preserved: everything under `~/.config/opencode/` (settings, skills,
-  plugins) and `~/.local/share/opencode/storage/` (projects, sessions).
-- Login: `opencode auth login` (provider picker; no non-interactive form).
+above when each adapter lands (opencode landed in v0.6.0 — see its section).
 
 ### cursor
 

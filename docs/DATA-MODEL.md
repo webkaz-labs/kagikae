@@ -44,6 +44,9 @@ enabled = true
 [tools.agy]
 enabled = true
 
+[tools.opencode]
+enabled = true
+
 # Per tool (any [tools.<tool>] section); both default to true and gate the
 # kae run isolation modes and the pin / mise init renderings:
 # home_mode_enabled = true

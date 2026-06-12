@@ -15,6 +15,7 @@ kagikae/
       claude/
       codex/
       agy/
+      opencode/
     artifact/             # artifact primitives: json-pointer / file / keychain
     keychain/             # security-CLI access to upstream tools' keychain items
     config/               # TOML config parse/validate/defaults

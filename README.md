@@ -1,7 +1,8 @@
 # kagikae
 
 `kae` switches **subscription accounts** for AI coding CLIs — Claude Code,
-Codex CLI, and Antigravity CLI — without touching your working environment.
+Codex CLI, Antigravity CLI, and OpenCode — without touching your working
+environment.
 
 Switching `~/.claude` or `~/.codex` wholesale also switches your skills,
 hooks, memory, MCP servers, project trust, and session history. `kae` doesn't.
@@ -12,6 +13,7 @@ allowlist) and preserves everything else:
 work Claude Max  <->  personal Claude Pro
 company ChatGPT Team Codex  <->  personal ChatGPT Plus Codex
 work Google account  <->  personal Google account (Antigravity)
+work ChatGPT  <->  personal ChatGPT (OpenCode)
 ```
 
 ## Quick Start

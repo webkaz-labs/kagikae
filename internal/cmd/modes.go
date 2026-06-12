@@ -94,8 +94,9 @@ func overlaySharedItems(tool string) []string {
 // overlay share from itself — self-referential symlinks, ELOOP at runtime
 // (found in v0.5.0 real-machine acceptance).
 func (app *App) realToolHome(tool string) string {
+	envVar := isolationEnvVar(tool)
 	envHome := func(def string) string {
-		dir := app.Env.Getenv(isolationEnvVar(tool))
+		dir := app.Env.Getenv(envVar)
 		if dir != "" && !app.isKaeManagedHome(dir) {
 			return dir
 		}

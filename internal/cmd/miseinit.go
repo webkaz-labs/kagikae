@@ -113,6 +113,7 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 		return finish(opts, err)
 	}
 	fmt.Printf("Updated .mise.toml: profile %s, mode %s\n", profileName, mode)
+	fmt.Println("Next: mise trust   (mise refuses untrusted configs; its error until then is expected)")
 	return constants.ExitOK
 }
 

@@ -46,6 +46,8 @@ restores it. `--dry-run` previews exactly what would be patched.
 ```bash
 cd ~/code/client-a
 kae pin clientA                # this directory now uses the clientA profile
+mise trust                     # mise refuses untrusted configs; its error
+                               # between pin and trust is expected
 ```
 
 Inside the pinned directory (with [mise](https://mise.jdx.dev) activated)

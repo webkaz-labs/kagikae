@@ -9,6 +9,11 @@ it is hardening and platform coverage, ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 
+- **TUI**: an interactive mode (profiles/accounts browser, pin status,
+  config maintenance) on top of the stable JSON surface, so daily
+  switching does not require remembering flags. Candidate once the
+  v0.5.0 command system has settled.
+
 - **Global commands inside pinned directories**: with a pinned `.mise.toml`
   exporting `CLAUDE_CONFIG_DIR`/`CODEX_HOME`, the adapters treat the
   overlay/home as the live base path, so `kae use` / `kae add` run there

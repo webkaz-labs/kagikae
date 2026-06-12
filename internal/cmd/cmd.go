@@ -44,6 +44,8 @@ func Root(args []string) int {
 	switch args[0] {
 	case "init":
 		return CmdInit(ctx, args[1:])
+	case "edit":
+		return CmdEdit(ctx, args[1:])
 	case "doctor":
 		return CmdDoctor(ctx, args[1:])
 	case "add":
@@ -183,8 +185,10 @@ One verb per scope: use = switch now (global), pin = bind this directory,
 run = one process.
 
 Usage:
-  kae                                  status summary
+  kae                                  status summary: this directory's pin,
+                                       global profile, tools, profiles
   kae init                             create config and directories
+  kae edit                             open the config in $VISUAL / $EDITOR
   kae doctor [tool] [--json]           environment / auth health checks
   kae add <tool> <account>             register an account (official login
                                        flow + snapshot; --no-login snapshots

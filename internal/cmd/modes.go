@@ -72,19 +72,23 @@ func (app *App) prepareHome(tool, accountName string) (string, error) {
 }
 
 // overlaySharedItems lists the real-home entries shared (symlinked) into an
-// overlay home. Everything else, notably credentials, sessions, history, and
-// the mixed-state identity file, stays private to the overlay.
+// overlay home: the built-in allowlist plus the user-configured
+// tools.<tool>.overlay_extra_shared. Everything else, notably credentials,
+// sessions, history, and the mixed-state identity file, stays private to
+// the overlay — unknown new upstream files must fail safe (private).
 // docs/ADAPTERS.md "Isolation" is the normative source for this table (as
 // for isolationEnvVar and realToolHome); update both together.
-func overlaySharedItems(tool string) []string {
+func (app *App) overlaySharedItems(tool string) []string {
+	var base []string
 	switch tool {
 	case constants.ToolClaude:
-		return []string{"settings.json", "CLAUDE.md", "skills", "agents", "commands", "plugins"}
+		base = []string{"settings.json", "CLAUDE.md", "skills", "agents", "commands", "plugins"}
 	case constants.ToolCodex:
-		return []string{"config.toml", "AGENTS.md", "hooks.json", "prompts", "skills"}
+		base = []string{"config.toml", "AGENTS.md", "hooks.json", "prompts", "skills"}
 	default:
 		return nil
 	}
+	return append(base, app.Config.OverlayExtraShared(tool)...)
 }
 
 // realToolHome resolves the tool's live home directory for overlay sharing.
@@ -115,13 +119,14 @@ func (app *App) realToolHome(tool string) string {
 // isKaeManagedHome reports whether dir lies inside kae's home-mode or
 // overlay data roots.
 func (app *App) isKaeManagedHome(dir string) bool {
-	for _, root := range []string{app.Paths.HomesDir(), app.Paths.OverlaysDir()} {
-		rel, err := filepath.Rel(root, filepath.Clean(dir))
-		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return true
-		}
-	}
-	return false
+	return pathWithin(dir, app.Paths.HomesDir()) || pathWithin(dir, app.Paths.OverlaysDir())
+}
+
+// pathWithin reports whether dir lies inside root (lexical; symlinks are
+// not resolved).
+func pathWithin(dir, root string) bool {
+	rel, err := filepath.Rel(root, filepath.Clean(dir))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // overlayModeEnv prepares the overlay home and returns the child env
@@ -166,7 +171,7 @@ func (app *App) prepareOverlay(tool, accountName string) (string, error) {
 			"the real %s home resolves to the overlay itself; unset %s and retry",
 			tool, isolationEnvVar(tool))
 	}
-	for _, item := range overlaySharedItems(tool) {
+	for _, item := range app.overlaySharedItems(tool) {
 		source := filepath.Join(realHome, item)
 		target := filepath.Join(overlayDir, item)
 		if _, err := os.Stat(source); err != nil {

@@ -191,6 +191,14 @@ omit those tools with an inline warning comment (they keep the real home).
 `tools.<tool>.home_mode_enabled = false` / `overlay_mode_enabled = false`
 (both default true) disable all of these surfaces per tool.
 
+When resolving the **real** home for overlay sharing, an isolation env var
+that points inside kae's own homes/overlays data dirs is ignored (that is
+kae's own redirection — e.g. exported by a pinned directory's `.mise.toml`).
+Honoring it would make an overlay share from itself and create symlink
+cycles (ELOOP); re-running `kae pin` repairs any such stale links. The auth
+adapters still honor the env var as the live base path — the semantics of
+global commands run inside a pinned directory are a ROADMAP.md item.
+
 Overlay shared items (symlinked from the real home; everything else —
 credentials, sessions, history, and the mixed-state `.claude.json` — stays
 private to the overlay):

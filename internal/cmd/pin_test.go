@@ -117,6 +117,43 @@ func TestUnpinRemovesOnlyTheBlock(t *testing.T) {
 	}
 }
 
+// TestPrepareOverlayInsidePinnedDir reproduces the v0.5.0 acceptance bug:
+// inside a pinned directory the isolation env var points at the overlay
+// itself, and a re-run used to create self-referential symlinks (ELOOP).
+// The env var must be ignored as the "real" home, and an existing self-loop
+// must be repaired on re-run.
+func TestPrepareOverlayInsidePinnedDir(t *testing.T) {
+	app := testApp(t, nil)
+	overlayDir := app.Paths.OverlayDir(constants.ToolClaude, "work")
+	app.Env.Getenv = func(key string) string {
+		if key == "CLAUDE_CONFIG_DIR" {
+			return overlayDir
+		}
+		return ""
+	}
+	realSettings := filepath.Join(app.Env.Home, ".claude", "settings.json")
+	writeFile(t, realSettings, `{"theme":"dark"}`)
+
+	// Seed the broken state a pre-fix re-run left behind: a self-loop link.
+	if err := os.MkdirAll(overlayDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	loop := filepath.Join(overlayDir, "settings.json")
+	if err := os.Symlink(loop, loop); err != nil {
+		t.Fatal(err)
+	}
+
+	if home := app.realToolHome(constants.ToolClaude); home != filepath.Join(app.Env.Home, ".claude") {
+		t.Fatalf("kae-managed env dir must be ignored as the real home, got %q", home)
+	}
+	if _, err := app.prepareOverlay(constants.ToolClaude, "work"); err != nil {
+		t.Fatalf("prepareOverlay must repair a self-loop: %v", err)
+	}
+	if link, err := os.Readlink(loop); err != nil || link != realSettings {
+		t.Fatalf("self-loop not repaired: %q %v", link, err)
+	}
+}
+
 func TestPinAndUnpinUsage(t *testing.T) {
 	// Argument validation happens before any environment access.
 	if code := CmdPin(context.Background(), []string{"a", "b"}); code != constants.ExitUsage {

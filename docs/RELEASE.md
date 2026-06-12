@@ -1,112 +1,104 @@
-# Release Target: kae v0.5.0
+# Release Target: kae v0.6.0
 
-A memorable scope-verb command system and shared-config directory isolation.
-One verb per scope: `use` switches now (global), `pin` binds a directory,
-`run` wraps one process. Directory isolation defaults to **overlay** mode —
-settings, skills, and memory stay shared with the real home while auth and
-session state are private — because separate logins per directory are wanted
-far more often than separate configs. Pre-stable: this release removes
-commands (see Breaking Changes).
+Tool coverage and pin hardening: three new adapters (copilot, cursor,
+opencode), the gemini → agy transition, and closing the pinned-directory
+semantics gap. Pre-stable: this release removes the gemini adapter (see
+Breaking Changes).
 
-Previous baseline: v0.4.0 (project-scoped switching: `use`/`u`, `sync`,
-`mise init --auto` / `--mode home`; see git tag v0.4.0).
+Previous baseline: v0.5.0 (the use/pin/run command system and overlay
+isolation; see git tag v0.5.0).
 
 ## Scope
 
-- **`kae pin [<profile>]` / `kae unpin`** — bind/unbind the current
-  directory. `pin` writes the kagikae block into `.mise.toml` (creating the
-  file if missing) in **overlay** mode by default, prepares the overlay
-  homes (private dirs + shared-item symlinks, docs/ADAPTERS.md Isolation),
-  and re-running `pin` refreshes stale symlinks — no enter-hook dependency.
-  Profile defaults to `default_profile`. `--mode home|auth` and `--auto`
-  (auth only) select the v0.4.0 renderings. `unpin` removes only the
-  marker-delimited block and leaves the rest of `.mise.toml` intact.
-  `kae mise init` remains as the low-level form (`--write`-less preview,
-  explicit flags); `pin` is sugar over it and writes immediately.
-- **overlay rendering for mise** — `kae mise init --mode overlay` renders
-  `[env]` entries pointing `CLAUDE_CONFIG_DIR` / `CODEX_HOME` at the
-  per-account overlay homes. Symlink maintenance moves into a shared helper
-  used by `kae run --mode overlay`, `mise init --mode overlay --write`, and
-  `pin`; it runs at write/pin time, not on directory entry. Tools without a
-  stable home env var (gemini, agy) keep the real home with an inline
-  warning, as in home mode.
-- **overlay promotion** — `overlay_mode_enabled` flips to default **on**
-  (the per-tool opt-out remains). Gate: the flip ships only after the
-  real-machine acceptance below passes; if overlay fails acceptance,
-  `pin` falls back to `--mode home` as default and the flip is reverted.
-- **`kae use <tool> <account>`** — `use` absorbs single-tool switch.
-- **`kae add <tool> <account> [--no-login] [--restore]`** — one verb to
-  register an account: default runs the official login flow then captures
-  (old `login`); `--no-login` snapshots the current live state (old
-  `capture`). Reports and exit codes carry over unchanged (including
-  exit `11` auth_unchanged and `--restore`).
-- **Removals** — `switch` / `s` (use `use`), `login` and `capture` (use
-  `add`), `current` (bare `kae` already shows the same summary).
-- **Docs** — README, CLI.md, and DESIGN.md rewritten around the
-  use / pin / run triad; ADAPTERS.md overlay section gains the mise/pin
-  surface; ROADMAP pointer updated.
-- **`kae edit`** — open the config in `$VISUAL` / `$EDITOR` (fallback `vi`)
-  and re-validate it afterwards, reporting problems with exit `2`. A
-  missing config points at `kae init`.
-- **bare `kae` redesign** (real-machine feedback) — answer "where am I and
-  what exists" in one screen: a pinned-directory banner first
-  (`This directory: profile P (pinned, overlay)` — from `KAE_PROFILE` plus
-  which kae data root the isolation env vars point into), then the global
-  active profile (preferring recorded `active_profile`, falling back to
-  the mapping match), the per-tool table, and the defined profiles with
-  their mappings and an active marker. `status --json` gains `pinned`
-  (object or `null`) and `profiles` (array) with the same data.
-- **`tools.<tool>.overlay_extra_shared`** — per-tool config list of extra
-  real-home items to share into overlays, validated as bare file names;
-  the auth/identity artifacts are refused. Keeps the fail-safe allowlist
-  default (unknown new upstream files stay private) while letting users
-  follow upstream changes without a kae release.
+- **Pinned-directory guard** — inside a pinned directory, `kae use`,
+  `kae add`, and `kae sync` refuse with exit `5` and guidance: change the
+  directory's accounts with `kae pin <profile>`, or act on the real home
+  with the new `--global` flag (which makes the adapters ignore
+  kae-managed isolation env vars when resolving base paths). Rationale:
+  today such a run splits across three states — the keychain (global),
+  the identity file (overlay), and state.json (global belief) — a
+  three-way mismatch. Detection reuses the pin context already surfaced
+  by `kae status`.
+- **gemini removal + agy promotion** (breaking) — upstream retired Gemini
+  CLI in favor of Antigravity (2026-05-19); the gemini adapter is removed
+  (unknown-tool error; release-notes pointer to agy). agy graduates from
+  experimental: pin down the OS-keyring item contract (the default agy
+  storage), add structure guards, generate its mise run task, and pass
+  real-machine acceptance.
+- **copilot adapter** — GitHub Copilot CLI. Auth artifacts: OAuth token in
+  the OS keychain (service `copilot-cli`; plaintext `~/.copilot/config.json`
+  fallback on keychain-less systems) plus the `~/.copilot/settings.json`
+  account state. Discovery first: per-account keychain item layout, the
+  interplay with copilot's native `/user switch` (last-used account
+  record), and whether the claude verbatim-keychain pattern (capture/
+  restore raw bytes via the `security` CLI, ACL-preserving) carries over.
+  `kae doctor` gains `env_conflict` checks for `COPILOT_GITHUB_TOKEN` /
+  `GH_TOKEN` / `GITHUB_TOKEN`, which outrank the keychain login. The gh
+  CLI's own auth is out of scope and untouched (separate storage; lowest-
+  priority fallback only).
+- **cursor adapter** — Cursor CLI (`cursor-agent`). Browser login with
+  locally stored credentials; discovery first (`~/.cursor` artifact
+  layout), then the standard switched/preserved allowlist.
+- **opencode adapter** — OpenCode. ChatGPT subscription login (native
+  since the OpenAI partnership; Claude subscription login was removed
+  upstream in 2026-01). Auth state is expected file-based (XDG data
+  `auth.json`; discovery first). API-key providers remain env-mode
+  territory, as for every tool.
+- **`overlay_unshared`** — per-tool exclusions from the built-in overlay
+  share list (the mirror of `overlay_extra_shared`); `kae pin` prints
+  what it linked and what it skipped so the effective share set is
+  visible without reading docs.
+- **Remote share-list definitions (design only)** — design loading the
+  shared-item defaults from a published definition file so the list can
+  follow upstream changes without a kae release. Hard requirements
+  already agreed: the auth/identity denylist stays hard-coded, fetching
+  is an explicit command (never automatic or at switch time), and the
+  diff is shown before adoption. Outcome: a design section in docs, not
+  necessarily shipped code.
+
+Implementation order: pinned-directory guard → gemini/agy → copilot →
+cursor → opencode → overlay_unshared → remote-definition design. Each
+adapter lands behind its own discovery note in ADAPTERS.md before code.
 
 ## Non-Goals (this release)
 
-Gemini/agy home or overlay isolation, codex/agy keyring drivers, login UX
-polish, `env export --dotenv --reveal`, performance polish, claude
-file-driver override, Windows — see [ROADMAP.md](ROADMAP.md). No automatic
-overlay refresh on directory entry (mise hooks stay experimental; `pin`
-re-run is the refresh path). No removal of `kae sync` or `kae mise init`.
+TUI (ROADMAP), Windows, Codex keyring driver, login UX polish,
+`env export --dotenv --reveal`, performance polish, claude file-driver
+override — see [ROADMAP.md](ROADMAP.md). No automatic network access:
+the remote-definition work is design only.
 
 ## Breaking Changes
 
 | Removed | Replacement |
 |---------|-------------|
-| `kae switch <tool> <account>` / `kae s` | `kae use <tool> <account>` |
-| `kae switch all <profile>` | `kae use <profile>` (since v0.4.0) |
-| `kae login <tool> <account>` | `kae add <tool> <account>` |
-| `kae capture <tool> <account>` | `kae add --no-login <tool> <account>` |
-| `kae current` | `kae` (status summary) |
+| `gemini` tool (adapter, tasks, doctor checks) | `agy` (Antigravity CLI, the upstream successor) |
 
-Removed commands return the unknown-command usage error (exit `64`) with the
-replacement named in the message for one release.
+`kae <cmd> gemini ...` fails as an unknown tool naming agy; captured
+gemini accounts remain on disk untouched (manual cleanup, documented in
+the release notes).
 
 ## Acceptance Criteria
 
-- `kae pin clientA` in a fresh directory writes the overlay `[env]` block,
-  creates the overlay homes with the shared-item symlinks, and is
-  idempotent; after adding a new shared item to the real home, re-running
-  `pin` links it. `kae unpin` removes the block and nothing else.
-- Real-machine overlay acceptance (macOS, real accounts): inside a pinned
-  directory claude sees the real home's settings/skills/CLAUDE.md, starts
-  unauthenticated until logged in once, the login persists in the overlay
-  across fresh processes, and the real home's login and `~/.claude.json`
-  identity are untouched throughout (fresh-process AUTH-OK check on both
-  sides — VALIDATION.md).
-- `kae use <tool> <account>` matches the old single-tool switch report and
-  exit codes; removed commands fail with exit `64` naming the replacement.
-- `kae add` matches the old login behavior (including `--restore` and exit
-  `11`); `kae add --no-login` matches the old capture report.
+- Inside a pinned directory `kae use <profile>` exits `5` naming
+  `kae pin` and `--global`; `kae use --global <profile>` switches the
+  real home with state.json consistent (real machine).
+- `kae use agy <account>` round-trips with the keyring storage and passes
+  the fresh-process auth check; gemini commands fail as unknown tool.
+- copilot / cursor / opencode each: `kae add --no-login` → `kae use`
+  round-trip with a fresh-process auth check on the real machine, a
+  normative switched/preserved table in ADAPTERS.md, and redaction tests
+  for any new output path. copilot: doctor flags the token env vars.
+- A built-in shared item listed in `overlay_unshared` is not linked by a
+  new `kae pin`, and the pin output lists linked/skipped items.
 - `mise run check` passes; JSON keeps `schema_version: 1`, stable tokens,
   `[]` arrays.
 
 ## Release Steps
 
-1. Acceptance criteria green; `docs/VALIDATION.md` checklist done (smoke
-   uses codex-only profiles on macOS — keychain warning).
-2. README examples verified against the built binary.
-3. Tag `v0.5.0`, GitHub release with the breaking-changes table in the
-   notes. (`toolVersion` is already bumped: the removed-command pointers
-   name v0.5.0, so the binary must agree from the first dev build.)
+1. Bump `toolVersion` (and its test) at cycle start — the gemini removal
+   error names v0.6.0, so the binary must agree from the first dev build.
+2. Acceptance criteria green; `docs/VALIDATION.md` checklist done (smoke
+   uses file-based tools on macOS — keychain warning; copilot smoke needs
+   the same care as claude).
+3. README examples verified against the built binary.
+4. Tag `v0.6.0`, GitHub release with the breaking-changes table.

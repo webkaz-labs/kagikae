@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
@@ -73,12 +72,9 @@ func removeMiseBlock(path string) error {
 	if err != nil {
 		return err
 	}
-	content := string(data)
-	start := strings.Index(content, miseBlockStart)
-	end := strings.Index(content, miseBlockEnd)
-	if start < 0 || end < 0 || end < start {
+	before, after, ok := cutMiseBlock(string(data))
+	if !ok {
 		return errf(constants.ExitNotFound, "%s has no kagikae block; nothing to unpin", path)
 	}
-	rest := strings.TrimPrefix(content[end+len(miseBlockEnd):], "\n")
-	return patch.WriteFileAtomic(path, []byte(content[:start]+rest), 0o644)
+	return patch.WriteFileAtomic(path, []byte(before+after), 0o644)
 }

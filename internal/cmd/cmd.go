@@ -67,11 +67,11 @@ func Root(args []string) int {
 	case "switch", "s":
 		return removedCommand(args[0], "kae use <profile> | kae use <tool> <account>")
 	case "login":
-		return removedCommand("login", "kae add <tool> <account>")
+		return removedCommand(args[0], "kae add <tool> <account>")
 	case "capture":
-		return removedCommand("capture", "kae add --no-login <tool> <account>")
+		return removedCommand(args[0], "kae add --no-login <tool> <account>")
 	case "current":
-		return removedCommand("current", "kae (the bare status summary)")
+		return removedCommand(args[0], "kae (the bare status summary)")
 	case "accounts":
 		return CmdAccounts(ctx, args[1:])
 	case "status":

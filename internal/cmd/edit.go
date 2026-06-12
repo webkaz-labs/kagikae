@@ -53,14 +53,14 @@ func runEdit(ctx context.Context, app *App, opts commonOpts) int {
 		return finish(opts, errf(constants.ExitError,
 			"editor %s exited with %d; the config is left as last saved", parts[0], code))
 	}
-	if _, warnings, err := config.Load(app.ConfigPath); err != nil {
+	_, warnings, err := config.Load(app.ConfigPath)
+	if err != nil {
 		return finish(opts, errf(constants.ExitInvalidConfig,
 			"config %s is invalid after editing: %v (run kae edit again)",
 			app.displayPath(app.ConfigPath), err))
-	} else {
-		for _, warning := range warnings {
-			fmt.Fprintf(os.Stderr, "kae: warning: %s\n", warning)
-		}
+	}
+	for _, warning := range warnings {
+		fmt.Fprintf(os.Stderr, "kae: warning: %s\n", warning)
 	}
 	fmt.Printf("Config OK: %s\n", app.displayPath(app.ConfigPath))
 	return constants.ExitOK

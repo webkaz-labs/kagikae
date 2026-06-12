@@ -26,6 +26,11 @@ var nameRE = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
 // ValidName reports whether s is a safe account/profile name.
 func ValidName(s string) bool { return nameRE.MatchString(s) }
 
+// ValidFileName reports whether s is a safe bare file name: the same
+// character set as ValidName (which already excludes path separators) minus
+// the directory self-references the regexp would let through.
+func ValidFileName(s string) bool { return ValidName(s) && s != "." && s != ".." }
+
 // Config is the parsed user policy.
 type Config struct {
 	Version        int                   `toml:"version"`
@@ -103,7 +108,7 @@ func (c *Config) validate() error {
 			return fmt.Errorf("unknown tool %q in [tools]", tool)
 		}
 		for _, item := range settings.OverlayExtraShared {
-			if !ValidName(item) || item == "." || item == ".." {
+			if !ValidFileName(item) {
 				return fmt.Errorf("tools.%s.overlay_extra_shared item %q is not a bare file name", tool, item)
 			}
 			if refusedOverlayShare[item] {
@@ -133,8 +138,10 @@ func (c *Config) validate() error {
 }
 
 // refusedOverlayShare lists the auth/identity artifacts that must never be
-// shared into an overlay — sharing them would defeat the isolation
-// (docs/ADAPTERS.md Isolation).
+// shared into an overlay — sharing them would defeat the isolation. The
+// names mirror what the tool adapters switch (claude: .credentials.json and
+// the ~/.claude.json identity file; codex: auth.json); docs/ADAPTERS.md
+// "Isolation" is the normative source — keep all three in sync.
 var refusedOverlayShare = map[string]bool{
 	".credentials.json": true,
 	".claude.json":      true,

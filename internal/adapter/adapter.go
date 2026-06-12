@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -76,6 +77,21 @@ func BinaryCheck(env Env, tool, binary string) Check {
 	}
 	return Check{Tool: tool, Code: constants.CheckBinaryPresent, Status: constants.StatusOK,
 		Message: binary + " found in PATH"}
+}
+
+// FileModeCheck warns when a live credential file is group/world readable.
+// ok=false means no finding: a missing file, or windows, where POSIX
+// permission bits are meaningless.
+func FileModeCheck(env Env, tool, path string) (Check, bool) {
+	if env.GOOS == "windows" {
+		return Check{}, false
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm()&0o077 == 0 {
+		return Check{}, false
+	}
+	return Check{Tool: tool, Code: constants.CheckFileMode, Status: constants.StatusWarn,
+		Message: path + " is group/world readable; expected 0600"}, true
 }
 
 // EnvConflictChecks warns for each set environment variable that overrides

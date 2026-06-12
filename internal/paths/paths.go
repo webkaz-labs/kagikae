@@ -24,7 +24,7 @@ func Resolve(getenv func(string) string, home string) Paths {
 	}
 	p := Paths{
 		ConfigDir: dir("XDG_CONFIG_HOME", ".config"),
-		DataDir:   dir("XDG_DATA_HOME", filepath.Join(".local", "share")),
+		DataDir:   XDGDataHome(getenv, home, "kagikae"),
 		StateDir:  dir("XDG_STATE_HOME", filepath.Join(".local", "state")),
 	}
 	if v := getenv("XDG_RUNTIME_DIR"); v != "" && filepath.IsAbs(v) {
@@ -33,6 +33,16 @@ func Resolve(getenv func(string) string, home string) Paths {
 		p.RuntimeDir = p.StateDir
 	}
 	return p
+}
+
+// XDGDataHome resolves $XDG_DATA_HOME/<app> with the same spec rule as
+// Resolve: a relative value is ignored and the default is used instead.
+// Adapters use it for tools that keep state under the XDG data home.
+func XDGDataHome(getenv func(string) string, home, app string) string {
+	if v := getenv("XDG_DATA_HOME"); v != "" && filepath.IsAbs(v) {
+		return filepath.Join(v, app)
+	}
+	return filepath.Join(home, ".local", "share", app)
 }
 
 // ConfigFile returns the config.toml path.

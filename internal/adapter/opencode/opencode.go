@@ -13,6 +13,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
 // openaiPointer selects the ChatGPT-subscription credential inside
@@ -26,16 +27,12 @@ func init() { adapter.Register(Opencode{}) }
 
 func (Opencode) ID() string { return constants.ToolOpencode }
 
-// dataDir resolves opencode's XDG data directory, honoring XDG_DATA_HOME
-// as the live base path when already set.
-func dataDir(env adapter.Env) string {
-	if dir := env.Getenv("XDG_DATA_HOME"); dir != "" {
-		return filepath.Join(dir, "opencode")
-	}
-	return filepath.Join(env.Home, ".local", "share", "opencode")
+// authJSONPath resolves opencode's credential file, honoring XDG_DATA_HOME
+// as the live base path when already set (absolute values only, as
+// everywhere in kae).
+func authJSONPath(env adapter.Env) string {
+	return filepath.Join(paths.XDGDataHome(env.Getenv, env.Home, "opencode"), "auth.json")
 }
-
-func authJSONPath(env adapter.Env) string { return filepath.Join(dataDir(env), "auth.json") }
 
 func (o Opencode) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, error) {
 	return []artifact.Spec{{
@@ -61,7 +58,9 @@ func (o Opencode) Detect(ctx context.Context, env adapter.Env) (adapter.Info, er
 	}
 	info.AuthPresent = v.Present
 	if !v.Present {
-		if _, statErr := os.Stat(authJSONPath(env)); statErr == nil {
+		// ReadLive cannot distinguish a missing file from a file without
+		// the openai key, and only the latter deserves an explanation.
+		if _, statErr := os.Stat(specs[0].Target); statErr == nil {
 			info.Warnings = append(info.Warnings,
 				"auth.json has no openai entry; only the ChatGPT subscription login is switched (API-key providers belong to env mode)")
 		}
@@ -87,12 +86,8 @@ func (o Opencode) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	}
 	checks = append(checks, adapter.Check{Tool: tool, Code: constants.CheckDriver,
 		Status: constants.StatusOK, Message: "driver: " + constants.DriverOpencodeFilePatch})
-	if env.GOOS != "windows" {
-		if fileInfo, err := os.Stat(authJSONPath(env)); err == nil && fileInfo.Mode().Perm()&0o077 != 0 {
-			checks = append(checks, adapter.Check{Tool: tool, Code: constants.CheckFileMode,
-				Status: constants.StatusWarn,
-				Message: authJSONPath(env) + " is group/world readable; expected 0600"})
-		}
+	if check, ok := adapter.FileModeCheck(env, tool, authJSONPath(env)); ok {
+		checks = append(checks, check)
 	}
 	return checks
 }

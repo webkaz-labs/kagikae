@@ -151,7 +151,8 @@ mode and must survive an account switch. It is patched via JSON Pointer
 only, never replaced.
 
 If `XDG_DATA_HOME` is already set in the environment, the adapter uses it as
-the live base path. `auth` mode never sets or changes it.
+the live base path (absolute values only — a relative value is ignored per
+the XDG spec, as everywhere in kae). `auth` mode never sets or changes it.
 
 ### Driver
 

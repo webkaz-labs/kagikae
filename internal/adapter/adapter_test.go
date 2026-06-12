@@ -192,6 +192,13 @@ func TestOpencodeArtifactsAndXDGDataHome(t *testing.T) {
 	if err != nil || specs[0].Target != filepath.Join(dataHome, "opencode", "auth.json") {
 		t.Fatalf("XDG_DATA_HOME not honored: %+v %v", specs, err)
 	}
+
+	// A relative value is ignored per the XDG spec (paths.XDGDataHome).
+	env = testEnv(t, "darwin", map[string]string{"XDG_DATA_HOME": "relative/data"})
+	specs, err = opencodeAdapter.Artifacts(context.Background(), env)
+	if err != nil || specs[0].Target != filepath.Join(env.Home, ".local", "share", "opencode", "auth.json") {
+		t.Fatalf("relative XDG_DATA_HOME must fall back to the default: %+v %v", specs, err)
+	}
 }
 
 func TestOpencodeDetect(t *testing.T) {
@@ -225,11 +232,11 @@ func TestOpencodeDetect(t *testing.T) {
 
 func TestOpencodeRefusesUnrecognizedAuthJSON(t *testing.T) {
 	env := testEnv(t, "darwin", nil)
-	authPath := filepath.Join(env.Home, ".local", "share", "opencode", "auth.json")
 	specs, err := opencodeAdapter.Artifacts(context.Background(), env)
 	if err != nil {
 		t.Fatal(err)
 	}
+	authPath := specs[0].Target
 
 	// Malformed auth.json: reading refuses instead of misparsing.
 	write(t, authPath, `not json`)

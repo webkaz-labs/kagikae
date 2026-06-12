@@ -3,9 +3,10 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target (v0.5.0, the use/pin/run command system and overlay
-directory isolation) lives in [RELEASE.md](RELEASE.md); what remains beyond
-it is hardening and platform coverage, ordered below by user impact.
+The active target (v0.6.0, adapter coverage — copilot/cursor/opencode, the
+gemini → agy transition — and the pinned-directory guard) lives in
+[RELEASE.md](RELEASE.md); what remains beyond it is hardening and platform
+coverage, ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 
@@ -13,19 +14,12 @@ it is hardening and platform coverage, ordered below by user impact.
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the
   v0.5.0 command system has settled.
-
-- **Global commands inside pinned directories**: with a pinned `.mise.toml`
-  exporting `CLAUDE_CONFIG_DIR`/`CODEX_HOME`, the adapters treat the
-  overlay/home as the live base path, so `kae use` / `kae add` run there
-  operate on the directory's isolated state while recording into the global
-  state.json belief. Decide and enforce the intended semantics (operate on
-  the overlay without polluting global belief, or refuse with guidance).
-
+- **Remote share-list definitions (ship)**: implement the v0.6.0 design if
+  it holds — published defaults for the overlay share list, explicit
+  fetch, diff-before-adopt, hard-coded auth denylist.
 - **Codex keyring driver**: pin down the OS-credential-store item contract
   used by `cli_auth_credentials_store = "keyring"`, add structure guards,
   lift the detect-only restriction.
-- **agy keyring support**: same problem as Codex — the default macOS/Linux
-  storage is the keyring; today only the file-based fallback is switchable.
 - **Login UX polish**: verify `claude /login` behavior across versions,
   support agy. (The "login flow exited without changing auth" case is now
   detected and refused with exit `11`.)
@@ -43,8 +37,9 @@ it is hardening and platform coverage, ordered below by user impact.
 
 - **Windows**: `%APPDATA%` layout, Credential Manager secret backend, lock
   implementation, `%USERPROFILE%\.claude` file-patch driver.
-- **gemini / agy home isolation**: revisit once upstream exposes a stable
-  home/config env var; until then `home` / `overlay` modes refuse them.
+- **agy home isolation**: revisit once upstream exposes a stable
+  home/config env var; until then `home` / `overlay` modes refuse it (the
+  same applies to the v0.6.0 adapters until their env vars are verified).
 
 ## Exploratory
 
@@ -55,7 +50,5 @@ it is hardening and platform coverage, ordered below by user impact.
 
 ## Review Triggers
 
-- Antigravity transition date (2026-06-18): once personal Gemini CLI serving
-  ends, demote the gemini adapter's default prominence and promote agy.
 - First credential-layout change in any upstream tool: add a regression
   fixture and bump the adapter guard before widening support.

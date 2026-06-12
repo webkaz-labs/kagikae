@@ -206,14 +206,15 @@ func TestRunOverlayMode(t *testing.T) {
 	opts := commonOpts{Format: formatText}
 	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) { return 0, nil })
 
-	// experimental: off by default
+	// on by default since v0.5.0; the per-tool opt-out still refuses
+	disabled := false
+	app.Config.Tools["claude"] = config.Tool{OverlayModeEnabled: &disabled}
 	code, out := captureStdout(t, func() int {
 		return runRun(ctx, app, opts, modeOverlay, "claude", "work", []string{"claude"})
 	})
 	mustExit(t, constants.ExitUnsupported, code, out)
 
-	enabled := true
-	app.Config.Tools["claude"] = config.Tool{OverlayModeEnabled: &enabled}
+	app.Config.Tools["claude"] = config.Tool{}
 	writeFile(t, filepath.Join(app.Env.Home, ".claude", "settings.json"), `{"theme":"dark"}`)
 	if err := os.MkdirAll(filepath.Join(app.Env.Home, ".claude", "skills", "demo"), 0o700); err != nil {
 		t.Fatal(err)

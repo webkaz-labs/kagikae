@@ -130,11 +130,12 @@ func TestSyncUnknownProfile(t *testing.T) {
 }
 
 func TestUseUsage(t *testing.T) {
-	// Argument validation happens before any environment access.
+	// Argument validation happens before any environment access; one and two
+	// positionals are both valid since v0.5.0 (profile / tool+account).
 	if code := CmdUse(context.Background(), nil); code != constants.ExitUsage {
-		t.Fatalf("kae use without a profile must be a usage error, got %d", code)
+		t.Fatalf("kae use without arguments must be a usage error, got %d", code)
 	}
-	if code := CmdUse(context.Background(), []string{"a", "b"}); code != constants.ExitUsage {
-		t.Fatalf("kae use with two positionals must be a usage error, got %d", code)
+	if code := CmdUse(context.Background(), []string{"a", "b", "c"}); code != constants.ExitUsage {
+		t.Fatalf("kae use with three positionals must be a usage error, got %d", code)
 	}
 }

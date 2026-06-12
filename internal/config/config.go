@@ -142,12 +142,13 @@ func (c *Config) HomeModeEnabled(tool string) bool {
 	return *t.HomeModeEnabled
 }
 
-// OverlayModeEnabled reports whether the experimental overlay mode is
-// explicitly enabled for a tool (default false).
+// OverlayModeEnabled reports whether overlay mode is enabled for a tool
+// (default true since v0.5.0; per-tool opt-out via
+// tools.<tool>.overlay_mode_enabled = false).
 func (c *Config) OverlayModeEnabled(tool string) bool {
 	t, ok := c.Tools[tool]
 	if !ok || t.OverlayModeEnabled == nil {
-		return false
+		return true
 	}
 	return *t.OverlayModeEnabled
 }

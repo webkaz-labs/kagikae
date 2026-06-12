@@ -82,17 +82,19 @@ Therefore:
 - Profile metadata stores variable names only; values live in the secret
   backend and are injected solely into the child process environment of
   `kae run --mode env`. `kae env list` never prints values.
-- `kae add` (login flow) and `kae run` launch upstream CLIs with inherited stdio; kae
-  passes no secrets on their command lines.
+- `kae add` (login flow) and `kae run` launch upstream CLIs, and `kae edit`
+  launches `$VISUAL`/`$EDITOR`, all with inherited stdio; kae passes no
+  secrets on their command lines.
 
-## Overlay Mode (experimental)
+## Overlay Mode
 
 Overlay homes mix symlinks into the real home with overlay-private files.
-Rules: only allowlisted items are linked (docs/ADAPTERS.md); a real file at
-a link location is refused, never replaced; the upstream tool writes
-credentials/sessions into the overlay, so overlay dirs are created `0700`
-and treated as credential-bearing. Per-tool explicit opt-in
-(`overlay_mode_enabled = true`).
+Rules: only allowlisted items are linked (docs/ADAPTERS.md; the
+`overlay_extra_shared` extension refuses the auth/identity artifacts at
+config load); a real file at a link location is refused, never replaced;
+the upstream tool writes credentials/sessions into the overlay, so overlay
+dirs are created `0700` and treated as credential-bearing. Enabled by
+default since v0.5.0; per-tool opt-out (`overlay_mode_enabled = false`).
 
 ## External Tools
 

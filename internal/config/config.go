@@ -43,10 +43,11 @@ type Security struct {
 
 // Tool holds per-tool settings. Pointers distinguish "unset" from "false".
 type Tool struct {
-	Enabled                   *bool `toml:"enabled"`
-	WarnAntigravityTransition *bool `toml:"warn_antigravity_transition"`
-	HomeModeEnabled           *bool `toml:"home_mode_enabled"`
-	OverlayModeEnabled        *bool `toml:"overlay_mode_enabled"`
+	Enabled                   *bool    `toml:"enabled"`
+	WarnAntigravityTransition *bool    `toml:"warn_antigravity_transition"`
+	HomeModeEnabled           *bool    `toml:"home_mode_enabled"`
+	OverlayModeEnabled        *bool    `toml:"overlay_mode_enabled"`
+	OverlayExtraShared        []string `toml:"overlay_extra_shared"`
 }
 
 // Profile bundles per-tool accounts under one name.
@@ -97,9 +98,17 @@ func (c *Config) validate() error {
 	if c.Security.BackupKeep < 1 {
 		return fmt.Errorf("security.backup_keep must be >= 1")
 	}
-	for tool := range c.Tools {
+	for tool, settings := range c.Tools {
 		if !constants.IsTool(tool) {
 			return fmt.Errorf("unknown tool %q in [tools]", tool)
+		}
+		for _, item := range settings.OverlayExtraShared {
+			if !ValidName(item) || item == "." || item == ".." {
+				return fmt.Errorf("tools.%s.overlay_extra_shared item %q is not a bare file name", tool, item)
+			}
+			if refusedOverlayShare[item] {
+				return fmt.Errorf("tools.%s.overlay_extra_shared must not share the auth/identity artifact %q", tool, item)
+			}
 		}
 	}
 	for name, profile := range c.Profiles {
@@ -119,6 +128,24 @@ func (c *Config) validate() error {
 		if _, ok := c.Profiles[c.DefaultProfile]; !ok {
 			return fmt.Errorf("default_profile %q is not defined under [profiles]", c.DefaultProfile)
 		}
+	}
+	return nil
+}
+
+// refusedOverlayShare lists the auth/identity artifacts that must never be
+// shared into an overlay — sharing them would defeat the isolation
+// (docs/ADAPTERS.md Isolation).
+var refusedOverlayShare = map[string]bool{
+	".credentials.json": true,
+	".claude.json":      true,
+	"auth.json":         true,
+}
+
+// OverlayExtraShared returns the user-configured extra real-home items to
+// share into a tool's overlays (validated at load time).
+func (c *Config) OverlayExtraShared(tool string) []string {
+	if t, ok := c.Tools[tool]; ok {
+		return t.OverlayExtraShared
 	}
 	return nil
 }

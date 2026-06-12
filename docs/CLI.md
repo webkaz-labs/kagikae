@@ -12,6 +12,7 @@ One verb per scope: `use` switches now (global), `pin` binds a directory,
 ```bash
 kae                                  # status summary (same as kae status)
 kae init                             # create config and data directories
+kae edit                             # open the config in $VISUAL / $EDITOR, then re-validate
 kae doctor [tool] [--json]           # environment / auth health checks
 kae add <tool> <account> [--restore] # register an account: official login flow + snapshot
 kae add --no-login <tool> <account>  # snapshot the current live auth state instead
@@ -81,6 +82,14 @@ guidance). Per mode:
   `tools.<tool>.overlay_mode_enabled = false`): like `home`, but shared
   items (settings, skills, ...; see docs/ADAPTERS.md) are symlinked from the
   real home while auth/session/history stay private.
+
+## kae edit Semantics
+
+`kae edit` opens the config file in `$VISUAL`, then `$EDITOR`, then `vi`
+(the value may carry arguments, e.g. `code --wait`), and re-validates the
+result: parse or validation problems exit `2` (`invalid_config`) with the
+error, soft issues print as warnings. A missing config exits `7` pointing
+at `kae init`.
 
 ## kae add Semantics
 
@@ -201,6 +210,7 @@ in the same transaction.
 {
   "schema_version": 1,
   "ok": true,
+  "pinned": {"profile": "personal", "mode": "overlay"},
   "active_profile": "work",
   "mode": "auth",
   "tools": [
@@ -213,12 +223,24 @@ in the same transaction.
       "accounts": ["personal", "work"],
       "warnings": []
     }
+  ],
+  "profiles": [
+    {"name": "personal", "label": "Personal",
+     "accounts": {"claude": "kaz"}, "active": false},
+    {"name": "work", "accounts": {"claude": "work"}, "active": true}
   ]
 }
 ```
 
-`account` is `null` when kae has not switched/captured this tool yet.
-`active_profile` is `null` when the per-tool accounts do not match any profile.
+`account` is `null` when kae has not registered this tool yet.
+`active_profile` prefers the recorded profile (state.json) and falls back to
+matching the per-tool accounts; it is `null` when neither resolves. `pinned`
+is `null` outside pinned directories; inside one it reflects the exported
+`KAE_PROFILE` and the isolation mode inferred from where the tools' env vars
+point (`auth` when only the profile is exported). `profiles` lists every
+defined profile (name ascending) with its mapping and an `active` marker.
+The human text leads with the same data: the pin banner, the global active
+profile, the per-tool table, then the profiles list.
 
 ### `kae accounts --json`
 

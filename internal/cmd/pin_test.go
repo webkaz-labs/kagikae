@@ -154,6 +154,20 @@ func TestPrepareOverlayInsidePinnedDir(t *testing.T) {
 	}
 }
 
+func TestPrepareOverlayExtraSharedItems(t *testing.T) {
+	app := testApp(t, nil)
+	app.Config.Tools[constants.ToolClaude] = config.Tool{OverlayExtraShared: []string{"output-styles"}}
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", "output-styles", "x.json"), "{}")
+
+	if _, err := app.prepareOverlay(constants.ToolClaude, "kaz"); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(app.Paths.OverlayDir(constants.ToolClaude, "kaz"), "output-styles")
+	if link, err := os.Readlink(target); err != nil || link != filepath.Join(app.Env.Home, ".claude", "output-styles") {
+		t.Fatalf("extra shared item not linked: %q %v", link, err)
+	}
+}
+
 func TestPinAndUnpinUsage(t *testing.T) {
 	// Argument validation happens before any environment access.
 	if code := CmdPin(context.Background(), []string{"a", "b"}); code != constants.ExitUsage {

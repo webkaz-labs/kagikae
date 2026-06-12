@@ -67,7 +67,6 @@ const (
 	CheckCredentialStore  = "credential_store"
 	CheckSecretBackend    = "secret_backend"
 	CheckConfigValid      = "config_valid"
-	CheckTransitionNotice = "transition_notice"
 	CheckUnsupported      = "unsupported"
 	CheckFileMode         = "file_mode"
 )

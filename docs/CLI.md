@@ -292,7 +292,7 @@ Ordering: tool (claude, codex, agy), then account name ascending.
 Check `status` vocabulary: `ok`, `warn`, `error`, `skipped`.
 Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
-`transition_notice`, `unsupported`.
+`unsupported`.
 
 ### `kae use ... --json` (the switch report)
 

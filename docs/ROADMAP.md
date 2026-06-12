@@ -3,9 +3,9 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target (v0.4.0, project-scoped switching and ergonomics) lives
-in [RELEASE.md](RELEASE.md); what remains beyond it is hardening and
-platform coverage, ordered below by user impact.
+The active target (v0.5.0, the use/pin/run command system and overlay
+directory isolation) lives in [RELEASE.md](RELEASE.md); what remains beyond
+it is hardening and platform coverage, ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 

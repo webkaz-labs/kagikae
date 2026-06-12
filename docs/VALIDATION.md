@@ -71,6 +71,8 @@ KAE_PROFILE=personal /tmp/kae sync --json          # env resolution
 #   items added to the real home afterwards
 /tmp/kae unpin                                     # removes only the block
 /tmp/kae switch x y; echo $?                       # 64 + replacement pointer
+EDITOR=true /tmp/kae edit                          # validate round-trip
+/tmp/kae status --json                             # has "pinned" + "profiles"
 ```
 
 Enter-hook firing (`mise init --auto --write`) needs a live mise:

@@ -166,6 +166,53 @@ func pathWithin(dir, root string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// pinnedIsolationGuard enforces the pinned-directory boundary for the
+// global-scope commands (use / add / sync). Inside a directory whose
+// environment redirects a tool into a kae-managed isolation home, a global
+// apply would split across three states — the isolated paths the adapters
+// resolve, the global credential stores, and the global state.json belief —
+// so it is refused with guidance. With --global the kae-managed
+// redirections are hidden instead, so the adapters resolve the real
+// (global) base paths; genuinely user-set custom homes stay honored.
+func (app *App) pinnedIsolationGuard(global bool) error {
+	if global {
+		app.applyGlobalScope()
+		return nil
+	}
+	for _, tool := range constants.Tools {
+		envVar := isolationEnvVar(tool)
+		if envVar == "" {
+			continue
+		}
+		if kind := app.kaeManagedHomeKind(app.Env.Getenv(envVar)); kind != "" {
+			return errf(constants.ExitUnsupported,
+				"this directory is pinned (%s isolation): change its accounts with `kae pin <profile>`, or pass --global to act on the real home",
+				kind)
+		}
+	}
+	return nil
+}
+
+// applyGlobalScope hides kae-managed isolation env values from everything
+// resolved through app.Env. Idempotent: re-wrapping sees the already-hidden
+// value and leaves it empty.
+func (app *App) applyGlobalScope() {
+	isolated := map[string]bool{}
+	for _, tool := range constants.Tools {
+		if envVar := isolationEnvVar(tool); envVar != "" {
+			isolated[envVar] = true
+		}
+	}
+	inner := app.Env.Getenv
+	app.Env.Getenv = func(key string) string {
+		value := inner(key)
+		if isolated[key] && app.isKaeManagedHome(value) {
+			return ""
+		}
+		return value
+	}
+}
+
 // overlayModeEnv prepares the overlay home and returns the child env
 // entries (per-tool opt-out via overlay_mode_enabled).
 func (app *App) overlayModeEnv(tool, accountName string) ([]string, error) {

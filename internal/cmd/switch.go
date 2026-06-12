@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 
@@ -29,17 +30,22 @@ type switchReport struct {
 
 // CmdUse switches now, in global scope (alias: kae u):
 //
-//	kae use <profile>           every enabled tool in the profile
-//	kae use <tool> <account>    one tool
+//	kae use [--global] <profile>           every enabled tool in the profile
+//	kae use [--global] <tool> <account>    one tool
 //
 // It always applies, even when the recorded state already matches
-// (kae sync is the idempotent variant).
+// (kae sync is the idempotent variant). Inside a pinned directory it
+// refuses unless --global is given (pinnedIsolationGuard).
 func CmdUse(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, ok := parseCommon("use", flags, true, nil)
+	var global bool
+	opts, ok := parseCommon("use", flags, true, func(fs *flag.FlagSet) {
+		fs.BoolVar(&global, "global", false, "act on the real home, ignoring this directory's pin")
+	})
 	if !ok {
 		return constants.ExitUsage
 	}
+	opts.Global = global
 	if len(positionals) != 1 && len(positionals) != 2 {
 		return usageError("usage: %s use <profile> | %s use <tool> <account>", toolName, toolName)
 	}
@@ -64,6 +70,9 @@ func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name stri
 
 func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name string) (*switchReport, error) {
 	if err := app.requireConfig(); err != nil {
+		return nil, err
+	}
+	if err := app.pinnedIsolationGuard(opts.Global); err != nil {
 		return nil, err
 	}
 

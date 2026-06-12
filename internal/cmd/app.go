@@ -184,13 +184,15 @@ func finish(opts commonOpts, err error) int {
 	return exit
 }
 
-// commonOpts are flags shared by every structured command.
+// commonOpts are flags shared by every structured command. Global is set
+// only by the commands that register --global (use / add / sync).
 type commonOpts struct {
 	Format     string
 	DryRun     bool
 	Yes        bool
 	NoColor    bool
 	ConfigPath string
+	Global     bool
 }
 
 // parseCommon parses the flag portion of a command line (positionals are

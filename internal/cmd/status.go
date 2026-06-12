@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
@@ -21,12 +22,28 @@ type toolStatus struct {
 	Warnings    []string `json:"warnings"`
 }
 
+// pinnedStatus is the directory binding a pinned .mise.toml exports.
+type pinnedStatus struct {
+	Profile string `json:"profile"`
+	Mode    string `json:"mode"`
+}
+
+// profileStatus is one defined profile with its mapping.
+type profileStatus struct {
+	Name     string            `json:"name"`
+	Label    string            `json:"label,omitempty"`
+	Accounts map[string]string `json:"accounts"`
+	Active   bool              `json:"active"`
+}
+
 type statusReport struct {
-	SchemaVersion int          `json:"schema_version"`
-	OK            bool         `json:"ok"`
-	ActiveProfile *string      `json:"active_profile"`
-	Mode          string       `json:"mode"`
-	Tools         []toolStatus `json:"tools"`
+	SchemaVersion int             `json:"schema_version"`
+	OK            bool            `json:"ok"`
+	Pinned        *pinnedStatus   `json:"pinned"`
+	ActiveProfile *string         `json:"active_profile"`
+	Mode          string          `json:"mode"`
+	Tools         []toolStatus    `json:"tools"`
+	Profiles      []profileStatus `json:"profiles"`
 }
 
 func CmdStatus(ctx context.Context, args []string) int {
@@ -73,11 +90,32 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 	report := &statusReport{
 		SchemaVersion: constants.SchemaVersion,
 		OK:            true,
+		Pinned:        app.pinnedStatus(),
 		Mode:          constants.ModeAuth,
 		Tools:         []toolStatus{},
+		Profiles:      []profileStatus{},
 	}
-	if profile := app.Config.MatchProfile(st.Active); profile != "" {
-		report.ActiveProfile = &profile
+	// Prefer the recorded profile (set by a profile-wide apply); fall back
+	// to matching the per-tool map so older state files still resolve.
+	activeProfile := st.ActiveProfile
+	if activeProfile == "" {
+		activeProfile = app.Config.MatchProfile(st.Active)
+	}
+	if activeProfile != "" {
+		report.ActiveProfile = &activeProfile
+	}
+	for _, name := range app.Config.ProfileNames() { // ascending, stable order
+		profile := app.Config.Profiles[name]
+		accounts := profile.Accounts
+		if accounts == nil {
+			// A [profiles.X] section without accounts parses to a nil map;
+			// keep the JSON contract at {} rather than null.
+			accounts = map[string]string{}
+		}
+		report.Profiles = append(report.Profiles, profileStatus{
+			Name: name, Label: profile.Label, Accounts: accounts,
+			Active: name == activeProfile,
+		})
 	}
 	for _, tool := range app.enabledTools() {
 		ts := toolStatus{Tool: tool, Enabled: true, Warnings: []string{}, Accounts: []string{}}
@@ -108,10 +146,13 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 
 func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 	color := colorEnabled(opts.NoColor)
+	if report.Pinned != nil {
+		fmt.Printf("This directory: profile %s (pinned, %s)\n\n", report.Pinned.Profile, report.Pinned.Mode)
+	}
 	if report.ActiveProfile != nil {
-		fmt.Printf("Active profile: %s\n\n", *report.ActiveProfile)
+		fmt.Printf("Global active profile: %s\n\n", *report.ActiveProfile)
 	} else {
-		fmt.Print("Active profile: (none)\n\n")
+		fmt.Print("Global active profile: (none)\n\n")
 	}
 	rows := [][]string{}
 	for _, ts := range report.Tools {
@@ -139,6 +180,24 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 	}
 	if warned {
 		fmt.Println()
+	}
+	if len(report.Profiles) == 0 {
+		fmt.Println("\nProfiles: (none defined — add them with: kae edit)")
+		return
+	}
+	fmt.Println("\nProfiles:")
+	for _, profile := range report.Profiles {
+		mapping := []string{}
+		for _, tool := range constants.Tools {
+			if accountName, ok := profile.Accounts[tool]; ok {
+				mapping = append(mapping, tool+":"+accountName)
+			}
+		}
+		marker := ""
+		if profile.Active {
+			marker = "  (active)"
+		}
+		fmt.Printf("  %-14s %s%s\n", profile.Name, strings.Join(mapping, " "), marker)
 	}
 }
 

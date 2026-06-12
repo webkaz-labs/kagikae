@@ -211,6 +211,13 @@ codex:  config.toml, AGENTS.md, hooks.json, prompts/, skills/
 Only items that exist in the real home are linked; a real file occupying a
 link location in the overlay is refused (`unsafe_refused`), never replaced.
 
+The allowlist is the fail-safe default: unknown files a future tool version
+adds stay **private**, because a new file is more likely session/identity
+state (which must not cross accounts) than shareable config. To follow
+upstream additions without a kae release, extend the list per tool with
+`tools.<tool>.overlay_extra_shared` (bare file names; the auth/identity
+artifacts are refused at config load — docs/DATA-MODEL.md).
+
 ## Login Commands
 
 `kae add` launches the official flow and captures the result:

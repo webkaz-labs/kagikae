@@ -45,6 +45,22 @@ Previous baseline: v0.4.0 (project-scoped switching: `use`/`u`, `sync`,
 - **Docs** — README, CLI.md, and DESIGN.md rewritten around the
   use / pin / run triad; ADAPTERS.md overlay section gains the mise/pin
   surface; ROADMAP pointer updated.
+- **`kae edit`** — open the config in `$VISUAL` / `$EDITOR` (fallback `vi`)
+  and re-validate it afterwards, reporting problems with exit `2`. A
+  missing config points at `kae init`.
+- **bare `kae` redesign** (real-machine feedback) — answer "where am I and
+  what exists" in one screen: a pinned-directory banner first
+  (`This directory: profile P (pinned, overlay)` — from `KAE_PROFILE` plus
+  which kae data root the isolation env vars point into), then the global
+  active profile (preferring recorded `active_profile`, falling back to
+  the mapping match), the per-tool table, and the defined profiles with
+  their mappings and an active marker. `status --json` gains `pinned`
+  (object or `null`) and `profiles` (array) with the same data.
+- **`tools.<tool>.overlay_extra_shared`** — per-tool config list of extra
+  real-home items to share into overlays, validated as bare file names;
+  the auth/identity artifacts are refused. Keeps the fail-safe allowlist
+  default (unknown new upstream files stay private) while letting users
+  follow upstream changes without a kae release.
 
 ## Non-Goals (this release)
 

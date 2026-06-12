@@ -52,6 +52,10 @@ enabled = true
 # kae run isolation modes and the pin / mise init renderings:
 # home_mode_enabled = true
 # overlay_mode_enabled = true
+# Extra real-home items to share into overlays, on top of the built-in
+# allowlist (docs/ADAPTERS.md). Bare file names only; the auth/identity
+# artifacts (.credentials.json, .claude.json, auth.json) are refused:
+# overlay_extra_shared = ["output-styles"]
 
 [profiles.work]
 label = "Work"

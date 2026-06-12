@@ -221,7 +221,7 @@ Flags (structured commands):
   --no-color            disable color
   --config <path>       explicit config file path
 
-Tools: claude, codex, agy`)
+Tools: ` + strings.Join(constants.Tools, ", "))
 }
 
 // removedCommand reports a command removed in v0.5.0 and names its

@@ -57,7 +57,7 @@ func runInit(_ context.Context, app *App, opts commonOpts) int {
 		fmt.Printf("Config already exists: %s\n", report.ConfigPath)
 	}
 	fmt.Println("\nNext steps:")
-	fmt.Println("  kae doctor                     # check the environment")
-	fmt.Println("  kae capture <tool> <account>   # snapshot the current login")
+	fmt.Println("  kae doctor                             # check the environment")
+	fmt.Println("  kae add --no-login <tool> <account>    # snapshot the current login")
 	return constants.ExitOK
 }

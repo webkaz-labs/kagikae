@@ -27,19 +27,8 @@ type captureReport struct {
 	Results       []captureResult `json:"results"`
 }
 
-func CmdCapture(ctx context.Context, args []string) int {
-	flags, positionals := splitArgs(args)
-	opts, ok := parseCommon("capture", flags, true, nil)
-	if !ok {
-		return constants.ExitUsage
-	}
-	if len(positionals) != 2 {
-		return usageError("usage: %s capture <tool> <account>", toolName)
-	}
-	app := newApp(opts.ConfigPath)
-	return runCapture(ctx, app, opts, positionals[0], positionals[1])
-}
-
+// runCapture snapshots the current live auth state into an account; the
+// CLI surface is kae add --no-login (CmdAdd).
 func runCapture(ctx context.Context, app *App, opts commonOpts, tool, accountName string) int {
 	report, err := buildCapture(ctx, app, opts, tool, accountName)
 	if err != nil {

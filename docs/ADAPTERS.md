@@ -161,7 +161,7 @@ available, falling back to a credential file on platforms without one
 
 When no credential file exists, `capture` fails with `auth_missing`; if the
 CLI directory exists, `doctor` warns that agy is likely using the OS keyring,
-which kae cannot switch yet (see [ROADMAP.md](ROADMAP.md)). `kae login agy`
+which kae cannot switch yet (see [ROADMAP.md](ROADMAP.md)). `kae add agy`
 is not supported. `ANTIGRAVITY_API_KEY` can be handled through env profiles
 (`kae env set agy ...`).
 
@@ -176,19 +176,20 @@ plugins / MCP / hooks / subagents
 ## Isolation (home / overlay Modes)
 
 `kae run --mode home|overlay` points a tool at an alternate home directory;
-`kae mise init --mode home` renders the same home-mode mapping as mise
-`[env]` entries scoped to a project directory (docs/CLI.md):
+`kae pin` / `kae mise init --mode home|overlay` render the same mapping as
+mise `[env]` entries scoped to a project directory (docs/CLI.md):
 
 | Tool | Isolation env var | home mode | overlay mode |
 |------|-------------------|-----------|--------------|
-| claude | `CLAUDE_CONFIG_DIR` | supported | experimental opt-in |
-| codex | `CODEX_HOME` | supported | experimental opt-in |
+| claude | `CLAUDE_CONFIG_DIR` | supported | supported (pin default) |
+| codex | `CODEX_HOME` | supported | supported (pin default) |
 | gemini | none stable | refused | refused |
 | agy | none stable | refused | refused |
 
-"Refused" means exit `5` from `kae run`; `kae mise init --mode home` instead
-omits those tools with an inline warning comment (they keep the real home).
-`tools.<tool>.home_mode_enabled = false` disables both surfaces for a tool.
+"Refused" means exit `5` from `kae run`; `kae pin` / `kae mise init` instead
+omit those tools with an inline warning comment (they keep the real home).
+`tools.<tool>.home_mode_enabled = false` / `overlay_mode_enabled = false`
+(both default true) disable all of these surfaces per tool.
 
 Overlay shared items (symlinked from the real home; everything else —
 credentials, sessions, history, and the mixed-state `.claude.json` — stays
@@ -204,7 +205,7 @@ link location in the overlay is refused (`unsafe_refused`), never replaced.
 
 ## Login Commands
 
-`kae login` launches the official flow and captures the result:
+`kae add` launches the official flow and captures the result:
 
 | Tool | Command |
 |------|---------|

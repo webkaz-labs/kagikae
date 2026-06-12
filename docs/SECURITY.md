@@ -82,7 +82,7 @@ Therefore:
 - Profile metadata stores variable names only; values live in the secret
   backend and are injected solely into the child process environment of
   `kae run --mode env`. `kae env list` never prints values.
-- `kae login` and `kae run` launch upstream CLIs with inherited stdio; kae
+- `kae add` (login flow) and `kae run` launch upstream CLIs with inherited stdio; kae
   passes no secrets on their command lines.
 
 ## Overlay Mode (experimental)

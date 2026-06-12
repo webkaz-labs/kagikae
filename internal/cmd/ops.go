@@ -211,7 +211,7 @@ func (app *App) loadPlansWithSnapshots(ctx context.Context, targets []runTarget)
 		}
 		if !found {
 			return nil, errf(constants.ExitNotFound,
-				"account %s/%s is not captured yet (run: kae capture %s %s)",
+				"account %s/%s is not captured yet (run: kae add --no-login %s %s)",
 				tgt.Tool, tgt.Account, tgt.Tool, tgt.Account)
 		}
 		plan.Meta = acc
@@ -226,7 +226,7 @@ func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error 
 		metaArt, ok := plan.Meta.Artifacts[sp.Name]
 		if !ok {
 			return errf(constants.ExitError,
-				"snapshot %s/%s lacks artifact %s; re-run kae capture %s %s",
+				"snapshot %s/%s lacks artifact %s; re-run kae add --no-login %s %s",
 				plan.Tool, plan.Account, sp.Name, plan.Tool, plan.Account)
 		}
 		value := artifact.Value{}
@@ -237,7 +237,7 @@ func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error 
 			}
 			if !found {
 				return errf(constants.ExitError,
-					"snapshot payload %s is missing; re-run kae capture %s %s",
+					"snapshot payload %s is missing; re-run kae add --no-login %s %s",
 					metaArt.SecretRef, plan.Tool, plan.Account)
 			}
 			value = artifact.Value{Data: data, Present: true}

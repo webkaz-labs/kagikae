@@ -43,7 +43,7 @@ func TestRootHelpAliases(t *testing.T) {
 		if got != constants.ExitOK {
 			t.Fatalf("expected ok exit for %s, got %d", alias, got)
 		}
-		if !strings.Contains(output, "kae switch <tool> <account>") {
+		if !strings.Contains(output, "kae use <tool> <account>") {
 			t.Fatalf("unexpected help output for %s: %q", alias, output)
 		}
 	}

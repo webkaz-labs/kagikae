@@ -48,9 +48,10 @@ warn_antigravity_transition = true
 [tools.agy]
 enabled = true
 
-# Per tool (any [tools.<tool>] section):
-# home_mode_enabled = true       # allow kae run --mode home
-# overlay_mode_enabled = false   # experimental; explicit opt-in
+# Per tool (any [tools.<tool>] section); both default to true and gate the
+# kae run isolation modes and the pin / mise init renderings:
+# home_mode_enabled = true
+# overlay_mode_enabled = true
 
 [profiles.work]
 label = "Work"

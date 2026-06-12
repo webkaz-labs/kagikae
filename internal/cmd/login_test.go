@@ -48,8 +48,8 @@ func TestLoginUnchangedAuthRefused(t *testing.T) {
 	if !strings.Contains(out, constants.CodeAuthUnchanged) {
 		t.Fatalf("expected error_code %q in output: %s", constants.CodeAuthUnchanged, out)
 	}
-	if !strings.Contains(out, "kae capture claude kaz") {
-		t.Fatalf("expected kae capture guidance in output: %s", out)
+	if !strings.Contains(out, "kae add --no-login claude kaz") {
+		t.Fatalf("expected kae add --no-login guidance in output: %s", out)
 	}
 	if _, found, err := account.Load(app.Paths.AccountDir("claude", "kaz")); err != nil || found {
 		t.Fatalf("account must not be captured (found=%v err=%v)", found, err)

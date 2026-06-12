@@ -200,3 +200,46 @@ artifacts are refused at config load — docs/DATA-MODEL.md).
 3. Add structure guards: refuse unknown layouts instead of writing.
 4. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
    guard-refusal paths.
+
+## v0.6.0 Adapter Discovery Notes (pre-implementation)
+
+Real-machine findings (macOS, 2026-06-13); these become normative sections
+above when each adapter lands.
+
+### opencode
+
+- Credentials: `~/.local/share/opencode/auth.json` (mode `0600`), one key
+  per provider; the ChatGPT-subscription login is `/openai` with
+  `{type, refresh, access, expires, accountId}`. File-based — the codex
+  auth.json pattern applies (pointer `/openai` as the structure guard).
+- Preserved: everything under `~/.config/opencode/` (settings, skills,
+  plugins) and `~/.local/share/opencode/storage/` (projects, sessions).
+- Login: `opencode auth login` (provider picker; no non-interactive form).
+
+### cursor
+
+- Credentials: keychain item, service `cursor-access-token`, account
+  `cursor-user` (created by `cursor-agent login`). The claude
+  verbatim-keychain pattern (raw-byte capture/restore via the `security`
+  CLI) should carry over; Linux storage still unknown → darwin-only first.
+- `~/.cursor/agent-cli-state.json` holds only UI tip flags (not auth).
+  `~/.cursor` otherwise belongs to the Cursor IDE (extensions, hooks) and
+  is preserved; the `Cursor Safe Storage` keychain item is the IDE's
+  Electron safeStorage key — never touch it.
+- Login: `cursor-agent login` (browser flow).
+
+### copilot
+
+- Credentials: keychain item, service `copilot-cli`, **account
+  `<host>:<user>`** (e.g. `https://github.com:webkaz`) — items for
+  different GitHub accounts coexist, so switching is not a token swap.
+- Active-account record: `~/.copilot/config.json` (mode `0600`) is
+  **JSONC** (leading `//` comment) with `lastLoggedInUser`,
+  `loggedInUsers`, `login`, `host`, `trustedFolders`, `firstLaunchAt` —
+  mixed state (trustedFolders must be preserved), but kae's JSON-pointer
+  patching cannot round-trip JSONC comments. Open design question; needs
+  a behavioural experiment (what copilot reads on start) before the
+  adapter is designed. `settings.json` is hooks-only (preserved).
+- Env conflict checks needed: `COPILOT_GITHUB_TOKEN` / `GH_TOKEN` /
+  `GITHUB_TOKEN` outrank the keychain login; the gh CLI fallback is
+  lowest-priority and untouched.

@@ -11,9 +11,9 @@ import (
 // Switch modes accepted by kae run --mode.
 const (
 	modeAuth    = constants.ModeAuth
-	modeEnv     = "env"
+	modeEnv     = constants.ModeEnv
 	modeHome    = constants.ModeHome
-	modeOverlay = "overlay"
+	modeOverlay = constants.ModeOverlay
 )
 
 func validMode(mode string) bool {
@@ -52,11 +52,22 @@ func (app *App) homeModeEnv(tool, accountName string) ([]string, error) {
 		return nil, errf(constants.ExitUnsupported,
 			"%s has no stable home-isolation mechanism yet (see docs/ROADMAP.md)", tool)
 	}
-	dir := app.Paths.HomeModeDir(tool, accountName)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("create home-mode dir: %w", err)
+	dir, err := app.prepareHome(tool, accountName)
+	if err != nil {
+		return nil, err
 	}
 	return []string{envVar + "=" + dir}, nil
+}
+
+// prepareHome creates the fully separate home-mode directory for one
+// tool/account. Shared by kae run --mode home and the pin / mise init
+// write path; like prepareOverlay it does not check the per-tool gate.
+func (app *App) prepareHome(tool, accountName string) (string, error) {
+	dir := app.Paths.HomeModeDir(tool, accountName)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create home-mode dir: %w", err)
+	}
+	return dir, nil
 }
 
 // overlaySharedItems lists the real-home entries shared (symlinked) into an
@@ -93,27 +104,38 @@ func (app *App) realToolHome(tool string) string {
 	}
 }
 
-// overlayModeEnv prepares the overlay home (private dir + shared symlinks)
-// and returns the child env entries. Overlay mode is experimental and
-// requires explicit opt-in per tool.
+// overlayModeEnv prepares the overlay home and returns the child env
+// entries (per-tool opt-out via overlay_mode_enabled).
 func (app *App) overlayModeEnv(tool, accountName string) ([]string, error) {
 	if !app.Config.OverlayModeEnabled(tool) {
 		return nil, errf(constants.ExitUnsupported,
-			"overlay mode is experimental; enable it with tools.%s.overlay_mode_enabled = true", tool)
+			"overlay mode is disabled for %s (tools.%s.overlay_mode_enabled = false)", tool, tool)
 	}
 	envVar := isolationEnvVar(tool)
 	if envVar == "" {
 		return nil, errf(constants.ExitUnsupported,
 			"%s has no stable home-isolation mechanism yet (see docs/ROADMAP.md)", tool)
 	}
+	overlayDir, err := app.prepareOverlay(tool, accountName)
+	if err != nil {
+		return nil, err
+	}
+	return []string{envVar + "=" + overlayDir}, nil
+}
+
+// prepareOverlay creates the overlay home (private dir + shared-item
+// symlinks) for one tool/account and refreshes stale links. Shared by
+// kae run --mode overlay, kae mise init --mode overlay --write, and
+// kae pin; it does not check the overlay_mode_enabled gate.
+func (app *App) prepareOverlay(tool, accountName string) (string, error) {
 	overlayDir := app.Paths.OverlayDir(tool, accountName)
 	if err := os.MkdirAll(overlayDir, 0o700); err != nil {
-		return nil, fmt.Errorf("create overlay dir: %w", err)
+		return "", fmt.Errorf("create overlay dir: %w", err)
 	}
 	// A symlinked overlay dir would redirect the link maintenance below to
 	// an arbitrary location; refuse it.
 	if info, err := os.Lstat(overlayDir); err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return nil, errf(constants.ExitUnsafeRefused,
+		return "", errf(constants.ExitUnsafeRefused,
 			"overlay dir %s is not a real directory; remove it and retry", overlayDir)
 	}
 	realHome := app.realToolHome(tool)
@@ -127,7 +149,7 @@ func (app *App) overlayModeEnv(tool, accountName string) ([]string, error) {
 			if info.Mode()&os.ModeSymlink == 0 {
 				// A real file/dir in the overlay would be silently shadowed
 				// by a link; refuse instead of destroying overlay-local data.
-				return nil, errf(constants.ExitUnsafeRefused,
+				return "", errf(constants.ExitUnsafeRefused,
 					"overlay item %s exists as a real file/directory; move it aside or delete the overlay dir %s",
 					target, overlayDir)
 			}
@@ -135,12 +157,12 @@ func (app *App) overlayModeEnv(tool, accountName string) ([]string, error) {
 				continue // already linked correctly
 			}
 			if err := os.Remove(target); err != nil {
-				return nil, fmt.Errorf("refresh overlay link %s: %w", target, err)
+				return "", fmt.Errorf("refresh overlay link %s: %w", target, err)
 			}
 		}
 		if err := os.Symlink(source, target); err != nil {
-			return nil, fmt.Errorf("link overlay item %s: %w", target, err)
+			return "", fmt.Errorf("link overlay item %s: %w", target, err)
 		}
 	}
-	return []string{envVar + "=" + overlayDir}, nil
+	return overlayDir, nil
 }

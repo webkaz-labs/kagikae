@@ -27,37 +27,27 @@ type switchReport struct {
 	Results       []switchResult `json:"results"`
 }
 
-func CmdSwitch(ctx context.Context, args []string) int {
-	flags, positionals := splitArgs(args)
-	opts, ok := parseCommon("switch", flags, true, nil)
-	if !ok {
-		return constants.ExitUsage
-	}
-	if len(positionals) != 2 {
-		return usageError("usage: %s switch <tool|all> <account-or-profile>", toolName)
-	}
-	app := newApp(opts.ConfigPath)
-	return runSwitch(ctx, app, opts, positionals[0], positionals[1])
-}
-
-// CmdUse is the ergonomic short form of `kae switch all <profile>`:
+// CmdUse switches now, in global scope (alias: kae u):
 //
-//	kae use <profile>     (alias: kae u)
+//	kae use <profile>           every enabled tool in the profile
+//	kae use <tool> <account>    one tool
 //
-// Same behavior, JSON report, and exit codes as switch all; it always
-// applies, even when the recorded state already matches (kae sync is the
-// idempotent variant).
+// It always applies, even when the recorded state already matches
+// (kae sync is the idempotent variant).
 func CmdUse(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
 	opts, ok := parseCommon("use", flags, true, nil)
 	if !ok {
 		return constants.ExitUsage
 	}
-	if len(positionals) != 1 {
-		return usageError("usage: %s use <profile>", toolName)
+	if len(positionals) != 1 && len(positionals) != 2 {
+		return usageError("usage: %s use <profile> | %s use <tool> <account>", toolName, toolName)
 	}
 	app := newApp(opts.ConfigPath)
-	return runSwitch(ctx, app, opts, "all", positionals[0])
+	if len(positionals) == 1 {
+		return runSwitch(ctx, app, opts, "all", positionals[0])
+	}
+	return runSwitch(ctx, app, opts, positionals[0], positionals[1])
 }
 
 func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name string) int {

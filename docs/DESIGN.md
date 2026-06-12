@@ -44,9 +44,9 @@ separate, explicit mode.
 Single-tool and bundle switching both work:
 
 ```bash
-kae switch claude work
-kae switch codex personal
-kae switch all work          # resolves the "work" profile
+kae use claude work
+kae use codex personal
+kae use work                 # resolves the "work" profile
 ```
 
 ## Switch Modes
@@ -56,7 +56,7 @@ kae switch all work          # resolves the "work" profile
 | `auth` | default, implemented | unchanged | switch only the subscription account; share skills / hooks / memory / MCP / trust |
 | `env` | implemented (`kae run --mode env`) | unchanged | inject API key / long-lived token into a child process only (CI, non-interactive) |
 | `home` | implemented for claude / codex | separate | full isolation: concurrent accounts, CI, per-client separation |
-| `overlay` | experimental, per-tool opt-in | partially separate | separate auth/session/cache, share settings/skills/hooks/MCP |
+| `overlay` | implemented for claude / codex (default on, per-tool opt-out) | partially separate | separate auth/session/cache, share settings/skills/hooks/MCP |
 
 See [ROADMAP.md](ROADMAP.md) for ordering and [ADAPTERS.md](ADAPTERS.md) for
 the per-tool definition of what `auth` mode touches and preserves.
@@ -64,18 +64,18 @@ the per-tool definition of what `auth` mode touches and preserves.
 ## Switch Surface Map
 
 Every switching feature combines a mode (**what** is switched, above) with
-a scope (**where** it applies):
+a scope (**where** it applies) — one verb per scope:
 
 | Scope | Surface | Effect |
 |-------|---------|--------|
-| global (live state) | `kae switch` / `kae s`, `kae use` / `kae u`, `kae sync`, `kae login` | every terminal sees the change until the next switch; `sync` is the idempotent form (no-op when kae's recorded state already matches) |
-| per-process | `kae run [--mode M] ... -- <cmd>` | only the spawned child; live state restored afterwards (auth) or never touched (env / home / overlay) |
-| per-directory | `kae mise init` (mise `[env]` + tasks; `--auto` enter hook; `--mode home` env entries) | a project directory is associated with a profile via `KAE_PROFILE`; switching is invoked through mise — explicitly via tasks, automatically on entry (`--auto` runs `kae sync --quiet`, global auth scope), or as directory-local isolated homes (`--mode home`, no global mutation) |
+| global (live state) | **`kae use`** / `kae u` (and `kae sync`, its idempotent form for hooks; `kae add`, which registers and activates) | every terminal sees the change until the next switch |
+| per-directory | **`kae pin`** / `kae unpin` (sugar over `kae mise init --write`) | the directory is bound to a profile via mise `[env]`; default overlay = auth private to the directory, settings/skills shared; `--mode home` = fully separate; `--mode auth` [+ `--auto`] = mise tasks / enter hook calling the global surface |
+| per-process | **`kae run [--mode M] ... -- <cmd>`** | only the spawned child; live state restored afterwards (auth) or never touched (env / home / overlay) |
 
 Global scope supports `auth` mode only (the concurrency boundary below).
-Per-process scope supports all modes. Per-directory scope composes with
-either: mise tasks and the `--auto` hook call the global surface, while
-`--mode home` maps the directory onto home-mode isolation.
+Per-process scope supports all modes. Per-directory scope composes:
+overlay/home map the directory onto isolation, while auth tasks and the
+`--auto` hook call the global surface.
 
 ## Subscription-First Authentication Model
 
@@ -96,10 +96,11 @@ mutating live credential stores.
 `auth` mode mutates the live credential store shared by every terminal, so two
 different accounts of the same tool cannot run concurrently in `auth` mode.
 `kae` enforces a per-tool lock during switching and documents that concurrent
-multi-account work requires `home` (or later `overlay`) mode.
+multi-account work requires `home` or `overlay` mode (most ergonomically via
+`kae pin`).
 
 ```text
-OK:  kae switch all work && claude
+OK:  kae use work && claude
 NG:  terminal A uses claude/work while terminal B uses claude/personal (auth mode)
 ```
 
@@ -127,18 +128,20 @@ NG:  terminal A uses claude/work while terminal B uses claude/personal (auth mod
 
 A developer with work and personal subscriptions for several AI CLIs can:
 
-1. `kae capture <tool> <account>` once per logged-in account;
-2. `kae switch all work` / `kae switch all personal` daily, in under a second,
+1. `kae add <tool> <account>` once per account (or `--no-login` while logged in);
+2. `kae use work` / `kae use personal` daily, in under a second,
    without losing any working context;
 3. trust that a failed or interrupted switch is recoverable via `kae rollback`;
 4. script everything via stable `--json` output and deterministic exit codes.
 
 ## Current State
 
-`kae v0.3.0` implements the full mode set for macOS and Linux: the v0.1.0
-auth-mode commands plus `run` (auth transaction with recapture-and-restore,
-`env` / `home` / `overlay` modes), `login`, `env` profiles, `mise init`, and
-an experimental file-snapshot adapter for Antigravity CLI. Keychain items
-are captured and restored verbatim, and `login` refuses flows that exit
-without changing auth. Windows support, the Codex keyring driver, and
-gemini/agy home isolation are roadmap items.
+`kae v0.5.0` implements the full mode set for macOS and Linux behind the
+use / pin / run verb-per-scope surface: `add` (official login flow or
+`--no-login` snapshot), `use` and `sync` (global), `pin`/`unpin` and
+`mise init` (per-directory; overlay default), `run` (per-process auth
+transaction with recapture-and-restore, plus `env` / `home` / `overlay`),
+`env` profiles, and an experimental file-snapshot adapter for Antigravity
+CLI. Keychain items are captured and restored verbatim, and the login flow
+refuses exits that change nothing. Windows support, the Codex keyring
+driver, and gemini/agy home isolation are roadmap items.

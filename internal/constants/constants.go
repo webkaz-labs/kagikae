@@ -19,8 +19,10 @@ var Tools = []string{ToolClaude, ToolCodex, ToolGemini, ToolAgy}
 
 // Switch modes.
 const (
-	ModeAuth = "auth"
-	ModeHome = "home"
+	ModeAuth    = "auth"
+	ModeEnv     = "env"
+	ModeHome    = "home"
+	ModeOverlay = "overlay"
 )
 
 // EnvKaeProfile is the environment variable that pins a kae profile to a

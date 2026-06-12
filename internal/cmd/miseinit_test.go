@@ -133,11 +133,13 @@ func TestMiseInitFlagValidation(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 	code, out := captureStdout(t, func() int {
-		return runMiseInit(ctx, app, opts, "work", "overlay", false, false)
+		return runMiseInit(ctx, app, opts, "work", "env", false, false)
 	})
 	mustExit(t, constants.ExitUsage, code, out)
-	code, out = captureStdout(t, func() int {
-		return runMiseInit(ctx, app, opts, "work", modeHome, true, false)
-	})
-	mustExit(t, constants.ExitUsage, code, out)
+	for _, mode := range []string{modeHome, modeOverlay} {
+		code, out = captureStdout(t, func() int {
+			return runMiseInit(ctx, app, opts, "work", mode, true, false)
+		})
+		mustExit(t, constants.ExitUsage, code, out)
+	}
 }

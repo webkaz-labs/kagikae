@@ -142,59 +142,6 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 	}
 }
 
-type currentReport struct {
-	SchemaVersion int               `json:"schema_version"`
-	ActiveProfile *string           `json:"active_profile"`
-	Active        map[string]string `json:"active"`
-}
-
-func CmdCurrent(ctx context.Context, args []string) int {
-	flags, positionals := splitArgs(args)
-	opts, ok := parseCommon("current", flags, false, nil)
-	if !ok {
-		return constants.ExitUsage
-	}
-	if len(positionals) != 0 {
-		return usageError("usage: %s current [--json]", toolName)
-	}
-	app := newApp(opts.ConfigPath)
-	return runCurrent(ctx, app, opts)
-}
-
-func runCurrent(_ context.Context, app *App, opts commonOpts) int {
-	if err := app.requireConfig(); err != nil {
-		return finish(opts, err)
-	}
-	st, err := app.loadState()
-	if err != nil {
-		return finish(opts, err)
-	}
-	report := currentReport{
-		SchemaVersion: constants.SchemaVersion,
-		Active:        st.Active,
-	}
-	if profile := app.Config.MatchProfile(st.Active); profile != "" {
-		report.ActiveProfile = &profile
-	}
-	if opts.Format == formatJSON {
-		return encodeJSON(report)
-	}
-	if report.ActiveProfile != nil {
-		fmt.Printf("profile: %s\n", *report.ActiveProfile)
-	}
-	printed := false
-	for _, tool := range constants.Tools {
-		if accountName, ok := st.Active[tool]; ok {
-			fmt.Printf("%s: %s\n", tool, accountName)
-			printed = true
-		}
-	}
-	if !printed {
-		fmt.Println("no active accounts recorded (run: kae capture <tool> <account>)")
-	}
-	return constants.ExitOK
-}
-
 type accountItem struct {
 	Tool       string `json:"tool"`
 	Account    string `json:"account"`
@@ -247,7 +194,7 @@ func runAccounts(_ context.Context, app *App, opts commonOpts) int {
 		return encodeJSON(report)
 	}
 	if len(report.Accounts) == 0 {
-		fmt.Println("no captured accounts (run: kae capture <tool> <account>)")
+		fmt.Println("no captured accounts (run: kae add <tool> <account>)")
 		return constants.ExitOK
 	}
 	rows := [][]string{}

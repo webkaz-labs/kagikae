@@ -90,4 +90,19 @@ func TestStatusRecordedProfileBeatsMappingMatch(t *testing.T) {
 	if !strings.Contains(out, `"active_profile": "b"`) {
 		t.Fatalf("recorded active_profile must win: %s", out)
 	}
+
+	// Without a recorded profile (older state files) the mapping match is
+	// the fallback; with ambiguous mappings it resolves to the first name
+	// in ascending order.
+	st.ActiveProfile = ""
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+	code, out = captureStdout(t, func() int {
+		return runStatus(context.Background(), app, commonOpts{Format: formatJSON})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(out, `"active_profile": "a"`) {
+		t.Fatalf("mapping-match fallback must resolve: %s", out)
+	}
 }

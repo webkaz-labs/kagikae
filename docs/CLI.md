@@ -89,7 +89,8 @@ guidance). Per mode:
 (the value may carry arguments, e.g. `code --wait`), and re-validates the
 result: parse or validation problems exit `2` (`invalid_config`) with the
 error, soft issues print as warnings. A missing config exits `7` pointing
-at `kae init`.
+at `kae init`; an editor that exits non-zero is reported with exit `1`
+(the file is left as last saved, nothing is rolled back).
 
 ## kae add Semantics
 

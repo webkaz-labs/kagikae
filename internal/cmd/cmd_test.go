@@ -32,7 +32,7 @@ func TestBuildVersionReport(t *testing.T) {
 	if report.SchemaVersion != constants.SchemaVersion || report.Tool != toolName {
 		t.Fatalf("unexpected: %+v", report)
 	}
-	if report.Major != 0 || report.Minor != 4 || report.Patch != 0 || report.Contract != "pre_stable" {
+	if report.Major != 0 || report.Minor != 5 || report.Patch != 0 || report.Contract != "pre_stable" {
 		t.Fatalf("unexpected version semantics: %+v", report)
 	}
 }

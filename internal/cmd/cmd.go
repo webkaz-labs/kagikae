@@ -22,7 +22,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.4.0"
+	toolVersion = "v0.5.0"
 )
 
 // Root dispatches the command line.

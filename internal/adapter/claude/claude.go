@@ -6,7 +6,6 @@ package claude
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -143,12 +142,10 @@ func (c Claude) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	checks = append(checks, adapter.Check{Tool: tool, Code: constants.CheckDriver,
 		Status: constants.StatusOK, Message: "driver: " + info.Driver})
 	checks = append(checks, adapter.EnvConflictChecks(env, tool, envConflicts)...)
-	if env.GOOS == "linux" {
-		if fileInfo, err := os.Stat(credentialsPath(env)); err == nil && fileInfo.Mode().Perm()&0o077 != 0 {
-			checks = append(checks, adapter.Check{Tool: tool, Code: constants.CheckFileMode,
-				Status: constants.StatusWarn,
-				Message: credentialsPath(env) + " is group/world readable; expected 0600"})
-		}
+	// The macOS driver is keychain-based, but a stray plaintext credential
+	// file with loose permissions deserves the warning there too.
+	if check, ok := adapter.FileModeCheck(env, tool, credentialsPath(env)); ok {
+		checks = append(checks, check)
 	}
 	return checks
 }

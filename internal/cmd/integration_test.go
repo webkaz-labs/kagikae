@@ -352,8 +352,8 @@ func TestStatusAccountsCurrentJSON(t *testing.T) {
 		t.Fatalf("unexpected status: %s", out)
 	}
 	tools := status["tools"].([]any)
-	if len(tools) != 3 {
-		t.Fatalf("expected 3 tools: %s", out)
+	if len(tools) != len(constants.Tools) {
+		t.Fatalf("expected %d tools: %s", len(constants.Tools), out)
 	}
 	first := tools[0].(map[string]any)
 	if first["tool"] != "claude" || first["account"] != nil || first["accounts"] == nil {
@@ -426,6 +426,39 @@ func TestAgyCaptureSwitchFileSnapshot(t *testing.T) {
 	mustExit(t, constants.ExitOK, code, out)
 	if got := readFile(t, credPath); got != "opaque-work-blob" {
 		t.Fatalf("agy credential not switched: %s", got)
+	}
+}
+
+func TestOpencodeCaptureSwitchPreservesSiblingProviders(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	authPath := filepath.Join(app.Env.Home, ".local", "share", "opencode", "auth.json")
+
+	// without an openai entry, capture reports missing auth (sibling
+	// API-key providers do not count as a subscription login)
+	writeFile(t, authPath, `{"openrouter":{"type":"api","key":"sk-other"}}`)
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "opencode", "work") })
+	mustExit(t, constants.ExitAuthMissing, code, out)
+
+	writeFile(t, authPath,
+		`{"openai":{"type":"oauth","refresh":"r-work","access":"a-work"},"openrouter":{"type":"api","key":"sk-other"}}`)
+	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "opencode", "work") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	writeFile(t, authPath,
+		`{"openai":{"type":"oauth","refresh":"r-personal","access":"a-personal"},"openrouter":{"type":"api","key":"sk-other"}}`)
+	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "opencode", "personal") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "opencode", "work") })
+	mustExit(t, constants.ExitOK, code, out)
+	got := readFile(t, authPath)
+	if !strings.Contains(got, `"r-work"`) || strings.Contains(got, `"r-personal"`) {
+		t.Fatalf("openai entry not switched: %s", got)
+	}
+	if !strings.Contains(got, `"sk-other"`) {
+		t.Fatalf("sibling provider key must survive the switch: %s", got)
 	}
 }
 

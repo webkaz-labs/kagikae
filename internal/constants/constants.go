@@ -8,13 +8,14 @@ const SchemaVersion = 1
 
 // Tool identifiers.
 const (
-	ToolClaude = "claude"
-	ToolCodex  = "codex"
-	ToolAgy    = "agy"
+	ToolClaude   = "claude"
+	ToolCodex    = "codex"
+	ToolAgy      = "agy"
+	ToolOpencode = "opencode"
 )
 
 // Tools is the canonical tool ordering for reports and iteration.
-var Tools = []string{ToolClaude, ToolCodex, ToolAgy}
+var Tools = []string{ToolClaude, ToolCodex, ToolAgy, ToolOpencode}
 
 // RemovedTools maps tools kae no longer supports to their successor, for
 // error messages and config tolerance (docs/RELEASE.md Breaking Changes).
@@ -41,6 +42,7 @@ const (
 	DriverCodexAuthJSON       = "codex-auth-json"
 	DriverCodexKeyring        = "codex-keyring"
 	DriverAgyFileSnapshot     = "agy-file-snapshot"
+	DriverOpencodeFilePatch   = "opencode-file-patch"
 )
 
 // Artifact kinds.

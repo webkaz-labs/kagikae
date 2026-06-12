@@ -263,6 +263,9 @@ enabled = true
 [tools.agy]
 enabled = true
 
+[tools.opencode]
+enabled = true
+
 # Profiles bundle per-tool accounts:
 #
 # [profiles.work]

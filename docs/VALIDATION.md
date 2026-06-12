@@ -73,6 +73,13 @@ KAE_PROFILE=personal /tmp/kae sync --json          # env resolution
 /tmp/kae switch x y; echo $?                       # 64 + replacement pointer
 EDITOR=true /tmp/kae edit                          # validate round-trip
 /tmp/kae status --json                             # has "pinned" + "profiles"
+
+# v0.6.0 surfaces (opencode auth.json is file-based — safe on macOS; seed
+# $XDG_DATA_HOME/opencode/auth.json with {"openai":{...},"other":{...}}):
+/tmp/kae add --no-login opencode work --json
+/tmp/kae use opencode work --json
+#   assert: the "other" sibling key in auth.json is untouched
+/tmp/kae doctor --json                             # opencode checks present
 ```
 
 Enter-hook firing (`mise init --auto --write`) needs a live mise:

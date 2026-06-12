@@ -8,6 +8,7 @@ execution environments for AI coding CLIs:
 - Claude Code (`claude`)
 - Codex CLI (`codex`)
 - Antigravity CLI (`agy`)
+- OpenCode (`opencode`)
 
 The primary daily use case is switching subscription accounts:
 
@@ -17,6 +18,7 @@ switch back to the personal Claude Pro account
 switch to the company ChatGPT Team Codex account
 switch back to the personal ChatGPT Plus Codex account
 switch Google AI Pro / Ultra accounts for Antigravity
+switch ChatGPT subscription accounts for OpenCode
 ```
 
 ## Core Principle: Auth-Only Switching By Default
@@ -139,8 +141,10 @@ use / pin / run verb-per-scope surface: `add` (official login flow or
 `--no-login` snapshot), `use` and `sync` (global), `pin`/`unpin` and
 `mise init` (per-directory; overlay default), `run` (per-process auth
 transaction with recapture-and-restore, plus `env` / `home` / `overlay`),
-`env` profiles, and an experimental file-snapshot adapter for Antigravity
-CLI. Keychain items are captured and restored verbatim, and the login flow
-refuses exits that change nothing. Windows support, the Codex keyring
-driver, and agy home isolation are roadmap items (v0.6.0 removed the gemini
-adapter after upstream retired Gemini CLI for Antigravity on 2026-05-19).
+`env` profiles, an experimental file-snapshot adapter for Antigravity
+CLI, and a JSON-pointer adapter for OpenCode's ChatGPT-subscription login
+(v0.6.0). Keychain items are captured and restored verbatim, and the login
+flow refuses exits that change nothing. Windows support, the Codex keyring
+driver, and agy/opencode home isolation are roadmap items (v0.6.0 removed
+the gemini adapter after upstream retired Gemini CLI for Antigravity on
+2026-05-19).

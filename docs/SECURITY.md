@@ -50,9 +50,10 @@ here are part of the command contract.
 
 ## File Permissions
 
-- `~/.claude/.credentials.json`, `~/.codex/auth.json`, and agy credential
-  files under `~/.gemini/antigravity-cli/` are written `0600`; kagikae
-  metadata/state dirs `0700`.
+- `~/.claude/.credentials.json`, `~/.codex/auth.json`,
+  `~/.local/share/opencode/auth.json`, and agy credential files under
+  `~/.gemini/antigravity-cli/` are written `0600`; kagikae metadata/state
+  dirs `0700`.
 - `doctor` warns when live credential files are group/world readable.
 
 ## Environment Conflicts

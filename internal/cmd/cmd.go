@@ -12,6 +12,7 @@ import (
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/agy"
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/claude"
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/codex"
+	_ "github.com/webkaz-labs/kagikae/internal/adapter/opencode"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
@@ -220,7 +221,7 @@ Flags (structured commands):
   --no-color            disable color
   --config <path>       explicit config file path
 
-Tools: claude, codex, agy`)
+Tools: ` + strings.Join(constants.Tools, ", "))
 }
 
 // removedCommand reports a command removed in v0.5.0 and names its

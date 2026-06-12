@@ -104,10 +104,12 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 	if activeProfile != "" {
 		report.ActiveProfile = &activeProfile
 	}
-	for _, name := range app.Config.ProfileNames() {
+	for _, name := range app.Config.ProfileNames() { // ascending, stable order
 		profile := app.Config.Profiles[name]
 		accounts := profile.Accounts
 		if accounts == nil {
+			// A [profiles.X] section without accounts parses to a nil map;
+			// keep the JSON contract at {} rather than null.
 			accounts = map[string]string{}
 		}
 		report.Profiles = append(report.Profiles, profileStatus{
@@ -140,37 +142,6 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		report.Tools = append(report.Tools, ts)
 	}
 	return report, nil
-}
-
-// pinnedStatus reports the binding a pinned .mise.toml exports into this
-// directory's environment: KAE_PROFILE plus the isolation mode inferred
-// from which kae data root the tools' isolation env vars point into
-// (neither set means the auth-mode tasks rendering).
-func (app *App) pinnedStatus() *pinnedStatus {
-	profile := app.Env.Getenv(constants.EnvKaeProfile)
-	if profile == "" {
-		return nil
-	}
-	mode := constants.ModeAuth
-	for _, tool := range constants.Tools {
-		envVar := isolationEnvVar(tool)
-		if envVar == "" {
-			continue
-		}
-		dir := app.Env.Getenv(envVar)
-		if dir == "" {
-			continue
-		}
-		if pathWithin(dir, app.Paths.OverlaysDir()) {
-			mode = modeOverlay
-			break
-		}
-		if pathWithin(dir, app.Paths.HomesDir()) {
-			mode = modeHome
-			break
-		}
-	}
-	return &pinnedStatus{Profile: profile, Mode: mode}
 }
 
 func printStatusReport(app *App, report *statusReport, opts commonOpts) {

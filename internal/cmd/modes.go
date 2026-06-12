@@ -119,7 +119,44 @@ func (app *App) realToolHome(tool string) string {
 // isKaeManagedHome reports whether dir lies inside kae's home-mode or
 // overlay data roots.
 func (app *App) isKaeManagedHome(dir string) bool {
-	return pathWithin(dir, app.Paths.HomesDir()) || pathWithin(dir, app.Paths.OverlaysDir())
+	return app.kaeManagedHomeKind(dir) != ""
+}
+
+// kaeManagedHomeKind classifies dir against kae's isolation data roots:
+// modeOverlay, modeHome, or "" for anything outside both.
+func (app *App) kaeManagedHomeKind(dir string) string {
+	switch {
+	case pathWithin(dir, app.Paths.OverlaysDir()):
+		return modeOverlay
+	case pathWithin(dir, app.Paths.HomesDir()):
+		return modeHome
+	default:
+		return ""
+	}
+}
+
+// pinnedStatus reports the binding a pinned .mise.toml exports into this
+// directory's environment: KAE_PROFILE plus the isolation mode inferred
+// from which kae data root the tools' isolation env vars point into.
+// Neither pointing anywhere means the auth-mode tasks rendering; a pin is
+// a single mode, so the first tool that resolves decides.
+func (app *App) pinnedStatus() *pinnedStatus {
+	profile := app.Env.Getenv(constants.EnvKaeProfile)
+	if profile == "" {
+		return nil
+	}
+	mode := constants.ModeAuth
+	for _, tool := range constants.Tools {
+		envVar := isolationEnvVar(tool)
+		if envVar == "" {
+			continue
+		}
+		if kind := app.kaeManagedHomeKind(app.Env.Getenv(envVar)); kind != "" {
+			mode = kind
+			break
+		}
+	}
+	return &pinnedStatus{Profile: profile, Mode: mode}
 }
 
 // pathWithin reports whether dir lies inside root (lexical; symlinks are

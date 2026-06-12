@@ -29,7 +29,7 @@ func CmdDoctor(ctx context.Context, args []string) int {
 	case 1:
 		toolFilter = positionals[0]
 		if !constants.IsTool(toolFilter) {
-			return usageError("unknown tool %q (tools: claude, codex, gemini, agy)", toolFilter)
+			return usageError("unknown tool %q (tools: claude, codex, agy)", toolFilter)
 		}
 	default:
 		return usageError("usage: %s doctor [tool] [--json]", toolName)

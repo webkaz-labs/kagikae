@@ -7,7 +7,6 @@ execution environments for AI coding CLIs:
 
 - Claude Code (`claude`)
 - Codex CLI (`codex`)
-- Gemini CLI (`gemini`)
 - Antigravity CLI (`agy`)
 
 The primary daily use case is switching subscription accounts:
@@ -17,13 +16,13 @@ switch to the work Claude Max account
 switch back to the personal Claude Pro account
 switch to the company ChatGPT Team Codex account
 switch back to the personal ChatGPT Plus Codex account
-switch Google AI Pro / Ultra accounts for Gemini / Antigravity
+switch Google AI Pro / Ultra accounts for Antigravity
 ```
 
 ## Core Principle: Auth-Only Switching By Default
 
 The default mode must **not** switch the upstream tool home/config directory.
-Replacing `~/.claude`, `~/.codex`, or `~/.gemini` wholesale would also separate
+Replacing `~/.claude` or `~/.codex` wholesale would also separate
 skills, hooks, memory, MCP configuration, project trust, session history, and
 working context. Users almost always want to keep that working environment and
 replace only the subscription credential.
@@ -37,7 +36,7 @@ separate, explicit mode.
 | Term | Meaning |
 |------|---------|
 | `account` | a tool-specific login snapshot, e.g. `claude/work`, `codex/personal` |
-| `profile` | a named bundle mapping each tool to one account, e.g. `work` = claude:work + codex:work + gemini:work + agy:work |
+| `profile` | a named bundle mapping each tool to one account, e.g. `work` = claude:work + codex:work + agy:work |
 | `driver` | the platform/tool-specific mechanism that captures and applies auth artifacts |
 | `artifact` | one captured unit of authentication state (a JSON pointer value, a file, or a keychain item) |
 
@@ -85,8 +84,7 @@ overlay/home map the directory onto isolation, while auth tasks and the
 |------|--------------------|
 | Claude Code | Claude Pro / Max / Team / Enterprise OAuth login |
 | Codex CLI | ChatGPT Plus / Pro / Team / Business / Enterprise login |
-| Gemini CLI | Google login (Google AI Pro / Ultra, Code Assist) |
-| Antigravity CLI | Google login (Gemini CLI migration target) |
+| Antigravity CLI | Google login (Google AI Pro / Ultra) |
 
 API-key and Vertex-style profiles are handled later by `env` mode, not by
 mutating live credential stores.
@@ -144,4 +142,5 @@ transaction with recapture-and-restore, plus `env` / `home` / `overlay`),
 `env` profiles, and an experimental file-snapshot adapter for Antigravity
 CLI. Keychain items are captured and restored verbatim, and the login flow
 refuses exits that change nothing. Windows support, the Codex keyring
-driver, and gemini/agy home isolation are roadmap items.
+driver, and agy home isolation are roadmap items (v0.6.0 removed the gemini
+adapter after upstream retired Gemini CLI for Antigravity on 2026-05-19).

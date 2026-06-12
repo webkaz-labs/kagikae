@@ -52,11 +52,10 @@ func newApp(configPath string) *App {
 		ConfigWarnings: warnings,
 		ConfigErr:      cfgErr,
 		Env: adapter.Env{
-			GOOS:                      runtime.GOOS,
-			Home:                      home,
-			Getenv:                    os.Getenv,
-			LookPath:                  exec.LookPath,
-			WarnAntigravityTransition: cfg.WarnAntigravity(),
+			GOOS:     runtime.GOOS,
+			Home:     home,
+			Getenv:   os.Getenv,
+			LookPath: exec.LookPath,
 		},
 		Now: time.Now,
 	}

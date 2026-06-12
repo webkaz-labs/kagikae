@@ -23,9 +23,6 @@ func loginCommand(tool string) []string {
 		return []string{"claude", "/login"}
 	case constants.ToolCodex:
 		return []string{"codex", "login"}
-	case constants.ToolGemini:
-		// Gemini CLI has no login subcommand; the auth flow runs on startup.
-		return []string{"gemini"}
 	default:
 		return nil
 	}

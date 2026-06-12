@@ -103,50 +103,12 @@ only detects the keyring configuration:
 project/.codex/  AGENTS.md  rules / hooks / MCP / skills
 ```
 
-## Gemini CLI
-
-### Live auth locations
-
-Google-login state is cached under `~/.gemini`:
-
-| Artifact | Purpose |
-|----------|---------|
-| `~/.gemini/oauth_creds.json` | Google OAuth tokens |
-| `~/.gemini/google_accounts.json` | active Google account identity |
-
-Both are auth-only files and are swapped whole. Either may be absent for
-API-key or Vertex configurations; the adapter captures what exists and records
-which artifacts were present.
-
-### Drivers
-
-| Driver | Status | Switched artifacts |
-|--------|--------|--------------------|
-| `gemini-oauth-cache` | implemented | `oauth_creds.json`, `google_accounts.json` (mode `0600`) |
-
-API-key (`GEMINI_API_KEY`) and Vertex (`GOOGLE_APPLICATION_CREDENTIALS`,
-`GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`) profiles are environment
-based and belong to the planned `env` mode, not to credential-cache switching.
-`doctor` distinguishes the configured auth type and warns when `GEMINI_API_KEY`
-or Vertex variables are set, since they take precedence over the OAuth cache.
-
-### Preserved
-
-```text
-~/.gemini/settings.json  ~/.gemini/GEMINI.md  ~/.gemini/skills/
-~/.gemini/installation_id  project/.gemini/
-MCP / tools / context config
-```
-
-### Antigravity transition
-
-Personal Gemini CLI serving (Google AI Pro / Ultra and free tier) is scheduled
-to move to Antigravity CLI on 2026-06-18; Code Assist Standard / Enterprise
-and Google Cloud paths continue. When `warn_antigravity_transition = true`
-(default), `doctor` and `switch` surface a transition notice for Google-login
-Gemini accounts.
-
 ## Antigravity CLI (`agy`) — experimental
+
+> **Note:** The `gemini` adapter was removed in v0.6.0 after upstream retired
+> Gemini CLI for Antigravity on 2026-05-19. Captured gemini accounts remain on
+> disk untouched; use `agy` going forward.
+
 
 Antigravity CLI keeps its state under `~/.gemini/antigravity-cli/`
 (`settings.json`, `log/`, `skills/`). Credentials go to the OS keyring when
@@ -183,7 +145,6 @@ mise `[env]` entries scoped to a project directory (docs/CLI.md):
 |------|-------------------|-----------|--------------|
 | claude | `CLAUDE_CONFIG_DIR` | supported | supported (pin default) |
 | codex | `CODEX_HOME` | supported | supported (pin default) |
-| gemini | none stable | refused | refused |
 | agy | none stable | refused | refused |
 
 "Refused" means exit `5` from `kae run`; `kae pin` / `kae mise init` instead
@@ -226,7 +187,6 @@ artifacts are refused at config load — docs/DATA-MODEL.md).
 |------|---------|
 | claude | `claude /login` |
 | codex | `codex login` |
-| gemini | `gemini` (auth flow runs on startup) |
 | agy | unsupported |
 
 ## Adding A New Adapter

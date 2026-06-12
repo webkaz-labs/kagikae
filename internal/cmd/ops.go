@@ -36,7 +36,12 @@ func (app *App) actionsOf(specs []artifact.Spec) []action {
 // validateToolAccount checks CLI-provided tool and account/profile names.
 func validateToolAccount(tool, name, nameKind string) error {
 	if !constants.IsTool(tool) {
-		return errf(constants.ExitUsage, "unknown tool %q (tools: claude, codex, gemini, agy)", tool)
+		if successor, removed := constants.RemovedTools[tool]; removed {
+			return errf(constants.ExitUsage,
+				"%s was removed in v0.6.0; its upstream successor is %s (captured %s accounts on disk are untouched)",
+				tool, successor, tool)
+		}
+		return errf(constants.ExitUsage, "unknown tool %q (tools: claude, codex, agy)", tool)
 	}
 	if !config.ValidName(name) {
 		return errf(constants.ExitUsage, "invalid %s name %q (allowed: [a-zA-Z0-9._-], max 64 chars)", nameKind, name)

@@ -17,7 +17,7 @@ func overlayTestApp(t *testing.T) *App {
 	app.Config.Profiles = map[string]config.Profile{
 		"work": {Accounts: map[string]string{
 			constants.ToolClaude: "work",
-			constants.ToolGemini: "work",
+			constants.ToolAgy: "work",
 		}},
 	}
 	// Shared items must exist in the real home to be linked.
@@ -43,8 +43,8 @@ func TestMiseInitOverlayWriteLinksAndRefreshes(t *testing.T) {
 	if !strings.Contains(out, `CLAUDE_CONFIG_DIR = "`+overlayDir+`"`) {
 		t.Fatalf("missing overlay env entry: %s", out)
 	}
-	if !strings.Contains(out, "gemini has no stable home-isolation env var") {
-		t.Fatalf("gemini must keep the real home with a warning: %s", out)
+	if !strings.Contains(out, "agy has no stable home-isolation env var") {
+		t.Fatalf("agy must keep the real home with a warning: %s", out)
 	}
 	if _, err := os.Stat(overlayDir); !os.IsNotExist(err) {
 		t.Fatal("preview must not create overlay dirs")

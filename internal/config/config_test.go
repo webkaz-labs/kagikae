@@ -24,8 +24,8 @@ func TestLoadMissingFileYieldsDefaults(t *testing.T) {
 	if cfg.Security.SecretBackend != "auto" || cfg.Security.BackupKeep != DefaultBackupKeep {
 		t.Fatalf("unexpected defaults: %+v", cfg.Security)
 	}
-	if !cfg.ToolEnabled("claude") || !cfg.WarnAntigravity() {
-		t.Fatal("defaults should enable tools and the transition warning")
+	if !cfg.ToolEnabled("claude") {
+		t.Fatal("defaults should enable tools")
 	}
 }
 
@@ -40,9 +40,6 @@ backup_keep = 5
 
 [tools.claude]
 enabled = false
-
-[tools.gemini]
-warn_antigravity_transition = false
 
 [profiles.work]
 label = "Work"
@@ -66,9 +63,6 @@ claude = "personal"
 	}
 	if cfg.ToolEnabled("codex") == false {
 		t.Fatal("codex should default to enabled")
-	}
-	if cfg.WarnAntigravity() {
-		t.Fatal("transition warning should be off")
 	}
 	if cfg.Profiles["work"].Accounts["codex"] != "work" {
 		t.Fatalf("profile mapping lost: %+v", cfg.Profiles)

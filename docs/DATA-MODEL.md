@@ -41,10 +41,6 @@ enabled = true
 [tools.codex]
 enabled = true
 
-[tools.gemini]
-enabled = true
-warn_antigravity_transition = true
-
 [tools.agy]
 enabled = true
 
@@ -63,7 +59,6 @@ label = "Work"
 [profiles.work.accounts]
 claude = "work"
 codex = "work"
-gemini = "work"
 
 [profiles.personal]
 label = "Personal"
@@ -71,8 +66,9 @@ label = "Personal"
 [profiles.personal.accounts]
 claude = "personal"
 codex = "personal"
-gemini = "personal"
 ```
+
+References to removed tools (e.g. `gemini`) load with a warning and are ignored.
 
 Precedence: defaults, then config file, then environment overrides
 (secrets/CI only), then CLI flags. Unknown keys produce a warning (not an
@@ -146,7 +142,7 @@ guidance to either install libsecret tools or opt in to the file backend with
 {
   "schema_version": 1,
   "active_profile": "work",
-  "active": {"claude": "work", "codex": "work", "gemini": "work"},
+  "active": {"claude": "work", "codex": "work"},
   "updated_at": "2026-06-11T01:23:45Z"
 }
 ```
@@ -202,7 +198,7 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
   `unsafe_refused`, `auth_unchanged`, `usage`
 - artifact kinds: `json-pointer`, `file`, `keychain`
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
-  `gemini-oauth-cache`, `agy-file-snapshot`
+  `agy-file-snapshot`
 - modes: `auth`, `env`, `home`, `overlay`
 - backup reasons: `switch`, `rollback`, `run`, `login`
 

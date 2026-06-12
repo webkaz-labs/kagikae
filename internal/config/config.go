@@ -48,11 +48,10 @@ type Security struct {
 
 // Tool holds per-tool settings. Pointers distinguish "unset" from "false".
 type Tool struct {
-	Enabled                   *bool    `toml:"enabled"`
-	WarnAntigravityTransition *bool    `toml:"warn_antigravity_transition"`
-	HomeModeEnabled           *bool    `toml:"home_mode_enabled"`
-	OverlayModeEnabled        *bool    `toml:"overlay_mode_enabled"`
-	OverlayExtraShared        []string `toml:"overlay_extra_shared"`
+	Enabled            *bool    `toml:"enabled"`
+	HomeModeEnabled    *bool    `toml:"home_mode_enabled"`
+	OverlayModeEnabled *bool    `toml:"overlay_mode_enabled"`
+	OverlayExtraShared []string `toml:"overlay_extra_shared"`
 }
 
 // Profile bundles per-tool accounts under one name.
@@ -90,6 +89,7 @@ func Load(path string) (*Config, []string, error) {
 	for _, key := range meta.Undecoded() {
 		warnings = append(warnings, fmt.Sprintf("unknown config key %q ignored", key.String()))
 	}
+	warnings = append(warnings, stripRemovedTools(cfg)...)
 	if err := cfg.validate(); err != nil {
 		return nil, warnings, err
 	}
@@ -187,13 +187,26 @@ func (c *Config) OverlayModeEnabled(tool string) bool {
 	return *t.OverlayModeEnabled
 }
 
-// WarnAntigravity reports whether the Gemini transition notice is active.
-func (c *Config) WarnAntigravity() bool {
-	t, ok := c.Tools[constants.ToolGemini]
-	if !ok || t.WarnAntigravityTransition == nil {
-		return true
+// stripRemovedTools drops config references to tools kae no longer
+// supports with a warning instead of a hard validation error, so configs
+// written before a removal keep working (docs/RELEASE.md Breaking Changes).
+func stripRemovedTools(c *Config) []string {
+	var warnings []string
+	for tool, successor := range constants.RemovedTools {
+		if _, ok := c.Tools[tool]; ok {
+			delete(c.Tools, tool)
+			warnings = append(warnings,
+				fmt.Sprintf("[tools.%s] ignored: %s was removed (successor: %s)", tool, tool, successor))
+		}
+		for name, profile := range c.Profiles {
+			if _, ok := profile.Accounts[tool]; ok {
+				delete(profile.Accounts, tool)
+				warnings = append(warnings,
+					fmt.Sprintf("profiles.%s.accounts.%s ignored: %s was removed (successor: %s)", name, tool, tool, successor))
+			}
+		}
 	}
-	return *t.WarnAntigravityTransition
+	return warnings
 }
 
 // ProfileNames returns profile names sorted ascending.
@@ -247,10 +260,6 @@ enabled = true
 [tools.codex]
 enabled = true
 
-[tools.gemini]
-enabled = true
-warn_antigravity_transition = true
-
 [tools.agy]
 enabled = true
 
@@ -261,14 +270,12 @@ enabled = true
 # [profiles.work.accounts]
 # claude = "work"
 # codex = "work"
-# gemini = "work"
 #
 # [profiles.personal]
 # label = "Personal"
 # [profiles.personal.accounts]
 # claude = "personal"
 # codex = "personal"
-# gemini = "personal"
 `)
 	return b.String()
 }

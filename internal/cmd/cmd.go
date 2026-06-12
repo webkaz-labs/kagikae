@@ -12,7 +12,6 @@ import (
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/agy"
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/claude"
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/codex"
-	_ "github.com/webkaz-labs/kagikae/internal/adapter/gemini"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
@@ -221,7 +220,7 @@ Flags (structured commands):
   --no-color            disable color
   --config <path>       explicit config file path
 
-Tools: claude, codex, gemini, agy`)
+Tools: claude, codex, agy`)
 }
 
 // removedCommand reports a command removed in v0.5.0 and names its

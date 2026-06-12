@@ -141,7 +141,7 @@ func TestEnvSetStdinAndUnset(t *testing.T) {
 	}
 
 	code, out := captureStdout(t, func() int {
-		return runEnvSet(ctx, app, opts, []string{"gemini", "ci", "GEMINI_API_KEY=g-1", "GOOGLE_CLOUD_PROJECT=p-1"})
+		return runEnvSet(ctx, app, opts, []string{"agy", "ci", "GEMINI_API_KEY=g-1", "GOOGLE_CLOUD_PROJECT=p-1"})
 	})
 	mustExit(t, constants.ExitOK, code, out)
 	code, out = captureStdout(t, func() int { return runEnvList(ctx, app, commonOpts{Format: formatJSON}) })
@@ -150,15 +150,15 @@ func TestEnvSetStdinAndUnset(t *testing.T) {
 		t.Fatalf("list must show names, never values: %s", out)
 	}
 	code, out = captureStdout(t, func() int {
-		return runEnvUnset(ctx, app, opts, []string{"gemini", "ci", "GEMINI_API_KEY"})
+		return runEnvUnset(ctx, app, opts, []string{"agy", "ci", "GEMINI_API_KEY"})
 	})
 	mustExit(t, constants.ExitOK, code, out)
 	code, out = captureStdout(t, func() int {
-		return runEnvUnset(ctx, app, opts, []string{"gemini", "ci"})
+		return runEnvUnset(ctx, app, opts, []string{"agy", "ci"})
 	})
 	mustExit(t, constants.ExitOK, code, out)
 	code, out = captureStdout(t, func() int {
-		return runEnvUnset(ctx, app, opts, []string{"gemini", "ci"})
+		return runEnvUnset(ctx, app, opts, []string{"agy", "ci"})
 	})
 	mustExit(t, constants.ExitNotFound, code, out)
 }
@@ -185,9 +185,9 @@ func TestRunHomeMode(t *testing.T) {
 		t.Fatalf("home dir: %v %v", info, err)
 	}
 
-	// gemini has no stable isolation env var
+	// agy has no stable isolation env var
 	code, out = captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeHome, "gemini", "work", []string{"gemini"})
+		return runRun(ctx, app, opts, modeHome, "agy", "work", []string{"agy"})
 	})
 	mustExit(t, constants.ExitUnsupported, code, out)
 
@@ -369,8 +369,8 @@ func TestMiseInitPrintAndWrite(t *testing.T) {
 			t.Fatalf("print missing %q: %s", want, out)
 		}
 	}
-	if strings.Contains(out, "[tasks.agy]") {
-		t.Fatalf("agy task must be omitted: %s", out)
+	if !strings.Contains(out, "[tasks.agy]") {
+		t.Fatalf("agy task must be rendered since v0.6.0: %s", out)
 	}
 	if _, err := os.Stat(".mise.toml"); !os.IsNotExist(err) {
 		t.Fatal("print must not write")

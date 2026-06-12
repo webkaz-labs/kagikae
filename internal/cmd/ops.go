@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -41,7 +42,7 @@ func validateToolAccount(tool, name, nameKind string) error {
 				"%s was removed in v0.6.0; its upstream successor is %s (captured %s accounts on disk are untouched)",
 				tool, successor, tool)
 		}
-		return errf(constants.ExitUsage, "unknown tool %q (tools: claude, codex, agy)", tool)
+		return errf(constants.ExitUsage, "unknown tool %q (tools: %s)", tool, strings.Join(constants.Tools, ", "))
 	}
 	if !config.ValidName(name) {
 		return errf(constants.ExitUsage, "invalid %s name %q (allowed: [a-zA-Z0-9._-], max 64 chars)", nameKind, name)

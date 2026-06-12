@@ -146,17 +146,27 @@ func (app *App) pinnedStatus() *pinnedStatus {
 		return nil
 	}
 	mode := constants.ModeAuth
+	if kind := app.firstKaeManagedIsolation(); kind != "" {
+		mode = kind
+	}
+	return &pinnedStatus{Profile: profile, Mode: mode}
+}
+
+// firstKaeManagedIsolation returns the isolation kind (modeOverlay /
+// modeHome) the directory's environment redirects any tool into, or ""
+// when no isolation env var points into kae's data roots. A pin is a
+// single mode, so the first tool that resolves decides.
+func (app *App) firstKaeManagedIsolation() string {
 	for _, tool := range constants.Tools {
 		envVar := isolationEnvVar(tool)
 		if envVar == "" {
 			continue
 		}
 		if kind := app.kaeManagedHomeKind(app.Env.Getenv(envVar)); kind != "" {
-			mode = kind
-			break
+			return kind
 		}
 	}
-	return &pinnedStatus{Profile: profile, Mode: mode}
+	return ""
 }
 
 // pathWithin reports whether dir lies inside root (lexical; symlinks are
@@ -179,24 +189,22 @@ func (app *App) pinnedIsolationGuard(global bool) error {
 		app.applyGlobalScope()
 		return nil
 	}
-	for _, tool := range constants.Tools {
-		envVar := isolationEnvVar(tool)
-		if envVar == "" {
-			continue
-		}
-		if kind := app.kaeManagedHomeKind(app.Env.Getenv(envVar)); kind != "" {
-			return errf(constants.ExitUnsupported,
-				"this directory is pinned (%s isolation): change its accounts with `kae pin <profile>`, or pass --global to act on the real home",
-				kind)
-		}
+	if kind := app.firstKaeManagedIsolation(); kind != "" {
+		return errf(constants.ExitUnsupported,
+			"this directory is pinned (%s isolation): change its accounts with `kae pin <profile>`, or pass --global to act on the real home",
+			kind)
 	}
 	return nil
 }
 
 // applyGlobalScope hides kae-managed isolation env values from everything
-// resolved through app.Env. Idempotent: re-wrapping sees the already-hidden
-// value and leaves it empty.
+// resolved through app.Env. Idempotent: the guard runs once per command
+// path but may be reached twice (buildSync delegates to buildSwitch).
 func (app *App) applyGlobalScope() {
+	if app.globalScope {
+		return
+	}
+	app.globalScope = true
 	isolated := map[string]bool{}
 	for _, tool := range constants.Tools {
 		if envVar := isolationEnvVar(tool); envVar != "" {

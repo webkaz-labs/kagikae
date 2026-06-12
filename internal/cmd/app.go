@@ -28,6 +28,10 @@ type App struct {
 	ConfigErr      error
 	Env            adapter.Env
 	Now            func() time.Time
+
+	// globalScope records that applyGlobalScope already wrapped Env.Getenv
+	// (set by --global; modes.go).
+	globalScope bool
 }
 
 // newApp resolves the live environment and loads config. A config problem is

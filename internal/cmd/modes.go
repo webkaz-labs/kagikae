@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
@@ -87,21 +88,40 @@ func overlaySharedItems(tool string) []string {
 }
 
 // realToolHome resolves the tool's live home directory for overlay sharing.
+// An isolation env var pointing into kae's own homes/overlays data dirs is
+// ignored: that is kae's own redirection (e.g. exported by a pinned
+// directory's .mise.toml), and treating it as the real home would make an
+// overlay share from itself — self-referential symlinks, ELOOP at runtime
+// (found in v0.5.0 real-machine acceptance).
 func (app *App) realToolHome(tool string) string {
+	envVar := isolationEnvVar(tool)
+	envHome := func(def string) string {
+		dir := app.Env.Getenv(envVar)
+		if dir != "" && !app.isKaeManagedHome(dir) {
+			return dir
+		}
+		return def
+	}
 	switch tool {
 	case constants.ToolClaude:
-		if dir := app.Env.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
-			return dir
-		}
-		return filepath.Join(app.Env.Home, ".claude")
+		return envHome(filepath.Join(app.Env.Home, ".claude"))
 	case constants.ToolCodex:
-		if dir := app.Env.Getenv("CODEX_HOME"); dir != "" {
-			return dir
-		}
-		return filepath.Join(app.Env.Home, ".codex")
+		return envHome(filepath.Join(app.Env.Home, ".codex"))
 	default:
 		return ""
 	}
+}
+
+// isKaeManagedHome reports whether dir lies inside kae's home-mode or
+// overlay data roots.
+func (app *App) isKaeManagedHome(dir string) bool {
+	for _, root := range []string{app.Paths.HomesDir(), app.Paths.OverlaysDir()} {
+		rel, err := filepath.Rel(root, filepath.Clean(dir))
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // overlayModeEnv prepares the overlay home and returns the child env
@@ -139,6 +159,13 @@ func (app *App) prepareOverlay(tool, accountName string) (string, error) {
 			"overlay dir %s is not a real directory; remove it and retry", overlayDir)
 	}
 	realHome := app.realToolHome(tool)
+	// Belt and braces for the self-share case realToolHome already filters:
+	// linking an overlay to itself would create symlink cycles (ELOOP).
+	if filepath.Clean(realHome) == filepath.Clean(overlayDir) {
+		return "", errf(constants.ExitUnsafeRefused,
+			"the real %s home resolves to the overlay itself; unset %s and retry",
+			tool, isolationEnvVar(tool))
+	}
 	for _, item := range overlaySharedItems(tool) {
 		source := filepath.Join(realHome, item)
 		target := filepath.Join(overlayDir, item)

@@ -9,6 +9,13 @@ it is hardening and platform coverage, ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 
+- **Global commands inside pinned directories**: with a pinned `.mise.toml`
+  exporting `CLAUDE_CONFIG_DIR`/`CODEX_HOME`, the adapters treat the
+  overlay/home as the live base path, so `kae use` / `kae add` run there
+  operate on the directory's isolated state while recording into the global
+  state.json belief. Decide and enforce the intended semantics (operate on
+  the overlay without polluting global belief, or refuse with guidance).
+
 - **Codex keyring driver**: pin down the OS-credential-store item contract
   used by `cli_auth_credentials_store = "keyring"`, add structure guards,
   lift the detect-only restriction.

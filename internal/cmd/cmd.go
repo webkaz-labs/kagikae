@@ -24,7 +24,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.6.0"
+	toolVersion = "v0.7.0"
 )
 
 // Root dispatches the command line.
@@ -56,10 +56,14 @@ func Root(args []string) int {
 		return CmdUse(ctx, args[1:])
 	case "pin":
 		return CmdPin(ctx, args[1:])
+	case "bond":
+		return CmdBond(ctx, args[1:])
 	case "unpin":
 		return CmdUnpin(ctx, args[1:])
 	case "sync":
 		return CmdSync(ctx, args[1:])
+	case "apply":
+		return CmdApply(ctx, args[1:])
 	case "run":
 		return CmdRun(ctx, args[1:])
 	case "env":
@@ -69,13 +73,13 @@ func Root(args []string) int {
 	// Removed in v0.5.0 (docs/RELEASE.md Breaking Changes); the pointers
 	// stay for one release.
 	case "switch", "s":
-		return removedCommand(args[0], "kae use <profile> | kae use <tool> <account>")
+		return removedCommand(args[0], "v0.5.0", "kae use <profile> | kae use <tool> <account>")
 	case "login":
-		return removedCommand(args[0], "kae add <tool> <account>")
+		return removedCommand(args[0], "v0.5.0", "kae add <tool> <account>")
 	case "capture":
-		return removedCommand(args[0], "kae add --no-login <tool> <account>")
+		return removedCommand(args[0], "v0.5.0", "kae add --no-login <tool> <account>")
 	case "current":
-		return removedCommand(args[0], "kae (the bare status summary)")
+		return removedCommand(args[0], "v0.5.0", "kae (the bare status summary)")
 	case "accounts":
 		return CmdAccounts(ctx, args[1:])
 	case "status":
@@ -200,10 +204,12 @@ Usage:
   kae pin [<profile>]                  bind this directory to a profile;
                                        default mode overlay = settings and
                                        skills shared, auth private
+  kae bond [<profile>]                 bond mode: settings/sessions shared
+                                       with the real home, credential private
   kae unpin                            remove the binding from .mise.toml
   kae run [--mode M] <t|all> <n> -- C  run C with an account applied; auth
                                        mode restores the previous login after
-  kae sync [--profile P] [--quiet]     idempotent profile apply for hooks;
+  kae apply [--profile P] [--quiet]    idempotent profile apply for hooks;
                                        no-op when already recorded as active
   kae env set|unset|list ...           env-mode profiles (API keys)
   kae mise init [--profile P] [--mode auth|home|overlay] [--auto] [--write]
@@ -226,8 +232,8 @@ Flags (structured commands):
 Tools: ` + strings.Join(constants.Tools, ", "))
 }
 
-// removedCommand reports a command removed in v0.5.0 and names its
+// removedCommand reports a removed or renamed command and names its
 // replacement (kept for one release; docs/RELEASE.md Breaking Changes).
-func removedCommand(old, replacement string) int {
-	return usageError("kae %s was removed in v0.5.0; use: %s", old, replacement)
+func removedCommand(old, version, replacement string) int {
+	return usageError("kae %s was removed in %s; use: %s", old, version, replacement)
 }

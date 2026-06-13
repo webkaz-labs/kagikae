@@ -129,6 +129,16 @@ func TestSyncUnknownProfile(t *testing.T) {
 	mustExit(t, constants.ExitNotFound, code, out)
 }
 
+func TestSyncTombstone(t *testing.T) {
+	// kae sync was renamed to kae apply (docs/SCOPE-MODEL.md §8); it exits
+	// ExitUsage (64) and names the replacement for one release.
+	for _, args := range [][]string{nil, {"--profile", "work"}} {
+		if code := CmdSync(context.Background(), args); code != constants.ExitUsage {
+			t.Errorf("tombstone must exit %d, got %d (args=%v)", constants.ExitUsage, code, args)
+		}
+	}
+}
+
 func TestUseUsage(t *testing.T) {
 	// Argument validation happens before any environment access; one and two
 	// positionals are both valid since v0.5.0 (profile / tool+account).

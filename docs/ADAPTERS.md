@@ -272,34 +272,37 @@ the per-account keychain items (service copilot-cli) — never touched
 `kae doctor` warns when any is set. The gh CLI's own auth is separate and out
 of scope.
 
-## Isolation (home / overlay Modes)
+## Isolation (home / overlay / bond Modes)
 
-`kae run --mode home|overlay` points a tool at an alternate home directory;
-`kae pin` / `kae mise init --mode home|overlay` render the same mapping as
-mise `[env]` entries scoped to a project directory (docs/CLI.md):
+`kae run --mode home|overlay|bond` points a tool at an alternate home
+directory; `kae pin` / `kae bond` / `kae mise init --mode home|overlay|bond`
+render the same mapping as mise `[env]` entries scoped to a project
+directory (docs/CLI.md):
 
-| Tool | Isolation env var | home mode | overlay mode |
-|------|-------------------|-----------|--------------|
-| claude | `CLAUDE_CONFIG_DIR` | supported | supported (pin default) |
-| codex | `CODEX_HOME` | supported | supported (pin default) |
-| agy | none stable | refused | refused |
-| opencode | none stable | refused | refused |
-| cursor | none stable | refused | refused |
-| copilot | none stable | refused | refused |
+| Tool | Isolation env var | home mode | overlay mode | bond mode |
+|------|-------------------|-----------|--------------|-----------|
+| claude | `CLAUDE_CONFIG_DIR` | supported | supported (pin default) | supported |
+| codex | `CODEX_HOME` | supported | supported (pin default) | supported |
+| agy | none stable | refused | refused | refused |
+| opencode | none stable | refused | refused | refused |
+| cursor | none stable | refused | refused | refused |
+| copilot | none stable | refused | refused | refused |
 
-"Refused" means exit `5` from `kae run`; `kae pin` / `kae mise init` instead
-omit those tools with an inline warning comment (they keep the real home).
+"Refused" means exit `5` from `kae run`; `kae pin` / `kae bond` /
+`kae mise init` instead omit those tools with an inline warning comment
+(they keep the real home).
 `tools.<tool>.home_mode_enabled = false` / `overlay_mode_enabled = false`
 (both default true) disable all of these surfaces per tool.
 
-When resolving the **real** home for overlay sharing, an isolation env var
-that points inside kae's own homes/overlays data dirs is ignored (that is
-kae's own redirection — e.g. exported by a pinned directory's `.mise.toml`).
-Honoring it would make an overlay share from itself and create symlink
-cycles (ELOOP); re-running `kae pin` repairs any such stale links. The auth
-adapters still honor the env var as the live base path — the semantics of
-global commands run inside a pinned directory refuse with exit `5` since
-v0.6.0 (`kae use/add/sync`; `--global` acts on the real home instead).
+When resolving the **real** home for overlay and bond sharing, an isolation
+env var that points inside kae's own homes/overlays/isolation data dirs is
+ignored (that is kae's own redirection — e.g. exported by a pinned
+directory's `.mise.toml`). Honoring it would make an overlay/bond share from
+itself and create symlink cycles (ELOOP); re-running `kae pin`/`kae bond`
+repairs any such stale links. The auth adapters still honor the env var as
+the live base path — the semantics of global commands run inside a pinned
+directory refuse with exit `5` since v0.6.0 (`kae use/add/sync`;
+`--global` acts on the real home instead).
 
 Overlay shared items (symlinked from the real home; everything else —
 credentials, sessions, history, and the mixed-state `.claude.json` — stays
@@ -319,6 +322,27 @@ state (which must not cross accounts) than shareable config. To follow
 upstream additions without a kae release, extend the list per tool with
 `tools.<tool>.overlay_extra_shared` (bare file names; the auth/identity
 artifacts are refused at config load — docs/DATA-MODEL.md).
+
+**Bond mode** (`kae bond`) uses a *denylist* instead of an allowlist: every
+real-home entry is symlinked into the bond directory **except** the hard-coded
+auth artifacts below. The credential file is private-copied (not symlinked),
+so authentication is private to the directory while all other files — settings,
+sessions, memory, MCP configs — stay shared with the real home.
+
+Bond denylist (hard-coded per tool; always excluded from symlink sharing):
+
+```text
+claude: .credentials.json  (Linux-only; macOS uses keychain — harmless to list)
+codex:  auth.json
+```
+
+Unknown files a future tool version adds are **shared by default** (the
+inverse of overlay's fail-safe), because bond's purpose is sharing — a new
+file is more likely config or memory than an auth secret. To add extra items
+to the denylist, use `tools.<tool>.bond_denylist_extra` (bare file names;
+the hard-coded auth artifacts above are refused at config load to avoid
+confusion). A real file already present in the bond directory is treated as a
+private override and is never replaced or linked over.
 
 ## Login Commands
 

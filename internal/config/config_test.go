@@ -139,3 +139,29 @@ func TestInitialContentParses(t *testing.T) {
 		t.Fatalf("unexpected: %+v", cfg.Security)
 	}
 }
+
+func TestBondDenylistExtraValidation(t *testing.T) {
+	// Valid extra items are accepted.
+	path := writeConfig(t, "[tools.claude]\nbond_denylist_extra = [\"custom-session.json\"]\n")
+	cfg, _, err := Load(path)
+	if err != nil {
+		t.Fatalf("valid bond_denylist_extra: %v", err)
+	}
+	if got := cfg.BondDenylistExtra("claude"); len(got) != 1 || got[0] != "custom-session.json" {
+		t.Fatalf("unexpected BondDenylistExtra: %v", got)
+	}
+
+	// Hard-coded auth artifacts must be rejected.
+	for _, bad := range []string{".credentials.json", "auth.json"} {
+		content := "[tools.claude]\nbond_denylist_extra = [\"" + bad + "\"]\n"
+		if _, _, err := Load(writeConfig(t, content)); err == nil {
+			t.Fatalf("expected error for hard-coded artifact %q", bad)
+		}
+	}
+
+	// Invalid file names must be rejected.
+	badContent := "[tools.claude]\nbond_denylist_extra = [\"a/b\"]\n"
+	if _, _, err := Load(writeConfig(t, badContent)); err == nil {
+		t.Fatal("expected error for non-bare file name")
+	}
+}

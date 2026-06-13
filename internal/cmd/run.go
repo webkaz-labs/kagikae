@@ -16,7 +16,7 @@ import (
 
 // CmdRun executes a child command with a temporarily applied account:
 //
-//	kae run [--mode auth|env|home|overlay] <tool|all> <name> -- <cmd...>
+//	kae run [--mode auth|env|home|overlay|bond] <tool|all> <name> -- <cmd...>
 //
 // On success the child's exit code is returned verbatim; kae's own exit
 // codes apply only to failures before the child starts (and to a failed
@@ -25,21 +25,21 @@ import (
 func CmdRun(ctx context.Context, args []string) int {
 	kaeArgs, childCmd := splitAtDashDash(args)
 	if len(childCmd) == 0 {
-		return usageError("usage: %s run [--mode auth|env|home|overlay] <tool|all> <name> -- <cmd...>", toolName)
+		return usageError("usage: %s run [--mode auth|env|home|overlay|bond] <tool|all> <name> -- <cmd...>", toolName)
 	}
 	flags, positionals := splitArgs(kaeArgs, "--mode")
 	mode := modeAuth
 	opts, ok := parseCommon("run", flags, false, func(fs *flag.FlagSet) {
-		fs.StringVar(&mode, "mode", modeAuth, "switch mode: auth, env, home, or overlay")
+		fs.StringVar(&mode, "mode", modeAuth, "switch mode: auth, env, home, overlay, or bond")
 	})
 	if !ok {
 		return constants.ExitUsage
 	}
 	if !validMode(mode) {
-		return usageError("unsupported mode %q (modes: auth, env, home, overlay)", mode)
+		return usageError("unsupported mode %q (modes: auth, env, home, overlay, bond)", mode)
 	}
 	if len(positionals) != 2 {
-		return usageError("usage: %s run [--mode auth|env|home|overlay] <tool|all> <name> -- <cmd...>", toolName)
+		return usageError("usage: %s run [--mode auth|env|home|overlay|bond] <tool|all> <name> -- <cmd...>", toolName)
 	}
 	app := newApp(opts.ConfigPath)
 	return runRun(ctx, app, opts, mode, positionals[0], positionals[1], childCmd)
@@ -87,6 +87,8 @@ func runRun(ctx context.Context, app *App, opts commonOpts, mode, target, name s
 			entries, err = app.homeModeEnv(tgt.Tool, tgt.Account)
 		case modeOverlay:
 			entries, err = app.overlayModeEnv(tgt.Tool, tgt.Account)
+		case modeBond:
+			entries, err = app.bondModeEnv(ctx, tgt.Tool, tgt.Account)
 		}
 		if err != nil {
 			return finish(opts, fmt.Errorf("%s: %w", tgt.Tool, err))

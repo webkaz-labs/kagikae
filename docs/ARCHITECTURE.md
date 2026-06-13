@@ -91,7 +91,7 @@ normative allowlists live in [ADAPTERS.md](ADAPTERS.md).
 `--dry-run` runs steps 1–3 and prints the plan from the artifact specs.
 
 `kae use` enters this transaction directly (profile or single-tool form).
-`kae sync` prepends a lock-free belief check — state.json against the
+`kae apply` prepends a lock-free belief check — state.json against the
 profile mapping — and enters the transaction only on divergence; the
 matching case returns before step 2 (no locks, no backup).
 
@@ -106,9 +106,9 @@ the account snapshots -> restore the backup -> prune -> unlock
 ```
 
 state.json is untouched: the temporary switch is invisible to the bare `kae` status summary.
-`env` / `home` / `overlay` modes never mutate live state; they only build
-child environment entries (`internal/cmd/modes.go`). Interactive children
-run through the `runner.RunInteractive` seam.
+`env` / `home` / `overlay` / `bond` modes never mutate live state; they only
+build child environment entries (`internal/cmd/modes.go`). Interactive
+children run through the `runner.RunInteractive` seam.
 
 ## Atomicity And Guards
 

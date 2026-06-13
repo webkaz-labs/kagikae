@@ -33,7 +33,7 @@ func TestMiseInitAutoRendersEnterHook(t *testing.T) {
 		return runMiseInit(ctx, app, opts, "work", constants.ModeAuth, true, false)
 	})
 	mustExit(t, constants.ExitOK, code, out)
-	for _, want := range []string{"[hooks.enter]", `script = "kae sync --quiet"`, "[tasks.ai-use]"} {
+	for _, want := range []string{"[hooks.enter]", `script = "kae apply --quiet"`, "[tasks.ai-use]"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("auto block missing %q: %s", want, out)
 		}
@@ -128,6 +128,49 @@ func TestMiseInitHomeModeUnknownProfile(t *testing.T) {
 	mustExit(t, constants.ExitNotFound, code, out)
 }
 
+func TestMiseBondMode(t *testing.T) {
+	app := testApp(t, nil)
+	app.Config.Profiles = map[string]config.Profile{
+		"work": {Accounts: map[string]string{
+			constants.ToolClaude: "work",
+			constants.ToolCodex:  "work",
+		}},
+	}
+	// Seed real homes for symlink/copy operations.
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"), `{"token":"real"}`)
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", "settings.json"), `{"theme":"dark"}`)
+	writeFile(t, filepath.Join(app.Env.Home, ".codex", "auth.json"), `{"tokens":{"access_token":"tok"}}`)
+	writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"), "model = \"gpt-5\"\n")
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	chdirTemp(t)
+
+	// Preview: must show bond-mode block without creating dirs.
+	code, out := captureStdout(t, func() int {
+		return runMiseInit(ctx, app, opts, "work", constants.ModeBond, false, false)
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(out, "CLAUDE_CONFIG_DIR") {
+		t.Fatalf("preview missing CLAUDE_CONFIG_DIR: %s", out)
+	}
+	if !strings.Contains(out, "bond mode") {
+		t.Fatalf("preview missing bond comment: %s", out)
+	}
+
+	// Write: must create bond dirs and write .mise.toml.
+	code, out = captureStdout(t, func() int {
+		return runMiseInit(ctx, app, opts, "work", constants.ModeBond, false, true)
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	tomlContent := readFile(t, ".mise.toml")
+	if !strings.Contains(tomlContent, miseBlockStart) {
+		t.Fatal(".mise.toml not written")
+	}
+	if !strings.Contains(tomlContent, "CLAUDE_CONFIG_DIR") {
+		t.Fatalf(".mise.toml missing CLAUDE_CONFIG_DIR: %s", tomlContent)
+	}
+}
+
 func TestMiseInitFlagValidation(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
@@ -136,7 +179,7 @@ func TestMiseInitFlagValidation(t *testing.T) {
 		return runMiseInit(ctx, app, opts, "work", "env", false, false)
 	})
 	mustExit(t, constants.ExitUsage, code, out)
-	for _, mode := range []string{modeHome, modeOverlay} {
+	for _, mode := range []string{modeHome, modeOverlay, constants.ModeBond} {
 		code, out = captureStdout(t, func() int {
 			return runMiseInit(ctx, app, opts, "work", mode, true, false)
 		})

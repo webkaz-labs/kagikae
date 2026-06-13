@@ -58,9 +58,9 @@ echo sk-test | /tmp/kae env set claude ci ANTHROPIC_API_KEY
 # v0.4.0 surfaces (on macOS use codex-only profiles for live switching —
 # see the keychain warning above; codex auth.json is file-based):
 /tmp/kae use work --json
-/tmp/kae sync --profile work --json                # re-run: "changed": false
-KAE_PROFILE=personal /tmp/kae sync --json          # env resolution
-/tmp/kae sync --quiet                              # prints nothing on success
+/tmp/kae apply --profile work --json               # re-run: "changed": false
+KAE_PROFILE=personal /tmp/kae apply --json         # env resolution
+/tmp/kae apply --quiet                             # prints nothing on success
 /tmp/kae mise init --profile work --auto           # preview: [hooks.enter]
 /tmp/kae mise init --profile work --mode home      # preview: [env] tool homes
 
@@ -76,6 +76,17 @@ KAE_PROFILE=personal /tmp/kae sync --json          # env resolution
 /tmp/kae switch x y; echo $?                       # 64 + replacement pointer
 EDITOR=true /tmp/kae edit                          # validate round-trip
 /tmp/kae status --json                             # has "pinned" + "profiles"
+
+# v0.7.0 surfaces (bond mode):
+# codex: auth.json is file-based — safe on macOS.
+# claude: on macOS CLAUDE_CONFIG_DIR suppresses keychain, so kae reads the
+#   keychain credential bytes and writes them as .credentials.json into the
+#   bond dir. Real-machine gate required (temp-HOME smoke cannot cover this).
+/tmp/kae bond clientA                              # writes .mise.toml (bond mode)
+#   assert: CODEX_HOME entry in .mise.toml pointing to isolation/<pin-id>/codex/bond/
+#   assert: config.toml symlinked from real ~/.codex; auth.json private-copied
+#   assert: re-running kae bond is idempotent (no error, symlinks refreshed)
+/tmp/kae switch x y; echo $?                       # 64 (renamed in v0.7.0, re-test)
 
 # v0.6.0 surfaces (opencode auth.json is file-based — safe on macOS; seed
 # $XDG_DATA_HOME/opencode/auth.json with {"openai":{...},"other":{...}}):

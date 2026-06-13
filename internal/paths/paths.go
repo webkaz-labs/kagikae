@@ -2,7 +2,11 @@
 // XDG-compliant on every platform, including macOS (see docs/DATA-MODEL.md).
 package paths
 
-import "path/filepath"
+import (
+	"crypto/sha256"
+	"fmt"
+	"path/filepath"
+)
 
 // Paths holds the resolved kagikae base directories.
 type Paths struct {
@@ -91,3 +95,58 @@ func (p Paths) BackupsDir() string { return filepath.Join(p.StateDir, "backups")
 
 // LocksDir returns the per-tool lock directory.
 func (p Paths) LocksDir() string { return filepath.Join(p.RuntimeDir, "locks") }
+
+// PinID returns the stable short identifier for a bound directory: the first
+// 16 hex characters of the SHA-256 hash of the directory's absolute path.
+// The 8-byte prefix keeps store paths short while providing adequate
+// collision resistance for the number of directories any user would bind.
+// absDir must be an absolute path; callers are responsible for resolving it
+// with filepath.Abs before calling.
+func PinID(absDir string) string {
+	sum := sha256.Sum256([]byte(absDir))
+	return fmt.Sprintf("%x", sum[:8])
+}
+
+// IsolationDir returns the root of all per-directory isolation stores
+// (bond and pin modes).
+func (p Paths) IsolationDir() string { return filepath.Join(p.DataDir, "isolation") }
+
+// toolIsolDir returns the per-tool isolation root isolation/<pinID>/<tool>
+// shared by BondDir, PinSharedDir, PinCredDir, and PinConfigDir.
+func (p Paths) toolIsolDir(pinID, tool string) string {
+	return filepath.Join(p.IsolationDir(), pinID, tool)
+}
+
+// BondDir returns the config directory for bond mode (per-directory shared,
+// account-agnostic). The env-var isolation pointer (CLAUDE_CONFIG_DIR etc.)
+// is set to this path on directory entry.
+func (p Paths) BondDir(pinID, tool string) string {
+	return filepath.Join(p.toolIsolDir(pinID, tool), "bond")
+}
+
+// PinSharedDir returns the directory holding the opt-in shared items for pin
+// mode (dir-keyed, shared across all accounts used in the same directory).
+func (p Paths) PinSharedDir(pinID, tool string) string {
+	return filepath.Join(p.toolIsolDir(pinID, tool), "pin", "shared")
+}
+
+// PinCredDir returns the private credential directory for one account in pin
+// mode. Only the credential artifact lives here; never symlinked.
+func (p Paths) PinCredDir(pinID, tool, account string) string {
+	return filepath.Join(p.toolIsolDir(pinID, tool), "pin", account, "cred")
+}
+
+// PinConfigDir returns the config directory (CLAUDE_CONFIG_DIR / CODEX_HOME)
+// for one account in pin mode. It is composed at setup time from symlinks into
+// PinSharedDir plus the credential from PinCredDir.
+func (p Paths) PinConfigDir(pinID, tool, account string) string {
+	return filepath.Join(p.toolIsolDir(pinID, tool), "pin", account, "config")
+}
+
+// SyncHomesDir returns the root of all global-isolated (sync-mode) tool homes.
+func (p Paths) SyncHomesDir() string { return filepath.Join(p.DataDir, "synchomes") }
+
+// SyncHomeDir returns the private tool home for one account in sync mode.
+func (p Paths) SyncHomeDir(tool, account string) string {
+	return filepath.Join(p.SyncHomesDir(), tool, account)
+}

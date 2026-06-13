@@ -2,6 +2,7 @@ package paths
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -44,5 +45,55 @@ func TestResolveIgnoresRelativeXDG(t *testing.T) {
 	p := Resolve(func(key string) string { return env[key] }, "/home/u")
 	if p.ConfigDir != "/home/u/.config/kagikae" {
 		t.Fatalf("relative XDG must be ignored per spec: %+v", p)
+	}
+}
+
+func TestPinIDStability(t *testing.T) {
+	id := PinID("/Users/alice/projects/myapp")
+	if len(id) != 16 {
+		t.Fatalf("PinID must be 16 hex chars, got %d: %q", len(id), id)
+	}
+	if strings.TrimLeft(id, "0123456789abcdef") != "" {
+		t.Fatalf("PinID must be lowercase hex: %q", id)
+	}
+}
+
+func TestPinIDCollisionResistance(t *testing.T) {
+	// Two different paths must not collide (SHA-256 prefix; near-zero
+	// probability but worth asserting for the test suite to catch bugs).
+	if PinID("/a/b") == PinID("/a/c") {
+		t.Fatal("PinID collision on /a/b vs /a/c")
+	}
+	if PinID("/home/u/proj") == PinID("/home/u/proj2") {
+		t.Fatal("PinID collision on similar paths")
+	}
+}
+
+func TestIsolationPaths(t *testing.T) {
+	p := Resolve(func(string) string { return "" }, "/home/u")
+	iso := "/home/u/.local/share/kagikae/isolation"
+	sync := "/home/u/.local/share/kagikae/synchomes"
+	pin := "abcdef0123456789"
+	tool := "claude"
+	acct := "work"
+	pre := iso + "/" + pin + "/" + tool
+
+	cases := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"IsolationDir", p.IsolationDir(), iso},
+		{"BondDir", p.BondDir(pin, tool), pre + "/bond"},
+		{"PinSharedDir", p.PinSharedDir(pin, tool), pre + "/pin/shared"},
+		{"PinCredDir", p.PinCredDir(pin, tool, acct), pre + "/pin/" + acct + "/cred"},
+		{"PinConfigDir", p.PinConfigDir(pin, tool, acct), pre + "/pin/" + acct + "/config"},
+		{"SyncHomesDir", p.SyncHomesDir(), sync},
+		{"SyncHomeDir", p.SyncHomeDir(tool, acct), sync + "/" + tool + "/" + acct},
+	}
+	for _, tc := range cases {
+		if tc.got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, tc.got, tc.want)
+		}
 	}
 }

@@ -31,10 +31,13 @@ const (
 	ModeEnv     = "env"
 	ModeHome    = "home"
 	ModeOverlay = "overlay"
+	ModeBond    = "bond" // per-directory shared (Phase 2)
+	ModePin     = "pin"  // per-directory isolated (Phase 4)
+	ModeSync    = "sync" // global isolated (Phase 6)
 )
 
 // EnvKaeProfile is the environment variable that pins a kae profile to a
-// directory (rendered by kae mise init, read by kae sync).
+// directory (rendered by kae mise init, read by kae apply).
 const EnvKaeProfile = "KAE_PROFILE"
 
 // Driver identifiers.

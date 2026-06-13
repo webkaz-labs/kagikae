@@ -122,14 +122,26 @@ func (app *App) isKaeManagedHome(dir string) bool {
 	return app.kaeManagedHomeKind(dir) != ""
 }
 
-// kaeManagedHomeKind classifies dir against kae's isolation data roots:
-// modeOverlay, modeHome, or "" for anything outside both.
+// kaeManagedHomeKind classifies dir against kae's isolation data roots.
+// Returns a mode constant ("overlay", "home", "bond"/"pin", "sync") or ""
+// for anything outside all kae-managed roots.
 func (app *App) kaeManagedHomeKind(dir string) string {
 	switch {
 	case pathWithin(dir, app.Paths.OverlaysDir()):
 		return modeOverlay
 	case pathWithin(dir, app.Paths.HomesDir()):
 		return modeHome
+	case pathWithin(dir, app.Paths.IsolationDir()):
+		// bond and pin both live under isolation/; the finer mode distinction
+		// is resolved by Phase 2/4 bond/pin commands. When pin is implemented
+		// (Phase 4), split this case into bond vs pin using PinConfigDir vs
+		// BondDir, and update the pinnedIsolationGuard message accordingly.
+		// constants.ModeBond is used directly (not mirrored as a local const)
+		// because it is not yet registered in validMode — the local-const
+		// pattern is reserved for modes that kae run accepts.
+		return constants.ModeBond
+	case pathWithin(dir, app.Paths.SyncHomesDir()):
+		return constants.ModeSync
 	default:
 		return ""
 	}

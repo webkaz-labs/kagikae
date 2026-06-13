@@ -25,6 +25,8 @@ func init() { adapter.Register(Claude{}) }
 
 func (Claude) ID() string { return constants.ToolClaude }
 
+func (Claude) Binary() string { return "claude" }
+
 // configDir honors CLAUDE_CONFIG_DIR as the live base path when already set.
 // Auth mode never sets it.
 func configDir(env adapter.Env) string {

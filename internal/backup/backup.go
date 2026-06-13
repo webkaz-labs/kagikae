@@ -20,13 +20,18 @@ import (
 // in the secret backend under SecretRef; Present records whether the
 // artifact existed live (rollback removes it again when false).
 type ArtifactRecord struct {
-	Tool      string `json:"tool"`
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
-	Target    string `json:"target"`
-	Pointer   string `json:"pointer,omitempty"`
-	SecretRef string `json:"secret_ref"`
-	Present   bool   `json:"present"`
+	Tool    string `json:"tool"`
+	Name    string `json:"name"`
+	Kind    string `json:"kind"`
+	Target  string `json:"target"`
+	Pointer string `json:"pointer,omitempty"`
+	// KeychainAccount carries the keychain spec's account so a rollback that
+	// recreates a deleted item restores it under the tool's own account
+	// (e.g. cursor-user) instead of the generic fallback. Empty for non-
+	// keychain artifacts and for backups written before this field existed.
+	KeychainAccount string `json:"keychain_account,omitempty"`
+	SecretRef       string `json:"secret_ref"`
+	Present         bool   `json:"present"`
 }
 
 // Meta is the persisted backup metadata. It never contains secret values.

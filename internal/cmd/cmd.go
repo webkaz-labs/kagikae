@@ -12,6 +12,7 @@ import (
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/agy"
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/claude"
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/codex"
+	_ "github.com/webkaz-labs/kagikae/internal/adapter/cursor"
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/opencode"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"

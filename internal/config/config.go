@@ -266,6 +266,9 @@ enabled = true
 [tools.opencode]
 enabled = true
 
+[tools.cursor]
+enabled = true
+
 # Profiles bundle per-tool accounts:
 #
 # [profiles.work]

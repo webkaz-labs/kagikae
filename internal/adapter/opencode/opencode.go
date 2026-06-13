@@ -27,6 +27,8 @@ func init() { adapter.Register(Opencode{}) }
 
 func (Opencode) ID() string { return constants.ToolOpencode }
 
+func (Opencode) Binary() string { return "opencode" }
+
 // authJSONPath resolves opencode's credential file, honoring XDG_DATA_HOME
 // as the live base path when already set (absolute values only, as
 // everywhere in kae).

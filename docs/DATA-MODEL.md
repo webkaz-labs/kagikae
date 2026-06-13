@@ -47,6 +47,9 @@ enabled = true
 [tools.opencode]
 enabled = true
 
+[tools.cursor]
+enabled = true
+
 # Per tool (any [tools.<tool>] section); both default to true and gate the
 # kae run isolation modes and the pin / mise init renderings:
 # home_mode_enabled = true
@@ -112,7 +115,7 @@ secret_ref = "claude/work/oauth_account"
 |------|---------|-------|
 | `json-pointer` | read pointer value from JSON file | patch pointer in JSON file atomically, preserving all other keys |
 | `file` | read whole file | atomic replace, mode `0600` |
-| `keychain` | read whole item payload verbatim (pointer guards the shape) | write captured bytes back verbatim via `security -U`; absent value deletes the item |
+| `keychain` | read whole item payload verbatim (pointer guards the shape; an empty pointer marks an opaque non-JSON payload, e.g. a raw token, guarded only as non-empty) | write captured bytes back verbatim via `security -U`; absent value deletes the item |
 
 ## Secret References
 
@@ -180,6 +183,7 @@ reversible:
   "artifacts": [
     {"tool": "claude", "name": "claude_ai_oauth", "kind": "keychain",
      "target": "Claude Code-credentials", "pointer": "/claudeAiOauth",
+     "keychain_account": "alice",
      "secret_ref": "backup/20260611T012345Z/claude/claude_ai_oauth",
      "present": true}
   ]
@@ -201,7 +205,7 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
   `unsafe_refused`, `auth_unchanged`, `usage`
 - artifact kinds: `json-pointer`, `file`, `keychain`
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
-  `agy-file-snapshot`
+  `agy-file-snapshot`, `opencode-file-patch`, `cursor-keychain`
 - modes: `auth`, `env`, `home`, `overlay`
 - backup reasons: `switch`, `rollback`, `run`, `login`
 

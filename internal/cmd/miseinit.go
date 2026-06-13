@@ -145,7 +145,7 @@ func (app *App) miseBlock(profileName string, auto bool) string {
 		fmt.Fprintln(&b)
 		fmt.Fprintf(&b, "[tasks.%s]\n", tool)
 		fmt.Fprintf(&b, "description = \"Run %s with this project's account\"\n", tool)
-		fmt.Fprintf(&b, "run = \"kae run %s $%s -- %s\"\n", tool, constants.EnvKaeProfile, tool)
+		fmt.Fprintf(&b, "run = \"kae run %s $%s -- %s\"\n", tool, constants.EnvKaeProfile, toolBinary(tool))
 	}
 	fmt.Fprintln(&b, miseBlockEnd)
 	return b.String()

@@ -175,6 +175,43 @@ ChatGPT subscription login is switched.
 ~/.local/share/opencode/storage/  -> projects, sessions
 ```
 
+## Cursor CLI (`cursor-agent`)
+
+### Live auth locations
+
+| Platform | Credential storage |
+|----------|--------------------|
+| macOS | Keychain generic password, service `cursor-access-token`, account `cursor-user`; the payload is an opaque raw JWT (not JSON) |
+| Linux | undocumented; unsupported in v0.6.0 |
+| Windows | unsupported |
+
+`cursor-agent login` (browser flow) creates the item. The access token is the
+whole credential — there is no mixed-state file to patch.
+
+`~/.cursor/agent-cli-state.json` holds only UI tip flags, not auth, and the
+rest of `~/.cursor` belongs to the Cursor IDE (extensions, hooks); all of it
+is preserved. The separate `Cursor Safe Storage` keychain item is the IDE's
+Electron safeStorage key and is never touched.
+
+### Driver
+
+| Driver | Platform | Switched artifacts |
+|--------|----------|--------------------|
+| `cursor-keychain` | macOS | Keychain item `cursor-access-token`, captured and restored verbatim |
+
+The payload round-trips verbatim through the `security` CLI, ACL-preserving,
+exactly as for claude — but it is opaque (a raw JWT, not JSON), so there is no
+JSON-pointer structure guard (an empty pointer marks the opaque payload; see
+docs/DATA-MODEL.md). On a non-darwin platform capture / switch refuse with
+exit `5` (unsupported).
+
+### Preserved
+
+```text
+~/.cursor/                     -> IDE extensions, hooks, agent-cli-state.json
+Cursor Safe Storage (keychain) -> the IDE's Electron key, never touched
+```
+
 ## Isolation (home / overlay Modes)
 
 `kae run --mode home|overlay` points a tool at an alternate home directory;
@@ -187,6 +224,7 @@ mise `[env]` entries scoped to a project directory (docs/CLI.md):
 | codex | `CODEX_HOME` | supported | supported (pin default) |
 | agy | none stable | refused | refused |
 | opencode | none stable | refused | refused |
+| cursor | none stable | refused | refused |
 
 "Refused" means exit `5` from `kae run`; `kae pin` / `kae mise init` instead
 omit those tools with an inline warning comment (they keep the real home).
@@ -231,6 +269,7 @@ artifacts are refused at config load — docs/DATA-MODEL.md).
 | codex | `codex login` |
 | agy | unsupported |
 | opencode | `opencode auth login` |
+| cursor | `cursor-agent login` |
 
 The opencode flow is a provider picker; picking a provider other than the
 OpenAI subscription leaves `/openai` unchanged, so `kae add` correctly
@@ -251,19 +290,8 @@ subscription login.
 ## v0.6.0 Adapter Discovery Notes (pre-implementation)
 
 Real-machine findings (macOS, 2026-06-13); these become normative sections
-above when each adapter lands (opencode landed in v0.6.0 — see its section).
-
-### cursor
-
-- Credentials: keychain item, service `cursor-access-token`, account
-  `cursor-user` (created by `cursor-agent login`). The claude
-  verbatim-keychain pattern (raw-byte capture/restore via the `security`
-  CLI) should carry over; Linux storage still unknown → darwin-only first.
-- `~/.cursor/agent-cli-state.json` holds only UI tip flags (not auth).
-  `~/.cursor` otherwise belongs to the Cursor IDE (extensions, hooks) and
-  is preserved; the `Cursor Safe Storage` keychain item is the IDE's
-  Electron safeStorage key — never touch it.
-- Login: `cursor-agent login` (browser flow).
+above when each adapter lands (opencode and cursor landed in v0.6.0 — see
+their sections).
 
 ### copilot
 

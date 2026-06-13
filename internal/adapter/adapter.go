@@ -46,6 +46,11 @@ type Check struct {
 // Adapter is implemented once per tool.
 type Adapter interface {
 	ID() string
+	// Binary is the tool's CLI executable name. It usually equals ID(), but
+	// not always (cursor's id is "cursor", its binary is "cursor-agent"); it
+	// is the single source of truth for LookPath probes, the login command,
+	// and the generated mise run tasks.
+	Binary() string
 	// Detect inspects the live environment: binary, driver, auth presence.
 	Detect(ctx context.Context, env Env) (Info, error)
 	// Artifacts returns the auth artifact specs for this platform, or

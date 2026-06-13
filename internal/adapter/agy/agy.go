@@ -29,6 +29,8 @@ func init() { adapter.Register(Agy{}) }
 
 func (Agy) ID() string { return constants.ToolAgy }
 
+func (Agy) Binary() string { return "agy" }
+
 func cliDir(env adapter.Env) string {
 	return filepath.Join(env.Home, ".gemini", "antigravity-cli")
 }

@@ -11,7 +11,7 @@ isolation; see git tag v0.5.0).
 ## Scope
 
 - **Pinned-directory guard** — inside a pinned directory, `kae use`,
-  `kae add`, and `kae sync` refuse with exit `5` and guidance: change the
+  `kae add`, and `kae apply` refuse with exit `5` and guidance: change the
   directory's accounts with `kae pin <profile>`, or act on the real home
   with the new `--global` flag (which makes the adapters ignore
   kae-managed isolation env vars when resolving base paths). Rationale:

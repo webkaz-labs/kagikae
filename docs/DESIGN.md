@@ -72,7 +72,7 @@ a scope (**where** it applies) — one verb per scope:
 
 | Scope | Surface | Effect |
 |-------|---------|--------|
-| global (live state) | **`kae use`** / `kae u` (and `kae sync`, its idempotent form for hooks; `kae add`, which registers and activates) | every terminal sees the change until the next switch |
+| global (live state) | **`kae use`** / `kae u` (and `kae apply`, its idempotent form for hooks; `kae add`, which registers and activates) | every terminal sees the change until the next switch |
 | per-directory | **`kae pin`** / `kae unpin` (sugar over `kae mise init --write`) | the directory is bound to a profile via mise `[env]`; default overlay = auth private to the directory, settings/skills shared; `--mode home` = fully separate; `--mode auth` [+ `--auto`] = mise tasks / enter hook calling the global surface |
 | per-process | **`kae run [--mode M] ... -- <cmd>`** | only the spawned child; live state restored afterwards (auth) or never touched (env / home / overlay) |
 

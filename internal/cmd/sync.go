@@ -19,20 +19,20 @@ type syncReport struct {
 	Results       []switchResult `json:"results"`
 }
 
-// CmdSync idempotently applies a profile, for hooks and scripts:
+// CmdApply idempotently applies a profile, for hooks and scripts:
 //
-//	kae sync [--profile P] [--quiet]
+//	kae apply [--profile P] [--quiet]
 //
 // Profile resolution: --profile, then $KAE_PROFILE, then default_profile.
 // When kae's recorded active state already matches the profile it exits 0
 // with "changed": false, taking no locks and writing no backups. The match
 // compares kae's belief (state.json), not upstream truth; external drift is
 // neither verified nor repaired — kae use forces an apply.
-func CmdSync(ctx context.Context, args []string) int {
+func CmdApply(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args, "--profile")
 	var profileName string
 	quiet, global := false, false
-	opts, ok := parseCommon("sync", flags, false, func(fs *flag.FlagSet) {
+	opts, ok := parseCommon("apply", flags, false, func(fs *flag.FlagSet) {
 		fs.StringVar(&profileName, "profile", "",
 			"profile to apply (default: $KAE_PROFILE, then config default_profile)")
 		fs.BoolVar(&quiet, "quiet", false, "suppress the success report (for hooks)")
@@ -43,10 +43,16 @@ func CmdSync(ctx context.Context, args []string) int {
 	}
 	opts.Global = global
 	if len(positionals) != 0 {
-		return usageError("usage: %s sync [--profile P] [--quiet]", toolName)
+		return usageError("usage: %s apply [--profile P] [--quiet]", toolName)
 	}
 	app := newApp(opts.ConfigPath)
 	return runSync(ctx, app, opts, profileName, quiet)
+}
+
+// CmdSync was renamed to CmdApply in v0.7.0 (docs/SCOPE-MODEL.md §8); exit
+// 64 guides users to the new name. Kept for one release.
+func CmdSync(_ context.Context, _ []string) int {
+	return removedCommand("sync", "v0.7.0", "kae apply [--profile P] [--quiet]")
 }
 
 func runSync(ctx context.Context, app *App, opts commonOpts, profileName string, quiet bool) int {

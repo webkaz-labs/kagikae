@@ -160,7 +160,7 @@ guidance to either install libsecret tools or opt in to the file backend with
 state); it is kae's belief, not upstream truth. `status` re-verifies
 `auth_present` against the live state. `active_profile` is set by
 `switch all <profile>` and cleared when a single-tool switch makes the active
-set diverge from that profile's mapping. `kae sync` decides its no-op by
+set diverge from that profile's mapping. `kae apply` decides its no-op by
 comparing the target profile against `active` (belief only — external drift
 is neither verified nor repaired).
 

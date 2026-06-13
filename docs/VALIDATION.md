@@ -58,9 +58,9 @@ echo sk-test | /tmp/kae env set claude ci ANTHROPIC_API_KEY
 # v0.4.0 surfaces (on macOS use codex-only profiles for live switching —
 # see the keychain warning above; codex auth.json is file-based):
 /tmp/kae use work --json
-/tmp/kae sync --profile work --json                # re-run: "changed": false
-KAE_PROFILE=personal /tmp/kae sync --json          # env resolution
-/tmp/kae sync --quiet                              # prints nothing on success
+/tmp/kae apply --profile work --json               # re-run: "changed": false
+KAE_PROFILE=personal /tmp/kae apply --json         # env resolution
+/tmp/kae apply --quiet                             # prints nothing on success
 /tmp/kae mise init --profile work --auto           # preview: [hooks.enter]
 /tmp/kae mise init --profile work --mode home      # preview: [env] tool homes
 

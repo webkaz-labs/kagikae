@@ -26,7 +26,7 @@ const (
 // modified. The isolation modes (overlay, home) render [env] entries that
 // point each isolatable tool at its per-account kae home instead of the
 // auth-mode hooks/tasks; --auto (auth mode only) adds a [hooks.enter] entry
-// running kae sync --quiet.
+// running kae apply --quiet.
 func CmdMise(ctx context.Context, args []string) int {
 	if len(args) == 0 || args[0] != "init" {
 		return usageError("usage: %s mise init [--profile NAME] [--mode auth|home|overlay] [--auto] [--write]", toolName)
@@ -131,7 +131,7 @@ func (app *App) miseBlock(profileName string, auto bool) string {
 		fmt.Fprintln(&b, "# mutates the global live auth state shared by every terminal, not just")
 		fmt.Fprintln(&b, "# this directory. Firing requires `mise activate`, a trusted config,")
 		fmt.Fprintln(&b, "# and `mise settings experimental=true` (mise hooks are experimental).")
-		fmt.Fprintln(&b, `script = "kae sync --quiet"`)
+		fmt.Fprintln(&b, `script = "kae apply --quiet"`)
 		fmt.Fprintln(&b)
 	}
 	fmt.Fprintln(&b, "[tasks.ai-use]")

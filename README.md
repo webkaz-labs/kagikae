@@ -83,7 +83,7 @@ kae run --mode env claude ci -- claude -p "review this"
 kae run --mode home claude clientA -- claude
 
 # idempotent apply for your own hooks/scripts (no-op when already active):
-kae sync --quiet
+kae apply --quiet
 ```
 
 ## Safety Model

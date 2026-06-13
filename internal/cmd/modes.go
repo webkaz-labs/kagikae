@@ -177,7 +177,7 @@ func pathWithin(dir, root string) bool {
 }
 
 // pinnedIsolationGuard enforces the pinned-directory boundary for the
-// global-scope commands (use / add / sync). Inside a directory whose
+// global-scope commands (use / add / apply). Inside a directory whose
 // environment redirects a tool into a kae-managed isolation home, a global
 // apply would split across three states — the isolated paths the adapters
 // resolve, the global credential stores, and the global state.json belief —

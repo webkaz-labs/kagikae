@@ -33,7 +33,7 @@ func TestMiseInitAutoRendersEnterHook(t *testing.T) {
 		return runMiseInit(ctx, app, opts, "work", constants.ModeAuth, true, false)
 	})
 	mustExit(t, constants.ExitOK, code, out)
-	for _, want := range []string{"[hooks.enter]", `script = "kae sync --quiet"`, "[tasks.ai-use]"} {
+	for _, want := range []string{"[hooks.enter]", `script = "kae apply --quiet"`, "[tasks.ai-use]"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("auto block missing %q: %s", want, out)
 		}

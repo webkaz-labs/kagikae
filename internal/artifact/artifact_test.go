@@ -271,6 +271,54 @@ func TestKeychainKindRefusesUnknownPayload(t *testing.T) {
 	}
 }
 
+// TestKeychainKindOpaquePayload covers a non-JSON keychain item (an empty
+// pointer marks it opaque, as Cursor stores a bare JWT): the raw bytes
+// round-trip verbatim with no JSON structure guard.
+func TestKeychainKindOpaquePayload(t *testing.T) {
+	ctx := context.Background()
+	const liveToken = "eyJhbGciOiJIUzI1NiJ9.payload.sig"
+	fake := &fakeRunner{
+		payloads: map[string]string{"cursor-access-token": liveToken},
+		accounts: map[string]string{"cursor-access-token": "cursor-user"},
+	}
+	sp := Spec{
+		Name: "access_token", Kind: constants.KindKeychain,
+		Target: "cursor-access-token", Pointer: "", KeychainAccount: "cursor-user",
+	}
+	const newToken = "eyJhbGciOiJIUzI1NiJ9.other.sig2"
+	runner.With(fake, func() {
+		v, err := ReadLive(ctx, sp)
+		if err != nil || !v.Present || string(v.Data) != liveToken {
+			t.Fatalf("opaque read: %+v %v", v, err)
+		}
+		if err := ApplyLive(ctx, sp, Value{Data: []byte(newToken), Present: true}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if got := fake.payloads["cursor-access-token"]; got != newToken {
+		t.Fatalf("opaque payload not written verbatim: %s", got)
+	}
+	if fake.accounts["cursor-access-token"] != "cursor-user" {
+		t.Fatalf("existing account not reused: %s", fake.accounts["cursor-access-token"])
+	}
+}
+
+// TestKeychainKindOpaqueRefusesEmpty: an opaque spec still refuses an empty
+// payload rather than writing a blank credential.
+func TestKeychainKindOpaqueRefusesEmpty(t *testing.T) {
+	ctx := context.Background()
+	fake := &fakeRunner{payloads: map[string]string{}, accounts: map[string]string{}}
+	sp := Spec{Name: "x", Kind: constants.KindKeychain, Target: "cursor-access-token", Pointer: ""}
+	runner.With(fake, func() {
+		if err := ApplyLive(ctx, sp, Value{Data: []byte(""), Present: true}); !errors.Is(err, ErrUnsafe) {
+			t.Fatalf("empty opaque payload must be refused: %v", err)
+		}
+	})
+	if len(fake.writes) != 0 {
+		t.Fatal("refused write must not touch the keychain")
+	}
+}
+
 func TestKeychainKindCreatesWithFallbackAccount(t *testing.T) {
 	ctx := context.Background()
 	fake := &fakeRunner{payloads: map[string]string{}, accounts: map[string]string{}}

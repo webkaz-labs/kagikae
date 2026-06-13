@@ -28,7 +28,10 @@ type Spec struct {
 	// sub-value to capture and apply. For KindKeychain it is only a
 	// structure guard: the item's bytes are captured and restored verbatim
 	// (the owning tool rejects a re-serialized payload), and the pointer
-	// just asserts the expected shape is present.
+	// just asserts the expected shape is present. An empty pointer on a
+	// KindKeychain spec marks an opaque payload — a raw token that is not
+	// JSON (Cursor stores a bare JWT); the bytes still round-trip verbatim
+	// and the only guard is that they are non-empty.
 	Pointer string
 	// KeychainAccount is the account attribute used when the keychain item
 	// must be created from scratch (normally the existing item's account is
@@ -42,6 +45,26 @@ type Spec struct {
 type Value struct {
 	Data    []byte
 	Present bool
+}
+
+// keychainGuard verifies a captured keychain payload before it is stored or
+// applied. The item's bytes always round-trip verbatim (the owning tool
+// rejects a re-serialized payload), so the guard never mutates them; it only
+// refuses an unrecognized shape. With a JSON pointer the payload must be a
+// JSON object containing that pointer. With an empty pointer the payload is
+// opaque — a raw token that is not JSON (Cursor stores a bare JWT) — and the
+// only check is that it is non-empty.
+func keychainGuard(sp Spec, payload []byte) error {
+	if sp.Pointer == "" {
+		if len(payload) == 0 {
+			return fmt.Errorf("%w: keychain item %q payload is empty", ErrUnsafe, sp.Target)
+		}
+		return nil
+	}
+	if _, ok, err := patch.GetPointer(payload, sp.Pointer); err != nil || !ok {
+		return fmt.Errorf("%w: keychain item %q payload is not the expected JSON shape", ErrUnsafe, sp.Target)
+	}
+	return nil
 }
 
 // ReadLive captures the current live value of the artifact.
@@ -82,12 +105,11 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 		if !found {
 			return Value{}, nil
 		}
-		// Store the item's bytes verbatim. The owning tool (Claude Code)
-		// writes compact JSON and rejects a re-serialized payload, so the
-		// pointer is used only as a structure guard here, never to extract
-		// and later re-encode a sub-value.
-		if _, ok, err := patch.GetPointer(payload, sp.Pointer); err != nil || !ok {
-			return Value{}, fmt.Errorf("%w: keychain item %q payload is not the expected JSON shape", ErrUnsafe, sp.Target)
+		// Store the item's bytes verbatim. The owning tool writes its own
+		// encoding (Claude Code: compact JSON) and rejects a re-serialized
+		// payload, so the guard never extracts and re-encodes a sub-value.
+		if err := keychainGuard(sp, payload); err != nil {
+			return Value{}, err
 		}
 		return Value{Data: payload, Present: true}, nil
 
@@ -143,10 +165,9 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 			return keychain.DeleteItem(ctx, sp.Target)
 		}
 		// Write the captured bytes verbatim (see ReadLive): re-serializing
-		// the JSON would make the owning tool reject the credential. The
-		// pointer is a structure guard, not an extraction path.
-		if _, ok, err := patch.GetPointer(v.Data, sp.Pointer); err != nil || !ok {
-			return fmt.Errorf("%w: keychain payload for %q is not the expected JSON shape", ErrUnsafe, sp.Target)
+		// the payload would make the owning tool reject the credential.
+		if err := keychainGuard(sp, v.Data); err != nil {
+			return err
 		}
 		account := sp.KeychainAccount
 		if existing, _, err := keychain.ItemAccount(ctx, sp.Target); err == nil && existing != "" {

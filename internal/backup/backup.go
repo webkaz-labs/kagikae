@@ -30,8 +30,14 @@ type ArtifactRecord struct {
 	// (e.g. cursor-user) instead of the generic fallback. Empty for non-
 	// keychain artifacts and for backups written before this field existed.
 	KeychainAccount string `json:"keychain_account,omitempty"`
-	SecretRef       string `json:"secret_ref"`
-	Present         bool   `json:"present"`
+	// JSONC marks a json-pointer Target as a JSONC document (comments and
+	// trailing commas, e.g. GitHub Copilot's config.json) so a restore patches
+	// it through the comment-preserving path instead of the plain-JSON one,
+	// which rejects the leading // comments. Empty for plain-JSON artifacts and
+	// for backups written before this field existed.
+	JSONC     bool   `json:"jsonc,omitempty"`
+	SecretRef string `json:"secret_ref"`
+	Present   bool   `json:"present"`
 }
 
 // Meta is the persisted backup metadata. It never contains secret values.

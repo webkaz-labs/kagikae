@@ -83,6 +83,14 @@ EDITOR=true /tmp/kae edit                          # validate round-trip
 /tmp/kae use opencode work --json
 #   assert: the "other" sibling key in auth.json is untouched
 /tmp/kae doctor --json                             # opencode checks present
+
+# copilot is config.json-pointer based (kae never touches the keychain
+# tokens), so it is safe on macOS; seed ~/.copilot/config.json with the JSONC
+# shape (leading // comments + lastLoggedInUser/loggedInUsers/trustedFolders):
+/tmp/kae add --no-login copilot webkaz --json
+/tmp/kae use copilot webkaz --json
+#   assert: leading // comments and trustedFolders survive the patch
+/tmp/kae doctor --json                             # copilot checks present
 ```
 
 Enter-hook firing (`mise init --auto --write`) needs a live mise:

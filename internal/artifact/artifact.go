@@ -38,6 +38,11 @@ type Spec struct {
 	// reused). Every KindKeychain spec must set it, or new items fall back
 	// to the literal account "kagikae".
 	KeychainAccount string
+	// JSONC marks a KindJSONPointer Target as a JSONC document (standard JSON
+	// plus // and /* */ comments and trailing commas, e.g. GitHub Copilot's
+	// ~/.copilot/config.json). Reads ignore the comments; writes preserve
+	// them and the surrounding formatting, mutating only the pointer value.
+	JSONC bool
 }
 
 // Value is one captured artifact value. Present=false records that the
@@ -88,7 +93,13 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 		if err != nil {
 			return Value{}, fmt.Errorf("read %s: %w", sp.Target, err)
 		}
-		raw, found, err := patch.GetPointer(doc, sp.Pointer)
+		var raw []byte
+		var found bool
+		if sp.JSONC {
+			raw, found, err = patch.GetPointerJSONC(doc, sp.Pointer)
+		} else {
+			raw, found, err = patch.GetPointer(doc, sp.Pointer)
+		}
 		if err != nil {
 			return Value{}, fmt.Errorf("%w: %s is not a JSON object (%v)", ErrUnsafe, sp.Target, err)
 		}
@@ -145,9 +156,14 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 			return fmt.Errorf("read %s: %w", sp.Target, err)
 		}
 		var updated []byte
-		if v.Present {
+		switch {
+		case v.Present && sp.JSONC:
+			updated, err = patch.SetPointerJSONC(doc, sp.Pointer, v.Data)
+		case v.Present:
 			updated, err = patch.SetPointer(doc, sp.Pointer, v.Data)
-		} else {
+		case sp.JSONC:
+			updated, err = patch.DeletePointerJSONC(doc, sp.Pointer)
+		default:
 			updated, err = patch.DeletePointer(doc, sp.Pointer)
 		}
 		if err != nil {

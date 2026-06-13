@@ -50,6 +50,9 @@ enabled = true
 [tools.cursor]
 enabled = true
 
+[tools.copilot]
+enabled = true
+
 # Per tool (any [tools.<tool>] section); both default to true and gate the
 # kae run isolation modes and the pin / mise init renderings:
 # home_mode_enabled = true
@@ -190,6 +193,14 @@ reversible:
 }
 ```
 
+`keychain_account` and `jsonc` are optional restore-fidelity fields: the
+first recreates a deleted keychain item under the tool's own account (e.g.
+`cursor-user`) instead of the generic fallback; the second routes a JSONC
+target (e.g. Copilot's commented `config.json`) through the
+comment-preserving patch on restore instead of the plain-JSON path, which
+would reject the leading `//` comments. Both are omitted for artifacts that
+do not need them and are absent in backups written before the field existed.
+
 `present: false` records that the artifact did not exist live (so rollback
 removes/skips it instead of writing an empty value). After a successful
 switch, backups beyond `backup_keep` are pruned oldest-first (metadata and
@@ -205,7 +216,8 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
   `unsafe_refused`, `auth_unchanged`, `usage`
 - artifact kinds: `json-pointer`, `file`, `keychain`
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
-  `agy-file-snapshot`, `opencode-file-patch`, `cursor-keychain`
+  `agy-file-snapshot`, `opencode-file-patch`, `cursor-keychain`,
+  `copilot-config-pointer`
 - modes: `auth`, `env`, `home`, `overlay`
 - backup reasons: `switch`, `rollback`, `run`, `login`
 

@@ -10,6 +10,7 @@ execution environments for AI coding CLIs:
 - Antigravity CLI (`agy`)
 - OpenCode (`opencode`)
 - Cursor CLI (`cursor-agent`)
+- GitHub Copilot CLI (`copilot`)
 
 The primary daily use case is switching subscription accounts:
 
@@ -144,10 +145,11 @@ use / pin / run verb-per-scope surface: `add` (official login flow or
 `mise init` (per-directory; overlay default), `run` (per-process auth
 transaction with recapture-and-restore, plus `env` / `home` / `overlay`),
 `env` profiles, an experimental file-snapshot adapter for Antigravity CLI, a
-JSON-pointer adapter for OpenCode's ChatGPT-subscription login, and a
-verbatim-keychain adapter for the Cursor CLI's opaque access token (all
+JSON-pointer adapter for OpenCode's ChatGPT-subscription login, a
+verbatim-keychain adapter for the Cursor CLI's opaque access token, and a
+config-pointer adapter for the GitHub Copilot CLI's active account (all
 v0.6.0). Keychain items are captured and restored verbatim, and the login
 flow refuses exits that change nothing. Windows support, the Codex keyring
-driver, and agy/opencode/cursor home isolation are roadmap items (v0.6.0
-removed the gemini adapter after upstream retired Gemini CLI for Antigravity
-on 2026-05-19).
+driver, and agy/opencode/cursor/copilot home isolation are roadmap items
+(v0.6.0 removed the gemini adapter after upstream retired Gemini CLI for
+Antigravity on 2026-05-19).

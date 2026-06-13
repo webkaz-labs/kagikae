@@ -132,8 +132,8 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 			meta.Artifacts = append(meta.Artifacts, backup.ArtifactRecord{
 				Tool: plan.Tool, Name: sp.Name, Kind: sp.Kind,
 				Target: sp.Target, Pointer: sp.Pointer,
-				KeychainAccount: sp.KeychainAccount,
-				SecretRef:       ref, Present: value.Present,
+				KeychainAccount: sp.KeychainAccount, JSONC: sp.JSONC,
+				SecretRef: ref, Present: value.Present,
 			})
 		}
 	}
@@ -175,6 +175,7 @@ func specFromRecord(rec backup.ArtifactRecord) artifact.Spec {
 	return artifact.Spec{
 		Name: rec.Name, Kind: rec.Kind, Target: rec.Target,
 		Pointer: rec.Pointer, KeychainAccount: rec.KeychainAccount,
+		JSONC: rec.JSONC,
 	}
 }
 

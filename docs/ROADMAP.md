@@ -33,6 +33,29 @@ coverage, ordered below by user impact.
   (env var or config) so containers and smoke environments never touch the
   real login keychain.
 
+## Command-system expansion (v0.7.0 candidate)
+
+Daily-use ergonomics, to be designed together as mise-style verbs once
+v0.6.0 ships, so the surface stays coherent rather than accreting ad hoc:
+
+- **`kae profile save <name>`**: snapshot the current active set into a
+  named profile, instead of hand-editing config via `kae edit`.
+- **Account / profile delete and update**: `kae account rm`, `kae profile
+  rm` / set — today account removal is manual (delete the snapshot dir and
+  the keychain secret item).
+- **`kae ls`**: a mise-style listing of accounts and profiles in one view
+  (today split across `kae accounts` and `kae status`).
+- **Account-name auto-detection**: each adapter exposes the live login
+  identity (claude email, cursor `cursor-agent status`, codex auth.json) so
+  `kae add` can suggest and sanitize a name instead of requiring one.
+- **Shorter ad-hoc switch inside a pinned directory**: `kae run <tool>
+  <account> -- <tool>` already works (it is not blocked by the pinned-
+  directory guard), but it is verbose; provide a terser way to open an
+  interactive session under a different account without unpinning.
+
+These overlap with the TUI item above at the surface level but are the
+plain-CLI layer; the TUI sits on top of them.
+
 ## Platform coverage
 
 - **Windows**: `%APPDATA%` layout, Credential Manager secret backend, lock

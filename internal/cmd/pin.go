@@ -2,31 +2,28 @@ package cmd
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
-// CmdPin binds the current directory to a profile:
+// CmdPin binds the current directory to a fully isolated profile:
 //
-//	kae pin [<profile>] [--mode overlay|home|auth] [--auto]
+//	kae pin [<profile>]
 //
-// Sugar over `kae mise init --write`: renders and writes the kagikae block
-// of .mise.toml immediately. Default mode is overlay — auth and session
-// state private to the directory, settings/skills shared with the real
-// home. Profile defaults to config default_profile. Re-running pin
-// refreshes the overlay's shared-item links. kae unpin removes the block.
+// Sugar over `kae mise init --mode pin --write`: renders and writes the
+// kagikae block of .mise.toml immediately. The directory gets its own
+// private config dir; nothing is shared with the real home by default
+// (opt-in via pin_shared_items in config.toml). Use `kae bond` instead
+// for shared-settings isolation. Profile defaults to config default_profile.
+// Re-running pin refreshes opt-in shared-item links and the credential copy.
+// kae unpin removes the block.
 func CmdPin(ctx context.Context, args []string) int {
-	flags, positionals := splitArgs(args, "--mode")
-	var mode string
-	auto := false
-	opts, ok := parseCommon("pin", flags, false, func(fs *flag.FlagSet) {
-		fs.StringVar(&mode, "mode", modeOverlay, "isolation: overlay (shared config), home (fully separate), or auth (global tasks)")
-		fs.BoolVar(&auto, "auto", false, "add a [hooks.enter] auto-switch (auth mode only)")
-	})
+	flags, positionals := splitArgs(args)
+	opts, ok := parseCommon("pin", flags, false, nil)
 	if !ok {
 		return constants.ExitUsage
 	}
@@ -37,10 +34,30 @@ func CmdPin(ctx context.Context, args []string) int {
 	case 1:
 		profileName = positionals[0]
 	default:
-		return usageError("usage: %s pin [<profile>] [--mode overlay|home|auth] [--auto]", toolName)
+		return usageError("usage: %s pin [<profile>]", toolName)
 	}
+	warnIfLegacyPinBlock()
 	app := newApp(opts.ConfigPath)
-	return runMiseInit(ctx, app, opts, profileName, mode, auto, true)
+	return runMiseInit(ctx, app, opts, profileName, modePin, false, true)
+}
+
+// warnIfLegacyPinBlock prints a migration hint when the current directory's
+// .mise.toml contains an old overlay-mode kagikae block (written by
+// `kae pin --mode overlay` before v0.7.0). The semantics of `kae pin` changed
+// in v0.7.0: it now binds an isolated (not shared) environment. Run
+// `kae unpin && kae pin <profile>` to migrate.
+func warnIfLegacyPinBlock() {
+	data, err := os.ReadFile(".mise.toml")
+	if err != nil {
+		return
+	}
+	// The overlay-mode comment written by the old `kae pin` (miseinit.go).
+	if strings.Contains(string(data), "Directory-scoped account isolation (kae pin, mode: overlay)") ||
+		strings.Contains(string(data), "Directory-scoped overlay mode (legacy)") {
+		fmt.Fprintln(os.Stderr, "kae: warning: this directory has a legacy overlay-mode block.")
+		fmt.Fprintln(os.Stderr, "kae: run `kae unpin && kae pin <profile>` to migrate to isolated pin mode,")
+		fmt.Fprintln(os.Stderr, "kae: or `kae unpin && kae bond <profile>` for shared-settings (bond) mode.")
+	}
 }
 
 // CmdUnpin removes the kagikae block from .mise.toml in the current

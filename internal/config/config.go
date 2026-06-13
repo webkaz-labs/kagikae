@@ -53,6 +53,7 @@ type Tool struct {
 	OverlayModeEnabled *bool    `toml:"overlay_mode_enabled"`
 	OverlayExtraShared []string `toml:"overlay_extra_shared"`
 	BondDenylistExtra  []string `toml:"bond_denylist_extra"`
+	PinSharedItems     []string `toml:"pin_shared_items"`
 }
 
 // Profile bundles per-tool accounts under one name.
@@ -124,6 +125,14 @@ func (c *Config) validate() error {
 				return fmt.Errorf("tools.%s.bond_denylist_extra: %q is already in the hard-coded bond denylist", tool, item)
 			}
 		}
+		for _, item := range settings.PinSharedItems {
+			if !ValidFileName(item) {
+				return fmt.Errorf("tools.%s.pin_shared_items item %q is not a bare file name", tool, item)
+			}
+			if refusedPinShare[item] {
+				return fmt.Errorf("tools.%s.pin_shared_items must not share the auth credential %q", tool, item)
+			}
+		}
 	}
 	for name, profile := range c.Profiles {
 		if !ValidName(name) {
@@ -146,14 +155,14 @@ func (c *Config) validate() error {
 	return nil
 }
 
-// refusedOverlayShare lists the auth/identity artifacts that must never be
-// shared into an overlay — sharing them would defeat the isolation. The
-// names mirror what the tool adapters switch (claude: .credentials.json and
-// the ~/.claude.json identity file; codex: auth.json); docs/ADAPTERS.md
-// "Isolation" is the normative source — keep all three in sync.
+// refusedOverlayShare lists the auth artifacts that must never be shared into
+// an overlay — sharing them would defeat the isolation. The names mirror what
+// the tool adapters switch (claude: .credentials.json; codex: auth.json).
+// .claude.json is intentionally absent: /oauthAccount is a token-derived cache
+// that claude self-heals, so the file carries no auth value and is safe to
+// symlink wholesale. docs/ADAPTERS.md "Isolation" is the normative source.
 var refusedOverlayShare = map[string]bool{
 	".credentials.json": true,
-	".claude.json":      true,
 	"auth.json":         true,
 }
 
@@ -161,6 +170,13 @@ var refusedOverlayShare = map[string]bool{
 // hard-coded bond denylist (see bondDenylistItems in internal/cmd/miseinit.go);
 // adding them to BondDenylistExtra is rejected to avoid confusion.
 var refusedBondDenylistExtra = map[string]bool{
+	".credentials.json": true,
+	"auth.json":         true,
+}
+
+// refusedPinShare lists the auth credentials that must never be listed in
+// pin_shared_items — they must remain private to the directory and account.
+var refusedPinShare = map[string]bool{
 	".credentials.json": true,
 	"auth.json":         true,
 }
@@ -179,6 +195,15 @@ func (c *Config) OverlayExtraShared(tool string) []string {
 func (c *Config) BondDenylistExtra(tool string) []string {
 	if t, ok := c.Tools[tool]; ok {
 		return t.BondDenylistExtra
+	}
+	return nil
+}
+
+// PinSharedItems returns the user-configured items to symlink from the real
+// home into a pin-mode config dir (opt-in; validated at load time).
+func (c *Config) PinSharedItems(tool string) []string {
+	if t, ok := c.Tools[tool]; ok {
+		return t.PinSharedItems
 	}
 	return nil
 }

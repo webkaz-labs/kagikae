@@ -112,11 +112,14 @@ func TestCaptureSwitchRollbackClaude(t *testing.T) {
 	if !strings.Contains(creds, workToken) || strings.Contains(creds, personalToken) {
 		t.Fatalf("credentials not switched: %s", creds)
 	}
+	// .claude.json is not switched: /oauthAccount is a token-derived cache that
+	// claude self-heals; kae touches only the credential. The last-seeded
+	// personal-uuid must survive the switch back to work credentials.
 	identity := readFile(t, filepath.Join(app.Env.Home, ".claude.json"))
-	if !strings.Contains(identity, "work-uuid") {
-		t.Fatalf("oauthAccount not switched: %s", identity)
+	if strings.Contains(identity, "work-uuid") {
+		t.Fatalf(".claude.json must not be patched by switch: %s", identity)
 	}
-	for _, preserved := range []string{`"projects"`, `"/repo"`, `"firstStartTime"`} {
+	for _, preserved := range []string{`"projects"`, `"/repo"`, `"firstStartTime"`, "personal-uuid"} {
 		if !strings.Contains(identity, preserved) {
 			t.Fatalf("mixed-state key lost: %s missing in %s", preserved, identity)
 		}
@@ -326,8 +329,8 @@ func TestSwitchJSONReportShape(t *testing.T) {
 		t.Fatalf("unexpected result: %s", out)
 	}
 	actions := result["actions"].([]any)
-	if len(actions) != 2 {
-		t.Fatalf("expected 2 actions: %s", out)
+	if len(actions) != 1 {
+		t.Fatalf("expected 1 action: %s", out)
 	}
 	first := actions[0].(map[string]any)
 	if first["kind"] != "json-pointer" || !strings.HasPrefix(first["target"].(string), "~/") {

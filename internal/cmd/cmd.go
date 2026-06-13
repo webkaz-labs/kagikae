@@ -58,6 +58,8 @@ func Root(args []string) int {
 		return CmdPin(ctx, args[1:])
 	case "bond":
 		return CmdBond(ctx, args[1:])
+	case "as":
+		return CmdAs(ctx, args[1:])
 	case "unpin":
 		return CmdUnpin(ctx, args[1:])
 	case "sync":
@@ -201,11 +203,11 @@ Usage:
                                        the current login instead)
   kae use <profile>                    switch every tool now (alias: kae u)
   kae use <tool> <account>             switch one tool now
-  kae pin [<profile>]                  bind this directory to a profile;
-                                       default mode overlay = settings and
-                                       skills shared, auth private
+  kae pin [<profile>]                  bind this directory (isolated by default;
+                                       opt-in sharing via pin_shared_items)
   kae bond [<profile>]                 bond mode: settings/sessions shared
                                        with the real home, credential private
+  kae as <tool> <account>             swap credential inside a bonded/pinned dir
   kae unpin                            remove the binding from .mise.toml
   kae run [--mode M] <t|all> <n> -- C  run C with an account applied; auth
                                        mode restores the previous login after

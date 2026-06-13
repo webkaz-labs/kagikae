@@ -69,16 +69,13 @@ func TestClaudeArtifactsLinux(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 2 {
-		t.Fatalf("expected 2 specs: %+v", specs)
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 spec: %+v", specs)
 	}
 	if specs[0].Kind != constants.KindJSONPointer ||
 		specs[0].Target != filepath.Join(env.Home, ".claude", ".credentials.json") ||
 		specs[0].Pointer != "/claudeAiOauth" {
 		t.Fatalf("unexpected credentials spec: %+v", specs[0])
-	}
-	if specs[1].Target != filepath.Join(env.Home, ".claude.json") || specs[1].Pointer != "/oauthAccount" {
-		t.Fatalf("unexpected identity spec: %+v", specs[1])
 	}
 }
 
@@ -112,9 +109,6 @@ func TestClaudeHonorsConfigDir(t *testing.T) {
 	}
 	if specs[0].Target != filepath.Join(configDir, ".credentials.json") {
 		t.Fatalf("CLAUDE_CONFIG_DIR not honored: %+v", specs[0])
-	}
-	if specs[1].Target != filepath.Join(configDir, ".claude.json") {
-		t.Fatalf("identity file should follow CLAUDE_CONFIG_DIR: %+v", specs[1])
 	}
 }
 

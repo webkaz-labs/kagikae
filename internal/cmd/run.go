@@ -89,6 +89,8 @@ func runRun(ctx context.Context, app *App, opts commonOpts, mode, target, name s
 			entries, err = app.overlayModeEnv(tgt.Tool, tgt.Account)
 		case modeBond:
 			entries, err = app.bondModeEnv(ctx, tgt.Tool, tgt.Account)
+		case modePin:
+			entries, err = app.pinModeEnv(ctx, tgt.Tool, tgt.Account)
 		}
 		if err != nil {
 			return finish(opts, fmt.Errorf("%s: %w", tgt.Tool, err))

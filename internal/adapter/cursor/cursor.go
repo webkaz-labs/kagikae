@@ -14,9 +14,11 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
-// KeychainService is the access-token item's service name; KeychainAccount
-// is the account attribute cursor-agent creates it with.
+// binaryName is the Cursor CLI executable; KeychainService is the access-token
+// item's service name; KeychainAccount is the account attribute cursor-agent
+// creates it with.
 const (
+	binaryName      = "cursor-agent"
 	KeychainService = "cursor-access-token"
 	KeychainAccount = "cursor-user"
 )
@@ -27,15 +29,22 @@ func init() { adapter.Register(Cursor{}) }
 
 func (Cursor) ID() string { return constants.ToolCursor }
 
-// unsupported reports the darwin-only limitation as an ErrUnsupported (exit 5).
-func unsupported(goos string) error {
-	return fmt.Errorf("%w: cursor auth switching is not supported on %s yet (only macOS Keychain storage is known)",
-		adapter.ErrUnsupported, goos)
+func (Cursor) Binary() string { return binaryName }
+
+// driver maps the platform to the cursor driver, refusing the platforms whose
+// credential storage is undocumented (only macOS Keychain is known). Mirrors
+// claude's driver() so Artifacts/Doctor share one platform gate.
+func driver(env adapter.Env) (string, error) {
+	if env.GOOS == "darwin" {
+		return constants.DriverCursorKeychain, nil
+	}
+	return "", fmt.Errorf("%w: cursor auth switching is not supported on %s yet (only macOS Keychain storage is known)",
+		adapter.ErrUnsupported, env.GOOS)
 }
 
 func (c Cursor) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, error) {
-	if env.GOOS != "darwin" {
-		return nil, unsupported(env.GOOS)
+	if _, err := driver(env); err != nil {
+		return nil, err
 	}
 	return []artifact.Spec{{
 		Name:            "access_token",
@@ -48,7 +57,7 @@ func (c Cursor) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 
 func (c Cursor) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) {
 	info := adapter.Info{Tool: constants.ToolCursor, Driver: constants.DriverCursorKeychain, Warnings: []string{}}
-	if _, err := env.LookPath("cursor-agent"); err == nil {
+	if _, err := env.LookPath(binaryName); err == nil {
 		info.BinaryPresent = true
 	}
 	specs, err := c.Artifacts(ctx, env)
@@ -65,11 +74,11 @@ func (c Cursor) Detect(ctx context.Context, env adapter.Env) (adapter.Info, erro
 
 func (c Cursor) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	tool := constants.ToolCursor
-	if env.GOOS != "darwin" {
+	if _, err := driver(env); err != nil {
 		return []adapter.Check{{Tool: tool, Code: constants.CheckUnsupported,
-			Status: constants.StatusError, Message: unsupported(env.GOOS).Error()}}
+			Status: constants.StatusError, Message: err.Error()}}
 	}
-	checks := []adapter.Check{adapter.BinaryCheck(env, tool, "cursor-agent")}
+	checks := []adapter.Check{adapter.BinaryCheck(env, tool, binaryName)}
 	info, err := c.Detect(ctx, env)
 	switch {
 	case err != nil:

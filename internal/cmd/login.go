@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -33,12 +34,12 @@ func loginCommand(tool string) []string {
 }
 
 // toolBinary is the executable name for a tool's CLI, used in the generated
-// mise run tasks. It matches the tool id for every tool except cursor, whose
-// binary is cursor-agent (keep in sync with loginCommand and each adapter's
-// LookPath probe).
+// mise run tasks. The adapter is the single source of truth (it usually
+// equals the tool id, but cursor's binary is cursor-agent); an unknown tool
+// falls back to its id.
 func toolBinary(tool string) string {
-	if tool == constants.ToolCursor {
-		return "cursor-agent"
+	if adp, err := adapter.ForTool(tool); err == nil {
+		return adp.Binary()
 	}
 	return tool
 }

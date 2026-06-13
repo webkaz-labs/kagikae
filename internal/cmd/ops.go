@@ -52,11 +52,11 @@ func validateToolAccount(tool, name, nameKind string) error {
 
 // toolPlan is one tool's resolved switch/capture plan.
 type toolPlan struct {
-	Tool    string
-	Account string
-	Driver  string
-	Specs   []artifact.Spec
-	Meta    account.Account // populated for switch (captured snapshot)
+	Tool     string
+	Account  string
+	Driver   string
+	Specs    []artifact.Spec
+	Meta     account.Account // populated for switch (captured snapshot)
 	Warnings []string
 }
 
@@ -161,13 +161,21 @@ func applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only 
 			}
 			value = artifact.Value{Data: data, Present: true}
 		}
-		sp := artifact.Spec{Name: rec.Name, Kind: rec.Kind, Target: rec.Target,
-			Pointer: rec.Pointer, KeychainAccount: rec.KeychainAccount}
-		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
+		if err := artifact.ApplyLive(ctx, specFromRecord(rec), value); err != nil {
 			return fmt.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
 		}
 	}
 	return nil
+}
+
+// specFromRecord rebuilds the artifact spec a backup record was captured from
+// (including the keychain account, so a rollback recreates an item under the
+// tool's own account, not the generic fallback).
+func specFromRecord(rec backup.ArtifactRecord) artifact.Spec {
+	return artifact.Spec{
+		Name: rec.Name, Kind: rec.Kind, Target: rec.Target,
+		Pointer: rec.Pointer, KeychainAccount: rec.KeychainAccount,
+	}
 }
 
 // plansFromBackupMeta rebuilds per-tool artifact plans from backup records
@@ -179,10 +187,7 @@ func plansFromBackupMeta(meta backup.Meta) []toolPlan {
 		if _, seen := specsByTool[rec.Tool]; !seen {
 			order = append(order, rec.Tool)
 		}
-		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], artifact.Spec{
-			Name: rec.Name, Kind: rec.Kind, Target: rec.Target, Pointer: rec.Pointer,
-			KeychainAccount: rec.KeychainAccount,
-		})
+		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], specFromRecord(rec))
 	}
 	plans := make([]toolPlan, 0, len(order))
 	for _, tool := range order {

@@ -22,6 +22,8 @@ func init() { adapter.Register(Codex{}) }
 
 func (Codex) ID() string { return constants.ToolCodex }
 
+func (Codex) Binary() string { return "codex" }
+
 // codexHome honors CODEX_HOME as the live base path when already set.
 func codexHome(env adapter.Env) string {
 	if dir := env.Getenv("CODEX_HOME"); dir != "" {

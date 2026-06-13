@@ -199,11 +199,10 @@ Electron safeStorage key and is never touched.
 |--------|----------|--------------------|
 | `cursor-keychain` | macOS | Keychain item `cursor-access-token`, captured and restored verbatim |
 
-The payload is opaque (a raw JWT, not JSON), so unlike the claude keychain
-driver there is no JSON-pointer structure guard — the spec's empty pointer
-marks it opaque and the only guard is non-emptiness (docs/DATA-MODEL.md). The
-bytes still round-trip verbatim through the `security` CLI, ACL-preserving,
-exactly as for claude. On a non-darwin platform capture / switch refuse with
+The payload round-trips verbatim through the `security` CLI, ACL-preserving,
+exactly as for claude — but it is opaque (a raw JWT, not JSON), so there is no
+JSON-pointer structure guard (an empty pointer marks the opaque payload; see
+docs/DATA-MODEL.md). On a non-darwin platform capture / switch refuse with
 exit `5` (unsupported).
 
 ### Preserved

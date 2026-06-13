@@ -55,8 +55,8 @@ func CmdMise(ctx context.Context, args []string) int {
 }
 
 func runMiseInit(ctx context.Context, app *App, opts commonOpts, profileName, mode string, auto, write bool) int {
-	if mode != constants.ModeAuth && mode != modeHome && mode != modeOverlay && mode != constants.ModeBond {
-		return usageError("unsupported mise init mode %q (modes: auth, home, overlay, bond)", mode)
+	if mode != constants.ModeAuth && mode != modeHome && mode != modeOverlay && mode != constants.ModeBond && mode != constants.ModePin {
+		return usageError("unsupported mise init mode %q (modes: auth, home, overlay, bond, pin)", mode)
 	}
 	if auto && mode != constants.ModeAuth {
 		return usageError("--auto applies to auth mode only: isolation modes already take effect on directory entry via [env]")
@@ -84,14 +84,22 @@ func runMiseInit(ctx context.Context, app *App, opts commonOpts, profileName, mo
 		if err != nil {
 			return finish(opts, err)
 		}
-		if mode == constants.ModeBond {
+		switch mode {
+		case constants.ModeBond:
 			absDir, err := cwdAbs()
 			if err != nil {
 				return finish(opts, err)
 			}
 			pinID = paths.PinID(absDir)
 			entries = app.bondIsolationEntries(targets, pinID)
-		} else {
+		case constants.ModePin:
+			absDir, err := cwdAbs()
+			if err != nil {
+				return finish(opts, err)
+			}
+			pinID = paths.PinID(absDir)
+			entries = app.pinIsolationEntries(targets, pinID)
+		default:
 			entries = app.isolationEntries(mode, targets)
 		}
 		block = app.miseIsolationBlock(profileName, mode, entries)
@@ -116,6 +124,10 @@ func runMiseInit(ctx context.Context, app *App, opts commonOpts, profileName, mo
 	case constants.ModeBond:
 		prepare = func(tool, account string) (string, error) {
 			return app.prepareBond(ctx, tool, account, pinID)
+		}
+	case constants.ModePin:
+		prepare = func(tool, account string) (string, error) {
+			return app.preparePinConfig(ctx, tool, account, pinID)
 		}
 	case modeOverlay:
 		prepare = app.prepareOverlay
@@ -230,15 +242,17 @@ func (app *App) miseIsolationBlock(profileName, mode string, entries []isolation
 	fmt.Fprintln(&b, miseBlockStart)
 	switch mode {
 	case modeOverlay:
-		fmt.Fprintln(&b, "# Directory-scoped account isolation (kae pin, mode: overlay): auth and")
-		fmt.Fprintln(&b, "# session state are private to this directory while settings, skills,")
-		fmt.Fprintln(&b, "# and memory stay shared with the real home; the global live auth state")
-		fmt.Fprintln(&b, "# is never touched. After adding shared items to the real home, re-run")
-		fmt.Fprintln(&b, "# kae pin to refresh the links.")
+		fmt.Fprintln(&b, "# Directory-scoped overlay mode (legacy): auth and session state are private")
+		fmt.Fprintln(&b, "# while settings and skills are shared. Use `kae pin` for isolated-by-default,")
+		fmt.Fprintln(&b, "# or `kae bond` for the shared-settings mode.")
 	case constants.ModeBond:
 		fmt.Fprintln(&b, "# Directory-scoped bond mode (kae bond): settings, sessions, and memory")
 		fmt.Fprintln(&b, "# are shared with the real home; credentials are private to this directory.")
 		fmt.Fprintln(&b, "# Re-run kae bond after adding new files to the real home to refresh links.")
+	case constants.ModePin:
+		fmt.Fprintln(&b, "# Directory-scoped pin mode (kae pin): fully isolated from the real home.")
+		fmt.Fprintln(&b, "# Nothing is shared by default; opt in via pin_shared_items in config.toml.")
+		fmt.Fprintln(&b, "# Credential is private to this directory and account.")
 	default:
 		fmt.Fprintln(&b, "# Directory-scoped isolation (kae pin --mode home): account and config")
 		fmt.Fprintln(&b, "# directory switch inside this directory only; the global live auth")
@@ -385,6 +399,112 @@ func (app *App) prepareBond(ctx context.Context, tool, _ string, pinID string) (
 	}
 
 	return bondDir, nil
+}
+
+// pinIsolationEntries resolves the per-tool env entries for pin mode.
+// PinConfigDir is per-account (isolation/<pinID>/<tool>/pin/<account>/config/),
+// so each target carries the account name for directory construction.
+func (app *App) pinIsolationEntries(targets []runTarget, pinID string) []isolationEntry {
+	entries := make([]isolationEntry, 0, len(targets))
+	for _, tgt := range targets {
+		entry := isolationEntry{Tool: tgt.Tool, Account: tgt.Account}
+		entry.EnvVar = isolationEnvVar(tgt.Tool)
+		if entry.EnvVar == "" {
+			entry.Warning = fmt.Sprintf(
+				"%s has no stable home-isolation env var; it keeps the real home (docs/ROADMAP.md)", tgt.Tool)
+			entries = append(entries, entry)
+			continue
+		}
+		entry.Dir = app.Paths.PinConfigDir(pinID, tgt.Tool, tgt.Account)
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+// preparePinConfig creates the pin config directory for one tool/account/pinID:
+// symlinks opt-in shared items from the real home, then copies the credential
+// privately. Idempotent: stale symlinks are refreshed; real files are left.
+func (app *App) preparePinConfig(ctx context.Context, tool, account, pinID string) (string, error) {
+	configDir := app.Paths.PinConfigDir(pinID, tool, account)
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		return "", fmt.Errorf("create pin config dir: %w", err)
+	}
+	realHome := app.realToolHome(tool)
+	if filepath.Clean(realHome) == filepath.Clean(configDir) {
+		return "", errf(constants.ExitUnsafeRefused,
+			"the real %s home resolves to the pin config dir itself; unset %s and retry",
+			tool, isolationEnvVar(tool))
+	}
+
+	// Symlink opt-in shared items from the real home.
+	for _, item := range app.Config.PinSharedItems(tool) {
+		src := filepath.Join(realHome, item)
+		if _, err := os.Stat(src); err != nil {
+			continue // only link what exists
+		}
+		dst := filepath.Join(configDir, item)
+		info, statErr := os.Lstat(dst)
+		if statErr != nil && !os.IsNotExist(statErr) {
+			return "", fmt.Errorf("stat pin item %s: %w", dst, statErr)
+		}
+		if statErr == nil {
+			if info.Mode()&os.ModeSymlink == 0 {
+				continue // real file/dir in pin dir is a private override; leave it
+			}
+			if current, readErr := os.Readlink(dst); readErr == nil && current == src {
+				continue // already linked correctly
+			}
+			if err := os.Remove(dst); err != nil {
+				return "", fmt.Errorf("refresh pin link %s: %w", dst, err)
+			}
+		}
+		if err := os.Symlink(src, dst); err != nil {
+			return "", fmt.Errorf("link pin item %s: %w", dst, err)
+		}
+	}
+
+	// Private-copy the credential — same logic as prepareBond.
+	for _, item := range app.pinCredItems(tool) {
+		src := filepath.Join(realHome, item)
+		dst := filepath.Join(configDir, item)
+		data, err := os.ReadFile(src)
+		if os.IsNotExist(err) {
+			kdata, kerr := app.keychainCredForBond(ctx, tool)
+			if kerr != nil {
+				return "", kerr
+			}
+			if kdata == nil {
+				continue
+			}
+			data = kdata
+		} else if err != nil {
+			return "", fmt.Errorf("read credential %s: %w", src, err)
+		}
+		existing, readErr := os.ReadFile(dst)
+		if readErr == nil && string(existing) == string(data) {
+			continue
+		} else if readErr != nil && !os.IsNotExist(readErr) {
+			return "", fmt.Errorf("check existing credential %s: %w", dst, readErr)
+		}
+		if err := patch.WriteFileAtomic(dst, data, 0o600); err != nil {
+			return "", fmt.Errorf("copy credential to pin dir: %w", err)
+		}
+	}
+
+	return configDir, nil
+}
+
+// pinCredItems returns the credential file names to private-copy into a pin
+// config dir. Mirrors bondDenylistItems but for pin mode.
+func (app *App) pinCredItems(tool string) []string {
+	switch tool {
+	case constants.ToolClaude:
+		return []string{".credentials.json"}
+	case constants.ToolCodex:
+		return []string{"auth.json"}
+	default:
+		return nil
+	}
 }
 
 // keychainCredForBond returns the raw keychain payload for a tool's primary

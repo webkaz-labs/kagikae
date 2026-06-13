@@ -19,10 +19,11 @@ detected) and refuse to write when the live layout is unrecognized
 | Linux | `~/.claude/.credentials.json` (mode `0600`), key `claudeAiOauth` |
 | Windows | `%USERPROFILE%\.claude\.credentials.json` (not supported in v0.1.0) |
 
-In addition, `~/.claude.json` holds the account identity under `oauthAccount`.
-This file is **mixed state**: it also contains `projects`, `mcpServers`,
-onboarding, and cache keys. It is patched via JSON Pointer only, never
-replaced.
+`~/.claude.json` is **mixed state**: it contains `projects`, `mcpServers`,
+onboarding, cache keys, and `oauthAccount`. kae does **not** switch
+`oauthAccount`: it is a token-derived identity cache that claude self-heals
+on the next authenticated run (verified 2026-06-14; docs/SCOPE-MODEL.md §6).
+The file is symlinked wholesale in isolation modes; auth mode never touches it.
 
 If `CLAUDE_CONFIG_DIR` is already set in the environment, the adapter uses it
 as the live base path for `.credentials.json`. `auth` mode never sets or
@@ -32,8 +33,8 @@ changes `CLAUDE_CONFIG_DIR` itself.
 
 | Driver | Platform | Switched artifacts |
 |--------|----------|--------------------|
-| `claude-file-patch` | Linux | `~/.claude/.credentials.json` pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
-| `claude-keychain-patch` | macOS | Keychain item `Claude Code-credentials` payload pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
+| `claude-file-patch` | Linux | `~/.claude/.credentials.json` pointer `/claudeAiOauth` |
+| `claude-keychain-patch` | macOS | Keychain item `Claude Code-credentials` payload pointer `/claudeAiOauth` |
 
 The macOS driver reads and writes the keychain through the `security` CLI via
 the runner seam. The captured keychain item is stored and restored
@@ -50,7 +51,9 @@ top-level key, capturing the whole item is equivalent to capturing that key.
 ~/.claude/settings.json        ~/.claude/CLAUDE.md
 ~/.claude/skills/              ~/.claude/agents/
 ~/.claude/.credentials.json    -> all keys except /claudeAiOauth
-~/.claude.json                 -> all keys except /oauthAccount
+~/.claude.json                 (symlinked wholesale in isolation modes;
+                               never touched in auth mode — /oauthAccount
+                               is token-derived and self-healed by claude)
 project/.claude/  project/CLAUDE.md  project/.mcp.json
 MCP / hooks / permissions / trust state / session history / plugins
 ```
@@ -272,21 +275,21 @@ the per-account keychain items (service copilot-cli) — never touched
 `kae doctor` warns when any is set. The gh CLI's own auth is separate and out
 of scope.
 
-## Isolation (home / overlay / bond Modes)
+## Isolation (home / overlay / bond / pin Modes)
 
-`kae run --mode home|overlay|bond` points a tool at an alternate home
-directory; `kae pin` / `kae bond` / `kae mise init --mode home|overlay|bond`
+`kae run --mode home|overlay|bond|pin` points a tool at an alternate home
+directory; `kae pin` / `kae bond` / `kae mise init --mode home|overlay|bond|pin`
 render the same mapping as mise `[env]` entries scoped to a project
 directory (docs/CLI.md):
 
-| Tool | Isolation env var | home mode | overlay mode | bond mode |
-|------|-------------------|-----------|--------------|-----------|
-| claude | `CLAUDE_CONFIG_DIR` | supported | supported (pin default) | supported |
-| codex | `CODEX_HOME` | supported | supported (pin default) | supported |
-| agy | none stable | refused | refused | refused |
-| opencode | none stable | refused | refused | refused |
-| cursor | none stable | refused | refused | refused |
-| copilot | none stable | refused | refused | refused |
+| Tool | Isolation env var | home mode | overlay mode | bond mode | pin mode |
+|------|-------------------|-----------|--------------|-----------|----------|
+| claude | `CLAUDE_CONFIG_DIR` | supported | supported | supported | supported (`kae pin` default) |
+| codex | `CODEX_HOME` | supported | supported | supported | supported (`kae pin` default) |
+| agy | none stable | refused | refused | refused | refused |
+| opencode | none stable | refused | refused | refused | refused |
+| cursor | none stable | refused | refused | refused | refused |
+| copilot | none stable | refused | refused | refused | refused |
 
 "Refused" means exit `5` from `kae run`; `kae pin` / `kae bond` /
 `kae mise init` instead omit those tools with an inline warning comment
@@ -343,6 +346,35 @@ to the denylist, use `tools.<tool>.bond_denylist_extra` (bare file names;
 the hard-coded auth artifacts above are refused at config load to avoid
 confusion). A real file already present in the bond directory is treated as a
 private override and is never replaced or linked over.
+
+**Pin mode** (`kae pin`) uses a per-account *private config dir*
+(`isolation/<pin-id>/<tool>/pin/<account>/config/`): nothing is shared with
+the real home by default. Items explicitly listed in
+`tools.<tool>.pin_shared_items` (bare file names; credential files
+`.credentials.json` / `auth.json` are refused at config load) are symlinked
+from the real home; the credential is private-copied at `0600`. Switching
+accounts inside a pinned directory without re-running `kae pin` is done with
+`kae as <tool> <account>`.
+
+`tools.<tool>.pin_shared_items` is the opt-in counterpart to
+`overlay_extra_shared`: it names items to *share* rather than items to *add
+on top of a default allowlist*. The default is empty (full isolation).
+Re-running `kae pin` refreshes opt-in shared-item links and the credential
+copy.
+
+**`kae as <tool> <account>`** swaps the credential inside a bonded or pinned
+directory to a different account without disturbing settings, sessions, or
+memory:
+
+- **bond mode**: the credential file is overwritten in the account-agnostic
+  bond dir (`isolation/<pin-id>/<tool>/bond/`).
+- **pin mode**: a new per-account config dir is prepared
+  (`isolation/<pin-id>/<tool>/pin/<account>/config/`) with opt-in shared
+  links and the new credential; the `.mise.toml` env entry is updated to
+  point at it.
+
+In both cases the tool picks up the new account on next launch with no
+change to sessions or settings.
 
 ## Login Commands
 

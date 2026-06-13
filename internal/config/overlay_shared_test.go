@@ -36,13 +36,19 @@ func TestOverlayExtraSharedValidation(t *testing.T) {
 		"path separator": "version = 1\n[tools.claude]\noverlay_extra_shared = [\"a/b\"]\n",
 		"dot-dot":        "version = 1\n[tools.claude]\noverlay_extra_shared = [\"..\"]\n",
 		"credentials":    "version = 1\n[tools.claude]\noverlay_extra_shared = [\".credentials.json\"]\n",
-		"identity":       "version = 1\n[tools.claude]\noverlay_extra_shared = [\".claude.json\"]\n",
 		"codex auth":     "version = 1\n[tools.codex]\noverlay_extra_shared = [\"auth.json\"]\n",
 	} {
 		if _, err := loadFromString(t, content); err == nil {
 			t.Fatalf("%s must be rejected", name)
-		} else if name == "credentials" && !strings.Contains(err.Error(), "auth/identity") {
+		} else if name == "credentials" && !strings.Contains(err.Error(), "auth") {
 			t.Fatalf("refusal message: %v", err)
 		}
+	}
+
+	// .claude.json is no longer an auth artifact (it is a token-derived cache
+	// that claude self-heals), so it may be listed in overlay_extra_shared.
+	allowedIdentity := "version = 1\n[tools.claude]\noverlay_extra_shared = [\".claude.json\"]\n"
+	if _, err := loadFromString(t, allowedIdentity); err != nil {
+		t.Fatalf(".claude.json must be allowed in overlay_extra_shared after Phase 3: %v", err)
 	}
 }

@@ -18,11 +18,12 @@ const (
 	modeHome    = constants.ModeHome
 	modeOverlay = constants.ModeOverlay
 	modeBond    = constants.ModeBond
+	modePin     = constants.ModePin
 )
 
 func validMode(mode string) bool {
 	switch mode {
-	case modeAuth, modeEnv, modeHome, modeOverlay, modeBond:
+	case modeAuth, modeEnv, modeHome, modeOverlay, modeBond, modePin:
 		return true
 	}
 	return false
@@ -126,7 +127,7 @@ func (app *App) isKaeManagedHome(dir string) bool {
 }
 
 // kaeManagedHomeKind classifies dir against kae's isolation data roots.
-// Returns a mode constant ("overlay", "home", "bond"/"pin", "sync") or ""
+// Returns a mode constant ("overlay", "home", "bond", "pin", "sync") or ""
 // for anything outside all kae-managed roots.
 func (app *App) kaeManagedHomeKind(dir string) string {
 	switch {
@@ -135,14 +136,17 @@ func (app *App) kaeManagedHomeKind(dir string) string {
 	case pathWithin(dir, app.Paths.HomesDir()):
 		return modeHome
 	case pathWithin(dir, app.Paths.IsolationDir()):
-		// bond and pin both live under isolation/; the finer mode distinction
-		// is resolved by Phase 2/4 bond/pin commands. When pin is implemented
-		// (Phase 4), split this case into bond vs pin using PinConfigDir vs
-		// BondDir, and update the pinnedIsolationGuard message accordingly.
-		// constants.ModeBond is used directly (not mirrored as a local const)
-		// because it is not yet registered in validMode — the local-const
-		// pattern is reserved for modes that kae run accepts.
-		return constants.ModeBond
+		// isolation/<pin-id>/<tool>/bond/  → bond
+		// isolation/<pin-id>/<tool>/pin/…  → pin
+		// Inspect the third path segment after the isolation root.
+		rel, err := filepath.Rel(app.Paths.IsolationDir(), filepath.Clean(dir))
+		if err == nil {
+			parts := strings.SplitN(rel, string(filepath.Separator), 4)
+			if len(parts) >= 3 && parts[2] == modePin {
+				return modePin
+			}
+		}
+		return modeBond
 	case pathWithin(dir, app.Paths.SyncHomesDir()):
 		return constants.ModeSync
 	default:
@@ -205,9 +209,14 @@ func (app *App) pinnedIsolationGuard(global bool) error {
 		return nil
 	}
 	if kind := app.firstKaeManagedIsolation(); kind != "" {
-		hint := "kae pin <profile>"
-		if kind == constants.ModeBond {
+		var hint string
+		switch kind {
+		case modeBond:
 			hint = "kae bond <profile>"
+		case modePin:
+			hint = "kae as <tool> <account>"
+		default:
+			hint = "kae pin <profile>"
 		}
 		return errf(constants.ExitUnsupported,
 			"this directory is pinned (%s isolation): change its accounts with `%s`, or pass --global to act on the real home",
@@ -258,6 +267,26 @@ func (app *App) bondModeEnv(ctx context.Context, tool, accountName string) ([]st
 		return nil, err
 	}
 	return []string{envVar + "=" + bondDir}, nil
+}
+
+// pinModeEnv prepares the pin config directory for the current working directory
+// and returns the child env entry pointing the tool at it.
+func (app *App) pinModeEnv(ctx context.Context, tool, accountName string) ([]string, error) {
+	envVar := isolationEnvVar(tool)
+	if envVar == "" {
+		return nil, errf(constants.ExitUnsupported,
+			"%s has no stable home-isolation mechanism yet (see docs/ROADMAP.md)", tool)
+	}
+	absDir, err := cwdAbs()
+	if err != nil {
+		return nil, err
+	}
+	pinID := paths.PinID(absDir)
+	configDir, err := app.preparePinConfig(ctx, tool, accountName, pinID)
+	if err != nil {
+		return nil, err
+	}
+	return []string{envVar + "=" + configDir}, nil
 }
 
 // overlayModeEnv prepares the overlay home and returns the child env

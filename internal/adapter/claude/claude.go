@@ -1,6 +1,8 @@
 // Package claude implements the Claude Code adapter. Auth mode switches only
-// /claudeAiOauth (credentials file or macOS Keychain payload) and
-// /oauthAccount in ~/.claude.json; see docs/ADAPTERS.md.
+// the /claudeAiOauth credential (credentials file or macOS Keychain payload).
+// /oauthAccount in ~/.claude.json is a token-derived identity cache that
+// claude self-heals on startup; it is not an auth artifact and is not switched.
+// See docs/ADAPTERS.md.
 package claude
 
 import (
@@ -65,12 +67,6 @@ func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 	if err != nil {
 		return nil, err
 	}
-	oauthSpec := artifact.Spec{
-		Name:    "oauth_account",
-		Kind:    constants.KindJSONPointer,
-		Target:  claudeJSONPath(env),
-		Pointer: "/oauthAccount",
-	}
 	if drv == constants.DriverClaudeKeychainPatch {
 		return []artifact.Spec{
 			{
@@ -80,7 +76,6 @@ func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 				Pointer:         "/claudeAiOauth",
 				KeychainAccount: env.Getenv("USER"),
 			},
-			oauthSpec,
 		}, nil
 	}
 	return []artifact.Spec{
@@ -90,7 +85,6 @@ func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 			Target:  credentialsPath(env),
 			Pointer: "/claudeAiOauth",
 		},
-		oauthSpec,
 	}, nil
 }
 

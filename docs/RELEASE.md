@@ -24,6 +24,22 @@ and pinned-directory guard; see git tag v0.6.0).
   command removed.
 - **Paths/constants cleanup (Phase 1)** — `paths.PinID`, `paths.BondDir`,
   and related constants moved to the canonical `internal/paths` package.
+- **`/oauthAccount` removal (Phase 3)** — `~/.claude.json`'s `oauthAccount`
+  field is no longer switched. Real-machine validation (2026-06-14) confirmed
+  it is a token-derived identity cache that claude self-heals; switching it
+  risked corrupting live sessions. Claude adapters now declare one artifact
+  only (the token). `~/.claude.json` is symlinked wholesale in isolation modes.
+- **`kae pin` semantics flip (Phase 4)** — `kae pin` now defaults to fully
+  isolated mode (`isolation/<pin-id>/<tool>/pin/<account>/config/`), replacing
+  the v0.6.0 overlay default. Opt-in sharing via `tools.<tool>.pin_shared_items`
+  (default empty). Legacy overlay-mode blocks are detected and warn on
+  `kae pin`; migrate with `kae unpin && kae pin <profile>` (isolated) or
+  `kae unpin && kae bond <profile>` (shared). `kae run --mode pin` available.
+- **`kae as <tool> <account>` (Phase 5)** — new command: swaps the credential
+  inside a bonded or pinned directory to a different account without touching
+  settings, sessions, or memory. Bond mode: credential overwritten in the
+  account-agnostic bond dir. Pin mode: new per-account config dir prepared,
+  `.mise.toml` env entry updated.
 
 ## Acceptance Criteria
 
@@ -42,6 +58,14 @@ and pinned-directory guard; see git tag v0.6.0).
   keychain credential bytes into the bond dir's `.credentials.json` so
   claude authenticates without touching the real `~/.claude`.
 - `mise run check` passes; no regression in existing modes.
+- **Phase 3**: `kae use claude <account> --dry-run` reports exactly 1 action
+  (the token); `/oauthAccount` never appears in actions.
+- **Phase 4**: `kae pin <profile>` writes a pin-mode block
+  (`isolation/<pin-id>/claude/pin/<account>/config/`); a legacy overlay-mode
+  `.mise.toml` triggers the migration warning. `kae run --mode pin` succeeds.
+- **Phase 5**: `kae as claude <account>` inside a bonded directory overwrites
+  the credential and prints confirmation. Inside a pinned directory it prepares
+  a new config dir and updates the `.mise.toml` env entry.
 
 ## Release Steps
 

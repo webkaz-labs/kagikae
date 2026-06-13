@@ -86,6 +86,18 @@ EDITOR=true /tmp/kae edit                          # validate round-trip
 #   assert: CODEX_HOME entry in .mise.toml pointing to isolation/<pin-id>/codex/bond/
 #   assert: config.toml symlinked from real ~/.codex; auth.json private-copied
 #   assert: re-running kae bond is idempotent (no error, symlinks refreshed)
+
+# v0.7.0 surfaces (pin mode and kae as):
+/tmp/kae pin clientA                               # writes .mise.toml (pin mode)
+#   assert: CODEX_HOME entry pointing to isolation/<pin-id>/codex/pin/work/config/
+#   assert: no symlinks by default (full isolation); credential private-copied
+#   assert: re-running kae pin is idempotent (links refreshed, no error)
+#   assert: legacy overlay-mode block triggers migration warning on stderr
+# kae as (requires bonded or pinned directory with a second captured account):
+# (cd into the directory that has .mise.toml written by kae bond/pin)
+/tmp/kae as codex personal
+#   bond mode assert: auth.json in bond dir updated to personal credential
+#   pin mode assert: CODEX_HOME entry in .mise.toml points to new account dir
 /tmp/kae switch x y; echo $?                       # 64 (renamed in v0.7.0, re-test)
 
 # v0.6.0 surfaces (opencode auth.json is file-based — safe on macOS; seed

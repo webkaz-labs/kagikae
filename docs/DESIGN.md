@@ -60,7 +60,9 @@ kae use work                 # resolves the "work" profile
 | `auth` | default, implemented | unchanged | switch only the subscription account; share skills / hooks / memory / MCP / trust |
 | `env` | implemented (`kae run --mode env`) | unchanged | inject API key / long-lived token into a child process only (CI, non-interactive) |
 | `home` | implemented for claude / codex | separate | full isolation: concurrent accounts, CI, per-client separation |
-| `overlay` | implemented for claude / codex (default on, per-tool opt-out) | partially separate | separate auth/session/cache, share settings/skills/hooks/MCP |
+| `overlay` | implemented for claude / codex (per-tool opt-out) | partially separate | separate auth/session/cache, share settings/skills/hooks/MCP |
+| `bond` | implemented (`kae bond`, `kae run --mode bond`) | partially separate (shared with real home via symlinks) | settings/sessions/memory shared with real home; credential private to directory |
+| `pin` | implemented (`kae pin`, `kae run --mode pin`) | isolated by default | full isolation by default; opt-in sharing via `pin_shared_items` |
 
 See [ROADMAP.md](ROADMAP.md) for ordering and [ADAPTERS.md](ADAPTERS.md) for
 the per-tool definition of what `auth` mode touches and preserves.
@@ -73,8 +75,8 @@ a scope (**where** it applies) — one verb per scope:
 | Scope | Surface | Effect |
 |-------|---------|--------|
 | global (live state) | **`kae use`** / `kae u` (and `kae apply`, its idempotent form for hooks; `kae add`, which registers and activates) | every terminal sees the change until the next switch |
-| per-directory | **`kae pin`** / **`kae bond`** / `kae unpin` (sugar over `kae mise init --write`) | the directory is bound to a profile via mise `[env]`; `pin` default overlay = auth private to the directory, settings/skills shared; `bond` = settings/sessions shared with the real home, credential private; `--mode home` = fully separate; `--mode auth` [+ `--auto`] = mise tasks / enter hook calling the global surface |
-| per-process | **`kae run [--mode M] ... -- <cmd>`** | only the spawned child; live state restored afterwards (auth) or never touched (env / home / overlay / bond) |
+| per-directory | **`kae pin`** / **`kae bond`** / **`kae as`** / `kae unpin` (sugar over `kae mise init --write`) | the directory is bound to a profile via mise `[env]`; `pin` = fully isolated by default (opt-in sharing via `pin_shared_items`); `bond` = settings/sessions shared with the real home, credential private; `kae as <tool> <account>` swaps only the credential inside the bound directory; `--mode home` = fully separate; `--mode auth` [+ `--auto`] = mise tasks / enter hook calling the global surface |
+| per-process | **`kae run [--mode M] ... -- <cmd>`** | only the spawned child; live state restored afterwards (auth) or never touched (env / home / overlay / bond / pin) |
 
 Global scope supports `auth` mode only (the concurrency boundary below).
 Per-process scope supports all modes. Per-directory scope composes:
@@ -113,8 +115,9 @@ NG:  terminal A uses claude/work while terminal B uses claude/personal (auth mod
   artifacts the official CLIs create.
 - `kae` never edits upstream settings, skills, hooks, memory, MCP config, or
   project trust in `auth` mode.
-- Mixed-state files (for example `~/.claude.json`) are patched only through a
-  JSON Pointer allowlist, never replaced wholesale.
+- In `auth` mode, mixed-state files (for example `~/.claude.json`) are never
+  touched. In isolation modes they are symlinked wholesale; only the credential
+  file is private-copied. No mixed-state file is patched or replaced.
 - Secrets are stored in the OS credential store by default; a plaintext file
   backend exists only as an explicit opt-in.
 - Every mutation is preceded by a backup and is reversible via `kae rollback`.

@@ -18,10 +18,10 @@ kae add <tool> <account> [--restore] # register an account: official login flow 
 kae add --no-login <tool> <account>  # snapshot the current live auth state instead
 kae use <profile>                    # switch every enabled tool now (alias: kae u)
 kae use <tool> <account>             # switch one tool now
-kae pin [<profile>] [--mode overlay|home|auth] [--auto]
-                                     # bind this directory (writes .mise.toml)
+kae pin [<profile>]                  # bind this directory (isolated by default; writes .mise.toml)
 kae bond [<profile>]                 # bond mode: settings/sessions shared with
                                      # the real home, credential private
+kae as <tool> <account>              # swap credential inside a bonded/pinned dir
 kae unpin                            # remove the kagikae block from .mise.toml
 kae apply [--profile P] [--quiet]    # idempotent profile apply for hooks/scripts
 kae run [--mode M] <tool|all> <name> -- <cmd...>   # run cmd with an account applied
@@ -29,7 +29,7 @@ kae env set <tool> <account> KEY=VALUE...          # store env-mode variables
 kae env set <tool> <account> KEY                   # value read from stdin
 kae env unset <tool> <account> [KEY...]            # remove variables / the profile
 kae env list [--json]                              # profiles (names only, no values)
-kae mise init [--profile P] [--mode auth|home|overlay|bond] [--auto] [--write]
+kae mise init [--profile P] [--mode auth|home|overlay|bond|pin] [--auto] [--write]
                                      # low-level form of pin/bond (preview first)
 kae accounts [--json]                # registered accounts, active markers
 kae status [--json]                  # full status report
@@ -63,10 +63,10 @@ release): `switch`/`s` → `use`, `login` → `add`, `capture` →
 | `--yes` | all | non-interactive confirmation (reserved; no prompts exist yet) |
 | `--no-color` | all | disable color in human text output |
 | `--config <path>` | all | explicit config file path (overrides XDG lookup) |
-| `--mode auth\|env\|home\|overlay\|bond` | `run` | switch mode (default `auth`) |
+| `--mode auth\|env\|home\|overlay\|bond\|pin` | `run` | switch mode (default `auth`) |
 | `--restore` / `--no-login` | `add` | restore the previous login after capturing (login flow only); snapshot without a login flow |
 | `--profile <name>` / `--write` | `mise init` | profile for `KAE_PROFILE`; write/update `.mise.toml` |
-| `--mode auth\|home\|overlay\|bond` / `--auto` | `mise init`, `pin`, `bond` | rendered integration (`mise init` defaults to `auth`, `pin` to `overlay`, `bond` uses bond mode); `--auto` adds the enter hook (auth only) |
+| `--mode auth\|home\|overlay\|bond\|pin` / `--auto` | `mise init` | rendered integration (`mise init` defaults to `auth`); `--auto` adds the enter hook (auth only); `kae pin` always writes pin mode; `kae bond` always writes bond mode |
 | `--profile <name>` / `--quiet` | `apply` | profile override; suppress the success report (for hooks) |
 | `--to <backup-id>` | `rollback` | backup to restore (default: most recent) |
 
@@ -142,17 +142,22 @@ the marker-delimited kagikae block of `.mise.toml` immediately (profile
 defaults to `default_profile`). `kae mise init` is the low-level form: same
 flags plus `--write`; without `--write` it previews the block on stdout.
 `kae unpin` removes only the block, leaving the rest of `.mise.toml` — and
-any overlay/home directories with their login state — intact.
+any isolation directories and their login state — intact.
 
-- `--mode overlay` (`pin` default): renders `[env]` entries pointing
-  `CLAUDE_CONFIG_DIR` / `CODEX_HOME` at the per-account **overlay** homes
-  (docs/DATA-MODEL.md): auth and session state are private to the
-  directory while the shared items (settings, skills, ...;
-  docs/ADAPTERS.md Isolation) are symlinked from the real home. Writing
-  prepares the overlay dirs and links; re-running `pin` refreshes links
-  after new shared items appear in the real home (there is no on-entry
-  refresh — mise hooks stay experimental). Log in once inside the
-  directory per account; the login persists in the overlay.
+- `--mode pin` (`kae pin` default): renders `[env]` entries pointing
+  `CLAUDE_CONFIG_DIR` / `CODEX_HOME` at the per-account **isolated** config dirs
+  (`isolation/<pin-id>/<tool>/pin/<account>/config/`): all state (auth,
+  sessions, memory, settings) is private to the account by default. Items
+  listed in `tools.<tool>.pin_shared_items` are symlinked from the real
+  home; the credential is always private-copied at `0600`. Use
+  `kae as <tool> <account>` inside the directory to switch accounts without
+  re-running `kae pin`. Re-running `kae pin` refreshes opt-in shared-item
+  links and the credential copy.
+- `--mode overlay`: renders `[env]` entries pointing at the per-account
+  **overlay** homes (docs/DATA-MODEL.md): auth and session state are private
+  to the directory while the shared items (settings, skills, ...;
+  docs/ADAPTERS.md Isolation) are symlinked from the real home. Re-running
+  refreshes links after new shared items appear in the real home.
 - `--mode home`: same `[env]` shape but pointing at the fully separate
   home-mode directories — nothing is shared with the real home. `--write`
   pre-creates the directories.
@@ -163,8 +168,9 @@ any overlay/home directories with their login state — intact.
   Settings, sessions, and memory are therefore shared with the real home while
   authentication is private to the directory. `kae bond [<profile>]` is sugar
   over `kae mise init --mode bond --write`. Re-running refreshes symlinks for
-  new files added to the real home. See docs/ADAPTERS.md "Bond mode" for the
-  per-tool denylist and `bond_denylist_extra` config option.
+  new files added to the real home. See docs/ADAPTERS.md "Bond/Pin mode" for
+  the per-tool denylist and `bond_denylist_extra` / `pin_shared_items` config
+  options.
 - `--mode auth` (`mise init` default): `[env]` sets `KAE_PROFILE`, plus
   tasks (`ai-use`, `ai-current`, per-tool `kae run` wrappers).
 - `--auto` (auth mode only): adds a `[hooks.enter]` entry running
@@ -173,14 +179,19 @@ any overlay/home directories with their login state — intact.
   shared by every terminal. Firing requires `mise activate`, a trusted
   config, and `mise settings experimental=true` (mise hooks are experimental
   as of mise 2026.6). Combining `--auto` with an isolation mode is a usage
-  error: overlay/home already take effect on directory entry via `[env]`.
+  error: isolation modes already take effect on directory entry via `[env]`.
 
 Isolation modes require the profile to be defined (its accounts pick the
 per-account paths). Tools without a stable home env var (agy, opencode,
-cursor, copilot) keep their real home and are noted with an inline warning comment,
-as are tools with the per-tool mode disabled in config. The mode is per-invocation
-(per directory), deliberately not a profile property: the same profile stays
-usable for global switching and isolated project homes.
+cursor, copilot) keep their real home and are noted with an inline warning
+comment, as are tools with the per-tool mode disabled in config. The mode is
+per-invocation (per directory), deliberately not a profile property: the same
+profile stays usable for global switching and isolated project homes.
+
+**Legacy migration**: directories pinned with `kae pin --mode overlay` before
+v0.7.0 retain their overlay-mode block. Run `kae unpin && kae pin <profile>`
+to migrate to the new isolated default, or `kae unpin && kae bond <profile>`
+to migrate to bond mode (settings/sessions shared, credential private).
 
 ## Exit Codes
 
@@ -330,8 +341,7 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
       "driver": "claude-keychain-patch",
       "applied": true,
       "actions": [
-        {"kind": "keychain", "target": "Claude Code-credentials", "pointer": "/claudeAiOauth"},
-        {"kind": "json-pointer", "target": "~/.claude.json", "pointer": "/oauthAccount"}
+        {"kind": "keychain", "target": "Claude Code-credentials", "pointer": "/claudeAiOauth"}
       ],
       "warnings": []
     }

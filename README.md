@@ -54,15 +54,16 @@ mise trust                     # mise refuses untrusted configs; its error
 ```
 
 Inside the pinned directory (with [mise](https://mise.jdx.dev) activated)
-claude and codex run as the `clientA` accounts; everywhere else keeps the
-global login. The default **overlay** mode keeps settings, skills, and
-memory shared with your real home while auth and session state stay private
-— log in once inside the directory per account, and it persists. Variants:
+claude and codex run as the `clientA` accounts; everything is **fully
+isolated** by default — auth, sessions, memory, and settings are all private
+to the account. Variants:
 
 ```bash
-kae bond clientA               # bond: settings/sessions shared, credential
-                               # private — one login per account, persists
-kae pin clientA --mode home    # fully separate tool homes (nothing shared)
+kae as claude clientB          # swap credential inside the pinned dir to a
+                               # different account (sessions/settings unchanged)
+kae bond clientA               # bond: settings/sessions shared with real home,
+                               # credential private — one login per account, persists
+kae mise init --profile clientA --mode home --write  # fully separate tool homes
 kae pin work --mode auth --auto  # global auto-switch on entry (opt-in;
                                # needs mise activate + trusted config +
                                # `mise settings experimental=true`)

@@ -15,6 +15,7 @@ vocabulary for `kae`.
 | home-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/homes/<tool>/<account>/` |
 | overlay-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/overlays/<tool>/<account>/` |
 | bond-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/bond/` |
+| pin-mode config dirs | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/pin/<account>/config/` |
 | file-backend secrets (opt-in) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/secrets/...` |
 | state | `${XDG_STATE_HOME:-~/.local/state}/kagikae/state.json` |
 | backups (metadata) | `${XDG_STATE_HOME:-~/.local/state}/kagikae/backups/<id>.json` |
@@ -66,6 +67,10 @@ enabled = true
 # denylist (claude: .credentials.json; codex: auth.json). Bare file names
 # only; the built-in auth artifacts are refused to prevent misconfiguration:
 # bond_denylist_extra = ["custom-session.json"]
+# Items to share (symlink) from the real home into the pin-mode config dir.
+# Default is empty (full isolation). Bare file names only; credential files
+# (.credentials.json, auth.json) are refused at config load:
+# pin_shared_items = ["settings.json", "CLAUDE.md"]
 
 [profiles.work]
 label = "Work"

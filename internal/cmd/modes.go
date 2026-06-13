@@ -142,7 +142,7 @@ func (app *App) kaeManagedHomeKind(dir string) string {
 		rel, err := filepath.Rel(app.Paths.IsolationDir(), filepath.Clean(dir))
 		if err == nil {
 			parts := strings.SplitN(rel, string(filepath.Separator), 4)
-			if len(parts) >= 3 && parts[2] == "pin" {
+			if len(parts) >= 3 && parts[2] == modePin {
 				return modePin
 			}
 		}

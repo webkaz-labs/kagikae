@@ -136,21 +136,18 @@ func (app *App) swapDirCredential(ctx context.Context, be secret.Backend, tool, 
 
 	for _, credFile := range app.pinCredItems(tool) {
 		dst := filepath.Join(credDir, credFile)
-		if credSpec != nil && credSpec.Kind == constants.KindJSONPointer {
-			// Snapshot holds only the pointer value; reconstruct the wrapper.
-			existing := []byte("{}")
-			if b, readErr := os.ReadFile(dst); readErr == nil {
-				existing = b
-			}
-			updated, patchErr := patch.SetPointer(existing, credSpec.Pointer, data)
-			if patchErr != nil {
-				return fmt.Errorf("patch credential %s: %w", dst, patchErr)
-			}
-			if err := patch.WriteFileAtomic(dst, updated, 0o600); err != nil {
+		if credSpec != nil && credSpec.Kind != constants.KindKeychain {
+			// For KindJSONPointer and KindFile, redirect ApplyLive to credDir.
+			// ApplyLive handles wrapper reconstruction and JSONC, keeping IO
+			// logic in the artifact package.
+			sp := *credSpec
+			sp.Target = dst
+			if err := artifact.ApplyLive(ctx, sp, artifact.Value{Data: data, Present: true}); err != nil {
 				return fmt.Errorf("write credential %s: %w", dst, err)
 			}
 		} else {
-			// KindKeychain or KindFile: snapshot stores verbatim file content.
+			// KindKeychain: snapshot payload is the verbatim JSON object;
+			// write directly to credDir as a file.
 			if err := patch.WriteFileAtomic(dst, data, 0o600); err != nil {
 				return fmt.Errorf("write credential %s: %w", dst, err)
 			}

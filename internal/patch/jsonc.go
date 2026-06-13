@@ -34,27 +34,7 @@ func GetPointerJSONC(doc []byte, pointer string) (json.RawMessage, bool, error) 
 // operation: for an existing object member that replaces it, otherwise it
 // creates the member (RFC 6902 §4.1).
 func SetPointerJSONC(doc []byte, pointer string, value json.RawMessage) ([]byte, error) {
-	v, err := hujson.Parse(doc)
-	if err != nil {
-		return nil, fmt.Errorf("parse jsonc: %w", err)
-	}
-	op, err := json.Marshal([]map[string]any{{
-		"op":    "add",
-		"path":  pointer,
-		"value": value,
-	}})
-	if err != nil {
-		return nil, err
-	}
-	// Adding or replacing a top-level member can reset the document's
-	// surrounding extra (the leading // comments live in BeforeExtra); save
-	// and restore it so the header survives a create as well as a replace.
-	before, after := v.BeforeExtra, v.AfterExtra
-	if err := v.Patch(op); err != nil {
-		return nil, fmt.Errorf("patch jsonc pointer %s: %w", pointer, err)
-	}
-	v.BeforeExtra, v.AfterExtra = before, after
-	return v.Pack(), nil
+	return patchAndPack(doc, map[string]any{"op": "add", "path": pointer, "value": value}, pointer)
 }
 
 // DeletePointerJSONC returns the document with the member at pointer removed,
@@ -69,16 +49,25 @@ func DeletePointerJSONC(doc []byte, pointer string) ([]byte, error) {
 	if v.Find(pointer) == nil {
 		return doc, nil
 	}
-	op, err := json.Marshal([]map[string]any{{
-		"op":   "remove",
-		"path": pointer,
-	}})
+	return patchAndPack(doc, map[string]any{"op": "remove", "path": pointer}, pointer)
+}
+
+// patchAndPack applies a single RFC 6902 operation to a JSONC document and
+// repacks it, preserving the document's surrounding extra. Adding, replacing,
+// or removing a top-level member can reset that extra (the leading // comments
+// live in BeforeExtra), so it is saved and restored around the patch.
+func patchAndPack(doc []byte, op map[string]any, pointer string) ([]byte, error) {
+	v, err := hujson.Parse(doc)
+	if err != nil {
+		return nil, fmt.Errorf("parse jsonc: %w", err)
+	}
+	ops, err := json.Marshal([]map[string]any{op})
 	if err != nil {
 		return nil, err
 	}
 	before, after := v.BeforeExtra, v.AfterExtra
-	if err := v.Patch(op); err != nil {
-		return nil, fmt.Errorf("delete jsonc pointer %s: %w", pointer, err)
+	if err := v.Patch(ops); err != nil {
+		return nil, fmt.Errorf("patch jsonc pointer %s: %w", pointer, err)
 	}
 	v.BeforeExtra, v.AfterExtra = before, after
 	return v.Pack(), nil

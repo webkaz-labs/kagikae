@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
+	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
 // setupBondHome seeds a realistic claude real home in app.Env.Home.
@@ -25,7 +28,7 @@ func TestPrepareBondSymlinksNonDenylist(t *testing.T) {
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
 
-	bondDir, err := app.prepareBond(constants.ToolClaude, "work", pinID)
+	bondDir, err := app.prepareBond(context.Background(), constants.ToolClaude, "work", pinID)
 	if err != nil {
 		t.Fatalf("prepareBond: %v", err)
 	}
@@ -54,7 +57,7 @@ func TestPrepareBondCredentialIsPrivateCopy(t *testing.T) {
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
 
-	bondDir, err := app.prepareBond(constants.ToolClaude, "work", pinID)
+	bondDir, err := app.prepareBond(context.Background(), constants.ToolClaude, "work", pinID)
 	if err != nil {
 		t.Fatalf("prepareBond: %v", err)
 	}
@@ -80,11 +83,11 @@ func TestPrepareBondIdempotent(t *testing.T) {
 	pinID := paths.PinID(cwd)
 
 	// First run.
-	if _, err := app.prepareBond(constants.ToolClaude, "work", pinID); err != nil {
+	if _, err := app.prepareBond(context.Background(), constants.ToolClaude, "work", pinID); err != nil {
 		t.Fatalf("first prepareBond: %v", err)
 	}
 	// Second run must succeed without error.
-	bondDir, err := app.prepareBond(constants.ToolClaude, "work", pinID)
+	bondDir, err := app.prepareBond(context.Background(), constants.ToolClaude, "work", pinID)
 	if err != nil {
 		t.Fatalf("second prepareBond (idempotent): %v", err)
 	}
@@ -105,11 +108,90 @@ func TestPrepareBondSkipsCredentialWhenNotLoggedIn(t *testing.T) {
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
 
-	bondDir, err := app.prepareBond(constants.ToolClaude, "work", pinID)
+	bondDir, err := app.prepareBond(context.Background(), constants.ToolClaude, "work", pinID)
 	if err != nil {
 		t.Fatalf("prepareBond: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(bondDir, ".credentials.json")); !os.IsNotExist(err) {
 		t.Error(".credentials.json must not exist in bond dir when tool is not logged in")
 	}
+}
+
+func TestPrepareBondDarwinKeychainFallback(t *testing.T) {
+	// Simulate macOS: no .credentials.json file, but keychain has the payload.
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	home := filepath.Join(app.Env.Home, ".claude")
+	writeFile(t, filepath.Join(home, "settings.json"), `{"theme":"dark"}`)
+	// No .credentials.json in real home.
+
+	keychainPayload := `{"claudeAiOauth":{"accessToken":"tok-darwin","subscriptionType":"max"}}`
+	fake := &runnertest.Fake{Stdout: keychainPayload, Code: 0}
+
+	cwd := t.TempDir()
+	pinID := paths.PinID(cwd)
+
+	var bondDir string
+	runner.With(fake, func() {
+		var err error
+		bondDir, err = app.prepareBond(context.Background(), constants.ToolClaude, "work", pinID)
+		if err != nil {
+			t.Fatalf("prepareBond: %v", err)
+		}
+	})
+
+	dst := filepath.Join(bondDir, ".credentials.json")
+	info, err := os.Lstat(dst)
+	if err != nil {
+		t.Fatalf(".credentials.json missing in bond dir: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Error(".credentials.json must be a regular file, not a symlink")
+	}
+	if got := readFile(t, dst); !strings.Contains(got, "tok-darwin") {
+		t.Errorf(".credentials.json from keychain fallback: %q", got)
+	}
+}
+
+func TestPrepareBondDarwinSkipsWhenKeychainEmpty(t *testing.T) {
+	// macOS, no .credentials.json, keychain item not found.
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	home := filepath.Join(app.Env.Home, ".claude")
+	writeFile(t, filepath.Join(home, "settings.json"), `{}`)
+
+	fake := &runnertest.Fake{Stderr: "The specified item could not be found in the keychain.", Code: 1}
+
+	cwd := t.TempDir()
+	pinID := paths.PinID(cwd)
+
+	runner.With(fake, func() {
+		bondDir, err := app.prepareBond(context.Background(), constants.ToolClaude, "work", pinID)
+		if err != nil {
+			t.Fatalf("prepareBond: %v", err)
+		}
+		if _, statErr := os.Stat(filepath.Join(bondDir, ".credentials.json")); !os.IsNotExist(statErr) {
+			t.Error(".credentials.json must not exist when keychain item absent")
+		}
+	})
+}
+
+func TestPrepareBondDarwinMalformedKeychainPayload(t *testing.T) {
+	// macOS, payload exists but lacks /claudeAiOauth → keychainGuard fails → error.
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	home := filepath.Join(app.Env.Home, ".claude")
+	writeFile(t, filepath.Join(home, "settings.json"), `{}`)
+
+	fake := &runnertest.Fake{Stdout: `{"notTheRightKey":"value"}`, Code: 0}
+
+	cwd := t.TempDir()
+	pinID := paths.PinID(cwd)
+
+	runner.With(fake, func() {
+		_, err := app.prepareBond(context.Background(), constants.ToolClaude, "work", pinID)
+		if err == nil {
+			t.Fatal("expected error for malformed keychain payload, got nil")
+		}
+	})
 }

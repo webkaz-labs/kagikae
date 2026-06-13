@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/webkaz-labs/kagikae/internal/adapter"
+	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -52,7 +54,7 @@ func CmdMise(ctx context.Context, args []string) int {
 	return runMiseInit(ctx, app, opts, profileName, mode, auto, write)
 }
 
-func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode string, auto, write bool) int {
+func runMiseInit(ctx context.Context, app *App, opts commonOpts, profileName, mode string, auto, write bool) int {
 	if mode != constants.ModeAuth && mode != modeHome && mode != modeOverlay && mode != constants.ModeBond {
 		return usageError("unsupported mise init mode %q (modes: auth, home, overlay, bond)", mode)
 	}
@@ -113,7 +115,7 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 	switch mode {
 	case constants.ModeBond:
 		prepare = func(tool, account string) (string, error) {
-			return app.prepareBond(tool, account, pinID)
+			return app.prepareBond(ctx, tool, account, pinID)
 		}
 	case modeOverlay:
 		prepare = app.prepareOverlay
@@ -296,7 +298,7 @@ func (app *App) bondIsolationEntries(targets []runTarget, pinID string) []isolat
 // real-home entry except the hard-coded denylist, then copies the current
 // credential privately. Idempotent: stale symlinks are refreshed; real files
 // in the bond dir (private overrides) are left untouched.
-func (app *App) prepareBond(tool, _ string, pinID string) (string, error) {
+func (app *App) prepareBond(ctx context.Context, tool, _ string, pinID string) (string, error) {
 	bondDir := app.Paths.BondDir(pinID, tool)
 	if err := os.MkdirAll(bondDir, 0o700); err != nil {
 		return "", fmt.Errorf("create bond dir: %w", err)
@@ -353,9 +355,20 @@ func (app *App) prepareBond(tool, _ string, pinID string) (string, error) {
 		dst := filepath.Join(bondDir, item)
 		data, err := os.ReadFile(src)
 		if os.IsNotExist(err) {
-			continue // tool not yet logged in; skip
-		}
-		if err != nil {
+			// Source file absent: on macOS, tools that store their credential
+			// in the OS keychain (e.g. claude) have no file to copy.
+			// Read the keychain payload verbatim so that CLAUDE_CONFIG_DIR
+			// isolation (which forces file-based auth even on macOS) can find
+			// a .credentials.json in the bond dir.
+			kdata, kerr := app.keychainCredForBond(ctx, tool)
+			if kerr != nil {
+				return "", kerr
+			}
+			if kdata == nil {
+				continue // not logged in; skip silently
+			}
+			data = kdata
+		} else if err != nil {
 			return "", fmt.Errorf("read credential %s: %w", src, err)
 		}
 		existing, readErr := os.ReadFile(dst)
@@ -372,6 +385,45 @@ func (app *App) prepareBond(tool, _ string, pinID string) (string, error) {
 	}
 
 	return bondDir, nil
+}
+
+// keychainCredForBond returns the raw keychain payload for a tool's primary
+// keychain artifact (verbatim bytes), suitable for writing as the tool's
+// credential file in the bond dir. Returns (nil, nil) when the tool has no
+// keychain artifact, is not on macOS, or the keychain item is absent (not
+// logged in). Returns a non-nil error when the keychain read fails (ACL,
+// security CLI error, or keychainGuard shape mismatch).
+//
+// Claude Code stores its credential in the macOS Keychain as compact JSON
+// (`{"claudeAiOauth":{...}}`), which is byte-for-byte the content it expects
+// in .credentials.json when CLAUDE_CONFIG_DIR is set. The verbatim round-trip
+// is intentional: re-serializing the payload would make Claude Code reject it.
+func (app *App) keychainCredForBond(ctx context.Context, tool string) ([]byte, error) {
+	if app.Env.GOOS != "darwin" {
+		return nil, nil
+	}
+	adp, err := adapter.ForTool(tool)
+	if err != nil {
+		return nil, nil // tool has no adapter or no keychain on this platform
+	}
+	specs, err := adp.Artifacts(ctx, app.Env)
+	if err != nil {
+		return nil, nil // unsupported platform/tool combination
+	}
+	for _, sp := range specs {
+		if sp.Kind != constants.KindKeychain {
+			continue
+		}
+		v, err := artifact.ReadLive(ctx, sp)
+		if err != nil {
+			return nil, fmt.Errorf("read keychain credential for %s: %w", tool, err)
+		}
+		if !v.Present {
+			continue
+		}
+		return v.Data, nil
+	}
+	return nil, nil
 }
 
 // cutMiseBlock splits content around the marker-delimited kagikae block:

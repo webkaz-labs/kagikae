@@ -77,7 +77,11 @@ KAE_PROFILE=personal /tmp/kae apply --json         # env resolution
 EDITOR=true /tmp/kae edit                          # validate round-trip
 /tmp/kae status --json                             # has "pinned" + "profiles"
 
-# v0.7.0 surfaces (bond mode; codex is safe on macOS — auth.json is file-based):
+# v0.7.0 surfaces (bond mode):
+# codex: auth.json is file-based — safe on macOS.
+# claude: on macOS CLAUDE_CONFIG_DIR suppresses keychain, so kae reads the
+#   keychain credential bytes and writes them as .credentials.json into the
+#   bond dir. Real-machine gate required (temp-HOME smoke cannot cover this).
 /tmp/kae bond clientA                              # writes .mise.toml (bond mode)
 #   assert: CODEX_HOME entry in .mise.toml pointing to isolation/<pin-id>/codex/bond/
 #   assert: config.toml symlinked from real ~/.codex; auth.json private-copied

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -241,7 +242,7 @@ func (app *App) applyGlobalScope() {
 
 // bondModeEnv prepares the bond directory for the current working directory
 // and returns the child env entry pointing the tool at it.
-func (app *App) bondModeEnv(tool, accountName string) ([]string, error) {
+func (app *App) bondModeEnv(ctx context.Context, tool, accountName string) ([]string, error) {
 	envVar := isolationEnvVar(tool)
 	if envVar == "" {
 		return nil, errf(constants.ExitUnsupported,
@@ -252,7 +253,7 @@ func (app *App) bondModeEnv(tool, accountName string) ([]string, error) {
 		return nil, err
 	}
 	pinID := paths.PinID(absDir)
-	bondDir, err := app.prepareBond(tool, accountName, pinID)
+	bondDir, err := app.prepareBond(ctx, tool, accountName, pinID)
 	if err != nil {
 		return nil, err
 	}

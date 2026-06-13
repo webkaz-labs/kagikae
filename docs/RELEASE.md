@@ -37,7 +37,10 @@ and pinned-directory guard; see git tag v0.6.0).
   live state.
 - **Real-machine gate**: `kae bond <profile>` in a client directory, then
   `claude -p '' --model haiku`; asserts AUTH-OK inside the directory while
-  `~/.claude` remains unchanged. Required before merge to main.
+  `~/.claude` remains unchanged. Required before merge to main. On macOS,
+  where `CLAUDE_CONFIG_DIR` suppresses keychain access, kae copies the
+  keychain credential bytes into the bond dir's `.credentials.json` so
+  claude authenticates without touching the real `~/.claude`.
 - `mise run check` passes; no regression in existing modes.
 
 ## Release Steps

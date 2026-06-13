@@ -9,6 +9,7 @@ execution environments for AI coding CLIs:
 - Codex CLI (`codex`)
 - Antigravity CLI (`agy`)
 - OpenCode (`opencode`)
+- Cursor CLI (`cursor-agent`)
 
 The primary daily use case is switching subscription accounts:
 
@@ -19,6 +20,7 @@ switch to the company ChatGPT Team Codex account
 switch back to the personal ChatGPT Plus Codex account
 switch Google AI Pro / Ultra accounts for Antigravity
 switch ChatGPT subscription accounts for OpenCode
+switch Cursor accounts for the Cursor CLI
 ```
 
 ## Core Principle: Auth-Only Switching By Default
@@ -141,10 +143,11 @@ use / pin / run verb-per-scope surface: `add` (official login flow or
 `--no-login` snapshot), `use` and `sync` (global), `pin`/`unpin` and
 `mise init` (per-directory; overlay default), `run` (per-process auth
 transaction with recapture-and-restore, plus `env` / `home` / `overlay`),
-`env` profiles, an experimental file-snapshot adapter for Antigravity
-CLI, and a JSON-pointer adapter for OpenCode's ChatGPT-subscription login
-(v0.6.0). Keychain items are captured and restored verbatim, and the login
+`env` profiles, an experimental file-snapshot adapter for Antigravity CLI, a
+JSON-pointer adapter for OpenCode's ChatGPT-subscription login, and a
+verbatim-keychain adapter for the Cursor CLI's opaque access token (all
+v0.6.0). Keychain items are captured and restored verbatim, and the login
 flow refuses exits that change nothing. Windows support, the Codex keyring
-driver, and agy/opencode home isolation are roadmap items (v0.6.0 removed
-the gemini adapter after upstream retired Gemini CLI for Antigravity on
-2026-05-19).
+driver, and agy/opencode/cursor home isolation are roadmap items (v0.6.0
+removed the gemini adapter after upstream retired Gemini CLI for Antigravity
+on 2026-05-19).

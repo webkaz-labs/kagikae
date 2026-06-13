@@ -12,6 +12,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter/agy"
 	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
 	"github.com/webkaz-labs/kagikae/internal/adapter/codex"
+	"github.com/webkaz-labs/kagikae/internal/adapter/cursor"
 	"github.com/webkaz-labs/kagikae/internal/adapter/opencode"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -22,6 +23,7 @@ var (
 	codexAdapter    = codex.Codex{}
 	agyAdapter      = agy.Agy{}
 	opencodeAdapter = opencode.Opencode{}
+	cursorAdapter   = cursor.Cursor{}
 )
 
 func testEnv(t *testing.T, goos string, vars map[string]string) adapter.Env {
@@ -260,6 +262,34 @@ func TestOpencodeRefusesUnrecognizedAuthJSON(t *testing.T) {
 		artifact.Value{Data: []byte(`{"type":"oauth"}`), Present: true})
 	if !errors.Is(err, artifact.ErrUnsafe) {
 		t.Fatalf("expected apply refusal on non-object root: %v", err)
+	}
+}
+
+func TestCursorArtifactsDarwinOpaqueKeychain(t *testing.T) {
+	env := testEnv(t, "darwin", nil)
+	specs, err := cursorAdapter.Artifacts(context.Background(), env)
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("unexpected specs: %+v %v", specs, err)
+	}
+	if specs[0].Kind != constants.KindKeychain || specs[0].Target != cursor.KeychainService {
+		t.Fatalf("unexpected keychain spec: %+v", specs[0])
+	}
+	// An empty pointer marks the opaque (raw-JWT) payload.
+	if specs[0].Pointer != "" || specs[0].KeychainAccount != cursor.KeychainAccount {
+		t.Fatalf("opaque spec must carry an empty pointer and the cursor-user account: %+v", specs[0])
+	}
+}
+
+func TestCursorUnsupportedOffDarwin(t *testing.T) {
+	for _, goos := range []string{"linux", "windows"} {
+		env := testEnv(t, goos, nil)
+		if _, err := cursorAdapter.Artifacts(context.Background(), env); !errors.Is(err, adapter.ErrUnsupported) {
+			t.Fatalf("%s: expected unsupported: %v", goos, err)
+		}
+		checks := cursorAdapter.Doctor(context.Background(), env)
+		if len(checks) != 1 || checks[0].Code != constants.CheckUnsupported || checks[0].Status != constants.StatusError {
+			t.Fatalf("%s: doctor must report a single unsupported error: %+v", goos, checks)
+		}
 	}
 }
 

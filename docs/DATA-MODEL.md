@@ -47,6 +47,9 @@ enabled = true
 [tools.opencode]
 enabled = true
 
+[tools.cursor]
+enabled = true
+
 # Per tool (any [tools.<tool>] section); both default to true and gate the
 # kae run isolation modes and the pin / mise init renderings:
 # home_mode_enabled = true
@@ -201,7 +204,7 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
   `unsafe_refused`, `auth_unchanged`, `usage`
 - artifact kinds: `json-pointer`, `file`, `keychain`
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
-  `agy-file-snapshot`
+  `agy-file-snapshot`, `opencode-file-patch`, `cursor-keychain`
 - modes: `auth`, `env`, `home`, `overlay`
 - backup reasons: `switch`, `rollback`, `run`, `login`
 

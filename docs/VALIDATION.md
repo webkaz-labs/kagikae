@@ -12,12 +12,15 @@ Run `go mod tidy` before committing dependency changes.
 ## Smoke Checks (built binary, isolated env)
 
 All smoke checks run against a temp HOME. On Linux this isolates every
-credential path. **On macOS it does not isolate claude**: the claude adapter
-always selects the keychain driver and the `security` CLI ignores `$HOME`,
-so claude capture/switch/login against a temp HOME still read — and switch
-**writes** — the real login keychain item. Run the claude fixture block
-below on Linux only (e.g. in a container); on macOS stick to the read-only
-commands and non-claude tools.
+credential path. **On macOS it does not isolate the keychain-backed tools
+(claude, cursor)**: those adapters always select a keychain driver and the
+`security` CLI ignores `$HOME`, so their capture/switch/login against a temp
+HOME still read — and switch **writes** — the real login keychain item. Run
+the claude fixture block below on Linux only (e.g. in a container); on macOS
+stick to the read-only commands and file-based tools. cursor is darwin-only,
+so it cannot be live-switched safely in a smoke run at all (Linux reports it
+unsupported, macOS would touch the real keychain) — verify cursor on the
+real machine only.
 
 ```bash
 go build -o /tmp/kae .

@@ -12,10 +12,11 @@ const (
 	ToolCodex    = "codex"
 	ToolAgy      = "agy"
 	ToolOpencode = "opencode"
+	ToolCursor   = "cursor"
 )
 
 // Tools is the canonical tool ordering for reports and iteration.
-var Tools = []string{ToolClaude, ToolCodex, ToolAgy, ToolOpencode}
+var Tools = []string{ToolClaude, ToolCodex, ToolAgy, ToolOpencode, ToolCursor}
 
 // RemovedTools maps tools kae no longer supports to their successor, for
 // error messages and config tolerance (docs/RELEASE.md Breaking Changes).
@@ -43,6 +44,7 @@ const (
 	DriverCodexKeyring        = "codex-keyring"
 	DriverAgyFileSnapshot     = "agy-file-snapshot"
 	DriverOpencodeFilePatch   = "opencode-file-patch"
+	DriverCursorKeychain      = "cursor-keychain"
 )
 
 // Artifact kinds.

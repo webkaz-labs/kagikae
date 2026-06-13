@@ -25,6 +25,8 @@ func loginCommand(tool string) []string {
 		return []string{"codex", "login"}
 	case constants.ToolOpencode:
 		return []string{"opencode", "auth", "login"}
+	case constants.ToolCursor:
+		return []string{"cursor-agent", "login"}
 	default:
 		return nil
 	}

@@ -37,8 +37,9 @@ kae version | --version | -v
 kae help | --help | -h
 ```
 
-Tool names: `claude`, `codex`, `agy`, `opencode`. Account and profile names must
-match `[a-zA-Z0-9._-]+` (max 64 chars); anything else is a usage error.
+Tool names: `claude`, `codex`, `agy`, `opencode`, `cursor`. Account and
+profile names must match `[a-zA-Z0-9._-]+` (max 64 chars); anything else is
+a usage error.
 `gemini` was removed in v0.6.0 (successor: `agy`); it fails as an unknown
 tool naming the successor.
 
@@ -78,8 +79,8 @@ guidance). Per mode:
 - `env`: injects the tool/account env profile (`kae env set`) into the child
   only; no live mutation, no locks.
 - `home`: points the tool at an isolated home
-  (`CLAUDE_CONFIG_DIR` / `CODEX_HOME` under kae's data dir); agy and
-  opencode have no stable isolation mechanism yet and are refused.
+  (`CLAUDE_CONFIG_DIR` / `CODEX_HOME` under kae's data dir); agy,
+  opencode, and cursor have no stable isolation mechanism yet and are refused.
 - `overlay` (default-enabled since v0.5.0; per-tool opt-out via
   `tools.<tool>.overlay_mode_enabled = false`): like `home`, but shared
   items (settings, skills, ...; see docs/ADAPTERS.md) are symlinked from the
@@ -98,8 +99,9 @@ at `kae init`; an editor that exits non-zero is reported with exit `1`
 
 `kae add <tool> <account>` backs up the live state (`reason: "login"`),
 launches the official login flow (`claude /login`, `codex login`,
-`opencode auth login`), captures the result into the account, and makes it
-active — or restores the previous login with `--restore`. If the flow exits
+`opencode auth login`, `cursor-agent login`), captures the result into the
+account, and makes it active — or restores the previous login with
+`--restore`. If the flow exits
 without changing the live auth state (login refused, window closed, already
 cancelled), kae refuses to capture and exits `11` (`auth_unchanged`) instead
 of recording a duplicate of the previous account. The agy login flow is not
@@ -158,9 +160,9 @@ any overlay/home directories with their login state — intact.
   error: overlay/home already take effect on directory entry via `[env]`.
 
 Isolation modes require the profile to be defined (its accounts pick the
-per-account paths). Tools without a stable home env var (agy, opencode)
-keep their real home and are noted with an inline warning comment, as are
-tools with the per-tool mode disabled in config. The mode is per-invocation
+per-account paths). Tools without a stable home env var (agy, opencode,
+cursor) keep their real home and are noted with an inline warning comment,
+as are tools with the per-tool mode disabled in config. The mode is per-invocation
 (per directory), deliberately not a profile property: the same profile stays
 usable for global switching and isolated project homes.
 
@@ -263,7 +265,7 @@ profile, the per-tool table, then the profiles list.
 }
 ```
 
-Ordering: tool (claude, codex, agy, opencode), then account name ascending.
+Ordering: tool (claude, codex, agy, opencode, cursor), then account name ascending.
 
 ### `kae doctor --json`
 

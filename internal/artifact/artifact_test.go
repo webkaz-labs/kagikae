@@ -83,6 +83,39 @@ func TestJSONPointerKindPreservesSiblings(t *testing.T) {
 	}
 }
 
+// TestJSONPointerKindJSONCRoundTrip: a JSONC spec reads through comments and
+// writes the pointer value back while preserving the leading // comments and
+// sibling keys (GitHub Copilot's config.json shape).
+func TestJSONPointerKindJSONCRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	target := filepath.Join(t.TempDir(), "config.json")
+	doc := "// managed automatically\n{\n  \"trustedFolders\": [\"/w\"],\n  \"lastLoggedInUser\": {\"host\":\"h\",\"login\":\"a\"}\n}\n"
+	if err := os.WriteFile(target, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sp := Spec{Name: "last_logged_in_user", Kind: constants.KindJSONPointer,
+		Target: target, Pointer: "/lastLoggedInUser", JSONC: true}
+
+	v, err := ReadLive(ctx, sp)
+	if err != nil || !v.Present {
+		t.Fatalf("read through comments: %+v %v", v, err)
+	}
+	if err := ApplyLive(ctx, sp, Value{Data: []byte(`{"host":"h","login":"b"}`), Present: true}); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(target)
+	s := string(out)
+	if !strings.Contains(s, "// managed automatically") {
+		t.Fatalf("comment lost: %s", s)
+	}
+	if !strings.Contains(s, `"login":"b"`) && !strings.Contains(s, `"login": "b"`) {
+		t.Fatalf("value not switched: %s", s)
+	}
+	if !strings.Contains(s, "trustedFolders") {
+		t.Fatalf("sibling lost: %s", s)
+	}
+}
+
 func TestJSONPointerKindMissingFileCreates(t *testing.T) {
 	ctx := context.Background()
 	target := filepath.Join(t.TempDir(), "sub", ".credentials.json")

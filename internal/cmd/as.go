@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
+	"github.com/webkaz-labs/kagikae/internal/adapter"
+	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -84,6 +86,12 @@ func CmdAs(ctx context.Context, args []string) int {
 
 // swapDirCredential reads the captured credential for tool/accountName from
 // the secret backend and writes it as the private credential file in credDir.
+//
+// KindJSONPointer snapshots (Linux claude) store only the pointer value, not
+// the wrapper file. The wrapper is reconstructed here via patch.SetPointer so
+// the resulting file has the correct structure (e.g. {"claudeAiOauth":{...}}).
+// KindKeychain (macOS claude) and KindFile snapshots store verbatim file
+// content and are written directly.
 func (app *App) swapDirCredential(ctx context.Context, be secret.Backend, tool, accountName, credDir string) error {
 	acc, found, err := account.Load(app.Paths.AccountDir(tool, accountName))
 	if err != nil {
@@ -112,10 +120,40 @@ func (app *App) swapDirCredential(ctx context.Context, be secret.Backend, tool, 
 		return errf(constants.ExitError,
 			"snapshot payload missing; re-run kae add --no-login %s %s", tool, accountName)
 	}
+
+	// Resolve the artifact spec to determine write semantics.
+	var credSpec *artifact.Spec
+	if adp, aerr := adapter.ForTool(tool); aerr == nil {
+		if specs, serr := adp.Artifacts(ctx, app.Env); serr == nil {
+			for i := range specs {
+				if specs[i].Name == artName {
+					credSpec = &specs[i]
+					break
+				}
+			}
+		}
+	}
+
 	for _, credFile := range app.pinCredItems(tool) {
 		dst := filepath.Join(credDir, credFile)
-		if err := patch.WriteFileAtomic(dst, data, 0o600); err != nil {
-			return fmt.Errorf("write credential %s: %w", dst, err)
+		if credSpec != nil && credSpec.Kind == constants.KindJSONPointer {
+			// Snapshot holds only the pointer value; reconstruct the wrapper.
+			existing := []byte("{}")
+			if b, readErr := os.ReadFile(dst); readErr == nil {
+				existing = b
+			}
+			updated, patchErr := patch.SetPointer(existing, credSpec.Pointer, data)
+			if patchErr != nil {
+				return fmt.Errorf("patch credential %s: %w", dst, patchErr)
+			}
+			if err := patch.WriteFileAtomic(dst, updated, 0o600); err != nil {
+				return fmt.Errorf("write credential %s: %w", dst, err)
+			}
+		} else {
+			// KindKeychain or KindFile: snapshot stores verbatim file content.
+			if err := patch.WriteFileAtomic(dst, data, 0o600); err != nil {
+				return fmt.Errorf("write credential %s: %w", dst, err)
+			}
 		}
 	}
 	return nil

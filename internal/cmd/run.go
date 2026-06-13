@@ -16,7 +16,7 @@ import (
 
 // CmdRun executes a child command with a temporarily applied account:
 //
-//	kae run [--mode auth|env|home|overlay|bond] <tool|all> <name> -- <cmd...>
+//	kae run [--mode auth|env|home|overlay|bond|pin] <tool|all> <name> -- <cmd...>
 //
 // On success the child's exit code is returned verbatim; kae's own exit
 // codes apply only to failures before the child starts (and to a failed
@@ -25,7 +25,7 @@ import (
 func CmdRun(ctx context.Context, args []string) int {
 	kaeArgs, childCmd := splitAtDashDash(args)
 	if len(childCmd) == 0 {
-		return usageError("usage: %s run [--mode auth|env|home|overlay|bond] <tool|all> <name> -- <cmd...>", toolName)
+		return usageError("usage: %s run [--mode auth|env|home|overlay|bond|pin] <tool|all> <name> -- <cmd...>", toolName)
 	}
 	flags, positionals := splitArgs(kaeArgs, "--mode")
 	mode := modeAuth
@@ -39,7 +39,7 @@ func CmdRun(ctx context.Context, args []string) int {
 		return usageError("unsupported mode %q (modes: auth, env, home, overlay, bond)", mode)
 	}
 	if len(positionals) != 2 {
-		return usageError("usage: %s run [--mode auth|env|home|overlay|bond] <tool|all> <name> -- <cmd...>", toolName)
+		return usageError("usage: %s run [--mode auth|env|home|overlay|bond|pin] <tool|all> <name> -- <cmd...>", toolName)
 	}
 	app := newApp(opts.ConfigPath)
 	return runRun(ctx, app, opts, mode, positionals[0], positionals[1], childCmd)

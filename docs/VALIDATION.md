@@ -125,6 +125,27 @@ a process outside the item's ACL, makes Claude Code report "not logged in"
 despite an intact token). A past acceptance pass that skipped the fresh-process
 check missed exactly this class of bug.
 
+For copilot (active-account pointer, all platforms — kae never touches the
+per-account keychain tokens, only `~/.copilot/config.json` `/lastLoggedInUser`,
+so it is safe on macOS):
+
+1. `kae add --no-login copilot <current-account>`
+2. `kae use copilot <account>`, then `git`-diff `~/.copilot/config.json`: only
+   the `/lastLoggedInUser` value changes (re-compacted to one line is expected
+   and harmless); the leading `//` comments, `trustedFolders`, and
+   `loggedInUsers` must survive.
+3. `kae rollback` and confirm the leading `//` comments still survive — this
+   exercises the JSONC restore path (a backup whose JSONC flag was dropped
+   patches through the plain-JSON path and fails on the comments).
+
+copilot has no `whoami`/`status` subcommand, so the fresh-process auth check is
+a non-interactive prompt: `copilot -p "say AUTH-OK" --no-color --allow-all-tools`
+returns a reply when authenticated, an error/login prompt when not. The CLI
+emits ANSI/spinner control codes, so strip them
+(`sed 's/\033\[[0-9;]*[a-zA-Z]//g'`) before asserting on the output. Switching
+between two accounts is a v0.7.0 acceptance item; with a single account this
+verifies the verbatim round-trip and comment preservation only.
+
 Never run real-machine acceptance with uncommitted work in progress in the
 live tool sessions.
 

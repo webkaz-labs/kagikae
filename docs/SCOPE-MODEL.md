@@ -111,25 +111,33 @@ server or a trusted project added in the real home would be invisible in the
 directory, and vice versa — which is exactly the confusing state we want to
 avoid.
 
-A per-key split of one JSON file is impossible with file-granular symlinks, so
-live sharing requires sharing the **whole file** and keeping only the
-credential store private. Two candidate shapes, in order of preference:
+**Resolved by real-machine validation (2026-06-14, claude):** `/oauthAccount`
+is **not an auth artifact** — it is a token-derived identity cache. Verified:
 
-1. **Don't switch `/oauthAccount` at all.** If the token (the credential store)
-   is the sole real auth artifact and the tool re-derives identity from it,
-   then `~/.claude.json` can be symlinked wholesale and the mixed-state problem
-   disappears entirely (auth = token only, already private). kae switches
-   `/oauthAccount` today to keep token and identity aligned, but whether that
-   is *required* is unverified.
-2. **Symlink the whole file, keep only the credential private.** Works iff the
-   tool tolerates a token/`oauthAccount` account mismatch and does **not**
-   rewrite `/oauthAccount` on startup (a rewrite through the symlink would
-   pollute the real home with the directory's account — the dangerous failure).
+- claude authenticates from the **token alone**: removing `/oauthAccount`
+  entirely, or injecting a wrong-account `/oauthAccount`, still gives a
+  fresh-process `AUTH-OK`.
+- claude **re-derives** the identity (`emailAddress`, org fields) from the
+  token on startup and writes it back into `~/.claude.json`.
 
-**Fallback — copy+patch.** Only if live sharing proves unsafe: copy the real
-file into the alternate dir and overwrite just the auth pointer. A plain
-snapshot drifts, so if this path is taken it should be paired with a sync
-strategy, in increasing cost/complexity:
+Therefore the design is: **treat the token (keychain / `.credentials.json`) as
+claude's sole auth artifact, and do not switch `/oauthAccount`.** Then
+`~/.claude.json` carries no auth value and is **symlinked wholesale** like any
+other shared file. The mixed-state problem disappears.
+
+Consequence to document: in `bond` (shared with the real home), running claude
+as the directory's account makes claude rewrite the shared file's
+`/oauthAccount` to that account. This is **cosmetic and self-healing** — auth is
+unaffected (token wins), and the next claude run in the real home re-derives the
+real-home account. In `pin` (`.claude.json` not shared with the real home) there
+is no pollution at all.
+
+**Fallback — copy+patch (not needed for claude).** The validation above removes
+the need for this for claude. It is retained only for a hypothetical future
+tool whose auth pointer is *not* token-derived (i.e. genuinely authoritative and
+not self-healed): copy the real file into the alternate dir and overwrite just
+the auth pointer. A plain snapshot drifts, so if this path is ever taken it
+should be paired with a sync strategy, in increasing cost/complexity:
 
 - **(a) enter/leave hook sync (no daemon — preferred fallback):** on directory
   entry copy real→dir (re-patching the auth pointer), on exit merge dir→real
@@ -200,19 +208,20 @@ for this mode (see [VALIDATION.md](VALIDATION.md)).
 
 ## 11. Open questions
 
-### Blocking fork — claude mixed-state behaviour (real-machine, must settle first)
+### Blocking fork — claude mixed-state behaviour — RESOLVED (2026-06-14)
 
-Decides whether §6 uses live symlink sharing (preferred) or copy+patch
-(fallback). Validate on a real machine (outside the sandbox) with two claude
-accounts, each step ending in a fresh-process auth check:
+Settled by real-machine validation (keychain untouched; `~/.claude.json` edited
+and restored; each step a fresh-process `claude -p … --model haiku` auth check):
 
-1. Switch the **token only**, leaving `~/.claude.json` `/oauthAccount`
-   untouched — does claude authenticate and behave correctly? (If yes, shape
-   §6.1 applies and the mixed-state problem disappears.)
-2. With token and `/oauthAccount` pointing at **different** accounts, what does
-   claude do — honour the token, or report "Not logged in"?
-3. Does claude **rewrite** `/oauthAccount` on startup? (If yes, a wholesale
-   symlink would pollute the real home — §6.2 is unsafe.)
+1. **Token only (no `/oauthAccount`)** → `AUTH-OK`. Auth needs the token only.
+2. **Token vs wrong `/oauthAccount`** → `AUTH-OK`; claude re-derived
+   `emailAddress` from the token (self-healed). Token wins.
+3. **claude rewrites `/oauthAccount` on startup** = yes, from the token.
+
+Outcome: `/oauthAccount` is a token-derived cache, not an auth artifact. §6
+resolves to "token is claude's sole auth artifact; `.claude.json` is symlinked
+wholesale; the cosmetic `/oauthAccount` thrash in `bond` self-heals". copy+patch
+is not needed for claude.
 
 ### For the implementation blueprint
 

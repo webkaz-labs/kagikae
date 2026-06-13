@@ -28,6 +28,8 @@ func loginCommand(tool string) []string {
 		return []string{"opencode", "auth", "login"}
 	case constants.ToolCursor:
 		return []string{"cursor-agent", "login"}
+	case constants.ToolCopilot:
+		return []string{"copilot", "login"}
 	default:
 		return nil
 	}

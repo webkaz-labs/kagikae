@@ -1,8 +1,8 @@
 # kagikae
 
 `kae` switches **subscription accounts** for AI coding CLIs — Claude Code,
-Codex CLI, Antigravity CLI, OpenCode, and the Cursor CLI — without
-touching your working environment.
+Codex CLI, Antigravity CLI, OpenCode, the Cursor CLI, and the GitHub
+Copilot CLI — without touching your working environment.
 
 Switching `~/.claude` or `~/.codex` wholesale also switches your skills,
 hooks, memory, MCP servers, project trust, and session history. `kae` doesn't.

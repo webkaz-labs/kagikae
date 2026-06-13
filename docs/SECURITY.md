@@ -53,14 +53,16 @@ here are part of the command contract.
 - `~/.claude/.credentials.json`, `~/.codex/auth.json`,
   `~/.local/share/opencode/auth.json`, and agy credential files under
   `~/.gemini/antigravity-cli/` are written `0600`; kagikae metadata/state
-  dirs `0700`.
+  dirs `0700`. `~/.copilot/config.json` is owned by copilot (kae only patches
+  its `/lastLoggedInUser` pointer); `doctor` warns if it is not `0600`.
 - `doctor` warns when live credential files are group/world readable.
 
 ## Environment Conflicts
 
 `doctor` warns when environment variables override the subscription login the
 user thinks they are switching: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
-`CLAUDE_CODE_OAUTH_TOKEN`, `GEMINI_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`.
+`CLAUDE_CODE_OAUTH_TOKEN`, `GEMINI_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`,
+`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`.
 
 ## Concurrency
 

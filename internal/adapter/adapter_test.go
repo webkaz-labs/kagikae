@@ -12,6 +12,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter/agy"
 	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
 	"github.com/webkaz-labs/kagikae/internal/adapter/codex"
+	"github.com/webkaz-labs/kagikae/internal/adapter/copilot"
 	"github.com/webkaz-labs/kagikae/internal/adapter/cursor"
 	"github.com/webkaz-labs/kagikae/internal/adapter/opencode"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
@@ -24,6 +25,7 @@ var (
 	agyAdapter      = agy.Agy{}
 	opencodeAdapter = opencode.Opencode{}
 	cursorAdapter   = cursor.Cursor{}
+	copilotAdapter  = copilot.Copilot{}
 )
 
 func testEnv(t *testing.T, goos string, vars map[string]string) adapter.Env {
@@ -290,6 +292,73 @@ func TestCursorUnsupportedOffDarwin(t *testing.T) {
 		if len(checks) != 1 || checks[0].Code != constants.CheckUnsupported || checks[0].Status != constants.StatusError {
 			t.Fatalf("%s: doctor must report a single unsupported error: %+v", goos, checks)
 		}
+	}
+}
+
+const copilotConfigFixture = `// User settings belong in settings.json.
+// This file is managed automatically.
+{
+  "trustedFolders": ["/workspaces"],
+  "lastLoggedInUser": {"host":"https://github.com","login":"webkaz"},
+  "loggedInUsers": [{"host":"https://github.com","login":"webkaz"}]
+}
+`
+
+func TestCopilotArtifactsJSONCPointer(t *testing.T) {
+	env := testEnv(t, "darwin", nil)
+	specs, err := copilotAdapter.Artifacts(context.Background(), env)
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("unexpected specs: %+v %v", specs, err)
+	}
+	if specs[0].Kind != constants.KindJSONPointer || specs[0].Pointer != "/lastLoggedInUser" || !specs[0].JSONC {
+		t.Fatalf("expected a JSONC json-pointer spec: %+v", specs[0])
+	}
+	if specs[0].Target != filepath.Join(env.Home, ".copilot", "config.json") {
+		t.Fatalf("unexpected target: %+v", specs[0])
+	}
+}
+
+func TestCopilotDetect(t *testing.T) {
+	env := testEnv(t, "linux", nil)
+	info, err := copilotAdapter.Detect(context.Background(), env)
+	if err != nil || info.AuthPresent {
+		t.Fatalf("no config.json should mean no auth: %+v %v", info, err)
+	}
+
+	cfg := filepath.Join(env.Home, ".copilot", "config.json")
+	write(t, cfg, copilotConfigFixture)
+	info, err = copilotAdapter.Detect(context.Background(), env)
+	if err != nil || !info.AuthPresent || info.Driver != constants.DriverCopilotConfigPointer {
+		t.Fatalf("unexpected: %+v %v", info, err)
+	}
+
+	// env override is warned about.
+	env = testEnv(t, "linux", map[string]string{"GH_TOKEN": "x"})
+	write(t, filepath.Join(env.Home, ".copilot", "config.json"), copilotConfigFixture)
+	info, _ = copilotAdapter.Detect(context.Background(), env)
+	warned := false
+	for _, w := range info.Warnings {
+		if strings.Contains(w, "GH_TOKEN") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatalf("expected GH_TOKEN warning: %+v", info.Warnings)
+	}
+}
+
+func TestCopilotRefusesBrokenConfig(t *testing.T) {
+	env := testEnv(t, "linux", nil)
+	write(t, filepath.Join(env.Home, ".copilot", "config.json"), `// c`+"\n"+`{not json`)
+	checks := copilotAdapter.Doctor(context.Background(), env)
+	foundError := false
+	for _, check := range checks {
+		if check.Code == constants.CheckAuthPresent && check.Status == constants.StatusError {
+			foundError = true
+		}
+	}
+	if !foundError {
+		t.Fatalf("doctor should flag the unparseable config: %+v", checks)
 	}
 }
 

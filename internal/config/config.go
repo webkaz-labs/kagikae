@@ -269,6 +269,9 @@ enabled = true
 [tools.cursor]
 enabled = true
 
+[tools.copilot]
+enabled = true
+
 # Profiles bundle per-tool accounts:
 #
 # [profiles.work]

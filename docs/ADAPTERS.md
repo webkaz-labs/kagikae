@@ -212,6 +212,66 @@ exit `5` (unsupported).
 Cursor Safe Storage (keychain) -> the IDE's Electron key, never touched
 ```
 
+## GitHub Copilot CLI (`copilot`)
+
+Copilot is the odd one out: each account's OAuth token lives in its **own**
+OS-keychain item (service `copilot-cli`, account `<host>:<user>`, e.g.
+`https://github.com:webkaz`) and the items **coexist** — logging into a second
+account does not evict the first. "Switching accounts" is therefore not a
+credential swap; it repoints the active account recorded in
+`~/.copilot/config.json`.
+
+### Live auth locations
+
+`~/.copilot/config.json` (mode `0600`) is **JSONC** (a leading `//` comment
+block) and mixed-state:
+
+```jsonc
+// User settings belong in settings.json.
+// This file is managed automatically.
+{
+  "trustedFolders": ["/workspaces"],
+  "lastLoggedInUser": {"host": "https://github.com", "login": "webkaz"},
+  "loggedInUsers": [{"host": "https://github.com", "login": "webkaz"}]
+}
+```
+
+The CLI has no native account-switch or logout command (only `copilot login`,
+an OAuth device flow). Tokens are env-overridable, precedence
+`COPILOT_GITHUB_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN`.
+
+### Driver
+
+| Driver | Platform | Switched artifacts |
+|--------|----------|--------------------|
+| `copilot-config-pointer` | all | `~/.copilot/config.json` pointer `/lastLoggedInUser` (JSONC; comments preserved) |
+
+Only `/lastLoggedInUser` is switched. The per-account keychain tokens are
+**never touched** (they coexist), so a switch only works between accounts
+already present in `loggedInUsers` (logged in once via `copilot login`); kae
+does not move tokens. The file is patched as JSONC so the leading comments,
+trailing commas, and formatting survive (docs/DATA-MODEL.md). An unparseable
+config refuses with exit `10`; a config without `/lastLoggedInUser` is
+"not logged in" (`auth_missing`, exit 3).
+
+Multi-account switching is verified only on a single account so far; the
+cross-account behaviour (does repointing `/lastLoggedInUser` make copilot use
+the other keychain token) is a v0.7.0 acceptance item (docs/ROADMAP.md).
+
+### Preserved
+
+```text
+~/.copilot/config.json -> /loggedInUsers, /trustedFolders, /firstLaunchAt
+~/.copilot/settings.json (hooks), AGENTS.md, hooks/, skills/, ide/, mcp config
+the per-account keychain items (service copilot-cli) — never touched
+```
+
+### Environment conflicts
+
+`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` outrank the keychain login;
+`kae doctor` warns when any is set. The gh CLI's own auth is separate and out
+of scope.
+
 ## Isolation (home / overlay Modes)
 
 `kae run --mode home|overlay` points a tool at an alternate home directory;
@@ -225,6 +285,7 @@ mise `[env]` entries scoped to a project directory (docs/CLI.md):
 | agy | none stable | refused | refused |
 | opencode | none stable | refused | refused |
 | cursor | none stable | refused | refused |
+| copilot | none stable | refused | refused |
 
 "Refused" means exit `5` from `kae run`; `kae pin` / `kae mise init` instead
 omit those tools with an inline warning comment (they keep the real home).
@@ -270,6 +331,7 @@ artifacts are refused at config load — docs/DATA-MODEL.md).
 | agy | unsupported |
 | opencode | `opencode auth login` |
 | cursor | `cursor-agent login` |
+| copilot | `copilot login` |
 
 The opencode flow is a provider picker; picking a provider other than the
 OpenAI subscription leaves `/openai` unchanged, so `kae add` correctly
@@ -286,25 +348,3 @@ subscription login.
 3. Add structure guards: refuse unknown layouts instead of writing.
 4. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
    guard-refusal paths.
-
-## v0.6.0 Adapter Discovery Notes (pre-implementation)
-
-Real-machine findings (macOS, 2026-06-13); these become normative sections
-above when each adapter lands (opencode and cursor landed in v0.6.0 — see
-their sections).
-
-### copilot
-
-- Credentials: keychain item, service `copilot-cli`, **account
-  `<host>:<user>`** (e.g. `https://github.com:webkaz`) — items for
-  different GitHub accounts coexist, so switching is not a token swap.
-- Active-account record: `~/.copilot/config.json` (mode `0600`) is
-  **JSONC** (leading `//` comment) with `lastLoggedInUser`,
-  `loggedInUsers`, `login`, `host`, `trustedFolders`, `firstLaunchAt` —
-  mixed state (trustedFolders must be preserved), but kae's JSON-pointer
-  patching cannot round-trip JSONC comments. Open design question; needs
-  a behavioural experiment (what copilot reads on start) before the
-  adapter is designed. `settings.json` is hooks-only (preserved).
-- Env conflict checks needed: `COPILOT_GITHUB_TOKEN` / `GH_TOKEN` /
-  `GITHUB_TOKEN` outrank the keychain login; the gh CLI fallback is
-  lowest-priority and untouched.

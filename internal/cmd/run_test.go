@@ -372,6 +372,10 @@ func TestMiseInitPrintAndWrite(t *testing.T) {
 	if !strings.Contains(out, "[tasks.agy]") {
 		t.Fatalf("agy task must be rendered since v0.6.0: %s", out)
 	}
+	// cursor's CLI binary is cursor-agent, not the tool id.
+	if !strings.Contains(out, "kae run cursor $KAE_PROFILE -- cursor-agent") {
+		t.Fatalf("cursor task must invoke the cursor-agent binary: %s", out)
+	}
 	if _, err := os.Stat(".mise.toml"); !os.IsNotExist(err) {
 		t.Fatal("print must not write")
 	}

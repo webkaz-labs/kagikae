@@ -32,6 +32,17 @@ func loginCommand(tool string) []string {
 	}
 }
 
+// toolBinary is the executable name for a tool's CLI, used in the generated
+// mise run tasks. It matches the tool id for every tool except cursor, whose
+// binary is cursor-agent (keep in sync with loginCommand and each adapter's
+// LookPath probe).
+func toolBinary(tool string) string {
+	if tool == constants.ToolCursor {
+		return "cursor-agent"
+	}
+	return tool
+}
+
 // CmdAdd registers an account:
 //
 //	kae add <tool> <account> [--restore]      official login flow + snapshot

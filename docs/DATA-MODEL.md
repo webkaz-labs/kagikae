@@ -183,6 +183,7 @@ reversible:
   "artifacts": [
     {"tool": "claude", "name": "claude_ai_oauth", "kind": "keychain",
      "target": "Claude Code-credentials", "pointer": "/claudeAiOauth",
+     "keychain_account": "alice",
      "secret_ref": "backup/20260611T012345Z/claude/claude_ai_oauth",
      "present": true}
   ]

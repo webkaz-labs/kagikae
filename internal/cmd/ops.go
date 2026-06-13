@@ -132,7 +132,8 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 			meta.Artifacts = append(meta.Artifacts, backup.ArtifactRecord{
 				Tool: plan.Tool, Name: sp.Name, Kind: sp.Kind,
 				Target: sp.Target, Pointer: sp.Pointer,
-				SecretRef: ref, Present: value.Present,
+				KeychainAccount: sp.KeychainAccount,
+				SecretRef:       ref, Present: value.Present,
 			})
 		}
 	}
@@ -160,7 +161,8 @@ func applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only 
 			}
 			value = artifact.Value{Data: data, Present: true}
 		}
-		sp := artifact.Spec{Name: rec.Name, Kind: rec.Kind, Target: rec.Target, Pointer: rec.Pointer}
+		sp := artifact.Spec{Name: rec.Name, Kind: rec.Kind, Target: rec.Target,
+			Pointer: rec.Pointer, KeychainAccount: rec.KeychainAccount}
 		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
 			return fmt.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
 		}
@@ -179,6 +181,7 @@ func plansFromBackupMeta(meta backup.Meta) []toolPlan {
 		}
 		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], artifact.Spec{
 			Name: rec.Name, Kind: rec.Kind, Target: rec.Target, Pointer: rec.Pointer,
+			KeychainAccount: rec.KeychainAccount,
 		})
 	}
 	plans := make([]toolPlan, 0, len(order))

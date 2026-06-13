@@ -77,6 +77,13 @@ KAE_PROFILE=personal /tmp/kae apply --json         # env resolution
 EDITOR=true /tmp/kae edit                          # validate round-trip
 /tmp/kae status --json                             # has "pinned" + "profiles"
 
+# v0.7.0 surfaces (bond mode; codex is safe on macOS — auth.json is file-based):
+/tmp/kae bond clientA                              # writes .mise.toml (bond mode)
+#   assert: CODEX_HOME entry in .mise.toml pointing to isolation/<pin-id>/codex/bond/
+#   assert: config.toml symlinked from real ~/.codex; auth.json private-copied
+#   assert: re-running kae bond is idempotent (no error, symlinks refreshed)
+/tmp/kae switch x y; echo $?                       # 64 (renamed in v0.7.0, re-test)
+
 # v0.6.0 surfaces (opencode auth.json is file-based — safe on macOS; seed
 # $XDG_DATA_HOME/opencode/auth.json with {"openai":{...},"other":{...}}):
 /tmp/kae add --no-login opencode work --json

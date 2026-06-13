@@ -1,4 +1,55 @@
-# Release Target: kae v0.6.0
+# Release Target: kae v0.7.0
+
+Bond mode, credential-private per-directory isolation, and the scope×environment
+model foundations.
+
+Previous baseline: v0.6.0 (three new adapters — copilot, cursor, opencode —
+and pinned-directory guard; see git tag v0.6.0).
+
+## Scope
+
+- **`kae bond [<profile>]`** — new per-directory mode: shares settings,
+  sessions, hooks, and memory with the real home, while credentials are
+  private to the directory. A denylist approach: everything in the real home
+  directory is symlinked except credential files (hard-coded: claude →
+  `.credentials.json`; codex → `auth.json`), which are private-copied at
+  `0600`. Bond dir is account-agnostic (`isolation/<pin-id>/<tool>/bond/`,
+  where pin-id = first 16 hex chars of SHA-256 of the absolute directory
+  path), so switching accounts inside a bonded directory does not change the
+  dir layout. `kae run --mode bond` also available.
+- **`bond_denylist_extra`** config option — per-tool list of extra file names
+  to exclude from bond symlinking (on top of the built-in credential list).
+  Hard-coded credential artifacts are refused to prevent misconfiguration.
+- **`kae sync` → `kae apply` rename (Phase 0)** — completed; old `sync`
+  command removed.
+- **Paths/constants cleanup (Phase 1)** — `paths.PinID`, `paths.BondDir`,
+  and related constants moved to the canonical `internal/paths` package.
+
+## Acceptance Criteria
+
+- `kae bond <profile>` writes `.mise.toml` with `CLAUDE_CONFIG_DIR` /
+  `CODEX_HOME` pointing to `isolation/<pin-id>/<tool>/bond/`.
+- Bond dir contains symlinks for non-credential real-home items and a
+  private copy (`0600`) of the credential file.
+- Re-running `kae bond` is idempotent (stale symlinks refreshed, no error).
+- Missing credential (not logged in) is silently skipped, not an error.
+- `kae run --mode bond ... -- <cmd>` sets the isolation env without mutating
+  live state.
+- **Real-machine gate**: `kae bond <profile>` in a client directory, then
+  `claude -p '' --model haiku`; asserts AUTH-OK inside the directory while
+  `~/.claude` remains unchanged. Required before merge to main.
+- `mise run check` passes; no regression in existing modes.
+
+## Release Steps
+
+1. Pass all acceptance criteria above, including real-machine gate.
+2. Update `docs/VALIDATION.md` v0.7.0 smoke-check results.
+3. README examples verified against the built binary.
+4. Tag `v0.7.0`, GitHub release.
+
+---
+
+# kae v0.6.0
 
 Tool coverage and pin hardening: three new adapters (copilot, cursor,
 opencode), the gemini → agy transition, and closing the pinned-directory

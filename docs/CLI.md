@@ -20,6 +20,8 @@ kae use <profile>                    # switch every enabled tool now (alias: kae
 kae use <tool> <account>             # switch one tool now
 kae pin [<profile>] [--mode overlay|home|auth] [--auto]
                                      # bind this directory (writes .mise.toml)
+kae bond [<profile>]                 # bond mode: settings/sessions shared with
+                                     # the real home, credential private
 kae unpin                            # remove the kagikae block from .mise.toml
 kae apply [--profile P] [--quiet]    # idempotent profile apply for hooks/scripts
 kae run [--mode M] <tool|all> <name> -- <cmd...>   # run cmd with an account applied
@@ -27,8 +29,8 @@ kae env set <tool> <account> KEY=VALUE...          # store env-mode variables
 kae env set <tool> <account> KEY                   # value read from stdin
 kae env unset <tool> <account> [KEY...]            # remove variables / the profile
 kae env list [--json]                              # profiles (names only, no values)
-kae mise init [--profile P] [--mode auth|home|overlay] [--auto] [--write]
-                                     # low-level form of pin (preview first)
+kae mise init [--profile P] [--mode auth|home|overlay|bond] [--auto] [--write]
+                                     # low-level form of pin/bond (preview first)
 kae accounts [--json]                # registered accounts, active markers
 kae status [--json]                  # full status report
 kae backup list [--json]             # list switch backups
@@ -61,10 +63,10 @@ release): `switch`/`s` → `use`, `login` → `add`, `capture` →
 | `--yes` | all | non-interactive confirmation (reserved; no prompts exist yet) |
 | `--no-color` | all | disable color in human text output |
 | `--config <path>` | all | explicit config file path (overrides XDG lookup) |
-| `--mode auth\|env\|home\|overlay` | `run` | switch mode (default `auth`) |
+| `--mode auth\|env\|home\|overlay\|bond` | `run` | switch mode (default `auth`) |
 | `--restore` / `--no-login` | `add` | restore the previous login after capturing (login flow only); snapshot without a login flow |
 | `--profile <name>` / `--write` | `mise init` | profile for `KAE_PROFILE`; write/update `.mise.toml` |
-| `--mode auth\|home\|overlay` / `--auto` | `mise init`, `pin` | rendered integration (`mise init` defaults to `auth`, `pin` to `overlay`); `--auto` adds the enter hook (auth only) |
+| `--mode auth\|home\|overlay\|bond` / `--auto` | `mise init`, `pin`, `bond` | rendered integration (`mise init` defaults to `auth`, `pin` to `overlay`, `bond` uses bond mode); `--auto` adds the enter hook (auth only) |
 | `--profile <name>` / `--quiet` | `apply` | profile override; suppress the success report (for hooks) |
 | `--to <backup-id>` | `rollback` | backup to restore (default: most recent) |
 
@@ -154,6 +156,15 @@ any overlay/home directories with their login state — intact.
 - `--mode home`: same `[env]` shape but pointing at the fully separate
   home-mode directories — nothing is shared with the real home. `--write`
   pre-creates the directories.
+- `--mode bond` (`kae bond` default): renders `[env]` entries pointing
+  each tool at a per-directory **bond** home (`isolation/<pin-id>/<tool>/bond/`):
+  all real-home files except the hard-coded auth artifacts (`.credentials.json`,
+  `auth.json`) are symlinked into the bond dir; the credential is private-copied.
+  Settings, sessions, and memory are therefore shared with the real home while
+  authentication is private to the directory. `kae bond [<profile>]` is sugar
+  over `kae mise init --mode bond --write`. Re-running refreshes symlinks for
+  new files added to the real home. See docs/ADAPTERS.md "Bond mode" for the
+  per-tool denylist and `bond_denylist_extra` config option.
 - `--mode auth` (`mise init` default): `[env]` sets `KAE_PROFILE`, plus
   tasks (`ai-use`, `ai-current`, per-tool `kae run` wrappers).
 - `--auto` (auth mode only): adds a `[hooks.enter]` entry running

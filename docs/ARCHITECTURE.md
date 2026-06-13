@@ -106,9 +106,9 @@ the account snapshots -> restore the backup -> prune -> unlock
 ```
 
 state.json is untouched: the temporary switch is invisible to the bare `kae` status summary.
-`env` / `home` / `overlay` modes never mutate live state; they only build
-child environment entries (`internal/cmd/modes.go`). Interactive children
-run through the `runner.RunInteractive` seam.
+`env` / `home` / `overlay` / `bond` modes never mutate live state; they only
+build child environment entries (`internal/cmd/modes.go`). Interactive
+children run through the `runner.RunInteractive` seam.
 
 ## Atomicity And Guards
 

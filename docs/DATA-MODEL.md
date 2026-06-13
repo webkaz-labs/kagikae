@@ -14,6 +14,7 @@ vocabulary for `kae`.
 | env profiles (metadata) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/env/<tool>/<account>/env.toml` |
 | home-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/homes/<tool>/<account>/` |
 | overlay-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/overlays/<tool>/<account>/` |
+| bond-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/bond/` |
 | file-backend secrets (opt-in) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/secrets/...` |
 | state | `${XDG_STATE_HOME:-~/.local/state}/kagikae/state.json` |
 | backups (metadata) | `${XDG_STATE_HOME:-~/.local/state}/kagikae/backups/<id>.json` |
@@ -61,6 +62,10 @@ enabled = true
 # allowlist (docs/ADAPTERS.md). Bare file names only; the auth/identity
 # artifacts (.credentials.json, .claude.json, auth.json) are refused:
 # overlay_extra_shared = ["output-styles"]
+# Extra items to exclude from bond-mode symlinking, on top of the built-in
+# denylist (claude: .credentials.json; codex: auth.json). Bare file names
+# only; the built-in auth artifacts are refused to prevent misconfiguration:
+# bond_denylist_extra = ["custom-session.json"]
 
 [profiles.work]
 label = "Work"
@@ -218,7 +223,7 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
   `agy-file-snapshot`, `opencode-file-patch`, `cursor-keychain`,
   `copilot-config-pointer`
-- modes: `auth`, `env`, `home`, `overlay`
+- modes: `auth`, `env`, `home`, `overlay`, `bond`
 - backup reasons: `switch`, `rollback`, `run`, `login`
 
 ## Env Profiles

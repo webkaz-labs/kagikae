@@ -52,6 +52,7 @@ type Tool struct {
 	HomeModeEnabled    *bool    `toml:"home_mode_enabled"`
 	OverlayModeEnabled *bool    `toml:"overlay_mode_enabled"`
 	OverlayExtraShared []string `toml:"overlay_extra_shared"`
+	BondDenylistExtra  []string `toml:"bond_denylist_extra"`
 }
 
 // Profile bundles per-tool accounts under one name.
@@ -115,6 +116,14 @@ func (c *Config) validate() error {
 				return fmt.Errorf("tools.%s.overlay_extra_shared must not share the auth/identity artifact %q", tool, item)
 			}
 		}
+		for _, item := range settings.BondDenylistExtra {
+			if !ValidFileName(item) {
+				return fmt.Errorf("tools.%s.bond_denylist_extra item %q is not a bare file name", tool, item)
+			}
+			if refusedBondDenylistExtra[item] {
+				return fmt.Errorf("tools.%s.bond_denylist_extra: %q is already in the hard-coded bond denylist", tool, item)
+			}
+		}
 	}
 	for name, profile := range c.Profiles {
 		if !ValidName(name) {
@@ -148,11 +157,28 @@ var refusedOverlayShare = map[string]bool{
 	"auth.json":         true,
 }
 
+// refusedBondDenylistExtra lists the auth artifacts that are always on the
+// hard-coded bond denylist (see bondDenylistItems in internal/cmd/miseinit.go);
+// adding them to BondDenylistExtra is rejected to avoid confusion.
+var refusedBondDenylistExtra = map[string]bool{
+	".credentials.json": true,
+	"auth.json":         true,
+}
+
 // OverlayExtraShared returns the user-configured extra real-home items to
 // share into a tool's overlays (validated at load time).
 func (c *Config) OverlayExtraShared(tool string) []string {
 	if t, ok := c.Tools[tool]; ok {
 		return t.OverlayExtraShared
+	}
+	return nil
+}
+
+// BondDenylistExtra returns the user-configured extra items to exclude from
+// bond-mode symlink sharing (validated at load time).
+func (c *Config) BondDenylistExtra(tool string) []string {
+	if t, ok := c.Tools[tool]; ok {
+		return t.BondDenylistExtra
 	}
 	return nil
 }

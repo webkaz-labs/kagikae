@@ -5,10 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
+	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
 const (
@@ -51,8 +53,8 @@ func CmdMise(ctx context.Context, args []string) int {
 }
 
 func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode string, auto, write bool) int {
-	if mode != constants.ModeAuth && mode != modeHome && mode != modeOverlay {
-		return usageError("unsupported mise init mode %q (modes: auth, home, overlay)", mode)
+	if mode != constants.ModeAuth && mode != modeHome && mode != modeOverlay && mode != constants.ModeBond {
+		return usageError("unsupported mise init mode %q (modes: auth, home, overlay, bond)", mode)
 	}
 	if auto && mode != constants.ModeAuth {
 		return usageError("--auto applies to auth mode only: isolation modes already take effect on directory entry via [env]")
@@ -69,6 +71,7 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 	}
 	var block string
 	var entries []isolationEntry
+	var pinID string
 	if mode == constants.ModeAuth {
 		block = app.miseBlock(profileName, auto)
 	} else {
@@ -79,7 +82,16 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 		if err != nil {
 			return finish(opts, err)
 		}
-		entries = app.isolationEntries(mode, targets)
+		if mode == constants.ModeBond {
+			absDir, err := cwdAbs()
+			if err != nil {
+				return finish(opts, err)
+			}
+			pinID = paths.PinID(absDir)
+			entries = app.bondIsolationEntries(targets, pinID)
+		} else {
+			entries = app.isolationEntries(mode, targets)
+		}
 		block = app.miseIsolationBlock(profileName, mode, entries)
 	}
 	if !write {
@@ -97,9 +109,16 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 	// Prepare the isolated homes before touching .mise.toml so a failure
 	// here cannot leave the block exporting directories that do not exist
 	// (a stray kae-owned 0700 dir is harmless; the reverse is not).
-	prepare := app.prepareHome
-	if mode == modeOverlay {
+	var prepare func(tool, account string) (string, error)
+	switch mode {
+	case constants.ModeBond:
+		prepare = func(tool, account string) (string, error) {
+			return app.prepareBond(tool, account, pinID)
+		}
+	case modeOverlay:
 		prepare = app.prepareOverlay
+	default:
+		prepare = app.prepareHome
 	}
 	for _, entry := range entries {
 		if entry.Warning != "" {
@@ -115,6 +134,11 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 	fmt.Printf("Updated .mise.toml: profile %s, mode %s\n", profileName, mode)
 	fmt.Println("Next: mise trust   (mise refuses untrusted configs; its error until then is expected)")
 	return constants.ExitOK
+}
+
+// cwdAbs returns the current working directory as an absolute path.
+func cwdAbs() (string, error) {
+	return filepath.Abs(".")
 }
 
 // miseBlock renders the auth-mode marker-delimited snippet with tasks for
@@ -196,19 +220,24 @@ func (app *App) isolationEntries(mode string, targets []runTarget) []isolationEn
 	return entries
 }
 
-// miseIsolationBlock renders the home/overlay snippet: [env] entries
+// miseIsolationBlock renders the home/overlay/bond snippet: [env] entries
 // pointing each isolatable tool at its per-account kae home
 // (docs/DATA-MODEL.md), switching inside the directory only.
 func (app *App) miseIsolationBlock(profileName, mode string, entries []isolationEntry) string {
 	var b strings.Builder
 	fmt.Fprintln(&b, miseBlockStart)
-	if mode == modeOverlay {
+	switch mode {
+	case modeOverlay:
 		fmt.Fprintln(&b, "# Directory-scoped account isolation (kae pin, mode: overlay): auth and")
 		fmt.Fprintln(&b, "# session state are private to this directory while settings, skills,")
 		fmt.Fprintln(&b, "# and memory stay shared with the real home; the global live auth state")
 		fmt.Fprintln(&b, "# is never touched. After adding shared items to the real home, re-run")
 		fmt.Fprintln(&b, "# kae pin to refresh the links.")
-	} else {
+	case constants.ModeBond:
+		fmt.Fprintln(&b, "# Directory-scoped bond mode (kae bond): settings, sessions, and memory")
+		fmt.Fprintln(&b, "# are shared with the real home; credentials are private to this directory.")
+		fmt.Fprintln(&b, "# Re-run kae bond after adding new files to the real home to refresh links.")
+	default:
 		fmt.Fprintln(&b, "# Directory-scoped isolation (kae pin --mode home): account and config")
 		fmt.Fprintln(&b, "# directory switch inside this directory only; the global live auth")
 		fmt.Fprintln(&b, "# state is never touched, safe across concurrent terminals.")
@@ -224,6 +253,125 @@ func (app *App) miseIsolationBlock(profileName, mode string, entries []isolation
 	}
 	fmt.Fprintln(&b, miseBlockEnd)
 	return b.String()
+}
+
+// bondDenylistItems returns the items excluded from bond-mode symlink sharing
+// for a tool: the hard-coded auth artifacts plus user-configured extras.
+// The hard-coded list is per-tool and intentionally minimal; docs/ADAPTERS.md
+// "Isolation" is the normative reference — keep them in sync.
+func (app *App) bondDenylistItems(tool string) []string {
+	var base []string
+	switch tool {
+	case constants.ToolClaude:
+		// .credentials.json is Linux-only (macOS uses keychain), but harmless
+		// to include on all platforms: if absent the copy step is a no-op.
+		base = []string{".credentials.json"}
+	case constants.ToolCodex:
+		base = []string{"auth.json"}
+	}
+	return append(base, app.Config.BondDenylistExtra(tool)...)
+}
+
+// bondIsolationEntries resolves the per-tool env entries for bond mode.
+// BondDir is account-agnostic (one per pinID×tool), so the account field
+// carries the profile's account name for credential-copy bookkeeping only.
+func (app *App) bondIsolationEntries(targets []runTarget, pinID string) []isolationEntry {
+	entries := make([]isolationEntry, 0, len(targets))
+	for _, tgt := range targets {
+		entry := isolationEntry{Tool: tgt.Tool, Account: tgt.Account}
+		entry.EnvVar = isolationEnvVar(tgt.Tool)
+		if entry.EnvVar == "" {
+			entry.Warning = fmt.Sprintf(
+				"%s has no stable home-isolation env var; it keeps the real home (docs/ROADMAP.md)", tgt.Tool)
+			entries = append(entries, entry)
+			continue
+		}
+		entry.Dir = app.Paths.BondDir(pinID, tgt.Tool)
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+// prepareBond creates the bond directory for one tool/pinID: symlinks every
+// real-home entry except the hard-coded denylist, then copies the current
+// credential privately. Idempotent: stale symlinks are refreshed; real files
+// in the bond dir (private overrides) are left untouched.
+func (app *App) prepareBond(tool, _ string, pinID string) (string, error) {
+	bondDir := app.Paths.BondDir(pinID, tool)
+	if err := os.MkdirAll(bondDir, 0o700); err != nil {
+		return "", fmt.Errorf("create bond dir: %w", err)
+	}
+	realHome := app.realToolHome(tool)
+	if filepath.Clean(realHome) == filepath.Clean(bondDir) {
+		return "", errf(constants.ExitUnsafeRefused,
+			"the real %s home resolves to the bond dir itself; unset %s and retry",
+			tool, isolationEnvVar(tool))
+	}
+
+	denylist := app.bondDenylistItems(tool)
+	denied := make(map[string]bool, len(denylist))
+	for _, item := range denylist {
+		denied[item] = true
+	}
+
+	// Symlink every real-home entry except the denylist.
+	des, err := os.ReadDir(realHome)
+	if err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("read real %s home: %w", tool, err)
+	}
+	for _, de := range des {
+		name := de.Name()
+		if denied[name] {
+			continue
+		}
+		src := filepath.Join(realHome, name)
+		dst := filepath.Join(bondDir, name)
+		info, statErr := os.Lstat(dst)
+		if statErr != nil && !os.IsNotExist(statErr) {
+			return "", fmt.Errorf("stat bond item %s: %w", dst, statErr)
+		}
+		if statErr == nil {
+			if info.Mode()&os.ModeSymlink == 0 {
+				// Real file/dir in bond dir = private override; leave it.
+				continue
+			}
+			if current, readErr := os.Readlink(dst); readErr == nil && current == src {
+				continue // already linked correctly
+			}
+			if err := os.Remove(dst); err != nil {
+				return "", fmt.Errorf("refresh bond link %s: %w", dst, err)
+			}
+		}
+		if err := os.Symlink(src, dst); err != nil {
+			return "", fmt.Errorf("link bond item %s: %w", dst, err)
+		}
+	}
+
+	// Private-copy the current credential for each denylist item.
+	for _, item := range denylist {
+		src := filepath.Join(realHome, item)
+		dst := filepath.Join(bondDir, item)
+		data, err := os.ReadFile(src)
+		if os.IsNotExist(err) {
+			continue // tool not yet logged in; skip
+		}
+		if err != nil {
+			return "", fmt.Errorf("read credential %s: %w", src, err)
+		}
+		existing, readErr := os.ReadFile(dst)
+		if readErr == nil {
+			if string(existing) == string(data) {
+				continue // already up to date
+			}
+		} else if !os.IsNotExist(readErr) {
+			return "", fmt.Errorf("check existing credential %s: %w", dst, readErr)
+		}
+		if err := patch.WriteFileAtomic(dst, data, 0o600); err != nil {
+			return "", fmt.Errorf("copy credential to bond dir: %w", err)
+		}
+	}
+
+	return bondDir, nil
 }
 
 // cutMiseBlock splits content around the marker-delimited kagikae block:

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
 // Switch modes accepted by kae run --mode.
@@ -15,11 +16,12 @@ const (
 	modeEnv     = constants.ModeEnv
 	modeHome    = constants.ModeHome
 	modeOverlay = constants.ModeOverlay
+	modeBond    = constants.ModeBond
 )
 
 func validMode(mode string) bool {
 	switch mode {
-	case modeAuth, modeEnv, modeHome, modeOverlay:
+	case modeAuth, modeEnv, modeHome, modeOverlay, modeBond:
 		return true
 	}
 	return false
@@ -202,9 +204,13 @@ func (app *App) pinnedIsolationGuard(global bool) error {
 		return nil
 	}
 	if kind := app.firstKaeManagedIsolation(); kind != "" {
+		hint := "kae pin <profile>"
+		if kind == constants.ModeBond {
+			hint = "kae bond <profile>"
+		}
 		return errf(constants.ExitUnsupported,
-			"this directory is pinned (%s isolation): change its accounts with `kae pin <profile>`, or pass --global to act on the real home",
-			kind)
+			"this directory is pinned (%s isolation): change its accounts with `%s`, or pass --global to act on the real home",
+			kind, hint)
 	}
 	return nil
 }
@@ -231,6 +237,26 @@ func (app *App) applyGlobalScope() {
 		}
 		return value
 	}
+}
+
+// bondModeEnv prepares the bond directory for the current working directory
+// and returns the child env entry pointing the tool at it.
+func (app *App) bondModeEnv(tool, accountName string) ([]string, error) {
+	envVar := isolationEnvVar(tool)
+	if envVar == "" {
+		return nil, errf(constants.ExitUnsupported,
+			"%s has no stable home-isolation mechanism yet (see docs/ROADMAP.md)", tool)
+	}
+	absDir, err := cwdAbs()
+	if err != nil {
+		return nil, err
+	}
+	pinID := paths.PinID(absDir)
+	bondDir, err := app.prepareBond(tool, accountName, pinID)
+	if err != nil {
+		return nil, err
+	}
+	return []string{envVar + "=" + bondDir}, nil
 }
 
 // overlayModeEnv prepares the overlay home and returns the child env

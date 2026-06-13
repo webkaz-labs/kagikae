@@ -1,10 +1,10 @@
 # Scope × Environment Model (design guidance)
 
-> Status: **design guidance for a future release** (post-v0.6.0). This document
-> records the agreed account-switching model. It is not yet implemented; the
-> implemented modes are described in [DESIGN.md](DESIGN.md). When this model
-> lands, fold the normative parts into DESIGN.md / CLI.md / ADAPTERS.md and
-> reduce this file to a rationale/history note.
+> Status: **in-progress** (landing in v0.7.x). Phase 0 (kae sync → kae apply
+> rename), Phase 1 (paths/constants), and Phase 2 (kae bond) are implemented.
+> Phases 3–7 remain. When all phases land, fold the normative parts into
+> DESIGN.md / CLI.md / ADAPTERS.md and reduce this file to a rationale/history
+> note.
 
 ## 1. Backbone principle
 

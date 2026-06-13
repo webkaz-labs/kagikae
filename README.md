@@ -60,6 +60,8 @@ memory shared with your real home while auth and session state stay private
 — log in once inside the directory per account, and it persists. Variants:
 
 ```bash
+kae bond clientA               # bond: settings/sessions shared, credential
+                               # private — one login per account, persists
 kae pin clientA --mode home    # fully separate tool homes (nothing shared)
 kae pin work --mode auth --auto  # global auto-switch on entry (opt-in;
                                # needs mise activate + trusted config +

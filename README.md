@@ -64,7 +64,7 @@ kae as claude clientB          # swap credential inside the pinned dir to a
 kae bond clientA               # bond: settings/sessions shared with real home,
                                # credential private — one login per account, persists
 kae mise init --profile clientA --mode home --write  # fully separate tool homes
-kae pin work --mode auth --auto  # global auto-switch on entry (opt-in;
+kae mise init --profile work --mode auth --auto --write  # global auto-switch on entry (opt-in;
                                # needs mise activate + trusted config +
                                # `mise settings experimental=true`)
 kae unpin                      # remove the binding (.mise.toml block only)

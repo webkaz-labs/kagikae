@@ -1,10 +1,12 @@
 # Release Target: kae v0.7.1
 
-Operational safety and account lifecycle. Three additions that close daily-use
-gaps and de-risk the global-isolated `sync` mode landing in v0.7.2: a
+Operational safety and account/profile lifecycle. This release closes daily-use
+gaps and de-risks the global-isolated `sync` mode landing in v0.7.2: a
 file-driver override so smoke/container checks never touch the real login
-keychain, account removal/rename so cleanup is no longer manual keychain
-surgery, and (discovery-gated) doctor detection of orphaned keychain items.
+keychain; a comment-preserving `config.toml` writer; account removal/rename plus
+profile save/rm/set/unset so cleanup and reconfiguration no longer mean manual
+keychain surgery or hand-editing TOML; and (discovery-gated) doctor detection of
+orphaned keychain items.
 
 Previous baseline: v0.7.0 (bond mode, credential-private per-directory
 isolation, `/oauthAccount` removal, `kae pin` semantics flip, `kae as`; see
@@ -16,41 +18,87 @@ git tag v0.7.0).
   keychain driver, which ignores a temp `$HOME`; that makes claude switch
   smoke checks unsafe outside Linux (they would touch the real login keychain).
   Add an explicit override that forces the file-patch driver (`.credentials.json`
-  under `CLAUDE_CONFIG_DIR`) even on darwin. **Env var is the primary surface**
-  (`KAE_*`, name TBD against the existing `KAE_PROFILE` convention): the
-  override is an ephemeral smoke/container escape hatch, and persisting it in
-  config would silently break a real macOS login (the live claude reads the
-  keychain, not the file). A per-tool config option (`[tools.claude]`,
-  default off) is a secondary, explicit opt-in. The override changes the
-  capture/restore path to the file route, so the round-trip closes entirely on
-  files — no `security` subprocess, no real keychain access.
+  under `CLAUDE_CONFIG_DIR`) even on darwin. **Env var is the primary surface**:
+  `KAE_CLAUDE_DRIVER=file` (new `constants.EnvKaeClaudeDriver`, following the
+  existing `KAE_PROFILE` convention). The override is an ephemeral
+  smoke/container escape hatch; persisting it in config would silently break a
+  real macOS login (the live claude reads the keychain, not the file), so a
+  per-tool config option (`[tools.claude]`, default off) is only a secondary,
+  explicit opt-in. The override is read inside `claude` adapter's `driver(env)`
+  and must apply on **both the capture (`kae add`) and apply (`kae use`)
+  paths** — overriding only one side breaks the round-trip. With it set, the
+  whole round-trip closes on files: no `security` subprocess, no real keychain
+  access.
 - **`kae account rm <tool> <account>`** — remove a captured account: delete the
   snapshot dir (`accounts/<tool>/<account>`) and every secret-backend item
   (`SecretRef(tool, account, artifact)` under service `kagikae`). Today this is
   manual two-step surgery (`rm -rf` the dir plus `security
   delete-generic-password`), error-prone because it touches the keychain by
-  hand. Refuse to remove the **active** account (exit `5`) unless `--force`,
-  which also drops it from `state.json` `active` and recomputes the active
-  profile. Refuse (warn) if any `[profiles]` entry still references the account
-  (`Profile.Accounts` is a tool→account map). `--dry-run` prints the plan and
-  writes nothing. Per-tool lock held throughout.
+  hand. Refuse to remove the **active** account with exit `10`
+  (`ExitUnsafeRefused`; **not** `5`/`ExitUnsupported`, which is the OS-support
+  code) unless `--force`, which also drops it from `state.json` `active` and
+  recomputes the active profile. If any `[profiles]` entry references the
+  account (`Profile.Accounts` is a tool→account map), the comment-preserving
+  writer (below) **removes the offending `accounts.<tool>` key from each
+  profile in the same transaction**, naming the touched profiles in the output —
+  `account rm` no longer refuses on a profile reference (the v0.7.0
+  dangling-reference trap is gone now that kae can surgically edit
+  `config.toml`). Unknown account exits `7`
+  (`ExitNotFound`). `--dry-run` prints the plan (including the profile edits)
+  and writes nothing. Per-tool lock plus the config lock held throughout.
 - **`kae account rename <tool> <old> <new>`** — rename a captured account.
   Secret-backend keys cannot be renamed in place, so copy-then-delete each
   item; move the snapshot dir and metadata; update `state.json` `active[tool]`
-  if it pointed at `<old>`; **rewrite every `[profiles]` `accounts` reference
-  from `<old>` to `<new>`** (the load-bearing detail — a missed reference
-  leaves a dangling profile). Refuse if `<new>` already exists; sanitize the
-  new name with the existing account-name rule.
+  if it pointed at `<old>`. Any `[profiles]` entry referencing `<old>` for
+  `<tool>` is **rewritten to `<new>` by the comment-preserving writer (below) in
+  the same transaction**, naming the updated profiles in the output — no refuse,
+  no manual `kae edit`. Refuse with exit `10` if `<new>` already exists; unknown
+  `<old>` exits `7`; sanitize the new name with the existing account-name rule.
+  `--dry-run` prints the plan and writes nothing. Per-tool lock plus the config
+  lock held throughout.
+- **comment-preserving `config.toml` writer** (`internal/config`) — a surgical
+  editor that applies key-level mutations (remove a
+  `profiles.<name>.accounts.<tool>` entry, rewrite an account value, add or
+  remove a whole `[profiles.<name>]` table, set/clear `default_profile`) while
+  keeping the file's comments, field order, and unrelated keys intact. Today kae
+  writes `config.toml` exactly once — from the `init` string template — and
+  every later change is a manual `kae edit`; there is no round-trip writer, so
+  this is new infrastructure. **Trap**: `BurntSushi/toml` (the current
+  dependency) is Marshal/Unmarshal only and drops every comment on re-encode, so
+  a decode-then-encode round-trip would silently strip the template's
+  explanatory comments — the writer must do targeted text/AST edits instead.
+  Atomic write via `patch.WriteFileAtomic` at `0600`, under the config lock.
+  `account rm`/`rename` and every `kae profile` mutation route through it.
+- **`kae profile save|set|unset|rm|default`** — manage `[profiles]` entries
+  without hand-editing TOML (mirrors the existing `kae env set|unset|list`
+  shape, and is the scriptable, validated counterpart to free-form `kae edit`).
+  `save <name>` writes or overwrites profile `<name>` from the current
+  `state.json` active accounts (snapshot what you are running now);
+  `set <name> <tool> <account>` sets one `accounts.<tool>` mapping, creating the
+  profile if absent; `unset <name> <tool>` drops one mapping, removing the now-
+  empty profile entry if that was its last; `rm <name>` deletes the whole
+  profile. The default profile is its own verb so it never collides with the
+  per-mapping `set`/`unset`: `default <name>` points `default_profile` at an
+  existing profile, bare `default` prints the current one, and
+  `default --clear` empties it. Unknown account, tool, or profile exits `7`
+  (`ExitNotFound`); the account is validated against the captured snapshots and
+  sanitized with the existing account-name rule. `rm` (and an `unset` that
+  empties the default) refuses to leave `default_profile` dangling: removing the
+  default exits `10` (`ExitUnsafeRefused`) unless `--force`, which clears
+  `default_profile`. `--dry-run` prints the plan and writes nothing. Every
+  mutation goes through the comment-preserving writer (above) under the config
+  lock.
 - **doctor keychain-orphan detection (discovery-gated)** — warn when a
   `kagikae` secret item exists with no matching `accounts/<tool>/<account>`
   dir (a leftover from manual cleanup). **Discovery first**: confirm whether
-  the `security` CLI can *stably enumerate* all items under service `kagikae`
-  (a single `find-generic-password -s kagikae` returns only the first match;
-  `dump-keychain` is heavy and brittle). Record the finding in a discovery
-  note; implement only if enumeration is reliable, otherwise defer with the
-  reason written down. darwin + keychain backend only. With `account rm`
-  shipping in the same release, orphans become rare, so this is a nice-to-have,
-  not a gate.
+  the secret store can *stably enumerate* all items under service `kagikae`
+  (on darwin a single `find-generic-password -s kagikae` returns only the first
+  match and `dump-keychain` is heavy/brittle; on Linux `secret-tool search`
+  may enumerate cleanly). Record the finding in a discovery note; implement
+  only where enumeration is reliable, otherwise defer with the reason written
+  down. Scope this release to darwin + keychain backend; note Linux/libsecret
+  as a follow-up. With `account rm` shipping in the same release, orphans
+  become rare, so this is a nice-to-have, not a gate.
 
 ## Non-Goals (this release)
 
@@ -60,26 +108,43 @@ git tag v0.7.0).
   fully detached from the real login keychain). The `sync` tombstone (Phase 0,
   v0.7.0) spans v0.7.1 before the name is reclaimed in v0.7.2 — comfortably
   past the one-release minimum.
-- TUI, Windows, Codex keyring driver, account auto-detection, `kae profile
-  save`, `env export --dotenv --reveal` — see [ROADMAP.md](ROADMAP.md).
+- **Backup back-references are not rewritten** by `account rm`/`rename`. An
+  existing backup's `Meta.ActiveBefore` keeps the old account name; rolling
+  back to such a backup restores the old name into
+  `state.json` while the snapshot no longer exists, so the next `kae use`/
+  `apply` errors with "account not captured". Documented limitation; prune the
+  affected backups manually if needed.
+- TUI, Windows, Codex keyring driver, account auto-detection,
+  `env export --dotenv --reveal` — see [ROADMAP.md](ROADMAP.md).
 - No automatic network access.
 
 ## Acceptance Criteria
 
-- **file-driver override**: with the override env var set, `kae use claude
+- **file-driver override**: with `KAE_CLAUDE_DRIVER=file`, `kae use claude
   <account> --dry-run` on darwin reports a `.credentials.json` file action
   (not a keychain action); unset, darwin keeps the keychain driver (no
-  regression). A temp-HOME smoke check switches claude with the override and
-  asserts the real login keychain is never read or written
-  ([docs/VALIDATION.md](docs/VALIDATION.md) updated with the procedure).
+  regression). A temp-HOME smoke check switches claude with the override on
+  both `kae add` and `kae use`, and asserts the real login keychain is never
+  read or written ([docs/VALIDATION.md](docs/VALIDATION.md) updated with the
+  procedure).
 - **`kae account rm`**: removes the snapshot dir and all secret items; prints a
-  confirmation; refuses the active account without `--force`; refuses a
-  profile-referenced account; `--dry-run` writes nothing; unknown account exits
-  with guidance.
+  confirmation; refuses the active account (exit `10`) without `--force`;
+  refuses a profile-referenced account (exit `10`) naming the profiles;
+  `--dry-run` writes nothing; unknown account exits `7`.
 - **`kae account rename`**: round-trips secret items (copy+delete), moves the
-  dir, updates `state.json` and every `[profiles]` reference; refuses an
-  existing target name. A test asserts a renamed account still resolves through
-  its referencing profile.
+  dir, updates `state.json active[tool]`; refuses (exit `10`), naming the
+  profiles, when a profile references `<old>`; refuses an existing `<new>`. A test asserts the renamed
+  account resolves via `kae use` after rename.
+- **`config.toml` writer**: a programmatic edit (e.g. `kae profile set`)
+  preserves the file's leading comments, field order, and unrelated
+  `[tools.*]` keys; a round-trip test asserts comments and untouched keys
+  survive.
+- **`kae profile`**: `save` captures the active accounts into a named profile;
+  `set`/`unset` add and remove a single tool mapping (an `unset` of the last
+  mapping removes the empty profile); `default <name>` sets `default_profile`
+  (unknown profile exits `7`) and `default --clear` empties it; `rm` deletes a
+  profile and refuses (exit `10`) to orphan `default_profile` without `--force`;
+  unknown account/tool exits `7`; `--dry-run` writes nothing.
 - **doctor orphan**: discovery note committed; if implemented, a `kagikae`
   item with no snapshot dir produces a `keychain_orphan` warn-level check, and
   the JSON report keeps `schema_version: 1`.
@@ -90,11 +155,15 @@ git tag v0.7.0).
 
 1. Land the file-driver override; smoke check proves real-keychain
    non-interference (this unblocks the v0.7.2 Phase 6 gate).
-2. Land `kae account rm` / `rename`; profile-reference propagation tested.
-3. doctor orphan: run discovery, then implement or defer with the reason.
-4. `docs/VALIDATION.md` v0.7.1 smoke results; README examples verified against
+2. Land the comment-preserving `config.toml` writer (shared dependency), then
+   `kae account rm` / `rename`; profile-reference and active-account guards
+   (exit `10`) tested; backup back-reference limitation documented.
+3. Land `kae profile save|set|unset|rm` on the writer; `default_profile`
+   orphan guard (exit `10`) and `--dry-run` tested.
+4. doctor orphan: run discovery, then implement or defer with the reason.
+5. `docs/VALIDATION.md` v0.7.1 smoke results; README examples verified against
    the built binary.
-5. Tag `v0.7.1`, GitHub release.
+6. Tag `v0.7.1`, GitHub release.
 
 ---
 

@@ -58,10 +58,33 @@ func newApp(configPath string) *App {
 		Env: adapter.Env{
 			GOOS:     runtime.GOOS,
 			Home:     home,
-			Getenv:   os.Getenv,
+			Getenv:   claudeDriverGetenv(os.Getenv, cfg),
 			LookPath: exec.LookPath,
 		},
 		Now: time.Now,
+	}
+}
+
+// claudeDriverGetenv wraps a Getenv so the persisted [tools.claude] driver
+// option acts as a fallback for KAE_CLAUDE_DRIVER. The real env var always
+// wins: the config value is read only when the variable is unset, keeping the
+// ephemeral override the primary surface. A nil config leaves Getenv untouched.
+func claudeDriverGetenv(inner func(string) string, cfg *config.Config) func(string) string {
+	if cfg == nil {
+		return inner
+	}
+	configured := cfg.Tools[constants.ToolClaude].Driver
+	if configured == "" {
+		return inner
+	}
+	return func(key string) string {
+		if key == constants.EnvKaeClaudeDriver {
+			if v := inner(key); v != "" {
+				return v
+			}
+			return configured
+		}
+		return inner(key)
 	}
 }
 

@@ -45,6 +45,20 @@ unsorted JSON and rejects a re-serialized payload, so the bytes must round-trip
 unchanged. Because the claude keychain item has `claudeAiOauth` as its single
 top-level key, capturing the whole item is equivalent to capturing that key.
 
+#### File-driver override
+
+`KAE_CLAUDE_DRIVER=file` forces `claude-file-patch` even on macOS, so the whole
+round-trip (capture on `kae add`, apply on `kae use`) closes on
+`.credentials.json` under `CLAUDE_CONFIG_DIR` with no `security` subprocess and
+no real keychain access. It is read inside the adapter's `driver(env)`, so it
+applies to both the capture and apply paths; overriding only one side would
+break the round-trip. The only accepted value is `file` — any other value is
+refused as unsupported rather than silently ignored. This is an **ephemeral
+smoke/container escape hatch**: a live macOS claude reads the keychain, not the
+file, so persisting it would silently break a real login. The persisted,
+explicit opt-in counterpart is `[tools.claude]` `driver = "file"` (claude only;
+the env var takes precedence; see [DATA-MODEL.md](DATA-MODEL.md)).
+
 ### Preserved (never touched in auth mode)
 
 ```text

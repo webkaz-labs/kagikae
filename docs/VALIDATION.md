@@ -17,10 +17,31 @@ credential path. **On macOS it does not isolate the keychain-backed tools
 `security` CLI ignores `$HOME`, so their capture/switch/login against a temp
 HOME still read — and switch **writes** — the real login keychain item. Run
 the claude fixture block below on Linux only (e.g. in a container); on macOS
-stick to the read-only commands and file-based tools. cursor is darwin-only,
-so it cannot be live-switched safely in a smoke run at all (Linux reports it
-unsupported, macOS would touch the real keychain) — verify cursor on the
-real machine only.
+stick to the read-only commands and file-based tools, **or set
+`KAE_CLAUDE_DRIVER=file`** to force claude onto the file-patch driver so the
+whole capture/switch round-trip closes on `.credentials.json` and never reads
+or writes the real login keychain (see [ADAPTERS.md](ADAPTERS.md) "File-driver
+override"). cursor is darwin-only, so it cannot be live-switched safely in a
+smoke run at all (Linux reports it unsupported, macOS would touch the real
+keychain) — verify cursor on the real machine only.
+
+To exercise claude switching on macOS without touching any keychain, set **two**
+things: `KAE_CLAUDE_DRIVER=file` (claude's live credential → file driver) **and**
+`[security] secret_backend = "file"` (kae's own snapshot store → file backend,
+not the `kagikae` keychain). The driver override alone still leaves `kae add`
+writing the captured payload to the `kagikae` keychain item, which prompts a
+macOS authorization dialog.
+
+```bash
+export KAE_CLAUDE_DRIVER=file
+mkdir -p "$XDG_CONFIG_HOME/kagikae"
+printf 'version = 1\n[security]\nsecret_backend = "file"\nbackup_keep = 30\n' \
+  > "$XDG_CONFIG_HOME/kagikae/config.toml"
+# seed $CLAUDE_CONFIG_DIR/.credentials.json (or ~/.claude/.credentials.json):
+printf '{"claudeAiOauth":{"accessToken":"tok-A"}}' > "$HOME/.claude/.credentials.json"
+/tmp/kae add --no-login claude work          # "driver: claude-file-patch"
+/tmp/kae use claude work --dry-run --json    # json-pointer action, no keychain
+```
 
 ```bash
 go build -o /tmp/kae .

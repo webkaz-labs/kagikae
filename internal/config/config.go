@@ -54,6 +54,11 @@ type Tool struct {
 	OverlayExtraShared []string `toml:"overlay_extra_shared"`
 	BondDenylistExtra  []string `toml:"bond_denylist_extra"`
 	PinSharedItems     []string `toml:"pin_shared_items"`
+	// Driver, when set to constants.DriverValueFile, is the persisted, explicit
+	// opt-in counterpart to the KAE_CLAUDE_DRIVER env var (claude only). It
+	// forces the file-patch driver even on darwin. The env var takes
+	// precedence; see App env plumbing and docs/ADAPTERS.md.
+	Driver string `toml:"driver"`
 }
 
 // Profile bundles per-tool accounts under one name.
@@ -131,6 +136,14 @@ func (c *Config) validate() error {
 			}
 			if refusedPinShare[item] {
 				return fmt.Errorf("tools.%s.pin_shared_items must not share the auth credential %q", tool, item)
+			}
+		}
+		if settings.Driver != "" {
+			if tool != constants.ToolClaude {
+				return fmt.Errorf("tools.%s.driver is only valid for claude", tool)
+			}
+			if settings.Driver != constants.DriverValueFile {
+				return fmt.Errorf("tools.claude.driver %q is invalid (only %q is supported)", settings.Driver, constants.DriverValueFile)
 			}
 		}
 	}

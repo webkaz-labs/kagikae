@@ -93,6 +93,8 @@ func TestLoadErrors(t *testing.T) {
 		"bad account name":   "[profiles.p.accounts]\nclaude = \"a b\"\n",
 		"bad default":        "default_profile = \"nope\"\n",
 		"invalid toml":       "version = [\n",
+		"driver wrong value": "[tools.claude]\ndriver = \"keychain\"\n",
+		"driver wrong tool":  "[tools.codex]\ndriver = \"file\"\n",
 	}
 	for name, content := range cases {
 		if _, _, err := Load(writeConfig(t, content)); err == nil {
@@ -137,6 +139,17 @@ func TestInitialContentParses(t *testing.T) {
 	}
 	if cfg.Security.SecretBackend != "auto" {
 		t.Fatalf("unexpected: %+v", cfg.Security)
+	}
+}
+
+func TestClaudeDriverConfigOption(t *testing.T) {
+	path := writeConfig(t, "[tools.claude]\ndriver = \"file\"\n")
+	cfg, _, err := Load(path)
+	if err != nil {
+		t.Fatalf("valid driver option: %v", err)
+	}
+	if cfg.Tools["claude"].Driver != "file" {
+		t.Fatalf("driver option not loaded: %+v", cfg.Tools["claude"])
 	}
 }
 

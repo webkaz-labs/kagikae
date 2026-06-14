@@ -40,6 +40,18 @@ const (
 // directory (rendered by kae mise init, read by kae apply).
 const EnvKaeProfile = "KAE_PROFILE"
 
+// EnvKaeClaudeDriver overrides the claude credential driver. Set to
+// DriverValueFile to force the file-patch driver (.credentials.json under
+// CLAUDE_CONFIG_DIR) even on darwin, so smoke/container checks never touch
+// the real login keychain. It is an ephemeral escape hatch: a live macOS
+// claude reads the keychain, not the file, so persisting it would break a
+// real login. See docs/ADAPTERS.md and docs/VALIDATION.md.
+const EnvKaeClaudeDriver = "KAE_CLAUDE_DRIVER"
+
+// DriverValueFile is the only accepted value for EnvKaeClaudeDriver (and the
+// [tools.claude] driver config option): force the file-patch driver.
+const DriverValueFile = "file"
+
 // Driver identifiers.
 const (
 	DriverClaudeFilePatch     = "claude-file-patch"

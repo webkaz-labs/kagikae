@@ -93,6 +93,29 @@ func TestClaudeArtifactsDarwin(t *testing.T) {
 	}
 }
 
+func TestClaudeDriverOverrideForcesFileOnDarwin(t *testing.T) {
+	configDir := t.TempDir()
+	env := testEnv(t, "darwin", map[string]string{
+		constants.EnvKaeClaudeDriver: constants.DriverValueFile,
+		"CLAUDE_CONFIG_DIR":          configDir,
+	})
+	specs, err := claudeAdapter.Artifacts(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if specs[0].Kind != constants.KindJSONPointer ||
+		specs[0].Target != filepath.Join(configDir, ".credentials.json") {
+		t.Fatalf("override did not force the file driver: %+v", specs[0])
+	}
+}
+
+func TestClaudeDriverOverrideRejectsUnknownValue(t *testing.T) {
+	env := testEnv(t, "darwin", map[string]string{constants.EnvKaeClaudeDriver: "keychain"})
+	if _, err := claudeAdapter.Artifacts(context.Background(), env); !errors.Is(err, adapter.ErrUnsupported) {
+		t.Fatalf("expected unsupported for invalid override value: %v", err)
+	}
+}
+
 func TestClaudeArtifactsWindowsUnsupported(t *testing.T) {
 	env := testEnv(t, "windows", nil)
 	if _, err := claudeAdapter.Artifacts(context.Background(), env); !errors.Is(err, adapter.ErrUnsupported) {

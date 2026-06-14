@@ -52,6 +52,20 @@ func credentialsPath(env adapter.Env) string {
 }
 
 func driver(env adapter.Env) (string, error) {
+	// KAE_CLAUDE_DRIVER=file forces the file-patch driver even on darwin so
+	// smoke/container checks close the round-trip on .credentials.json and
+	// never touch the real login keychain. Read here, the override applies to
+	// both the capture (kae add) and apply (kae use) paths. The value may come
+	// straight from the env or, when unset, from [tools.claude] driver via the
+	// app-layer Getenv shim (see internal/cmd/app.go claudeDriverGetenv). Reject
+	// any other value rather than silently ignoring a typo. See docs/ADAPTERS.md.
+	if v := env.Getenv(constants.EnvKaeClaudeDriver); v != "" {
+		if v == constants.DriverValueFile {
+			return constants.DriverClaudeFilePatch, nil
+		}
+		return "", fmt.Errorf("%w: %s=%q is invalid (only %q is supported)",
+			adapter.ErrUnsupported, constants.EnvKaeClaudeDriver, v, constants.DriverValueFile)
+	}
 	switch env.GOOS {
 	case "darwin":
 		return constants.DriverClaudeKeychainPatch, nil
@@ -118,9 +132,11 @@ func (c Claude) Detect(ctx context.Context, env adapter.Env) (adapter.Info, erro
 func (c Claude) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	tool := constants.ToolClaude
 	if _, err := driver(env); err != nil {
+		// driver() fails either for an unsupported platform or for an invalid
+		// KAE_CLAUDE_DRIVER value; its own message names the real cause, so
+		// surface it verbatim rather than assuming a platform problem.
 		return []adapter.Check{{Tool: tool, Code: constants.CheckUnsupported,
-			Status: constants.StatusError,
-			Message: fmt.Sprintf("claude auth switching is not supported on %s", env.GOOS)}}
+			Status: constants.StatusError, Message: err.Error()}}
 	}
 	checks := []adapter.Check{adapter.BinaryCheck(env, tool, "claude")}
 	info, err := c.Detect(ctx, env)

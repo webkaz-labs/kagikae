@@ -39,6 +39,12 @@ backup_keep = 30               # backups retained per pruning pass
 
 [tools.claude]
 enabled = true
+# Force the file-patch credential driver (.credentials.json under
+# CLAUDE_CONFIG_DIR) even on macOS — the persisted, explicit opt-in
+# counterpart to the KAE_CLAUDE_DRIVER=file env var (claude only; the env var
+# takes precedence). Only "file" is accepted. Persisting it breaks a real macOS
+# login (live claude reads the keychain), so it is for smoke/container use:
+# driver = "file"
 
 [tools.codex]
 enabled = true

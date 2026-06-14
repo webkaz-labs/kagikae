@@ -259,7 +259,7 @@ in the same transaction.
   ],
   "profiles": [
     {"name": "personal", "label": "Personal",
-     "accounts": {"claude": "work"}, "active": false},
+     "accounts": {"claude": "personal"}, "active": false},
     {"name": "work", "accounts": {"claude": "work"}, "active": true}
   ]
 }

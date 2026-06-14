@@ -137,6 +137,15 @@ EDITOR=true /tmp/kae edit                          # validate round-trip
 /tmp/kae account rm codex work2 --force --json     # drops active + profile ref
 /tmp/kae account rm codex ghost; echo $?           # 7 (not_found)
 
+# v0.7.1 surfaces (profile lifecycle; same comment-preserving writer):
+/tmp/kae profile set dev codex work2               # creates/updates a mapping
+/tmp/kae profile default dev                       # sets default_profile
+/tmp/kae profile default                           # prints the current default
+/tmp/kae profile save snapshot                     # from the active accounts
+/tmp/kae profile rm dev; echo $?                   # 10 if default (no --force)
+/tmp/kae profile unset dev codex                   # last mapping removes profile
+#   assert: comments survive; default_profile cleared when its profile is removed
+
 # copilot is config.json-pointer based (kae never touches the keychain
 # tokens), so it is safe on macOS; seed ~/.copilot/config.json with the JSONC
 # shape (leading // comments + lastLoggedInUser/loggedInUsers/trustedFolders):

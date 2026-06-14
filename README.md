@@ -25,6 +25,8 @@ directory, **`run`** wraps one process.
 ```bash
 kae init                       # create config
 kae edit                       # open it in $EDITOR (profiles live here)
+kae profile save work          # or manage profiles without hand-editing TOML:
+                               # save / set / unset / rm / default
 kae doctor                     # check environment and live auth
 
 # register accounts (official login flow + snapshot; or --no-login to

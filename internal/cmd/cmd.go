@@ -86,6 +86,8 @@ func Root(args []string) int {
 		return CmdAccounts(ctx, args[1:])
 	case "account":
 		return CmdAccount(ctx, args[1:])
+	case "profile":
+		return CmdProfile(ctx, args[1:])
 	case "status":
 		return CmdStatus(ctx, args[1:])
 	case "backup":

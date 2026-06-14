@@ -34,6 +34,11 @@ kae mise init [--profile P] [--mode auth|home|overlay|bond|pin] [--auto] [--writ
 kae accounts [--json]                # registered accounts, active markers
 kae account rm <tool> <account> [--force]      # delete a captured account
 kae account rename <tool> <old> <new>          # rename a captured account
+kae profile save <name>              # snapshot the active accounts into a profile
+kae profile set <name> <tool> <account>        # set one profile mapping
+kae profile unset <name> <tool>      # drop one profile mapping
+kae profile rm <name> [--force]      # delete a profile
+kae profile default [<name>|--clear] # show or set default_profile
 kae status [--json]                  # full status report
 kae backup list [--json]             # list switch backups
 kae rollback [--to <backup-id>]      # restore the most recent (or given) backup
@@ -144,6 +149,26 @@ through a comment-preserving writer (comments, field order, and unrelated keys
 survive). Limitation: existing backups are **not** rewritten — a backup's
 `Meta.ActiveBefore` keeps the old account name (see
 [DATA-MODEL.md](DATA-MODEL.md)).
+
+## kae profile Semantics
+
+`kae profile` manages `[profiles]` entries without hand-editing TOML (the
+scriptable, validated counterpart to `kae edit`); every mutation goes through
+the comment-preserving writer under the config lock and supports `--dry-run`:
+
+- `save <name>` overwrites profile `<name>` from the current `state.json`
+  active accounts (a hand-written `label` is preserved; stale tool mappings are
+  not). No active accounts exits `7`.
+- `set <name> <tool> <account>` sets one `accounts.<tool>` mapping, creating
+  the profile if absent. The account must be captured (else exit `7`); the
+  profile name, tool, and account are validated.
+- `unset <name> <tool>` drops one mapping; if it was the last, the now-empty
+  profile is removed (and `default_profile` cleared if it pointed there).
+  Unknown profile or tool exits `7`.
+- `rm <name>` deletes the whole profile. Removing the `default_profile` exits
+  `10` unless `--force`, which also clears `default_profile`. Unknown exits `7`.
+- `default <name>` sets `default_profile` (unknown profile exits `7`); bare
+  `default` prints the current value; `default --clear` empties it.
 
 ## kae use and kae apply Semantics
 

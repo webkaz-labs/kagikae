@@ -69,14 +69,27 @@ func (e *Editor) RemoveProfileAccount(profile, tool string) bool {
 	return e.doc.First("profiles", profile, "accounts", tool).Remove()
 }
 
+// ClearProfileAccounts removes the [profiles.<profile>.accounts] subtable
+// while leaving the profile's other keys (e.g. label) intact. It reports
+// whether the subtable existed. Used by profile save to overwrite the account
+// set without dropping a hand-written label.
+func (e *Editor) ClearProfileAccounts(profile string) bool {
+	return e.removeSectionsByPrefix(parser.Key{"profiles", profile, "accounts"})
+}
+
 // RemoveProfile removes the whole [profiles.<profile>] section and every
 // subtable under it (e.g. .accounts). It reports whether anything was removed.
 func (e *Editor) RemoveProfile(profile string) bool {
-	prefix := parser.Key{"profiles", profile}
+	return e.removeSectionsByPrefix(parser.Key{"profiles", profile})
+}
+
+// removeSectionsByPrefix drops every section whose table name is prefixed by
+// key (the section itself and any subtables), reporting whether any matched.
+func (e *Editor) removeSectionsByPrefix(key parser.Key) bool {
 	kept := e.doc.Sections[:0]
 	removed := false
 	for _, s := range e.doc.Sections {
-		if prefix.IsPrefixOf(s.TableName()) {
+		if key.IsPrefixOf(s.TableName()) {
 			removed = true
 			continue
 		}

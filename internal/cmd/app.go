@@ -97,6 +97,19 @@ func (app *App) requireConfig() error {
 	return nil
 }
 
+// requireConfigFile is requireConfig plus a check that config.toml exists on
+// disk, so config mutations never materialize a file from the editor on empty
+// content. Fails with a kae init pointer when absent.
+func (app *App) requireConfigFile() error {
+	if err := app.requireConfig(); err != nil {
+		return err
+	}
+	if _, err := os.Stat(app.ConfigPath); os.IsNotExist(err) {
+		return errf(constants.ExitNotFound, "config %s does not exist yet (run: kae init)", app.displayPath(app.ConfigPath))
+	}
+	return nil
+}
+
 // secretBackend resolves the configured secret backend.
 func (app *App) secretBackend() (secret.Backend, error) {
 	be, err := secret.Resolve(app.Config.Security.SecretBackend, app.Env.GOOS,

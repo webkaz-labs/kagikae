@@ -47,6 +47,20 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   of `~/.claude.json` is forbidden in code review, not just in docs.
 - JSON contract tokens live in `internal/constants`; never inline literals.
 
+## Example Names in Docs and Tests
+
+Never use real account names, profile names, or email addresses in docs,
+test fixtures, code comments, or commit messages. Use only generic placeholders:
+
+| Context | Allowed names |
+|---------|---------------|
+| Profile names | `clientA`, `clientB`, `work`, `personal` |
+| Account names | `work`, `personal`, `clientA`, `clientB` |
+| Tool examples | the real tool name (`claude`, `codex`, etc.) |
+
+Existing test fixtures use `"work"` and `"personal"` as the canonical
+account-name placeholders — match that style. Never use a real login handle.
+
 ## Documentation Update Checklist
 
 For every change, decide and report "changed / no change needed" for each:

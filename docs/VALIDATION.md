@@ -184,18 +184,18 @@ metadata files written by capture/switch/rollback.
 
 All acceptance criteria passed:
 
-- **bond gate**: `kae bond personal` wrote `.mise.toml` with CLAUDE_CONFIG_DIR →
+- **bond gate**: `kae bond clientA` wrote `.mise.toml` with CLAUDE_CONFIG_DIR →
   `isolation/<pin-id>/claude/bond`; dir contained `.credentials.json` at `0600`
   and symlinks for all other real-home items; `claude -p "say AUTH-OK"` returned
   AUTH-OK; `~/.claude.json` MD5 unchanged before and after.
 - **Phase 3**: `kae use claude work --dry-run` showed exactly 1 action (keychain
   `/claudeAiOauth`); no `/oauthAccount` in output.
-- **Phase 4**: `kae pin personal` wrote pin-mode block
+- **Phase 4**: `kae pin clientA` wrote pin-mode block
   (`isolation/<pin-id>/claude/pin/work/config`); legacy overlay-mode block
   triggered migration warning on stderr; `kae run --mode pin … -- /usr/bin/true`
   succeeded.
-- **Phase 5 (bond)**: `kae as claude main` inside bonded dir printed "Switched …
+- **Phase 5 (bond)**: `kae as claude work` inside bonded dir printed "Switched …
   bond dir; sessions/settings unchanged".
-- **Phase 5 (pin)**: `kae as claude side` inside pinned dir prepared
-  `…/pin/personal/config` and updated `.mise.toml` CLAUDE_CONFIG_DIR to the new
+- **Phase 5 (pin)**: `kae as claude clientB` inside pinned dir prepared
+  `…/pin/clientB/config` and updated `.mise.toml` CLAUDE_CONFIG_DIR to the new
   account path.

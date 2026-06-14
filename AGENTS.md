@@ -45,6 +45,10 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   paths need a redaction test.
 - Mixed-state files are patched by JSON Pointer only; whole-file replacement
   of `~/.claude.json` is forbidden in code review, not just in docs.
+- `config.toml` edits go through the comment-preserving `config.Editor` via
+  `App.editConfig` (under the config lock). A decode-then-encode round-trip
+  (BurntSushi `config.Load` → re-`Marshal`) is forbidden: it silently drops
+  every user comment.
 - JSON contract tokens live in `internal/constants`; never inline literals.
 
 ## Example Names in Docs and Tests

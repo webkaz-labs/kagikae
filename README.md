@@ -39,6 +39,11 @@ kae use claude personal        # one tool
 
 kae                            # what is active
 kae rollback                   # undo the last switch
+
+# clean up captured accounts (snapshot dir + secret items, profile
+# references updated in the same step):
+kae account rename claude work work-old
+kae account rm claude work-old   # --force to remove the active one
 ```
 
 `kae use` backs up the live state before every write and `kae rollback`

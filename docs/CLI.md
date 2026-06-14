@@ -32,6 +32,8 @@ kae env list [--json]                              # profiles (names only, no va
 kae mise init [--profile P] [--mode auth|home|overlay|bond|pin] [--auto] [--write]
                                      # low-level form of pin/bond (preview first)
 kae accounts [--json]                # registered accounts, active markers
+kae account rm <tool> <account> [--force]      # delete a captured account
+kae account rename <tool> <old> <new>          # rename a captured account
 kae status [--json]                  # full status report
 kae backup list [--json]             # list switch backups
 kae rollback [--to <backup-id>]      # restore the most recent (or given) backup
@@ -117,6 +119,31 @@ supported yet.
 `kae add --no-login <tool> <account>` snapshots the current live auth state
 under the name without launching anything (it supports `--dry-run`; the
 login flow does not, and `--restore` requires the login flow).
+
+## kae account Semantics
+
+`kae account rm <tool> <account>` deletes a captured account: its snapshot
+directory and every secret-backend item. It refuses the **active** account
+with exit `10` (`unsafe_refused`) unless `--force`, which also drops the tool
+from `state.json` `active` and recomputes the active profile. Any `[profiles]`
+entry that maps the tool to the account has that `accounts.<tool>` key removed
+in the same run (the profiles are named in the output); `kae account rm` never
+refuses on a profile reference. Unknown account exits `7` (`not_found`).
+`--dry-run` prints the plan (including the profile edits) and writes nothing.
+
+`kae account rename <tool> <old> <new>` renames a captured account: it
+copy-then-deletes each secret item (backend keys cannot be renamed in place),
+moves the snapshot directory and metadata, updates `state.json active[tool]`
+if it pointed at `<old>`, and rewrites every `[profiles]` reference from
+`<old>` to `<new>` (named in the output). It refuses an existing `<new>` with
+exit `10`, an unknown `<old>` with exit `7`, and sanitizes `<new>` with the
+account-name rule. `--dry-run` writes nothing.
+
+Both hold the per-tool lock plus the config lock, and edit `config.toml`
+through a comment-preserving writer (comments, field order, and unrelated keys
+survive). Limitation: existing backups are **not** rewritten — a backup's
+`Meta.ActiveBefore` keeps the old account name (see
+[DATA-MODEL.md](DATA-MODEL.md)).
 
 ## kae use and kae apply Semantics
 
@@ -207,7 +234,7 @@ to migrate to bond mode (settings/sessions shared, credential private).
 | `7` | `not_found` | account / profile / backup not found |
 | `8` | `permission` | file permission or access error |
 | `9` | `secret_store` | secret backend unavailable |
-| `10` | `unsafe_refused` | live state failed a structure guard; write refused |
+| `10` | `unsafe_refused` | a write was refused as unsafe: a structure guard failed, or an account remove/rename would hit the active account (no `--force`) or overwrite an existing one |
 | `11` | `auth_unchanged` | login flow exited without changing auth; nothing captured |
 | `64` | `usage` | usage / flag error |
 

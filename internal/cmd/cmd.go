@@ -84,6 +84,8 @@ func Root(args []string) int {
 		return removedCommand(args[0], "v0.5.0", "kae (the bare status summary)")
 	case "accounts":
 		return CmdAccounts(ctx, args[1:])
+	case "account":
+		return CmdAccount(ctx, args[1:])
 	case "status":
 		return CmdStatus(ctx, args[1:])
 	case "backup":

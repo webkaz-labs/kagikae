@@ -222,6 +222,12 @@ removes/skips it instead of writing an empty value). After a successful
 switch, backups beyond `backup_keep` are pruned oldest-first (metadata and
 secret payloads together).
 
+**`account rm`/`rename` do not rewrite existing backups.** A backup's
+`active_before` keeps the old account name, so rolling back to a backup taken
+before a remove/rename restores that name into `state.json` while the snapshot
+no longer exists under it; the next `kae use`/`apply` then errors with "account
+not captured". Prune the affected backups manually if this matters.
+
 ## Status Vocabulary
 
 Defined in `internal/constants`; JSON uses exactly these tokens:

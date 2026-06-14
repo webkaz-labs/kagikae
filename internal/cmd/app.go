@@ -14,6 +14,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/lock"
+	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -146,6 +147,48 @@ func releaseLocks(locks []*lock.Lock) {
 	for _, l := range locks {
 		l.Release()
 	}
+}
+
+// acquireConfigLock takes the shared config lock so config.toml edits do not
+// race other kae processes. Released by the caller.
+func (app *App) acquireConfigLock() (*lock.Lock, error) {
+	l, err := lock.Acquire(app.Paths.LocksDir(), "config")
+	if err != nil {
+		if errors.Is(err, lock.ErrBusy) {
+			return nil, errf(constants.ExitLockBusy, "another kae process is editing the config; retry shortly")
+		}
+		return nil, err
+	}
+	return l, nil
+}
+
+// editConfig applies mutate to config.toml through the comment-preserving
+// editor, writes it back atomically, and reloads app.Config. The caller holds
+// the config lock. This is the single config-mutation seam shared by
+// account rm/rename and the kae profile commands.
+func (app *App) editConfig(mutate func(*config.Editor)) error {
+	data, err := os.ReadFile(app.ConfigPath)
+	if err != nil {
+		return fmt.Errorf("read config for edit: %w", err)
+	}
+	ed, err := config.NewEditor(data)
+	if err != nil {
+		return err
+	}
+	mutate(ed)
+	out, err := ed.Bytes()
+	if err != nil {
+		return err
+	}
+	if err := patch.WriteFileAtomic(app.ConfigPath, out, 0o600); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	cfg, _, err := config.Load(app.ConfigPath)
+	if err != nil {
+		return fmt.Errorf("reload config after edit: %w", err)
+	}
+	app.Config = cfg
+	return nil
 }
 
 // cmdError carries a deterministic exit code with its message.

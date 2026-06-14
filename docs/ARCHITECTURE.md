@@ -20,7 +20,7 @@ kagikae/
       copilot/
     artifact/             # artifact primitives: json-pointer / file / keychain
     keychain/             # security-CLI access to upstream tools' keychain items
-    config/               # TOML config parse/validate/defaults
+    config/               # TOML config parse/validate/defaults + comment-preserving editor
     constants/            # JSON contract vocabulary (status, codes, drivers)
     paths/                # XDG resolution for config/data/state/locks
     secret/               # secret backend interface + keychain/libsecret/file
@@ -132,7 +132,9 @@ children run through the `runner.RunInteractive` seam.
 Advisory `flock`-based locks per tool under the runtime dir. Lock acquisition
 is non-blocking; a busy lock fails with `lock_busy` (exit 4) instead of
 queueing, because a queued switch could interleave with the other process's
-restore step.
+restore step. A separate `config` lock (same mechanism, name `config`) guards
+`config.toml` edits; commands that mutate both per-tool state and config
+(`account rm`/`rename`) take the tool lock first, then the config lock.
 
 ## Caching
 
@@ -155,3 +157,10 @@ None in v0.1.0. Commands are short-lived and each re-reads live state.
 - Codex `auto` credential store resolves to keyring only when the keyring is
   usable; presence of `auth.json` is the practical signal that file mode is
   in effect.
+- `config.toml` is read with BurntSushi/toml (`config.Load`) but **edited**
+  with `config.Editor` (github.com/creachadair/tomledit), because BurntSushi
+  drops every comment on re-encode. Programmatic config mutations
+  (`account rm`/`rename`, `kae profile`) must go through `App.editConfig` /
+  the Editor, never a decode-then-encode round-trip, or user comments are
+  silently lost. After writing, `editConfig` reloads `app.Config` so the
+  in-memory view matches disk.

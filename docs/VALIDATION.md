@@ -128,6 +128,15 @@ EDITOR=true /tmp/kae edit                          # validate round-trip
 #   assert: the "other" sibling key in auth.json is untouched
 /tmp/kae doctor --json                             # opencode checks present
 
+# v0.7.1 surfaces (account lifecycle; config.toml comment-preserving edits):
+#   seed a config.toml with a profile that references the account plus a
+#   comment, then:
+/tmp/kae account rm claude work; echo $?           # 10 if active (no --force)
+/tmp/kae account rename codex work work2 --json    # rewrites profile refs
+#   assert: config.toml comments and unrelated keys survive the edit
+/tmp/kae account rm codex work2 --force --json     # drops active + profile ref
+/tmp/kae account rm codex ghost; echo $?           # 7 (not_found)
+
 # copilot is config.json-pointer based (kae never touches the keychain
 # tokens), so it is safe on macOS; seed ~/.copilot/config.json with the JSONC
 # shape (leading // comments + lastLoggedInUser/loggedInUsers/trustedFolders):

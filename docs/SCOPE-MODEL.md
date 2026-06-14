@@ -3,8 +3,9 @@
 > Status: **Phases 0–5 implemented** (v0.7.0). Phase 0 (kae sync → kae apply
 > rename), Phase 1 (paths/constants), Phase 2 (kae bond), Phase 3 (/oauthAccount
 > removal), Phase 4 (kae pin semantics flip), Phase 5 (kae as) are complete.
-> Phase 6 (kae sync global isolated mode) deferred to v0.8.0+ (tombstone
-> constraint: must span at least one release after Phase 0). Phase 7 (docs
+> Phase 6 (kae sync global isolated mode) deferred to v0.7.2 (tombstone
+> constraint: must span at least one release after Phase 0 in v0.7.0; v0.7.1
+> sits in between, reclaiming the `sync` name in v0.7.2). Phase 7 (docs
 > fold-down) is this update. Normative parts have been folded into DESIGN.md /
 > CLI.md / ADAPTERS.md; this file now serves as rationale/history.
 

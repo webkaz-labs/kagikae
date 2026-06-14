@@ -3,10 +3,11 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target (v0.6.0, adapter coverage — copilot/cursor/opencode, the
-gemini → agy transition — and the pinned-directory guard) lives in
-[RELEASE.md](RELEASE.md); what remains beyond it is hardening and platform
-coverage, ordered below by user impact.
+The active target (v0.7.1 — file-driver override, account rm/rename,
+discovery-gated doctor orphan detection) lives in [RELEASE.md](RELEASE.md).
+The next planned target is v0.7.2 (Phase 6, the global-isolated `kae sync`
+mode; see [SCOPE-MODEL.md](SCOPE-MODEL.md)). What remains beyond those is
+hardening and platform coverage, ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 
@@ -27,22 +28,24 @@ coverage, ordered below by user impact.
   bootstrapping (today values are injection-only by design).
 - **Performance polish**: combine/cache the multiple `security` subprocess
   calls per macOS switch; run per-tool `Detect` concurrently in `status`.
-- **claude driver override for isolated smoke checks**: on macOS the
-  keychain driver ignores temp `$HOME`s, so claude switch smoke checks can
-  only run safely on Linux today; provide an explicit file-driver override
-  (env var or config) so containers and smoke environments never touch the
-  real login keychain.
+- **claude driver override for isolated smoke checks** *(v0.7.1 — see
+  [RELEASE.md](RELEASE.md))*: on macOS the keychain driver ignores temp
+  `$HOME`s, so claude switch smoke checks can only run safely on Linux today;
+  an explicit file-driver override (env var primary, config opt-in secondary)
+  lets containers and smoke environments never touch the real login keychain.
+  Also the safety prerequisite for the v0.7.2 Phase 6 real-machine gate.
 
-## Command-system expansion (v0.7.0 candidate)
+## Command-system expansion
 
-Daily-use ergonomics, to be designed together as mise-style verbs once
-v0.6.0 ships, so the surface stays coherent rather than accreting ad hoc:
+Daily-use ergonomics, designed together as mise-style verbs so the surface
+stays coherent rather than accreting ad hoc. Account delete/rename graduates
+to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
 
 - **`kae profile save <name>`**: snapshot the current active set into a
   named profile, instead of hand-editing config via `kae edit`.
-- **Account / profile delete and update**: `kae account rm`, `kae profile
-  rm` / set — today account removal is manual (delete the snapshot dir and
-  the keychain secret item).
+- **Account rm/rename** *(v0.7.1 — see [RELEASE.md](RELEASE.md))*: `kae
+  account rm` / `kae account rename`, replacing manual snapshot-dir + keychain
+  surgery. **`kae profile rm` / set** remain candidates here.
 - **`kae ls`**: a mise-style listing of accounts and profiles in one view
   (today split across `kae accounts` and `kae status`).
 - **Account-name auto-detection**: each adapter exposes the live login

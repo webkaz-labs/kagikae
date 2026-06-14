@@ -219,6 +219,31 @@ metadata files written by capture/switch/rollback.
 
 ## Release Acceptance Log
 
+### v0.7.1 (2026-06-15, macOS darwin 24.6.0)
+
+Temp-HOME smoke with the `v0.7.1` binary (file secret backend). All criteria
+passed:
+
+- **file-driver override**: with `KAE_CLAUDE_DRIVER=file`, `kae use claude work
+  --dry-run` reported a `json-pointer` action on `~/.claude/.credentials.json`
+  (driver `claude-file-patch`); unset, `kae status` reported
+  `claude-keychain-patch` (no regression). `kae add`/`use` round-tripped on
+  files with no `security` subprocess.
+- **account rename**: `kae account rename claude work work2` moved the snapshot,
+  copy+deleted the secret, set `active_updated`, and rewrote the referencing
+  profile's mapping to `work2`; the config's leading comment survived the edit.
+- **account rm**: refused the active account with exit `10`, exited `7` for an
+  unknown account, named the touched profile, and `--dry-run` wrote nothing.
+- **kae profile**: `set`/`default`/`save`/`unset`/`rm` round-tripped;
+  `default_profile` was set and shown; removing the default refused without
+  `--force`; unsetting a profile's last mapping removed it and cleared the
+  default.
+- **doctor orphan**: deferred per the committed discovery note (darwin keychain
+  cannot enumerate by service via the `security` CLI); see
+  [SECURITY.md](SECURITY.md).
+- `mise run check` green; JSON kept `schema_version: 1`, stable tokens, `[]`
+  arrays.
+
 ### v0.7.0 (2026-06-14, macOS darwin 24.6.0)
 
 All acceptance criteria passed:

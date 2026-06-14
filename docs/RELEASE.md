@@ -1,4 +1,101 @@
-# Release Target: kae v0.7.1
+# Release Target: kae v0.7.2
+
+Phase 6: `kae sync <account>` — the global isolated mode, and the last mode in
+the scope×environment model. It makes a per-account private tool home visible
+to **every** terminal by symlink-swapping the real `~/.claude` / `~/.codex` to
+a kae-managed `synchomes/<tool>/<account>/`. This is the highest-risk mode
+(it touches the real tool home, not just a directory's `.mise.toml`), so it
+ships behind a real-machine gate that the v0.7.1 file-driver override now lets
+us run fully detached from the real login keychain.
+
+Previous baseline: v0.7.1 (file-driver override, `kae account rm`/`rename`,
+`kae profile`, comment-preserving config writer; see git tag v0.7.1).
+
+## Scope
+
+- **`kae sync <account>`** (new `internal/cmd/sync_global.go`,
+  `CmdSyncGlobal`) — prepare `synchomes/<tool>/<account>/` as a full private
+  tool home, then **symlink-swap** the real tool home to it. **First run for a
+  tool**: back up the real dir to `~/.claude.kae-backup-<ts>` (resp.
+  `~/.codex.kae-backup-<ts>`), create the symlink, verify it resolves, and
+  roll back the backup on any failure. **Subsequent re-points**: build a temp
+  symlink and `rename` it over the existing one (atomic; no window where the
+  home is missing). Record the active sync account in `state.json`. claude and
+  codex only (they have a redirectable home); other tools are unsupported
+  (exit `5`).
+- **`kae unsync [<tool>]`** — the escape hatch (teardown must ship with the
+  swap, never after): remove the kae symlink and restore the most recent
+  `*.kae-backup-<ts>` in its place; if no backup exists, refuse (exit `10`)
+  rather than leave the user with no tool home. Clears the sync entry from
+  `state.json`.
+- **`sync` name reclaim** — `Root()` routes `case "sync"` to `CmdSyncGlobal`,
+  removing the v0.7.0 tombstone (the removed-command pointer to `apply`). This
+  is safe only because v0.7.1 shipped in between: the tombstone spanned one
+  full release, so `kae sync` has not silently changed meaning within a single
+  version.
+- **isolation guard + status** (`internal/cmd/modes.go`) — the mode classifier
+  learns `SyncHomeDir`; the guard resolves `os.Readlink(~/.claude)` to detect
+  that a tool home is a kae sync home, so `kae use`/`add`/`apply` behave
+  correctly (and `--global` still reaches real state). `kae status` reports the
+  active sync account per tool.
+- **doctor** — a check that a tool home symlink points at a live
+  `synchomes/<tool>/<account>/` (warn on a dangling sync symlink or a missing
+  backup, so a half-torn-down swap is visible).
+
+## Non-Goals (this release)
+
+- **Live bidirectional sync / watcher daemon** — `sync` shares nothing between
+  accounts and does not merge changes back to a shared home; it is a global
+  *switch* of which private home is live, not a sync engine. The §6 finding
+  (claude self-heals `/oauthAccount` from the token) means no copy+patch is
+  needed. A resident watcher conflicts with the CLI-only design
+  ([SCOPE-MODEL.md](SCOPE-MODEL.md) §6).
+- **No mise hook integration** — `sync` is global, not per-directory, so it
+  needs no enter/leave hook; it is a one-shot home swap.
+- **Tools without a redirectable home** (agy, opencode, cursor, copilot) —
+  `auth` / `run --mode env` only, unchanged.
+- TUI, Windows, Codex keyring driver — see [ROADMAP.md](ROADMAP.md).
+- No automatic network access.
+
+## Acceptance Criteria
+
+- **real-machine gate** (required before merge): on a staging machine with a
+  disposable `~/.claude`, `kae sync <account>` swaps the home and a
+  fresh-process `claude -p '' --model haiku` returns AUTH-OK; the real login
+  keychain is not polluted (the swap targets the file home, exercised with the
+  v0.7.1 file-driver override). `kae unsync` restores the original `~/.claude`
+  byte-for-byte from the backup. Recorded in
+  [VALIDATION.md](VALIDATION.md).
+- **first-run safety**: with no prior swap, `kae sync` backs up the real dir,
+  symlinks, and a simulated failure mid-swap rolls back to the original dir
+  (temp-HOME test).
+- **re-point atomicity**: a second `kae sync <other>` re-points without ever
+  leaving the home path absent (temp-HOME test asserts the path always
+  resolves).
+- **`sync` reclaim**: `kae sync <account>` runs the global swap; the v0.7.0 →
+  `apply` tombstone is gone; `kae apply` is unaffected.
+- **unsync**: removes the symlink and restores the backup; refuses (exit `10`)
+  when no backup exists; clears `state.json`.
+- **unsupported tools**: `kae sync` for agy/opencode/cursor/copilot exits `5`.
+- `mise run check` passes; JSON keeps `schema_version: 1`, stable tokens, `[]`
+  arrays; redaction tests cover any new output path.
+
+## Release Steps
+
+1. Land `kae sync` / `kae unsync` with the first-run backup, atomic re-point,
+   and rollback; temp-HOME tests green.
+2. Reclaim the `sync` name (remove the tombstone) and update help; bump
+   `toolVersion` to v0.7.2.
+3. Run the real-machine gate on a staging machine (disposable `~/.claude`);
+   record results in `docs/VALIDATION.md`.
+4. Phase 7 docs fold-down: retire `docs/SCOPE-MODEL.md` into the permanent
+   design docs now that the whole model is implemented (or keep with a reason).
+5. README examples verified against the built binary.
+6. Tag `v0.7.2`, GitHub release.
+
+---
+
+# kae v0.7.1 (released 2026-06-15)
 
 Operational safety and account/profile lifecycle. This release closes daily-use
 gaps and de-risks the global-isolated `sync` mode landing in v0.7.2: a

@@ -28,6 +28,15 @@ hardening and platform coverage, ordered below by user impact.
   bootstrapping (today values are injection-only by design).
 - **Performance polish**: combine/cache the multiple `security` subprocess
   calls per macOS switch; run per-tool `Detect` concurrently in `status`.
+- **doctor keychain-orphan detection** *(discovery done in v0.7.1, deferred)*:
+  warn when a `kagikae` secret item has no matching snapshot dir. Blocked on
+  enumeration — the darwin keychain cannot list items by service via the
+  `security` CLI (`find-generic-password -s` returns only the first match;
+  `dump-keychain` is heavy/brittle). Feasible for the `file` backend
+  (`readdir`) and Linux `libsecret` (`secret-tool search --all`); needs a
+  `Backend` enumeration method. Low priority now that `kae account rm` removes
+  the snapshot and secrets together, making orphans rare. See
+  [SECURITY.md](SECURITY.md) for the discovery note.
 - **claude driver override for isolated smoke checks** *(v0.7.1 — see
   [RELEASE.md](RELEASE.md))*: on macOS the keychain driver ignores temp
   `$HOME`s, so claude switch smoke checks can only run safely on Linux today;

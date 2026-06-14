@@ -32,6 +32,28 @@ here are part of the command contract.
 - `kae` never stores secrets in TOML and never echoes captured values back
   for confirmation.
 
+### Secret enumeration (discovery note, v0.7.1)
+
+The `Backend` interface is get/set/delete by key only — it cannot list all
+items under the service. A `doctor` "keychain orphan" check (a secret item
+with no matching `accounts/<tool>/<account>` snapshot dir) would need that
+enumeration, and the discovery for it is **deferred to a follow-up** for this
+reason:
+
+- **darwin keychain (the scoped backend): cannot enumerate via the `security`
+  CLI.** `security find-generic-password -s kagikae` returns only the **first**
+  matching item, not all of them (verified empirically against a scratch
+  keychain). `security dump-keychain` does list every item, but it dumps the
+  user's entire login keychain, can prompt for access per item, and is brittle
+  — not a stable enumeration path.
+- The `file` backend (`readdir`) and Linux `libsecret`
+  (`secret-tool search --all`) *can* enumerate, so the check is feasible there
+  as a follow-up.
+
+Since `kae account rm` (v0.7.1) deletes the snapshot dir and every secret item
+together, orphans are now rare, so this check is a nice-to-have rather than a
+gate. Tracked in [ROADMAP.md](ROADMAP.md).
+
 ## Subprocesses
 
 - `security`, `secret-tool`, and binary detection run through

@@ -45,7 +45,7 @@ func CmdPin(ctx context.Context, args []string) int {
 		if shared || isolated {
 			return usageError("--shared/--isolated do not apply to `kae pin <tool> <account>`; the directory's existing mode is kept")
 		}
-		return runPinRebind(ctx, app, opts, positionals[0], positionals[1])
+		return runRebind(ctx, app, opts, positionals[0], positionals[1])
 	case 0, 1:
 		var profileName string
 		if len(positionals) == 1 {
@@ -111,7 +111,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 		return finish(opts, err)
 	}
 	scope := userScopeMode(mode)
-	if err := writePinFragment(renderPinFragment(profileName, scope, entries)); err != nil {
+	if err := writeDirFragment(renderDirFragment(profileName, scope, entries)); err != nil {
 		return finish(opts, err)
 	}
 	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, scope)
@@ -140,7 +140,7 @@ func CmdUnpin(_ context.Context, args []string) int {
 	if len(positionals) != 0 {
 		return usageError("usage: %s unpin", toolName)
 	}
-	removedFragment, err := removePinFragment()
+	removedFragment, err := removeDirFragment()
 	if err != nil {
 		return finish(opts, err)
 	}

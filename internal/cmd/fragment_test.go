@@ -119,7 +119,7 @@ func TestPinRebindIsolatedRepointsFragment(t *testing.T) {
 		t.Fatalf("runPin isolated exit %d", code)
 	}
 	// Re-bind claude to a different account; only claude changes.
-	code, out := captureStdout(t, func() int { return runPinRebind(ctx, app, opts, "claude", "clientB") })
+	code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "clientB") })
 	mustExit(t, constants.ExitOK, code, out)
 
 	frag := readFile(t, fragmentRelPath)
@@ -148,7 +148,7 @@ func TestPinRebindRefusesUnboundTool(t *testing.T) {
 		t.Fatalf("runPin exit %d", code)
 	}
 	// codex is not bound in this directory (the profile binds only claude).
-	code, out := captureStdout(t, func() int { return runPinRebind(ctx, app, opts, "codex", "work") })
+	code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "codex", "work") })
 	mustExit(t, constants.ExitNotFound, code, out)
 }
 

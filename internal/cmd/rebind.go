@@ -14,7 +14,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
-// runPinRebind re-binds one tool's credential inside a pinned directory to a
+// runRebind re-binds one tool's credential inside a pinned directory to a
 // different account without changing the sharing set:
 //
 //	kae pin <tool> <account>
@@ -26,7 +26,7 @@ import (
 // fragment's account record and KAE_PROFILE are recomputed (the latter goes
 // empty when the new account set matches no named profile). Sessions and
 // settings are never disturbed.
-func runPinRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName string) int {
+func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName string) int {
 	if err := validateToolAccount(tool, accountName, "account"); err != nil {
 		return finish(opts, err)
 	}
@@ -37,7 +37,7 @@ func runPinRebind(ctx context.Context, app *App, opts commonOpts, tool, accountN
 		return finish(opts, errf(constants.ExitUnsupported,
 			"%s has no per-directory isolation mechanism; nothing to re-bind", tool))
 	}
-	info, exists, err := readPinFragment()
+	info, exists, err := readDirFragment()
 	if err != nil {
 		return finish(opts, err)
 	}

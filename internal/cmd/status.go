@@ -101,7 +101,7 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 	// source of truth. Tools it does not bind keep their global account.
 	var pinnedAccounts map[string]string
 	if report.Pinned != nil {
-		if info, ok, ferr := readPinFragment(); ferr == nil && ok {
+		if info, ok, ferr := readDirFragment(); ferr == nil && ok {
 			pinnedAccounts = info.Accounts
 		}
 	}

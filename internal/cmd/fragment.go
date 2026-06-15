@@ -35,10 +35,10 @@ func userScopeMode(mode string) string {
 	return paths.SharedSegment
 }
 
-// renderPinFragment renders the kae-owned mise fragment for a per-directory
+// renderDirFragment renders the kae-owned mise fragment for a per-directory
 // bind: machine-readable kae: records (parsed by status) followed by the [env]
 // block mise exports. scope is the user-facing environment (shared/isolated).
-func renderPinFragment(profileName, scope string, entries []isolationEntry) string {
+func renderDirFragment(profileName, scope string, entries []isolationEntry) string {
 	var b strings.Builder
 	fmt.Fprintln(&b, "# kagikae-managed mise fragment — do not edit by hand.")
 	fmt.Fprintln(&b, "# Written by `kae pin`, removed by `kae unpin`; your mise.toml is never touched.")
@@ -55,7 +55,7 @@ func renderPinFragment(profileName, scope string, entries []isolationEntry) stri
 
 // writeMiseFragment creates the conf.d parent dir and atomically writes a
 // kae-owned mise fragment (0644). Shared by the per-directory writer
-// (writePinFragment) and the global writer (regenGlobalFragment).
+// (writeDirFragment) and the global writer (regenGlobalFragment).
 func writeMiseFragment(path, content string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create mise conf.d dir: %w", err)
@@ -63,22 +63,22 @@ func writeMiseFragment(path, content string) error {
 	return patch.WriteFileAtomic(path, []byte(content), 0o644)
 }
 
-// writePinFragment writes the kae-owned mise fragment in the current directory
+// writeDirFragment writes the kae-owned mise fragment in the current directory
 // (creating .config/mise/conf.d/ as needed) and adds it to .gitignore. The
 // fragment holds machine-specific absolute paths and account names, so it must
 // never be committed.
-func writePinFragment(content string) error {
+func writeDirFragment(content string) error {
 	if err := writeMiseFragment(fragmentRelPath, content); err != nil {
 		return err
 	}
 	return ensureGitignored(fragmentRelPath)
 }
 
-// removePinFragment deletes the kae-owned mise fragment in the current
+// removeDirFragment deletes the kae-owned mise fragment in the current
 // directory. ok reports whether a fragment was present (so `kae unpin` can
 // distinguish a real removal from a no-op). Empty parent dirs are left in
 // place: conf.d may hold other fragments and .config is shared.
-func removePinFragment() (ok bool, err error) {
+func removeDirFragment() (ok bool, err error) {
 	if err := os.Remove(fragmentRelPath); err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
@@ -150,9 +150,9 @@ type fragmentInfo struct {
 	Accounts map[string]string // tool -> bound account (isolated tools only)
 }
 
-// readPinFragment reads and parses the kae-owned fragment in the current
+// readDirFragment reads and parses the kae-owned fragment in the current
 // directory. exists is false when no fragment is present (not an error).
-func readPinFragment() (info fragmentInfo, exists bool, err error) {
+func readDirFragment() (info fragmentInfo, exists bool, err error) {
 	data, err := os.ReadFile(fragmentRelPath)
 	if os.IsNotExist(err) {
 		return fragmentInfo{Accounts: map[string]string{}}, false, nil
@@ -160,12 +160,12 @@ func readPinFragment() (info fragmentInfo, exists bool, err error) {
 	if err != nil {
 		return fragmentInfo{}, false, err
 	}
-	return parsePinFragment(string(data)), true, nil
+	return parseDirFragment(string(data)), true, nil
 }
 
-// parsePinFragment extracts the kae: comment records from a fragment. The [env]
+// parseDirFragment extracts the kae: comment records from a fragment. The [env]
 // block is mise's; kae's own metadata lives in the # kae: header lines.
-func parsePinFragment(content string) fragmentInfo {
+func parseDirFragment(content string) fragmentInfo {
 	info := fragmentInfo{Accounts: map[string]string{}}
 	for _, line := range strings.Split(content, "\n") {
 		switch {
@@ -188,7 +188,7 @@ func parsePinFragment(content string) fragmentInfo {
 // Every other line — other tools, warning comments, the header — is preserved.
 //
 // Precondition: tool is bound in the fragment (it has a # kae:account: record),
-// and when dir != "" it has a non-empty isolationEnvVar. runPinRebind enforces
+// and when dir != "" it has a non-empty isolationEnvVar. runRebind enforces
 // both before calling, so a tool that keeps the real home never reaches here
 // and cannot leave an account record without a matching env entry.
 func rebindFragment(tool, account, dir, profile string) error {

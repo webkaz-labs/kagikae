@@ -278,7 +278,7 @@ func (app *App) miseIsolationBlock(profileName, mode string, entries []isolation
 
 // writeEnvEntries renders the shared [env] block — KAE_PROFILE plus each tool's
 // isolation env entry, or a warning comment for a tool that keeps the real home
-// — used by both the kae pin fragment (renderPinFragment) and the kae mise init
+// — used by both the kae pin fragment (renderDirFragment) and the kae mise init
 // marker block (miseIsolationBlock). One place to change env-line formatting.
 func writeEnvEntries(b *strings.Builder, profileName string, entries []isolationEntry) {
 	fmt.Fprintln(b, "[env]")

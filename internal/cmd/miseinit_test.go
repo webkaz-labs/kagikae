@@ -145,7 +145,7 @@ func TestMiseBondMode(t *testing.T) {
 	opts := commonOpts{Format: formatText}
 	chdirTemp(t)
 
-	// Preview: must show bond-mode block without creating dirs.
+	// Preview: must show shared-mode block without creating dirs.
 	code, out := captureStdout(t, func() int {
 		return runMiseInit(ctx, app, opts, "work", constants.ModeBond, false, false)
 	})
@@ -153,8 +153,8 @@ func TestMiseBondMode(t *testing.T) {
 	if !strings.Contains(out, "CLAUDE_CONFIG_DIR") {
 		t.Fatalf("preview missing CLAUDE_CONFIG_DIR: %s", out)
 	}
-	if !strings.Contains(out, "bond mode") {
-		t.Fatalf("preview missing bond comment: %s", out)
+	if !strings.Contains(out, "shared mode") {
+		t.Fatalf("preview missing shared-mode comment: %s", out)
 	}
 
 	// Write: must create bond dirs and write .mise.toml.

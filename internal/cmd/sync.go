@@ -31,17 +31,15 @@ type syncReport struct {
 func CmdApply(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args, "--profile")
 	var profileName string
-	quiet, global := false, false
+	quiet := false
 	opts, ok := parseCommon("apply", flags, false, func(fs *flag.FlagSet) {
 		fs.StringVar(&profileName, "profile", "",
 			"profile to apply (default: $KAE_PROFILE, then config default_profile)")
 		fs.BoolVar(&quiet, "quiet", false, "suppress the success report (for hooks)")
-		fs.BoolVar(&global, "global", false, "act on the real home, ignoring this directory's pin")
 	})
 	if !ok {
 		return constants.ExitUsage
 	}
-	opts.Global = global
 	if len(positionals) != 0 {
 		return usageError("usage: %s apply [--profile P] [--quiet]", toolName)
 	}
@@ -74,9 +72,7 @@ func buildSync(ctx context.Context, app *App, opts commonOpts, profileName strin
 	if err := app.requireConfig(); err != nil {
 		return nil, err
 	}
-	if err := app.pinnedIsolationGuard(opts.Global); err != nil {
-		return nil, err
-	}
+	app.pinnedGlobalScope()
 	profileName, err := app.resolveSyncProfile(profileName)
 	if err != nil {
 		return nil, err

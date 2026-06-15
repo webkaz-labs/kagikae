@@ -195,34 +195,24 @@ func pathWithin(dir, root string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// pinnedIsolationGuard enforces the pinned-directory boundary for the
-// global-scope commands (use / add / apply). Inside a directory whose
-// environment redirects a tool into a kae-managed isolation home, a global
-// apply would split across three states — the isolated paths the adapters
-// resolve, the global credential stores, and the global state.json belief —
-// so it is refused with guidance. With --global the kae-managed
-// redirections are hidden instead, so the adapters resolve the real
-// (global) base paths; genuinely user-set custom homes stay honored.
-func (app *App) pinnedIsolationGuard(global bool) error {
-	if global {
-		app.applyGlobalScope()
-		return nil
+// pinnedGlobalScope puts the global-scope commands (use / add / apply) on the
+// real home: they are inherently global, so kae-managed isolation env values
+// are hidden (applyGlobalScope) and the adapters resolve the real base paths;
+// genuinely user-set custom homes stay honored. Inside a kae-pinned directory
+// it first warns that global state is changing and this directory will not see
+// it — re-bind with `kae pin`. Idempotent (one warning per command path): the
+// warning detection must run before applyGlobalScope hides the env values, and
+// buildSync delegates to buildSwitch, so both reach this.
+func (app *App) pinnedGlobalScope() {
+	if app.globalScope {
+		return
 	}
 	if kind := app.firstKaeManagedIsolation(); kind != "" {
-		var hint string
-		switch kind {
-		case modeBond:
-			hint = "kae bond <profile>"
-		case modePin:
-			hint = "kae as <tool> <account>"
-		default:
-			hint = "kae pin <profile>"
-		}
-		return errf(constants.ExitUnsupported,
-			"this directory is pinned (%s isolation): change its accounts with `%s`, or pass --global to act on the real home",
-			kind, hint)
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: this directory is pinned (%s); you are changing GLOBAL state, "+
+				"which this directory will not see — re-bind with `kae pin`\n", kind)
 	}
-	return nil
+	app.applyGlobalScope()
 }
 
 // applyGlobalScope hides kae-managed isolation env values from everything

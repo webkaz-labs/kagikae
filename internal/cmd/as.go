@@ -16,29 +16,19 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
-// CmdAs swaps the credential of a bonded or pinned directory to a different
-// account without changing the sharing set:
+// runPinRebind re-binds one tool's credential inside a pinned directory to a
+// different account without changing the sharing set:
 //
-//	kae as <tool> <account>
+//	kae pin <tool> <account>
 //
-// Valid only inside a directory bound with `kae bond` or `kae pin`. For bond
-// mode, the bond dir is account-agnostic so the credential is overwritten in
-// place. For pin mode, the config dir is re-keyed to the new account and the
+// Valid only inside a directory bound with `kae pin`. For the shared mechanism
+// the dir is account-agnostic so the credential is overwritten in place; for
+// the isolated mechanism the config dir is re-keyed to the new account and the
 // .mise.toml env entry is updated. Sessions and settings are never disturbed.
-func CmdAs(ctx context.Context, args []string) int {
-	flags, positionals := splitArgs(args)
-	opts, ok := parseCommon("as", flags, false, nil)
-	if !ok {
-		return constants.ExitUsage
-	}
-	if len(positionals) != 2 {
-		return usageError("usage: %s as <tool> <account>", toolName)
-	}
-	tool, accountName := positionals[0], positionals[1]
+func runPinRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName string) int {
 	if err := validateToolAccount(tool, accountName, "account"); err != nil {
 		return finish(opts, err)
 	}
-	app := newApp(opts.ConfigPath)
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
 	}
@@ -46,11 +36,11 @@ func CmdAs(ctx context.Context, args []string) int {
 	kind := app.firstKaeManagedIsolation()
 	if kind == "" {
 		return finish(opts, errf(constants.ExitUnsupported,
-			"this directory is not bonded or pinned; use `kae bond` or `kae pin` first"))
+			"this directory is not pinned; run `kae pin` first"))
 	}
 	if kind != modeBond && kind != modePin {
 		return finish(opts, errf(constants.ExitUnsupported,
-			"kae as only applies inside a bonded or pinned directory (this is %s mode)", kind))
+			"kae pin <tool> <account> only applies inside a pinned directory (this is %s mode)", kind))
 	}
 
 	absDir, err := cwdAbs()
@@ -68,18 +58,18 @@ func CmdAs(ctx context.Context, args []string) int {
 	case modeBond:
 		bondDir := app.Paths.BondDir(pinID, tool)
 		if err := app.swapDirCredential(ctx, be, tool, accountName, bondDir); err != nil {
-			return finish(opts, fmt.Errorf("swap bond credential for %s: %w", tool, err))
+			return finish(opts, fmt.Errorf("swap shared credential for %s: %w", tool, err))
 		}
-		fmt.Printf("Switched %s credential to account %s (bond dir; sessions/settings unchanged)\n", tool, accountName)
+		fmt.Printf("Re-bound %s to account %s (shared dir; sessions/settings unchanged)\n", tool, accountName)
 	case modePin:
 		newDir, err := app.preparePinConfig(ctx, tool, accountName, pinID)
 		if err != nil {
-			return finish(opts, fmt.Errorf("prepare pin config for %s/%s: %w", tool, accountName, err))
+			return finish(opts, fmt.Errorf("prepare isolated config for %s/%s: %w", tool, accountName, err))
 		}
 		if err := swapPinEnvEntry(app, tool, newDir); err != nil {
 			return finish(opts, fmt.Errorf("update .mise.toml for %s: %w", tool, err))
 		}
-		fmt.Printf("Switched %s credential to account %s (pin dir re-keyed; sessions/settings unchanged)\n", tool, accountName)
+		fmt.Printf("Re-bound %s to account %s (isolated dir re-keyed; sessions/settings unchanged)\n", tool, accountName)
 	}
 	return constants.ExitOK
 }

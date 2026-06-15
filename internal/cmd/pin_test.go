@@ -169,17 +169,45 @@ func TestPrepareOverlayExtraSharedItems(t *testing.T) {
 }
 
 func TestPinAndUnpinUsage(t *testing.T) {
-	// Argument validation happens before any environment access.
+	// Two positionals = re-bind <tool> <account>; an unknown tool is a usage
+	// error, validated before any environment access.
 	if code := CmdPin(context.Background(), []string{"a", "b"}); code != constants.ExitUsage {
-		t.Fatalf("pin with two positionals must be a usage error, got %d", code)
+		t.Fatalf("pin with an unknown tool must be a usage error, got %d", code)
+	}
+	// --shared and --isolated are mutually exclusive.
+	if code := CmdPin(context.Background(), []string{"-s", "-i"}); code != constants.ExitUsage {
+		t.Fatalf("pin -s -i must be a usage error, got %d", code)
+	}
+	// Scope flags cannot be honored on a re-bind (mechanism is the directory's);
+	// they are rejected, not silently dropped — checked before any env access.
+	if code := CmdPin(context.Background(), []string{"-i", "claude", "work"}); code != constants.ExitUsage {
+		t.Fatalf("pin -i <tool> <account> must be a usage error, got %d", code)
 	}
 	if code := CmdUnpin(context.Background(), []string{"x"}); code != constants.ExitUsage {
 		t.Fatalf("unpin with a positional must be a usage error, got %d", code)
 	}
 }
 
+func TestUseFlagValidation(t *testing.T) {
+	ctx := context.Background()
+	// --shared and --isolated are mutually exclusive (checked before env access).
+	if code := CmdUse(ctx, []string{"-s", "-i", "work"}); code != constants.ExitUsage {
+		t.Fatalf("use -s -i must be a usage error, got %d", code)
+	}
+	// use needs one or two positionals.
+	if code := CmdUse(ctx, []string{}); code != constants.ExitUsage {
+		t.Fatalf("use with no positionals must be a usage error, got %d", code)
+	}
+	// Global isolated home (use -i) lands later in v0.7.2; it is unsupported
+	// for now and reported before any environment access.
+	if code := CmdUse(ctx, []string{"-i", "work"}); code != constants.ExitUnsupported {
+		t.Fatalf("use -i must report unsupported, got %d", code)
+	}
+}
+
 func TestRemovedCommandsPointAtReplacements(t *testing.T) {
-	for _, name := range []string{"switch", "s", "login", "capture", "current"} {
+	// bond/as folded into the pin surface in v0.7.2; the older removals stay.
+	for _, name := range []string{"bond", "as", "switch", "s", "login", "capture", "current"} {
 		if code := Root([]string{name}); code != constants.ExitUsage {
 			t.Fatalf("removed command %s must exit %d", name, constants.ExitUsage)
 		}

@@ -28,20 +28,29 @@ func pinnedEnvApp(t *testing.T) *App {
 	return app
 }
 
-func TestGlobalCommandsRefuseInsidePinnedIsolation(t *testing.T) {
-	app := pinnedEnvApp(t)
+func TestGlobalCommandsActOnRealHomeInsidePinnedDir(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "all", "work") })
-	mustExit(t, constants.ExitUnsupported, code, out)
-	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "work") })
-	mustExit(t, constants.ExitUnsupported, code, out)
+	// use is inherently global: inside a kae-pinned directory it no longer
+	// refuses. It warns (on stderr) that global state is changing, hides the
+	// kae-managed isolation env, and switches the real home instead.
+	app := pinnedEnvApp(t)
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "work") })
+	mustExit(t, constants.ExitOK, code, out)
+	creds := readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"))
+	if !strings.Contains(creds, workToken) {
+		t.Fatalf("use inside a pinned dir must write the real home: %s", creds)
+	}
+
+	// apply (the idempotent global form) behaves the same.
+	app = pinnedEnvApp(t)
 	code, out = captureStdout(t, func() int { return runSync(ctx, app, opts, "work", false) })
-	mustExit(t, constants.ExitUnsupported, code, out)
+	mustExit(t, constants.ExitOK, code, out)
 
 	// The auth-mode pin exports only KAE_PROFILE; its tasks and enter hook
-	// run use/sync inside the directory and must keep working.
+	// run use/apply inside the directory and must keep working (no warning).
+	app = pinnedEnvApp(t)
 	app.Env.Getenv = func(key string) string {
 		if key == constants.EnvKaeProfile {
 			return "personal"
@@ -50,21 +59,6 @@ func TestGlobalCommandsRefuseInsidePinnedIsolation(t *testing.T) {
 	}
 	code, out = captureStdout(t, func() int { return runSync(ctx, app, opts, "personal", false) })
 	mustExit(t, constants.ExitOK, code, out)
-}
-
-func TestGlobalFlagActsOnTheRealHome(t *testing.T) {
-	app := pinnedEnvApp(t)
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText, Global: true}
-
-	// With --global the kae-managed env value is hidden, the adapter
-	// resolves the real home, and the switch lands there.
-	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "work") })
-	mustExit(t, constants.ExitOK, code, out)
-	creds := readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"))
-	if !strings.Contains(creds, workToken) {
-		t.Fatalf("global switch must write the real home: %s", creds)
-	}
 }
 
 func TestGlobalScopeKeepsCustomHomes(t *testing.T) {
@@ -76,11 +70,10 @@ func TestGlobalScopeKeepsCustomHomes(t *testing.T) {
 		}
 		return ""
 	}
-	app.applyGlobalScope()
+	// A genuinely user-set custom home is outside kae's data roots, so the
+	// global-scope commands leave it honored and emit no warning.
+	app.pinnedGlobalScope()
 	if got := app.Env.Getenv("CLAUDE_CONFIG_DIR"); got != custom {
-		t.Fatalf("user-set custom home must stay honored under --global, got %q", got)
-	}
-	if err := app.pinnedIsolationGuard(false); err != nil {
-		t.Fatalf("custom home outside kae roots must not trip the guard: %v", err)
+		t.Fatalf("user-set custom home must stay honored, got %q", got)
 	}
 }

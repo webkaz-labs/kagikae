@@ -243,18 +243,18 @@ func (app *App) miseIsolationBlock(profileName, mode string, entries []isolation
 	switch mode {
 	case modeOverlay:
 		fmt.Fprintln(&b, "# Directory-scoped overlay mode (legacy): auth and session state are private")
-		fmt.Fprintln(&b, "# while settings and skills are shared. Use `kae pin` for isolated-by-default,")
-		fmt.Fprintln(&b, "# or `kae bond` for the shared-settings mode.")
+		fmt.Fprintln(&b, "# while settings and skills are shared. Use `kae pin --isolated` for full isolation,")
+		fmt.Fprintln(&b, "# or `kae pin --shared` for the shared-settings mode.")
 	case constants.ModeBond:
-		fmt.Fprintln(&b, "# Directory-scoped bond mode (kae bond): settings, sessions, and memory")
+		fmt.Fprintln(&b, "# Directory-scoped shared mode (kae pin --shared): settings, sessions, and memory")
 		fmt.Fprintln(&b, "# are shared with the real home; credentials are private to this directory.")
-		fmt.Fprintln(&b, "# Re-run kae bond after adding new files to the real home to refresh links.")
+		fmt.Fprintln(&b, "# Re-run `kae pin --shared` after adding new files to the real home to refresh links.")
 	case constants.ModePin:
-		fmt.Fprintln(&b, "# Directory-scoped pin mode (kae pin): fully isolated from the real home.")
+		fmt.Fprintln(&b, "# Directory-scoped isolated mode (kae pin --isolated): fully isolated from the real home.")
 		fmt.Fprintln(&b, "# Nothing is shared by default; opt in via pin_shared_items in config.toml.")
 		fmt.Fprintln(&b, "# Credential is private to this directory and account.")
 	default:
-		fmt.Fprintln(&b, "# Directory-scoped isolation (kae pin --mode home): account and config")
+		fmt.Fprintln(&b, "# Directory-scoped isolation (kae mise init --mode home): account and config")
 		fmt.Fprintln(&b, "# directory switch inside this directory only; the global live auth")
 		fmt.Fprintln(&b, "# state is never touched, safe across concurrent terminals.")
 	}

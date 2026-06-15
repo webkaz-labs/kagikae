@@ -57,16 +57,14 @@ func toolBinary(tool string) string {
 // live now (it supports --dry-run; the login flow does not).
 func CmdAdd(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	restore, noLogin, global := false, false, false
+	restore, noLogin := false, false
 	opts, ok := parseCommon("add", flags, true, func(fs *flag.FlagSet) {
 		fs.BoolVar(&restore, "restore", false, "restore the previous login after capturing (login flow only)")
 		fs.BoolVar(&noLogin, "no-login", false, "snapshot the current live auth state without launching a login flow")
-		fs.BoolVar(&global, "global", false, "act on the real home, ignoring this directory's pin")
 	})
 	if !ok {
 		return constants.ExitUsage
 	}
-	opts.Global = global
 	if len(positionals) != 2 {
 		return usageError("usage: %s add [--no-login] <tool> <account> [--restore]", toolName)
 	}
@@ -77,9 +75,7 @@ func CmdAdd(ctx context.Context, args []string) int {
 		return usageError("--dry-run applies to --no-login snapshots only")
 	}
 	app := newApp(opts.ConfigPath)
-	if err := app.pinnedIsolationGuard(opts.Global); err != nil {
-		return finish(opts, err)
-	}
+	app.pinnedGlobalScope()
 	if noLogin {
 		return runCapture(ctx, app, opts, positionals[0], positionals[1])
 	}

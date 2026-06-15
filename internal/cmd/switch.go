@@ -30,24 +30,35 @@ type switchReport struct {
 
 // CmdUse switches now, in global scope (alias: kae u):
 //
-//	kae use [--global] <profile>           every enabled tool in the profile
-//	kae use [--global] <tool> <account>    one tool
+//	kae use [-s|-i] <profile>           every enabled tool in the profile
+//	kae use [-s|-i] <tool> <account>    one tool
 //
 // It always applies, even when the recorded state already matches
-// (kae sync is the idempotent variant). Inside a pinned directory it
-// refuses unless --global is given (pinnedIsolationGuard).
+// (kae apply is the idempotent variant). use is inherently global, so it
+// always acts on the real home; inside a pinned directory it warns that it
+// is changing global state (pinnedGlobalScope). --shared/-s (the default)
+// switches the real home in place; --isolated/-i points every terminal at a
+// per-account private home via a kae-owned global mise fragment.
 func CmdUse(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	var global bool
+	var shared, isolated bool
 	opts, ok := parseCommon("use", flags, true, func(fs *flag.FlagSet) {
-		fs.BoolVar(&global, "global", false, "act on the real home, ignoring this directory's pin")
+		registerScopeFlags(fs, &shared, &isolated)
 	})
 	if !ok {
 		return constants.ExitUsage
 	}
-	opts.Global = global
+	isolatedMode, ok := resolveScope(shared, isolated)
+	if !ok {
+		return constants.ExitUsage
+	}
 	if len(positionals) != 1 && len(positionals) != 2 {
-		return usageError("usage: %s use <profile> | %s use <tool> <account>", toolName, toolName)
+		return usageError("usage: %s use [-s|-i] <profile> | %s use [-s|-i] <tool> <account>", toolName, toolName)
+	}
+	if isolatedMode {
+		// Global isolated home lands later in v0.7.2 (RELEASE.md step 3).
+		return finish(opts, errf(constants.ExitUnsupported,
+			"kae use --isolated (global isolated home) is not available yet"))
 	}
 	app := newApp(opts.ConfigPath)
 	if len(positionals) == 1 {
@@ -72,9 +83,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	if err := app.requireConfig(); err != nil {
 		return nil, err
 	}
-	if err := app.pinnedIsolationGuard(opts.Global); err != nil {
-		return nil, err
-	}
+	app.pinnedGlobalScope()
 
 	targets, profileName, err := app.resolveTargets(target, name)
 	if err != nil {

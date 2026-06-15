@@ -30,8 +30,8 @@ type App struct {
 	Env            adapter.Env
 	Now            func() time.Time
 
-	// globalScope records that applyGlobalScope already wrapped Env.Getenv
-	// (set by --global; modes.go).
+	// globalScope records that applyGlobalScope already wrapped Env.Getenv.
+	// Set by pinnedGlobalScope (modes.go) on the first global-scope command.
 	globalScope bool
 }
 
@@ -266,15 +266,13 @@ func finish(opts commonOpts, err error) int {
 	return exit
 }
 
-// commonOpts are flags shared by every structured command. Global is set
-// only by the commands that register --global (use / add / sync).
+// commonOpts are flags shared by every structured command.
 type commonOpts struct {
 	Format     string
 	DryRun     bool
 	Yes        bool
 	NoColor    bool
 	ConfigPath string
-	Global     bool
 }
 
 // parseCommon parses the flag portion of a command line (positionals are
@@ -306,4 +304,26 @@ func parseCommon(name string, args []string, withDryRun bool, extra func(*flag.F
 		return opts, false
 	}
 	return opts, true
+}
+
+// registerScopeFlags registers the environment selector flags shared by
+// `kae use` and `kae pin`: -s/--shared (the default) and -i/--isolated. The
+// help text is generic because it only surfaces on a flag parse error; the
+// hand-written help in printHelp documents the per-verb meaning.
+func registerScopeFlags(fs *flag.FlagSet, shared, isolated *bool) {
+	fs.BoolVar(shared, "shared", false, "shared environment (default)")
+	fs.BoolVar(shared, "s", false, "alias for --shared")
+	fs.BoolVar(isolated, "isolated", false, "isolated environment")
+	fs.BoolVar(isolated, "i", false, "alias for --isolated")
+}
+
+// resolveScope validates the mutually-exclusive scope flags and reports the
+// selected environment. ok is false (and a usage error already emitted) when
+// both are set; shared is the default, so isolatedMode echoes isolated.
+func resolveScope(shared, isolated bool) (isolatedMode, ok bool) {
+	if shared && isolated {
+		usageError("--shared and --isolated are mutually exclusive")
+		return false, false
+	}
+	return isolated, true
 }

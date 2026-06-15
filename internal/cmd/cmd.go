@@ -24,7 +24,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.7.1"
+	toolVersion = "v0.7.2"
 )
 
 // Root dispatches the command line.
@@ -54,12 +54,8 @@ func Root(args []string) int {
 		return CmdAdd(ctx, args[1:])
 	case "use", "u":
 		return CmdUse(ctx, args[1:])
-	case "pin":
+	case "pin", "p":
 		return CmdPin(ctx, args[1:])
-	case "bond":
-		return CmdBond(ctx, args[1:])
-	case "as":
-		return CmdAs(ctx, args[1:])
 	case "unpin":
 		return CmdUnpin(ctx, args[1:])
 	case "sync":
@@ -72,6 +68,12 @@ func Root(args []string) int {
 		return CmdEnv(ctx, args[1:])
 	case "mise":
 		return CmdMise(ctx, args[1:])
+	// Folded into the use/pin × -s/-i surface in v0.7.2 (docs/RELEASE.md);
+	// the pointers stay for one release.
+	case "bond":
+		return removedCommand("bond", "v0.7.2", "kae pin --shared [<profile>]")
+	case "as":
+		return removedCommand("as", "v0.7.2", "kae pin <tool> <account>")
 	// Removed in v0.5.0 (docs/RELEASE.md Breaking Changes); the pointers
 	// stay for one release.
 	case "switch", "s":
@@ -193,8 +195,8 @@ func parseToolVersion(version string) (int, int, int) {
 func printHelp() {
 	fmt.Println(`kae - switch AI coding CLI subscription accounts (kagikae)
 
-One verb per scope: use = switch now (global), pin = bind this directory,
-run = one process.
+Two verbs by scope plus run: use = switch now (global), pin = bind this
+directory (-s/--shared default, -i/--isolated), run = one process.
 
 Usage:
   kae                                  status summary: this directory's pin,
@@ -205,13 +207,12 @@ Usage:
   kae add <tool> <account>             register an account (official login
                                        flow + snapshot; --no-login snapshots
                                        the current login instead)
-  kae use <profile>                    switch every tool now (alias: kae u)
+  kae use [-s|-i] <profile>            switch every tool now (alias: kae u)
   kae use <tool> <account>             switch one tool now
-  kae pin [<profile>]                  bind this directory (isolated by default;
-                                       opt-in sharing via pin_shared_items)
-  kae bond [<profile>]                 bond mode: settings/sessions shared
-                                       with the real home, credential private
-  kae as <tool> <account>             swap credential inside a bonded/pinned dir
+  kae pin [-s|-i] [<profile>]          bind this directory (alias: kae p);
+                                       -s shares settings/sessions with the real
+                                       home (credential private), -i isolates
+  kae pin <tool> <account>             re-bind one tool inside a pinned dir
   kae unpin                            remove the binding from .mise.toml
   kae run [--mode M] <t|all> <n> -- C  run C with an account applied; auth
                                        mode restores the previous login after

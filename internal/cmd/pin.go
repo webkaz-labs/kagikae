@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -10,35 +11,57 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
-// CmdPin binds the current directory to a fully isolated profile:
+// CmdPin binds the current directory to a profile, by scope and environment:
 //
-//	kae pin [<profile>]
+//	kae pin [-s|-i] [<profile>]         bind every enabled tool in the profile
+//	kae pin <tool> <account>            re-bind one tool, keeping the sharing set
 //
-// Sugar over `kae mise init --mode pin --write`: renders and writes the
-// kagikae block of .mise.toml immediately. The directory gets its own
-// private config dir; nothing is shared with the real home by default
-// (opt-in via pin_shared_items in config.toml). Use `kae bond` instead
-// for shared-settings isolation. Profile defaults to config default_profile.
-// Re-running pin refreshes opt-in shared-item links and the credential copy.
-// kae unpin removes the block.
+// --shared/-s (the default) shares settings, sessions, and memory with the
+// real home while keeping the credential private; --isolated/-i is fully
+// isolated, with opt-in shares via pin_shared_items in config.toml. Sugar over
+// `kae mise init --write`: renders and writes the kagikae block of .mise.toml.
+// Profile defaults to config default_profile. Re-running pin refreshes links
+// and the credential copy. kae unpin removes the block.
 func CmdPin(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, ok := parseCommon("pin", flags, false, nil)
+	var shared, isolated bool
+	opts, ok := parseCommon("pin", flags, false, func(fs *flag.FlagSet) {
+		registerScopeFlags(fs, &shared, &isolated)
+	})
 	if !ok {
 		return constants.ExitUsage
 	}
-	var profileName string
-	switch len(positionals) {
-	case 0:
-		// default_profile is resolved by runMiseInit
-	case 1:
-		profileName = positionals[0]
-	default:
-		return usageError("usage: %s pin [<profile>]", toolName)
+	isolatedMode, ok := resolveScope(shared, isolated)
+	if !ok {
+		return constants.ExitUsage
 	}
-	warnIfLegacyPinBlock()
 	app := newApp(opts.ConfigPath)
-	return runMiseInit(ctx, app, opts, profileName, modePin, false, true)
+	switch len(positionals) {
+	case 2:
+		// kae pin <tool> <account>: re-bind one tool in place, keeping the
+		// other tools and the directory's existing mechanism. Scope flags
+		// cannot be honored here (the mechanism is the directory's, not the
+		// caller's), so reject them rather than silently dropping them.
+		if shared || isolated {
+			return usageError("--shared/--isolated do not apply to `kae pin <tool> <account>`; the directory's existing mode is kept")
+		}
+		return runPinRebind(ctx, app, opts, positionals[0], positionals[1])
+	case 0, 1:
+		var profileName string
+		if len(positionals) == 1 {
+			profileName = positionals[0]
+		}
+		// --shared maps to the per-directory shared mechanism (bond),
+		// --isolated to the fully isolated mechanism (pin); shared is default.
+		mode := modeBond
+		if isolatedMode {
+			mode = modePin
+		}
+		warnIfLegacyPinBlock()
+		return runMiseInit(ctx, app, opts, profileName, mode, false, true)
+	default:
+		return usageError("usage: %s pin [-s|-i] [<profile>] | %s pin <tool> <account>", toolName, toolName)
+	}
 }
 
 // warnIfLegacyPinBlock prints a migration hint when the current directory's
@@ -55,8 +78,8 @@ func warnIfLegacyPinBlock() {
 	if strings.Contains(string(data), "Directory-scoped account isolation (kae pin, mode: overlay)") ||
 		strings.Contains(string(data), "Directory-scoped overlay mode (legacy)") {
 		fmt.Fprintln(os.Stderr, "kae: warning: this directory has a legacy overlay-mode block.")
-		fmt.Fprintln(os.Stderr, "kae: run `kae unpin && kae pin <profile>` to migrate to isolated pin mode,")
-		fmt.Fprintln(os.Stderr, "kae: or `kae unpin && kae bond <profile>` for shared-settings (bond) mode.")
+		fmt.Fprintln(os.Stderr, "kae: run `kae unpin && kae pin --isolated <profile>` to migrate to isolated mode,")
+		fmt.Fprintln(os.Stderr, "kae: or `kae unpin && kae pin --shared <profile>` for shared-settings mode.")
 	}
 }
 

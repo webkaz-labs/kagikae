@@ -166,14 +166,15 @@ should be paired with a sync strategy, in increasing cost/complexity:
 
 All three carry a second, harder problem: **bidirectional merge conflicts** (if
 `~/.claude.json` is edited on both sides, a 3-way JSON merge and race handling
-are needed). This complexity is the reason live symlink sharing (§6.1/§6.2) is
-strongly preferred — it makes the whole sync question moot. copy+patch with
+are needed). This complexity is the reason live symlink sharing (this section)
+is strongly preferred — it makes the whole sync question moot. copy+patch with
 hook sync (a) is the fallback only if the §11 validation rules out symlinking.
 
-**Which shape is correct is a fork that depends on claude's runtime behaviour
-and must be settled by real-machine validation (§11) before this model is
-finalised.** Given claude's proven sensitivity to auth-payload consistency, do
-not assume; verify with a fresh-process auth check.
+**This fork is settled** (§11): the real-machine validation proved the token is
+claude's sole auth artifact, so live symlink sharing is used and copy+patch is
+not needed. The caution still applies to any future tool whose auth pointer is
+*not* token-derived — given claude's proven sensitivity to auth-payload
+consistency, verify with a fresh-process auth check, never assume.
 
 The actual conversation history lives in separate files (claude:
 `~/.claude/projects/`), so session continuity is achieved by symlinking those
@@ -211,9 +212,9 @@ there is no way to make their credential private without redirecting their home.
 ## 9. Store layout
 
 `pin-id` = SHA-256 of the bound directory's absolute path, hex, truncated to 16
-chars (stable, deterministic, rename-proof). All new stores live under
-`isolation/<pin-id>/` (per-directory) and `synchomes/` (global isolated). No
-copy+patch anywhere — the mixed-state finding (§6) removed that need.
+chars (stable, deterministic, rename-proof). All stores live under
+`isolation/<pin-id>/` (per-directory) and `isolation/global/` (global isolated).
+No copy+patch anywhere — the mixed-state finding (§6) removed that need.
 
 > v0.7.2 update: the path segments below were renamed for clarity and the
 > global home moved under `isolation/` — `bond/` → `shared/`,
@@ -224,22 +225,11 @@ copy+patch anywhere — the mixed-state finding (§6) removed that need.
 > [RELEASE.md](RELEASE.md) for the current layout; the rest of this section is
 > the original v0.7.0 plan.
 
-- **bond**: config dir `isolation/<pin-id>/<tool>/bond/` is **account-agnostic**;
-  it holds symlinks to the real home (everything except the hard-coded denylist)
-  plus the **current account's credential materialised privately** (Linux claude
-  `.credentials.json` / codex `auth.json` copied from the account snapshot; macOS
-  claude needs no credential file — keychain). `.claude.json` is a symlink to the
-  real home. `kae as` swaps **only** the credential file in place — the env var
-  (`CLAUDE_CONFIG_DIR`) does not change. This is exactly the backbone principle:
-  only the credential follows the account.
-- **pin**: opt-in shared items live in `isolation/<pin-id>/<tool>/pin/shared/`
-  (dir-keyed, shared across accounts used in the same directory); the private
-  credential lives in `isolation/<pin-id>/<tool>/pin/<account>/cred/`; the config
-  dir composes the two (symlink the shared store + the account's credential).
-  Isolated from the real home; nothing shared unless opted in.
-- **sync** (global isolated): `synchomes/<tool>/<account>/` is a full private
-  tool home per account; `~/.claude` (resp. `~/.codex`) becomes a symlink to it
-  (§10).
+The current per-mode paths, the segment names (`shared` / `isolated` / `global`),
+and the kae-owned mise-fragment delivery (a fragment merged by mise, **not** a
+`~/.claude` symlink-swap) are normative in [DATA-MODEL.md](DATA-MODEL.md); this
+section keeps only the `pin-id` rationale above. The original v0.7.0 per-mode
+store sketch was removed in the v0.7.2 fold-down (git log).
 
 ## 10. Global isolated home pointer (`kae use -i`)
 
@@ -273,139 +263,11 @@ resolves to "token is claude's sole auth artifact; `.claude.json` is symlinked
 wholesale; the cosmetic `/oauthAccount` thrash in `bond` self-heals". copy+patch
 is not needed for claude.
 
-### For the implementation blueprint
+## 12. Implementation status
 
-- Exact per-tool session/settings path enumeration for the `bond` denylist.
-- `pin` opt-in share config schema (per-tool bare names vs absolute paths;
-  the auth/identity denylist stays hard-coded and refused at config load).
-- Whether `sync` needs its own idempotent `apply`-style hook integration.
-- Concurrency: `bond`/`pin`/`sync` allow concurrent accounts (separate homes);
-  confirm the per-tool lock scope under the new layout.
-
-## 12. Implementation plan (phased)
-
-Dependency-ordered; each phase is independently shippable and reviewable. File
-paths are relative to the repo root. Tests use `t.TempDir()` HOME/XDG roots
-(AGENTS.md); JSON-contract tokens live in `internal/constants`.
-
-### Phase 0 — rename `sync` → `apply`; tombstone old `sync`
-
-- `internal/cmd/sync.go`: rename exported `CmdSync` → `CmdApply` (body
-  unchanged: `syncReport`, `buildSync`, `printSyncReport` stay). Add `CmdSync`
-  stub → `removedCommand("sync", "kae apply")` (exit 64).
-- `internal/cmd/cmd.go`: `Root()` route `case "apply"` → `CmdApply`;
-  `case "sync"` → tombstone. Update `printHelp()`, bump `toolVersion`.
-- `internal/cmd/miseinit.go`: enter-hook script `kae sync --quiet` →
-  `kae apply --quiet`.
-- `internal/cmd/modes.go`: `pinnedIsolationGuard` error message `kae sync` →
-  `kae apply`.
-- Docs: CLI.md, DESIGN.md (Switch Surface Map), RELEASE.md/ROADMAP.md.
-- Validation: `mise run check`; update `sync_test.go` to `CmdApply`; add a
-  tombstone test (exit 64 names `apply`). Temp-HOME only.
-
-### Phase 1 — paths re-keying: `isolation/<pin-id>/` + `synchomes/`
-
-- `internal/paths/paths.go`: add `PinID(absDir) string` (SHA-256→hex[:16]),
-  `IsolationDir()`, `BondDir(pinID, tool)`, `PinSharedDir(pinID, tool)`,
-  `PinCredDir(pinID, tool, account)`, `PinConfigDir(pinID, tool, account)`,
-  `SyncHomesDir()`, `SyncHomeDir(tool, account)`.
-- `internal/cmd/modes.go`: extend `kaeManagedHomeKind` (a.k.a. the kae-managed
-  classifier used by `realToolHome` + `pinnedIsolationGuard`) to also match
-  `IsolationDir()` and `SyncHomesDir()`. **Critical**: missing this lets
-  `kae use` bypass the guard inside bond/pin dirs.
-- Validation: pure path unit tests (PinID stability/no-collision; dir builders).
-
-### Phase 2 — `kae bond` (per-dir shared)
-
-- `internal/constants/constants.go`: add `ModeBond`, `ModePin`, `ModeSync`.
-- `internal/cmd/miseinit.go`: `bondDenylistItems(tool) []string` (claude
-  `.credentials.json` Linux-only; codex `auth.json`); `prepareBond(tool,
-  account, pinID)` (ReadDir real home → symlink all but denylist into
-  account-agnostic `BondDir`; materialise current account's credential
-  privately; `.claude.json` symlink → real home with self-ref guard);
-  `miseBondBlock(...)` renderer; route `modeBond` in `runMiseInit`.
-- `internal/cmd/bond.go` (new): `CmdBond`.
-- `internal/cmd/cmd.go`: `case "bond"`.
-- `internal/cmd/modes.go`: `validMode` += bond; `pinnedIsolationGuard`
-  classifies BondDir as kae-managed.
-- `internal/config/config.go`: `Tool.BondDenylistExtra` (validated bare names,
-  refuse the hard-coded auth artifacts).
-- Docs: ADAPTERS.md isolation table (bond row + denylist + unknown-file policy).
-- Validation: temp-HOME (symlinks for non-denylist; credential not symlinked;
-  re-bond idempotent). Real-machine gate: bond a claude account, enter dir,
-  `claude -p '' --model haiku` → AUTH-OK; real `~/.claude` unchanged.
-
-### Phase 3 — claude adapter: drop `/oauthAccount`
-
-- `internal/adapter/claude/claude.go`: `Artifacts()` returns the token spec
-  only (remove `oauthSpec`).
-- `internal/config/config.go`: remove `.claude.json` from `refusedOverlayShare`
-  (no longer an auth artifact → safe to share wholesale).
-- Docs: ADAPTERS.md (Switched: drop `/oauthAccount`; Preserved: `.claude.json`
-  now shared/preserved, not patched). SCOPE-MODEL.md §11 → "implemented".
-- **Keychain hazard gate**: do not merge until real-machine fresh-process auth
-  (token-only switch, no `/oauthAccount` write) passes on macOS + Linux;
-  keychain must not be polluted. Unit: `Artifacts()` returns exactly one spec
-  per driver; integration: `buildSwitch` no longer patches `.claude.json`;
-  drop the `oauth_account` action-row assertions in `switch_test.go`.
-
-### Phase 4 — `kae pin` (per-dir isolated, opt-in shares; meaning flip)
-
-- `internal/cmd/pin.go`: default mode `modeOverlay` → `modePin`; update usage.
-- `internal/cmd/miseinit.go`: `preparePinShared(tool, pinID)` (symlink opt-in
-  items from real home into `PinSharedDir`); `preparePinCred(tool, account,
-  pinID)`; `misePinBlock(...)`; route `modePin`.
-- `internal/config/config.go`: `Tool.PinSharedItems` (bare names; hard-coded
-  auth denylist `.credentials.json`/`auth.json` refused at load; `.claude.json`
-  NOT in this denylist after Phase 3).
-- `internal/cmd/modes.go`: `validMode` += pin; classifier += PinConfigDir.
-- Docs: ADAPTERS.md (pin row), DATA-MODEL.md (`isolation/<pin-id>/` layout).
-- Migration: existing `overlays/<tool>/<account>/` keep working; `kae unpin` +
-  `kae bond`/`kae pin` re-run migrates. Warn for one release on `kae pin` when
-  it detects an old-format block. Release note required.
-- Validation: temp-HOME (only opt-in items linked; credential private).
-
-### Phase 5 — `kae as` (in-dir credential-only swap)
-
-- `internal/cmd/as.go` (new): `CmdAs(<tool> <account>)` — detect bond/pin from
-  the cwd's `.mise.toml` block; refuse if not bonded/pinned; `PinID(cwd)`; swap
-  only the private credential; re-render the block.
-- `internal/cmd/cmd.go`: `case "as"`.
-- `internal/cmd/modes.go`: guard message names `kae as` as the sanctioned
-  in-directory account-change path.
-- Validation: temp-HOME (credential swapped in the private slot; real home
-  untouched).
-
-### Phase 6 — `kae sync <account>` (global isolated) — highest risk
-
-- `internal/cmd/sync_global.go` (new): `CmdSyncGlobal` — prepare
-  `SyncHomeDir(tool, account)` (full private home), then **symlink-swap**
-  `~/.claude`/`~/.codex` to it (first run: backup real dir →
-  `~/.claude.kae-backup-<ts>`, create symlink, verify, rollback on failure;
-  subsequent: atomic `rename` of a temp symlink). Update `state.json`.
-- `internal/cmd/cmd.go`: `case "sync"` now → `CmdSyncGlobal` (reclaims the name;
-  the Phase 0 tombstone is removed here — **must be a later release than
-  Phase 0**, never the same version).
-- `internal/cmd/modes.go`: classifier += SyncHomeDir; guard resolves
-  `os.Readlink(~/.claude)` to detect a sync home.
-- **Real-machine gate** (§10): on a staging machine with a disposable
-  `~/.claude`, fresh-process AUTH-OK after the swap; keychain not polluted.
-
-### Phase 7 — docs fold-down
-
-- Fold SCOPE-MODEL.md normative content into DESIGN.md (model + surface map +
-  `as` semantics), CLI.md (full command table), ADAPTERS.md (final isolation
-  table). Reduce SCOPE-MODEL.md to rationale/history. Update DATA-MODEL.md,
-  RELEASE.md, README.md.
-
-### Cross-cutting risks (carry into each phase)
-
-- **`kaeManagedHomeKind` coverage** (Phase 1) is load-bearing for the guard;
-  verify for bond/pin/sync dirs.
-- **Per-pin-id lock**: `bond`/`pin`/`as` mutating one dir's store need a
-  `PinLockDir(pinID)` lock (the existing per-tool lock only covers global auth).
-  `sync` uses the existing per-tool lock for the home swap.
-- **`sync` name timeline**: Phase 0 frees it (tombstone), Phase 6 reclaims it —
-  span at least one release; RELEASE.md tracks when the tombstone is removed.
-- **`--auto` flag**: auth-mode only; refuse for bond/pin (they take effect via
-  `[env]` on entry), same as today's overlay/home refusal.
+The phased plan that drove this model is fully implemented (v0.7.0–v0.7.2). The
+per-commit history is the source of truth (git log) and the release-level record
+is in [RELEASE.md](RELEASE.md); current behavior, flags, layout, and contracts
+live in DESIGN.md / CLI.md / ADAPTERS.md / DATA-MODEL.md. The remaining
+surface-vocabulary alignment (`run`/`apply`/`mise init`) is tracked in
+[ROADMAP.md](ROADMAP.md).

@@ -252,6 +252,16 @@ staleness note below). Steps and results:
   materializes from the **snapshot**, whose OAuth tokens expire/rotate, so
   re-run `kae add --no-login claude <account>` to refresh the snapshot before
   isolating a long-idle account.
+- **README examples verified** against the built binary on a temp HOME (file
+  backend, `KAE_CLAUDE_DRIVER=file`): Quick Start (`add --no-login`,
+  `use <profile>`, `use <tool> <account>`, bare status, `rollback`, `u` alias,
+  `profile save`, `account rename`/`rm`), Pin (`pin <profile>` writes
+  `./.config/mise/conf.d/kagikae.toml` + `.gitignore`, no `mise.toml`;
+  `pin <tool> <account>` re-bind; `unpin` deletes the fragment), global isolated
+  (`use -i` writes the global fragment; `use -s` removes it), and Beyond
+  Switching (`run --mode env` injects the var; `run --mode home`; `apply --quiet`
+  silent no-op with a resolved profile; `mise init` preview) all behave as
+  documented — no README changes needed.
 - `mise run check` green; JSON kept `schema_version: 1`, stable tokens.
 
 ### v0.7.1 (2026-06-15, macOS darwin 24.6.0)

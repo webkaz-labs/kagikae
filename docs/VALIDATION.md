@@ -219,6 +219,41 @@ metadata files written by capture/switch/rollback.
 
 ## Release Acceptance Log
 
+### v0.7.2 (2026-06-16, macOS darwin 24.6.0)
+
+Global-isolated (`kae use -i`) real-machine gate passed against a real,
+logged-in claude account (the active account, re-snapshotted with
+`kae add --no-login claude <account>` so the snapshot was current — see the
+staleness note below). Steps and results:
+
+- **`kae use -i claude <account>`** materialized
+  `isolation/global/claude/<account>/.credentials.json` (`0600`, full
+  `claudeAiOauth` shape incl. `refreshToken`, byte-matching the live keychain
+  item) and wrote `~/.config/mise/conf.d/kagikae.toml` with `CLAUDE_CONFIG_DIR`
+  → that home. `mise env` repointed `CLAUDE_CONFIG_DIR` to it (fragment
+  mechanism works); `state.json` gained `synced: {claude: <account>}`.
+- **Keychain not polluted**: `security find-generic-password -s "Claude
+  Code-credentials" -w | md5` was byte-identical before and after `use -i`
+  (twice). `use -i` reads the kae snapshot and writes only the private file —
+  the real login item is never touched (file-driver path).
+- **Fresh-process auth**: `claude -p '...' --model haiku` with the fragment's
+  `CLAUDE_CONFIG_DIR` returned **AUTH-OK** from the private home (file
+  credential, keychain bypassed on macOS), and the isolated `.credentials.json`
+  survived (no clearing).
+- **Teardown `kae use -s claude <account>`** deleted the fragment, cleared
+  `synced`, switched the real home in place, and `mise env` no longer exported
+  `CLAUDE_CONFIG_DIR`; a fresh **real** `claude -p` (no `CLAUDE_CONFIG_DIR`)
+  returned AUTH-OK as the real account. `~/.claude.json` changes across the run
+  are claude's own state writes (it is never switched by kae — Phase 3), not a
+  kae mutation.
+- **Staleness note (operational, not a bug)**: a snapshot captured days earlier
+  failed the fresh-process check with `401 Invalid authentication credentials`,
+  and claude then cleared the isolated `.credentials.json`. `use -i`
+  materializes from the **snapshot**, whose OAuth tokens expire/rotate, so
+  re-run `kae add --no-login claude <account>` to refresh the snapshot before
+  isolating a long-idle account.
+- `mise run check` green; JSON kept `schema_version: 1`, stable tokens.
+
 ### v0.7.1 (2026-06-15, macOS darwin 24.6.0)
 
 Temp-HOME smoke with the `v0.7.1` binary (file secret backend). All criteria

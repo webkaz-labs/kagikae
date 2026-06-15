@@ -1,4 +1,4 @@
-# Release Target: kae v0.7.2
+# kae v0.7.2 (released 2026-06-16)
 
 Unify the switching surface and ship the last cell of the scope×environment
 model (global isolated).

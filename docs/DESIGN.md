@@ -53,35 +53,40 @@ kae use codex personal
 kae use work                 # resolves the "work" profile
 ```
 
-## Switch Modes
+## Switching Surface
 
-| Mode | Status | Tool home | Use case |
-|------|--------|-----------|----------|
-| `auth` | default, implemented | unchanged | switch only the subscription account; share skills / hooks / memory / MCP / trust |
-| `env` | implemented (`kae run --mode env`) | unchanged | inject API key / long-lived token into a child process only (CI, non-interactive) |
-| `home` | implemented for claude / codex | separate | full isolation: concurrent accounts, CI, per-client separation |
-| `overlay` | implemented for claude / codex (per-tool opt-out) | partially separate | separate auth/session/cache, share settings/skills/hooks/MCP |
-| `bond` | implemented (`kae bond`, `kae run --mode bond`) | partially separate (shared with real home via symlinks) | settings/sessions/memory shared with real home; credential private to directory |
-| `pin` | implemented (`kae pin`, `kae run --mode pin`) | isolated by default | full isolation by default; opt-in sharing via `pin_shared_items` |
+Every switch is one cell of **scope** (where it applies) × **environment**
+(what is shared with the real home). Two verbs select the scope, two flags the
+environment:
 
-See [ROADMAP.md](ROADMAP.md) for ordering and [ADAPTERS.md](ADAPTERS.md) for
-the per-tool definition of what `auth` mode touches and preserves.
+|                               | `--shared` / `-s` (default)                                                                                | `--isolated` / `-i`                                                                  |
+|-------------------------------|------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------|
+| **`kae use`** / `u` — global  | switch every terminal's account in place; skills, hooks, memory, MCP, trust stay shared with the real home  | point every terminal at a per-account private home via a kae-owned global mise fragment (the real home untouched) |
+| **`kae pin`** / `p` — per-dir | bind this directory; settings/sessions/memory shared with the real home, credential private                 | bind this directory; fully isolated, nothing shared unless opted in                  |
 
-## Switch Surface Map
+Both verbs take `<profile>` (every tool it maps) or `<tool> <account>` (one
+tool). `use` and `pin` both default to **shared**. The environment is a
+per-invocation flag, deliberately not a profile property, so the same profile
+serves a global switch and an isolated project home. Inside a bound directory,
+re-running `kae pin <tool> <account>` changes that one tool's account without
+disturbing the others or the sharing set.
 
-Every switching feature combines a mode (**what** is switched, above) with
-a scope (**where** it applies) — one verb per scope:
+Two more surfaces sit outside the grid:
 
-| Scope | Surface | Effect |
-|-------|---------|--------|
-| global (live state) | **`kae use`** / `kae u` (and `kae apply`, its idempotent form for hooks; `kae add`, which registers and activates) | every terminal sees the change until the next switch |
-| per-directory | **`kae pin`** / **`kae bond`** / **`kae as`** / `kae unpin` (sugar over `kae mise init --write`) | the directory is bound to a profile via mise `[env]`; `pin` = fully isolated by default (opt-in sharing via `pin_shared_items`); `bond` = settings/sessions shared with the real home, credential private; `kae as <tool> <account>` swaps only the credential inside the bound directory; `--mode home` = fully separate; `--mode auth` [+ `--auto`] = mise tasks / enter hook calling the global surface |
-| per-process | **`kae run [--mode M] ... -- <cmd>`** | only the spawned child; live state restored afterwards (auth) or never touched (env / home / overlay / bond / pin) |
+| Surface | Scope | Role |
+|---------|-------|------|
+| `kae apply [--profile P] [--quiet]` | global, shared | idempotent re-apply for hooks (the no-op-aware form of `kae use -s`) |
+| `kae run [--mode M] … -- <cmd>` | per-process | apply to the spawned child only; live state restored afterwards (`auth`) or never touched (`env`/`home`/`overlay`/`bond`/`pin`) |
 
-Global scope supports `auth` mode only (the concurrency boundary below).
-Per-process scope supports all modes. Per-directory scope composes:
-overlay/home map the directory onto isolation, while auth tasks and the
-`--auto` hook call the global surface.
+**Mechanisms.** Internally each cell maps to a mechanism: global shared =
+in-place credential patch (`auth`); global isolated = `CLAUDE_CONFIG_DIR` /
+`CODEX_HOME` set by a kae-owned global mise fragment; per-dir shared =
+symlink-everything-but-credential (`bond`); per-dir isolated = private config
+dir with opt-in shares (`pin`). The per-dir bindings are also kae-owned mise
+fragments — kae never edits the user's `mise.toml`. `env`, `home`, and
+`overlay` remain reachable through `kae run --mode` only. See
+[ADAPTERS.md](ADAPTERS.md) for the per-tool switched/preserved contract and
+[ROADMAP.md](ROADMAP.md) for ordering.
 
 ## Subscription-First Authentication Model
 
@@ -98,15 +103,17 @@ mutating live credential stores.
 
 ## Concurrency Boundary
 
-`auth` mode mutates the live credential store shared by every terminal, so two
-different accounts of the same tool cannot run concurrently in `auth` mode.
-`kae` enforces a per-tool lock during switching and documents that concurrent
-multi-account work requires `home` or `overlay` mode (most ergonomically via
-`kae pin`).
+A global shared switch (`kae use -s`, the default) mutates the live credential
+store shared by every terminal, so two different accounts of the same tool
+cannot run concurrently this way. `kae` holds a per-tool lock during the switch
+and documents that concurrent multi-account work needs an isolated environment
+— `kae pin` per directory, or `kae use -i` for a global per-account home.
 
 ```text
 OK:  kae use work && claude
-NG:  terminal A uses claude/work while terminal B uses claude/personal (auth mode)
+OK:  cd ~/work && kae pin work   # this dir is work; another dir can pin personal
+NG:  two terminals both relying on a global shared switch for different accounts
+     of the same tool at the same time
 ```
 
 ## Product Boundaries
@@ -114,10 +121,11 @@ NG:  terminal A uses claude/work while terminal B uses claude/personal (auth mod
 - `kae` never reimplements upstream login flows. It snapshots and restores the
   artifacts the official CLIs create.
 - `kae` never edits upstream settings, skills, hooks, memory, MCP config, or
-  project trust in `auth` mode.
-- In `auth` mode, mixed-state files (for example `~/.claude.json`) are never
-  touched. In isolation modes they are symlinked wholesale; only the credential
-  file is private-copied. No mixed-state file is patched or replaced.
+  project trust during a global shared switch.
+- A global shared switch never touches mixed-state files (for example
+  `~/.claude.json`). In isolated environments they are symlinked wholesale; only
+  the credential file is private-copied. No mixed-state file is patched or
+  replaced.
 - Secrets are stored in the OS credential store by default; a plaintext file
   backend exists only as an explicit opt-in.
 - Every mutation is preceded by a backup and is reversible via `kae rollback`.
@@ -127,7 +135,8 @@ NG:  terminal A uses claude/work while terminal B uses claude/personal (auth mod
 - Managing API usage, billing, or model selection.
 - Proxying or wrapping the upstream CLIs' normal execution (except the planned
   `kae run` transaction).
-- Supporting simultaneous different accounts of one tool inside `auth` mode.
+- Supporting simultaneous different accounts of one tool within a single global
+  shared switch (use an isolated environment instead).
 - Syncing accounts across machines.
 
 ## Completion Goal
@@ -142,17 +151,21 @@ A developer with work and personal subscriptions for several AI CLIs can:
 
 ## Current State
 
-`kae v0.5.0` implements the full mode set for macOS and Linux behind the
-use / pin / run verb-per-scope surface: `add` (official login flow or
-`--no-login` snapshot), `use` and `sync` (global), `pin`/`unpin` and
-`mise init` (per-directory; overlay default), `run` (per-process auth
+`kae` v0.7.1 is released: the global shared switch (`kae use` / `kae apply`),
+per-directory binding (`kae pin`, and `kae bond` for the shared environment),
+the in-directory credential swap (`kae as`), `kae run` (per-process auth
 transaction with recapture-and-restore, plus `env` / `home` / `overlay`),
-`env` profiles, an experimental file-snapshot adapter for Antigravity CLI, a
-JSON-pointer adapter for OpenCode's ChatGPT-subscription login, a
-verbatim-keychain adapter for the Cursor CLI's opaque access token, and a
-config-pointer adapter for the GitHub Copilot CLI's active account (all
-v0.6.0). Keychain items are captured and restored verbatim, and the login
-flow refuses exits that change nothing. Windows support, the Codex keyring
-driver, and agy/opencode/cursor/copilot home isolation are roadmap items
-(v0.6.0 removed the gemini adapter after upstream retired Gemini CLI for
-Antigravity on 2026-05-19).
+`kae env` profiles, account lifecycle (`add`, `account rm` / `rename`),
+`kae profile`, and adapters for claude, codex, agy, opencode, cursor, and
+copilot. Keychain items are captured and restored verbatim; the login flow
+refuses exits that change nothing; a file-driver override keeps macOS smoke
+checks off the real login keychain.
+
+The **v0.7.2 target** ([RELEASE.md](RELEASE.md)) unifies this into the
+two-verb × two-flag surface above (`use` / `pin` with `-s` / `-i`; `bond` →
+`pin -s`, `as` → `pin <tool> <account>`) and adds the last cell, global
+isolated (`kae use -i`), which points every terminal at a per-account private
+home via a kae-owned global mise fragment (the real home untouched). Windows,
+the Codex keyring driver, and home isolation
+for agy/opencode/cursor/copilot remain roadmap items (v0.6.0 removed the gemini
+adapter after upstream retired Gemini CLI for Antigravity on 2026-05-19).

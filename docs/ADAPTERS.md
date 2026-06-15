@@ -292,9 +292,9 @@ of scope.
 ## Isolation (home / overlay / bond / pin Modes)
 
 `kae run --mode home|overlay|bond|pin` points a tool at an alternate home
-directory; `kae pin` / `kae bond` / `kae mise init --mode home|overlay|bond|pin`
-render the same mapping as mise `[env]` entries scoped to a project
-directory (docs/CLI.md):
+directory; `kae pin` (`-s` = bond, `-i` = pin) and
+`kae mise init --mode home|overlay|bond|pin` render the same mapping as mise
+`[env]` entries scoped to a project directory (docs/CLI.md):
 
 | Tool | Isolation env var | home mode | overlay mode | bond mode | pin mode |
 |------|-------------------|-----------|--------------|-----------|----------|
@@ -305,21 +305,20 @@ directory (docs/CLI.md):
 | cursor | none stable | refused | refused | refused | refused |
 | copilot | none stable | refused | refused | refused | refused |
 
-"Refused" means exit `5` from `kae run`; `kae pin` / `kae bond` /
-`kae mise init` instead omit those tools with an inline warning comment
-(they keep the real home).
+"Refused" means exit `5` from `kae run`; `kae pin` / `kae mise init` instead
+omit those tools with an inline warning comment (they keep the real home).
 `tools.<tool>.home_mode_enabled = false` / `overlay_mode_enabled = false`
 (both default true) disable all of these surfaces per tool.
 
-When resolving the **real** home for overlay and bond sharing, an isolation
-env var that points inside kae's own homes/overlays/isolation data dirs is
-ignored (that is kae's own redirection — e.g. exported by a pinned
-directory's `.mise.toml`). Honoring it would make an overlay/bond share from
-itself and create symlink cycles (ELOOP); re-running `kae pin`/`kae bond`
-repairs any such stale links. The auth adapters still honor the env var as
-the live base path — the semantics of global commands run inside a pinned
-directory refuse with exit `5` since v0.6.0 (`kae use/add/sync`;
-`--global` acts on the real home instead).
+When resolving the **real** home for shared (`pin -s` / bond) sharing, an
+isolation env var that points inside kae's own homes/overlays/isolation data
+dirs is ignored (that is kae's own redirection — e.g. exported by a bound
+directory's kae-owned mise fragment). Honoring it would make a share from itself and create
+symlink cycles (ELOOP); re-running `kae pin` repairs any such stale links. A
+global command run inside a bound directory (`kae use` / `kae add`) resolves the
+**real** home automatically — it ignores the directory's isolation env vars —
+and `kae use` warns that the change is global. The v0.6.0 exit `5` refusal and
+the `--global` flag are gone in v0.7.2.
 
 Overlay shared items (symlinked from the real home; everything else —
 credentials, sessions, history, and the mixed-state `.claude.json` — stays
@@ -340,9 +339,9 @@ upstream additions without a kae release, extend the list per tool with
 `tools.<tool>.overlay_extra_shared` (bare file names; the auth/identity
 artifacts are refused at config load — docs/DATA-MODEL.md).
 
-**Bond mode** (`kae bond`) uses a *denylist* instead of an allowlist: every
-real-home entry is symlinked into the bond directory **except** the hard-coded
-auth artifacts below. The credential file is private-copied (not symlinked),
+**Shared per-directory mode** (`kae pin --shared`, mechanism `bond`) uses a
+*denylist* instead of an allowlist: every real-home entry is symlinked into the
+bond directory **except** the hard-coded auth artifacts below. The credential file is private-copied (not symlinked),
 so authentication is private to the directory while all other files — settings,
 sessions, memory, MCP configs — stay shared with the real home.
 
@@ -361,14 +360,14 @@ the hard-coded auth artifacts above are refused at config load to avoid
 confusion). A real file already present in the bond directory is treated as a
 private override and is never replaced or linked over.
 
-**Pin mode** (`kae pin`) uses a per-account *private config dir*
-(`isolation/<pin-id>/<tool>/pin/<account>/config/`): nothing is shared with
+**Isolated per-directory mode** (`kae pin --isolated`, mechanism `pin`) uses a
+per-account *private config dir*
+(`isolation/<pin-id>/<tool>/isolated/<account>/config/`): nothing is shared with
 the real home by default. Items explicitly listed in
 `tools.<tool>.pin_shared_items` (bare file names; credential files
 `.credentials.json` / `auth.json` are refused at config load) are symlinked
-from the real home; the credential is private-copied at `0600`. Switching
-accounts inside a pinned directory without re-running `kae pin` is done with
-`kae as <tool> <account>`.
+from the real home; the credential is private-copied at `0600`. Re-bind one
+tool to another account with `kae pin <tool> <account>`.
 
 `tools.<tool>.pin_shared_items` is the opt-in counterpart to
 `overlay_extra_shared`: it names items to *share* rather than items to *add
@@ -376,19 +375,21 @@ on top of a default allowlist*. The default is empty (full isolation).
 Re-running `kae pin` refreshes opt-in shared-item links and the credential
 copy.
 
-**`kae as <tool> <account>`** swaps the credential inside a bonded or pinned
-directory to a different account without disturbing settings, sessions, or
-memory:
+**`kae pin <tool> <account>`** re-binds one tool inside a bound directory to a
+different account without disturbing settings, sessions, or memory (the v0.7.1
+`kae as`):
 
-- **bond mode**: the credential file is overwritten in the account-agnostic
-  bond dir (`isolation/<pin-id>/<tool>/bond/`).
-- **pin mode**: a new per-account config dir is prepared
-  (`isolation/<pin-id>/<tool>/pin/<account>/config/`) with opt-in shared
-  links and the new credential; the `.mise.toml` env entry is updated to
-  point at it.
+- **shared (`pin -s`)**: the credential file is overwritten in the
+  account-agnostic shared dir (`isolation/<pin-id>/<tool>/shared/`); the new
+  account is recorded in the kae-owned mise fragment.
+- **isolated (`pin -i`)**: a new per-account config dir is prepared
+  (`isolation/<pin-id>/<tool>/isolated/<account>/config/`) with opt-in shared
+  links and the new credential; the kae-owned mise fragment's env entry is
+  updated to point at it.
 
-In both cases the tool picks up the new account on next launch with no
-change to sessions or settings.
+In both cases the tool picks up the new account on next launch with no change
+to sessions or settings, and `KAE_PROFILE` is recomputed (ad-hoc when no
+profile matches).
 
 ## Login Commands
 

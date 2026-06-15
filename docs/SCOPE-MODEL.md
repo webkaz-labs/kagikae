@@ -1,15 +1,13 @@
 # Scope × Environment Model (design guidance)
 
-> Status: **Phases 0–5 implemented** (v0.7.0). Phase 0 (kae sync → kae apply
-> rename), Phase 1 (paths/constants), Phase 2 (kae bond), Phase 3 (/oauthAccount
-> removal), Phase 4 (kae pin semantics flip), Phase 5 (kae as) are complete.
-> v0.7.1 shipped operational tooling alongside (file-driver override,
-> `kae account rm`/`rename`, `kae profile`) and satisfies the one-release
-> tombstone span. Phase 6 (kae sync global isolated mode) is the **active
-> v0.7.2 target** — it reclaims the `sync` name (see
-> [RELEASE.md](RELEASE.md)). Phase 7 (docs fold-down) is this update. Normative
-> parts have been folded into DESIGN.md / CLI.md / ADAPTERS.md; this file now
-> serves as rationale/history.
+> Status: **Phases 0–5 implemented** (v0.7.0); v0.7.1 added operational tooling
+> (file-driver override, `kae account rm`/`rename`, `kae profile`). The
+> **v0.7.2 target** ([RELEASE.md](RELEASE.md)) unifies the surface into two
+> verbs × two flags (`use`/`pin` with `-s`/`-i`) and ships the last cell,
+> global isolated (`kae use -i`); `bond` → `pin -s` and `as` → `pin <tool>
+> <account>`, and the `--global` flag is dropped (`use` is inherently global).
+> Normative parts live in DESIGN.md / CLI.md / ADAPTERS.md; this file is
+> rationale/history.
 
 ## 1. Backbone principle
 
@@ -41,31 +39,38 @@ Every switching mode is one cell of **scope (global / per-directory)** ×
 
 ## 3. Command surface
 
+Two verbs by scope, two flags by environment (the v0.7.2 unification):
+
 | Command | Scope | Environment | Role |
 |---------|-------|-------------|------|
-| `kae use <profile \| tool account>` | global | shared (auth) | switch every terminal (current behaviour) |
-| `kae apply` | global | shared (auth) | idempotent re-apply for the enter hook (the command renamed from today's `kae sync`) |
-| `kae sync <account>` | global | isolated | switch a global, per-account isolated home |
-| `kae bond <profile>` | per-directory | shared | bind a directory to a shared environment (sessions/settings shared with the real home; credential private) |
-| `kae pin <profile>` | per-directory | isolated | bind a directory to an isolated environment (nothing shared by default; opt-in shares) |
-| `kae as <tool> <account>` | per-directory | — | inside a bonded/pinned directory, swap only the credential (persists within the dir) |
-| `kae run [--mode M] … -- <cmd>` | per-process | any | child process only; restored afterwards (current behaviour) |
+| `kae use [-s] <profile \| tool account>` | global | shared | switch every terminal in place |
+| `kae use -i <profile \| tool account>` | global | isolated | point every terminal at a per-account private home via a kae-owned global mise fragment |
+| `kae pin [-s] <profile \| tool account>` | per-directory | shared | bind a directory; sessions/settings shared with the real home, credential private |
+| `kae pin -i <profile \| tool account>` | per-directory | isolated | bind a directory; nothing shared by default, opt-in shares |
+| `kae apply` | global | shared | idempotent re-apply for the enter hook (the no-op-aware form of `use -s`) |
+| `kae run [--mode M] … -- <cmd>` | per-process | any | child process only; restored afterwards |
 
-### Naming notes
+Both `use` and `pin` default to `-s`/`--shared`; `-i`/`-s` are short for
+`--isolated`/`--shared`, and `u`/`p` for `use`/`pin`. Re-binding one tool in a
+bound directory is `kae pin <tool> <account>`.
 
-- Today's `kae sync` (idempotent re-apply called by the mise enter hook) is
-  **renamed to `kae apply`**; the name `sync` is reused for the new global
-  isolated mode.
-- `kae pin` **changes meaning**: it was per-directory binding defaulting to a
-  partial-share overlay; it now means per-directory **isolation**, while the
-  new `kae bond` covers per-directory **sharing**. This is a breaking change
-  (see §8).
+### Naming notes (history)
 
-## 4. `as` semantics
+- v0.7.2 collapsed four verbs into two: `bond` → `pin --shared`,
+  `as <tool> <account>` → `pin <tool> <account>`, and the global isolated mode
+  (once planned as a reclaimed `kae sync`) became `use --isolated`. The
+  `--global` flag was dropped because `use` is inherently global.
+- Earlier history: v0.7.0 renamed the idempotent re-apply `kae sync` → `kae
+  apply` and flipped `kae pin` from a partial-share overlay to per-directory
+  isolation (now `pin -i`); v0.7.2's `pin` default of shared (`pin -s`) is the
+  v0.7.0 `bond` mechanism.
 
-`kae as <tool> <account>` changes the account a bonded/pinned directory is
-bound to: it swaps **only the credential** (and the auth pointer of any
-mixed-state file), leaving the sharing set untouched.
+## 4. In-directory account swap (`as` → `pin <tool> <account>`)
+
+(v0.7.2 folded `kae as` into `kae pin <tool> <account>`; the semantics below are
+unchanged.) Re-binding one tool in a bound directory changes the account that
+directory is bound to: it swaps **only the credential** (and the auth pointer of
+any mixed-state file), leaving the sharing set untouched.
 
 - **Persists within the directory** and survives re-entry.
 - **Does not leak outside the directory**: the isolation env var is
@@ -210,6 +215,15 @@ chars (stable, deterministic, rename-proof). All new stores live under
 `isolation/<pin-id>/` (per-directory) and `synchomes/` (global isolated). No
 copy+patch anywhere — the mixed-state finding (§6) removed that need.
 
+> v0.7.2 update: the path segments below were renamed for clarity and the
+> global home moved under `isolation/` — `bond/` → `shared/`,
+> `pin/<account>/` → `isolated/<account>/`, `synchomes/<tool>/<account>/` →
+> `isolation/global/<tool>/<account>/`. Isolation is now delivered by a
+> kae-owned mise fragment (`.config/mise/conf.d/kagikae.toml`), not by editing
+> `mise.toml` or swapping `~/.claude`. See [DATA-MODEL.md](DATA-MODEL.md) and
+> [RELEASE.md](RELEASE.md) for the current layout; the rest of this section is
+> the original v0.7.0 plan.
+
 - **bond**: config dir `isolation/<pin-id>/<tool>/bond/` is **account-agnostic**;
   it holds symlinks to the real home (everything except the hard-coded denylist)
   plus the **current account's credential materialised privately** (Linux claude
@@ -227,15 +241,20 @@ copy+patch anywhere — the mixed-state finding (§6) removed that need.
   tool home per account; `~/.claude` (resp. `~/.codex`) becomes a symlink to it
   (§10).
 
-## 10. `sync` global pointer (proposed)
+## 10. Global isolated home pointer (`kae use -i`)
 
-To make a global isolated home visible to every terminal, swap the tool home
-itself: make `~/.claude` (etc.) a symlink to a kae-managed
-`homes/<account>/` and re-point it on `kae sync <account>`. This is immediate
-for all terminals, unlike a shell-rc export that only affects new shells.
-Symlinking the tool home is behaviourally risky (claude's auth fragility is
-proven), so **real-machine fresh-process auth validation is a release gate**
-for this mode (see [VALIDATION.md](VALIDATION.md)).
+To make a global isolated home visible to every terminal **without touching the
+real `~/.claude`**, point the tool at a kae-managed
+`isolation/global/<tool>/<account>/` via a kae-owned global mise fragment
+(`~/.config/mise/conf.d/kagikae.toml`) exporting `CLAUDE_CONFIG_DIR` /
+`CODEX_HOME`. mise re-evaluates env on every prompt and directory change, so the
+change reaches all mise-activated terminals on their next prompt — close to the
+immediacy of swapping the home, without the risk. The teardown is `kae use -s`
+(or bare `kae use`): drop the tool from `state.synced`, regenerate or delete the
+fragment, then switch the real home in place. (An earlier design symlink-swapped
+`~/.claude` itself; dropped as too risky — claude's auth fragility is proven.)
+Real-machine fresh-process auth validation remains a release gate (see
+[VALIDATION.md](VALIDATION.md)).
 
 ## 11. Open questions
 

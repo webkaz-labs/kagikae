@@ -14,8 +14,9 @@ vocabulary for `kae`.
 | env profiles (metadata) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/env/<tool>/<account>/env.toml` |
 | home-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/homes/<tool>/<account>/` |
 | overlay-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/overlays/<tool>/<account>/` |
-| bond-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/bond/` |
-| pin-mode config dirs | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/pin/<account>/config/` |
+| per-dir shared (`pin -s`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/shared/` |
+| per-dir isolated (`pin -i`) config dirs | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/isolated/<account>/config/` |
+| global-isolated (`use -i`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/global/<tool>/<account>/` (a kae-owned mise fragment points `CLAUDE_CONFIG_DIR` / `CODEX_HOME` here; the real `~/.<tool>` is never touched) |
 | file-backend secrets (opt-in) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/secrets/...` |
 | state | `${XDG_STATE_HOME:-~/.local/state}/kagikae/state.json` |
 | backups (metadata) | `${XDG_STATE_HOME:-~/.local/state}/kagikae/backups/<id>.json` |
@@ -168,17 +169,25 @@ guidance to either install libsecret tools or opt in to the file backend with
   "schema_version": 1,
   "active_profile": "work",
   "active": {"claude": "work", "codex": "work"},
+  "synced": {"claude": "work"},
   "updated_at": "2026-06-11T01:23:45Z"
 }
 ```
 
 `active` records what kae last applied (or captured from a matching live
 state); it is kae's belief, not upstream truth. `status` re-verifies
-`auth_present` against the live state. `active_profile` is set by
-`switch all <profile>` and cleared when a single-tool switch makes the active
-set diverge from that profile's mapping. `kae apply` decides its no-op by
-comparing the target profile against `active` (belief only — external drift
-is neither verified nor repaired).
+`auth_present` against the live state. `active_profile` is set by a
+profile-wide `use` / `apply` and cleared when a single-tool switch makes the
+active set diverge from that profile's mapping. `kae apply` decides its no-op by
+comparing the target profile against `active` (belief only — external drift is
+neither verified nor repaired).
+
+`synced` records, per tool, the account whose private home the **global** mise
+fragment (`~/.config/mise/conf.d/kagikae.toml`) currently points the tool at
+(global isolated, `kae use -i`). kae regenerates that kae-owned fragment from
+`synced`; it is absent/empty when no tool is globally isolated. `kae use -s`
+clears the tool's entry and regenerates or deletes the fragment. The real
+`~/.<tool>` is never modified.
 
 ## Backups
 
@@ -240,7 +249,10 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
   `agy-file-snapshot`, `opencode-file-patch`, `cursor-keychain`,
   `copilot-config-pointer`
-- modes: `auth`, `env`, `home`, `overlay`, `bond`
+- internal mechanisms: `auth`, `env`, `home`, `overlay`, `bond`, `pin`, `sync`
+  (`bond`/`pin` back per-dir `pin -s`/`-i`; `sync` is the global-isolated
+  mechanism behind `kae use -i`, delivered as a kae-owned mise fragment)
+- status `pinned.mode` (user-facing environment): `shared`, `isolated`, `auth`
 - backup reasons: `switch`, `rollback`, `run`, `login`
 
 ## Env Profiles

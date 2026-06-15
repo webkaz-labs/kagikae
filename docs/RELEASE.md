@@ -1,97 +1,173 @@
 # Release Target: kae v0.7.2
 
-Phase 6: `kae sync <account>` — the global isolated mode, and the last mode in
-the scope×environment model. It makes a per-account private tool home visible
-to **every** terminal by symlink-swapping the real `~/.claude` / `~/.codex` to
-a kae-managed `synchomes/<tool>/<account>/`. This is the highest-risk mode
-(it touches the real tool home, not just a directory's `.mise.toml`), so it
-ships behind a real-machine gate that the v0.7.1 file-driver override now lets
-us run fully detached from the real login keychain.
+Unify the switching surface and ship the last cell of the scope×environment
+model (global isolated).
+
+Four switching behaviors collapse into **two verbs by scope** plus **two flags
+by environment**, so the model reads as one grid instead of four unrelated
+verbs:
+
+|                              | `--shared` / `-s` (default)                                               | `--isolated` / `-i`                                                       |
+|------------------------------|---------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| **`kae use`** / `u` — global  | switch every terminal's account in place, real home shared (v0.7.1 `auth`)| point every terminal at a per-account private home via a kae-owned global mise fragment (NEW) |
+| **`kae pin`** / `p` — per-dir | bind this dir: settings/sessions shared, credential private (v0.7.1 `bond`)| bind this dir: fully isolated, opt-in shares (v0.7.1 `pin`)               |
+
+Both verbs accept `<profile>` or `<tool> <account>`. `-i`/`-s` are short forms
+of `--isolated`/`--shared`. Defaults: `use` shared (the everyday global
+switch), `pin` shared (the common per-directory case). This is a pre-1.0
+surface change with no released users of the affected verbs; the old verbs
+become one-release removed-command pointers.
 
 Previous baseline: v0.7.1 (file-driver override, `kae account rm`/`rename`,
 `kae profile`, comment-preserving config writer; see git tag v0.7.1).
 
 ## Scope
 
-- **`kae sync <account>`** (new `internal/cmd/sync_global.go`,
-  `CmdSyncGlobal`) — prepare `synchomes/<tool>/<account>/` as a full private
-  tool home, then **symlink-swap** the real tool home to it. **First run for a
-  tool**: back up the real dir to `~/.claude.kae-backup-<ts>` (resp.
-  `~/.codex.kae-backup-<ts>`), create the symlink, verify it resolves, and
-  roll back the backup on any failure. **Subsequent re-points**: build a temp
-  symlink and `rename` it over the existing one (atomic; no window where the
-  home is missing). Record the active sync account in `state.json`. claude and
-  codex only (they have a redirectable home); other tools are unsupported
-  (exit `5`).
-- **`kae unsync [<tool>]`** — the escape hatch (teardown must ship with the
-  swap, never after): remove the kae symlink and restore the most recent
-  `*.kae-backup-<ts>` in its place; if no backup exists, refuse (exit `10`)
-  rather than leave the user with no tool home. Clears the sync entry from
-  `state.json`.
-- **`sync` name reclaim** — `Root()` routes `case "sync"` to `CmdSyncGlobal`,
-  removing the v0.7.0 tombstone (the removed-command pointer to `apply`). This
-  is safe only because v0.7.1 shipped in between: the tombstone spanned one
-  full release, so `kae sync` has not silently changed meaning within a single
-  version.
-- **isolation guard + status** (`internal/cmd/modes.go`) — the mode classifier
-  learns `SyncHomeDir`; the guard resolves `os.Readlink(~/.claude)` to detect
-  that a tool home is a kae sync home, so `kae use`/`add`/`apply` behave
-  correctly (and `--global` still reaches real state). `kae status` reports the
-  active sync account per tool.
-- **doctor** — a check that a tool home symlink points at a live
-  `synchomes/<tool>/<account>/` (warn on a dangling sync symlink or a missing
-  backup, so a half-torn-down swap is visible).
+### A. Surface unification (`use`/`pin` × `-s`/`-i`)
+
+- **`use`/`pin` gain `--shared`/`-s` and `--isolated`/`-i`** (`internal/cmd`),
+  selecting the environment. `use` defaults to shared, `pin` to shared.
+- **Aliases**: `u` = `use` (already), `p` = `pin` (new route in `Root()`).
+- **`bond` → `pin --shared`**: `bond` becomes a removed-command pointer (exit
+  `64`, one release) naming `kae pin --shared`. The per-directory shared
+  mechanism (symlink-everything-but-credential) is unchanged; only the surface
+  moves under `pin -s`.
+- **`as` removed**: changing one tool's account inside a bound directory is now
+  `kae pin <tool> <account>` (re-binds that tool only, leaving the others and
+  the sharing set intact). `as` becomes a removed-command pointer (exit `64`,
+  one release) naming `kae pin <tool> <account>`.
+- **`--global` flag removed**: `use` is inherently global, so it always resolves
+  the real home (it auto-applies what `--global` used to do — hide kae-managed
+  isolation env vars). Inside a pinned directory `use` no longer refuses (the
+  v0.6.0 exit `5` guard is gone); it prints a one-line warning — "this directory
+  is pinned; you are changing GLOBAL state, which this directory will not see —
+  re-bind with `kae pin`" — and proceeds.
+
+### B. Isolation via kae-owned mise fragments (the real home and `mise.toml` are never touched)
+
+Both isolated environments set `CLAUDE_CONFIG_DIR` / `CODEX_HOME` through a
+**generated, kae-owned mise fragment** at `.config/mise/conf.d/kagikae.toml`,
+which mise loads and merges (a project fragment overrides the global one, so
+`pin` wins over `use -i` inside a bound directory). kae **never reads or writes
+the user's `mise.toml`** and never mutates the real `~/.claude` / `~/.codex`;
+the fragment is regenerated from kae state, and teardown just deletes it.
+
+- **global** (`use -i`): `~/.config/mise/conf.d/kagikae.toml`, regenerated from
+  `state.json` `synced` (tool→account).
+- **per-directory** (`pin`): `./.config/mise/conf.d/kagikae.toml` in the
+  project, carrying the tool env entries, `KAE_PROFILE`, and (for shared) the
+  bound account.
+- kae creates `.config/mise/conf.d/` if absent and **adds the project fragment
+  to `.gitignore`** (it holds machine-specific absolute paths and account names
+  that must not be committed); the file self-documents in a header comment.
+- **Requires mise activation** for the scope (global activation for `use -i`;
+  the usual project activation for `pin`). When kae cannot confirm activation it
+  warns and prints the `export …` line for the current shell.
+- **`kae unpin`** deletes the project fragment. **Migration**: directories
+  pinned before v0.7.2 carry a `# >>> kagikae` marker block inside `mise.toml`;
+  there is no auto-migration — re-run `kae unpin && kae pin` once per directory.
+
+### C. Global isolated home (`use --isolated`) — claude/codex only
+
+- Prepare `isolation/global/<tool>/<account>/` as a full per-account private
+  home (materialize the credential); the global fragment points the tool there.
+  claude and codex only (others exit `5`). On macOS `CLAUDE_CONFIG_DIR` makes
+  claude read the file credential, not the keychain (proven in the v0.7.0 gate),
+  so the real login keychain is never touched.
+- **Teardown is `use --shared`** (or bare `kae use`): drop the tool from
+  `synced`, regenerate (or delete) the global fragment, then switch the real
+  home in place. `-i`/`-s` toggle the global environment; no `unsync` verb, no
+  backups, no restore.
+
+### D. Per-directory account changes and status
+
+- **`kae pin <tool> <account>`** re-binds one tool (regenerate the project
+  fragment's entry for that tool); `KAE_PROFILE` recomputed (ad-hoc when no
+  profile matches).
+- **`status` reports the real per-tool account**, not the `KAE_PROFILE` label.
+  Shared dirs record the account in the fragment so it survives re-entry; the
+  isolated path already encodes the account.
+
+### E. Data path renames (clarity)
+
+- global isolated home `synchomes/<tool>/<account>/` →
+  **`isolation/global/<tool>/<account>/`** (`synchomes` named the removed `sync`
+  verb). Not shipped yet — a free rename.
+- per-dir mechanism segments renamed for clarity: `…/<tool>/bond/` →
+  **`…/<tool>/shared/`**; `…/<tool>/pin/<account>/…` →
+  **`…/<tool>/isolated/<account>/…`**. The v0.7.1 stores under the old names are
+  abandoned in place; a one-time `kae unpin && kae pin` re-creates them under the
+  new names (no auto-migration).
 
 ## Non-Goals (this release)
 
-- **Live bidirectional sync / watcher daemon** — `sync` shares nothing between
-  accounts and does not merge changes back to a shared home; it is a global
-  *switch* of which private home is live, not a sync engine. The §6 finding
-  (claude self-heals `/oauthAccount` from the token) means no copy+patch is
-  needed. A resident watcher conflicts with the CLI-only design
-  ([SCOPE-MODEL.md](SCOPE-MODEL.md) §6).
-- **No mise hook integration** — `sync` is global, not per-directory, so it
-  needs no enter/leave hook; it is a one-shot home swap.
+- **`apply` / `run` redesign** — `apply` stays the idempotent hook form of the
+  global shared switch; `run --mode` keeps its current mode values. Folding them
+  into the `-s`/`-i` vocabulary is deferred ([ROADMAP.md](ROADMAP.md)).
+- **Live bidirectional sync / watcher daemon** — `use -i` is a *switch* of which
+  private home is live, not a sync engine. The §6 finding (claude self-heals
+  `/oauthAccount` from the token) means no copy+patch is needed; a resident
+  watcher conflicts with the CLI-only design ([SCOPE-MODEL.md](SCOPE-MODEL.md)).
+- **Renaming `run --mode` values** — `run --mode bond|pin|home|overlay` keeps
+  its names even though the per-directory data paths are renamed to
+  `shared`/`isolated`; aligning `run`'s vocabulary is deferred with the rest of
+  the `apply`/`run` review ([ROADMAP.md](ROADMAP.md)).
 - **Tools without a redirectable home** (agy, opencode, cursor, copilot) —
-  `auth` / `run --mode env` only, unchanged.
+  global shared (`use`) and `run --mode env` only, unchanged.
 - TUI, Windows, Codex keyring driver — see [ROADMAP.md](ROADMAP.md).
 - No automatic network access.
 
 ## Acceptance Criteria
 
-- **real-machine gate** (required before merge): on a staging machine with a
-  disposable `~/.claude`, `kae sync <account>` swaps the home and a
-  fresh-process `claude -p '' --model haiku` returns AUTH-OK; the real login
-  keychain is not polluted (the swap targets the file home, exercised with the
-  v0.7.1 file-driver override). `kae unsync` restores the original `~/.claude`
-  byte-for-byte from the backup. Recorded in
+- **surface**: `kae u -i <acct>`, `kae u -s <acct>`, `kae p -i <acct>`,
+  `kae p -s <acct>` each select the right scope×environment; bare `use`/`pin`
+  default to shared; `u`/`p` aliases resolve. `bond`/`as` print exit-`64`
+  pointers to `pin --shared` / `pin <tool> <account>`. `--global` is gone;
+  `use` inside a pinned dir warns and switches global state.
+- **isolation fragments**: `kae pin` writes `./.config/mise/conf.d/kagikae.toml`
+  and `kae use -i` writes `~/.config/mise/conf.d/kagikae.toml`; the user's
+  `mise.toml` and the real `~/.claude` / `~/.codex` are never modified. The
+  project fragment is added to `.gitignore`. `kae unpin` deletes the project
+  fragment; `kae use -s` drops the tool from `synced` and regenerates/deletes the
+  global fragment (temp-HOME tests).
+- **global-isolated real-machine gate** (required before merge): on a staging
+  machine with global mise active, `kae use -i <account>` makes a fresh-process
+  `claude -p '' --model haiku` run as that account's private home and return
+  AUTH-OK; the real login keychain is not polluted (file-driver path). `kae use
+  -s` returns the shell to the real home. Recorded in
   [VALIDATION.md](VALIDATION.md).
-- **first-run safety**: with no prior swap, `kae sync` backs up the real dir,
-  symlinks, and a simulated failure mid-swap rolls back to the original dir
-  (temp-HOME test).
-- **re-point atomicity**: a second `kae sync <other>` re-points without ever
-  leaving the home path absent (temp-HOME test asserts the path always
-  resolves).
-- **`sync` reclaim**: `kae sync <account>` runs the global swap; the v0.7.0 →
-  `apply` tombstone is gone; `kae apply` is unaffected.
-- **unsync**: removes the symlink and restores the backup; refuses (exit `10`)
-  when no backup exists; clears `state.json`.
-- **unsupported tools**: `kae sync` for agy/opencode/cursor/copilot exits `5`.
+- **per-dir re-bind**: `kae pin claude <other>` in a bound dir changes only
+  claude; `KAE_PROFILE` drops to ad-hoc when the combination matches no profile;
+  `kae status` shows the real per-tool account. A shared dir's active account
+  survives re-entry (recorded in the fragment).
+- **paths**: stores resolve under `isolation/global/<tool>/<account>/` and
+  `isolation/<pin-id>/<tool>/{shared,isolated/<account>}/…`.
+- **mise activation**: with mise not active, `use -i` / `pin` warn and print the
+  `export` line and exit `0`.
+- **unsupported tools**: `kae use -i agy <account>` (and opencode/cursor/
+  copilot) exits `5`.
 - `mise run check` passes; JSON keeps `schema_version: 1`, stable tokens, `[]`
   arrays; redaction tests cover any new output path.
 
 ## Release Steps
 
-1. Land `kae sync` / `kae unsync` with the first-run backup, atomic re-point,
-   and rollback; temp-HOME tests green.
-2. Reclaim the `sync` name (remove the tombstone) and update help; bump
-   `toolVersion` to v0.7.2.
-3. Run the real-machine gate on a staging machine (disposable `~/.claude`);
-   record results in `docs/VALIDATION.md`.
-4. Phase 7 docs fold-down: retire `docs/SCOPE-MODEL.md` into the permanent
-   design docs now that the whole model is implemented (or keep with a reason).
-5. README examples verified against the built binary.
-6. Tag `v0.7.2`, GitHub release.
+1. Land the surface unification: `-s`/`-i` flags, `p` alias, `pin <tool>
+   <account>` re-bind, `bond`/`as` pointers, `--global` removal + pinned-dir
+   warning; temp-HOME tests green. Bump `toolVersion` to v0.7.2.
+2. Move per-dir isolation to a kae-owned project fragment
+   (`./.config/mise/conf.d/kagikae.toml`): replace the `mise.toml` marker-block
+   renderer, add `.gitignore` handling, rename the data paths to
+   `shared`/`isolated`, `unpin` deletes the fragment, `status` shows the real
+   per-tool account; temp-HOME tests.
+3. Land global isolated (`use -i`): prepare `isolation/global/<tool>/<account>/`,
+   regenerate `~/.config/mise/conf.d/kagikae.toml` from `synced`, and the
+   `use -s` teardown; mise-activation warning; temp-HOME tests.
+4. Run the real-machine gate (global mise active); record in
+   `docs/VALIDATION.md`.
+5. Phase 7 docs fold-down: reduce `docs/SCOPE-MODEL.md` to rationale/history now
+   that the whole model is implemented (or keep with a reason).
+6. README examples verified against the built binary.
+7. Tag `v0.7.2`, GitHub release.
 
 ---
 

@@ -19,8 +19,9 @@ work Cursor  <->  personal Cursor (Cursor CLI)
 
 ## Quick Start
 
-One verb per scope: **`use`** switches now (global), **`pin`** binds a
-directory, **`run`** wraps one process.
+Two verbs by scope: **`use`** switches globally, **`pin`** binds the current
+directory. Add **`-i`** for an isolated (private) home, or keep the default
+**`-s`** (shared with your real home). **`run`** wraps one process.
 
 ```bash
 kae init                       # create config
@@ -56,26 +57,31 @@ restores it. `--dry-run` previews exactly what would be patched.
 ```bash
 cd ~/code/client-a
 kae pin clientA                # this directory now uses the clientA profile
+                               # (shared: settings/sessions shared, credential private)
 mise trust                     # mise refuses untrusted configs; its error
                                # between pin and trust is expected
 ```
 
 Inside the pinned directory (with [mise](https://mise.jdx.dev) activated)
-claude and codex run as the `clientA` accounts; everything is **fully
-isolated** by default — auth, sessions, memory, and settings are all private
-to the account. Variants:
+claude and codex run as the `clientA` accounts. `kae pin` writes a kae-owned
+mise fragment (`.config/mise/conf.d/kagikae.toml`, git-ignored); your
+`mise.toml` is never touched. Variants:
 
 ```bash
-kae as claude clientB          # swap credential inside the pinned dir to a
-                               # different account (sessions/settings unchanged)
-kae bond clientA               # bond: settings/sessions shared with real home,
-                               # credential private — one login per account, persists
-kae mise init --profile clientA --mode home --write  # fully separate tool homes
-kae mise init --profile work --mode auth --auto --write  # global auto-switch on entry (opt-in;
-                               # needs mise activate + trusted config +
-                               # `mise settings experimental=true`)
-kae unpin                      # remove the binding (.mise.toml block only)
+kae pin -i clientA             # isolated: nothing shared with the real home
+                               # (opt in via pin_shared_items)
+kae pin claude clientB         # re-bind one tool in this dir to another account
+                               # (sessions/settings unchanged)
+kae unpin                      # remove the binding (kagikae block only)
 kae mise init --profile clientA  # preview what pin writes
+```
+
+And the global isolated switch, visible to every mise-activated terminal:
+
+```bash
+kae use -i work                # point every terminal at a per-account private home
+                               # via a kae-owned global mise fragment (~/.claude
+                               # untouched); `kae use -s work` tears it down
 ```
 
 ## Beyond Switching
@@ -98,8 +104,9 @@ kae apply --quiet
 
 ## Safety Model
 
-- Auth-only by default: mixed-state files like `~/.claude.json` are patched
-  via a JSON Pointer allowlist (`/oauthAccount`), never replaced.
+- Auth-only by default: only the credential is switched (claude's token,
+  codex's `auth.json`); mixed-state files like `~/.claude.json` are never
+  touched in a shared switch (claude self-heals `/oauthAccount` from the token).
 - Secrets live in the OS credential store (macOS Keychain / Linux libsecret);
   a plaintext file backend is explicit opt-in.
 - Atomic writes, per-tool locks, pre-write backups, structure guards that
@@ -107,9 +114,10 @@ kae apply --quiet
 - Deterministic exit codes and stable `--json` reports for agents and
   scripts — see [docs/CLI.md](docs/CLI.md).
 
-One account per tool at a time: `auth` mode switches the live credential
-store, so concurrent different accounts of the same tool need the planned
-`home` mode (see [docs/ROADMAP.md](docs/ROADMAP.md)).
+One account per tool at a time globally: a shared switch (`kae use`) changes
+the live credential store, so concurrent different accounts of the same tool
+need an isolated environment — `kae pin` per directory, or `kae use -i`
+globally.
 
 ## Install
 

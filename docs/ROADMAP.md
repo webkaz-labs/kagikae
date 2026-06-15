@@ -3,14 +3,17 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target (v0.7.1 — file-driver override, account rm/rename,
-discovery-gated doctor orphan detection) lives in [RELEASE.md](RELEASE.md).
-The next planned target is v0.7.2 (Phase 6, the global-isolated `kae sync`
-mode; see [SCOPE-MODEL.md](SCOPE-MODEL.md)). What remains beyond those is
-hardening and platform coverage, ordered below by user impact.
+The active target (v0.7.2 — the `use` / `pin` × `-s` / `-i` surface
+unification and the global-isolated `kae use -i` home swap) lives in
+[RELEASE.md](RELEASE.md). What remains beyond it is hardening and platform
+coverage, ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 
+- **`apply` / `run` environment flags**: fold `-s` / `-i` into `kae apply` and
+  `kae run` so the whole surface speaks one environment vocabulary (deferred
+  from v0.7.2, where `apply` stays global-shared and `run --mode` keeps its
+  mechanism names).
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the
@@ -42,7 +45,8 @@ hardening and platform coverage, ordered below by user impact.
   `$HOME`s, so claude switch smoke checks can only run safely on Linux today;
   an explicit file-driver override (env var primary, config opt-in secondary)
   lets containers and smoke environments never touch the real login keychain.
-  Also the safety prerequisite for the v0.7.2 Phase 6 real-machine gate.
+  Also the safety prerequisite for the v0.7.2 global-isolated (`kae use -i`)
+  real-machine gate.
 
 ## Command-system expansion
 

@@ -53,15 +53,22 @@ func renderPinFragment(profileName, scope string, entries []isolationEntry) stri
 	return b.String()
 }
 
+// writeMiseFragment creates the conf.d parent dir and atomically writes a
+// kae-owned mise fragment (0644). Shared by the per-directory writer
+// (writePinFragment) and the global writer (regenGlobalFragment).
+func writeMiseFragment(path, content string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create mise conf.d dir: %w", err)
+	}
+	return patch.WriteFileAtomic(path, []byte(content), 0o644)
+}
+
 // writePinFragment writes the kae-owned mise fragment in the current directory
 // (creating .config/mise/conf.d/ as needed) and adds it to .gitignore. The
 // fragment holds machine-specific absolute paths and account names, so it must
 // never be committed.
 func writePinFragment(content string) error {
-	if err := os.MkdirAll(filepath.Dir(fragmentRelPath), 0o755); err != nil {
-		return fmt.Errorf("create mise conf.d dir: %w", err)
-	}
-	if err := patch.WriteFileAtomic(fragmentRelPath, []byte(content), 0o644); err != nil {
+	if err := writeMiseFragment(fragmentRelPath, content); err != nil {
 		return err
 	}
 	return ensureGitignored(fragmentRelPath)

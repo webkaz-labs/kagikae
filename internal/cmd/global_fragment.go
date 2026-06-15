@@ -3,13 +3,35 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
-	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
+
+// syncedEntry is one resolved (envVar, home-dir) pair from the synced map,
+// iterated in constants.Tools canonical order.
+type syncedEntry struct {
+	envVar string
+	dir    string
+}
+
+// iterSynced resolves the synced map into (envVar, dir) pairs in canonical
+// tool order, skipping tools that have no entry in synced and tools with no
+// stable home-isolation env var (e.g. agy/cursor).
+func (app *App) iterSynced(synced map[string]string) []syncedEntry {
+	var out []syncedEntry
+	for _, tool := range constants.Tools {
+		account, ok := synced[tool]
+		if !ok {
+			continue
+		}
+		if envVar := isolationEnvVar(tool); envVar != "" {
+			out = append(out, syncedEntry{envVar, app.Paths.GlobalIsolatedHomeDir(tool, account)})
+		}
+	}
+	return out
+}
 
 // renderGlobalFragment renders the kae-owned global mise fragment for global
 // isolated mode (kae use -i): an [env] block pointing each globally isolated
@@ -23,14 +45,8 @@ func (app *App) renderGlobalFragment(synced map[string]string) string {
 	fmt.Fprintln(&b, "# Written by `kae use -i`, removed by `kae use -s`; regenerated from kae state.")
 	fmt.Fprintln(&b, "# Your mise.toml is never touched.")
 	fmt.Fprintln(&b, "[env]")
-	for _, tool := range constants.Tools {
-		account, ok := synced[tool]
-		if !ok {
-			continue
-		}
-		if envVar := isolationEnvVar(tool); envVar != "" {
-			fmt.Fprintf(&b, "%s = %q\n", envVar, app.Paths.GlobalIsolatedHomeDir(tool, account))
-		}
+	for _, e := range app.iterSynced(synced) {
+		fmt.Fprintf(&b, "%s = %q\n", e.envVar, e.dir)
 	}
 	return b.String()
 }
@@ -47,10 +63,7 @@ func (app *App) regenGlobalFragment(synced map[string]string) error {
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create mise conf.d dir: %w", err)
-	}
-	return patch.WriteFileAtomic(path, []byte(app.renderGlobalFragment(synced)), 0o644)
+	return writeMiseFragment(path, app.renderGlobalFragment(synced))
 }
 
 // teardownSynced drops the given tools from state.synced and regenerates (or
@@ -84,14 +97,8 @@ func (app *App) teardownSynced(tools []string) error {
 // is not detected (so the binding takes effect immediately).
 func (app *App) globalExportFallback(synced map[string]string) string {
 	var b strings.Builder
-	for _, tool := range constants.Tools {
-		account, ok := synced[tool]
-		if !ok {
-			continue
-		}
-		if envVar := isolationEnvVar(tool); envVar != "" {
-			fmt.Fprintf(&b, "export %s=%s\n", envVar, shellSingleQuote(app.Paths.GlobalIsolatedHomeDir(tool, account)))
-		}
+	for _, e := range app.iterSynced(synced) {
+		fmt.Fprintf(&b, "export %s=%s\n", e.envVar, shellSingleQuote(e.dir))
 	}
 	return b.String()
 }

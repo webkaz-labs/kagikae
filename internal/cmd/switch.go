@@ -275,12 +275,14 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 		Fragment:      app.Paths.MiseGlobalFragmentFile(),
 		Results:       []globalIsolateResult{},
 	}
+
 	for _, tgt := range targets {
 		report.Results = append(report.Results, globalIsolateResult{
 			Tool: tgt.Tool, Account: tgt.Account,
 			Home: app.Paths.GlobalIsolatedHomeDir(tgt.Tool, tgt.Account),
 		})
 	}
+
 	if opts.DryRun {
 		if opts.Format == formatJSON {
 			return encodeJSON(report)
@@ -303,15 +305,14 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 	if st.Synced == nil {
 		st.Synced = map[string]string{}
 	}
-	for _, tgt := range targets {
-		dir := app.Paths.GlobalIsolatedHomeDir(tgt.Tool, tgt.Account)
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return finish(opts, fmt.Errorf("create global isolated home for %s: %w", tgt.Tool, err))
+	for _, r := range report.Results {
+		if err := os.MkdirAll(r.Home, 0o700); err != nil {
+			return finish(opts, fmt.Errorf("create global isolated home for %s: %w", r.Tool, err))
 		}
-		if err := app.swapDirCredential(ctx, be, tgt.Tool, tgt.Account, dir); err != nil {
-			return finish(opts, fmt.Errorf("materialize credential for %s/%s: %w", tgt.Tool, tgt.Account, err))
+		if err := app.swapDirCredential(ctx, be, r.Tool, r.Account, r.Home); err != nil {
+			return finish(opts, fmt.Errorf("materialize credential for %s/%s: %w", r.Tool, r.Account, err))
 		}
-		st.Synced[tgt.Tool] = tgt.Account
+		st.Synced[r.Tool] = r.Account
 	}
 	st.UpdatedAt = app.Now().UTC()
 	if err := state.Save(app.Paths.StateFile(), st); err != nil {

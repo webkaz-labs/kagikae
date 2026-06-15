@@ -204,7 +204,8 @@ func TestUseFlagValidation(t *testing.T) {
 
 func TestRemovedCommandsPointAtReplacements(t *testing.T) {
 	// bond/as folded into the pin surface in v0.7.2; the older removals stay.
-	for _, name := range []string{"bond", "as", "switch", "s", "login", "capture", "current"} {
+	// `s` is no longer here — it is the status alias since v0.7.2.
+	for _, name := range []string{"bond", "as", "switch", "login", "capture", "current"} {
 		if code := Root([]string{name}); code != constants.ExitUsage {
 			t.Fatalf("removed command %s must exit %d", name, constants.ExitUsage)
 		}

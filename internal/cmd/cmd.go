@@ -48,7 +48,7 @@ func Root(args []string) int {
 		return CmdInit(ctx, args[1:])
 	case "edit":
 		return CmdEdit(ctx, args[1:])
-	case "doctor":
+	case "doctor", "d":
 		return CmdDoctor(ctx, args[1:])
 	case "add":
 		return CmdAdd(ctx, args[1:])
@@ -62,7 +62,7 @@ func Root(args []string) int {
 		return CmdSync(ctx, args[1:])
 	case "apply":
 		return CmdApply(ctx, args[1:])
-	case "run":
+	case "run", "r":
 		return CmdRun(ctx, args[1:])
 	case "env":
 		return CmdEnv(ctx, args[1:])
@@ -75,8 +75,9 @@ func Root(args []string) int {
 	case "as":
 		return removedCommand("as", "v0.7.2", "kae pin <tool> <account>")
 	// Removed in v0.5.0 (docs/RELEASE.md Breaking Changes); the pointers
-	// stay for one release.
-	case "switch", "s":
+	// stay for one release. `s` is no longer a switch pointer — it is the
+	// status alias (below).
+	case "switch":
 		return removedCommand(args[0], "v0.5.0", "kae use <profile> | kae use <tool> <account>")
 	case "login":
 		return removedCommand(args[0], "v0.5.0", "kae add <tool> <account>")
@@ -90,7 +91,7 @@ func Root(args []string) int {
 		return CmdAccount(ctx, args[1:])
 	case "profile":
 		return CmdProfile(ctx, args[1:])
-	case "status":
+	case "status", "s":
 		return CmdStatus(ctx, args[1:])
 	case "backup":
 		return CmdBackup(ctx, args[1:])
@@ -203,7 +204,7 @@ Usage:
                                        global profile, tools, profiles
   kae init                             create config and directories
   kae edit                             open the config in $VISUAL / $EDITOR
-  kae doctor [tool] [--json]           environment / auth health checks
+  kae doctor [tool] [--json]           environment / auth health checks (alias: kae d)
   kae add <tool> <account>             register an account (official login
                                        flow + snapshot; --no-login snapshots
                                        the current login instead)
@@ -214,15 +215,15 @@ Usage:
                                        home (credential private), -i isolates
   kae pin <tool> <account>             re-bind one tool inside a pinned dir
   kae unpin                            remove the binding from .mise.toml
-  kae run [--mode M] <t|all> <n> -- C  run C with an account applied; auth
-                                       mode restores the previous login after
+  kae run [--mode M] <t|all> <n> -- C  run C with an account applied (alias: kae r);
+                                       auth mode restores the previous login after
   kae apply [--profile P] [--quiet]    idempotent profile apply for hooks;
                                        no-op when already recorded as active
   kae env set|unset|list ...           env-mode profiles (API keys)
   kae mise init [--profile P] [--mode auth|home|overlay] [--auto] [--write]
                                        low-level form of pin (preview first)
   kae accounts [--json]                registered accounts
-  kae status [--json]                  full status report
+  kae status [--json]                  full status report (alias: kae s)
   kae backup list [--json]             list switch backups
   kae rollback [--to <backup-id>]      restore a backup
   kae version | --version | -v

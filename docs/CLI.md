@@ -14,7 +14,7 @@ binds the current directory; `-s`/`--shared` (default) shares the real home,
 kae                                  # status summary (same as kae status)
 kae init                             # create config and data directories
 kae edit                             # open the config in $VISUAL / $EDITOR, then re-validate
-kae doctor [tool] [--json]           # environment / auth health checks
+kae doctor [tool] [--json]           # environment / auth health checks (alias: kae d)
 kae add <tool> <account> [--restore] # register an account: official login flow + snapshot
 kae add --no-login <tool> <account>  # snapshot the current live auth state instead
 kae use [-s|-i] <profile>            # switch every enabled tool now, global (alias: kae u)
@@ -23,7 +23,7 @@ kae pin [-s|-i] [<profile>]          # bind this directory (alias: kae p; defaul
 kae pin [-s|-i] <tool> <account>     # re-bind one tool in this directory
 kae unpin                            # delete the kae-owned mise fragment
 kae apply [--profile P] [--quiet]    # idempotent global shared apply for hooks/scripts
-kae run [--mode M] <tool|all> <name> -- <cmd...>   # run cmd with an account applied
+kae run [--mode M] <tool|all> <name> -- <cmd...>   # run cmd with an account applied (alias: kae r)
 kae env set <tool> <account> KEY=VALUE...          # store env-mode variables
 kae env set <tool> <account> KEY                   # value read from stdin
 kae env unset <tool> <account> [KEY...]            # remove variables / the profile
@@ -38,7 +38,7 @@ kae profile set <name> <tool> <account>        # set one profile mapping
 kae profile unset <name> <tool>      # drop one profile mapping
 kae profile rm <name> [--force]      # delete a profile
 kae profile default [<name>|--clear] # show or set default_profile
-kae status [--json]                  # full status report
+kae status [--json]                  # full status report (alias: kae s)
 kae backup list [--json]             # list switch backups
 kae rollback [--to <backup-id>]      # restore the most recent (or given) backup
 kae version | --version | -v
@@ -58,8 +58,11 @@ Renamed in v0.7.2 (prints its replacement with exit `64` for one release):
 v0.7.0) is now an unknown command.
 
 Removed in v0.5.0 (each still prints its replacement with exit `64` for one
-release): `switch`/`s` → `use`, `login` → `add`, `capture` →
-`add --no-login`, `current` → bare `kae`.
+release): `switch` → `use`, `login` → `add`, `capture` →
+`add --no-login`, `current` → bare `kae`. (`s` is no longer the `switch`
+pointer — it is the `status` alias since v0.7.2.)
+
+Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 
 ## Global Flags
 

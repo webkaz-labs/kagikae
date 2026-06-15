@@ -215,7 +215,7 @@ func pathWithin(dir, root string) bool {
 // it first warns that global state is changing and this directory will not see
 // it — re-bind with `kae pin`. Idempotent (one warning per command path): the
 // warning detection must run before applyGlobalScope hides the env values, and
-// buildSync delegates to buildSwitch, so both reach this.
+// buildApply delegates to buildSwitch, so both reach this.
 func (app *App) pinnedGlobalScope() {
 	if app.globalScope {
 		return
@@ -235,7 +235,7 @@ func (app *App) pinnedGlobalScope() {
 
 // applyGlobalScope hides kae-managed isolation env values from everything
 // resolved through app.Env. Idempotent: the guard runs once per command
-// path but may be reached twice (buildSync delegates to buildSwitch).
+// path but may be reached twice (buildApply delegates to buildSwitch).
 func (app *App) applyGlobalScope() {
 	if app.globalScope {
 		return

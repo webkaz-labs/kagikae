@@ -11,9 +11,9 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/lock"
 )
 
-// syncTestApp captures claude work+personal and defines matching profiles;
+// applyTestApp captures claude work+personal and defines matching profiles;
 // the live (and recorded) account is "personal" afterwards.
-func syncTestApp(t *testing.T, envVars map[string]string) *App {
+func applyTestApp(t *testing.T, envVars map[string]string) *App {
 	t.Helper()
 	app := testApp(t, envVars)
 	app.Config.Profiles = map[string]config.Profile{
@@ -31,42 +31,42 @@ func syncTestApp(t *testing.T, envVars map[string]string) *App {
 	return app
 }
 
-func decodeSyncReport(t *testing.T, out string) syncReport {
+func decodeApplyReport(t *testing.T, out string) applyReport {
 	t.Helper()
-	var report syncReport
+	var report applyReport
 	if err := json.Unmarshal([]byte(out), &report); err != nil {
-		t.Fatalf("invalid sync JSON: %v: %s", err, out)
+		t.Fatalf("invalid apply JSON: %v: %s", err, out)
 	}
 	return report
 }
 
-func TestSyncNoOpTakesNoLockAndApplyTakesLock(t *testing.T) {
-	app := syncTestApp(t, nil)
+func TestApplyNoOpTakesNoLockAndApplyTakesLock(t *testing.T) {
+	app := applyTestApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatJSON}
 
 	// Recorded state is personal (last capture). Hold the claude lock: a
-	// matching sync must still succeed because the no-op path takes no lock.
+	// matching apply must still succeed because the no-op path takes no lock.
 	held, err := lock.Acquire(app.Paths.LocksDir(), "claude")
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, out := captureStdout(t, func() int { return runSync(ctx, app, opts, "personal", false) })
+	code, out := captureStdout(t, func() int { return runApply(ctx, app, opts, "personal", false) })
 	mustExit(t, constants.ExitOK, code, out)
-	report := decodeSyncReport(t, out)
+	report := decodeApplyReport(t, out)
 	if report.Changed || !report.OK || len(report.Results) != 0 || report.BackupID != "" {
 		t.Fatalf("expected unchanged no-op report: %s", out)
 	}
 
-	// A diverging sync goes through switch all and must hit the held lock.
-	code, out = captureStdout(t, func() int { return runSync(ctx, app, opts, "work", false) })
+	// A diverging apply goes through switch all and must hit the held lock.
+	code, out = captureStdout(t, func() int { return runApply(ctx, app, opts, "work", false) })
 	mustExit(t, constants.ExitLockBusy, code, out)
 	held.Release()
 
-	// With the lock free the diverging sync applies and reports per-tool results.
-	code, out = captureStdout(t, func() int { return runSync(ctx, app, opts, "work", false) })
+	// With the lock free the diverging apply applies and reports per-tool results.
+	code, out = captureStdout(t, func() int { return runApply(ctx, app, opts, "work", false) })
 	mustExit(t, constants.ExitOK, code, out)
-	report = decodeSyncReport(t, out)
+	report = decodeApplyReport(t, out)
 	if !report.Changed || len(report.Results) != 1 || report.Results[0].Account != "work" || report.BackupID == "" {
 		t.Fatalf("expected applied report: %s", out)
 	}
@@ -76,56 +76,56 @@ func TestSyncNoOpTakesNoLockAndApplyTakesLock(t *testing.T) {
 	}
 
 	// Re-running is a no-op again.
-	code, out = captureStdout(t, func() int { return runSync(ctx, app, opts, "work", false) })
+	code, out = captureStdout(t, func() int { return runApply(ctx, app, opts, "work", false) })
 	mustExit(t, constants.ExitOK, code, out)
-	if report = decodeSyncReport(t, out); report.Changed {
+	if report = decodeApplyReport(t, out); report.Changed {
 		t.Fatalf("expected idempotent re-run: %s", out)
 	}
 }
 
-func TestSyncQuietSuppressesSuccessOutput(t *testing.T) {
-	app := syncTestApp(t, nil)
+func TestApplyQuietSuppressesSuccessOutput(t *testing.T) {
+	app := applyTestApp(t, nil)
 	ctx := context.Background()
 
-	code, out := captureStdout(t, func() int { return runSync(ctx, app, commonOpts{Format: formatText}, "work", true) })
+	code, out := captureStdout(t, func() int { return runApply(ctx, app, commonOpts{Format: formatText}, "work", true) })
 	mustExit(t, constants.ExitOK, code, out)
 	if out != "" {
 		t.Fatalf("quiet apply must print nothing, got: %s", out)
 	}
-	code, out = captureStdout(t, func() int { return runSync(ctx, app, commonOpts{Format: formatText}, "work", true) })
+	code, out = captureStdout(t, func() int { return runApply(ctx, app, commonOpts{Format: formatText}, "work", true) })
 	mustExit(t, constants.ExitOK, code, out)
 	if out != "" {
 		t.Fatalf("quiet no-op must print nothing, got: %s", out)
 	}
 }
 
-func TestSyncProfileResolutionOrder(t *testing.T) {
-	app := syncTestApp(t, map[string]string{constants.EnvKaeProfile: "personal"})
+func TestApplyProfileResolutionOrder(t *testing.T) {
+	app := applyTestApp(t, map[string]string{constants.EnvKaeProfile: "personal"})
 	app.Config.DefaultProfile = "work"
 
 	// --profile beats $KAE_PROFILE beats default_profile.
-	if got, err := app.resolveSyncProfile("explicit"); err != nil || got != "explicit" {
+	if got, err := app.resolveApplyProfile("explicit"); err != nil || got != "explicit" {
 		t.Fatalf("explicit flag must win: %q %v", got, err)
 	}
-	if got, err := app.resolveSyncProfile(""); err != nil || got != "personal" {
+	if got, err := app.resolveApplyProfile(""); err != nil || got != "personal" {
 		t.Fatalf("$KAE_PROFILE must beat default_profile: %q %v", got, err)
 	}
 
-	noEnv := syncTestApp(t, nil)
+	noEnv := applyTestApp(t, nil)
 	noEnv.Config.DefaultProfile = "work"
-	if got, err := noEnv.resolveSyncProfile(""); err != nil || got != "work" {
+	if got, err := noEnv.resolveApplyProfile(""); err != nil || got != "work" {
 		t.Fatalf("default_profile fallback: %q %v", got, err)
 	}
 	noEnv.Config.DefaultProfile = ""
-	if _, err := noEnv.resolveSyncProfile(""); err == nil || exitOf(err) != constants.ExitUsage {
+	if _, err := noEnv.resolveApplyProfile(""); err == nil || exitOf(err) != constants.ExitUsage {
 		t.Fatalf("missing profile must be a usage error, got %v", err)
 	}
 }
 
-func TestSyncUnknownProfile(t *testing.T) {
-	app := syncTestApp(t, nil)
+func TestApplyUnknownProfile(t *testing.T) {
+	app := applyTestApp(t, nil)
 	ctx := context.Background()
-	code, out := captureStdout(t, func() int { return runSync(ctx, app, commonOpts{Format: formatText}, "nope", false) })
+	code, out := captureStdout(t, func() int { return runApply(ctx, app, commonOpts{Format: formatText}, "nope", false) })
 	mustExit(t, constants.ExitNotFound, code, out)
 }
 

@@ -8,9 +8,9 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
-// syncReport is the JSON contract of kae sync: the switch report plus a
+// applyReport is the JSON contract of kae apply: the switch report plus a
 // changed marker so hooks can tell a no-op from an apply.
-type syncReport struct {
+type applyReport struct {
 	SchemaVersion int            `json:"schema_version"`
 	OK            bool           `json:"ok"`
 	Changed       bool           `json:"changed"`
@@ -44,7 +44,7 @@ func CmdApply(ctx context.Context, args []string) int {
 		return usageError("usage: %s apply [--profile P] [--quiet]", toolName)
 	}
 	app := newApp(opts.ConfigPath)
-	return runSync(ctx, app, opts, profileName, quiet)
+	return runApply(ctx, app, opts, profileName, quiet)
 }
 
 // CmdSync was renamed to CmdApply in v0.7.0 (docs/SCOPE-MODEL.md §8); exit
@@ -53,8 +53,8 @@ func CmdSync(_ context.Context, _ []string) int {
 	return removedCommand("sync", "v0.7.0", "kae apply [--profile P] [--quiet]")
 }
 
-func runSync(ctx context.Context, app *App, opts commonOpts, profileName string, quiet bool) int {
-	report, err := buildSync(ctx, app, opts, profileName)
+func runApply(ctx context.Context, app *App, opts commonOpts, profileName string, quiet bool) int {
+	report, err := buildApply(ctx, app, opts, profileName)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -64,16 +64,16 @@ func runSync(ctx context.Context, app *App, opts commonOpts, profileName string,
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
-	printSyncReport(app, report)
+	printApplyReport(app, report)
 	return constants.ExitOK
 }
 
-func buildSync(ctx context.Context, app *App, opts commonOpts, profileName string) (*syncReport, error) {
+func buildApply(ctx context.Context, app *App, opts commonOpts, profileName string) (*applyReport, error) {
 	if err := app.requireConfig(); err != nil {
 		return nil, err
 	}
 	app.pinnedGlobalScope()
-	profileName, err := app.resolveSyncProfile(profileName)
+	profileName, err := app.resolveApplyProfile(profileName)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func buildSync(ctx context.Context, app *App, opts commonOpts, profileName strin
 	if err != nil {
 		return nil, err
 	}
-	report := &syncReport{
+	report := &applyReport{
 		SchemaVersion: constants.SchemaVersion,
 		OK:            true,
 		Profile:       &profileName,
@@ -105,9 +105,9 @@ func buildSync(ctx context.Context, app *App, opts commonOpts, profileName strin
 	return report, nil
 }
 
-// resolveSyncProfile resolves the profile to sync: explicit flag, then
+// resolveApplyProfile resolves the profile to apply: explicit flag, then
 // $KAE_PROFILE, then config default_profile.
-func (app *App) resolveSyncProfile(explicit string) (string, error) {
+func (app *App) resolveApplyProfile(explicit string) (string, error) {
 	if explicit != "" {
 		return explicit, nil
 	}
@@ -133,7 +133,7 @@ func recordedMatch(active map[string]string, targets []runTarget) bool {
 	return true
 }
 
-func printSyncReport(app *App, report *syncReport) {
+func printApplyReport(app *App, report *applyReport) {
 	if !report.Changed {
 		fmt.Printf("Profile %s already active (no changes)\n", *report.Profile)
 		return

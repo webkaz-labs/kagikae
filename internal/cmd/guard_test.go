@@ -14,7 +14,7 @@ import (
 // the sync test fixtures (claude work/personal captured, personal active).
 func pinnedEnvApp(t *testing.T) *App {
 	t.Helper()
-	app := syncTestApp(t, nil)
+	app := applyTestApp(t, nil)
 	overlayDir := app.Paths.OverlayDir(constants.ToolClaude, "work")
 	app.Env.Getenv = func(key string) string {
 		switch key {
@@ -45,7 +45,7 @@ func TestGlobalCommandsActOnRealHomeInsidePinnedDir(t *testing.T) {
 
 	// apply (the idempotent global form) behaves the same.
 	app = pinnedEnvApp(t)
-	code, out = captureStdout(t, func() int { return runSync(ctx, app, opts, "work", false) })
+	code, out = captureStdout(t, func() int { return runApply(ctx, app, opts, "work", false) })
 	mustExit(t, constants.ExitOK, code, out)
 
 	// The auth-mode pin exports only KAE_PROFILE; its tasks and enter hook
@@ -57,7 +57,7 @@ func TestGlobalCommandsActOnRealHomeInsidePinnedDir(t *testing.T) {
 		}
 		return ""
 	}
-	code, out = captureStdout(t, func() int { return runSync(ctx, app, opts, "personal", false) })
+	code, out = captureStdout(t, func() int { return runApply(ctx, app, opts, "personal", false) })
 	mustExit(t, constants.ExitOK, code, out)
 }
 

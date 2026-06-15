@@ -57,7 +57,7 @@ func TestMiseInitHomeMode(t *testing.T) {
 		"work": {Accounts: map[string]string{
 			constants.ToolClaude: "work",
 			constants.ToolCodex:  "work",
-			constants.ToolAgy: "work",
+			constants.ToolAgy:    "work",
 		}},
 	}
 	ctx := context.Background()

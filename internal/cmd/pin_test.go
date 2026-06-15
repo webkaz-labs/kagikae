@@ -17,7 +17,7 @@ func overlayTestApp(t *testing.T) *App {
 	app.Config.Profiles = map[string]config.Profile{
 		"work": {Accounts: map[string]string{
 			constants.ToolClaude: "work",
-			constants.ToolAgy: "work",
+			constants.ToolAgy:    "work",
 		}},
 	}
 	// Shared items must exist in the real home to be linked.

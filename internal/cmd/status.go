@@ -95,6 +95,16 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		Tools:         []toolStatus{},
 		Profiles:      []profileStatus{},
 	}
+	// Inside a pinned directory the real per-tool account is the one the
+	// kae-owned fragment bound (it may diverge from the global state and from
+	// the KAE_PROFILE label after a single-tool re-bind); the fragment is the
+	// source of truth. Tools it does not bind keep their global account.
+	var pinnedAccounts map[string]string
+	if report.Pinned != nil {
+		if info, ok, ferr := readPinFragment(); ferr == nil && ok {
+			pinnedAccounts = info.Accounts
+		}
+	}
 	// Prefer the recorded profile (set by a profile-wide apply); fall back
 	// to matching the per-tool map so older state files still resolve.
 	activeProfile := st.ActiveProfile
@@ -126,6 +136,10 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		if active, ok := st.Active[tool]; ok {
 			activeCopy := active
 			ts.Account = &activeCopy
+		}
+		if bound, ok := pinnedAccounts[tool]; ok {
+			boundCopy := bound
+			ts.Account = &boundCopy
 		}
 		ad, err := adapter.ForTool(tool)
 		if err != nil {

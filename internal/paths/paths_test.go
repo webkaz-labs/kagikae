@@ -84,10 +84,8 @@ func TestIsolationPaths(t *testing.T) {
 		want string
 	}{
 		{"IsolationDir", p.IsolationDir(), iso},
-		{"BondDir", p.BondDir(pin, tool), pre + "/bond"},
-		{"PinSharedDir", p.PinSharedDir(pin, tool), pre + "/pin/shared"},
-		{"PinCredDir", p.PinCredDir(pin, tool, acct), pre + "/pin/" + acct + "/cred"},
-		{"PinConfigDir", p.PinConfigDir(pin, tool, acct), pre + "/pin/" + acct + "/config"},
+		{"SharedDir", p.SharedDir(pin, tool), pre + "/shared"},
+		{"IsolatedConfigDir", p.IsolatedConfigDir(pin, tool, acct), pre + "/isolated/" + acct + "/config"},
 		{"SyncHomesDir", p.SyncHomesDir(), sync},
 		{"SyncHomeDir", p.SyncHomeDir(tool, acct), sync + "/" + tool + "/" + acct},
 	}

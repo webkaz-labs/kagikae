@@ -90,30 +90,32 @@ func TestMiseInitOverlayDisabledToolWarns(t *testing.T) {
 	}
 }
 
-func TestUnpinRemovesOnlyTheBlock(t *testing.T) {
+func TestRemoveLegacyMiseBlockKeepsTheRest(t *testing.T) {
 	chdirTemp(t)
 	writeFile(t, ".mise.toml",
 		"[tasks.custom]\nrun = \"echo hi\"\n"+miseBlockStart+"\n[env]\nKAE_PROFILE = \"work\"\n"+miseBlockEnd+"\ntail = 1\n")
-	if err := removeMiseBlock(".mise.toml"); err != nil {
-		t.Fatal(err)
+	removed, err := removeLegacyMiseBlock(".mise.toml")
+	if err != nil || !removed {
+		t.Fatalf("removeLegacyMiseBlock: removed=%v err=%v", removed, err)
 	}
 	rest := readFile(t, ".mise.toml")
 	if strings.Contains(rest, miseBlockStart) || strings.Contains(rest, "KAE_PROFILE") {
 		t.Fatalf("block not removed: %s", rest)
 	}
 	if !strings.Contains(rest, "tasks.custom") || !strings.Contains(rest, "tail = 1") {
-		t.Fatalf("unpin must keep everything else: %s", rest)
+		t.Fatalf("must keep everything else: %s", rest)
 	}
 
-	// Without a block (or file) unpin is a not_found error.
-	if err := removeMiseBlock(".mise.toml"); exitOf(err) != constants.ExitNotFound {
-		t.Fatalf("expected not_found, got %v", err)
+	// Without a block (or file) it is a no-op, not an error (the fragment is
+	// now the primary binding).
+	if removed, err := removeLegacyMiseBlock(".mise.toml"); err != nil || removed {
+		t.Fatalf("absent block must be a no-op: removed=%v err=%v", removed, err)
 	}
 	if err := os.Remove(".mise.toml"); err != nil {
 		t.Fatal(err)
 	}
-	if err := removeMiseBlock(".mise.toml"); exitOf(err) != constants.ExitNotFound {
-		t.Fatalf("expected not_found for a missing file, got %v", err)
+	if removed, err := removeLegacyMiseBlock(".mise.toml"); err != nil || removed {
+		t.Fatalf("missing file must be a no-op: removed=%v err=%v", removed, err)
 	}
 }
 

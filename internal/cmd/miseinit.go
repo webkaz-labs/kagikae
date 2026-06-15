@@ -73,7 +73,7 @@ func runMiseInit(ctx context.Context, app *App, opts commonOpts, profileName, mo
 	}
 	var block string
 	var entries []isolationEntry
-	var pinID string
+	var prepare func(tool, account string) (string, error)
 	if mode == constants.ModeAuth {
 		block = app.miseBlock(profileName, auto)
 	} else {
@@ -84,23 +84,9 @@ func runMiseInit(ctx context.Context, app *App, opts commonOpts, profileName, mo
 		if err != nil {
 			return finish(opts, err)
 		}
-		switch mode {
-		case constants.ModeBond:
-			absDir, err := cwdAbs()
-			if err != nil {
-				return finish(opts, err)
-			}
-			pinID = paths.PinID(absDir)
-			entries = app.bondIsolationEntries(targets, pinID)
-		case constants.ModePin:
-			absDir, err := cwdAbs()
-			if err != nil {
-				return finish(opts, err)
-			}
-			pinID = paths.PinID(absDir)
-			entries = app.pinIsolationEntries(targets, pinID)
-		default:
-			entries = app.isolationEntries(mode, targets)
+		entries, prepare, err = app.isolationPlan(ctx, mode, targets)
+		if err != nil {
+			return finish(opts, err)
 		}
 		block = app.miseIsolationBlock(profileName, mode, entries)
 	}
@@ -119,27 +105,9 @@ func runMiseInit(ctx context.Context, app *App, opts commonOpts, profileName, mo
 	// Prepare the isolated homes before touching .mise.toml so a failure
 	// here cannot leave the block exporting directories that do not exist
 	// (a stray kae-owned 0700 dir is harmless; the reverse is not).
-	var prepare func(tool, account string) (string, error)
-	switch mode {
-	case constants.ModeBond:
-		prepare = func(tool, account string) (string, error) {
-			return app.prepareBond(ctx, tool, account, pinID)
-		}
-	case constants.ModePin:
-		prepare = func(tool, account string) (string, error) {
-			return app.preparePinConfig(ctx, tool, account, pinID)
-		}
-	case modeOverlay:
-		prepare = app.prepareOverlay
-	default:
-		prepare = app.prepareHome
-	}
-	for _, entry := range entries {
-		if entry.Warning != "" {
-			continue
-		}
-		if _, err := prepare(entry.Tool, entry.Account); err != nil {
-			return finish(opts, fmt.Errorf("prepare %s-mode dir for %s: %w", mode, entry.Tool, err))
+	if prepare != nil {
+		if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
+			return finish(opts, err)
 		}
 	}
 	if err := writeMiseBlock(".mise.toml", block); err != nil {
@@ -148,6 +116,51 @@ func runMiseInit(ctx context.Context, app *App, opts commonOpts, profileName, mo
 	fmt.Printf("Updated .mise.toml: profile %s, mode %s\n", profileName, mode)
 	fmt.Println("Next: mise trust   (mise refuses untrusted configs; its error until then is expected)")
 	return constants.ExitOK
+}
+
+// isolationPlan resolves the per-tool env entries and the matching directory
+// preparer for an isolation mode (bond/pin/overlay/home). It is the shared
+// seam for `kae pin` (renders a fragment) and `kae mise init` (renders a
+// marker block); the bond/pin mechanisms key their stores by the bound
+// directory, so it resolves pin-id here.
+func (app *App) isolationPlan(ctx context.Context, mode string, targets []runTarget) ([]isolationEntry, func(tool, account string) (string, error), error) {
+	switch mode {
+	case constants.ModeBond:
+		absDir, err := cwdAbs()
+		if err != nil {
+			return nil, nil, err
+		}
+		pinID := paths.PinID(absDir)
+		return app.bondIsolationEntries(targets, pinID),
+			func(tool, account string) (string, error) { return app.prepareBond(ctx, tool, account, pinID) }, nil
+	case constants.ModePin:
+		absDir, err := cwdAbs()
+		if err != nil {
+			return nil, nil, err
+		}
+		pinID := paths.PinID(absDir)
+		return app.pinIsolationEntries(targets, pinID),
+			func(tool, account string) (string, error) { return app.preparePinConfig(ctx, tool, account, pinID) }, nil
+	case modeOverlay:
+		return app.isolationEntries(mode, targets), app.prepareOverlay, nil
+	default:
+		return app.isolationEntries(mode, targets), app.prepareHome, nil
+	}
+}
+
+// prepareIsolationDirs runs the preparer for every non-warning entry, so a
+// failure surfaces before kae writes a fragment or block pointing at a
+// directory that does not exist.
+func (app *App) prepareIsolationDirs(mode string, entries []isolationEntry, prepare func(tool, account string) (string, error)) error {
+	for _, entry := range entries {
+		if entry.Warning != "" {
+			continue
+		}
+		if _, err := prepare(entry.Tool, entry.Account); err != nil {
+			return fmt.Errorf("prepare %s-mode dir for %s: %w", mode, entry.Tool, err)
+		}
+	}
+	return nil
 }
 
 // cwdAbs returns the current working directory as an absolute path.
@@ -258,17 +271,25 @@ func (app *App) miseIsolationBlock(profileName, mode string, entries []isolation
 		fmt.Fprintln(&b, "# directory switch inside this directory only; the global live auth")
 		fmt.Fprintln(&b, "# state is never touched, safe across concurrent terminals.")
 	}
-	fmt.Fprintln(&b, "[env]")
-	fmt.Fprintf(&b, "%s = %q\n", constants.EnvKaeProfile, profileName)
-	for _, entry := range entries {
-		if entry.Warning != "" {
-			fmt.Fprintf(&b, "# warning: %s\n", entry.Warning)
-			continue
-		}
-		fmt.Fprintf(&b, "%s = %q\n", entry.EnvVar, entry.Dir)
-	}
+	writeEnvEntries(&b, profileName, entries)
 	fmt.Fprintln(&b, miseBlockEnd)
 	return b.String()
+}
+
+// writeEnvEntries renders the shared [env] block — KAE_PROFILE plus each tool's
+// isolation env entry, or a warning comment for a tool that keeps the real home
+// — used by both the kae pin fragment (renderPinFragment) and the kae mise init
+// marker block (miseIsolationBlock). One place to change env-line formatting.
+func writeEnvEntries(b *strings.Builder, profileName string, entries []isolationEntry) {
+	fmt.Fprintln(b, "[env]")
+	fmt.Fprintf(b, "%s = %q\n", constants.EnvKaeProfile, profileName)
+	for _, entry := range entries {
+		if entry.Warning != "" {
+			fmt.Fprintf(b, "# warning: %s\n", entry.Warning)
+			continue
+		}
+		fmt.Fprintf(b, "%s = %q\n", entry.EnvVar, entry.Dir)
+	}
 }
 
 // bondDenylistItems returns the items excluded from bond-mode symlink sharing
@@ -289,7 +310,7 @@ func (app *App) bondDenylistItems(tool string) []string {
 }
 
 // bondIsolationEntries resolves the per-tool env entries for bond mode.
-// BondDir is account-agnostic (one per pinID×tool), so the account field
+// SharedDir is account-agnostic (one per pinID×tool), so the account field
 // carries the profile's account name for credential-copy bookkeeping only.
 func (app *App) bondIsolationEntries(targets []runTarget, pinID string) []isolationEntry {
 	entries := make([]isolationEntry, 0, len(targets))
@@ -302,7 +323,7 @@ func (app *App) bondIsolationEntries(targets []runTarget, pinID string) []isolat
 			entries = append(entries, entry)
 			continue
 		}
-		entry.Dir = app.Paths.BondDir(pinID, tgt.Tool)
+		entry.Dir = app.Paths.SharedDir(pinID, tgt.Tool)
 		entries = append(entries, entry)
 	}
 	return entries
@@ -313,9 +334,9 @@ func (app *App) bondIsolationEntries(targets []runTarget, pinID string) []isolat
 // credential privately. Idempotent: stale symlinks are refreshed; real files
 // in the bond dir (private overrides) are left untouched.
 func (app *App) prepareBond(ctx context.Context, tool, _ string, pinID string) (string, error) {
-	bondDir := app.Paths.BondDir(pinID, tool)
+	bondDir := app.Paths.SharedDir(pinID, tool)
 	if err := os.MkdirAll(bondDir, 0o700); err != nil {
-		return "", fmt.Errorf("create bond dir: %w", err)
+		return "", fmt.Errorf("create shared dir: %w", err)
 	}
 	realHome := app.realToolHome(tool)
 	if filepath.Clean(realHome) == filepath.Clean(bondDir) {
@@ -402,8 +423,9 @@ func (app *App) prepareBond(ctx context.Context, tool, _ string, pinID string) (
 }
 
 // pinIsolationEntries resolves the per-tool env entries for pin mode.
-// PinConfigDir is per-account (isolation/<pinID>/<tool>/pin/<account>/config/),
-// so each target carries the account name for directory construction.
+// IsolatedConfigDir is per-account
+// (isolation/<pinID>/<tool>/isolated/<account>/config/), so each target
+// carries the account name for directory construction.
 func (app *App) pinIsolationEntries(targets []runTarget, pinID string) []isolationEntry {
 	entries := make([]isolationEntry, 0, len(targets))
 	for _, tgt := range targets {
@@ -415,7 +437,7 @@ func (app *App) pinIsolationEntries(targets []runTarget, pinID string) []isolati
 			entries = append(entries, entry)
 			continue
 		}
-		entry.Dir = app.Paths.PinConfigDir(pinID, tgt.Tool, tgt.Account)
+		entry.Dir = app.Paths.IsolatedConfigDir(pinID, tgt.Tool, tgt.Account)
 		entries = append(entries, entry)
 	}
 	return entries
@@ -425,9 +447,9 @@ func (app *App) pinIsolationEntries(targets []runTarget, pinID string) []isolati
 // symlinks opt-in shared items from the real home, then copies the credential
 // privately. Idempotent: stale symlinks are refreshed; real files are left.
 func (app *App) preparePinConfig(ctx context.Context, tool, account, pinID string) (string, error) {
-	configDir := app.Paths.PinConfigDir(pinID, tool, account)
+	configDir := app.Paths.IsolatedConfigDir(pinID, tool, account)
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		return "", fmt.Errorf("create pin config dir: %w", err)
+		return "", fmt.Errorf("create isolated config dir: %w", err)
 	}
 	realHome := app.realToolHome(tool)
 	if filepath.Clean(realHome) == filepath.Clean(configDir) {

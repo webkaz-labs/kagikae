@@ -108,39 +108,35 @@ func PinID(absDir string) string {
 }
 
 // IsolationDir returns the root of all per-directory isolation stores
-// (bond and pin modes).
+// (the shared and isolated per-directory mechanisms).
 func (p Paths) IsolationDir() string { return filepath.Join(p.DataDir, "isolation") }
 
+// Per-directory store segments under isolation/<pinID>/<tool>/. Exported so
+// callers that classify a directory by its path (cmd.kaeManagedHomeKind) stay
+// in lockstep with SharedDir / IsolatedConfigDir.
+const (
+	SharedSegment   = "shared"   // per-directory shared (kae pin --shared)
+	IsolatedSegment = "isolated" // per-directory isolated (kae pin --isolated)
+)
+
 // toolIsolDir returns the per-tool isolation root isolation/<pinID>/<tool>
-// shared by BondDir, PinSharedDir, PinCredDir, and PinConfigDir.
+// shared by SharedDir and IsolatedConfigDir.
 func (p Paths) toolIsolDir(pinID, tool string) string {
 	return filepath.Join(p.IsolationDir(), pinID, tool)
 }
 
-// BondDir returns the config directory for bond mode (per-directory shared,
-// account-agnostic). The env-var isolation pointer (CLAUDE_CONFIG_DIR etc.)
-// is set to this path on directory entry.
-func (p Paths) BondDir(pinID, tool string) string {
-	return filepath.Join(p.toolIsolDir(pinID, tool), "bond")
+// SharedDir returns the config directory for the per-directory shared
+// mechanism (account-agnostic). The env-var isolation pointer
+// (CLAUDE_CONFIG_DIR etc.) is set to this path on directory entry.
+func (p Paths) SharedDir(pinID, tool string) string {
+	return filepath.Join(p.toolIsolDir(pinID, tool), SharedSegment)
 }
 
-// PinSharedDir returns the directory holding the opt-in shared items for pin
-// mode (dir-keyed, shared across all accounts used in the same directory).
-func (p Paths) PinSharedDir(pinID, tool string) string {
-	return filepath.Join(p.toolIsolDir(pinID, tool), "pin", "shared")
-}
-
-// PinCredDir returns the private credential directory for one account in pin
-// mode. Only the credential artifact lives here; never symlinked.
-func (p Paths) PinCredDir(pinID, tool, account string) string {
-	return filepath.Join(p.toolIsolDir(pinID, tool), "pin", account, "cred")
-}
-
-// PinConfigDir returns the config directory (CLAUDE_CONFIG_DIR / CODEX_HOME)
-// for one account in pin mode. It is composed at setup time from symlinks into
-// PinSharedDir plus the credential from PinCredDir.
-func (p Paths) PinConfigDir(pinID, tool, account string) string {
-	return filepath.Join(p.toolIsolDir(pinID, tool), "pin", account, "config")
+// IsolatedConfigDir returns the config directory (CLAUDE_CONFIG_DIR /
+// CODEX_HOME) for one account in the per-directory isolated mechanism. It is
+// composed at setup time from opt-in symlinks plus the private credential.
+func (p Paths) IsolatedConfigDir(pinID, tool, account string) string {
+	return filepath.Join(p.toolIsolDir(pinID, tool), IsolatedSegment, account, "config")
 }
 
 // SyncHomesDir returns the root of all global-isolated (sync-mode) tool homes.

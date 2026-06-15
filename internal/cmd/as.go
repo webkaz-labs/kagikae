@@ -3,9 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -21,10 +19,13 @@ import (
 //
 //	kae pin <tool> <account>
 //
-// Valid only inside a directory bound with `kae pin`. For the shared mechanism
-// the dir is account-agnostic so the credential is overwritten in place; for
-// the isolated mechanism the config dir is re-keyed to the new account and the
-// .mise.toml env entry is updated. Sessions and settings are never disturbed.
+// Valid only inside a directory bound with `kae pin` (it reads the kae-owned
+// fragment). For the shared mechanism the dir is account-agnostic so the
+// credential is overwritten in place; for the isolated mechanism the config dir
+// is re-keyed to the new account and the fragment's env entry is repointed. The
+// fragment's account record and KAE_PROFILE are recomputed (the latter goes
+// empty when the new account set matches no named profile). Sessions and
+// settings are never disturbed.
 func runPinRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName string) int {
 	if err := validateToolAccount(tool, accountName, "account"); err != nil {
 		return finish(opts, err)
@@ -32,15 +33,21 @@ func runPinRebind(ctx context.Context, app *App, opts commonOpts, tool, accountN
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
 	}
-
-	kind := app.firstKaeManagedIsolation()
-	if kind == "" {
+	if isolationEnvVar(tool) == "" {
+		return finish(opts, errf(constants.ExitUnsupported,
+			"%s has no per-directory isolation mechanism; nothing to re-bind", tool))
+	}
+	info, exists, err := readPinFragment()
+	if err != nil {
+		return finish(opts, err)
+	}
+	if !exists {
 		return finish(opts, errf(constants.ExitUnsupported,
 			"this directory is not pinned; run `kae pin` first"))
 	}
-	if kind != modeBond && kind != modePin {
-		return finish(opts, errf(constants.ExitUnsupported,
-			"kae pin <tool> <account> only applies inside a pinned directory (this is %s mode)", kind))
+	if _, bound := info.Accounts[tool]; !bound {
+		return finish(opts, errf(constants.ExitNotFound,
+			"%s is not bound in this directory; re-pin the profile to include it", tool))
 	}
 
 	absDir, err := cwdAbs()
@@ -48,29 +55,50 @@ func runPinRebind(ctx context.Context, app *App, opts commonOpts, tool, accountN
 		return finish(opts, err)
 	}
 	pinID := paths.PinID(absDir)
-
 	be, err := app.secretBackend()
 	if err != nil {
 		return finish(opts, err)
 	}
 
-	switch kind {
-	case modeBond:
-		bondDir := app.Paths.BondDir(pinID, tool)
-		if err := app.swapDirCredential(ctx, be, tool, accountName, bondDir); err != nil {
+	// KAE_PROFILE follows the directory's effective per-tool accounts: the
+	// global state overlaid with the fragment's isolated bindings and this
+	// re-bind. It is the matching named profile, or empty (ad-hoc) when none
+	// matches — status reads the real per-tool account regardless.
+	st, err := app.loadState()
+	if err != nil {
+		return finish(opts, err)
+	}
+	effective := make(map[string]string, len(st.Active)+len(info.Accounts)+1)
+	for k, v := range st.Active {
+		effective[k] = v
+	}
+	for k, v := range info.Accounts {
+		effective[k] = v
+	}
+	effective[tool] = accountName
+	profile := app.Config.MatchProfile(effective)
+
+	var envDir string // fragment env entry to repoint (isolated only)
+	switch info.Mode {
+	case paths.SharedSegment:
+		sharedDir := app.Paths.SharedDir(pinID, tool)
+		if err := app.swapDirCredential(ctx, be, tool, accountName, sharedDir); err != nil {
 			return finish(opts, fmt.Errorf("swap shared credential for %s: %w", tool, err))
 		}
-		fmt.Printf("Re-bound %s to account %s (shared dir; sessions/settings unchanged)\n", tool, accountName)
-	case modePin:
+	case paths.IsolatedSegment:
 		newDir, err := app.preparePinConfig(ctx, tool, accountName, pinID)
 		if err != nil {
 			return finish(opts, fmt.Errorf("prepare isolated config for %s/%s: %w", tool, accountName, err))
 		}
-		if err := swapPinEnvEntry(app, tool, newDir); err != nil {
-			return finish(opts, fmt.Errorf("update .mise.toml for %s: %w", tool, err))
-		}
-		fmt.Printf("Re-bound %s to account %s (isolated dir re-keyed; sessions/settings unchanged)\n", tool, accountName)
+		envDir = newDir
+	default:
+		return finish(opts, errf(constants.ExitError,
+			"fragment %s has an unrecognized mode %q", fragmentRelPath, info.Mode))
 	}
+	if err := rebindFragment(tool, accountName, envDir, profile); err != nil {
+		return finish(opts, fmt.Errorf("update %s: %w", fragmentRelPath, err))
+	}
+	fmt.Printf("Re-bound %s to account %s (%s; sessions/settings unchanged)\n", tool, accountName, info.Mode)
 	return constants.ExitOK
 }
 
@@ -157,34 +185,4 @@ func credentialArtifactName(tool string) string {
 	default:
 		return ""
 	}
-}
-
-// swapPinEnvEntry updates the isolation env entry in .mise.toml for tool to
-// point at newDir. It replaces the old value by matching the current env var
-// value exposed by the directory's mise config.
-func swapPinEnvEntry(app *App, tool, newDir string) error {
-	envVar := isolationEnvVar(tool)
-	if envVar == "" {
-		return nil
-	}
-	oldDir := app.Env.Getenv(envVar)
-	if oldDir == "" {
-		return errf(constants.ExitError,
-			"%s is not set; is this directory actively pinned?", envVar)
-	}
-	data, err := os.ReadFile(".mise.toml")
-	if err != nil {
-		if os.IsNotExist(err) {
-			return errf(constants.ExitNotFound, ".mise.toml not found")
-		}
-		return err
-	}
-	content := string(data)
-	oldEntry := envVar + ` = "` + oldDir + `"`
-	newEntry := envVar + ` = "` + newDir + `"`
-	if !strings.Contains(content, oldEntry) {
-		return errf(constants.ExitError,
-			"could not find %s entry in .mise.toml (expected %q)", envVar, oldEntry)
-	}
-	return patch.WriteFileAtomic(".mise.toml", []byte(strings.ReplaceAll(content, oldEntry, newEntry)), 0o644)
 }

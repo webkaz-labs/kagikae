@@ -136,13 +136,16 @@ func (app *App) kaeManagedHomeKind(dir string) string {
 	case pathWithin(dir, app.Paths.HomesDir()):
 		return modeHome
 	case pathWithin(dir, app.Paths.IsolationDir()):
-		// isolation/<pin-id>/<tool>/bond/  → bond
-		// isolation/<pin-id>/<tool>/pin/…  → pin
-		// Inspect the third path segment after the isolation root.
+		// isolation/<pin-id>/<tool>/shared/    → bond (per-dir shared)
+		// isolation/<pin-id>/<tool>/isolated/… → pin  (per-dir isolated)
+		// Inspect the third path segment after the isolation root. modePin
+		// ("pin") is the pre-v0.7.2 isolated segment: a directory still pinned
+		// by an old .mise.toml (not yet re-pinned to a fragment) must still be
+		// reported as isolated, not misclassified as shared.
 		rel, err := filepath.Rel(app.Paths.IsolationDir(), filepath.Clean(dir))
 		if err == nil {
 			parts := strings.SplitN(rel, string(filepath.Separator), 4)
-			if len(parts) >= 3 && parts[2] == modePin {
+			if len(parts) >= 3 && (parts[2] == paths.IsolatedSegment || parts[2] == modePin) {
 				return modePin
 			}
 		}
@@ -165,8 +168,15 @@ func (app *App) pinnedStatus() *pinnedStatus {
 		return nil
 	}
 	mode := constants.ModeAuth
-	if kind := app.firstKaeManagedIsolation(); kind != "" {
-		mode = kind
+	switch kind := app.firstKaeManagedIsolation(); kind {
+	case "":
+		// auth-mode pin (only KAE_PROFILE exported); mode stays auth.
+	case modeBond:
+		mode = paths.SharedSegment // user-facing: shared
+	case modePin:
+		mode = paths.IsolatedSegment // user-facing: isolated
+	default:
+		mode = kind // legacy overlay/home (and sync); reported as-is
 	}
 	return &pinnedStatus{Profile: profile, Mode: mode}
 }

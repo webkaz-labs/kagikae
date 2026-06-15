@@ -72,8 +72,8 @@ kae pin -i clientA             # isolated: nothing shared with the real home
                                # (opt in via pin_shared_items)
 kae pin claude clientB         # re-bind one tool in this dir to another account
                                # (sessions/settings unchanged)
-kae unpin                      # remove the binding (kagikae block only)
-kae mise init --profile clientA  # preview what pin writes
+kae unpin                      # remove the binding (deletes the kae-owned fragment)
+kae mise init --profile clientA  # low-level: render mise auth tasks/hooks (--write to apply)
 ```
 
 And the global isolated switch, visible to every mise-activated terminal:

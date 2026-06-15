@@ -58,7 +58,7 @@ func CmdPin(ctx context.Context, args []string) int {
 			mode = modePin
 		}
 		warnIfLegacyPinBlock()
-		return runMiseInit(ctx, app, opts, profileName, mode, false, true)
+		return runPin(ctx, app, opts, profileName, mode)
 	default:
 		return usageError("usage: %s pin [-s|-i] [<profile>] | %s pin <tool> <account>", toolName, toolName)
 	}
@@ -83,9 +83,54 @@ func warnIfLegacyPinBlock() {
 	}
 }
 
-// CmdUnpin removes the kagikae block from .mise.toml in the current
-// directory, leaving everything else (other tasks, env, the overlay/home
-// directories and their login state) intact.
+// runPin binds the current directory by writing the kae-owned mise fragment
+// (./.config/mise/conf.d/kagikae.toml): it prepares the isolation dirs first
+// (so the fragment never points at a missing dir), renders the fragment with
+// the kae: records `kae status` reads back, writes it, adds it to .gitignore,
+// and prints the export fallback when mise activation is not detected.
+func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode string) int {
+	if err := app.requireConfig(); err != nil {
+		return finish(opts, err)
+	}
+	if profileName == "" {
+		profileName = app.Config.DefaultProfile
+	}
+	if profileName == "" {
+		return finish(opts, errf(constants.ExitUsage,
+			"no profile given and no default_profile in config; use: kae pin <profile>"))
+	}
+	targets, _, err := app.resolveTargets("all", profileName)
+	if err != nil {
+		return finish(opts, err)
+	}
+	entries, prepare, err := app.isolationPlan(ctx, mode, targets)
+	if err != nil {
+		return finish(opts, err)
+	}
+	if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
+		return finish(opts, err)
+	}
+	scope := userScopeMode(mode)
+	if err := writePinFragment(renderPinFragment(profileName, scope, entries)); err != nil {
+		return finish(opts, err)
+	}
+	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, scope)
+	fmt.Printf("Wrote %s (added to .gitignore); your mise.toml is untouched.\n", fragmentRelPath)
+	if app.miseActivated() {
+		fmt.Println("mise applies it on the next prompt (or run `mise env`).")
+	} else {
+		fmt.Fprintln(os.Stderr, "kae: warning: mise activation not detected; the binding takes effect once mise is active.")
+		fmt.Fprintln(os.Stderr, "kae: to apply it in the current shell now, run:")
+		fmt.Fprint(os.Stderr, exportFallback(profileName, entries))
+	}
+	return constants.ExitOK
+}
+
+// CmdUnpin removes the binding from the current directory: it deletes the
+// kae-owned mise fragment and also strips a pre-v0.7.2 kagikae marker block
+// from .mise.toml (so `kae unpin && kae pin` migrates cleanly). The isolation
+// directories and their login state, and everything else in the user's files,
+// are left intact.
 func CmdUnpin(_ context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
 	opts, ok := parseCommon("unpin", flags, false, nil)
@@ -95,26 +140,46 @@ func CmdUnpin(_ context.Context, args []string) int {
 	if len(positionals) != 0 {
 		return usageError("usage: %s unpin", toolName)
 	}
-	if err := removeMiseBlock(".mise.toml"); err != nil {
+	removedFragment, err := removePinFragment()
+	if err != nil {
 		return finish(opts, err)
 	}
-	fmt.Println("Removed the kagikae block from .mise.toml")
+	removedBlock, err := removeLegacyMiseBlock(".mise.toml")
+	if err != nil {
+		return finish(opts, err)
+	}
+	switch {
+	case removedFragment && removedBlock:
+		fmt.Printf("Removed %s and the legacy kagikae block from .mise.toml\n", fragmentRelPath)
+	case removedFragment:
+		fmt.Printf("Removed %s\n", fragmentRelPath)
+	case removedBlock:
+		fmt.Println("Removed the legacy kagikae block from .mise.toml")
+	default:
+		return finish(opts, errf(constants.ExitNotFound,
+			"this directory is not pinned (no %s and no kagikae block in .mise.toml)", fragmentRelPath))
+	}
 	return constants.ExitOK
 }
 
-// removeMiseBlock deletes the marker-delimited kagikae block, keeping the
-// rest of the file byte-identical.
-func removeMiseBlock(path string) error {
+// removeLegacyMiseBlock deletes a pre-v0.7.2 marker-delimited kagikae block
+// from path, keeping the rest of the file byte-identical. It reports whether a
+// block was present; a missing file or absent block is not an error (the
+// fragment is now the primary binding).
+func removeLegacyMiseBlock(path string) (bool, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return errf(constants.ExitNotFound, "%s does not exist; nothing to unpin", path)
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	before, after, ok := cutMiseBlock(string(data))
 	if !ok {
-		return errf(constants.ExitNotFound, "%s has no kagikae block; nothing to unpin", path)
+		return false, nil
 	}
-	return patch.WriteFileAtomic(path, []byte(before+after), 0o644)
+	if err := patch.WriteFileAtomic(path, []byte(before+after), 0o644); err != nil {
+		return false, err
+	}
+	return true, nil
 }

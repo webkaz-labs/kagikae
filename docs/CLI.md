@@ -212,9 +212,10 @@ writing a kae-owned mise fragment `./.config/mise/conf.d/kagikae.toml` (added to
 `.gitignore`); the user's `mise.toml` is **never** touched. The profile defaults
 to `default_profile`. `kae pin [-s|-i] <tool> <account>` re-binds **one** tool in
 the directory, leaving the others and the sharing set intact (the v0.7.1
-`kae as`). `kae p` is the alias. `kae unpin` deletes the kae-owned fragment,
-leaving the user's `mise.toml` and any isolation directories (with their login
-state) intact.
+`kae as`). `kae p` is the alias. `kae unpin` deletes the kae-owned fragment and
+also strips a pre-v0.7.2 kagikae marker block from `mise.toml` (so `kae unpin &&
+kae pin` migrates cleanly), leaving the user's own `mise.toml` content and any
+isolation directories (with their login state) intact.
 
 `kae pin` defaults to **shared** (`-s`); pass `-i` for isolated:
 

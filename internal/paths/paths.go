@@ -117,6 +117,7 @@ func (p Paths) IsolationDir() string { return filepath.Join(p.DataDir, "isolatio
 const (
 	SharedSegment   = "shared"   // per-directory shared (kae pin --shared)
 	IsolatedSegment = "isolated" // per-directory isolated (kae pin --isolated)
+	GlobalSegment   = "global"   // global isolated homes (kae use --isolated)
 )
 
 // toolIsolDir returns the per-tool isolation root isolation/<pinID>/<tool>
@@ -139,10 +140,26 @@ func (p Paths) IsolatedConfigDir(pinID, tool, account string) string {
 	return filepath.Join(p.toolIsolDir(pinID, tool), IsolatedSegment, account, "config")
 }
 
-// SyncHomesDir returns the root of all global-isolated (sync-mode) tool homes.
-func (p Paths) SyncHomesDir() string { return filepath.Join(p.DataDir, "synchomes") }
+// GlobalIsolationDir returns the root of all global-isolated tool homes
+// (kae use --isolated): isolation/global. It lives under IsolationDir so the
+// kae-managed classifier (cmd.kaeManagedHomeKind) covers both the per-directory
+// <pin-id> stores and the global homes from one root.
+func (p Paths) GlobalIsolationDir() string {
+	return filepath.Join(p.IsolationDir(), GlobalSegment)
+}
 
-// SyncHomeDir returns the private tool home for one account in sync mode.
-func (p Paths) SyncHomeDir(tool, account string) string {
-	return filepath.Join(p.SyncHomesDir(), tool, account)
+// GlobalIsolatedHomeDir returns the full per-account private home for one tool
+// in global-isolated mode: the directory the kae-owned global mise fragment
+// points CLAUDE_CONFIG_DIR / CODEX_HOME at.
+func (p Paths) GlobalIsolatedHomeDir(tool, account string) string {
+	return filepath.Join(p.GlobalIsolationDir(), tool, account)
+}
+
+// MiseGlobalFragmentFile returns the kae-owned global mise fragment path
+// (~/.config/mise/conf.d/kagikae.toml), a sibling of kagikae's own config dir
+// under the XDG config home. mise loads and merges conf.d/*.toml, so it reaches
+// every globally activated terminal; kae regenerates it from state.json
+// `synced` and deletes it when no tool is globally isolated.
+func (p Paths) MiseGlobalFragmentFile() string {
+	return filepath.Join(filepath.Dir(p.ConfigDir), "mise", "conf.d", "kagikae.toml")
 }

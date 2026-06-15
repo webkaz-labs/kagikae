@@ -136,22 +136,25 @@ func (app *App) kaeManagedHomeKind(dir string) string {
 	case pathWithin(dir, app.Paths.HomesDir()):
 		return modeHome
 	case pathWithin(dir, app.Paths.IsolationDir()):
+		// isolation/global/<tool>/<account>/   → sync (global isolated, kae use -i)
 		// isolation/<pin-id>/<tool>/shared/    → bond (per-dir shared)
 		// isolation/<pin-id>/<tool>/isolated/… → pin  (per-dir isolated)
-		// Inspect the third path segment after the isolation root. modePin
-		// ("pin") is the pre-v0.7.2 isolated segment: a directory still pinned
-		// by an old .mise.toml (not yet re-pinned to a fragment) must still be
-		// reported as isolated, not misclassified as shared.
+		// Inspect the path segments after the isolation root. A pin-id is 16 hex
+		// chars, so it never collides with the "global" prefix. modePin ("pin")
+		// is the pre-v0.7.2 isolated segment: a directory still pinned by an old
+		// .mise.toml (not yet re-pinned to a fragment) must still be reported as
+		// isolated, not misclassified as shared.
 		rel, err := filepath.Rel(app.Paths.IsolationDir(), filepath.Clean(dir))
 		if err == nil {
 			parts := strings.SplitN(rel, string(filepath.Separator), 4)
+			if len(parts) >= 1 && parts[0] == paths.GlobalSegment {
+				return constants.ModeSync
+			}
 			if len(parts) >= 3 && (parts[2] == paths.IsolatedSegment || parts[2] == modePin) {
 				return modePin
 			}
 		}
 		return modeBond
-	case pathWithin(dir, app.Paths.SyncHomesDir()):
-		return constants.ModeSync
 	default:
 		return ""
 	}
@@ -217,10 +220,15 @@ func (app *App) pinnedGlobalScope() {
 	if app.globalScope {
 		return
 	}
-	if kind := app.firstKaeManagedIsolation(); kind != "" {
+	// Warn only inside a per-directory pin (bond/pin), where the change really
+	// is invisible to the directory. A terminal activated by the global mise
+	// fragment (kind == sync) is not "pinned": `kae use -s`/`-i` is the
+	// sanctioned global path there, so it must not print a misleading warning.
+	switch kind := app.firstKaeManagedIsolation(); kind {
+	case modeBond, modePin:
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: this directory is pinned (%s); you are changing GLOBAL state, "+
-				"which this directory will not see — re-bind with `kae pin`\n", kind)
+				"which this directory will not see — re-bind with `kae pin`\n", userScopeMode(kind))
 	}
 	app.applyGlobalScope()
 }

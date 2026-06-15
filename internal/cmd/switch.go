@@ -8,6 +8,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 type switchResult struct {
@@ -55,22 +56,34 @@ func CmdUse(ctx context.Context, args []string) int {
 	if len(positionals) != 1 && len(positionals) != 2 {
 		return usageError("usage: %s use [-s|-i] <profile> | %s use [-s|-i] <tool> <account>", toolName, toolName)
 	}
-	if isolatedMode {
-		// Global isolated home lands later in v0.7.2 (RELEASE.md step 3).
-		return finish(opts, errf(constants.ExitUnsupported,
-			"kae use --isolated (global isolated home) is not available yet"))
-	}
 	app := newApp(opts.ConfigPath)
-	if len(positionals) == 1 {
-		return runSwitch(ctx, app, opts, "all", positionals[0])
+	target, name := "all", positionals[0]
+	if len(positionals) == 2 {
+		target, name = positionals[0], positionals[1]
 	}
-	return runSwitch(ctx, app, opts, positionals[0], positionals[1])
+	if isolatedMode {
+		return runUseIsolated(ctx, app, opts, target, name)
+	}
+	return runSwitch(ctx, app, opts, target, name)
 }
 
 func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name string) int {
 	report, err := buildSwitch(ctx, app, opts, target, name)
 	if err != nil {
 		return finish(opts, err)
+	}
+	// kae use -s is the documented teardown of kae use -i: after switching the
+	// real home in place, drop the switched tools from state.synced and
+	// regenerate (or delete) the global mise fragment. A no-op when no switched
+	// tool is globally isolated, so the plain shared switch is unaffected.
+	if !report.DryRun {
+		tools := make([]string, 0, len(report.Results))
+		for _, r := range report.Results {
+			tools = append(tools, r.Tool)
+		}
+		if err := app.teardownSynced(tools); err != nil {
+			return finish(opts, err)
+		}
 	}
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
@@ -206,4 +219,121 @@ func printSwitchReport(app *App, report *switchReport) {
 	if report.BackupID != "" {
 		fmt.Printf("Backup: %s (undo: kae rollback)\n", report.BackupID)
 	}
+}
+
+// globalIsolateResult is one tool's row of the kae use -i report.
+type globalIsolateResult struct {
+	Tool    string `json:"tool"`
+	Account string `json:"account"`
+	Home    string `json:"home"`
+}
+
+// globalIsolateReport is the JSON contract of kae use --isolated.
+type globalIsolateReport struct {
+	SchemaVersion int                   `json:"schema_version"`
+	OK            bool                  `json:"ok"`
+	DryRun        bool                  `json:"dry_run"`
+	Fragment      string                `json:"fragment"`
+	Results       []globalIsolateResult `json:"results"`
+}
+
+// runUseIsolated performs the global isolated switch (kae use -i): for each
+// target it prepares a full per-account private home under
+// isolation/global/<tool>/<account>/ (materializing the captured credential),
+// records the binding in state.synced, and regenerates the kae-owned global
+// mise fragment so every globally activated terminal points the tool there on
+// its next prompt. The real ~/.<tool> is never touched. claude and codex only
+// (a tool with no stable home-isolation env var exits 5). When mise activation
+// is not detected it prints the export fallback for the current shell.
+//
+// Unlike the shared switch it takes no per-tool locks and writes no backup: it
+// mutates no live credential store, only kae's own data dirs and state.json
+// (mirroring kae pin, which is also lock-free).
+func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name string) int {
+	if err := app.requireConfig(); err != nil {
+		return finish(opts, err)
+	}
+	// Inside a per-directory pin this warns that global state is changing; in a
+	// globally-isolated terminal it stays silent (use -i is the global path).
+	app.pinnedGlobalScope()
+	targets, _, err := app.resolveTargets(target, name)
+	if err != nil {
+		return finish(opts, err)
+	}
+	for _, tgt := range targets {
+		if isolationEnvVar(tgt.Tool) == "" {
+			return finish(opts, errf(constants.ExitUnsupported,
+				"%s has no home-isolation env var; global isolated mode (kae use -i) supports claude and codex only",
+				tgt.Tool))
+		}
+	}
+
+	report := globalIsolateReport{
+		SchemaVersion: constants.SchemaVersion,
+		OK:            true,
+		DryRun:        opts.DryRun,
+		Fragment:      app.Paths.MiseGlobalFragmentFile(),
+		Results:       []globalIsolateResult{},
+	}
+	for _, tgt := range targets {
+		report.Results = append(report.Results, globalIsolateResult{
+			Tool: tgt.Tool, Account: tgt.Account,
+			Home: app.Paths.GlobalIsolatedHomeDir(tgt.Tool, tgt.Account),
+		})
+	}
+	if opts.DryRun {
+		if opts.Format == formatJSON {
+			return encodeJSON(report)
+		}
+		for _, r := range report.Results {
+			fmt.Printf("Would globally isolate %s -> %s\n  home: %s\n", r.Tool, r.Account, r.Home)
+		}
+		fmt.Printf("Would write %s\n", report.Fragment)
+		return constants.ExitOK
+	}
+
+	be, err := app.secretBackend()
+	if err != nil {
+		return finish(opts, err)
+	}
+	st, err := app.loadState()
+	if err != nil {
+		return finish(opts, err)
+	}
+	if st.Synced == nil {
+		st.Synced = map[string]string{}
+	}
+	for _, tgt := range targets {
+		dir := app.Paths.GlobalIsolatedHomeDir(tgt.Tool, tgt.Account)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return finish(opts, fmt.Errorf("create global isolated home for %s: %w", tgt.Tool, err))
+		}
+		if err := app.swapDirCredential(ctx, be, tgt.Tool, tgt.Account, dir); err != nil {
+			return finish(opts, fmt.Errorf("materialize credential for %s/%s: %w", tgt.Tool, tgt.Account, err))
+		}
+		st.Synced[tgt.Tool] = tgt.Account
+	}
+	st.UpdatedAt = app.Now().UTC()
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		return finish(opts, err)
+	}
+	if err := app.regenGlobalFragment(st.Synced); err != nil {
+		return finish(opts, err)
+	}
+
+	if opts.Format == formatJSON {
+		return encodeJSON(report)
+	}
+	for _, r := range report.Results {
+		fmt.Printf("Globally isolated %s -> %s (private home; real ~/.%s untouched)\n", r.Tool, r.Account, r.Tool)
+	}
+	fmt.Printf("Wrote %s (regenerated from kae state).\n", report.Fragment)
+	if app.miseActivated() {
+		fmt.Println("mise applies it on the next prompt (or run `mise env`).")
+	} else {
+		fmt.Fprintln(os.Stderr, "kae: warning: mise activation not detected; the binding takes effect once mise is active.")
+		fmt.Fprintln(os.Stderr, "kae: to apply it in the current shell now, run:")
+		fmt.Fprint(os.Stderr, app.globalExportFallback(st.Synced))
+	}
+	return constants.ExitOK
 }

@@ -72,7 +72,6 @@ func TestPinIDCollisionResistance(t *testing.T) {
 func TestIsolationPaths(t *testing.T) {
 	p := Resolve(func(string) string { return "" }, "/home/u")
 	iso := "/home/u/.local/share/kagikae/isolation"
-	sync := "/home/u/.local/share/kagikae/synchomes"
 	pin := "abcdef0123456789"
 	tool := "claude"
 	acct := "work"
@@ -86,8 +85,9 @@ func TestIsolationPaths(t *testing.T) {
 		{"IsolationDir", p.IsolationDir(), iso},
 		{"SharedDir", p.SharedDir(pin, tool), pre + "/shared"},
 		{"IsolatedConfigDir", p.IsolatedConfigDir(pin, tool, acct), pre + "/isolated/" + acct + "/config"},
-		{"SyncHomesDir", p.SyncHomesDir(), sync},
-		{"SyncHomeDir", p.SyncHomeDir(tool, acct), sync + "/" + tool + "/" + acct},
+		{"GlobalIsolationDir", p.GlobalIsolationDir(), iso + "/global"},
+		{"GlobalIsolatedHomeDir", p.GlobalIsolatedHomeDir(tool, acct), iso + "/global/" + tool + "/" + acct},
+		{"MiseGlobalFragmentFile", p.MiseGlobalFragmentFile(), "/home/u/.config/mise/conf.d/kagikae.toml"},
 	}
 	for _, tc := range cases {
 		if tc.got != tc.want {

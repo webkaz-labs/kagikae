@@ -200,11 +200,6 @@ func TestUseFlagValidation(t *testing.T) {
 	if code := CmdUse(ctx, []string{}); code != constants.ExitUsage {
 		t.Fatalf("use with no positionals must be a usage error, got %d", code)
 	}
-	// Global isolated home (use -i) lands later in v0.7.2; it is unsupported
-	// for now and reported before any environment access.
-	if code := CmdUse(ctx, []string{"-i", "work"}); code != constants.ExitUnsupported {
-		t.Fatalf("use -i must report unsupported, got %d", code)
-	}
 }
 
 func TestRemovedCommandsPointAtReplacements(t *testing.T) {

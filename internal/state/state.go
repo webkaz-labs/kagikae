@@ -18,7 +18,12 @@ type State struct {
 	SchemaVersion int               `json:"schema_version"`
 	ActiveProfile string            `json:"active_profile,omitempty"`
 	Active        map[string]string `json:"active"`
-	UpdatedAt     time.Time         `json:"updated_at"`
+	// Synced records, per tool, the account whose private home the global mise
+	// fragment currently points the tool at (global isolated, kae use -i). It
+	// is omitted when no tool is globally isolated; kae regenerates the
+	// fragment from it. The real ~/.<tool> is never modified.
+	Synced    map[string]string `json:"synced,omitempty"`
+	UpdatedAt time.Time         `json:"updated_at"`
 }
 
 // New returns an empty state.

@@ -31,9 +31,9 @@ const (
 	ModeEnv     = "env"
 	ModeHome    = "home"
 	ModeOverlay = "overlay"
-	ModeBond    = "bond" // per-directory shared (Phase 2)
-	ModePin     = "pin"  // per-directory isolated (Phase 4)
-	ModeSync    = "sync" // global isolated (Phase 6)
+	ModeBond    = "bond" // per-directory shared (kae pin --shared)
+	ModePin     = "pin"  // per-directory isolated (kae pin --isolated)
+	ModeSync    = "sync" // global isolated (kae use --isolated)
 )
 
 // EnvKaeProfile is the environment variable that pins a kae profile to a

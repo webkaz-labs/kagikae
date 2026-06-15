@@ -54,11 +54,11 @@ const DriverValueFile = "file"
 
 // Driver identifiers.
 const (
-	DriverClaudeFilePatch     = "claude-file-patch"
-	DriverClaudeKeychainPatch = "claude-keychain-patch"
-	DriverCodexAuthJSON       = "codex-auth-json"
-	DriverCodexKeyring        = "codex-keyring"
-	DriverAgyFileSnapshot     = "agy-file-snapshot"
+	DriverClaudeFilePatch      = "claude-file-patch"
+	DriverClaudeKeychainPatch  = "claude-keychain-patch"
+	DriverCodexAuthJSON        = "codex-auth-json"
+	DriverCodexKeyring         = "codex-keyring"
+	DriverAgyFileSnapshot      = "agy-file-snapshot"
 	DriverOpencodeFilePatch    = "opencode-file-patch"
 	DriverCursorKeychain       = "cursor-keychain"
 	DriverCopilotConfigPointer = "copilot-config-pointer"
@@ -81,15 +81,15 @@ const (
 
 // Doctor check codes.
 const (
-	CheckBinaryPresent    = "binary_present"
-	CheckAuthPresent      = "auth_present"
-	CheckDriver           = "driver"
-	CheckEnvConflict      = "env_conflict"
-	CheckCredentialStore  = "credential_store"
-	CheckSecretBackend    = "secret_backend"
-	CheckConfigValid      = "config_valid"
-	CheckUnsupported      = "unsupported"
-	CheckFileMode         = "file_mode"
+	CheckBinaryPresent   = "binary_present"
+	CheckAuthPresent     = "auth_present"
+	CheckDriver          = "driver"
+	CheckEnvConflict     = "env_conflict"
+	CheckCredentialStore = "credential_store"
+	CheckSecretBackend   = "secret_backend"
+	CheckConfigValid     = "config_valid"
+	CheckUnsupported     = "unsupported"
+	CheckFileMode        = "file_mode"
 )
 
 // Exit codes and their stable error-code tokens.

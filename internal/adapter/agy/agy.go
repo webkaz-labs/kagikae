@@ -99,7 +99,7 @@ func (a Agy) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 			Status: constants.StatusWarn, Message: message})
 	}
 	checks = append(checks, adapter.Check{Tool: tool, Code: constants.CheckDriver,
-		Status: constants.StatusWarn,
+		Status:  constants.StatusWarn,
 		Message: "driver: " + constants.DriverAgyFileSnapshot + " (experimental)"})
 	return checks
 }

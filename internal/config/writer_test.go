@@ -55,11 +55,11 @@ func TestEditorPreservesCommentsAndUnrelatedKeys(t *testing.T) {
 		e.SetProfileAccount("work", "claude", "personal")
 	})
 	for _, want := range []string{
-		"# kagikae config",      // leading comment survives
-		"# keep this comment",   // unrelated section comment survives
-		"[tools.claude]",        // unrelated table survives
-		"enabled = true",        // unrelated key survives
-		"# trailing comment",    // trailing comment survives
+		"# kagikae config",    // leading comment survives
+		"# keep this comment", // unrelated section comment survives
+		"[tools.claude]",      // unrelated table survives
+		"enabled = true",      // unrelated key survives
+		"# trailing comment",  // trailing comment survives
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("edit dropped %q:\n%s", want, out)

@@ -95,7 +95,7 @@ func (c Codex) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	store := configuredStore(env)
 	if store == "keyring" {
 		checks = append(checks, adapter.Check{Tool: tool, Code: constants.CheckCredentialStore,
-			Status: constants.StatusError,
+			Status:  constants.StatusError,
 			Message: "cli_auth_credentials_store = \"keyring\" is detect-only; kae cannot switch it yet (set it to \"file\" to use kae)"})
 		return checks
 	}
@@ -107,7 +107,7 @@ func (c Codex) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 			Status: constants.StatusOK, Message: "auth.json found"})
 	} else {
 		checks = append(checks, adapter.Check{Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusWarn,
+			Status:  constants.StatusWarn,
 			Message: "no auth.json; log in with codex first (or the keyring store is silently in use)"})
 	}
 	return checks

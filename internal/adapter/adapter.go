@@ -106,7 +106,7 @@ func EnvConflictChecks(env Env, tool string, vars []string) []Check {
 	for _, name := range vars {
 		if env.Getenv(name) != "" {
 			checks = append(checks, Check{Tool: tool, Code: constants.CheckEnvConflict,
-				Status: constants.StatusWarn,
+				Status:  constants.StatusWarn,
 				Message: name + " is set and overrides the switched login"})
 		}
 	}

@@ -68,11 +68,11 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string) *doctorReport
 	// config
 	if app.ConfigErr != nil {
 		report.Checks = append(report.Checks, adapter.Check{Code: constants.CheckConfigValid,
-			Status: constants.StatusError,
+			Status:  constants.StatusError,
 			Message: fmt.Sprintf("config %s: %v", app.displayPath(app.ConfigPath), app.ConfigErr)})
 	} else {
 		report.Checks = append(report.Checks, adapter.Check{Code: constants.CheckConfigValid,
-			Status: constants.StatusOK,
+			Status:  constants.StatusOK,
 			Message: "config: " + app.displayPath(app.ConfigPath)})
 		for _, warning := range app.ConfigWarnings {
 			report.Checks = append(report.Checks, adapter.Check{Code: constants.CheckConfigValid,

@@ -33,11 +33,11 @@ func ValidFileName(s string) bool { return ValidName(s) && s != "." && s != ".."
 
 // Config is the parsed user policy.
 type Config struct {
-	Version        int                   `toml:"version"`
-	DefaultProfile string                `toml:"default_profile"`
-	Security       Security              `toml:"security"`
-	Tools          map[string]Tool       `toml:"tools"`
-	Profiles       map[string]Profile    `toml:"profiles"`
+	Version        int                `toml:"version"`
+	DefaultProfile string             `toml:"default_profile"`
+	Security       Security           `toml:"security"`
+	Tools          map[string]Tool    `toml:"tools"`
+	Profiles       map[string]Profile `toml:"profiles"`
 }
 
 // Security holds the secret backend and retention policy.

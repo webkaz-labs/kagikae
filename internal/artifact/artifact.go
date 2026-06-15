@@ -21,9 +21,9 @@ var ErrUnsafe = errors.New("unsafe operation refused")
 
 // Spec declares one auth artifact of a tool.
 type Spec struct {
-	Name    string // stable artifact name, e.g. "oauth_account"
-	Kind    string // constants.KindJSONPointer | KindFile | KindKeychain
-	Target  string // file path, or keychain service name
+	Name   string // stable artifact name, e.g. "oauth_account"
+	Kind   string // constants.KindJSONPointer | KindFile | KindKeychain
+	Target string // file path, or keychain service name
 	// Pointer is a JSON pointer. For KindJSONPointer it selects the
 	// sub-value to capture and apply. For KindKeychain it is only a
 	// structure guard: the item's bytes are captured and restored verbatim

@@ -83,7 +83,7 @@ func (o Opencode) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 			Status: constants.StatusOK, Message: "openai (ChatGPT subscription) login found in auth.json"})
 	default:
 		checks = append(checks, adapter.Check{Tool: tool, Code: constants.CheckAuthPresent,
-			Status: constants.StatusWarn,
+			Status:  constants.StatusWarn,
 			Message: "no openai (ChatGPT subscription) login in auth.json; log in with `opencode auth login` first"})
 	}
 	checks = append(checks, adapter.Check{Tool: tool, Code: constants.CheckDriver,

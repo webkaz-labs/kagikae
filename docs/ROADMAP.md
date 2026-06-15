@@ -117,6 +117,24 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   <account> -- <tool>` already works (it is not blocked by the pinned-
   directory guard), but it is verbose; provide a terser way to open an
   interactive session under a different account without unpinning.
+- **Tool-name prefix aliases** *(input-only sugar)*: accept any unambiguous
+  prefix in tool positions (`cl`→claude, `cod`→codex, `cu`→cursor,
+  `cop`→copilot, `o`→opencode, `a`→agy); ambiguous prefixes (`c`, `co`) error
+  with the candidate list. Resolved to the canonical name immediately and never
+  stored (config/state/JSON keep canonical names), and computed dynamically from
+  `constants.Tools` so a new tool self-adjusts the ambiguity set. Only in tool
+  positions of the two-arg forms (`use`/`pin`/`run`/`add`/`account`/`env`); a
+  one-arg `kae use cl` stays a profile lookup. (Verb aliases `u`/`p`/`r`/`d`/`s`
+  shipped in v0.7.2.)
+- **Flag short forms**: `-P` for `--profile` on `run`/`apply`/`mise init`
+  (`--mode` is being retired by the surface-unification plan, so it gets none).
+- **Generic completion + "did you mean"**: both are feasible off the existing
+  static lists (commands, tools, flags, profiles/accounts from state). (1) a
+  `kae completion <bash|zsh|fish>` generator emitting a shell completion script
+  — since the surface is hand-rolled (not cobra), the candidate lists are
+  enumerated from the router + `constants.Tools` + the config; (2) an unknown
+  command/tool prints a Levenshtein "did you mean X?" hint instead of a bare
+  error. Both stay table-driven so they track the surface automatically.
 
 These overlap with the TUI item above at the surface level but are the
 plain-CLI layer; the TUI sits on top of them.

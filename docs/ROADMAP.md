@@ -10,10 +10,9 @@ coverage, ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 
-- **`apply` / `run` environment flags**: fold `-s` / `-i` into `kae apply` and
-  `kae run` so the whole surface speaks one environment vocabulary (deferred
-  from v0.7.2, where `apply` stays global-shared and `run --mode` keeps its
-  mechanism names).
+- **Surface vocabulary unification (`run` / `apply` / `mise init`)**: fold the
+  scope×environment vocabulary into the rest of the surface — see the dedicated
+  subsection below.
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the
@@ -47,6 +46,56 @@ coverage, ordered below by user impact.
   lets containers and smoke environments never touch the real login keychain.
   Also the safety prerequisite for the v0.7.2 global-isolated (`kae use -i`)
   real-machine gate.
+
+## Surface vocabulary unification (run / apply / mise init)
+
+v0.7.2 put `use` / `pin` on the scope×environment grid (`-s` / `-i`), but `run`,
+`apply`, and `mise init` still speak the older mechanism vocabulary. Deferred
+from v0.7.2 (where `apply` stays global-shared and `run --mode` keeps its
+mechanism names). Remaining gaps:
+
+- **`run --mode auth|env|home|overlay|bond|pin`** conflates environment
+  (`auth`=shared, `home`/`overlay`/`pin`=isolated, `bond`=per-dir shared) with
+  env-var injection (`env`); `home` predates and overlaps `use -i`, and
+  `overlay` is legacy.
+- **`apply`** covers only global-shared — no `-i`, so a `use -i` binding has no
+  idempotent hook form.
+- **`mise init --mode bond|pin`** is redundant now that `kae pin -s|-i` owns the
+  fragment; `mise init`'s unique role is `--mode auth` (tasks / enter hook).
+- The same "environment" concept is spelled three ways: `-s` / `-i` (use/pin),
+  `--mode <value>` (run / mise init), and nothing (apply).
+- `pin` is overloaded at the user surface: the verb `kae pin` vs `run --mode pin`.
+- Config keys stay mechanism-named: `bond_denylist_extra`, `pin_shared_items`,
+  `overlay_extra_shared`, `overlay_mode_enabled`, `home_mode_enabled`.
+
+Proposed direction, in safe (least-breaking-first) order:
+
+1. **`apply [-s|-i]`** — add the environment axis; default `-s` (unchanged), `-i`
+   idempotently maintains the `synced` global-isolated state. Additive, low-risk.
+2. **`run [-s|-i]` + `--env`** — `-s` = current `auth` (apply + restore the real
+   home for the process), `-i` = a private isolated home; split env-var injection
+   out to `--env`. Introduce `--mode` as a transitional deprecated alias
+   (`auth`→`-s`, `home`→`-i`, `env`→`--env`; `bond`/`pin`/`overlay` → guidance to
+   `kae pin` then `kae run`). Removes the user-surface `pin` overload.
+3. **`mise init`** — drop `bond` / `pin` (point at `kae pin`); keep `auth` (and
+   legacy `home` / `overlay`).
+4. **Mechanism rename (broadest, last)** — `modeBond` / `modePin` →
+   `modeShared` / `modeIsolated`, the `run --mode` values, and the config keys
+   (`bond_denylist_extra` → `shared_denylist_extra`, etc.) behind a transitional
+   old-key alias so the migration itself is non-breaking.
+
+   **Final step of P4 — remove the legacy compat.** Once the deprecation window
+   passes, delete every transitional shim introduced above in one clean break:
+   the `run --mode` alias and its mechanism values, the old config-key aliases,
+   and any removed-command pointers from this cleanup. After P4 the surface
+   speaks only the scope×environment vocabulary — no `--mode`, no mechanism-named
+   keys. (`apply`/`use`/`pin`/`run` keep their verbs; `apply` and `run` stay as
+   distinct scopes, not folded into `use`.)
+
+The internal-name drift fixed in v0.7.2 (`sync.go`→`apply.go`, per-dir fragment
+`*PinFragment`→`*DirFragment`, `as.go`→`rebind.go`; see git log) was the
+non-breaking half; the mechanism vocabulary above is intentionally still pending
+because it touches the `run --mode` and config-key contracts.
 
 ## Command-system expansion
 

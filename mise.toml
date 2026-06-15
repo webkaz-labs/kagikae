@@ -17,9 +17,20 @@ run = "go vet ./..."
 description = "Verify downloaded Go modules"
 run = "go mod verify"
 
+[tasks.fmt-check]
+description = "Fail when any Go file is not gofmt-formatted"
+run = '''
+unformatted=$(gofmt -l .)
+if [ -n "$unformatted" ]; then
+  echo "gofmt needed for:"
+  echo "$unformatted"
+  exit 1
+fi
+'''
+
 [tasks.check]
 description = "Run the standard local validation suite"
-depends = ["test", "vet", "mod-verify"]
+depends = ["test", "vet", "mod-verify", "fmt-check"]
 
 [tasks.install]
 description = "Build and install kae into ~/.local/bin for real-machine use"

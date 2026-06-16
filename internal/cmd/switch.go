@@ -89,11 +89,7 @@ func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name stri
 	// regenerate (or delete) the global mise fragment. A no-op when no switched
 	// tool is globally isolated, so the plain shared switch is unaffected.
 	if !report.DryRun {
-		tools := make([]string, 0, len(report.Results))
-		for _, r := range report.Results {
-			tools = append(tools, r.Tool)
-		}
-		if err := app.teardownSynced(tools); err != nil {
+		if err := app.teardownSynced(toolNames(report.Results)); err != nil {
 			return finish(opts, err)
 		}
 	}
@@ -196,6 +192,16 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		fmt.Fprintf(os.Stderr, "kae: warning: backup pruning failed: %v\n", err)
 	}
 	return report, nil
+}
+
+// toolNames extracts the tool ids from switch results, preserving order. Shared
+// by runSwitch and buildUseBare to feed teardownSynced.
+func toolNames(results []switchResult) []string {
+	tools := make([]string, 0, len(results))
+	for _, r := range results {
+		tools = append(tools, r.Tool)
+	}
+	return tools
 }
 
 func printSwitchReport(report *switchReport) {

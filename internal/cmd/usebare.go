@@ -85,11 +85,7 @@ func buildUseBare(ctx context.Context, app *App, opts commonOpts, profileName st
 	// state.synced and regenerate/delete the global fragment, mirroring
 	// runSwitch. A no-op when no switched tool is globally isolated.
 	if !opts.DryRun {
-		tools := make([]string, 0, len(sw.Results))
-		for _, r := range sw.Results {
-			tools = append(tools, r.Tool)
-		}
-		if err := app.teardownSynced(tools); err != nil {
+		if err := app.teardownSynced(toolNames(sw.Results)); err != nil {
 			return nil, err
 		}
 	}

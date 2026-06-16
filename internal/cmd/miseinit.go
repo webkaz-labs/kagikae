@@ -175,6 +175,21 @@ type isolationEntry struct {
 	Warning string // non-empty: rendered as a comment, no env entry
 }
 
+// isolationEntryFor builds one bind entry for a tool: the env entry pointing at
+// dir when the tool has a home-isolation env var, or a warning entry (dir
+// ignored) when it does not. Shared by the shared (SharedDir) and isolated
+// (IsolatedConfigDir) bind planners, which differ only in how dir is computed.
+func isolationEntryFor(tgt runTarget, dir string) isolationEntry {
+	entry := isolationEntry{Tool: tgt.Tool, Account: tgt.Account, EnvVar: isolationEnvVar(tgt.Tool)}
+	if entry.EnvVar == "" {
+		entry.Warning = fmt.Sprintf(
+			"%s has no stable home-isolation env var; it keeps the real home (docs/ROADMAP.md)", tgt.Tool)
+		return entry
+	}
+	entry.Dir = dir
+	return entry
+}
+
 // writeEnvEntries renders the shared [env] block — KAE_PROFILE plus each tool's
 // isolation env entry, or a warning comment for a tool that keeps the real home
 // — for the kae pin fragment (renderDirFragment). One place to change env-line
@@ -214,16 +229,7 @@ func (app *App) bondDenylistItems(tool string) []string {
 func (app *App) bondIsolationEntries(targets []runTarget, pinID string) []isolationEntry {
 	entries := make([]isolationEntry, 0, len(targets))
 	for _, tgt := range targets {
-		entry := isolationEntry{Tool: tgt.Tool, Account: tgt.Account}
-		entry.EnvVar = isolationEnvVar(tgt.Tool)
-		if entry.EnvVar == "" {
-			entry.Warning = fmt.Sprintf(
-				"%s has no stable home-isolation env var; it keeps the real home (docs/ROADMAP.md)", tgt.Tool)
-			entries = append(entries, entry)
-			continue
-		}
-		entry.Dir = app.Paths.SharedDir(pinID, tgt.Tool)
-		entries = append(entries, entry)
+		entries = append(entries, isolationEntryFor(tgt, app.Paths.SharedDir(pinID, tgt.Tool)))
 	}
 	return entries
 }
@@ -328,16 +334,7 @@ func (app *App) prepareBond(ctx context.Context, tool, _ string, pinID string) (
 func (app *App) pinIsolationEntries(targets []runTarget, pinID string) []isolationEntry {
 	entries := make([]isolationEntry, 0, len(targets))
 	for _, tgt := range targets {
-		entry := isolationEntry{Tool: tgt.Tool, Account: tgt.Account}
-		entry.EnvVar = isolationEnvVar(tgt.Tool)
-		if entry.EnvVar == "" {
-			entry.Warning = fmt.Sprintf(
-				"%s has no stable home-isolation env var; it keeps the real home (docs/ROADMAP.md)", tgt.Tool)
-			entries = append(entries, entry)
-			continue
-		}
-		entry.Dir = app.Paths.IsolatedConfigDir(pinID, tgt.Tool, tgt.Account)
-		entries = append(entries, entry)
+		entries = append(entries, isolationEntryFor(tgt, app.Paths.IsolatedConfigDir(pinID, tgt.Tool, tgt.Account)))
 	}
 	return entries
 }

@@ -272,11 +272,8 @@ func (app *App) resolveTargets(target, name string) ([]runTarget, string, error)
 		}
 		return targets, name, nil
 	}
-	tool, err := resolveToolArg(target)
+	tool, err := canonicalToolAccount(target, name, "account")
 	if err != nil {
-		return nil, "", err
-	}
-	if err := validateToolAccount(tool, name, "account"); err != nil {
 		return nil, "", err
 	}
 	return []runTarget{{Tool: tool, Account: name}}, "", nil

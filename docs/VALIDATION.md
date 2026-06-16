@@ -465,12 +465,22 @@ single-account-doable range is what gates this release:
 - [x] §D comparator + JWT: `TestSnapshotArtifactDiffers`, `internal/jwt`
       `jwt_test.go`, and the unchanged switch/login tests.
 
-**Two-account real-keychain recapture is not run here**: it requires two live
-claude subscription accounts, which is impractical to arrange, and the recapture
-round-trip is already proven driver-agnostically above. The single-account
-real-keychain sanity (the v0.8.1 gate: `kae add` live capture → `kae use` →
-fresh `claude -p` AUTH-OK, no prompt multiplication) carries over unchanged and
-remains the optional real-machine spot-check.
+Two-account real-keychain recapture (claude, macOS) — confirms §A's switch-away
+recapture round-trips a **refreshed** token across two real accounts, which the
+file-driver smoke models but does not exercise on the keychain. Use throwaway /
+staging accounts and re-capture both with `kae add` immediately before the run
+(the recapture rewrites the live keychain from the snapshot):
+
+- [ ] `kae add --no-login claude` (no name) on a live login captures under the
+      detected account name (the sanitized login email).
+- [ ] `kae add claude A` / `kae add claude B` (both live-captured), `kae use
+      claude A`; trigger an in-tool refresh of A (or re-`kae add` A's live token);
+      `kae use claude B` prints `refreshed claude/A snapshot … before switching
+      away`; `kae use claude A` then makes a fresh `claude -p` as A return
+      **AUTH-OK** with the switch-away token, not the original capture.
+- [ ] A single `kae use` raises no extra keychain auth prompts (the keychain read
+      cache and the secret read cache both hold).
+- [ ] `kae ls` lists both accounts with the active one marked.
 
 ## Real-Machine Acceptance (release only)
 
@@ -541,8 +551,8 @@ to v0.8.3 — see [RELEASE.md](RELEASE.md) / [ROADMAP.md](ROADMAP.md).)
   markers and `[]` arrays; §A `status --json` returned all six tools in canonical
   order via the concurrent `Detect`.
 - JSON kept `schema_version: 1`, stable tokens, and `[]` arrays.
-- Two-account real-keychain recapture not run (needs two live claude accounts;
-  the recapture round-trip is covered driver-agnostically — see the gate above).
+- Two-account real-keychain recapture gate: see the checklist above (run on the
+  real machine before tagging).
 
 ### v0.8.1 (2026-06-16, macOS darwin 24.6.0)
 

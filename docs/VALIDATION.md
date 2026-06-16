@@ -548,6 +548,70 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
 Run with a committed tree and a throwaway/second account; record the result in
 the Release Acceptance Log below.
 
+## v0.8.4 surfaces
+
+Dynamic shell completion sourced from a hidden `kae __complete` backend (§A),
+native completion delegating to it plus an interactive `--install` (§B), and
+mise task-argument completion through the same backend (§C). The backend, the
+install file-writing, and the rendered task block are unit/temp-HOME covered
+(`internal/cmd` `TestCompleteBackend*`, `TestCompletionInstall*`,
+`TestMiseInitRendersCompletionTasks`, `TestCompletionGenerates`). The temp-HOME
+smoke below confirms the binary end-to-end; the shell-level `<TAB>` behavior
+needs the real-machine smoke (a non-interactive shell cannot fake completion).
+
+```bash
+# (continues from the v0.8.0 setup: /tmp/kae built, temp HOME + file config,
+#  with a profile defined and at least one account captured)
+
+# --- A. __complete backend ---
+/tmp/kae __complete commands
+#   assert: one command per line; "use" present; NO "__complete" line
+/tmp/kae __complete tools
+#   assert: the six canonical tools, one per line
+/tmp/kae __complete profiles
+#   assert: the configured profile names, one per line
+/tmp/kae __complete accounts claude
+#   assert: claude's captured account names, one per line
+/tmp/kae __complete bogus; echo $?
+#   assert: exit 64 (unknown kind)
+/tmp/kae help | grep -c __complete
+#   assert: 0 (hidden from help)
+
+# --- B. native completion is dynamic + installs to the fpath file ---
+/tmp/kae completion zsh | grep -q 'kae __complete' && echo dynamic-ok
+#   assert: the script calls the backend (no baked word list)
+printf '3\n' | /tmp/kae completion zsh --install   # 3 = print-only (no stdin TTY)
+#   assert: prints the script; writes nothing
+# choose the default (completions-dir file) by feeding an empty line:
+printf '\n' | /tmp/kae completion fish --install
+#   assert: writes $HOME/.config/fish/completions/kae.fish; re-run says "up to date"
+test -f "$HOME/.config/fish/completions/kae.fish" && echo installed-ok
+test ! -f "$HOME/.config/mise/config.toml" && echo mise-untouched-ok
+#   assert: the default install never created the global mise config
+
+# --- C. mise task completion directives ---
+/tmp/kae mise init -P <profile> | grep -E 'tasks.ai-switch|complete "profile"|kae __complete'
+#   assert: ai-switch / ai-switch-tool tasks with complete run="kae __complete …"
+```
+
+### v0.8.4 real-machine smoke (required before release)
+
+The shell `<TAB>` resolution cannot be faked non-interactively. On a real
+machine, for **each** of bash, zsh, fish:
+
+- [ ] Register completion (`eval "$(kae completion <shell>)"` or
+      `kae completion <shell> --install`); open a fresh shell.
+- [ ] `kae use <TAB>` offers live profiles + tools; `kae use claude <TAB>`
+      offers claude's accounts; `kae <TAB>` offers commands.
+- [ ] With `kae mise init --write` in a trusted, mise-activated project,
+      `mise run ai-switch <TAB>` offers live profiles and
+      `mise run ai-switch-tool <TAB>` offers live tools/accounts.
+- [ ] `kae completion <shell> --install` → option 2 (mise hook) writes the
+      kagikae block to the global mise config and is refused when a foreign
+      `[hooks.enter]` already exists.
+
+Record the result in the Release Acceptance Log below.
+
 ## Real-Machine Acceptance (release only)
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of

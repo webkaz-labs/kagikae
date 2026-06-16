@@ -45,7 +45,7 @@ kae profile default [<name>|--clear] # show or set default_profile
 kae status [--json]                  # full status report (alias: kae s)
 kae backup list [--json]             # list switch backups
 kae rollback [--to <backup-id>]      # restore the most recent (or given) backup
-kae completion <bash|zsh|fish>       # print a shell completion script
+kae completion <bash|zsh|fish> [--install]     # print (or register) a dynamic completion script
 kae version | --version | -v
 kae help | --help | -h
 ```
@@ -315,6 +315,19 @@ prints the snippet to stdout; `--write` creates `.mise.toml` or replaces an
 existing kagikae block. `--auto` adds a `[hooks.enter]` entry running
 `kae use --quiet`. `-P` selects the profile (falls back to `default_profile`).
 
+The block carries the fixed-profile tasks (`ai-use`, `ai-current`, and a per-
+enabled-tool `run` task) plus two argument-taking tasks with dynamic
+completion: `ai-switch <profile>` (switch all tools to a profile) and
+`ai-switch-tool <tool> <account>` (switch one tool). Their `usage`
+`complete "<arg>" run="kae __complete …"` directives resolve candidates from
+the same backend as kae's own shell completion, so `mise run ai-switch <TAB>`
+offers live profiles and `mise run ai-switch-tool <TAB>` offers live tools and
+accounts. Account completion in the task is **not** tool-scoped — mise's
+`complete run` does not expose the prior `tool` argument, so it lists every
+account; kae's own shell completion keeps the tool-scoped behavior. Task-
+argument completion is project-scoped (it lives in the project's `.mise.toml`),
+the opposite of kae's own completion, which is global (see "Shell completion").
+
 The former isolation modes (`--mode bond|pin|home|overlay`) are **removed** in
 v0.8.0 — passing any of them exits `64`. Bind a directory with `kae pin -s|-i`
 instead (which writes a kae-owned fragment, not via `mise init`).
@@ -332,6 +345,43 @@ profile stays usable for global switching and isolated project homes.
 one release). Directories pinned before v0.7.2 carry a kagikae marker block
 inside their `mise.toml`; run `kae unpin && kae pin` once to migrate to the
 fragment.
+
+## Shell completion
+
+`kae completion <bash|zsh|fish>` prints a **dynamic** completion script: instead
+of baking a word list at generation time, the script calls the hidden
+`kae __complete <kind>` backend at completion time, so candidates always track
+the live router, config, and captured state. Word 1 completes commands; the
+argument positions complete tools/profiles, and `kae use claude <TAB>` scopes to
+claude's accounts (the tool word is passed to `kae __complete accounts <tool>`).
+
+`kae __complete <commands|tools|profiles|accounts [<tool>]>` is read-only, takes
+no locks, prints one candidate per line, and is intentionally hidden from
+`kae help`. Its line-oriented output is an internal contract consumed by the
+generated scripts and the `kae mise init` task `complete` directives — it is not
+the JSON contract (`schema_version` is unaffected).
+
+kae's own completion is **binary-scoped**, so it is registered globally, never
+per-directory (a per-directory registration would make `kae <TAB>` blink in and
+out by directory). Three registration paths, non-mise first:
+
+1. **rc eval** — add `eval "$(kae completion zsh)"` (bash/zsh) or
+   `kae completion fish | source` to your shell rc. No files written.
+2. **completion file** — write the script to the shell's standard completions
+   dir (bash-completion and fish auto-load it; for zsh ensure the dir is on
+   `fpath`). `kae completion <shell> --install` does this for you (the default).
+3. **`kae completion <shell> --install`** — interactive: it detects whether mise
+   is active, then offers (1) the completions-dir file [default], (2) a global
+   mise `[hooks.enter]` that sources the script (opt-in), or (3) print-only. The
+   install is idempotent and **never** mutates the global mise config unless you
+   pick option 2; a global config that already defines `[hooks.enter]` outside
+   kae's marker block is refused (exit `10`) with manual guidance.
+
+The mise enter-hook path is an opt-in convenience, not the primary route: mise
+hooks are experimental and need `mise activate`, a trusted config, and
+`mise settings experimental=true`. Distinct from §"kae pin and mise init": that
+project-scoped task-argument completion lives in the project's `.mise.toml`;
+this is kae's own global shell completion.
 
 ## Exit Codes
 

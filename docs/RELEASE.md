@@ -1,4 +1,138 @@
-# Release Target: kae v0.8.3
+# Release Target: kae v0.8.4
+
+Make shell completion deep and dynamic — sourced from kae's live state — and
+lean on mise where the user already has it. One hidden `kae __complete` backend
+feeds both kae's own shell completion (`kae use <TAB>` → real
+profiles/accounts/flags) and mise task-argument completion
+(`mise run <task> <TAB>`). No JSON-contract break (`schema_version` stays `1`);
+no new dependency (kae stays hand-rolled). Reusable mise-integration patterns
+recorded for sibling tools.
+
+Previous baseline: v0.8.3 (discovery-unblock).
+
+## Scope
+
+### A. `kae __complete` — one completion backend
+
+A hidden `kae __complete <kind> [args]` subcommand (omitted from `kae help`)
+prints one candidate per line from kae's live surface:
+
+- `commands` — the router's public commands (from the `Root()` table)
+- `tools` — `constants.Tools`
+- `profiles` — config profile names
+- `accounts [<tool>]` — captured accounts, optionally scoped to one tool
+
+It is the single source every completion surface consults, so candidate lists
+never drift from the real router/config/state. Read-only, no locks, fast. The
+line-oriented output is an internal contract (not the JSON contract).
+
+### B. Native shell completion on the backend (`kae <TAB>`)
+
+Rewrite `kae completion <bash|zsh|fish>` so the emitted script calls
+`kae __complete` **dynamically** instead of baking a static word list at
+generation time. Result: `kae use <TAB>` offers live profiles+accounts,
+`kae use claude <TAB>` offers claude's accounts, `kae account rm <TAB>` /
+`kae add <TAB>` resolve from state, and word 1 completes commands; per-command
+flag completion where cheap.
+
+`kae completion <shell> --install` registers it **interactively**: detect
+whether mise is active, then let the user choose where to register — the shell's
+standard completions dir (fpath / `~/.config/fish/completions/` /
+bash-completion dir; mise-independent, the default suggestion), a **global**
+mise `[hooks.enter]` that sources `kae completion <shell>` (mise-native,
+opt-in), or print-only. kae never silently rewrites the user's global mise
+config. kae's own completion is binary-scoped, so registration is always global,
+never per-project (a per-directory registration would make `kae <TAB>` blink in
+and out by directory).
+
+### C. mise task-argument completion (`mise run <task> <TAB>`)
+
+`kae mise init` generates tasks with a `usage` spec and
+`complete "<arg>" run="kae __complete …"` directives, so `mise run <task> <TAB>`
+completes from kae's live state through the same backend. Add argument-taking
+tasks where it helps (a profile-argument switch task; a `tool`/`account` run
+task); the fixed-profile convenience tasks stay. Task-argument completion is
+project-scoped, so it lives in the project mise block — the opposite of §B's
+global registration. Open point settled during implementation: whether mise's
+`complete run` exposes the prior argument (to scope accounts by tool); if not,
+the task completes all accounts while kae's native path keeps the tool-scoped
+behavior.
+
+### D. Docs — both audiences
+
+Document three registration paths so non-mise users are first-class:
+(1) `eval "$(kae completion <shell>)"` in the shell rc, (2) a completion file in
+the shell's fpath / completions dir, (3) `kae completion --install`. The mise
+enter-hook path is an opt-in convenience, not the primary route (mise hooks are
+experimental and need `mise activate` + a trusted config). Update CLI (completion
+section + `kae mise init` task usage), README quickstart, DATA-MODEL (mise block
+/ task shape), ARCHITECTURE (the `__complete` seam), and VALIDATION (a completion
+smoke).
+
+### E. Standardize the mise-integration pattern (post-implementation follow-up)
+
+**Only after §A–§D land and the completion shape is settled**, promote the
+reusable mise-integration pattern (pin env-redirect fragments + completion via a
+`__complete` backend, usage/`complete`, and the global-vs-project registration
+rules — captured in the agent memory `mise-integration-pattern`) into the shared
+Go CLI standard so sibling tools inherit it. Reflect it in **three places**, all
+sourced from chezmoi (`~/.local/share/chezmoi`):
+
+1. **CLI standard docs** — `docs/go-cli/` and `docs/go-cli-architecture.md`.
+2. **go-cli-tooling skill** — `dot_agents/skills/go-cli-tooling/` (the canonical
+   source; it symlinks into `~/.claude` and `~/.agents`, and this repo's bundled
+   `.claude/skills/go-cli-tooling/` re-syncs from it).
+3. **Templates** — the relevant `chezmoi_templates/` / `dot_*` `.tmpl` files,
+   then `chezmoi apply`.
+
+This is a separate work item after v0.8.4 ships (not part of the kae release
+itself); listed here so it is not lost.
+
+## Non-Goals (this release)
+
+- "Did you mean X?" unknown-command suggestion — stays a separate ROADMAP
+  candidate.
+- A completion-framework dependency (cobra / carapace / `jdx/usage`): kae stays
+  hand-rolled and dependency-minimal; the `__complete` backend reproduces the
+  dynamic-completion pattern natively.
+- TUI, Windows, remote share-list shipping — see [ROADMAP.md](ROADMAP.md).
+- Any JSON-contract break: `schema_version` stays `1`.
+
+## Acceptance Criteria
+
+- **backend**: `kae __complete commands|tools|profiles|accounts` prints the live
+  candidates one per line; `accounts <tool>` scopes to that tool; an unknown
+  kind exits non-zero; the subcommand is absent from `kae help`. Temp-HOME tests.
+- **native completion**: a generated zsh/bash/fish script completes commands at
+  word 1 and live profiles/accounts at the argument positions via
+  `kae __complete`; `kae completion <shell>` still emits a valid script for each
+  shell. `kae completion <shell> --install` writes to the chosen location, is
+  idempotent, and never mutates the global mise config unless the user picks that
+  option. Temp-HOME tests.
+- **mise tasks**: `kae mise init` renders tasks whose `usage` / `complete`
+  directives reference `kae __complete`; a generated `.mise.toml` parses and
+  `mise run <task> <TAB>` resolves candidates on a real machine (smoke).
+- **docs**: the non-mise registration paths and the mise opt-in are both
+  documented; CLI / README / DATA-MODEL / ARCHITECTURE / VALIDATION current.
+- `mise run check` passes; no new entry in `go.mod`; the JSON contract is
+  unchanged.
+
+## Release Steps
+
+1. Bump `toolVersion` to v0.8.4.
+2. §A `kae __complete` backend (hidden subcommand); temp-HOME tests.
+3. §B native completion on the backend + interactive `--install`; temp-HOME
+   tests.
+4. §C `kae mise init` task `usage` / `complete` generation; temp-HOME tests.
+5. §D docs (CLI / README / DATA-MODEL / ARCHITECTURE / VALIDATION; both
+   audiences).
+6. Real-machine smoke: register completion in each shell, confirm `kae <TAB>`
+   and `mise run <task> <TAB>` resolve live candidates; tag `v0.8.4`, GitHub
+   release.
+
+---
+
+# kae v0.8.3 (released 2026-06-17)
 
 Lift the two discovery-blocked items, consolidate per-tool credential knowledge
 onto the adapter registry, and make the detected login identity visible. The
@@ -7,6 +141,12 @@ real-machine discovery for both deferred items is done (2026-06-16; contracts in
 freshness-as-adapter-capability, §B cursor `kae add` identity, §C codex keyring
 driver, §D store + display the detected account identity. No JSON-contract break
 (`schema_version` stays `1`; new tokens are additive).
+
+Shipped 2026-06-17. The cursor identity real-machine gate passed; the **codex
+keyring two-account real-keychain gate was deferred** (the driver is covered by
+fake-`security` round-trip tests) and stays the one open acceptance item — run
+it before relying on the keyring driver in production
+([VALIDATION.md](VALIDATION.md)).
 
 Previous baseline: v0.8.2 (daily-use polish).
 

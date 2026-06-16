@@ -45,8 +45,10 @@ kae ls                         # accounts and profiles in one view
 kae                            # what is active
 kae rollback                   # undo the last switch
 
-# shell completion:
-kae completion bash             # or zsh / fish — pipe to your shell's completion dir
+# shell completion (dynamic — completes live profiles/accounts via kae __complete):
+eval "$(kae completion zsh)"    # or bash; fish: kae completion fish | source
+kae completion zsh --install    # interactive: completions-dir file (default),
+                                # global mise hook (opt-in), or print-only
 
 # clean up captured accounts (snapshot dir + secret items, profile
 # references updated in the same step):

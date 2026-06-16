@@ -63,9 +63,11 @@ func TestCompletionGenerates(t *testing.T) {
 			return CmdCompletion(context.Background(), []string{shell})
 		})
 		mustExit(t, constants.ExitOK, code, out)
-		// Every script must mention the binary and at least one tool/command.
-		if !strings.Contains(out, "kae") || !strings.Contains(out, constants.ToolClaude) {
-			t.Fatalf("%s completion missing expected tokens:\n%s", shell, out)
+		// The script is dynamic: it delegates to `kae __complete` instead of
+		// baking a static word list, so it must reference the backend and the
+		// binary, and route the `use` argument position.
+		if !strings.Contains(out, "kae __complete") {
+			t.Fatalf("%s completion missing the __complete backend:\n%s", shell, out)
 		}
 		if !strings.Contains(out, "use") {
 			t.Fatalf("%s completion missing commands:\n%s", shell, out)

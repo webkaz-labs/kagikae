@@ -24,7 +24,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.8.3"
+	toolVersion = "v0.8.4"
 )
 
 // Root dispatches the command line.
@@ -99,6 +99,11 @@ func Root(args []string) int {
 		return CmdRollback(ctx, args[1:])
 	case "completion":
 		return CmdCompletion(ctx, args[1:])
+	// Hidden shell-completion backend (complete.go): omitted from `kae help`
+	// and from completionCommands; consumed by generated shell scripts and the
+	// mise `complete run="…"` directives.
+	case "__complete":
+		return CmdComplete(ctx, args[1:])
 	case "version":
 		return CmdVersion(args[1:])
 	case "help":

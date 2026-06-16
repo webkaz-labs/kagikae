@@ -3,27 +3,28 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target is **v0.8.3** (lift the two discovery-blocked items,
-consolidate per-tool credential knowledge, and surface the detected identity:
-§A freshness-as-adapter-capability, §B cursor `kae add` identity, §C codex
-keyring driver, §D store + display the detected account identity — see
-[RELEASE.md](RELEASE.md)). Both deferred items had their real-machine discovery
-done 2026-06-16 (contracts in [ADAPTERS.md](ADAPTERS.md)), so the scope is
-de-risked. v0.8.2 (daily-use polish: concurrent `status`, switch-read
-coalescing, `kae add` name auto-detection, `kae ls`) shipped, following v0.8.1
-(credential freshness / auto-recapture), v0.8.0 (surface vocabulary
-unification), and v0.7.2 (use/pin × -s/-i, global isolated home). What remains
-beyond v0.8.3 is hardening and platform coverage, ordered below by user impact.
+The active target is **v0.8.4** (deep, dynamic shell completion sourced from
+kae's live state on a single hidden `kae __complete` backend, feeding both kae's
+own completion and mise task-argument completion; mise-leveraging where present,
+with a first-class non-mise path — see [RELEASE.md](RELEASE.md)). v0.8.3
+(discovery-unblock: freshness-as-adapter-capability, cursor `kae add` identity,
+codex keyring driver, stored+displayed identity) shipped 2026-06-17 — its codex
+keyring two-account real-keychain gate is deferred (the one open acceptance
+item; see [VALIDATION.md](VALIDATION.md)). Earlier: v0.8.2 (daily-use polish),
+v0.8.1 (credential freshness / auto-recapture), v0.8.0 (surface vocabulary
+unification), v0.7.2 (use/pin × -s/-i, global isolated home). What remains beyond
+v0.8.4 is hardening and platform coverage, ordered below by user impact.
 
-Scheduled into **v0.8.3** (discovery done; see [RELEASE.md](RELEASE.md)):
-- **Freshness as an adapter capability**: move `freshness.Inspect`'s per-tool
-  `switch` onto a per-tool `Freshness(payload) Info` adapter method (beside
-  `Identity`), so per-tool knowledge has one home. The shared
-  `jwtExpiry`/`epochToTime`/`decodeObject` primitives stay in
-  `internal/freshness`; new tools stay fail-safe (Known=false).
-- **`kae add` identity for cursor**: discovery done — `cursor-agent status`
-  prints `✓ Logged in as <email>` (single line, no ANSI). The v0.8.3
-  `Identifier` parses it through the runner seam with a structure guard.
+Scheduled into **v0.8.4** (design settled; see [RELEASE.md](RELEASE.md)):
+- **`kae __complete` backend + dynamic completion**: one hidden subcommand emits
+  live candidates (commands/tools/profiles/accounts) that both the native shell
+  completion (`kae use <TAB>`) and mise task `complete` directives
+  (`mise run <task> <TAB>`) consult. `kae completion --install` registers kae's
+  own completion globally (fpath by default, global mise enter-hook opt-in,
+  interactive). No completion-framework dependency. The reusable mise-integration
+  patterns (env-redirect fragments for pin, completion via usage/`complete` +
+  hooks) are a candidate to graduate into the go-cli-tooling shared standard for
+  sibling tools.
 
 ## Hardening backlog — daily-use robustness
 
@@ -114,14 +115,15 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   shipped in v0.7.2.)
 - **Flag short forms** *(v0.8.0 — see [RELEASE.md](RELEASE.md))*: `-P` for
   `--profile` on `run` / bare `use` / `mise init`.
-- **Generic completion + "did you mean"** *(completion is v0.8.0 — see
-  [RELEASE.md](RELEASE.md); "did you mean" stays a candidate)*: both are feasible off the existing
-  static lists (commands, tools, flags, profiles/accounts from state). (1) a
-  `kae completion <bash|zsh|fish>` generator emitting a shell completion script
-  — since the surface is hand-rolled (not cobra), the candidate lists are
-  enumerated from the router + `constants.Tools` + the config; (2) an unknown
-  command/tool prints a Levenshtein "did you mean X?" hint instead of a bare
-  error. Both stay table-driven so they track the surface automatically.
+- **Generic completion + "did you mean"** *(static completion is v0.8.0;
+  dynamic completion is v0.8.4 — see [RELEASE.md](RELEASE.md); "did you mean"
+  stays a candidate)*: (1) `kae completion <bash|zsh|fish>` shipped in v0.8.0 as
+  a static-list generator; v0.8.4 makes it **dynamic** via a hidden
+  `kae __complete` backend (live profiles/accounts at the argument positions,
+  shared with mise task completion) and adds an interactive `--install`.
+  (2) an unknown command/tool printing a Levenshtein "did you mean X?" hint
+  stays a candidate, table-driven off the same router/`constants.Tools`/config
+  lists.
 
 These overlap with the TUI item above at the surface level but are the
 plain-CLI layer; the TUI sits on top of them.

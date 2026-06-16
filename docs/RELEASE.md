@@ -1,4 +1,7 @@
-# Release Target: kae v0.8.0
+# kae v0.8.0 (released 2026-06-16)
+
+> No active release target. The next candidate is **v0.8.1** (snapshot freshness
+> / auto-recapture) — see [ROADMAP.md](ROADMAP.md).
 
 Finish the scope×environment vocabulary: one surface, one set of names. v0.7.2
 unified `use`/`pin` on `-s`/`-i`; v0.8.0 folds `apply` into `use`, redesigns

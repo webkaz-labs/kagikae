@@ -3,11 +3,12 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target (v0.8.0 — fold `apply` into `use`, redesign `run` onto
-`-s`/`-i`/`--env`, trim `mise init`, hard-rename the mechanism + config-key
-vocabulary, and add input ergonomics) lives in [RELEASE.md](RELEASE.md); v0.7.2
-(use/pin × -s/-i, global isolated home) shipped before it. What remains beyond
-v0.8.0 is hardening and platform coverage, ordered below by user impact.
+There is no active release target right now. v0.8.0 (fold `apply` into `use`,
+redesign `run` onto `-s`/`-i`/`--env`, trim `mise init`, hard-rename the
+mechanism + config-key vocabulary, and add input ergonomics) shipped, following
+v0.7.2 (use/pin × -s/-i, global isolated home). The next candidate is **v0.8.1**
+(snapshot freshness / auto-recapture, first item below). What remains is
+hardening and platform coverage, ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 

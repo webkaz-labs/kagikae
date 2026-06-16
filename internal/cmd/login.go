@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -211,17 +210,16 @@ func loginChangedAuth(ctx context.Context, be secret.Backend, meta backup.Meta, 
 			return false, fmt.Errorf("read live %s/%s: %w", plan.Tool, sp.Name, err)
 		}
 		rec, ok := records[sp.Name]
-		if !ok || live.Present != rec.Present {
+		if !ok {
 			return true, nil
 		}
-		if !live.Present {
-			continue
-		}
-		prev, found, err := be.Get(ctx, rec.SecretRef)
+		// Unlike recapture, login propagates a backend-read error rather than
+		// treating it as a change, so an internal read failure surfaces.
+		differs, err := snapshotArtifactDiffers(ctx, be, rec.SecretRef, rec.Present, live)
 		if err != nil {
 			return false, fmt.Errorf("read backup payload %s: %w", rec.SecretRef, err)
 		}
-		if !found || !bytes.Equal(live.Data, prev) {
+		if differs {
 			return true, nil
 		}
 	}

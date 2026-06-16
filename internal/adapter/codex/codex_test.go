@@ -19,8 +19,8 @@ func testEnv(home string) adapter.Env {
 	}
 }
 
-// jwt builds a minimal unsigned JWT carrying the given payload JSON.
-func jwt(payloadJSON string) string {
+// makeJWT builds a minimal unsigned JWT carrying the given payload JSON.
+func makeJWT(payloadJSON string) string {
 	seg := func(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) }
 	return seg(`{"alg":"none"}`) + "." + seg(payloadJSON) + "."
 }
@@ -38,7 +38,7 @@ func writeAuth(t *testing.T, home, body string) {
 
 func TestCodexIdentityFromIDTokenEmail(t *testing.T) {
 	home := t.TempDir()
-	writeAuth(t, home, `{"tokens":{"id_token":"`+jwt(`{"email":"bob@example.com"}`)+`","account_id":"acct-123"}}`)
+	writeAuth(t, home, `{"tokens":{"id_token":"`+makeJWT(`{"email":"bob@example.com"}`)+`","account_id":"acct-123"}}`)
 	got, err := Codex{}.Identity(t.Context(), testEnv(home))
 	if err != nil || got != "bob@example.com" {
 		t.Fatalf("Identity = %q, err = %v; want bob@example.com", got, err)

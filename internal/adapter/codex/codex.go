@@ -5,18 +5,17 @@ package codex
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/jwt"
 )
 
 type Codex struct{}
@@ -124,15 +123,9 @@ func (Codex) Identity(_ context.Context, env adapter.Env) (string, error) {
 // It is a best-effort read for account-name defaulting; an unparseable token
 // yields "" so the caller falls back to account_id (then the explicit form).
 func jwtEmailClaim(token string) string {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
+	payload, ok := jwt.Payload(token)
+	if !ok {
 		return ""
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		if payload, err = base64.URLEncoding.DecodeString(parts[1]); err != nil {
-			return ""
-		}
 	}
 	var claims struct {
 		Email string `json:"email"`

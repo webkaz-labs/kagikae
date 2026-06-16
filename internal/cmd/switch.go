@@ -9,6 +9,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -112,6 +113,11 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	// entry. No child process runs during a switch, so the cache never observes
 	// a stale live credential (docs/RELEASE.md §C).
 	ctx = keychain.WithReadCache(ctx)
+	// Coalesce kae's own secret-store reads too: each target snapshot payload is
+	// read once for the stale warning (accountFreshness) and again in
+	// applySnapshot. secret.Cached + this cache collapse them to one backend hit
+	// (docs/RELEASE.md §A). Like the keychain cache, it never spans a child run.
+	ctx = secret.WithReadCache(ctx)
 	app.pinnedGlobalScope()
 
 	targets, profileName, err := app.resolveTargets(target, name)
@@ -138,6 +144,9 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	// for staleness (§B). secret.Resolve does no IO, so this is cheap; a backend
 	// error is fatal only on the real path — a dry-run still prints the plan.
 	be, beErr := app.secretBackend()
+	if beErr == nil {
+		be = secret.Cached(be)
+	}
 	for _, plan := range plans {
 		res := switchResult{
 			Tool: plan.Tool, Account: plan.Account, Driver: plan.Driver,

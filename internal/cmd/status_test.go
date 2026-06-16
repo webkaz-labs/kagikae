@@ -3,13 +3,66 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
+
+// TestStatusDetectsConcurrently proves the per-tool Detect runs concurrently
+// (docs/RELEASE.md §A acceptance). Every adapter's Detect calls env.LookPath as
+// its binary probe; a LookPath that blocks until all enabled tools have entered
+// can only be satisfied if the Detects overlap — a sequential loop would block
+// on the first tool and never reach the second.
+func TestStatusDetectsConcurrently(t *testing.T) {
+	app := testApp(t, nil)
+	n := len(app.enabledTools())
+	if n < 2 {
+		t.Skipf("need >=2 enabled tools to prove concurrency, got %d", n)
+	}
+
+	release := make(chan struct{})
+	arrived := make(chan struct{}, n)
+	app.Env.LookPath = func(string) (string, error) {
+		arrived <- struct{}{}
+		<-release
+		return "", errors.New("not found")
+	}
+
+	// Silence the status JSON; restore stdout once the run completes.
+	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer devnull.Close()
+	oldStdout := os.Stdout
+	os.Stdout = devnull
+	defer func() { os.Stdout = oldStdout }()
+
+	done := make(chan int, 1)
+	go func() {
+		done <- runStatus(context.Background(), app, commonOpts{Format: formatJSON})
+	}()
+
+	timeout := time.After(5 * time.Second)
+	for i := range n {
+		select {
+		case <-arrived:
+		case <-timeout:
+			close(release) // unblock the run goroutine before failing
+			t.Fatalf("Detect did not run concurrently: only %d of %d tools reached LookPath", i, n)
+		}
+	}
+	close(release)
+	if code := <-done; code != constants.ExitOK {
+		t.Fatalf("status exited %d", code)
+	}
+}
 
 func TestStatusShowsPinAndProfiles(t *testing.T) {
 	app := testApp(t, nil)

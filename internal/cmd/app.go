@@ -33,6 +33,11 @@ type App struct {
 	// globalScope records that applyGlobalScope already wrapped Env.Getenv.
 	// Set by pinnedGlobalScope (modes.go) on the first global-scope command.
 	globalScope bool
+
+	// backendForTest overrides the resolved secret backend when set. It is a
+	// test seam (App is constructed directly in tests; see app.go newApp doc);
+	// nil in production, so secretBackend resolves from config as usual.
+	backendForTest secret.Backend
 }
 
 // newApp resolves the live environment and loads config. A config problem is
@@ -112,6 +117,9 @@ func (app *App) requireConfigFile() error {
 
 // secretBackend resolves the configured secret backend.
 func (app *App) secretBackend() (secret.Backend, error) {
+	if app.backendForTest != nil {
+		return app.backendForTest, nil
+	}
 	be, err := secret.Resolve(app.Config.Security.SecretBackend, app.Env.GOOS,
 		app.Paths.SecretsDir(), app.Env.LookPath)
 	if err != nil {

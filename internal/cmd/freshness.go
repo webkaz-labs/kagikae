@@ -109,6 +109,28 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 	}
 }
 
+// snapshotArtifactDiffers reports whether one live artifact value differs from
+// its stored snapshot: a presence change, or — when present — a missing,
+// unreadable, or byte-different stored payload. It is the shared core of the
+// switch-away recapture decision (valuesDiverge) and the post-login change
+// check (loginChangedAuth), which differ only in where the stored side comes
+// from (account snapshot vs backup record), how the live value is read, and the
+// backend-read error policy. err is the raw backend read error; the caller
+// chooses whether to propagate it or treat it as a difference.
+func snapshotArtifactDiffers(ctx context.Context, be secret.Backend, storedRef string, storedPresent bool, live artifact.Value) (differs bool, err error) {
+	if storedPresent != live.Present {
+		return true, nil
+	}
+	if !live.Present {
+		return false, nil
+	}
+	stored, found, err := be.Get(ctx, storedRef)
+	if err != nil {
+		return false, err
+	}
+	return !found || !bytes.Equal(stored, live.Data), nil
+}
+
 // valuesDiverge reports whether freshly-read live values differ from acc's
 // stored snapshot: a missing artifact record, a presence mismatch, or any
 // payload difference. An unreadable stored payload is treated as divergence so
@@ -116,14 +138,12 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 func valuesDiverge(ctx context.Context, be secret.Backend, specs []artifact.Spec, acc account.Account, values []artifact.Value) bool {
 	for i, sp := range specs {
 		art, ok := acc.Artifacts[sp.Name]
-		if !ok || art.Present != values[i].Present {
+		if !ok {
 			return true
 		}
-		if !values[i].Present {
-			continue
-		}
-		stored, found, err := be.Get(ctx, art.SecretRef)
-		if err != nil || !found || !bytes.Equal(stored, values[i].Data) {
+		// The recapture path treats any backend-read error as divergence, so it
+		// refreshes rather than silently keeping a possibly-stale token.
+		if differs, err := snapshotArtifactDiffers(ctx, be, art.SecretRef, art.Present, values[i]); err != nil || differs {
 			return true
 		}
 	}

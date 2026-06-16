@@ -60,6 +60,17 @@ type Adapter interface {
 	Doctor(ctx context.Context, env Env) []Check
 }
 
+// Identifier is implemented by adapters that can read the live login identity
+// (an email address or account handle) so `kae add <tool>` with no account name
+// can derive a default. The returned identity is raw — the caller sanitizes it
+// into an account name. Tools whose identity source is undocumented do not
+// implement it (agy has no exposed identity; cursor's `cursor-agent status`
+// output is discovery-blocked, see docs/ROADMAP.md), so `kae add` there requires
+// an explicit account name.
+type Identifier interface {
+	Identity(ctx context.Context, env Env) (string, error)
+}
+
 var registry = map[string]Adapter{}
 
 // Register installs an adapter; called from tool packages' init via Install.

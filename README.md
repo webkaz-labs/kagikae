@@ -31,15 +31,17 @@ kae profile save work          # or manage profiles without hand-editing TOML:
 kae doctor                     # check environment and live auth
 
 # register accounts (official login flow + snapshot; or --no-login to
-# snapshot the login you are already on):
-kae add claude work
-kae add claude personal
+# snapshot the login you are already on). The account name is optional —
+# kae auto-detects it from the live login identity:
+kae add claude                 # name auto-detected (e.g. your login email)
+kae add claude personal        # or name it explicitly
 kae add --no-login codex work
 
 # switch now (global):
 kae use work                   # every tool in the "work" profile (alias: kae u)
 kae use claude personal        # one tool
 
+kae ls                         # accounts and profiles in one view
 kae                            # what is active
 kae rollback                   # undo the last switch
 

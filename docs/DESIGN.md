@@ -153,7 +153,8 @@ NG:  two terminals both relying on a global shared switch for different accounts
 
 A developer with work and personal subscriptions for several AI CLIs can:
 
-1. `kae add <tool> <account>` once per account (or `--no-login` while logged in);
+1. `kae add <tool> [<account>]` once per account (the name is auto-detected
+   from the live login when omitted; or `--no-login` while logged in);
 2. `kae use work` / `kae use personal` daily, in under a second,
    without losing any working context;
 3. trust that a failed or interrupted switch is recoverable via `kae rollback`;

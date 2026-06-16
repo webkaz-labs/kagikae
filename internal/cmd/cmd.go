@@ -24,7 +24,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.8.1"
+	toolVersion = "v0.8.2"
 )
 
 // Root dispatches the command line.
@@ -85,6 +85,8 @@ func Root(args []string) int {
 		return removedCommand(args[0], "v0.5.0", "kae (the bare status summary)")
 	case "accounts":
 		return CmdAccounts(ctx, args[1:])
+	case "ls":
+		return CmdLs(ctx, args[1:])
 	case "account":
 		return CmdAccount(ctx, args[1:])
 	case "profile":
@@ -229,6 +231,7 @@ Usage:
                                        render the auth-mode tasks + opt-in hook
                                        (bind directories with kae pin instead)
   kae accounts [--json]                registered accounts
+  kae ls [--json]                      accounts and profiles in one view
   kae status [--json]                  full status report (alias: kae s)
   kae backup list [--json]             list switch backups
   kae rollback [--to <backup-id>]      restore a backup

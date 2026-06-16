@@ -7,7 +7,9 @@ package claude
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -127,6 +129,30 @@ func (c Claude) Detect(ctx context.Context, env adapter.Env) (adapter.Info, erro
 		}
 	}
 	return info, nil
+}
+
+// Identity reads oauthAccount.emailAddress from ~/.claude.json — claude's
+// token-derived identity cache — so `kae add claude` (no name) can default the
+// account name to the logged-in email. Auth mode never switches this field, but
+// it is the one place claude records who is logged in.
+func (Claude) Identity(_ context.Context, env adapter.Env) (string, error) {
+	path := claudeJSONPath(env)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", path, err)
+	}
+	var doc struct {
+		OAuthAccount struct {
+			EmailAddress string `json:"emailAddress"`
+		} `json:"oauthAccount"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return "", fmt.Errorf("parse %s: %w", path, err)
+	}
+	if doc.OAuthAccount.EmailAddress == "" {
+		return "", fmt.Errorf("no oauthAccount.emailAddress in %s", path)
+	}
+	return doc.OAuthAccount.EmailAddress, nil
 }
 
 func (c Claude) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {

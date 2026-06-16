@@ -20,12 +20,14 @@ kagikae/
       copilot/
     artifact/             # artifact primitives: json-pointer / file / keychain
     freshness/            # pure per-tool credential expiry / refresh-token parser
+    jwt/                  # JWT claims-segment decode (freshness exp, codex identity)
     keychain/             # security-CLI access to upstream tools' keychain items
                           #   (incl. a per-command read cache, WithReadCache)
     config/               # TOML config parse/validate/defaults + comment-preserving editor
     constants/            # JSON contract vocabulary (status, codes, drivers)
     paths/                # XDG resolution for config/data/state/locks
     secret/               # secret backend interface + keychain/libsecret/file
+                          #   (incl. a per-command read cache, WithReadCache + Cached)
     patch/                # JSON Pointer get/set + atomic file writes
     lock/                 # per-tool advisory file locks
     backup/               # backup create/list/prune/restore
@@ -72,6 +74,13 @@ set). Capture, apply, verify, backup, and rollback are generic operations in
 `internal/account` semantics implemented by `cmd` + `artifact` over the
 artifact specs, so every adapter gets locking, backups, dry-run, and
 redaction identically.
+
+Adapters may implement optional capability interfaces, type-asserted by `cmd`
+(the same pattern as `secret.Enumerator`): `Identifier`
+(`Identity(ctx, env) (string, error)`) reads the live login identity so
+`kae add <tool>` can default the account name. Tools without a readable
+identity (agy; cursor is discovery-blocked) simply do not implement it, and
+`cmd` falls back to requiring an explicit name. See [ADAPTERS.md](ADAPTERS.md).
 
 Adapters return structured refusals (`unsafe_refused`, `unsupported`,
 `auth_missing`) instead of writing when the live layout is unrecognized; the
@@ -155,18 +164,36 @@ restore step. A separate `config` lock (same mechanism, name `config`) guards
 
 ## Caching
 
-Commands are short-lived and re-read live state, with one request-scoped
-exception: `keychain.WithReadCache(ctx)` installs a per-command cache that
-coalesces repeated `security find-generic-password` reads of the same service
-(carried in the context, absent unless opted in). The switch path uses it so
-`Detect`, the backup, and the §A recapture share one keychain read instead of
-three; `WriteItem`/`DeleteItem` invalidate the cached service. It is **not**
-used across a child run (`run -s`), where the child can rotate the live
-credential behind kae's back and a cached value would be stale.
+Commands are short-lived and re-read live state, with two request-scoped
+exceptions, both carried in the context and absent unless opted in:
+
+- `keychain.WithReadCache(ctx)` coalesces repeated
+  `security find-generic-password` reads of the same **upstream** tool service.
+  The switch path uses it so `Detect`, the backup, and the recapture share one
+  keychain read instead of three; `WriteItem`/`DeleteItem` invalidate the
+  cached service.
+- `secret.WithReadCache(ctx)` + `secret.Cached(be)` coalesce reads of **kae's
+  own** secret store. The switch path uses it so each target snapshot payload is
+  read once — the switch-time stale warning and `applySnapshot` share it instead
+  of reading twice; `Set`/`Delete` invalidate the key. (The `Cached` wrapper
+  does not forward `Enumerator`, so `doctor` orphan detection uses the raw
+  backend.)
+
+Neither cache is used across a child run (`run -s`), where the child can rotate
+the live credential behind kae's back and a cached value would be stale.
+
+`status` runs each enabled tool's `Detect` concurrently (one goroutine per
+tool, reassembled in canonical `constants.Tools` order, output unchanged), so
+the most-run command does not pay the sum of the per-tool live probes; a
+per-tool `Detect` failure stays a tool warning, not a fatal error.
 
 `internal/freshness` is a pure parser (no IO, no cache): it reads expiry and
 refresh-token presence from a captured credential payload and is shared by the
-switch-time stale warning and `doctor` credential-health.
+switch-time stale warning and `doctor` credential-health. The "live value vs
+stored snapshot" comparison underneath the switch-away recapture
+(`valuesDiverge`) and the post-login change check (`loginChangedAuth`) is one
+shared helper (`snapshotArtifactDiffers`); each caller keeps its own stored
+source and backend-read error policy.
 
 ## Known Traps
 

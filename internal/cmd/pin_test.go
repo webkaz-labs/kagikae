@@ -149,8 +149,14 @@ func TestRemovedCommandsPointAtReplacements(t *testing.T) {
 
 func TestAddFlagValidation(t *testing.T) {
 	ctx := context.Background()
-	if code := CmdAdd(ctx, []string{"claude"}); code != constants.ExitUsage {
-		t.Fatalf("add with one positional must be a usage error, got %d", code)
+	// One positional (kae add <tool>) is now valid: the account name is
+	// auto-detected (docs/RELEASE.md §B). No positional and three positionals
+	// stay usage errors.
+	if code := CmdAdd(ctx, nil); code != constants.ExitUsage {
+		t.Fatalf("add with no positional must be a usage error, got %d", code)
+	}
+	if code := CmdAdd(ctx, []string{"claude", "work", "extra"}); code != constants.ExitUsage {
+		t.Fatalf("add with three positionals must be a usage error, got %d", code)
 	}
 	if code := CmdAdd(ctx, []string{"--no-login", "--restore", "claude", "work"}); code != constants.ExitUsage {
 		t.Fatalf("--no-login with --restore must be a usage error, got %d", code)

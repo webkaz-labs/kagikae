@@ -12,12 +12,12 @@
 package freshness
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/jwt"
 )
 
 // Info is what a credential payload reveals about its freshness.
@@ -118,15 +118,9 @@ func inspectCursor(payload []byte) Info {
 
 // jwtExpiry decodes a JWT's claims and returns its exp (seconds since epoch).
 func jwtExpiry(token string) (time.Time, bool) {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
+	claimBytes, ok := jwt.Payload(token)
+	if !ok {
 		return time.Time{}, false
-	}
-	claimBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		if claimBytes, err = base64.URLEncoding.DecodeString(parts[1]); err != nil {
-			return time.Time{}, false
-		}
 	}
 	var claims struct {
 		Exp float64 `json:"exp"`

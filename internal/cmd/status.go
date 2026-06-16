@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 type toolStatus struct {
@@ -116,29 +118,20 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 			pinnedAccounts = info.Accounts
 		}
 	}
-	// Prefer the recorded profile (set by a profile-wide apply); fall back
-	// to matching the per-tool map so older state files still resolve.
-	activeProfile := st.ActiveProfile
-	if activeProfile == "" {
-		activeProfile = app.Config.MatchProfile(st.Active)
-	}
+	activeProfile := app.activeProfileName(st)
 	if activeProfile != "" {
 		report.ActiveProfile = &activeProfile
 	}
-	for _, name := range app.Config.ProfileNames() { // ascending, stable order
-		profile := app.Config.Profiles[name]
-		accounts := profile.Accounts
-		if accounts == nil {
-			// A [profiles.X] section without accounts parses to a nil map;
-			// keep the JSON contract at {} rather than null.
-			accounts = map[string]string{}
-		}
-		report.Profiles = append(report.Profiles, profileStatus{
-			Name: name, Label: profile.Label, Accounts: accounts,
-			Active: name == activeProfile,
-		})
+	report.Profiles = app.profileStatuses(activeProfile)
+	tools := app.enabledTools()
+	// status is the most-run command; on macOS each tool's Detect is a live
+	// `security` probe, so a sequential loop pays the sum. Run them concurrently
+	// and assemble below in canonical (tools) order, so the output is unchanged.
+	detections, err := detectTools(ctx, app.Env, tools)
+	if err != nil {
+		return nil, err
 	}
-	for _, tool := range app.enabledTools() {
+	for i, tool := range tools {
 		ts := toolStatus{Tool: tool, Enabled: true, Warnings: []string{}, Accounts: []string{}}
 		if names, ok := capturedByTool[tool]; ok {
 			sort.Strings(names)
@@ -152,21 +145,94 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 			boundCopy := bound
 			ts.Account = &boundCopy
 		}
-		ad, err := adapter.ForTool(tool)
-		if err != nil {
-			return nil, err
-		}
-		info, err := ad.Detect(ctx, app.Env)
-		if err != nil {
-			ts.Warnings = append(ts.Warnings, err.Error())
+		if det := detections[i]; det.err != nil {
+			ts.Warnings = append(ts.Warnings, det.err.Error())
 		} else {
-			ts.Driver = info.Driver
-			ts.AuthPresent = info.AuthPresent
-			ts.Warnings = append(ts.Warnings, info.Warnings...)
+			ts.Driver = det.info.Driver
+			ts.AuthPresent = det.info.AuthPresent
+			ts.Warnings = append(ts.Warnings, det.info.Warnings...)
 		}
 		report.Tools = append(report.Tools, ts)
 	}
 	return report, nil
+}
+
+// detection is one tool's concurrent Detect result.
+type detection struct {
+	info adapter.Info
+	err  error
+}
+
+// detectTools runs each tool's Detect concurrently and returns the results in
+// the same order as tools (so callers assemble in canonical order). A per-tool
+// Detect failure is captured in its detection (non-fatal, surfaced as a tool
+// warning, as the sequential version did); only an unknown adapter id aborts.
+// Each goroutine writes its own index, so the results slice needs no lock; the
+// shared adapter.Env is read-only (its Getenv/LookPath and the runner seam are
+// safe for concurrent use).
+func detectTools(ctx context.Context, env adapter.Env, tools []string) ([]detection, error) {
+	results := make([]detection, len(tools))
+	var wg sync.WaitGroup
+	for i, tool := range tools {
+		ad, err := adapter.ForTool(tool)
+		if err != nil {
+			return nil, err
+		}
+		wg.Add(1)
+		go func(i int, ad adapter.Adapter) {
+			defer wg.Done()
+			info, derr := ad.Detect(ctx, env)
+			results[i] = detection{info: info, err: derr}
+		}(i, ad)
+	}
+	wg.Wait()
+	return results, nil
+}
+
+// activeProfileName resolves the active profile: the recorded name wins (set by
+// a profile-wide apply), else the per-tool mapping match so older state files
+// still resolve. "" when none applies. Shared by status and ls.
+func (app *App) activeProfileName(st *state.State) string {
+	if st.ActiveProfile != "" {
+		return st.ActiveProfile
+	}
+	return app.Config.MatchProfile(st.Active)
+}
+
+// profileStatuses builds the profile listing rows (ascending, stable order),
+// marking activeProfile. Shared by `kae status` and `kae ls`.
+func (app *App) profileStatuses(activeProfile string) []profileStatus {
+	profiles := []profileStatus{}
+	for _, name := range app.Config.ProfileNames() {
+		profile := app.Config.Profiles[name]
+		accounts := profile.Accounts
+		if accounts == nil {
+			// A [profiles.X] section without accounts parses to a nil map;
+			// keep the JSON contract at {} rather than null.
+			accounts = map[string]string{}
+		}
+		profiles = append(profiles, profileStatus{
+			Name: name, Label: profile.Label, Accounts: accounts,
+			Active: name == activeProfile,
+		})
+	}
+	return profiles
+}
+
+// accountItems builds the captured-account listing rows shared by
+// `kae accounts` and `kae ls`, marking the active account per tool.
+func accountItems(st *state.State, captured []account.Account) []accountItem {
+	items := []accountItem{}
+	for _, acc := range captured {
+		items = append(items, accountItem{
+			Tool:       acc.Tool,
+			Account:    acc.Name,
+			Driver:     acc.Driver,
+			Active:     st.Active[acc.Tool] == acc.Name,
+			CapturedAt: acc.CapturedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	return items
 }
 
 // globalIsolatedStatuses resolves state.synced into per-tool private homes in
@@ -288,16 +354,7 @@ func runAccounts(_ context.Context, app *App, opts commonOpts) int {
 	if err != nil {
 		return finish(opts, err)
 	}
-	report := accountsReport{SchemaVersion: constants.SchemaVersion, Accounts: []accountItem{}}
-	for _, acc := range captured {
-		report.Accounts = append(report.Accounts, accountItem{
-			Tool:       acc.Tool,
-			Account:    acc.Name,
-			Driver:     acc.Driver,
-			Active:     st.Active[acc.Tool] == acc.Name,
-			CapturedAt: acc.CapturedAt.UTC().Format(time.RFC3339),
-		})
-	}
+	report := accountsReport{SchemaVersion: constants.SchemaVersion, Accounts: accountItems(st, captured)}
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}

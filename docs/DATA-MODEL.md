@@ -123,6 +123,7 @@ version = 1
 tool = "claude"
 account = "work"
 driver = "claude-keychain-patch"
+identity = "work@example.com"  # optional: the raw detected login identity (§D)
 captured_at = 2026-06-11T01:23:45Z
 
 [artifacts.claude_ai_oauth]
@@ -138,24 +139,41 @@ pointer = "/oauthAccount"
 secret_ref = "claude/work/oauth_account"
 ```
 
+`identity` (optional, v0.8.3 §D) is the raw login identity detected at capture
+(an email or account id), separate from the sanitized account `account` name —
+it disambiguates accounts whose identities sanitize to the same name. It is PII
+but **not** a secret (plaintext metadata, exactly like the account name; never a
+token). It is best-effort: blank for a tool with no readable identity (agy), a
+detection failure, and every pre-v0.8.3 snapshot. `kae ls` / `kae accounts` show
+it (an `Identity` column; an additive `identity` field in `--json`, `omitempty`,
+`schema_version` still `1`).
+
+A `keychain` artifact may carry `keychain_account`: the captured account
+attribute of an item whose account is a **per-login opaque id** (codex keyring's
+`cli|<opaque>`), recorded verbatim so apply recreates the right item. It is
+omitted for stable-account keychain items (claude `$USER`, cursor `cursor-user`)
+and non-keychain artifacts.
+
 `kind` semantics:
 
 | Kind | Capture | Apply |
 |------|---------|-------|
 | `json-pointer` | read pointer value from JSON file | patch pointer in JSON file atomically, preserving all other keys |
 | `file` | read whole file | atomic replace, mode `0600` |
-| `keychain` | read whole item payload verbatim (pointer guards the shape; an empty pointer marks an opaque non-JSON payload, e.g. a raw token, guarded only as non-empty) | write captured bytes back verbatim via `security -U`; absent value deletes the item |
+| `keychain` | read whole item payload verbatim (pointer guards the shape; an empty pointer marks an opaque non-JSON payload, e.g. a raw token, guarded only as non-empty) | write captured bytes back verbatim via `security -U`; absent value deletes the item. A per-login-account item (codex keyring, `KeychainReplace`) is rewritten under its captured `keychain_account`, deleting the prior item first so exactly one item of the service remains |
 
 A snapshot is rewritten by `kae add`, `run -s`'s post-child recapture, and (new
 in v0.8.1) `kae use`/bare `use`'s switch-away recapture of the currently-active
 account when its live credential diverges from the snapshot. The snapshot's
 credential expiry and refresh-token presence are read (never stored separately)
-by `internal/freshness` for the switch-time stale warning and the `doctor`
-`credential_stale` check: claude `claudeAiOauth.expiresAt` (Unix ms) +
-`refreshToken`, codex `tokens.access_token`/`id_token` JWT `exp` +
-`refresh_token`, opencode `/openai` `expires` (Unix ms) + `refresh`, cursor's
-opaque JWT `exp` (no refresh token). copilot's `/lastLoggedInUser` and agy's
-encrypted blob carry no datable token, so they are never flagged.
+for the switch-time stale warning and the `doctor` `credential_stale` check. The
+per-tool reader is the adapter's `Freshness(payload)` capability (v0.8.3 §A),
+built from the shared primitives in `internal/freshness`: claude
+`claudeAiOauth.expiresAt` (Unix ms) + `refreshToken`, codex
+`tokens.access_token`/`id_token` JWT `exp` + `refresh_token`, opencode `/openai`
+`expires` (Unix ms) + `refresh`, cursor's opaque JWT `exp` (no refresh token).
+copilot's `/lastLoggedInUser` and agy's encrypted blob carry no datable token
+(no `Freshness` method), so they are never flagged.
 
 ## Secret References
 
@@ -240,13 +258,16 @@ reversible:
 }
 ```
 
-`keychain_account` and `jsonc` are optional restore-fidelity fields: the
-first recreates a deleted keychain item under the tool's own account (e.g.
-`cursor-user`) instead of the generic fallback; the second routes a JSONC
-target (e.g. Copilot's commented `config.json`) through the
-comment-preserving patch on restore instead of the plain-JSON path, which
-would reject the leading `//` comments. Both are omitted for artifacts that
-do not need them and are absent in backups written before the field existed.
+`keychain_account`, `keychain_replace`, and `jsonc` are optional
+restore-fidelity fields: `keychain_account` recreates a deleted keychain item
+under the tool's own account (e.g. `cursor-user`, or codex keyring's captured
+`cli|<opaque>`) instead of the generic fallback; `keychain_replace` marks a
+per-login-account item (codex keyring) so a rollback deletes the live item
+before writing the backed-up one (the same single-item guarantee as apply);
+`jsonc` routes a JSONC target (e.g. Copilot's commented `config.json`) through
+the comment-preserving patch on restore instead of the plain-JSON path, which
+would reject the leading `//` comments. All are omitted for artifacts that do
+not need them and are absent in backups written before the field existed.
 
 `present: false` records that the artifact did not exist live (so rollback
 removes/skips it instead of writing an empty value). After a successful
@@ -269,7 +290,7 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
   `unsafe_refused`, `auth_unchanged`, `usage`
 - artifact kinds: `json-pointer`, `file`, `keychain`
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
-  `agy-file-snapshot`, `opencode-file-patch`, `cursor-keychain`,
+  `codex-keyring`, `agy-file-snapshot`, `opencode-file-patch`, `cursor-keychain`,
   `copilot-config-pointer`
 - internal mechanisms: `auth`, `env`, `shared`, `isolated`, `sync`
   (`shared`/`isolated` back per-dir `pin -s`/`-i`; `sync` is the

@@ -209,21 +209,30 @@ post-login state (the name is resolved only after the flow exits). The raw
 identity is sanitized to `[a-zA-Z0-9._-]` (an email keeps only its local part
 before `@`), capped at 64 chars. An explicit name always wins. Detection per
 tool: claude `~/.claude.json` `oauthAccount.emailAddress`; codex `auth.json`
-`id_token` email claim, else `account_id`; opencode `auth.json` `/openai`
-`accountId`; copilot `config.json` `/lastLoggedInUser.login`. agy exposes no
-identity and cursor's source is discovery-blocked
-([ROADMAP.md](ROADMAP.md)), so both require an explicit name. A tool with no
-identity, a detection failure (logged out, unreadable), or an identity that
+(or the keyring payload) `id_token` email claim, else `account_id`; opencode
+`auth.json` `/openai` `accountId`; copilot `config.json`
+`/lastLoggedInUser.login`; cursor `cursor-agent status` (`✓ Logged in as
+<email>`). agy exposes no identity, so it requires an explicit name. A tool with
+no identity, a detection failure (logged out, unreadable), or an identity that
 sanitizes to empty is a usage error (`64`) naming the explicit form — never a
 silent fallback.
 
+**Detected identity is recorded.** At capture (both the explicit-name and
+auto-detect forms, login and `--no-login`), kae stores the raw detected identity
+(the full email or account id) in the snapshot's `identity` field, separate from
+the sanitized account name, so accounts that sanitize to the same name stay
+distinguishable. It is best-effort: a tool with no identity (agy) or a detection
+failure leaves it blank and never errors. `kae ls` / `kae accounts` show it (an
+`Identity` column; an additive `identity` field in `--json`).
+
 ## kae ls Semantics
 
-`kae ls` lists every captured account and every defined profile in one
-read-only view (the data otherwise split across `kae accounts` and
-`kae status`), each with an active marker. It takes no locks and writes
-nothing. `--json` keeps `schema_version: 1` and `[]` arrays, reusing the
-`kae accounts` account rows and the `kae status` profile rows.
+`kae ls` lists every captured account (with its detected `identity`, blank when
+absent) and every defined profile in one read-only view (the data otherwise
+split across `kae accounts` and `kae status`), each with an active marker. It
+takes no locks and writes nothing. `--json` keeps `schema_version: 1` and `[]`
+arrays, reusing the `kae accounts` account rows and the `kae status` profile
+rows.
 
 ## kae account Semantics
 
@@ -423,6 +432,7 @@ active profile, the per-tool table, then the profiles list.
     {
       "tool": "claude",
       "account": "work",
+      "identity": "work@example.com",
       "driver": "claude-keychain-patch",
       "active": true,
       "captured_at": "2026-06-11T01:23:45Z"
@@ -432,7 +442,9 @@ active profile, the per-tool table, then the profiles list.
 ```
 
 Ordering: tool (claude, codex, agy, opencode, cursor, copilot), then
-account name ascending.
+account name ascending. `identity` (the raw detected login identity) is
+additive and `omitempty` — absent for pre-v0.8.3 snapshots and tools with no
+readable identity; `schema_version` stays `1`.
 
 ### `kae ls --json`
 
@@ -440,8 +452,9 @@ account name ascending.
 {
   "schema_version": 1,
   "accounts": [
-    {"tool": "claude", "account": "work", "driver": "claude-keychain-patch",
-     "active": true, "captured_at": "2026-06-11T01:23:45Z"}
+    {"tool": "claude", "account": "work", "identity": "work@example.com",
+     "driver": "claude-keychain-patch", "active": true,
+     "captured_at": "2026-06-11T01:23:45Z"}
   ],
   "profiles": [
     {"name": "work", "accounts": {"claude": "work"}, "active": true}

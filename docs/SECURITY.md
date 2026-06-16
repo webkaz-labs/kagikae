@@ -33,6 +33,15 @@ here are part of the command contract.
   for confirmation.
 - The `kae status` `global_isolated` field and `run -i`'s home-path message
   contain only directory paths and account names — never secret values.
+- The detected login `identity` (v0.8.3 §D — an email or account id stored in
+  `account.toml` and shown by `kae ls`/`kae accounts`) is **PII but not a
+  secret**: it is plaintext metadata exactly like the account name, never a
+  token. It is read from already-trusted live state and never derived from a
+  credential value.
+- The codex keyring payload (the `Codex Auth` keychain item, v0.8.3 §C) **is** a
+  credential and is treated like every other secret: captured verbatim into the
+  secret backend, never written to stdout/JSON/logs/metadata; only the item's
+  opaque account id (`cli|<opaque>`, not a secret) is recorded in `account.toml`.
 
 ### Secret enumeration (v0.8.1 `secret_orphan`)
 

@@ -111,8 +111,9 @@ kae use --quiet
 ## Safety Model
 
 - Auth-only by default: only the credential is switched (claude's token,
-  codex's `auth.json`); mixed-state files like `~/.claude.json` are never
-  touched in a shared switch (claude self-heals `/oauthAccount` from the token).
+  codex's `auth.json` or its `Codex Auth` keyring item); mixed-state files like
+  `~/.claude.json` are never touched in a shared switch (claude self-heals
+  `/oauthAccount` from the token).
 - Secrets live in the OS credential store (macOS Keychain / Linux libsecret);
   a plaintext file backend is explicit opt-in.
 - Atomic writes, per-tool locks, pre-write backups, structure guards that

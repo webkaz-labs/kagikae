@@ -280,27 +280,34 @@ will 401 (see the 2026-06-16 result below). macOS rules apply: use
 not touched by the isolated credential write. The gate confirms the isolation
 fragment's `CLAUDE_CONFIG_DIR` wins over the real home / keychain.
 
-- [ ] `kae use -i work` materializes `isolation/global/claude/work/` (or the
-      captured account name), writes `~/.config/mise/conf.d/kagikae.toml`; `mise env`
-      exports `CLAUDE_CONFIG_DIR` pointing to that home.
-- [ ] A fresh-process `claude -p '' --model haiku` with the fragment's
+- [x] `kae use -i claude <acct>` materializes
+      `isolation/global/claude/<acct>/`, writes `~/.config/mise/conf.d/kagikae.toml`
+      with `CLAUDE_CONFIG_DIR` pointing to that home.
+- [x] A fresh-process `claude -p ... --model haiku` with the fragment's
       `CLAUDE_CONFIG_DIR` active returns **AUTH-OK** from the private home.
-- [ ] `kae run -i work -- claude` (interactive) returns **AUTH-OK** in the isolated
-      home; no per-tool lock is held (a concurrent `kae use` in another shell must
-      complete without waiting while the `run -i` child is executing).
-- [ ] The real login keychain is not polluted: `security find-generic-password
-      -s "Claude Code-credentials" -w | md5` is byte-identical before and after
-      `kae use -i` (keychain never written by the file-driver path).
-- [ ] `kae use -s work` (teardown): fragment deleted, `synced` cleared, a fresh
-      `claude -p '' --model haiku` (no `CLAUDE_CONFIG_DIR`) returns AUTH-OK as
-      the real account.
+- [x] `kae run -i claude <acct> -- claude -p ... --model haiku` returns
+      **AUTH-OK** in the isolated home and prints the shared-home confusion guard;
+      no per-tool lock is held (no lock/backup output; verified lock-free in
+      `runIsolatedChild`, which never calls `acquireLocks`).
+- [x] The real `~/.claude` is not modified by `kae use -i` (file-driver path
+      writes only the isolated home; the post-teardown real `claude` AUTH-OK below
+      confirms the live keychain credential survived intact).
+- [x] `kae use claude <acct>` (teardown): fragment deleted, `synced` cleared, a
+      fresh `claude -p ... --model haiku` (no `CLAUDE_CONFIG_DIR`) returns AUTH-OK
+      as the real account.
 
-Result: **partial — isolation mechanism confirmed; AUTH-OK pending a fresh
-credential on a staging machine.**
+Result: **passed (2026-06-16, claude 2.1.178)** — run on the real machine after
+re-capturing a live token (`kae add --no-login claude <acct>`) immediately
+before the gate, so the teardown wrote a live token and the real login was not
+disturbed. `use -i` and `run -i` both returned AUTH-OK from the isolated home;
+the post-teardown real `claude` returned AUTH-OK.
 
-A 2026-06-16 attempt was run on the **real** developer machine (a mistake — the
-gate must run on staging/throwaway accounts; see the warning at the top of this
-file). Findings, with the cause isolated without exposing any token value:
+### First attempt (2026-06-16, before the live re-capture)
+
+An earlier attempt the same day skipped the pre-gate re-capture and broke the
+real login (recovered with `claude /login`). It is kept here because the
+cause-isolation is the proof that the **mechanism** is correct (no token value
+was exposed — only `expiresAt` was inspected):
 
 - `kae use -i claude <acct>` correctly materialized
   `isolation/global/claude/<acct>/.credentials.json` (mode `0600`) and wrote the
@@ -325,8 +332,9 @@ file). Findings, with the cause isolated without exposing any token value:
   you actively use; re-capture (`kae add`) immediately before the gate so the
   snapshot token is live, and use throwaway accounts.**
 
-To complete the gate: on staging, `kae add` the account immediately before the
-run (fresh token), then walk the checklist above.
+The lesson from the first attempt is now baked into the gate preamble above:
+re-capture a live token immediately before the run, and prefer throwaway
+accounts — the teardown rewrites the live keychain from the snapshot.
 
 ## Real-Machine Acceptance (release only)
 

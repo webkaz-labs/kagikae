@@ -5,9 +5,12 @@ package codex
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 
@@ -87,6 +90,57 @@ func (c Codex) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error
 			"no auth.json found; either codex is not logged in or the keyring store is in use")
 	}
 	return info, nil
+}
+
+// Identity reads the logged-in account from ~/.codex/auth.json so
+// `kae add codex` (no name) can default the account name: the id_token's email
+// claim when present, else the account_id. The keyring store exposes no file to
+// read, so it has no identity here (the explicit form is required).
+func (Codex) Identity(_ context.Context, env adapter.Env) (string, error) {
+	path := authJSONPath(env)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", path, err)
+	}
+	var doc struct {
+		Tokens struct {
+			IDToken   string `json:"id_token"`
+			AccountID string `json:"account_id"`
+		} `json:"tokens"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return "", fmt.Errorf("parse %s: %w", path, err)
+	}
+	if email := jwtEmailClaim(doc.Tokens.IDToken); email != "" {
+		return email, nil
+	}
+	if doc.Tokens.AccountID != "" {
+		return doc.Tokens.AccountID, nil
+	}
+	return "", fmt.Errorf("no id_token email claim or account_id in %s", path)
+}
+
+// jwtEmailClaim decodes a JWT's payload and returns its "email" claim, or "".
+// It is a best-effort read for account-name defaulting; an unparseable token
+// yields "" so the caller falls back to account_id (then the explicit form).
+func jwtEmailClaim(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		if payload, err = base64.URLEncoding.DecodeString(parts[1]); err != nil {
+			return ""
+		}
+	}
+	var claims struct {
+		Email string `json:"email"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+	return claims.Email
 }
 
 func (c Codex) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {

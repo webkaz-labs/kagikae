@@ -10,11 +10,15 @@ package copilot
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
 const (
@@ -67,6 +71,34 @@ func (c Copilot) Detect(ctx context.Context, env adapter.Env) (adapter.Info, err
 	}
 	info.AuthPresent = v.Present
 	return info, nil
+}
+
+// Identity reads /lastLoggedInUser.login from the JSONC config.json so
+// `kae add copilot` (no name) can default the account name to the active login
+// handle. The file carries leading // comments, so it is read as JSONC.
+func (c Copilot) Identity(_ context.Context, env adapter.Env) (string, error) {
+	path := configJSONPath(env)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", path, err)
+	}
+	raw, found, err := patch.GetPointerJSONC(data, lastUserPointer)
+	if err != nil {
+		return "", fmt.Errorf("parse %s: %w", path, err)
+	}
+	if !found {
+		return "", fmt.Errorf("no %s in %s", lastUserPointer, path)
+	}
+	var user struct {
+		Login string `json:"login"`
+	}
+	if err := json.Unmarshal(raw, &user); err != nil {
+		return "", fmt.Errorf("parse %s%s: %w", path, lastUserPointer, err)
+	}
+	if user.Login == "" {
+		return "", fmt.Errorf("no %s/login in %s", lastUserPointer, path)
+	}
+	return user.Login, nil
 }
 
 func (c Copilot) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {

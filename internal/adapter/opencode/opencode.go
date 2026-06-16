@@ -7,6 +7,8 @@ package opencode
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -68,6 +70,29 @@ func (o Opencode) Detect(ctx context.Context, env adapter.Env) (adapter.Info, er
 		}
 	}
 	return info, nil
+}
+
+// Identity reads the ChatGPT-subscription accountId from auth.json's /openai
+// entry so `kae add opencode` (no name) can default the account name. Only the
+// openai entry is consulted — API-key providers belong to env mode.
+func (o Opencode) Identity(_ context.Context, env adapter.Env) (string, error) {
+	path := authJSONPath(env)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", path, err)
+	}
+	var doc struct {
+		Openai struct {
+			AccountID string `json:"accountId"`
+		} `json:"openai"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return "", fmt.Errorf("parse %s: %w", path, err)
+	}
+	if doc.Openai.AccountID == "" {
+		return "", fmt.Errorf("no openai.accountId in %s", path)
+	}
+	return doc.Openai.AccountID, nil
 }
 
 func (o Opencode) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {

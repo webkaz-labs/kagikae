@@ -48,13 +48,17 @@ func toolBinary(tool string) string {
 
 // CmdAdd registers an account:
 //
-//	kae add <tool> <account> [--restore]      official login flow + snapshot
-//	kae add --no-login <tool> <account>       snapshot the current live state
+//	kae add <tool> [<account>] [--restore]    official login flow + snapshot
+//	kae add --no-login <tool> [<account>]     snapshot the current live state
 //
-// The default backs up the current auth state, launches the official login
-// flow, captures the result into the account, and (with --restore) puts the
-// previous login back. --no-login skips the flow and snapshots whatever is
-// live now (it supports --dry-run; the login flow does not).
+// With the account name omitted, kae auto-detects it from the live login
+// identity (the v0.8.2 default; docs/RELEASE.md §B): --no-login reads the
+// current live state, the login flow reads the post-login state. An explicit
+// name always wins. The default backs up the current auth state, launches the
+// official login flow, captures the result into the account, and (with
+// --restore) puts the previous login back. --no-login skips the flow and
+// snapshots whatever is live now (it supports --dry-run; the login flow does
+// not).
 func CmdAdd(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
 	restore, noLogin := false, false
@@ -65,8 +69,8 @@ func CmdAdd(ctx context.Context, args []string) int {
 	if !ok {
 		return constants.ExitUsage
 	}
-	if len(positionals) != 2 {
-		return usageError("usage: %s add [--no-login] <tool> <account> [--restore]", toolName)
+	if len(positionals) < 1 || len(positionals) > 2 {
+		return usageError("usage: %s add [--no-login] <tool> [<account>] [--restore]", toolName)
 	}
 	if noLogin && restore {
 		return usageError("--restore needs the login flow; it cannot be combined with --no-login")
@@ -74,19 +78,35 @@ func CmdAdd(ctx context.Context, args []string) int {
 	if !noLogin && opts.DryRun {
 		return usageError("--dry-run applies to --no-login snapshots only")
 	}
-	app := newApp(opts.ConfigPath)
-	app.pinnedGlobalScope()
-	if noLogin {
-		return runCapture(ctx, app, opts, positionals[0], positionals[1])
-	}
-	return runLogin(ctx, app, opts, positionals[0], positionals[1], restore)
-}
-
-func runLogin(ctx context.Context, app *App, opts commonOpts, tool, accountName string, restore bool) int {
-	tool, err := canonicalToolAccount(tool, accountName, "account")
+	// Resolve the tool prefix and validate it now; an explicit account name is
+	// validated here too (an auto-detected one is sanitized at detection time).
+	tool, err := resolveToolArg(positionals[0])
 	if err != nil {
 		return finish(opts, err)
 	}
+	if err := validateTool(tool); err != nil {
+		return finish(opts, err)
+	}
+	explicitName := ""
+	if len(positionals) == 2 {
+		explicitName = positionals[1]
+		if err := validateToolAccount(tool, explicitName, "account"); err != nil {
+			return finish(opts, err)
+		}
+	}
+	app := newApp(opts.ConfigPath)
+	app.pinnedGlobalScope()
+	if noLogin {
+		return runCapture(ctx, app, opts, tool, explicitName)
+	}
+	return runLogin(ctx, app, opts, tool, explicitName, restore)
+}
+
+// runLogin launches the official login flow and snapshots the result. tool is
+// already canonical (CmdAdd); explicitName is the given account name, or "" to
+// auto-detect it. The name is resolved after the login flow exits, because the
+// login identity only becomes live once the flow completes (docs/RELEASE.md §B).
+func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName string, restore bool) int {
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
 	}
@@ -95,7 +115,9 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, accountName 
 		return finish(opts, errf(constants.ExitUnsupported,
 			"the kae add login flow does not support %s yet (see docs/ROADMAP.md)", tool))
 	}
-	plan, err := app.planTool(ctx, tool, accountName)
+	// Plan the tool before the name is known; only plan.Account (set after login)
+	// depends on it, and that is not read until captureSnapshot below.
+	plan, err := app.planTool(ctx, tool, explicitName)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -118,8 +140,12 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, accountName 
 		return finish(opts, err)
 	}
 
-	fmt.Fprintf(os.Stderr, "kae: complete the %s login flow; the result is captured as %s/%s when it exits (previous state backed up as %s)\n",
-		tool, tool, accountName, meta.ID)
+	captureLabel := "the detected account"
+	if explicitName != "" {
+		captureLabel = tool + "/" + explicitName
+	}
+	fmt.Fprintf(os.Stderr, "kae: complete the %s login flow; the result is captured as %s when it exits (previous state backed up as %s)\n",
+		tool, captureLabel, meta.ID)
 	if code, err := runner.RunInteractive(ctx, nil, command[0], command[1:]...); err != nil {
 		return finish(opts, fmt.Errorf("launch %s login: %w", tool, err))
 	} else if code != 0 {
@@ -131,10 +157,22 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, accountName 
 	} else if !changed {
 		// The live state is still the pre-login state, so there is nothing
 		// to capture and (with --restore) nothing to put back.
+		hint := tool
+		if explicitName != "" {
+			hint = tool + " " + explicitName
+		}
 		return finish(opts, errf(constants.ExitAuthUnchanged,
-			"%s login flow exited without changing auth; nothing captured (to snapshot the current login as %s/%s, run: kae add --no-login %s %s)",
-			tool, tool, accountName, tool, accountName))
+			"%s login flow exited without changing auth; nothing captured (to snapshot the current login, run: kae add --no-login %s)",
+			tool, hint))
 	}
+
+	// The login flow changed auth, so the new identity is now live: resolve the
+	// account name (auto-detected from it unless given explicitly) and snapshot.
+	accountName, err := app.resolveAccountName(ctx, tool, explicitName)
+	if err != nil {
+		return finishLoginFailure(ctx, opts, be, meta, restore, "detect the logged-in account", err)
+	}
+	plan.Account = accountName
 
 	if err := app.captureSnapshot(ctx, be, plan); err != nil {
 		return finishLoginFailure(ctx, opts, be, meta, restore, "capture after login", err)

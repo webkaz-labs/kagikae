@@ -28,9 +28,11 @@ type captureReport struct {
 }
 
 // runCapture snapshots the current live auth state into an account; the
-// CLI surface is kae add --no-login (CmdAdd).
-func runCapture(ctx context.Context, app *App, opts commonOpts, tool, accountName string) int {
-	report, err := buildCapture(ctx, app, opts, tool, accountName)
+// CLI surface is kae add --no-login (CmdAdd). tool must already be canonical
+// (CmdAdd resolves the prefix and validates it); explicitName is the given
+// account name, or "" to auto-detect it from the live login identity.
+func runCapture(ctx context.Context, app *App, opts commonOpts, tool, explicitName string) int {
+	report, err := buildCapture(ctx, app, opts, tool, explicitName)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -41,12 +43,13 @@ func runCapture(ctx context.Context, app *App, opts commonOpts, tool, accountNam
 	return constants.ExitOK
 }
 
-func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, accountName string) (*captureReport, error) {
-	tool, err := canonicalToolAccount(tool, accountName, "account")
-	if err != nil {
+func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, explicitName string) (*captureReport, error) {
+	if err := app.requireConfig(); err != nil {
 		return nil, err
 	}
-	if err := app.requireConfig(); err != nil {
+	// With no explicit name, default it to the sanitized live login identity.
+	accountName, err := app.resolveAccountName(ctx, tool, explicitName)
+	if err != nil {
 		return nil, err
 	}
 	plan, err := app.planTool(ctx, tool, accountName)

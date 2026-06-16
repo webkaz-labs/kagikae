@@ -77,8 +77,10 @@ func canonicalToolAccount(tool, name, nameKind string) (string, error) {
 	return canonical, nil
 }
 
-// validateToolAccount checks CLI-provided tool and account/profile names.
-func validateToolAccount(tool, name, nameKind string) error {
+// validateTool checks a CLI-provided tool id, naming the successor for a
+// removed tool. Split from validateToolAccount so `kae add <tool>` (auto-detect,
+// no name yet) can validate the tool without a name.
+func validateTool(tool string) error {
 	if !constants.IsTool(tool) {
 		if successor, removed := constants.RemovedTools[tool]; removed {
 			return errf(constants.ExitUsage,
@@ -86,6 +88,14 @@ func validateToolAccount(tool, name, nameKind string) error {
 				tool, successor, tool)
 		}
 		return errf(constants.ExitUsage, "unknown tool %q (tools: %s)", tool, strings.Join(constants.Tools, ", "))
+	}
+	return nil
+}
+
+// validateToolAccount checks CLI-provided tool and account/profile names.
+func validateToolAccount(tool, name, nameKind string) error {
+	if err := validateTool(tool); err != nil {
+		return err
 	}
 	if !config.ValidName(name) {
 		return errf(constants.ExitUsage, "invalid %s name %q (allowed: [a-zA-Z0-9._-], max 64 chars)", nameKind, name)

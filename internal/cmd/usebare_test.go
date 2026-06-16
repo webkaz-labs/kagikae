@@ -97,6 +97,15 @@ func TestBareUseQuietSuppressesSuccessOutput(t *testing.T) {
 	if out != "" {
 		t.Fatalf("quiet no-op must print nothing, got: %s", out)
 	}
+
+	// --quiet suppresses only the human report; --json still emits so a script
+	// can read `changed` (docs/RELEASE.md).
+	code, out = captureStdout(t, func() int { return runUseBare(ctx, app, commonOpts{Format: formatJSON}, false, "work", true) })
+	mustExit(t, constants.ExitOK, code, out)
+	report := decodeBareUseReport(t, out)
+	if report.Profile == nil || *report.Profile != "work" {
+		t.Fatalf("quiet --json must still emit the JSON report: %s", out)
+	}
 }
 
 func TestBareUseProfileResolutionOrder(t *testing.T) {

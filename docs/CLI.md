@@ -106,8 +106,9 @@ profile from `--profile`/`-P`, then `$KAE_PROFILE`, then config
 **idempotently**. When kae's recorded active state (`state.json active`) already
 matches, it exits `0` with `"changed": false`, taking no locks and writing no
 backups; external drift is neither verified nor repaired. Otherwise it performs a
-full apply. `--quiet` suppresses the success report entirely (both formats);
-errors are still reported. This is the safe form for hooks and scripts (the
+full apply. `--quiet` suppresses the human success report (for enter hooks);
+with `--json` the report is still emitted so a script can read `changed`.
+Errors are still reported. This is the safe form for hooks and scripts (the
 former `kae apply`).
 
 **`kae use [-s|-i] <profile>`** or **`kae use [-s|-i] <tool> <account>`**
@@ -470,8 +471,8 @@ The switch report plus a `changed` boolean (no `dry_run`):
 ```
 
 When the profile is applied, `changed` is `true` and `backup_id` / `results`
-carry the same per-tool shape as explicit `kae use`. With `--quiet`, the success
-report is suppressed entirely.
+carry the same per-tool shape as explicit `kae use`. `--quiet` suppresses the
+human (text) report only; `--json` still emits the report shown above.
 
 ### `kae backup list --json`
 

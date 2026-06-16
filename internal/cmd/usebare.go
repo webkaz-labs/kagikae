@@ -45,11 +45,13 @@ func runUseBare(ctx context.Context, app *App, opts commonOpts, isolated bool, p
 	if err != nil {
 		return finish(opts, err)
 	}
-	if quiet {
-		return constants.ExitOK
-	}
+	// --quiet suppresses the human success report (for enter hooks); the JSON
+	// report still emits so a script can read `changed` (docs/RELEASE.md).
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
+	}
+	if quiet {
+		return constants.ExitOK
 	}
 	printBareUseReport(report)
 	return constants.ExitOK

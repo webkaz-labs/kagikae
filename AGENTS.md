@@ -26,6 +26,18 @@ mise run check
 git diff --check
 ```
 
+`mise run check` (go vet, `go test ./...`, `gofmt`) is the authoritative gate;
+it must pass before every commit.
+
+While editing (this is a Go module — the LSP is `gopls`):
+
+- **Symbol work goes through the LSP, not Grep** — resolve definitions,
+  references, and types with the LSP (go-to-definition / find-references /
+  hover). Grep is for text/string matches, not for "where is this symbol used".
+- **Read LSP diagnostics after each edit** — clear errors and warnings as you
+  go. The LSP is the fast inner loop; it does not replace `mise run check`,
+  which stays the pre-commit gate (a clean LSP does not imply green tests).
+
 Never run tests or smoke checks against the real `$HOME`; every test uses
 `t.TempDir()` HOME/XDG roots, and smoke checks export a temp HOME
 ([docs/VALIDATION.md](docs/VALIDATION.md)).

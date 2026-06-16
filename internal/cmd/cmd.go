@@ -24,7 +24,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.7.2"
+	toolVersion = "v0.8.0"
 )
 
 // Root dispatches the command line.
@@ -58,8 +58,6 @@ func Root(args []string) int {
 		return CmdPin(ctx, args[1:])
 	case "unpin":
 		return CmdUnpin(ctx, args[1:])
-	case "sync":
-		return CmdSync(ctx, args[1:])
 	case "apply":
 		return CmdApply(ctx, args[1:])
 	case "run", "r":
@@ -208,6 +206,9 @@ Usage:
   kae add <tool> <account>             register an account (official login
                                        flow + snapshot; --no-login snapshots
                                        the current login instead)
+  kae use [-s|-i] [-P <profile>]       bare: resolve the profile and apply it
+                                       idempotently (--quiet for hooks; folds
+                                       the former kae apply)
   kae use [-s|-i] <profile>            switch every tool now (alias: kae u)
   kae use <tool> <account>             switch one tool now
   kae pin [-s|-i] [<profile>]          bind this directory (alias: kae p);
@@ -217,8 +218,6 @@ Usage:
   kae unpin                            remove the binding from .mise.toml
   kae run [--mode M] <t|all> <n> -- C  run C with an account applied (alias: kae r);
                                        auth mode restores the previous login after
-  kae apply [--profile P] [--quiet]    idempotent profile apply for hooks;
-                                       no-op when already recorded as active
   kae env set|unset|list ...           env-mode profiles (API keys)
   kae mise init [--profile P] [--mode auth|home|overlay] [--auto] [--write]
                                        low-level form of pin (preview first)

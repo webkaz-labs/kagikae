@@ -31,20 +31,26 @@ type switchReport struct {
 
 // CmdUse switches now, in global scope (alias: kae u):
 //
+//	kae use [-s|-i] [-P <profile>]      bare: resolve the profile, apply it
+//	                                    idempotently (the folded `apply`)
 //	kae use [-s|-i] <profile>           every enabled tool in the profile
 //	kae use [-s|-i] <tool> <account>    one tool
 //
-// It always applies, even when the recorded state already matches
-// (kae apply is the idempotent variant). use is inherently global, so it
-// always acts on the real home; inside a pinned directory it warns that it
-// is changing global state (pinnedGlobalScope). --shared/-s (the default)
-// switches the real home in place; --isolated/-i points every terminal at a
-// per-account private home via a kae-owned global mise fragment.
+// With an explicit positional it always applies, even when the recorded state
+// already matches; bare use (no positional) resolves the profile and is
+// idempotent (the folded `apply`, with --quiet for hooks). use is inherently
+// global, so it always acts on the real home; inside a pinned directory it
+// warns that it is changing global state (pinnedGlobalScope). --shared/-s (the
+// default) switches the real home in place; --isolated/-i points every terminal
+// at a per-account private home via a kae-owned global mise fragment.
 func CmdUse(ctx context.Context, args []string) int {
-	flags, positionals := splitArgs(args)
-	var shared, isolated bool
+	flags, positionals := splitArgs(args, "--profile", "P")
+	var shared, isolated, quiet bool
+	var profileFlag string
 	opts, ok := parseCommon("use", flags, true, func(fs *flag.FlagSet) {
 		registerScopeFlags(fs, &shared, &isolated)
+		fs.BoolVar(&quiet, "quiet", false, "suppress the success report (for hooks; bare use)")
+		registerProfileFlag(fs, &profileFlag)
 	})
 	if !ok {
 		return constants.ExitUsage
@@ -53,10 +59,16 @@ func CmdUse(ctx context.Context, args []string) int {
 	if !ok {
 		return constants.ExitUsage
 	}
-	if len(positionals) != 1 && len(positionals) != 2 {
-		return usageError("usage: %s use [-s|-i] <profile> | %s use [-s|-i] <tool> <account>", toolName, toolName)
+	if len(positionals) > 2 {
+		return usageError("usage: %s use [-s|-i] [-P <profile>] | %s use [-s|-i] <profile> | %s use [-s|-i] <tool> <account>", toolName, toolName, toolName)
 	}
 	app := newApp(opts.ConfigPath)
+	if len(positionals) == 0 {
+		return runUseBare(ctx, app, opts, isolatedMode, profileFlag, quiet)
+	}
+	if profileFlag != "" {
+		return usageError("-P <profile> selects a profile for bare `kae use`; drop the positional or the flag")
+	}
 	target, name := "all", positionals[0]
 	if len(positionals) == 2 {
 		target, name = positionals[0], positionals[1]
@@ -88,7 +100,7 @@ func runSwitch(ctx context.Context, app *App, opts commonOpts, target, name stri
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
-	printSwitchReport(app, report)
+	printSwitchReport(report)
 	return constants.ExitOK
 }
 
@@ -186,7 +198,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	return report, nil
 }
 
-func printSwitchReport(app *App, report *switchReport) {
+func printSwitchReport(report *switchReport) {
 	if report.DryRun {
 		if report.Profile != nil {
 			fmt.Printf("Would switch profile to %s\n", *report.Profile)

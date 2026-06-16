@@ -317,6 +317,13 @@ func registerScopeFlags(fs *flag.FlagSet, shared, isolated *bool) {
 	fs.BoolVar(isolated, "i", false, "alias for --isolated")
 }
 
+// registerProfileFlag registers the --profile flag and its -P short form,
+// shared by bare `kae use`, `kae run`, and `kae mise init`.
+func registerProfileFlag(fs *flag.FlagSet, p *string) {
+	fs.StringVar(p, "profile", "", "profile to resolve (default: $KAE_PROFILE, then config default_profile)")
+	fs.StringVar(p, "P", "", "alias for --profile")
+}
+
 // resolveScope validates the mutually-exclusive scope flags and reports the
 // selected environment. ok is false (and a usage error already emitted) when
 // both are set; shared is the default, so isolatedMode echoes isolated.

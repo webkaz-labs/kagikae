@@ -43,13 +43,13 @@ func TestGlobalCommandsActOnRealHomeInsidePinnedDir(t *testing.T) {
 		t.Fatalf("use inside a pinned dir must write the real home: %s", creds)
 	}
 
-	// apply (the idempotent global form) behaves the same.
+	// bare use (the idempotent global form) behaves the same.
 	app = pinnedEnvApp(t)
-	code, out = captureStdout(t, func() int { return runApply(ctx, app, opts, "work", false) })
+	code, out = captureStdout(t, func() int { return runUseBare(ctx, app, opts, false, "work", false) })
 	mustExit(t, constants.ExitOK, code, out)
 
 	// The auth-mode pin exports only KAE_PROFILE; its tasks and enter hook
-	// run use/apply inside the directory and must keep working (no warning).
+	// run use inside the directory and must keep working (no warning).
 	app = pinnedEnvApp(t)
 	app.Env.Getenv = func(key string) string {
 		if key == constants.EnvKaeProfile {
@@ -57,7 +57,7 @@ func TestGlobalCommandsActOnRealHomeInsidePinnedDir(t *testing.T) {
 		}
 		return ""
 	}
-	code, out = captureStdout(t, func() int { return runApply(ctx, app, opts, "personal", false) })
+	code, out = captureStdout(t, func() int { return runUseBare(ctx, app, opts, false, "personal", false) })
 	mustExit(t, constants.ExitOK, code, out)
 }
 

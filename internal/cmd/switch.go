@@ -134,21 +134,30 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	if profileName != "" {
 		report.Profile = &profileName
 	}
+	// Resolve the secret backend up front so each target snapshot can be checked
+	// for staleness (§B). secret.Resolve does no IO, so this is cheap; a backend
+	// error is fatal only on the real path — a dry-run still prints the plan.
+	be, beErr := app.secretBackend()
 	for _, plan := range plans {
-		report.Results = append(report.Results, switchResult{
+		res := switchResult{
 			Tool: plan.Tool, Account: plan.Account, Driver: plan.Driver,
 			Applied: !opts.DryRun, Actions: app.actionsOf(plan.Specs),
 			Warnings: plan.Warnings,
-		})
+		}
+		if beErr == nil {
+			if w, err := app.staleSnapshotWarning(ctx, be, plan.Meta); err == nil && w != "" {
+				res.Warnings = append(res.Warnings, w)
+			}
+		}
+		report.Results = append(report.Results, res)
 	}
 	if opts.DryRun {
 		return report, nil
 	}
-
-	be, err := app.secretBackend()
-	if err != nil {
-		return nil, err
+	if beErr != nil {
+		return nil, beErr
 	}
+
 	tools := make([]string, len(plans))
 	for i, plan := range plans {
 		tools[i] = plan.Tool
@@ -168,6 +177,12 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		return nil, err
 	}
 	report.BackupID = meta.ID
+
+	// §A: before overwriting the real store, refresh the currently-active
+	// account's snapshot from the live store (only when they diverge), so a
+	// later switch back applies a live token. Must run before applySnapshot
+	// overwrites the live credential. Best-effort; never aborts the switch.
+	app.recaptureActiveBeforeSwitch(ctx, be, st, plans)
 
 	appliedTools := map[string]bool{}
 	for _, plan := range plans {

@@ -93,17 +93,9 @@ func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, accountN
 // them as the plan's account snapshot. Callers hold the tool lock and update
 // state themselves.
 func (app *App) captureSnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error {
-	values := make([]artifact.Value, len(plan.Specs))
-	anyPresent := false
-	for i, sp := range plan.Specs {
-		value, err := artifact.ReadLive(ctx, sp)
-		if err != nil {
-			return err
-		}
-		values[i] = value
-		if value.Present {
-			anyPresent = true
-		}
+	values, anyPresent, err := readLiveValues(ctx, plan.Specs)
+	if err != nil {
+		return err
 	}
 	if !anyPresent {
 		message := fmt.Sprintf("no live %s auth state found; log in with the official CLI first", plan.Tool)
@@ -112,7 +104,31 @@ func (app *App) captureSnapshot(ctx context.Context, be secret.Backend, plan too
 		}
 		return errf(constants.ExitAuthMissing, "%s", message)
 	}
+	return app.persistSnapshot(ctx, be, plan, values)
+}
 
+// readLiveValues reads each spec's current live value. anyPresent reports
+// whether at least one artifact exists live (none means "not logged in").
+func readLiveValues(ctx context.Context, specs []artifact.Spec) (values []artifact.Value, anyPresent bool, err error) {
+	values = make([]artifact.Value, len(specs))
+	for i, sp := range specs {
+		value, err := artifact.ReadLive(ctx, sp)
+		if err != nil {
+			return nil, false, err
+		}
+		values[i] = value
+		if value.Present {
+			anyPresent = true
+		}
+	}
+	return values, anyPresent, nil
+}
+
+// persistSnapshot writes already-read live values as plan's account snapshot
+// (secret payloads + account.toml). Split from captureSnapshot so the
+// switch-away recapture can reuse the value it already read for the divergence
+// check, issuing no second keychain read (docs/RELEASE.md §A/§C).
+func (app *App) persistSnapshot(ctx context.Context, be secret.Backend, plan toolPlan, values []artifact.Value) error {
 	acc := account.Account{
 		Version:    1,
 		Tool:       plan.Tool,

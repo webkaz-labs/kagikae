@@ -1,3 +1,144 @@
+# Release Target: kae v0.8.0
+
+Finish the scope×environment vocabulary: one surface, one set of names. v0.7.2
+unified `use`/`pin` on `-s`/`-i`; v0.8.0 folds `apply` into `use`, redesigns
+`run` onto `-s`/`-i`/`--env`, removes the mechanism-vocabulary leak from
+`mise init` and the config keys, and adds input ergonomics (tool-name prefixes,
+shell completion). **Pre-1.0 breaking release**: the `run --mode` flag and the
+`bond_`/`pin_`/`overlay_`/`home_` config keys are removed outright — no alias,
+just a migration note.
+
+Previous baseline: v0.7.2 (use/pin × -s/-i, global isolated home).
+
+## Scope
+
+### A. `apply` folds into `use`
+
+`apply` is not merely `use -s`; it adds idempotency, profile resolution, and a
+quiet mode. Fold those into `use` and remove the verb:
+
+- **bare `kae use`** (no positional) resolves the profile (`$KAE_PROFILE`, then
+  `default_profile`, then `-P <name>`) and applies it **idempotently** — no-op
+  (exit `0`, no lock, no backup) when `state.json` `active` already matches, like
+  today's `apply`. `--quiet` suppresses the success report; JSON keeps `changed`.
+- **`kae use <profile | tool account>`** (explicit positional) keeps the forced
+  switch + backup (unchanged).
+- **`apply`** becomes a one-release removed-command pointer (exit `64`) naming
+  `kae use [--quiet]`.
+- `mise init --auto`'s enter hook script becomes `kae use --quiet`.
+
+### B. `run` redesign (`-s` / `-i` / `--env`; `--mode` removed)
+
+Six modes collapse to three; `--mode` is removed (hard break):
+
+- **`run -s`** (default): the child sees the **real home** (= old `auth`:
+  backup → apply → run → recapture refreshed creds → restore). The per-tool lock
+  is held for the whole child run.
+- **`run -i`**: an **isolated home**, reusing the global-isolated store
+  `isolation/global/<tool>/<account>` (shared with `kae use -i`); no lock, no
+  live mutation. This is the right tool for **interactive sessions** under
+  another account — concurrent `kae use` in other terminals is never blocked and
+  never seen by the isolated process.
+- **`run --env`**: inject the env-profile vars (old `--mode env`); no home
+  redirect, no lock.
+- **Removed**: `--mode` and the `auth|env|home|overlay|bond|pin` values. `home`
+  folds into `-i`; `overlay` is retired; per-directory `bond`/`pin` via `run` is
+  gone — a `kae pin`-ed directory already redirects the tool through its mise
+  fragment, so `run` is unnecessary there.
+- **Confusion guard** (`run -i` shares a store with `use -i`): `run -i` prints
+  the exact home and that it is shared with `kae use -i <account>`, and
+  `kae status` surfaces the global-isolated homes (§D), so the shared state is
+  never invisible. Docs state the three isolation scopes plainly: global
+  (`use -i` / `run -i` share one home per account), per-directory (`pin`).
+
+### C. `mise init` trim
+
+- Drop `--mode bond|pin` (the per-directory binding is `kae pin -s|-i`, which
+  owns the fragment). Keep `--mode auth` (tasks + the opt-in enter hook, now
+  emitting `kae use --quiet`); `home`/`overlay` rendering is removed with the
+  `run` modes.
+
+### D. Mechanism + config-key rename (breaking, no alias)
+
+With `run` no longer exposing the mechanism strings, the vocabulary moves
+cleanly to `shared`/`isolated`:
+
+- internal: `modeBond`/`modePin` → `modeShared`/`modeIsolated`; retire
+  `modeOverlay`/`modeHome`.
+- config keys: `bond_denylist_extra` → `shared_denylist_extra`;
+  `pin_shared_items` → `isolated_shared_items`; remove
+  `overlay_extra_shared` / `overlay_mode_enabled` / `home_mode_enabled`. Old keys
+  are **not** accepted — config load errors naming the new key (migration note in
+  the release).
+- `kae status` reports the global-isolated (`synced`) homes so `use -i` / `run
+  -i` state is visible (also the §B confusion guard).
+
+### E. `-i` with a profile mapping unsupported tools
+
+- `use -i` / `run -i` for a **profile** that includes a tool with no isolation
+  env var (agy, opencode, cursor, copilot) **skips it with a warning** and
+  isolates claude/codex only, instead of exiting `5`. A single-tool
+  `kae use -i agy <account>` still exits `5`. (Fixes the shipped `use -i`
+  behavior too.)
+
+### F. Input ergonomics
+
+- **Tool-name prefix aliases** in tool positions (`cl`→claude, `cod`→codex,
+  `cu`→cursor, `cop`→copilot, `o`→opencode, `a`→agy); ambiguous prefixes (`c`,
+  `co`) error with the candidate list. Input-only (resolved to the canonical
+  name, never stored); the ambiguity set is computed from `constants.Tools`.
+- **`kae completion <bash|zsh|fish>`** generator, table-driven from the router +
+  `constants.Tools` + config (profiles/accounts).
+- **`-P`** short form for `--profile` on `run` / bare `use` / `mise init`.
+
+## Non-Goals (this release)
+
+- **Alias / transition window** for `--mode` or the renamed config keys — pre-1.0
+  hard break with a migration note.
+- TUI, Windows, Codex keyring driver, agy home isolation, remote share-list
+  shipping, doctor orphan enumeration — see [ROADMAP.md](ROADMAP.md).
+- "Did you mean X?" unknown-command suggestion — may ride along but not required.
+
+## Acceptance Criteria
+
+- **apply fold**: bare `kae use` (resolved profile) is idempotent (no-op when
+  active, no lock, no backup); `kae use --quiet` is silent; JSON keeps
+  `changed`; `apply` exits `64` naming `kae use`.
+- **run**: `kae run -i claude <acct> -- claude` runs in
+  `isolation/global/claude/<acct>` with no lock and no live mutation, and a
+  concurrent `kae use` in another shell is not blocked; `run -s` holds the lock
+  and restores the previous login; `run --env` injects only the profile vars;
+  `run --mode …` exits usage (removed). `run -i` output names the shared home.
+- **mise init**: `--mode bond|pin` rejected; `--mode auth` renders the
+  `kae use --quiet` enter hook.
+- **rename**: a config with `bond_denylist_extra` / `pin_shared_items` fails at
+  load naming the new keys; `shared_denylist_extra` / `isolated_shared_items`
+  work; `kae status` shows global-isolated homes.
+- **profile skip**: `kae use -i <profile-including-agy>` isolates claude/codex,
+  warns on agy, exits `0`; `kae use -i agy <account>` exits `5`.
+- **ergonomics**: unambiguous tool prefixes resolve and ambiguous ones error with
+  candidates; `kae completion zsh` emits a script; `-P <profile>` resolves.
+- `mise run check` passes; JSON keeps `schema_version: 1`, stable tokens, `[]`
+  arrays; redaction tests cover any new output path.
+
+## Release Steps
+
+1. Bump `toolVersion` to v0.8.0.
+2. Fold `apply` into bare `kae use` (idempotent + `--quiet`); update the enter
+   hook; `apply` tombstone; temp-HOME tests.
+3. Redesign `run` (`-s`/`-i`/`--env`, `--mode` removed); `run -i` on
+   `isolation/global`; surface `synced` in `kae status`; temp-HOME tests.
+4. Trim `mise init` (drop bond/pin; hook → `kae use --quiet`).
+5. Mechanism + config-key rename (hard break) with the migration note; retire
+   overlay/home and their config keys.
+6. Input ergonomics (tool prefixes, `kae completion`, `-P`); `-i` profile
+   skip+warning.
+7. Docs fold (CLI/DESIGN/ADAPTERS/DATA-MODEL/SECURITY/README); temp-HOME tests;
+   real-machine gate (`run -i` interactive AUTH-OK, concurrent `use` not blocked).
+8. README verified against the binary; tag `v0.8.0`, GitHub release.
+
+---
+
 # kae v0.7.2 (released 2026-06-16)
 
 Unify the switching surface and ship the last cell of the scope×environment

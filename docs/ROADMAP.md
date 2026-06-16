@@ -3,16 +3,18 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target (v0.7.2 — the `use` / `pin` × `-s` / `-i` surface
-unification and the global-isolated `kae use -i` home swap) lives in
-[RELEASE.md](RELEASE.md). What remains beyond it is hardening and platform
-coverage, ordered below by user impact.
+The active target (v0.8.0 — fold `apply` into `use`, redesign `run` onto
+`-s`/`-i`/`--env`, trim `mise init`, hard-rename the mechanism + config-key
+vocabulary, and add input ergonomics) lives in [RELEASE.md](RELEASE.md); v0.7.2
+(use/pin × -s/-i, global isolated home) shipped before it. What remains beyond
+v0.8.0 is hardening and platform coverage, ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 
-- **Surface vocabulary unification (`run` / `apply` / `mise init`)**: fold the
-  scope×environment vocabulary into the rest of the surface — see the dedicated
-  subsection below.
+- **Surface vocabulary unification (`run` / `apply` / `mise init`)** *(now the
+  v0.8.0 target — see [RELEASE.md](RELEASE.md))*: fold `apply` into `use`,
+  redesign `run` onto `-s`/`-i`/`--env`, trim `mise init`, and hard-rename the
+  mechanism + config-key vocabulary to `shared`/`isolated`.
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the
@@ -47,56 +49,6 @@ coverage, ordered below by user impact.
   Also the safety prerequisite for the v0.7.2 global-isolated (`kae use -i`)
   real-machine gate.
 
-## Surface vocabulary unification (run / apply / mise init)
-
-v0.7.2 put `use` / `pin` on the scope×environment grid (`-s` / `-i`), but `run`,
-`apply`, and `mise init` still speak the older mechanism vocabulary. Deferred
-from v0.7.2 (where `apply` stays global-shared and `run --mode` keeps its
-mechanism names). Remaining gaps:
-
-- **`run --mode auth|env|home|overlay|bond|pin`** conflates environment
-  (`auth`=shared, `home`/`overlay`/`pin`=isolated, `bond`=per-dir shared) with
-  env-var injection (`env`); `home` predates and overlaps `use -i`, and
-  `overlay` is legacy.
-- **`apply`** covers only global-shared — no `-i`, so a `use -i` binding has no
-  idempotent hook form.
-- **`mise init --mode bond|pin`** is redundant now that `kae pin -s|-i` owns the
-  fragment; `mise init`'s unique role is `--mode auth` (tasks / enter hook).
-- The same "environment" concept is spelled three ways: `-s` / `-i` (use/pin),
-  `--mode <value>` (run / mise init), and nothing (apply).
-- `pin` is overloaded at the user surface: the verb `kae pin` vs `run --mode pin`.
-- Config keys stay mechanism-named: `bond_denylist_extra`, `pin_shared_items`,
-  `overlay_extra_shared`, `overlay_mode_enabled`, `home_mode_enabled`.
-
-Proposed direction, in safe (least-breaking-first) order:
-
-1. **`apply [-s|-i]`** — add the environment axis; default `-s` (unchanged), `-i`
-   idempotently maintains the `synced` global-isolated state. Additive, low-risk.
-2. **`run [-s|-i]` + `--env`** — `-s` = current `auth` (apply + restore the real
-   home for the process), `-i` = a private isolated home; split env-var injection
-   out to `--env`. Introduce `--mode` as a transitional deprecated alias
-   (`auth`→`-s`, `home`→`-i`, `env`→`--env`; `bond`/`pin`/`overlay` → guidance to
-   `kae pin` then `kae run`). Removes the user-surface `pin` overload.
-3. **`mise init`** — drop `bond` / `pin` (point at `kae pin`); keep `auth` (and
-   legacy `home` / `overlay`).
-4. **Mechanism rename (broadest, last)** — `modeBond` / `modePin` →
-   `modeShared` / `modeIsolated`, the `run --mode` values, and the config keys
-   (`bond_denylist_extra` → `shared_denylist_extra`, etc.) behind a transitional
-   old-key alias so the migration itself is non-breaking.
-
-   **Final step of P4 — remove the legacy compat.** Once the deprecation window
-   passes, delete every transitional shim introduced above in one clean break:
-   the `run --mode` alias and its mechanism values, the old config-key aliases,
-   and any removed-command pointers from this cleanup. After P4 the surface
-   speaks only the scope×environment vocabulary — no `--mode`, no mechanism-named
-   keys. (`apply`/`use`/`pin`/`run` keep their verbs; `apply` and `run` stay as
-   distinct scopes, not folded into `use`.)
-
-The internal-name drift fixed in v0.7.2 (`sync.go`→`apply.go`, per-dir fragment
-`*PinFragment`→`*DirFragment`, `as.go`→`rebind.go`; see git log) was the
-non-breaking half; the mechanism vocabulary above is intentionally still pending
-because it touches the `run --mode` and config-key contracts.
-
 ## Command-system expansion
 
 Daily-use ergonomics, designed together as mise-style verbs so the surface
@@ -117,7 +69,7 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   <account> -- <tool>` already works (it is not blocked by the pinned-
   directory guard), but it is verbose; provide a terser way to open an
   interactive session under a different account without unpinning.
-- **Tool-name prefix aliases** *(input-only sugar)*: accept any unambiguous
+- **Tool-name prefix aliases** *(v0.8.0 — see [RELEASE.md](RELEASE.md); input-only sugar)*: accept any unambiguous
   prefix in tool positions (`cl`→claude, `cod`→codex, `cu`→cursor,
   `cop`→copilot, `o`→opencode, `a`→agy); ambiguous prefixes (`c`, `co`) error
   with the candidate list. Resolved to the canonical name immediately and never
@@ -126,9 +78,10 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   positions of the two-arg forms (`use`/`pin`/`run`/`add`/`account`/`env`); a
   one-arg `kae use cl` stays a profile lookup. (Verb aliases `u`/`p`/`r`/`d`/`s`
   shipped in v0.7.2.)
-- **Flag short forms**: `-P` for `--profile` on `run`/`apply`/`mise init`
-  (`--mode` is being retired by the surface-unification plan, so it gets none).
-- **Generic completion + "did you mean"**: both are feasible off the existing
+- **Flag short forms** *(v0.8.0 — see [RELEASE.md](RELEASE.md))*: `-P` for
+  `--profile` on `run` / bare `use` / `mise init`.
+- **Generic completion + "did you mean"** *(completion is v0.8.0 — see
+  [RELEASE.md](RELEASE.md); "did you mean" stays a candidate)*: both are feasible off the existing
   static lists (commands, tools, flags, profiles/accounts from state). (1) a
   `kae completion <bash|zsh|fish>` generator emitting a shell completion script
   — since the surface is hand-rolled (not cobra), the candidate lists are

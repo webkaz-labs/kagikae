@@ -71,20 +71,30 @@ serves a global switch and an isolated project home. Inside a bound directory,
 re-running `kae pin <tool> <account>` changes that one tool's account without
 disturbing the others or the sharing set.
 
-Two more surfaces sit outside the grid:
+**Bare `kae use` (no positional argument)** resolves the active profile
+(`$KAE_PROFILE`, then `default_profile`, then `-P <name>`) and applies it
+idempotently — a no-op (exit `0`, no lock, no backup) when the active account
+already matches. `--quiet` suppresses the success report; `--json` keeps the
+`changed` field. This is the form used in hook scripts (`kae use --quiet`).
 
-| Surface | Scope | Role |
-|---------|-------|------|
-| `kae apply [--profile P] [--quiet]` | global, shared | idempotent re-apply for hooks (the no-op-aware form of `kae use -s`) |
-| `kae run [--mode M] … -- <cmd>` | per-process | apply to the spawned child only; live state restored afterwards (`auth`) or never touched (`env`/`home`/`overlay`/`bond`/`pin`) |
+**`kae run`** applies a switch to one spawned child process only:
 
-**Mechanisms.** Internally each cell maps to a mechanism: global shared =
-in-place credential patch (`auth`); global isolated = `CLAUDE_CONFIG_DIR` /
-`CODEX_HOME` set by a kae-owned global mise fragment; per-dir shared =
-symlink-everything-but-credential (`bond`); per-dir isolated = private config
-dir with opt-in shares (`pin`). The per-dir bindings are also kae-owned mise
-fragments — kae never edits the user's `mise.toml`. `env`, `home`, and
-`overlay` remain reachable through `kae run --mode` only. See
+| Flag | Environment | Behavior |
+|------|-------------|----------|
+| `-s` (default) | real home | backup → apply → run → recapture refreshed creds → restore; per-tool lock held for the child run |
+| `-i` | global isolated home | reuses `isolation/global/<tool>/<account>/` shared with `kae use -i`; no lock, no live mutation — the right choice for concurrent interactive sessions |
+| `--env` | env vars only | injects the profile's env vars; no home redirect, no lock |
+
+`run -i` prints the exact isolated home path and that it is shared with
+`kae use -i <account>`, so the shared state is never invisible. There are
+exactly three isolation scopes: global (`use -i` / `run -i` share one home per
+account), per-directory shared (`pin -s`), per-directory isolated (`pin -i`).
+
+**Mechanisms.** Internally: global shared = in-place credential patch;
+global isolated = `CLAUDE_CONFIG_DIR` / `CODEX_HOME` via a kae-owned global
+mise fragment; per-dir shared = symlink-everything-but-credential; per-dir
+isolated = private config dir with opt-in shares. All per-dir bindings use
+kae-owned mise fragments — kae never edits the user's `mise.toml`. See
 [ADAPTERS.md](ADAPTERS.md) for the per-tool switched/preserved contract and
 [ROADMAP.md](ROADMAP.md) for ordering.
 
@@ -133,7 +143,7 @@ NG:  two terminals both relying on a global shared switch for different accounts
 ## Non-Goals
 
 - Managing API usage, billing, or model selection.
-- Proxying or wrapping the upstream CLIs' normal execution (except the planned
+- Proxying or wrapping the upstream CLIs' normal execution (except the
   `kae run` transaction).
 - Supporting simultaneous different accounts of one tool within a single global
   shared switch (use an isolated environment instead).
@@ -151,21 +161,20 @@ A developer with work and personal subscriptions for several AI CLIs can:
 
 ## Current State
 
-`kae` v0.7.1 is released: the global shared switch (`kae use` / `kae apply`),
-per-directory binding (`kae pin`, and `kae bond` for the shared environment),
-the in-directory credential swap (`kae as`), `kae run` (per-process auth
-transaction with recapture-and-restore, plus `env` / `home` / `overlay`),
-`kae env` profiles, account lifecycle (`add`, `account rm` / `rename`),
-`kae profile`, and adapters for claude, codex, agy, opencode, cursor, and
-copilot. Keychain items are captured and restored verbatim; the login flow
-refuses exits that change nothing; a file-driver override keeps macOS smoke
-checks off the real login keychain.
-
-The **v0.7.2 target** ([RELEASE.md](RELEASE.md)) unifies this into the
-two-verb × two-flag surface above (`use` / `pin` with `-s` / `-i`; `bond` →
-`pin -s`, `as` → `pin <tool> <account>`) and adds the last cell, global
-isolated (`kae use -i`), which points every terminal at a per-account private
-home via a kae-owned global mise fragment (the real home untouched). Windows,
-the Codex keyring driver, and home isolation
-for agy/opencode/cursor/copilot remain roadmap items (v0.6.0 removed the gemini
-adapter after upstream retired Gemini CLI for Antigravity on 2026-05-19).
+`kae` v0.8.0 is released: the unified two-verb × two-flag switching surface
+(`use` / `pin` with `-s` / `-i`); bare `kae use` for idempotent hook-driven
+profile application (`--quiet`); `kae run` with `-s` / `-i` / `--env` (the
+`--mode` flag and `auth|env|home|overlay|bond|pin` values are removed);
+per-directory binding via `kae pin -s` (shared) and `kae pin -i` (isolated);
+global isolated home (`kae use -i`, `kae run -i`) via a kae-owned global mise
+fragment; `kae env` profiles; account lifecycle (`add`, `account rm` /
+`rename`); `kae profile`; `kae completion <shell>`; tool-name prefix aliases;
+and adapters for claude, codex, agy, opencode, cursor, and copilot. Keychain
+items are captured and restored verbatim; a file-driver override keeps macOS
+smoke checks off the real login keychain. `kae use -i` / `kae run -i` isolate
+claude and codex only; tools with no redirectable home (agy, opencode, cursor,
+copilot) are skipped with a warning when addressed through a profile; a
+single-tool `kae use -i agy <account>` exits `5`. Windows, the Codex keyring
+driver, and home isolation for agy/opencode/cursor/copilot remain roadmap items
+(v0.6.0 removed the gemini adapter after upstream retired Gemini CLI for
+Antigravity on 2026-05-19).

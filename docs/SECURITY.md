@@ -3,7 +3,7 @@
 `kae` reads, stores, and writes live credentials for other tools. Safety rules
 here are part of the command contract.
 
-## Auth-Mode Safety Rules (mandatory)
+## Mutation Safety Rules (mandatory)
 
 - Never replace a tool home or a mixed-state file wholesale. Mixed-state files
   (`~/.claude.json`) are patched only through the JSON Pointer allowlist
@@ -31,6 +31,8 @@ here are part of the command contract.
   a `0700` directory and `doctor` permanently warns while it is active.
 - `kae` never stores secrets in TOML and never echoes captured values back
   for confirmation.
+- The `kae status` `global_isolated` field and `run -i`'s home-path message
+  contain only directory paths and account names — never secret values.
 
 ### Secret enumeration (discovery note, v0.7.1)
 
@@ -78,6 +80,10 @@ gate. Tracked in [ROADMAP.md](ROADMAP.md).
   dirs `0700`. `~/.copilot/config.json` is owned by copilot (kae only patches
   its `/lastLoggedInUser` pointer); `doctor` warns if it is not `0600`.
 - `doctor` warns when live credential files are group/world readable.
+- Isolated homes (`isolation/global/<tool>/<account>/`) are created `0700`
+  and treated as credential-bearing. Credential files within them (e.g.
+  `.credentials.json`, `auth.json`) are written `0600`. The real
+  `~/.claude`/`~/.codex` and the live keychain are never touched by isolation.
 
 ## Environment Conflicts
 
@@ -88,17 +94,37 @@ user thinks they are switching: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
 
 ## Concurrency
 
-`auth` mode mutates shared live state. Per-tool locks serialize kae against
-itself, but cannot stop the upstream CLI from refreshing tokens concurrently.
-Therefore:
+`kae use` (shared mode, `-s`) and `kae run -s` mutate shared live state.
+Per-tool locks serialize kae against itself, but cannot stop the upstream CLI
+from refreshing tokens concurrently. Therefore:
 
-- locks are held across the whole switch transaction, and across the entire
-  child run for `kae run` (auth mode);
-- simultaneous different accounts for one tool are unsupported in `auth`
-  mode (documented; `home` mode is the supported path);
-- `kae run` (auth mode) recaptures refreshed credentials into the account
-  snapshot before restoring the previous state, so token refreshes during
-  the child run are never lost.
+- locks are held across the whole switch transaction (`use -s`), and across
+  the entire child run for `kae run -s`;
+- simultaneous different accounts for one tool are unsupported in shared
+  mode (documented; isolated mode via `use -i` / `run -i` is the supported
+  path for parallel sessions);
+- `kae run -s` recaptures refreshed credentials into the account snapshot
+  before restoring the previous state, so token refreshes during the child
+  run are never lost.
+
+`kae run -i` operates in the global isolated home (`isolation/global/<tool>/<account>/`)
+with no lock and no live mutation. It is safe to run concurrently with
+`kae use` in other terminals — the real home is never touched.
+
+## Isolation Safety
+
+Three isolation scopes exist; their credential boundaries are:
+
+| Scope | Command | Credential store | Live home touched? |
+|-------|---------|------------------|--------------------|
+| Global isolated | `use -i` / `run -i` | `isolation/global/<tool>/<account>/` | No |
+| Per-directory shared | `pin -s` | `isolation/<pin-id>/<tool>/shared/` (symlinks to the real home, credential private-copied) | No (symlink source only) |
+| Per-directory isolated | `pin -i` | `isolation/<pin-id>/<tool>/isolated/<account>/config/` | No |
+
+The hard-coded credential denylist for shared binds (enforced at config load)
+refuses adding credential files (`.credentials.json`, `auth.json`, etc.) to
+the `shared_denylist_extra` or `isolated_shared_items` config keys. This
+prevents accidentally leaking credentials across directories.
 
 ## Env Profiles And kae run
 
@@ -107,20 +133,10 @@ Therefore:
   (`kae env set <tool> <account> KEY < file`, or piped).
 - Profile metadata stores variable names only; values live in the secret
   backend and are injected solely into the child process environment of
-  `kae run --mode env`. `kae env list` never prints values.
+  `kae run --env`. `kae env list` never prints values.
 - `kae add` (login flow) and `kae run` launch upstream CLIs, and `kae edit`
   launches `$VISUAL`/`$EDITOR`, all with inherited stdio; kae passes no
   secrets on their command lines.
-
-## Overlay Mode
-
-Overlay homes mix symlinks into the real home with overlay-private files.
-Rules: only allowlisted items are linked (docs/ADAPTERS.md; the
-`overlay_extra_shared` extension refuses the auth/identity artifacts at
-config load); a real file at a link location is refused, never replaced;
-the upstream tool writes credentials/sessions into the overlay, so overlay
-dirs are created `0700` and treated as credential-bearing. Enabled by
-default since v0.5.0; per-tool opt-out (`overlay_mode_enabled = false`).
 
 ## External Tools
 

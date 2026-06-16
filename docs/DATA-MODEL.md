@@ -12,11 +12,9 @@ vocabulary for `kae`.
 | config | `${XDG_CONFIG_HOME:-~/.config}/kagikae/config.toml` |
 | account snapshots (metadata) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/accounts/<tool>/<account>/account.toml` |
 | env profiles (metadata) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/env/<tool>/<account>/env.toml` |
-| home-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/homes/<tool>/<account>/` |
-| overlay-mode tool homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/overlays/<tool>/<account>/` |
 | per-dir shared (`pin -s`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/shared/` |
 | per-dir isolated (`pin -i`) config dirs | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/isolated/<account>/config/` |
-| global-isolated (`use -i`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/global/<tool>/<account>/` (a kae-owned mise fragment points `CLAUDE_CONFIG_DIR` / `CODEX_HOME` here; the real `~/.<tool>` is never touched) |
+| global-isolated (`use -i` / `run -i`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/global/<tool>/<account>/` (a kae-owned mise fragment points `CLAUDE_CONFIG_DIR` / `CODEX_HOME` here; the real `~/.<tool>` is never touched) |
 | file-backend secrets (opt-in) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/secrets/...` |
 | state | `${XDG_STATE_HOME:-~/.local/state}/kagikae/state.json` |
 | backups (metadata) | `${XDG_STATE_HOME:-~/.local/state}/kagikae/backups/<id>.json` |
@@ -62,22 +60,17 @@ enabled = true
 [tools.copilot]
 enabled = true
 
-# Per tool (any [tools.<tool>] section); both default to true and gate the
-# kae run isolation modes and the pin / mise init renderings:
-# home_mode_enabled = true
-# overlay_mode_enabled = true
-# Extra real-home items to share into overlays, on top of the built-in
-# allowlist (docs/ADAPTERS.md). Bare file names only; the auth/identity
-# artifacts (.credentials.json, .claude.json, auth.json) are refused:
-# overlay_extra_shared = ["output-styles"]
-# Extra items to exclude from bond-mode symlinking, on top of the built-in
-# denylist (claude: .credentials.json; codex: auth.json). Bare file names
-# only; the built-in auth artifacts are refused to prevent misconfiguration:
-# bond_denylist_extra = ["custom-session.json"]
-# Items to share (symlink) from the real home into the pin-mode config dir.
-# Default is empty (full isolation). Bare file names only; credential files
+# Per tool (any [tools.<tool>] section):
+# Extra items to exclude from per-directory shared-bind symlinking
+# (kae pin -s), on top of the built-in denylist
+# (claude: .credentials.json; codex: auth.json). Bare file names only;
+# the built-in auth artifacts are refused to prevent misconfiguration:
+# shared_denylist_extra = ["custom-session.json"]
+# Items to share (symlink) from the real home into the per-directory
+# isolated-bind config dir (kae pin -i). Default is empty (full isolation).
+# Bare file names only; credential files
 # (.credentials.json, auth.json) are refused at config load:
-# pin_shared_items = ["settings.json", "CLAUDE.md"]
+# isolated_shared_items = ["settings.json", "CLAUDE.md"]
 
 [profiles.work]
 label = "Work"
@@ -95,6 +88,22 @@ codex = "personal"
 ```
 
 References to removed tools (e.g. `gemini`) load with a warning and are ignored.
+
+**v0.8.0 key renames (pre-1.0 hard break):** The old per-tool keys
+`bond_denylist_extra`, `pin_shared_items`, `overlay_extra_shared`,
+`overlay_mode_enabled`, and `home_mode_enabled` are not accepted. Config load
+errors naming the replacement:
+
+| Old key | Replacement |
+|---------|-------------|
+| `bond_denylist_extra` | `shared_denylist_extra` |
+| `pin_shared_items` | `isolated_shared_items` |
+| `overlay_extra_shared` | *(removed — overlay mode gone; use `kae pin -s|-i`)* |
+| `overlay_mode_enabled` | *(removed — overlay mode gone)* |
+| `home_mode_enabled` | *(removed — home mode gone; use `kae use -i` / `kae pin -i`)* |
+
+The surviving per-tool keys are: `enabled`, `shared_denylist_extra`,
+`isolated_shared_items`, `driver` (claude only).
 
 Precedence: defaults, then config file, then environment overrides
 (secrets/CI only), then CLI flags. Unknown keys produce a warning (not an
@@ -177,21 +186,23 @@ guidance to either install libsecret tools or opt in to the file backend with
 `active` records what kae last applied (or captured from a matching live
 state); it is kae's belief, not upstream truth. `status` re-verifies
 `auth_present` against the live state. `active_profile` is set by a
-profile-wide `use` / `apply` and cleared when a single-tool switch makes the
-active set diverge from that profile's mapping. `kae apply` decides its no-op by
-comparing the target profile against `active` (belief only — external drift is
-neither verified nor repaired).
+profile-wide `use` and cleared when a single-tool switch makes the active set
+diverge from that profile's mapping. Bare `kae use` (no positional, idempotent
+apply) decides its no-op by comparing the target profile against `active`
+(belief only — external drift is neither verified nor repaired).
 
 `synced` records, per tool, the account whose private home the **global** mise
 fragment (`~/.config/mise/conf.d/kagikae.toml`) currently points the tool at
-(global isolated, `kae use -i`). kae regenerates that kae-owned fragment from
-`synced`; it is absent/empty when no tool is globally isolated. `kae use -s`
-clears the tool's entry and regenerates or deletes the fragment. The real
-`~/.<tool>` is never modified.
+(global isolated, `kae use -i` / `kae run -i`). kae regenerates that
+kae-owned fragment from `synced`; it is absent/empty when no tool is globally
+isolated. `kae use -s` clears the tool's entry and regenerates or deletes the
+fragment. The real `~/.<tool>` is never modified. `kae status` surfaces
+`synced` as a `global_isolated` array of `{tool, account, home}` so the shared
+state between `use -i` and `run -i` is always visible.
 
 ## Backups
 
-Before any live mutation, `switch`, `rollback`, `run` (auth mode), and
+Before any live mutation, `switch`, `rollback`, `run -s` (real-home mode), and
 `login` capture the current live artifacts into a backup (`reason` is
 `"switch"`, `"rollback"`, `"run"`, or `"login"`), so every mutation is
 reversible:
@@ -211,7 +222,7 @@ reversible:
   "artifacts": [
     {"tool": "claude", "name": "claude_ai_oauth", "kind": "keychain",
      "target": "Claude Code-credentials", "pointer": "/claudeAiOauth",
-     "keychain_account": "alice",
+     "keychain_account": "work",
      "secret_ref": "backup/20260611T012345Z/claude/claude_ai_oauth",
      "present": true}
   ]
@@ -234,8 +245,8 @@ secret payloads together).
 **`account rm`/`rename` do not rewrite existing backups.** A backup's
 `active_before` keeps the old account name, so rolling back to a backup taken
 before a remove/rename restores that name into `state.json` while the snapshot
-no longer exists under it; the next `kae use`/`apply` then errors with "account
-not captured". Prune the affected backups manually if this matters.
+no longer exists under it; the next `kae use` then errors with "account not
+captured". Prune the affected backups manually if this matters.
 
 ## Status Vocabulary
 
@@ -249,9 +260,10 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
   `agy-file-snapshot`, `opencode-file-patch`, `cursor-keychain`,
   `copilot-config-pointer`
-- internal mechanisms: `auth`, `env`, `home`, `overlay`, `bond`, `pin`, `sync`
-  (`bond`/`pin` back per-dir `pin -s`/`-i`; `sync` is the global-isolated
-  mechanism behind `kae use -i`, delivered as a kae-owned mise fragment)
+- internal mechanisms: `auth`, `env`, `shared`, `isolated`, `sync`
+  (`shared`/`isolated` back per-dir `pin -s`/`-i`; `sync` is the
+  global-isolated mechanism behind `kae use -i` / `kae run -i`, delivered as a
+  kae-owned mise fragment)
 - status `pinned.mode` (user-facing environment): `shared`, `isolated`, `auth`
 - backup reasons: `switch`, `rollback`, `run`, `login`
 

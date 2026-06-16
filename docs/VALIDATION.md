@@ -72,53 +72,53 @@ Linux only — see the macOS keychain warning above):
 /tmp/kae run claude work -- /usr/bin/true        # auth transaction + restore
 echo sk-test | /tmp/kae env set claude ci ANTHROPIC_API_KEY
 /tmp/kae env list --json
-/tmp/kae run --mode env claude ci -- /usr/bin/env  # var visible to child only
-/tmp/kae run --mode home claude a -- /usr/bin/true
+/tmp/kae run --env claude ci -- /usr/bin/env     # var visible to child only
+/tmp/kae run -i claude work -- /usr/bin/true     # global isolated home, no lock, no live mutation
 /tmp/kae mise init --profile work                  # preview, no write
 
 # v0.4.0 surfaces (on macOS use codex-only profiles for live switching —
 # see the keychain warning above; codex auth.json is file-based):
 /tmp/kae use work --json
-/tmp/kae apply --profile work --json               # re-run: "changed": false
-KAE_PROFILE=personal /tmp/kae apply --json         # env resolution
-/tmp/kae apply --quiet                             # prints nothing on success
-/tmp/kae mise init --profile work --auto           # preview: [hooks.enter]
-/tmp/kae mise init --profile work --mode home      # preview: [env] tool homes
+/tmp/kae use --json                                # idempotent (resolved profile); re-run: "changed": false
+KAE_PROFILE=personal /tmp/kae use --json           # env resolution
+/tmp/kae use --quiet                               # prints nothing on success
+/tmp/kae mise init --profile work --auto           # preview: [hooks.enter] kae use --quiet
 
 # v0.5.0 surfaces (pin/overlay never mutate live state, so claude is safe
 # to include in the pinned profile even on macOS):
 /tmp/kae add --no-login codex work --json          # old capture shape
 /tmp/kae use codex work --json                     # tool+account form
-/tmp/kae pin clientA                               # writes .mise.toml (overlay)
-#   assert: overlay env entries; shared-item symlinks under
-#   $XDG_DATA_HOME/kagikae/overlays/<tool>/<account>; re-running pin links
-#   items added to the real home afterwards
+/tmp/kae pin clientA                               # writes .config/mise/conf.d/kagikae.toml (kae-owned fragment)
+#   assert: CODEX_HOME / CLAUDE_CONFIG_DIR entry in fragment pointing to
+#   isolation/<pin-id>/<tool>/shared/ (shared mode) or
+#   isolation/<pin-id>/<tool>/isolated/<account>/config/ (isolated mode)
+#   assert: shared bind stores under $XDG_DATA_HOME/kagikae/isolation/<pin-id>/<tool>/shared/
+#   assert: isolated bind stores under $XDG_DATA_HOME/kagikae/isolation/<pin-id>/<tool>/isolated/<account>/config/
+#   assert: re-running pin is idempotent (fragment regenerated, no error)
 /tmp/kae unpin                                     # removes only the block
 /tmp/kae switch x y; echo $?                       # 64 + replacement pointer
 EDITOR=true /tmp/kae edit                          # validate round-trip
 /tmp/kae status --json                             # has "pinned" + "profiles"
 
-# v0.7.0 surfaces (bond mode):
+# v0.7.0 surfaces (bond → pin --shared, per-directory isolation):
 # codex: auth.json is file-based — safe on macOS.
 # claude: on macOS CLAUDE_CONFIG_DIR suppresses keychain, so kae reads the
 #   keychain credential bytes and writes them as .credentials.json into the
-#   bond dir. Real-machine gate required (temp-HOME smoke cannot cover this).
-/tmp/kae bond clientA                              # writes .mise.toml (bond mode)
-#   assert: CODEX_HOME entry in .mise.toml pointing to isolation/<pin-id>/codex/bond/
+#   shared dir. Real-machine gate required (temp-HOME smoke cannot cover this).
+/tmp/kae pin -s clientA                            # writes .config/mise/conf.d/kagikae.toml (shared mode)
+#   assert: CODEX_HOME entry in fragment pointing to isolation/<pin-id>/codex/shared/
 #   assert: config.toml symlinked from real ~/.codex; auth.json private-copied
-#   assert: re-running kae bond is idempotent (no error, symlinks refreshed)
+#   assert: re-running kae pin -s is idempotent (no error, symlinks refreshed)
 
-# v0.7.0 surfaces (pin mode and kae as):
-/tmp/kae pin clientA                               # writes .mise.toml (pin mode)
-#   assert: CODEX_HOME entry pointing to isolation/<pin-id>/codex/pin/work/config/
+# v0.7.0 surfaces (pin -i mode):
+/tmp/kae pin clientA                               # writes fragment (isolated mode, default)
+#   assert: CODEX_HOME entry pointing to isolation/<pin-id>/codex/isolated/work/config/
 #   assert: no symlinks by default (full isolation); credential private-copied
-#   assert: re-running kae pin is idempotent (links refreshed, no error)
+#   assert: re-running kae pin is idempotent (fragment regenerated, no error)
 #   assert: legacy overlay-mode block triggers migration warning on stderr
-# kae as (requires bonded or pinned directory with a second captured account):
-# (cd into the directory that has .mise.toml written by kae bond/pin)
-/tmp/kae as codex personal
-#   bond mode assert: auth.json in bond dir updated to personal credential
-#   pin mode assert: CODEX_HOME entry in .mise.toml points to new account dir
+# Re-bind one tool inside a pinned directory:
+/tmp/kae pin codex personal
+#   assert: only the codex entry in the fragment is updated; other tools unchanged
 /tmp/kae switch x y; echo $?                       # 64 (renamed in v0.7.0, re-test)
 
 # v0.6.0 surfaces (opencode auth.json is file-based — safe on macOS; seed
@@ -162,10 +162,136 @@ this writes must itself be `mise trust`-ed), `mise trust` on the project
 `ZDOTDIR` at a temp dir whose `.zshrc` exports PATH and evals
 `mise activate zsh`, then run `zsh -i -c 'cd <project> && true'` from a
 neutral directory (the repo's own untrusted mise.toml otherwise aborts
-hook-env) and assert the switch happened and that re-entry adds no backup.
+hook-env) and assert `kae use --quiet` fired and that re-entry adds no backup.
 
 Use `secret_backend = "file"` in the temp config for smoke checks so no real
 keychain entries are created.
+
+## v0.8.0 surfaces
+
+All checks use the same temp-HOME and file-backend setup as the blocks above.
+**macOS keychain safety rules are unchanged** — use `KAE_CLAUDE_DRIVER=file`
+and `secret_backend = "file"` throughout.
+
+```bash
+go build -o /tmp/kae .
+export HOME=$(mktemp -d)
+export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share \
+       XDG_STATE_HOME=$HOME/.local/state NO_COLOR=1
+export KAE_CLAUDE_DRIVER=file
+mkdir -p "$XDG_CONFIG_HOME/kagikae"
+printf 'version = 1\n[security]\nsecret_backend = "file"\nbackup_keep = 30\n' \
+  > "$XDG_CONFIG_HOME/kagikae/config.toml"
+# seed credentials and add accounts:
+printf '{"claudeAiOauth":{"accessToken":"tok-work"}}' \
+  > "$HOME/.claude/.credentials.json"
+/tmp/kae init
+/tmp/kae add --no-login claude work
+/tmp/kae add --no-login codex personal
+
+# --- A. apply fold: bare kae use idempotency ---
+/tmp/kae use --json
+#   assert: JSON contains "changed": true (first apply; switches to default profile)
+/tmp/kae use --json
+#   assert: JSON contains "changed": false (already active; no lock, no backup)
+/tmp/kae use --quiet
+#   assert: no output (silent on success)
+KAE_PROFILE=personal /tmp/kae use --json
+#   assert: JSON shows resolution via KAE_PROFILE env var
+/tmp/kae use -P work --json
+#   assert: JSON shows -P flag resolution
+/tmp/kae apply x; echo $?
+#   assert: exit 64; output names "kae use [--quiet]" as the replacement
+
+# --- B. run redesign (-s / -i / --env; --mode removed) ---
+/tmp/kae run -i claude work -- /usr/bin/true
+#   assert: process ran in isolation/global/claude/work/
+#   assert: output names the shared home ("shared with kae use -i work")
+#   assert: no per-tool lock held (concurrent kae use in another shell must not be blocked)
+#   (concurrency check: open a second shell, run "kae use claude work" while run -i is
+#    executing a long-running child; it must complete without waiting)
+/tmp/kae run claude work -- /usr/bin/true
+#   assert: run -s (default): auth transaction + restore; lock held during child
+/tmp/kae run --env claude work -- /usr/bin/env
+#   assert: profile env vars visible to child; no home redirect; no lock
+/tmp/kae run --mode env claude work -- /usr/bin/true; echo $?
+#   assert: usage error / non-zero exit (--mode flag removed in v0.8.0)
+
+# --- C. mise init trim (bond/pin modes rejected; auth renders kae use --quiet hook) ---
+/tmp/kae mise init --profile work
+#   assert: preview shows [tasks] block; no [env] tool-home entries
+/tmp/kae mise init --profile work --auto
+#   assert: preview shows [hooks.enter] with "kae use --quiet" (not "kae apply ...")
+/tmp/kae mise init --profile work --mode auth
+#   assert: identical to --auto preview (explicit --mode auth is accepted)
+/tmp/kae mise init --profile work --mode bond; echo $?
+#   assert: rejected (non-zero exit); error names kae pin as replacement
+/tmp/kae mise init --profile work --mode pin; echo $?
+#   assert: rejected (non-zero exit); error names kae pin as replacement
+
+# --- D. config-key rename gate (hard break, no alias) ---
+printf 'version = 1\n[security]\nsecret_backend = "file"\n[tools.claude]\nbond_denylist_extra = ["extra"]\n' \
+  > "$XDG_CONFIG_HOME/kagikae/config.toml"
+/tmp/kae status; echo $?
+#   assert: load error naming the new key "shared_denylist_extra" (not silent)
+printf 'version = 1\n[security]\nsecret_backend = "file"\n[tools.codex]\npin_shared_items = ["settings"]\n' \
+  > "$XDG_CONFIG_HOME/kagikae/config.toml"
+/tmp/kae status; echo $?
+#   assert: load error naming the new key "isolated_shared_items" (not silent)
+printf 'version = 1\n[security]\nsecret_backend = "file"\n[tools.claude]\nshared_denylist_extra = ["extra"]\n[tools.codex]\nisolated_shared_items = ["settings"]\n' \
+  > "$XDG_CONFIG_HOME/kagikae/config.toml"
+/tmp/kae status --json
+#   assert: loads successfully; JSON contains global-isolated homes in "synced"
+# restore clean config for remaining checks:
+printf 'version = 1\n[security]\nsecret_backend = "file"\nbackup_keep = 30\n' \
+  > "$XDG_CONFIG_HOME/kagikae/config.toml"
+
+# --- E. -i profile skip (unsupported tools skipped with warning, not exit 5) ---
+# seed a profile that maps both claude and agy:
+/tmp/kae profile set multi claude work
+/tmp/kae profile set multi agy work  2>/dev/null || true   # agy may not be captured; that's fine
+/tmp/kae use -i multi; echo $?
+#   assert: exit 0; claude isolated; agy skipped with a warning on stderr
+/tmp/kae use -i agy work; echo $?
+#   assert: exit 5 (single-tool agy isolation is unsupported)
+
+# --- F. input ergonomics ---
+/tmp/kae use cl work --json
+#   assert: "cl" prefix resolves to "claude"; JSON shows canonical tool name
+/tmp/kae use cod personal --json
+#   assert: "cod" prefix resolves to "codex"; JSON shows canonical tool name
+/tmp/kae use c work; echo $?
+#   assert: non-zero exit; error lists "claude" and "codex" as ambiguous candidates
+/tmp/kae completion zsh | head -5
+#   assert: output is a valid zsh completion script (starts with #compdef or _kae)
+/tmp/kae completion bash | head -5
+#   assert: output is a valid bash completion script
+```
+
+### v0.8.0 real-machine gate (required before release)
+
+On a staging machine with global mise active (`mise activate` in the shell,
+`mise settings experimental=true`). macOS rules apply: use `KAE_CLAUDE_DRIVER=file`
+and a file-backend config so the real login keychain is not touched by the
+isolated credential write. Set `CLAUDE_CONFIG_DIR` is bypassed by the isolation
+fragment — confirm the fragment wins over the real home.
+
+- [ ] `kae use -i work` materializes `isolation/global/claude/work/` (or the
+      captured account name), writes `~/.config/mise/conf.d/kagikae.toml`; `mise env`
+      exports `CLAUDE_CONFIG_DIR` pointing to that home.
+- [ ] A fresh-process `claude -p '' --model haiku` with the fragment's
+      `CLAUDE_CONFIG_DIR` active returns **AUTH-OK** from the private home.
+- [ ] `kae run -i work -- claude` (interactive) returns **AUTH-OK** in the isolated
+      home; no per-tool lock is held (a concurrent `kae use` in another shell must
+      complete without waiting while the `run -i` child is executing).
+- [ ] The real login keychain is not polluted: `security find-generic-password
+      -s "Claude Code-credentials" -w | md5` is byte-identical before and after
+      `kae use -i` (keychain never written by the file-driver path).
+- [ ] `kae use -s work` (teardown): fragment deleted, `synced` cleared, a fresh
+      `claude -p '' --model haiku` (no `CLAUDE_CONFIG_DIR`) returns AUTH-OK as
+      the real account.
+
+Result: (pending — record on the staging machine)
 
 ## Real-Machine Acceptance (release only)
 
@@ -259,9 +385,9 @@ staleness note below). Steps and results:
   `./.config/mise/conf.d/kagikae.toml` + `.gitignore`, no `mise.toml`;
   `pin <tool> <account>` re-bind; `unpin` deletes the fragment), global isolated
   (`use -i` writes the global fragment; `use -s` removes it), and Beyond
-  Switching (`run --mode env` injects the var; `run --mode home`; `apply --quiet`
-  silent no-op with a resolved profile; `mise init` preview) all behave as
-  documented — no README changes needed.
+  Switching (`run --env` injects the var; `run -i` uses the global isolated
+  home; bare `kae use --quiet` is a silent no-op with a resolved profile;
+  `mise init` preview) all behave as documented — no README changes needed.
 - `mise run check` green; JSON kept `schema_version: 1`, stable tokens.
 
 ### v0.7.1 (2026-06-15, macOS darwin 24.6.0)

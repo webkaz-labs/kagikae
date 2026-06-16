@@ -90,14 +90,16 @@ normative allowlists live in [ADAPTERS.md](ADAPTERS.md).
 
 `--dry-run` runs steps 1–3 and prints the plan from the artifact specs.
 
-`kae use` enters this transaction directly (profile or single-tool form).
-`kae apply` prepends a lock-free belief check — state.json against the
-profile mapping — and enters the transaction only on divergence; the
-matching case returns before step 2 (no locks, no backup).
+`kae use <profile>` / `kae use <tool> <account>` (explicit positional) enters
+this transaction directly. Bare `kae use` (no positional, the folded `apply`)
+prepends a lock-free belief check — state.json against the resolved profile
+mapping — and enters the transaction only on divergence; the matching case
+returns before step 2 (no locks, no backup).
 
-## Run Transaction (auth mode)
+## Run Transaction (`run -s`, the real-home mode)
 
-`kae run` extends the switch transaction around a child process:
+`kae run -s` (the default) extends the switch transaction around a child
+process:
 
 ```text
 lock (held for the entire child run) -> backup (reason "run") -> apply
@@ -105,10 +107,12 @@ lock (held for the entire child run) -> backup (reason "run") -> apply
 the account snapshots -> restore the backup -> prune -> unlock
 ```
 
-state.json is untouched: the temporary switch is invisible to the bare `kae` status summary.
-`env` / `home` / `overlay` / `bond` modes never mutate live state; they only
-build child environment entries (`internal/cmd/modes.go`). Interactive
-children run through the `runner.RunInteractive` seam.
+state.json is untouched: the temporary switch is invisible to the bare `kae`
+status summary. `run -i` (the per-account global isolated home, shared with
+`kae use -i`) and `run --env` (env-profile vars) never mutate live state and
+take no lock; they only build child environment entries
+(`internal/cmd/run.go`). Interactive children run through the
+`runner.RunInteractive` seam.
 
 ## Atomicity And Guards
 

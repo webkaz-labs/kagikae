@@ -17,19 +17,21 @@ kae edit                             # open the config in $VISUAL / $EDITOR, the
 kae doctor [tool] [--json]           # environment / auth health checks (alias: kae d)
 kae add <tool> <account> [--restore] # register an account: official login flow + snapshot
 kae add --no-login <tool> <account>  # snapshot the current live auth state instead
+kae use [-s|-i] [-P <profile>]       # bare: resolve the profile and apply it idempotently
+                                     #   (--quiet suppresses success report; folds kae apply)
 kae use [-s|-i] <profile>            # switch every enabled tool now, global (alias: kae u)
 kae use [-s|-i] <tool> <account>     # switch one tool now, global
 kae pin [-s|-i] [<profile>]          # bind this directory (alias: kae p; default shared)
 kae pin [-s|-i] <tool> <account>     # re-bind one tool in this directory
 kae unpin                            # delete the kae-owned mise fragment
-kae apply [--profile P] [--quiet]    # idempotent global shared apply for hooks/scripts
-kae run [--mode M] <tool|all> <name> -- <cmd...>   # run cmd with an account applied (alias: kae r)
+kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>
+                                     # run cmd with an account applied (alias: kae r)
 kae env set <tool> <account> KEY=VALUE...          # store env-mode variables
 kae env set <tool> <account> KEY                   # value read from stdin
 kae env unset <tool> <account> [KEY...]            # remove variables / the profile
 kae env list [--json]                              # profiles (names only, no values)
-kae mise init [--profile P] [--mode auth|home|overlay|bond|pin] [--auto] [--write]
-                                     # low-level mise.toml form (auth tasks / hooks); pin uses a fragment instead
+kae mise init [-P <profile>] [--auto] [--write]    # auth-mode tasks + opt-in hook
+                                                   # (bind directories with kae pin instead)
 kae accounts [--json]                # registered accounts, active markers
 kae account rm <tool> <account> [--force]      # delete a captured account
 kae account rename <tool> <old> <new>          # rename a captured account
@@ -41,21 +43,29 @@ kae profile default [<name>|--clear] # show or set default_profile
 kae status [--json]                  # full status report (alias: kae s)
 kae backup list [--json]             # list switch backups
 kae rollback [--to <backup-id>]      # restore the most recent (or given) backup
+kae completion <bash|zsh|fish>       # print a shell completion script
 kae version | --version | -v
 kae help | --help | -h
 ```
 
 Tool names: `claude`, `codex`, `agy`, `opencode`, `cursor`, `copilot`.
-Account and
-profile names must match `[a-zA-Z0-9._-]+` (max 64 chars); anything else is
-a usage error.
+Any unambiguous prefix is accepted in tool positions of `use`, `pin`, `run`,
+`add`, `account`, and `env` (e.g. `cl`→`claude`, `cod`→`codex`, `cu`→`cursor`,
+`cop`→`copilot`, `o`→`opencode`, `a`→`agy`). Ambiguous prefixes (`c`, `co`)
+are a usage error naming the candidate list. Prefixes are resolved to the
+canonical name; they are never stored.
+Account and profile names must match `[a-zA-Z0-9._-]+` (max 64 chars);
+anything else is a usage error.
 `gemini` was removed in v0.6.0 (successor: `agy`); it fails as an unknown
 tool naming the successor.
 
-Renamed in v0.7.2 (prints its replacement with exit `64` for one release):
-`bond` → `pin --shared`, `as <tool> <account>` → `pin <tool> <account>`. The
-`--global` flag is gone — `use` is always global. `sync` → `apply` (renamed in
-v0.7.0) is now an unknown command.
+Renamed or folded commands (each prints its replacement with exit `64` for one
+release):
+- v0.8.0: `apply` → bare `kae use [--quiet]`
+- v0.7.2: `bond` → `pin --shared`, `as <tool> <account>` → `pin <tool> <account>`
+
+The `--global` flag is gone — `use` is always global. `sync` → `apply`
+(renamed in v0.7.0) is now an unknown command.
 
 Removed in v0.5.0 (each still prints its replacement with exit `64` for one
 release): `switch` → `use`, `login` → `add`, `capture` →
@@ -70,41 +80,87 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 |------|----------|---------|
 | `--json` | structured commands | shorthand for `--format json` |
 | `--format text\|json` | structured commands | output format |
-| `--shared` / `-s` | `use`, `pin` | share the real home (default); credential private |
-| `--isolated` / `-i` | `use`, `pin` | private home via a kae-owned mise fragment (global: `~/.config/mise/conf.d/kagikae.toml`; per-dir: `./.config/mise/conf.d/kagikae.toml`) |
+| `--shared` / `-s` | `use`, `pin`, `run` | share the real home (default); credential private |
+| `--isolated` / `-i` | `use`, `pin`, `run` | private home via a kae-owned mise fragment (global: `~/.config/mise/conf.d/kagikae.toml`; per-dir: `./.config/mise/conf.d/kagikae.toml`) |
+| `--env` | `run` | inject env-profile vars only (no home redirect, no lock) |
 | `--dry-run` | `add --no-login`, `use`, `pin`, `rollback` | print planned actions, write nothing |
 | `--yes` | all | non-interactive confirmation (reserved; no prompts exist yet) |
 | `--no-color` | all | disable color in human text output |
 | `--config <path>` | all | explicit config file path (overrides XDG lookup) |
-| `--mode auth\|env\|home\|overlay\|bond\|pin` | `run` | switch mode (default `auth`) |
+| `--quiet` | bare `use` | suppress the success report (for hooks); errors still reported |
+| `--profile <name>` / `-P <name>` | bare `use`, `run`, `mise init` | resolve a named profile instead of the default; `-P` is the short form |
 | `--restore` / `--no-login` | `add` | restore the previous login after capturing (login flow only); snapshot without a login flow |
-| `--profile <name>` / `--write` | `mise init` | profile for `KAE_PROFILE`; write/update `mise.toml` (or an existing `.mise.toml`) |
-| `--mode auth\|home\|overlay\|bond\|pin` / `--auto` | `mise init` | rendered integration (`mise init` defaults to `auth`); `--auto` adds the enter hook (auth only); `bond`/`pin` are the per-dir mechanisms `kae pin -s`/`-i` use (but `kae pin` writes a fragment, not via `mise init`) |
-| `--profile <name>` / `--quiet` | `apply` | profile override; suppress the success report (for hooks) |
+| `--auto` / `--write` | `mise init` | add the enter hook (`kae use --quiet`); write/update `.mise.toml` |
 | `--to <backup-id>` | `rollback` | backup to restore (default: most recent) |
+
+## kae use Semantics
+
+`kae use` switches in global scope (alias `kae u`). It always acts on the real
+home — inside a pinned directory it ignores the directory's isolation env vars
+and prints a one-line warning that the change is global (the directory keeps
+its binding; re-bind it with `kae pin`).
+
+**Bare `kae use [-s|-i] [-P <profile>]`** (no positional): resolves the
+profile from `--profile`/`-P`, then `$KAE_PROFILE`, then config
+`default_profile` (none of them set is a usage error), and applies it
+**idempotently**. When kae's recorded active state (`state.json active`) already
+matches, it exits `0` with `"changed": false`, taking no locks and writing no
+backups; external drift is neither verified nor repaired. Otherwise it performs a
+full apply. `--quiet` suppresses the success report entirely (both formats);
+errors are still reported. This is the safe form for hooks and scripts (the
+former `kae apply`).
+
+**`kae use [-s|-i] <profile>`** or **`kae use [-s|-i] <tool> <account>`**
+(explicit positional): always applies, even when the recorded state already
+matches.
+
+- `--shared` / `-s` (default): patch the credential in place; skills, hooks,
+  memory, MCP, and trust stay shared with the real home. Same JSON report shape,
+  exit codes, and backups as the removed `switch`. This is also the teardown of
+  `kae use -i`: it drops the tool from `state.json synced`, regenerates or
+  deletes the global mise fragment, and then patches the real home in place.
+- `--isolated` / `-i`: point every terminal at a per-account private home
+  **without touching `~/.claude`**. kae prepares
+  `isolation/global/<tool>/<account>/` (docs/DATA-MODEL.md) and writes a
+  kae-owned global mise fragment `~/.config/mise/conf.d/kagikae.toml` exporting
+  `CLAUDE_CONFIG_DIR` / `CODEX_HOME`, regenerated from `state.json synced`.
+  claude and codex only; a profile that also maps a tool with no home-isolation
+  env var (agy, opencode, cursor, copilot) skips it with a warning and isolates
+  claude/codex only — a single explicit unsupported tool exits `5`. Requires
+  global `mise activate` (otherwise kae warns and prints the `export` line).
+  Teardown is `-s` / bare `kae use`.
 
 ## kae run Semantics
 
-`kae run` executes the child with inherited stdio and returns the **child's
-exit code verbatim** on success; the exit-code table below applies only to
-failures before the child starts and to a failed restore afterwards (which
-returns the kae error code of the failure cause, with `kae rollback`
-guidance). Per mode:
+`kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>` executes
+the child with inherited stdio and returns the **child's exit code verbatim** on
+success; the exit-code table below applies only to failures before the child
+starts and to a failed restore afterwards (which returns the kae error code of
+the failure cause, with `kae rollback` guidance). `-P <profile>` is sugar for
+`all <profile>` and takes no positional; otherwise exactly one tool/account pair
+is required. At most one of `-s`, `-i`, `--env` may be set.
 
-- `auth` (default): per-tool locks are held for the entire child run; the
-  live state is backed up (`reason: "run"`), the target accounts applied,
-  and after the child exits kae **recaptures refreshed credentials into the
-  account snapshots** and restores the previous live state.
-- `env`: injects the tool/account env profile (`kae env set`) into the child
-  only; no live mutation, no locks.
-- `home`: points the tool at an isolated home
-  (`CLAUDE_CONFIG_DIR` / `CODEX_HOME` under kae's data dir); agy,
-  opencode, cursor, and copilot have no stable isolation mechanism yet and
-  are refused.
-- `overlay` (default-enabled since v0.5.0; per-tool opt-out via
-  `tools.<tool>.overlay_mode_enabled = false`): like `home`, but shared
-  items (settings, skills, ...; see docs/ADAPTERS.md) are symlinked from the
-  real home while auth/session/history stay private.
+- `-s` (default): per-tool locks are held for the entire child run; the live
+  state is backed up (`reason: "run"`), the target accounts applied, and after
+  the child exits kae **recaptures refreshed credentials into the account
+  snapshots** and restores the previous live state. (This is the former `auth`
+  mode.)
+- `-i`: runs the child with the per-account global isolated home
+  (`isolation/global/<tool>/<account>/`) injected via the tool's home-isolation
+  env var. This home is **shared with `kae use -i`** for the same account; no
+  lock and no live mutation, so a concurrent `kae use` in another terminal is
+  never blocked and never sees the isolated process. `run -i` prints the exact
+  home and that it is shared with `kae use -i`, so the shared state is never
+  invisible. claude and codex only; a profile including an unsupported tool
+  skips it with a warning, an explicit unsupported tool exits `5`. (This is the
+  former `home` mode, reusing the global-isolated store.)
+- `--env`: injects the tool/account env profile (`kae env set`) into the child
+  only; no home redirect, no lock. (This is the former `--mode env`.)
+
+The former `--mode` flag and its values (`auth|env|home|overlay|bond|pin`) are
+**removed** in v0.8.0. A command using `--mode` exits `64` with a usage error.
+`overlay` and per-directory `bond`/`pin` via `run` are retired; bind a
+directory with `kae pin -s|-i` instead.
 
 ## kae edit Semantics
 
@@ -176,38 +232,6 @@ the comment-preserving writer under the config lock and supports `--dry-run`:
 - `default <name>` sets `default_profile` (unknown profile exits `7`); bare
   `default` prints the current value; `default --clear` empties it.
 
-## kae use and kae apply Semantics
-
-`kae use` switches now, in global scope (alias `kae u`): one positional is a
-profile (every enabled tool it maps), two are a tool and an account. It always
-applies, even when the recorded state already matches, and always resolves the
-**real** home — inside a pinned directory it ignores the directory's isolation
-env vars and prints a one-line warning that the change is global (the directory
-keeps its binding; re-bind it with `kae pin`).
-
-- `--shared` / `-s` (default): patch the credential in place; skills, hooks,
-  memory, MCP, and trust stay shared with the real home. Same JSON report shape,
-  exit codes, and backups as the removed `switch`.
-- `--isolated` / `-i`: point every terminal at a per-account private home
-  **without touching `~/.claude`**. kae prepares
-  `isolation/global/<tool>/<account>/` (docs/DATA-MODEL.md) and writes a
-  kae-owned global mise fragment `~/.config/mise/conf.d/kagikae.toml` exporting
-  `CLAUDE_CONFIG_DIR` / `CODEX_HOME`, regenerated from `state.json` `synced`.
-  claude and codex only (others exit `5`); it needs global `mise activate`
-  (otherwise kae warns and prints the `export` line). Teardown is `-s` / bare
-  `use`: drop the tool from `synced`, regenerate or delete the fragment, then
-  patch the real home in place — no backup, no restore.
-
-`kae apply [--profile P] [--quiet]` is the idempotent variant of the global
-shared switch, for hooks and scripts. Profile resolution order: `--profile`, then `$KAE_PROFILE`, then
-config `default_profile` (none of them set is a usage error). When kae's
-recorded active state (state.json — kae's belief, not upstream truth, see
-docs/DATA-MODEL.md) already matches the profile, it exits `0` with
-`"changed": false`, taking no locks and writing no backups; external drift is
-neither verified nor repaired. Otherwise it performs a normal full apply
-and reports the per-tool results with `"changed": true`. `--quiet` suppresses
-the success report entirely (both formats); errors are still reported.
-
 ## kae pin and mise init Semantics
 
 `kae pin [-s|-i] [<profile>]` binds the current directory to a profile by
@@ -229,21 +253,24 @@ isolation directories (with their login state) intact.
   Settings, sessions, and memory are shared with the real home while
   authentication is private to the directory. The bound account is recorded in
   the fragment so `kae status` and the profile match survive re-entry. See
-  docs/ADAPTERS.md for the per-tool denylist and `bond_denylist_extra`.
+  docs/ADAPTERS.md for the per-tool denylist and `shared_denylist_extra`.
 - **`-i` / `--isolated`**: the fragment points `CLAUDE_CONFIG_DIR` / `CODEX_HOME`
   at the per-account isolated config dirs
   (`isolation/<pin-id>/<tool>/isolated/<account>/config/`): all state (auth,
   sessions, memory, settings) is private to the account. Items listed in
-  `tools.<tool>.pin_shared_items` are symlinked from the real home; the
+  `tools.<tool>.isolated_shared_items` are symlinked from the real home; the
   credential is always private-copied at `0600`. Re-running refreshes the opt-in
   links and the credential copy.
 
-The per-directory shared and isolated mechanisms are internally `bond` and
-`pin` (the names `kae run --mode` and `kae mise init --mode` still use). `kae
-mise init` remains the low-level escape hatch that writes a marker block into
-`mise.toml` for users who want the auth-mode tasks (`ai-use`, `ai-current`,
-per-tool `kae run` wrappers) or the `--auto` `[hooks.enter]` (`kae apply
---quiet`) committed in their project file; `kae pin` does not use it.
+`kae mise init [-P <profile>] [--auto] [--write]` renders auth-mode tasks and
+the opt-in enter hook into a marker-delimited block in `.mise.toml`. Default
+prints the snippet to stdout; `--write` creates `.mise.toml` or replaces an
+existing kagikae block. `--auto` adds a `[hooks.enter]` entry running
+`kae use --quiet`. `-P` selects the profile (falls back to `default_profile`).
+
+The former isolation modes (`--mode bond|pin|home|overlay`) are **removed** in
+v0.8.0 — passing any of them exits `64`. Bind a directory with `kae pin -s|-i`
+instead (which writes a kae-owned fragment, not via `mise init`).
 
 Isolation requires the profile to be defined (its accounts pick the per-account
 paths). Tools without a stable home env var (agy, opencode, cursor, copilot)
@@ -254,8 +281,10 @@ profile stays usable for global switching and isolated project homes.
 
 **Migration**: `kae bond` is now `kae pin --shared` and `kae as` is now
 `kae pin <tool> <account>` (both print an exit-`64` pointer for one release).
-Directories pinned before v0.7.2 carry a kagikae marker block inside their
-`mise.toml`; run `kae unpin && kae pin` once to migrate to the fragment.
+`kae apply` is now bare `kae use [--quiet]` (prints an exit-`64` pointer for
+one release). Directories pinned before v0.7.2 carry a kagikae marker block
+inside their `mise.toml`; run `kae unpin && kae pin` once to migrate to the
+fragment.
 
 ## Exit Codes
 
@@ -283,7 +312,7 @@ because agents need to branch on switch failures; the token column appears as
 and `1` when at least one check has `status: "error"`. The specific codes above
 are reserved for operations where a single cause fails the command.
 
-A profile-wide `use` (and the applying path of `apply`) applies per-tool
+A profile-wide `use` (and bare `use` when it applies) applies per-tool
 results independently; if any tool fails, the command exits with the first
 failing tool's code after attempting rollback of the tools already switched
 in the same transaction.
@@ -310,6 +339,9 @@ in the same transaction.
   "pinned": {"profile": "personal", "mode": "shared"},
   "active_profile": "work",
   "mode": "auth",
+  "global_isolated": [
+    {"tool": "claude", "account": "work", "home": "/Users/you/.local/share/kae/isolation/global/claude/work"}
+  ],
   "tools": [
     {
       "tool": "claude",
@@ -338,8 +370,11 @@ is `null` outside bound directories; inside one it reflects the exported
 account shown for each tool is the real per-tool account (resolved from the
 isolated path or the recorded shared-dir account), never a stale profile label.
 `profiles` lists every defined profile (name ascending) with its mapping and an
-`active` marker. The human text leads with the same data: the pin banner, the
-global active profile, the per-tool table, then the profiles list.
+`active` marker. `global_isolated` lists every tool currently pointed at a
+global isolated home by `kae use -i` or `kae run -i`, with its private home
+path; it is `[]` when no tool is globally isolated. The human text leads with
+the same data: the global-isolated homes (if any), the pin banner, the global
+active profile, the per-tool table, then the profiles list.
 
 ### `kae accounts --json`
 
@@ -420,9 +455,9 @@ uses the same shape with `"captured": true` instead of `"applied"` and no
 `backup_id`. With `--dry-run`, `ok` reflects whether the plan is valid and
 `actions` lists what would change.
 
-### `kae apply --json`
+### Bare `kae use --json` (the idempotent apply report)
 
-The switch report plus a `changed` marker (no `dry_run`):
+The switch report plus a `changed` boolean (no `dry_run`):
 
 ```json
 {
@@ -435,7 +470,7 @@ The switch report plus a `changed` marker (no `dry_run`):
 ```
 
 When the profile is applied, `changed` is `true` and `backup_id` / `results`
-carry the same per-tool shape as `kae use`. With `--quiet`, the success
+carry the same per-tool shape as explicit `kae use`. With `--quiet`, the success
 report is suppressed entirely.
 
 ### `kae backup list --json`

@@ -1,11 +1,10 @@
 # Scope × Environment Model (design guidance)
 
-> Status: **Phases 0–5 implemented** (v0.7.0); v0.7.1 added operational tooling
-> (file-driver override, `kae account rm`/`rename`, `kae profile`). The
-> **v0.7.2 target** ([RELEASE.md](RELEASE.md)) unifies the surface into two
-> verbs × two flags (`use`/`pin` with `-s`/`-i`) and ships the last cell,
-> global isolated (`kae use -i`); `bond` → `pin -s` and `as` → `pin <tool>
-> <account>`, and the `--global` flag is dropped (`use` is inherently global).
+> Status: the whole model is **implemented**. v0.7.2 unified the surface into
+> two verbs × two flags (`use`/`pin` with `-s`/`-i`) and shipped global isolated
+> (`kae use -i`). v0.8.0 then folded `apply` into bare `kae use`, redesigned
+> `kae run` onto `-s`/`-i`/`--env` (dropping `--mode`), retired the overlay and
+> home mechanisms, and unified the mechanism vocabulary on shared/isolated.
 > Normative parts live in DESIGN.md / CLI.md / ADAPTERS.md; this file is
 > rationale/history.
 
@@ -47,8 +46,8 @@ Two verbs by scope, two flags by environment (the v0.7.2 unification):
 | `kae use -i <profile \| tool account>` | global | isolated | point every terminal at a per-account private home via a kae-owned global mise fragment |
 | `kae pin [-s] <profile \| tool account>` | per-directory | shared | bind a directory; sessions/settings shared with the real home, credential private |
 | `kae pin -i <profile \| tool account>` | per-directory | isolated | bind a directory; nothing shared by default, opt-in shares |
-| `kae apply` | global | shared | idempotent re-apply for the enter hook (the no-op-aware form of `use -s`) |
-| `kae run [--mode M] … -- <cmd>` | per-process | any | child process only; restored afterwards |
+| `kae use` (bare, no positional) | global | shared | idempotent re-apply for the enter hook (resolves the profile; the folded `apply`) |
+| `kae run [-s\|-i\|--env] … -- <cmd>` | per-process | shared / isolated / env | child process only; `-s` restores afterwards, `-i` uses the global isolated home, `--env` injects env-profile vars |
 
 Both `use` and `pin` default to `-s`/`--shared`; `-i`/`-s` are short for
 `--isolated`/`--shared`, and `u`/`p` for `use`/`pin`. Re-binding one tool in a
@@ -192,16 +191,25 @@ contents).
 
 ## 7. Applicability
 
-`bond`, `pin`, and `sync` all require an isolation env var, so they apply to
-**claude and codex only**. Tools without a stable isolation env var (agy,
-opencode, cursor, copilot) support **`auth` (and `run --mode env`) only** —
-there is no way to make their credential private without redirecting their home.
+The per-directory binds (`pin -s`/`-i`) and the global isolated home
+(`use -i` / `run -i`) all require a home-isolation env var, so they apply to
+**claude and codex only**. Tools without one (agy, opencode, cursor, copilot)
+support **global shared (`kae use`) and `kae run --env` only** — there is no way
+to make their credential private without redirecting their home. For a `-i`
+*profile* that also maps such a tool, it is skipped with a warning (claude/codex
+stay isolated); a single explicit unsupported tool exits `5`.
 
 ## 8. Migration / breaking changes
 
-- `kae sync` (idempotent re-apply) → **`kae apply`**. Keep `kae sync` as a
-  removed-command pointer for one release (exit `64` naming `apply`), matching
-  the gemini→agy precedent.
+> Historical record; the current migration notes live in
+> [RELEASE.md](RELEASE.md). v0.8.0 folded `apply` into bare `kae use` (the
+> `apply` pointer replaces the long-gone `sync` one), removed `run --mode`,
+> retired overlay/home, and renamed the config keys
+> (`bond_denylist_extra`→`shared_denylist_extra`,
+> `pin_shared_items`→`isolated_shared_items`; `overlay_`/`home_` keys removed).
+
+- `kae sync` (idempotent re-apply) → **`kae apply`** (v0.7.0), then `apply` →
+  bare **`kae use`** (v0.8.0). Each kept a one-release exit-`64` pointer.
 - `kae pin`'s default behaviour flips from *partial share* (overlay) to
   *isolation*; `kae bond` is the new sharing command. Existing pinned
   directories' `.mise.toml` blocks must be re-rendered.

@@ -43,6 +43,9 @@ kae use claude personal        # one tool
 kae                            # what is active
 kae rollback                   # undo the last switch
 
+# shell completion:
+kae completion bash             # or zsh / fish — pipe to your shell's completion dir
+
 # clean up captured accounts (snapshot dir + secret items, profile
 # references updated in the same step):
 kae account rename claude work work-old
@@ -69,11 +72,12 @@ mise fragment (`.config/mise/conf.d/kagikae.toml`, git-ignored); your
 
 ```bash
 kae pin -i clientA             # isolated: nothing shared with the real home
-                               # (opt in via pin_shared_items)
+                               # (opt in via isolated_shared_items)
 kae pin claude clientB         # re-bind one tool in this dir to another account
                                # (sessions/settings unchanged)
 kae unpin                      # remove the binding (deletes the kae-owned fragment)
-kae mise init --profile clientA  # low-level: render mise auth tasks/hooks (--write to apply)
+kae mise init --profile clientA  # low-level: render auth tasks + opt-in hook
+                               # (bind dirs with kae pin -s|-i; --write to apply)
 ```
 
 And the global isolated switch, visible to every mise-activated terminal:
@@ -93,13 +97,13 @@ kae run codex work -- codex exec "go test ./..."
 
 # API-key profiles, injected into the child process only:
 kae env set claude ci ANTHROPIC_API_KEY    # value read from stdin
-kae run --mode env claude ci -- claude -p "review this"
+kae run --env claude ci -- claude -p "review this"
 
-# one-off isolated homes (the per-process form of pin's modes):
-kae run --mode home claude clientA -- claude
+# one-off isolated home (per-account private home, shared with kae use -i):
+kae run -i claude clientA -- claude
 
 # idempotent apply for your own hooks/scripts (no-op when already active):
-kae apply --quiet
+kae use --quiet
 ```
 
 ## Safety Model

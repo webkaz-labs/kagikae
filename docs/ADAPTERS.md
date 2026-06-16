@@ -233,7 +233,7 @@ Cursor Safe Storage (keychain) -> the IDE's Electron key, never touched
 
 Copilot is the odd one out: each account's OAuth token lives in its **own**
 OS-keychain item (service `copilot-cli`, account `<host>:<user>`, e.g.
-`https://github.com:webkaz`) and the items **coexist** — logging into a second
+`https://github.com:work`) and the items **coexist** — logging into a second
 account does not evict the first. "Switching accounts" is therefore not a
 credential swap; it repoints the active account recorded in
 `~/.copilot/config.json`.
@@ -248,8 +248,8 @@ block) and mixed-state:
 // This file is managed automatically.
 {
   "trustedFolders": ["/workspaces"],
-  "lastLoggedInUser": {"host": "https://github.com", "login": "webkaz"},
-  "loggedInUsers": [{"host": "https://github.com", "login": "webkaz"}]
+  "lastLoggedInUser": {"host": "https://github.com", "login": "work"},
+  "loggedInUsers": [{"host": "https://github.com", "login": "work"}]
 }
 ```
 
@@ -289,95 +289,82 @@ the per-account keychain items (service copilot-cli) — never touched
 `kae doctor` warns when any is set. The gh CLI's own auth is separate and out
 of scope.
 
-## Isolation (home / overlay / bond / pin Modes)
+## Isolation
 
-`kae run --mode home|overlay|bond|pin` points a tool at an alternate home
-directory; `kae pin` (`-s` = bond, `-i` = pin) and
-`kae mise init --mode home|overlay|bond|pin` render the same mapping as mise
-`[env]` entries scoped to a project directory (docs/CLI.md):
+`kae` provides two isolation scopes: **per-directory** (`kae pin -s|-i`) and
+**global** (`kae use -i` / `kae run -i`). Overlay and home modes are retired
+as of v0.8.0. `kae mise init` renders auth mode only; bind a directory with
+`kae pin -s|-i`.
 
-| Tool | Isolation env var | home mode | overlay mode | bond mode | pin mode |
-|------|-------------------|-----------|--------------|-----------|----------|
-| claude | `CLAUDE_CONFIG_DIR` | supported | supported | supported | supported (`kae pin` default) |
-| codex | `CODEX_HOME` | supported | supported | supported | supported (`kae pin` default) |
-| agy | none stable | refused | refused | refused | refused |
-| opencode | none stable | refused | refused | refused | refused |
-| cursor | none stable | refused | refused | refused | refused |
-| copilot | none stable | refused | refused | refused | refused |
+### Isolation env vars
 
-"Refused" means exit `5` from `kae run`; `kae pin` / `kae mise init` instead
-omit those tools with an inline warning comment (they keep the real home).
-`tools.<tool>.home_mode_enabled = false` / `overlay_mode_enabled = false`
-(both default true) disable all of these surfaces per tool.
+The env var that redirects a tool to an alternate home directory:
 
-When resolving the **real** home for shared (`pin -s` / bond) sharing, an
-isolation env var that points inside kae's own homes/overlays/isolation data
-dirs is ignored (that is kae's own redirection — e.g. exported by a bound
-directory's kae-owned mise fragment). Honoring it would make a share from itself and create
-symlink cycles (ELOOP); re-running `kae pin` repairs any such stale links. A
-global command run inside a bound directory (`kae use` / `kae add`) resolves the
-**real** home automatically — it ignores the directory's isolation env vars —
-and `kae use` warns that the change is global. The v0.6.0 exit `5` refusal and
-the `--global` flag are gone in v0.7.2.
+| Tool | Isolation env var |
+|------|-------------------|
+| claude | `CLAUDE_CONFIG_DIR` |
+| codex | `CODEX_HOME` |
+| agy | none stable |
+| opencode | none stable |
+| cursor | none stable |
+| copilot | none stable |
 
-Overlay shared items (symlinked from the real home; everything else —
-credentials, sessions, history, and the mixed-state `.claude.json` — stays
-private to the overlay):
+Tools with no stable isolation env var are skipped with an inline warning
+comment in `kae pin` (they keep the real home). For `kae use -i` / `kae run
+-i` with a **profile**, tools with no isolation env var are also skipped with
+a warning and claude/codex are still isolated (exit `0`). A single-tool
+explicit invocation on an unsupported tool exits `5`.
 
-```text
-claude: settings.json, CLAUDE.md, skills/, agents/, commands/, plugins/
-codex:  config.toml, AGENTS.md, hooks.json, prompts/, skills/
-```
+### Real-home resolution
 
-Only items that exist in the real home are linked; a real file occupying a
-link location in the overlay is refused (`unsafe_refused`), never replaced.
+When resolving the **real** home for shared-bind linking, an isolation env var
+that points inside kae's own isolation data dirs is ignored (that is kae's own
+redirection — e.g. exported by a pinned directory's mise fragment). Honoring
+it would create self-referential symlinks (ELOOP); re-running `kae pin` repairs
+any such stale links. A global command run inside a bound directory (`kae use`
+/ `kae add`) resolves the real home automatically — it ignores the directory's
+isolation env vars — and `kae use` warns that the change is global.
 
-The allowlist is the fail-safe default: unknown files a future tool version
-adds stay **private**, because a new file is more likely session/identity
-state (which must not cross accounts) than shareable config. To follow
-upstream additions without a kae release, extend the list per tool with
-`tools.<tool>.overlay_extra_shared` (bare file names; the auth/identity
-artifacts are refused at config load — docs/DATA-MODEL.md).
+### Per-directory shared bind (`kae pin -s`)
 
-**Shared per-directory mode** (`kae pin --shared`, mechanism `bond`) uses a
-*denylist* instead of an allowlist: every real-home entry is symlinked into the
-bond directory **except** the hard-coded auth artifacts below. The credential file is private-copied (not symlinked),
-so authentication is private to the directory while all other files — settings,
+Uses a *denylist*: every real-home entry is symlinked into the shared directory
+(`isolation/<pin-id>/<tool>/shared/`) **except** the hard-coded credential
+artifacts below. The credential is private-copied (not symlinked), so
+authentication is private to the directory while all other files — settings,
 sessions, memory, MCP configs — stay shared with the real home.
 
-Bond denylist (hard-coded per tool; always excluded from symlink sharing):
+Hard-coded denylist (always excluded from symlink sharing):
 
 ```text
 claude: .credentials.json  (Linux-only; macOS uses keychain — harmless to list)
 codex:  auth.json
 ```
 
-Unknown files a future tool version adds are **shared by default** (the
-inverse of overlay's fail-safe), because bond's purpose is sharing — a new
-file is more likely config or memory than an auth secret. To add extra items
-to the denylist, use `tools.<tool>.bond_denylist_extra` (bare file names;
-the hard-coded auth artifacts above are refused at config load to avoid
-confusion). A real file already present in the bond directory is treated as a
-private override and is never replaced or linked over.
+Unknown files a future tool version adds are **shared by default** (the inverse
+of isolated-bind's fail-safe), because shared-bind's purpose is sharing — a new
+file is more likely config or memory than an auth secret.
 
-**Isolated per-directory mode** (`kae pin --isolated`, mechanism `pin`) uses a
-per-account *private config dir*
-(`isolation/<pin-id>/<tool>/isolated/<account>/config/`): nothing is shared with
-the real home by default. Items explicitly listed in
-`tools.<tool>.pin_shared_items` (bare file names; credential files
+To add extra items to the denylist:
+`tools.<tool>.shared_denylist_extra` (bare file names; the hard-coded auth
+artifacts above are refused at config load to avoid confusion).
+
+A real file already present in the shared directory is treated as a private
+override and is never replaced or linked over.
+
+### Per-directory isolated bind (`kae pin -i`)
+
+Uses a per-account *private config dir*
+(`isolation/<pin-id>/<tool>/isolated/<account>/config/`): nothing is shared
+with the real home by default. Items explicitly listed in
+`tools.<tool>.isolated_shared_items` (bare file names; credential files
 `.credentials.json` / `auth.json` are refused at config load) are symlinked
-from the real home; the credential is private-copied at `0600`. Re-bind one
-tool to another account with `kae pin <tool> <account>`.
+from the real home; the credential is private-copied at `0600`.
 
-`tools.<tool>.pin_shared_items` is the opt-in counterpart to
-`overlay_extra_shared`: it names items to *share* rather than items to *add
-on top of a default allowlist*. The default is empty (full isolation).
-Re-running `kae pin` refreshes opt-in shared-item links and the credential
-copy.
+`isolated_shared_items` is the opt-in share list: default is empty (full
+isolation). Re-running `kae pin` refreshes opt-in shared-item links and the
+credential copy.
 
-**`kae pin <tool> <account>`** re-binds one tool inside a bound directory to a
-different account without disturbing settings, sessions, or memory (the v0.7.1
-`kae as`):
+Re-bind one tool to another account with `kae pin <tool> <account>`:
 
 - **shared (`pin -s`)**: the credential file is overwritten in the
   account-agnostic shared dir (`isolation/<pin-id>/<tool>/shared/`); the new
@@ -390,6 +377,19 @@ different account without disturbing settings, sessions, or memory (the v0.7.1
 In both cases the tool picks up the new account on next launch with no change
 to sessions or settings, and `KAE_PROFILE` is recomputed (ad-hoc when no
 profile matches).
+
+### Global isolated home (`kae use -i` / `kae run -i`)
+
+Both `kae use -i` and `kae run -i` use the same per-account store:
+`isolation/global/<tool>/<account>/`. State written by one is visible to the
+other, so the shared location is never invisible: `kae run -i` prints the exact
+home and that it is shared with `kae use -i <account>`, and `kae status`
+surfaces the global-isolated homes.
+
+`kae run -i` runs the child in this home with no lock and no live mutation —
+concurrent `kae use` in other terminals is never blocked and never seen by the
+isolated process. `kae run -s` (default) uses the real home, holds the per-tool
+lock for the full child run, and restores the previous login.
 
 ## Login Commands
 

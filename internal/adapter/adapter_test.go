@@ -316,8 +316,8 @@ const copilotConfigFixture = `// User settings belong in settings.json.
 // This file is managed automatically.
 {
   "trustedFolders": ["/workspaces"],
-  "lastLoggedInUser": {"host":"https://github.com","login":"webkaz"},
-  "loggedInUsers": [{"host":"https://github.com","login":"webkaz"}]
+  "lastLoggedInUser": {"host":"https://github.com","login":"work"},
+  "loggedInUsers": [{"host":"https://github.com","login":"work"}]
 }
 `
 

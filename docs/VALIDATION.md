@@ -84,7 +84,7 @@ KAE_PROFILE=personal /tmp/kae use --json           # env resolution
 /tmp/kae use --quiet                               # prints nothing on success
 /tmp/kae mise init --profile work --auto           # preview: [hooks.enter] kae use --quiet
 
-# v0.5.0 surfaces (pin/overlay never mutate live state, so claude is safe
+# v0.5.0 surfaces (pin binds never mutate live state, so claude is safe
 # to include in the pinned profile even on macOS):
 /tmp/kae add --no-login codex work --json          # old capture shape
 /tmp/kae use codex work --json                     # tool+account form
@@ -149,8 +149,8 @@ EDITOR=true /tmp/kae edit                          # validate round-trip
 # copilot is config.json-pointer based (kae never touches the keychain
 # tokens), so it is safe on macOS; seed ~/.copilot/config.json with the JSONC
 # shape (leading // comments + lastLoggedInUser/loggedInUsers/trustedFolders):
-/tmp/kae add --no-login copilot webkaz --json
-/tmp/kae use copilot webkaz --json
+/tmp/kae add --no-login copilot work --json
+/tmp/kae use copilot work --json
 #   assert: leading // comments and trustedFolders survive the patch
 /tmp/kae doctor --json                             # copilot checks present
 ```

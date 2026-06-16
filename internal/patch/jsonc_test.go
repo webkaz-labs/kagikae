@@ -15,12 +15,12 @@ const copilotConfig = `// User settings belong in settings.json.
   ],
   "lastLoggedInUser": {
     "host": "https://github.com",
-    "login": "webkaz"
+    "login": "work"
   },
   "loggedInUsers": [
     {
       "host": "https://github.com",
-      "login": "webkaz"
+      "login": "work"
     }
   ]
 }
@@ -35,7 +35,7 @@ func TestGetPointerJSONCIgnoresComments(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["host"] != "https://github.com" || got["login"] != "webkaz" {
+	if got["host"] != "https://github.com" || got["login"] != "work" {
 		t.Fatalf("unexpected value: %s", raw)
 	}
 }

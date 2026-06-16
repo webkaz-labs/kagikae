@@ -90,29 +90,42 @@ func Load(dir string) (Account, bool, error) {
 func List(accountsRoot string) ([]Account, error) {
 	accounts := []Account{}
 	for _, tool := range constants.Tools {
-		toolDir := filepath.Join(accountsRoot, tool)
-		entries, err := os.ReadDir(toolDir)
-		if os.IsNotExist(err) {
-			continue
-		}
+		toolAccounts, err := ListForTool(accountsRoot, tool)
 		if err != nil {
 			return nil, err
 		}
-		names := []string{}
-		for _, entry := range entries {
-			if entry.IsDir() {
-				names = append(names, entry.Name())
-			}
+		accounts = append(accounts, toolAccounts...)
+	}
+	return accounts, nil
+}
+
+// ListForTool returns the captured accounts for one tool, ordered by account
+// name. It reads only that tool's directory — the scoped path callers (e.g.
+// completion) take to avoid walking every tool's snapshots.
+func ListForTool(accountsRoot, tool string) ([]Account, error) {
+	toolDir := filepath.Join(accountsRoot, tool)
+	entries, err := os.ReadDir(toolDir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	names := []string{}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			names = append(names, entry.Name())
 		}
-		sort.Strings(names)
-		for _, name := range names {
-			acc, found, err := Load(filepath.Join(toolDir, name))
-			if err != nil {
-				return nil, err
-			}
-			if found {
-				accounts = append(accounts, acc)
-			}
+	}
+	sort.Strings(names)
+	accounts := make([]Account, 0, len(names))
+	for _, name := range names {
+		acc, found, err := Load(filepath.Join(toolDir, name))
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			accounts = append(accounts, acc)
 		}
 	}
 	return accounts, nil

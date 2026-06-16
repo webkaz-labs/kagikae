@@ -14,8 +14,8 @@ import (
 // Keep in lockstep with Root().
 var completionCommands = []string{
 	"init", "edit", "doctor", "add", "use", "pin", "unpin", "run", "env",
-	"mise", "accounts", "account", "profile", "status", "backup", "rollback",
-	"completion", "version", "help",
+	"mise", "accounts", "ls", "account", "profile", "status", "backup",
+	"rollback", "completion", "version", "help",
 }
 
 // CmdCompletion emits a shell completion script and optionally installs it:
@@ -70,8 +70,10 @@ func completionScript(shell string) (string, bool) {
 // The generated scripts route by word position to a `kae __complete` kind:
 // word 1 → commands; the argument positions → tools/profiles/accounts. Account
 // completion passes the preceding tool word so `kae use claude <TAB>` scopes to
-// claude's accounts. They are static (no generation-time interpolation) because
-// every candidate list is resolved live by the backend.
+// claude's accounts. The live lists (commands/tools/profiles/accounts) come
+// from the backend; the small, rarely-changing sub-verb sets (e.g. account
+// rm/rename, the shells for completion) are inlined here since they are not
+// part of the `__complete` kind contract.
 
 const bashCompletionScript = `# kae bash completion — eval "$(kae completion bash)"
 # Dynamic: candidates come from ` + "`kae __complete`" + `, so they track live state.
@@ -211,7 +213,7 @@ function __kae_complete
             else if test $n -eq 3
                 kae __complete tools
             else if test $n -eq 4
-                kae __complete accounts $tokens[3]
+                kae __complete accounts $tokens[4]
             end
         case profile
             if test $n -eq 2

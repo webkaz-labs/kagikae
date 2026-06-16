@@ -102,13 +102,12 @@ func TestCompleteBackendHiddenFromHelp(t *testing.T) {
 
 func TestCompletionInstallFpath(t *testing.T) {
 	for _, tc := range []struct {
-		shell    string
-		relPath  string
-		autoLoad bool // false => activation note must mention fpath
+		shell   string
+		relPath string
 	}{
-		{"bash", ".local/share/bash-completion/completions/kae", true},
-		{"zsh", ".local/share/zsh/site-functions/_kae", false},
-		{"fish", ".config/fish/completions/kae.fish", true},
+		{"bash", ".local/share/bash-completion/completions/kae"},
+		{"zsh", ".local/share/zsh/site-functions/_kae"},
+		{"fish", ".config/fish/completions/kae.fish"},
 	} {
 		app := testApp(t, nil)
 		script, _ := completionScript(tc.shell)
@@ -210,6 +209,32 @@ func TestCompletionInstallPrintOnly(t *testing.T) {
 	mustExit(t, constants.ExitOK, code, out)
 	if out != script {
 		t.Fatalf("print-only must emit the script verbatim:\n%s", out)
+	}
+}
+
+// TestCompletionAccountTokenIndex guards the per-shell word-position routing in
+// the static completion scripts: account completion must pass the tool word at
+// the right index for that shell's array convention. `kae use <tool> <TAB>`
+// reads the tool at the position after `use`; `kae account rm <tool> <TAB>`
+// reads it one position further (past the rm/rename subcommand). An off-by-one
+// here silently yields no account candidates (it once did for fish).
+func TestCompletionAccountTokenIndex(t *testing.T) {
+	for _, tc := range []struct {
+		shell          string
+		useToolRef     string // tool word in `kae use <tool> <TAB>`
+		accountToolRef string // tool word in `kae account rm <tool> <TAB>`
+	}{
+		{"bash", `accounts "${COMP_WORDS[2]}"`, `accounts "${COMP_WORDS[3]}"`},
+		{"zsh", `accounts ${words[3]}`, `accounts ${words[4]}`},
+		{"fish", `accounts $tokens[3]`, `accounts $tokens[4]`},
+	} {
+		script, _ := completionScript(tc.shell)
+		if !strings.Contains(script, tc.useToolRef) {
+			t.Fatalf("%s: missing `use` tool ref %q", tc.shell, tc.useToolRef)
+		}
+		if !strings.Contains(script, tc.accountToolRef) {
+			t.Fatalf("%s: missing `account` tool ref %q", tc.shell, tc.accountToolRef)
+		}
 	}
 }
 

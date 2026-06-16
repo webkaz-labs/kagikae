@@ -49,6 +49,16 @@ func XDGDataHome(getenv func(string) string, home, app string) string {
 	return filepath.Join(home, ".local", "share", app)
 }
 
+// XDGConfigHome resolves $XDG_CONFIG_HOME/<app> with the same spec rule as
+// Resolve and XDGDataHome: a relative value is ignored and the default is used
+// instead. An empty app returns the bare config home.
+func XDGConfigHome(getenv func(string) string, home, app string) string {
+	if v := getenv("XDG_CONFIG_HOME"); v != "" && filepath.IsAbs(v) {
+		return filepath.Join(v, app)
+	}
+	return filepath.Join(home, ".config", app)
+}
+
 // ConfigFile returns the config.toml path.
 func (p Paths) ConfigFile() string { return filepath.Join(p.ConfigDir, "config.toml") }
 

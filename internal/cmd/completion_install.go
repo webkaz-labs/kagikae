@@ -10,6 +10,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
+	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
 // completionInstallChoice is where `kae completion <shell> --install` registers
@@ -41,8 +42,11 @@ func runCompletionInstall(app *App, opts commonOpts, shell, script string) int {
 // any unrecognized answer selects the default.
 func promptCompletionChoice(env adapter.Env, shell string) completionInstallChoice {
 	miseActive := completionMiseDetected(env)
+	// An unsupported shell never reaches here (validated in CmdCompletion), so
+	// the error is safe to drop for the display path.
+	path, _ := completionInstallPath(env, shell)
 	fmt.Fprintf(os.Stderr, "Register kae %s completion:\n", shell)
-	fmt.Fprintf(os.Stderr, "  1) completion file in the shell's standard dir (%s) [default]\n", mustInstallPath(env, shell))
+	fmt.Fprintf(os.Stderr, "  1) completion file in the shell's standard dir (%s) [default]\n", path)
 	miseNote := ""
 	if !miseActive {
 		miseNote = " — mise not detected on PATH"
@@ -96,7 +100,7 @@ func applyCompletionInstall(app *App, opts commonOpts, shell, script string, cho
 			fmt.Printf("kae %s completion already registered in %s\n", shell, path)
 		}
 		return constants.ExitOK
-	default: // installFpath
+	case installFpath:
 		path, err := completionInstallPath(app.Env, shell)
 		if err != nil {
 			return finish(opts, err)
@@ -112,6 +116,8 @@ func applyCompletionInstall(app *App, opts commonOpts, shell, script string, cho
 		}
 		fmt.Fprint(os.Stderr, completionActivationNote(shell, path))
 		return constants.ExitOK
+	default:
+		return finish(opts, errf(constants.ExitError, "unhandled completion install choice %d", choice))
 	}
 }
 
@@ -119,31 +125,16 @@ func applyCompletionInstall(app *App, opts commonOpts, shell, script string, cho
 // kae (XDG-aware). bash-completion v2 and fish auto-load their dirs; zsh needs
 // the dir on fpath (completionActivationNote says so).
 func completionInstallPath(env adapter.Env, shell string) (string, error) {
-	xdgData := env.Getenv("XDG_DATA_HOME")
-	if xdgData == "" {
-		xdgData = filepath.Join(env.Home, ".local", "share")
-	}
-	xdgConfig := env.Getenv("XDG_CONFIG_HOME")
-	if xdgConfig == "" {
-		xdgConfig = filepath.Join(env.Home, ".config")
-	}
 	switch shell {
 	case "bash":
-		return filepath.Join(xdgData, "bash-completion", "completions", "kae"), nil
+		return filepath.Join(paths.XDGDataHome(env.Getenv, env.Home, ""), "bash-completion", "completions", "kae"), nil
 	case "zsh":
-		return filepath.Join(xdgData, "zsh", "site-functions", "_kae"), nil
+		return filepath.Join(paths.XDGDataHome(env.Getenv, env.Home, ""), "zsh", "site-functions", "_kae"), nil
 	case "fish":
-		return filepath.Join(xdgConfig, "fish", "completions", "kae.fish"), nil
+		return filepath.Join(paths.XDGConfigHome(env.Getenv, env.Home, ""), "fish", "completions", "kae.fish"), nil
 	default:
 		return "", errf(constants.ExitUsage, "unsupported shell %q (supported: bash, zsh, fish)", shell)
 	}
-}
-
-// mustInstallPath is completionInstallPath for display in the prompt; an
-// unsupported shell never reaches here (validated in CmdCompletion).
-func mustInstallPath(env adapter.Env, shell string) string {
-	path, _ := completionInstallPath(env, shell)
-	return path
 }
 
 // completionActivationNote returns the shell-specific note printed after a
@@ -224,11 +215,7 @@ func globalMiseConfigPath(env adapter.Env) string {
 	if dir := env.Getenv("MISE_CONFIG_DIR"); dir != "" {
 		return filepath.Join(dir, "config.toml")
 	}
-	xdgConfig := env.Getenv("XDG_CONFIG_HOME")
-	if xdgConfig == "" {
-		xdgConfig = filepath.Join(env.Home, ".config")
-	}
-	return filepath.Join(xdgConfig, "mise", "config.toml")
+	return filepath.Join(paths.XDGConfigHome(env.Getenv, env.Home, "mise"), "config.toml")
 }
 
 // miseHookBlock renders the kagikae marker block with a [hooks.enter] sourcing

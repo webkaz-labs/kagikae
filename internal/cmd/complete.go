@@ -30,11 +30,24 @@ import (
 //   - profiles         — config profile names
 //   - accounts [<tool>]— captured account names, optionally scoped to one tool
 func CmdComplete(_ context.Context, args []string) int {
+	// commands and tools are compile-time constants, so the most frequent
+	// completion (word 1 → commands) skips newApp's config load entirely.
+	if len(args) > 0 {
+		switch args[0] {
+		case "commands":
+			printCompletionLines(completionCommands)
+			return constants.ExitOK
+		case "tools":
+			printCompletionLines(constants.Tools)
+			return constants.ExitOK
+		}
+	}
 	return runComplete(newApp(""), args)
 }
 
 // runComplete is the testable core of CmdComplete (App injected so tests use a
-// temp-HOME app instead of the live environment).
+// temp-HOME app instead of the live environment). It handles the kinds that
+// read live state; CmdComplete short-circuits the constant kinds before it.
 func runComplete(app *App, args []string) int {
 	if len(args) == 0 {
 		return constants.ExitUsage
@@ -73,7 +86,18 @@ func completionAccountNames(app *App, tool string) ([]string, error) {
 		if resolved, err := resolveToolArg(tool); err == nil {
 			tool = resolved
 		}
+		// Scoped read: only that tool's dir, names already unique per tool.
+		accounts, err := account.ListForTool(app.Paths.AccountsDir(), tool)
+		if err != nil {
+			return nil, err
+		}
+		names := make([]string, 0, len(accounts))
+		for _, acc := range accounts {
+			names = append(names, acc.Name)
+		}
+		return names, nil
 	}
+	// No tool: every captured account name, deduplicated across tools.
 	accounts, err := account.List(app.Paths.AccountsDir())
 	if err != nil {
 		return nil, err
@@ -81,15 +105,10 @@ func completionAccountNames(app *App, tool string) ([]string, error) {
 	names := []string{}
 	seen := map[string]bool{}
 	for _, acc := range accounts {
-		if tool != "" && acc.Tool != tool {
+		if seen[acc.Name] {
 			continue
 		}
-		if tool == "" {
-			if seen[acc.Name] {
-				continue
-			}
-			seen[acc.Name] = true
-		}
+		seen[acc.Name] = true
 		names = append(names, acc.Name)
 	}
 	return names, nil

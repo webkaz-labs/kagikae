@@ -270,11 +270,15 @@ printf 'version = 1\n[security]\nsecret_backend = "file"\nbackup_keep = 30\n' \
 
 ### v0.8.0 real-machine gate (required before release)
 
-On a staging machine with global mise active (`mise activate` in the shell,
-`mise settings experimental=true`). macOS rules apply: use `KAE_CLAUDE_DRIVER=file`
-and a file-backend config so the real login keychain is not touched by the
-isolated credential write. Set `CLAUDE_CONFIG_DIR` is bypassed by the isolation
-fragment — confirm the fragment wins over the real home.
+On a **staging machine or throwaway account** (never an account you actively
+use — the teardown rewrites the live keychain from the snapshot) with global
+mise active (`mise activate` in the shell, `mise settings experimental=true`).
+**Re-capture the account with `kae add` immediately before the gate** so the
+snapshot's `accessToken` is live — a token captured earlier may have expired and
+will 401 (see the 2026-06-16 result below). macOS rules apply: use
+`KAE_CLAUDE_DRIVER=file` and a file-backend config so the real login keychain is
+not touched by the isolated credential write. The gate confirms the isolation
+fragment's `CLAUDE_CONFIG_DIR` wins over the real home / keychain.
 
 - [ ] `kae use -i work` materializes `isolation/global/claude/work/` (or the
       captured account name), writes `~/.config/mise/conf.d/kagikae.toml`; `mise env`
@@ -291,7 +295,38 @@ fragment — confirm the fragment wins over the real home.
       `claude -p '' --model haiku` (no `CLAUDE_CONFIG_DIR`) returns AUTH-OK as
       the real account.
 
-Result: (pending — record on the staging machine)
+Result: **partial — isolation mechanism confirmed; AUTH-OK pending a fresh
+credential on a staging machine.**
+
+A 2026-06-16 attempt was run on the **real** developer machine (a mistake — the
+gate must run on staging/throwaway accounts; see the warning at the top of this
+file). Findings, with the cause isolated without exposing any token value:
+
+- `kae use -i claude <acct>` correctly materialized
+  `isolation/global/claude/<acct>/.credentials.json` (mode `0600`) and wrote the
+  global fragment pointing `CLAUDE_CONFIG_DIR` there; `~/.claude` was not
+  modified.
+- The fresh-process `claude --model haiku` against that home returned **401**,
+  **not** AUTH-OK. Cause: the captured snapshot's `accessToken` was already past
+  its `expiresAt` (the account had been captured days earlier and the live token
+  had since been refreshed). This is a **stale-snapshot** failure, not an
+  isolation-mechanism failure.
+- Crucially, the 401 **confirms `CLAUDE_CONFIG_DIR` is honored on macOS**: had
+  claude read the keychain instead, it would have found the live (different)
+  account and returned AUTH-OK. Reading the expired file credential and failing
+  proves the fragment redirect wins over the keychain (the v0.7.0 finding still
+  holds on claude 2.1.178).
+- **Real-environment damage from the teardown**: `kae use claude <real-acct>`
+  rewrote the live keychain with that account's *snapshot* token, which had also
+  expired since capture — overwriting the live (refreshed) token and forcing a
+  `claude /login`. This is the expected consequence of kae's design (`use`
+  applies the capture-time token; only `run` recaptures refreshed tokens), not a
+  v0.8.0 regression. **Lesson: never run the gate's teardown against an account
+  you actively use; re-capture (`kae add`) immediately before the gate so the
+  snapshot token is live, and use throwaway accounts.**
+
+To complete the gate: on staging, `kae add` the account immediately before the
+run (fresh token), then walk the checklist above.
 
 ## Real-Machine Acceptance (release only)
 

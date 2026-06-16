@@ -409,6 +409,28 @@ OpenAI subscription leaves `/openai` unchanged, so `kae add` correctly
 refuses with `auth_unchanged` (exit 11) — kae switches only the
 subscription login.
 
+## Account Identity (auto-detection)
+
+`kae add <tool>` with no account name defaults it to the live login identity,
+read through the optional `adapter.Identifier` capability
+(`Identity(ctx, env) (string, error)`). The raw identity is sanitized into an
+account name by `cmd` (`[a-zA-Z0-9._-]`, email → local part before `@`, capped
+at 64); an explicit name always wins. The per-tool source:
+
+| Tool | Identity source |
+|------|-----------------|
+| claude | `~/.claude.json` `oauthAccount.emailAddress` |
+| codex | `auth.json` `id_token` email claim (JWT), else `tokens.account_id` |
+| opencode | `auth.json` `/openai` `accountId` |
+| copilot | `config.json` (JSONC) `/lastLoggedInUser.login` |
+| agy | none — no exposed identity; explicit name required |
+| cursor | none yet — `cursor-agent status` output is undocumented; discovery-blocked ([ROADMAP.md](ROADMAP.md)), so an explicit name is required |
+
+A detection failure (logged out, unreadable, or sanitizes to empty) is a usage
+error naming the explicit form, never a silent fallback. Identity reads only
+already-trusted live state; it never verifies a JWT signature (the shared JWT
+claims decoder is `internal/jwt`).
+
 ## Adding A New Adapter
 
 1. Document the live auth locations, drivers, preserved paths, and environment
@@ -422,5 +444,7 @@ subscription login.
    the switch-time stale warning and `doctor credential_stale`); a static API
    key or a pointer-only artifact stays not-datable (Known=false). See the
    per-tool field map in [DATA-MODEL.md](DATA-MODEL.md).
-5. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
+5. Optionally implement `adapter.Identifier` so `kae add <tool>` can default the
+   account name (above). Skip it when the tool exposes no readable identity.
+6. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
    guard-refusal paths.

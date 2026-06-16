@@ -31,9 +31,12 @@ Previous baseline: v0.8.1 (credential freshness / auto-recapture).
   a sanitized account name, and capture under it — the new default. Detection is
   a per-tool adapter capability `Identity(ctx, env) (string, error)`: claude →
   `oauthAccount.emailAddress` (from `~/.claude.json`), codex → the `id_token`
-  email claim or `account_id` in `auth.json`, cursor → `cursor-agent status`,
-  opencode → `accountId`, copilot → `lastLoggedInUser.login`. The raw identity
-  is sanitized to `[a-zA-Z0-9._-]` (email → local part before `@`), capped at 64.
+  email claim or `account_id` in `auth.json`, opencode → `accountId`, copilot →
+  `lastLoggedInUser.login`. **cursor is deferred** — its `cursor-agent status`
+  output is undocumented (discovery-blocked, like the codex keyring item), so
+  cursor requires an explicit name until a real-machine discovery; see
+  [ROADMAP.md](ROADMAP.md). The raw identity is sanitized to `[a-zA-Z0-9._-]`
+  (email → local part before `@`), capped at 64.
 - **`kae add <tool> <account>`** (explicit): unchanged — the given name wins.
 - Works on both the login flow and `--no-login` (detect from the post-login /
   current live state). Detection failure (no identity exposed, or it sanitizes
@@ -58,11 +61,12 @@ Previous baseline: v0.8.1 (credential freshness / auto-recapture).
   `login.go`'s `loginChangedAuth` implement the same "compare live values to a
   stored snapshot" loop with different error policies. Extract one comparator
   parameterized on the policy so the rule lives in one place.
-- **(splittable) Freshness as an adapter capability**: move `freshness.Inspect`'s
-  `switch tool` into a per-tool adapter `Freshness(payload) Info` method, beside
-  the new `Identity` (§B), so per-tool knowledge has one home (the registry).
-  The shared `jwtExpiry`/`epochToTime`/`decodeObject` primitives stay in
-  `internal/freshness`. **If it grows the patch too far, split to v0.8.3.**
+- **(splittable) Freshness as an adapter capability** — **split to v0.8.3**:
+  moving `freshness.Inspect`'s `switch tool` into a per-tool adapter
+  `Freshness(payload) Info` method touches all six adapters plus the interface,
+  which grows this patch past its daily-use-polish scope. Deferred per the
+  splittable note; the shared `jwtExpiry`/`epochToTime`/`decodeObject`
+  primitives stay in `internal/freshness` (see [ROADMAP.md](ROADMAP.md)).
 
 ## Non-Goals (this release)
 

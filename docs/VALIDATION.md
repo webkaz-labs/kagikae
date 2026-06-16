@@ -405,6 +405,73 @@ Re-capture a live token with `kae add` immediately before the real-keychain run
       real keychain (which would need a second account and a natural in-tool
       token refresh).
 
+## v0.8.2 surfaces
+
+Daily-use polish: concurrent `status`, switch-read coalescing, `kae add` name
+auto-detection, `kae ls`. Same temp-HOME + file-backend setup as the v0.8.0
+block (`KAE_CLAUDE_DRIVER=file`, `secret_backend = "file"`).
+
+```bash
+# (continues from the v0.8.0 setup: /tmp/kae built, temp HOME + file config)
+
+# --- B. kae add account-name auto-detection ---
+# Seed a claude login whose ~/.claude.json carries an oauthAccount email:
+printf '{"claudeAiOauth":{"accessToken":"tok"}}' > "$HOME/.claude/.credentials.json"
+printf '{"oauthAccount":{"emailAddress":"alice@example.com"}}' > "$HOME/.claude.json"
+/tmp/kae add --no-login claude --json
+#   assert: captured account is "alice" (email local part, sanitized)
+/tmp/kae add --no-login claude chosen --json
+#   assert: explicit name "chosen" is used, not the detected one
+/tmp/kae add --no-login agy; echo $?
+#   assert: usage error (64); message names "kae add agy <account>" (agy has no identity)
+rm "$HOME/.claude.json"
+/tmp/kae add --no-login claude; echo $?
+#   assert: usage error (64) naming "kae add claude <account>" (logged out: no identity)
+
+# --- C. kae ls ---
+/tmp/kae ls --json
+#   assert: schema_version 1; "accounts" and "profiles" arrays (>= the captured/defined ones);
+#           the active account/profile carry "active": true; both are [] (not null) when empty
+/tmp/kae ls
+#   assert: text view shows an "Accounts:" table and a "Profiles:" section with active markers
+```
+
+§A is asserted by unit tests (driver-agnostic, no real machine needed):
+concurrent `Detect` by `internal/cmd` `TestStatusDetectsConcurrently` (every
+enabled tool's `Detect` must enter `LookPath` before any is released — a
+sequential loop would deadlock), and the switch-time secret-read coalescing by
+`TestSwitchReadsTargetSnapshotOnce` (exactly one backend read of the target
+snapshot per switch) plus `internal/secret` `cache_test.go`. §D's shared
+comparator is covered by the unchanged switch/login tests plus
+`TestSnapshotArtifactDiffers`, and `internal/jwt` by `jwt_test.go`.
+
+### v0.8.2 real-machine gate
+
+The §A–§D logic is **driver-agnostic** and fully covered by unit tests and the
+temp-HOME file-driver smoke above (single account, no real keychain), so the
+single-account-doable range is what gates this release:
+
+- [x] §A concurrency + secret read cache: `TestStatusDetectsConcurrently`,
+      `TestSwitchReadsTargetSnapshotOnce`, `internal/secret` `cache_test.go`
+      (also `-race` clean).
+- [x] §A recapture round-trip (use A → in-tool refresh → use B → use A re-applies
+      the refreshed token): `TestSwitchAwayRecapturesRefreshedToken` (temp-HOME
+      file driver — same code path as the keychain driver).
+- [x] §B auto-detect: temp-HOME smoke captured `claude/alice` from a seeded
+      `oauthAccount.emailAddress`; explicit name and the no-identity (agy /
+      logged-out) usage error confirmed.
+- [x] §C `kae ls`: temp-HOME smoke listed accounts + profiles with active markers
+      and kept `[]` arrays in `--json`.
+- [x] §D comparator + JWT: `TestSnapshotArtifactDiffers`, `internal/jwt`
+      `jwt_test.go`, and the unchanged switch/login tests.
+
+**Two-account real-keychain recapture is not run here**: it requires two live
+claude subscription accounts, which is impractical to arrange, and the recapture
+round-trip is already proven driver-agnostically above. The single-account
+real-keychain sanity (the v0.8.1 gate: `kae add` live capture → `kae use` →
+fresh `claude -p` AUTH-OK, no prompt multiplication) carries over unchanged and
+remains the optional real-machine spot-check.
+
 ## Real-Machine Acceptance (release only)
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of
@@ -451,11 +518,31 @@ live tool sessions.
 
 ## Secret Leak Regression
 
-`go test ./... -run Redact` includes tests asserting that captured fixture
-secret values never appear in text output, JSON output, error messages, or
-metadata files written by capture/switch/rollback.
+`go test ./internal/cmd/ -run TestSecretsNeverInOutputOrMetadata` asserts that
+captured fixture secret values never appear in text output, JSON output, error
+messages, or metadata files written by capture/switch/rollback.
 
 ## Release Acceptance Log
+
+### v0.8.2 (2026-06-16, macOS darwin 24.6.0)
+
+Daily-use polish: §A concurrent `status` + secret read cache, §B `kae add`
+account-name auto-detection, §C `kae ls`, §D shared snapshot comparator + JWT
+decode consolidation. (Freshness-as-adapter-capability and cursor identity split
+to v0.8.3 — see [RELEASE.md](RELEASE.md) / [ROADMAP.md](ROADMAP.md).)
+
+- `mise run check` green (all packages); `-race` clean on the concurrent paths;
+  `TestSecretsNeverInOutputOrMetadata` passed (no secret in the new output).
+- Code review APPROVE on each of §A–§D; `/simplify` applied the JWT-decode
+  consolidation (the rest clean or declined with reasons).
+- Temp-HOME file-driver smoke (single account, no real keychain): §B captured
+  `claude/alice` from a seeded login email (explicit name and the no-identity
+  usage error confirmed); §C `kae ls` listed accounts + profiles with active
+  markers and `[]` arrays; §A `status --json` returned all six tools in canonical
+  order via the concurrent `Detect`.
+- JSON kept `schema_version: 1`, stable tokens, and `[]` arrays.
+- Two-account real-keychain recapture not run (needs two live claude accounts;
+  the recapture round-trip is covered driver-agnostically — see the gate above).
 
 ### v0.8.1 (2026-06-16, macOS darwin 24.6.0)
 

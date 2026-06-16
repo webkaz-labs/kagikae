@@ -15,8 +15,9 @@ kae                                  # status summary (same as kae status)
 kae init                             # create config and data directories
 kae edit                             # open the config in $VISUAL / $EDITOR, then re-validate
 kae doctor [tool] [--json]           # environment / auth health checks (alias: kae d)
-kae add <tool> <account> [--restore] # register an account: official login flow + snapshot
-kae add --no-login <tool> <account>  # snapshot the current live auth state instead
+kae add <tool> [<account>] [--restore] # register an account: official login flow + snapshot
+kae add --no-login <tool> [<account>]  # snapshot the current live auth state instead
+                                     #   (account name optional: auto-detected from the live login)
 kae use [-s|-i] [-P <profile>]       # bare: resolve the profile and apply it idempotently
                                      #   (--quiet suppresses success report; folds kae apply)
 kae use [-s|-i] <profile>            # switch every enabled tool now, global (alias: kae u)
@@ -33,6 +34,7 @@ kae env list [--json]                              # profiles (names only, no va
 kae mise init [-P <profile>] [--auto] [--write]    # auth-mode tasks + opt-in hook
                                                    # (bind directories with kae pin instead)
 kae accounts [--json]                # registered accounts, active markers
+kae ls [--json]                      # accounts and profiles in one view
 kae account rm <tool> <account> [--force]      # delete a captured account
 kae account rename <tool> <old> <new>          # rename a captured account
 kae profile save <name>              # snapshot the active accounts into a profile
@@ -199,6 +201,29 @@ supported yet.
 `kae add --no-login <tool> <account>` snapshots the current live auth state
 under the name without launching anything (it supports `--dry-run`; the
 login flow does not, and `--restore` requires the login flow).
+
+**Account name auto-detection.** The account name is optional. With it omitted
+(`kae add <tool>`), kae derives a default from the live login identity: the
+`--no-login` form reads the current live state, the login form reads the
+post-login state (the name is resolved only after the flow exits). The raw
+identity is sanitized to `[a-zA-Z0-9._-]` (an email keeps only its local part
+before `@`), capped at 64 chars. An explicit name always wins. Detection per
+tool: claude `~/.claude.json` `oauthAccount.emailAddress`; codex `auth.json`
+`id_token` email claim, else `account_id`; opencode `auth.json` `/openai`
+`accountId`; copilot `config.json` `/lastLoggedInUser.login`. agy exposes no
+identity and cursor's source is discovery-blocked
+([ROADMAP.md](ROADMAP.md)), so both require an explicit name. A tool with no
+identity, a detection failure (logged out, unreadable), or an identity that
+sanitizes to empty is a usage error (`64`) naming the explicit form — never a
+silent fallback.
+
+## kae ls Semantics
+
+`kae ls` lists every captured account and every defined profile in one
+read-only view (the data otherwise split across `kae accounts` and
+`kae status`), each with an active marker. It takes no locks and writes
+nothing. `--json` keeps `schema_version: 1` and `[]` arrays, reusing the
+`kae accounts` account rows and the `kae status` profile rows.
 
 ## kae account Semantics
 
@@ -408,6 +433,25 @@ active profile, the per-tool table, then the profiles list.
 
 Ordering: tool (claude, codex, agy, opencode, cursor, copilot), then
 account name ascending.
+
+### `kae ls --json`
+
+```json
+{
+  "schema_version": 1,
+  "accounts": [
+    {"tool": "claude", "account": "work", "driver": "claude-keychain-patch",
+     "active": true, "captured_at": "2026-06-11T01:23:45Z"}
+  ],
+  "profiles": [
+    {"name": "work", "accounts": {"claude": "work"}, "active": true}
+  ]
+}
+```
+
+`accounts` reuses the `kae accounts` row shape (same ordering); `profiles`
+reuses the `kae status` profile row shape (name ascending). Both are `[]` when
+empty.
 
 ### `kae doctor --json`
 

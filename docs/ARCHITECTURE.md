@@ -53,6 +53,13 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
 - All subprocess calls (`security`, `secret-tool`, binary detection) go
   through `internal/runner`. Production code never calls `exec.Command`
   directly.
+- **Completion backend seam** (`cmd/complete.go`): the hidden
+  `kae __complete <kind>` reads the live router/config/captured state and prints
+  one candidate per line. It is the single source for both completion surfaces —
+  kae's own generated shell scripts (`cmd/completion.go`) and the `kae mise init`
+  task `complete "<arg>" run="kae __complete …"` directives (`cmd/miseinit.go`) —
+  so candidate lists never drift from the real surface. Read-only, no locks; its
+  line-oriented output is an internal contract, not the JSON contract.
 
 ## Adapter Interface
 

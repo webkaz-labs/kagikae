@@ -163,6 +163,17 @@ func TestEnvSetStdinAndUnset(t *testing.T) {
 	mustExit(t, constants.ExitNotFound, code, out)
 }
 
+func TestRunModeRemoved(t *testing.T) {
+	// --mode was removed in v0.8.0; it must give a targeted pointer (exit 64),
+	// validated before any environment access.
+	code, out := captureStderr(t, func() int {
+		return CmdRun(context.Background(), []string{"--mode", "env", "claude", "work", "--", "true"})
+	})
+	if code != constants.ExitUsage || !strings.Contains(out, "--mode was removed") {
+		t.Fatalf("run --mode must point at -s/-i/--env, got %d: %s", code, out)
+	}
+}
+
 func TestRunIsolated(t *testing.T) {
 	app := applyTestApp(t, nil) // claude work/personal captured; work/personal profiles
 	ctx := context.Background()

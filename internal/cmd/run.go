@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -36,6 +37,13 @@ func CmdRun(ctx context.Context, args []string) int {
 	kaeArgs, childCmd := splitAtDashDash(args)
 	if len(childCmd) == 0 {
 		return usageError("usage: %s run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>", toolName)
+	}
+	// --mode was removed in v0.8.0 (hard break); give a targeted pointer rather
+	// than the flag package's "not defined" dump.
+	for _, a := range kaeArgs {
+		if a == "--mode" || a == "-mode" || strings.HasPrefix(a, "--mode=") || strings.HasPrefix(a, "-mode=") {
+			return usageError("kae run --mode was removed in v0.8.0; use -s (real home), -i (isolated home), or --env")
+		}
 	}
 	flags, positionals := splitArgs(kaeArgs, "--profile", "P")
 	var shared, isolated, envMode bool

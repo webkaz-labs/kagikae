@@ -600,6 +600,38 @@ messages, or metadata files written by capture/switch/rollback.
 
 ## Release Acceptance Log
 
+### v0.8.3 (2026-06-17, macOS darwin 24.6.0)
+
+Discovery-unblock: §A freshness-as-adapter-capability, §B cursor `kae add`
+identity, §C codex keyring driver, §D store + display the detected identity.
+
+- `mise run check` green (all packages); `-race` clean; redaction tests
+  (including the codex keyring payload) passed.
+- Code review APPROVE (two rounds; the round-one findings were fixed and the
+  fixes re-reviewed APPROVE); `/simplify` applied the shared
+  `captureKeychainAccount` helper + a `keychain.WithReadCache` on the capture
+  path (the rest clean or declined with reasons).
+- **Cursor identity gate PASSED (real machine)**: `kae add --no-login cursor`
+  (no name) on a live `cursor-agent status` login captured under the sanitized
+  detected email (the local part), and `account.toml` + `kae ls` recorded the
+  raw identity (§D); a pre-v0.8.3 cursor snapshot showed no `identity` field
+  (omitempty / backfill-only-on-fresh-add confirmed on a real snapshot). The
+  logged-out / unparseable path is covered by the fake-runner unit tests
+  (`TestCursorIdentityFailures`). The test capture was removed afterward.
+- §A/§D logic is driver-agnostic and unit-tested (per-tool `Freshness` on the
+  adapters, `TestFresherConformance`, `TestAddRecordsIdentity*`,
+  `TestRecapturePreservesIdentity`).
+- **Codex keyring two-account real-machine gate: DEFERRED.** Switching the
+  working codex install to `cli_auth_credentials_store = "keyring"` and two
+  interactive OAuth re-logins with two accounts is disruptive and was deferred
+  by decision. The driver is covered by fake-`security` round-trip tests
+  (`TestCodexKeyringRoundTrip` — capture A → re-login B → `use A` restores A's
+  verbatim item with delete-then-add; `TestCodexKeyringEmptyAccountRefused`;
+  `TestKeychainReplaceUsesCapturedAccount`). The two-account **real**-keychain
+  gate (settling service-only vs service+account match) remains the one open
+  acceptance item — run it per the "v0.8.3 real-machine gate" procedure before
+  relying on the keyring driver in production.
+
 ### v0.8.2 (2026-06-16, macOS darwin 24.6.0)
 
 Daily-use polish: §A concurrent `status` + secret read cache, §B `kae add`

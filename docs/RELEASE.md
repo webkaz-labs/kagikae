@@ -1,7 +1,103 @@
-# kae v0.8.0 (released 2026-06-16)
+# Release Target: kae v0.8.1
 
-> No active release target. The next candidate is **v0.8.1** (snapshot freshness
-> / auto-recapture) — see [ROADMAP.md](ROADMAP.md).
+Credential freshness. Every supported tool authenticates with a refreshable
+OAuth/JWT credential, but `kae use` (and bare `use`) write the **capture-time**
+snapshot back to the live store with no recapture — only `run -s` recaptures
+(via `runAuthTransaction`'s post-child `captureSnapshot`). So a token rotated
+outside kae (a re-login in the tool, a long-unused account) leaves the snapshot
+stale, and a switch back to it can break auth — dropping to a login prompt when
+the refresh token has also rotated (observed in the v0.8.0 real-machine gate,
+[VALIDATION.md](VALIDATION.md)). v0.8.1 closes this gap symmetrically with
+`run`, surfaces staleness it cannot self-heal, and pays down the per-switch
+keychain cost the recapture adds.
+
+Previous baseline: v0.8.0 (surface vocabulary unification).
+
+## Scope
+
+### A. Switch-source auto-recapture (`use` / bare `use`)
+
+Before `kae use` / bare `use` switches away, recapture the **currently active**
+account's live credential into its snapshot — the `run -s` mechanism made
+symmetric for `use` — so the next switch back applies a live token. Only
+`use`/bare `use` overwrite the **real** store and need this; `use -i` /
+`pin -s|-i` / `rebind` / `run -i` write kae-owned isolation dirs (live store
+untouched), so they stay as-is. Recapture **only when the live store and the
+snapshot diverge**, to avoid a needless keychain read on every switch.
+
+### B. Switch-time stale warning + recovery path
+
+The account being switched **to** may be stale and is not live, so it cannot be
+recaptured. At switch time, detect an expired snapshot (`expiresAt` past, or
+divergence from the live store) and: proceed when the refresh token is still
+usable (the tool self-refreshes), otherwise warn and name `kae add` to
+re-capture. Share the staleness predicate with §D.
+
+### C. `security` subprocess coalescing (macOS)
+
+Recapture adds a keychain read per switch, each a `security` invocation (and a
+possible auth dialog). Coalesce/cache the multiple `security` calls per switch
+so the recapture does not multiply prompts; this is the practical prerequisite
+for §A. (Also the v0.7.x "performance polish" backlog item.)
+
+### D. `doctor` credential-health
+
+Surface staleness the switch path only warns about inline: a `doctor`
+stale-snapshot check (expired `expiresAt` / divergence from the live store),
+reusing §B's predicate. Fold in the v0.7.1-deferred keychain-orphan check where
+enumeration is reliable (file backend `readdir`, Linux `libsecret`); the darwin
+keychain cannot enumerate by service, so it stays a documented gap there.
+
+### E. Codex keyring driver (splittable to v0.8.2)
+
+Lift the codex `codex-keyring` driver from detect-only: pin down the OS
+credential-store item contract used by `cli_auth_credentials_store = "keyring"`,
+add structure guards, and pass a round-trip. This is the most independent piece;
+**if it grows the patch too far, split it to v0.8.2** and ship A–D as v0.8.1.
+
+## Non-Goals (this release)
+
+- **Tracking rotation that happens entirely outside kae** — a re-login in the
+  tool can rotate the refresh token with no kae involvement; v0.8.1 warns
+  (§B/§D) rather than silently repairing.
+- TUI, Windows, remote share-list shipping, `env export --reveal` — see
+  [ROADMAP.md](ROADMAP.md).
+
+## Acceptance Criteria
+
+- **recapture**: after `kae use A` → `kae use B` → `kae use A`, the credential
+  re-applied for A is the one live at the first switch-away, not the original
+  capture (temp-HOME test simulating a token refresh while A was active);
+  recapture is skipped (no keychain read) when live and snapshot already match.
+- **stale warning**: a switch to an account whose snapshot `expiresAt` is past
+  warns and names `kae add`; with a usable refresh token it still proceeds.
+- **coalescing**: a single `use` performs at most one `security` read per tool
+  for the recapture decision (asserted via the runner seam call count).
+- **doctor**: a stale snapshot produces a `credential_stale` warn-level check;
+  the JSON report keeps `schema_version: 1`; file-backend orphans are detected.
+- **codex keyring** (if kept): `kae add`/`use` round-trip through the keyring
+  store passes a fresh-process auth check; otherwise the item is deferred with
+  the reason recorded.
+- `mise run check` passes; JSON keeps stable tokens and `[]` arrays; redaction
+  tests cover any new output path (no token value in warnings/doctor output).
+
+## Release Steps
+
+1. Bump `toolVersion` to v0.8.1.
+2. §C `security` coalescing first (prerequisite), then §A recapture + §B
+   switch-time warning (shared predicate); temp-HOME tests.
+3. §D `doctor` credential-health on the shared predicate; temp-HOME tests.
+4. §E codex keyring driver, or split to v0.8.2 with the reason recorded.
+5. Docs (CLI/ADAPTERS/DATA-MODEL/SECURITY/README); temp-HOME tests.
+6. Real-machine gate — **re-capture a live token immediately before the gate and
+   use a throwaway account** (the teardown rewrites the live keychain from the
+   snapshot; see VALIDATION.md). Confirm a switch-back applies a live token and
+   the stale warning fires on an expired snapshot.
+7. README verified against the binary; tag `v0.8.1`, GitHub release.
+
+---
+
+# kae v0.8.0 (released 2026-06-16)
 
 Finish the scope×environment vocabulary: one surface, one set of names. v0.7.2
 unified `use`/`pin` on `-s`/`-i`; v0.8.0 folds `apply` into `use`, redesigns

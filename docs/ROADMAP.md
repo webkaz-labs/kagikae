@@ -3,12 +3,12 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-There is no active release target right now. v0.8.0 (fold `apply` into `use`,
-redesign `run` onto `-s`/`-i`/`--env`, trim `mise init`, hard-rename the
-mechanism + config-key vocabulary, and add input ergonomics) shipped, following
-v0.7.2 (use/pin × -s/-i, global isolated home). The next candidate is **v0.8.1**
-(snapshot freshness / auto-recapture, first item below). What remains is
-hardening and platform coverage, ordered below by user impact.
+The active target is **v0.8.1** (credential freshness / auto-recapture —
+see [RELEASE.md](RELEASE.md)). v0.8.0 (fold `apply` into `use`, redesign `run`
+onto `-s`/`-i`/`--env`, trim `mise init`, hard-rename the mechanism + config-key
+vocabulary, and add input ergonomics) shipped, following v0.7.2 (use/pin ×
+-s/-i, global isolated home). What remains beyond v0.8.1 is hardening and
+platform coverage, ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 
@@ -16,34 +16,14 @@ hardening and platform coverage, ordered below by user impact.
   in v0.8.0 — see [RELEASE.md](RELEASE.md))*: folded `apply` into `use`,
   redesigned `run` onto `-s`/`-i`/`--env`, trimmed `mise init`, and hard-renamed
   the mechanism + config-key vocabulary to `shared`/`isolated`.
-- **Snapshot freshness / auto-recapture** *(next patch — v0.8.1 candidate)*:
-  `kae use` (shared) and bare `use` write the **capture-time** snapshot back to
-  the live credential store, with no recapture (only `run -s` recaptures, via
-  `runAuthTransaction`'s post-child `captureSnapshot`). Every supported tool
-  authenticates with a refreshable OAuth/JWT credential (claude `claudeAiOauth`,
-  codex `auth.json` tokens + last-refresh, opencode `{refresh,access,expires}`,
-  cursor JWT, copilot OAuth) — there is no static-key tool on the snapshot path
-  (env-mode API keys are separate). So when a token is rotated outside kae (a
-  re-login in the tool, a long-unused account), the snapshot goes stale and a
-  switch back to it can break auth: if the refresh token has also rotated, the
-  tool drops to a login prompt (observed in the v0.8.0 real-machine gate —
-  [VALIDATION.md](VALIDATION.md)). Scope to design:
-  - **Switch-source preservation (highest value):** before `kae use`/bare `use`
-    switches away, recapture the *currently active* account's live credential
-    into its snapshot (the `run -s` mechanism, made symmetric for `use`),
-    so the next switch back applies a live token. Only `use`/bare `use`
-    overwrite the **real** store; `use -i` / `pin -s|-i` / `rebind` / `run -i`
-    write kae-owned isolation dirs (live store untouched), so they are lower
-    urgency but still benefit from materializing a fresh credential.
-  - **Switch-target staleness (cannot fully self-heal):** the account being
-    switched *to* may be stale and is not live, so it cannot be recaptured;
-    surface it instead — a `kae doctor` stale-snapshot check (expired
-    `expiresAt` / divergence from the live store) and a switch-time warning.
-    External rotation can never be fully tracked, so warn rather than silently
-    repair.
-  - Guard the recapture cost (a macOS keychain read per switch can prompt a
-    `security` dialog): recapture only when the live store and snapshot diverge.
-  - Applies to every OAuth/JWT tool, not just claude.
+- **Credential freshness / auto-recapture** *(v0.8.1 target — see
+  [RELEASE.md](RELEASE.md))*: `use`/bare `use` write the capture-time snapshot
+  back to the live store with no recapture (only `run -s` recaptures), so a
+  token rotated outside kae breaks a switch-back (a login prompt when the refresh
+  token has also rotated; seen in the v0.8.0 gate). v0.8.1 adds switch-source
+  recapture (symmetric with `run -s`), switch-time stale warnings + `doctor`
+  credential-health, `security`-call coalescing, and (splittable) the codex
+  keyring driver. Spans every OAuth/JWT tool, not just claude.
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the
@@ -51,7 +31,8 @@ hardening and platform coverage, ordered below by user impact.
 - **Remote share-list definitions (ship)**: implement the v0.6.0 design if
   it holds — published defaults for the overlay share list, explicit
   fetch, diff-before-adopt, hard-coded auth denylist.
-- **Codex keyring driver**: pin down the OS-credential-store item contract
+- **Codex keyring driver** *(pulled into v0.8.1 §E; may split to v0.8.2 — see
+  [RELEASE.md](RELEASE.md))*: pin down the OS-credential-store item contract
   used by `cli_auth_credentials_store = "keyring"`, add structure guards,
   lift the detect-only restriction.
 - **Login UX polish**: verify `claude /login` behavior across versions,
@@ -60,8 +41,11 @@ hardening and platform coverage, ordered below by user impact.
 - **`kae env export --dotenv --reveal`**: explicit-flag value export for CI
   bootstrapping (today values are injection-only by design).
 - **Performance polish**: combine/cache the multiple `security` subprocess
-  calls per macOS switch; run per-tool `Detect` concurrently in `status`.
-- **doctor keychain-orphan detection** *(discovery done in v0.7.1, deferred)*:
+  calls per macOS switch *(the coalescing lands in v0.8.1 §C — see
+  [RELEASE.md](RELEASE.md))*; run per-tool `Detect` concurrently in `status`
+  (still open).
+- **doctor keychain-orphan detection** *(discovery done in v0.7.1; folded into
+  v0.8.1 §D credential-health — see [RELEASE.md](RELEASE.md))*:
   warn when a `kagikae` secret item has no matching snapshot dir. Blocked on
   enumeration — the darwin keychain cannot list items by service via the
   `security` CLI (`find-generic-password -s` returns only the first match;

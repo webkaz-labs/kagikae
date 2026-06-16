@@ -8,6 +8,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -104,6 +105,13 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	if err := app.requireConfig(); err != nil {
 		return nil, err
 	}
+	// Coalesce the `security` reads a single switch makes of each tool's
+	// account-agnostic keychain service: Detect, the backup, and the §A
+	// recapture all read it, so without a cache the recapture would multiply the
+	// keychain invocations (and auth prompts). Writes below invalidate the
+	// entry. No child process runs during a switch, so the cache never observes
+	// a stale live credential (docs/RELEASE.md §C).
+	ctx = keychain.WithReadCache(ctx)
 	app.pinnedGlobalScope()
 
 	targets, profileName, err := app.resolveTargets(target, name)

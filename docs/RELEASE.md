@@ -48,12 +48,18 @@ reusing §B's predicate. Fold in the v0.7.1-deferred keychain-orphan check where
 enumeration is reliable (file backend `readdir`, Linux `libsecret`); the darwin
 keychain cannot enumerate by service, so it stays a documented gap there.
 
-### E. Codex keyring driver (splittable to v0.8.2)
+### E. Codex keyring driver — **deferred to v0.8.2**
 
-Lift the codex `codex-keyring` driver from detect-only: pin down the OS
-credential-store item contract used by `cli_auth_credentials_store = "keyring"`,
-add structure guards, and pass a round-trip. This is the most independent piece;
-**if it grows the patch too far, split it to v0.8.2** and ship A–D as v0.8.1.
+Lifting the codex `codex-keyring` driver from detect-only requires pinning down
+the OS credential-store item contract used by
+`cli_auth_credentials_store = "keyring"`, which upstream does not document. A
+round-trip cannot be implemented safely without first discovering the item's
+service/account naming on a real machine with a live codex keyring login —
+guessing it would violate the structure-guard rule (refuse unknown layouts,
+never best-effort write; [ADAPTERS.md](ADAPTERS.md)). Per the splittable note,
+**§E is deferred to v0.8.2** and A–D ship as v0.8.1. The deferral and its reason
+are recorded in [ROADMAP.md](ROADMAP.md); the detect-only refusal (exit 10 with
+guidance) is unchanged.
 
 ## Non-Goals (this release)
 
@@ -87,7 +93,8 @@ add structure guards, and pass a round-trip. This is the most independent piece;
 2. §C `security` coalescing first (prerequisite), then §A recapture + §B
    switch-time warning (shared predicate); temp-HOME tests.
 3. §D `doctor` credential-health on the shared predicate; temp-HOME tests.
-4. §E codex keyring driver, or split to v0.8.2 with the reason recorded.
+4. §E codex keyring driver — **deferred to v0.8.2** (undocumented keyring item
+   contract; needs real-machine discovery, reason recorded in ROADMAP.md).
 5. Docs (CLI/ADAPTERS/DATA-MODEL/SECURITY/README); temp-HOME tests.
 6. Real-machine gate — **re-capture a live token immediately before the gate and
    use a throwaway account** (the teardown rewrites the live keychain from the

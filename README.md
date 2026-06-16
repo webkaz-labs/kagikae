@@ -115,6 +115,10 @@ kae use --quiet
   a plaintext file backend is explicit opt-in.
 - Atomic writes, per-tool locks, pre-write backups, structure guards that
   refuse unknown layouts, and full secret redaction in all output.
+- Credential freshness: `kae use` recaptures the account it switches away from
+  when its live token has changed (so a switch back applies a live token), warns
+  when a target snapshot is expired with no refresh token, and `kae doctor`
+  flags stale snapshots and orphaned secret items.
 - Deterministic exit codes and stable `--json` reports for agents and
   scripts — see [docs/CLI.md](docs/CLI.md).
 

@@ -34,27 +34,35 @@ here are part of the command contract.
 - The `kae status` `global_isolated` field and `run -i`'s home-path message
   contain only directory paths and account names — never secret values.
 
-### Secret enumeration (discovery note, v0.7.1)
+### Secret enumeration (v0.8.1 `secret_orphan`)
 
-The `Backend` interface is get/set/delete by key only — it cannot list all
-items under the service. A `doctor` "keychain orphan" check (a secret item
-with no matching `accounts/<tool>/<account>` snapshot dir) would need that
-enumeration, and the discovery for it is **deferred to a follow-up** for this
-reason:
+The base `Backend` interface is get/set/delete by key only. `secret.Enumerator`
+(optional, `Keys(ctx)`) adds listing, used by the `doctor` `secret_orphan`
+check (a secret item with no matching `accounts/<tool>/<account>` snapshot dir):
 
-- **darwin keychain (the scoped backend): cannot enumerate via the `security`
-  CLI.** `security find-generic-password -s kagikae` returns only the **first**
-  matching item, not all of them (verified empirically against a scratch
-  keychain). `security dump-keychain` does list every item, but it dumps the
-  user's entire login keychain, can prompt for access per item, and is brittle
-  — not a stable enumeration path.
-- The `file` backend (`readdir`) and Linux `libsecret`
-  (`secret-tool search --all`) *can* enumerate, so the check is feasible there
-  as a follow-up.
+- **darwin keychain: cannot enumerate via the `security` CLI**, so
+  `keychainBackend` does **not** implement `Enumerator` and the orphan check is
+  silently skipped there. `security find-generic-password -s kagikae` returns
+  only the **first** matching item; `security dump-keychain` dumps the entire
+  login keychain, prompts per item, and is brittle — not a stable path.
+- **`file`** (`readdir` over `*.secret`) and **Linux `libsecret`**
+  (`secret-tool search --all`, parsing `attribute.key` only) implement
+  `Enumerator`, so the check runs there. The libsecret search output also
+  carries `secret = ...` lines; only `attribute.key` is read and the raw output
+  is never logged, so no secret value leaks.
 
-Since `kae account rm` (v0.7.1) deletes the snapshot dir and every secret item
-together, orphans are now rare, so this check is a nice-to-have rather than a
-gate. Tracked in [ROADMAP.md](ROADMAP.md).
+`kae account rm` deletes the snapshot dir and every secret item together, so
+orphans are rare; the check catches leftovers from manual cleanup.
+
+### Per-switch `security` read coalescing (v0.8.1)
+
+A single switch reads one tool's account-agnostic keychain service several
+times (`Detect`, the backup, and the switch-away recapture). `keychain`
+provides a context-scoped read cache (`WithReadCache`) wired into the switch
+path so those collapse to one `security` invocation (and at most one auth
+prompt); writes invalidate the cached service. The cache is per-command and
+never spans a child process run (`run -s`), where the child could rotate the
+live credential unseen — a cached value would be stale.
 
 ## Subprocesses
 
@@ -106,6 +114,13 @@ from refreshing tokens concurrently. Therefore:
 - `kae run -s` recaptures refreshed credentials into the account snapshot
   before restoring the previous state, so token refreshes during the child
   run are never lost.
+- `kae use -s` / bare `use` recapture the currently-active account before
+  switching away when its live credential diverges from the snapshot, so a
+  token rotated in-tool is not silently lost on the next switch back. This is
+  best-effort and divergence-gated — a logged-out account is left untouched
+  with a warning. It cannot track a refresh-token rotation that happens entirely
+  outside kae; that case surfaces as the `credential_stale` warning, not a
+  silent repair.
 
 `kae run -i` operates in the global isolated home (`isolation/global/<tool>/<account>/`)
 with no lock and no live mutation. It is safe to run concurrently with

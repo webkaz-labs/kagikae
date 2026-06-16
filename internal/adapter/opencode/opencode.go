@@ -15,6 +15,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/freshness"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
@@ -93,6 +94,19 @@ func (o Opencode) Identity(_ context.Context, env adapter.Env) (string, error) {
 		return "", fmt.Errorf("no openai.accountId in %s", path)
 	}
 	return doc.Openai.AccountID, nil
+}
+
+// Freshness reads the /openai sub-value {type, refresh, access, expires}.
+func (Opencode) Freshness(payload []byte) freshness.Info {
+	obj, ok := freshness.DecodeObject(payload)
+	if !ok {
+		return freshness.Info{}
+	}
+	return freshness.Info{
+		Known:      true,
+		ExpiresAt:  freshness.EpochToTime(freshness.NumberFrom(obj["expires"])),
+		HasRefresh: freshness.NonEmptyString(obj["refresh"]),
+	}
 }
 
 func (o Opencode) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {

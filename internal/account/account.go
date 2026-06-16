@@ -21,19 +21,31 @@ import (
 // payload is stored. Present=false means the artifact did not exist live at
 // capture time (applying the account removes it).
 type Artifact struct {
-	Kind      string `toml:"kind"`
-	Target    string `toml:"target"`
-	Pointer   string `toml:"pointer,omitempty"`
-	SecretRef string `toml:"secret_ref"`
-	Present   bool   `toml:"present"`
+	Kind    string `toml:"kind"`
+	Target  string `toml:"target"`
+	Pointer string `toml:"pointer,omitempty"`
+	// KeychainAccount is the captured account attribute of a KeychainReplace
+	// item (codex keyring's per-login `cli|<opaque>` id), recorded verbatim so
+	// apply recreates the right item. Empty for stable-account keychain items
+	// (claude/cursor) and non-keychain artifacts.
+	KeychainAccount string `toml:"keychain_account,omitempty"`
+	SecretRef       string `toml:"secret_ref"`
+	Present         bool   `toml:"present"`
 }
 
 // Account is one captured account snapshot's metadata.
 type Account struct {
-	Version    int                 `toml:"version"`
-	Tool       string              `toml:"tool"`
-	Name       string              `toml:"account"`
-	Driver     string              `toml:"driver"`
+	Version int    `toml:"version"`
+	Tool    string `toml:"tool"`
+	Name    string `toml:"account"`
+	Driver  string `toml:"driver"`
+	// Identity is the raw login identity detected at capture (an email or
+	// account id), separate from the sanitized account Name. It disambiguates
+	// accounts whose identities sanitize to the same name. PII but not a secret
+	// (plaintext metadata, like Name; never a token). Empty for pre-v0.8.3
+	// snapshots and for a tool with no readable identity (agy) or a detection
+	// failure — best-effort, never required (docs/RELEASE.md §D).
+	Identity   string              `toml:"identity,omitempty"`
 	CapturedAt time.Time           `toml:"captured_at"`
 	Artifacts  map[string]Artifact `toml:"artifacts"`
 }

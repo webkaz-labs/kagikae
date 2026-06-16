@@ -8,6 +8,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -47,8 +48,16 @@ func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, explicit
 	if err := app.requireConfig(); err != nil {
 		return nil, err
 	}
-	// With no explicit name, default it to the sanitized live login identity.
-	accountName, err := app.resolveAccountName(ctx, tool, explicitName)
+	// Coalesce the `security` reads of one tool's keychain service: identity
+	// detection and the snapshot read both read the same item (codex keyring),
+	// so without a cache --no-login capture would invoke `security` twice. The
+	// path only reads the live keychain (the snapshot is written to the secret
+	// backend, not the keychain) and runs no child process, so the cache never
+	// serves a stale credential; it simply expires with ctx (docs/RELEASE.md §C).
+	ctx = keychain.WithReadCache(ctx)
+	// With no explicit name, default it to the sanitized live login identity;
+	// the raw identity is recorded in the snapshot either way (§D).
+	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName)
 	if err != nil {
 		return nil, err
 	}
@@ -56,6 +65,7 @@ func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, explicit
 	if err != nil {
 		return nil, err
 	}
+	plan.Identity = identity
 	report := &captureReport{
 		SchemaVersion: constants.SchemaVersion,
 		OK:            true,
@@ -137,6 +147,7 @@ func (app *App) persistSnapshot(ctx context.Context, be secret.Backend, plan too
 		Tool:       plan.Tool,
 		Name:       plan.Account,
 		Driver:     plan.Driver,
+		Identity:   plan.Identity,
 		CapturedAt: app.Now().UTC(),
 		Artifacts:  map[string]account.Artifact{},
 	}
@@ -149,10 +160,18 @@ func (app *App) persistSnapshot(ctx context.Context, be secret.Backend, plan too
 		} else if err := be.Delete(ctx, ref); err != nil {
 			return fmt.Errorf("clear stale payload: %w", err)
 		}
-		acc.Artifacts[sp.Name] = account.Artifact{
+		art := account.Artifact{
 			Kind: sp.Kind, Target: sp.Target, Pointer: sp.Pointer,
 			SecretRef: ref, Present: values[i].Present,
 		}
+		// Capture a per-login dynamic keychain account (codex keyring) verbatim
+		// so apply recreates the right item; stable-account items need none.
+		if acctName, ok, err := captureKeychainAccount(ctx, plan.Tool, sp, values[i].Present); err != nil {
+			return err
+		} else if ok {
+			art.KeychainAccount = acctName
+		}
+		acc.Artifacts[sp.Name] = art
 	}
 	return account.Save(app.Paths.AccountDir(plan.Tool, plan.Account), acc)
 }

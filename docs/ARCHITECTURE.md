@@ -76,11 +76,20 @@ artifact specs, so every adapter gets locking, backups, dry-run, and
 redaction identically.
 
 Adapters may implement optional capability interfaces, type-asserted by `cmd`
-(the same pattern as `secret.Enumerator`): `Identifier`
-(`Identity(ctx, env) (string, error)`) reads the live login identity so
-`kae add <tool>` can default the account name. Tools without a readable
-identity (agy; cursor is discovery-blocked) simply do not implement it, and
-`cmd` falls back to requiring an explicit name. See [ADAPTERS.md](ADAPTERS.md).
+(the same pattern as `secret.Enumerator`):
+
+- `Identifier` (`Identity(ctx, env) (string, error)`) reads the live login
+  identity so `kae add <tool>` can default the account name and record it in the
+  snapshot. A tool without a readable identity (agy) does not implement it, and
+  `cmd` falls back to requiring an explicit name.
+- `Fresher` (`Freshness(payload) freshness.Info`) reads a captured credential's
+  expiry and refresh-token presence for the switch-time stale warning and
+  `doctor credential_stale`. `cmd.freshnessOf` dispatches to it; a tool with no
+  datable credential (copilot pointer, agy blob) omits it and is treated as
+  not-datable. `internal/freshness` holds only the shared parsing primitives —
+  no per-tool knowledge — so it stays a leaf package (no `adapter` import).
+
+See [ADAPTERS.md](ADAPTERS.md).
 
 Adapters return structured refusals (`unsafe_refused`, `unsupported`,
 `auth_missing`) instead of writing when the live layout is unrecognized; the

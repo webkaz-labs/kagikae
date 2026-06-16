@@ -105,9 +105,13 @@ func validateToolAccount(tool, name, nameKind string) error {
 
 // toolPlan is one tool's resolved switch/capture plan.
 type toolPlan struct {
-	Tool     string
-	Account  string
-	Driver   string
+	Tool    string
+	Account string
+	Driver  string
+	// Identity is the raw detected login identity to persist in the snapshot
+	// (§D). Set by the capture/login paths from resolveAccount; preserved (not
+	// re-detected) by switch-away recapture. Empty when undetectable.
+	Identity string
 	Specs    []artifact.Spec
 	Meta     account.Account // populated for switch (captured snapshot)
 	Warnings []string
@@ -132,6 +136,26 @@ func (app *App) planTool(ctx context.Context, tool, accountName string) (toolPla
 	}
 	plan.Specs = specs
 	return plan, nil
+}
+
+// captureKeychainAccount reads the verbatim per-login account to persist for a
+// present KeychainReplace keychain item (codex keyring's `cli|<opaque>`),
+// refusing an item with no account attribute (apply could not recreate it).
+// For a non-replace or absent spec it returns ok=false so the caller keeps its
+// own default. It is the shared capture-or-refuse policy for the snapshot
+// (persistSnapshot) and backup (createBackup) paths.
+func captureKeychainAccount(ctx context.Context, tool string, sp artifact.Spec, present bool) (account string, ok bool, err error) {
+	if !sp.KeychainReplace || !present {
+		return "", false, nil
+	}
+	acctName, err := artifact.ReadKeychainAccount(ctx, sp)
+	if err != nil {
+		return "", false, fmt.Errorf("read %s keychain account: %w", tool, err)
+	}
+	if acctName == "" {
+		return "", false, fmt.Errorf("%s keychain item %q has no account attribute; cannot capture it safely", tool, sp.Target)
+	}
+	return acctName, true, nil
 }
 
 // loadState reads state.json.
@@ -182,10 +206,20 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 					return meta, fmt.Errorf("store backup payload: %w", err)
 				}
 			}
+			// A per-login dynamic keychain account (codex keyring) is captured
+			// verbatim so a rollback recreates the right item; stable-account
+			// items keep the spec's constant account.
+			keychainAccount := sp.KeychainAccount
+			if acctName, ok, err := captureKeychainAccount(ctx, plan.Tool, sp, value.Present); err != nil {
+				return meta, err
+			} else if ok {
+				keychainAccount = acctName
+			}
 			meta.Artifacts = append(meta.Artifacts, backup.ArtifactRecord{
 				Tool: plan.Tool, Name: sp.Name, Kind: sp.Kind,
 				Target: sp.Target, Pointer: sp.Pointer,
-				KeychainAccount: sp.KeychainAccount, JSONC: sp.JSONC,
+				KeychainAccount: keychainAccount, KeychainReplace: sp.KeychainReplace,
+				JSONC:     sp.JSONC,
 				SecretRef: ref, Present: value.Present,
 			})
 		}
@@ -228,7 +262,7 @@ func specFromRecord(rec backup.ArtifactRecord) artifact.Spec {
 	return artifact.Spec{
 		Name: rec.Name, Kind: rec.Kind, Target: rec.Target,
 		Pointer: rec.Pointer, KeychainAccount: rec.KeychainAccount,
-		JSONC: rec.JSONC,
+		KeychainReplace: rec.KeychainReplace, JSONC: rec.JSONC,
 	}
 }
 
@@ -296,6 +330,14 @@ func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error 
 			return errf(constants.ExitError,
 				"snapshot %s/%s lacks artifact %s; re-run kae add --no-login %s %s",
 				plan.Tool, plan.Account, sp.Name, plan.Tool, plan.Account)
+		}
+		// A KeychainReplace item (codex keyring) carries its captured per-login
+		// account in the snapshot; the fresh adapter spec cannot know it (the
+		// target is not live), so restore it here before ApplyLive writes. Gated
+		// on the structural KeychainReplace flag (not just a non-empty field) so
+		// a stable-account item's adapter-supplied constant is never overridden.
+		if sp.KeychainReplace && metaArt.KeychainAccount != "" {
+			sp.KeychainAccount = metaArt.KeychainAccount
 		}
 		value := artifact.Value{}
 		if metaArt.Present {

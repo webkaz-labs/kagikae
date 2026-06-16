@@ -1,7 +1,13 @@
-// Package freshness extracts credential expiry and refresh-token presence from
-// a captured auth payload, per tool. It is a pure parser: no IO, no mutation.
-// The switch-time stale warning (docs/RELEASE.md §B) and doctor
-// credential-health (§D) share it so they apply one predicate.
+// Package freshness holds the primitives for reading credential expiry and
+// refresh-token presence from a captured auth payload. It is a pure parser
+// library: no IO, no mutation, no per-tool knowledge.
+//
+// The per-tool logic that turns a payload into an Info lives on each tool's
+// adapter (adapter.Fresher), so per-tool credential knowledge has one home (the
+// registry). Adapters build their Info from the shared primitives here
+// (JWTExpiry / EpochToTime / DecodeObject / NumberFrom / NonEmptyString) plus
+// internal/jwt. cmd dispatches to the adapter (cmd.freshnessOf); a tool with no
+// Fresher method is treated as not-datable (Known=false).
 //
 // Not every tool exposes a datable credential. claude/codex/opencode/cursor
 // authenticate with a refreshable OAuth/JWT token whose expiry kae can read;
@@ -13,10 +19,8 @@ package freshness
 
 import (
 	"encoding/json"
-	"strings"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/jwt"
 )
 
@@ -34,90 +38,10 @@ type Info struct {
 	HasRefresh bool
 }
 
-// Inspect reads the freshness of one captured credential payload for tool.
-func Inspect(tool string, payload []byte) Info {
-	switch tool {
-	case constants.ToolClaude:
-		return inspectClaude(payload)
-	case constants.ToolCodex:
-		return inspectCodex(payload)
-	case constants.ToolOpencode:
-		return inspectOpencode(payload)
-	case constants.ToolCursor:
-		return inspectCursor(payload)
-	default:
-		return Info{} // copilot pointer, agy blob: not datable
-	}
-}
-
-// inspectClaude reads claudeAiOauth's expiresAt (Unix ms) and refreshToken. The
-// keychain payload wraps the object under claudeAiOauth; the file-driver
-// snapshot stores the inner object directly, so both nestings are handled.
-func inspectClaude(payload []byte) Info {
-	root, ok := decodeObject(payload)
-	if !ok {
-		return Info{}
-	}
-	obj := root
-	if inner, ok := root["claudeAiOauth"]; ok {
-		if nested, ok := decodeObject(inner); ok {
-			obj = nested
-		}
-	}
-	return Info{
-		Known:      true,
-		ExpiresAt:  epochToTime(numberFrom(obj["expiresAt"])),
-		HasRefresh: nonEmptyString(obj["refreshToken"]),
-	}
-}
-
-// inspectOpencode reads the /openai sub-value {type, refresh, access, expires}.
-func inspectOpencode(payload []byte) Info {
-	obj, ok := decodeObject(payload)
-	if !ok {
-		return Info{}
-	}
-	return Info{
-		Known:      true,
-		ExpiresAt:  epochToTime(numberFrom(obj["expires"])),
-		HasRefresh: nonEmptyString(obj["refresh"]),
-	}
-}
-
-// inspectCodex reads tokens.refresh_token presence and the access (or id) token
-// JWT expiry from a whole auth.json. A file holding only OPENAI_API_KEY parses
-// as Known with no expiry.
-func inspectCodex(payload []byte) Info {
-	var doc struct {
-		Tokens struct {
-			AccessToken  string `json:"access_token"`
-			IDToken      string `json:"id_token"`
-			RefreshToken string `json:"refresh_token"`
-		} `json:"tokens"`
-	}
-	if err := json.Unmarshal(payload, &doc); err != nil {
-		return Info{}
-	}
-	info := Info{Known: true, HasRefresh: doc.Tokens.RefreshToken != ""}
-	if exp, ok := jwtExpiry(doc.Tokens.AccessToken); ok {
-		info.ExpiresAt = exp
-	} else if exp, ok := jwtExpiry(doc.Tokens.IDToken); ok {
-		info.ExpiresAt = exp
-	}
-	return info
-}
-
-// inspectCursor reads the expiry of cursor's opaque raw-JWT credential. There
-// is no refresh token (the JWT is the whole credential).
-func inspectCursor(payload []byte) Info {
-	if exp, ok := jwtExpiry(strings.TrimSpace(string(payload))); ok {
-		return Info{Known: true, ExpiresAt: exp}
-	}
-	return Info{}
-}
-
-// jwtExpiry decodes a JWT's claims and returns its exp (seconds since epoch).
-func jwtExpiry(token string) (time.Time, bool) {
+// JWTExpiry decodes a JWT's claims and returns its exp (seconds since epoch).
+// kae never verifies the signature; it reads a claim it already trusts because
+// the token came from the live credential store.
+func JWTExpiry(token string) (time.Time, bool) {
 	claimBytes, ok := jwt.Payload(token)
 	if !ok {
 		return time.Time{}, false
@@ -131,7 +55,9 @@ func jwtExpiry(token string) (time.Time, bool) {
 	return time.Unix(int64(claims.Exp), 0).UTC(), true
 }
 
-func decodeObject(raw []byte) (map[string]json.RawMessage, bool) {
+// DecodeObject unmarshals raw into a JSON object, or ok=false when raw is not a
+// JSON object.
+func DecodeObject(raw []byte) (map[string]json.RawMessage, bool) {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &obj); err != nil || obj == nil {
 		return nil, false
@@ -139,7 +65,8 @@ func decodeObject(raw []byte) (map[string]json.RawMessage, bool) {
 	return obj, true
 }
 
-func numberFrom(raw json.RawMessage) float64 {
+// NumberFrom reads raw as a JSON number, or 0 when it is absent or not numeric.
+func NumberFrom(raw json.RawMessage) float64 {
 	var n float64
 	if json.Unmarshal(raw, &n) == nil {
 		return n
@@ -147,15 +74,16 @@ func numberFrom(raw json.RawMessage) float64 {
 	return 0
 }
 
-func nonEmptyString(raw json.RawMessage) bool {
+// NonEmptyString reports whether raw is a non-empty JSON string.
+func NonEmptyString(raw json.RawMessage) bool {
 	var s string
 	return json.Unmarshal(raw, &s) == nil && s != ""
 }
 
-// epochToTime converts a numeric expiry to a time. Millisecond-scale values
+// EpochToTime converts a numeric expiry to a time. Millisecond-scale values
 // (>= 1e12 for any plausible recent date) are treated as Unix ms; smaller ones
 // as Unix seconds. A non-positive value is "no expiry".
-func epochToTime(n float64) time.Time {
+func EpochToTime(n float64) time.Time {
 	if n <= 0 {
 		return time.Time{}
 	}

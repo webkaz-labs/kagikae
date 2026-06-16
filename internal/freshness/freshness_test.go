@@ -2,11 +2,10 @@ package freshness
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
-
-	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
 // makeJWT builds a minimal unsigned-looking JWT whose payload carries exp.
@@ -16,79 +15,55 @@ func makeJWT(exp int64) string {
 	return header + "." + payload + ".sig"
 }
 
-func TestClaudeNestedAndFlat(t *testing.T) {
-	exp := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
-	ms := exp.UnixMilli()
-	nested := fmt.Appendf(nil, `{"claudeAiOauth":{"expiresAt":%d,"refreshToken":"r"}}`, ms)
-	flat := fmt.Appendf(nil, `{"expiresAt":%d,"refreshToken":"r"}`, ms)
-	for name, payload := range map[string][]byte{"nested": nested, "flat": flat} {
-		info := Inspect(constants.ToolClaude, payload)
-		if !info.Known || !info.HasRefresh || !info.ExpiresAt.Equal(exp) {
-			t.Fatalf("%s: %+v (want exp %v)", name, info, exp)
-		}
-	}
-}
-
-func TestClaudeNoRefresh(t *testing.T) {
-	info := Inspect(constants.ToolClaude, []byte(`{"claudeAiOauth":{"expiresAt":1000000000000}}`))
-	if !info.Known || info.HasRefresh || info.ExpiresAt.IsZero() {
-		t.Fatalf("unexpected: %+v", info)
-	}
-}
-
-func TestCodexJWTExpiryAndRefresh(t *testing.T) {
+func TestJWTExpiry(t *testing.T) {
 	exp := time.Date(2031, 6, 1, 0, 0, 0, 0, time.UTC)
-	payload := fmt.Appendf(nil, `{"tokens":{"access_token":%q,"refresh_token":"r"}}`, makeJWT(exp.Unix()))
-	info := Inspect(constants.ToolCodex, payload)
-	if !info.Known || !info.HasRefresh || !info.ExpiresAt.Equal(exp) {
-		t.Fatalf("unexpected: %+v (want %v)", info, exp)
+	got, ok := JWTExpiry(makeJWT(exp.Unix()))
+	if !ok || !got.Equal(exp) {
+		t.Fatalf("JWTExpiry = %v, %v (want %v)", got, ok, exp)
+	}
+	if _, ok := JWTExpiry("not-a-jwt"); ok {
+		t.Fatalf("non-JWT should not parse")
+	}
+	if _, ok := JWTExpiry(makeJWT(0)); ok {
+		t.Fatalf("exp=0 should be treated as no expiry")
 	}
 }
 
-func TestCodexAPIKeyOnly(t *testing.T) {
-	info := Inspect(constants.ToolCodex, []byte(`{"OPENAI_API_KEY":"sk-x"}`))
-	if !info.Known || info.HasRefresh || !info.ExpiresAt.IsZero() {
-		t.Fatalf("unexpected: %+v", info)
+func TestEpochToTime(t *testing.T) {
+	secs := time.Date(2028, 9, 9, 9, 9, 9, 0, time.UTC)
+	if got := EpochToTime(float64(secs.Unix())); !got.Equal(secs) {
+		t.Fatalf("seconds: %v != %v", got, secs)
+	}
+	ms := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	if got := EpochToTime(float64(ms.UnixMilli())); !got.Equal(ms) {
+		t.Fatalf("millis: %v != %v", got, ms)
+	}
+	if got := EpochToTime(0); !got.IsZero() {
+		t.Fatalf("zero should map to zero time, got %v", got)
 	}
 }
 
-func TestOpencodeExpiresMs(t *testing.T) {
-	exp := time.Date(2029, 3, 3, 12, 0, 0, 0, time.UTC)
-	payload := fmt.Appendf(nil, `{"type":"oauth","refresh":"r","access":"a","expires":%d}`, exp.UnixMilli())
-	info := Inspect(constants.ToolOpencode, payload)
-	if !info.Known || !info.HasRefresh || !info.ExpiresAt.Equal(exp) {
-		t.Fatalf("unexpected: %+v (want %v)", info, exp)
+func TestDecodeObjectAndScalars(t *testing.T) {
+	obj, ok := DecodeObject([]byte(`{"expiresAt":1000000000000,"refreshToken":"r","empty":""}`))
+	if !ok {
+		t.Fatal("DecodeObject failed on a JSON object")
 	}
-}
-
-func TestCursorOpaqueJWT(t *testing.T) {
-	exp := time.Date(2028, 9, 9, 9, 9, 9, 0, time.UTC)
-	info := Inspect(constants.ToolCursor, []byte(makeJWT(exp.Unix())))
-	if !info.Known || info.HasRefresh || !info.ExpiresAt.Equal(exp) {
-		t.Fatalf("unexpected: %+v (want %v)", info, exp)
+	if n := NumberFrom(obj["expiresAt"]); n != 1000000000000 {
+		t.Fatalf("NumberFrom = %v", n)
 	}
-}
-
-func TestCursorNonJWT(t *testing.T) {
-	if info := Inspect(constants.ToolCursor, []byte("not-a-jwt")); info.Known {
-		t.Fatalf("expected unknown for non-JWT, got %+v", info)
+	if !NonEmptyString(obj["refreshToken"]) {
+		t.Fatal("refreshToken should be a non-empty string")
 	}
-}
-
-func TestNotDatableTools(t *testing.T) {
-	cases := map[string][]byte{
-		constants.ToolCopilot: []byte(`{"host":"https://github.com","login":"work"}`),
-		constants.ToolAgy:     []byte("opaque-binary"),
+	if NonEmptyString(obj["empty"]) {
+		t.Fatal("empty string should be NonEmptyString=false")
 	}
-	for tool, payload := range cases {
-		if info := Inspect(tool, payload); info.Known {
-			t.Fatalf("%s: expected not datable, got %+v", tool, info)
-		}
+	if NonEmptyString(obj["missing"]) {
+		t.Fatal("missing key should be NonEmptyString=false")
 	}
-}
-
-func TestUnparseable(t *testing.T) {
-	if info := Inspect(constants.ToolClaude, []byte("not json")); info.Known {
-		t.Fatalf("expected unknown, got %+v", info)
+	if NumberFrom(json.RawMessage(`"not-a-number"`)) != 0 {
+		t.Fatal("non-number should be 0")
+	}
+	if _, ok := DecodeObject([]byte("not json")); ok {
+		t.Fatal("non-JSON should not decode")
 	}
 }

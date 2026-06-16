@@ -97,20 +97,38 @@ environment, the adapter uses it as the live base path.
 | Driver | Status | Switched artifacts |
 |--------|--------|--------------------|
 | `codex-auth-json` | implemented | whole `~/.codex/auth.json` (file mode `0600`) |
-| `codex-keyring` | detect-only in v0.1.0 | OS credential store entry |
+| `codex-keyring` | implemented (v0.8.3) | keychain item service `Codex Auth`, captured and restored verbatim |
 
-The keyring item naming used by Codex is not a documented contract, so v0.1.0
-only detects the keyring configuration:
+Store selection by `cli_auth_credentials_store`:
 
-- explicit `cli_auth_credentials_store = "keyring"`: `doctor` flags it as an
-  error and `capture` / `switch` refuse with exit code 10 and guidance to set
-  `cli_auth_credentials_store = "file"` upstream or wait for the keyring
-  driver (see [ROADMAP.md](ROADMAP.md));
-- `auto` (or unset) with no `auth.json`: indistinguishable from "not logged
-  in", so `capture` fails with `auth_missing` (exit 3) including a keyring
-  hint, while `switch` proceeds normally — switching to a captured account
-  legitimately creates `auth.json`. `doctor` and `status` carry the same
-  hint as a warning.
+- explicit `cli_auth_credentials_store = "keyring"`: kae switches the `Codex
+  Auth` keychain item (driver below). `auto` (or unset) with neither `auth.json`
+  nor a keyring item is indistinguishable from "not logged in", so `capture`
+  fails with `auth_missing` (exit 3) including a keyring hint, while `switch`
+  proceeds normally — switching to a captured account legitimately creates the
+  live state. `doctor` and `status` carry the same hint as a warning.
+
+#### Keyring item contract (discovery 2026-06-16; driver shipped v0.8.3)
+
+Real-machine discovery (`cli_auth_credentials_store = "keyring"` + `codex
+login` on macOS) found the keychain item:
+
+- **service** `Codex Auth`
+- **account** `cli|<opaque>` — a per-login opaque id (not a hash of
+  `account_id` / `sub` / `email` / `jti` / `sid`), so kae **captures it
+  verbatim and never computes it**.
+- **payload** the whole `auth.json` JSON (`tokens`, `OPENAI_API_KEY`,
+  `auth_mode`, `last_refresh`) — file-mode-equivalent content.
+
+The `codex-keyring` driver reuses the verbatim-keychain pattern (as claude /
+cursor): capture the single live `Codex Auth` item's account (`KeychainReplace`,
+stored as the snapshot's `keychain_account`) and payload; structure guard =
+payload parses as a JSON object containing `/tokens`. On apply kae **deletes the
+existing `Codex Auth` item before writing the target's** under its captured
+account, so exactly one item remains — robust whether codex matches by service
+only or service+account (the open discovery point, conservatively covered). The
+detect-only exit-10 refusal is gone; identity auto-detection reads the keychain
+payload's `id_token` email / `account_id` just like the file store.
 
 ### Preserved
 
@@ -424,7 +442,7 @@ at 64); an explicit name always wins. The per-tool source:
 | opencode | `auth.json` `/openai` `accountId` |
 | copilot | `config.json` (JSONC) `/lastLoggedInUser.login` |
 | agy | none — no exposed identity; explicit name required |
-| cursor | none yet — `cursor-agent status` output is undocumented; discovery-blocked ([ROADMAP.md](ROADMAP.md)), so an explicit name is required |
+| cursor | `cursor-agent status` prints `✓ Logged in as <email>` (discovery 2026-06-16: single line, no ANSI, exit 0); the `Identifier` (v0.8.3) parses the text after `Logged in as ` through the runner seam. A non-zero exit, a missing marker, or an empty identity is a detection failure. `cursor-agent status` may hit the network — acceptable on the interactive `kae add` path. |
 
 A detection failure (logged out, unreadable, or sanitizes to empty) is a usage
 error naming the explicit form, never a silent fallback. Identity reads only
@@ -439,11 +457,13 @@ claims decoder is `internal/jwt`).
    primitives (`json-pointer`, `file`, `keychain`) so backup/rollback and
    redaction come for free.
 3. Add structure guards: refuse unknown layouts instead of writing.
-4. If the credential is a refreshable OAuth/JWT token, teach
-   `internal/freshness` to read its expiry and refresh-token presence (used by
-   the switch-time stale warning and `doctor credential_stale`); a static API
-   key or a pointer-only artifact stays not-datable (Known=false). See the
-   per-tool field map in [DATA-MODEL.md](DATA-MODEL.md).
+4. If the credential is a refreshable OAuth/JWT token, implement
+   `adapter.Fresher` (`Freshness(payload) freshness.Info`) using the primitives
+   in `internal/freshness` (JWTExpiry / EpochToTime / DecodeObject / …) so the
+   switch-time stale warning and `doctor credential_stale` can read its expiry
+   and refresh-token presence; a static API key or a pointer-only artifact stays
+   not-datable — just omit the method (Known=false). See the per-tool field map
+   in [DATA-MODEL.md](DATA-MODEL.md).
 5. Optionally implement `adapter.Identifier` so `kae add <tool>` can default the
    account name (above). Skip it when the tool exposes no readable identity.
 6. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and

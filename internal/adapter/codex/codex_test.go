@@ -3,9 +3,11 @@ package codex
 import (
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 )
@@ -60,5 +62,30 @@ func TestCodexIdentityMissing(t *testing.T) {
 	var c Codex
 	if _, err := c.Identity(t.Context(), testEnv(home)); err == nil {
 		t.Fatal("expected an error when no email claim or account_id is present")
+	}
+}
+
+// makeJWTExp builds an unsigned JWT carrying an exp claim (seconds).
+func makeJWTExp(exp int64) string { return makeJWT(fmt.Sprintf(`{"exp":%d}`, exp)) }
+
+func TestCodexFreshnessJWTExpiryAndRefresh(t *testing.T) {
+	exp := time.Date(2031, 6, 1, 0, 0, 0, 0, time.UTC)
+	payload := fmt.Appendf(nil, `{"tokens":{"access_token":%q,"refresh_token":"r"}}`, makeJWTExp(exp.Unix()))
+	info := Codex{}.Freshness(payload)
+	if !info.Known || !info.HasRefresh || !info.ExpiresAt.Equal(exp) {
+		t.Fatalf("Freshness = %+v (want exp %v, refresh true)", info, exp)
+	}
+}
+
+func TestCodexFreshnessAPIKeyOnly(t *testing.T) {
+	info := Codex{}.Freshness([]byte(`{"OPENAI_API_KEY":"sk-x"}`))
+	if !info.Known || info.HasRefresh || !info.ExpiresAt.IsZero() {
+		t.Fatalf("Freshness = %+v (want Known, no refresh, no expiry)", info)
+	}
+}
+
+func TestCodexFreshnessUnparseable(t *testing.T) {
+	if info := (Codex{}).Freshness([]byte("not json")); info.Known {
+		t.Fatalf("Freshness on garbage = %+v (want Known=false)", info)
 	}
 }

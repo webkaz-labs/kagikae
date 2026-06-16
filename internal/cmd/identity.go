@@ -8,39 +8,50 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
-// resolveAccountName returns the account name for `kae add`: the explicit name
-// when given, otherwise the auto-detected, sanitized login identity (the
-// v0.8.2 default; docs/RELEASE.md §B). Detection reads the tool's live login
-// identity via the adapter.Identifier capability. An adapter without it (agy;
-// cursor is discovery-blocked), a detection failure (logged out, unreadable),
-// or an identity that sanitizes to empty is a hard error naming the explicit
-// form — never a silent fallback.
-func (app *App) resolveAccountName(ctx context.Context, tool, explicit string) (string, error) {
-	if explicit != "" {
-		return explicit, nil
-	}
+// resolveAccount returns the account name and the raw detected login identity
+// for `kae add`. The name is the explicit one when given, otherwise the
+// auto-detected, sanitized login identity (the v0.8.2 default; docs/RELEASE.md
+// §B). The raw identity is returned for the snapshot's identity field (§D),
+// best-effort even when an explicit name is given ("" when undetectable).
+//
+// Detection reads the tool's live login identity via the adapter.Identifier
+// capability. With no explicit name, an adapter without it (agy), a detection
+// failure (logged out, unreadable), or an identity that sanitizes to empty is a
+// hard error naming the explicit form — never a silent fallback. With an
+// explicit name, detection never blocks the capture: the name wins and the
+// identity is recorded only if it happened to be readable.
+func (app *App) resolveAccount(ctx context.Context, tool, explicit string) (name, identity string, err error) {
 	ad, err := adapter.ForTool(tool)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	identifier, ok := ad.(adapter.Identifier)
-	if !ok {
-		return "", errf(constants.ExitUsage,
+	identifier, hasIdentifier := ad.(adapter.Identifier)
+	if explicit != "" {
+		if hasIdentifier {
+			// Best-effort: a detection failure must not block an explicit name.
+			if raw, derr := identifier.Identity(ctx, app.Env); derr == nil {
+				identity = strings.TrimSpace(raw)
+			}
+		}
+		return explicit, identity, nil
+	}
+	if !hasIdentifier {
+		return "", "", errf(constants.ExitUsage,
 			"kae add %s cannot auto-detect an account name; give one: kae add %s <account>", tool, tool)
 	}
-	raw, err := identifier.Identity(ctx, app.Env)
-	if err != nil {
-		return "", errf(constants.ExitUsage,
+	raw, derr := identifier.Identity(ctx, app.Env)
+	if derr != nil {
+		return "", "", errf(constants.ExitUsage,
 			"could not detect the %s login identity (%v); give an account name: kae add %s <account>",
-			tool, err, tool)
+			tool, derr, tool)
 	}
-	name := sanitizeAccountName(raw)
+	name = sanitizeAccountName(raw)
 	if name == "" {
-		return "", errf(constants.ExitUsage,
+		return "", "", errf(constants.ExitUsage,
 			"the detected %s identity %q has no usable account-name characters; give one: kae add %s <account>",
 			tool, raw, tool)
 	}
-	return name, nil
+	return name, strings.TrimSpace(raw), nil
 }
 
 // sanitizeAccountName turns a raw login identity into a valid account name: an

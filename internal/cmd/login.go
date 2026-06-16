@@ -166,12 +166,14 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	}
 
 	// The login flow changed auth, so the new identity is now live: resolve the
-	// account name (auto-detected from it unless given explicitly) and snapshot.
-	accountName, err := app.resolveAccountName(ctx, tool, explicitName)
+	// account name (auto-detected from it unless given explicitly) and the raw
+	// identity to record in the snapshot (§D), then snapshot.
+	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName)
 	if err != nil {
 		return finishLoginFailure(ctx, opts, be, meta, restore, "detect the logged-in account", err)
 	}
 	plan.Account = accountName
+	plan.Identity = identity
 
 	if err := app.captureSnapshot(ctx, be, plan); err != nil {
 		return finishLoginFailure(ctx, opts, be, meta, restore, "capture after login", err)

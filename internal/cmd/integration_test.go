@@ -15,6 +15,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/paths"
+	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -397,14 +398,85 @@ func TestDoctorHealthy(t *testing.T) {
 	}
 }
 
-func TestCodexKeyringRefusedOnSwitchPath(t *testing.T) {
-	app := testApp(t, nil)
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText}
-	writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"),
-		"cli_auth_credentials_store = \"keyring\"\n")
-	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "work") })
-	mustExit(t, constants.ExitUnsafeRefused, code, out)
+// §C: with the keyring store, capture/use round-trip through the single
+// `Codex Auth` keychain item. The per-login opaque account is captured verbatim
+// and apply deletes the prior item before writing the target's, so exactly one
+// item — with the target account's id and payload — remains. The keychainSim
+// (a stateful `security` double) keeps the test off the real keychain.
+func TestCodexKeyringRoundTrip(t *testing.T) {
+	sim := &keychainSim{}
+	runner.With(sim, func() {
+		app := testApp(t, nil)
+		app.Env.GOOS = "darwin"
+		ctx := context.Background()
+		opts := commonOpts{Format: formatText}
+		writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"),
+			"cli_auth_credentials_store = \"keyring\"\n")
+
+		// codex logged in as work: one keychain item under its opaque account.
+		sim.present = true
+		sim.account = "cli|opaqueWORK"
+		sim.payload = `{"tokens":{"access_token":"work-access","refresh_token":"work-refresh"}}`
+		captureCode, captureOut := captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "work") })
+		if captureCode != constants.ExitOK {
+			t.Fatalf("capture work: %s", captureOut)
+		}
+		// Redaction: the keyring payload is a credential and must never reach
+		// stdout or the snapshot metadata (only the opaque account id is stored).
+		if strings.Contains(captureOut, "work-access") {
+			t.Fatalf("keyring token leaked to capture output: %s", captureOut)
+		}
+		meta := readFile(t, filepath.Join(app.Paths.AccountDir("codex", "work"), "account.toml"))
+		if strings.Contains(meta, "work-access") {
+			t.Fatalf("keyring token leaked into account.toml: %s", meta)
+		}
+		if !strings.Contains(meta, "cli|opaqueWORK") {
+			t.Fatalf("captured keychain account missing from account.toml: %s", meta)
+		}
+		// A re-login as personal replaced the live item (new opaque account).
+		sim.account = "cli|opaquePERSONAL"
+		sim.payload = `{"tokens":{"access_token":"personal-access","refresh_token":"personal-refresh"}}`
+		if code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "personal") }); code != constants.ExitOK {
+			t.Fatalf("capture personal: %s", out)
+		}
+		// Switch back to work: delete the personal item, recreate work's verbatim.
+		sim.ops = nil // isolate the apply's keychain mutations
+		if code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "codex", "work") }); code != constants.ExitOK {
+			t.Fatalf("switch to work: %s", out)
+		}
+		if !sim.present {
+			t.Fatal("no Codex Auth item after switch")
+		}
+		// Apply must delete the prior item before writing the target's, so a
+		// single item remains (robust to service-only or service+account match).
+		if len(sim.ops) < 2 || sim.ops[0] != "delete" || sim.ops[1] != "add" {
+			t.Fatalf("expected delete-then-add on apply, got %v", sim.ops)
+		}
+		if sim.account != "cli|opaqueWORK" {
+			t.Fatalf("item account = %q, want cli|opaqueWORK (captured verbatim)", sim.account)
+		}
+		if !strings.Contains(sim.payload, "work-access") || strings.Contains(sim.payload, "personal-access") {
+			t.Fatalf("item payload not restored to work verbatim: %s", sim.payload)
+		}
+	})
+}
+
+// §C: a keyring item present but with an empty account attribute is refused at
+// capture rather than stored as an unusable snapshot (which apply could not
+// recreate correctly).
+func TestCodexKeyringEmptyAccountRefused(t *testing.T) {
+	sim := &keychainSim{present: true, account: "", payload: `{"tokens":{"access_token":"x"}}`}
+	runner.With(sim, func() {
+		app := testApp(t, nil)
+		app.Env.GOOS = "darwin"
+		ctx := context.Background()
+		writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"),
+			"cli_auth_credentials_store = \"keyring\"\n")
+		code, out := captureStdout(t, func() int { return runCapture(ctx, app, commonOpts{Format: formatText}, "codex", "work") })
+		if code == constants.ExitOK {
+			t.Fatalf("expected capture to refuse an item with an empty account: %s", out)
+		}
+	})
 }
 
 func TestAgyCaptureSwitchFileSnapshot(t *testing.T) {

@@ -57,6 +57,9 @@ func TestLsListsAccountsAndProfiles(t *testing.T) {
 		}
 		if a.Account == "work" && a.Active {
 			activeAccount = true
+			if a.Identity != "work-uuid@example.com" { // §D: raw identity carried in --json
+				t.Fatalf("work identity = %q, want work-uuid@example.com: %s", a.Identity, out)
+			}
 		}
 	}
 	if !activeAccount {

@@ -3,26 +3,27 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target is **v0.8.2** (daily-use polish: concurrent `status`,
-switch-read coalescing, `kae add` name auto-detection, `kae ls`, and v0.8.1
-freshness hardening — see [RELEASE.md](RELEASE.md)). v0.8.1 (credential freshness
-/ auto-recapture) shipped, following v0.8.0 (fold `apply` into `use`, redesign
-`run` onto `-s`/`-i`/`--env`, trim `mise init`, hard-rename the mechanism +
-config-key vocabulary, input ergonomics) and v0.7.2 (use/pin × -s/-i, global
-isolated home). What remains beyond v0.8.2 is hardening and platform coverage,
-ordered below by user impact.
+The active target is **v0.8.3** (lift the two discovery-blocked items,
+consolidate per-tool credential knowledge, and surface the detected identity:
+§A freshness-as-adapter-capability, §B cursor `kae add` identity, §C codex
+keyring driver, §D store + display the detected account identity — see
+[RELEASE.md](RELEASE.md)). Both deferred items had their real-machine discovery
+done 2026-06-16 (contracts in [ADAPTERS.md](ADAPTERS.md)), so the scope is
+de-risked. v0.8.2 (daily-use polish: concurrent `status`, switch-read
+coalescing, `kae add` name auto-detection, `kae ls`) shipped, following v0.8.1
+(credential freshness / auto-recapture), v0.8.0 (surface vocabulary
+unification), and v0.7.2 (use/pin × -s/-i, global isolated home). What remains
+beyond v0.8.3 is hardening and platform coverage, ordered below by user impact.
 
-Split out of v0.8.2 to **v0.8.3**:
+Scheduled into **v0.8.3** (discovery done; see [RELEASE.md](RELEASE.md)):
 - **Freshness as an adapter capability**: move `freshness.Inspect`'s per-tool
-  `switch` onto a per-tool `Freshness(payload) Info` adapter method (beside the
-  new `Identity`), so per-tool knowledge has one home. Deferred because it
-  touches all six adapters plus the interface, growing the v0.8.2 patch past its
-  daily-use-polish scope; the shared `jwtExpiry`/`epochToTime`/`decodeObject`
-  primitives stay in `internal/freshness`. New tools stay fail-safe (Known=false).
-- **`kae add` identity for cursor**: cursor's `cursor-agent status` output is
-  undocumented, so its `Identifier` is discovery-blocked (guessing the format
-  would violate the refuse-unknown-layouts discipline). cursor requires an
-  explicit account name until a real-machine discovery pins the output down.
+  `switch` onto a per-tool `Freshness(payload) Info` adapter method (beside
+  `Identity`), so per-tool knowledge has one home. The shared
+  `jwtExpiry`/`epochToTime`/`decodeObject` primitives stay in
+  `internal/freshness`; new tools stay fail-safe (Known=false).
+- **`kae add` identity for cursor**: discovery done — `cursor-agent status`
+  prints `✓ Logged in as <email>` (single line, no ANSI). The v0.8.3
+  `Identifier` parses it through the runner seam with a structure guard.
 
 ## Hardening backlog — daily-use robustness
 
@@ -47,14 +48,13 @@ Split out of v0.8.2 to **v0.8.3**:
 - **Remote share-list definitions (ship)**: implement the v0.6.0 design if
   it holds — published defaults for the overlay share list, explicit
   fetch, diff-before-adopt, hard-coded auth denylist.
-- **Codex keyring driver** *(v0.8.2 target — split out of v0.8.1 §E)*: pin down
-  the OS-credential-store item contract used by
-  `cli_auth_credentials_store = "keyring"`, add structure guards, lift the
-  detect-only restriction. Deferred from v0.8.1 because the keyring item naming
-  is undocumented upstream and a safe round-trip needs real-machine discovery
-  against a live codex keyring login first (guessing the contract would break
-  the refuse-unknown-layouts guard). The detect-only refusal stays in place
-  until then.
+- **Codex keyring driver** *(v0.8.3 §C — discovery done)*: lift the detect-only
+  restriction on `cli_auth_credentials_store = "keyring"`. The item contract was
+  discovered on a real machine 2026-06-16 (service `Codex Auth`, account
+  `cli|<opaque>` captured verbatim, payload = whole `auth.json` JSON; see
+  [ADAPTERS.md](ADAPTERS.md)), so the verbatim-keychain driver is now
+  implementable with structure guards. The detect-only refusal stays until the
+  v0.8.3 driver lands (and its two-account real-keychain gate).
 - **Login UX polish**: verify `claude /login` behavior across versions,
   support agy. (The "login flow exited without changing auth" case is now
   detected and refused with exit `11`.)

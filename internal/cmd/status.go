@@ -227,6 +227,7 @@ func accountItems(st *state.State, captured []account.Account) []accountItem {
 		items = append(items, accountItem{
 			Tool:       acc.Tool,
 			Account:    acc.Name,
+			Identity:   acc.Identity,
 			Driver:     acc.Driver,
 			Active:     st.Active[acc.Tool] == acc.Name,
 			CapturedAt: acc.CapturedAt.UTC().Format(time.RFC3339),
@@ -317,8 +318,12 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 }
 
 type accountItem struct {
-	Tool       string `json:"tool"`
-	Account    string `json:"account"`
+	Tool    string `json:"tool"`
+	Account string `json:"account"`
+	// Identity is the raw login identity detected at capture (§D), additive and
+	// omitempty so the JSON contract stays schema_version 1; blank for
+	// pre-v0.8.3 snapshots and tools with no readable identity.
+	Identity   string `json:"identity,omitempty"`
 	Driver     string `json:"driver"`
 	Active     bool   `json:"active"`
 	CapturedAt string `json:"captured_at"`
@@ -368,8 +373,8 @@ func runAccounts(_ context.Context, app *App, opts commonOpts) int {
 		if item.Active {
 			active = "*"
 		}
-		rows = append(rows, []string{item.Tool, item.Account, active, item.Driver, item.CapturedAt})
+		rows = append(rows, []string{item.Tool, item.Account, item.Identity, active, item.Driver, item.CapturedAt})
 	}
-	printTable([]string{"Tool", "Account", "Active", "Driver", "Captured"}, rows)
+	printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Captured"}, rows)
 	return constants.ExitOK
 }

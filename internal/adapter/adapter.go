@@ -12,6 +12,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/freshness"
 )
 
 // ErrUnsupported means the tool/platform combination has no auth driver;
@@ -63,12 +64,21 @@ type Adapter interface {
 // Identifier is implemented by adapters that can read the live login identity
 // (an email address or account handle) so `kae add <tool>` with no account name
 // can derive a default. The returned identity is raw — the caller sanitizes it
-// into an account name. Tools whose identity source is undocumented do not
-// implement it (agy has no exposed identity; cursor's `cursor-agent status`
-// output is discovery-blocked, see docs/ROADMAP.md), so `kae add` there requires
-// an explicit account name.
+// into an account name. A tool with no readable identity does not implement it
+// (agy exposes none), so `kae add` there requires an explicit account name.
 type Identifier interface {
 	Identity(ctx context.Context, env Env) (string, error)
+}
+
+// Fresher is implemented by adapters whose switched credential carries a
+// readable expiry / refresh-token (claude/codex/opencode/cursor). It turns a
+// captured payload into a freshness.Info using the primitives in
+// internal/freshness, so per-tool credential knowledge lives on the adapter
+// (the registry), not in a central switch. cmd dispatches to it for the
+// switch-time stale warning and doctor credential-health; a tool with no
+// Fresher (copilot pointer, agy blob) is treated as not-datable (Known=false).
+type Fresher interface {
+	Freshness(payload []byte) freshness.Info
 }
 
 var registry = map[string]Adapter{}

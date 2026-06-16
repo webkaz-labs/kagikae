@@ -17,7 +17,8 @@ type keychainSim struct {
 	payload string
 	account string
 	present bool
-	readW   int // payload reads (find-generic-password -w)
+	readW   int      // payload reads (find-generic-password -w)
+	ops     []string // mutation log: "add" / "delete", in order
 }
 
 func valueAfter(args []string, flag string) string {
@@ -53,9 +54,11 @@ func (k *keychainSim) Run(_ context.Context, _ string, args ...string) (string, 
 		k.payload = valueAfter(args, "-w")
 		k.account = valueAfter(args, "-a")
 		k.present = true
+		k.ops = append(k.ops, "add")
 		return "", "", 0
 	case "delete-generic-password":
 		k.present = false
+		k.ops = append(k.ops, "delete")
 		return "", "", 0
 	}
 	return "", "", 0

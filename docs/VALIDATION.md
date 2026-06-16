@@ -482,6 +482,72 @@ Two-account real-keychain run (claude, macOS) — **passed (2026-06-16)**:
       driver-agnostically by `TestSwitchAwayRecapturesRefreshedToken` (the
       keychain and file drivers share the code path), as in the v0.8.1 gate.
 
+## v0.8.3 surfaces
+
+Lift the discovery-blocked items and surface the identity: §A
+freshness-as-adapter-capability, §B cursor `kae add` identity, §C codex keyring
+driver, §D store + display the detected identity. Most logic is driver-agnostic
+and unit-tested; the temp-HOME smoke below (same `KAE_CLAUDE_DRIVER=file` +
+`secret_backend = "file"` setup as the v0.8.0 block) covers the file-driver
+range.
+
+```bash
+# (continues from the v0.8.0 setup: /tmp/kae built, temp HOME + file config)
+
+# --- D. detected identity is stored + shown ---
+printf '{"claudeAiOauth":{"accessToken":"tok"}}' > "$HOME/.claude/.credentials.json"
+printf '{"oauthAccount":{"emailAddress":"work@example.com"}}' > "$HOME/.claude.json"
+/tmp/kae add --no-login claude --json
+#   assert: captured account "work"; account.toml + --json carry identity "work@example.com"
+/tmp/kae add --no-login claude chosen --json
+#   assert: explicit name "chosen"; identity still recorded "work@example.com" (best-effort)
+/tmp/kae ls --json
+#   assert: each account row carries "identity" (omitempty); schema_version stays 1
+/tmp/kae ls
+#   assert: the Accounts table shows an "Identity" column
+```
+
+§A is a pure refactor asserted by unit tests: per-tool `Freshness` lives on the
+adapters (`internal/adapter/*/...` `TestClaudeFreshness*`, `TestCodexFreshness*`,
+`TestOpencodeFreshness*`, `TestCursorFreshness*`), the primitives by
+`internal/freshness` `freshness_test.go`, the registry conformance by
+`TestFresherConformance`, and the unchanged switch/login/doctor/stale tests.
+§B/§C use fake-runner tests (`internal/adapter/cursor` `TestCursorIdentity*`,
+`internal/adapter/codex` keyring + `internal/cmd` `TestCodexKeyringRoundTrip` /
+`TestCodexKeyringEmptyAccountRefused` / `TestKeychainReplaceUsesCapturedAccount`).
+§D round-trip + recapture-preservation by `internal/cmd`
+`TestAddRecordsIdentity*` / `TestRecapturePreservesIdentity`.
+
+### v0.8.3 real-machine gate (required before release)
+
+The driver-agnostic range is unit/temp-HOME covered above. Two surfaces need a
+real machine — they exercise live subprocesses the temp-HOME smoke cannot fake:
+
+**Codex keyring two-account round-trip** (macOS, real `Codex Auth` keychain).
+Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
+
+- [ ] `kae add codex` (no name) on a live keyring login captures under the
+      detected account (the `id_token` email / `account_id`), and `account.toml`
+      records the opaque `keychain_account` (`cli|<opaque>`), not the payload.
+- [ ] Log in as a second account; `kae add codex` it.
+- [ ] `kae use codex <first>`: a fresh-process `codex login status` (or a
+      `codex` run) reports logged in as the first account — the verbatim keyring
+      round-trip restored it; exactly one `Codex Auth` item exists afterwards
+      (`security find-generic-password -s "Codex Auth"` shows the first
+      account's opaque id). **Settles the open discovery point** (service-only
+      vs service+account match): record which it turned out to be.
+- [ ] No token value ever appeared in `kae` output, `--json`, or `account.toml`.
+
+**Cursor `kae add` identity** (macOS, live `cursor-agent` login):
+
+- [ ] `kae add cursor` (no name) on a live `cursor-agent status` login captures
+      under the sanitized detected email (local part).
+- [ ] Logged out (or `cursor-agent status` unparseable): `kae add cursor` exits
+      `64` naming the explicit form.
+
+Run with a committed tree and a throwaway/second account; record the result in
+the Release Acceptance Log below.
+
 ## Real-Machine Acceptance (release only)
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of
@@ -533,6 +599,38 @@ captured fixture secret values never appear in text output, JSON output, error
 messages, or metadata files written by capture/switch/rollback.
 
 ## Release Acceptance Log
+
+### v0.8.3 (2026-06-17, macOS darwin 24.6.0)
+
+Discovery-unblock: §A freshness-as-adapter-capability, §B cursor `kae add`
+identity, §C codex keyring driver, §D store + display the detected identity.
+
+- `mise run check` green (all packages); `-race` clean; redaction tests
+  (including the codex keyring payload) passed.
+- Code review APPROVE (two rounds; the round-one findings were fixed and the
+  fixes re-reviewed APPROVE); `/simplify` applied the shared
+  `captureKeychainAccount` helper + a `keychain.WithReadCache` on the capture
+  path (the rest clean or declined with reasons).
+- **Cursor identity gate PASSED (real machine)**: `kae add --no-login cursor`
+  (no name) on a live `cursor-agent status` login captured under the sanitized
+  detected email (the local part), and `account.toml` + `kae ls` recorded the
+  raw identity (§D); a pre-v0.8.3 cursor snapshot showed no `identity` field
+  (omitempty / backfill-only-on-fresh-add confirmed on a real snapshot). The
+  logged-out / unparseable path is covered by the fake-runner unit tests
+  (`TestCursorIdentityFailures`). The test capture was removed afterward.
+- §A/§D logic is driver-agnostic and unit-tested (per-tool `Freshness` on the
+  adapters, `TestFresherConformance`, `TestAddRecordsIdentity*`,
+  `TestRecapturePreservesIdentity`).
+- **Codex keyring two-account real-machine gate: DEFERRED.** Switching the
+  working codex install to `cli_auth_credentials_store = "keyring"` and two
+  interactive OAuth re-logins with two accounts is disruptive and was deferred
+  by decision. The driver is covered by fake-`security` round-trip tests
+  (`TestCodexKeyringRoundTrip` — capture A → re-login B → `use A` restores A's
+  verbatim item with delete-then-add; `TestCodexKeyringEmptyAccountRefused`;
+  `TestKeychainReplaceUsesCapturedAccount`). The two-account **real**-keychain
+  gate (settling service-only vs service+account match) remains the one open
+  acceptance item — run it per the "v0.8.3 real-machine gate" procedure before
+  relying on the keyring driver in production.
 
 ### v0.8.2 (2026-06-16, macOS darwin 24.6.0)
 

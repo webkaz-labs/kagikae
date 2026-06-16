@@ -3,12 +3,14 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target is **v0.8.1** (credential freshness / auto-recapture —
-see [RELEASE.md](RELEASE.md)). v0.8.0 (fold `apply` into `use`, redesign `run`
-onto `-s`/`-i`/`--env`, trim `mise init`, hard-rename the mechanism + config-key
-vocabulary, and add input ergonomics) shipped, following v0.7.2 (use/pin ×
--s/-i, global isolated home). What remains beyond v0.8.1 is hardening and
-platform coverage, ordered below by user impact.
+The active target is **v0.8.2** (daily-use polish: concurrent `status`,
+switch-read coalescing, `kae add` name auto-detection, `kae ls`, and v0.8.1
+freshness hardening — see [RELEASE.md](RELEASE.md)). v0.8.1 (credential freshness
+/ auto-recapture) shipped, following v0.8.0 (fold `apply` into `use`, redesign
+`run` onto `-s`/`-i`/`--env`, trim `mise init`, hard-rename the mechanism +
+config-key vocabulary, input ergonomics) and v0.7.2 (use/pin × -s/-i, global
+isolated home). What remains beyond v0.8.2 is hardening and platform coverage,
+ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 
@@ -48,8 +50,9 @@ platform coverage, ordered below by user impact.
   bootstrapping (today values are injection-only by design).
 - **Performance polish**: the per-switch `security`-read coalescing shipped in
   v0.8.1 §C (a context-scoped keychain read cache in `internal/keychain`, wired
-  into the switch path). Still open: run per-tool `Detect` concurrently in
-  `status`.
+  into the switch path). Concurrent per-tool `Detect` in `status` plus a
+  matching read cache for kae's own `secret.Backend` (the switch-time double
+  read) are the **v0.8.2 §A** target — see [RELEASE.md](RELEASE.md).
 - **doctor keychain-orphan detection** *(shipped in v0.8.1 §D as the
   `secret_orphan` check)*: warns when a `kagikae` secret item has no matching
   snapshot dir, via a new `secret.Enumerator` (file `readdir`, Linux
@@ -75,11 +78,14 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
 - **Account rm/rename** *(v0.7.1 — see [RELEASE.md](RELEASE.md))*: `kae
   account rm` / `kae account rename`, replacing manual snapshot-dir + keychain
   surgery. **`kae profile rm` / set** remain candidates here.
-- **`kae ls`**: a mise-style listing of accounts and profiles in one view
-  (today split across `kae accounts` and `kae status`).
-- **Account-name auto-detection**: each adapter exposes the live login
-  identity (claude email, cursor `cursor-agent status`, codex auth.json) so
-  `kae add` can suggest and sanitize a name instead of requiring one.
+- **`kae ls`** *(v0.8.2 §C target — see [RELEASE.md](RELEASE.md))*: a mise-style
+  listing of accounts and profiles in one view (today split across
+  `kae accounts` and `kae status`).
+- **Account-name auto-detection** *(v0.8.2 §B target — see
+  [RELEASE.md](RELEASE.md))*: each adapter exposes the live login identity
+  (claude email, cursor `cursor-agent status`, codex auth.json) via an
+  `Identity` capability so `kae add <tool>` auto-detects and sanitizes a name by
+  default, while an explicit `kae add <tool> <account>` still wins.
 - **Shorter ad-hoc switch inside a pinned directory**: `kae run <tool>
   <account> -- <tool>` already works (it is not blocked by the pinned-
   directory guard), but it is verbose; provide a terser way to open an

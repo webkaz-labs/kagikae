@@ -1,4 +1,111 @@
-# Release Target: kae v0.8.1
+# Release Target: kae v0.8.2
+
+Daily-use polish: make the most-run command fast, the most-typed command
+shorter, and pay down the freshness debt v0.8.1 left. No JSON-contract break
+(`schema_version` stays `1`; new tokens are additive). The codex keyring driver
+(v0.8.1 §E) stays deferred — it is discovery-blocked, not patch-shaped.
+
+Previous baseline: v0.8.1 (credential freshness / auto-recapture).
+
+## Scope
+
+### A. `status` speed + switch-time double read
+
+- **Concurrent `Detect` in `status`**: today `kae status` probes each enabled
+  tool's live state sequentially; on macOS each claude/cursor `Detect` is a
+  `security` call, so the most-run command pays the sum. Run the per-tool
+  `Detect` concurrently and reassemble results in canonical `constants.Tools`
+  order (output unchanged). Bound to the enabled-tool count; failures stay
+  per-tool, not fatal.
+- **Coalesce the switch-time snapshot read**: `buildSwitch` reads each target's
+  snapshot payload twice from kae's own secret store — once for the §B stale
+  warning (`accountFreshness`) and again in `applySnapshot`. The v0.8.1
+  `keychain.WithReadCache` covers the **upstream** tool keychain, not kae's own
+  `secret.Backend`. Add the same context-scoped read-cache shape to
+  `internal/secret` and wire it into the switch so the snapshot is read once.
+  Writes (`Set`/`Delete`) invalidate the key; never cached across a child run.
+
+### B. `kae add` account-name auto-detection (default; explicit still works)
+
+- **`kae add <tool>`** (account omitted): detect the live login identity, derive
+  a sanitized account name, and capture under it — the new default. Detection is
+  a per-tool adapter capability `Identity(ctx, env) (string, error)`: claude →
+  `oauthAccount.emailAddress` (from `~/.claude.json`), codex → the `id_token`
+  email claim or `account_id` in `auth.json`, cursor → `cursor-agent status`,
+  opencode → `accountId`, copilot → `lastLoggedInUser.login`. The raw identity
+  is sanitized to `[a-zA-Z0-9._-]` (email → local part before `@`), capped at 64.
+- **`kae add <tool> <account>`** (explicit): unchanged — the given name wins.
+- Works on both the login flow and `--no-login` (detect from the post-login /
+  current live state). Detection failure (no identity exposed, or it sanitizes
+  to empty) is an error naming the explicit form, not a silent fallback. agy has
+  no `Identity` (add unsupported), so it always requires an explicit name where
+  applicable.
+
+### C. `kae ls`
+
+- A single mise-style listing of accounts **and** profiles, today split across
+  `kae accounts` and `kae status`. Table-driven from `constants.Tools` +
+  captured accounts + config profiles; active markers; stable `--json`
+  (`schema_version: 1`). Read-only; no new state.
+
+### D. v0.8.1 freshness hardening
+
+- **Two-account real-machine recapture**: extend `docs/VALIDATION.md` with a
+  real-keychain gate that captures two accounts and verifies a refreshed token
+  round-trips on switch-away (the v0.8.1 gate covered the file-driver logic and
+  the single-account real-keychain round-trip only).
+- **Shared live↔snapshot comparator**: `freshness.go`'s `valuesDiverge` and
+  `login.go`'s `loginChangedAuth` implement the same "compare live values to a
+  stored snapshot" loop with different error policies. Extract one comparator
+  parameterized on the policy so the rule lives in one place.
+- **(splittable) Freshness as an adapter capability**: move `freshness.Inspect`'s
+  `switch tool` into a per-tool adapter `Freshness(payload) Info` method, beside
+  the new `Identity` (§B), so per-tool knowledge has one home (the registry).
+  The shared `jwtExpiry`/`epochToTime`/`decodeObject` primitives stay in
+  `internal/freshness`. **If it grows the patch too far, split to v0.8.3.**
+
+## Non-Goals (this release)
+
+- Codex keyring driver (v0.8.1 §E) — still discovery-blocked (see ROADMAP.md).
+- TUI, Windows, remote share-list shipping, `env export --reveal`,
+  "did you mean" suggestions — see [ROADMAP.md](ROADMAP.md).
+- Any JSON-contract break: `schema_version` stays `1`.
+
+## Acceptance Criteria
+
+- **status**: `kae status --json` output is byte-identical to the sequential
+  version (same tool order, fields, `[]` arrays); the per-tool `Detect` runs
+  concurrently (asserted via the runner seam — overlapping calls, or a count
+  proving no serialization). A single tool's `Detect` failure does not abort the
+  report.
+- **switch read**: a single `kae use` reads each target snapshot payload from the
+  secret backend once (asserted via the backend seam call count); the switch
+  result is unchanged.
+- **add auto-detect**: `kae add --no-login claude` (no name) on a live login
+  captures an account whose name is the sanitized detected identity; `kae add
+  --no-login claude <name>` still uses `<name>`; a tool with no detectable
+  identity errors naming the explicit form. Temp-HOME tests with fixture
+  identities.
+- **ls**: `kae ls` lists every captured account and every profile with active
+  markers; `kae ls --json` keeps `schema_version: 1` and `[]` arrays.
+- **hardening**: the shared comparator passes the existing switch/login tests
+  unchanged; the two-account real-machine gate is recorded in VALIDATION.md.
+- `mise run check` passes; redaction tests cover any new output path (no token
+  or identity-derived secret in output beyond the sanitized account name).
+
+## Release Steps
+
+1. Bump `toolVersion` to v0.8.2.
+2. §A `status` concurrency + the `secret.Backend` read cache; temp-HOME tests.
+3. §B adapter `Identity` + `kae add` auto-detect default; temp-HOME tests.
+4. §C `kae ls`; temp-HOME tests.
+5. §D shared comparator + (splittable) freshness-as-capability; temp-HOME tests.
+6. Docs (CLI/ARCHITECTURE/ADAPTERS/DATA-MODEL/README/VALIDATION).
+7. Real-machine gate (two-account recapture); README verified; tag `v0.8.2`.
+
+---
+
+# kae v0.8.1 (released 2026-06-16)
 
 Credential freshness. Every supported tool authenticates with a refreshable
 OAuth/JWT credential, but `kae use` (and bare `use`) write the **capture-time**

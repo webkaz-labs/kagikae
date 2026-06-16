@@ -3,8 +3,10 @@ package secret
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
@@ -59,4 +61,34 @@ func (b fileBackend) Delete(_ context.Context, key string) error {
 		return err
 	}
 	return nil
+}
+
+// Keys lists every stored key by walking the secrets dir for *.secret files and
+// mapping each path back to its slash-separated key. A missing dir is no keys.
+func (b fileBackend) Keys(_ context.Context) ([]string, error) {
+	var keys []string
+	err := filepath.WalkDir(b.dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".secret") {
+			return nil
+		}
+		rel, err := filepath.Rel(b.dir, path)
+		if err != nil {
+			return err
+		}
+		keys = append(keys, filepath.ToSlash(strings.TrimSuffix(rel, ".secret")))
+		return nil
+	})
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return keys, nil
 }

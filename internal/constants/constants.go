@@ -90,6 +90,8 @@ const (
 	CheckConfigValid     = "config_valid"
 	CheckUnsupported     = "unsupported"
 	CheckFileMode        = "file_mode"
+	CheckCredentialStale = "credential_stale"
+	CheckSecretOrphan    = "secret_orphan"
 )
 
 // Exit codes and their stable error-code tokens.

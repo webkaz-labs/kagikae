@@ -38,6 +38,15 @@ type Spec struct {
 	// reused). Every KindKeychain spec must set it, or new items fall back
 	// to the literal account "kagikae".
 	KeychainAccount string
+	// KeychainReplace marks a KindKeychain item whose account attribute is a
+	// per-login opaque id that varies between accounts (codex keyring's
+	// `cli|<opaque>`), unlike claude/cursor whose account is a stable constant.
+	// kae captures the live account verbatim into the snapshot (the apply path
+	// sets KeychainAccount from it) and, on apply, deletes the existing item
+	// before writing the target's, so exactly one item of the service exists
+	// afterwards (robust whether the tool matches by service only or
+	// service+account). See docs/ADAPTERS.md (Codex keyring) and docs/DATA-MODEL.md.
+	KeychainReplace bool
 	// JSONC marks a KindJSONPointer Target as a JSONC document (standard JSON
 	// plus // and /* */ comments and trailing commas, e.g. GitHub Copilot's
 	// ~/.copilot/config.json). Reads ignore the comments; writes preserve
@@ -70,6 +79,19 @@ func keychainGuard(sp Spec, payload []byte) error {
 		return fmt.Errorf("%w: keychain item %q payload is not the expected JSON shape", ErrUnsafe, sp.Target)
 	}
 	return nil
+}
+
+// ReadKeychainAccount returns the live account attribute of a KindKeychain
+// spec's item, for capturing a per-login dynamic account (codex keyring's
+// `cli|<opaque>`) into the snapshot so apply can recreate the right item. It is
+// a separate read so the hot status/Detect path (plain ReadLive) never pays for
+// it. Returns "" for a non-keychain spec or an absent item.
+func ReadKeychainAccount(ctx context.Context, sp Spec) (string, error) {
+	if sp.Kind != constants.KindKeychain {
+		return "", nil
+	}
+	account, _, err := keychain.ItemAccount(ctx, sp.Target)
+	return account, err
 }
 
 // ReadLive captures the current live value of the artifact.
@@ -185,12 +207,29 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		if err := keychainGuard(sp, v.Data); err != nil {
 			return err
 		}
+		// A KeychainReplace item (codex keyring) carries its captured opaque
+		// account verbatim, so that account wins and the prior item is deleted
+		// first to guarantee a single live item. Otherwise (claude/cursor, a
+		// stable constant account) the existing item's account is reused.
 		account := sp.KeychainAccount
-		if existing, _, err := keychain.ItemAccount(ctx, sp.Target); err == nil && existing != "" {
-			account = existing
+		replace := sp.KeychainReplace && account != ""
+		if !replace {
+			// Stable-account item (claude/cursor): the existing item's account
+			// wins when present, so a re-login that changed it is honored.
+			if existing, _, err := keychain.ItemAccount(ctx, sp.Target); err == nil && existing != "" {
+				account = existing
+			}
 		}
 		if account == "" {
 			account = "kagikae"
+		}
+		if replace {
+			// Per-login dynamic account (codex keyring): delete the prior item
+			// so exactly one item of this service exists after writing the
+			// target's, under its captured account.
+			if err := keychain.DeleteItem(ctx, sp.Target); err != nil {
+				return err
+			}
 		}
 		return keychain.WriteItem(ctx, sp.Target, account, v.Data)
 

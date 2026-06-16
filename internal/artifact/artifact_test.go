@@ -241,6 +241,37 @@ func TestKeychainKindRoundTrip(t *testing.T) {
 	}
 }
 
+// TestKeychainReplaceUsesCapturedAccount covers the codex-keyring path: a
+// KeychainReplace spec writes under its captured opaque account (not the live
+// item's) and deletes the prior item first, so exactly one item remains.
+func TestKeychainReplaceUsesCapturedAccount(t *testing.T) {
+	ctx := context.Background()
+	fake := &fakeRunner{
+		payloads: map[string]string{"Codex Auth": `{"tokens":{"access_token":"live-other"}}`},
+		accounts: map[string]string{"Codex Auth": "cli|opaqueLIVE"},
+	}
+	sp := Spec{
+		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
+		Pointer: "/tokens", KeychainAccount: "cli|opaqueTARGET", KeychainReplace: true,
+	}
+	const target = `{"tokens":{"access_token":"target"}}`
+	runner.With(fake, func() {
+		if err := ApplyLive(ctx, sp, Value{Data: []byte(target), Present: true}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if fake.accounts["Codex Auth"] != "cli|opaqueTARGET" {
+		t.Fatalf("account = %q, want the captured cli|opaqueTARGET", fake.accounts["Codex Auth"])
+	}
+	if fake.payloads["Codex Auth"] != target {
+		t.Fatalf("payload = %q, want %q", fake.payloads["Codex Auth"], target)
+	}
+	// The prior item must have been deleted before the write (a delete then an add).
+	if len(fake.writes) != 2 || fake.writes[0] != "Codex Auth" || fake.writes[1] != "Codex Auth" {
+		t.Fatalf("expected delete-then-add, got writes %v", fake.writes)
+	}
+}
+
 // TestKeychainKindWritesVerbatim guards the core fix: the captured bytes are
 // written exactly as-is. Claude Code stores compact, unsorted JSON and rejects
 // a re-serialized payload, so kagikae must not pretty-print or sort keys.

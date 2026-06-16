@@ -76,9 +76,9 @@ func printLsReport(report *lsReport) {
 			if item.Active {
 				active = "*"
 			}
-			rows = append(rows, []string{item.Tool, item.Account, active, item.Driver})
+			rows = append(rows, []string{item.Tool, item.Account, item.Identity, active, item.Driver})
 		}
-		printTable([]string{"Tool", "Account", "Active", "Driver"}, rows)
+		printTable([]string{"Tool", "Account", "Identity", "Active", "Driver"}, rows)
 	}
 	fmt.Println()
 	if len(report.Profiles) == 0 {

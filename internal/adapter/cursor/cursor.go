@@ -8,10 +8,13 @@ package cursor
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
 // binaryName is the Cursor CLI executable; KeychainService is the access-token
@@ -70,6 +73,46 @@ func (c Cursor) Detect(ctx context.Context, env adapter.Env) (adapter.Info, erro
 	}
 	info.AuthPresent = v.Present
 	return info, nil
+}
+
+// statusLoginMarker precedes the email in `cursor-agent status` output.
+const statusLoginMarker = "Logged in as "
+
+// Identity reads the logged-in email from `cursor-agent status` so
+// `kae add cursor` (no name) can default the account name. Discovery 2026-06-16:
+// the command prints a single line `✓ Logged in as <email>` (UTF-8 check glyph,
+// no ANSI, exit 0); kae extracts the text after "Logged in as " and lets cmd
+// sanitize the email to a local-part account name. A non-zero exit, a line
+// without the marker, or an empty identity is a detection failure (cmd then
+// names the explicit form). cursor-agent status may hit the network — acceptable
+// on the interactive `kae add` path. Runs through the runner seam.
+func (Cursor) Identity(ctx context.Context, _ adapter.Env) (string, error) {
+	stdout, stderr, code := runner.Run(ctx, binaryName, "status")
+	if code != 0 {
+		return "", fmt.Errorf("cursor-agent status failed (exit %d): %s", code, runner.Snippet(stderr))
+	}
+	_, rest, found := strings.Cut(stdout, statusLoginMarker)
+	if !found {
+		return "", fmt.Errorf("cursor-agent status did not report a logged-in account")
+	}
+	if nl := strings.IndexAny(rest, "\r\n"); nl >= 0 {
+		rest = rest[:nl] // the identity is the remainder of that line
+	}
+	identity := strings.TrimSpace(rest)
+	if identity == "" {
+		return "", fmt.Errorf("cursor-agent status reported an empty account")
+	}
+	return identity, nil
+}
+
+// Freshness reads the expiry of cursor's opaque raw-JWT credential. There is no
+// refresh token (the JWT is the whole credential), so an expired snapshot
+// always warns rather than self-refreshing.
+func (Cursor) Freshness(payload []byte) freshness.Info {
+	if exp, ok := freshness.JWTExpiry(strings.TrimSpace(string(payload))); ok {
+		return freshness.Info{Known: true, ExpiresAt: exp}
+	}
+	return freshness.Info{}
 }
 
 func (c Cursor) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {

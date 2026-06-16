@@ -2,9 +2,11 @@ package opencode
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 )
@@ -44,5 +46,20 @@ func TestOpencodeIdentityMissing(t *testing.T) {
 	var o Opencode
 	if _, err := o.Identity(t.Context(), testEnv(home)); err == nil {
 		t.Fatal("expected an error when openai.accountId is absent")
+	}
+}
+
+func TestOpencodeFreshnessExpiresMs(t *testing.T) {
+	exp := time.Date(2029, 3, 3, 12, 0, 0, 0, time.UTC)
+	payload := fmt.Appendf(nil, `{"type":"oauth","refresh":"r","access":"a","expires":%d}`, exp.UnixMilli())
+	info := Opencode{}.Freshness(payload)
+	if !info.Known || !info.HasRefresh || !info.ExpiresAt.Equal(exp) {
+		t.Fatalf("Freshness = %+v (want exp %v, refresh true)", info, exp)
+	}
+}
+
+func TestOpencodeFreshnessUnparseable(t *testing.T) {
+	if info := (Opencode{}).Freshness([]byte("not json")); info.Known {
+		t.Fatalf("Freshness on garbage = %+v (want Known=false)", info)
 	}
 }

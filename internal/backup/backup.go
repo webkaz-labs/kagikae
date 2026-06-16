@@ -35,9 +35,14 @@ type ArtifactRecord struct {
 	// it through the comment-preserving path instead of the plain-JSON one,
 	// which rejects the leading // comments. Empty for plain-JSON artifacts and
 	// for backups written before this field existed.
-	JSONC     bool   `json:"jsonc,omitempty"`
-	SecretRef string `json:"secret_ref"`
-	Present   bool   `json:"present"`
+	JSONC bool `json:"jsonc,omitempty"`
+	// KeychainReplace marks a keychain item whose account is a per-login opaque
+	// id (codex keyring), so a rollback deletes the live item before writing
+	// the backed-up one under KeychainAccount (the same single-item guarantee
+	// as apply). Empty for stable-account keychain items and older backups.
+	KeychainReplace bool   `json:"keychain_replace,omitempty"`
+	SecretRef       string `json:"secret_ref"`
+	Present         bool   `json:"present"`
 }
 
 // Meta is the persisted backup metadata. It never contains secret values.

@@ -8,11 +8,27 @@ import (
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
+	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
+
+// freshnessOf reads the freshness of a captured payload for tool by dispatching
+// to the tool's adapter.Fresher (§A: per-tool credential knowledge lives on the
+// adapter, not a central switch). A tool with no Fresher — or an unknown id —
+// is not-datable (Known=false), matching the previous default branch.
+func freshnessOf(tool string, payload []byte) freshness.Info {
+	ad, err := adapter.ForTool(tool)
+	if err != nil {
+		return freshness.Info{}
+	}
+	if f, ok := ad.(adapter.Fresher); ok {
+		return f.Freshness(payload)
+	}
+	return freshness.Info{}
+}
 
 // accountFreshness reads acc's stored credential and reports its expiry and
 // refresh-token presence. It returns the first artifact whose payload parses as
@@ -32,7 +48,7 @@ func (app *App) accountFreshness(ctx context.Context, be secret.Backend, acc acc
 		if !found {
 			continue
 		}
-		if info := freshness.Inspect(acc.Tool, data); info.Known {
+		if info := freshnessOf(acc.Tool, data); info.Known {
 			return info, nil
 		}
 	}
@@ -97,9 +113,12 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			continue // live already matches the snapshot: skip the write
 		}
 		// Same tool/driver/specs as the target plan; only the account differs
-		// (copy so a future toolPlan field is not silently dropped).
+		// (copy so a future toolPlan field is not silently dropped). Carry the
+		// existing snapshot's identity so a recapture refreshes the credential
+		// without blanking the §D identity field.
 		activePlan := plan
 		activePlan.Account = active
+		activePlan.Identity = acc.Identity
 		if err := app.persistSnapshot(ctx, be, activePlan, values); err != nil {
 			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, active, err)
 			continue

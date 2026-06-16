@@ -15,6 +15,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/freshness"
 )
 
 // KeychainService is Claude Code's macOS Keychain item service name.
@@ -153,6 +154,27 @@ func (Claude) Identity(_ context.Context, env adapter.Env) (string, error) {
 		return "", fmt.Errorf("no oauthAccount.emailAddress in %s", path)
 	}
 	return doc.OAuthAccount.EmailAddress, nil
+}
+
+// Freshness reads claudeAiOauth's expiresAt (Unix ms) and refreshToken. The
+// keychain payload wraps the object under claudeAiOauth; the file-driver
+// snapshot stores the inner object directly, so both nestings are handled.
+func (Claude) Freshness(payload []byte) freshness.Info {
+	root, ok := freshness.DecodeObject(payload)
+	if !ok {
+		return freshness.Info{}
+	}
+	obj := root
+	if inner, ok := root["claudeAiOauth"]; ok {
+		if nested, ok := freshness.DecodeObject(inner); ok {
+			obj = nested
+		}
+	}
+	return freshness.Info{
+		Known:      true,
+		ExpiresAt:  freshness.EpochToTime(freshness.NumberFrom(obj["expiresAt"])),
+		HasRefresh: freshness.NonEmptyString(obj["refreshToken"]),
+	}
 }
 
 func (c Claude) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {

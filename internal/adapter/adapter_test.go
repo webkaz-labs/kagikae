@@ -17,6 +17,8 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter/opencode"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
 var (
@@ -151,27 +153,52 @@ func TestClaudeDetectLinux(t *testing.T) {
 	}
 }
 
-func TestCodexArtifactsAndKeyringRefusal(t *testing.T) {
+func TestCodexArtifactsFileAndKeyring(t *testing.T) {
 	env := testEnv(t, "linux", nil)
 	specs, err := codexAdapter.Artifacts(context.Background(), env)
 	if err != nil || len(specs) != 1 || specs[0].Kind != constants.KindFile {
-		t.Fatalf("unexpected: %+v %v", specs, err)
+		t.Fatalf("file store: %+v %v", specs, err)
 	}
 	write(t, filepath.Join(env.Home, ".codex", "config.toml"),
 		"cli_auth_credentials_store = \"keyring\"\n")
-	if _, err := codexAdapter.Artifacts(context.Background(), env); !errors.Is(err, artifact.ErrUnsafe) {
-		t.Fatalf("expected keyring refusal: %v", err)
+	specs, err = codexAdapter.Artifacts(context.Background(), env)
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("keyring store: %+v %v", specs, err)
 	}
-	checks := codexAdapter.Doctor(context.Background(), env)
-	foundError := false
-	for _, check := range checks {
-		if check.Code == constants.CheckCredentialStore && check.Status == constants.StatusError {
-			foundError = true
+	sp := specs[0]
+	if sp.Kind != constants.KindKeychain || sp.Target != codex.KeychainService ||
+		sp.Pointer != "/tokens" || !sp.KeychainReplace {
+		t.Fatalf("unexpected keyring spec: %+v", sp)
+	}
+}
+
+// With the keyring store and no live Codex Auth item, Detect reports absent and
+// Doctor reports the keyring store ok with a logged-out auth warning (the
+// detect-only error is gone). The keychain probe is stubbed so the test never
+// touches the real keychain.
+func TestCodexKeyringDetectAndDoctor(t *testing.T) {
+	env := testEnv(t, "darwin", nil)
+	write(t, filepath.Join(env.Home, ".codex", "config.toml"),
+		"cli_auth_credentials_store = \"keyring\"\n")
+	notFound := &runnertest.Fake{Stderr: "could not be found", Code: 44}
+	runner.With(notFound, func() {
+		info, err := codexAdapter.Detect(context.Background(), env)
+		if err != nil || info.AuthPresent || info.Driver != constants.DriverCodexKeyring {
+			t.Fatalf("keyring detect: %+v %v", info, err)
 		}
-	}
-	if !foundError {
-		t.Fatalf("doctor should flag keyring store: %+v", checks)
-	}
+		var storeOK, authWarn bool
+		for _, check := range codexAdapter.Doctor(context.Background(), env) {
+			if check.Code == constants.CheckCredentialStore && check.Status == constants.StatusOK {
+				storeOK = true
+			}
+			if check.Code == constants.CheckAuthPresent && check.Status == constants.StatusWarn {
+				authWarn = true
+			}
+		}
+		if !storeOK || !authWarn {
+			t.Fatalf("keyring doctor: storeOK=%v authWarn=%v", storeOK, authWarn)
+		}
+	})
 }
 
 func TestCodexHonorsCodexHome(t *testing.T) {
@@ -412,5 +439,22 @@ func TestAgyExperimentalFileSnapshot(t *testing.T) {
 	info, _ = agyAdapter.Detect(context.Background(), env)
 	if !info.AuthPresent || info.Driver != constants.DriverAgyFileSnapshot {
 		t.Fatalf("unexpected: %+v", info)
+	}
+}
+
+// TestFresherConformance pins which adapters expose readable credential
+// freshness (§A): claude/codex/opencode/cursor are datable; copilot's pointer
+// and agy's opaque blob are not, so they must not implement adapter.Fresher
+// (cmd.freshnessOf then treats them as Known=false).
+func TestFresherConformance(t *testing.T) {
+	datable := map[adapter.Adapter]bool{
+		claudeAdapter: true, codexAdapter: true,
+		opencodeAdapter: true, cursorAdapter: true,
+		copilotAdapter: false, agyAdapter: false,
+	}
+	for ad, want := range datable {
+		if _, ok := ad.(adapter.Fresher); ok != want {
+			t.Fatalf("%s Fresher=%v, want %v", ad.ID(), ok, want)
+		}
 	}
 }

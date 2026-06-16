@@ -11,7 +11,7 @@ import (
 
 func TestSanitizeAccountName(t *testing.T) {
 	cases := []struct{ raw, want string }{
-		{"alice@example.com", "alice"},
+		{"work@example.com", "work"},
 		{"Work.User_1@corp.example", "Work.User_1"},
 		{"  spaced@example.com  ", "spaced"},
 		{"handle-only", "handle-only"},
@@ -33,22 +33,22 @@ func TestSanitizeAccountName(t *testing.T) {
 // "<uuid>@example.com", so the detected name is the local part.
 func TestAddAutoDetectClaudeNoLogin(t *testing.T) {
 	app := testApp(t, nil)
-	seedClaude(t, app, workToken, "alice")
+	seedClaude(t, app, workToken, "work")
 	ctx := context.Background()
 
 	code, out := captureStdout(t, func() int {
 		return runCapture(ctx, app, commonOpts{Format: formatText}, "claude", "")
 	})
 	mustExit(t, constants.ExitOK, code, out)
-	if _, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "alice")); err != nil || !found {
-		t.Fatalf("auto-detected account claude/alice not captured (found=%v err=%v)", found, err)
+	if _, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "work")); err != nil || !found {
+		t.Fatalf("auto-detected account claude/work not captured (found=%v err=%v)", found, err)
 	}
 }
 
 // An explicit account name always wins over auto-detection.
 func TestAddExplicitNameWins(t *testing.T) {
 	app := testApp(t, nil)
-	seedClaude(t, app, workToken, "alice")
+	seedClaude(t, app, workToken, "work")
 	ctx := context.Background()
 
 	code, out := captureStdout(t, func() int {
@@ -58,7 +58,7 @@ func TestAddExplicitNameWins(t *testing.T) {
 	if _, found, _ := account.Load(app.Paths.AccountDir(constants.ToolClaude, "chosen")); !found {
 		t.Fatal("explicit account claude/chosen not captured")
 	}
-	if _, found, _ := account.Load(app.Paths.AccountDir(constants.ToolClaude, "alice")); found {
+	if _, found, _ := account.Load(app.Paths.AccountDir(constants.ToolClaude, "work")); found {
 		t.Fatal("auto-detected name must not be used when an explicit name is given")
 	}
 }
@@ -90,6 +90,81 @@ func TestAddAutoDetectNotLoggedIn(t *testing.T) {
 	mustExit(t, constants.ExitUsage, code, out)
 	if !strings.Contains(out, "kae add claude <account>") {
 		t.Fatalf("expected explicit-form guidance in output: %s", out)
+	}
+}
+
+// §D: auto-detect capture records the raw detected identity (the full email)
+// in the snapshot, separate from the sanitized account name.
+func TestAddRecordsIdentityAutoDetect(t *testing.T) {
+	app := testApp(t, nil)
+	seedClaude(t, app, workToken, "work")
+	ctx := context.Background()
+
+	code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, commonOpts{Format: formatText}, "claude", "")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	acc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "work"))
+	if err != nil || !found {
+		t.Fatalf("claude/work not captured (found=%v err=%v)", found, err)
+	}
+	if acc.Identity != "work@example.com" {
+		t.Fatalf("identity = %q, want work@example.com", acc.Identity)
+	}
+}
+
+// §D: an explicit name still records the best-effort detected identity.
+func TestAddRecordsIdentityWithExplicitName(t *testing.T) {
+	app := testApp(t, nil)
+	seedClaude(t, app, workToken, "work")
+	ctx := context.Background()
+
+	code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, commonOpts{Format: formatText}, "claude", "chosen")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	acc, _, _ := account.Load(app.Paths.AccountDir(constants.ToolClaude, "chosen"))
+	if acc.Identity != "work@example.com" {
+		t.Fatalf("identity = %q, want work@example.com (best-effort under an explicit name)", acc.Identity)
+	}
+}
+
+// §D: an explicit name with no readable identity (credential present but no
+// ~/.claude.json) captures with an empty identity, never erroring.
+func TestAddExplicitNameDetectionFailureLeavesIdentityEmpty(t *testing.T) {
+	app := testApp(t, nil)
+	seedClaudeOAuth(t, app, `{"accessToken":"x","subscriptionType":"max"}`) // credential, no .claude.json
+	ctx := context.Background()
+
+	code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, commonOpts{Format: formatText}, "claude", "chosen")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	acc, found, _ := account.Load(app.Paths.AccountDir(constants.ToolClaude, "chosen"))
+	if !found || acc.Identity != "" {
+		t.Fatalf("found=%v identity=%q, want captured with empty identity", found, acc.Identity)
+	}
+}
+
+// §D: switch-away recapture refreshes the credential without blanking the
+// stored identity.
+func TestRecapturePreservesIdentity(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, workToken, "work")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "") })
+	seedClaude(t, app, personalToken, "personal")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "") })
+
+	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "work") })
+	seedClaude(t, app, "sk-ant-oat01-REFRESHED", "work") // in-tool rotation
+	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "personal") })
+
+	acc, _, _ := account.Load(app.Paths.AccountDir(constants.ToolClaude, "work"))
+	if acc.Identity != "work@example.com" {
+		t.Fatalf("recapture blanked the identity: %q", acc.Identity)
 	}
 }
 

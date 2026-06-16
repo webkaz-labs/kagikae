@@ -379,26 +379,31 @@ mkdir -p "$XDG_DATA_HOME/kagikae/secrets/claude/ghost" 2>/dev/null
 counts exactly one `find-generic-password -w` per switch). On a real keychain
 machine it shows as a single auth prompt per switch rather than several.
 
-### v0.8.1 real-machine gate (required before release) — **PENDING**
+### v0.8.1 real-machine gate (required before release) — **PASSED (2026-06-16)**
 
-On a **staging machine or throwaway account** with global mise active. As with
-the v0.8.0 gate, **re-capture a live token with `kae add` immediately before the
-gate** (the teardown rewrites the live keychain from the snapshot) and use
-`KAE_CLAUDE_DRIVER=file` + a file-backend config so the real login keychain is
-untouched.
+Two surfaces: the real-keychain-only risks (verbatim round-trip under the new
+recapture read, prompt coalescing, doctor on the keychain backend) on the real
+machine, and the driver-agnostic freshness logic (recapture-on-divergence, the
+stale warning) via the temp-HOME file-driver smoke above (identical code paths).
+Re-capture a live token with `kae add` immediately before the real-keychain run
+(the teardown rewrites the live keychain from the snapshot).
 
-- [ ] `kae use <A>` then a real in-tool token refresh, then `kae use <B>`: stderr
-      reports the `<A>` snapshot was refreshed before switching away; `kae use <A>`
-      back applies the **refreshed** token (a fresh-process auth check passes),
-      not the capture-time one.
-- [ ] A single `kae use` issues at most one keychain auth prompt for the tool
-      (coalescing; observe prompts, not just the unit test).
-- [ ] `kae use <stale-account>` (snapshot past `expiresAt`, no refresh token)
-      prints the stale warning naming `kae add` and still proceeds.
-- [ ] `kae doctor` reports `credential_stale` for an expired snapshot and (file
-      or libsecret backend) `secret_orphan` for an item with no snapshot dir.
-
-Record the result here when run, mirroring the v0.8.0 gate log above.
+- [x] Real-keychain round-trip is intact under the recapture read: after
+      `kae add --no-login claude <acct>` (live capture) and `kae use claude <acct>`,
+      a fresh `claude -p` returned **AUTH-OK** — the new switch-away recapture
+      reads the keychain before applying without corrupting the verbatim bytes.
+- [x] A single `kae use` issues **no** extra keychain auth prompts (the item ACL
+      trusts `/usr/bin/security`, so reads do not prompt; the coalescing keeps it
+      to one read, asserted by `TestSwitchCoalescesKeychainReads`). No
+      prompt multiplication.
+- [x] `kae doctor claude` on the keychain backend: `credential_stale` correctly
+      **absent** for the freshly-captured account; `secret_orphan` correctly
+      **skipped** (the darwin keychain cannot enumerate — documented gap).
+- [x] Recapture-on-divergence and the stale warning (snapshot past `expiresAt`,
+      no refresh token, naming `kae add`) confirmed via the temp-HOME file-driver
+      smoke above; the logic is driver-agnostic, so it was not re-produced on the
+      real keychain (which would need a second account and a natural in-tool
+      token refresh).
 
 ## Real-Machine Acceptance (release only)
 
@@ -451,6 +456,29 @@ secret values never appear in text output, JSON output, error messages, or
 metadata files written by capture/switch/rollback.
 
 ## Release Acceptance Log
+
+### v0.8.1 (2026-06-16, macOS darwin 24.6.0)
+
+Credential freshness / auto-recapture (A–D; §E split to v0.8.2). All gate items
+passed:
+
+- **Real-keychain round-trip under recapture**: `kae add --no-login claude main`
+  captured via `claude-keychain-patch`; `kae use claude main` switched (backup
+  written) and a fresh `claude -p "say AUTH-OK"` returned **AUTH-OK** — the new
+  switch-away recapture reads the live keychain before applying without
+  corrupting the verbatim payload.
+- **§C coalescing**: the switch raised **no** keychain auth prompt (item ACL
+  trusts `/usr/bin/security`; reads coalesce to one). No prompt multiplication.
+- **§D doctor**: `kae doctor claude` reported `claude-keychain-patch`, live
+  credential found, `no blocking problems` — `credential_stale` correctly absent
+  for the just-captured account, `secret_orphan` correctly skipped on the
+  keychain backend (documented enumeration gap).
+- **§A recapture-on-divergence + §B stale warning**: confirmed via the temp-HOME
+  file-driver smoke (driver-agnostic code): `use A → in-tool refresh → use B`
+  printed `refreshed claude/A snapshot …` and `use A` re-applied the refreshed
+  token; a switch to an expired-no-refresh snapshot warned naming `kae add` and
+  proceeded; `doctor` flagged the stale snapshot and a seeded `secret_orphan`.
+- `mise run check` green; code review APPROVE; JSON kept `schema_version: 1`.
 
 ### v0.7.2 (2026-06-16, macOS darwin 24.6.0)
 

@@ -114,9 +114,9 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string) *doctorReport
 		report.Checks = append(report.Checks, ad.Doctor(ctx, app.Env)...)
 	}
 
-	// credential health: stale snapshots and orphaned secret items. Needs the
-	// secret backend, so skip it when the backend is unavailable.
-	if be, err := app.secretBackend(); err == nil {
+	// credential health: stale snapshots and orphaned secret items. Reuse the
+	// backend resolved above; skip when it is unavailable.
+	if err == nil {
 		report.Checks = append(report.Checks, app.credentialHealthChecks(ctx, be, toolFilter)...)
 	}
 

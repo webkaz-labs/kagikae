@@ -96,7 +96,10 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 		if !valuesDiverge(ctx, be, plan.Specs, acc, values) {
 			continue // live already matches the snapshot: skip the write
 		}
-		activePlan := toolPlan{Tool: plan.Tool, Account: active, Driver: plan.Driver, Specs: plan.Specs}
+		// Same tool/driver/specs as the target plan; only the account differs
+		// (copy so a future toolPlan field is not silently dropped).
+		activePlan := plan
+		activePlan.Account = active
 		if err := app.persistSnapshot(ctx, be, activePlan, values); err != nil {
 			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, active, err)
 			continue

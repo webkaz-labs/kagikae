@@ -17,6 +17,10 @@ import (
 // service entry so a later read reflects the new value. The cache lives in the
 // context, so it is request-scoped with no process-global mutable state and is
 // absent (behavior unchanged) unless a caller opted in with WithReadCache.
+//
+// Today's only caller (the switch path) is single-goroutine, but the mutex
+// guards against a future concurrent caller (e.g. running per-tool Detect in
+// parallel) sharing one cached context.
 type readCache struct {
 	mu       sync.Mutex
 	items    map[string]itemEntry

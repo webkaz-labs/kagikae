@@ -146,6 +146,17 @@ secret_ref = "claude/work/oauth_account"
 | `file` | read whole file | atomic replace, mode `0600` |
 | `keychain` | read whole item payload verbatim (pointer guards the shape; an empty pointer marks an opaque non-JSON payload, e.g. a raw token, guarded only as non-empty) | write captured bytes back verbatim via `security -U`; absent value deletes the item |
 
+A snapshot is rewritten by `kae add`, `run -s`'s post-child recapture, and (new
+in v0.8.1) `kae use`/bare `use`'s switch-away recapture of the currently-active
+account when its live credential diverges from the snapshot. The snapshot's
+credential expiry and refresh-token presence are read (never stored separately)
+by `internal/freshness` for the switch-time stale warning and the `doctor`
+`credential_stale` check: claude `claudeAiOauth.expiresAt` (Unix ms) +
+`refreshToken`, codex `tokens.access_token`/`id_token` JWT `exp` +
+`refresh_token`, opencode `/openai` `expires` (Unix ms) + `refresh`, cursor's
+opaque JWT `exp` (no refresh token). copilot's `/lastLoggedInUser` and agy's
+encrypted blob carry no datable token, so they are never flagged.
+
 ## Secret References
 
 Secret payloads live in the secret backend, keyed by:

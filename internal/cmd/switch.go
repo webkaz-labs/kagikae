@@ -8,6 +8,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -104,6 +105,13 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	if err := app.requireConfig(); err != nil {
 		return nil, err
 	}
+	// Coalesce the `security` reads a single switch makes of each tool's
+	// account-agnostic keychain service: Detect, the backup, and the §A
+	// recapture all read it, so without a cache the recapture would multiply the
+	// keychain invocations (and auth prompts). Writes below invalidate the
+	// entry. No child process runs during a switch, so the cache never observes
+	// a stale live credential (docs/RELEASE.md §C).
+	ctx = keychain.WithReadCache(ctx)
 	app.pinnedGlobalScope()
 
 	targets, profileName, err := app.resolveTargets(target, name)
@@ -126,21 +134,30 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	if profileName != "" {
 		report.Profile = &profileName
 	}
+	// Resolve the secret backend up front so each target snapshot can be checked
+	// for staleness (§B). secret.Resolve does no IO, so this is cheap; a backend
+	// error is fatal only on the real path — a dry-run still prints the plan.
+	be, beErr := app.secretBackend()
 	for _, plan := range plans {
-		report.Results = append(report.Results, switchResult{
+		res := switchResult{
 			Tool: plan.Tool, Account: plan.Account, Driver: plan.Driver,
 			Applied: !opts.DryRun, Actions: app.actionsOf(plan.Specs),
 			Warnings: plan.Warnings,
-		})
+		}
+		if beErr == nil {
+			if w, err := app.staleSnapshotWarning(ctx, be, plan.Meta); err == nil && w != "" {
+				res.Warnings = append(res.Warnings, w)
+			}
+		}
+		report.Results = append(report.Results, res)
 	}
 	if opts.DryRun {
 		return report, nil
 	}
-
-	be, err := app.secretBackend()
-	if err != nil {
-		return nil, err
+	if beErr != nil {
+		return nil, beErr
 	}
+
 	tools := make([]string, len(plans))
 	for i, plan := range plans {
 		tools[i] = plan.Tool
@@ -160,6 +177,12 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		return nil, err
 	}
 	report.BackupID = meta.ID
+
+	// §A: before overwriting the real store, refresh the currently-active
+	// account's snapshot from the live store (only when they diverge), so a
+	// later switch back applies a live token. Must run before applySnapshot
+	// overwrites the live credential. Best-effort; never aborts the switch.
+	app.recaptureActiveBeforeSwitch(ctx, be, st, plans)
 
 	appliedTools := map[string]bool{}
 	for _, plan := range plans {

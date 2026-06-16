@@ -58,3 +58,26 @@ func (libsecretBackend) Delete(ctx context.Context, key string) error {
 	}
 	return nil
 }
+
+// Keys lists every stored key via `secret-tool search --all`, parsing the
+// `attribute.key` lines. The search output also carries `secret = ...` lines;
+// only attribute.key is read and the raw output is never logged, so no secret
+// value leaks (docs/SECURITY.md). A non-zero exit with empty stderr means no
+// items are stored.
+func (libsecretBackend) Keys(ctx context.Context) ([]string, error) {
+	stdout, stderr, code := runner.Run(ctx, "secret-tool",
+		"search", "--all", "service", Service)
+	if code != 0 {
+		if strings.TrimSpace(stderr) == "" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("secret-tool search failed (exit %d): %s", code, runner.Snippet(stderr))
+	}
+	var keys []string
+	for line := range strings.SplitSeq(stdout, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "attribute.key = "); ok {
+			keys = append(keys, v)
+		}
+	}
+	return keys, nil
+}

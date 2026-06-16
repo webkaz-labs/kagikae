@@ -336,6 +336,70 @@ The lesson from the first attempt is now baked into the gate preamble above:
 re-capture a live token immediately before the run, and prefer throwaway
 accounts — the teardown rewrites the live keychain from the snapshot.
 
+## v0.8.1 surfaces
+
+Credential freshness / auto-recapture. Same temp-HOME + file-backend setup as
+the v0.8.0 block (`KAE_CLAUDE_DRIVER=file`, `secret_backend = "file"`). The
+claude file driver stores the `/claudeAiOauth` sub-value, so a credential file's
+`accessToken` is the snapshot payload.
+
+```bash
+# (continues from the v0.8.0 setup: /tmp/kae built, temp HOME + file config)
+
+# --- A. switch-away recapture (use A -> B -> A applies the live-at-switch token) ---
+printf '{"claudeAiOauth":{"accessToken":"tok-work-1"}}' > "$HOME/.claude/.credentials.json"
+/tmp/kae add --no-login claude work
+printf '{"claudeAiOauth":{"accessToken":"tok-personal"}}' > "$HOME/.claude/.credentials.json"
+/tmp/kae add --no-login claude personal
+/tmp/kae use claude work
+printf '{"claudeAiOauth":{"accessToken":"tok-work-2"}}' > "$HOME/.claude/.credentials.json"  # in-tool refresh
+/tmp/kae use claude personal     # stderr: "refreshed claude/work snapshot ... before switching away"
+/tmp/kae use claude work
+grep -q tok-work-2 "$HOME/.claude/.credentials.json"   # assert: refreshed token came back, not tok-work-1
+
+# --- B. switch to an expired snapshot with no refresh token warns (still proceeds) ---
+printf '{"claudeAiOauth":{"accessToken":"old","refreshToken":"","expiresAt":1577836800000}}' \
+  > "$HOME/.claude/.credentials.json"
+/tmp/kae add --no-login claude stale
+/tmp/kae use claude personal
+/tmp/kae use claude stale --json   # assert: results[].warnings names "expired" and "kae add"; exit 0
+
+# --- D. doctor credential-health ---
+/tmp/kae doctor claude --json
+#   assert: a check {code:"credential_stale", status:"warn"} for claude/stale (names kae add)
+# seed an orphan secret with no snapshot dir (file backend):
+printf 'eA==\n' > "$XDG_DATA_HOME/kagikae/secrets/claude/ghost/claude_ai_oauth.secret"  # base64("x")
+mkdir -p "$XDG_DATA_HOME/kagikae/secrets/claude/ghost" 2>/dev/null
+/tmp/kae doctor claude --json
+#   assert: a check {code:"secret_orphan", status:"warn"} for claude/ghost (names kae account rm)
+```
+
+§C `security`-read coalescing is asserted by unit tests
+(`internal/keychain` cache count; `internal/cmd` `TestSwitchCoalescesKeychainReads`
+counts exactly one `find-generic-password -w` per switch). On a real keychain
+machine it shows as a single auth prompt per switch rather than several.
+
+### v0.8.1 real-machine gate (required before release) — **PENDING**
+
+On a **staging machine or throwaway account** with global mise active. As with
+the v0.8.0 gate, **re-capture a live token with `kae add` immediately before the
+gate** (the teardown rewrites the live keychain from the snapshot) and use
+`KAE_CLAUDE_DRIVER=file` + a file-backend config so the real login keychain is
+untouched.
+
+- [ ] `kae use <A>` then a real in-tool token refresh, then `kae use <B>`: stderr
+      reports the `<A>` snapshot was refreshed before switching away; `kae use <A>`
+      back applies the **refreshed** token (a fresh-process auth check passes),
+      not the capture-time one.
+- [ ] A single `kae use` issues at most one keychain auth prompt for the tool
+      (coalescing; observe prompts, not just the unit test).
+- [ ] `kae use <stale-account>` (snapshot past `expiresAt`, no refresh token)
+      prints the stale warning naming `kae add` and still proceeds.
+- [ ] `kae doctor` reports `credential_stale` for an expired snapshot and (file
+      or libsecret backend) `secret_orphan` for an item with no snapshot dir.
+
+Record the result here when run, mirroring the v0.8.0 gate log above.
+
 ## Real-Machine Acceptance (release only)
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of

@@ -120,6 +120,18 @@ matches.
   exit codes, and backups as the removed `switch`. This is also the teardown of
   `kae use -i`: it drops the tool from `state.json synced`, regenerates or
   deletes the global mise fragment, and then patches the real home in place.
+
+  Before overwriting the live store, a shared switch **recaptures the
+  currently-active account** when its live credential diverges from its snapshot
+  (symmetric with `run -s`), so a later switch back applies the token that was
+  live at switch-away rather than a stale capture. It is divergence-gated (no
+  write when they match) and best-effort: a logged-out active account is left
+  untouched with a warning, never aborting the switch. If the account being
+  switched **to** has an expired snapshot with no refresh token, kae warns and
+  names `kae add` but still proceeds (a snapshot with a refresh token proceeds
+  silently — the tool self-refreshes). The warning rides in each result's
+  `warnings` array. Only `kae use` / bare `use` recapture; `use -i` / `pin` /
+  `run -i` write kae-owned isolation dirs and never the real store.
 - `--isolated` / `-i`: point every terminal at a per-account private home
   **without touching `~/.claude`**. kae prepares
   `isolation/global/<tool>/<account>/` (docs/DATA-MODEL.md) and writes a
@@ -425,7 +437,18 @@ account name ascending.
 Check `status` vocabulary: `ok`, `warn`, `error`, `skipped`.
 Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
-`unsupported`.
+`unsupported`, `file_mode`, `credential_stale`, `secret_orphan`.
+
+Credential-health checks (warn-level):
+- `credential_stale`: a captured snapshot is past its `expiresAt` with no
+  refresh token, so a switch to it cannot self-heal — names `kae add`. Uses the
+  same freshness predicate as the switch-time warning; it inspects only the
+  stored snapshot (no live read, so no extra keychain prompt). An expired
+  snapshot that still has a refresh token is not flagged (the tool refreshes it).
+- `secret_orphan`: a stored secret item has no matching snapshot dir — names
+  `kae account rm`. Detected only where the backend can enumerate (file
+  `readdir`, Linux `libsecret`); the darwin keychain cannot list by service, so
+  the check is silently skipped there (documented gap; docs/SECURITY.md).
 
 ### `kae use ... --json` (the switch report)
 

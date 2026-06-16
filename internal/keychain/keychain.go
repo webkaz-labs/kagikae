@@ -23,19 +23,31 @@ const NotFoundMarker = "could not be found"
 // ReadItem returns the generic-password payload for service. The security
 // CLI prints non-ASCII payloads as hex; both forms are handled.
 func ReadItem(ctx context.Context, service string) (payload []byte, found bool, err error) {
+	if c := cacheFrom(ctx); c != nil {
+		if e, ok := c.lookupItem(service); ok {
+			return e.payload, e.found, nil
+		}
+	}
 	stdout, stderr, code := runner.Run(ctx, "security",
 		"find-generic-password", "-s", service, "-w")
 	if code != 0 {
 		if strings.Contains(stderr, NotFoundMarker) {
+			if c := cacheFrom(ctx); c != nil {
+				c.storeItem(service, itemEntry{found: false})
+			}
 			return nil, false, nil
 		}
 		return nil, false, fmt.Errorf("security find-generic-password %q failed (exit %d)", service, code)
 	}
 	raw := strings.TrimRight(stdout, "\n")
+	payload = []byte(raw)
 	if decoded, ok := decodeHexPayload(raw); ok {
-		return decoded, true, nil
+		payload = decoded
 	}
-	return []byte(raw), true, nil
+	if c := cacheFrom(ctx); c != nil {
+		c.storeItem(service, itemEntry{payload: payload, found: true})
+	}
+	return payload, true, nil
 }
 
 // decodeHexPayload detects the security CLI's hex output form.
@@ -63,19 +75,30 @@ func decodeHexPayload(s string) ([]byte, bool) {
 
 // ItemAccount returns the account attribute of the service's item.
 func ItemAccount(ctx context.Context, service string) (string, bool, error) {
+	if c := cacheFrom(ctx); c != nil {
+		if e, ok := c.lookupAccount(service); ok {
+			return e.account, e.found, nil
+		}
+	}
 	stdout, stderr, code := runner.Run(ctx, "security",
 		"find-generic-password", "-s", service)
 	if code != 0 {
 		if strings.Contains(stderr, NotFoundMarker) {
+			if c := cacheFrom(ctx); c != nil {
+				c.storeAccount(service, acctEntry{found: false})
+			}
 			return "", false, nil
 		}
 		return "", false, fmt.Errorf("security find-generic-password %q failed (exit %d)", service, code)
 	}
-	m := acctRE.FindStringSubmatch(stdout)
-	if m == nil {
-		return "", true, nil
+	account := ""
+	if m := acctRE.FindStringSubmatch(stdout); m != nil {
+		account = m[1]
 	}
-	return m[1], true, nil
+	if c := cacheFrom(ctx); c != nil {
+		c.storeAccount(service, acctEntry{account: account, found: true})
+	}
+	return account, true, nil
 }
 
 // WriteItem creates or updates (-U) the generic password for service.
@@ -94,6 +117,9 @@ func WriteItem(ctx context.Context, service, account string, payload []byte) err
 	if code != 0 {
 		return fmt.Errorf("security add-generic-password %q failed (exit %d): %s", service, code, runner.Snippet(stderr))
 	}
+	if c := cacheFrom(ctx); c != nil {
+		c.invalidate(service)
+	}
 	return nil
 }
 
@@ -104,9 +130,15 @@ func DeleteItem(ctx context.Context, service string) error {
 		"delete-generic-password", "-s", service)
 	if code != 0 {
 		if strings.Contains(stderr, NotFoundMarker) {
+			if c := cacheFrom(ctx); c != nil {
+				c.invalidate(service)
+			}
 			return nil
 		}
 		return fmt.Errorf("security delete-generic-password %q failed (exit %d): %s", service, code, runner.Snippet(stderr))
+	}
+	if c := cacheFrom(ctx); c != nil {
+		c.invalidate(service)
 	}
 	return nil
 }

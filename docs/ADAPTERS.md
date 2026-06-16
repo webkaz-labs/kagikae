@@ -417,5 +417,10 @@ subscription login.
    primitives (`json-pointer`, `file`, `keychain`) so backup/rollback and
    redaction come for free.
 3. Add structure guards: refuse unknown layouts instead of writing.
-4. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
+4. If the credential is a refreshable OAuth/JWT token, teach
+   `internal/freshness` to read its expiry and refresh-token presence (used by
+   the switch-time stale warning and `doctor credential_stale`); a static API
+   key or a pointer-only artifact stays not-datable (Known=false). See the
+   per-tool field map in [DATA-MODEL.md](DATA-MODEL.md).
+5. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
    guard-refusal paths.

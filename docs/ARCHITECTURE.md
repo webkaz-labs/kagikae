@@ -19,7 +19,9 @@ kagikae/
       cursor/
       copilot/
     artifact/             # artifact primitives: json-pointer / file / keychain
+    freshness/            # pure per-tool credential expiry / refresh-token parser
     keychain/             # security-CLI access to upstream tools' keychain items
+                          #   (incl. a per-command read cache, WithReadCache)
     config/               # TOML config parse/validate/defaults + comment-preserving editor
     constants/            # JSON contract vocabulary (status, codes, drivers)
     paths/                # XDG resolution for config/data/state/locks
@@ -82,13 +84,24 @@ normative allowlists live in [ADAPTERS.md](ADAPTERS.md).
 2. acquire per-tool locks (all requested tools; fail fast with lock_busy)
 3. detect live state; build artifact specs per tool
 4. create one backup covering all tools about to change
-5. apply artifacts per tool (atomic writes / keychain updates)
-6. on any failure: restore the backup for already-applied tools, report
-7. update state.json; prune old backups
-8. release locks
+5. recapture: if the currently-active account's live credential diverges from
+   its snapshot, rewrite the snapshot first (so a later switch back applies a
+   live token); best-effort, never aborts the switch
+6. apply artifacts per tool (atomic writes / keychain updates)
+7. on any failure: restore the backup for already-applied tools, report
+8. update state.json; prune old backups
+9. release locks
 ```
 
-`--dry-run` runs steps 1–3 and prints the plan from the artifact specs.
+The whole switch wraps `ctx` in `keychain.WithReadCache`, so the `security`
+reads steps 3–6 make of one tool's account-agnostic keychain service collapse
+to a single invocation (the recapture in step 5 adds no extra read or auth
+prompt); writes in step 6 invalidate the cache. No child runs during a switch,
+so the cache never serves a stale live credential (`run -s` does not use it).
+
+`--dry-run` runs steps 1–3 and prints the plan from the artifact specs; it also
+annotates a stale switch target (snapshot past `expiresAt` with no refresh
+token) with a warning, the same `internal/freshness` predicate `doctor` uses.
 
 `kae use <profile>` / `kae use <tool> <account>` (explicit positional) enters
 this transaction directly. Bare `kae use` (no positional, the folded `apply`)
@@ -142,7 +155,18 @@ restore step. A separate `config` lock (same mechanism, name `config`) guards
 
 ## Caching
 
-None in v0.1.0. Commands are short-lived and each re-reads live state.
+Commands are short-lived and re-read live state, with one request-scoped
+exception: `keychain.WithReadCache(ctx)` installs a per-command cache that
+coalesces repeated `security find-generic-password` reads of the same service
+(carried in the context, absent unless opted in). The switch path uses it so
+`Detect`, the backup, and the §A recapture share one keychain read instead of
+three; `WriteItem`/`DeleteItem` invalidate the cached service. It is **not**
+used across a child run (`run -s`), where the child can rotate the live
+credential behind kae's back and a cached value would be stale.
+
+`internal/freshness` is a pure parser (no IO, no cache): it reads expiry and
+refresh-token presence from a captured credential payload and is shared by the
+switch-time stale warning and `doctor` credential-health.
 
 ## Known Traps
 

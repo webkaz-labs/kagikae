@@ -16,14 +16,16 @@ platform coverage, ordered below by user impact.
   in v0.8.0 — see [RELEASE.md](RELEASE.md))*: folded `apply` into `use`,
   redesigned `run` onto `-s`/`-i`/`--env`, trimmed `mise init`, and hard-renamed
   the mechanism + config-key vocabulary to `shared`/`isolated`.
-- **Credential freshness / auto-recapture** *(v0.8.1 target — see
-  [RELEASE.md](RELEASE.md))*: `use`/bare `use` write the capture-time snapshot
-  back to the live store with no recapture (only `run -s` recaptures), so a
-  token rotated outside kae breaks a switch-back (a login prompt when the refresh
-  token has also rotated; seen in the v0.8.0 gate). v0.8.1 adds switch-source
-  recapture (symmetric with `run -s`), switch-time stale warnings + `doctor`
-  credential-health, `security`-call coalescing, and (splittable) the codex
-  keyring driver. Spans every OAuth/JWT tool, not just claude.
+- **Credential freshness / auto-recapture** *(v0.8.1 — A–D implemented, see
+  [RELEASE.md](RELEASE.md))*: `use`/bare `use` wrote the capture-time snapshot
+  back to the live store with no recapture (only `run -s` recaptured), so a
+  token rotated outside kae broke a switch-back (a login prompt when the refresh
+  token had also rotated; seen in the v0.8.0 gate). v0.8.1 added switch-source
+  recapture (symmetric with `run -s`, divergence-gated), switch-time stale
+  warnings + `doctor` credential-health (`credential_stale` / `secret_orphan`),
+  and `security`-read coalescing (a per-command keychain cache). Spans every
+  OAuth/JWT tool, not just claude. The codex keyring driver (§E) is **split to
+  v0.8.2** — see below.
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the
@@ -31,29 +33,29 @@ platform coverage, ordered below by user impact.
 - **Remote share-list definitions (ship)**: implement the v0.6.0 design if
   it holds — published defaults for the overlay share list, explicit
   fetch, diff-before-adopt, hard-coded auth denylist.
-- **Codex keyring driver** *(pulled into v0.8.1 §E; may split to v0.8.2 — see
-  [RELEASE.md](RELEASE.md))*: pin down the OS-credential-store item contract
-  used by `cli_auth_credentials_store = "keyring"`, add structure guards,
-  lift the detect-only restriction.
+- **Codex keyring driver** *(v0.8.2 target — split out of v0.8.1 §E)*: pin down
+  the OS-credential-store item contract used by
+  `cli_auth_credentials_store = "keyring"`, add structure guards, lift the
+  detect-only restriction. Deferred from v0.8.1 because the keyring item naming
+  is undocumented upstream and a safe round-trip needs real-machine discovery
+  against a live codex keyring login first (guessing the contract would break
+  the refuse-unknown-layouts guard). The detect-only refusal stays in place
+  until then.
 - **Login UX polish**: verify `claude /login` behavior across versions,
   support agy. (The "login flow exited without changing auth" case is now
   detected and refused with exit `11`.)
 - **`kae env export --dotenv --reveal`**: explicit-flag value export for CI
   bootstrapping (today values are injection-only by design).
-- **Performance polish**: combine/cache the multiple `security` subprocess
-  calls per macOS switch *(the coalescing lands in v0.8.1 §C — see
-  [RELEASE.md](RELEASE.md))*; run per-tool `Detect` concurrently in `status`
-  (still open).
-- **doctor keychain-orphan detection** *(discovery done in v0.7.1; folded into
-  v0.8.1 §D credential-health — see [RELEASE.md](RELEASE.md))*:
-  warn when a `kagikae` secret item has no matching snapshot dir. Blocked on
-  enumeration — the darwin keychain cannot list items by service via the
-  `security` CLI (`find-generic-password -s` returns only the first match;
-  `dump-keychain` is heavy/brittle). Feasible for the `file` backend
-  (`readdir`) and Linux `libsecret` (`secret-tool search --all`); needs a
-  `Backend` enumeration method. Low priority now that `kae account rm` removes
-  the snapshot and secrets together, making orphans rare. See
-  [SECURITY.md](SECURITY.md) for the discovery note.
+- **Performance polish**: the per-switch `security`-read coalescing shipped in
+  v0.8.1 §C (a context-scoped keychain read cache in `internal/keychain`, wired
+  into the switch path). Still open: run per-tool `Detect` concurrently in
+  `status`.
+- **doctor keychain-orphan detection** *(shipped in v0.8.1 §D as the
+  `secret_orphan` check)*: warns when a `kagikae` secret item has no matching
+  snapshot dir, via a new `secret.Enumerator` (file `readdir`, Linux
+  `secret-tool search --all`). The darwin keychain still cannot list items by
+  service through the `security` CLI, so the check is silently skipped on the
+  keychain backend (documented gap; [SECURITY.md](SECURITY.md)).
 - **claude driver override for isolated smoke checks** *(v0.7.1 — see
   [RELEASE.md](RELEASE.md))*: on macOS the keychain driver ignores temp
   `$HOME`s, so claude switch smoke checks can only run safely on Linux today;

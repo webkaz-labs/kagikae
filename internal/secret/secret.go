@@ -37,6 +37,16 @@ type Backend interface {
 	Delete(ctx context.Context, key string) error
 }
 
+// Enumerator is implemented by backends that can list every stored kagikae key
+// (account refs like "claude/work/claude_ai_oauth" and backup refs like
+// "backup/<id>/claude/..."). doctor uses it for orphan detection. The darwin
+// keychain cannot enumerate by service through the security CLI, so
+// keychainBackend does not implement it and orphan detection is skipped there
+// (a documented gap; docs/SECURITY.md).
+type Enumerator interface {
+	Keys(ctx context.Context) ([]string, error)
+}
+
 // Resolve picks the backend for the configured name. lookPath is an
 // exec.LookPath-compatible probe injected for tests.
 func Resolve(configured, goos, secretsDir string, lookPath func(string) (string, error)) (Backend, error) {

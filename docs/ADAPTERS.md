@@ -97,7 +97,7 @@ environment, the adapter uses it as the live base path.
 | Driver | Status | Switched artifacts |
 |--------|--------|--------------------|
 | `codex-auth-json` | implemented | whole `~/.codex/auth.json` (file mode `0600`) |
-| `codex-keyring` | detect-only in v0.1.0 | OS credential store entry |
+| `codex-keyring` | detect-only (driver targeted for v0.8.3 — see the keyring item contract below) | keychain item service `Codex Auth` |
 
 The keyring item naming used by Codex is not a documented contract, so v0.1.0
 only detects the keyring configuration:
@@ -111,6 +111,26 @@ only detects the keyring configuration:
   hint, while `switch` proceeds normally — switching to a captured account
   legitimately creates `auth.json`. `doctor` and `status` carry the same
   hint as a warning.
+
+#### Keyring item contract (discovery 2026-06-16, for the v0.8.3 driver)
+
+Real-machine discovery (`cli_auth_credentials_store = "keyring"` + `codex
+login` on macOS) found the keychain item:
+
+- **service** `Codex Auth`
+- **account** `cli|<opaque>` — a per-login opaque id (not a hash of
+  `account_id` / `sub` / `email` / `jti` / `sid`), so kae **captures it
+  verbatim and never computes it**.
+- **payload** the whole `auth.json` JSON (`tokens`, `OPENAI_API_KEY`,
+  `auth_mode`, `last_refresh`) — file-mode-equivalent content.
+
+The v0.8.3 `codex-keyring` driver therefore reuses the verbatim-keychain
+pattern (as claude / cursor): capture the single live `Codex Auth` item's
+account + payload, restore them verbatim via `security`, structure guard =
+payload parses as an object containing `tokens`. Open point for implementation:
+whether codex reads by service only or service+account (decides if apply must
+delete the prior item) — settle with a two-account keychain round-trip. Until
+v0.8.3 the detect-only refusal above stands.
 
 ### Preserved
 
@@ -424,7 +444,7 @@ at 64); an explicit name always wins. The per-tool source:
 | opencode | `auth.json` `/openai` `accountId` |
 | copilot | `config.json` (JSONC) `/lastLoggedInUser.login` |
 | agy | none — no exposed identity; explicit name required |
-| cursor | none yet — `cursor-agent status` output is undocumented; discovery-blocked ([ROADMAP.md](ROADMAP.md)), so an explicit name is required |
+| cursor | **v0.8.3 target** — `cursor-agent status` prints `✓ Logged in as <email>` (discovery 2026-06-16: single line, no ANSI, exit 0); the v0.8.3 `Identifier` parses the text after `Logged in as `. Until then an explicit name is required. |
 
 A detection failure (logged out, unreadable, or sanitizes to empty) is a usage
 error naming the explicit form, never a silent fallback. Identity reads only

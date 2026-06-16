@@ -1,4 +1,130 @@
-# Release Target: kae v0.8.2
+# Release Target: kae v0.8.3
+
+Lift the two discovery-blocked items, consolidate per-tool credential knowledge
+onto the adapter registry, and make the detected login identity visible. The
+real-machine discovery for both deferred items is done (2026-06-16; contracts in
+[ADAPTERS.md](ADAPTERS.md)), so the scope is de-risked: §A
+freshness-as-adapter-capability, §B cursor `kae add` identity, §C codex keyring
+driver, §D store + display the detected account identity. No JSON-contract break
+(`schema_version` stays `1`; new tokens are additive).
+
+Previous baseline: v0.8.2 (daily-use polish).
+
+## Scope
+
+### A. Freshness as an adapter capability
+
+Move `freshness.Inspect`'s per-tool `switch tool` onto a per-tool adapter
+`Freshness(payload) Info` method (an optional capability, beside `Identifier`),
+so per-tool credential knowledge has one home (the registry). The shared
+`jwtExpiry`/`epochToTime`/`decodeObject` and `internal/jwt` primitives stay in
+`internal/freshness`; `freshness.Inspect` becomes a thin dispatch to the adapter
+(or `cmd.accountFreshness` consults the adapter directly). A tool with no
+datable credential (copilot pointer, agy blob) returns `Known=false`; a tool
+that ships without a `Freshness` method stays fail-safe (not-datable). Pure
+refactor — the existing freshness / doctor / stale-warning tests pass unchanged.
+
+### B. `kae add` account identity for cursor
+
+Implement cursor's `adapter.Identifier` via `cursor-agent status` (discovery
+2026-06-16: a single line `✓ Logged in as <email>`, UTF-8 check glyph, **no
+ANSI**, exit 0). Run it through the runner seam; extract the text after
+`Logged in as `, trim, and let `cmd` sanitize the email to a local-part account
+name (the v0.8.2 §B path). A non-matching line, a non-zero exit, or an empty
+identity is a detection failure naming the explicit form. Fake-runner tests
+cover the logged-in and logged-out / garbled cases. (cursor-agent status may
+hit the network; acceptable on the interactive `kae add` path.)
+
+### C. Codex keyring driver
+
+Lift the codex `codex-keyring` driver from detect-only (the v0.8.1 §E / v0.8.2
+deferral). Discovered contract (2026-06-16): the OS-keychain item is service
+`Codex Auth`, account `cli|<opaque>` (an opaque per-login id — **captured
+verbatim, never computed** by kae), and the payload is the whole `auth.json`
+JSON (`tokens`, `OPENAI_API_KEY`, `auth_mode`, `last_refresh`). kae treats it
+with the existing verbatim-keychain pattern (as claude / cursor): capture reads
+the single live `Codex Auth` item's account + payload; apply writes them back
+verbatim through `security`. Structure guard: the payload must parse as a JSON
+object containing `tokens`. The keychain account is carried in the snapshot
+(like cursor's `keychain_account`) so apply recreates the right item.
+
+Open design point to settle during implementation, with a two-account real
+keychain round-trip: whether codex matches by service only or service+account.
+If service+account, apply deletes the existing `Codex Auth` item before adding
+the target's (so exactly one active item exists); if service-only, an `add -U`
+replace suffices. The detect-only refusal (exit 10) is replaced by the working
+driver; `auto` store with neither `auth.json` nor a keyring item stays "not
+logged in".
+
+### D. Store and display the detected account identity
+
+Today auto-detection (§B v0.8.2) reads the live login identity only to derive
+the account name, then discards it — so the snapshot keeps the sanitized name
+(`alice`) but not the real identity (`alice@example.com`, or a codex
+`account_id`). Persist it: at capture (`kae add`, **both** the explicit-name and
+auto-detect forms), best-effort call the adapter's `Identity` and record the raw
+detected value in the snapshot. This builds on §B (the `Identifier` capability
+for every tool, including cursor).
+
+- `account.toml` gains an optional `identity` field (the raw detected identity),
+  separate from the account name. Backfilled only on a fresh `kae add`; absent
+  for pre-existing snapshots and unaffected accounts.
+- `kae ls` and `kae accounts` show an `Identity` column (blank when absent); the
+  `--json` account rows gain an additive `identity` field (`schema_version`
+  stays `1`, `omitempty`).
+- Best-effort: a tool with no `Identifier` (agy), or a detection failure, leaves
+  `identity` empty and never errors — the account name is unaffected.
+- The identity (an email or account id) is PII but **not** a secret credential;
+  it is stored in plaintext metadata exactly like the account name and never a
+  token (SECURITY.md note; no redaction-test change beyond confirming no token
+  leaks). It disambiguates accounts whose identities sanitize to the same name.
+
+## Non-Goals (this release)
+
+- TUI, Windows, remote share-list shipping, `env export --reveal`, "did you
+  mean" suggestions — see [ROADMAP.md](ROADMAP.md).
+- Any JSON-contract break: `schema_version` stays `1`.
+
+## Acceptance Criteria
+
+- **freshness capability**: the existing switch / login / doctor / stale-warning
+  tests pass unchanged; per-tool expiry/refresh logic lives on the adapters and
+  the primitives in `internal/freshness`; a tool with no `Freshness` method is
+  treated as not-datable (`Known=false`).
+- **cursor identity**: `kae add cursor` (no name) on a live `cursor-agent
+  status` login captures under the sanitized detected email; a logged-out or
+  unparseable status errors naming the explicit form (fake-runner tests).
+- **codex keyring**: with `cli_auth_credentials_store = "keyring"`,
+  `kae add codex` / `kae use codex <account>` round-trip through the `Codex
+  Auth` keychain item and a fresh-process `codex login status` reports logged
+  in; the detect-only refusal is gone. Two-account real-machine gate recorded in
+  VALIDATION.md.
+- **identity store/display**: `kae add claude` (auto-detect) and `kae add claude
+  <name>` (explicit) both record the detected `identity` in `account.toml`;
+  `kae ls` / `kae accounts` show it; `--json` carries an additive `identity`
+  (`schema_version` still `1`). agy (no `Identifier`) and a detection failure
+  leave it empty without erroring. Temp-HOME tests.
+- `mise run check` passes; JSON keeps `schema_version: 1`, stable tokens, `[]`
+  arrays; redaction tests cover any new output path (the keyring payload is a
+  credential and must never reach stdout/JSON/logs/metadata).
+
+## Release Steps
+
+1. Bump `toolVersion` to v0.8.3.
+2. §A freshness-as-capability refactor; existing tests green; temp-HOME tests.
+3. §B cursor `Identifier` via `cursor-agent status`; fake-runner tests.
+4. §D store + display the detected identity (capture records it for every tool;
+   `kae ls`/`accounts` + `--json` show it); builds on §B; temp-HOME tests.
+5. §C codex keyring driver (verbatim `Codex Auth` item) with a fake `security`
+   runner; structure guard; temp-HOME tests.
+6. Docs (ADAPTERS / DATA-MODEL / CLI / ARCHITECTURE / SECURITY / README /
+   VALIDATION).
+7. Real-machine gate: codex keyring two-account round-trip + cursor `kae add`
+   identity on a live login; README verified; tag `v0.8.3`, GitHub release.
+
+---
+
+# kae v0.8.2 (released 2026-06-16)
 
 Daily-use polish: make the most-run command fast, the most-typed command
 shorter, and pay down the freshness debt v0.8.1 left. No JSON-contract break

@@ -62,6 +62,21 @@ func resolveToolArg(input string) (string, error) {
 	}
 }
 
+// canonicalToolAccount resolves a tool-position prefix alias to its canonical
+// id (resolveToolArg) and validates the tool/account pair, returning the
+// canonical tool to store. Use it at command entry points that take a <tool>
+// <account> pair so a prefix like "cl" never reaches a data path.
+func canonicalToolAccount(tool, name, nameKind string) (string, error) {
+	canonical, err := resolveToolArg(tool)
+	if err != nil {
+		return "", err
+	}
+	if err := validateToolAccount(canonical, name, nameKind); err != nil {
+		return "", err
+	}
+	return canonical, nil
+}
+
 // validateToolAccount checks CLI-provided tool and account/profile names.
 func validateToolAccount(tool, name, nameKind string) error {
 	if !constants.IsTool(tool) {

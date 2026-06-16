@@ -42,7 +42,8 @@ func runCapture(ctx context.Context, app *App, opts commonOpts, tool, accountNam
 }
 
 func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, accountName string) (*captureReport, error) {
-	if err := validateToolAccount(tool, accountName, "account"); err != nil {
+	tool, err := canonicalToolAccount(tool, accountName, "account")
+	if err != nil {
 		return nil, err
 	}
 	if err := app.requireConfig(); err != nil {

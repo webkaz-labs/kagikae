@@ -83,7 +83,8 @@ func CmdAdd(ctx context.Context, args []string) int {
 }
 
 func runLogin(ctx context.Context, app *App, opts commonOpts, tool, accountName string, restore bool) int {
-	if err := validateToolAccount(tool, accountName, "account"); err != nil {
+	tool, err := canonicalToolAccount(tool, accountName, "account")
+	if err != nil {
 		return finish(opts, err)
 	}
 	if err := app.requireConfig(); err != nil {

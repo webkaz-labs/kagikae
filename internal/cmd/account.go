@@ -68,7 +68,8 @@ func cmdAccountRm(ctx context.Context, args []string) int {
 }
 
 func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accountName string, force bool) (*accountRmReport, error) {
-	if err := validateToolAccount(tool, accountName, "account"); err != nil {
+	tool, err := canonicalToolAccount(tool, accountName, "account")
+	if err != nil {
 		return nil, err
 	}
 	if err := app.requireConfig(); err != nil {
@@ -195,6 +196,10 @@ func cmdAccountRename(ctx context.Context, args []string) int {
 }
 
 func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, oldName, newName string) (*accountRenameReport, error) {
+	tool, err := resolveToolArg(tool)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateToolAccount(tool, oldName, "account"); err != nil {
 		return nil, err
 	}

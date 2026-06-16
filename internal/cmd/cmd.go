@@ -95,6 +95,8 @@ func Root(args []string) int {
 		return CmdBackup(ctx, args[1:])
 	case "rollback":
 		return CmdRollback(ctx, args[1:])
+	case "completion":
+		return CmdCompletion(ctx, args[1:])
 	case "version":
 		return CmdVersion(args[1:])
 	case "help":
@@ -230,6 +232,7 @@ Usage:
   kae status [--json]                  full status report (alias: kae s)
   kae backup list [--json]             list switch backups
   kae rollback [--to <backup-id>]      restore a backup
+  kae completion <bash|zsh|fish>       print a shell completion script
   kae version | --version | -v
   kae help | --help | -h
 

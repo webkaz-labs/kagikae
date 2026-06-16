@@ -11,10 +11,38 @@ v0.8.0 is hardening and platform coverage, ordered below by user impact.
 
 ## Hardening backlog — daily-use robustness
 
-- **Surface vocabulary unification (`run` / `apply` / `mise init`)** *(now the
-  v0.8.0 target — see [RELEASE.md](RELEASE.md))*: fold `apply` into `use`,
-  redesign `run` onto `-s`/`-i`/`--env`, trim `mise init`, and hard-rename the
-  mechanism + config-key vocabulary to `shared`/`isolated`.
+- **Surface vocabulary unification (`run` / `apply` / `mise init`)** *(shipped
+  in v0.8.0 — see [RELEASE.md](RELEASE.md))*: folded `apply` into `use`,
+  redesigned `run` onto `-s`/`-i`/`--env`, trimmed `mise init`, and hard-renamed
+  the mechanism + config-key vocabulary to `shared`/`isolated`.
+- **Snapshot freshness / auto-recapture** *(next patch — v0.8.1 candidate)*:
+  `kae use` (shared) and bare `use` write the **capture-time** snapshot back to
+  the live credential store, with no recapture (only `run -s` recaptures, via
+  `runAuthTransaction`'s post-child `captureSnapshot`). Every supported tool
+  authenticates with a refreshable OAuth/JWT credential (claude `claudeAiOauth`,
+  codex `auth.json` tokens + last-refresh, opencode `{refresh,access,expires}`,
+  cursor JWT, copilot OAuth) — there is no static-key tool on the snapshot path
+  (env-mode API keys are separate). So when a token is rotated outside kae (a
+  re-login in the tool, a long-unused account), the snapshot goes stale and a
+  switch back to it can break auth: if the refresh token has also rotated, the
+  tool drops to a login prompt (observed in the v0.8.0 real-machine gate —
+  [VALIDATION.md](VALIDATION.md)). Scope to design:
+  - **Switch-source preservation (highest value):** before `kae use`/bare `use`
+    switches away, recapture the *currently active* account's live credential
+    into its snapshot (the `run -s` mechanism, made symmetric for `use`),
+    so the next switch back applies a live token. Only `use`/bare `use`
+    overwrite the **real** store; `use -i` / `pin -s|-i` / `rebind` / `run -i`
+    write kae-owned isolation dirs (live store untouched), so they are lower
+    urgency but still benefit from materializing a fresh credential.
+  - **Switch-target staleness (cannot fully self-heal):** the account being
+    switched *to* may be stale and is not live, so it cannot be recaptured;
+    surface it instead — a `kae doctor` stale-snapshot check (expired
+    `expiresAt` / divergence from the live store) and a switch-time warning.
+    External rotation can never be fully tracked, so warn rather than silently
+    repair.
+  - Guard the recapture cost (a macOS keychain read per switch can prompt a
+    `security` dialog): recapture only when the live store and snapshot diverge.
+  - Applies to every OAuth/JWT tool, not just claude.
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the

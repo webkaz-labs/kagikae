@@ -34,6 +34,34 @@ func (app *App) actionsOf(specs []artifact.Spec) []action {
 	return actions
 }
 
+// resolveToolArg resolves a tool-position argument, accepting any unambiguous
+// prefix of a known tool id (cl→claude, cod→codex, cu→cursor, cop→copilot,
+// o→opencode, a→agy). It is input-only sugar: the canonical name is returned
+// and stored, never the prefix. An exact match wins immediately; an ambiguous
+// prefix (c, co) is a usage error naming the candidates; an unmatched input is
+// returned unchanged so the downstream unknown-tool error fires. The ambiguity
+// set is computed from constants.Tools, so a new tool self-adjusts it.
+func resolveToolArg(input string) (string, error) {
+	if constants.IsTool(input) {
+		return input, nil
+	}
+	var matches []string
+	for _, t := range constants.Tools {
+		if strings.HasPrefix(t, input) {
+			matches = append(matches, t)
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0], nil
+	case 0:
+		return input, nil // unknown; validateToolAccount emits the unknown-tool error
+	default:
+		return "", errf(constants.ExitUsage,
+			"ambiguous tool prefix %q (matches: %s)", input, strings.Join(matches, ", "))
+	}
+}
+
 // validateToolAccount checks CLI-provided tool and account/profile names.
 func validateToolAccount(tool, name, nameKind string) error {
 	if !constants.IsTool(tool) {

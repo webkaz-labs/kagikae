@@ -9,19 +9,19 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
-// pinnedEnvApp simulates a directory pinned in overlay mode: KAE_PROFILE
-// plus CLAUDE_CONFIG_DIR pointing into kae's overlays root, layered over
-// the sync test fixtures (claude work/personal captured, personal active).
+// pinnedEnvApp simulates a directory pinned in isolated mode: KAE_PROFILE plus
+// CLAUDE_CONFIG_DIR pointing into kae's isolation root, layered over the test
+// fixtures (claude work/personal captured, personal active).
 func pinnedEnvApp(t *testing.T) *App {
 	t.Helper()
 	app := applyTestApp(t, nil)
-	overlayDir := app.Paths.OverlayDir(constants.ToolClaude, "work")
+	isoDir := app.Paths.IsolatedConfigDir("abcdef0123456789", constants.ToolClaude, "work")
 	app.Env.Getenv = func(key string) string {
 		switch key {
 		case constants.EnvKaeProfile:
 			return "personal"
 		case "CLAUDE_CONFIG_DIR":
-			return overlayDir
+			return isoDir
 		}
 		return ""
 	}

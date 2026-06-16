@@ -8,7 +8,6 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
-	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
 // fragmentRelPath is the kae-owned mise fragment written by `kae pin`, relative
@@ -24,16 +23,6 @@ const (
 	fragModePrefix    = "# kae:mode="
 	fragAccountPrefix = "# kae:account:" // # kae:account:<tool>=<account>
 )
-
-// userScopeMode maps an internal per-directory mechanism (modeBond/modePin) to
-// the user-facing environment label (shared/isolated) used in the fragment and
-// `kae status`.
-func userScopeMode(mode string) string {
-	if mode == modePin {
-		return paths.IsolatedSegment
-	}
-	return paths.SharedSegment
-}
 
 // renderDirFragment renders the kae-owned mise fragment for a per-directory
 // bind: machine-readable kae: records (parsed by status) followed by the [env]

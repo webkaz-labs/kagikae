@@ -254,9 +254,11 @@ type globalIsolateReport struct {
 // isolation/global/<tool>/<account>/ (materializing the captured credential),
 // records the binding in state.synced, and regenerates the kae-owned global
 // mise fragment so every globally activated terminal points the tool there on
-// its next prompt. The real ~/.<tool> is never touched. claude and codex only
-// (a tool with no stable home-isolation env var exits 5). When mise activation
-// is not detected it prints the export fallback for the current shell.
+// its next prompt. The real ~/.<tool> is never touched. claude and codex only:
+// a profile that also maps a tool with no home-isolation env var (agy,
+// opencode, cursor, copilot) skips it with a warning and isolates claude/codex;
+// a single explicit unsupported tool exits 5. When mise activation is not
+// detected it prints the export fallback for the current shell.
 //
 // Unlike the shared switch it takes no per-tool locks and writes no backup: it
 // mutates no live credential store, only kae's own data dirs and state.json
@@ -268,16 +270,15 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 	// Inside a per-directory pin this warns that global state is changing; in a
 	// globally-isolated terminal it stays silent (use -i is the global path).
 	app.pinnedGlobalScope()
-	targets, _, err := app.resolveTargets(target, name)
+	targets, profileName, err := app.resolveTargets(target, name)
 	if err != nil {
 		return finish(opts, err)
 	}
-	for _, tgt := range targets {
-		if isolationEnvVar(tgt.Tool) == "" {
-			return finish(opts, errf(constants.ExitUnsupported,
-				"%s has no home-isolation env var; global isolated mode (kae use -i) supports claude and codex only",
-				tgt.Tool))
-		}
+
+	supported, err := isolatableTargets(targets, profileName != "",
+		"global isolated mode (kae use -i)", "use -i")
+	if err != nil {
+		return finish(opts, err)
 	}
 
 	report := globalIsolateReport{
@@ -288,7 +289,7 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 		Results:       []globalIsolateResult{},
 	}
 
-	for _, tgt := range targets {
+	for _, tgt := range supported {
 		report.Results = append(report.Results, globalIsolateResult{
 			Tool: tgt.Tool, Account: tgt.Account,
 			Home: app.Paths.GlobalIsolatedHomeDir(tgt.Tool, tgt.Account),
@@ -318,10 +319,7 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 		st.Synced = map[string]string{}
 	}
 	for _, r := range report.Results {
-		if err := os.MkdirAll(r.Home, 0o700); err != nil {
-			return finish(opts, fmt.Errorf("create global isolated home for %s: %w", r.Tool, err))
-		}
-		if err := app.swapDirCredential(ctx, be, r.Tool, r.Account, r.Home); err != nil {
+		if _, err := app.prepareGlobalIsolatedHome(ctx, be, r.Tool, r.Account); err != nil {
 			return finish(opts, fmt.Errorf("materialize credential for %s/%s: %w", r.Tool, r.Account, err))
 		}
 		st.Synced[r.Tool] = r.Account

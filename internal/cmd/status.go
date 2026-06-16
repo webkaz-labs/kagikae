@@ -36,14 +36,24 @@ type profileStatus struct {
 	Active   bool              `json:"active"`
 }
 
+// globalIsolatedStatus is one tool whose global mise fragment points it at a
+// private home (kae use -i / run -i share this store). docs/RELEASE.md §B/§D:
+// surfacing it keeps the shared isolated state from being invisible.
+type globalIsolatedStatus struct {
+	Tool    string `json:"tool"`
+	Account string `json:"account"`
+	Home    string `json:"home"`
+}
+
 type statusReport struct {
-	SchemaVersion int             `json:"schema_version"`
-	OK            bool            `json:"ok"`
-	Pinned        *pinnedStatus   `json:"pinned"`
-	ActiveProfile *string         `json:"active_profile"`
-	Mode          string          `json:"mode"`
-	Tools         []toolStatus    `json:"tools"`
-	Profiles      []profileStatus `json:"profiles"`
+	SchemaVersion  int                    `json:"schema_version"`
+	OK             bool                   `json:"ok"`
+	Pinned         *pinnedStatus          `json:"pinned"`
+	ActiveProfile  *string                `json:"active_profile"`
+	Mode           string                 `json:"mode"`
+	GlobalIsolated []globalIsolatedStatus `json:"global_isolated"`
+	Tools          []toolStatus           `json:"tools"`
+	Profiles       []profileStatus        `json:"profiles"`
 }
 
 func CmdStatus(ctx context.Context, args []string) int {
@@ -88,12 +98,13 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		capturedByTool[acc.Tool] = append(capturedByTool[acc.Tool], acc.Name)
 	}
 	report := &statusReport{
-		SchemaVersion: constants.SchemaVersion,
-		OK:            true,
-		Pinned:        app.pinnedStatus(),
-		Mode:          constants.ModeAuth,
-		Tools:         []toolStatus{},
-		Profiles:      []profileStatus{},
+		SchemaVersion:  constants.SchemaVersion,
+		OK:             true,
+		Pinned:         app.pinnedStatus(),
+		Mode:           constants.ModeAuth,
+		GlobalIsolated: globalIsolatedStatuses(app, st.Synced),
+		Tools:          []toolStatus{},
+		Profiles:       []profileStatus{},
 	}
 	// Inside a pinned directory the real per-tool account is the one the
 	// kae-owned fragment bound (it may diverge from the global state and from
@@ -158,10 +169,34 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 	return report, nil
 }
 
+// globalIsolatedStatuses resolves state.synced into per-tool private homes in
+// canonical tool order (the [] contract is preserved by the caller's struct).
+func globalIsolatedStatuses(app *App, synced map[string]string) []globalIsolatedStatus {
+	out := []globalIsolatedStatus{}
+	for _, tool := range constants.Tools {
+		account, ok := synced[tool]
+		if !ok {
+			continue
+		}
+		out = append(out, globalIsolatedStatus{
+			Tool: tool, Account: account,
+			Home: app.Paths.GlobalIsolatedHomeDir(tool, account),
+		})
+	}
+	return out
+}
+
 func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 	color := colorEnabled(opts.NoColor)
 	if report.Pinned != nil {
 		fmt.Printf("This directory: profile %s (pinned, %s)\n\n", report.Pinned.Profile, report.Pinned.Mode)
+	}
+	if len(report.GlobalIsolated) > 0 {
+		fmt.Println("Global isolated homes (kae use -i / run -i share these):")
+		for _, gi := range report.GlobalIsolated {
+			fmt.Printf("  %s -> %s\n    %s\n", gi.Tool, gi.Account, gi.Home)
+		}
+		fmt.Println()
 	}
 	if report.ActiveProfile != nil {
 		fmt.Printf("Global active profile: %s\n\n", *report.ActiveProfile)

@@ -216,11 +216,16 @@ Usage:
                                        home (credential private), -i isolates
   kae pin <tool> <account>             re-bind one tool inside a pinned dir
   kae unpin                            remove the binding from .mise.toml
-  kae run [--mode M] <t|all> <n> -- C  run C with an account applied (alias: kae r);
-                                       auth mode restores the previous login after
+  kae run [-s|-i|--env] <t|all> <n> -- C
+                                       run C with an account applied (alias: kae r);
+                                       -s (default) uses the real home and restores
+                                       the previous login after; -i runs in the
+                                       per-account isolated home (shared with use -i,
+                                       no lock); --env injects env-profile vars only
   kae env set|unset|list ...           env-mode profiles (API keys)
-  kae mise init [--profile P] [--mode auth|home|overlay] [--auto] [--write]
-                                       low-level form of pin (preview first)
+  kae mise init [-P profile] [--auto] [--write]
+                                       render the auth-mode tasks + opt-in hook
+                                       (bind directories with kae pin instead)
   kae accounts [--json]                registered accounts
   kae status [--json]                  full status report (alias: kae s)
   kae backup list [--json]             list switch backups

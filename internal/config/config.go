@@ -48,12 +48,13 @@ type Security struct {
 
 // Tool holds per-tool settings. Pointers distinguish "unset" from "false".
 type Tool struct {
-	Enabled            *bool    `toml:"enabled"`
-	HomeModeEnabled    *bool    `toml:"home_mode_enabled"`
-	OverlayModeEnabled *bool    `toml:"overlay_mode_enabled"`
-	OverlayExtraShared []string `toml:"overlay_extra_shared"`
-	BondDenylistExtra  []string `toml:"bond_denylist_extra"`
-	PinSharedItems     []string `toml:"pin_shared_items"`
+	Enabled *bool `toml:"enabled"`
+	// SharedDenylistExtra adds file names to the per-directory shared bind's
+	// denylist (kae pin -s), on top of the hard-coded credential list.
+	SharedDenylistExtra []string `toml:"shared_denylist_extra"`
+	// IsolatedSharedItems opts file names into a per-directory isolated bind
+	// (kae pin -i), which shares nothing from the real home by default.
+	IsolatedSharedItems []string `toml:"isolated_shared_items"`
 	// Driver, when set to constants.DriverValueFile, is the persisted, explicit
 	// opt-in counterpart to the KAE_CLAUDE_DRIVER env var (claude only). It
 	// forces the file-patch driver even on darwin. The env var takes
@@ -94,6 +95,16 @@ func Load(path string) (*Config, []string, error) {
 	}
 	var warnings []string
 	for _, key := range meta.Undecoded() {
+		if len(key) > 0 {
+			if repl, removed := renamedToolKeys[key[len(key)-1]]; removed {
+				if repl != "" {
+					return nil, warnings, fmt.Errorf(
+						"config key %q was renamed to %q in v0.8.0 (pre-1.0 hard break; rename it)", key.String(), repl)
+				}
+				return nil, warnings, fmt.Errorf(
+					"config key %q was removed in v0.8.0 (overlay/home modes are gone; bind directories with kae pin -s|-i)", key.String())
+			}
+		}
 		warnings = append(warnings, fmt.Sprintf("unknown config key %q ignored", key.String()))
 	}
 	warnings = append(warnings, stripRemovedTools(cfg)...)
@@ -114,28 +125,20 @@ func (c *Config) validate() error {
 		if !constants.IsTool(tool) {
 			return fmt.Errorf("unknown tool %q in [tools]", tool)
 		}
-		for _, item := range settings.OverlayExtraShared {
+		for _, item := range settings.SharedDenylistExtra {
 			if !ValidFileName(item) {
-				return fmt.Errorf("tools.%s.overlay_extra_shared item %q is not a bare file name", tool, item)
+				return fmt.Errorf("tools.%s.shared_denylist_extra item %q is not a bare file name", tool, item)
 			}
-			if refusedOverlayShare[item] {
-				return fmt.Errorf("tools.%s.overlay_extra_shared must not share the auth/identity artifact %q", tool, item)
+			if refusedSharedDenylistExtra[item] {
+				return fmt.Errorf("tools.%s.shared_denylist_extra: %q is already in the hard-coded credential denylist", tool, item)
 			}
 		}
-		for _, item := range settings.BondDenylistExtra {
+		for _, item := range settings.IsolatedSharedItems {
 			if !ValidFileName(item) {
-				return fmt.Errorf("tools.%s.bond_denylist_extra item %q is not a bare file name", tool, item)
+				return fmt.Errorf("tools.%s.isolated_shared_items item %q is not a bare file name", tool, item)
 			}
-			if refusedBondDenylistExtra[item] {
-				return fmt.Errorf("tools.%s.bond_denylist_extra: %q is already in the hard-coded bond denylist", tool, item)
-			}
-		}
-		for _, item := range settings.PinSharedItems {
-			if !ValidFileName(item) {
-				return fmt.Errorf("tools.%s.pin_shared_items item %q is not a bare file name", tool, item)
-			}
-			if refusedPinShare[item] {
-				return fmt.Errorf("tools.%s.pin_shared_items must not share the auth credential %q", tool, item)
+			if refusedIsolatedShare[item] {
+				return fmt.Errorf("tools.%s.isolated_shared_items must not share the auth credential %q", tool, item)
 			}
 		}
 		if settings.Driver != "" {
@@ -168,55 +171,48 @@ func (c *Config) validate() error {
 	return nil
 }
 
-// refusedOverlayShare lists the auth artifacts that must never be shared into
-// an overlay — sharing them would defeat the isolation. The names mirror what
-// the tool adapters switch (claude: .credentials.json; codex: auth.json).
-// .claude.json is intentionally absent: /oauthAccount is a token-derived cache
-// that claude self-heals, so the file carries no auth value and is safe to
-// symlink wholesale. docs/ADAPTERS.md "Isolation" is the normative source.
-var refusedOverlayShare = map[string]bool{
+// renamedToolKeys maps per-tool config keys removed in v0.8.0 to their
+// replacement (empty = removed outright). Old configs error at load naming the
+// new key — a pre-1.0 hard break with no silent acceptance (docs/RELEASE.md).
+var renamedToolKeys = map[string]string{
+	"bond_denylist_extra":  "shared_denylist_extra",
+	"pin_shared_items":     "isolated_shared_items",
+	"overlay_extra_shared": "", // overlay mode removed
+	"overlay_mode_enabled": "", // overlay mode removed
+	"home_mode_enabled":    "", // home mode removed
+}
+
+// refusedSharedDenylistExtra lists the auth artifacts that are always on the
+// hard-coded shared-bind denylist (see bondDenylistItems in
+// internal/cmd/miseinit.go); adding them to SharedDenylistExtra is rejected to
+// avoid confusion. The names mirror what the tool adapters switch (claude:
+// .credentials.json; codex: auth.json).
+var refusedSharedDenylistExtra = map[string]bool{
 	".credentials.json": true,
 	"auth.json":         true,
 }
 
-// refusedBondDenylistExtra lists the auth artifacts that are always on the
-// hard-coded bond denylist (see bondDenylistItems in internal/cmd/miseinit.go);
-// adding them to BondDenylistExtra is rejected to avoid confusion.
-var refusedBondDenylistExtra = map[string]bool{
+// refusedIsolatedShare lists the auth credentials that must never be listed in
+// isolated_shared_items — they must remain private to the directory and account.
+var refusedIsolatedShare = map[string]bool{
 	".credentials.json": true,
 	"auth.json":         true,
 }
 
-// refusedPinShare lists the auth credentials that must never be listed in
-// pin_shared_items — they must remain private to the directory and account.
-var refusedPinShare = map[string]bool{
-	".credentials.json": true,
-	"auth.json":         true,
-}
-
-// OverlayExtraShared returns the user-configured extra real-home items to
-// share into a tool's overlays (validated at load time).
-func (c *Config) OverlayExtraShared(tool string) []string {
+// SharedDenylistExtra returns the user-configured extra items to exclude from
+// the per-directory shared bind's symlink sharing (validated at load time).
+func (c *Config) SharedDenylistExtra(tool string) []string {
 	if t, ok := c.Tools[tool]; ok {
-		return t.OverlayExtraShared
+		return t.SharedDenylistExtra
 	}
 	return nil
 }
 
-// BondDenylistExtra returns the user-configured extra items to exclude from
-// bond-mode symlink sharing (validated at load time).
-func (c *Config) BondDenylistExtra(tool string) []string {
+// IsolatedSharedItems returns the user-configured items to symlink from the
+// real home into a per-directory isolated bind (opt-in; validated at load time).
+func (c *Config) IsolatedSharedItems(tool string) []string {
 	if t, ok := c.Tools[tool]; ok {
-		return t.BondDenylistExtra
-	}
-	return nil
-}
-
-// PinSharedItems returns the user-configured items to symlink from the real
-// home into a pin-mode config dir (opt-in; validated at load time).
-func (c *Config) PinSharedItems(tool string) []string {
-	if t, ok := c.Tools[tool]; ok {
-		return t.PinSharedItems
+		return t.IsolatedSharedItems
 	}
 	return nil
 }
@@ -228,27 +224,6 @@ func (c *Config) ToolEnabled(tool string) bool {
 		return true
 	}
 	return *t.Enabled
-}
-
-// HomeModeEnabled reports whether home mode is allowed for a tool
-// (default true).
-func (c *Config) HomeModeEnabled(tool string) bool {
-	t, ok := c.Tools[tool]
-	if !ok || t.HomeModeEnabled == nil {
-		return true
-	}
-	return *t.HomeModeEnabled
-}
-
-// OverlayModeEnabled reports whether overlay mode is enabled for a tool
-// (default true since v0.5.0; per-tool opt-out via
-// tools.<tool>.overlay_mode_enabled = false).
-func (c *Config) OverlayModeEnabled(tool string) bool {
-	t, ok := c.Tools[tool]
-	if !ok || t.OverlayModeEnabled == nil {
-		return true
-	}
-	return *t.OverlayModeEnabled
 }
 
 // stripRemovedTools drops config references to tools kae no longer

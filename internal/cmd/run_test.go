@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
@@ -62,7 +62,7 @@ func TestRunAuthTransaction(t *testing.T) {
 	})
 
 	code, _ = captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeAuth, "claude", "work", []string{"claude"})
+		return runRun(ctx, app, opts, runModeShared, "claude", "work", []string{"claude"})
 	})
 	if !ranChild {
 		t.Fatal("child did not run")
@@ -90,7 +90,7 @@ func TestRunAuthNotCaptured(t *testing.T) {
 		return 0, nil
 	})
 	code, out := captureStdout(t, func() int {
-		return runRun(ctx, app, commonOpts{Format: formatText}, modeAuth, "claude", "nope", []string{"claude"})
+		return runRun(ctx, app, commonOpts{Format: formatText}, runModeShared, "claude", "nope", []string{"claude"})
 	})
 	mustExit(t, constants.ExitNotFound, code, out)
 }
@@ -110,7 +110,7 @@ func TestRunEnvMode(t *testing.T) {
 		return 0, nil
 	})
 	code, out = captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeEnv, "claude", "ci", []string{"claude", "-p", "x"})
+		return runRun(ctx, app, opts, runModeEnv, "claude", "ci", []string{"claude", "-p", "x"})
 	})
 	mustExit(t, constants.ExitOK, code, out)
 	if len(gotEnv) != 1 || gotEnv[0] != "ANTHROPIC_API_KEY=sk-test-123" {
@@ -119,7 +119,7 @@ func TestRunEnvMode(t *testing.T) {
 
 	// missing profile
 	code, out = captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeEnv, "codex", "ci", []string{"codex"})
+		return runRun(ctx, app, opts, runModeEnv, "codex", "ci", []string{"codex"})
 	})
 	mustExit(t, constants.ExitNotFound, code, out)
 }
@@ -163,98 +163,47 @@ func TestEnvSetStdinAndUnset(t *testing.T) {
 	mustExit(t, constants.ExitNotFound, code, out)
 }
 
-func TestRunHomeMode(t *testing.T) {
-	app := testApp(t, nil)
+func TestRunIsolated(t *testing.T) {
+	app := applyTestApp(t, nil) // claude work/personal captured; work/personal profiles
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
+	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+	// Record the live login so a leaked mutation would be detectable.
+	beforeLive := readFile(t, credsPath)
 
 	var gotEnv []string
 	withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
 		gotEnv = extraEnv
 		return 0, nil
 	})
-	code, out := captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeHome, "claude", "work", []string{"claude"})
-	})
-	mustExit(t, constants.ExitOK, code, out)
-	wantDir := app.Paths.HomeModeDir("claude", "work")
-	if len(gotEnv) != 1 || gotEnv[0] != "CLAUDE_CONFIG_DIR="+wantDir {
-		t.Fatalf("home env: %v", gotEnv)
-	}
-	if info, err := os.Stat(wantDir); err != nil || info.Mode().Perm() != 0o700 {
-		t.Fatalf("home dir: %v %v", info, err)
-	}
 
-	// agy has no stable isolation env var
-	code, out = captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeHome, "agy", "work", []string{"agy"})
-	})
-	mustExit(t, constants.ExitUnsupported, code, out)
-
-	// config can disable home mode
-	disabled := false
-	app.Config.Tools["claude"] = config.Tool{HomeModeEnabled: &disabled}
-	code, out = captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeHome, "claude", "work", []string{"claude"})
-	})
-	mustExit(t, constants.ExitUnsupported, code, out)
-}
-
-func TestRunOverlayMode(t *testing.T) {
-	app := testApp(t, nil)
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText}
-	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) { return 0, nil })
-
-	// on by default since v0.5.0; the per-tool opt-out still refuses
-	disabled := false
-	app.Config.Tools["claude"] = config.Tool{OverlayModeEnabled: &disabled}
-	code, out := captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeOverlay, "claude", "work", []string{"claude"})
-	})
-	mustExit(t, constants.ExitUnsupported, code, out)
-
-	app.Config.Tools["claude"] = config.Tool{}
-	writeFile(t, filepath.Join(app.Env.Home, ".claude", "settings.json"), `{"theme":"dark"}`)
-	if err := os.MkdirAll(filepath.Join(app.Env.Home, ".claude", "skills", "demo"), 0o700); err != nil {
+	// run -i materializes the per-account global isolated home and points the
+	// child there; it never mutates the live credential and takes no lock.
+	held, err := lock.Acquire(app.Paths.LocksDir(), "claude")
+	if err != nil {
 		t.Fatal(err)
 	}
-
-	code, out = captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeOverlay, "claude", "work", []string{"claude"})
+	code, out := captureStdout(t, func() int {
+		return runRun(ctx, app, opts, runModeIsolated, "claude", "work", []string{"claude"})
 	})
+	held.Release()
 	mustExit(t, constants.ExitOK, code, out)
-	overlayDir := app.Paths.OverlayDir("claude", "work")
-	link, err := os.Readlink(filepath.Join(overlayDir, "settings.json"))
-	if err != nil || link != filepath.Join(app.Env.Home, ".claude", "settings.json") {
-		t.Fatalf("settings symlink: %q %v", link, err)
+	wantHome := app.Paths.GlobalIsolatedHomeDir("claude", "work")
+	if len(gotEnv) != 1 || gotEnv[0] != "CLAUDE_CONFIG_DIR="+wantHome {
+		t.Fatalf("isolated env: %v", gotEnv)
 	}
-	if _, err := os.Readlink(filepath.Join(overlayDir, "skills")); err != nil {
-		t.Fatalf("skills symlink: %v", err)
+	if got := readFile(t, filepath.Join(wantHome, ".credentials.json")); !strings.Contains(got, workToken) {
+		t.Fatalf("isolated home credential not materialized: %s", got)
 	}
-	// CLAUDE.md does not exist in the real home, so it must not be linked
-	if _, err := os.Lstat(filepath.Join(overlayDir, "CLAUDE.md")); !os.IsNotExist(err) {
-		t.Fatal("non-existent shared item must not be linked")
+	if live := readFile(t, credsPath); live != beforeLive {
+		t.Fatalf("run -i must not touch the live credential: %s", live)
 	}
 
-	// idempotent second run
+	// A single explicit unsupported tool exits 5.
 	code, out = captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeOverlay, "claude", "work", []string{"claude"})
+		return runRun(ctx, app, opts, runModeIsolated, "agy", "work", []string{"agy"})
 	})
-	mustExit(t, constants.ExitOK, code, out)
-
-	// a real file where a link belongs is refused, not destroyed
-	if err := os.Remove(filepath.Join(overlayDir, "settings.json")); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(overlayDir, "settings.json"), `{"private":true}`)
-	code, out = captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeOverlay, "claude", "work", []string{"claude"})
-	})
-	mustExit(t, constants.ExitUnsafeRefused, code, out)
-	if got := readFile(t, filepath.Join(overlayDir, "settings.json")); !strings.Contains(got, "private") {
-		t.Fatal("refusal must not destroy overlay-local data")
-	}
+	mustExit(t, constants.ExitUnsupported, code, out)
 }
 
 func TestLoginCapturesAndRestores(t *testing.T) {
@@ -312,28 +261,6 @@ func TestLoginRestoreOnCaptureFailure(t *testing.T) {
 	if live := readFile(t, credsPath); !strings.Contains(live, personalToken) {
 		t.Fatalf("--restore must put the previous login back even when capture fails: %s", live)
 	}
-}
-
-func TestOverlayDirSymlinkRefused(t *testing.T) {
-	app := testApp(t, nil)
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText}
-	enabled := true
-	app.Config.Tools["claude"] = config.Tool{OverlayModeEnabled: &enabled}
-	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) { return 0, nil })
-
-	elsewhere := t.TempDir()
-	overlayDir := app.Paths.OverlayDir("claude", "evil")
-	if err := os.MkdirAll(filepath.Dir(overlayDir), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(elsewhere, overlayDir); err != nil {
-		t.Fatal(err)
-	}
-	code, out := captureStdout(t, func() int {
-		return runRun(ctx, app, opts, modeOverlay, "claude", "evil", []string{"claude"})
-	})
-	mustExit(t, constants.ExitUnsafeRefused, code, out)
 }
 
 func TestLoginUnsupportedTool(t *testing.T) {

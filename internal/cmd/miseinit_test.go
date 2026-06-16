@@ -3,11 +3,9 @@ package cmd
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
@@ -49,139 +47,15 @@ func TestMiseInitAutoRendersEnterHook(t *testing.T) {
 	}
 }
 
-func TestMiseInitHomeMode(t *testing.T) {
-	app := testApp(t, nil)
-	disabled := false
-	app.Config.Tools[constants.ToolCodex] = config.Tool{HomeModeEnabled: &disabled}
-	app.Config.Profiles = map[string]config.Profile{
-		"work": {Accounts: map[string]string{
-			constants.ToolClaude: "work",
-			constants.ToolCodex:  "work",
-			constants.ToolAgy:    "work",
-		}},
-	}
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText}
-	chdirTemp(t)
-
-	code, out := captureStdout(t, func() int {
-		return runMiseInit(ctx, app, opts, "work", modeHome, false, false)
-	})
-	mustExit(t, constants.ExitOK, code, out)
-	claudeHome := app.Paths.HomeModeDir(constants.ToolClaude, "work")
-	if !strings.Contains(out, `CLAUDE_CONFIG_DIR = "`+claudeHome+`"`) {
-		t.Fatalf("missing claude home entry: %s", out)
-	}
-	if strings.Contains(out, "CODEX_HOME =") || !strings.Contains(out, "home mode is disabled for codex") {
-		t.Fatalf("disabled codex must keep the real home with a warning: %s", out)
-	}
-	if !strings.Contains(out, "agy has no stable home-isolation env var") {
-		t.Fatalf("agy must be omitted with a warning: %s", out)
-	}
-	if strings.Contains(out, "[tasks.") || strings.Contains(out, "[hooks") {
-		t.Fatalf("home mode must render no auth hooks/tasks: %s", out)
-	}
-
-	// Preview must not create directories; --write creates the rendered homes.
-	if _, err := os.Stat(claudeHome); !os.IsNotExist(err) {
-		t.Fatal("preview must not create home dirs")
-	}
-	code, out = captureStdout(t, func() int {
-		return runMiseInit(ctx, app, opts, "work", modeHome, false, true)
-	})
-	mustExit(t, constants.ExitOK, code, out)
-	if info, err := os.Stat(claudeHome); err != nil || !info.IsDir() {
-		t.Fatalf("write must create the claude home dir: %v", err)
-	}
-	if !strings.Contains(readFile(t, ".mise.toml"), miseBlockStart) {
-		t.Fatal(".mise.toml not written")
-	}
-}
-
-func TestMiseInitHomeModeDirFailureLeavesTomlUntouched(t *testing.T) {
-	app := testApp(t, nil)
-	app.Config.Profiles = map[string]config.Profile{
-		"work": {Accounts: map[string]string{constants.ToolClaude: "work"}},
-	}
-	chdirTemp(t)
-	// Occupy the homes root with a file so MkdirAll fails; the block must
-	// not be written when its directories cannot exist.
-	writeFile(t, filepath.Join(app.Paths.DataDir, "homes"), "not a dir")
-	code, out := captureStdout(t, func() int {
-		return runMiseInit(context.Background(), app, commonOpts{Format: formatText}, "work", modeHome, false, true)
-	})
-	if code == constants.ExitOK {
-		t.Fatalf("expected failure, got ok: %s", out)
-	}
-	if _, err := os.Stat(".mise.toml"); !os.IsNotExist(err) {
-		t.Fatal(".mise.toml must not be written when home dirs cannot be created")
-	}
-}
-
-func TestMiseInitHomeModeUnknownProfile(t *testing.T) {
+func TestMiseInitRejectsNonAuthModes(t *testing.T) {
+	// mise init renders auth mode only since v0.8.0; the former isolation modes
+	// (and a stray --mode value) are rejected. Bind directories with kae pin.
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
-	code, out := captureStdout(t, func() int {
-		return runMiseInit(ctx, app, opts, "nope", modeHome, false, false)
-	})
-	mustExit(t, constants.ExitNotFound, code, out)
-}
-
-func TestMiseBondMode(t *testing.T) {
-	app := testApp(t, nil)
-	app.Config.Profiles = map[string]config.Profile{
-		"work": {Accounts: map[string]string{
-			constants.ToolClaude: "work",
-			constants.ToolCodex:  "work",
-		}},
-	}
-	// Seed real homes for symlink/copy operations.
-	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"), `{"token":"real"}`)
-	writeFile(t, filepath.Join(app.Env.Home, ".claude", "settings.json"), `{"theme":"dark"}`)
-	writeFile(t, filepath.Join(app.Env.Home, ".codex", "auth.json"), `{"tokens":{"access_token":"tok"}}`)
-	writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"), "model = \"gpt-5\"\n")
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText}
-	chdirTemp(t)
-
-	// Preview: must show shared-mode block without creating dirs.
-	code, out := captureStdout(t, func() int {
-		return runMiseInit(ctx, app, opts, "work", constants.ModeBond, false, false)
-	})
-	mustExit(t, constants.ExitOK, code, out)
-	if !strings.Contains(out, "CLAUDE_CONFIG_DIR") {
-		t.Fatalf("preview missing CLAUDE_CONFIG_DIR: %s", out)
-	}
-	if !strings.Contains(out, "shared mode") {
-		t.Fatalf("preview missing shared-mode comment: %s", out)
-	}
-
-	// Write: must create bond dirs and write .mise.toml.
-	code, out = captureStdout(t, func() int {
-		return runMiseInit(ctx, app, opts, "work", constants.ModeBond, false, true)
-	})
-	mustExit(t, constants.ExitOK, code, out)
-	tomlContent := readFile(t, ".mise.toml")
-	if !strings.Contains(tomlContent, miseBlockStart) {
-		t.Fatal(".mise.toml not written")
-	}
-	if !strings.Contains(tomlContent, "CLAUDE_CONFIG_DIR") {
-		t.Fatalf(".mise.toml missing CLAUDE_CONFIG_DIR: %s", tomlContent)
-	}
-}
-
-func TestMiseInitFlagValidation(t *testing.T) {
-	app := testApp(t, nil)
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText}
-	code, out := captureStdout(t, func() int {
-		return runMiseInit(ctx, app, opts, "work", "env", false, false)
-	})
-	mustExit(t, constants.ExitUsage, code, out)
-	for _, mode := range []string{modeHome, modeOverlay, constants.ModeBond} {
-		code, out = captureStdout(t, func() int {
-			return runMiseInit(ctx, app, opts, "work", mode, true, false)
+	for _, mode := range []string{"env", "home", "overlay", modeShared, modeIsolated} {
+		code, out := captureStdout(t, func() int {
+			return runMiseInit(ctx, app, opts, "work", mode, false, false)
 		})
 		mustExit(t, constants.ExitUsage, code, out)
 	}

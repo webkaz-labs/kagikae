@@ -71,22 +71,6 @@ func (p Paths) EnvProfileDir(tool, account string) string {
 // EnvProfilesDir returns the root of all env profiles.
 func (p Paths) EnvProfilesDir() string { return filepath.Join(p.DataDir, "env") }
 
-// HomesDir returns the root of all home-mode tool homes.
-func (p Paths) HomesDir() string { return filepath.Join(p.DataDir, "homes") }
-
-// HomeModeDir returns the isolated tool home for home mode.
-func (p Paths) HomeModeDir(tool, account string) string {
-	return filepath.Join(p.HomesDir(), tool, account)
-}
-
-// OverlaysDir returns the root of all overlay tool homes.
-func (p Paths) OverlaysDir() string { return filepath.Join(p.DataDir, "overlays") }
-
-// OverlayDir returns the partially-isolated tool home for overlay mode.
-func (p Paths) OverlayDir(tool, account string) string {
-	return filepath.Join(p.OverlaysDir(), tool, account)
-}
-
 // StateFile returns the state.json path.
 func (p Paths) StateFile() string { return filepath.Join(p.StateDir, "state.json") }
 

@@ -25,19 +25,19 @@ var RemovedTools = map[string]string{
 	"gemini": ToolAgy, // upstream retired Gemini CLI for Antigravity (2026-05)
 }
 
-// Switch modes.
+// Switch modes / isolation kinds. The mechanism vocabulary is unified on
+// shared/isolated (docs/RELEASE.md v0.8.0): the per-directory bind kinds match
+// the user-facing -s/-i flags and the on-disk path segments.
 const (
-	ModeAuth    = "auth"
-	ModeEnv     = "env"
-	ModeHome    = "home"
-	ModeOverlay = "overlay"
-	ModeBond    = "bond" // per-directory shared (kae pin --shared)
-	ModePin     = "pin"  // per-directory isolated (kae pin --isolated)
-	ModeSync    = "sync" // global isolated (kae use --isolated)
+	ModeAuth     = "auth"     // global shared (real home; bare use, run -s)
+	ModeEnv      = "env"      // env-profile injection (run --env)
+	ModeShared   = "shared"   // per-directory shared (kae pin --shared)
+	ModeIsolated = "isolated" // per-directory isolated (kae pin --isolated)
+	ModeSync     = "sync"     // global isolated (kae use --isolated)
 )
 
 // EnvKaeProfile is the environment variable that pins a kae profile to a
-// directory (rendered by kae mise init, read by kae apply).
+// directory (rendered by kae mise init / kae pin, read by bare kae use).
 const EnvKaeProfile = "KAE_PROFILE"
 
 // EnvKaeClaudeDriver overrides the claude credential driver. Set to

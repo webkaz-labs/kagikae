@@ -17,13 +17,13 @@ func TestStatusShowsPinAndProfiles(t *testing.T) {
 		"personal": {Accounts: map[string]string{constants.ToolClaude: "work"}},
 		"work":     {Accounts: map[string]string{constants.ToolClaude: "work", constants.ToolCodex: "work"}},
 	}
-	// Pinned-directory env: KAE_PROFILE plus an overlay-pointing config dir.
+	// Pinned-directory env: KAE_PROFILE plus an isolated-bind config dir.
 	app.Env.Getenv = func(key string) string {
 		switch key {
 		case constants.EnvKaeProfile:
 			return "personal"
 		case "CLAUDE_CONFIG_DIR":
-			return app.Paths.OverlayDir(constants.ToolClaude, "work")
+			return app.Paths.IsolatedConfigDir("abcdef0123456789", constants.ToolClaude, "work")
 		}
 		return ""
 	}
@@ -43,7 +43,7 @@ func TestStatusShowsPinAndProfiles(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &report); err != nil {
 		t.Fatalf("invalid status JSON: %v: %s", err, out)
 	}
-	if report.Pinned == nil || report.Pinned.Profile != "personal" || report.Pinned.Mode != "overlay" {
+	if report.Pinned == nil || report.Pinned.Profile != "personal" || report.Pinned.Mode != "isolated" {
 		t.Fatalf("pinned context missing: %+v", report.Pinned)
 	}
 	if report.ActiveProfile == nil || *report.ActiveProfile != "personal" {
@@ -58,7 +58,7 @@ func TestStatusShowsPinAndProfiles(t *testing.T) {
 	})
 	mustExit(t, constants.ExitOK, code, out)
 	for _, want := range []string{
-		"This directory: profile personal (pinned, overlay)",
+		"This directory: profile personal (pinned, isolated)",
 		"Global active profile: personal",
 		"Profiles:",
 		"claude:work codex:work",

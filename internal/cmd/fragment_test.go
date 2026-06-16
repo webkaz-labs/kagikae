@@ -25,7 +25,7 @@ func TestRunPinSharedWritesFragmentAndGitignore(t *testing.T) {
 	pinID := paths.PinID(cwd)
 
 	code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, "work", modeBond)
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "work", modeShared)
 	})
 	mustExit(t, constants.ExitOK, code, out)
 
@@ -53,7 +53,7 @@ func TestRunPinSharedWritesFragmentAndGitignore(t *testing.T) {
 		t.Fatalf(".gitignore missing fragment entry:\n%s", gi)
 	}
 	// Re-running must not duplicate the .gitignore entry.
-	if code := runPin(context.Background(), app, commonOpts{Format: formatText}, "work", modeBond); code != constants.ExitOK {
+	if code := runPin(context.Background(), app, commonOpts{Format: formatText}, "work", modeShared); code != constants.ExitOK {
 		t.Fatalf("re-pin exit %d", code)
 	}
 	gi = readFile(t, ".gitignore")
@@ -72,7 +72,7 @@ func TestRunPinIsolatedEncodesAccountInPath(t *testing.T) {
 	pinID := paths.PinID(cwd)
 
 	code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, "work", modePin)
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "work", modeIsolated)
 	})
 	mustExit(t, constants.ExitOK, code, out)
 
@@ -96,7 +96,7 @@ func TestRunPinMiseActivatedMessage(t *testing.T) {
 	}
 	chdirTemp(t)
 	code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, "work", modeBond)
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "work", modeShared)
 	})
 	mustExit(t, constants.ExitOK, code, out)
 	if !strings.Contains(out, "mise applies it on the next prompt") {
@@ -115,7 +115,7 @@ func TestPinRebindIsolatedRepointsFragment(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	if code := runPin(ctx, app, opts, "work", modePin); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "work", modeIsolated); code != constants.ExitOK {
 		t.Fatalf("runPin isolated exit %d", code)
 	}
 	// Re-bind claude to a different account; only claude changes.
@@ -144,7 +144,7 @@ func TestPinRebindRefusesUnboundTool(t *testing.T) {
 	chdirTemp(t)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
-	if code := runPin(ctx, app, opts, "work", modePin); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "work", modeIsolated); code != constants.ExitOK {
 		t.Fatalf("runPin exit %d", code)
 	}
 	// codex is not bound in this directory (the profile binds only claude).
@@ -161,7 +161,7 @@ func TestStatusReportsSharedModeAndBoundAccount(t *testing.T) {
 	}
 	pinID := paths.PinID(cwd)
 	ctx := context.Background()
-	if code := runPin(ctx, app, commonOpts{Format: formatText}, "work", modeBond); code != constants.ExitOK {
+	if code := runPin(ctx, app, commonOpts{Format: formatText}, "work", modeShared); code != constants.ExitOK {
 		t.Fatalf("runPin exit %d", code)
 	}
 	// Simulate a mise-active shell: the fragment's [env] is exported.
@@ -196,24 +196,21 @@ func TestStatusReportsSharedModeAndBoundAccount(t *testing.T) {
 func TestKaeManagedHomeKindClassifiesSegments(t *testing.T) {
 	app := testApp(t, nil)
 	pinID := "abcdef0123456789"
-	if got := app.kaeManagedHomeKind(app.Paths.SharedDir(pinID, constants.ToolClaude)); got != modeBond {
-		t.Fatalf("shared segment must classify as bond, got %q", got)
+	if got := app.kaeManagedHomeKind(app.Paths.SharedDir(pinID, constants.ToolClaude)); got != modeShared {
+		t.Fatalf("shared segment must classify as shared, got %q", got)
 	}
-	if got := app.kaeManagedHomeKind(app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "work")); got != modePin {
-		t.Fatalf("isolated segment must classify as pin, got %q", got)
+	if got := app.kaeManagedHomeKind(app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "work")); got != modeIsolated {
+		t.Fatalf("isolated segment must classify as isolated, got %q", got)
 	}
-	// Pre-v0.7.2 isolated dirs used the "pin" segment; a not-yet-migrated
-	// .mise.toml still points there and must classify as pin, not shared.
-	legacy := filepath.Join(app.Paths.IsolationDir(), pinID, constants.ToolClaude, "pin", "work", "config")
-	if got := app.kaeManagedHomeKind(legacy); got != modePin {
-		t.Fatalf("legacy pin segment must classify as pin, got %q", got)
+	if got := app.kaeManagedHomeKind(app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "work")); got != constants.ModeSync {
+		t.Fatalf("global segment must classify as sync, got %q", got)
 	}
 }
 
 func TestUnpinDeletesFragment(t *testing.T) {
 	app := overlayTestApp(t)
 	chdirTemp(t)
-	if code := runPin(context.Background(), app, commonOpts{Format: formatText}, "work", modeBond); code != constants.ExitOK {
+	if code := runPin(context.Background(), app, commonOpts{Format: formatText}, "work", modeShared); code != constants.ExitOK {
 		t.Fatalf("runPin exit %d", code)
 	}
 	if _, err := os.Stat(fragmentRelPath); err != nil {

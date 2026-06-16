@@ -51,11 +51,11 @@ func CmdPin(ctx context.Context, args []string) int {
 		if len(positionals) == 1 {
 			profileName = positionals[0]
 		}
-		// --shared maps to the per-directory shared mechanism (bond),
-		// --isolated to the fully isolated mechanism (pin); shared is default.
-		mode := modeBond
+		// --shared selects the per-directory shared bind, --isolated the fully
+		// isolated bind; shared is the default.
+		mode := modeShared
 		if isolatedMode {
-			mode = modePin
+			mode = modeIsolated
 		}
 		warnIfLegacyPinBlock()
 		return runPin(ctx, app, opts, profileName, mode)
@@ -110,11 +110,11 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
 		return finish(opts, err)
 	}
-	scope := userScopeMode(mode)
-	if err := writeDirFragment(renderDirFragment(profileName, scope, entries)); err != nil {
+	// mode is already the user-facing scope label (shared/isolated).
+	if err := writeDirFragment(renderDirFragment(profileName, mode, entries)); err != nil {
 		return finish(opts, err)
 	}
-	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, scope)
+	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, mode)
 	fmt.Printf("Wrote %s (added to .gitignore); your mise.toml is untouched.\n", fragmentRelPath)
 	if app.miseActivated() {
 		fmt.Println("mise applies it on the next prompt (or run `mise env`).")

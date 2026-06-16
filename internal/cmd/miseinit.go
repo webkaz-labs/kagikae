@@ -20,46 +20,45 @@ const (
 	miseBlockEnd   = "# <<< kagikae <<<"
 )
 
-// CmdMise generates project-local mise integration (the low-level form of
-// kae pin):
+// CmdMise generates project-local mise integration — the auth-mode tasks and
+// the opt-in enter hook:
 //
-//	kae mise init [--profile NAME] [--mode auth|home|overlay] [--auto] [--write]
+//	kae mise init [--profile NAME] [-P NAME] [--auto] [--write]
 //
 // Default prints the snippet; --write creates .mise.toml or replaces the
 // marker-delimited kagikae block. An existing file without markers is never
-// modified. The isolation modes (overlay, home) render [env] entries that
-// point each isolatable tool at its per-account kae home instead of the
-// auth-mode hooks/tasks; --auto (auth mode only) adds a [hooks.enter] entry
-// running kae use --quiet.
+// modified. --auto adds a [hooks.enter] entry running `kae use --quiet`. The
+// former isolation modes (home/overlay/bond/pin) are gone: bind a directory
+// with `kae pin -s|-i`, which owns its own mise fragment (docs/RELEASE.md).
 func CmdMise(ctx context.Context, args []string) int {
 	if len(args) == 0 || args[0] != "init" {
-		return usageError("usage: %s mise init [--profile NAME] [--mode auth|home|overlay] [--auto] [--write]", toolName)
+		return usageError("usage: %s mise init [--profile NAME] [--auto] [--write]", toolName)
 	}
-	flags, positionals := splitArgs(args[1:], "--profile", "--mode")
+	flags, positionals := splitArgs(args[1:], "--profile", "P", "--mode")
 	var profileName, mode string
 	write, auto := false, false
 	opts, ok := parseCommon("mise init", flags, false, func(fs *flag.FlagSet) {
-		fs.StringVar(&profileName, "profile", "", "profile for KAE_PROFILE (default: config default_profile)")
-		fs.StringVar(&mode, "mode", constants.ModeAuth, "rendered integration: auth (tasks), home, or overlay (isolated tool homes)")
-		fs.BoolVar(&auto, "auto", false, "add a [hooks.enter] auto-switch (auth mode only)")
+		registerProfileFlag(fs, &profileName)
+		// --mode is still parsed so an old `--mode bond|pin|home|overlay`
+		// invocation gets a clear rejection rather than "flag not defined".
+		fs.StringVar(&mode, "mode", constants.ModeAuth, "rendered integration (auth only; bind directories with kae pin)")
+		fs.BoolVar(&auto, "auto", false, "add a [hooks.enter] running `kae use --quiet`")
 		fs.BoolVar(&write, "write", false, "write/update .mise.toml in the current directory")
 	})
 	if !ok {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageError("usage: %s mise init [--profile NAME] [--mode auth|home|overlay] [--auto] [--write]", toolName)
+		return usageError("usage: %s mise init [--profile NAME] [--auto] [--write]", toolName)
 	}
 	app := newApp(opts.ConfigPath)
 	return runMiseInit(ctx, app, opts, profileName, mode, auto, write)
 }
 
-func runMiseInit(ctx context.Context, app *App, opts commonOpts, profileName, mode string, auto, write bool) int {
-	if mode != constants.ModeAuth && mode != modeHome && mode != modeOverlay && mode != constants.ModeBond && mode != constants.ModePin {
-		return usageError("unsupported mise init mode %q (modes: auth, home, overlay, bond, pin)", mode)
-	}
-	if auto && mode != constants.ModeAuth {
-		return usageError("--auto applies to auth mode only: isolation modes already take effect on directory entry via [env]")
+func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode string, auto, write bool) int {
+	if mode != constants.ModeAuth {
+		return usageError(
+			"kae mise init renders auth mode only (mode %q is no longer supported); bind a directory with `kae pin -s|-i`", mode)
 	}
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
@@ -69,82 +68,45 @@ func runMiseInit(ctx context.Context, app *App, opts commonOpts, profileName, mo
 	}
 	if profileName == "" {
 		return finish(opts, errf(constants.ExitUsage,
-			"no profile given and no default_profile in config; use --profile <name>"))
+			"no profile given and no default_profile in config; use -P <name>"))
 	}
-	var block string
-	var entries []isolationEntry
-	var prepare func(tool, account string) (string, error)
-	if mode == constants.ModeAuth {
-		block = app.miseBlock(profileName, auto)
-	} else {
-		// Isolation modes render per-account paths, so the profile mapping
-		// must exist (auth mode renders only the name and tolerates a later
-		// define).
-		targets, _, err := app.resolveTargets("all", profileName)
-		if err != nil {
-			return finish(opts, err)
-		}
-		entries, prepare, err = app.isolationPlan(ctx, mode, targets)
-		if err != nil {
-			return finish(opts, err)
-		}
-		block = app.miseIsolationBlock(profileName, mode, entries)
-	}
+	block := app.miseBlock(profileName, auto)
 	if !write {
 		fmt.Print(block)
 		hint := "kae mise init --profile " + profileName
-		if mode != constants.ModeAuth {
-			hint += " --mode " + mode
-		}
 		if auto {
 			hint += " --auto"
 		}
 		fmt.Fprintln(os.Stderr, "\nkae: preview only; apply with: "+hint+" --write")
 		return constants.ExitOK
 	}
-	// Prepare the isolated homes before touching .mise.toml so a failure
-	// here cannot leave the block exporting directories that do not exist
-	// (a stray kae-owned 0700 dir is harmless; the reverse is not).
-	if prepare != nil {
-		if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
-			return finish(opts, err)
-		}
-	}
 	if err := writeMiseBlock(".mise.toml", block); err != nil {
 		return finish(opts, err)
 	}
-	fmt.Printf("Updated .mise.toml: profile %s, mode %s\n", profileName, mode)
+	fmt.Printf("Updated .mise.toml: profile %s (auth mode)\n", profileName)
 	fmt.Println("Next: mise trust   (mise refuses untrusted configs; its error until then is expected)")
 	return constants.ExitOK
 }
 
 // isolationPlan resolves the per-tool env entries and the matching directory
-// preparer for an isolation mode (bond/pin/overlay/home). It is the shared
-// seam for `kae pin` (renders a fragment) and `kae mise init` (renders a
-// marker block); the bond/pin mechanisms key their stores by the bound
-// directory, so it resolves pin-id here.
+// preparer for a per-directory bind (shared/isolated). Used by `kae pin`, which
+// renders the kae-owned mise fragment; both mechanisms key their stores by the
+// bound directory, so it resolves pin-id here.
 func (app *App) isolationPlan(ctx context.Context, mode string, targets []runTarget) ([]isolationEntry, func(tool, account string) (string, error), error) {
+	absDir, err := cwdAbs()
+	if err != nil {
+		return nil, nil, err
+	}
+	pinID := paths.PinID(absDir)
 	switch mode {
-	case constants.ModeBond:
-		absDir, err := cwdAbs()
-		if err != nil {
-			return nil, nil, err
-		}
-		pinID := paths.PinID(absDir)
+	case modeShared:
 		return app.bondIsolationEntries(targets, pinID),
 			func(tool, account string) (string, error) { return app.prepareBond(ctx, tool, account, pinID) }, nil
-	case constants.ModePin:
-		absDir, err := cwdAbs()
-		if err != nil {
-			return nil, nil, err
-		}
-		pinID := paths.PinID(absDir)
+	case modeIsolated:
 		return app.pinIsolationEntries(targets, pinID),
 			func(tool, account string) (string, error) { return app.preparePinConfig(ctx, tool, account, pinID) }, nil
-	case modeOverlay:
-		return app.isolationEntries(mode, targets), app.prepareOverlay, nil
 	default:
-		return app.isolationEntries(mode, targets), app.prepareHome, nil
+		return nil, nil, errf(constants.ExitError, "unknown per-directory bind kind %q", mode)
 	}
 }
 
@@ -202,9 +164,9 @@ func (app *App) miseBlock(profileName string, auto bool) string {
 	return b.String()
 }
 
-// isolationEntry is one tool's resolved row of an isolation-mode (home /
-// overlay) mise block: either an env entry pointing at Dir, or a warning
-// comment explaining why the tool keeps its real home.
+// isolationEntry is one tool's resolved row of a per-directory bind: either an
+// env entry pointing at Dir, or a warning comment explaining why the tool keeps
+// its real home (no stable home-isolation env var).
 type isolationEntry struct {
 	Tool    string
 	Account string
@@ -213,73 +175,10 @@ type isolationEntry struct {
 	Warning string // non-empty: rendered as a comment, no env entry
 }
 
-// isolationEntries resolves the per-tool env entries for an isolation mode.
-// Gates mirror kae run: no stable env var or a disabled per-tool mode
-// becomes a warning (kae run refuses the same cases with exit 5).
-func (app *App) isolationEntries(mode string, targets []runTarget) []isolationEntry {
-	entries := make([]isolationEntry, 0, len(targets))
-	for _, tgt := range targets {
-		entry := isolationEntry{Tool: tgt.Tool, Account: tgt.Account}
-		entry.EnvVar = isolationEnvVar(tgt.Tool)
-		if entry.EnvVar == "" {
-			entry.Warning = fmt.Sprintf(
-				"%s has no stable home-isolation env var; it keeps the real home (docs/ROADMAP.md)", tgt.Tool)
-			entries = append(entries, entry)
-			continue
-		}
-		if mode == modeOverlay {
-			entry.Dir = app.Paths.OverlayDir(tgt.Tool, tgt.Account)
-			if !app.Config.OverlayModeEnabled(tgt.Tool) {
-				entry.Warning = fmt.Sprintf(
-					"overlay mode is disabled for %s (tools.%s.overlay_mode_enabled = false); it keeps the real home",
-					tgt.Tool, tgt.Tool)
-			}
-		} else {
-			entry.Dir = app.Paths.HomeModeDir(tgt.Tool, tgt.Account)
-			if !app.Config.HomeModeEnabled(tgt.Tool) {
-				entry.Warning = fmt.Sprintf(
-					"home mode is disabled for %s (tools.%s.home_mode_enabled = false); it keeps the real home",
-					tgt.Tool, tgt.Tool)
-			}
-		}
-		entries = append(entries, entry)
-	}
-	return entries
-}
-
-// miseIsolationBlock renders the home/overlay/bond snippet: [env] entries
-// pointing each isolatable tool at its per-account kae home
-// (docs/DATA-MODEL.md), switching inside the directory only.
-func (app *App) miseIsolationBlock(profileName, mode string, entries []isolationEntry) string {
-	var b strings.Builder
-	fmt.Fprintln(&b, miseBlockStart)
-	switch mode {
-	case modeOverlay:
-		fmt.Fprintln(&b, "# Directory-scoped overlay mode (legacy): auth and session state are private")
-		fmt.Fprintln(&b, "# while settings and skills are shared. Use `kae pin --isolated` for full isolation,")
-		fmt.Fprintln(&b, "# or `kae pin --shared` for the shared-settings mode.")
-	case constants.ModeBond:
-		fmt.Fprintln(&b, "# Directory-scoped shared mode (kae pin --shared): settings, sessions, and memory")
-		fmt.Fprintln(&b, "# are shared with the real home; credentials are private to this directory.")
-		fmt.Fprintln(&b, "# Re-run `kae pin --shared` after adding new files to the real home to refresh links.")
-	case constants.ModePin:
-		fmt.Fprintln(&b, "# Directory-scoped isolated mode (kae pin --isolated): fully isolated from the real home.")
-		fmt.Fprintln(&b, "# Nothing is shared by default; opt in via pin_shared_items in config.toml.")
-		fmt.Fprintln(&b, "# Credential is private to this directory and account.")
-	default:
-		fmt.Fprintln(&b, "# Directory-scoped isolation (kae mise init --mode home): account and config")
-		fmt.Fprintln(&b, "# directory switch inside this directory only; the global live auth")
-		fmt.Fprintln(&b, "# state is never touched, safe across concurrent terminals.")
-	}
-	writeEnvEntries(&b, profileName, entries)
-	fmt.Fprintln(&b, miseBlockEnd)
-	return b.String()
-}
-
 // writeEnvEntries renders the shared [env] block — KAE_PROFILE plus each tool's
 // isolation env entry, or a warning comment for a tool that keeps the real home
-// — used by both the kae pin fragment (renderDirFragment) and the kae mise init
-// marker block (miseIsolationBlock). One place to change env-line formatting.
+// — for the kae pin fragment (renderDirFragment). One place to change env-line
+// formatting.
 func writeEnvEntries(b *strings.Builder, profileName string, entries []isolationEntry) {
 	fmt.Fprintln(b, "[env]")
 	fmt.Fprintf(b, "%s = %q\n", constants.EnvKaeProfile, profileName)
@@ -306,7 +205,7 @@ func (app *App) bondDenylistItems(tool string) []string {
 	case constants.ToolCodex:
 		base = []string{"auth.json"}
 	}
-	return append(base, app.Config.BondDenylistExtra(tool)...)
+	return append(base, app.Config.SharedDenylistExtra(tool)...)
 }
 
 // bondIsolationEntries resolves the per-tool env entries for bond mode.
@@ -459,7 +358,7 @@ func (app *App) preparePinConfig(ctx context.Context, tool, account, pinID strin
 	}
 
 	// Symlink opt-in shared items from the real home.
-	for _, item := range app.Config.PinSharedItems(tool) {
+	for _, item := range app.Config.IsolatedSharedItems(tool) {
 		src := filepath.Join(realHome, item)
 		if _, err := os.Stat(src); err != nil {
 			continue // only link what exists

@@ -153,28 +153,53 @@ func TestClaudeDriverConfigOption(t *testing.T) {
 	}
 }
 
-func TestBondDenylistExtraValidation(t *testing.T) {
+func TestSharedDenylistExtraValidation(t *testing.T) {
 	// Valid extra items are accepted.
-	path := writeConfig(t, "[tools.claude]\nbond_denylist_extra = [\"custom-session.json\"]\n")
+	path := writeConfig(t, "[tools.claude]\nshared_denylist_extra = [\"custom-session.json\"]\n")
 	cfg, _, err := Load(path)
 	if err != nil {
-		t.Fatalf("valid bond_denylist_extra: %v", err)
+		t.Fatalf("valid shared_denylist_extra: %v", err)
 	}
-	if got := cfg.BondDenylistExtra("claude"); len(got) != 1 || got[0] != "custom-session.json" {
-		t.Fatalf("unexpected BondDenylistExtra: %v", got)
+	if got := cfg.SharedDenylistExtra("claude"); len(got) != 1 || got[0] != "custom-session.json" {
+		t.Fatalf("unexpected SharedDenylistExtra: %v", got)
 	}
 
 	// Hard-coded auth artifacts must be rejected.
 	for _, bad := range []string{".credentials.json", "auth.json"} {
-		content := "[tools.claude]\nbond_denylist_extra = [\"" + bad + "\"]\n"
+		content := "[tools.claude]\nshared_denylist_extra = [\"" + bad + "\"]\n"
 		if _, _, err := Load(writeConfig(t, content)); err == nil {
 			t.Fatalf("expected error for hard-coded artifact %q", bad)
 		}
 	}
 
 	// Invalid file names must be rejected.
-	badContent := "[tools.claude]\nbond_denylist_extra = [\"a/b\"]\n"
+	badContent := "[tools.claude]\nshared_denylist_extra = [\"a/b\"]\n"
 	if _, _, err := Load(writeConfig(t, badContent)); err == nil {
 		t.Fatal("expected error for non-bare file name")
+	}
+}
+
+// TestRenamedConfigKeysFailAtLoad asserts the v0.8.0 hard break: the renamed
+// per-tool keys error at load naming their replacement, and the removed
+// overlay/home keys error too (docs/RELEASE.md). Pre-1.0, no silent acceptance.
+func TestRenamedConfigKeysFailAtLoad(t *testing.T) {
+	cases := map[string]string{
+		"shared_denylist_extra": "[tools.claude]\nbond_denylist_extra = [\"x\"]\n",
+		"isolated_shared_items": "[tools.claude]\npin_shared_items = [\"x\"]\n",
+	}
+	for newKey, content := range cases {
+		_, _, err := Load(writeConfig(t, content))
+		if err == nil || !strings.Contains(err.Error(), newKey) {
+			t.Fatalf("renamed key must fail at load naming %q, got %v", newKey, err)
+		}
+	}
+	for _, removed := range []string{
+		"[tools.claude]\noverlay_extra_shared = [\"x\"]\n",
+		"[tools.claude]\noverlay_mode_enabled = false\n",
+		"[tools.claude]\nhome_mode_enabled = false\n",
+	} {
+		if _, _, err := Load(writeConfig(t, removed)); err == nil {
+			t.Fatalf("removed key must fail at load: %s", removed)
+		}
 	}
 }

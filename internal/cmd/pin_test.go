@@ -28,68 +28,6 @@ func overlayTestApp(t *testing.T) *App {
 	return app
 }
 
-func TestMiseInitOverlayWriteLinksAndRefreshes(t *testing.T) {
-	app := overlayTestApp(t)
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText}
-	chdirTemp(t)
-
-	// Preview renders the env entry and warnings without touching disk.
-	code, out := captureStdout(t, func() int {
-		return runMiseInit(ctx, app, opts, "work", modeOverlay, false, false)
-	})
-	mustExit(t, constants.ExitOK, code, out)
-	overlayDir := app.Paths.OverlayDir(constants.ToolClaude, "work")
-	if !strings.Contains(out, `CLAUDE_CONFIG_DIR = "`+overlayDir+`"`) {
-		t.Fatalf("missing overlay env entry: %s", out)
-	}
-	if !strings.Contains(out, "agy has no stable home-isolation env var") {
-		t.Fatalf("agy must keep the real home with a warning: %s", out)
-	}
-	if _, err := os.Stat(overlayDir); !os.IsNotExist(err) {
-		t.Fatal("preview must not create overlay dirs")
-	}
-
-	// Write prepares the overlay: private dir plus shared-item symlinks.
-	code, out = captureStdout(t, func() int {
-		return runMiseInit(ctx, app, opts, "work", modeOverlay, false, true)
-	})
-	mustExit(t, constants.ExitOK, code, out)
-	link, err := os.Readlink(filepath.Join(overlayDir, "settings.json"))
-	if err != nil || link != filepath.Join(app.Env.Home, ".claude", "settings.json") {
-		t.Fatalf("settings symlink: %q %v", link, err)
-	}
-	if !strings.Contains(readFile(t, ".mise.toml"), miseBlockStart) {
-		t.Fatal(".mise.toml not written")
-	}
-
-	// A shared item added to the real home later is linked on re-run.
-	writeFile(t, filepath.Join(app.Env.Home, ".claude", "CLAUDE.md"), "# memo")
-	code, out = captureStdout(t, func() int {
-		return runMiseInit(ctx, app, opts, "work", modeOverlay, false, true)
-	})
-	mustExit(t, constants.ExitOK, code, out)
-	if _, err := os.Readlink(filepath.Join(overlayDir, "CLAUDE.md")); err != nil {
-		t.Fatalf("re-run must link new shared items: %v", err)
-	}
-}
-
-func TestMiseInitOverlayDisabledToolWarns(t *testing.T) {
-	app := overlayTestApp(t)
-	disabled := false
-	app.Config.Tools[constants.ToolClaude] = config.Tool{OverlayModeEnabled: &disabled}
-	ctx := context.Background()
-	chdirTemp(t)
-
-	code, out := captureStdout(t, func() int {
-		return runMiseInit(ctx, app, commonOpts{Format: formatText}, "work", modeOverlay, false, false)
-	})
-	mustExit(t, constants.ExitOK, code, out)
-	if strings.Contains(out, "CLAUDE_CONFIG_DIR =") || !strings.Contains(out, "overlay mode is disabled for claude") {
-		t.Fatalf("disabled claude must keep the real home with a warning: %s", out)
-	}
-}
-
 func TestRemoveLegacyMiseBlockKeepsTheRest(t *testing.T) {
 	chdirTemp(t)
 	writeFile(t, ".mise.toml",
@@ -119,61 +57,56 @@ func TestRemoveLegacyMiseBlockKeepsTheRest(t *testing.T) {
 	}
 }
 
-// TestPrepareOverlayInsidePinnedDir reproduces the v0.5.0 acceptance bug:
-// inside a pinned directory the isolation env var points at the overlay
-// itself, and a re-run used to create self-referential symlinks (ELOOP).
-// The env var must be ignored as the "real" home, and an existing self-loop
-// must be repaired on re-run.
-func TestPrepareOverlayInsidePinnedDir(t *testing.T) {
+// TestRealToolHomeIgnoresKaeManagedEnv reproduces the v0.5.0 acceptance bug:
+// inside a pinned directory the isolation env var points into kae's own store,
+// and treating it as the real home would create self-referential symlinks
+// (ELOOP). realToolHome must ignore a kae-managed isolation env value.
+func TestRealToolHomeIgnoresKaeManagedEnv(t *testing.T) {
 	app := testApp(t, nil)
-	overlayDir := app.Paths.OverlayDir(constants.ToolClaude, "work")
+	sharedDir := app.Paths.SharedDir("abcdef0123456789", constants.ToolClaude)
 	app.Env.Getenv = func(key string) string {
 		if key == "CLAUDE_CONFIG_DIR" {
-			return overlayDir
+			return sharedDir
 		}
 		return ""
 	}
-	realSettings := filepath.Join(app.Env.Home, ".claude", "settings.json")
-	writeFile(t, realSettings, `{"theme":"dark"}`)
-
-	// Seed the broken state a pre-fix re-run left behind: a self-loop link.
-	if err := os.MkdirAll(overlayDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	loop := filepath.Join(overlayDir, "settings.json")
-	if err := os.Symlink(loop, loop); err != nil {
-		t.Fatal(err)
-	}
-
 	if home := app.realToolHome(constants.ToolClaude); home != filepath.Join(app.Env.Home, ".claude") {
 		t.Fatalf("kae-managed env dir must be ignored as the real home, got %q", home)
 	}
-	if _, err := app.prepareOverlay(constants.ToolClaude, "work"); err != nil {
-		t.Fatalf("prepareOverlay must repair a self-loop: %v", err)
+
+	// A genuinely user-set custom home (outside kae's store) is honored.
+	custom := filepath.Join(app.Env.Home, "custom-claude")
+	app.Env.Getenv = func(key string) string {
+		if key == "CLAUDE_CONFIG_DIR" {
+			return custom
+		}
+		return ""
 	}
-	if link, err := os.Readlink(loop); err != nil || link != realSettings {
-		t.Fatalf("self-loop not repaired: %q %v", link, err)
+	if home := app.realToolHome(constants.ToolClaude); home != custom {
+		t.Fatalf("user-set custom home must be honored, got %q", home)
 	}
 }
 
-func TestPrepareOverlayExtraSharedItems(t *testing.T) {
+func TestPreparePinConfigSharesOptInItems(t *testing.T) {
 	app := testApp(t, nil)
-	app.Config.Tools[constants.ToolClaude] = config.Tool{OverlayExtraShared: []string{"output-styles"}}
+	app.Config.Tools[constants.ToolClaude] = config.Tool{IsolatedSharedItems: []string{"output-styles"}}
 	writeFile(t, filepath.Join(app.Env.Home, ".claude", "output-styles", "x.json"), "{}")
+	pinID := "abcdef0123456789"
 
-	if _, err := app.prepareOverlay(constants.ToolClaude, "work"); err != nil {
+	if _, err := app.preparePinConfig(context.Background(), constants.ToolClaude, "work", pinID); err != nil {
 		t.Fatal(err)
 	}
-	target := filepath.Join(app.Paths.OverlayDir(constants.ToolClaude, "work"), "output-styles")
+	target := filepath.Join(app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "work"), "output-styles")
 	if link, err := os.Readlink(target); err != nil || link != filepath.Join(app.Env.Home, ".claude", "output-styles") {
-		t.Fatalf("extra shared item not linked: %q %v", link, err)
+		t.Fatalf("opt-in shared item not linked: %q %v", link, err)
 	}
 }
 
 func TestPinAndUnpinUsage(t *testing.T) {
 	// Two positionals = re-bind <tool> <account>; an unknown tool is a usage
-	// error, validated before any environment access.
-	if code := CmdPin(context.Background(), []string{"a", "b"}); code != constants.ExitUsage {
+	// error, validated before any environment access. ("zz" matches no tool
+	// prefix, so it stays unknown.)
+	if code := CmdPin(context.Background(), []string{"zz", "b"}); code != constants.ExitUsage {
 		t.Fatalf("pin with an unknown tool must be a usage error, got %d", code)
 	}
 	// --shared and --isolated are mutually exclusive.
@@ -196,9 +129,11 @@ func TestUseFlagValidation(t *testing.T) {
 	if code := CmdUse(ctx, []string{"-s", "-i", "work"}); code != constants.ExitUsage {
 		t.Fatalf("use -s -i must be a usage error, got %d", code)
 	}
-	// use needs one or two positionals.
-	if code := CmdUse(ctx, []string{}); code != constants.ExitUsage {
-		t.Fatalf("use with no positionals must be a usage error, got %d", code)
+	// More than two positionals is a usage error (checked before env access).
+	// Bare use (zero positionals) is now valid — it folds apply — so it is
+	// exercised in usebare_test.go against a temp HOME, not here.
+	if code := CmdUse(ctx, []string{"a", "b", "c"}); code != constants.ExitUsage {
+		t.Fatalf("use with three positionals must be a usage error, got %d", code)
 	}
 }
 

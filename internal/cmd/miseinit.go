@@ -154,6 +154,33 @@ func (app *App) miseBlock(profileName string, auto bool) string {
 	fmt.Fprintln(&b, "[tasks.ai-current]")
 	fmt.Fprintln(&b, `description = "Show active AI CLI accounts"`)
 	fmt.Fprintln(&b, `run = "kae"`)
+
+	// Dynamic-completion tasks: their `usage` arg `complete` directives call the
+	// hidden `kae __complete` backend (complete.go), so `mise run <task> <TAB>`
+	// offers kae's live profiles/tools/accounts through the same source as the
+	// native shell completion. Account completion is intentionally NOT
+	// tool-scoped here: mise's `complete run` does not expose the prior `tool`
+	// argument, so it lists every account; kae's own shell completion keeps the
+	// tool-scoped behavior (docs/RELEASE.md §C). mise reads each arg as the
+	// `usage_<name>` env var in the run script.
+	fmt.Fprintln(&b)
+	fmt.Fprintln(&b, "[tasks.ai-switch]")
+	fmt.Fprintln(&b, `description = "Switch all tools to a profile (TAB-completes live profiles)"`)
+	fmt.Fprintln(&b, "usage = '''")
+	fmt.Fprintln(&b, `arg "<profile>" help="kae profile to apply"`)
+	fmt.Fprintln(&b, `complete "profile" run="kae __complete profiles"`)
+	fmt.Fprintln(&b, "'''")
+	fmt.Fprintln(&b, `run = 'kae use "$usage_profile"'`)
+	fmt.Fprintln(&b)
+	fmt.Fprintln(&b, "[tasks.ai-switch-tool]")
+	fmt.Fprintln(&b, `description = "Switch one tool's account (TAB-completes live tools/accounts)"`)
+	fmt.Fprintln(&b, "usage = '''")
+	fmt.Fprintln(&b, `arg "<tool>" help="AI CLI tool"`)
+	fmt.Fprintln(&b, `arg "<account>" help="captured account name"`)
+	fmt.Fprintln(&b, `complete "tool" run="kae __complete tools"`)
+	fmt.Fprintln(&b, `complete "account" run="kae __complete accounts"`)
+	fmt.Fprintln(&b, "'''")
+	fmt.Fprintln(&b, `run = 'kae use "$usage_tool" "$usage_account"'`)
 	for _, tool := range app.enabledTools() {
 		fmt.Fprintln(&b)
 		fmt.Fprintf(&b, "[tasks.%s]\n", tool)

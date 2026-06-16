@@ -2,14 +2,15 @@ package cmd
 
 import (
 	"context"
+	"flag"
 	"fmt"
-	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
 // completionCommands is the first-word candidate set for shell completion: the
-// public commands routed by Root() (aliases omitted to keep the list tidy).
+// public commands routed by Root() (aliases and the hidden __complete backend
+// omitted to keep the list tidy). Surfaced through `kae __complete commands`.
 // Keep in lockstep with Root().
 var completionCommands = []string{
 	"init", "edit", "doctor", "add", "use", "pin", "unpin", "run", "env",
@@ -17,86 +18,214 @@ var completionCommands = []string{
 	"completion", "version", "help",
 }
 
-// CmdCompletion emits a shell completion script:
+// CmdCompletion emits a shell completion script and optionally installs it:
 //
-//	kae completion <bash|zsh|fish>
+//	kae completion <bash|zsh|fish> [--install]
 //
-// The candidate lists are table-driven — commands from Root(), tools from
-// constants.Tools, and profile names from the loaded config — so the script
-// tracks the surface without hand-maintained duplication.
+// The emitted script is dynamic — it calls `kae __complete` (complete.go) at
+// completion time rather than baking a static word list, so candidates always
+// track the live router/config/state. With --install, the script is registered
+// interactively (completion_install.go): the shell's standard completions dir
+// (default), a global mise [hooks.enter] (opt-in), or print-only.
 func CmdCompletion(_ context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, ok := parseCommon("completion", flags, false, nil)
+	var install bool
+	opts, ok := parseCommon("completion", flags, false, func(fs *flag.FlagSet) {
+		fs.BoolVar(&install, "install", false, "register the completion script interactively")
+	})
 	if !ok {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 1 {
-		return usageError("usage: %s completion <bash|zsh|fish>", toolName)
+		return usageError("usage: %s completion <bash|zsh|fish> [--install]", toolName)
 	}
 	shell := positionals[0]
-	app := newApp(opts.ConfigPath)
-	// A config error is non-fatal here: completion still works with an empty
-	// profile list, so fall back to defaults rather than refusing.
-	profiles := app.Config.ProfileNames()
-
-	commands := strings.Join(completionCommands, " ")
-	tools := strings.Join(constants.Tools, " ")
-	profileWords := strings.Join(profiles, " ")
-	// The second-position candidates are tools or profiles (both appear in the
-	// <tool|profile> arg of use/pin/run).
-	args2 := strings.TrimSpace(tools + " " + profileWords)
-
-	switch shell {
-	case "bash":
-		fmt.Print(bashCompletion(commands, args2))
-	case "zsh":
-		fmt.Print(zshCompletion(commands, args2))
-	case "fish":
-		fmt.Print(fishCompletion(commands, args2))
-	default:
+	script, ok := completionScript(shell)
+	if !ok {
 		return usageError("unsupported shell %q (supported: bash, zsh, fish)", shell)
 	}
-	return constants.ExitOK
+	if !install {
+		fmt.Print(script)
+		return constants.ExitOK
+	}
+	app := newApp(opts.ConfigPath)
+	return runCompletionInstall(app, opts, shell, script)
 }
 
-func bashCompletion(commands, args2 string) string {
-	return fmt.Sprintf(`# kae bash completion — eval "$(kae completion bash)"
+// completionScript returns the dynamic completion script for a shell; ok is
+// false for an unsupported shell.
+func completionScript(shell string) (string, bool) {
+	switch shell {
+	case "bash":
+		return bashCompletionScript, true
+	case "zsh":
+		return zshCompletionScript, true
+	case "fish":
+		return fishCompletionScript, true
+	default:
+		return "", false
+	}
+}
+
+// The generated scripts route by word position to a `kae __complete` kind:
+// word 1 → commands; the argument positions → tools/profiles/accounts. Account
+// completion passes the preceding tool word so `kae use claude <TAB>` scopes to
+// claude's accounts. They are static (no generation-time interpolation) because
+// every candidate list is resolved live by the backend.
+
+const bashCompletionScript = `# kae bash completion — eval "$(kae completion bash)"
+# Dynamic: candidates come from ` + "`kae __complete`" + `, so they track live state.
 _kae() {
-  local cur cmds args2
+  local cur cmd
   cur="${COMP_WORDS[COMP_CWORD]}"
-  cmds=%q
-  args2=%q
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
-  else
-    COMPREPLY=( $(compgen -W "$args2" -- "$cur") )
+    COMPREPLY=( $(compgen -W "$(kae __complete commands)" -- "$cur") )
+    return
   fi
+  cmd="${COMP_WORDS[1]}"
+  case "$cmd" in
+    use|u|pin|p|run|r)
+      if [ "$COMP_CWORD" -eq 2 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete profiles) $(kae __complete tools)" -- "$cur") )
+      elif [ "$COMP_CWORD" -eq 3 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete accounts "${COMP_WORDS[2]}")" -- "$cur") )
+      fi
+      ;;
+    add|doctor|d)
+      if [ "$COMP_CWORD" -eq 2 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
+      elif [ "$COMP_CWORD" -eq 3 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete accounts "${COMP_WORDS[2]}")" -- "$cur") )
+      fi
+      ;;
+    account)
+      if [ "$COMP_CWORD" -eq 2 ]; then
+        COMPREPLY=( $(compgen -W "rm rename" -- "$cur") )
+      elif [ "$COMP_CWORD" -eq 3 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
+      elif [ "$COMP_CWORD" -eq 4 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete accounts "${COMP_WORDS[3]}")" -- "$cur") )
+      fi
+      ;;
+    profile)
+      if [ "$COMP_CWORD" -eq 2 ]; then
+        COMPREPLY=( $(compgen -W "save set unset rm default" -- "$cur") )
+      fi
+      ;;
+    completion)
+      if [ "$COMP_CWORD" -eq 2 ]; then
+        COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+      fi
+      ;;
+    mise)
+      if [ "$COMP_CWORD" -eq 2 ]; then
+        COMPREPLY=( $(compgen -W "init" -- "$cur") )
+      fi
+      ;;
+  esac
 }
 complete -F _kae kae
-`, commands, args2)
-}
+`
 
-func zshCompletion(commands, args2 string) string {
-	return fmt.Sprintf(`#compdef kae
+const zshCompletionScript = `#compdef kae
 # kae zsh completion — eval "$(kae completion zsh)"
+# Dynamic: candidates come from ` + "`kae __complete`" + `, so they track live state.
 _kae() {
-  local -a cmds args2
-  cmds=(%s)
-  args2=(%s)
+  local cmd
   if (( CURRENT == 2 )); then
-    compadd -- $cmds
-  else
-    compadd -- $args2
+    compadd -- ${(f)"$(kae __complete commands)"}
+    return
   fi
+  cmd="${words[2]}"
+  case "$cmd" in
+    use|u|pin|p|run|r)
+      if (( CURRENT == 3 )); then
+        compadd -- ${(f)"$(kae __complete profiles)"} ${(f)"$(kae __complete tools)"}
+      elif (( CURRENT == 4 )); then
+        compadd -- ${(f)"$(kae __complete accounts ${words[3]})"}
+      fi
+      ;;
+    add|doctor|d)
+      if (( CURRENT == 3 )); then
+        compadd -- ${(f)"$(kae __complete tools)"}
+      elif (( CURRENT == 4 )); then
+        compadd -- ${(f)"$(kae __complete accounts ${words[3]})"}
+      fi
+      ;;
+    account)
+      if (( CURRENT == 3 )); then
+        compadd -- rm rename
+      elif (( CURRENT == 4 )); then
+        compadd -- ${(f)"$(kae __complete tools)"}
+      elif (( CURRENT == 5 )); then
+        compadd -- ${(f)"$(kae __complete accounts ${words[4]})"}
+      fi
+      ;;
+    profile)
+      if (( CURRENT == 3 )); then
+        compadd -- save set unset rm default
+      fi
+      ;;
+    completion)
+      if (( CURRENT == 3 )); then
+        compadd -- bash zsh fish
+      fi
+      ;;
+    mise)
+      if (( CURRENT == 3 )); then
+        compadd -- init
+      fi
+      ;;
+  esac
 }
 compdef _kae kae
-`, commands, args2)
-}
+`
 
-func fishCompletion(commands, args2 string) string {
-	return fmt.Sprintf(`# kae fish completion — kae completion fish | source
-complete -c kae -f
-complete -c kae -n __fish_use_subcommand -a %q
-complete -c kae -n 'not __fish_use_subcommand' -a %q
-`, commands, args2)
-}
+const fishCompletionScript = `# kae fish completion — kae completion fish | source
+# Dynamic: candidates come from ` + "`kae __complete`" + `, so they track live state.
+function __kae_complete
+    set -l tokens (commandline -opc)
+    set -l n (count $tokens)
+    if test $n -le 1
+        kae __complete commands
+        return
+    end
+    set -l cmd $tokens[2]
+    switch $cmd
+        case use u pin p run r
+            if test $n -eq 2
+                kae __complete profiles
+                kae __complete tools
+            else if test $n -eq 3
+                kae __complete accounts $tokens[3]
+            end
+        case add doctor d
+            if test $n -eq 2
+                kae __complete tools
+            else if test $n -eq 3
+                kae __complete accounts $tokens[3]
+            end
+        case account
+            if test $n -eq 2
+                printf '%s\n' rm rename
+            else if test $n -eq 3
+                kae __complete tools
+            else if test $n -eq 4
+                kae __complete accounts $tokens[3]
+            end
+        case profile
+            if test $n -eq 2
+                printf '%s\n' save set unset rm default
+            end
+        case completion
+            if test $n -eq 2
+                printf '%s\n' bash zsh fish
+            end
+        case mise
+            if test $n -eq 2
+                printf '%s\n' init
+            end
+    end
+end
+complete -c kae -f -a '(__kae_complete)'
+`

@@ -1,0 +1,104 @@
+package cmd
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/webkaz-labs/kagikae/internal/account"
+	"github.com/webkaz-labs/kagikae/internal/constants"
+)
+
+// CmdComplete is the hidden shell-completion backend:
+//
+//	kae __complete <kind> [args]
+//
+// It prints one candidate per line from kae's live surface and is the single
+// source every completion path consults (kae's own shell completion in
+// completion.go and the mise task `complete run="…"` directives from
+// miseinit.go), so candidate lists never drift from the real router/config/
+// state. It is read-only, takes no locks, and is intentionally omitted from
+// `kae help` and from completionCommands (it is not a public command).
+//
+// The line-oriented output is an internal contract consumed by generated shell
+// scripts, not the JSON contract (schema_version is unaffected). A config error
+// is non-fatal — completion still works with an empty profile list — so it
+// falls back to defaults rather than refusing.
+//
+// Kinds:
+//   - commands         — the router's public commands (completionCommands)
+//   - tools            — constants.Tools
+//   - profiles         — config profile names
+//   - accounts [<tool>]— captured account names, optionally scoped to one tool
+func CmdComplete(_ context.Context, args []string) int {
+	return runComplete(newApp(""), args)
+}
+
+// runComplete is the testable core of CmdComplete (App injected so tests use a
+// temp-HOME app instead of the live environment).
+func runComplete(app *App, args []string) int {
+	if len(args) == 0 {
+		return constants.ExitUsage
+	}
+	switch args[0] {
+	case "commands":
+		printCompletionLines(completionCommands)
+	case "tools":
+		printCompletionLines(constants.Tools)
+	case "profiles":
+		printCompletionLines(app.Config.ProfileNames())
+	case "accounts":
+		tool := ""
+		if len(args) > 1 {
+			tool = args[1]
+		}
+		names, err := completionAccountNames(app, tool)
+		if err != nil {
+			return constants.ExitError
+		}
+		printCompletionLines(names)
+	default:
+		return constants.ExitUsage
+	}
+	return constants.ExitOK
+}
+
+// completionAccountNames returns captured account names for completion. With a
+// tool given (a canonical id or a prefix alias), it scopes to that tool; with
+// none, it returns every captured account name, deduplicated across tools. The
+// order follows account.List (canonical tool order then name).
+func completionAccountNames(app *App, tool string) ([]string, error) {
+	if tool != "" {
+		// Best-effort: resolve a prefix alias to the canonical id; an
+		// ambiguous or unknown input is left as-is and simply matches nothing.
+		if resolved, err := resolveToolArg(tool); err == nil {
+			tool = resolved
+		}
+	}
+	accounts, err := account.List(app.Paths.AccountsDir())
+	if err != nil {
+		return nil, err
+	}
+	names := []string{}
+	seen := map[string]bool{}
+	for _, acc := range accounts {
+		if tool != "" && acc.Tool != tool {
+			continue
+		}
+		if tool == "" {
+			if seen[acc.Name] {
+				continue
+			}
+			seen[acc.Name] = true
+		}
+		names = append(names, acc.Name)
+	}
+	return names, nil
+}
+
+// printCompletionLines writes one candidate per line to stdout (the internal
+// completion contract). An empty slice prints nothing.
+func printCompletionLines(lines []string) {
+	for _, line := range lines {
+		fmt.Println(line)
+	}
+}

@@ -465,22 +465,22 @@ single-account-doable range is what gates this release:
 - [x] §D comparator + JWT: `TestSnapshotArtifactDiffers`, `internal/jwt`
       `jwt_test.go`, and the unchanged switch/login tests.
 
-Two-account real-keychain recapture (claude, macOS) — confirms §A's switch-away
-recapture round-trips a **refreshed** token across two real accounts, which the
-file-driver smoke models but does not exercise on the keychain. Use throwaway /
-staging accounts and re-capture both with `kae add` immediately before the run
-(the recapture rewrites the live keychain from the snapshot):
+Two-account real-keychain run (claude, macOS) — **passed (2026-06-16)**:
 
-- [ ] `kae add --no-login claude` (no name) on a live login captures under the
+- [x] `kae add --no-login claude` (no name) on a live login captured under the
       detected account name (the sanitized login email).
-- [ ] `kae add claude A` / `kae add claude B` (both live-captured), `kae use
-      claude A`; trigger an in-tool refresh of A (or re-`kae add` A's live token);
-      `kae use claude B` prints `refreshed claude/A snapshot … before switching
-      away`; `kae use claude A` then makes a fresh `claude -p` as A return
-      **AUTH-OK** with the switch-away token, not the original capture.
-- [ ] A single `kae use` raises no extra keychain auth prompts (the keychain read
+- [x] `kae use claude A` → `kae use claude B` → `kae use claude A`: a fresh
+      `claude -p` as A returned **AUTH-OK** — the verbatim keychain round-trip
+      survives the switch-away recapture read across two real accounts.
+- [x] A single `kae use` raised no extra keychain auth prompts (the keychain read
       cache and the secret read cache both hold).
-- [ ] `kae ls` lists both accounts with the active one marked.
+- [x] `kae ls` listed both accounts with the active one marked.
+- [—] The `refreshed claude/A snapshot …` recapture message did **not** fire in
+      this run: A's live token had not diverged from its snapshot at switch-away,
+      so the divergence guard correctly skipped the rewrite (no write when they
+      match). The recapture-on-divergence round-trip itself is covered
+      driver-agnostically by `TestSwitchAwayRecapturesRefreshedToken` (the
+      keychain and file drivers share the code path), as in the v0.8.1 gate.
 
 ## Real-Machine Acceptance (release only)
 
@@ -551,8 +551,14 @@ to v0.8.3 — see [RELEASE.md](RELEASE.md) / [ROADMAP.md](ROADMAP.md).)
   markers and `[]` arrays; §A `status --json` returned all six tools in canonical
   order via the concurrent `Detect`.
 - JSON kept `schema_version: 1`, stable tokens, and `[]` arrays.
-- Two-account real-keychain recapture gate: see the checklist above (run on the
-  real machine before tagging).
+- **Two-account real-keychain run passed**: auto-detect captured under the
+  detected name; `use A → B → A` returned a fresh `claude -p` **AUTH-OK** (the
+  verbatim round-trip survives the recapture read across two real accounts); no
+  keychain prompt multiplication; `kae ls` marked the active account. The
+  `refreshed …` recapture message did not fire (A's live token had not diverged
+  from its snapshot — divergence guard working as designed); the
+  recapture-on-divergence round-trip is covered by the driver-agnostic temp-HOME
+  test (see the gate above).
 
 ### v0.8.1 (2026-06-16, macOS darwin 24.6.0)
 

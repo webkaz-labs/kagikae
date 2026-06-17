@@ -26,6 +26,12 @@ as an optional afterthought.
   temporary paths, or external command arguments that expect identifiers.
 - Keep stdin closed or explicit unless an interactive command requires it.
 - Capture stdout/stderr separately and decide which parts are safe to display.
+- Pass secret payloads to subprocesses via stdin when the tool supports it
+  (for example `secret-tool store`). When a CLI only accepts secrets via argv
+  (for example macOS `security add-generic-password -w`), document the
+  trade-off explicitly in the tool's `SECURITY.md` (on macOS argv is visible
+  only to the same user and root — the same trust domain as the keychain)
+  instead of silently accepting it.
 
 ## Config And Files
 
@@ -36,6 +42,8 @@ as an optional afterthought.
   become errors after the schema is stable.
 - Validate file permissions when reading credentials, executable hooks, or
   writeable config that can affect mutation/security decisions.
+- Atomic writes to credential files must enforce the intended mode (0600),
+  not preserve a looser mode the existing file happened to have.
 - Snapshot file-backed manifests before mutation where rollback is feasible.
 
 ## Reports And Evidence

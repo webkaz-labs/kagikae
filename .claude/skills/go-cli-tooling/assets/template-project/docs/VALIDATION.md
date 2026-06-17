@@ -9,9 +9,26 @@ git diff --check
 
 The `check` task runs:
 
+- formatting/import checks with `gofumpt` and `goimports`
+- bug-class Staticcheck and curated `golangci-lint`
+- `shellcheck` for `scripts/*.sh` when scripts exist
 - `go test ./...`
 - `go vet ./...`
 - `go mod verify`
+- `go build ./...`
+
+Run slower release or scheduled audit checks separately:
+
+```bash
+mise -C tools/dotfiles-tool run audit
+```
+
+The `audit` task runs vulnerability checks and project-specific supply-chain or
+agent-code-quality evidence. Keep those checks out of the ordinary edit loop
+unless this project promotes a narrow finding class to release-blocking.
+Before a public release, replace the template `supply-chain` and
+`agent-quality` placeholder tasks with project-specific checks or document why
+they are intentionally unavailable.
 
 Run `go mod tidy` before committing dependency changes.
 

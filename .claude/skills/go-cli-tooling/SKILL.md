@@ -1,6 +1,6 @@
 ---
 name: go-cli-tooling
-description: Use this skill when creating, refactoring, reviewing, or planning a repository-local Go CLI that should follow this repository's shared Go CLI standard and template. Trigger for requests mentioning Go CLI architecture, CLI standard, command UX for humans and agents, JSON contracts, runner seams, TTY/TUI or Bubble Tea testing, tool-local docs, macos-settings/updev convergence, or creating a new tool from the Go CLI template.
+description: Use this skill when creating, refactoring, reviewing, or planning a repository-local or standalone public Go CLI that should follow this repository's shared Go CLI standard and template. Trigger for requests mentioning Go CLI architecture, CLI standard, command UX for humans and agents, JSON contracts, runner seams, TTY/TUI or Bubble Tea testing, tool-local docs, macos-settings/updev convergence, exporting the standard to a standalone public tool repository, or creating a new tool from the Go CLI template.
 argument-hint: <new-tool|refactor|review|plan> [tool-path]
 ---
 
@@ -24,6 +24,8 @@ standard. This exported copy is self-contained: the standard docs live in
      `references/TESTING.md`
    - release readiness: `references/RELEASE.md`
    - new tool bootstrap: `references/TEMPLATE.md`
+   - opt-in patterns (mise integration, did-you-mean hints):
+     `references/PATTERNS.md`
 3. If working on an existing tool, read its local `AGENTS.md` first, then its
    `README.md`, `docs/RELEASE.md`, and `docs/ROADMAP.md`.
 4. Decide whether the request is implementation, planning, review, or new-tool
@@ -43,10 +45,18 @@ Then replace:
 - module path in `go.mod`;
 - command name in `main.go`, `README.md`, `AGENTS.md`, and `CLAUDE.md`;
 - placeholder command/report names and schema version;
+- Go version pin in `mise.toml` `[tools]`;
 - placeholder docs under `docs/`.
 
 Keep `main.go` thin, place command parsing/report builders in `internal/cmd`,
 and route subprocesses through `internal/runner`.
+
+For a **standalone public repository** (its own repo instead of
+`tools/<name>`), follow "Copy (standalone public repository)" in
+`references/TEMPLATE.md`: copy the template to the repo root, copy this
+exported bundle into `<repo>/.claude/skills/go-cli-tooling`, rewrite `AGENTS.md` to reference the
+bundled standard instead of `../../docs/...`, and add `LICENSE`,
+`.gitignore`, and an `install` task.
 
 ## Existing Tool Convergence
 
@@ -75,6 +85,11 @@ Audit in this order:
 10. Config precedence and unknown-key behavior are documented.
 11. Security-sensitive evidence has `available`, `stale`, `unavailable`, or
    `skipped` semantics where relevant.
+12. If the tool offers shell completion or mise integration, or hints on an
+   unknown name, it follows the opt-in patterns in `references/PATTERNS.md`
+   (single `__complete` backend; global-vs-project registration; hand-rolled
+   did-you-mean over the same candidate lists). Skip when the tool needs
+   neither.
 
 If a gap should not be fixed immediately, update the tool's `RELEASE.md` or
 `ROADMAP.md` with the convergence plan instead of leaving an implicit TODO.

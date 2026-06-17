@@ -3,12 +3,13 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target is **v0.8.5** (a "did you mean?" nearest-match hint for an
-unknown command/tool/profile, table-driven off the same live lists v0.8.4's
-`kae __complete` backend surfaces; additive, hand-rolled, no contract break —
-see [RELEASE.md](RELEASE.md)). It also folds in the standardization of the
-reusable patterns (mise-integration + did-you-mean) into the go-cli-tooling
-shared standard via chezmoi (§B — a separate, out-of-repo work item).
+No release is currently in flight. v0.8.5 (a "did you mean?" nearest-match hint
+for an unknown command/tool/profile, table-driven off the same live lists
+v0.8.4's `kae __complete` backend surfaces; additive, hand-rolled, no contract
+break — see [RELEASE.md](RELEASE.md)) shipped 2026-06-17 — **§A only**. Its §B
+(standardizing the reusable mise-integration + did-you-mean patterns into the
+go-cli-tooling shared standard via chezmoi) is a separate, out-of-repo follow-up
+that has not been done yet (tracked below).
 
 v0.8.4 (deep, dynamic shell completion sourced from kae's live state on a single
 hidden `kae __complete` backend, feeding both kae's own completion and mise
@@ -23,19 +24,15 @@ auto-recapture), v0.8.0 (surface vocabulary unification), v0.7.2 (use/pin ×
 -s/-i, global isolated home). What remains beyond v0.8.5 is hardening and
 platform coverage, ordered below by user impact.
 
-Scheduled into **v0.8.5** (see [RELEASE.md](RELEASE.md)):
-- **"Did you mean?" nearest-match hint**: an unknown command, tool, or profile
-  close to a real one names the nearest match in its usage error
-  (`kae uze` → "did you mean `use`?"), via a hand-rolled Levenshtein helper with
-  a noise-avoiding threshold, table-driven off `completionCommands` /
-  `constants.Tools` / `Config.ProfileNames()`. Suggestion-only (same exit code);
-  account names and flags out of scope; single best match (no multi-candidate
-  list).
-- **Standardize the reusable patterns** (§B; v0.8.4 §E folded in): promote the
-  mise-integration pattern (pin env-redirect + `__complete` completion) **and**
-  the did-you-mean pattern into the go-cli-tooling shared standard (chezmoi
-  source of truth) so sibling tools inherit them. Separate, out-of-repo work
-  item after v0.8.5 ships.
+Follow-up from v0.8.5 (not yet done):
+- **Standardize the reusable patterns** (v0.8.5 §B; v0.8.4 §E folded in): promote
+  the mise-integration pattern (pin env-redirect + `__complete` completion)
+  **and** the did-you-mean pattern (hand-rolled Levenshtein nearest-match with a
+  noise-avoiding threshold) into the go-cli-tooling shared standard (chezmoi
+  source of truth) so sibling tools inherit them. Reflect in three places:
+  `docs/go-cli/` + `docs/go-cli-architecture.md`, the `go-cli-tooling` skill
+  (`dot_agents/skills/go-cli-tooling/`), and the `chezmoi_templates/` / `dot_*`
+  templates; then `chezmoi apply`. Separate, out-of-repo work item.
 
 Follow-up from v0.8.4 (not yet scheduled):
 - **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`
@@ -136,13 +133,13 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
 - **Flag short forms** *(v0.8.0 — see [RELEASE.md](RELEASE.md))*: `-P` for
   `--profile` on `run` / bare `use` / `mise init`.
 - **Generic completion + "did you mean"** *(static completion is v0.8.0;
-  dynamic completion is v0.8.4; "did you mean" is scheduled into v0.8.5 — see
+  dynamic completion is v0.8.4; "did you mean" shipped in v0.8.5 — see
   [RELEASE.md](RELEASE.md))*: (1) `kae completion <bash|zsh|fish>` shipped in
   v0.8.0 as a static-list generator; v0.8.4 makes it **dynamic** via a hidden
   `kae __complete` backend (live profiles/accounts at the argument positions,
   shared with mise task completion) and adds an interactive `--install`.
   (2) an unknown command/tool/profile printing a Levenshtein "did you mean X?"
-  hint is the v0.8.5 target, table-driven off the same
+  hint shipped in v0.8.5, table-driven off the same
   router/`constants.Tools`/config lists (the `kae __complete` source).
 
 These overlap with the TUI item above at the surface level but are the

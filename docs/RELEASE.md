@@ -1,4 +1,4 @@
-# Release Target: kae v0.8.5
+# kae v0.8.5 (released 2026-06-17)
 
 Catch a typo before it becomes a "no such command". When an unknown command,
 tool, or profile is close to a real one, name the nearest match in the error —
@@ -10,6 +10,13 @@ thin, additive layer over a settled source of truth: no JSON-contract break
 hand-rolled), and no change to any existing resolution path.
 
 Previous baseline: v0.8.4 (dynamic shell completion).
+
+Shipped 2026-06-17 (§A only). The did-you-mean hint fires at all three sites
+plus `kae doctor` (unified onto the shared `validateTool`); fully covered by
+unit/temp-HOME tests — no real-machine gate (a pure-text behavior). **§B (the
+chezmoi standardization of the mise-integration + did-you-mean patterns into the
+go-cli-tooling shared standard) is a separate, out-of-repo follow-up and is not
+yet done.**
 
 ## Scope
 

@@ -90,6 +90,20 @@ func TestDidYouMeanUnknownTool(t *testing.T) {
 	}
 }
 
+// TestDidYouMeanDoctorTool confirms `kae doctor <typo>` routes through the
+// shared validateTool, so it gets the same did-you-mean hint as the other tool
+// sites instead of a divergent copy (the unknown-tool error fires before any
+// HOME access).
+func TestDidYouMeanDoctorTool(t *testing.T) {
+	code, out := captureStderr(t, func() int { return Root([]string{"doctor", "clade"}) })
+	if code != constants.ExitUsage {
+		t.Fatalf("want ExitUsage, got %d (%s)", code, out)
+	}
+	if !strings.Contains(out, `did you mean "claude"?`) {
+		t.Fatalf("kae doctor must hint via validateTool, got %q", out)
+	}
+}
+
 // TestDidYouMeanUnknownProfile: a near-miss profile names the nearest defined
 // profile; an unrelated token leaves the not-found error unchanged.
 func TestDidYouMeanUnknownProfile(t *testing.T) {

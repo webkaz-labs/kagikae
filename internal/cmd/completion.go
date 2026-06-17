@@ -30,7 +30,10 @@ var completionCommandAliases = []string{"u", "p", "s", "d", "r"}
 // completionCommands list `kae __complete commands` returns, so suggestions
 // never drift from the real router.
 func commandCandidates() []string {
-	return append(append([]string{}, completionCommands...), completionCommandAliases...)
+	candidates := make([]string, 0, len(completionCommands)+len(completionCommandAliases))
+	candidates = append(candidates, completionCommands...)
+	candidates = append(candidates, completionCommandAliases...)
+	return candidates
 }
 
 // CmdCompletion emits a shell completion script and optionally installs it:

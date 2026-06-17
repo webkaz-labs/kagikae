@@ -612,6 +612,28 @@ machine, for **each** of bash, zsh, fish:
 
 Record the result in the Release Acceptance Log below.
 
+## v0.8.5 surfaces
+
+A single Levenshtein nearest-match "did you mean X?" hint appended to the
+unknown-command, unknown-tool, and unknown-profile usage errors (§A). It is a
+pure-text behavior with no real-machine gate — fully covered by temp-HOME /
+unit tests in `internal/cmd` (`TestNearestMatch` for the threshold/tie/exact
+edges, `TestDidYouMeanUnknownCommand` / `TestDidYouMeanUnknownTool` /
+`TestDidYouMeanUnknownProfile` for the three sites, and `TestDidYouMeanDoctorTool`
+confirming `kae doctor <typo>` shares the validateTool path). Suggestion-only:
+the tests assert the original exit code is preserved and an unrelated token
+(`zzzzz`) appends nothing.
+
+```bash
+# (continues from the v0.8.0 setup: /tmp/kae built, temp HOME + file config)
+/tmp/kae uze; echo $?
+#   assert: 'unknown command: uze (see kae help) — did you mean "use"?'; exit 64
+/tmp/kae add clade 2>&1; echo $?
+#   assert: 'unknown tool "clade" ... — did you mean "claude"?'; exit 64
+/tmp/kae zzzzz 2>&1
+#   assert: no "did you mean" suffix (unrelated token)
+```
+
 ## Real-Machine Acceptance (release only)
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of

@@ -31,8 +31,11 @@ func CmdDoctor(ctx context.Context, args []string) int {
 	case 0:
 	case 1:
 		toolFilter = positionals[0]
-		if !constants.IsTool(toolFilter) {
-			return usageError("unknown tool %q (tools: %s)", toolFilter, strings.Join(constants.Tools, ", "))
+		// Route through the shared validateTool so doctor reuses the one
+		// unknown-tool error (with its did-you-mean hint and removed-tool
+		// successor message) instead of a divergent copy.
+		if err := validateTool(toolFilter); err != nil {
+			return finish(opts, err)
 		}
 	default:
 		return usageError("usage: %s doctor [tool] [--json]", toolName)

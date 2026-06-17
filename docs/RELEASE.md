@@ -1,3 +1,110 @@
+# Release Target: kae v0.8.5
+
+Catch a typo before it becomes a "no such command". When an unknown command,
+tool, or profile is close to a real one, name the nearest match in the error —
+"did you mean `use`?" — instead of only listing the full vocabulary. The
+candidate lists are exactly the ones v0.8.4's `kae __complete` backend already
+surfaces (router commands, `constants.Tools`, config profiles), so this is a
+thin, additive layer over a settled source of truth: no JSON-contract break
+(`schema_version` stays `1`), no new dependency (the edit-distance check is
+hand-rolled), and no change to any existing resolution path.
+
+Previous baseline: v0.8.4 (dynamic shell completion).
+
+## Scope
+
+### A. "Did you mean?" nearest-match hint (kae)
+
+A shared `internal/cmd` helper computes the nearest candidate to an unmatched
+token by Levenshtein distance and appends a hint to the existing usage error.
+It is suggestion-only — the command still fails with the same exit code; only
+the message gains a "did you mean X?" line.
+
+- **Threshold (avoid noise)**: suggest only when the best distance is `<= 2`
+  **and** `<= len(input)/3 + 1` (so a 3-char typo of a long word still hints,
+  but a wildly different token does not). A tie or no candidate under the
+  threshold appends nothing — the error is unchanged.
+- **Three call sites**, each table-driven off the same list `kae __complete`
+  uses, so candidates never drift:
+  - **unknown command** — `Root()`'s `default` arm, against `completionCommands`
+    (aliases like `u`/`p`/`s` included in the match set so `kae uze` → `use`).
+  - **unknown tool** — `validateTool`, against `constants.Tools` (after the
+    prefix-alias and removed-tool paths, which are unchanged: a hint fires only
+    when `resolveToolArg` did not resolve and the tool is genuinely unknown).
+    `kae doctor <tool>` was unified onto this same `validateTool` call (it had a
+    divergent copy of the unknown-tool error), so it gains the hint and the
+    removed-tool successor message too.
+  - **unknown profile** — the profile-resolution not-found error, against
+    `Config.ProfileNames()`.
+- **Out of scope**: account names (too many, low-value, and they sanitize
+  freely) and flags. Single best match only — no multi-candidate "did you mean
+  X, Y, or Z?" list (that was the v0.8.4 non-goal; one suggestion keeps the
+  message terse).
+- Temp-HOME tests: a near-miss at each call site yields the hint; an unrelated
+  token yields the unchanged error; an exact alias/prefix still resolves with no
+  hint (no regression to `resolveToolArg`).
+
+### B. Standardize the reusable patterns into the Go CLI standard (chezmoi)
+
+**Separate from the kae release** (kae repo unaffected): promote two reusable
+patterns proven in kae into the shared Go CLI standard so sibling tools inherit
+them. This folds in v0.8.4 §E (the mise-integration pattern) and adds the
+did-you-mean pattern from §A above. All three targets are sourced from chezmoi
+(`~/.local/share/chezmoi`); apply with `chezmoi apply`:
+
+1. **mise-integration pattern** (v0.8.4 §E): pin env-redirect fragments +
+   dynamic completion via a hidden `__complete` backend (usage/`complete`,
+   global-vs-project registration rules) — captured in the agent memory
+   `mise-integration-pattern`.
+2. **did-you-mean pattern** (§A): a hand-rolled nearest-match hint over the same
+   live candidate lists the completion backend exposes (no framework), with the
+   noise-avoiding distance threshold.
+
+Reflect both in the three standard locations:
+- **CLI standard docs** — `docs/go-cli/` and `docs/go-cli-architecture.md`.
+- **go-cli-tooling skill** — `dot_agents/skills/go-cli-tooling/` (the canonical
+  source; it symlinks into `~/.claude` and `~/.agents`, and this repo's bundled
+  `.claude/skills/go-cli-tooling/` re-syncs from it).
+- **Templates** — the relevant `chezmoi_templates/` / `dot_*` `.tmpl` files.
+
+## Non-Goals (this release)
+
+- Multi-candidate suggestion lists, account/flag suggestions — single
+  best-match command/tool/profile hints only.
+- A fuzzy-matching dependency — the edit-distance check stays hand-rolled.
+- fish real-machine completion smoke and the codex keyring two-account gate —
+  open acceptance items, tracked separately (not blockers for v0.8.5).
+- Any JSON-contract break: `schema_version` stays `1`.
+
+## Acceptance Criteria
+
+- **hint**: `kae uze` names `use`; `kae add clade` names `claude`;
+  `kae use wrok` (a near profile) names `work`; each still exits with its
+  original code. An unrelated token (`kae zzzzz`) appends no hint. An exact
+  prefix/alias (`kae u`, `kae cl work`) resolves with no hint and no behavior
+  change. Temp-HOME tests at all three sites.
+- **no drift**: the suggestion candidate lists are the same ones
+  `kae __complete commands|tools|profiles` returns (asserted by sharing the
+  source slice/function, not a copy).
+- **standard (chezmoi)**: the mise-integration and did-you-mean patterns appear
+  in `docs/go-cli/`, the go-cli-tooling skill, and the templates; `chezmoi apply`
+  is clean. (Out-of-repo; verified in the chezmoi tree, not by `mise run check`.)
+- `mise run check` passes; no new entry in `go.mod`; the JSON contract is
+  unchanged.
+
+## Release Steps
+
+1. Bump `toolVersion` to v0.8.5.
+2. §A did-you-mean helper + the three call sites; temp-HOME tests.
+3. Docs (CLI: note the hint in the relevant command/error sections; README if a
+   user-facing example helps; ARCHITECTURE if the helper is worth a line).
+4. Tag `v0.8.5`, GitHub release.
+5. §B standardize the patterns in chezmoi (separate work item, after v0.8.5
+   ships): mise-integration + did-you-mean into `docs/go-cli/`, the
+   go-cli-tooling skill, and the templates; `chezmoi apply`.
+
+---
+
 # kae v0.8.4 (released 2026-06-17)
 
 Make shell completion deep and dynamic — sourced from kae's live state — and

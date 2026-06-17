@@ -383,6 +383,24 @@ hooks are experimental and need `mise activate`, a trusted config, and
 project-scoped task-argument completion lives in the project's `.mise.toml`;
 this is kae's own global shell completion.
 
+## Did-you-mean hints
+
+When an unknown command, tool, or profile is close to a real one, the usage
+error names the single nearest match — `kae uze` → "did you mean `use`?",
+`kae add clade` → "did you mean `claude`?", `kae use wrok` → "did you mean
+`work`?". The hint is **suggestion-only**: the command still fails with its
+original exit code (`64`/`usage` for a command or tool, `7`/`not_found` for a
+profile) and the JSON contract is unchanged; only the human-facing message gains
+the hint.
+
+The candidate lists are exactly the ones `kae __complete commands|tools|profiles`
+returns (commands include the one-letter aliases `u`/`p`/`s`/`d`/`r`), so a
+suggestion never drifts from the real surface. To avoid noise a hint appears only
+when the best edit distance is both `<= 2` and `<= len(input)/3 + 1`; a tie for
+the best distance, an exact match, or a wildly different token (`kae zzzzz`)
+appends nothing. Account names and flags are not suggested, and only one
+best-match candidate is named (no multi-candidate list).
+
 ## Exit Codes
 
 | Code | Token | Meaning |

@@ -87,7 +87,7 @@ func validateTool(tool string) error {
 				"%s was removed in v0.6.0; its upstream successor is %s (captured %s accounts on disk are untouched)",
 				tool, successor, tool)
 		}
-		return errf(constants.ExitUsage, "unknown tool %q (tools: %s)", tool, strings.Join(constants.Tools, ", "))
+		return errf(constants.ExitUsage, "unknown tool %q (tools: %s)%s", tool, strings.Join(constants.Tools, ", "), didYouMean(tool, constants.Tools))
 	}
 	return nil
 }

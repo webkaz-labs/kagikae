@@ -108,6 +108,9 @@ kae run -i claude clientA -- claude
 
 # idempotent apply for your own hooks/scripts (no-op when already active):
 kae use --quiet
+
+# typo a command/tool/profile and kae names the nearest match:
+kae uze            # unknown command: uze (see kae help) — did you mean "use"?
 ```
 
 ## Safety Model

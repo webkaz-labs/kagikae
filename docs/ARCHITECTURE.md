@@ -60,6 +60,12 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   task `complete "<arg>" run="kae __complete …"` directives (`cmd/miseinit.go`) —
   so candidate lists never drift from the real surface. Read-only, no locks; its
   line-oriented output is an internal contract, not the JSON contract.
+- **Did-you-mean hints** (`cmd/suggest.go`): the unknown-command, unknown-tool,
+  and unknown-profile usage errors append a single hand-rolled Levenshtein
+  nearest-match suggestion drawn from the same candidate lists the completion
+  backend exposes, so suggestions never drift. Suggestion-only — exit codes and
+  the JSON contract are unchanged; the noise threshold (best distance `<= 2` and
+  `<= len(input)/3 + 1`, ties suppressed) keeps wildly different tokens silent.
 
 ## Adapter Interface
 

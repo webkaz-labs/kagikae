@@ -3,7 +3,7 @@
 The template in [template-project/](template-project/) is a minimal starting
 point for a new Go CLI for a Go CLI.
 
-## Copy
+## Copy (repository-local tool)
 
 ```bash
 cp -R assets/template-project tools/<tool-name>
@@ -14,7 +14,34 @@ Then replace:
 - module path in `go.mod`;
 - command name in `main.go`, `README.md`, `AGENTS.md`, and `CLAUDE.md`;
 - tool release version, report names, and schema version;
+- Go version pin in `mise.toml` `[tools]` (match the repo's current Go);
 - docs placeholders under `docs/`.
+
+## Copy (standalone public repository)
+
+When the tool lives in its own repository (for example under an org like
+`webkaz-labs`), the template's dotfiles-repo assumptions must be replaced,
+not just renamed:
+
+1. Copy the template to the repository root (not `tools/<name>`); set the
+   module path to `github.com/<org>/<repo>`.
+2. Bundle the standard so the repo is self-contained: copy this exported bundle
+   into `<repo>/.claude/skills/go-cli-tooling` and point the tool `AGENTS.md` at
+   the bundled `SKILL.md`/`references/` instead of
+   `../../docs/go-cli-architecture.md` (that relative link only works inside
+   this dotfiles repo).
+3. Rewrite `AGENTS.md`: drop "follow the repository root AGENTS.md", change
+   validation to `mise run check` (no `-C tools/...`), and remove the
+   `chezmoi apply --dry-run` step — it does not exist outside this repo.
+4. Add what the template omits because the dotfiles repo provides it:
+   `LICENSE`, `.gitignore`, and a `mise.toml` `install` task
+   (`go build -o ${HOME}/.local/bin/<cmd> .`) for real-machine use.
+5. Public repos default to English docs and comments even when the owner's
+   global agent rules say otherwise; confirm the language with the owner once.
+6. If the tool wants mise integration (per-project env redirect, dynamic shell
+   completion via a hidden `__complete` backend) or did-you-mean hints, adopt
+   the opt-in patterns in [PATTERNS.md](PATTERNS.md); they are not part of the
+   minimal template.
 
 ## First Implementation Steps
 
@@ -33,6 +60,12 @@ Then replace:
 ```bash
 mise -C tools/<tool-name> run check
 git diff --check
+```
+
+Run slower release or scheduled audit checks separately:
+
+```bash
+mise -C tools/<tool-name> run audit
 ```
 
 Run `go mod tidy` before committing dependency changes. Add a non-mutating

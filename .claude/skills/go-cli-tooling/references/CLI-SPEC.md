@@ -35,6 +35,25 @@ and tested. Prefer read-only aliases such as `st` for `status`, `ck` for
 `check`, and `ls` for `list`. Mutation aliases such as `rm` should exist only
 when they preserve the same confirmation and dry-run gates as the full command.
 
+A tool that ships dynamic shell completion may add a hidden `__complete <kind>`
+backend (omitted from `help`) that prints live candidates one per line; it is an
+internal completion contract, not the JSON contract. See the mise-integration
+pattern in [PATTERNS.md](PATTERNS.md).
+
+## Flags After Positionals
+
+Humans and agents both write `tool switch all work --json`. Go's standard
+`flag` package stops parsing at the first positional, so commands that take
+positionals need a pre-pass that separates flags from positionals before
+`FlagSet.Parse`.
+
+Trap: the splitter must know which flags take a value. An unregistered value
+flag silently swallows its value as a positional (`--mode env` becomes
+positional `env` plus a value-less `--mode`), and inner-function tests do not
+catch it. Keep each command's value-flag list at the call site (passed into
+the splitter), not in a central registry another file must remember to
+update, and cover every value flag with a parser-level test.
+
 ## UX Principles
 
 Each CLI serves both humans and agents. Design the command surface so both
@@ -101,6 +120,9 @@ If a tool needs more codes, define them in its `docs/CLI.md` and add tests.
 - Keep error messages actionable but avoid requiring agents to parse prose.
 - JSON report errors/findings should include stable codes when branching is
   expected.
+- For an unknown command/subcommand/tool/profile name, optionally append a
+  single nearest-match "did you mean?" hint; it is suggestion-only (exit code
+  and JSON unchanged). See the did-you-mean pattern in [PATTERNS.md](PATTERNS.md).
 
 ## Output Modes
 

@@ -13,6 +13,18 @@ tests.
   unit tests.
 - Do not use process-global runner replacement in `t.Parallel` tests.
 - Keep fixtures small and purpose-named.
+- When a third package needs the same canned-response fake for a seam (such
+  as the runner), extract one shared double into
+  `internal/testutil/<seam>test` instead of copying it again.
+
+## Command-Level Parsing Coverage
+
+Tests that call a command's inner `run*` function bypass argument parsing
+entirely, so flag-splitting regressions ship invisibly: a value flag whose
+value is misparsed as a positional passes every inner-function test and
+fails only on a real command line. Exercise each command — including every
+value-taking flag — through the outer `Cmd*` entry at least once, either in
+a unit test or in the built-binary smoke checks of `VALIDATION.md`.
 
 ## JSON Regression
 
@@ -135,11 +147,48 @@ or touch keychains directly. TUI tests use fake deps and temp HOME/XDG roots.
 
 ## Integration And Smoke
 
-- Provide `mise` tasks for `test`, `vet`, and `mod-verify`.
-- Provide a combined `check` task for the normal pre-commit path.
+- Provide `mise` tasks for `test`, `vet`, `mod-verify`, `lint`, and
+  `check`.
+- Keep `check` as the normal fast pre-commit path. It should run the
+  low-noise local gates: formatting/import checks, bug-class static analysis,
+  curated lint, unit tests, `go vet`, module verification, and build.
+- Provide a slower `audit` task for release or scheduled checks when the tool
+  is public or security-sensitive.
 - Use live-provider smoke tests sparingly and document prerequisites in the
   tool's `VALIDATION.md`.
 - When provider inventory semantics change, smoke-test the native provider
   command and the CLI report with a forced refresh or cache-version bump.
 - Run `chezmoi apply --dry-run` from the repository root when wrappers,
   templates, settings, or deploy integration changed.
+
+## Quality Tooling Baseline
+
+`updev` has proven the first quality-tooling wave enough to promote it into
+the shared Go CLI standard. Adopt the tooling in tiers so agent iteration stays
+fast and release checks stay deeper.
+
+Fast local `check` baseline:
+
+- `gofumpt` plus `goimports` or `gci` for formatting and deterministic import
+  grouping.
+- Bug-class Staticcheck analyzers, starting with `SA*`.
+- `golangci-lint v2` with a curated low-noise config. Good default linters are
+  `govet`, `staticcheck`, `ineffassign`, `misspell`, `unconvert`,
+  `whitespace`, and `nolintlint`.
+- `shellcheck` for repository shell scripts.
+- `go test ./...`, `go vet ./...`, `go mod verify`, and `go build ./...`.
+
+Release or scheduled `audit` baseline:
+
+- `govulncheck` for reachable Go vulnerability checks.
+- Public-repo supply-chain checks where applicable: CodeQL, Dependabot for Go
+  modules and GitHub Actions, dependency review, GitHub Actions SHA/version
+  posture, and release artifact checksum or provenance verification.
+- Agent-code-quality audit evidence, such as deterministic AI-slop detectors,
+  only as non-blocking audit evidence until a finding class repeatedly catches
+  real defects without duplicating tests or lint.
+
+Do not make broad `gosec`, broad `errcheck`, broad `unused`, broad complexity
+findings, or generic AI-slop findings release-blocking by default. Treat those
+as backlog or placement signals unless a project documents a narrow promoted
+finding class with low false positives.

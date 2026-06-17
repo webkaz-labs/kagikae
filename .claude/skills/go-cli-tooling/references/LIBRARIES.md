@@ -15,6 +15,7 @@ risk. When adding a dependency, document why the standard library is not enough.
 | TOML | choose one parser per tool; keep parse/validate helpers in `internal/config` |
 | XML/plist where feasible | standard `encoding/xml` before adding heavy plist dependencies |
 | tests | standard `testing`, table tests, fake runner |
+| string similarity / suggestions | hand-rolled Levenshtein; no fuzzy-matching dependency (see [PATTERNS.md](PATTERNS.md)) |
 
 ## Approved UI Stack
 

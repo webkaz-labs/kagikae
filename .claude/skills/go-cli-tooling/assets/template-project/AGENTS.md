@@ -24,6 +24,10 @@ mise -C tools/dotfiles-tool run check
 git diff --check
 ```
 
+Run `mise -C tools/dotfiles-tool run audit` for release or scheduled security
+reviews. Keep `audit` out of the ordinary edit loop unless this project
+documents a narrow promoted blocker.
+
 Run `chezmoi apply --dry-run` from the repository root when wrappers,
 templates, settings, or deploy integration change.
 

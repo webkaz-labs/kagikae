@@ -32,6 +32,12 @@ mise -C tools/dotfiles-tool run check
 git diff --check
 ```
 
+Use the slower audit path before releases or scheduled security reviews:
+
+```bash
+mise -C tools/dotfiles-tool run audit
+```
+
 ## Documentation
 
 | Document | Purpose |

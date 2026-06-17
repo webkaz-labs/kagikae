@@ -254,6 +254,10 @@ Rules:
 - JSON reports should include machine-readable error/finding codes where
   agents need to branch on them.
 - Human error text belongs on stderr; structured reports belong on stdout.
+- An unknown command/tool/profile usage error may append a single nearest-match
+  hint through one shared validator (see the did-you-mean pattern in
+  [PATTERNS.md](PATTERNS.md)); it is suggestion-only and leaves the exit code
+  and JSON unchanged.
 
 ## Mutation And Rollback
 
@@ -265,6 +269,11 @@ Rules:
 - Show focused diffs after mutation.
 - Validate after writing.
 - Provide rollback for file-backed manifests.
+- Rollback/restore is itself a mutation: snapshot the current state before
+  restoring, so a rollback can be undone too.
+- If recording bookkeeping state (a state/ledger file) fails after a
+  successful mutation, restore the mutation from its snapshot rather than
+  leaving records and reality diverged.
 - Keep provider-native install/update mechanics in the provider; the CLI owns
   orchestration and explanation.
 
@@ -296,9 +305,25 @@ run = "go vet ./..."
 [tasks.mod-verify]
 run = "go mod verify"
 
+[tasks.build]
+run = "go build ./..."
+
+[tasks.lint]
+depends = ["fmt-check", "staticcheck", "golangci-lint", "shellcheck"]
+
 [tasks.check]
-depends = ["test", "vet", "mod-verify"]
+depends = ["lint", "test", "vet", "mod-verify", "build"]
+
+[tasks.audit]
+depends = ["vuln", "supply-chain", "agent-quality"]
 ```
+
+`lint` is now part of the shared fast path, but it must stay low-noise:
+format/import checks, bug-class static analysis, curated `golangci-lint`, and
+ShellCheck for scripts. Keep slower vulnerability, supply-chain, SAST, and
+agent-code-quality tools in `audit`. Agent-code-quality checks are evidence by
+default, not release blockers, unless the project documents a narrow promoted
+finding class.
 
 Run before commit:
 
@@ -313,3 +338,8 @@ installed Go version supports a non-mutating tidy check.
 
 Also run `chezmoi apply --dry-run` from the repository root when wrappers,
 templates, settings, or deploy integration changed.
+
+A standalone tool that integrates with mise (per-project env redirect, an
+`install` task, dynamic shell completion via a hidden `__complete` backend)
+follows the mise-integration pattern in [PATTERNS.md](PATTERNS.md), which also
+defines the global-vs-project registration rule.

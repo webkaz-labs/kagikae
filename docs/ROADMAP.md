@@ -3,28 +3,31 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target is **v0.8.4** (deep, dynamic shell completion sourced from
-kae's live state on a single hidden `kae __complete` backend, feeding both kae's
-own completion and mise task-argument completion; mise-leveraging where present,
-with a first-class non-mise path — see [RELEASE.md](RELEASE.md)). v0.8.3
-(discovery-unblock: freshness-as-adapter-capability, cursor `kae add` identity,
-codex keyring driver, stored+displayed identity) shipped 2026-06-17 — its codex
-keyring two-account real-keychain gate is deferred (the one open acceptance
-item; see [VALIDATION.md](VALIDATION.md)). Earlier: v0.8.2 (daily-use polish),
-v0.8.1 (credential freshness / auto-recapture), v0.8.0 (surface vocabulary
-unification), v0.7.2 (use/pin × -s/-i, global isolated home). What remains beyond
-v0.8.4 is hardening and platform coverage, ordered below by user impact.
+No release target is currently open. v0.8.4 (deep, dynamic shell completion
+sourced from kae's live state on a single hidden `kae __complete` backend,
+feeding both kae's own completion and mise task-argument completion) shipped
+2026-06-17 — its **fish real-machine smoke is deferred** (the release machine had
+no fish; bash/zsh verified) and is the one open acceptance item (see
+[VALIDATION.md](VALIDATION.md)). v0.8.3 (discovery-unblock:
+freshness-as-adapter-capability, cursor `kae add` identity, codex keyring driver,
+stored+displayed identity) shipped 2026-06-17 — its codex keyring two-account
+real-keychain gate is deferred (also open; see [VALIDATION.md](VALIDATION.md)).
+Earlier: v0.8.2 (daily-use polish), v0.8.1 (credential freshness /
+auto-recapture), v0.8.0 (surface vocabulary unification), v0.7.2 (use/pin ×
+-s/-i, global isolated home). What remains is hardening and platform coverage,
+ordered below by user impact.
 
-Scheduled into **v0.8.4** (design settled; see [RELEASE.md](RELEASE.md)):
-- **`kae __complete` backend + dynamic completion**: one hidden subcommand emits
-  live candidates (commands/tools/profiles/accounts) that both the native shell
-  completion (`kae use <TAB>`) and mise task `complete` directives
-  (`mise run <task> <TAB>`) consult. `kae completion --install` registers kae's
-  own completion globally (fpath by default, global mise enter-hook opt-in,
-  interactive). No completion-framework dependency. The reusable mise-integration
-  patterns (env-redirect fragments for pin, completion via usage/`complete` +
-  hooks) are a candidate to graduate into the go-cli-tooling shared standard for
-  sibling tools.
+Follow-ups from v0.8.4 (not yet scheduled):
+- **Standardize the mise-integration pattern** (RELEASE.md §E): promote the
+  reusable pin env-redirect + `__complete` completion pattern into the
+  go-cli-tooling shared standard (chezmoi source of truth) so sibling tools
+  inherit it. Gated on the completion shape settling (now shipped).
+- **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`
+  tasks (and their dynamic completion) into the project's `.mise.toml` only, so
+  they exist where the tasks live. A `--global` option emitting them into the
+  global mise config (`~/.config/mise/config.toml` or `~/.config/mise/tasks/`)
+  would make `mise run ai-switch <TAB>` available in every directory. Scope
+  addition; design before implementing.
 
 ## Hardening backlog — daily-use robustness
 

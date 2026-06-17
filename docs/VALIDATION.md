@@ -664,6 +664,34 @@ messages, or metadata files written by capture/switch/rollback.
 
 ## Release Acceptance Log
 
+### v0.8.4 (2026-06-17, macOS darwin 24.6.0)
+
+Dynamic shell completion: §A `kae __complete` backend, §B native completion +
+interactive `--install`, §C mise task-argument completion, §D docs.
+
+- `mise run check` green (all packages); JSON contract unchanged
+  (`schema_version` 1); no new `go.mod` dependency.
+- Code review APPROVE: round-one found a fish `account`-position token-index
+  off-by-one (`$tokens[3]` → `$tokens[4]`), fixed with a per-shell token-index
+  regression test; the fix and the `/simplify` cleanups (shared
+  `paths.XDGConfigHome`, `account.ListForTool` scoped read, constant-kind
+  short-circuit, missing `ls`) were re-reviewed APPROVE.
+- **bash + zsh real-machine smoke PASSED**: `~/.local/bin/kae` updated to v0.8.4;
+  in both shells `kae <TAB>` listed commands (incl. `ls`), `kae use <TAB>` listed
+  the live profile + tools, `kae use claude <TAB>` scoped to claude's accounts,
+  and `kae account rm claude <TAB>` scoped to claude's accounts. The "two TABs to
+  list" is the shells' standard ambiguous-completion behavior (zsh `LIST_AMBIGUOUS`
+  + `menu select`; bash `show-all-if-ambiguous` off), not a kae defect — candidate
+  generation is correct.
+- **fish real-machine smoke: DEFERRED** (fish not installed on the release
+  machine). fish shares the same routing logic as bash/zsh and the same backend;
+  the account-position token index is guarded by `TestCompletionAccountTokenIndex`
+  and the script passes `fish -n` (syntax). Run the "v0.8.4 real-machine smoke"
+  for fish before relying on fish completion — the one open acceptance item.
+- mise task-argument completion (`mise run ai-switch <TAB>`) is rendered by
+  `kae mise init` and unit-tested (`TestMiseInitRendersCompletionTasks`, TOML
+  parse); the live `mise run <task> <TAB>` resolution rides the same backend.
+
 ### v0.8.3 (2026-06-17, macOS darwin 24.6.0)
 
 Discovery-unblock: §A freshness-as-adapter-capability, §B cursor `kae add`

@@ -1,4 +1,4 @@
-# Release Target: kae v0.8.4
+# kae v0.8.4 (released 2026-06-17)
 
 Make shell completion deep and dynamic — sourced from kae's live state — and
 lean on mise where the user already has it. One hidden `kae __complete` backend
@@ -9,6 +9,17 @@ no new dependency (kae stays hand-rolled). Reusable mise-integration patterns
 recorded for sibling tools.
 
 Previous baseline: v0.8.3 (discovery-unblock).
+
+Shipped 2026-06-17. bash and zsh completion verified on macOS — `kae <TAB>`,
+`kae use <TAB>`, and `kae use claude <TAB>` resolve live commands / profiles+tools
+/ tool-scoped accounts through `kae __complete` (the two-TAB listing is the
+shells' standard ambiguous-completion behavior, governed by the user's own
+`LIST_AMBIGUOUS` / `show-all-if-ambiguous` settings, not a kae defect). The
+**fish real-machine smoke is deferred** (fish was not installed on the release
+machine) and is the one open acceptance item — run the VALIDATION.md "v0.8.4
+real-machine smoke" for fish before relying on fish completion. Making the mise
+`ai-switch` tasks available globally (not just in the project that ran
+`kae mise init`) is a post-ship candidate (ROADMAP.md).
 
 ## Scope
 

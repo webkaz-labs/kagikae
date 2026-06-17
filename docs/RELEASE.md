@@ -11,12 +11,13 @@ hand-rolled), and no change to any existing resolution path.
 
 Previous baseline: v0.8.4 (dynamic shell completion).
 
-Shipped 2026-06-17 (§A only). The did-you-mean hint fires at all three sites
-plus `kae doctor` (unified onto the shared `validateTool`); fully covered by
-unit/temp-HOME tests — no real-machine gate (a pure-text behavior). **§B (the
+Shipped 2026-06-17. §A: the did-you-mean hint fires at all three sites plus
+`kae doctor` (unified onto the shared `validateTool`); fully covered by
+unit/temp-HOME tests — no real-machine gate (a pure-text behavior). §B (the
 chezmoi standardization of the mise-integration + did-you-mean patterns into the
-go-cli-tooling shared standard) is a separate, out-of-repo follow-up and is not
-yet done.**
+go-cli-tooling shared standard) also landed 2026-06-17: a new
+`docs/go-cli/PATTERNS.md` in the chezmoi repo, with this repo's bundled
+`.claude/skills/go-cli-tooling/` resynced from it.
 
 ## Scope
 

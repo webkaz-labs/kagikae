@@ -6,10 +6,10 @@ Implementation history lives in git log.
 No release is currently in flight. v0.8.5 (a "did you mean?" nearest-match hint
 for an unknown command/tool/profile, table-driven off the same live lists
 v0.8.4's `kae __complete` backend surfaces; additive, hand-rolled, no contract
-break — see [RELEASE.md](RELEASE.md)) shipped 2026-06-17 — **§A only**. Its §B
+break — see [RELEASE.md](RELEASE.md)) shipped 2026-06-17, both §A and §B. §B
 (standardizing the reusable mise-integration + did-you-mean patterns into the
-go-cli-tooling shared standard via chezmoi) is a separate, out-of-repo follow-up
-that has not been done yet (tracked below).
+go-cli-tooling shared standard via chezmoi) landed the same day as a new
+`docs/go-cli/PATTERNS.md`, with this repo's bundled skill resynced from it.
 
 v0.8.4 (deep, dynamic shell completion sourced from kae's live state on a single
 hidden `kae __complete` backend, feeding both kae's own completion and mise
@@ -23,16 +23,6 @@ Earlier: v0.8.2 (daily-use polish), v0.8.1 (credential freshness /
 auto-recapture), v0.8.0 (surface vocabulary unification), v0.7.2 (use/pin ×
 -s/-i, global isolated home). What remains beyond v0.8.5 is hardening and
 platform coverage, ordered below by user impact.
-
-Follow-up from v0.8.5 (not yet done):
-- **Standardize the reusable patterns** (v0.8.5 §B; v0.8.4 §E folded in): promote
-  the mise-integration pattern (pin env-redirect + `__complete` completion)
-  **and** the did-you-mean pattern (hand-rolled Levenshtein nearest-match with a
-  noise-avoiding threshold) into the go-cli-tooling shared standard (chezmoi
-  source of truth) so sibling tools inherit them. Reflect in three places:
-  `docs/go-cli/` + `docs/go-cli-architecture.md`, the `go-cli-tooling` skill
-  (`dot_agents/skills/go-cli-tooling/`), and the `chezmoi_templates/` / `dot_*`
-  templates; then `chezmoi apply`. Separate, out-of-repo work item.
 
 Follow-up from v0.8.4 (not yet scheduled):
 - **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`

@@ -259,7 +259,7 @@ func (app *App) resolveTargets(target, name string) ([]runTarget, string, error)
 		profile, ok := app.Config.Profiles[name]
 		if !ok {
 			return nil, "", errf(constants.ExitNotFound,
-				"profile %q is not defined in %s", name, app.ConfigPath)
+				"profile %q is not defined in %s%s", name, app.ConfigPath, didYouMean(name, app.Config.ProfileNames()))
 		}
 		targets := []runTarget{}
 		for _, tool := range app.enabledTools() {

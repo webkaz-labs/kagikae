@@ -18,6 +18,21 @@ var completionCommands = []string{
 	"rollback", "completion", "version", "help",
 }
 
+// completionCommandAliases are the one-letter command aliases Root() routes
+// (u=use, p=pin, s=status, d=doctor, r=run). They are kept out of
+// completionCommands (which feeds `kae __complete commands` and stays a tidy
+// public list) but ARE in the did-you-mean match set, so a near miss of an
+// alias is still caught. Keep in lockstep with Root().
+var completionCommandAliases = []string{"u", "p", "s", "d", "r"}
+
+// commandCandidates is the did-you-mean match set for an unknown first word:
+// the public commands plus their one-letter aliases. Built from the same
+// completionCommands list `kae __complete commands` returns, so suggestions
+// never drift from the real router.
+func commandCandidates() []string {
+	return append(append([]string{}, completionCommands...), completionCommandAliases...)
+}
+
 // CmdCompletion emits a shell completion script and optionally installs it:
 //
 //	kae completion <bash|zsh|fish> [--install]

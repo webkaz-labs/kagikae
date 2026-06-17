@@ -24,7 +24,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.8.4"
+	toolVersion = "v0.8.5"
 )
 
 // Root dispatches the command line.
@@ -110,7 +110,7 @@ func Root(args []string) int {
 		printHelp()
 		return constants.ExitOK
 	default:
-		return usageError("unknown command: %s (see kae help)", args[0])
+		return usageError("unknown command: %s (see kae help)%s", args[0], didYouMean(args[0], commandCandidates()))
 	}
 }
 

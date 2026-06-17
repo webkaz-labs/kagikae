@@ -31,6 +31,9 @@ the message gains a "did you mean X?" line.
   - **unknown tool** — `validateTool`, against `constants.Tools` (after the
     prefix-alias and removed-tool paths, which are unchanged: a hint fires only
     when `resolveToolArg` did not resolve and the tool is genuinely unknown).
+    `kae doctor <tool>` was unified onto this same `validateTool` call (it had a
+    divergent copy of the unknown-tool error), so it gains the hint and the
+    removed-tool successor message too.
   - **unknown profile** — the profile-resolution not-found error, against
     `Config.ProfileNames()`.
 - **Out of scope**: account names (too many, low-value, and they sanitize

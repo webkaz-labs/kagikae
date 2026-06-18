@@ -69,12 +69,23 @@ Follow-up from v0.8.4 (not yet scheduled):
   v0.8.3 driver lands (and its two-account real-keychain gate).
 - **Login UX polish** *(v0.8.6 §B — claude verify; agy deferred)*: verify
   `claude /login` behavior across versions. agy login is **deferred** — a
-  2026-06-18 discovery found no standalone `agy` CLI on the available machine
-  (only the Antigravity.app GUI cask + the separate Gemini CLI, whose
-  `~/.gemini/` files are not agy's), so its login/identity surface could not be
-  probed. Resume when a machine has the `agy` CLI: probe `agy --help`/`login`/
-  `auth`/whoami and confirm CLI-driven vs GUI/browser OAuth. (The "login flow
-  exited without changing auth" case is now detected and refused with exit `11`.)
+  2026-06-18 discovery (with the `agy` CLI installed) found **no
+  `login`/`auth`/`whoami` subcommand**; agy authenticates via GUI/browser OAuth,
+  which kae's shell-out login flow cannot drive, so `kae add agy` stays
+  `--no-login` capture only. (The "login flow exited without changing auth" case
+  is now detected and refused with exit `11`.)
+- **agy keyring driver (macOS)** *(discovery done 2026-06-18)*: on macOS agy
+  stores its credential in the **login Keychain**, not a file — item
+  `svce="gemini"`, `acct="antigravity"`, created/updated at login; the payload is
+  a single **opaque ~686-byte token string** (not JSON/JWT — so a verbatim
+  capture/apply with a non-empty-string guard, unlike codex's `auth.json` JSON).
+  The current agy adapter is **file-based** (`~/.gemini/antigravity-cli/*`,
+  absent on macOS), so it cannot switch agy here. Lift it with the
+  verbatim-keychain pattern used for codex/claude/cursor on the single
+  `gemini`/`antigravity` item (open design point, as with codex: match by service
+  only vs service+account for the delete/replace). `Binary()` is correctly `agy`.
+  Identity auto-detection stays deferred (no whoami; the token is opaque).
+  Candidate for a future release like the codex keyring driver (v0.8.3).
 - **`kae env export --dotenv --reveal`** *(deferred — no current use)*:
   explicit-flag value export for CI bootstrapping (today values are
   injection-only by design). Considered for v0.8.6 but dropped: CI does not use

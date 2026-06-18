@@ -26,17 +26,14 @@ the trailing `-- <tool>` is redundant. Default it:
 
 ### B. Login UX: `claude /login` verification (agy login deferred)
 
-- **agy login — discovery-blocked on the available machine (2026-06-18), so
-  deferred.** The standalone `agy` CLI is not installed here; only the
-  Antigravity.app GUI (Homebrew cask `antigravity`, version 2.x) and the separate
-  Gemini CLI are present. The `~/.gemini/` root credential files
-  (`oauth_creds.json`, `google_accounts.json`) belong to the **Gemini CLI**, not
-  agy, and the adapter's assumed agy state dir `~/.gemini/antigravity-cli/` does
-  not exist — so agy's login/identity CLI surface could not be probed. agy stays
-  capture-only with an explicit name. Resume when a machine has the `agy` CLI
-  installed: probe `agy --help` / `login` / `auth` / a whoami-style command, and
-  confirm whether login is CLI-driven or GUI/browser OAuth (the app being a GUI
-  cask suggests browser OAuth, which kae's shell-out login flow cannot drive).
+- **agy login — discovery done (2026-06-18); deferred (no kae-drivable login).**
+  The `agy` CLI (brew cask `antigravity-cli`, binary `agy`) has **no
+  `login`/`auth`/`whoami` subcommand** — authentication is GUI/browser OAuth, so
+  kae's shell-out login flow cannot drive it. `kae add agy` therefore stays
+  `--no-login` capture only. agy *switching* needs a macOS Keychain driver (the
+  credential lives in a keychain item, not a file) — tracked as a separate
+  discovery-done ROADMAP item, not v0.8.6 scope. Full contract in ROADMAP.md and
+  the agent memory.
 - **`claude /login`**: verify behavior across recent claude versions; the
   v0.8.x "login flow exited without changing auth → exit `11`" detection stays.
 

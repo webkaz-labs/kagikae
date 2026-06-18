@@ -2,6 +2,7 @@ package keychain
 
 import (
 	"context"
+	"strings"
 	"sync"
 )
 
@@ -56,17 +57,17 @@ func cacheFrom(ctx context.Context) *readCache {
 	return c
 }
 
-func (c *readCache) lookupItem(service string) (itemEntry, bool) {
+func (c *readCache) lookupItem(key string) (itemEntry, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	e, ok := c.items[service]
+	e, ok := c.items[key]
 	return e, ok
 }
 
-func (c *readCache) storeItem(service string, e itemEntry) {
+func (c *readCache) storeItem(key string, e itemEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.items[service] = e
+	c.items[key] = e
 }
 
 func (c *readCache) lookupAccount(service string) (acctEntry, bool) {
@@ -83,10 +84,16 @@ func (c *readCache) storeAccount(service string, e acctEntry) {
 }
 
 // invalidate drops both cached reads for a service after a write, so the next
-// read observes the new value.
+// read observes the new value. It clears the service-only entry and every
+// account-scoped entry of that service (keys are service or service\x00account;
+// see itemKey), so a write through any match form is reflected.
 func (c *readCache) invalidate(service string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	delete(c.items, service)
+	for k := range c.items {
+		if k == service || strings.HasPrefix(k, service+"\x00") {
+			delete(c.items, k)
+		}
+	}
 	delete(c.accounts, service)
 }

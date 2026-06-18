@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -475,6 +477,111 @@ func TestCodexKeyringEmptyAccountRefused(t *testing.T) {
 		code, out := captureStdout(t, func() int { return runCapture(ctx, app, commonOpts{Format: formatText}, "codex", "work") })
 		if code == constants.ExitOK {
 			t.Fatalf("expected capture to refuse an item with an empty account: %s", out)
+		}
+	})
+}
+
+// geminiSim is a stateful security double keyed by service+account, so the agy
+// keychain driver's service+account matching can be exercised without touching
+// the real keychain and a sibling gemini item (a different account) is visible.
+type geminiSim struct {
+	items map[string]string // key: service "\x00" account
+}
+
+func (k *geminiSim) key(service, account string) string { return service + "\x00" + account }
+
+func (k *geminiSim) Run(_ context.Context, _ string, args ...string) (string, string, int) {
+	if len(args) == 0 {
+		return "", "", 0
+	}
+	service, account := valueAfter(args, "-s"), valueAfter(args, "-a")
+	switch args[0] {
+	case "find-generic-password":
+		if account == "" {
+			return "", "test: agy read must be account-scoped (-a)", 1
+		}
+		payload, ok := k.items[k.key(service, account)]
+		if !ok {
+			return "", "security: could not be found", 44
+		}
+		if slices.Contains(args, "-w") {
+			return payload, "", 0
+		}
+		return fmt.Sprintf("    \"acct\"<blob>=\"%s\"\n", account), "", 0
+	case "add-generic-password":
+		k.items[k.key(service, account)] = valueAfter(args, "-w")
+		return "", "", 0
+	case "delete-generic-password":
+		delete(k.items, k.key(service, account))
+		return "", "", 0
+	}
+	return "", "", 0
+}
+
+func (k *geminiSim) RunInput(ctx context.Context, _ string, name string, args ...string) (string, string, int) {
+	return k.Run(ctx, name, args...)
+}
+
+// §A: on macOS, agy capture/use round-trip through the gemini/antigravity
+// keychain item, matched by service AND account so a sibling gemini item (the
+// Gemini ecosystem's, under a different account) is never read or written. The
+// opaque token is stored verbatim and never leaks to stdout or the snapshot.
+func TestAgyKeychainRoundTrip(t *testing.T) {
+	const sibling = "gemini\x00gemini-cli-user"
+	sim := &geminiSim{items: map[string]string{
+		"gemini\x00antigravity": "agy-work-token",
+		sibling:                 "gemini-cli-secret",
+	}}
+	runner.With(sim, func() {
+		app := testApp(t, nil)
+		app.Env.GOOS = "darwin"
+		ctx := context.Background()
+		opts := commonOpts{Format: formatText}
+
+		// agy logged in as work: capture stores the token verbatim, never leaking it.
+		captureCode, captureOut := captureStdout(t, func() int { return runCapture(ctx, app, opts, "agy", "work") })
+		if captureCode != constants.ExitOK {
+			t.Fatalf("capture work: %s", captureOut)
+		}
+		if strings.Contains(captureOut, "agy-work-token") {
+			t.Fatalf("agy token leaked to capture output: %s", captureOut)
+		}
+		meta := readFile(t, filepath.Join(app.Paths.AccountDir("agy", "work"), "account.toml"))
+		if strings.Contains(meta, "agy-work-token") {
+			t.Fatalf("agy token leaked into account.toml: %s", meta)
+		}
+
+		// A re-login as personal replaced the live antigravity item.
+		sim.items["gemini\x00antigravity"] = "agy-personal-token"
+		if code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "agy", "personal") }); code != constants.ExitOK {
+			t.Fatalf("capture personal: %s", out)
+		}
+
+		// Switch back to work: the antigravity item is restored verbatim.
+		if code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "agy", "work") }); code != constants.ExitOK {
+			t.Fatalf("switch to work: %s", out)
+		}
+		if got := sim.items["gemini\x00antigravity"]; got != "agy-work-token" {
+			t.Fatalf("antigravity item not switched to work verbatim: %q", got)
+		}
+		// The sibling gemini item must never be touched by any agy operation.
+		if sim.items[sibling] != "gemini-cli-secret" {
+			t.Fatalf("sibling gemini item was modified: %q", sim.items[sibling])
+		}
+	})
+}
+
+// §A: an empty keychain payload is refused at capture (structure guard:
+// non-empty, single-line), not stored as an unusable snapshot.
+func TestAgyKeychainEmptyPayloadRefused(t *testing.T) {
+	sim := &geminiSim{items: map[string]string{"gemini\x00antigravity": ""}}
+	runner.With(sim, func() {
+		app := testApp(t, nil)
+		app.Env.GOOS = "darwin"
+		ctx := context.Background()
+		code, out := captureStdout(t, func() int { return runCapture(ctx, app, commonOpts{Format: formatText}, "agy", "work") })
+		if code == constants.ExitOK {
+			t.Fatalf("expected capture to refuse an empty keychain payload: %s", out)
 		}
 	})
 }

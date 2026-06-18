@@ -59,6 +59,7 @@ const (
 	DriverCodexAuthJSON        = "codex-auth-json"
 	DriverCodexKeyring         = "codex-keyring"
 	DriverAgyFileSnapshot      = "agy-file-snapshot"
+	DriverAgyKeychain          = "agy-keychain"
 	DriverOpencodeFilePatch    = "opencode-file-patch"
 	DriverCursorKeychain       = "cursor-keychain"
 	DriverCopilotConfigPointer = "copilot-config-pointer"

@@ -400,3 +400,138 @@ func TestKeychainKindCreatesWithFallbackAccount(t *testing.T) {
 		t.Fatalf("fallback account not used: %q", fake.accounts["Claude Code-credentials"])
 	}
 }
+
+// acctFakeRunner is a security double keyed by service+account, so it can prove
+// a match-account spec never touches a sibling item of a shared service.
+type acctFakeRunner struct {
+	items  map[string]string // key: service "\x00" account
+	writes []string          // mutation log: "add:<key>" / "delete:<key>"
+}
+
+func acctKey(service, account string) string { return service + "\x00" + account }
+
+func flagVal(args []string, flag string) string {
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == flag {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+func (f *acctFakeRunner) Run(_ context.Context, name string, args ...string) (string, string, int) {
+	if name != "security" {
+		return "", "unexpected command " + name, 1
+	}
+	service, account := flagVal(args, "-s"), flagVal(args, "-a")
+	switch args[0] {
+	case "find-generic-password":
+		// match-account reads always pass -a; refuse a service-only probe here so
+		// the test fails loudly if scoping regresses.
+		if account == "" {
+			return "", "test: match-account read must pass -a", 1
+		}
+		payload, ok := f.items[acctKey(service, account)]
+		if !ok {
+			return "", "security: ... could not be found ...", 44
+		}
+		if args[len(args)-1] == "-w" {
+			return payload + "\n", "", 0
+		}
+		return `    "acct"<blob>="` + account + `"` + "\n", "", 0
+	case "add-generic-password":
+		key := acctKey(service, account)
+		f.items[key] = flagVal(args, "-w")
+		f.writes = append(f.writes, "add:"+key)
+		return "", "", 0
+	case "delete-generic-password":
+		key := acctKey(service, account)
+		if _, ok := f.items[key]; !ok {
+			return "", "security: ... could not be found ...", 44
+		}
+		delete(f.items, key)
+		f.writes = append(f.writes, "delete:"+key)
+		return "", "", 0
+	}
+	return "", "unexpected args", 1
+}
+
+func (f *acctFakeRunner) RunInput(ctx context.Context, _ string, name string, args ...string) (string, string, int) {
+	return f.Run(ctx, name, args...)
+}
+
+// TestKeychainMatchAccountScopesToAccount covers agy's gemini/antigravity item:
+// read, write, and delete touch only the antigravity account, leaving a sibling
+// gemini item (a different account) untouched. No replace-delete, no
+// reuse-existing-account from the shared service.
+func TestKeychainMatchAccountScopesToAccount(t *testing.T) {
+	ctx := context.Background()
+	sibling := acctKey("gemini", "someone-else") // a non-agy gemini item
+	fake := &acctFakeRunner{items: map[string]string{
+		acctKey("gemini", "antigravity"): "agy-live-token",
+		sibling:                          "gemini-cli-token",
+	}}
+	sp := Spec{
+		Name: "credential", Kind: constants.KindKeychain, Target: "gemini",
+		Pointer: "", KeychainAccount: "antigravity", KeychainMatchAccount: true,
+	}
+	runner.With(fake, func() {
+		v, err := ReadLive(ctx, sp)
+		if err != nil || !v.Present || string(v.Data) != "agy-live-token" {
+			t.Fatalf("scoped read: %+v %v", v, err)
+		}
+		if err := ApplyLive(ctx, sp, Value{Data: []byte("agy-new-token"), Present: true}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if fake.items[acctKey("gemini", "antigravity")] != "agy-new-token" {
+		t.Fatalf("antigravity item not written verbatim: %q", fake.items[acctKey("gemini", "antigravity")])
+	}
+	if fake.items[sibling] != "gemini-cli-token" {
+		t.Fatalf("sibling gemini item must survive untouched: %q", fake.items[sibling])
+	}
+	// Apply must be a single add (no delete-replace that could remove a sibling).
+	for _, w := range fake.writes {
+		if strings.HasPrefix(w, "delete:") {
+			t.Fatalf("match-account apply must not delete: %v", fake.writes)
+		}
+	}
+}
+
+// An absent match-account value deletes only the antigravity item, never the
+// sibling.
+func TestKeychainMatchAccountAbsentDeletesOnlyOwnItem(t *testing.T) {
+	ctx := context.Background()
+	sibling := acctKey("gemini", "someone-else")
+	fake := &acctFakeRunner{items: map[string]string{
+		acctKey("gemini", "antigravity"): "agy-live-token",
+		sibling:                          "gemini-cli-token",
+	}}
+	sp := Spec{
+		Name: "credential", Kind: constants.KindKeychain, Target: "gemini",
+		Pointer: "", KeychainAccount: "antigravity", KeychainMatchAccount: true,
+	}
+	runner.With(fake, func() {
+		if err := ApplyLive(ctx, sp, Value{Present: false}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if _, ok := fake.items[acctKey("gemini", "antigravity")]; ok {
+		t.Fatal("antigravity item must be deleted")
+	}
+	if fake.items[sibling] != "gemini-cli-token" {
+		t.Fatalf("sibling gemini item must survive: %q", fake.items[sibling])
+	}
+}
+
+// A multi-line opaque payload is refused (agy's structure guard is non-empty,
+// single-line): an interior newline signals corruption.
+func TestKeychainOpaqueRefusesMultiline(t *testing.T) {
+	sp := Spec{Name: "x", Kind: constants.KindKeychain, Target: "gemini", Pointer: ""}
+	if err := keychainGuard(sp, []byte("line1\nline2")); !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("multi-line opaque payload must be refused: %v", err)
+	}
+	if err := keychainGuard(sp, []byte("single-line-token")); err != nil {
+		t.Fatalf("single-line opaque payload must pass: %v", err)
+	}
+}

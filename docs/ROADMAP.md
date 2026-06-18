@@ -3,10 +3,11 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target is **v0.8.6** (daily-use polish: a terser one-shot
-`kae run <tool> <account>` that defaults the child to the tool binary, agy login
-discovery + `claude /login` verification, and closing the open fish/codex-keyring
-real-machine gates; additive, no contract break — see [RELEASE.md](RELEASE.md)).
+The active target is **v0.8.6** (agy account switching on macOS via a Keychain
+driver + daily-use polish: a terser one-shot `kae run <tool> <account>` that
+defaults the child to the tool binary, `claude /login` verification, and closing
+the open agy/codex-keyring/fish real-machine gates; additive, no contract break —
+see [RELEASE.md](RELEASE.md)).
 
 v0.8.5 (a "did you mean?" nearest-match hint
 for an unknown command/tool/profile, table-driven off the same live lists
@@ -74,18 +75,19 @@ Follow-up from v0.8.4 (not yet scheduled):
   which kae's shell-out login flow cannot drive, so `kae add agy` stays
   `--no-login` capture only. (The "login flow exited without changing auth" case
   is now detected and refused with exit `11`.)
-- **agy keyring driver (macOS)** *(discovery done 2026-06-18)*: on macOS agy
-  stores its credential in the **login Keychain**, not a file — item
+- **agy keyring driver (macOS)** *(v0.8.6 §A — discovery done 2026-06-18)*: on
+  macOS agy stores its credential in the **login Keychain**, not a file — item
   `svce="gemini"`, `acct="antigravity"`, created/updated at login; the payload is
   a single **opaque ~686-byte token string** (not JSON/JWT — so a verbatim
   capture/apply with a non-empty-string guard, unlike codex's `auth.json` JSON).
   The current agy adapter is **file-based** (`~/.gemini/antigravity-cli/*`,
-  absent on macOS), so it cannot switch agy here. Lift it with the
-  verbatim-keychain pattern used for codex/claude/cursor on the single
-  `gemini`/`antigravity` item (open design point, as with codex: match by service
-  only vs service+account for the delete/replace). `Binary()` is correctly `agy`.
-  Identity auto-detection stays deferred (no whoami; the token is opaque).
-  Candidate for a future release like the codex keyring driver (v0.8.3).
+  absent on macOS), so it cannot switch agy here. v0.8.6 lifts it with the
+  verbatim-keychain pattern used for codex/claude/cursor, matching by **service
+  and account** (the `gemini` service is shared, only `acct=antigravity` is agy's;
+  apply replaces the single item with `add-generic-password -U`); the file driver
+  stays for Linux/WSL. `Binary()` is correctly `agy`. Identity auto-detection
+  stays deferred (no whoami; the token is opaque). Same shape as the codex keyring
+  driver (v0.8.3).
 - **`kae env export --dotenv --reveal`** *(deferred — no current use)*:
   explicit-flag value export for CI bootstrapping (today values are
   injection-only by design). Considered for v0.8.6 but dropped: CI does not use

@@ -135,16 +135,18 @@ func TestCompletionScriptsCompleteFlags(t *testing.T) {
 // registrar (not just the common flags), so flag completion matches the parser.
 func TestFlagSpecWiring(t *testing.T) {
 	cases := map[string][]string{
-		"add":        {"restore", "no-login"},
-		"use":        {"shared", "isolated", "quiet", "profile"},
-		"u":          {"isolated", "profile"},
+		// dry-run is included where withDryRun is true at the parseCommon call
+		// site, so the spec's dryRun bool cannot silently drift from the parser.
+		"add":        {"restore", "no-login", "dry-run"},
+		"use":        {"shared", "isolated", "quiet", "profile", "dry-run"},
+		"u":          {"isolated", "profile", "dry-run"},
 		"run":        {"env", "shared", "profile"},
 		"pin":        {"shared", "isolated"},
 		"mise":       {"mode", "auto", "write", "profile"},
 		"completion": {"install"},
-		"rollback":   {"to"},
-		"account":    {"force"},
-		"profile":    {"force", "clear"},
+		"rollback":   {"to", "dry-run"},
+		"account":    {"force", "dry-run"},
+		"profile":    {"force", "clear", "dry-run"},
 	}
 	for cmd, want := range cases {
 		fs := flagSetFor(cmd)
@@ -152,6 +154,12 @@ func TestFlagSpecWiring(t *testing.T) {
 			if fs.Lookup(name) == nil {
 				t.Errorf("flagSetFor(%q) missing flag %q (registry not wired to the command registrar)", cmd, name)
 			}
+		}
+	}
+	// run/pin/mise/completion are not dry-run commands; their spec must not add it.
+	for _, cmd := range []string{"run", "pin", "mise", "completion"} {
+		if flagSetFor(cmd).Lookup("dry-run") != nil {
+			t.Errorf("flagSetFor(%q) must not offer --dry-run (parser does not accept it)", cmd)
 		}
 	}
 }

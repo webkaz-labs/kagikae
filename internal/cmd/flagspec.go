@@ -76,11 +76,8 @@ type commandFlagSpec struct {
 var commandFlagSpecs = map[string]commandFlagSpec{
 	"add": {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool)) }},
 	"use": {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
-	"u":   {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
 	"pin": {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool)) }},
-	"p":   {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool)) }},
 	"run": {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
-	"r":   {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
 	"mise": {extra: func(fs *flag.FlagSet) {
 		registerMiseInitFlags(fs, new(string), new(string), new(bool), new(bool))
 	}},
@@ -95,10 +92,18 @@ var commandFlagSpecs = map[string]commandFlagSpec{
 	}},
 }
 
+// commandAliases maps the router's command aliases to their canonical name so
+// flagSetFor keys commandFlagSpecs by canonical name only (the completion script
+// passes the command word verbatim, alias or not).
+var commandAliases = map[string]string{"u": "use", "p": "pin", "r": "run", "d": "doctor", "s": "status"}
+
 // flagSetFor builds the flag set a command parses (common flags + the command's
 // extras), so `kae __complete flags <cmd>` can list exactly the flags the parser
 // accepts. An unknown command yields the common flags only.
 func flagSetFor(cmd string) *flag.FlagSet {
+	if canon, ok := commandAliases[cmd]; ok {
+		cmd = canon
+	}
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	var opts commonOpts
 	spec := commandFlagSpecs[cmd]

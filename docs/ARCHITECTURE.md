@@ -125,10 +125,13 @@ normative allowlists live in [ADAPTERS.md](ADAPTERS.md).
 ```
 
 The whole switch wraps `ctx` in `keychain.WithReadCache`, so the `security`
-reads steps 3–6 make of one tool's account-agnostic keychain service collapse
-to a single invocation (the recapture in step 5 adds no extra read or auth
-prompt); writes in step 6 invalidate the cache. No child runs during a switch,
-so the cache never serves a stale live credential (`run -s` does not use it).
+reads steps 3–6 make of one tool's keychain service collapse to a single
+invocation (the recapture in step 5 adds no extra read or auth prompt); writes
+in step 6 invalidate the cache. The cache key is the service for the
+service-only drivers and service+account for agy's account-scoped match
+(`gemini`/`antigravity`), so a shared service is not conflated. No child runs
+during a switch, so the cache never serves a stale live credential (`run -s`
+does not use it).
 
 `--dry-run` runs steps 1–3 and prints the plan from the artifact specs; it also
 annotates a stale switch target (snapshot past `expiresAt` with no refresh

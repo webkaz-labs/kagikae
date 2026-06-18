@@ -406,8 +406,62 @@ func TestCopilotRefusesBrokenConfig(t *testing.T) {
 	}
 }
 
-func TestAgyExperimentalFileSnapshot(t *testing.T) {
+// On macOS agy resolves the keychain driver: one opaque gemini/antigravity item
+// matched by service AND account (the gemini service is shared, so a sibling
+// item must never be touched). The keychain probe is stubbed so the test never
+// reaches the real keychain.
+func TestAgyDarwinKeychainDriver(t *testing.T) {
 	env := testEnv(t, "darwin", nil)
+	specs, err := agyAdapter.Artifacts(context.Background(), env)
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("unexpected specs: %+v %v", specs, err)
+	}
+	if specs[0].Kind != constants.KindKeychain || specs[0].Target != agy.KeychainService ||
+		specs[0].Pointer != "" || specs[0].KeychainAccount != agy.KeychainAccount || !specs[0].KeychainMatchAccount {
+		t.Fatalf("expected an opaque, account-matched gemini/antigravity spec: %+v", specs[0])
+	}
+
+	// Logged out: the keychain item is absent, Detect reports no auth with the
+	// keychain driver and no "cannot switch" warning.
+	notFound := &runnertest.Fake{Stderr: "could not be found", Code: 44}
+	runner.With(notFound, func() {
+		info, err := agyAdapter.Detect(context.Background(), env)
+		if err != nil || info.AuthPresent || info.Driver != constants.DriverAgyKeychain {
+			t.Fatalf("logged-out keychain detect: %+v %v", info, err)
+		}
+		for _, warning := range info.Warnings {
+			if strings.Contains(warning, "cannot switch") {
+				t.Fatalf("macOS keychain driver must not warn that kae cannot switch agy: %+v", info.Warnings)
+			}
+		}
+	})
+
+	// Logged in: the item is present, Detect reports auth with an OK doctor check.
+	present := &runnertest.Fake{Stdout: "opaque-antigravity-token\n"}
+	runner.With(present, func() {
+		info, err := agyAdapter.Detect(context.Background(), env)
+		if err != nil || !info.AuthPresent || info.Driver != constants.DriverAgyKeychain {
+			t.Fatalf("logged-in keychain detect: %+v %v", info, err)
+		}
+		var authOK, driverOK bool
+		for _, check := range agyAdapter.Doctor(context.Background(), env) {
+			if check.Code == constants.CheckAuthPresent && check.Status == constants.StatusOK {
+				authOK = true
+			}
+			if check.Code == constants.CheckDriver && check.Status == constants.StatusOK {
+				driverOK = true
+			}
+		}
+		if !authOK || !driverOK {
+			t.Fatalf("keychain doctor: authOK=%v driverOK=%v", authOK, driverOK)
+		}
+	})
+}
+
+// Off macOS agy keeps the file-based snapshot driver (Linux/WSL headless), with
+// the keyring-likely warning when the CLI dir exists without a credential file.
+func TestAgyFileSnapshotOffDarwin(t *testing.T) {
+	env := testEnv(t, "linux", nil)
 	specs, err := agyAdapter.Artifacts(context.Background(), env)
 	if err != nil || len(specs) != 3 {
 		t.Fatalf("unexpected specs: %+v %v", specs, err)

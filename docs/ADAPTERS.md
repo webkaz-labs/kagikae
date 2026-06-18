@@ -138,28 +138,53 @@ payload's `id_token` email / `account_id` just like the file store.
 project/.codex/  AGENTS.md  rules / hooks / MCP / skills
 ```
 
-## Antigravity CLI (`agy`) — experimental
+## Antigravity CLI (`agy`)
 
 > **Note:** The `gemini` adapter was removed in v0.6.0 after upstream retired
 > Gemini CLI for Antigravity on 2026-05-19. Captured gemini accounts remain on
 > disk untouched; use `agy` going forward.
 
-
 Antigravity CLI keeps its state under `~/.gemini/antigravity-cli/`
-(`settings.json`, `log/`, `skills/`). Credentials go to the OS keyring when
-available, falling back to a credential file on platforms without one
-(observed on WSL/headless setups). The keyring item contract is undocumented.
+(`settings.json`, `log/`, `skills/`). On macOS the credential lives in the login
+Keychain; on Linux/WSL headless setups it falls back to a credential file.
 
-### Driver
+### Drivers
 
-| Driver | Status | Switched artifacts |
-|--------|--------|--------------------|
-| `agy-file-snapshot` | experimental | whole files `credentials.enc`, `credentials.json`, `oauth_creds.json` under `~/.gemini/antigravity-cli/` (whichever exist; names cover observed versions) |
+| Driver | Platform | Switched artifacts |
+|--------|----------|--------------------|
+| `agy-keychain` | macOS | Keychain item service `gemini`, account `antigravity`, captured and restored verbatim (matched by service **and** account) |
+| `agy-file-snapshot` | Linux/WSL | whole files `credentials.enc`, `credentials.json`, `oauth_creds.json` under `~/.gemini/antigravity-cli/` (whichever exist; names cover observed versions) |
 
-When no credential file exists, `capture` fails with `auth_missing`; if the
-CLI directory exists, `doctor` warns that agy is likely using the OS keyring,
-which kae cannot switch yet (see [ROADMAP.md](ROADMAP.md)). `kae add agy`
-is not supported. `ANTIGRAVITY_API_KEY` can be handled through env profiles
+#### Keychain item contract (discovery 2026-06-18; driver shipped v0.8.6)
+
+Real-machine discovery (an Antigravity login on macOS) found the credential in
+the **login Keychain**, not a file:
+
+- **service** `gemini` — **shared with the Gemini ecosystem**, so it alone does
+  not identify agy's item.
+- **account** `antigravity` — a **fixed literal** (not a per-login opaque id
+  like codex's), so kae matches by **service *and* account** and never reads,
+  writes, or deletes a `gemini` item under a different account.
+- **payload** a single opaque ~686-byte token (single line, not JSON, not a
+  JWT) — captured and applied **verbatim**. Structure guard = non-empty,
+  single line (no JSON parse, unlike codex).
+
+The `agy-keychain` driver reuses the verbatim-keychain pattern (as claude /
+cursor / codex): capture reads the live `gemini`/`antigravity` item's payload;
+apply upserts it back (`security add-generic-password -U -s gemini -a
+antigravity`, matched on service+account, so a sibling item is never touched).
+No delete-replace and no account reuse, unlike codex's per-login opaque
+account. `Detect`/`doctor` report the keychain item's presence on macOS; the
+"kae cannot switch agy yet" warning is gone there. On Linux/WSL the file driver
+is unchanged: when no credential file exists, `capture` fails with
+`auth_missing`, and `doctor` warns the keyring may be in use.
+
+`kae add agy <name>` is **`--no-login` only**: agy has no kae-drivable login
+(authentication is GUI/browser OAuth via the Antigravity app — no
+`login`/`auth`/`whoami` subcommand), and the opaque token exposes no identity,
+so agy always requires an explicit account name. agy home isolation (`use -i
+agy`) stays unsupported (no redirectable home env var); only credential
+switching is added. `ANTIGRAVITY_API_KEY` can be handled through env profiles
 (`kae env set agy ...`).
 
 ### Preserved

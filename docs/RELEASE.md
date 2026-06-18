@@ -1,3 +1,133 @@
+# Release Target: kae v0.8.6 — agy account switching + daily-use polish
+
+Lift agy account switching on macOS (the one tool kae still cannot switch here)
+and pay down small daily-use friction, closing the open real-machine acceptance
+items from v0.8.3/v0.8.4 along the way. Additive and contract-stable: no
+JSON-contract break (`schema_version` stays `1`), no new dependency. The agy
+driver reuses the verbatim-keychain pattern already proven for codex/claude/
+cursor (the `security` calls go through `internal/runner`); the run change
+reuses `adapter.Binary()` and the existing `run` transaction.
+
+Previous baseline: v0.8.5 (did-you-mean nearest-match hint).
+
+## Scope
+
+### A. agy keyring driver (macOS) — switch agy accounts
+
+The 2026-06-18 discovery settled agy's credential contract on macOS: it lives in
+the **login Keychain**, not a file. Lift the file-only agy adapter so kae can
+switch agy on macOS, mirroring the codex keyring driver (v0.8.3 §C):
+
+- **Item contract**: service `gemini`, account `antigravity` (a fixed literal,
+  **not** an opaque per-login id like codex's `cli|<opaque>`). The payload is a
+  single **opaque ~686-byte token string** — not JSON. kae captures and applies
+  it **verbatim** through `security` (the `internal/runner` seam), with a
+  structure guard of "non-empty, single-line" (no JSON parse, unlike codex).
+- **Match by service *and* account.** The `gemini` service is shared with the
+  Gemini ecosystem; only `acct=antigravity` is agy's, so kae must never touch a
+  `gemini` item with a different account. Apply replaces the single
+  `gemini`/`antigravity` item (`security add-generic-password -U`).
+- **macOS keyring path; file path unchanged elsewhere.** On macOS the adapter
+  resolves the keychain driver; the existing file-based driver
+  (`credentials.enc`/`credentials.json`/`oauth_creds.json`) stays for Linux/WSL
+  headless setups. `Detect`/`doctor` report the keychain item's presence on
+  macOS instead of warning "kae cannot switch agy yet". `Binary()` stays `agy`.
+- **Capture is `--no-login` only.** agy has no kae-drivable login (§C), so
+  `kae add agy <name>` snapshots the live keychain item; there is no login flow.
+- Fake-`security` round-trip tests (as for codex); the two-account real-keychain
+  gate is a release item (§D).
+
+### B. Terser one-shot `kae run` (default the child to the tool binary)
+
+`kae run <tool> <account> -- <tool>` is the documented way to open a session
+under another account (works inside a pinned directory without unpinning), but
+the trailing `-- <tool>` is redundant. Default it:
+
+- **`kae run [-s|-i|--env] <tool> <account>`** with no `-- <cmd>` runs the
+  adapter's `Binary()` as the child (claude→`claude`, cursor→`cursor-agent`,
+  agy→`agy`, …). `kae run claude work` ⇒ runs `claude` with the account applied;
+  `kae run -i claude work` runs it in the isolated home.
+- An explicit `-- <cmd>` is unchanged and still wins.
+- An `all`/profile target (no single child binary) or a tool with no launchable
+  upstream binary still requires `-- <cmd>`, erroring clearly when it is missing.
+
+### C. Login UX: `claude /login` verification (agy login stays deferred)
+
+- **agy login — discovery done (2026-06-18); not kae-drivable.** The `agy` CLI
+  has **no `login`/`auth`/`whoami` subcommand** — authentication is GUI/browser
+  OAuth, so kae's shell-out login flow cannot drive it. agy capture is
+  `--no-login` only (§A); switching now works via the keychain driver, but the
+  login itself stays the user's GUI action.
+- **`claude /login`**: verify behavior across recent claude versions; the
+  v0.8.x "login flow exited without changing auth → exit `11`" detection stays.
+
+### D. Close the open real-machine acceptance gates
+
+Run these real-keychain/real-shell gates during the v0.8.6 release gate where
+the environment allows, and record PASS/defer in VALIDATION.md:
+
+- **agy two-account real-keychain gate** (new, §A): with two agy logins,
+  `kae add agy <a>` / `kae add agy <b>` and `kae use agy <a>` round-trip through
+  the `gemini`/`antigravity` keychain item and a fresh agy session reports the
+  switched account.
+- **fish real-machine completion smoke** (v0.8.4 — the release machine had no
+  fish; bash/zsh verified).
+- **codex keyring two-account real-keychain gate** (v0.8.3 — the file-driver
+  round-trip is unit-covered; the two-account real-keychain path is not).
+
+The agy and codex drivers are covered by fake-`security` round-trip tests, so a
+gate that cannot run on the release machine stays deferred with the reason
+recorded — not a v0.8.6 code blocker.
+
+## Non-Goals (this release)
+
+- TUI, Windows, remote share-list shipping — see [ROADMAP.md](ROADMAP.md).
+- agy login flow / identity auto-detection — no kae-drivable login (GUI OAuth),
+  and the token is opaque, so agy stays `--no-login` capture with an explicit
+  name.
+- agy *home* isolation (`use -i agy`) — unchanged; only credential switching is
+  added. agy keeps refusing `-i` (no redirectable home env var).
+- `kae env export` / explicit value reveal — CI does not use kae; dropped.
+- Global mise tasks (`kae mise init --global`) — separate, design-first candidate.
+- Any JSON-contract break: `schema_version` stays `1`.
+
+## Acceptance Criteria
+
+- **agy keyring switch**: on macOS, `kae add agy <name>` snapshots the
+  `gemini`/`antigravity` keychain item and `kae use agy <name>` writes it back
+  verbatim (matched by service **and** account); a fresh agy session reflects the
+  switched account. A non-`antigravity` `gemini` item is never touched. An empty
+  payload is refused (structure guard). The detect-only / "cannot switch" warning
+  is gone on macOS; the file driver still works on Linux/WSL. Fake-`security`
+  round-trip + temp-HOME tests; the redaction tests confirm the token never
+  reaches stdout/JSON/logs/metadata.
+- **run default child**: `kae run claude work` (no `--`) runs `claude` with the
+  account applied; `kae run -i claude work` runs it in the isolated home; an
+  explicit `-- <cmd>` still wins; an `all`/profile target or a binary-less tool
+  without `-- <cmd>` errors naming the explicit form. Asserted via the runner
+  seam; temp-HOME tests.
+- **login**: `claude /login` verified across versions; agy login stays deferred
+  (no kae-drivable login), with the reason recorded.
+- **gates**: agy two-account + codex keyring two-account + fish smoke recorded in
+  VALIDATION.md (PASS or deferred-with-reason).
+- `mise run check` passes; no new entry in `go.mod`; the JSON contract is
+  unchanged.
+
+## Release Steps
+
+1. Bump `toolVersion` to v0.8.6.
+2. §A agy keyring driver (macOS `gemini`/`antigravity` verbatim item; service+
+   account match; file driver retained for Linux/WSL); fake-`security` +
+   temp-HOME tests; redaction test.
+3. §B `run` default-child-binary; temp-HOME tests.
+4. §C `claude /login` verification (agy login stays deferred).
+5. Docs (ADAPTERS / DATA-MODEL / CLI / SECURITY / ARCHITECTURE / README as
+   needed).
+6. §D real-machine gates (agy two-account, codex keyring two-account, fish
+   smoke); tag `v0.8.6`, GitHub release.
+
+---
+
 # kae v0.8.5 (released 2026-06-17)
 
 Catch a typo before it becomes a "no such command". When an unknown command,

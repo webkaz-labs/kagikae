@@ -20,20 +20,51 @@ var acctRE = regexp.MustCompile(`"acct"<blob>="((?:[^"\\]|\\.)*)"`)
 // when a generic-password item does not exist. internal/secret reuses it.
 const NotFoundMarker = "could not be found"
 
-// ReadItem returns the generic-password payload for service. The security
-// CLI prints non-ASCII payloads as hex; both forms are handled.
+// itemKey composes the cache key for a (service, account) lookup. An empty
+// account is the account-agnostic, service-only form used by the
+// single-item-per-service drivers (claude, cursor, codex). A non-empty account
+// scopes the lookup to one item of a shared service — agy's gemini/antigravity,
+// where the gemini service is also used by the Gemini ecosystem — so it must
+// not share a cache entry with a service-only read.
+func itemKey(service, account string) string {
+	if account == "" {
+		return service
+	}
+	return service + "\x00" + account
+}
+
+// ReadItem returns the generic-password payload for service (service-only
+// match: the first item of that service). The security CLI prints non-ASCII
+// payloads as hex; both forms are handled.
 func ReadItem(ctx context.Context, service string) (payload []byte, found bool, err error) {
+	return readItem(ctx, service, "")
+}
+
+// ReadItemForAccount returns the payload of the service item whose account
+// attribute is account, so a shared service (agy's gemini, also used by the
+// Gemini ecosystem) is read only at the kae-owned account (antigravity) and a
+// sibling item under a different account is never read or touched.
+func ReadItemForAccount(ctx context.Context, service, account string) (payload []byte, found bool, err error) {
+	return readItem(ctx, service, account)
+}
+
+func readItem(ctx context.Context, service, account string) (payload []byte, found bool, err error) {
+	key := itemKey(service, account)
 	if c := cacheFrom(ctx); c != nil {
-		if e, ok := c.lookupItem(service); ok {
+		if e, ok := c.lookupItem(key); ok {
 			return e.payload, e.found, nil
 		}
 	}
-	stdout, stderr, code := runner.Run(ctx, "security",
-		"find-generic-password", "-s", service, "-w")
+	args := []string{"find-generic-password", "-s", service}
+	if account != "" {
+		args = append(args, "-a", account)
+	}
+	args = append(args, "-w")
+	stdout, stderr, code := runner.Run(ctx, "security", args...)
 	if code != 0 {
 		if strings.Contains(stderr, NotFoundMarker) {
 			if c := cacheFrom(ctx); c != nil {
-				c.storeItem(service, itemEntry{found: false})
+				c.storeItem(key, itemEntry{found: false})
 			}
 			return nil, false, nil
 		}
@@ -45,7 +76,7 @@ func ReadItem(ctx context.Context, service string) (payload []byte, found bool, 
 		payload = decoded
 	}
 	if c := cacheFrom(ctx); c != nil {
-		c.storeItem(service, itemEntry{payload: payload, found: true})
+		c.storeItem(key, itemEntry{payload: payload, found: true})
 	}
 	return payload, true, nil
 }
@@ -123,11 +154,26 @@ func WriteItem(ctx context.Context, service, account string, payload []byte) err
 	return nil
 }
 
-// DeleteItem removes the generic password for service. A missing item is not
-// an error (the live artifact is already absent).
+// DeleteItem removes the generic password for service (service-only match). A
+// missing item is not an error (the live artifact is already absent).
 func DeleteItem(ctx context.Context, service string) error {
-	_, stderr, code := runner.Run(ctx, "security",
-		"delete-generic-password", "-s", service)
+	return deleteItem(ctx, service, "")
+}
+
+// DeleteItemForAccount removes the service item whose account attribute is
+// account, leaving any sibling item of the same service under a different
+// account untouched (agy's gemini/antigravity, where the gemini service is
+// shared with the Gemini ecosystem).
+func DeleteItemForAccount(ctx context.Context, service, account string) error {
+	return deleteItem(ctx, service, account)
+}
+
+func deleteItem(ctx context.Context, service, account string) error {
+	args := []string{"delete-generic-password", "-s", service}
+	if account != "" {
+		args = append(args, "-a", account)
+	}
+	_, stderr, code := runner.Run(ctx, "security", args...)
 	if code != 0 {
 		if strings.Contains(stderr, NotFoundMarker) {
 			if c := cacheFrom(ctx); c != nil {

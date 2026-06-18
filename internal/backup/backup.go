@@ -40,9 +40,14 @@ type ArtifactRecord struct {
 	// id (codex keyring), so a rollback deletes the live item before writing
 	// the backed-up one under KeychainAccount (the same single-item guarantee
 	// as apply). Empty for stable-account keychain items and older backups.
-	KeychainReplace bool   `json:"keychain_replace,omitempty"`
-	SecretRef       string `json:"secret_ref"`
-	Present         bool   `json:"present"`
+	KeychainReplace bool `json:"keychain_replace,omitempty"`
+	// KeychainMatchAccount marks a keychain item kept under a fixed account of a
+	// service shared with other tools (agy's gemini/antigravity), so a rollback
+	// reads/writes/deletes only that account's item and never a sibling under a
+	// different account. Empty for service-only keychain items and older backups.
+	KeychainMatchAccount bool   `json:"keychain_match_account,omitempty"`
+	SecretRef            string `json:"secret_ref"`
+	Present              bool   `json:"present"`
 }
 
 // Meta is the persisted backup metadata. It never contains secret values.

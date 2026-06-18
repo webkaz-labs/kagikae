@@ -3,7 +3,15 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-No release is currently in flight. v0.8.5 (a "did you mean?" nearest-match hint
+The active target is **v0.8.6** (agy account switching on macOS via a Keychain
+driver + daily-use polish: a terser one-shot `kae run <tool> <account>` that
+defaults the child to the tool binary, `claude /login` verification; additive, no
+contract break — see [RELEASE.md](RELEASE.md)). The agy two-account real-keychain
+gate **passed** (2026-06-18); fish was **dropped** from the verified shells
+(`kae completion fish` stays best-effort); the codex-keyring two-account gate
+stays the one carried, unit-covered open item.
+
+v0.8.5 (a "did you mean?" nearest-match hint
 for an unknown command/tool/profile, table-driven off the same live lists
 v0.8.4's `kae __complete` backend surfaces; additive, hand-rolled, no contract
 break — see [RELEASE.md](RELEASE.md)) shipped 2026-06-17, both §A and §B. §B
@@ -13,9 +21,9 @@ go-cli-tooling shared standard via chezmoi) landed the same day as a new
 
 v0.8.4 (deep, dynamic shell completion sourced from kae's live state on a single
 hidden `kae __complete` backend, feeding both kae's own completion and mise
-task-argument completion) shipped 2026-06-17 — its **fish real-machine smoke is
-deferred** (the release machine had no fish; bash/zsh verified), one open
-acceptance item (see [VALIDATION.md](VALIDATION.md)). v0.8.3 (discovery-unblock:
+task-argument completion) shipped 2026-06-17 — bash/zsh verified; **fish was
+dropped from the verified shells** (2026-06-18; `kae completion fish` stays
+best-effort, not release-gated). v0.8.3 (discovery-unblock:
 freshness-as-adapter-capability, cursor `kae add` identity, codex keyring driver,
 stored+displayed identity) shipped 2026-06-17 — its codex keyring two-account
 real-keychain gate is deferred (also open; see [VALIDATION.md](VALIDATION.md)).
@@ -62,11 +70,30 @@ Follow-up from v0.8.4 (not yet scheduled):
   [ADAPTERS.md](ADAPTERS.md)), so the verbatim-keychain driver is now
   implementable with structure guards. The detect-only refusal stays until the
   v0.8.3 driver lands (and its two-account real-keychain gate).
-- **Login UX polish**: verify `claude /login` behavior across versions,
-  support agy. (The "login flow exited without changing auth" case is now
-  detected and refused with exit `11`.)
-- **`kae env export --dotenv --reveal`**: explicit-flag value export for CI
-  bootstrapping (today values are injection-only by design).
+- **Login UX polish** *(v0.8.6 §C — claude verified; agy deferred)*: `claude
+  /login` is launched via the upstream flow (`internal/cmd/login.go`); the
+  "login flow exited without changing auth" case is detected and refused with
+  exit `11`. agy login stays **deferred** — a 2026-06-18 discovery (with the
+  `agy` CLI installed) found **no `login`/`auth`/`whoami` subcommand**; agy
+  authenticates via GUI/browser OAuth, which kae's shell-out login flow cannot
+  drive, so `kae add agy` stays `--no-login` capture only.
+- **agy keyring driver (macOS)** *(v0.8.6 §A — implemented; real-keychain gate
+  open)*: on macOS agy stores its credential in the **login Keychain**, not a
+  file — item `svce="gemini"`, `acct="antigravity"`; the payload is a single
+  **opaque ~686-byte token string** (not JSON/JWT — verbatim capture/apply with
+  a non-empty single-line guard, unlike codex's `auth.json` JSON). v0.8.6 lifted
+  the file-only adapter with the verbatim-keychain pattern used for
+  codex/claude/cursor, matching by **service and account** (the `gemini` service
+  is shared, only `acct=antigravity` is agy's; apply upserts with
+  `add-generic-password -U`, never touching a sibling item). The file driver
+  stays for Linux/WSL. Identity auto-detection stays deferred (no whoami; the
+  token is opaque). See [ADAPTERS.md](ADAPTERS.md); the two-account real-keychain
+  gate is the open acceptance item ([VALIDATION.md](VALIDATION.md)).
+- **`kae env export --dotenv --reveal`** *(deferred — no current use)*:
+  explicit-flag value export for CI bootstrapping (today values are
+  injection-only by design). Considered for v0.8.6 but dropped: CI does not use
+  kae, so there is no consumer for a value-reveal path. Revisit only if a
+  kae-driven CI flow emerges.
 - **Performance polish** *(v0.8.2 §A — shipped)*: the per-switch
   `security`-read coalescing shipped in v0.8.1 §C (a context-scoped keychain
   read cache in `internal/keychain`). v0.8.2 §A added concurrent per-tool
@@ -107,10 +134,11 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   while an explicit `kae add <tool> <account>` still wins. claude/codex/opencode/
   copilot ship; agy has no identity and cursor's `cursor-agent status` output is
   discovery-blocked (both require an explicit name — see the v0.8.3 split above).
-- **Shorter ad-hoc switch inside a pinned directory**: `kae run <tool>
-  <account> -- <tool>` already works (it is not blocked by the pinned-
-  directory guard), but it is verbose; provide a terser way to open an
-  interactive session under a different account without unpinning.
+- **Shorter ad-hoc switch inside a pinned directory** *(v0.8.6 §B)*: `kae run
+  <tool> <account> -- <tool>` already works (it is not blocked by the pinned-
+  directory guard), but it is verbose; v0.8.6 defaults the child to the
+  adapter's `Binary()` when `-- <cmd>` is omitted, so `kae run <tool> <account>`
+  opens a session under that account directly.
 - **Tool-name prefix aliases** *(v0.8.0 — see [RELEASE.md](RELEASE.md); input-only sugar)*: accept any unambiguous
   prefix in tool positions (`cl`→claude, `cod`→codex, `cu`→cursor,
   `cop`→copilot, `o`→opencode, `a`→agy); ambiguous prefixes (`c`, `co`) error

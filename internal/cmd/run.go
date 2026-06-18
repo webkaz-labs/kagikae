@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/envprofile"
@@ -35,9 +36,9 @@ const (
 // error reports.
 func CmdRun(ctx context.Context, args []string) int {
 	kaeArgs, childCmd := splitAtDashDash(args)
-	if len(childCmd) == 0 {
-		return usageError("usage: %s run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>", toolName)
-	}
+	// childCmd may be empty: for a single-tool target it defaults to that tool's
+	// binary (resolved in runRun once the target is known); a profile/all target
+	// or a binary-less tool still requires an explicit -- <cmd>.
 	// --mode was removed in v0.8.0 (hard break); give a targeted pointer rather
 	// than the flag package's "not defined" dump.
 	for _, a := range kaeArgs {
@@ -108,6 +109,30 @@ func runTargetArgs(profileFlag string, positionals []string) (target, name strin
 	return positionals[0], positionals[1], true
 }
 
+// defaultChildCmd resolves the child command when kae run was given no
+// -- <cmd>: a single-tool target runs that tool's upstream binary
+// (claude→claude, cursor→cursor-agent, agy→agy). A profile/all target runs no
+// single binary, and a tool with no launchable binary cannot be defaulted —
+// both require an explicit -- <cmd>, named in the error.
+func defaultChildCmd(targets []runTarget, profileName string) ([]string, error) {
+	if profileName != "" || len(targets) != 1 {
+		return nil, errf(constants.ExitUsage,
+			"a profile target runs no single binary; name the command explicitly: %s run [-s|-i|--env] <tool|all> <name> -- <cmd...>", toolName)
+	}
+	tool := targets[0].Tool
+	adp, err := adapter.ForTool(tool)
+	if err != nil {
+		return nil, err
+	}
+	bin := adp.Binary()
+	if bin == "" {
+		return nil, errf(constants.ExitUsage,
+			"%s has no launchable binary; name the command explicitly: %s run %s %s -- <cmd...>",
+			tool, toolName, tool, targets[0].Account)
+	}
+	return []string{bin}, nil
+}
+
 // splitAtDashDash separates kae's own arguments from the child command.
 func splitAtDashDash(args []string) (kaeArgs, childCmd []string) {
 	for i, arg := range args {
@@ -125,6 +150,12 @@ func runRun(ctx context.Context, app *App, opts commonOpts, runMode, target, nam
 	targets, profileName, err := app.resolveTargets(target, name)
 	if err != nil {
 		return finish(opts, err)
+	}
+	if len(childCmd) == 0 {
+		childCmd, err = defaultChildCmd(targets, profileName)
+		if err != nil {
+			return finish(opts, err)
+		}
 	}
 	switch runMode {
 	case runModeShared:

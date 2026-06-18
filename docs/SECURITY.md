@@ -42,6 +42,12 @@ here are part of the command contract.
   credential and is treated like every other secret: captured verbatim into the
   secret backend, never written to stdout/JSON/logs/metadata; only the item's
   opaque account id (`cli|<opaque>`, not a secret) is recorded in `account.toml`.
+- The agy keychain payload (the `gemini`/`antigravity` item, v0.8.6 §A) **is** a
+  credential — an opaque ~686-byte token — and is treated identically: captured
+  verbatim into the secret backend, never written to stdout/JSON/logs/metadata.
+  Its account attribute is the fixed literal `antigravity` (not a secret, not
+  recorded as captured state); kae matches by service **and** account so it never
+  reads or writes a `gemini` item belonging to another tool.
 
 ### Secret enumeration (v0.8.1 `secret_orphan`)
 
@@ -65,13 +71,15 @@ orphans are rare; the check catches leftovers from manual cleanup.
 
 ### Per-switch `security` read coalescing (v0.8.1)
 
-A single switch reads one tool's account-agnostic keychain service several
-times (`Detect`, the backup, and the switch-away recapture). `keychain`
-provides a context-scoped read cache (`WithReadCache`) wired into the switch
-path so those collapse to one `security` invocation (and at most one auth
-prompt); writes invalidate the cached service. The cache is per-command and
-never spans a child process run (`run -s`), where the child could rotate the
-live credential unseen — a cached value would be stale.
+A single switch reads one tool's keychain service several times (`Detect`, the
+backup, and the switch-away recapture). `keychain` provides a context-scoped
+read cache (`WithReadCache`) wired into the switch path so those collapse to one
+`security` invocation (and at most one auth prompt); writes invalidate the
+cached service. Most drivers match by service alone, so the cache is keyed by
+service; agy's account-scoped match (`gemini`/`antigravity`) keys the cache by
+service **and** account so a shared service stays correctly partitioned. The
+cache is per-command and never spans a child process run (`run -s`), where the
+child could rotate the live credential unseen — a cached value would be stale.
 
 ## Subprocesses
 

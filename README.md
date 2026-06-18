@@ -95,16 +95,18 @@ kae use -i work                # point every terminal at a per-account private h
 ## Beyond Switching
 
 ```bash
-# run one command as another account, then restore the previous login
-# (refreshed OAuth tokens are captured back into the account snapshot):
+# open a session under another account (no -- needed: the child defaults to
+# the tool's binary), then restore the previous login when it exits:
+kae run claude work               # ⇒ runs `claude` as work
+kae run -i claude clientA         # ⇒ runs `claude` in an isolated home
+
+# run a specific command as another account (refreshed OAuth tokens are
+# captured back into the account snapshot):
 kae run codex work -- codex exec "go test ./..."
 
 # API-key profiles, injected into the child process only:
 kae env set claude ci ANTHROPIC_API_KEY    # value read from stdin
 kae run --env claude ci -- claude -p "review this"
-
-# one-off isolated home (per-account private home, shared with kae use -i):
-kae run -i claude clientA -- claude
 
 # idempotent apply for your own hooks/scripts (no-op when already active):
 kae use --quiet

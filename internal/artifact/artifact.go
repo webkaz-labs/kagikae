@@ -4,6 +4,7 @@
 package artifact
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -47,6 +48,15 @@ type Spec struct {
 	// afterwards (robust whether the tool matches by service only or
 	// service+account). See docs/ADAPTERS.md (Codex keyring) and docs/DATA-MODEL.md.
 	KeychainReplace bool
+	// KeychainMatchAccount scopes a KindKeychain item to KeychainAccount on
+	// both read and write, for a service shared with other tools where only one
+	// account is kae's (agy's gemini service: only acct=antigravity is agy's,
+	// the rest belong to the Gemini ecosystem). Unlike the default service-only
+	// match, kae reads/writes/deletes solely the KeychainAccount item and never
+	// reuses or touches a sibling item under a different account. The account is
+	// a fixed literal (not captured per-login), so it is incompatible with
+	// KeychainReplace. See docs/ADAPTERS.md (agy keyring).
+	KeychainMatchAccount bool
 	// JSONC marks a KindJSONPointer Target as a JSONC document (standard JSON
 	// plus // and /* */ comments and trailing commas, e.g. GitHub Copilot's
 	// ~/.copilot/config.json). Reads ignore the comments; writes preserve
@@ -61,6 +71,13 @@ type Value struct {
 	Present bool
 }
 
+// matchAccount reports whether this keychain spec is scoped to a fixed account
+// of a shared service (agy's gemini/antigravity): read/write/delete touch only
+// the KeychainAccount item, never a sibling under a different account.
+func (sp Spec) matchAccount() bool {
+	return sp.KeychainMatchAccount && sp.KeychainAccount != ""
+}
+
 // keychainGuard verifies a captured keychain payload before it is stored or
 // applied. The item's bytes always round-trip verbatim (the owning tool
 // rejects a re-serialized payload), so the guard never mutates them; it only
@@ -72,6 +89,12 @@ func keychainGuard(sp Spec, payload []byte) error {
 	if sp.Pointer == "" {
 		if len(payload) == 0 {
 			return fmt.Errorf("%w: keychain item %q payload is empty", ErrUnsafe, sp.Target)
+		}
+		// Opaque credentials kae handles are single-line raw tokens (Cursor's
+		// bare JWT, agy's antigravity token); an interior newline signals a
+		// corrupted or wrong payload, so refuse it rather than write it back.
+		if bytes.ContainsAny(payload, "\r\n") {
+			return fmt.Errorf("%w: keychain item %q payload is not a single line", ErrUnsafe, sp.Target)
 		}
 		return nil
 	}
@@ -131,7 +154,14 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 		return Value{Data: raw, Present: true}, nil
 
 	case constants.KindKeychain:
-		payload, found, err := keychain.ReadItem(ctx, sp.Target)
+		var payload []byte
+		var found bool
+		var err error
+		if sp.matchAccount() {
+			payload, found, err = keychain.ReadItemForAccount(ctx, sp.Target, sp.KeychainAccount)
+		} else {
+			payload, found, err = keychain.ReadItem(ctx, sp.Target)
+		}
 		if err != nil {
 			return Value{}, err
 		}
@@ -197,15 +227,28 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		return patch.WriteFileAtomic(sp.Target, updated, patch.CredentialFileMode)
 
 	case constants.KindKeychain:
+		matchAccount := sp.matchAccount()
 		if !v.Present {
 			// The captured account had no keychain item; applying it removes
-			// the live item (mirrors the file/json-pointer absent cases).
+			// the live item (mirrors the file/json-pointer absent cases). A
+			// match-account spec deletes only its own account's item, never a
+			// sibling under a different account of the shared service.
+			if matchAccount {
+				return keychain.DeleteItemForAccount(ctx, sp.Target, sp.KeychainAccount)
+			}
 			return keychain.DeleteItem(ctx, sp.Target)
 		}
 		// Write the captured bytes verbatim (see ReadLive): re-serializing
 		// the payload would make the owning tool reject the credential.
 		if err := keychainGuard(sp, v.Data); err != nil {
 			return err
+		}
+		if matchAccount {
+			// Shared-service item keyed by a fixed account (agy gemini/antigravity):
+			// upsert only that account's item (-U matches service+account), so a
+			// sibling item under a different account is never read, reused, or
+			// overwritten. No replace-delete: that could remove a sibling.
+			return keychain.WriteItem(ctx, sp.Target, sp.KeychainAccount, v.Data)
 		}
 		// A KeychainReplace item (codex keyring) carries its captured opaque
 		// account verbatim, so that account wins and the prior item is deleted

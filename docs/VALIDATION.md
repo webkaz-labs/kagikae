@@ -597,7 +597,8 @@ test ! -f "$HOME/.config/mise/config.toml" && echo mise-untouched-ok
 ### v0.8.4 real-machine smoke (required before release)
 
 The shell `<TAB>` resolution cannot be faked non-interactively. On a real
-machine, for **each** of bash, zsh, fish:
+machine, for **each** of bash and zsh (fish was dropped from the verified shells
+2026-06-18 — see the v0.8.6 gate; `kae completion fish` stays best-effort):
 
 - [ ] Register completion (`eval "$(kae completion <shell>)"` or
       `kae completion <shell> --install`); open a fresh shell.
@@ -633,6 +634,63 @@ the tests assert the original exit code is preserved and an unrelated token
 /tmp/kae zzzzz 2>&1
 #   assert: no "did you mean" suffix (unrelated token)
 ```
+
+## v0.8.6 surfaces
+
+The agy keyring driver on macOS (§A) and the terser one-shot `kae run` default
+child (§B). Both are unit/temp-HOME covered:
+
+- **§A agy keychain driver** — `internal/adapter` `TestAgyDarwinKeychainDriver`
+  (darwin resolves the gemini/antigravity match-account spec; logged-in/out
+  Detect + doctor) and `TestAgyFileSnapshotOffDarwin` (Linux keeps the file
+  driver). `internal/keychain` `TestReadItemForAccountScopesByAccount` /
+  `TestDeleteItemForAccountScopesByAccount` / `TestReadItemServiceOnlyOmitsAccount`
+  (the `-a` scoping). `internal/artifact`
+  `TestKeychainMatchAccountScopesToAccount` /
+  `TestKeychainMatchAccountAbsentDeletesOnlyOwnItem` (read/write/delete touch
+  only the antigravity item; a sibling `gemini` item survives) and
+  `TestKeychainOpaqueRefusesMultiline` (non-empty single-line guard).
+  `internal/cmd` `TestAgyKeychainRoundTrip` (capture→use round-trip through the
+  fake `security`, token never in output/metadata, sibling untouched) and
+  `TestAgyKeychainEmptyPayloadRefused`.
+- **§B run default child** — `internal/cmd` `TestDefaultChildCmd` (single tool →
+  its binary; profile/multi-tool → usage error) and `TestRunDefaultsChildBinary`
+  (end-to-end: `kae run claude work` with no `--` launches `claude` through the
+  runner seam).
+
+```bash
+# (continues from the v0.8.0 setup: /tmp/kae built, temp HOME + file config,
+#  with a claude account captured)
+# §B: no -- defaults the child to the tool binary (here a stub on PATH).
+/tmp/kae run claude work        # ⇒ runs `claude`; no trailing -- claude needed
+/tmp/kae run -P <profile>; echo $?
+#   assert: exit 64 — a profile target still requires -- <cmd>
+```
+
+### v0.8.6 real-machine gate
+
+The driver/run logic is unit/temp-HOME covered above; the agy keychain path is
+also fake-`security` covered.
+
+**agy two-account real-keychain round-trip** (macOS, real `gemini`/`antigravity`
+Keychain item; new in v0.8.6) — **PASSED (2026-06-18, macOS darwin 24.6.0, on the
+v0.8.6 build)**: agy account switching round-trips correctly through the
+`gemini`/`antigravity` item (verified by the maintainer; a fresh agy session
+reflects the switched account). The matching is service+account so a non-agy
+`gemini` item is never touched, and the opaque token never reaches output or
+metadata (asserted by `TestAgyKeychainRoundTrip`).
+
+**Carried gate** (unchanged by v0.8.6, fake-`security`/unit covered):
+
+- [ ] codex keyring two-account real-keychain round-trip (v0.8.3 — see above);
+      still deferred, the file/keyring round-trip is unit-covered.
+
+**fish completion is no longer a gated target.** fish was dropped from the
+officially-verified shells (2026-06-18); `kae completion fish` stays available
+as a best-effort generator (unit-tested and `fish -n`-valid) but is **not** a
+supported/release-gated surface. bash and zsh are the verified shells.
+
+Record release results in the Release Acceptance Log below.
 
 ## Real-Machine Acceptance (release only)
 
@@ -686,6 +744,27 @@ messages, or metadata files written by capture/switch/rollback.
 
 ## Release Acceptance Log
 
+### v0.8.6 (2026-06-18, macOS darwin 24.6.0)
+
+agy keyring driver on macOS (§A), terser one-shot `kae run` default child (§B),
+`claude /login` verification (§C — launched via the upstream flow, unchanged).
+
+- `mise run check` green (all packages); JSON contract unchanged
+  (`schema_version` 1); no new `go.mod` dependency.
+- Code review: APPROVE after one round (the `account.Artifact` finding was
+  rebutted — that struct intentionally persists no adapter-structural flags
+  [`KeychainReplace`/`JSONC` are absent too]; apply re-derives specs from the
+  live adapter, and only the adapter-independent backup record carries
+  `keychain_match_account`). `/simplify` cleanups (`Spec.matchAccount()`, the
+  shared agy no-item message const) were re-reviewed APPROVE.
+- **agy two-account real-keychain gate PASSED** (verified by the maintainer):
+  agy account switching round-trips through the `gemini`/`antigravity` item; a
+  fresh agy session reflects the switched account.
+- **fish dropped from the verified shells**: `kae completion fish` stays a
+  best-effort generator (unit + `fish -n`), no longer a release-gated surface.
+- **codex keyring two-account real-keychain gate: still deferred** (carried from
+  v0.8.3; the file/keyring round-trip is unit-covered — not a v0.8.6 blocker).
+
 ### v0.8.4 (2026-06-17, macOS darwin 24.6.0)
 
 Dynamic shell completion: §A `kae __complete` backend, §B native completion +
@@ -705,11 +784,10 @@ interactive `--install`, §C mise task-argument completion, §D docs.
   list" is the shells' standard ambiguous-completion behavior (zsh `LIST_AMBIGUOUS`
   + `menu select`; bash `show-all-if-ambiguous` off), not a kae defect — candidate
   generation is correct.
-- **fish real-machine smoke: DEFERRED** (fish not installed on the release
-  machine). fish shares the same routing logic as bash/zsh and the same backend;
-  the account-position token index is guarded by `TestCompletionAccountTokenIndex`
-  and the script passes `fish -n` (syntax). Run the "v0.8.4 real-machine smoke"
-  for fish before relying on fish completion — the one open acceptance item.
+- **fish real-machine smoke: superseded** — fish was dropped from the verified
+  shells (2026-06-18; see the v0.8.6 gate), so this is no longer an open
+  acceptance item. `kae completion fish` stays a best-effort generator
+  (`TestCompletionAccountTokenIndex` + `fish -n`), not a release-gated surface.
 - mise task-argument completion (`mise run ai-switch <TAB>`) is rendered by
   `kae mise init` and unit-tested (`TestMiseInitRendersCompletionTasks`, TOML
   parse); the live `mise run <task> <TAB>` resolution rides the same backend.

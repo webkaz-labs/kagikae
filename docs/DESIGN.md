@@ -175,7 +175,8 @@ items are captured and restored verbatim; a file-driver override keeps macOS
 smoke checks off the real login keychain. `kae use -i` / `kae run -i` isolate
 claude and codex only; tools with no redirectable home (agy, opencode, cursor,
 copilot) are skipped with a warning when addressed through a profile; a
-single-tool `kae use -i agy <account>` exits `5`. Windows, the Codex keyring
-driver, and home isolation for agy/opencode/cursor/copilot remain roadmap items
-(v0.6.0 removed the gemini adapter after upstream retired Gemini CLI for
-Antigravity on 2026-05-19).
+single-tool `kae use -i agy <account>` exits `5`. agy credential switching works
+on macOS via the `gemini`/`antigravity` Keychain item (v0.8.6) and on Linux/WSL
+via the file driver. Windows and home isolation for agy/opencode/cursor/copilot
+remain roadmap items (v0.6.0 removed the gemini adapter after upstream retired
+Gemini CLI for Antigravity on 2026-05-19).

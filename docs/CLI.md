@@ -147,13 +147,20 @@ matches.
 
 ## kae run Semantics
 
-`kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>` executes
+`kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> [-- <cmd...>]` executes
 the child with inherited stdio and returns the **child's exit code verbatim** on
 success; the exit-code table below applies only to failures before the child
 starts and to a failed restore afterwards (which returns the kae error code of
 the failure cause, with `kae rollback` guidance). `-P <profile>` is sugar for
 `all <profile>` and takes no positional; otherwise exactly one tool/account pair
 is required. At most one of `-s`, `-i`, `--env` may be set.
+
+**Default child**: with no `-- <cmd>`, a single-tool target runs that tool's
+upstream binary (`kae run claude work` ⇒ runs `claude`; cursor ⇒ `cursor-agent`;
+agy ⇒ `agy`), so opening a session under another account no longer needs the
+redundant trailing `-- <tool>`. An explicit `-- <cmd>` still wins. A profile
+(`-P` / `all`) target or a tool with no launchable binary has no single default
+and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
 
 - `-s` (default): per-tool locks are held for the entire child run; the live
   state is backed up (`reason: "run"`), the target accounts applied, and after
@@ -195,8 +202,9 @@ the result into the account, and makes it active — or restores the previous lo
 `--restore`. If the flow exits
 without changing the live auth state (login refused, window closed, already
 cancelled), kae refuses to capture and exits `11` (`auth_unchanged`) instead
-of recording a duplicate of the previous account. The agy login flow is not
-supported yet.
+of recording a duplicate of the previous account. **agy has no login flow**
+(GUI/browser OAuth, no kae-drivable login subcommand), so `kae add agy <name>`
+is `--no-login` only and always needs an explicit account name.
 
 `kae add --no-login <tool> <account>` snapshots the current live auth state
 under the name without launching anything (it supports `--dry-run`; the

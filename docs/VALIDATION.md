@@ -634,6 +634,65 @@ the tests assert the original exit code is preserved and an unrelated token
 #   assert: no "did you mean" suffix (unrelated token)
 ```
 
+## v0.8.6 surfaces
+
+The agy keyring driver on macOS (§A) and the terser one-shot `kae run` default
+child (§B). Both are unit/temp-HOME covered:
+
+- **§A agy keychain driver** — `internal/adapter` `TestAgyDarwinKeychainDriver`
+  (darwin resolves the gemini/antigravity match-account spec; logged-in/out
+  Detect + doctor) and `TestAgyFileSnapshotOffDarwin` (Linux keeps the file
+  driver). `internal/keychain` `TestReadItemForAccountScopesByAccount` /
+  `TestDeleteItemForAccountScopesByAccount` / `TestReadItemServiceOnlyOmitsAccount`
+  (the `-a` scoping). `internal/artifact`
+  `TestKeychainMatchAccountScopesToAccount` /
+  `TestKeychainMatchAccountAbsentDeletesOnlyOwnItem` (read/write/delete touch
+  only the antigravity item; a sibling `gemini` item survives) and
+  `TestKeychainOpaqueRefusesMultiline` (non-empty single-line guard).
+  `internal/cmd` `TestAgyKeychainRoundTrip` (capture→use round-trip through the
+  fake `security`, token never in output/metadata, sibling untouched) and
+  `TestAgyKeychainEmptyPayloadRefused`.
+- **§B run default child** — `internal/cmd` `TestDefaultChildCmd` (single tool →
+  its binary; profile/multi-tool → usage error) and `TestRunDefaultsChildBinary`
+  (end-to-end: `kae run claude work` with no `--` launches `claude` through the
+  runner seam).
+
+```bash
+# (continues from the v0.8.0 setup: /tmp/kae built, temp HOME + file config,
+#  with a claude account captured)
+# §B: no -- defaults the child to the tool binary (here a stub on PATH).
+/tmp/kae run claude work        # ⇒ runs `claude`; no trailing -- claude needed
+/tmp/kae run -P <profile>; echo $?
+#   assert: exit 64 — a profile target still requires -- <cmd>
+```
+
+### v0.8.6 real-machine gate (required before release)
+
+The driver/run logic is unit/temp-HOME covered above; the agy keychain path is
+fake-`security` covered. Three gates need a real machine and are **deferred with
+the reason recorded** when it cannot run (per [RELEASE.md](RELEASE.md) §D — not a
+code blocker):
+
+**agy two-account real-keychain round-trip** (macOS, real `gemini`/`antigravity`
+Keychain item; new in v0.8.6):
+
+- [ ] With an Antigravity login, `kae add --no-login agy <a>`; the opaque token
+      is captured (never printed, never in `account.toml`).
+- [ ] Re-login as a second Antigravity account; `kae add --no-login agy <b>`.
+- [ ] `kae use agy <a>`: a fresh agy session reports the first account; exactly
+      the `gemini`/`antigravity` item changed (a non-`antigravity` `gemini` item,
+      if any, is untouched — `security find-generic-password -s gemini -a
+      antigravity` shows the round-tripped payload).
+- [ ] No token value ever appeared in `kae` output, `--json`, or `account.toml`.
+
+**Still-open carried gates** (unchanged by v0.8.6, fake-`security`/unit covered):
+
+- [ ] codex keyring two-account real-keychain round-trip (v0.8.3 — see above).
+- [ ] fish real-machine completion smoke (v0.8.4 — see above).
+
+Run with a committed tree and throwaway/second accounts; record the result in the
+Release Acceptance Log below.
+
 ## Real-Machine Acceptance (release only)
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of

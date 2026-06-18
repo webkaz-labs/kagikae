@@ -162,7 +162,7 @@ and non-keychain artifacts.
 |------|---------|-------|
 | `json-pointer` | read pointer value from JSON file | patch pointer in JSON file atomically, preserving all other keys |
 | `file` | read whole file | atomic replace, mode `0600` |
-| `keychain` | read whole item payload verbatim (pointer guards the shape; an empty pointer marks an opaque non-JSON payload, e.g. a raw token, guarded only as non-empty) | write captured bytes back verbatim via `security -U`; absent value deletes the item. A per-login-account item (codex keyring, `KeychainReplace`) is rewritten under its captured `keychain_account`, deleting the prior item first so exactly one item of the service remains |
+| `keychain` | read whole item payload verbatim (pointer guards the shape; an empty pointer marks an opaque non-JSON payload, e.g. a raw token, guarded as non-empty **and single-line**) | write captured bytes back verbatim via `security -U`; absent value deletes the item. A per-login-account item (codex keyring, `KeychainReplace`) is rewritten under its captured `keychain_account`, deleting the prior item first so exactly one item of the service remains. A fixed-account item on a **shared** service (agy's `gemini`/`antigravity`, `KeychainMatchAccount`) scopes read/write/delete to that account (`-a`) so a sibling item under a different account is never touched |
 
 A snapshot is rewritten by `kae add`, `run -s`'s post-child recapture, and (new
 in v0.8.1) `kae use`/bare `use`'s switch-away recapture of the currently-active
@@ -260,13 +260,16 @@ reversible:
 }
 ```
 
-`keychain_account`, `keychain_replace`, and `jsonc` are optional
-restore-fidelity fields: `keychain_account` recreates a deleted keychain item
-under the tool's own account (e.g. `cursor-user`, or codex keyring's captured
-`cli|<opaque>`) instead of the generic fallback; `keychain_replace` marks a
-per-login-account item (codex keyring) so a rollback deletes the live item
-before writing the backed-up one (the same single-item guarantee as apply);
-`jsonc` routes a JSONC target (e.g. Copilot's commented `config.json`) through
+`keychain_account`, `keychain_replace`, `keychain_match_account`, and `jsonc`
+are optional restore-fidelity fields: `keychain_account` recreates a deleted
+keychain item under the tool's own account (e.g. `cursor-user`, or codex
+keyring's captured `cli|<opaque>`) instead of the generic fallback;
+`keychain_replace` marks a per-login-account item (codex keyring) so a rollback
+deletes the live item before writing the backed-up one (the same single-item
+guarantee as apply); `keychain_match_account` marks a fixed-account item on a
+shared service (agy's `gemini`/`antigravity`) so a rollback scopes its
+read/write/delete to that account and never touches a sibling item; `jsonc`
+routes a JSONC target (e.g. Copilot's commented `config.json`) through
 the comment-preserving patch on restore instead of the plain-JSON path, which
 would reject the leading `//` comments. All are omitted for artifacts that do
 not need them and are absent in backups written before the field existed.
@@ -292,8 +295,8 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
   `unsafe_refused`, `auth_unchanged`, `usage`
 - artifact kinds: `json-pointer`, `file`, `keychain`
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
-  `codex-keyring`, `agy-file-snapshot`, `opencode-file-patch`, `cursor-keychain`,
-  `copilot-config-pointer`
+  `codex-keyring`, `agy-keychain`, `agy-file-snapshot`, `opencode-file-patch`,
+  `cursor-keychain`, `copilot-config-pointer`
 - internal mechanisms: `auth`, `env`, `shared`, `isolated`, `sync`
   (`shared`/`isolated` back per-dir `pin -s`/`-i`; `sync` is the
   global-isolated mechanism behind `kae use -i` / `kae run -i`, delivered as a

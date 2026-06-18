@@ -369,6 +369,10 @@ no locks, prints one candidate per line, and is intentionally hidden from
 generated scripts and the `kae mise init` task `complete` directives — it is not
 the JSON contract (`schema_version` is unaffected).
 
+**bash and zsh are the verified shells.** `kae completion fish` stays available
+as a best-effort generator (unit-tested and `fish -n`-valid) but is not a
+release-gated, officially-verified surface (dropped 2026-06-18).
+
 kae's own completion is **binary-scoped**, so it is registered globally, never
 per-directory (a per-directory registration would make `kae <TAB>` blink in and
 out by directory). Three registration paths, non-mise first:

@@ -5,9 +5,11 @@ Implementation history lives in git log.
 
 The active target is **v0.8.6** (agy account switching on macOS via a Keychain
 driver + daily-use polish: a terser one-shot `kae run <tool> <account>` that
-defaults the child to the tool binary, `claude /login` verification, and closing
-the open agy/codex-keyring/fish real-machine gates; additive, no contract break —
-see [RELEASE.md](RELEASE.md)).
+defaults the child to the tool binary, `claude /login` verification; additive, no
+contract break — see [RELEASE.md](RELEASE.md)). The agy two-account real-keychain
+gate **passed** (2026-06-18); fish was **dropped** from the verified shells
+(`kae completion fish` stays best-effort); the codex-keyring two-account gate
+stays the one carried, unit-covered open item.
 
 v0.8.5 (a "did you mean?" nearest-match hint
 for an unknown command/tool/profile, table-driven off the same live lists
@@ -19,9 +21,9 @@ go-cli-tooling shared standard via chezmoi) landed the same day as a new
 
 v0.8.4 (deep, dynamic shell completion sourced from kae's live state on a single
 hidden `kae __complete` backend, feeding both kae's own completion and mise
-task-argument completion) shipped 2026-06-17 — its **fish real-machine smoke is
-deferred** (the release machine had no fish; bash/zsh verified), one open
-acceptance item (see [VALIDATION.md](VALIDATION.md)). v0.8.3 (discovery-unblock:
+task-argument completion) shipped 2026-06-17 — bash/zsh verified; **fish was
+dropped from the verified shells** (2026-06-18; `kae completion fish` stays
+best-effort, not release-gated). v0.8.3 (discovery-unblock:
 freshness-as-adapter-capability, cursor `kae add` identity, codex keyring driver,
 stored+displayed identity) shipped 2026-06-17 — its codex keyring two-account
 real-keychain gate is deferred (also open; see [VALIDATION.md](VALIDATION.md)).

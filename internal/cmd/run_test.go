@@ -95,6 +95,58 @@ func TestRunAuthNotCaptured(t *testing.T) {
 	mustExit(t, constants.ExitNotFound, code, out)
 }
 
+// §B: with no -- <cmd>, a single-tool target defaults the child to that tool's
+// upstream binary (claude→claude, cursor→cursor-agent).
+func TestDefaultChildCmd(t *testing.T) {
+	cases := []struct {
+		target  runTarget
+		profile string
+		want    string // "" => expect a usage error
+	}{
+		{runTarget{Tool: constants.ToolClaude, Account: "work"}, "", "claude"},
+		{runTarget{Tool: constants.ToolCursor, Account: "work"}, "", "cursor-agent"},
+		{runTarget{Tool: constants.ToolAgy, Account: "work"}, "", "agy"},
+	}
+	for _, tc := range cases {
+		got, err := defaultChildCmd([]runTarget{tc.target}, "")
+		if err != nil || len(got) != 1 || got[0] != tc.want {
+			t.Fatalf("%s: defaultChildCmd = %v, %v; want [%s]", tc.target.Tool, got, err, tc.want)
+		}
+	}
+	// A profile target (or any multi-tool target) has no single binary to default.
+	if _, err := defaultChildCmd([]runTarget{{Tool: "claude", Account: "work"}}, "myprofile"); exitOf(err) != constants.ExitUsage {
+		t.Fatalf("profile target must require an explicit -- <cmd>: %v", err)
+	}
+	if _, err := defaultChildCmd([]runTarget{{Tool: "claude"}, {Tool: "codex"}}, ""); exitOf(err) != constants.ExitUsage {
+		t.Fatalf("multi-tool target must require an explicit -- <cmd>: %v", err)
+	}
+}
+
+// §B end-to-end: kae run claude work (no --) applies the account and launches
+// the defaulted `claude` child through the runner seam.
+func TestRunDefaultsChildBinary(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	seedClaude(t, app, workToken, "work-uuid")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "work") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	var childName string
+	withInteractive(t, func(_ context.Context, _ []string, name string, _ ...string) (int, error) {
+		childName = name
+		return 0, nil
+	})
+	// nil childCmd => runRun resolves the default child.
+	code, out = captureStdout(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "claude", "work", nil)
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if childName != "claude" {
+		t.Fatalf("default child = %q, want claude", childName)
+	}
+}
+
 func TestRunEnvMode(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()

@@ -265,7 +265,7 @@ func cmdProfileRm(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
 	force := false
 	opts, ok := parseCommon("profile rm", flags, true, func(fs *flag.FlagSet) {
-		fs.BoolVar(&force, "force", false, "remove even the default profile, clearing default_profile")
+		registerProfileRmFlags(fs, &force)
 	})
 	if !ok {
 		return constants.ExitUsage
@@ -325,7 +325,7 @@ func cmdProfileDefault(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
 	clear := false
 	opts, ok := parseCommon("profile default", flags, true, func(fs *flag.FlagSet) {
-		fs.BoolVar(&clear, "clear", false, "clear default_profile")
+		registerProfileDefaultFlags(fs, &clear)
 	})
 	if !ok {
 		return constants.ExitUsage

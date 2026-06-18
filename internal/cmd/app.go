@@ -290,14 +290,7 @@ func parseCommon(name string, args []string, withDryRun bool, extra func(*flag.F
 	var opts commonOpts
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	fs.StringVar(&opts.Format, "format", formatText, "output format: text or json")
-	jsonFlag := fs.Bool("json", false, "shorthand for --format json")
-	fs.BoolVar(&opts.Yes, "yes", false, "non-interactive confirmation (reserved)")
-	fs.BoolVar(&opts.NoColor, "no-color", false, "disable color in human text output")
-	fs.StringVar(&opts.ConfigPath, "config", "", "explicit config file path")
-	if withDryRun {
-		fs.BoolVar(&opts.DryRun, "dry-run", false, "print planned actions without writing")
-	}
+	jsonFlag := registerCommonFlags(fs, &opts, withDryRun)
 	if extra != nil {
 		extra(fs)
 	}
@@ -312,6 +305,23 @@ func parseCommon(name string, args []string, withDryRun bool, extra func(*flag.F
 		return opts, false
 	}
 	return opts, true
+}
+
+// registerCommonFlags registers the flags every command accepts (format/json/
+// yes/no-color/config, plus dry-run when withDryRun) on fs and returns the
+// --json shorthand pointer. Shared by parseCommon (the real parse) and
+// flagSetFor (the completion-backend flag enumerator), so the flag set listed by
+// `kae __complete flags` never drifts from what the parser accepts.
+func registerCommonFlags(fs *flag.FlagSet, opts *commonOpts, withDryRun bool) *bool {
+	fs.StringVar(&opts.Format, "format", formatText, "output format: text or json")
+	jsonFlag := fs.Bool("json", false, "shorthand for --format json")
+	fs.BoolVar(&opts.Yes, "yes", false, "non-interactive confirmation (reserved)")
+	fs.BoolVar(&opts.NoColor, "no-color", false, "disable color in human text output")
+	fs.StringVar(&opts.ConfigPath, "config", "", "explicit config file path")
+	if withDryRun {
+		fs.BoolVar(&opts.DryRun, "dry-run", false, "print planned actions without writing")
+	}
+	return jsonFlag
 }
 
 // registerScopeFlags registers the environment selector flags shared by

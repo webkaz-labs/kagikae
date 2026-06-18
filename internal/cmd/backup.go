@@ -93,7 +93,7 @@ func CmdRollback(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args, "--to")
 	var toID string
 	opts, ok := parseCommon("rollback", flags, true, func(fs *flag.FlagSet) {
-		fs.StringVar(&toID, "to", "", "backup id to restore (default: most recent)")
+		registerRollbackFlags(fs, &toID)
 	})
 	if !ok {
 		return constants.ExitUsage

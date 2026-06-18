@@ -50,9 +50,7 @@ func CmdRun(ctx context.Context, args []string) int {
 	var shared, isolated, envMode bool
 	var profileFlag string
 	opts, ok := parseCommon("run", flags, false, func(fs *flag.FlagSet) {
-		registerScopeFlags(fs, &shared, &isolated)
-		fs.BoolVar(&envMode, "env", false, "inject the env-profile vars only (no home redirect, no lock)")
-		registerProfileFlag(fs, &profileFlag)
+		registerRunFlags(fs, &shared, &isolated, &envMode, &profileFlag)
 	})
 	if !ok {
 		return constants.ExitUsage

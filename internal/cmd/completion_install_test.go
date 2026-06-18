@@ -73,6 +73,26 @@ accounts = { claude = "bob" }
 	if !strings.Contains(out, "alice\n") || strings.Contains(out, "bob\n") {
 		t.Fatalf("accounts codex must be scoped (no bob):\n%s", out)
 	}
+
+	// flags <command> lists the command's flags (common + extras), drawn from the
+	// same registrars the parser uses (flagspec.go), so the list cannot drift.
+	_, out = captureStdout(t, func() int { return runComplete(app, []string{"flags", "add"}) })
+	for _, want := range []string{"--no-login\n", "--restore\n", "--config\n", "--json\n"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("flags add missing %q:\n%s", want, out)
+		}
+	}
+	_, out = captureStdout(t, func() int { return runComplete(app, []string{"flags", "run"}) })
+	for _, want := range []string{"-s\n", "-i\n", "--env\n", "-P\n"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("flags run missing %q:\n%s", want, out)
+		}
+	}
+	// An unknown command yields the common flags only (no extras leak).
+	_, out = captureStdout(t, func() int { return runComplete(app, []string{"flags", "status"}) })
+	if !strings.Contains(out, "--json\n") || strings.Contains(out, "--no-login\n") {
+		t.Fatalf("flags status should be common-only:\n%s", out)
+	}
 }
 
 func TestCompleteBackendErrors(t *testing.T) {
@@ -96,6 +116,42 @@ func TestCompleteBackendHiddenFromHelp(t *testing.T) {
 	for _, c := range completionCommands {
 		if c == "__complete" {
 			t.Fatal("__complete must not be in completionCommands")
+		}
+	}
+}
+
+// TestCompletionScriptsCompleteFlags: each generated script offers flag-name
+// completion (it calls `kae __complete flags`) when the current word is a flag.
+func TestCompletionScriptsCompleteFlags(t *testing.T) {
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		script, _ := completionScript(shell)
+		if !strings.Contains(script, "kae __complete flags") {
+			t.Fatalf("%s completion does not complete flag names:\n%s", shell, script)
+		}
+	}
+}
+
+// TestFlagSpecWiring guards that flagSetFor reaches each command's real
+// registrar (not just the common flags), so flag completion matches the parser.
+func TestFlagSpecWiring(t *testing.T) {
+	cases := map[string][]string{
+		"add":        {"restore", "no-login"},
+		"use":        {"shared", "isolated", "quiet", "profile"},
+		"u":          {"isolated", "profile"},
+		"run":        {"env", "shared", "profile"},
+		"pin":        {"shared", "isolated"},
+		"mise":       {"mode", "auto", "write", "profile"},
+		"completion": {"install"},
+		"rollback":   {"to"},
+		"account":    {"force"},
+		"profile":    {"force", "clear"},
+	}
+	for cmd, want := range cases {
+		fs := flagSetFor(cmd)
+		for _, name := range want {
+			if fs.Lookup(name) == nil {
+				t.Errorf("flagSetFor(%q) missing flag %q (registry not wired to the command registrar)", cmd, name)
+			}
 		}
 	}
 }

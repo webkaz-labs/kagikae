@@ -49,7 +49,7 @@ func CmdCompletion(_ context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
 	var install bool
 	opts, ok := parseCommon("completion", flags, false, func(fs *flag.FlagSet) {
-		fs.BoolVar(&install, "install", false, "register the completion script interactively")
+		registerCompletionFlags(fs, &install)
 	})
 	if !ok {
 		return constants.ExitUsage
@@ -103,6 +103,11 @@ _kae() {
     return
   fi
   cmd="${COMP_WORDS[1]}"
+  # Typing a flag: complete this command's flag names.
+  if [[ "$cur" == -* ]]; then
+    COMPREPLY=( $(compgen -W "$(kae __complete flags "$cmd")" -- "$cur") )
+    return
+  fi
   # Positional args after the command, excluding flags, up to the cursor — so a
   # flag like --no-login / -i / -P before the positionals does not shift the
   # completion (np is the positional slot the cursor is at).
@@ -169,6 +174,11 @@ _kae() {
     return
   fi
   cmd="${words[2]}"
+  # Typing a flag: complete this command's flag names.
+  if [[ "${words[CURRENT]}" == -* ]]; then
+    compadd -- ${(f)"$(kae __complete flags $cmd)"}
+    return
+  fi
   # Positional args after the command, excluding flags, up to the cursor, so a
   # flag (--no-login / -i / -P) before the positionals does not shift completion.
   for (( i=3; i<CURRENT; i++ )); do
@@ -229,6 +239,11 @@ function __kae_complete
         return
     end
     set -l cmd $tokens[2]
+    # Typing a flag: complete this command's flag names.
+    if string match -q -- '-*' (commandline -ct)
+        kae __complete flags $cmd
+        return
+    end
     # Positional args after the command, excluding flags, so a flag
     # (--no-login / -i / -P) before the positionals does not shift completion.
     set -l pos

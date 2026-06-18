@@ -3,7 +3,12 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-No release is currently in flight. v0.8.5 (a "did you mean?" nearest-match hint
+The active target is **v0.8.6** (daily-use polish: a terser one-shot
+`kae run <tool> <account>` that defaults the child to the tool binary, agy login
+discovery + `claude /login` verification, and closing the open fish/codex-keyring
+real-machine gates; additive, no contract break — see [RELEASE.md](RELEASE.md)).
+
+v0.8.5 (a "did you mean?" nearest-match hint
 for an unknown command/tool/profile, table-driven off the same live lists
 v0.8.4's `kae __complete` backend surfaces; additive, hand-rolled, no contract
 break — see [RELEASE.md](RELEASE.md)) shipped 2026-06-17, both §A and §B. §B
@@ -62,11 +67,16 @@ Follow-up from v0.8.4 (not yet scheduled):
   [ADAPTERS.md](ADAPTERS.md)), so the verbatim-keychain driver is now
   implementable with structure guards. The detect-only refusal stays until the
   v0.8.3 driver lands (and its two-account real-keychain gate).
-- **Login UX polish**: verify `claude /login` behavior across versions,
-  support agy. (The "login flow exited without changing auth" case is now
-  detected and refused with exit `11`.)
-- **`kae env export --dotenv --reveal`**: explicit-flag value export for CI
-  bootstrapping (today values are injection-only by design).
+- **Login UX polish** *(v0.8.6 §B — agy discovery-gated)*: verify `claude /login`
+  behavior across versions, support agy. agy login support rides only if a
+  real-machine discovery yields a stable contract; otherwise it stays deferred.
+  (The "login flow exited without changing auth" case is now detected and
+  refused with exit `11`.)
+- **`kae env export --dotenv --reveal`** *(deferred — no current use)*:
+  explicit-flag value export for CI bootstrapping (today values are
+  injection-only by design). Considered for v0.8.6 but dropped: CI does not use
+  kae, so there is no consumer for a value-reveal path. Revisit only if a
+  kae-driven CI flow emerges.
 - **Performance polish** *(v0.8.2 §A — shipped)*: the per-switch
   `security`-read coalescing shipped in v0.8.1 §C (a context-scoped keychain
   read cache in `internal/keychain`). v0.8.2 §A added concurrent per-tool
@@ -107,10 +117,11 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   while an explicit `kae add <tool> <account>` still wins. claude/codex/opencode/
   copilot ship; agy has no identity and cursor's `cursor-agent status` output is
   discovery-blocked (both require an explicit name — see the v0.8.3 split above).
-- **Shorter ad-hoc switch inside a pinned directory**: `kae run <tool>
-  <account> -- <tool>` already works (it is not blocked by the pinned-
-  directory guard), but it is verbose; provide a terser way to open an
-  interactive session under a different account without unpinning.
+- **Shorter ad-hoc switch inside a pinned directory** *(v0.8.6 §B)*: `kae run
+  <tool> <account> -- <tool>` already works (it is not blocked by the pinned-
+  directory guard), but it is verbose; v0.8.6 defaults the child to the
+  adapter's `Binary()` when `-- <cmd>` is omitted, so `kae run <tool> <account>`
+  opens a session under that account directly.
 - **Tool-name prefix aliases** *(v0.8.0 — see [RELEASE.md](RELEASE.md); input-only sugar)*: accept any unambiguous
   prefix in tool positions (`cl`→claude, `cod`→codex, `cu`→cursor,
   `cop`→copilot, `o`→opencode, `a`→agy); ambiguous prefixes (`c`, `co`) error

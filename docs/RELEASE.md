@@ -1,3 +1,87 @@
+# Release Target: kae v0.8.6 — daily-use polish
+
+Pay down small, lingering daily-use friction and close the open real-machine
+acceptance items from v0.8.3/v0.8.4. Every change is additive and thin: no
+JSON-contract break (`schema_version` stays `1`), no new dependency, and each
+piece reuses a settled seam (`adapter.Binary()`, the existing `run`
+transaction).
+
+Previous baseline: v0.8.5 (did-you-mean nearest-match hint).
+
+## Scope
+
+### A. Terser one-shot `kae run` (default the child to the tool binary)
+
+`kae run <tool> <account> -- <tool>` is the documented way to open a session
+under another account (works inside a pinned directory without unpinning), but
+the trailing `-- <tool>` is redundant. Default it:
+
+- **`kae run [-s|-i|--env] <tool> <account>`** with no `-- <cmd>` runs the
+  adapter's `Binary()` as the child (claude→`claude`, cursor→`cursor-agent`, …).
+  `kae run claude work` ⇒ runs `claude` with the account applied; `kae run -i
+  claude work` runs it in the isolated home.
+- An explicit `-- <cmd>` is unchanged and still wins.
+- An `all`/profile target (no single child binary) or a tool with no launchable
+  upstream binary still requires `-- <cmd>`, erroring clearly when it is missing.
+
+### B. Login UX: agy login discovery + `claude /login` verification
+
+- **agy login is discovery-gated.** Like the cursor-identity path, first
+  discover on a real machine whether agy exposes a login/identity flow. Implement
+  agy login support only if the discovery yields a stable contract; otherwise
+  keep agy capture explicit-only and record the gap (ROADMAP). Splittable: §B can
+  ship as the claude verification alone.
+- **`claude /login`**: verify behavior across recent claude versions; the
+  v0.8.x "login flow exited without changing auth → exit `11`" detection stays.
+
+### C. Close the open real-machine acceptance gates
+
+No code — run the two deferred gates during the v0.8.6 release gate where the
+environment allows, and record PASS/defer in VALIDATION.md:
+
+- **fish real-machine completion smoke** (v0.8.4 — the release machine had no
+  fish; bash/zsh verified).
+- **codex keyring two-account real-keychain gate** (v0.8.3 — the file-driver
+  round-trip is unit-covered; the two-account real-keychain path is not).
+
+Neither is a v0.8.6 code blocker; if an environment is unavailable a gate stays
+deferred with the reason recorded.
+
+## Non-Goals (this release)
+
+- TUI, Windows, remote share-list shipping — see [ROADMAP.md](ROADMAP.md).
+- `kae env export` / explicit value reveal — CI does not use kae, so values stay
+  injection-only (`run --env`); dropped from scope.
+- Global mise tasks (`kae mise init --global`) — the v0.8.4 follow-up stays a
+  separate, design-first candidate.
+- Any JSON-contract break: `schema_version` stays `1`.
+
+## Acceptance Criteria
+
+- **run default child**: `kae run claude work` (no `--`) runs `claude` with the
+  account applied; `kae run -i claude work` runs it in the isolated home; an
+  explicit `-- <cmd>` still wins; an `all`/profile target or a binary-less tool
+  without `-- <cmd>` errors naming the explicit form. Asserted via the runner
+  seam; temp-HOME tests.
+- **login**: `claude /login` verified across versions; agy login implemented iff
+  discovery yields a contract, else deferred with the reason recorded.
+- **gates**: fish smoke + codex keyring two-account recorded in VALIDATION.md
+  (PASS or deferred-with-reason).
+- `mise run check` passes; no new entry in `go.mod`; the JSON contract is
+  unchanged.
+
+## Release Steps
+
+1. Bump `toolVersion` to v0.8.6.
+2. §A `run` default-child-binary; temp-HOME tests.
+3. §B agy login real-machine discovery → conditional implement; `claude /login`
+   verification.
+4. Docs (CLI / README / ARCHITECTURE as needed).
+5. §C real-machine gates (fish smoke, codex keyring two-account); tag `v0.8.6`,
+   GitHub release.
+
+---
+
 # kae v0.8.5 (released 2026-06-17)
 
 Catch a typo before it becomes a "no such command". When an unknown command,

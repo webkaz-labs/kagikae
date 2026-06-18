@@ -96,49 +96,60 @@ func completionScript(shell string) (string, bool) {
 const bashCompletionScript = `# kae bash completion — eval "$(kae completion bash)"
 # Dynamic: candidates come from ` + "`kae __complete`" + `, so they track live state.
 _kae() {
-  local cur cmd
+  local cur cmd i
   cur="${COMP_WORDS[COMP_CWORD]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "$(kae __complete commands)" -- "$cur") )
     return
   fi
   cmd="${COMP_WORDS[1]}"
+  # Positional args after the command, excluding flags, up to the cursor — so a
+  # flag like --no-login / -i / -P before the positionals does not shift the
+  # completion (np is the positional slot the cursor is at).
+  local -a pos=()
+  for (( i=2; i<COMP_CWORD; i++ )); do
+    case "${COMP_WORDS[i]}" in
+      -*) ;;
+      *) pos+=("${COMP_WORDS[i]}") ;;
+    esac
+  done
+  local np=${#pos[@]}
   case "$cmd" in
     use|u|pin|p|run|r)
-      if [ "$COMP_CWORD" -eq 2 ]; then
+      if [ "$np" -eq 0 ]; then
         COMPREPLY=( $(compgen -W "$(kae __complete profiles) $(kae __complete tools)" -- "$cur") )
-      elif [ "$COMP_CWORD" -eq 3 ]; then
-        COMPREPLY=( $(compgen -W "$(kae __complete accounts "${COMP_WORDS[2]}")" -- "$cur") )
+      elif [ "$np" -eq 1 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete accounts "${pos[0]}")" -- "$cur") )
       fi
       ;;
     add|doctor|d)
-      if [ "$COMP_CWORD" -eq 2 ]; then
+      if [ "$np" -eq 0 ]; then
         COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
-      elif [ "$COMP_CWORD" -eq 3 ]; then
-        COMPREPLY=( $(compgen -W "$(kae __complete accounts "${COMP_WORDS[2]}")" -- "$cur") )
+      elif [ "$np" -eq 1 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete accounts "${pos[0]}")" -- "$cur") )
       fi
       ;;
     account)
-      if [ "$COMP_CWORD" -eq 2 ]; then
+      if [ "$np" -eq 0 ]; then
         COMPREPLY=( $(compgen -W "rm rename" -- "$cur") )
-      elif [ "$COMP_CWORD" -eq 3 ]; then
+      elif [ "$np" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
-      elif [ "$COMP_CWORD" -eq 4 ]; then
-        COMPREPLY=( $(compgen -W "$(kae __complete accounts "${COMP_WORDS[3]}")" -- "$cur") )
+      elif [ "$np" -eq 2 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete accounts "${pos[1]}")" -- "$cur") )
       fi
       ;;
     profile)
-      if [ "$COMP_CWORD" -eq 2 ]; then
+      if [ "$np" -eq 0 ]; then
         COMPREPLY=( $(compgen -W "save set unset rm default" -- "$cur") )
       fi
       ;;
     completion)
-      if [ "$COMP_CWORD" -eq 2 ]; then
+      if [ "$np" -eq 0 ]; then
         COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
       fi
       ;;
     mise)
-      if [ "$COMP_CWORD" -eq 2 ]; then
+      if [ "$np" -eq 0 ]; then
         COMPREPLY=( $(compgen -W "init" -- "$cur") )
       fi
       ;;
@@ -151,48 +162,55 @@ const zshCompletionScript = `#compdef kae
 # kae zsh completion — eval "$(kae completion zsh)"
 # Dynamic: candidates come from ` + "`kae __complete`" + `, so they track live state.
 _kae() {
-  local cmd
+  local cmd i
+  local -a pos
   if (( CURRENT == 2 )); then
     compadd -- ${(f)"$(kae __complete commands)"}
     return
   fi
   cmd="${words[2]}"
+  # Positional args after the command, excluding flags, up to the cursor, so a
+  # flag (--no-login / -i / -P) before the positionals does not shift completion.
+  for (( i=3; i<CURRENT; i++ )); do
+    [[ "${words[i]}" == -* ]] || pos+=("${words[i]}")
+  done
+  local np=${#pos[@]}
   case "$cmd" in
     use|u|pin|p|run|r)
-      if (( CURRENT == 3 )); then
+      if (( np == 0 )); then
         compadd -- ${(f)"$(kae __complete profiles)"} ${(f)"$(kae __complete tools)"}
-      elif (( CURRENT == 4 )); then
-        compadd -- ${(f)"$(kae __complete accounts ${words[3]})"}
+      elif (( np == 1 )); then
+        compadd -- ${(f)"$(kae __complete accounts ${pos[1]})"}
       fi
       ;;
     add|doctor|d)
-      if (( CURRENT == 3 )); then
+      if (( np == 0 )); then
         compadd -- ${(f)"$(kae __complete tools)"}
-      elif (( CURRENT == 4 )); then
-        compadd -- ${(f)"$(kae __complete accounts ${words[3]})"}
+      elif (( np == 1 )); then
+        compadd -- ${(f)"$(kae __complete accounts ${pos[1]})"}
       fi
       ;;
     account)
-      if (( CURRENT == 3 )); then
+      if (( np == 0 )); then
         compadd -- rm rename
-      elif (( CURRENT == 4 )); then
+      elif (( np == 1 )); then
         compadd -- ${(f)"$(kae __complete tools)"}
-      elif (( CURRENT == 5 )); then
-        compadd -- ${(f)"$(kae __complete accounts ${words[4]})"}
+      elif (( np == 2 )); then
+        compadd -- ${(f)"$(kae __complete accounts ${pos[2]})"}
       fi
       ;;
     profile)
-      if (( CURRENT == 3 )); then
+      if (( np == 0 )); then
         compadd -- save set unset rm default
       fi
       ;;
     completion)
-      if (( CURRENT == 3 )); then
+      if (( np == 0 )); then
         compadd -- bash zsh fish
       fi
       ;;
     mise)
-      if (( CURRENT == 3 )); then
+      if (( np == 0 )); then
         compadd -- init
       fi
       ;;
@@ -211,38 +229,47 @@ function __kae_complete
         return
     end
     set -l cmd $tokens[2]
+    # Positional args after the command, excluding flags, so a flag
+    # (--no-login / -i / -P) before the positionals does not shift completion.
+    set -l pos
+    for i in (seq 3 $n)
+        if not string match -q -- '-*' $tokens[$i]
+            set -a pos $tokens[$i]
+        end
+    end
+    set -l np (count $pos)
     switch $cmd
         case use u pin p run r
-            if test $n -eq 2
+            if test $np -eq 0
                 kae __complete profiles
                 kae __complete tools
-            else if test $n -eq 3
-                kae __complete accounts $tokens[3]
+            else if test $np -eq 1
+                kae __complete accounts $pos[1]
             end
         case add doctor d
-            if test $n -eq 2
+            if test $np -eq 0
                 kae __complete tools
-            else if test $n -eq 3
-                kae __complete accounts $tokens[3]
+            else if test $np -eq 1
+                kae __complete accounts $pos[1]
             end
         case account
-            if test $n -eq 2
+            if test $np -eq 0
                 printf '%s\n' rm rename
-            else if test $n -eq 3
+            else if test $np -eq 1
                 kae __complete tools
-            else if test $n -eq 4
-                kae __complete accounts $tokens[4]
+            else if test $np -eq 2
+                kae __complete accounts $pos[2]
             end
         case profile
-            if test $n -eq 2
+            if test $np -eq 0
                 printf '%s\n' save set unset rm default
             end
         case completion
-            if test $n -eq 2
+            if test $np -eq 0
                 printf '%s\n' bash zsh fish
             end
         case mise
-            if test $n -eq 2
+            if test $np -eq 0
                 printf '%s\n' init
             end
     end

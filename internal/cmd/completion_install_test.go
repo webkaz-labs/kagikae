@@ -212,21 +212,24 @@ func TestCompletionInstallPrintOnly(t *testing.T) {
 	}
 }
 
-// TestCompletionAccountTokenIndex guards the per-shell word-position routing in
-// the static completion scripts: account completion must pass the tool word at
-// the right index for that shell's array convention. `kae use <tool> <TAB>`
-// reads the tool at the position after `use`; `kae account rm <tool> <TAB>`
-// reads it one position further (past the rm/rename subcommand). An off-by-one
-// here silently yields no account candidates (it once did for fish).
+// TestCompletionAccountTokenIndex guards the per-shell positional routing in the
+// static completion scripts: account completion must pass the tool word from the
+// flag-filtered positional list at the right index for that shell's array
+// convention. `kae use <tool> <TAB>` reads the first positional after `use`;
+// `kae account rm <tool> <TAB>` reads the second (past the rm/rename subcommand).
+// The positionals exclude flags, so `kae add --no-login <TAB>` still completes
+// tools (the flag is skipped, not counted as the tool). An off-by-one or a
+// missing flag-skip silently yields no/ wrong candidates (it once did for fish).
 func TestCompletionAccountTokenIndex(t *testing.T) {
 	for _, tc := range []struct {
 		shell          string
 		useToolRef     string // tool word in `kae use <tool> <TAB>`
 		accountToolRef string // tool word in `kae account rm <tool> <TAB>`
+		flagSkip       string // the construct that drops flag tokens from positionals
 	}{
-		{"bash", `accounts "${COMP_WORDS[2]}"`, `accounts "${COMP_WORDS[3]}"`},
-		{"zsh", `accounts ${words[3]}`, `accounts ${words[4]}`},
-		{"fish", `accounts $tokens[3]`, `accounts $tokens[4]`},
+		{"bash", `accounts "${pos[0]}"`, `accounts "${pos[1]}"`, `-*) ;;`},
+		{"zsh", `accounts ${pos[1]}`, `accounts ${pos[2]}`, `== -* ]] || pos`},
+		{"fish", `accounts $pos[1]`, `accounts $pos[2]`, `string match -q -- '-*'`},
 	} {
 		script, _ := completionScript(tc.shell)
 		if !strings.Contains(script, tc.useToolRef) {
@@ -234,6 +237,9 @@ func TestCompletionAccountTokenIndex(t *testing.T) {
 		}
 		if !strings.Contains(script, tc.accountToolRef) {
 			t.Fatalf("%s: missing `account` tool ref %q", tc.shell, tc.accountToolRef)
+		}
+		if !strings.Contains(script, tc.flagSkip) {
+			t.Fatalf("%s: missing the flag-skip construct %q (flags must not shift positionals)", tc.shell, tc.flagSkip)
 		}
 	}
 }

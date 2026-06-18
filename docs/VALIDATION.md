@@ -760,6 +760,27 @@ completion registered:
 
 Record the result in the Release Acceptance Log below.
 
+## v0.8.9 surfaces
+
+`kae completion zsh --install` detects an existing user `fpath` dir instead of a
+fixed XDG dir. Unit/temp-HOME covered:
+
+- `internal/cmd` `TestCompletionInstallZshPrefersExistingFpathDir` (a seeded
+  `~/.config/zsh/completions` is chosen over the XDG fallback, and the activation
+  note then omits the `fpath=(…)` instruction) and `TestCompletionInstallFpath`
+  (with no user fpath dir present in the temp HOME, zsh still falls back to
+  `$XDG_DATA_HOME/zsh/site-functions/_kae` — the prior behavior).
+
+### v0.8.9 real-machine smoke (required before release)
+
+- [ ] On zsh with `~/.config/zsh/completions` on `fpath`,
+      `kae completion zsh --install` writes `_kae` there and a fresh shell
+      completes `kae <TAB>` with no `.zshrc` change.
+- [ ] With no user fpath dir, `--install` falls back to the XDG dir and prints
+      the `fpath=(…)` line.
+
+Record the result in the Release Acceptance Log below.
+
 ## Real-Machine Acceptance (release only)
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of
@@ -811,6 +832,20 @@ captured fixture secret values never appear in text output, JSON output, error
 messages, or metadata files written by capture/switch/rollback.
 
 ## Release Acceptance Log
+
+### v0.8.9 (2026-06-18, macOS darwin 24.6.0)
+
+`kae completion zsh --install` detects an existing user `fpath` dir
+(`~/.config/zsh/completions` / `~/.zsh/completions` / `~/.zfunc`) instead of the
+fixed XDG dir that was often not on `fpath`.
+
+- `mise run check` green; JSON contract unchanged (`schema_version` 1); no new
+  `go.mod` dependency.
+- Motivated by a real report: completion only worked after
+  `eval "$(kae completion zsh)"` because nothing was installed and the
+  prospective `--install` target was not on the user's fpath.
+- Unit/temp-HOME covered; the real-shell `--install` + fresh-shell `<TAB>` is the
+  open smoke item.
 
 ### v0.8.8 (2026-06-18, macOS darwin 24.6.0)
 

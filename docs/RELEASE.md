@@ -1,3 +1,22 @@
+# kae v0.8.9 (released 2026-06-18)
+
+`kae completion zsh --install` wrote to a fixed `$XDG_DATA_HOME/zsh/site-functions`
+dir that is often not on the user's `fpath`, so the installed file never loaded
+without a manual `.zshrc` edit — completion appeared to work only after
+`eval "$(kae completion zsh)"`. Additive, contract-stable: `schema_version`
+stays `1`, no new dependency.
+
+Previous baseline: v0.8.8 (opencode identity + flag-aware/flag-name completion).
+
+Shipped 2026-06-18. `completionTarget` now prefers the first **existing** common
+user zsh completions dir (`~/.config/zsh/completions`, `~/.zsh/completions`,
+`~/.zfunc`) — one the user created because it is on their `fpath`, so the file
+auto-loads in a new shell with no `.zshrc` change. Only when none exists does it
+fall back to `$XDG_DATA_HOME/zsh/site-functions` and print the `fpath=(…)` line
+to add. kae does not shell out to zsh to read `$fpath` (an interactive zsh's
+stdout is easily polluted by rc files); directory existence is a robust proxy
+for "on fpath". bash/fish are unchanged (their XDG dirs auto-load).
+
 # kae v0.8.8 (released 2026-06-18)
 
 Daily-use fixes surfaced right after v0.8.7: opencode auto-named accounts by an

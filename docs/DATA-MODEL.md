@@ -19,7 +19,7 @@ vocabulary for `kae`.
 | state | `${XDG_STATE_HOME:-~/.local/state}/kagikae/state.json` |
 | backups (metadata) | `${XDG_STATE_HOME:-~/.local/state}/kagikae/backups/<id>.json` |
 | locks | `${XDG_RUNTIME_DIR}/kagikae/locks/<tool>.lock`, falling back to `${XDG_STATE_HOME:-~/.local/state}/kagikae/locks/` when `XDG_RUNTIME_DIR` is unset |
-| completion script (`completion --install`, default) | bash: `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/kae`; zsh: `${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions/_kae`; fish: `${XDG_CONFIG_HOME:-~/.config}/fish/completions/kae.fish` (the dynamic script; calls `kae __complete` at completion time) |
+| completion script (`completion --install`, default) | bash: `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/kae`; zsh: the first existing user `fpath` dir (`${XDG_CONFIG_HOME:-~/.config}/zsh/completions`, `~/.zsh/completions`, `~/.zfunc`), else `${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions/_kae`; fish: `${XDG_CONFIG_HOME:-~/.config}/fish/completions/kae.fish` (the dynamic script; calls `kae __complete` at completion time) |
 | completion mise hook (`completion --install`, opt-in) | kagikae marker block in the global mise config (`$MISE_CONFIG_DIR/config.toml`, else `${XDG_CONFIG_HOME:-~/.config}/mise/config.toml`) carrying a `[hooks.enter]` that sources `kae completion <shell>`; refused if a foreign `[hooks.enter]` already exists |
 
 Directories holding metadata or secrets are created `0700`; secret and

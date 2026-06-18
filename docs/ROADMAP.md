@@ -3,11 +3,14 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-No active release target. v0.8.8 (daily-use fixes: opencode identity prefers the
-access-token email over the opaque accountId UUID; shell completion is
-flag-aware — flags before positionals no longer shift it — and completes flag
-names via a new `kae __complete flags` kind; additive, no contract break — see
-[RELEASE.md](RELEASE.md)) shipped 2026-06-18. v0.8.7 (complete account-identity
+No active release target. v0.8.9 (`kae completion zsh --install` now detects an
+existing user `fpath` dir instead of a fixed XDG dir that often was not on
+`fpath`, so the installed completion auto-loads with no `.zshrc` edit; additive,
+no contract break — see [RELEASE.md](RELEASE.md)) shipped 2026-06-18. v0.8.8
+(daily-use fixes: opencode identity prefers the access-token email over the
+opaque accountId UUID; shell completion is flag-aware — flags before positionals
+no longer shift it — and completes flag names via a new `kae __complete flags`
+kind) shipped the same day. v0.8.7 (complete account-identity
 coverage: `agy.Identity` from `~/.gemini/google_accounts.json` so every tool
 exposes a login identity, plus an `Identity` column in `kae status`) shipped the
 same day. v0.8.6 (agy account switching on

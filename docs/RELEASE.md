@@ -24,13 +24,19 @@ the trailing `-- <tool>` is redundant. Default it:
 - An `all`/profile target (no single child binary) or a tool with no launchable
   upstream binary still requires `-- <cmd>`, erroring clearly when it is missing.
 
-### B. Login UX: agy login discovery + `claude /login` verification
+### B. Login UX: `claude /login` verification (agy login deferred)
 
-- **agy login is discovery-gated.** Like the cursor-identity path, first
-  discover on a real machine whether agy exposes a login/identity flow. Implement
-  agy login support only if the discovery yields a stable contract; otherwise
-  keep agy capture explicit-only and record the gap (ROADMAP). Splittable: §B can
-  ship as the claude verification alone.
+- **agy login — discovery-blocked on the available machine (2026-06-18), so
+  deferred.** The standalone `agy` CLI is not installed here; only the
+  Antigravity.app GUI (Homebrew cask `antigravity`, version 2.x) and the separate
+  Gemini CLI are present. The `~/.gemini/` root credential files
+  (`oauth_creds.json`, `google_accounts.json`) belong to the **Gemini CLI**, not
+  agy, and the adapter's assumed agy state dir `~/.gemini/antigravity-cli/` does
+  not exist — so agy's login/identity CLI surface could not be probed. agy stays
+  capture-only with an explicit name. Resume when a machine has the `agy` CLI
+  installed: probe `agy --help` / `login` / `auth` / a whoami-style command, and
+  confirm whether login is CLI-driven or GUI/browser OAuth (the app being a GUI
+  cask suggests browser OAuth, which kae's shell-out login flow cannot drive).
 - **`claude /login`**: verify behavior across recent claude versions; the
   v0.8.x "login flow exited without changing auth → exit `11`" detection stays.
 
@@ -63,8 +69,9 @@ deferred with the reason recorded.
   explicit `-- <cmd>` still wins; an `all`/profile target or a binary-less tool
   without `-- <cmd>` errors naming the explicit form. Asserted via the runner
   seam; temp-HOME tests.
-- **login**: `claude /login` verified across versions; agy login implemented iff
-  discovery yields a contract, else deferred with the reason recorded.
+- **login**: `claude /login` verified across versions. agy login is deferred
+  (discovery-blocked 2026-06-18: no `agy` CLI on the available machine), with the
+  resume conditions recorded.
 - **gates**: fish smoke + codex keyring two-account recorded in VALIDATION.md
   (PASS or deferred-with-reason).
 - `mise run check` passes; no new entry in `go.mod`; the JSON contract is
@@ -74,8 +81,7 @@ deferred with the reason recorded.
 
 1. Bump `toolVersion` to v0.8.6.
 2. §A `run` default-child-binary; temp-HOME tests.
-3. §B agy login real-machine discovery → conditional implement; `claude /login`
-   verification.
+3. §B `claude /login` verification (agy login deferred — discovery-blocked).
 4. Docs (CLI / README / ARCHITECTURE as needed).
 5. §C real-machine gates (fish smoke, codex keyring two-account); tag `v0.8.6`,
    GitHub release.

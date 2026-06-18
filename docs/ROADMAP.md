@@ -67,11 +67,14 @@ Follow-up from v0.8.4 (not yet scheduled):
   [ADAPTERS.md](ADAPTERS.md)), so the verbatim-keychain driver is now
   implementable with structure guards. The detect-only refusal stays until the
   v0.8.3 driver lands (and its two-account real-keychain gate).
-- **Login UX polish** *(v0.8.6 §B — agy discovery-gated)*: verify `claude /login`
-  behavior across versions, support agy. agy login support rides only if a
-  real-machine discovery yields a stable contract; otherwise it stays deferred.
-  (The "login flow exited without changing auth" case is now detected and
-  refused with exit `11`.)
+- **Login UX polish** *(v0.8.6 §B — claude verify; agy deferred)*: verify
+  `claude /login` behavior across versions. agy login is **deferred** — a
+  2026-06-18 discovery found no standalone `agy` CLI on the available machine
+  (only the Antigravity.app GUI cask + the separate Gemini CLI, whose
+  `~/.gemini/` files are not agy's), so its login/identity surface could not be
+  probed. Resume when a machine has the `agy` CLI: probe `agy --help`/`login`/
+  `auth`/whoami and confirm CLI-driven vs GUI/browser OAuth. (The "login flow
+  exited without changing auth" case is now detected and refused with exit `11`.)
 - **`kae env export --dotenv --reveal`** *(deferred — no current use)*:
   explicit-flag value export for CI bootstrapping (today values are
   injection-only by design). Considered for v0.8.6 but dropped: CI does not use

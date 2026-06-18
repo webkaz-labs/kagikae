@@ -30,6 +30,10 @@ const (
 	KeychainAccount = "antigravity"
 )
 
+// noKeychainItemMsg is the logged-out message shared by Detect's warning and
+// Doctor's warn check so the two cannot drift.
+const noKeychainItemMsg = "no gemini/antigravity keychain item; log in with the Antigravity app first"
+
 // credentialFiles are the file-based credential names observed across agy
 // versions (Linux/WSL). All are captured/applied so version changes round-trip.
 var credentialFiles = []string{"credentials.enc", "credentials.json", "oauth_creds.json"}
@@ -107,8 +111,7 @@ func (a Agy) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) 
 		}
 		info.AuthPresent = v.Present
 		if !v.Present {
-			info.Warnings = append(info.Warnings,
-				"no gemini/antigravity keychain item; log in with the Antigravity app first")
+			info.Warnings = append(info.Warnings, noKeychainItemMsg)
 		}
 		return info, nil
 	}
@@ -138,7 +141,7 @@ func (a Agy) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 				Status: constants.StatusOK, Message: "gemini/antigravity keychain item found"})
 		default:
 			checks = append(checks, adapter.Check{Tool: tool, Code: constants.CheckAuthPresent,
-				Status: constants.StatusWarn, Message: "no gemini/antigravity keychain item; log in with the Antigravity app first"})
+				Status: constants.StatusWarn, Message: noKeychainItemMsg})
 		}
 		checks = append(checks, adapter.Check{Tool: tool, Code: constants.CheckDriver,
 			Status: constants.StatusOK, Message: "driver: " + constants.DriverAgyKeychain})

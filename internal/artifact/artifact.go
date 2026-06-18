@@ -71,6 +71,13 @@ type Value struct {
 	Present bool
 }
 
+// matchAccount reports whether this keychain spec is scoped to a fixed account
+// of a shared service (agy's gemini/antigravity): read/write/delete touch only
+// the KeychainAccount item, never a sibling under a different account.
+func (sp Spec) matchAccount() bool {
+	return sp.KeychainMatchAccount && sp.KeychainAccount != ""
+}
+
 // keychainGuard verifies a captured keychain payload before it is stored or
 // applied. The item's bytes always round-trip verbatim (the owning tool
 // rejects a re-serialized payload), so the guard never mutates them; it only
@@ -150,7 +157,7 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 		var payload []byte
 		var found bool
 		var err error
-		if sp.KeychainMatchAccount && sp.KeychainAccount != "" {
+		if sp.matchAccount() {
 			payload, found, err = keychain.ReadItemForAccount(ctx, sp.Target, sp.KeychainAccount)
 		} else {
 			payload, found, err = keychain.ReadItem(ctx, sp.Target)
@@ -220,7 +227,7 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		return patch.WriteFileAtomic(sp.Target, updated, patch.CredentialFileMode)
 
 	case constants.KindKeychain:
-		matchAccount := sp.KeychainMatchAccount && sp.KeychainAccount != ""
+		matchAccount := sp.matchAccount()
 		if !v.Present {
 			// The captured account had no keychain item; applying it removes
 			// the live item (mirrors the file/json-pointer absent cases). A

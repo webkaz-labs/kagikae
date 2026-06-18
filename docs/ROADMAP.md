@@ -3,13 +3,14 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-The active target is **v0.8.6** (agy account switching on macOS via a Keychain
+No active release target. v0.8.6 (agy account switching on macOS via a Keychain
 driver + daily-use polish: a terser one-shot `kae run <tool> <account>` that
 defaults the child to the tool binary, `claude /login` verification; additive, no
-contract break — see [RELEASE.md](RELEASE.md)). The agy two-account real-keychain
-gate **passed** (2026-06-18); fish was **dropped** from the verified shells
-(`kae completion fish` stays best-effort); the codex-keyring two-account gate
-stays the one carried, unit-covered open item.
+contract break — see [RELEASE.md](RELEASE.md)) shipped 2026-06-18. The agy
+two-account real-keychain gate **passed**; fish was **dropped** from the verified
+shells (`kae completion fish` stays best-effort); the codex-keyring two-account
+gate stays the one carried, unit-covered open item. What remains is hardening and
+platform coverage, ordered below by user impact.
 
 v0.8.5 (a "did you mean?" nearest-match hint
 for an unknown command/tool/profile, table-driven off the same live lists

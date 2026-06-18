@@ -1,4 +1,4 @@
-# Release Target: kae v0.8.6 — agy account switching + daily-use polish
+# kae v0.8.6 (released 2026-06-18)
 
 Lift agy account switching on macOS (the one tool kae still cannot switch here)
 and pay down small daily-use friction, closing the open real-machine acceptance
@@ -9,6 +9,17 @@ cursor (the `security` calls go through `internal/runner`); the run change
 reuses `adapter.Binary()` and the existing `run` transaction.
 
 Previous baseline: v0.8.5 (did-you-mean nearest-match hint).
+
+Shipped 2026-06-18. §A: the agy keychain driver switches the
+`gemini`/`antigravity` Keychain item on macOS, matched by service **and**
+account so a sibling `gemini` item is never touched; Linux/WSL keeps the file
+driver. §B: `kae run <tool> <account>` defaults the child to the tool binary
+when no `-- <cmd>` is given. §C: `claude /login` is launched via the upstream
+flow (unchanged); agy login stays deferred (GUI OAuth, no kae-drivable login).
+§D: the **agy two-account real-keychain gate PASSED**; **fish was dropped from
+the verified shells** (`kae completion fish` stays best-effort); the codex
+keyring two-account gate stays the one carried, unit-covered open item
+([VALIDATION.md](VALIDATION.md)).
 
 ## Scope
 

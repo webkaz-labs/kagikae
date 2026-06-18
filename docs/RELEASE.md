@@ -1,3 +1,27 @@
+# kae v0.8.8 (released 2026-06-18)
+
+Daily-use fixes surfaced right after v0.8.7: opencode auto-named accounts by an
+opaque UUID, and shell completion broke when a flag preceded the positionals
+(`kae add --no-login <TAB>` offered nothing). Additive and contract-stable:
+`schema_version` stays `1`, no new dependency.
+
+Previous baseline: v0.8.7 (complete account-identity coverage).
+
+Shipped 2026-06-18.
+- **opencode identity**: `opencode.Identity` now decodes the `/openai` access
+  token (a JWT) and prefers its `https://api.openai.com/profile` email claim,
+  falling back to the opaque `accountId` UUID only when no email is present
+  (mirrors codex). Re-capture an existing UUID-named opencode account to pick up
+  the email.
+- **flag-aware completion**: the bash/zsh/fish scripts route by the
+  flag-filtered positional index, so a flag before the positionals no longer
+  shifts completion (`kae add --no-login <TAB>` completes tools; `kae use -i
+  claude <TAB>` completes accounts).
+- **flag-name completion**: a new `kae __complete flags <command>` backend lists
+  a command's flags (sourced from the same per-command registrars the parser
+  uses, `internal/cmd/flagspec.go`, so the list never drifts); the scripts call
+  it when the current word starts with `-` (`kae add --<TAB>`, `kae run -<TAB>`).
+
 # kae v0.8.7 (released 2026-06-18)
 
 Complete account-identity coverage. agy was the last tool whose login identity

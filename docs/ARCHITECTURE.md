@@ -58,8 +58,12 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   one candidate per line. It is the single source for both completion surfaces —
   kae's own generated shell scripts (`cmd/completion.go`) and the `kae mise init`
   task `complete "<arg>" run="kae __complete …"` directives (`cmd/miseinit.go`) —
-  so candidate lists never drift from the real surface. Read-only, no locks; its
-  line-oriented output is an internal contract, not the JSON contract.
+  so candidate lists never drift from the real surface. The `flags <command>`
+  kind lists a command's flags from the same per-command registrars the parser
+  uses (`cmd/flagspec.go`, also called by `parseCommon`), so flag completion
+  tracks the real flag set. The shell scripts route by the flag-filtered
+  positional index (flags before positionals do not shift completion). Read-only,
+  no locks; its line-oriented output is an internal contract, not the JSON contract.
 - **Did-you-mean hints** (`cmd/suggest.go`): the unknown-command, unknown-tool,
   and unknown-profile usage errors append a single hand-rolled Levenshtein
   nearest-match suggestion drawn from the same candidate lists the completion

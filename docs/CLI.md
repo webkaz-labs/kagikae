@@ -220,7 +220,8 @@ identity is sanitized to `[a-zA-Z0-9._-]` (an email keeps only its local part
 before `@`), capped at 64 chars. An explicit name always wins. Detection per
 tool: claude `~/.claude.json` `oauthAccount.emailAddress`; codex `auth.json`
 (or the keyring payload) `id_token` email claim, else `account_id`; opencode
-`auth.json` `/openai` `accountId`; copilot `config.json`
+the `/openai` access token's `https://api.openai.com/profile` email claim, else
+its `accountId` UUID (v0.8.8 prefers the email); copilot `config.json`
 `/lastLoggedInUser.login`; cursor `cursor-agent status` (`✓ Logged in as
 <email>`); agy the active Google account in `~/.gemini/google_accounts.json`
 (`.active`, v0.8.7). Every tool now exposes an identity. A detection failure
@@ -366,12 +367,20 @@ of baking a word list at generation time, the script calls the hidden
 the live router, config, and captured state. Word 1 completes commands; the
 argument positions complete tools/profiles, and `kae use claude <TAB>` scopes to
 claude's accounts (the tool word is passed to `kae __complete accounts <tool>`).
+Positions are computed from the **flag-filtered** argument list, so a flag
+before the positionals does not shift completion (`kae add --no-login <TAB>`
+still completes tools; `kae use -i claude <TAB>` completes claude's accounts).
+When the current word starts with `-`, the command's **flag names** are
+completed (`kae add --<TAB>` → `--no-login` / `--restore`; `kae run -<TAB>` →
+`-s` / `-i` / `--env` / `-P`).
 
-`kae __complete <commands|tools|profiles|accounts [<tool>]>` is read-only, takes
-no locks, prints one candidate per line, and is intentionally hidden from
-`kae help`. Its line-oriented output is an internal contract consumed by the
-generated scripts and the `kae mise init` task `complete` directives — it is not
-the JSON contract (`schema_version` is unaffected).
+`kae __complete <commands|tools|profiles|accounts [<tool>]|flags <command>>` is
+read-only, takes no locks, prints one candidate per line, and is intentionally
+hidden from `kae help`. The `flags` kind lists a command's flags from the same
+per-command registrars the parser uses, so the completion set never drifts. Its
+line-oriented output is an internal contract consumed by the generated scripts
+and the `kae mise init` task `complete` directives — it is not the JSON contract
+(`schema_version` is unaffected).
 
 **bash and zsh are the verified shells.** `kae completion fish` stays available
 as a best-effort generator (unit-tested and `fish -n`-valid) but is not a

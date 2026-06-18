@@ -16,6 +16,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/jwt"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
@@ -73,9 +74,11 @@ func (o Opencode) Detect(ctx context.Context, env adapter.Env) (adapter.Info, er
 	return info, nil
 }
 
-// Identity reads the ChatGPT-subscription accountId from auth.json's /openai
-// entry so `kae add opencode` (no name) can default the account name. Only the
-// openai entry is consulted — API-key providers belong to env mode.
+// Identity reads the ChatGPT-subscription login from auth.json's /openai entry
+// so `kae add opencode` (no name) can default the account name. It prefers the
+// human-readable email in the access token's OpenAI profile claim and falls
+// back to the opaque `accountId` (a UUID) only when the token carries no email.
+// Only the openai entry is consulted — API-key providers belong to env mode.
 func (o Opencode) Identity(_ context.Context, env adapter.Env) (string, error) {
 	path := authJSONPath(env)
 	data, err := os.ReadFile(path)
@@ -84,16 +87,41 @@ func (o Opencode) Identity(_ context.Context, env adapter.Env) (string, error) {
 	}
 	var doc struct {
 		Openai struct {
+			Access    string `json:"access"`
 			AccountID string `json:"accountId"`
 		} `json:"openai"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return "", fmt.Errorf("parse %s: %w", path, err)
 	}
-	if doc.Openai.AccountID == "" {
-		return "", fmt.Errorf("no openai.accountId in %s", path)
+	if email := openaiProfileEmail(doc.Openai.Access); email != "" {
+		return email, nil
 	}
-	return doc.Openai.AccountID, nil
+	if doc.Openai.AccountID != "" {
+		return doc.Openai.AccountID, nil
+	}
+	return "", fmt.Errorf("no openai email claim or accountId in %s", path)
+}
+
+// openaiProfileEmail decodes the access token (a JWT) and returns the email in
+// its `https://api.openai.com/profile` claim, or "". Best-effort for
+// account-name defaulting; an unparseable token yields "" so the caller falls
+// back to accountId. The signature is never verified (identity reads only
+// already-trusted live state; the shared decoder is internal/jwt).
+func openaiProfileEmail(token string) string {
+	payload, ok := jwt.Payload(token)
+	if !ok {
+		return ""
+	}
+	var claims struct {
+		Profile struct {
+			Email string `json:"email"`
+		} `json:"https://api.openai.com/profile"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+	return claims.Profile.Email
 }
 
 // Freshness reads the /openai sub-value {type, refresh, access, expires}.

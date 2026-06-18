@@ -1,6 +1,7 @@
 package opencode
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,12 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 )
+
+// makeJWT builds a minimal unsigned JWT carrying the given payload JSON.
+func makeJWT(payloadJSON string) string {
+	seg := func(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) }
+	return seg(`{"alg":"none"}`) + "." + seg(payloadJSON) + "."
+}
 
 func testEnv(home string) adapter.Env {
 	return adapter.Env{
@@ -31,9 +38,22 @@ func writeAuth(t *testing.T, home, body string) {
 	}
 }
 
-func TestOpencodeIdentityFromAccountID(t *testing.T) {
+// The access token's OpenAI profile email is preferred over the opaque
+// accountId UUID, so the auto-detected name is human-readable.
+func TestOpencodeIdentityPrefersProfileEmail(t *testing.T) {
 	home := t.TempDir()
-	writeAuth(t, home, `{"openai":{"type":"oauth","accountId":"acct-xyz"},"anthropic":{"type":"api"}}`)
+	access := makeJWT(`{"https://api.openai.com/profile":{"email":"work@example.com"}}`)
+	writeAuth(t, home, `{"openai":{"type":"oauth","access":"`+access+`","accountId":"39a1e863-uuid"}}`)
+	got, err := Opencode{}.Identity(t.Context(), testEnv(home))
+	if err != nil || got != "work@example.com" {
+		t.Fatalf("Identity = %q, err = %v; want work@example.com (not the accountId)", got, err)
+	}
+}
+
+// With no email claim in the access token, Identity falls back to accountId.
+func TestOpencodeIdentityFallsBackToAccountID(t *testing.T) {
+	home := t.TempDir()
+	writeAuth(t, home, `{"openai":{"type":"oauth","access":"not-a-jwt","accountId":"acct-xyz"},"anthropic":{"type":"api"}}`)
 	got, err := Opencode{}.Identity(t.Context(), testEnv(home))
 	if err != nil || got != "acct-xyz" {
 		t.Fatalf("Identity = %q, err = %v; want acct-xyz", got, err)

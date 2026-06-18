@@ -15,9 +15,13 @@ import (
 )
 
 type toolStatus struct {
-	Tool        string   `json:"tool"`
-	Enabled     bool     `json:"enabled"`
-	Account     *string  `json:"account"`
+	Tool    string  `json:"tool"`
+	Enabled bool    `json:"enabled"`
+	Account *string `json:"account"`
+	// Identity is the active account's recorded login identity (§D), additive and
+	// omitempty so the JSON contract stays schema_version 1; blank for a
+	// pre-identity snapshot or a tool/account with no readable identity.
+	Identity    string   `json:"identity,omitempty"`
 	Driver      string   `json:"driver"`
 	AuthPresent bool     `json:"auth_present"`
 	Accounts    []string `json:"accounts"`
@@ -96,8 +100,17 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		return nil, err
 	}
 	capturedByTool := map[string][]string{}
+	// identityByTool[tool][account] is the recorded login identity, so status can
+	// show the active account's identity (§D) without a second snapshot read.
+	identityByTool := map[string]map[string]string{}
 	for _, acc := range captured {
 		capturedByTool[acc.Tool] = append(capturedByTool[acc.Tool], acc.Name)
+		if acc.Identity != "" {
+			if identityByTool[acc.Tool] == nil {
+				identityByTool[acc.Tool] = map[string]string{}
+			}
+			identityByTool[acc.Tool][acc.Name] = acc.Identity
+		}
 	}
 	report := &statusReport{
 		SchemaVersion:  constants.SchemaVersion,
@@ -144,6 +157,9 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		if bound, ok := pinnedAccounts[tool]; ok {
 			boundCopy := bound
 			ts.Account = &boundCopy
+		}
+		if ts.Account != nil {
+			ts.Identity = identityByTool[tool][*ts.Account]
 		}
 		if det := detections[i]; det.err != nil {
 			ts.Warnings = append(ts.Warnings, det.err.Error())
@@ -284,9 +300,9 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		if len(ts.Warnings) > 0 {
 			notes = paint(constants.StatusWarn, fmt.Sprintf("%d warning(s)", len(ts.Warnings)), color)
 		}
-		rows = append(rows, []string{ts.Tool, accountName, ts.Driver, auth, notes})
+		rows = append(rows, []string{ts.Tool, accountName, ts.Identity, ts.Driver, auth, notes})
 	}
-	printTable([]string{"Tool", "Account", "Driver", "Auth", "Notes"}, rows)
+	printTable([]string{"Tool", "Account", "Identity", "Driver", "Auth", "Notes"}, rows)
 	warned := false
 	for _, ts := range report.Tools {
 		for _, warning := range ts.Warnings {

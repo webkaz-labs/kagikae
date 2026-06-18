@@ -123,6 +123,35 @@ func TestStatusShowsPinAndProfiles(t *testing.T) {
 	}
 }
 
+// TestStatusShowsActiveAccountIdentity: status surfaces the active account's
+// recorded login identity (§D / v0.8.7), in both --json and text.
+func TestStatusShowsActiveAccountIdentity(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	// seedClaude writes ~/.claude.json with emailAddress = <uuid>@example.com,
+	// which claude.Identity detects and capture records into the snapshot.
+	seedClaude(t, app, workToken, "work-uuid")
+	if code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "work") }); code != constants.ExitOK {
+		t.Fatalf("capture: %s", out)
+	}
+	if code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "work") }); code != constants.ExitOK {
+		t.Fatalf("switch: %s", out)
+	}
+
+	code, out := captureStdout(t, func() int { return runStatus(ctx, app, commonOpts{Format: formatJSON}) })
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(out, `"identity": "work-uuid@example.com"`) {
+		t.Fatalf("status --json must carry the active account's identity: %s", out)
+	}
+	code, out = captureStdout(t, func() int { return runStatus(ctx, app, commonOpts{Format: formatText}) })
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(out, "work-uuid@example.com") {
+		t.Fatalf("status text must show the identity column: %s", out)
+	}
+}
+
 func TestStatusRecordedProfileBeatsMappingMatch(t *testing.T) {
 	app := testApp(t, nil)
 	app.Config.Profiles = map[string]config.Profile{

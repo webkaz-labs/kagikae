@@ -201,6 +201,78 @@ func TestCompletionInstallFpath(t *testing.T) {
 	}
 }
 
+// TestCompletionInstallZshPrefersExistingFpathDir: when a common user zsh
+// completions dir already exists (the user created it because it is on their
+// fpath), --install writes there — so the file auto-loads in a new shell with no
+// .zshrc change — instead of the XDG fallback that needs an fpath edit.
+func TestCompletionInstallZshPrefersExistingFpathDir(t *testing.T) {
+	app := testApp(t, nil)
+	// ~/.config/zsh/completions on fpath (the common XDG-config convention).
+	fpathDir := filepath.Join(app.Env.Home, ".config", "zsh", "completions")
+	if err := os.MkdirAll(fpathDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script, _ := completionScript("zsh")
+	code, out := captureStdout(t, func() int {
+		return applyCompletionInstall(app, commonOpts{Format: formatText}, "zsh", script, installFpath)
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	want := filepath.Join(fpathDir, "_kae")
+	if got := readFile(t, want); got != script {
+		t.Fatalf("zsh completion must install into the existing fpath dir %s", want)
+	}
+	// XDG fallback must NOT be written when an fpath dir exists.
+	if _, err := os.Stat(filepath.Join(app.Env.Home, ".local", "share", "zsh", "site-functions", "_kae")); !os.IsNotExist(err) {
+		t.Fatalf("must not fall back to the XDG dir when an fpath dir exists (err=%v)", err)
+	}
+	// The dir is on fpath, so the activation note must not ask for an fpath edit.
+	dir, onFpath := zshCompletionDir(app.Env)
+	if dir != fpathDir || !onFpath {
+		t.Fatalf("zshCompletionDir = (%q, %v), want (%q, true)", dir, onFpath, fpathDir)
+	}
+	if strings.Contains(completionActivationNote(want, onFpath), "fpath=(") {
+		t.Fatal("an existing-fpath-dir install must not print the fpath-add note")
+	}
+}
+
+// TestZshCompletionDirPriority: the candidate dirs are tried in order
+// (~/.config/zsh/completions > ~/.zsh/completions > ~/.zfunc), and with none
+// present it falls back to the XDG data dir (onFpath=false).
+func TestZshCompletionDirPriority(t *testing.T) {
+	app := testApp(t, nil)
+	home := app.Env.Home
+	configDir := filepath.Join(home, ".config", "zsh", "completions")
+	zshDir := filepath.Join(home, ".zsh", "completions")
+	zfuncDir := filepath.Join(home, ".zfunc")
+
+	// No candidate present → XDG fallback, not on fpath.
+	if dir, onFpath := zshCompletionDir(app.Env); onFpath || dir != filepath.Join(home, ".local", "share", "zsh", "site-functions") {
+		t.Fatalf("no-candidate: got (%q, %v), want the XDG dir, false", dir, onFpath)
+	}
+	// Only ~/.zfunc exists → it wins.
+	if err := os.MkdirAll(zfuncDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if dir, onFpath := zshCompletionDir(app.Env); dir != zfuncDir || !onFpath {
+		t.Fatalf("zfunc-only: got (%q, %v), want (%q, true)", dir, onFpath, zfuncDir)
+	}
+	// ~/.zsh/completions also exists → it outranks ~/.zfunc.
+	if err := os.MkdirAll(zshDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if dir, _ := zshCompletionDir(app.Env); dir != zshDir {
+		t.Fatalf("zsh-vs-zfunc: got %q, want %q", dir, zshDir)
+	}
+	// ~/.config/zsh/completions also exists → it outranks all.
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if dir, _ := zshCompletionDir(app.Env); dir != configDir {
+		t.Fatalf("config-wins: got %q, want %q", dir, configDir)
+	}
+}
+
 func TestCompletionInstallNeverTouchesMiseByDefault(t *testing.T) {
 	app := testApp(t, nil)
 	script, _ := completionScript("zsh")

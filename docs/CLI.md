@@ -393,8 +393,12 @@ out by directory). Three registration paths, non-mise first:
 1. **rc eval** — add `eval "$(kae completion zsh)"` (bash/zsh) or
    `kae completion fish | source` to your shell rc. No files written.
 2. **completion file** — write the script to the shell's standard completions
-   dir (bash-completion and fish auto-load it; for zsh ensure the dir is on
-   `fpath`). `kae completion <shell> --install` does this for you (the default).
+   dir (bash-completion and fish auto-load it). For zsh, `--install` prefers an
+   existing user completions dir already on `fpath` (`~/.config/zsh/completions`,
+   `~/.zsh/completions`, `~/.zfunc`), so the file auto-loads in a new shell; if
+   none exists it falls back to `$XDG_DATA_HOME/zsh/site-functions` and prints
+   the `fpath=(…)` line to add. `kae completion <shell> --install` does this for
+   you (the default).
 3. **`kae completion <shell> --install`** — interactive: it detects whether mise
    is active, then offers (1) the completions-dir file [default], (2) a global
    mise `[hooks.enter]` that sources the script (opt-in), or (3) print-only. The

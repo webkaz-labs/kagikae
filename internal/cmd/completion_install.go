@@ -44,7 +44,7 @@ func promptCompletionChoice(env adapter.Env, shell string) completionInstallChoi
 	miseActive := completionMiseDetected(env)
 	// An unsupported shell never reaches here (validated in CmdCompletion), so
 	// the error is safe to drop for the display path.
-	path, _ := completionInstallPath(env, shell)
+	path, _, _ := completionTarget(env, shell)
 	fmt.Fprintf(os.Stderr, "Register kae %s completion:\n", shell)
 	fmt.Fprintf(os.Stderr, "  1) completion file in the shell's standard dir (%s) [default]\n", path)
 	miseNote := ""
@@ -101,7 +101,7 @@ func applyCompletionInstall(app *App, opts commonOpts, shell, script string, cho
 		}
 		return constants.ExitOK
 	case installFpath:
-		path, err := completionInstallPath(app.Env, shell)
+		path, autoLoaded, err := completionTarget(app.Env, shell)
 		if err != nil {
 			return finish(opts, err)
 		}
@@ -114,40 +114,66 @@ func applyCompletionInstall(app *App, opts commonOpts, shell, script string, cho
 		} else {
 			fmt.Printf("kae %s completion already up to date: %s\n", shell, path)
 		}
-		fmt.Fprint(os.Stderr, completionActivationNote(shell, path))
+		fmt.Fprint(os.Stderr, completionActivationNote(path, autoLoaded))
 		return constants.ExitOK
 	default:
 		return finish(opts, errf(constants.ExitError, "unhandled completion install choice %d", choice))
 	}
 }
 
-// completionInstallPath returns the shell's standard user completions file for
-// kae (XDG-aware). bash-completion v2 and fish auto-load their dirs; zsh needs
-// the dir on fpath (completionActivationNote says so).
-func completionInstallPath(env adapter.Env, shell string) (string, error) {
+// completionTarget resolves the user completions file for kae and whether the
+// shell auto-loads that location (so no fpath/.zshrc step is needed). bash and
+// fish auto-load their standard XDG dirs. zsh loads only dirs on `fpath`, which
+// varies per user, so completionTarget prefers an existing user completions dir
+// (one the user created because it is on their fpath — see zshCompletionDir);
+// only when none exists does it fall back to the XDG dir, which the user must
+// add to fpath (completionActivationNote says so).
+func completionTarget(env adapter.Env, shell string) (path string, autoLoaded bool, err error) {
 	switch shell {
 	case "bash":
-		return filepath.Join(paths.XDGDataHome(env.Getenv, env.Home, ""), "bash-completion", "completions", "kae"), nil
+		return filepath.Join(paths.XDGDataHome(env.Getenv, env.Home, ""), "bash-completion", "completions", "kae"), true, nil
 	case "zsh":
-		return filepath.Join(paths.XDGDataHome(env.Getenv, env.Home, ""), "zsh", "site-functions", "_kae"), nil
+		dir, onFpath := zshCompletionDir(env)
+		return filepath.Join(dir, "_kae"), onFpath, nil
 	case "fish":
-		return filepath.Join(paths.XDGConfigHome(env.Getenv, env.Home, ""), "fish", "completions", "kae.fish"), nil
+		return filepath.Join(paths.XDGConfigHome(env.Getenv, env.Home, ""), "fish", "completions", "kae.fish"), true, nil
 	default:
-		return "", errf(constants.ExitUsage, "unsupported shell %q (supported: bash, zsh, fish)", shell)
+		return "", false, errf(constants.ExitUsage, "unsupported shell %q (supported: bash, zsh, fish)", shell)
 	}
 }
 
-// completionActivationNote returns the shell-specific note printed after a
-// successful fpath install (zsh needs the dir on fpath; others auto-load).
-func completionActivationNote(shell, path string) string {
-	switch shell {
-	case "zsh":
-		dir := filepath.Dir(path)
-		return fmt.Sprintf("Ensure this is on your fpath, e.g. add to ~/.zshrc:\n"+
-			"  fpath=(%s $fpath)\n  autoload -Uz compinit && compinit\nThen open a new shell.\n", dir)
-	default:
+// zshCompletionDir picks the zsh completions dir to install into. It prefers the
+// first **existing** common user fpath dir — a dir the user created precisely
+// because it is on their `fpath`, so the file loads in a new shell with no
+// .zshrc change (onFpath=true). When none exists it returns the XDG data dir
+// (onFpath=false), which the install step creates and asks the user to add to
+// fpath. (kae does not shell out to zsh to read `$fpath`: an interactive zsh
+// subprocess is slow and its stdout is easily polluted by the user's rc files.)
+func zshCompletionDir(env adapter.Env) (dir string, onFpath bool) {
+	for _, candidate := range []string{
+		filepath.Join(paths.XDGConfigHome(env.Getenv, env.Home, ""), "zsh", "completions"),
+		filepath.Join(env.Home, ".zsh", "completions"),
+		filepath.Join(env.Home, ".zfunc"),
+	} {
+		if info, statErr := os.Stat(candidate); statErr == nil && info.IsDir() {
+			return candidate, true
+		}
+	}
+	return filepath.Join(paths.XDGDataHome(env.Getenv, env.Home, ""), "zsh", "site-functions"), false
+}
+
+// completionActivationNote returns the note printed after an fpath install.
+// When the location auto-loads (bash/fish, or a zsh dir already on fpath) the
+// user need only open a new shell; otherwise (zsh XDG fallback) it names the
+// fpath line to add.
+func completionActivationNote(path string, autoLoaded bool) string {
+	if autoLoaded {
 		return "Open a new shell to load it.\n"
 	}
+	// zsh, fell back to the XDG dir that is not yet on fpath.
+	return fmt.Sprintf("Ensure this is on your fpath, e.g. add to ~/.zshrc:\n"+
+		"  fpath=(%s $fpath)\n  autoload -Uz compinit && compinit\nThen open a new shell.\n",
+		filepath.Dir(path))
 }
 
 // writeCompletionFile writes script to path idempotently, creating parent

@@ -470,7 +470,7 @@ at 64); an explicit name always wins. The per-tool source:
 |------|-----------------|
 | claude | `~/.claude.json` `oauthAccount.emailAddress` |
 | codex | `auth.json` `id_token` email claim (JWT), else `tokens.account_id` |
-| opencode | `auth.json` `/openai` `accountId` |
+| opencode | the `/openai` access token's `https://api.openai.com/profile` email claim (JWT), else `/openai` `accountId` (an opaque UUID; v0.8.8 prefers the email) |
 | copilot | `config.json` (JSONC) `/lastLoggedInUser.login` |
 | agy | `~/.gemini/google_accounts.json` `.active` — the active Google account email the Antigravity login writes (v0.8.7; the keychain token itself is opaque) |
 | cursor | `cursor-agent status` prints `✓ Logged in as <email>` (discovery 2026-06-16: single line, no ANSI, exit 0); the `Identifier` (v0.8.3) parses the text after `Logged in as ` through the runner seam. A non-zero exit, a missing marker, or an empty identity is a detection failure. `cursor-agent status` may hit the network — acceptable on the interactive `kae add` path. |

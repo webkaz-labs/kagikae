@@ -62,8 +62,7 @@ func CmdAdd(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
 	restore, noLogin := false, false
 	opts, ok := parseCommon("add", flags, true, func(fs *flag.FlagSet) {
-		fs.BoolVar(&restore, "restore", false, "restore the previous login after capturing (login flow only)")
-		fs.BoolVar(&noLogin, "no-login", false, "snapshot the current live auth state without launching a login flow")
+		registerAddFlags(fs, &restore, &noLogin)
 	})
 	if !ok {
 		return constants.ExitUsage

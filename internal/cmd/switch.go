@@ -50,9 +50,7 @@ func CmdUse(ctx context.Context, args []string) int {
 	var shared, isolated, quiet bool
 	var profileFlag string
 	opts, ok := parseCommon("use", flags, true, func(fs *flag.FlagSet) {
-		registerScopeFlags(fs, &shared, &isolated)
-		fs.BoolVar(&quiet, "quiet", false, "suppress the success report (for hooks; bare use)")
-		registerProfileFlag(fs, &profileFlag)
+		registerUseFlags(fs, &shared, &isolated, &quiet, &profileFlag)
 	})
 	if !ok {
 		return constants.ExitUsage

@@ -26,7 +26,7 @@ func CmdPin(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
 	var shared, isolated bool
 	opts, ok := parseCommon("pin", flags, false, func(fs *flag.FlagSet) {
-		registerScopeFlags(fs, &shared, &isolated)
+		registerPinFlags(fs, &shared, &isolated)
 	})
 	if !ok {
 		return constants.ExitUsage

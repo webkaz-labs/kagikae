@@ -3,10 +3,14 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-No active release target. v0.8.7 (complete account-identity coverage: `agy.Identity`
-from `~/.gemini/google_accounts.json` so every tool exposes a login identity, plus
-an `Identity` column in `kae status`; additive, no contract break — see
-[RELEASE.md](RELEASE.md)) shipped 2026-06-18. v0.8.6 (agy account switching on
+No active release target. v0.8.8 (daily-use fixes: opencode identity prefers the
+access-token email over the opaque accountId UUID; shell completion is
+flag-aware — flags before positionals no longer shift it — and completes flag
+names via a new `kae __complete flags` kind; additive, no contract break — see
+[RELEASE.md](RELEASE.md)) shipped 2026-06-18. v0.8.7 (complete account-identity
+coverage: `agy.Identity` from `~/.gemini/google_accounts.json` so every tool
+exposes a login identity, plus an `Identity` column in `kae status`) shipped the
+same day. v0.8.6 (agy account switching on
 macOS via a Keychain driver + a terser one-shot `kae run <tool> <account>` +
 `claude /login` verification) shipped the same day; its agy two-account
 real-keychain gate **passed**, fish was **dropped** from the verified shells
@@ -163,6 +167,9 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   (2) an unknown command/tool/profile printing a Levenshtein "did you mean X?"
   hint shipped in v0.8.5, table-driven off the same
   router/`constants.Tools`/config lists (the `kae __complete` source).
+  (3) v0.8.8 made completion flag-aware (flags before positionals no longer
+  shift it) and added flag-name completion via a `kae __complete flags <command>`
+  kind sourced from the parser's own per-command flag registrars.
 
 These overlap with the TUI item above at the surface level but are the
 plain-CLI layer; the TUI sits on top of them.

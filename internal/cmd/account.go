@@ -47,7 +47,7 @@ func cmdAccountRm(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
 	force := false
 	opts, ok := parseCommon("account rm", flags, true, func(fs *flag.FlagSet) {
-		fs.BoolVar(&force, "force", false, "remove even the active account, dropping it from state")
+		registerAccountRmFlags(fs, &force)
 	})
 	if !ok {
 		return constants.ExitUsage

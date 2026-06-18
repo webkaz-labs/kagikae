@@ -29,6 +29,8 @@ import (
 //   - tools            — constants.Tools
 //   - profiles         — config profile names
 //   - accounts [<tool>]— captured account names, optionally scoped to one tool
+//   - flags <command>  — a command's flags (--name / -n), from the same
+//     registrars the parser uses (flagspec.go), so the list never drifts
 func CmdComplete(_ context.Context, args []string) int {
 	// commands and tools are compile-time constants, so the most frequent
 	// completion (word 1 → commands) skips newApp's config load entirely.
@@ -39,6 +41,15 @@ func CmdComplete(_ context.Context, args []string) int {
 			return constants.ExitOK
 		case "tools":
 			printCompletionLines(constants.Tools)
+			return constants.ExitOK
+		case "flags":
+			// A command's flags are compile-time, so flag completion (the current
+			// word starts with -) skips newApp's config load like commands/tools.
+			cmd := ""
+			if len(args) > 1 {
+				cmd = args[1]
+			}
+			printCompletionLines(flagCompletions(cmd))
 			return constants.ExitOK
 		}
 	}
@@ -57,6 +68,12 @@ func runComplete(app *App, args []string) int {
 		printCompletionLines(completionCommands)
 	case "tools":
 		printCompletionLines(constants.Tools)
+	case "flags":
+		cmd := ""
+		if len(args) > 1 {
+			cmd = args[1]
+		}
+		printCompletionLines(flagCompletions(cmd))
 	case "profiles":
 		printCompletionLines(app.Config.ProfileNames())
 	case "accounts":

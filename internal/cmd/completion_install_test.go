@@ -73,6 +73,26 @@ accounts = { claude = "bob" }
 	if !strings.Contains(out, "alice\n") || strings.Contains(out, "bob\n") {
 		t.Fatalf("accounts codex must be scoped (no bob):\n%s", out)
 	}
+
+	// flags <command> lists the command's flags (common + extras), drawn from the
+	// same registrars the parser uses (flagspec.go), so the list cannot drift.
+	_, out = captureStdout(t, func() int { return runComplete(app, []string{"flags", "add"}) })
+	for _, want := range []string{"--no-login\n", "--restore\n", "--config\n", "--json\n"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("flags add missing %q:\n%s", want, out)
+		}
+	}
+	_, out = captureStdout(t, func() int { return runComplete(app, []string{"flags", "run"}) })
+	for _, want := range []string{"-s\n", "-i\n", "--env\n", "-P\n"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("flags run missing %q:\n%s", want, out)
+		}
+	}
+	// An unknown command yields the common flags only (no extras leak).
+	_, out = captureStdout(t, func() int { return runComplete(app, []string{"flags", "status"}) })
+	if !strings.Contains(out, "--json\n") || strings.Contains(out, "--no-login\n") {
+		t.Fatalf("flags status should be common-only:\n%s", out)
+	}
 }
 
 func TestCompleteBackendErrors(t *testing.T) {
@@ -96,6 +116,50 @@ func TestCompleteBackendHiddenFromHelp(t *testing.T) {
 	for _, c := range completionCommands {
 		if c == "__complete" {
 			t.Fatal("__complete must not be in completionCommands")
+		}
+	}
+}
+
+// TestCompletionScriptsCompleteFlags: each generated script offers flag-name
+// completion (it calls `kae __complete flags`) when the current word is a flag.
+func TestCompletionScriptsCompleteFlags(t *testing.T) {
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		script, _ := completionScript(shell)
+		if !strings.Contains(script, "kae __complete flags") {
+			t.Fatalf("%s completion does not complete flag names:\n%s", shell, script)
+		}
+	}
+}
+
+// TestFlagSpecWiring guards that flagSetFor reaches each command's real
+// registrar (not just the common flags), so flag completion matches the parser.
+func TestFlagSpecWiring(t *testing.T) {
+	cases := map[string][]string{
+		// dry-run is included where withDryRun is true at the parseCommon call
+		// site, so the spec's dryRun bool cannot silently drift from the parser.
+		"add":        {"restore", "no-login", "dry-run"},
+		"use":        {"shared", "isolated", "quiet", "profile", "dry-run"},
+		"u":          {"isolated", "profile", "dry-run"},
+		"run":        {"env", "shared", "profile"},
+		"pin":        {"shared", "isolated"},
+		"mise":       {"mode", "auto", "write", "profile"},
+		"completion": {"install"},
+		"rollback":   {"to", "dry-run"},
+		"account":    {"force", "dry-run"},
+		"profile":    {"force", "clear", "dry-run"},
+	}
+	for cmd, want := range cases {
+		fs := flagSetFor(cmd)
+		for _, name := range want {
+			if fs.Lookup(name) == nil {
+				t.Errorf("flagSetFor(%q) missing flag %q (registry not wired to the command registrar)", cmd, name)
+			}
+		}
+	}
+	// run/pin/mise/completion are not dry-run commands; their spec must not add it.
+	for _, cmd := range []string{"run", "pin", "mise", "completion"} {
+		if flagSetFor(cmd).Lookup("dry-run") != nil {
+			t.Errorf("flagSetFor(%q) must not offer --dry-run (parser does not accept it)", cmd)
 		}
 	}
 }
@@ -212,21 +276,24 @@ func TestCompletionInstallPrintOnly(t *testing.T) {
 	}
 }
 
-// TestCompletionAccountTokenIndex guards the per-shell word-position routing in
-// the static completion scripts: account completion must pass the tool word at
-// the right index for that shell's array convention. `kae use <tool> <TAB>`
-// reads the tool at the position after `use`; `kae account rm <tool> <TAB>`
-// reads it one position further (past the rm/rename subcommand). An off-by-one
-// here silently yields no account candidates (it once did for fish).
+// TestCompletionAccountTokenIndex guards the per-shell positional routing in the
+// static completion scripts: account completion must pass the tool word from the
+// flag-filtered positional list at the right index for that shell's array
+// convention. `kae use <tool> <TAB>` reads the first positional after `use`;
+// `kae account rm <tool> <TAB>` reads the second (past the rm/rename subcommand).
+// The positionals exclude flags, so `kae add --no-login <TAB>` still completes
+// tools (the flag is skipped, not counted as the tool). An off-by-one or a
+// missing flag-skip silently yields no/ wrong candidates (it once did for fish).
 func TestCompletionAccountTokenIndex(t *testing.T) {
 	for _, tc := range []struct {
 		shell          string
 		useToolRef     string // tool word in `kae use <tool> <TAB>`
 		accountToolRef string // tool word in `kae account rm <tool> <TAB>`
+		flagSkip       string // the construct that drops flag tokens from positionals
 	}{
-		{"bash", `accounts "${COMP_WORDS[2]}"`, `accounts "${COMP_WORDS[3]}"`},
-		{"zsh", `accounts ${words[3]}`, `accounts ${words[4]}`},
-		{"fish", `accounts $tokens[3]`, `accounts $tokens[4]`},
+		{"bash", `accounts "${pos[0]}"`, `accounts "${pos[1]}"`, `-*) ;;`},
+		{"zsh", `accounts ${pos[1]}`, `accounts ${pos[2]}`, `== -* ]] || pos`},
+		{"fish", `accounts $pos[1]`, `accounts $pos[2]`, `string match -q -- '-*'`},
 	} {
 		script, _ := completionScript(tc.shell)
 		if !strings.Contains(script, tc.useToolRef) {
@@ -234,6 +301,9 @@ func TestCompletionAccountTokenIndex(t *testing.T) {
 		}
 		if !strings.Contains(script, tc.accountToolRef) {
 			t.Fatalf("%s: missing `account` tool ref %q", tc.shell, tc.accountToolRef)
+		}
+		if !strings.Contains(script, tc.flagSkip) {
+			t.Fatalf("%s: missing the flag-skip construct %q (flags must not shift positionals)", tc.shell, tc.flagSkip)
 		}
 	}
 }

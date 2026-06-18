@@ -721,6 +721,45 @@ mkdir -p "$HOME/.gemini/antigravity-cli" && printf 'tok' > "$HOME/.gemini/antigr
 Existing accounts captured before their tool gained identity stay blank until
 re-captured (`kae add --no-login <tool> <name>` while logged into that account).
 
+## v0.8.8 surfaces
+
+Daily-use fixes: opencode identity prefers the access-token email over the
+opaque accountId UUID; flag-aware shell completion + flag-name completion. All
+unit/temp-HOME covered; the shell `<TAB>` behavior needs the real-machine smoke
+(a non-interactive shell cannot fake completion).
+
+- **opencode identity** — `internal/adapter/opencode`
+  `TestOpencodeIdentityPrefersProfileEmail` (email from the access-token JWT) /
+  `TestOpencodeIdentityFallsBackToAccountID`.
+- **flag-aware + flag-name completion** — `internal/cmd`
+  `TestCompleteBackendKinds` (the `flags <command>` kind: add→`--no-login`/
+  `--restore`, run→`-s`/`-i`/`--env`/`-P`, unknown→common only),
+  `TestCompletionAccountTokenIndex` (positionals are flag-filtered; the
+  flag-skip construct is present per shell), `TestCompletionScriptsCompleteFlags`
+  (each script calls `kae __complete flags`), and `TestFlagSpecWiring` (flagSetFor
+  reaches each command's real registrar, so the list cannot drift).
+
+```bash
+# (continues from the v0.8.0 setup: /tmp/kae built)
+/tmp/kae __complete flags add    # assert: --no-login, --restore, + common flags
+/tmp/kae __complete flags run    # assert: -s -i --env -P + common
+/tmp/kae __complete flags status # assert: common flags only (no extras)
+```
+
+### v0.8.8 real-machine smoke (required before release)
+
+bash and zsh (fish is best-effort, not gated — v0.8.6). In a fresh shell with
+completion registered:
+
+- [ ] `kae add --no-login <TAB>` completes tools (the flag does not shift it);
+      `kae use -i claude <TAB>` completes claude's accounts.
+- [ ] `kae add --<TAB>` offers `--no-login` / `--restore`; `kae run -<TAB>`
+      offers `-s` / `-i` / `--env` / `-P`.
+- [ ] On a live opencode (ChatGPT) login, `kae add opencode` (no name)
+      auto-names from the email, not the accountId UUID.
+
+Record the result in the Release Acceptance Log below.
+
 ## Real-Machine Acceptance (release only)
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of
@@ -772,6 +811,21 @@ captured fixture secret values never appear in text output, JSON output, error
 messages, or metadata files written by capture/switch/rollback.
 
 ## Release Acceptance Log
+
+### v0.8.8 (2026-06-18, macOS darwin 24.6.0)
+
+Daily-use fixes: opencode identity (email over UUID); flag-aware + flag-name
+shell completion.
+
+- `mise run check` green (all packages); JSON contract unchanged
+  (`schema_version` 1); no new `go.mod` dependency.
+- Code review APPROVE: the 9-call-site registrar refactor (parseCommon →
+  registerCommonFlags + per-command registerXFlags shared with `kae __complete
+  flags`) verified behavior-preserving (no flag dropped/renamed/misbound); the
+  opencode JWT decode and per-shell positional indexing confirmed correct.
+- bash completion simulated locally: `kae add --no-login <TAB>`→tools,
+  `kae add --<TAB>`→`--no-login`/`--restore`, `kae run -<TAB>`→`-s`/`-i`/`--env`,
+  `kae use -i claude <TAB>`→accounts. Real-shell `<TAB>` smoke is the open item.
 
 ### v0.8.7 (2026-06-18, macOS darwin 24.6.0)
 

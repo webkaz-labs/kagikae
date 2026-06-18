@@ -496,6 +496,47 @@ func TestAgyFileSnapshotOffDarwin(t *testing.T) {
 	}
 }
 
+// TestAgyIdentityFromGoogleAccounts: agy reads the active Google account email
+// from ~/.gemini/google_accounts.json so `kae add agy` can auto-detect a name
+// and the snapshot records the identity.
+func TestAgyIdentityFromGoogleAccounts(t *testing.T) {
+	env := testEnv(t, "darwin", nil)
+	write(t, filepath.Join(env.Home, ".gemini", "google_accounts.json"),
+		`{"active":"work@example.com","old":[]}`)
+	got, err := agyAdapter.Identity(context.Background(), env)
+	if err != nil || got != "work@example.com" {
+		t.Fatalf("Identity = %q, err = %v; want work@example.com", got, err)
+	}
+}
+
+func TestAgyIdentityMissingOrEmpty(t *testing.T) {
+	// no file at all
+	if _, err := agyAdapter.Identity(context.Background(), testEnv(t, "darwin", nil)); err == nil {
+		t.Fatal("expected an error when google_accounts.json is absent")
+	}
+	// present but no active account
+	env := testEnv(t, "darwin", nil)
+	write(t, filepath.Join(env.Home, ".gemini", "google_accounts.json"), `{"active":"","old":[]}`)
+	if _, err := agyAdapter.Identity(context.Background(), env); err == nil {
+		t.Fatal("expected an error when no active Google account is recorded")
+	}
+}
+
+// TestIdentifierConformance pins that every tool adapter exposes a readable
+// login identity (adapter.Identifier) so `kae add <tool>` can auto-detect a name
+// and `kae ls`/`accounts`/`status` can show it. agy was the last gap (v0.8.7).
+func TestIdentifierConformance(t *testing.T) {
+	all := map[string]adapter.Adapter{
+		"claude": claudeAdapter, "codex": codexAdapter, "agy": agyAdapter,
+		"opencode": opencodeAdapter, "cursor": cursorAdapter, "copilot": copilotAdapter,
+	}
+	for name, ad := range all {
+		if _, ok := ad.(adapter.Identifier); !ok {
+			t.Errorf("%s adapter does not implement adapter.Identifier", name)
+		}
+	}
+}
+
 // TestFresherConformance pins which adapters expose readable credential
 // freshness (§A): claude/codex/opencode/cursor are datable; copilot's pointer
 // and agy's opaque blob are not, so they must not implement adapter.Fresher

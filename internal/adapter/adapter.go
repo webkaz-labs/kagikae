@@ -64,8 +64,10 @@ type Adapter interface {
 // Identifier is implemented by adapters that can read the live login identity
 // (an email address or account handle) so `kae add <tool>` with no account name
 // can derive a default. The returned identity is raw — the caller sanitizes it
-// into an account name. A tool with no readable identity does not implement it
-// (agy exposes none), so `kae add` there requires an explicit account name.
+// into an account name. Every current tool adapter implements it; one without it
+// would require an explicit account name (the cmd path is capability-based, not
+// per-tool). A detection failure (logged out, unreadable) returns an error so
+// the caller names the explicit form rather than silently falling back.
 type Identifier interface {
 	Identity(ctx context.Context, env Env) (string, error)
 }

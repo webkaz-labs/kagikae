@@ -28,6 +28,9 @@ type toolStatus struct {
 	Warnings    []string `json:"warnings"`
 }
 
+// toolAccount is a (tool, account) map key for the captured-identity lookup.
+type toolAccount struct{ tool, account string }
+
 // pinnedStatus is the directory binding a pinned .mise.toml exports.
 type pinnedStatus struct {
 	Profile string `json:"profile"`
@@ -100,16 +103,14 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		return nil, err
 	}
 	capturedByTool := map[string][]string{}
-	// identityByTool[tool][account] is the recorded login identity, so status can
-	// show the active account's identity (§D) without a second snapshot read.
-	identityByTool := map[string]map[string]string{}
+	// identityByAccount maps a (tool, account) pair to its recorded login identity,
+	// so status can show the active account's identity (§D) without a second
+	// snapshot read.
+	identityByAccount := map[toolAccount]string{}
 	for _, acc := range captured {
 		capturedByTool[acc.Tool] = append(capturedByTool[acc.Tool], acc.Name)
 		if acc.Identity != "" {
-			if identityByTool[acc.Tool] == nil {
-				identityByTool[acc.Tool] = map[string]string{}
-			}
-			identityByTool[acc.Tool][acc.Name] = acc.Identity
+			identityByAccount[toolAccount{acc.Tool, acc.Name}] = acc.Identity
 		}
 	}
 	report := &statusReport{
@@ -159,7 +160,7 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 			ts.Account = &boundCopy
 		}
 		if ts.Account != nil {
-			ts.Identity = identityByTool[tool][*ts.Account]
+			ts.Identity = identityByAccount[toolAccount{tool, *ts.Account}]
 		}
 		if det := detections[i]; det.err != nil {
 			ts.Warnings = append(ts.Warnings, det.err.Error())

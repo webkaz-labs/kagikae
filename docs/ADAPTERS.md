@@ -179,13 +179,19 @@ account. `Detect`/`doctor` report the keychain item's presence on macOS; the
 is unchanged: when no credential file exists, `capture` fails with
 `auth_missing`, and `doctor` warns the keyring may be in use.
 
-`kae add agy <name>` is **`--no-login` only**: agy has no kae-drivable login
+`kae add agy` is **`--no-login` only**: agy has no kae-drivable login
 (authentication is GUI/browser OAuth via the Antigravity app — no
-`login`/`auth`/`whoami` subcommand), and the opaque token exposes no identity,
-so agy always requires an explicit account name. agy home isolation (`use -i
-agy`) stays unsupported (no redirectable home env var); only credential
-switching is added. `ANTIGRAVITY_API_KEY` can be handled through env profiles
-(`kae env set agy ...`).
+`login`/`auth`/`whoami` subcommand). The name is now **auto-detected** when
+omitted (v0.8.7): agy's `Identity` reads the active Google account email from
+`~/.gemini/google_accounts.json` (`.active`, the record the Antigravity login
+writes), so `kae add agy` defaults the account name and records the identity in
+the snapshot — surfaced by `kae ls` / `accounts` / `status`. The keychain token
+itself is opaque, so this file is the only identity source; it reflects the
+account active at capture time (kae's keychain switch does not rewrite it), the
+same at-capture model as the other tools. An explicit `kae add agy <name>` still
+wins. agy home isolation (`use -i agy`) stays unsupported (no redirectable home
+env var); only credential switching is added. `ANTIGRAVITY_API_KEY` can be
+handled through env profiles (`kae env set agy ...`).
 
 ### Preserved
 
@@ -466,7 +472,7 @@ at 64); an explicit name always wins. The per-tool source:
 | codex | `auth.json` `id_token` email claim (JWT), else `tokens.account_id` |
 | opencode | `auth.json` `/openai` `accountId` |
 | copilot | `config.json` (JSONC) `/lastLoggedInUser.login` |
-| agy | none — no exposed identity; explicit name required |
+| agy | `~/.gemini/google_accounts.json` `.active` — the active Google account email the Antigravity login writes (v0.8.7; the keychain token itself is opaque) |
 | cursor | `cursor-agent status` prints `✓ Logged in as <email>` (discovery 2026-06-16: single line, no ANSI, exit 0); the `Identifier` (v0.8.3) parses the text after `Logged in as ` through the runner seam. A non-zero exit, a missing marker, or an empty identity is a detection failure. `cursor-agent status` may hit the network — acceptable on the interactive `kae add` path. |
 
 A detection failure (logged out, unreadable, or sanitizes to empty) is a usage

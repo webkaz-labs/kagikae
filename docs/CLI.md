@@ -203,8 +203,10 @@ the result into the account, and makes it active — or restores the previous lo
 without changing the live auth state (login refused, window closed, already
 cancelled), kae refuses to capture and exits `11` (`auth_unchanged`) instead
 of recording a duplicate of the previous account. **agy has no login flow**
-(GUI/browser OAuth, no kae-drivable login subcommand), so `kae add agy <name>`
-is `--no-login` only and always needs an explicit account name.
+(GUI/browser OAuth, no kae-drivable login subcommand), so `kae add agy` is
+`--no-login` only; the account name is auto-detected from the active Google
+account (`~/.gemini/google_accounts.json`) when omitted, like the other tools
+(v0.8.7), and an explicit name still wins.
 
 `kae add --no-login <tool> <account>` snapshots the current live auth state
 under the name without launching anything (it supports `--dry-run`; the
@@ -220,17 +222,19 @@ tool: claude `~/.claude.json` `oauthAccount.emailAddress`; codex `auth.json`
 (or the keyring payload) `id_token` email claim, else `account_id`; opencode
 `auth.json` `/openai` `accountId`; copilot `config.json`
 `/lastLoggedInUser.login`; cursor `cursor-agent status` (`✓ Logged in as
-<email>`). agy exposes no identity, so it requires an explicit name. A tool with
-no identity, a detection failure (logged out, unreadable), or an identity that
-sanitizes to empty is a usage error (`64`) naming the explicit form — never a
-silent fallback.
+<email>`); agy the active Google account in `~/.gemini/google_accounts.json`
+(`.active`, v0.8.7). Every tool now exposes an identity. A detection failure
+(logged out, unreadable), or an identity that sanitizes to empty, is a usage
+error (`64`) naming the explicit form — never a silent fallback.
 
 **Detected identity is recorded.** At capture (both the explicit-name and
 auto-detect forms, login and `--no-login`), kae stores the raw detected identity
 (the full email or account id) in the snapshot's `identity` field, separate from
 the sanitized account name, so accounts that sanitize to the same name stay
-distinguishable. It is best-effort: a tool with no identity (agy) or a detection
-failure leaves it blank and never errors. `kae ls` / `kae accounts` show it (an
+distinguishable. It is best-effort: a detection failure leaves it blank and
+never errors, and a snapshot captured before the tool gained identity stays
+blank until re-captured (`kae add --no-login <tool> <name>` while logged into
+that account backfills it). `kae ls` / `kae accounts` / `kae status` show it (an
 `Identity` column; an additive `identity` field in `--json`).
 
 ## kae ls Semantics

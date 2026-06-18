@@ -1,3 +1,25 @@
+# kae v0.8.7 (released 2026-06-18)
+
+Complete account-identity coverage. agy was the last tool whose login identity
+kae could not read, so its accounts showed a blank `Identity` and `kae add agy`
+required an explicit name. v0.8.7 implements `agy.Identity` from the active
+Google account in `~/.gemini/google_accounts.json` (`.active`, written by the
+Antigravity login; the keychain token itself is opaque), so every tool now
+exposes an identity. `kae status` gains an `Identity` column to match `kae ls` /
+`kae accounts`. Additive and contract-stable: `schema_version` stays `1`, no new
+dependency.
+
+Previous baseline: v0.8.6 (agy keyring driver + terser run).
+
+Shipped 2026-06-18. §A: `agy.Identity` reads `~/.gemini/google_accounts.json`
+`.active`, so `kae add agy` (no name) auto-detects the account name and the
+snapshot records the identity; `TestIdentifierConformance` pins that all six
+tool adapters now implement `adapter.Identifier`. §B: `kae status` shows the
+active account's identity (text column + additive `identity` JSON field,
+`omitempty`). Existing accounts captured before their tool gained identity stay
+blank until re-captured (`kae add --no-login <tool> <name>` while logged into
+that account backfills it) — the documented backfill path, no new command.
+
 # kae v0.8.6 (released 2026-06-18)
 
 Lift agy account switching on macOS (the one tool kae still cannot switch here)

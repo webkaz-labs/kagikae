@@ -3,13 +3,15 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-No active release target. v0.8.6 (agy account switching on macOS via a Keychain
-driver + daily-use polish: a terser one-shot `kae run <tool> <account>` that
-defaults the child to the tool binary, `claude /login` verification; additive, no
-contract break — see [RELEASE.md](RELEASE.md)) shipped 2026-06-18. The agy
-two-account real-keychain gate **passed**; fish was **dropped** from the verified
-shells (`kae completion fish` stays best-effort); the codex-keyring two-account
-gate stays the one carried, unit-covered open item. What remains is hardening and
+No active release target. v0.8.7 (complete account-identity coverage: `agy.Identity`
+from `~/.gemini/google_accounts.json` so every tool exposes a login identity, plus
+an `Identity` column in `kae status`; additive, no contract break — see
+[RELEASE.md](RELEASE.md)) shipped 2026-06-18. v0.8.6 (agy account switching on
+macOS via a Keychain driver + a terser one-shot `kae run <tool> <account>` +
+`claude /login` verification) shipped the same day; its agy two-account
+real-keychain gate **passed**, fish was **dropped** from the verified shells
+(`kae completion fish` stays best-effort), and the codex-keyring two-account gate
+stays the one carried, unit-covered open item. What remains is hardening and
 platform coverage, ordered below by user impact.
 
 v0.8.5 (a "did you mean?" nearest-match hint
@@ -129,12 +131,13 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   (the comment-preserving config writer; see [RELEASE.md](RELEASE.md)).
 - **`kae ls`** *(v0.8.2 §C — shipped)*: a mise-style listing of accounts and
   profiles in one view (was split across `kae accounts` and `kae status`).
-- **Account-name auto-detection** *(v0.8.2 §B — shipped, cursor deferred)*: an
-  adapter exposes the live login identity via the optional `Identifier`
-  capability so `kae add <tool>` auto-detects and sanitizes a name by default,
-  while an explicit `kae add <tool> <account>` still wins. claude/codex/opencode/
-  copilot ship; agy has no identity and cursor's `cursor-agent status` output is
-  discovery-blocked (both require an explicit name — see the v0.8.3 split above).
+- **Account-name auto-detection** *(v0.8.2 §B — shipped; cursor v0.8.3, agy
+  v0.8.7)*: an adapter exposes the live login identity via the optional
+  `Identifier` capability so `kae add <tool>` auto-detects and sanitizes a name
+  by default, while an explicit `kae add <tool> <account>` still wins. **All six
+  tools now implement it** (claude/codex/opencode/copilot since v0.8.2, cursor
+  via `cursor-agent status` in v0.8.3, agy via `~/.gemini/google_accounts.json`
+  in v0.8.7); `TestIdentifierConformance` pins the full coverage.
 - **Shorter ad-hoc switch inside a pinned directory** *(v0.8.6 §B)*: `kae run
   <tool> <account> -- <tool>` already works (it is not blocked by the pinned-
   directory guard), but it is verbose; v0.8.6 defaults the child to the

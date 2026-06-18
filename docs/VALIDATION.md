@@ -423,7 +423,9 @@ printf '{"oauthAccount":{"emailAddress":"alice@example.com"}}' > "$HOME/.claude.
 /tmp/kae add --no-login claude chosen --json
 #   assert: explicit name "chosen" is used, not the detected one
 /tmp/kae add --no-login agy; echo $?
-#   assert: usage error (64); message names "kae add agy <account>" (agy has no identity)
+#   assert: usage error (64) naming "kae add agy <account>" — no ~/.gemini/google_accounts.json
+#           in the temp HOME, so agy identity detection fails (v0.8.7; with a real Antigravity
+#           login the active Google account auto-names it)
 rm "$HOME/.claude.json"
 /tmp/kae add --no-login claude; echo $?
 #   assert: usage error (64) naming "kae add claude <account>" (logged out: no identity)
@@ -692,6 +694,33 @@ supported/release-gated surface. bash and zsh are the verified shells.
 
 Record release results in the Release Acceptance Log below.
 
+## v0.8.7 surfaces
+
+Complete account-identity coverage: `agy.Identity` from
+`~/.gemini/google_accounts.json` (§A) and an `Identity` column in `kae status`
+(§B). Both are pure-additive and unit/temp-HOME covered — **no new real-machine
+gate** (agy identity is a plain file read, not a live subprocess):
+
+- **§A agy identity** — `internal/adapter` `TestAgyIdentityFromGoogleAccounts` /
+  `TestAgyIdentityMissingOrEmpty`, and `TestIdentifierConformance` pins that all
+  six tool adapters implement `adapter.Identifier`. `internal/cmd`
+  `TestAddAutoDetectAgyFromGoogleAccounts` (auto-named capture) and
+  `TestAddAutoDetectFailureNamesExplicitForm` (no `google_accounts.json` →
+  detection failure naming the explicit form).
+- **§B status identity** — `internal/cmd` `TestStatusShowsActiveAccountIdentity`
+  (text column + additive `identity` JSON field, `schema_version` 1).
+
+```bash
+# (continues from the v0.8.0 setup: /tmp/kae built, temp HOME + file config)
+printf '{"active":"work@example.com","old":[]}' > "$HOME/.gemini/google_accounts.json"
+mkdir -p "$HOME/.gemini/antigravity-cli" && printf 'tok' > "$HOME/.gemini/antigravity-cli/credentials.enc"
+/tmp/kae add --no-login agy            # ⇒ auto-detects account "work"; records identity
+/tmp/kae status --json | grep -A2 '"tool": "agy"'   # assert: "identity": "work@example.com"
+```
+
+Existing accounts captured before their tool gained identity stay blank until
+re-captured (`kae add --no-login <tool> <name>` while logged into that account).
+
 ## Real-Machine Acceptance (release only)
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of
@@ -743,6 +772,19 @@ captured fixture secret values never appear in text output, JSON output, error
 messages, or metadata files written by capture/switch/rollback.
 
 ## Release Acceptance Log
+
+### v0.8.7 (2026-06-18, macOS darwin 24.6.0)
+
+Complete account-identity coverage: `agy.Identity` from
+`~/.gemini/google_accounts.json` (§A); `Identity` column in `kae status` (§B).
+
+- `mise run check` green (all packages); JSON contract unchanged
+  (`schema_version` 1, additive `identity` omitempty); no new `go.mod` dependency.
+- Pure-additive, unit/temp-HOME covered — **no new real-machine gate**. The agy
+  identity source was confirmed on the maintainer's machine
+  (`~/.gemini/google_accounts.json` `.active` = the active Google account).
+- Existing blank-identity accounts (agy, pre-identity claude snapshots) backfill
+  on re-capture; documented, no new command.
 
 ### v0.8.6 (2026-06-18, macOS darwin 24.6.0)
 

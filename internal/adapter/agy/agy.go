@@ -13,6 +13,8 @@ package agy
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,6 +84,38 @@ func (Agy) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, error
 		})
 	}
 	return specs, nil
+}
+
+// googleAccountsPath is the shared Google-account record agy/Antigravity writes
+// at login (~/.gemini/google_accounts.json); its "active" field is the
+// logged-in Google account email.
+func googleAccountsPath(env adapter.Env) string {
+	return filepath.Join(env.Home, ".gemini", "google_accounts.json")
+}
+
+// Identity reads the active Google account email from
+// ~/.gemini/google_accounts.json so `kae add agy` (no name) can default the
+// account name and the snapshot records who is logged in. The agy keychain
+// token is opaque, so this file is the only identity source on either platform.
+// It reflects the Google account active at capture time — kae's keychain switch
+// does not rewrite it — which is the same at-capture identity model as the other
+// tools (docs/ADAPTERS.md, docs/RELEASE.md §D).
+func (Agy) Identity(_ context.Context, env adapter.Env) (string, error) {
+	path := googleAccountsPath(env)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", path, err)
+	}
+	var doc struct {
+		Active string `json:"active"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return "", fmt.Errorf("parse %s: %w", path, err)
+	}
+	if doc.Active == "" {
+		return "", fmt.Errorf("no active Google account in %s", path)
+	}
+	return doc.Active, nil
 }
 
 // authFilePresent reports whether any file-based credential exists.

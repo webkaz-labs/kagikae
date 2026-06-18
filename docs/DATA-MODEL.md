@@ -145,10 +145,12 @@ secret_ref = "claude/work/oauth_account"
 (an email or account id), separate from the sanitized account `account` name —
 it disambiguates accounts whose identities sanitize to the same name. It is PII
 but **not** a secret (plaintext metadata, exactly like the account name; never a
-token). It is best-effort: blank for a tool with no readable identity (agy), a
-detection failure, and every pre-v0.8.3 snapshot. `kae ls` / `kae accounts` show
-it (an `Identity` column; an additive `identity` field in `--json`, `omitempty`,
-`schema_version` still `1`).
+token). Every tool now exposes an identity (agy reads the active Google account
+from `~/.gemini/google_accounts.json` as of v0.8.7); it is still best-effort:
+blank for a detection failure and for any snapshot captured before its tool
+gained identity (re-capture with `kae add --no-login` backfills it). `kae ls` /
+`kae accounts` / `kae status` show it (an `Identity` column; an additive
+`identity` field in `--json`, `omitempty`, `schema_version` still `1`).
 
 A `keychain` artifact may carry `keychain_account`: the captured account
 attribute of an item whose account is a **per-login opaque id** (codex keyring's

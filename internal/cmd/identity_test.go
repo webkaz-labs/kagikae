@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -63,9 +64,9 @@ func TestAddExplicitNameWins(t *testing.T) {
 	}
 }
 
-// A tool with no Identity capability (agy) errors naming the explicit form,
-// never a silent fallback.
-func TestAddAutoDetectUnsupportedTool(t *testing.T) {
+// A detection failure (here agy with no ~/.gemini/google_accounts.json in the
+// temp HOME) errors naming the explicit form, never a silent fallback.
+func TestAddAutoDetectFailureNamesExplicitForm(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
 
@@ -75,6 +76,30 @@ func TestAddAutoDetectUnsupportedTool(t *testing.T) {
 	mustExit(t, constants.ExitUsage, code, out)
 	if !strings.Contains(out, "kae add agy <account>") {
 		t.Fatalf("expected explicit-form guidance for agy: %s", out)
+	}
+}
+
+// agy auto-detects the account name from the active Google account when one is
+// recorded (v0.8.7): on the Linux file driver, seeding google_accounts.json plus
+// a credential file lets `kae add --no-login agy` (no name) capture under the
+// sanitized email local part.
+func TestAddAutoDetectAgyFromGoogleAccounts(t *testing.T) {
+	app := testApp(t, nil) // testApp Env.GOOS = linux → agy file driver
+	ctx := context.Background()
+	writeFile(t, filepath.Join(app.Env.Home, ".gemini", "google_accounts.json"),
+		`{"active":"work@example.com","old":[]}`)
+	writeFile(t, filepath.Join(app.Env.Home, ".gemini", "antigravity-cli", "credentials.enc"), "opaque-token")
+
+	code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, commonOpts{Format: formatText}, constants.ToolAgy, "")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	acc, found, _ := account.Load(app.Paths.AccountDir(constants.ToolAgy, "work"))
+	if !found {
+		t.Fatalf("agy auto-detected account 'work' not captured: %s", out)
+	}
+	if acc.Identity != "work@example.com" {
+		t.Fatalf("agy identity = %q, want work@example.com", acc.Identity)
 	}
 }
 

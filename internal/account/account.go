@@ -44,7 +44,9 @@ type Account struct {
 	// accounts whose identities sanitize to the same name. PII but not a secret
 	// (plaintext metadata, like Name; never a token). Empty for pre-v0.8.3
 	// snapshots and for a tool with no readable identity (agy) or a detection
-	// failure — best-effort, never required (docs/RELEASE.md §D).
+	// failure — best-effort, never required (docs/RELEASE.md §D). Every tool now
+	// exposes an identity (agy via google_accounts.json since v0.8.7), so a blank
+	// value means a pre-identity snapshot or a detection failure, not "no source".
 	Identity   string              `toml:"identity,omitempty"`
 	CapturedAt time.Time           `toml:"captured_at"`
 	Artifacts  map[string]Artifact `toml:"artifacts"`

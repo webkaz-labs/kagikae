@@ -59,14 +59,17 @@ func toolBinary(tool string) string {
 // snapshots whatever is live now (it supports --dry-run; the login flow does
 // not).
 func CmdAdd(ctx context.Context, args []string) int {
-	flags, positionals := splitArgs(args)
+	// --identity takes a value; splitArgs must not treat the value as a positional.
+	flags, positionals := splitArgs(args, "--identity")
 	restore, noLogin := false, false
+	identityFlag := ""
 	opts, ok := parseCommon("add", flags, true, func(fs *flag.FlagSet) {
-		registerAddFlags(fs, &restore, &noLogin)
+		registerAddFlags(fs, &restore, &noLogin, &identityFlag)
 	})
 	if !ok {
 		return constants.ExitUsage
 	}
+	opts.IdentityOverride = identityFlag
 	if len(positionals) < 1 || len(positionals) > 2 {
 		return usageError("usage: %s add [--no-login] <tool> [<account>] [--restore]", toolName)
 	}
@@ -167,7 +170,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	// The login flow changed auth, so the new identity is now live: resolve the
 	// account name (auto-detected from it unless given explicitly) and the raw
 	// identity to record in the snapshot (§D), then snapshot.
-	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName)
+	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName, opts.IdentityOverride)
 	if err != nil {
 		return finishLoginFailure(ctx, opts, be, meta, restore, "detect the logged-in account", err)
 	}

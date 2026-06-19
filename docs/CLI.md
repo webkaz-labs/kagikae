@@ -18,6 +18,8 @@ kae doctor [tool] [--json]           # environment / auth health checks (alias: 
 kae add <tool> [<account>] [--restore] # register an account: official login flow + snapshot
 kae add --no-login <tool> [<account>]  # snapshot the current live auth state instead
                                      #   (account name optional: auto-detected from the live login)
+kae add [...] --identity <value>     # record an identity kae cannot auto-detect
+                                     #   (e.g. agy: the live account is server-resolved, not on disk)
 kae use [-s|-i] [-P <profile>]       # bare: resolve the profile and apply it idempotently
                                      #   (--quiet suppresses success report; folds kae apply)
 kae use [-s|-i] <profile>            # switch every enabled tool now, global (alias: kae u)
@@ -37,6 +39,7 @@ kae accounts [--json]                # registered accounts, active markers
 kae ls [--json]                      # accounts and profiles in one view
 kae account rm <tool> <account> [--force]      # delete a captured account
 kae account rename <tool> <old> <new>          # rename a captured account
+kae account set-identity <tool> <account> <value>  # set/replace a captured account's identity
 kae profile save <name>              # snapshot the active accounts into a profile
 kae profile set <name> <tool> <account>        # set one profile mapping
 kae profile unset <name> <tool>      # drop one profile mapping

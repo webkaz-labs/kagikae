@@ -25,6 +25,32 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
+# kae v0.9.1 (active target)
+
+Make a login identity recordable when kae cannot auto-detect it, and stop a
+missing one from reading like a bug.
+
+- **`kae add --identity <value>`** records the identity verbatim (sanitized);
+  with no explicit name it also derives the account name from it.
+- **`kae account set-identity <tool> <account> <value>`** sets or replaces a
+  captured account's identity without re-capturing the credential (additive
+  `--json` report: `tool`, `account`, `identity`).
+- A failed auto-detection on an explicit-name `kae add` is now a calm **note**
+  (identity is optional), not a silent blank and not an alarming warning with a
+  raw filesystem error. `kae status` / `kae ls` render an empty identity as `-`
+  (the not-set placeholder) instead of a blank cell.
+- Shell completion offers the new `set-identity` subcommand (`kae account
+  <TAB>`); `--identity` is offered by the existing flag completion.
+- Motivation: on current Antigravity (1.0.x) agy's live account is resolved from
+  an opaque keychain token server-side and is no longer written to disk, so
+  `~/.gemini/google_accounts.json` is stale and auto-detection cannot see it
+  (docs/ADAPTERS.md). The override is generic — it helps any tool whose identity
+  kae cannot read.
+- Acceptance: `mise run check` green; JSON contract additive (`schema_version`
+  1); no breaking change.
+
+---
+
 # kae v0.9.0 (released 2026-06-19)
 
 Ship installable binaries and bring the README to OSS parity. Until now `kae`

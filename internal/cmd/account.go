@@ -16,19 +16,22 @@ import (
 //
 //	kae account rm <tool> <account> [--force] [--dry-run]
 //	kae account rename <tool> <old> <new> [--dry-run]
+//	kae account set-identity <tool> <account> <value> [--dry-run]
 //
 // (kae accounts, plural, lists them.)
 func CmdAccount(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return usageError("usage: %s account rm|rename ...", toolName)
+		return usageError("usage: %s account rm|rename|set-identity ...", toolName)
 	}
 	switch args[0] {
 	case "rm", "remove":
 		return cmdAccountRm(ctx, args[1:])
 	case "rename", "mv":
 		return cmdAccountRename(ctx, args[1:])
+	case "set-identity":
+		return cmdAccountSetIdentity(ctx, args[1:])
 	default:
-		return usageError("unknown account subcommand %q (rm, rename)", args[0])
+		return usageError("unknown account subcommand %q (rm, rename, set-identity)", args[0])
 	}
 }
 
@@ -320,6 +323,94 @@ func printAccountRename(r *accountRenameReport) {
 	if r.ActiveUpdated {
 		fmt.Printf("  updated the active %s account in state\n", r.Tool)
 	}
+}
+
+type accountSetIdentityReport struct {
+	SchemaVersion int    `json:"schema_version"`
+	OK            bool   `json:"ok"`
+	DryRun        bool   `json:"dry_run"`
+	Tool          string `json:"tool"`
+	Account       string `json:"account"`
+	Identity      string `json:"identity"`
+}
+
+// cmdAccountSetIdentity records or updates an account's login identity without
+// re-capturing its credential. It exists because some tools cannot expose a
+// per-account identity to kae (agy on current Antigravity resolves the account
+// from an opaque keychain token server-side and never writes it to disk), so
+// auto-detection records nothing; this lets the user set it explicitly.
+func cmdAccountSetIdentity(ctx context.Context, args []string) int {
+	flags, positionals := splitArgs(args)
+	opts, ok := parseCommon("account set-identity", flags, true, nil)
+	if !ok {
+		return constants.ExitUsage
+	}
+	if len(positionals) != 3 {
+		return usageError("usage: %s account set-identity <tool> <account> <value>", toolName)
+	}
+	report, err := buildAccountSetIdentity(newApp(opts.ConfigPath), opts, positionals[0], positionals[1], positionals[2])
+	if err != nil {
+		return finish(opts, err)
+	}
+	if opts.Format == formatJSON {
+		return encodeJSON(report)
+	}
+	printAccountSetIdentity(report)
+	return constants.ExitOK
+}
+
+func buildAccountSetIdentity(app *App, opts commonOpts, tool, accountName, value string) (*accountSetIdentityReport, error) {
+	tool, err := canonicalToolAccount(tool, accountName, "account")
+	if err != nil {
+		return nil, err
+	}
+	identity := sanitizeIdentity(value)
+	if identity == "" {
+		return nil, errf(constants.ExitUsage, "the identity value has no usable characters")
+	}
+	if err := app.requireConfig(); err != nil {
+		return nil, err
+	}
+	dir := app.Paths.AccountDir(tool, accountName)
+	report := &accountSetIdentityReport{
+		SchemaVersion: constants.SchemaVersion, OK: true, DryRun: opts.DryRun,
+		Tool: tool, Account: accountName, Identity: identity,
+	}
+	if opts.DryRun {
+		// Verify existence before claiming success, but skip locking and writing.
+		if _, found, err := account.Load(dir); err != nil {
+			return nil, err
+		} else if !found {
+			return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, accountName)
+		}
+		return report, nil
+	}
+	locks, err := app.acquireLocks([]string{tool})
+	if err != nil {
+		return nil, err
+	}
+	defer releaseLocks(locks)
+	// Load under the lock so a concurrent capture is not clobbered.
+	acc, found, err := account.Load(dir)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, accountName)
+	}
+	acc.Identity = identity
+	if err := account.Save(dir, acc); err != nil {
+		return nil, err
+	}
+	return report, nil
+}
+
+func printAccountSetIdentity(r *accountSetIdentityReport) {
+	verb := "Set"
+	if r.DryRun {
+		verb = "Would set"
+	}
+	fmt.Printf("%s the %s/%s identity to %s\n", verb, r.Tool, r.Account, r.Identity)
 }
 
 // profilesReferencing returns the config profiles whose accounts map points at

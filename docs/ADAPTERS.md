@@ -181,17 +181,26 @@ is unchanged: when no credential file exists, `capture` fails with
 
 `kae add agy` is **`--no-login` only**: agy has no kae-drivable login
 (authentication is GUI/browser OAuth via the Antigravity app — no
-`login`/`auth`/`whoami` subcommand). The name is now **auto-detected** when
-omitted (v0.8.7): agy's `Identity` reads the active Google account email from
-`~/.gemini/google_accounts.json` (`.active`, the record the Antigravity login
-writes), so `kae add agy` defaults the account name and records the identity in
-the snapshot — surfaced by `kae ls` / `accounts` / `status`. The keychain token
-itself is opaque, so this file is the only identity source; it reflects the
-account active at capture time (kae's keychain switch does not rewrite it), the
-same at-capture model as the other tools. An explicit `kae add agy <name>` still
-wins. agy home isolation (`use -i agy`) stays unsupported (no redirectable home
-env var); only credential switching is added. `ANTIGRAVITY_API_KEY` can be
-handled through env profiles (`kae env set agy ...`).
+`login`/`auth`/`whoami` subcommand). agy's `Identity` reads the active Google
+account email from `~/.gemini/google_accounts.json` (`.active`). **Caveat
+(current Antigravity, 1.0.x): this file is legacy and may be stale.** Antigravity
+resolves the live account from the opaque keychain token server-side and renders
+it only in the interactive banner; it no longer writes the account to disk
+(`google_accounts.json` is left at its old Gemini-CLI value, and the keychain
+token cannot be decoded). So auto-detection may record an out-of-date identity or
+none at all — this is expected, not a failure, and `kae add agy` succeeds either
+way. To record the real identity, pass it explicitly:
+
+```bash
+kae add --no-login --identity <email> agy <name>   # at capture time
+kae account set-identity agy <name> <email>         # backfill an existing account
+```
+
+identity is optional metadata (switching works without it); a missing one is
+reported as a calm note, never an error. An explicit `kae add agy <name>` still
+wins for the account name. agy home isolation (`use -i agy`) stays unsupported
+(no redirectable home env var); only credential switching is added.
+`ANTIGRAVITY_API_KEY` can be handled through env profiles (`kae env set agy ...`).
 
 ### Preserved
 

@@ -213,3 +213,36 @@ func TestLoginAutoDetectsAccount(t *testing.T) {
 		t.Fatalf("login auto-detected account claude/newuser not captured (found=%v err=%v)", found, err)
 	}
 }
+
+// --identity records the value even when on-disk detection fails (the agy /
+// current-Antigravity case, modeled here with claude credentials but no
+// .claude.json so Identity() errors).
+func TestAddIdentityOverrideRecordsValue(t *testing.T) {
+	app := testApp(t, nil)
+	seedClaudeOAuth(t, app, `{"accessToken":"x","subscriptionType":"max"}`)
+	ctx := context.Background()
+	code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, commonOpts{Format: formatText, IdentityOverride: "you@example.com"}, "claude", "chosen")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	acc, found, _ := account.Load(app.Paths.AccountDir(constants.ToolClaude, "chosen"))
+	if !found || acc.Identity != "you@example.com" {
+		t.Fatalf("found=%v identity=%q, want you@example.com", found, acc.Identity)
+	}
+}
+
+// With no explicit name, --identity supplies both the recorded identity and the
+// derived account name (its sanitized local part).
+func TestResolveAccountDerivesNameFromIdentityOverride(t *testing.T) {
+	app := testApp(t, nil)
+	name, identity, err := app.resolveAccount(context.Background(), constants.ToolClaude, "", "Side.User@example.com")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if identity != "Side.User@example.com" {
+		t.Fatalf("identity=%q, want Side.User@example.com", identity)
+	}
+	if name != "Side.User" {
+		t.Fatalf("name=%q, want Side.User", name)
+	}
+}

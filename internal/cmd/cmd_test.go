@@ -32,7 +32,7 @@ func TestBuildVersionReport(t *testing.T) {
 	if report.SchemaVersion != constants.SchemaVersion || report.Tool != toolName {
 		t.Fatalf("unexpected: %+v", report)
 	}
-	if report.Major != 0 || report.Minor != 9 || report.Patch != 0 || report.Contract != "pre_stable" {
+	if report.Major != 0 || report.Minor != 9 || report.Patch != 1 || report.Contract != "pre_stable" {
 		t.Fatalf("unexpected version semantics: %+v", report)
 	}
 }
@@ -84,6 +84,15 @@ func TestSplitArgsValueFlags(t *testing.T) {
 	flags, positionals := splitArgs([]string{"--mode", "env"})
 	if len(flags) != 1 || len(positionals) != 1 {
 		t.Fatalf("unregistered flag must not consume a value: %v %v", flags, positionals)
+	}
+	// kae add registers --identity as a value flag (regression: its value was
+	// misclassified as the tool/account positional).
+	flags, positionals = splitArgs([]string{"--no-login", "--identity", "you@example.com", "agy", "kazsky"}, "--identity")
+	if strings.Join(positionals, " ") != "agy kazsky" {
+		t.Fatalf("--identity value leaked into positionals: %v", positionals)
+	}
+	if strings.Join(flags, " ") != "--no-login --identity you@example.com" {
+		t.Fatalf("--identity value not kept with flag: %v", flags)
 	}
 }
 

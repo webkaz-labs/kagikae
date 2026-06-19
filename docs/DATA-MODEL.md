@@ -148,7 +148,11 @@ but **not** a secret (plaintext metadata, exactly like the account name; never a
 token). Every tool now exposes an identity (agy reads the active Google account
 from `~/.gemini/google_accounts.json` as of v0.8.7); it is still best-effort:
 blank for a detection failure and for any snapshot captured before its tool
-gained identity (re-capture with `kae add --no-login` backfills it). `kae ls` /
+gained identity. Auto-detection is not always possible — on current Antigravity
+agy's account is resolved server-side from an opaque token and never written to
+disk (docs/ADAPTERS.md) — so it is settable explicitly (v0.9.1): `kae add
+--identity <value>` at capture, or `kae account set-identity <tool> <account>
+<value>` to backfill without re-capturing the credential. `kae ls` /
 `kae accounts` / `kae status` show it (an `Identity` column; an additive
 `identity` field in `--json`, `omitempty`, `schema_version` still `1`).
 

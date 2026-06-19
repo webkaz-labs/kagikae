@@ -12,9 +12,10 @@ import (
 // `kae __complete flags <cmd>`. Defining each flag name exactly once here keeps
 // the completion list from drifting from what the parser actually accepts.
 
-func registerAddFlags(fs *flag.FlagSet, restore, noLogin *bool) {
+func registerAddFlags(fs *flag.FlagSet, restore, noLogin *bool, identity *string) {
 	fs.BoolVar(restore, "restore", false, "restore the previous login after capturing (login flow only)")
 	fs.BoolVar(noLogin, "no-login", false, "snapshot the current live auth state without launching a login flow")
+	fs.StringVar(identity, "identity", "", "record this login identity for the account when auto-detection is unavailable (e.g. agy on current Antigravity)")
 }
 
 func registerUseFlags(fs *flag.FlagSet, shared, isolated, quiet *bool, profile *string) {
@@ -74,7 +75,7 @@ type commandFlagSpec struct {
 // common set). Subcommand-only flags are attached to the parent command so
 // `kae account --<TAB>` / `kae profile --<TAB>` still offer them.
 var commandFlagSpecs = map[string]commandFlagSpec{
-	"add": {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool)) }},
+	"add": {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
 	"use": {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
 	"pin": {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool)) }},
 	"run": {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},

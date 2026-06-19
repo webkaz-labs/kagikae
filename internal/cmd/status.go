@@ -301,7 +301,7 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		if len(ts.Warnings) > 0 {
 			notes = paint(constants.StatusWarn, fmt.Sprintf("%d warning(s)", len(ts.Warnings)), color)
 		}
-		rows = append(rows, []string{ts.Tool, accountName, ts.Identity, ts.Driver, auth, notes})
+		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, notes})
 	}
 	printTable([]string{"Tool", "Account", "Identity", "Driver", "Auth", "Notes"}, rows)
 	warned := false
@@ -390,8 +390,18 @@ func runAccounts(_ context.Context, app *App, opts commonOpts) int {
 		if item.Active {
 			active = "*"
 		}
-		rows = append(rows, []string{item.Tool, item.Account, item.Identity, active, item.Driver, item.CapturedAt})
+		rows = append(rows, []string{item.Tool, item.Account, orDash(item.Identity), active, item.Driver, item.CapturedAt})
 	}
 	printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Captured"}, rows)
 	return constants.ExitOK
+}
+
+// orDash renders an empty optional cell as "-" so a blank reads as "not set"
+// rather than missing/broken (matches the absent-account placeholder). Text
+// tables only; the --json contract keeps the field omitempty.
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }

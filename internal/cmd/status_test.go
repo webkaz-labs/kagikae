@@ -188,3 +188,12 @@ func TestStatusRecordedProfileBeatsMappingMatch(t *testing.T) {
 		t.Fatalf("mapping-match fallback must resolve: %s", out)
 	}
 }
+
+func TestOrDashRendersEmptyAsDash(t *testing.T) {
+	if got := orDash(""); got != "-" {
+		t.Fatalf(`orDash("") = %q, want "-"`, got)
+	}
+	if got := orDash("you@example.com"); got != "you@example.com" {
+		t.Fatalf("orDash passthrough = %q", got)
+	}
+}

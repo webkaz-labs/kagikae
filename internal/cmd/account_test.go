@@ -201,3 +201,47 @@ func TestAccountRenameRewritesProfileReference(t *testing.T) {
 		t.Fatalf("profile reference not rewritten: %+v", cfg.Profiles["alt"])
 	}
 }
+
+func TestAccountSetIdentityRecordsValue(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	report, err := buildAccountSetIdentity(app, commonOpts{Format: formatText}, "claude", "main", "you@example.com")
+	if err != nil {
+		t.Fatalf("set-identity: %v", err)
+	}
+	if report.Identity != "you@example.com" {
+		t.Fatalf("report identity=%q, want you@example.com", report.Identity)
+	}
+	acc, found, _ := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
+	if !found || acc.Identity != "you@example.com" {
+		t.Fatalf("found=%v identity=%q, want you@example.com", found, acc.Identity)
+	}
+}
+
+func TestAccountSetIdentityDryRunDoesNotWrite(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	before, _, _ := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
+	if _, err := buildAccountSetIdentity(app, commonOpts{Format: formatText, DryRun: true}, "claude", "main", "you@example.com"); err != nil {
+		t.Fatalf("dry-run: %v", err)
+	}
+	acc, _, _ := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
+	if acc.Identity != before.Identity {
+		t.Fatalf("dry-run changed identity %q -> %q", before.Identity, acc.Identity)
+	}
+}
+
+func TestAccountSetIdentityUnknownExitsNotFound(t *testing.T) {
+	app := testApp(t, nil)
+	if _, err := buildAccountSetIdentity(app, commonOpts{Format: formatText}, "claude", "ghost", "x"); exitOf(err) != constants.ExitNotFound {
+		t.Fatalf("want ExitNotFound, got %v", err)
+	}
+}
+
+func TestAccountSetIdentityEmptyValueExitsUsage(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	if _, err := buildAccountSetIdentity(app, commonOpts{Format: formatText}, "claude", "main", "  \t "); exitOf(err) != constants.ExitUsage {
+		t.Fatalf("want ExitUsage, got %v", err)
+	}
+}

@@ -136,7 +136,7 @@ _kae() {
       ;;
     account)
       if [ "$np" -eq 0 ]; then
-        COMPREPLY=( $(compgen -W "rm rename" -- "$cur") )
+        COMPREPLY=( $(compgen -W "rm rename set-identity" -- "$cur") )
       elif [ "$np" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
       elif [ "$np" -eq 2 ]; then
@@ -202,7 +202,7 @@ _kae() {
       ;;
     account)
       if (( np == 0 )); then
-        compadd -- rm rename
+        compadd -- rm rename set-identity
       elif (( np == 1 )); then
         compadd -- ${(f)"$(kae __complete tools)"}
       elif (( np == 2 )); then
@@ -269,7 +269,7 @@ function __kae_complete
             end
         case account
             if test $np -eq 0
-                printf '%s\n' rm rename
+                printf '%s\n' rm rename set-identity
             else if test $np -eq 1
                 kae __complete tools
             else if test $np -eq 2

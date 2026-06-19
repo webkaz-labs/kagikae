@@ -57,7 +57,7 @@ func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, explicit
 	ctx = keychain.WithReadCache(ctx)
 	// With no explicit name, default it to the sanitized live login identity;
 	// the raw identity is recorded in the snapshot either way (§D).
-	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName)
+	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName, opts.IdentityOverride)
 	if err != nil {
 		return nil, err
 	}

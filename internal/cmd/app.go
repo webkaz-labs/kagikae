@@ -281,6 +281,9 @@ type commonOpts struct {
 	Yes        bool
 	NoColor    bool
 	ConfigPath string
+	// IdentityOverride carries `kae add --identity <value>`: the login identity
+	// to record when auto-detection is unavailable. Empty for every other command.
+	IdentityOverride string
 }
 
 // parseCommon parses the flag portion of a command line (positionals are

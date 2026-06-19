@@ -2,12 +2,13 @@
 
 `kae` switches **subscription accounts** for AI coding CLIs — Claude Code,
 Codex CLI, Antigravity CLI, OpenCode, the Cursor CLI, and the GitHub Copilot
-CLI — without touching your working environment.
+CLI.
 
-Switching `~/.claude` or `~/.codex` wholesale also switches your skills, hooks,
-memory, MCP servers, project trust, and session history. `kae` doesn't. By
-default it patches **only the authentication artifacts** (an explicit allowlist)
-and preserves everything else:
+The official CLIs log you in as one account at a time. Using a second account
+means logging out and re-running the browser OAuth flow on every switch — and
+that flow discards the first account's session, so switching back means logging
+in yet again. `kae` **captures each account once and swaps it in under a
+second**, with no re-authentication, keeping every account's credential live:
 
 ```text
 main Claude account    <->  side Claude account     (e.g. a second org you own)
@@ -17,6 +18,26 @@ main ChatGPT           <->  side ChatGPT             (OpenCode)
 main Cursor            <->  side Cursor              (Cursor CLI)
 ```
 
+That alone replaces the slow logout/login dance. On top of it, `kae` does what
+a re-login cannot:
+
+- **Run several accounts at once.** Per-directory and per-process scopes drive
+  different accounts of the *same* tool in parallel; the global `/login` is
+  single-account by nature.
+- **Bind a directory to an account.** `kae pin` makes a project always use a
+  given account — `cd` in and the switch is already done, with no command to
+  remember.
+- **Switch every tool with one command.** A *profile* bundles one account per
+  tool, so `kae use main` moves Claude, Codex, Antigravity, and the rest
+  together instead of six separate logins.
+
+By default a switch touches **only the credential**, so your skills, hooks,
+memory, MCP servers, project trust, and session history stay shared and intact.
+When you *do* want separation, the same commands isolate the whole config
+directory — a private home per directory (`kae pin -i`) or per account
+(`kae use -i`) — so sessions, skills, and settings are kept apart too. Shared
+by default, isolated on demand.
+
 `kae` never reimplements a login flow — it snapshots and restores what the
 official CLIs create — and it never sends your credentials anywhere. Secrets
 stay in the OS credential store; switching is a local, reversible, audited
@@ -24,15 +45,10 @@ operation.
 
 ## Why kae?
 
-If you keep more than one login for the same AI coding CLI — say a main account
-and a separate one for a side project or an org you own — the tool gives you one
-home directory. The obvious fix — copy
-`~/.claude` aside and swap it back — also swaps everything that *isn't* the
-login: your skills, MCP servers, hooks, project trust, and chat history. Re-doing
-a `claude /login` each time is slow and loses the other session's refresh token.
-
-`kae` separates **who you are logged in as** from **how you have the tool set
-up**:
+Switching accounts and keeping your setup are different concerns, but the tools
+conflate them: one home directory per CLI, and the only built-in lever is the
+login itself. `kae` separates **who you are logged in as** from **how you have
+the tool set up**:
 
 - it switches only the credential (an allowlisted token / keychain item / JSON
   pointer), leaving mixed-state files like `~/.claude.json` untouched;

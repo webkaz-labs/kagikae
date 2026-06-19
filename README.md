@@ -74,6 +74,9 @@ the tool set up**:
 - **Built for humans and agents.** Readable text by default; deterministic exit
   codes and stable `--json` reports for scripting; dynamic shell completion and
   a "did you mean?" hint for typos.
+- **One small binary.** A single static Go executable — no runtime, no daemon,
+  no background app. Fast enough to run in shell hooks and on every `cd`;
+  install with `curl | sh`, mise, or `go install`.
 
 ## Install
 

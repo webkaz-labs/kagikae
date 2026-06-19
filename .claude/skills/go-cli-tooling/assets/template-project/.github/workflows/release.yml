@@ -1,0 +1,63 @@
+name: Release
+
+# Build, archive, checksum, and publish the binaries when a v* tag is pushed.
+# The shared gate (check.yml) must pass first; GoReleaser (.goreleaser.yaml) does
+# the build/archive/release; then we attest the checksum manifest.
+# STANDALONE REPOS ONLY (see .goreleaser.yaml header). Replace dotfiles-tool.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # Same gate CI runs, so a tag is never released on a commit that would fail
+    # CI (tag pushes do not trigger ci.yml).
+    uses: ./.github/workflows/check.yml
+
+  release:
+    name: release
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release and upload assets
+      id-token: write # provenance attestation
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # GoReleaser needs full history/tags for the changelog
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Version matches tag
+        # The reported version is the hardcoded toolVersion (not ldflags); guard
+        # that the release was version-bumped to the tag (docs/RELEASE.md).
+        run: |
+          set -euo pipefail
+          got="$(sed -n 's/.*toolVersion = "\([^"]*\)".*/\1/p' internal/cmd/cmd.go)"
+          if [ "$got" != "${GITHUB_REF_NAME}" ]; then
+            echo "toolVersion (${got}) does not match tag (${GITHUB_REF_NAME}); bump internal/cmd/cmd.go" >&2
+            exit 1
+          fi
+
+      - name: GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest release checksums
+        uses: actions/attest@v4
+        with:
+          subject-checksums: ./dist/checksums.txt

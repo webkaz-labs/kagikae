@@ -1,0 +1,74 @@
+# GoReleaser config for a standalone Go CLI repo. Build, archive, checksum, and
+# publish the binary on a `v*` tag (see .github/workflows/release.yml).
+#
+# STANDALONE REPOS ONLY. A repository-local tool under tools/<name> in a monorepo
+# does not release per-tool — delete .goreleaser.yaml, .github/, and
+# scripts/install.sh when copying the template into tools/<name>.
+#
+# Replace dotfiles-tool with the command name and OWNER/REPO with the GitHub repo.
+# The reported version is the hardcoded toolVersion in internal/cmd (not injected
+# via ldflags); keep it in sync with the tag before releasing (docs/RELEASE.md).
+version: 2
+
+project_name: dotfiles-tool
+
+builds:
+  - id: dotfiles-tool
+    binary: dotfiles-tool
+    main: .
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos:
+      - darwin
+      - linux
+    # Add `windows` only if the tool actually builds on it (Unix-only locking,
+    # syscalls, or path assumptions often exclude it — verify with a build).
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: dotfiles-tool
+    # dotfiles-tool_<version>_<os>_<arch>; <version> has no leading "v"
+    # because .Version strips it. Use .Tag instead only when preserving an
+    # existing public asset contract that already includes the leading "v".
+    # scripts/install.sh and the mise github backend rely on this exact shape.
+    name_template: "dotfiles-tool_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - docs/RELEASE.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^feat'
+      order: 0
+    - title: Fixes
+      regexp: '^fix'
+      order: 1
+    - title: Others
+      order: 99
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^refactor:"
+      - "^Merge "
+
+release:
+  github:
+    owner: OWNER
+    name: REPO
+  name_template: "dotfiles-tool {{ .Tag }}"

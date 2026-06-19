@@ -1,0 +1,39 @@
+name: Check
+
+# The single source of the gate (go vet, gofmt, go test, go mod verify),
+# mirroring the local `mise run check`. Called by ci.yml (push/PR) and by
+# release.yml (before publishing a tag), so the release gate cannot drift from
+# CI.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Gofmt
+        run: |
+          set -euo pipefail
+          test -z "$(gofmt -l .)" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
+
+      - name: Test
+        run: go test ./...
+
+      - name: Module verify
+        run: go mod verify

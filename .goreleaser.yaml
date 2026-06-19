@@ -1,0 +1,66 @@
+# GoReleaser config for kae. Build, archive, checksum, and publish the
+# multi-platform `kae` binary on a `v*` tag (see .github/workflows/release.yml).
+# The binary's reported version is the hardcoded toolVersion in internal/cmd;
+# keep it in sync with the tag before releasing (docs/RELEASE.md).
+version: 2
+
+project_name: kae
+
+builds:
+  - id: kae
+    binary: kae
+    main: .
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    # macOS and Linux only: internal/lock is Unix-only (Windows support is on
+    # the roadmap, docs/ROADMAP.md), so kae does not build for windows.
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: kae
+    # kae_<version>_<os>_<arch>; <version> has no leading "v" (GoReleaser
+    # default). scripts/install.sh and the mise github backend rely on this.
+    name_template: "kae_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - docs/RELEASE.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^feat'
+      order: 0
+    - title: Fixes
+      regexp: '^fix'
+      order: 1
+    - title: Others
+      order: 99
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^refactor:"
+      - "^Merge "
+
+release:
+  github:
+    owner: webkaz-labs
+    name: kagikae
+  name_template: "kae {{ .Tag }}"

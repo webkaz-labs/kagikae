@@ -1,0 +1,130 @@
+# Pin to the repository's current Go version when copying the template.
+[tools]
+go = "1.25.8"
+goreleaser = "2.16.0"
+shellcheck = "0.11.0"
+
+[tasks.test]
+description = "Run Go tests with cache and wall time"
+run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/dotfiles-tool-gocache} /usr/bin/time -p go test ./..."
+
+[tasks.test-fresh]
+description = "Run Go tests without cache and show wall time"
+run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/dotfiles-tool-gocache} /usr/bin/time -p go test -count=1 ./..."
+
+[tasks.vet]
+description = "Run Go vet"
+run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/dotfiles-tool-gocache} go vet ./..."
+
+[tasks.fmt-check]
+description = "Check Go formatting and import grouping"
+run = """
+set -eu
+cache_root="${GOCLI_LINT_CACHE_DIR:-${TMPDIR:-/tmp}/dotfiles-tool-lint}"
+mkdir -p "$cache_root"
+export GOPATH="$cache_root/gopath"
+export GOCACHE="$cache_root/gocache"
+export GOMODCACHE="$cache_root/gomodcache"
+module_path="$(go list -m)"
+gofumpt_files="$(go run mvdan.cc/gofumpt@v0.10.0 -l .)"
+goimports_files="$(go run golang.org/x/tools/cmd/goimports@v0.46.0 -local "$module_path" -l .)"
+if [ -n "$gofumpt_files" ]; then
+  printf 'go format check failed; run gofumpt on:\\n%s\\n' "$gofumpt_files" >&2
+  exit 1
+fi
+if [ -n "$goimports_files" ]; then
+  printf 'go import check failed; run goimports -local %s on:\\n%s\\n' "$module_path" "$goimports_files" >&2
+  exit 1
+fi
+printf 'go format check: ok\\n'
+"""
+
+[tasks.staticcheck]
+description = "Run bug-class Staticcheck analyzers"
+run = """
+set -eu
+cache_root="${GOCLI_LINT_CACHE_DIR:-${TMPDIR:-/tmp}/dotfiles-tool-lint}"
+mkdir -p "$cache_root"
+export GOPATH="$cache_root/gopath"
+export GOCACHE="$cache_root/gocache"
+export GOMODCACHE="$cache_root/gomodcache"
+export STATICCHECK_CACHE="$cache_root/staticcheck"
+go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 '-checks=SA*' ./...
+"""
+
+[tasks.golangci-lint]
+description = "Run curated golangci-lint checks"
+run = """
+set -eu
+cache_root="${GOCLI_LINT_CACHE_DIR:-${TMPDIR:-/tmp}/dotfiles-tool-lint}"
+mkdir -p "$cache_root"
+export GOPATH="$cache_root/gopath"
+export GOCACHE="$cache_root/gocache"
+export GOMODCACHE="$cache_root/gomodcache"
+export GOLANGCI_LINT_CACHE="$cache_root/golangci-lint"
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run ./...
+"""
+
+[tasks.shellcheck]
+description = "Run ShellCheck on repository shell scripts"
+run = """
+set -eu
+if [ ! -d scripts ]; then
+  printf 'shellcheck: no scripts directory\\n'
+  exit 0
+fi
+files="$(find scripts -type f -name '*.sh' -print)"
+if [ -z "$files" ]; then
+  printf 'shellcheck: no shell scripts\\n'
+  exit 0
+fi
+shellcheck -S warning $files
+"""
+
+[tasks.lint]
+description = "Run low-noise local lint checks"
+depends = ["fmt-check", "staticcheck", "golangci-lint", "shellcheck"]
+
+[tasks.mod-verify]
+description = "Verify downloaded Go modules"
+run = "go mod verify"
+
+[tasks.build]
+description = "Build packages"
+run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/dotfiles-tool-gocache} go build ./..."
+
+[tasks.check]
+description = "Run the standard local validation suite"
+depends = ["lint", "test", "vet", "mod-verify", "build"]
+
+[tasks.vuln]
+description = "Run Go vulnerability audit"
+run = """
+set -eu
+cache_root="${GOCLI_AUDIT_CACHE_DIR:-${TMPDIR:-/tmp}/dotfiles-tool-audit}"
+mkdir -p "$cache_root"
+export GOPATH="$cache_root/gopath"
+export GOCACHE="$cache_root/gocache"
+export GOMODCACHE="$cache_root/gomodcache"
+go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
+"""
+
+[tasks.supply-chain]
+description = "Run project-specific public-repo supply-chain audit"
+run = "printf 'supply-chain: configure CodeQL/Dependabot/dependency-review/release provenance for public repos\\n'"
+
+[tasks.agent-quality]
+description = "Run non-blocking agent-code-quality audit"
+run = "printf 'agent-quality: configure project-specific non-blocking audit evidence\\n'"
+
+[tasks.audit]
+description = "Run slower release or scheduled audit checks"
+depends = ["vuln", "supply-chain", "agent-quality"]
+
+[tasks.goreleaser-check]
+description = "Validate GoReleaser release configuration"
+run = "goreleaser check"
+
+[tasks.goreleaser-snapshot]
+description = "Build local GoReleaser snapshot archives without publishing"
+run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/dotfiles-tool-gocache} goreleaser release --snapshot --clean --skip=publish"

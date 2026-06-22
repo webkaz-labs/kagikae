@@ -198,6 +198,7 @@ func TestCompanionValidation(t *testing.T) {
 		"unknown companion": "[profiles.main.companions]\nnope.X = \"y\"\n",
 		"bad knob name":     "[profiles.main.companions]\ngit.\"bad knob\" = \"y\"\n",
 		"newline value":     "[profiles.main.companions]\ngit.name = \"a\\nb\"\n",
+		"nul value":         "[profiles.main.companions]\ngit.name = \"a\\u0000b\"\n",
 	}
 	for name, content := range bad {
 		if _, _, err := Load(writeConfig(t, content)); err == nil {

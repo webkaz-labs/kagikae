@@ -96,10 +96,14 @@ func TestValidKnobName(t *testing.T) {
 
 func TestRegisterPanicsOnMalformedSpec(t *testing.T) {
 	cases := map[string]companion.Spec{
-		"unknown id":             {ID: "nope", Binary: "nope", Kind: companion.KindToken, Knobs: []companion.Knob{{Name: "X", EnvVar: "X"}}},
-		"token without envvar":   {ID: constants.CompanionGH, Binary: "gh", Kind: companion.KindToken, Knobs: []companion.Knob{{Name: "GH_TOKEN"}}},
-		"git-config with envvar": {ID: constants.CompanionGit, Binary: "git", Kind: companion.KindGitConfig, FileTmpl: "x", FileEnvVar: "GIT_CONFIG_GLOBAL", Knobs: []companion.Knob{{Name: "email", EnvVar: "OOPS"}}},
-		"no knobs":               {ID: constants.CompanionKubectl, Binary: "kubectl", Kind: companion.KindConfigDir},
+		"unknown id":               {ID: "nope", Binary: "nope", Kind: companion.KindToken, Knobs: []companion.Knob{{Name: "X", EnvVar: "X"}}},
+		"empty binary":             {ID: constants.CompanionGH, Kind: companion.KindToken, Knobs: []companion.Knob{{Name: "X", EnvVar: "X"}}},
+		"unknown kind":             {ID: constants.CompanionGH, Binary: "gh", Kind: companion.OverrideKind("bogus"), Knobs: []companion.Knob{{Name: "X", EnvVar: "X"}}},
+		"token without envvar":     {ID: constants.CompanionGH, Binary: "gh", Kind: companion.KindToken, Knobs: []companion.Knob{{Name: "GH_TOKEN"}}},
+		"git-config with envvar":   {ID: constants.CompanionGit, Binary: "git", Kind: companion.KindGitConfig, FileTmpl: "x", FileEnvVar: "GIT_CONFIG_GLOBAL", Knobs: []companion.Knob{{Name: "email", EnvVar: "OOPS"}}},
+		"git-config no FileTmpl":   {ID: constants.CompanionGit, Binary: "git", Kind: companion.KindGitConfig, FileEnvVar: "GIT_CONFIG_GLOBAL", Knobs: []companion.Knob{{Name: "email"}}},
+		"git-config no FileEnvVar": {ID: constants.CompanionGit, Binary: "git", Kind: companion.KindGitConfig, FileTmpl: "x", Knobs: []companion.Knob{{Name: "email"}}},
+		"no knobs":                 {ID: constants.CompanionKubectl, Binary: "kubectl", Kind: companion.KindConfigDir},
 	}
 	for name, spec := range cases {
 		t.Run(name, func(t *testing.T) {

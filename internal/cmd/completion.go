@@ -14,8 +14,8 @@ import (
 // Keep in lockstep with Root().
 var completionCommands = []string{
 	"init", "edit", "doctor", "add", "use", "pin", "unpin", "run", "env",
-	"mise", "accounts", "ls", "account", "profile", "status", "backup",
-	"rollback", "completion", "version", "help",
+	"companion", "mise", "accounts", "ls", "account", "profile", "status",
+	"backup", "rollback", "completion", "version", "help",
 }
 
 // completionCommandAliases are the one-letter command aliases Root() routes

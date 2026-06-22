@@ -69,6 +69,39 @@ func (e *Editor) RemoveProfileAccount(profile, tool string) bool {
 	return e.doc.First("profiles", profile, "accounts", tool).Remove()
 }
 
+// SetProfileCompanion sets profiles.<profile>.companions.<id>.<knob> = value,
+// creating the companions.<id> subtable if it does not exist yet. An existing
+// knob value is replaced. Mirrors SetProfileAccount for companion bindings.
+func (e *Editor) SetProfileCompanion(profile, id, knob, value string) {
+	val := parser.MustValue(strconv.Quote(value))
+	if cur := e.doc.First("profiles", profile, "companions", id, knob); cur != nil && cur.IsMapping() {
+		val.Trailer = cur.Value.Trailer
+		cur.Value = val
+		return
+	}
+	kv := &parser.KeyValue{Name: parser.Key{knob}, Value: val}
+	if tab := transform.FindTable(e.doc, "profiles", profile, "companions", id); tab != nil {
+		transform.InsertMapping(tab.Section, kv, false)
+		return
+	}
+	e.doc.Sections = append(e.doc.Sections, &tomledit.Section{
+		Heading: &parser.Heading{Name: parser.Key{"profiles", profile, "companions", id}},
+		Items:   []parser.Item{kv},
+	})
+}
+
+// RemoveProfileCompanionKnob removes profiles.<profile>.companions.<id>.<knob>.
+// It reports whether the mapping existed.
+func (e *Editor) RemoveProfileCompanionKnob(profile, id, knob string) bool {
+	return e.doc.First("profiles", profile, "companions", id, knob).Remove()
+}
+
+// RemoveProfileCompanion removes the whole [profiles.<profile>.companions.<id>]
+// subtable. It reports whether anything was removed.
+func (e *Editor) RemoveProfileCompanion(profile, id string) bool {
+	return e.removeSectionsByPrefix(parser.Key{"profiles", profile, "companions", id})
+}
+
 // ClearProfileAccounts removes the [profiles.<profile>.accounts] subtable
 // while leaving the profile's other keys (e.g. label) intact. It reports
 // whether the subtable existed. Used by profile save to overwrite the account

@@ -70,6 +70,8 @@ func Root(args []string) int {
 		return CmdRun(ctx, args[1:])
 	case "env":
 		return CmdEnv(ctx, args[1:])
+	case "companion":
+		return CmdCompanion(ctx, args[1:])
 	case "mise":
 		return CmdMise(ctx, args[1:])
 	// Folded into the use/pin × -s/-i surface in v0.7.2 (docs/RELEASE.md);
@@ -110,6 +112,10 @@ func Root(args []string) int {
 	// mise `complete run="…"` directives.
 	case "__complete":
 		return CmdComplete(ctx, args[1:])
+	// Hidden credential helper invoked by the companion mise exec() template to
+	// resolve a token at env-eval time (companion.go). Not in `kae help`.
+	case "__companion-token":
+		return CmdCompanionToken(ctx, args[1:])
 	case "version":
 		return CmdVersion(args[1:])
 	case "help":
@@ -238,6 +244,8 @@ Usage:
                                        per-account isolated home (shared with use -i,
                                        no lock); --env injects env-profile vars only
   kae env set|unset|list ...           env-mode profiles (API keys)
+  kae companion add|rm|list ...        bind git/gh/cloud CLI auth to a profile
+                                       (per-directory; takes effect via kae pin)
   kae mise init [-P profile] [--auto] [--write]
                                        render the auth-mode tasks + opt-in hook
                                        (bind directories with kae pin instead)

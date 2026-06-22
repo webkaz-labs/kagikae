@@ -121,6 +121,56 @@ func applyCompletionInstall(app *App, opts commonOpts, shell, script string, cho
 	}
 }
 
+// zshCompdumpRebuild is the command that rebuilds zsh's cached completion index
+// after a completion file changes (compinit -C reuses a stale dump otherwise).
+// Shared by the post-install note and the post-refresh hint so the two never
+// drift; the ${ZSH_COMPDUMP:-…} fallback covers a relocated dump.
+const zshCompdumpRebuild = `  rm -f "${ZSH_COMPDUMP:-$HOME/.zcompdump}" && autoload -Uz compinit && compinit`
+
+// runCompletionRefresh rewrites every already-registered kae completion file
+// from the current binary, without prompting and without creating a new
+// registration. It is what the build/install path calls so a structural
+// completion change (a new subcommand case or __complete kind) reaches the
+// registered script automatically — rebuilding the binary alone leaves the file
+// a stale snapshot. The mise-hook registration self-sources from the binary, so
+// it needs no refresh; only the on-disk fpath/completions files do.
+func runCompletionRefresh(app *App, opts commonOpts) int {
+	var anyRegistered, zshChanged bool
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		path, _, err := completionTarget(app.Env, shell)
+		if err != nil {
+			return finish(opts, err)
+		}
+		if _, statErr := os.Stat(path); statErr != nil {
+			continue // not registered for this shell; never create one here
+		}
+		anyRegistered = true
+		script, _ := completionScript(shell) // shell is one of the literals above; ok is always true
+		changed, werr := writeCompletionFile(path, script)
+		if werr != nil {
+			return finish(opts, werr)
+		}
+		if changed {
+			fmt.Printf("Refreshed kae %s completion: %s\n", shell, path)
+			if shell == "zsh" {
+				zshChanged = true
+			}
+		}
+	}
+	if !anyRegistered {
+		fmt.Println("No registered kae completion to refresh (run: kae completion <bash|zsh|fish> --install).")
+		return constants.ExitOK
+	}
+	// A normal compinit picks up the rewritten file by mtime; compinit -C
+	// (speed-tuned setups) reuses a cached compdump, so hand over the rebuild for
+	// the running/next shell rather than mutating the user's cache from here.
+	if zshChanged {
+		fmt.Fprintln(os.Stderr, "zsh: if completion does not update, rebuild the cache:")
+		fmt.Fprintln(os.Stderr, zshCompdumpRebuild)
+	}
+	return constants.ExitOK
+}
+
 // completionTarget resolves the user completions file for kae and whether the
 // shell auto-loads that location (so no fpath/.zshrc step is needed). bash and
 // fish auto-load their standard XDG dirs. zsh loads only dirs on `fpath`, which
@@ -173,7 +223,7 @@ func completionActivationNote(shell, path string, autoLoaded bool) string {
 		if autoLoaded {
 			return "Open a new shell. If completion does not appear, your zsh completion\n" +
 				"cache is stale — remove your compdump and rebuild it:\n" +
-				"  rm -f \"${ZSH_COMPDUMP:-$HOME/.zcompdump}\" && autoload -Uz compinit && compinit\n"
+				zshCompdumpRebuild + "\n"
 		}
 		return fmt.Sprintf("Ensure this is on your fpath, e.g. add to ~/.zshrc:\n"+
 			"  fpath=(%s $fpath)\n  autoload -Uz compinit && compinit\nThen open a new shell.\n",

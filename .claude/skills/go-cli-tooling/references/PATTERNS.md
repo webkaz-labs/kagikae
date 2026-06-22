@@ -116,10 +116,18 @@ never drift from the real router/config/state. Read-only, no locks.
    `_<tool>` / completion file stale, so a **structural** change (a new
    subcommand `case`, a new `__complete` kind) does not take effect — the binary
    resolves the new `__complete` kinds, but the old script never calls them. Live
-   candidate changes need nothing (they are resolved at completion time). Make
-   the build/install task print a reminder to re-run `<tool> completion <shell>
-   --install` (and rebuild the compdump per trap 5) after a structural completion
-   change, since that path never shows the `--install` activation note.
+   candidate changes need nothing (resolved at completion time). A docs reminder
+   is not enough — the user does not see it and will not act. Make it automatic:
+   give the tool a `completion --refresh` mode that rewrites *every
+   already-registered* completion file from the current binary (and **never
+   creates** a new registration), then call it from the build/install task and
+   the `curl | sh` installer so an upgrade or local rebuild propagates a
+   structural change with no manual step. Two registration paths matter here: a
+   **mise `[hooks.enter]`** that sources `<tool> completion <shell>` self-updates
+   on directory entry (nothing to refresh); a static **fpath/completions file** is
+   the one `--refresh` rewrites. For zsh under `compinit -C`, the rewritten file
+   still needs a compdump rebuild — have `--refresh` print that command (per trap
+   5) rather than auto-`rm` the user's cache.
 7. **A new subcommand group must not ship as a completion dead end.** When a
    command dispatches sub-verbs (`<tool> account rm|rename|…`), its native script
    needs a dedicated `case` (sub-verbs at the np==0 slot, then the argument

@@ -429,17 +429,27 @@ and the `kae mise init` task `complete` directives — it is not the JSON contra
 as a best-effort generator (unit-tested and `fish -n`-valid) but is not a
 release-gated, officially-verified surface (dropped 2026-06-18).
 
-**Refreshing completion after a code change (developers/upgraders).** Because the
-script is dynamic, new candidates (a profile, account, companion) appear with no
-action. A **structural** change — a new command/subcommand `case` or a new
-`__complete` kind — changes the script body, so the *registered* file must be
-regenerated: `kae completion <shell> --install` (then follow its activation
-note). Rebuilding the binary alone (`mise run install`, `go build`) does **not**
-rewrite the registered script. For zsh, also rebuild the completion cache, which
-may be relocated: `rm -f "${ZSH_COMPDUMP:-$HOME/.zcompdump}" && autoload -Uz
-compinit && compinit` (or open a new shell). A `subcommandVerbs` parity test
-fails if a new subcommand group lacks a completion case, so the script side
-cannot silently drift.
+**Keeping completion current.** Because the script is dynamic, new candidates (a
+profile, account, companion) appear with no action. Only a **structural** change
+— a new command/subcommand `case` or a new `__complete` kind — alters the script
+body, and that is refreshed automatically:
+
+- The **mise-hook** registration self-sources from the binary on directory
+  entry, so it is always current — nothing to do.
+- For the **fpath/completions-file** registration, `kae completion --refresh`
+  rewrites every already-registered file from the current binary (it never
+  creates a new one). The installers run it for you: `mise run install` and
+  `scripts/install.sh` refresh after placing the binary, so an upgrade or a local
+  rebuild propagates a structural change without a manual re-install.
+- `go build` by itself does not (it does not invoke kae); run `kae completion
+  --refresh` if you build that way.
+
+For zsh under `compinit -C` (a speed-tuned cache that skips the rescan) the
+rewritten file may not load until the compdump is rebuilt; `--refresh` prints the
+command (`rm -f "${ZSH_COMPDUMP:-$HOME/.zcompdump}" && autoload -Uz compinit &&
+compinit`) when it changed a zsh file. A `subcommandVerbs` parity test fails if a
+new subcommand group lacks a completion case, so the script side cannot silently
+drift in the first place.
 
 kae's own completion is **binary-scoped**, so it is registered globally, never
 per-directory (a per-directory registration would make `kae <TAB>` blink in and

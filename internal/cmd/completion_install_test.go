@@ -184,6 +184,52 @@ var subcommandVerbs = map[string][]string{
 	"companion": {"add", "rm", "list"},
 }
 
+// TestCompletionRefreshRewritesRegisteredFile: `completion --refresh` rewrites an
+// already-registered file from the current binary (so a structural change takes
+// effect without a manual re-install) but never creates a registration for a
+// shell that has none.
+func TestCompletionRefreshRewritesRegisteredFile(t *testing.T) {
+	app := testApp(t, nil)
+	zshPath, _, err := completionTarget(app.Env, "zsh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mkErr := os.MkdirAll(filepath.Dir(zshPath), 0o755); mkErr != nil {
+		t.Fatal(mkErr)
+	}
+	if wErr := os.WriteFile(zshPath, []byte("# stale kae completion\n"), 0o644); wErr != nil {
+		t.Fatal(wErr)
+	}
+
+	code, _ := captureStdout(t, func() int { return runCompletionRefresh(app, commonOpts{Format: formatText}) })
+	mustExit(t, constants.ExitOK, code, "")
+
+	got, err := os.ReadFile(zshPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want, _ := completionScript("zsh"); string(got) != want {
+		t.Fatalf("refresh did not rewrite the registered zsh file to the current script")
+	}
+	// bash had no registered file, so refresh must not have created one.
+	bashPath, _, _ := completionTarget(app.Env, "bash")
+	if _, statErr := os.Stat(bashPath); statErr == nil {
+		t.Fatalf("refresh must not create a registration for an unregistered shell: %s", bashPath)
+	}
+}
+
+// TestCompletionRefreshNoRegistration: refresh with nothing registered is a
+// no-op success (it never creates files), so the build/install hook is safe to
+// run unconditionally.
+func TestCompletionRefreshNoRegistration(t *testing.T) {
+	app := testApp(t, nil)
+	code, out := captureStdout(t, func() int { return runCompletionRefresh(app, commonOpts{Format: formatText}) })
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(out, "No registered kae completion") {
+		t.Fatalf("expected a nothing-to-refresh message, got: %s", out)
+	}
+}
+
 // TestSubcommandCompletionParity is the recurrence guard for the v0.10.0
 // companion gap (a subcommand group shipped with no completion case). For every
 // group in subcommandVerbs it asserts the command is a known completion command
@@ -234,7 +280,7 @@ func TestFlagSpecWiring(t *testing.T) {
 		"run":        {"env", "shared", "profile"},
 		"pin":        {"shared", "isolated"},
 		"mise":       {"mode", "auto", "write", "profile"},
-		"completion": {"install"},
+		"completion": {"install", "refresh"},
 		"rollback":   {"to", "dry-run"},
 		"account":    {"force", "dry-run"},
 		"profile":    {"force", "clear", "dry-run"},

@@ -163,3 +163,9 @@ install -m 0755 "$binary_path" "${install_dir}/kae"
 
 echo "installed kae ${version} to ${install_dir}/kae"
 "${install_dir}/kae" version
+
+# Refresh any already-registered shell completion so a structural change in the
+# new version (a new subcommand case / __complete kind) takes effect without a
+# manual re-install. Best-effort: refresh only rewrites existing registrations
+# and must never fail the install.
+"${install_dir}/kae" completion --refresh || true

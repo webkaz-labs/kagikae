@@ -59,8 +59,9 @@ func registerRollbackFlags(fs *flag.FlagSet, to *string) {
 	fs.StringVar(to, "to", "", "backup id to restore (default: most recent)")
 }
 
-func registerCompletionFlags(fs *flag.FlagSet, install *bool) {
+func registerCompletionFlags(fs *flag.FlagSet, install, refresh *bool) {
 	fs.BoolVar(install, "install", false, "register the completion script interactively")
+	fs.BoolVar(refresh, "refresh", false, "rewrite already-registered completion files from this binary (no shell arg; never creates a new registration)")
 }
 
 // commandFlagSpec describes how a command builds its flag set, so flagSetFor can
@@ -82,7 +83,7 @@ var commandFlagSpecs = map[string]commandFlagSpec{
 	"mise": {extra: func(fs *flag.FlagSet) {
 		registerMiseInitFlags(fs, new(string), new(string), new(bool), new(bool))
 	}},
-	"completion": {extra: func(fs *flag.FlagSet) { registerCompletionFlags(fs, new(bool)) }},
+	"completion": {extra: func(fs *flag.FlagSet) { registerCompletionFlags(fs, new(bool), new(bool)) }},
 	"rollback":   {dryRun: true, extra: func(fs *flag.FlagSet) { registerRollbackFlags(fs, new(string)) }},
 	"account": {dryRun: true, extra: func(fs *flag.FlagSet) {
 		registerAccountRmFlags(fs, new(bool)) // account rm --force

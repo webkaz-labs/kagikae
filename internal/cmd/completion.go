@@ -47,15 +47,23 @@ func commandCandidates() []string {
 // (default), a global mise [hooks.enter] (opt-in), or print-only.
 func CmdCompletion(_ context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	var install bool
+	var install, refresh bool
 	opts, ok := parseCommon("completion", flags, false, func(fs *flag.FlagSet) {
-		registerCompletionFlags(fs, &install)
+		registerCompletionFlags(fs, &install, &refresh)
 	})
 	if !ok {
 		return constants.ExitUsage
 	}
+	// --refresh rewrites whatever is already registered, across shells, so it
+	// takes no shell argument and does not combine with --install.
+	if refresh {
+		if install || len(positionals) != 0 {
+			return usageError("usage: %s completion --refresh", toolName)
+		}
+		return runCompletionRefresh(newApp(opts.ConfigPath), opts)
+	}
 	if len(positionals) != 1 {
-		return usageError("usage: %s completion <bash|zsh|fish> [--install]", toolName)
+		return usageError("usage: %s completion <bash|zsh|fish> [--install] | %s completion --refresh", toolName, toolName)
 	}
 	shell := positionals[0]
 	script, ok := completionScript(shell)

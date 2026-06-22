@@ -73,9 +73,11 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   guard `subcommandVerbs` + `TestSubcommandCompletionParity`. `kae <cmd> <TAB>`
   must never be a dead end (a new subcommand group shipped without completion in
   v0.10.0). Completion is dynamic, so candidate changes resolve live; only a
-  *structural* script change (a new case/kind) needs `kae completion <shell>
-  --install` re-run plus a compdump rebuild — `mise run install` updates only the
-  binary and its install task says so.
+  *structural* script change (a new case/kind) alters the registered script.
+  That refresh is automatic: `mise run install` and `scripts/install.sh` run
+  `kae completion --refresh` (rewrites already-registered files; never creates
+  one), and the mise-hook registration self-sources. Plain `go build` does not,
+  so run `kae completion --refresh` if you build that way.
 
 ## Example Names in Docs and Tests
 

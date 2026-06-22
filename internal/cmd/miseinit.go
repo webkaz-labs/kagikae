@@ -218,7 +218,7 @@ func isolationEntryFor(tgt runTarget, dir string) isolationEntry {
 // isolation env entry, or a warning comment for a tool that keeps the real home
 // — for the kae pin fragment (renderDirFragment). One place to change env-line
 // formatting.
-func writeEnvEntries(b *strings.Builder, profileName string, entries []isolationEntry) {
+func writeEnvEntries(b *strings.Builder, profileName string, entries []isolationEntry, companionLines []string) {
 	fmt.Fprintln(b, "[env]")
 	fmt.Fprintf(b, "%s = %q\n", constants.EnvKaeProfile, profileName)
 	for _, entry := range entries {
@@ -227,6 +227,9 @@ func writeEnvEntries(b *strings.Builder, profileName string, entries []isolation
 			continue
 		}
 		fmt.Fprintf(b, "%s = %q\n", entry.EnvVar, entry.Dir)
+	}
+	for _, line := range companionLines {
+		fmt.Fprintln(b, line)
 	}
 }
 

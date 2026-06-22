@@ -27,7 +27,7 @@ const (
 // renderDirFragment renders the kae-owned mise fragment for a per-directory
 // bind: machine-readable kae: records (parsed by status) followed by the [env]
 // block mise exports. scope is the user-facing environment (shared/isolated).
-func renderDirFragment(profileName, scope string, entries []isolationEntry) string {
+func renderDirFragment(profileName, scope string, entries []isolationEntry, companionLines, redactions []string) string {
 	var b strings.Builder
 	fmt.Fprintln(&b, "# kagikae-managed mise fragment — do not edit by hand.")
 	fmt.Fprintln(&b, "# Written by `kae pin`, removed by `kae unpin`; your mise.toml is never touched.")
@@ -38,8 +38,21 @@ func renderDirFragment(profileName, scope string, entries []isolationEntry) stri
 			fmt.Fprintf(&b, "%s%s=%s\n", fragAccountPrefix, e.Tool, e.Account)
 		}
 	}
-	writeEnvEntries(&b, profileName, entries)
+	// redactions is a top-level key, so it must precede the [env] table.
+	if len(redactions) > 0 {
+		fmt.Fprintf(&b, "redactions = [%s]\n", quoteList(redactions))
+	}
+	writeEnvEntries(&b, profileName, entries, companionLines)
 	return b.String()
+}
+
+// quoteList renders a TOML string array body ("a", "b") for an inline array.
+func quoteList(items []string) string {
+	quoted := make([]string, len(items))
+	for i, s := range items {
+		quoted[i] = fmt.Sprintf("%q", s)
+	}
+	return strings.Join(quoted, ", ")
 }
 
 // writeMiseFragment creates the conf.d parent dir and atomically writes a
@@ -111,7 +124,7 @@ func (app *App) miseActivated() bool {
 // exportFallback renders the `export VAR=value` lines that reproduce the
 // fragment's [env] block in the current shell, for when mise activation is not
 // detected. Warning entries (tools that keep the real home) are skipped.
-func exportFallback(profileName string, entries []isolationEntry) string {
+func exportFallback(profileName string, entries []isolationEntry, companionExports []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "export %s=%s\n", constants.EnvKaeProfile, shellSingleQuote(profileName))
 	for _, e := range entries {
@@ -119,6 +132,9 @@ func exportFallback(profileName string, entries []isolationEntry) string {
 			continue
 		}
 		fmt.Fprintf(&b, "export %s=%s\n", e.EnvVar, shellSingleQuote(e.Dir))
+	}
+	for _, line := range companionExports {
+		fmt.Fprintln(&b, line)
 	}
 	return b.String()
 }

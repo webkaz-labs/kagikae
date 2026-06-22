@@ -107,11 +107,19 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err != nil {
 		return finish(opts, err)
 	}
+	companionEntries, redactions, prepareCompanions, err := app.companionPlan(profileName)
+	if err != nil {
+		return finish(opts, err)
+	}
 	if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
 		return finish(opts, err)
 	}
+	if err := prepareCompanions(); err != nil {
+		return finish(opts, err)
+	}
 	// mode is already the user-facing scope label (shared/isolated).
-	if err := writeDirFragment(renderDirFragment(profileName, mode, entries)); err != nil {
+	companionLines := companionFragmentLines(companionEntries)
+	if err := writeDirFragment(renderDirFragment(profileName, mode, entries, companionLines, redactions)); err != nil {
 		return finish(opts, err)
 	}
 	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, mode)
@@ -121,7 +129,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	} else {
 		fmt.Fprintln(os.Stderr, "kae: warning: mise activation not detected; the binding takes effect once mise is active.")
 		fmt.Fprintln(os.Stderr, "kae: to apply it in the current shell now, run:")
-		fmt.Fprint(os.Stderr, exportFallback(profileName, entries))
+		fmt.Fprint(os.Stderr, exportFallback(profileName, entries, companionExportLines(companionEntries)))
 	}
 	return constants.ExitOK
 }

@@ -16,6 +16,12 @@ import (
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/cursor"
 	_ "github.com/webkaz-labs/kagikae/internal/adapter/opencode"
 
+	// Companion specs register themselves with internal/companion.
+	_ "github.com/webkaz-labs/kagikae/internal/companion/cloudflare"
+	_ "github.com/webkaz-labs/kagikae/internal/companion/gh"
+	_ "github.com/webkaz-labs/kagikae/internal/companion/git"
+	_ "github.com/webkaz-labs/kagikae/internal/companion/kubectl"
+
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 

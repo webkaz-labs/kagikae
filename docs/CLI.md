@@ -429,6 +429,18 @@ and the `kae mise init` task `complete` directives — it is not the JSON contra
 as a best-effort generator (unit-tested and `fish -n`-valid) but is not a
 release-gated, officially-verified surface (dropped 2026-06-18).
 
+**Refreshing completion after a code change (developers/upgraders).** Because the
+script is dynamic, new candidates (a profile, account, companion) appear with no
+action. A **structural** change — a new command/subcommand `case` or a new
+`__complete` kind — changes the script body, so the *registered* file must be
+regenerated: `kae completion <shell> --install` (then follow its activation
+note). Rebuilding the binary alone (`mise run install`, `go build`) does **not**
+rewrite the registered script. For zsh, also rebuild the completion cache, which
+may be relocated: `rm -f "${ZSH_COMPDUMP:-$HOME/.zcompdump}" && autoload -Uz
+compinit && compinit` (or open a new shell). A `subcommandVerbs` parity test
+fails if a new subcommand group lacks a completion case, so the script side
+cannot silently drift.
+
 kae's own completion is **binary-scoped**, so it is registered globally, never
 per-directory (a per-directory registration would make `kae <TAB>` blink in and
 out by directory). Three registration paths, non-mise first:

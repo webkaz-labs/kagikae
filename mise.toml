@@ -122,4 +122,11 @@ run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} goreleaser release --snap
 
 [tasks.install]
 description = "Build and install kae into ~/.local/bin for real-machine use"
-run = "go build -o ${HOME}/.local/bin/kae ."
+run = """
+go build -o ${HOME}/.local/bin/kae .
+echo 'kae installed to ~/.local/bin (binary only).'
+echo 'If you changed completion structure (a command/subcommand case in'
+echo 'completion.go, or a __complete kind), refresh the registered script too:'
+echo '  kae completion <bash|zsh|fish> --install   # then follow its activation note'
+echo 'Dynamic candidate changes (new profile/account/companion) need no refresh.'
+"""

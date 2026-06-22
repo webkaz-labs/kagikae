@@ -110,6 +110,25 @@ never drift from the real router/config/state. Read-only, no locks.
    compinit`. Do not auto-`rm` the user's compdump from the install subprocess
    (it cannot affect the running shell, and it mutates state the tool does not
    own) — warn and hand over the command.
+6. **Rebuilding the binary does not refresh an already-registered completion
+   script.** A dev/install loop that only `go build`s (e.g. a `mise run install`
+   task that copies the binary to `~/.local/bin`) leaves the previously-installed
+   `_<tool>` / completion file stale, so a **structural** change (a new
+   subcommand `case`, a new `__complete` kind) does not take effect — the binary
+   resolves the new `__complete` kinds, but the old script never calls them. Live
+   candidate changes need nothing (they are resolved at completion time). Make
+   the build/install task print a reminder to re-run `<tool> completion <shell>
+   --install` (and rebuild the compdump per trap 5) after a structural completion
+   change, since that path never shows the `--install` activation note.
+7. **A new subcommand group must not ship as a completion dead end.** When a
+   command dispatches sub-verbs (`<tool> account rm|rename|…`), its native script
+   needs a dedicated `case` (sub-verbs at the np==0 slot, then the argument
+   positions). Adding the command word to the command list is not enough — the
+   sub-verbs and their argument completion live in a separate per-shell `case`,
+   which is easy to forget (a tool shipped a whole subcommand group with no
+   completion case this way). Guard it: keep the sub-verb sets in one
+   test-visible table and assert every group's verbs appear in *all three*
+   generated scripts, so a new group cannot merge without its completion case.
 
 ## Did-You-Mean Hints
 

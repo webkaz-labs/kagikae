@@ -67,6 +67,15 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   (BurntSushi `config.Load` → re-`Marshal`) is forbidden: it silently drops
   every user comment.
 - JSON contract tokens live in `internal/constants`; never inline literals.
+- Adding or changing a command or subcommand requires updating shell completion
+  in lockstep: the `case` in all three scripts in `internal/cmd/completion.go`,
+  any new `kae __complete` kind in `internal/cmd/complete.go`, and the parity
+  guard `subcommandVerbs` + `TestSubcommandCompletionParity`. `kae <cmd> <TAB>`
+  must never be a dead end (a new subcommand group shipped without completion in
+  v0.10.0). Completion is dynamic, so candidate changes resolve live; only a
+  *structural* script change (a new case/kind) needs `kae completion <shell>
+  --install` re-run plus a compdump rebuild — `mise run install` updates only the
+  binary and its install task says so.
 
 ## Example Names in Docs and Tests
 

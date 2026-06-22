@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -166,6 +167,56 @@ func TestCompletionScriptsCompleteCompanion(t *testing.T) {
 		for _, want := range []string{"add rm list", "__complete companions", "__complete companion-knobs"} {
 			if !strings.Contains(script, want) {
 				t.Fatalf("%s completion missing companion wiring %q:\n%s", shell, want, script)
+			}
+		}
+	}
+}
+
+// subcommandVerbs lists the sub-verbs each subcommand-group command dispatches
+// (the literals inlined at the np==0 slot of the generated completion scripts).
+// It is the parity guard's source of truth: when you add a subcommand group (or
+// a verb), add it here and TestSubcommandCompletionParity forces the matching
+// case into bash, zsh, and fish. Keep in lockstep with each command's dispatcher
+// (e.g. CmdCompanion) and the script case blocks in completion.go.
+var subcommandVerbs = map[string][]string{
+	"account":   {"rm", "rename", "set-identity"},
+	"profile":   {"save", "set", "unset", "rm", "default"},
+	"companion": {"add", "rm", "list"},
+}
+
+// TestSubcommandCompletionParity is the recurrence guard for the v0.10.0
+// companion gap (a subcommand group shipped with no completion case). For every
+// group in subcommandVerbs it asserts the command is a known completion command
+// and that each sub-verb appears in all three generated scripts. Adding a new
+// subcommand group therefore forces a completion case in bash, zsh, and fish, or
+// this test fails.
+func TestSubcommandCompletionParity(t *testing.T) {
+	scripts := map[string]string{}
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		s, ok := completionScript(shell)
+		if !ok {
+			t.Fatalf("no completion script for %s", shell)
+		}
+		scripts[shell] = s
+	}
+	for cmd, verbs := range subcommandVerbs {
+		if !slices.Contains(completionCommands, cmd) {
+			t.Errorf("subcommand group %q is not in completionCommands", cmd)
+		}
+		// The sub-verbs are inlined at the np==0 slot as one space-joined run
+		// (compgen -W "...", compadd -- ..., printf '%s\n' ...), so assert that
+		// exact run. A per-verb substring check would false-pass on short verbs
+		// that occur elsewhere (e.g. "add" is a substring of zsh's "compadd").
+		verbRun := strings.Join(verbs, " ")
+		for shell, script := range scripts {
+			// The group must have its own case block in each script (bash/zsh use
+			// `cmd)`, fish uses `case cmd`).
+			caseExists := strings.Contains(script, cmd+")") || strings.Contains(script, "case "+cmd)
+			if !caseExists {
+				t.Errorf("%s completion has no case for subcommand group %q:\n%s", shell, cmd, script)
+			}
+			if !strings.Contains(script, verbRun) {
+				t.Errorf("%s completion missing %q sub-verbs %q (inlined run)", shell, cmd, verbRun)
 			}
 		}
 	}

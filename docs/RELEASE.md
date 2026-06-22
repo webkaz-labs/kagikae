@@ -25,7 +25,36 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
-# kae v0.10.0 (active target)
+# kae v0.10.1 (active target)
+
+Finish companion's command UX and make shell completion self-maintaining.
+Companion-auth shipped in v0.10.0 without completion for its subcommand, and the
+registered completion script could go stale after a structural change with no
+signal to the user. Additive and contract-stable: `schema_version` stays `1`, no
+config change; the only new surface is a `kae completion --refresh` flag.
+
+Baseline: v0.10.0 (companion-auth lockstep), shipped 2026-06-23.
+
+- **`kae companion` completion**: the `add`/`rm`/`list` sub-verbs, then a
+  profile, a companion id, and that companion's knob names complete in bash, zsh,
+  and fish. Two new `__complete` kinds (`companions`, `companion-knobs <id>`)
+  back the dynamic candidates.
+- **Completion parity guard**: a `subcommandVerbs` table + a test assert every
+  subcommand group has a completion case with its sub-verbs in all three scripts,
+  so a new group cannot ship as a completion dead end again.
+- **Self-maintaining completion** (`kae completion --refresh`): rewrites every
+  already-registered completion file from the current binary (never creates a new
+  registration). `mise run install` and `scripts/install.sh` run it after placing
+  the binary, so an upgrade or a local rebuild propagates a structural completion
+  change with no manual re-install. The mise-hook registration self-sources and
+  needs nothing; for zsh under `compinit -C`, `--refresh` prints the
+  compdump-rebuild command rather than mutating the user's cache.
+- **Acceptance**: `mise run check` green; completion behavior covered by unit
+  tests (parity, refresh, the new kinds); JSON contract unaffected.
+
+---
+
+# kae v0.10.0 (released 2026-06-23)
 
 Companion-auth lockstep: bind the identity of the non-AI tools an agent shells
 out to — `git`, `gh`, and cloud CLIs — to the same profile, so an agent and the

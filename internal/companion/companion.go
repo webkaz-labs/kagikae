@@ -54,14 +54,12 @@ type Knob struct {
 
 // Spec declares one companion tool.
 type Spec struct {
-	ID           string       // a constants.Companion* id
-	Binary       string       // upstream CLI name, for probe/doctor LookPath
-	Kind         OverrideKind // delivery mechanism
-	Knobs        []Knob       // configurable inputs
-	FileTmpl     string       // KindGitConfig only: text/template for the generated file
-	FileEnvVar   string       // KindGitConfig only: env var pointing at the generated file
-	EnvConflicts []string     // doctor warns when any of these is already set
-	RuntimeProbe bool         // upstream env-var contract is version-fluid; probe before trusting
+	ID         string       // a constants.Companion* id
+	Binary     string       // upstream CLI name, for doctor's PATH check
+	Kind       OverrideKind // delivery mechanism
+	Knobs      []Knob       // configurable inputs
+	FileTmpl   string       // KindGitConfig only: text/template for the generated file
+	FileEnvVar string       // KindGitConfig only: env var pointing at the generated file
 }
 
 // Secret reports whether this companion's knob values live in the secret

@@ -152,13 +152,9 @@ func parseCompanionKnobs(spec companion.Spec, args []string, stdin io.Reader) (i
 			return nil, "", errf(constants.ExitUsage, "no knobs given")
 		}
 	case len(bare) == 1 && len(inline) == 0:
-		data, rerr := io.ReadAll(stdin)
+		value, rerr := readStdinSecret(stdin, bare[0])
 		if rerr != nil {
-			return nil, "", fmt.Errorf("read value from stdin: %w", rerr)
-		}
-		value := strings.TrimRight(string(data), "\r\n")
-		if value == "" {
-			return nil, "", errf(constants.ExitUsage, "no value on stdin for %s", bare[0])
+			return nil, "", rerr
 		}
 		inline[bare[0]] = value
 		secretKnob = bare[0]
@@ -213,7 +209,9 @@ func runCompanionRm(ctx context.Context, app *App, opts commonOpts, positionals 
 			}
 		}
 	}
-	removeWhole := len(knobs) == 0 || len(drop) == len(data)
+	// drop == all knobs (either no KEY given, so drop is every key, or every key
+	// was named explicitly) means the companion section goes away entirely.
+	removeWhole := len(drop) == len(data)
 	if err := app.editConfig(func(e *config.Editor) {
 		if removeWhole {
 			e.RemoveProfileCompanion(profileName, id)

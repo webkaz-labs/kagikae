@@ -11,10 +11,9 @@ import (
 
 func init() {
 	companion.Register(companion.Spec{
-		ID:           constants.CompanionKubectl,
-		Binary:       "kubectl",
-		Kind:         companion.KindConfigDir,
-		Knobs:        []companion.Knob{{Name: "KUBECONFIG", EnvVar: "KUBECONFIG"}},
-		EnvConflicts: []string{"KUBECONFIG"},
+		ID:     constants.CompanionKubectl,
+		Binary: "kubectl",
+		Kind:   companion.KindConfigDir,
+		Knobs:  []companion.Knob{{Name: "KUBECONFIG", EnvVar: "KUBECONFIG"}},
 	})
 }

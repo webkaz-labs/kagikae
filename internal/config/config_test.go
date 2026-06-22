@@ -5,7 +5,22 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/webkaz-labs/kagikae/internal/companion"
 )
+
+// TestKnobNameValidationMatchesCompanion guards the deliberate duplication of
+// the knob-name pattern between config (which avoids importing companion) and
+// companion.ValidKnobName: the two must agree, or a config accepted by one layer
+// is rejected by the other. A red test here is cheaper than silent drift.
+func TestKnobNameValidationMatchesCompanion(t *testing.T) {
+	for _, s := range []string{"email", "GH_TOKEN", "_x", "ok_123", "1bad", "has space", "a-b", "a/b", ""} {
+		if validKnobName(s) != companion.ValidKnobName(s) {
+			t.Errorf("knob-name validators disagree on %q: config=%v companion=%v",
+				s, validKnobName(s), companion.ValidKnobName(s))
+		}
+	}
+}
 
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()

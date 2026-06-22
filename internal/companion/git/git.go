@@ -37,9 +37,5 @@ func init() {
 		Knobs:      []companion.Knob{{Name: "email"}, {Name: "name"}, {Name: "signingkey"}},
 		FileTmpl:   configTmpl,
 		FileEnvVar: "GIT_CONFIG_GLOBAL",
-		EnvConflicts: []string{
-			"GIT_CONFIG_GLOBAL", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL",
-			"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME",
-		},
 	})
 }

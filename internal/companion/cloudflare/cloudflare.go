@@ -11,11 +11,9 @@ import (
 
 func init() {
 	companion.Register(companion.Spec{
-		ID:           constants.CompanionCloudflare,
-		Binary:       "wrangler",
-		Kind:         companion.KindToken,
-		Knobs:        []companion.Knob{{Name: "CLOUDFLARE_API_TOKEN", EnvVar: "CLOUDFLARE_API_TOKEN"}},
-		EnvConflicts: []string{"CLOUDFLARE_API_TOKEN", "CF_API_TOKEN"},
-		RuntimeProbe: true,
+		ID:     constants.CompanionCloudflare,
+		Binary: "wrangler",
+		Kind:   companion.KindToken,
+		Knobs:  []companion.Knob{{Name: "CLOUDFLARE_API_TOKEN", EnvVar: "CLOUDFLARE_API_TOKEN"}},
 	})
 }

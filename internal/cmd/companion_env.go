@@ -71,6 +71,9 @@ func (app *App) companionPlan(profileName string) (entries []companionEnvEntry, 
 			})
 		case companion.KindConfigDir:
 			for _, k := range spec.Knobs {
+				// An empty path means the knob is unset; skip it (git-config omits
+				// empty knobs in its template, token knobs use "" as the secret
+				// marker — each kind handles an empty value as fits its delivery).
 				if v := data[k.Name]; v != "" {
 					entries = append(entries, companionEnvEntry{EnvVar: k.EnvVar, Value: v})
 				}

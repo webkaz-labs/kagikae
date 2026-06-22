@@ -106,8 +106,6 @@ Delivered by pointing `GIT_CONFIG_GLOBAL` at a kae-owned file under
 
 - `~/.config/gh/hosts.yml` is **never written**; kae does not touch gh's own
   config dir. The token is delivered purely through `GH_TOKEN`.
-- doctor warns when `GH_TOKEN`, `GITHUB_TOKEN`, or `GH_ENTERPRISE_TOKEN` is
-  already set in the environment, since those override the bound login.
 
 ## cloudflare (`token`)
 
@@ -117,13 +115,12 @@ Delivered by pointing `GIT_CONFIG_GLOBAL` at a kae-owned file under
 |------|---------|-------|
 | `CLOUDFLARE_API_TOKEN` | `CLOUDFLARE_API_TOKEN` | used by wrangler/flarectl/terraform-cloudflare; secret, resolved via `exec()` lookup |
 
-The upstream env-var contract is version-fluid (`RuntimeProbe`), so doctor
-probes the binary before trusting the binding.
+The upstream env-var name can vary across CLI versions; `kae doctor` reports
+when the `wrangler` binary is absent (`companion_binary`).
 
 ### Preserved
 
 - No cloudflare config file is generated or copied.
-- doctor warns when `CLOUDFLARE_API_TOKEN` or `CF_API_TOKEN` is already set.
 
 ## kubectl (`config-dir`)
 
@@ -137,4 +134,3 @@ probes the binary before trusting the binding.
 
 - kae **references** the user's kubeconfig path; it never generates, copies, or
   reads the file (which may hold cluster credentials).
-- doctor warns when `KUBECONFIG` is already set in the environment.

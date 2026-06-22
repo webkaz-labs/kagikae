@@ -44,6 +44,22 @@ func CmdEnv(ctx context.Context, args []string) int {
 	}
 }
 
+// readStdinSecret reads a single secret value from stdin — the whole stream
+// with a trailing newline stripped — so a token can be piped in without landing
+// in argv or shell history. An empty result is a usage error naming the key.
+// Shared by `kae env set` and `kae companion add`.
+func readStdinSecret(stdin io.Reader, name string) (string, error) {
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		return "", fmt.Errorf("read value from stdin: %w", err)
+	}
+	value := strings.TrimRight(string(data), "\r\n")
+	if value == "" {
+		return "", errf(constants.ExitUsage, "no value on stdin for %s", name)
+	}
+	return value, nil
+}
+
 // parseEnvAssignments turns KEY=VALUE arguments into a map. A single bare
 // KEY reads its value from stdin so secrets can bypass argv/shell history.
 func parseEnvAssignments(positionals []string, stdin io.Reader) (map[string]string, error) {
@@ -63,13 +79,9 @@ func parseEnvAssignments(positionals []string, stdin io.Reader) (map[string]stri
 	switch {
 	case len(bare) == 0:
 	case len(bare) == 1 && len(values) == 0:
-		data, err := io.ReadAll(stdin)
+		value, err := readStdinSecret(stdin, bare[0])
 		if err != nil {
-			return nil, fmt.Errorf("read value from stdin: %w", err)
-		}
-		value := strings.TrimRight(string(data), "\r\n")
-		if value == "" {
-			return nil, errf(constants.ExitUsage, "no value on stdin for %s", bare[0])
+			return nil, err
 		}
 		values[bare[0]] = value
 	default:

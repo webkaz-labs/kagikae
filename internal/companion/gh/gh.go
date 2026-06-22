@@ -10,10 +10,9 @@ import (
 
 func init() {
 	companion.Register(companion.Spec{
-		ID:           constants.CompanionGH,
-		Binary:       "gh",
-		Kind:         companion.KindToken,
-		Knobs:        []companion.Knob{{Name: "GH_TOKEN", EnvVar: "GH_TOKEN"}},
-		EnvConflicts: []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"},
+		ID:     constants.CompanionGH,
+		Binary: "gh",
+		Kind:   companion.KindToken,
+		Knobs:  []companion.Knob{{Name: "GH_TOKEN", EnvVar: "GH_TOKEN"}},
 	})
 }

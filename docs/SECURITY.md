@@ -23,6 +23,16 @@ here are part of the command contract.
 - Secret values never enter stdout, stderr, logs, JSON reports, error
   messages, or metadata files. Reports reference artifacts by name, kind,
   target path, and pointer only.
+- **One documented exception** to the stdout rule: the hidden
+  `kae __companion-token <profile> <id> <knob>` credential helper prints a
+  single companion token to stdout. It is a git-credential-helper-style seam
+  invoked **only** by the mise `exec()` template a companion binding writes
+  (see [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md)); it resolves the value
+  from the secret backend at environment-evaluation time so the token is never
+  written to disk in the fragment. It is never reached on a human or JSON
+  reporting path, and the token's env var is added to the fragment's mise
+  `redactions` so task logs mask it. `kae companion list` shows knob names and
+  non-secret values only; token values are never printed.
 - Account snapshot payloads and backup payloads are stored in the secret
   backend (OS credential store by default; see
   [DATA-MODEL.md](DATA-MODEL.md#secret-references)).

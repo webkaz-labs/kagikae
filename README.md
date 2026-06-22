@@ -193,6 +193,13 @@ kae run --env claude ci -- claude -p "review this"
 
 # idempotent apply for your own hooks/scripts (no-op when already active):
 kae use --quiet
+
+# bind companion-tool auth (git/gh/cloud CLIs) to a profile so an agent and the
+# tools it shells out to act under the same account — applied per-directory by
+# kae pin, so a bare `git commit` or `gh pr create` uses the bound identity:
+kae companion add main git email=you@example.com name="Your Name"
+kae companion add main gh GH_TOKEN          # value read from stdin (kept in the secret store)
+kae pin main                                # the bound dir now gets that git identity + GH_TOKEN
 ```
 
 ## Shell Completion
@@ -343,6 +350,7 @@ git diff --check
 |----------|---------|
 | [docs/DESIGN.md](docs/DESIGN.md) | Mission, modes, terminology, boundaries. |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Per-tool switched/preserved contract. |
+| [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | Companion-auth (git/gh/cloud CLI) switched/preserved contract. |
 | [docs/CLI.md](docs/CLI.md) | Commands, flags, exit codes, JSON contracts, completion. |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Config, snapshots, state, backups, secrets. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Package layout and boundaries. |

@@ -12,6 +12,7 @@ vocabulary for `kae`.
 | config | `${XDG_CONFIG_HOME:-~/.config}/kagikae/config.toml` |
 | account snapshots (metadata) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/accounts/<tool>/<account>/account.toml` |
 | env profiles (metadata) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/env/<tool>/<account>/env.toml` |
+| companion generated files | `${XDG_DATA_HOME:-~/.local/share}/kagikae/companion/<profile>/<id>/config` (git-config kind only; token and config-dir kinds generate no file) |
 | per-dir shared (`pin -s`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/shared/` |
 | per-dir isolated (`pin -i`) config dirs | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/isolated/<account>/config/` |
 | global-isolated (`use -i` / `run -i`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/global/<tool>/<account>/` (a kae-owned mise fragment points `CLAUDE_CONFIG_DIR` / `CODEX_HOME` here; the real `~/.<tool>` is never touched) |
@@ -87,6 +88,16 @@ label = "Side"
 [profiles.side.accounts]
 claude = "side"
 codex = "side"
+
+# Optional: bind companion-tool auth (git/gh/cloud CLIs) to this profile so an
+# agent and the tools it shells out to act under the same account. Managed with
+# `kae companion add|rm|list`; delivered per-directory by `kae pin`. See
+# docs/ADAPTERS-COMPANION.md.
+[profiles.main.companions]
+git.email = "you@example.com"     # non-secret knobs are stored inline
+git.name = "Your Name"
+gh.GH_TOKEN = ""                  # token marker: the value lives in the secret backend
+kubectl.KUBECONFIG = "~/.kube/main-config"  # config-dir path (non-secret)
 ```
 
 References to removed tools (e.g. `gemini`) load with a warning and are ignored.
@@ -114,6 +125,14 @@ schema is an error (`invalid_config`).
 
 A profile may omit tools; `switch all <profile>` switches only the tools the
 profile maps and reports the others as `skipped`.
+
+`[profiles.<name>.companions]` is an additive table (schema 1; older kae
+tolerates it as an unknown key) mapping a companion id (`git`, `gh`,
+`cloudflare`, `kubectl`) to its knob values. Non-secret knobs (git identity
+fields, config-dir paths) hold their value inline; a token knob holds an empty
+string marker and its value lives in the secret backend. Companion ids and knob
+names are validated; a value may not contain a newline or NUL. The
+switched/preserved contract per companion is [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md).
 
 ## Account Snapshot Metadata
 
@@ -191,6 +210,8 @@ Secret payloads live in the secret backend, keyed by:
 service: kagikae
 key:     <tool>/<account>/<artifact>          # account snapshots
 key:     backup/<backup-id>/<tool>/<artifact> # backups
+key:     env/<tool>/<account>/<VAR>           # env-profile variables
+key:     companion/<profile>/<id>/<knob>      # companion token knobs
 ```
 
 Backends:

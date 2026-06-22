@@ -815,6 +815,32 @@ expects — keep the two in sync.
 - [ ] `mise x github:webkaz-labs/kagikae@v0.9.0 -- kae version` resolves the
       release archive and runs.
 
+## companion-auth surfaces
+
+Companion-auth lockstep (`kae companion`, delivered per-directory by `kae pin`).
+Smoke against a temp HOME with the file backend; the `exec()` token path needs
+`mise trust` (the same step any pin fragment needs):
+
+```bash
+# config: [security] secret_backend = "file" + a profile, e.g. [profiles.main]
+printf '[alias]\n\tlol = log --oneline\n[user]\n\temail = real@personal.test\n' > "$HOME/.gitconfig"
+/tmp/kae companion add main git email=you@example.com name=You
+/tmp/kae companion add main kubectl KUBECONFIG="$HOME/.kube/main"
+printf 'ghp_smoke\n' | /tmp/kae companion add main gh GH_TOKEN
+/tmp/kae companion list
+#   assert: gh shows GH_TOKEN=(secret); config.toml holds no token plaintext
+/tmp/kae __companion-token main gh GH_TOKEN        # prints ghp_smoke (helper path)
+cd "$proj" && /tmp/kae pin main                    # writes the fragment
+mise trust .config/mise/conf.d/kagikae.toml
+#   assert: fragment has redactions = ["GH_TOKEN"], GH_TOKEN as {{ exec(...) }},
+#           GIT_CONFIG_GLOBAL + KUBECONFIG as paths, no token plaintext
+mise exec -- git config --get user.email           # you@example.com (override)
+mise exec -- git config --get alias.lol            # log --oneline (~/.gitconfig preserved)
+mise exec -- sh -c 'echo $GH_TOKEN'                # ghp_smoke (resolved at eval)
+git config --get user.email                        # real@personal.test (unpinned: unchanged)
+/tmp/kae doctor --json                             # no companion_missing when secrets stored
+```
+
 ## Real-Machine Acceptance (release only)
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of
@@ -864,6 +890,11 @@ live tool sessions.
 `go test ./internal/cmd/ -run TestSecretsNeverInOutputOrMetadata` asserts that
 captured fixture secret values never appear in text output, JSON output, error
 messages, or metadata files written by capture/switch/rollback.
+
+Companion token leakage is covered by `TestCompanionFragmentLinesNeverLeakSecret`
+(the token reaches the fragment and export fallback only as an `exec()`/`$()`
+lookup, never as a literal) and `TestCompanionListHidesSecretValues` (the value
+never appears in `kae companion list` text/JSON).
 
 ## Release Acceptance Log
 

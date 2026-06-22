@@ -44,6 +44,7 @@ separate, explicit mode.
 | `profile` | a named bundle mapping each tool to one account, e.g. `main` = claude:main + codex:main + agy:main |
 | `driver` | the platform/tool-specific mechanism that captures and applies auth artifacts |
 | `artifact` | one captured unit of authentication state (a JSON pointer value, a file, or a keychain item) |
+| `companion` | a non-AI tool (git, gh, a cloud CLI) whose auth kae binds to a profile by driving env/config — not captured like an account; see [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md) |
 
 Single-tool and bundle switching both work:
 
@@ -139,6 +140,11 @@ NG:  two terminals both relying on a global shared switch for different accounts
 - Secrets are stored in the OS credential store by default; a plaintext file
   backend exists only as an explicit opt-in.
 - Every mutation is preceded by a backup and is reversible via `kae rollback`.
+- Companion-auth lockstep is **opt-in and auth-only**: kae drives the env/config
+  the companion CLIs already read (a kae-owned `GIT_CONFIG_GLOBAL` that includes
+  the user's own `~/.gitconfig`, an env token resolved at mise eval time, or a
+  `KUBECONFIG`-style path) and never reimplements git/gh/cloud behaviour. The
+  binding is per-directory (via `kae pin`) and reverts on `kae unpin`.
 
 ## Non-Goals
 

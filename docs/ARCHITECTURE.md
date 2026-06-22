@@ -18,6 +18,8 @@ kagikae/
       opencode/
       cursor/
       copilot/
+    companion/            # companion-auth lockstep registry (git/gh/cloud CLIs)
+      git/ gh/ cloudflare/ kubectl/   # one declarative Spec per companion
     artifact/             # artifact primitives: json-pointer / file / keychain
     freshness/            # pure per-tool credential expiry / refresh-token parser
     jwt/                  # JWT claims-segment decode (freshness exp, codex identity)

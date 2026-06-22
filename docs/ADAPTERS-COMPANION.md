@@ -45,6 +45,31 @@ inherent to requesting the environment; the token is still absent from disk.
 Token knobs are added to the fragment's `redactions` so mise masks them in task
 logs. See [SECURITY.md](SECURITY.md).
 
+### mise trust
+
+A `kae pin` fragment must be trusted before mise loads it (`mise trust`) — this
+is the existing requirement for any kae pin fragment, not new to companions. A
+token binding adds an `exec()` template to that fragment, so trusting it also
+authorizes mise to run kae's `__companion-token` helper at eval time. The
+fragment is kae-owned and git-ignored (never attacker-controlled), and the
+helper only reads the secret backend, so this rides on the same trust the user
+already grants the pin.
+
+## Binding health (`kae doctor`)
+
+`kae doctor` (unfiltered) reports companion binding health, config-level and
+deterministic — it does not run git/gh to compare live identity:
+
+| Check | Meaning |
+|-------|---------|
+| `companion_missing` | a bound token knob has no stored secret; the mise `exec()` lookup would fail at eval time (run `kae companion add <profile> <id> <knob>`) |
+| `companion_binary` | a bound companion's CLI is absent from PATH; the binding has no effect until it is installed |
+
+Because companions are profile-scoped and delivered per-directory, re-running
+`kae pin <profile>` is what refreshes a bound directory after the binding
+changes; a single-tool `kae pin <tool> <account>` re-bind leaves the companion
+lines intact.
+
 ## git (`git-config`)
 
 ### Switched

@@ -33,6 +33,10 @@ kae env set <tool> <account> KEY=VALUE...          # store env-mode variables
 kae env set <tool> <account> KEY                   # value read from stdin
 kae env unset <tool> <account> [KEY...]            # remove variables / the profile
 kae env list [--json]                              # profiles (names only, no values)
+kae companion add <profile> <id> KEY=VALUE...      # bind non-secret knobs (git identity, config paths)
+kae companion add <profile> <id> KEY               # bind a token knob; value read from stdin
+kae companion rm <profile> <id> [KEY...]           # drop knobs, or the whole companion
+kae companion list [--json]                        # bindings (knob names + non-secret values)
 kae mise init [-P <profile>] [--auto] [--write]    # auth-mode tasks + opt-in hook
                                                    # (bind directories with kae pin instead)
 kae accounts [--json]                # registered accounts, active markers
@@ -362,6 +366,33 @@ one release). Directories pinned before v0.7.2 carry a kagikae marker block
 inside their `mise.toml`; run `kae unpin && kae pin` once to migrate to the
 fragment.
 
+## kae companion Semantics
+
+`kae companion` binds companion-tool auth (git/gh/cloud CLIs) to a profile so an
+agent and the tools it shells out to act under the same account. The profile
+must already exist. Bindings live in `[profiles.<name>.companions]` (edited
+through the comment-preserving config editor) and are **delivered per-directory
+by `kae pin`** — `kae companion` itself only records them; re-run `kae pin` in a
+bound directory to refresh its fragment. The global fragment (`kae use -i`)
+carries no companions, since it has no single profile.
+
+- **add**: non-secret knobs (git `email`/`name`/`signingkey`, config-dir paths
+  like `KUBECONFIG`) take `KEY=VALUE` and are written inline. A token knob
+  (`GH_TOKEN`, `CLOUDFLARE_API_TOKEN`) takes a single bare `KEY`; its value is
+  read from stdin, stored in the secret backend, and left as an empty marker in
+  config. The two forms cannot be mixed, and a token passed as `KEY=VALUE` is
+  refused so secrets never reach argv/shell history.
+- **rm**: drops the named knobs, or the whole companion when no `KEY` is given;
+  a removed token knob's secret is deleted from the backend.
+- **list**: shows knob names with non-secret values inline and token knobs as
+  `(secret)`; token values are never printed.
+
+`kae doctor` reports companion binding health on the unfiltered report: a bound
+token knob with no stored secret (`companion_missing` — the binding would fail
+at mise eval) and a bound companion whose CLI is absent from PATH
+(`companion_binary` — the binding has no effect). The
+switched/preserved contract per companion is [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md).
+
 ## Shell completion
 
 `kae completion <bash|zsh|fish>` prints a **dynamic** completion script: instead
@@ -604,7 +635,8 @@ empty.
 Check `status` vocabulary: `ok`, `warn`, `error`, `skipped`.
 Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
-`unsupported`, `file_mode`, `credential_stale`, `secret_orphan`.
+`unsupported`, `file_mode`, `credential_stale`, `secret_orphan`,
+`companion_missing`, `companion_binary`.
 
 Credential-health checks (warn-level):
 - `credential_stale`: a captured snapshot is past its `expiresAt` with no
@@ -616,6 +648,12 @@ Credential-health checks (warn-level):
   `kae account rm`. Detected only where the backend can enumerate (file
   `readdir`, Linux `libsecret`); the darwin keychain cannot list by service, so
   the check is silently skipped there (documented gap; docs/SECURITY.md).
+
+Companion-binding checks (warn-level, unfiltered report only):
+- `companion_missing`: a bound token knob has no stored secret, so the mise
+  `exec()` lookup would fail at eval — names `kae companion add`.
+- `companion_binary`: a bound companion's CLI is absent from PATH, so the
+  binding has no effect until it is installed.
 
 ### `kae use ... --json` (the switch report)
 

@@ -68,6 +68,10 @@ the tool set up**:
 - **Three isolation scopes.** Global in-place (`kae use`), per-account private
   home (`kae use -i`), and per-directory binding (`kae pin`) via kae-owned mise
   fragments — your real `~/.claude` and your `mise.toml` are never touched.
+- **Companion auth in lockstep.** Bind `git`, `gh`, and cloud-CLI identity to the
+  same profile, so a bare `git commit` or `gh pr create` in a pinned directory
+  acts as the right account — and `kae doctor` flags when the live git identity
+  drifts from the binding.
 - **Safe by construction.** Atomic writes, per-tool locks, pre-write backups,
   structure guards that refuse unknown credential layouts, and full secret
   redaction in every output path.
@@ -193,14 +197,33 @@ kae run --env claude ci -- claude -p "review this"
 
 # idempotent apply for your own hooks/scripts (no-op when already active):
 kae use --quiet
-
-# bind companion-tool auth (git/gh/cloud CLIs) to a profile so an agent and the
-# tools it shells out to act under the same account — applied per-directory by
-# kae pin, so a bare `git commit` or `gh pr create` uses the bound identity:
-kae companion add main git email=you@example.com name="Your Name"
-kae companion add main gh GH_TOKEN          # value read from stdin (kept in the secret store)
-kae pin main                                # the bound dir now gets that git identity + GH_TOKEN
 ```
+
+## Companion Auth
+
+An AI agent rarely acts alone — it shells out to `git`, `gh`, `wrangler`,
+`kubectl`. kae binds those companion tools to the same profile so they act under
+the account you pinned, without capturing their credentials:
+
+- **git** — drives `GIT_CONFIG_GLOBAL` to a kae-owned file that `[include]`s your
+  `~/.gitconfig` and overrides only `user.email`/`name`/`signingkey`; your
+  gitconfig is never modified and the override is scoped to the pinned directory.
+- **gh / cloudflare** — set `GH_TOKEN` / `CLOUDFLARE_API_TOKEN` from the secret
+  store, resolved at mise eval time so the token never lands on disk.
+- **kubectl** — points `KUBECONFIG` at a path you supply.
+
+```bash
+kae companion add main git email=you@example.com name="Your Name"
+kae companion add main gh GH_TOKEN     # value read from stdin (kept in the secret store)
+kae pin main                           # the bound directory now commits and gh's as `main`
+```
+
+Bindings are opt-in per profile, delivered through the per-directory `kae pin`
+fragment, and reverted by `kae unpin`. `kae doctor` reports binding health and,
+inside a pinned directory, flags when the identity git would actually commit
+with has drifted from the binding — a stray `git config --local` or an inactive
+pin — the silent wrong-author commit this exists to prevent. See
+[docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md).
 
 ## Shell Completion
 

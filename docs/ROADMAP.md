@@ -3,9 +3,12 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-Active release target: v0.9.1 (manual login-identity override — `kae add
+Active release target: v0.10.0 (companion-auth lockstep — bind git/gh/cloud-CLI
+identity per profile, delivered by `kae pin`, plus a `companion_drift` doctor
+check that flags when the live git commit identity diverges from the binding;
+see [RELEASE.md](RELEASE.md)). v0.9.1 (manual login-identity override — `kae add
 --identity` and `kae account set-identity` — for tools kae cannot auto-detect,
-e.g. agy on current Antigravity; see [RELEASE.md](RELEASE.md)). v0.9.0
+e.g. agy on current Antigravity) shipped 2026-06-20. v0.9.0
 (installable binaries: a GoReleaser pipeline +
 `scripts/install.sh` + CI so `curl | sh`, mise, and prebuilt
 darwin/linux archives work, with the README rewritten to OSS parity; additive,

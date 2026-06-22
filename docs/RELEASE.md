@@ -25,10 +25,66 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
-# kae v0.9.1 (active target)
+# kae v0.10.0 (active target)
+
+Companion-auth lockstep: bind the identity of the non-AI tools an agent shells
+out to — `git`, `gh`, and cloud CLIs — to the same profile, so an agent and the
+tools it runs act under one account and never commit, push, or deploy as the
+wrong identity. Companions are not Tools: kae does not capture their
+credentials, it only drives the env/config those tools already read. Additive
+and contract-stable: `schema_version` stays `1`, config stays version `1` (the
+`[profiles.<name>.companions]` table is an additive key old kae tolerates), no
+new runtime dependency.
+
+Baseline: v0.9.1 (manual login-identity override), shipped 2026-06-20.
+
+- **Declarative companion registry** (`internal/companion`): one `Spec` struct
+  literal per tool, keyed by override kind — `git-config` (render a kae-owned
+  `GIT_CONFIG_GLOBAL` file that `[include]`s `~/.gitconfig` and overrides only
+  the identity fields, so the user's gitconfig is never modified), `token`
+  (`GH_TOKEN`/`CLOUDFLARE_API_TOKEN` resolved at mise eval time via an `exec()`
+  lookup against the secret backend, never written to disk), and `config-dir`
+  (`KUBECONFIG` set to a user-supplied path kae only references). Adding a tool
+  is one literal + registration. git/gh/cloudflare/kubectl ship.
+- **Delivery and CLI**: bindings are opt-in per profile and delivered through
+  the per-directory `kae pin` mise fragment (the global fragment holds no
+  profile, so it carries no companions); reverted by `kae unpin`.
+  `kae companion add/rm/list` manages them — token values go to the secret
+  store via stdin, config.toml holds only knob names and non-secret values. The
+  hidden `kae __companion-token` helper is the one documented stdout-secret
+  path (a git-credential-helper-style seam mise's `exec()` template invokes),
+  excluded from all human/JSON reporting and added to the fragment's
+  `redactions`.
+- **doctor binding health**: `companion_missing` (a bound token knob has no
+  stored secret) and `companion_binary` (a bound companion's CLI is absent from
+  PATH), config-level and deterministic, on the unfiltered report.
+- **live-identity drift** (`companion_drift`): inside a pinned directory binding
+  git, shell out to `git config --get user.<knob>` and compare the identity git
+  would actually commit with against the bound `email`/`name`/`signingkey`,
+  flagging a repo-local override or an inactive/untrusted pin — the silent
+  wrong-author commit companion-auth exists to prevent. Scoped to git: its
+  expected values are non-secret and the probe is offline; token companions keep
+  no expected identity and a live check would need a network call, so they are
+  out of scope. Warn-level, so doctor's exit stays `0`.
+- **Normative contract**: [docs/ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md)
+  defines per-companion switched/preserved; code must match it.
+- **mise trust**: an `exec()` token fragment must be trusted before mise loads
+  it — the existing requirement for any kae pin fragment, not new; trusting it
+  also authorizes the `__companion-token` helper (kae-owned, git-ignored
+  fragment, helper only reads the secret backend).
+- **MVP constraints**: a single-tool `kae pin <tool> <account>` re-bind keeps
+  the companion lines; `kae pin <profile>` re-binds them. token-companion drift
+  and more companions (fly/supabase/…) are follow-ups.
+- **Acceptance**: `mise run check` green; companion-auth real-machine smoke
+  (docs/VALIDATION.md "companion-auth surfaces", incl. the `companion_drift`
+  assertion) on a temp HOME with `mise trust`.
+
+---
+
+# kae v0.9.1 (released 2026-06-20)
 
 Make a login identity recordable when kae cannot auto-detect it, and stop a
-missing one from reading like a bug.
+missing one from reading like a bug. Shipped 2026-06-20.
 
 - **`kae add --identity <value>`** records the identity verbatim (sanitized);
   with no explicit name it also derives the account name from it.

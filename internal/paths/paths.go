@@ -81,6 +81,20 @@ func (p Paths) EnvProfileDir(tool, account string) string {
 // EnvProfilesDir returns the root of all env profiles.
 func (p Paths) EnvProfilesDir() string { return filepath.Join(p.DataDir, "env") }
 
+// CompanionDir returns the directory holding one profile's generated companion
+// files (the git-config kind's rendered config). Token companions keep nothing
+// here — their values live in the secret backend — and config-dir companions
+// reference a user-supplied path, so only file-generating kinds populate it.
+func (p Paths) CompanionDir(profile, companionID string) string {
+	return filepath.Join(p.DataDir, "companion", profile, companionID)
+}
+
+// CompanionConfigFile returns the path of a companion's generated config file
+// (git-config kind) under its CompanionDir.
+func (p Paths) CompanionConfigFile(profile, companionID string) string {
+	return filepath.Join(p.CompanionDir(profile, companionID), "config")
+}
+
 // StateFile returns the state.json path.
 func (p Paths) StateFile() string { return filepath.Join(p.StateDir, "state.json") }
 

@@ -22,6 +22,12 @@ func TestResolveDefaults(t *testing.T) {
 	if p.AccountDir("claude", "main") != "/home/u/.local/share/kagikae/accounts/claude/main" {
 		t.Fatalf("account dir: %s", p.AccountDir("claude", "main"))
 	}
+	if p.CompanionDir("main", "git") != "/home/u/.local/share/kagikae/companion/main/git" {
+		t.Fatalf("companion dir: %s", p.CompanionDir("main", "git"))
+	}
+	if p.CompanionConfigFile("main", "git") != "/home/u/.local/share/kagikae/companion/main/git/config" {
+		t.Fatalf("companion config file: %s", p.CompanionConfigFile("main", "git"))
+	}
 }
 
 func TestResolveXDGOverrides(t *testing.T) {

@@ -108,17 +108,19 @@ const (
 
 // Doctor check codes.
 const (
-	CheckBinaryPresent   = "binary_present"
-	CheckAuthPresent     = "auth_present"
-	CheckDriver          = "driver"
-	CheckEnvConflict     = "env_conflict"
-	CheckCredentialStore = "credential_store"
-	CheckSecretBackend   = "secret_backend"
-	CheckConfigValid     = "config_valid"
-	CheckUnsupported     = "unsupported"
-	CheckFileMode        = "file_mode"
-	CheckCredentialStale = "credential_stale"
-	CheckSecretOrphan    = "secret_orphan"
+	CheckBinaryPresent    = "binary_present"
+	CheckAuthPresent      = "auth_present"
+	CheckDriver           = "driver"
+	CheckEnvConflict      = "env_conflict"
+	CheckCredentialStore  = "credential_store"
+	CheckSecretBackend    = "secret_backend"
+	CheckConfigValid      = "config_valid"
+	CheckUnsupported      = "unsupported"
+	CheckFileMode         = "file_mode"
+	CheckCredentialStale  = "credential_stale"
+	CheckSecretOrphan     = "secret_orphan"
+	CheckCompanionMissing = "companion_missing" // a bound token knob has no stored secret
+	CheckCompanionBinary  = "companion_binary"  // a bound companion's CLI is not in PATH
 )
 
 // Exit codes and their stable error-code tokens.

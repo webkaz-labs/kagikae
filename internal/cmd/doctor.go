@@ -8,6 +8,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
+	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -135,12 +136,63 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string) *doctorReport
 		report.Checks = append(report.Checks, app.credentialHealthChecks(ctx, be, toolFilter)...)
 	}
 
+	// companion binding health (config-level). Companions are not tools, so
+	// these run only for the unfiltered report.
+	if err == nil && toolFilter == "" {
+		report.Checks = append(report.Checks, app.companionChecks(ctx, be)...)
+	}
+
 	for _, check := range report.Checks {
 		if check.Status == constants.StatusError {
 			report.OK = false
 		}
 	}
 	return report
+}
+
+// companionChecks reports companion binding health: a bound token knob with no
+// stored secret (the mise exec() lookup would fail at eval time) and a bound
+// companion whose CLI is missing from PATH (the binding has no effect). These
+// are config-level and deterministic; verifying live identity (comparing actual
+// git/gh output) is out of scope. The binary check is emitted once per
+// companion id even when several profiles bind it.
+func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapter.Check {
+	checks := []adapter.Check{}
+	binaryChecked := map[string]bool{}
+	for _, profileName := range sortedKeys(app.Config.Profiles) {
+		companions := app.Config.Profiles[profileName].Companions
+		for _, id := range constants.Companions {
+			data, bound := companions[id]
+			if !bound {
+				continue
+			}
+			spec, ok := companion.For(id)
+			if !ok {
+				continue
+			}
+			if !binaryChecked[id] {
+				binaryChecked[id] = true
+				if _, err := app.Env.LookPath(spec.Binary); err != nil {
+					checks = append(checks, adapter.Check{
+						Tool: id, Code: constants.CheckCompanionBinary, Status: constants.StatusWarn,
+						Message: spec.Binary + " not found in PATH; the " + id + " binding has no effect until it is installed",
+					})
+				}
+			}
+			if spec.Secret() {
+				for _, knob := range sortedKeys(data) {
+					if _, found, gerr := be.Get(ctx, companion.SecretRef(profileName, id, knob)); gerr == nil && !found {
+						checks = append(checks, adapter.Check{
+							Tool: id, Code: constants.CheckCompanionMissing, Status: constants.StatusWarn,
+							Message: fmt.Sprintf("profile %s: %s token %s is not stored; run: kae companion add %s %s %s",
+								profileName, id, knob, profileName, id, knob),
+						})
+					}
+				}
+			}
+		}
+	}
+	return checks
 }
 
 // credentialHealthChecks surfaces credential staleness the switch path only

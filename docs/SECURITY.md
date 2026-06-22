@@ -106,6 +106,13 @@ child could rotate the live credential unseen — a cached value would be stale.
   redacted from any diagnostics.
 - User-controlled account/profile names are validated against
   `[a-zA-Z0-9._-]{1,64}` before use in paths, lock names, or secret keys.
+- The `companion_drift` doctor check shells out to `git config --get
+  user.<knob>` through `internal/runner` (argv array, no shell). It reads only
+  non-secret git identity fields, never a credential, and makes no network
+  call. The live value it reads back is sanitized (control characters dropped,
+  length-capped) before it reaches doctor output, so a hostile repo-local
+  `.git/config` cannot inject terminal escapes. Scoped to the git companion;
+  token companions are never probed, so no secret can reach this path.
 
 ## File Permissions
 

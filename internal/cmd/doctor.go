@@ -142,6 +142,13 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string) *doctorReport
 		report.Checks = append(report.Checks, app.companionChecks(ctx, be)...)
 	}
 
+	// companion live-identity drift (subprocess): the commit-misidentity guard.
+	// Unfiltered only, like companionChecks; needs no secret backend, so it runs
+	// even when the backend is unavailable.
+	if toolFilter == "" {
+		report.Checks = append(report.Checks, app.companionDriftChecks(ctx)...)
+	}
+
 	for _, check := range report.Checks {
 		if check.Status == constants.StatusError {
 			report.OK = false
@@ -153,9 +160,9 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string) *doctorReport
 // companionChecks reports companion binding health: a bound token knob with no
 // stored secret (the mise exec() lookup would fail at eval time) and a bound
 // companion whose CLI is missing from PATH (the binding has no effect). These
-// are config-level and deterministic; verifying live identity (comparing actual
-// git/gh output) is out of scope. The binary check is emitted once per
-// companion id even when several profiles bind it.
+// are config-level and deterministic; the live counterpart that compares actual
+// git output against the bound identity is companionDriftChecks. The binary
+// check is emitted once per companion id even when several profiles bind it.
 func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapter.Check {
 	checks := []adapter.Check{}
 	binaryChecked := map[string]bool{}

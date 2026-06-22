@@ -57,13 +57,15 @@ already grants the pin.
 
 ## Binding health (`kae doctor`)
 
-`kae doctor` (unfiltered) reports companion binding health, config-level and
-deterministic — it does not run git/gh to compare live identity:
+`kae doctor` (unfiltered) reports companion binding health. The first two are
+config-level and deterministic; the third is the live commit-misidentity guard,
+which shells out to `git` only inside a pinned directory that binds git:
 
 | Check | Meaning |
 |-------|---------|
 | `companion_missing` | a bound token knob has no stored secret; the mise `exec()` lookup would fail at eval time (run `kae companion add <profile> <id> <knob>`) |
 | `companion_binary` | a bound companion's CLI is absent from PATH; the binding has no effect until it is installed |
+| `companion_drift` | the identity git would actually commit with (effective `git config --get user.<knob>`) differs from the git companion's bound `email`/`name`/`signingkey` — a repo-local override or an inactive/untrusted pin. Runs only when pinned and `git` is on PATH; reads only non-secret git config (no network), so token companions are out of scope (they keep no expected identity, and a live check would need a network call) |
 
 Because companions are profile-scoped and delivered per-directory, re-running
 `kae pin <profile>` is what refreshes a bound directory after the binding
@@ -91,8 +93,9 @@ Delivered by pointing `GIT_CONFIG_GLOBAL` at a kae-owned file under
 - Outside the pinned directory `GIT_CONFIG_GLOBAL` is unset, so git reads the
   real `~/.gitconfig` unchanged. `kae unpin` removes the fragment and reverts.
 - Repository-local config (`.git/config`) and any `GIT_CONFIG_*` the user sets
-  themselves take precedence as git defines; the env conflict is reported by
-  doctor.
+  themselves take precedence as git defines; when that precedence makes the
+  effective identity diverge from the binding, `kae doctor` reports it as
+  `companion_drift`.
 
 ## gh (`token`)
 

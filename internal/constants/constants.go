@@ -121,6 +121,7 @@ const (
 	CheckSecretOrphan     = "secret_orphan"
 	CheckCompanionMissing = "companion_missing" // a bound token knob has no stored secret
 	CheckCompanionBinary  = "companion_binary"  // a bound companion's CLI is not in PATH
+	CheckCompanionDrift   = "companion_drift"   // live git identity differs from the bound one
 )
 
 // Exit codes and their stable error-code tokens.

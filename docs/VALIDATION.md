@@ -839,6 +839,9 @@ mise exec -- git config --get alias.lol            # log --oneline (~/.gitconfig
 mise exec -- sh -c 'echo $GH_TOKEN'                # ghp_smoke (resolved at eval)
 git config --get user.email                        # real@personal.test (unpinned: unchanged)
 /tmp/kae doctor --json                             # no companion_missing when secrets stored
+#   companion_drift: present here (pin not active in this shell → git resolves
+#   real@personal.test, not the bound you@example.com)
+mise exec -- /tmp/kae doctor --json                # no companion_drift (active pin → git matches the binding)
 ```
 
 ## Real-Machine Acceptance (release only)

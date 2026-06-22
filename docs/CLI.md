@@ -390,7 +390,11 @@ carries no companions, since it has no single profile.
 `kae doctor` reports companion binding health on the unfiltered report: a bound
 token knob with no stored secret (`companion_missing` — the binding would fail
 at mise eval) and a bound companion whose CLI is absent from PATH
-(`companion_binary` — the binding has no effect). The
+(`companion_binary` — the binding has no effect). Inside a pinned directory that
+binds git it also runs the live commit-misidentity guard: it shells out to
+`git config` and compares the identity git would actually commit with against the
+profile's bound `user.email`/`name`/`signingkey`, flagging a repo-local override
+or an inactive pin (`companion_drift`). The
 switched/preserved contract per companion is [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md).
 
 ## Shell completion
@@ -636,7 +640,7 @@ Check `status` vocabulary: `ok`, `warn`, `error`, `skipped`.
 Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
 `unsupported`, `file_mode`, `credential_stale`, `secret_orphan`,
-`companion_missing`, `companion_binary`.
+`companion_missing`, `companion_binary`, `companion_drift`.
 
 Credential-health checks (warn-level):
 - `credential_stale`: a captured snapshot is past its `expiresAt` with no
@@ -654,6 +658,14 @@ Companion-binding checks (warn-level, unfiltered report only):
   `exec()` lookup would fail at eval — names `kae companion add`.
 - `companion_binary`: a bound companion's CLI is absent from PATH, so the
   binding has no effect until it is installed.
+- `companion_drift`: the live git commit identity differs from the bound one.
+  Only inside a pinned directory binding git, and only when `git` is on PATH; it
+  shells out to `git config --get user.<knob>` (offline, non-secret) and compares
+  the effective value against the profile's `email`/`name`/`signingkey`. Flags a
+  repo-local override (`git config --local`) or an inactive/untrusted pin — both
+  of which would commit as the wrong identity. Names the diagnostic
+  `git config --show-origin`. token companions are out of scope (no stored
+  expected identity, and a live check would need a network call).
 
 ### `kae use ... --json` (the switch report)
 

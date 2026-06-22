@@ -179,6 +179,33 @@ func TestSharedDenylistExtraValidation(t *testing.T) {
 	}
 }
 
+func TestCompanionValidation(t *testing.T) {
+	// A well-formed companions table loads: a git data knob, a token marker
+	// (empty value), and a config-dir path all coexist under one profile.
+	good := "[profiles.main.companions]\n" +
+		"git.email = \"you@example.com\"\n" +
+		"gh.GH_TOKEN = \"\"\n" +
+		"kubectl.KUBECONFIG = \"/home/me/.kube/config\"\n"
+	cfg, _, err := Load(writeConfig(t, good))
+	if err != nil {
+		t.Fatalf("valid companions: %v", err)
+	}
+	if got := cfg.Profiles["main"].Companions["git"]["email"]; got != "you@example.com" {
+		t.Fatalf("git.email = %q", got)
+	}
+
+	bad := map[string]string{
+		"unknown companion": "[profiles.main.companions]\nnope.X = \"y\"\n",
+		"bad knob name":     "[profiles.main.companions]\ngit.\"bad knob\" = \"y\"\n",
+		"newline value":     "[profiles.main.companions]\ngit.name = \"a\\nb\"\n",
+	}
+	for name, content := range bad {
+		if _, _, err := Load(writeConfig(t, content)); err == nil {
+			t.Errorf("%s: expected validation error", name)
+		}
+	}
+}
+
 // TestRenamedConfigKeysFailAtLoad asserts the v0.8.0 hard break: the renamed
 // per-tool keys error at load naming their replacement, and the removed
 // overlay/home keys error too (docs/RELEASE.md). Pre-1.0, no silent acceptance.

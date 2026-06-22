@@ -25,6 +25,32 @@ var RemovedTools = map[string]string{
 	"gemini": ToolAgy, // upstream retired Gemini CLI for Antigravity (2026-05)
 }
 
+// Companion identifiers. Companions are auth-lockstep targets (git, gh, cloud
+// CLIs) whose identity kae binds per profile by driving env/config — it does
+// not capture their credentials the way it does Tools. The normative
+// switched/preserved contract is docs/ADAPTERS-COMPANION.md.
+const (
+	CompanionGit        = "git"
+	CompanionGH         = "gh"
+	CompanionCloudflare = "cloudflare"
+	CompanionKubectl    = "kubectl"
+)
+
+// Companions is the canonical companion ordering for reports and iteration.
+var Companions = []string{CompanionGit, CompanionGH, CompanionCloudflare, CompanionKubectl}
+
+// Companion override kinds: how a companion's identity is delivered.
+//   - OverrideGitConfig: render a kae-owned git config file, point an env var
+//     (GIT_CONFIG_GLOBAL) at it; the file [include]s the user's own config.
+//   - OverrideToken: secret env var(s) resolved at mise eval time via an
+//     exec() lookup against the secret backend (never written to disk).
+//   - OverrideConfigDir: env var(s) point at a user-provided config path.
+const (
+	OverrideGitConfig = "git-config"
+	OverrideToken     = "token"
+	OverrideConfigDir = "config-dir"
+)
+
 // Switch modes / isolation kinds. The mechanism vocabulary is unified on
 // shared/isolated (docs/RELEASE.md v0.8.0): the per-directory bind kinds match
 // the user-facing -s/-i flags and the on-disk path segments.
@@ -165,6 +191,16 @@ func ErrorCode(exit int) string {
 func IsTool(name string) bool {
 	for _, t := range Tools {
 		if t == name {
+			return true
+		}
+	}
+	return false
+}
+
+// IsCompanion reports whether name is a known companion id.
+func IsCompanion(name string) bool {
+	for _, c := range Companions {
+		if c == name {
 			return true
 		}
 	}

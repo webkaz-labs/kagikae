@@ -31,6 +31,14 @@ func ValidName(s string) bool { return nameRE.MatchString(s) }
 // the directory self-references the regexp would let through.
 func ValidFileName(s string) bool { return ValidName(s) && s != "." && s != ".." }
 
+// knobNameRE bounds a companion knob name (a config.toml key, secret-ref
+// segment, env var, or git-config field). It mirrors companion.ValidKnobName;
+// the check is duplicated here to keep config free of a companion import.
+var knobNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+
+// validKnobName reports whether name is a safe companion knob name.
+func validKnobName(name string) bool { return knobNameRE.MatchString(name) }
+
 // Config is the parsed user policy.
 type Config struct {
 	Version        int                `toml:"version"`
@@ -66,7 +74,20 @@ type Tool struct {
 type Profile struct {
 	Label    string            `toml:"label"`
 	Accounts map[string]string `toml:"accounts"`
+	// Companions binds auth-lockstep targets (git, gh, cloud CLIs) to this
+	// profile: companion id -> knob data. Non-secret knobs (git email/name,
+	// config-dir paths) hold their value here; secret knobs (tokens) hold an
+	// empty marker and their value lives in the secret backend. Additive since
+	// schema 1; old kae tolerates it as an unknown key. See internal/companion
+	// and docs/DATA-MODEL.md.
+	Companions map[string]CompanionData `toml:"companions"`
 }
+
+// CompanionData maps a companion's knob names to values. An empty value marks a
+// secret knob whose value lives in the secret backend (kae companion add stores
+// it there); a non-empty value is a plaintext knob (git identity field, config
+// path) carried inline. Per-knob meaning is defined by the companion Spec.
+type CompanionData map[string]string
 
 // Default returns the built-in policy used when no config file exists.
 func Default() *Config {
@@ -162,6 +183,19 @@ func (c *Config) validate() error {
 			}
 			if !ValidName(account) {
 				return fmt.Errorf("profile %q maps tool %q to invalid account name %q", name, tool, account)
+			}
+		}
+		for id, data := range profile.Companions {
+			if !constants.IsCompanion(id) {
+				return fmt.Errorf("profile %q maps unknown companion %q", name, id)
+			}
+			for knob, value := range data {
+				if !validKnobName(knob) {
+					return fmt.Errorf("profile %q companion %q has invalid knob name %q", name, id, knob)
+				}
+				if strings.ContainsAny(value, "\n\x00") {
+					return fmt.Errorf("profile %q companion %q knob %q value has a newline or NUL", name, id, knob)
+				}
 			}
 		}
 	}

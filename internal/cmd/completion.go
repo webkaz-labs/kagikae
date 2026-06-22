@@ -86,12 +86,14 @@ func completionScript(shell string) (string, bool) {
 }
 
 // The generated scripts route by word position to a `kae __complete` kind:
-// word 1 → commands; the argument positions → tools/profiles/accounts. Account
-// completion passes the preceding tool word so `kae use claude <TAB>` scopes to
-// claude's accounts. The live lists (commands/tools/profiles/accounts) come
-// from the backend; the small, rarely-changing sub-verb sets (e.g. account
-// rm/rename, the shells for completion) are inlined here since they are not
-// part of the `__complete` kind contract.
+// word 1 → commands; the argument positions → tools/profiles/accounts/
+// companions/companion-knobs. Account completion passes the preceding tool word
+// so `kae use claude <TAB>` scopes to claude's accounts, and companion-knob
+// completion passes the companion id (`kae companion add main git <TAB>` →
+// git's knobs). The live lists come from the backend; the small,
+// rarely-changing sub-verb sets (e.g. account rm/rename, companion add/rm/list,
+// the shells for completion) are inlined here since they are not part of the
+// `__complete` kind contract.
 
 const bashCompletionScript = `# kae bash completion — eval "$(kae completion bash)"
 # Dynamic: candidates come from ` + "`kae __complete`" + `, so they track live state.
@@ -141,6 +143,17 @@ _kae() {
         COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
       elif [ "$np" -eq 2 ]; then
         COMPREPLY=( $(compgen -W "$(kae __complete accounts "${pos[1]}")" -- "$cur") )
+      fi
+      ;;
+    companion)
+      if [ "$np" -eq 0 ]; then
+        COMPREPLY=( $(compgen -W "add rm list" -- "$cur") )
+      elif [ "$np" -eq 1 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete profiles)" -- "$cur") )
+      elif [ "$np" -eq 2 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete companions)" -- "$cur") )
+      else
+        COMPREPLY=( $(compgen -W "$(kae __complete companion-knobs "${pos[2]}")" -- "$cur") )
       fi
       ;;
     profile)
@@ -209,6 +222,17 @@ _kae() {
         compadd -- ${(f)"$(kae __complete accounts ${pos[2]})"}
       fi
       ;;
+    companion)
+      if (( np == 0 )); then
+        compadd -- add rm list
+      elif (( np == 1 )); then
+        compadd -- ${(f)"$(kae __complete profiles)"}
+      elif (( np == 2 )); then
+        compadd -- ${(f)"$(kae __complete companions)"}
+      else
+        compadd -- ${(f)"$(kae __complete companion-knobs ${pos[3]})"}
+      fi
+      ;;
     profile)
       if (( np == 0 )); then
         compadd -- save set unset rm default
@@ -274,6 +298,16 @@ function __kae_complete
                 kae __complete tools
             else if test $np -eq 2
                 kae __complete accounts $pos[2]
+            end
+        case companion
+            if test $np -eq 0
+                printf '%s\n' add rm list
+            else if test $np -eq 1
+                kae __complete profiles
+            else if test $np -eq 2
+                kae __complete companions
+            else
+                kae __complete companion-knobs $pos[3]
             end
         case profile
             if test $np -eq 0

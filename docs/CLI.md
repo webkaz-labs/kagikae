@@ -405,6 +405,11 @@ of baking a word list at generation time, the script calls the hidden
 the live router, config, and captured state. Word 1 completes commands; the
 argument positions complete tools/profiles, and `kae use claude <TAB>` scopes to
 claude's accounts (the tool word is passed to `kae __complete accounts <tool>`).
+Subcommand groups complete their sub-verbs and arguments too: `kae account
+<TAB>` → `rm`/`rename`/`set-identity`, and `kae companion <TAB>` →
+`add`/`rm`/`list`, then a profile, a companion id (`kae __complete companions`),
+and that companion's knob names (`kae companion add main git <TAB>` →
+`email`/`name`/`signingkey`, via `kae __complete companion-knobs git`).
 Positions are computed from the **flag-filtered** argument list, so a flag
 before the positionals does not shift completion (`kae add --no-login <TAB>`
 still completes tools; `kae use -i claude <TAB>` completes claude's accounts).
@@ -412,9 +417,9 @@ When the current word starts with `-`, the command's **flag names** are
 completed (`kae add --<TAB>` → `--no-login` / `--restore`; `kae run -<TAB>` →
 `-s` / `-i` / `--env` / `-P`).
 
-`kae __complete <commands|tools|profiles|accounts [<tool>]|flags <command>>` is
-read-only, takes no locks, prints one candidate per line, and is intentionally
-hidden from `kae help`. The `flags` kind lists a command's flags from the same
+`kae __complete <commands|tools|companions|companion-knobs <id>|profiles|accounts [<tool>]|flags <command>>`
+is read-only, takes no locks, prints one candidate per line, and is
+intentionally hidden from `kae help`. The `flags` kind lists a command's flags from the same
 per-command registrars the parser uses, so the completion set never drifts. Its
 line-oriented output is an internal contract consumed by the generated scripts
 and the `kae mise init` task `complete` directives — it is not the JSON contract

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
+	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
@@ -27,6 +28,8 @@ import (
 // Kinds:
 //   - commands         — the router's public commands (completionCommands)
 //   - tools            — constants.Tools
+//   - companions       — constants.Companions (companion ids: git, gh, …)
+//   - companion-knobs <id> — the named companion's knob names (its Spec)
 //   - profiles         — config profile names
 //   - accounts [<tool>]— captured account names, optionally scoped to one tool
 //   - flags <command>  — a command's flags (--name / -n), from the same
@@ -41,6 +44,19 @@ func CmdComplete(_ context.Context, args []string) int {
 			return constants.ExitOK
 		case "tools":
 			printCompletionLines(constants.Tools)
+			return constants.ExitOK
+		case "companions":
+			// Companion ids are compile-time constants, like tools.
+			printCompletionLines(constants.Companions)
+			return constants.ExitOK
+		case "companion-knobs":
+			// A companion's knob names come from its registered Spec (static), so
+			// this skips newApp's config load too.
+			id := ""
+			if len(args) > 1 {
+				id = args[1]
+			}
+			printCompletionLines(companionKnobNames(id))
 			return constants.ExitOK
 		case "flags":
 			// A command's flags are compile-time, so flag completion (the current
@@ -68,6 +84,14 @@ func runComplete(app *App, args []string) int {
 		printCompletionLines(completionCommands)
 	case "tools":
 		printCompletionLines(constants.Tools)
+	case "companions":
+		printCompletionLines(constants.Companions)
+	case "companion-knobs":
+		id := ""
+		if len(args) > 1 {
+			id = args[1]
+		}
+		printCompletionLines(companionKnobNames(id))
 	case "flags":
 		cmd := ""
 		if len(args) > 1 {
@@ -129,6 +153,22 @@ func completionAccountNames(app *App, tool string) ([]string, error) {
 		names = append(names, acc.Name)
 	}
 	return names, nil
+}
+
+// companionKnobNames returns the knob names of the named companion for
+// completion (e.g. git → email/name/signingkey), in Spec order. An unknown id
+// yields nothing, so `kae companion add <profile> <bogus> <TAB>` matches nothing
+// rather than erroring.
+func companionKnobNames(id string) []string {
+	spec, ok := companion.For(id)
+	if !ok {
+		return nil
+	}
+	names := make([]string, 0, len(spec.Knobs))
+	for _, k := range spec.Knobs {
+		names = append(names, k.Name)
+	}
+	return names
 }
 
 // printCompletionLines writes one candidate per line to stdout (the internal

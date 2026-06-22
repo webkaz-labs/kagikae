@@ -229,7 +229,9 @@ pin — the silent wrong-author commit this exists to prevent. See
 
 `kae completion <bash|zsh|fish>` prints a **dynamic** completion script: it calls
 a hidden `kae __complete` backend at completion time, so it always offers live
-profiles, accounts, tools, and a command's flags. Completion is flag-aware
+profiles, accounts, tools, and a command's flags. It also completes subcommand
+groups — `kae companion <TAB>` → `add`/`rm`/`list`, then a profile, a companion
+id, and that companion's knobs. Completion is flag-aware
 (`kae add --no-login <TAB>` still completes tools) and completes flag names
 (`kae add --<TAB>` → `--no-login` / `--restore`).
 

@@ -75,6 +75,31 @@ accounts = { claude = "bob" }
 		t.Fatalf("accounts codex must be scoped (no bob):\n%s", out)
 	}
 
+	// companions lists every canonical companion id, one per line.
+	_, out = captureStdout(t, func() int { return runComplete(app, []string{"companions"}) })
+	for _, id := range constants.Companions {
+		if !strings.Contains(out, id+"\n") {
+			t.Fatalf("companions missing %q:\n%s", id, out)
+		}
+	}
+
+	// companion-knobs <id> lists that companion's knob names from its Spec.
+	_, out = captureStdout(t, func() int { return runComplete(app, []string{"companion-knobs", constants.CompanionGit}) })
+	for _, want := range []string{"email\n", "name\n", "signingkey\n"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("companion-knobs git missing %q:\n%s", want, out)
+		}
+	}
+	_, out = captureStdout(t, func() int { return runComplete(app, []string{"companion-knobs", constants.CompanionGH}) })
+	if !strings.Contains(out, "GH_TOKEN\n") {
+		t.Fatalf("companion-knobs gh missing GH_TOKEN:\n%s", out)
+	}
+	// An unknown companion id yields nothing (matches nothing, no error).
+	_, out = captureStdout(t, func() int { return runComplete(app, []string{"companion-knobs", "bogus"}) })
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("companion-knobs for an unknown id must be empty:\n%s", out)
+	}
+
 	// flags <command> lists the command's flags (common + extras), drawn from the
 	// same registrars the parser uses (flagspec.go), so the list cannot drift.
 	_, out = captureStdout(t, func() int { return runComplete(app, []string{"flags", "add"}) })
@@ -128,6 +153,20 @@ func TestCompletionScriptsCompleteFlags(t *testing.T) {
 		script, _ := completionScript(shell)
 		if !strings.Contains(script, "kae __complete flags") {
 			t.Fatalf("%s completion does not complete flag names:\n%s", shell, script)
+		}
+	}
+}
+
+// TestCompletionScriptsCompleteCompanion: each generated script wires the
+// companion subcommand — its add/rm/list sub-verbs and the companion-id and
+// knob argument positions — so `kae companion <TAB>` is not a dead end.
+func TestCompletionScriptsCompleteCompanion(t *testing.T) {
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		script, _ := completionScript(shell)
+		for _, want := range []string{"add rm list", "__complete companions", "__complete companion-knobs"} {
+			if !strings.Contains(script, want) {
+				t.Fatalf("%s completion missing companion wiring %q:\n%s", shell, want, script)
+			}
 		}
 	}
 }

@@ -254,6 +254,14 @@ dir (the default), registers a global [mise](https://mise.jdx.dev)
 existing directory already on your `fpath` (`~/.config/zsh/completions`,
 `~/.zsh/completions`, `~/.zfunc`) so the file auto-loads in a new shell.
 
+After this one-time registration, structural changes in a later `kae` version (a
+new subcommand or `__complete` kind) propagate without re-installing: `mise run
+install` and `scripts/install.sh` run `kae completion --refresh`, which rewrites
+already-registered files from the new binary (it never creates one, so the
+initial `--install` above is still required). A plain `go build` skips this — run
+`kae completion --refresh` yourself in that case. The mise-hook registration
+self-sources, so it is always current.
+
 > **zsh: completion installed but not showing?** zsh caches its completion
 > index in a *compdump*; a newly added function will not load until that cache
 > is rebuilt. Remove it and re-run `compinit`, then open a new shell:

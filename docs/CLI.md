@@ -306,7 +306,10 @@ writing a kae-owned mise fragment `./.config/mise/conf.d/kagikae.toml` (added to
 `.gitignore`); the user's `mise.toml` is **never** touched. The profile defaults
 to `default_profile`. `kae pin [-s|-i] <tool> <account>` re-binds **one** tool in
 the directory, leaving the others and the sharing set intact (the v0.7.1
-`kae as`). `kae p` is the alias. `kae unpin` deletes the kae-owned fragment and
+`kae as`). It recomputes `KAE_PROFILE` from the new account set and re-applies
+that profile's companions in lockstep (cleared when the set is ad-hoc), so a
+one-tool re-bind never leaves a stale git/token identity bound; see
+[ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md). `kae p` is the alias. `kae unpin` deletes the kae-owned fragment and
 also strips a pre-v0.7.2 kagikae marker block from `mise.toml` (so `kae unpin &&
 kae pin` migrates cleanly), leaving the user's own `mise.toml` content and any
 isolation directories (with their login state) intact.

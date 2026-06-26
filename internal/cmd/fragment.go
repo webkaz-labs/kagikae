@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
@@ -39,11 +40,21 @@ func renderDirFragment(profileName, scope string, entries []isolationEntry, comp
 		}
 	}
 	// redactions is a top-level key, so it must precede the [env] table.
-	if len(redactions) > 0 {
-		fmt.Fprintf(&b, "redactions = [%s]\n", quoteList(redactions))
+	if rl := redactionsLine(redactions); rl != "" {
+		fmt.Fprintln(&b, rl)
 	}
 	writeEnvEntries(&b, profileName, entries, companionLines)
 	return b.String()
+}
+
+// redactionsLine renders the top-level mise redactions array (the env var names
+// whose values mise masks in task output), or "" when there is nothing to
+// redact. Shared by the full render and the re-bind's companion-section rewrite.
+func redactionsLine(redactions []string) string {
+	if len(redactions) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("redactions = [%s]", quoteList(redactions))
 }
 
 // quoteList renders a TOML string array body ("a", "b") for an inline array.
@@ -188,32 +199,100 @@ func parseDirFragment(content string) fragmentInfo {
 }
 
 // rebindFragment rewrites the fragment in place for a one-tool re-bind: the
-// tool's account record, its env entry (when dir != "", i.e. isolated), and the
-// recomputed profile (empty when the new account set matches no named profile).
-// Every other line — other tools, warning comments, the header — is preserved.
+// tool's account record, its env entry (when dir != "", i.e. isolated), the
+// recomputed profile (empty when the new account set matches no named profile),
+// and the companion section. Companions are profile-scoped, so the whole
+// companion block is replaced from the new profile's plan — companionLines and
+// redactions come from companionPlan(profile), and are both empty for an ad-hoc
+// re-bind, which clears the now-stale bindings. Every other line — other tools'
+// isolation entries, warning comments, the header — is preserved.
 //
 // Precondition: tool is bound in the fragment (it has a # kae:account: record),
 // and when dir != "" it has a non-empty isolationEnvVar. runRebind enforces
 // both before calling, so a tool that keeps the real home never reaches here
 // and cannot leave an account record without a matching env entry.
-func rebindFragment(tool, account, dir, profile string) error {
+func rebindFragment(tool, account, dir, profile string, companionLines, redactions []string) error {
 	data, err := os.ReadFile(fragmentRelPath)
 	if err != nil {
 		return err
 	}
 	envVar := isolationEnvVar(tool)
-	lines := strings.Split(string(data), "\n")
-	for i, line := range lines {
+	companionVars := make(map[string]bool)
+	for _, v := range companion.EnvVars() {
+		companionVars[v] = true
+	}
+	src := strings.Split(string(data), "\n")
+	out := make([]string, 0, len(src)+len(companionLines)+1)
+	for _, line := range src {
 		switch {
 		case strings.HasPrefix(line, fragAccountPrefix+tool+"="):
-			lines[i] = fragAccountPrefix + tool + "=" + account
+			out = append(out, fragAccountPrefix+tool+"="+account)
 		case strings.HasPrefix(line, fragProfilePrefix):
-			lines[i] = fragProfilePrefix + profile
+			out = append(out, fragProfilePrefix+profile)
 		case strings.HasPrefix(line, constants.EnvKaeProfile+" = "):
-			lines[i] = fmt.Sprintf("%s = %q", constants.EnvKaeProfile, profile)
+			out = append(out, fmt.Sprintf("%s = %q", constants.EnvKaeProfile, profile))
 		case dir != "" && envVar != "" && strings.HasPrefix(line, envVar+" = "):
-			lines[i] = fmt.Sprintf("%s = %q", envVar, dir)
+			out = append(out, fmt.Sprintf("%s = %q", envVar, dir))
+		case strings.HasPrefix(line, "redactions = ["):
+			// Drop: re-inserted before [env] from the new profile's plan.
+		case isCompanionEnvLine(line, companionVars):
+			// Drop: stale companion binding, re-appended at the [env] block end.
+		default:
+			out = append(out, line)
 		}
 	}
-	return patch.WriteFileAtomic(fragmentRelPath, []byte(strings.Join(lines, "\n")), 0o644)
+	rebuilt, err := applyCompanionSection(out, companionLines, redactions)
+	if err != nil {
+		return err
+	}
+	return patch.WriteFileAtomic(fragmentRelPath, []byte(strings.Join(rebuilt, "\n")), 0o644)
+}
+
+// isCompanionEnvLine reports whether a fragment [env] line sets one of the
+// companion-owned env vars. KAE_PROFILE and per-tool isolation lines are handled
+// by earlier rebindFragment switch cases, so only true companion lines reach
+// here.
+func isCompanionEnvLine(line string, companionVars map[string]bool) bool {
+	key, _, ok := strings.Cut(line, " = ")
+	return ok && companionVars[key]
+}
+
+// applyCompanionSection re-inserts the companion block into a fragment whose old
+// companion lines and redactions line were already stripped: the redactions
+// array goes top-level just before [env], and the companion env lines go at the
+// end of the [env] block — which is end-of-file, since [env] is the last table
+// renderDirFragment writes. The caller has already stripped the old companion
+// lines and preserves the [env] block, so with nothing to place (an ad-hoc
+// re-bind) this just restores the trailing newline. A companion section with no
+// [env] block to anchor it is a corrupt fragment: failing loud beats silently
+// floating a token line outside [env], where mise would never export it.
+func applyCompanionSection(lines, companionLines, redactions []string) ([]string, error) {
+	// strings.Split leaves a trailing "" for the file's final newline; drop it
+	// so appends land at true end-of-content, then the join restores it.
+	if n := len(lines); n > 0 && lines[n-1] == "" {
+		lines = lines[:n-1]
+	}
+	if len(companionLines) == 0 && len(redactions) == 0 {
+		return append(lines, ""), nil
+	}
+	envIdx := -1
+	for i, line := range lines {
+		if line == "[env]" {
+			envIdx = i
+			break
+		}
+	}
+	if envIdx < 0 {
+		return nil, fmt.Errorf("%s has no [env] block; cannot place companion bindings", fragmentRelPath)
+	}
+	// Rebuild once: redactions just before [env], the companion lines at the
+	// [env] block's end (end-of-file), then the trailing newline restored.
+	rebuilt := make([]string, 0, len(lines)+len(companionLines)+2)
+	rebuilt = append(rebuilt, lines[:envIdx]...)
+	if rl := redactionsLine(redactions); rl != "" {
+		rebuilt = append(rebuilt, rl)
+	}
+	rebuilt = append(rebuilt, lines[envIdx:]...)
+	rebuilt = append(rebuilt, companionLines...)
+	return append(rebuilt, ""), nil
 }

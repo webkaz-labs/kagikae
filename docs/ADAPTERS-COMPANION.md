@@ -67,10 +67,13 @@ which shells out to `git` only inside a pinned directory that binds git:
 | `companion_binary` | a bound companion's CLI is absent from PATH; the binding has no effect until it is installed |
 | `companion_drift` | the identity git would actually commit with (effective `git config --get user.<knob>`) differs from the git companion's bound `email`/`name`/`signingkey` — a repo-local override or an inactive/untrusted pin. Runs only when pinned and `git` is on PATH; reads only non-secret git config (no network), so token companions are out of scope (they keep no expected identity, and a live check would need a network call) |
 
-Because companions are profile-scoped and delivered per-directory, re-running
-`kae pin <profile>` is what refreshes a bound directory after the binding
-changes; a single-tool `kae pin <tool> <account>` re-bind leaves the companion
-lines intact.
+Because companions are profile-scoped and delivered per-directory, both
+`kae pin <profile>` and a single-tool `kae pin <tool> <account>` re-bind keep the
+fragment's companion block in lockstep: the re-bind recomputes the directory's
+effective profile and re-applies that profile's companions (regenerating the
+git-config file). When the new account set matches no named profile (an ad-hoc
+re-bind, `KAE_PROFILE` empty) the companion bindings are cleared, so a stale
+identity never lingers behind a one-tool re-bind.
 
 ## git (`git-config`)
 

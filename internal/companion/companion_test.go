@@ -25,6 +25,23 @@ func TestRegisteredCompanionsMatchConstants(t *testing.T) {
 	}
 }
 
+func TestEnvVars(t *testing.T) {
+	got := map[string]bool{}
+	for _, v := range companion.EnvVars() {
+		if got[v] {
+			t.Errorf("EnvVars returned %q twice", v)
+		}
+		got[v] = true
+	}
+	// Every kind contributes its env var: git-config's FileEnvVar, the token
+	// knobs, and the config-dir knob. This is the set a re-bind strips.
+	for _, want := range []string{"GIT_CONFIG_GLOBAL", "GH_TOKEN", "CLOUDFLARE_API_TOKEN", "KUBECONFIG"} {
+		if !got[want] {
+			t.Errorf("EnvVars missing %q; got %v", want, got)
+		}
+	}
+}
+
 func TestSpecKindsAndKnobs(t *testing.T) {
 	cases := []struct {
 		id     string

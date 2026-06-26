@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
@@ -125,6 +126,25 @@ func TestCompanionFragmentLinesNeverLeakSecret(t *testing.T) {
 	}
 	if len(redactions) == 0 {
 		t.Error("token companion must contribute a redaction")
+	}
+}
+
+// TestCompanionEnvVarsDisjointFromIsolation guards the implicit precondition
+// rebindFragment relies on: a companion never owns an env var that is also a
+// tool's isolation var or KAE_PROFILE. If it did, a re-bind would mis-strip the
+// isolation/profile line as a stale companion binding (or vice versa). The real
+// registry has no such overlap; this fails loud if a future companion adds one.
+func TestCompanionEnvVarsDisjointFromIsolation(t *testing.T) {
+	reserved := map[string]string{constants.EnvKaeProfile: "KAE_PROFILE"}
+	for _, tool := range constants.Tools {
+		if v := isolationEnvVar(tool); v != "" {
+			reserved[v] = tool
+		}
+	}
+	for _, v := range companion.EnvVars() {
+		if owner, clash := reserved[v]; clash {
+			t.Errorf("companion env var %q collides with reserved %q (%s)", v, v, owner)
+		}
 	}
 }
 

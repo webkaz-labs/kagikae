@@ -96,7 +96,18 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 		return finish(opts, errf(constants.ExitError,
 			"fragment %s has an unrecognized mode %q", fragmentRelPath, info.Mode))
 	}
-	if err := rebindFragment(tool, accountName, envDir, profile); err != nil {
+	// Companions are profile-scoped, so re-bind them to the recomputed profile:
+	// a profile match re-applies its bindings (regenerating the git-config file),
+	// while an ad-hoc set (profile == "") yields no entries and clears them.
+	companionEntries, redactions, prepareCompanions, err := app.companionPlan(profile)
+	if err != nil {
+		return finish(opts, err)
+	}
+	if err := prepareCompanions(); err != nil {
+		return finish(opts, err)
+	}
+	companionLines := companionFragmentLines(companionEntries)
+	if err := rebindFragment(tool, accountName, envDir, profile, companionLines, redactions); err != nil {
 		return finish(opts, fmt.Errorf("update %s: %w", fragmentRelPath, err))
 	}
 	fmt.Printf("Re-bound %s to account %s (%s; sessions/settings unchanged)\n", tool, accountName, info.Mode)

@@ -143,6 +143,26 @@ func All() []Spec {
 	return out
 }
 
+// EnvVars returns every environment variable name any registered companion can
+// set: FileEnvVar for git-config specs and Knob.EnvVar for token and config-dir
+// knobs. A re-bind strips these from the fragment before re-applying the new
+// profile's bindings, so a stale companion env line never lingers across a
+// `kae pin <tool> <account>`.
+func EnvVars() []string {
+	var out []string
+	for _, s := range registry {
+		if s.FileEnvVar != "" {
+			out = append(out, s.FileEnvVar)
+		}
+		for _, k := range s.Knobs {
+			if k.EnvVar != "" {
+				out = append(out, k.EnvVar)
+			}
+		}
+	}
+	return out
+}
+
 // For returns the spec for a companion id, or false.
 func For(id string) (Spec, bool) {
 	for _, s := range registry {

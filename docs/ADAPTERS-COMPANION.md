@@ -58,14 +58,16 @@ already grants the pin.
 ## Binding health (`kae doctor`)
 
 `kae doctor` (unfiltered) reports companion binding health. The first two are
-config-level and deterministic; the third is the live commit-misidentity guard,
-which shells out to `git` only inside a pinned directory that binds git:
+config-level and deterministic; the last two are live misidentity guards that
+shell out only inside a pinned directory (`companion_drift` is offline and
+always runs; `companion_token_drift` makes a network call and is opt-in):
 
 | Check | Meaning |
 |-------|---------|
 | `companion_missing` | a bound token knob has no stored secret; the mise `exec()` lookup would fail at eval time (run `kae companion add <profile> <id> <knob>`) |
 | `companion_binary` | a bound companion's CLI is absent from PATH; the binding has no effect until it is installed |
-| `companion_drift` | the identity git would actually commit with (effective `git config --get user.<knob>`) differs from the git companion's bound `email`/`name`/`signingkey` — a repo-local override or an inactive/untrusted pin. Runs only when pinned and `git` is on PATH; reads only non-secret git config (no network), so token companions are out of scope (they keep no expected identity, and a live check would need a network call) |
+| `companion_drift` | the identity git would actually commit with (effective `git config --get user.<knob>`) differs from the git companion's bound `email`/`name`/`signingkey` — a repo-local override or an inactive/untrusted pin. Runs only when pinned and `git` is on PATH; reads only non-secret git config (no network) |
+| `companion_token_drift` | the login a token companion's token actually resolves to (e.g. `gh api user`) differs from the bound `expected_login`, or the token is absent from the env (an inactive pin) — the token-side analogue of `companion_drift`. **Opt-in** because it makes a network call: it runs only when the doctor prompt is answered yes or `--yes` is passed (skipped under `--json`/non-interactive). Recorded only for token companions that declare a login probe; currently **gh** (cloudflare is deferred — `wrangler whoami` needs the binary and a user-scoped API token, so its login is not reliably resolvable) |
 
 Because companions are profile-scoped and delivered per-directory, both
 `kae pin <profile>` and a single-tool `kae pin <tool> <account>` re-bind keep the

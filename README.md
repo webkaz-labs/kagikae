@@ -222,7 +222,9 @@ Bindings are opt-in per profile, delivered through the per-directory `kae pin`
 fragment, and reverted by `kae unpin`. `kae doctor` reports binding health and,
 inside a pinned directory, flags when the identity git would actually commit
 with has drifted from the binding — a stray `git config --local` or an inactive
-pin — the silent wrong-author commit this exists to prevent. See
+pin — the silent wrong-author commit this exists to prevent. With `--yes` (or
+when you answer its prompt) it also makes the network call to check a token
+companion's live login against the account it was bound to (gh today). See
 [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md).
 
 ## Shell Completion

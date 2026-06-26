@@ -28,7 +28,7 @@ func TestDoctorReportsStaleSnapshot(t *testing.T) {
 	seedClaudeOAuth(t, app, `{"accessToken":"old","refreshToken":"","expiresAt":1577836800000}`)
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "stale") })
 
-	report := buildDoctor(ctx, app, "claude")
+	report := buildDoctor(ctx, app, "claude", false)
 	if report.SchemaVersion != constants.SchemaVersion {
 		t.Fatalf("schema_version changed: %d", report.SchemaVersion)
 	}
@@ -55,7 +55,7 @@ func TestDoctorIgnoresRefreshableSnapshot(t *testing.T) {
 	seedClaudeOAuth(t, app, `{"accessToken":"old","refreshToken":"r","expiresAt":1577836800000}`)
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "refreshable") })
 
-	report := buildDoctor(ctx, app, "claude")
+	report := buildDoctor(ctx, app, "claude", false)
 	if _, ok := findCheck(report, constants.CheckCredentialStale); ok {
 		t.Fatal("refreshable snapshot must not be flagged stale")
 	}
@@ -74,7 +74,7 @@ func TestDoctorReportsSecretOrphan(t *testing.T) {
 	if err := be.Set(ctx, "claude/ghost/claude_ai_oauth", []byte("orphaned")); err != nil {
 		t.Fatal(err)
 	}
-	report := buildDoctor(ctx, app, "claude")
+	report := buildDoctor(ctx, app, "claude", false)
 	msg, ok := findCheck(report, constants.CheckSecretOrphan)
 	if !ok {
 		t.Fatalf("expected a secret_orphan check, got %+v", report.Checks)

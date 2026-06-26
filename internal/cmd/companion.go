@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
 // CmdCompanion manages a profile's companion-auth bindings (git/gh/cloud CLIs):
@@ -97,6 +99,16 @@ func runCompanionAdd(ctx context.Context, app *App, opts commonOpts, positionals
 		}
 		if err := be.Set(ctx, companion.SecretRef(profileName, id, secretKnob), []byte(inline[secretKnob])); err != nil {
 			return finish(opts, fmt.Errorf("store %s: %w", secretKnob, err))
+		}
+		// Record the login this token resolves to so doctor can flag token drift.
+		// Best-effort: a probe failure (offline, CLI missing, invalid token)
+		// leaves expected_login unset rather than failing the add.
+		if len(spec.LoginProbe) > 0 {
+			if login := probeCompanionLogin(ctx, spec, inline[secretKnob]); login != "" {
+				inline[constants.CompanionKnobExpectedLogin] = login
+			} else {
+				fmt.Fprintf(os.Stderr, "kae: note: could not resolve the %s token's login for drift detection; expected_login left unset\n", id)
+			}
 		}
 	}
 	names := sortedKeys(inline)
@@ -190,6 +202,17 @@ func runCompanionRm(ctx context.Context, app *App, opts commonOpts, positionals 
 			}
 		}
 		drop = knobs
+		// expected_login is metadata of the token knob; dropping the token knob
+		// orphans it, so drop it too — otherwise it lingers as a stale token-drift
+		// candidate with no token behind it. The !Contains guard is load-bearing,
+		// not defensive: if the user already named expected_login, re-appending it
+		// would inflate len(drop) past len(data) and mis-compute removeWhole below.
+		if tk, ok := spec.TokenKnob(); ok {
+			_, hasExpected := data[constants.CompanionKnobExpectedLogin]
+			if hasExpected && slices.Contains(drop, tk.Name) && !slices.Contains(drop, constants.CompanionKnobExpectedLogin) {
+				drop = append(drop, constants.CompanionKnobExpectedLogin)
+			}
+		}
 	}
 
 	cfgLock, err := app.acquireConfigLock()
@@ -204,6 +227,9 @@ func runCompanionRm(ctx context.Context, app *App, opts commonOpts, positionals 
 			return finish(opts, err)
 		}
 		for _, knob := range drop {
+			if knob == constants.CompanionKnobExpectedLogin {
+				continue // non-secret metadata; nothing to delete from the backend
+			}
 			if err := be.Delete(ctx, companion.SecretRef(profileName, id, knob)); err != nil {
 				return finish(opts, fmt.Errorf("delete secret %s: %w", knob, err))
 			}
@@ -266,8 +292,11 @@ func runCompanionList(_ context.Context, app *App, opts commonOpts) int {
 			}
 			item := companionItem{Profile: profileName, Companion: id, Knobs: []companionKnobItem{}}
 			for _, knob := range sortedKeys(data) {
-				ki := companionKnobItem{Knob: knob, Secret: secret}
-				if !secret {
+				// expected_login is recorded metadata, not the secret token, so it
+				// shows its value even for a token companion.
+				knobSecret := secret && knob != constants.CompanionKnobExpectedLogin
+				ki := companionKnobItem{Knob: knob, Secret: knobSecret}
+				if !knobSecret {
 					ki.Value = data[knob]
 				}
 				item.Knobs = append(item.Knobs, ki)
@@ -330,6 +359,23 @@ func companionToken(ctx context.Context, app *App, args []string) int {
 	}
 	os.Stdout.Write(value)
 	return constants.ExitOK
+}
+
+// probeCompanionLogin resolves the live login a freshly stored token belongs to
+// by running the spec's LoginProbe with the token injected into its env var. It
+// is best-effort: any failure yields "" (the caller leaves expected_login unset
+// and notes it), never a hard error — the value is optional drift metadata. The
+// output is sanitized so a hostile login string cannot inject terminal escapes.
+func probeCompanionLogin(ctx context.Context, spec companion.Spec, token string) string {
+	envVar := spec.TokenEnvVar()
+	if envVar == "" || len(spec.LoginProbe) == 0 {
+		return ""
+	}
+	stdout, _, code := runner.RunWithEnv(ctx, []string{envVar + "=" + token}, spec.LoginProbe[0], spec.LoginProbe[1:]...)
+	if code != 0 {
+		return ""
+	}
+	return sanitizeIdentity(strings.TrimSpace(stdout))
 }
 
 // sortedKeys returns the keys of m in lexical order.

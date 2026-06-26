@@ -60,6 +60,34 @@ type Spec struct {
 	Knobs      []Knob       // configurable inputs
 	FileTmpl   string       // KindGitConfig only: text/template for the generated file
 	FileEnvVar string       // KindGitConfig only: env var pointing at the generated file
+	// LoginProbe (KindToken only) is the argv that prints the login the token
+	// belongs to, with the token in its env var (e.g. {"gh","api","user","--jq",
+	// ".login"}). kae runs it at `kae companion add` to record expected_login and
+	// at doctor to detect token drift. Empty = no live-identity check for this
+	// companion (e.g. cloudflare, whose login is not reliably resolvable).
+	LoginProbe []string
+}
+
+// TokenKnob returns the secret-bearing knob of a token companion (the first
+// with a non-empty EnvVar), or false for a non-token spec. It identifies the
+// knob whose presence makes a binding live (expected_login is mere metadata of
+// it).
+func (s Spec) TokenKnob() (Knob, bool) {
+	for _, k := range s.Knobs {
+		if k.EnvVar != "" {
+			return k, true
+		}
+	}
+	return Knob{}, false
+}
+
+// TokenEnvVar returns the env var carrying this token companion's secret, or ""
+// for non-token specs. It is the var LoginProbe needs the token injected into.
+func (s Spec) TokenEnvVar() string {
+	if k, ok := s.TokenKnob(); ok {
+		return k.EnvVar
+	}
+	return ""
 }
 
 // Secret reports whether this companion's knob values live in the secret
@@ -87,6 +115,9 @@ func (s Spec) validate() error {
 	}
 	if len(s.Knobs) == 0 {
 		return fmt.Errorf("companion %q: no knobs", s.ID)
+	}
+	if len(s.LoginProbe) > 0 && s.Kind != KindToken {
+		return fmt.Errorf("companion %q: LoginProbe is only valid for the token kind", s.ID)
 	}
 	for _, k := range s.Knobs {
 		if !ValidKnobName(k.Name) {

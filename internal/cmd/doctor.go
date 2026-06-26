@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -48,7 +50,7 @@ func CmdDoctor(ctx context.Context, args []string) int {
 // runDoctor exits 0/1 (health pass/fail) by design, not via the general
 // exit-code table — see docs/CLI.md.
 func runDoctor(ctx context.Context, app *App, opts commonOpts, toolFilter string) int {
-	report := buildDoctor(ctx, app, toolFilter)
+	report := buildDoctor(ctx, app, toolFilter, app.resolveTokenDriftOptIn(opts, toolFilter))
 	exit := constants.ExitOK
 	if !report.OK {
 		exit = constants.ExitError
@@ -63,7 +65,50 @@ func runDoctor(ctx context.Context, app *App, opts commonOpts, toolFilter string
 	return exit
 }
 
-func buildDoctor(ctx context.Context, app *App, toolFilter string) *doctorReport {
+// resolveTokenDriftOptIn decides whether to run the opt-in, network-backed token
+// drift check. It only applies to the unfiltered report and only when the pinned
+// profile actually has an eligible token companion (otherwise prompting is
+// noise): --yes opts in non-interactively; a JSON or non-tty run cannot prompt
+// so it skips; an interactive run asks.
+func (app *App) resolveTokenDriftOptIn(opts commonOpts, toolFilter string) bool {
+	if toolFilter != "" {
+		return false
+	}
+	if _, cands := app.tokenDriftCandidates(); len(cands) == 0 {
+		return false
+	}
+	if opts.Yes {
+		return true
+	}
+	if opts.Format == formatJSON || !stdinIsTTY() {
+		return false
+	}
+	return promptTokenDriftCheck()
+}
+
+// stdinIsTTY reports whether stdin is a terminal, so doctor only prompts when a
+// human can answer (a pipe or CI run skips). Uses the char-device mode bit to
+// avoid a terminal-detection dependency.
+func stdinIsTTY() bool {
+	fi, err := os.Stdin.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// promptTokenDriftCheck asks before making the network call the token drift
+// check needs. Default (blank/anything but yes) is no, matching the opt-in
+// intent. Mirrors promptCompletionChoice's stderr-prompt / stdin-read pattern.
+func promptTokenDriftCheck() bool {
+	fmt.Fprint(os.Stderr, "Check token companion identity over the network (e.g. gh api user)? [y/N]: ")
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	switch strings.TrimSpace(strings.ToLower(line)) {
+	case "y", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDrift bool) *doctorReport {
 	report := &doctorReport{
 		SchemaVersion: constants.SchemaVersion,
 		OK:            true,
@@ -149,6 +194,13 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string) *doctorReport
 		report.Checks = append(report.Checks, app.companionDriftChecks(ctx)...)
 	}
 
+	// companion token-identity drift (opt-in, network): the token counterpart to
+	// companionDriftChecks. Runs only when the caller opted in (--yes or the
+	// doctor prompt), since it makes a network call.
+	if toolFilter == "" {
+		report.Checks = append(report.Checks, app.companionTokenDriftChecks(ctx, checkTokenDrift)...)
+	}
+
 	for _, check := range report.Checks {
 		if check.Status == constants.StatusError {
 			report.OK = false
@@ -188,6 +240,9 @@ func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapte
 			}
 			if spec.Secret() {
 				for _, knob := range sortedKeys(data) {
+					if knob == constants.CompanionKnobExpectedLogin {
+						continue // non-secret metadata; never lives in the secret backend
+					}
 					if _, found, gerr := be.Get(ctx, companion.SecretRef(profileName, id, knob)); gerr == nil && !found {
 						checks = append(checks, adapter.Check{
 							Tool: id, Code: constants.CheckCompanionMissing, Status: constants.StatusWarn,

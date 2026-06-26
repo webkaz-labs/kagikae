@@ -98,6 +98,25 @@ func TestSecretRef(t *testing.T) {
 	}
 }
 
+func TestTokenEnvVar(t *testing.T) {
+	gh, _ := companion.For(constants.CompanionGH)
+	if got := gh.TokenEnvVar(); got != "GH_TOKEN" {
+		t.Errorf("gh TokenEnvVar = %q, want GH_TOKEN", got)
+	}
+	// A git-config companion has no token env var.
+	git, _ := companion.For(constants.CompanionGit)
+	if got := git.TokenEnvVar(); got != "" {
+		t.Errorf("git TokenEnvVar = %q, want empty", got)
+	}
+}
+
+func TestGHLoginProbe(t *testing.T) {
+	gh, _ := companion.For(constants.CompanionGH)
+	if len(gh.LoginProbe) == 0 || gh.LoginProbe[0] != "gh" {
+		t.Errorf("gh must declare a LoginProbe starting with gh, got %v", gh.LoginProbe)
+	}
+}
+
 func TestValidKnobName(t *testing.T) {
 	for _, ok := range []string{"email", "GH_TOKEN", "_x", "KUBECONFIG"} {
 		if !companion.ValidKnobName(ok) {
@@ -121,6 +140,7 @@ func TestRegisterPanicsOnMalformedSpec(t *testing.T) {
 		"git-config no FileTmpl":   {ID: constants.CompanionGit, Binary: "git", Kind: companion.KindGitConfig, FileEnvVar: "GIT_CONFIG_GLOBAL", Knobs: []companion.Knob{{Name: "email"}}},
 		"git-config no FileEnvVar": {ID: constants.CompanionGit, Binary: "git", Kind: companion.KindGitConfig, FileTmpl: "x", Knobs: []companion.Knob{{Name: "email"}}},
 		"no knobs":                 {ID: constants.CompanionKubectl, Binary: "kubectl", Kind: companion.KindConfigDir},
+		"loginprobe on non-token":  {ID: constants.CompanionGit, Binary: "git", Kind: companion.KindGitConfig, FileTmpl: "x", FileEnvVar: "GIT_CONFIG_GLOBAL", Knobs: []companion.Knob{{Name: "email"}}, LoginProbe: []string{"git", "whoami"}},
 	}
 	for name, spec := range cases {
 		t.Run(name, func(t *testing.T) {

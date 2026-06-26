@@ -39,6 +39,14 @@ const (
 // Companions is the canonical companion ordering for reports and iteration.
 var Companions = []string{CompanionGit, CompanionGH, CompanionCloudflare, CompanionKubectl}
 
+// CompanionKnobExpectedLogin is the reserved, non-secret companion knob holding
+// the login a token companion's stored token must resolve to. kae fills it in at
+// `kae companion add` time from the token's live identity (via the spec's
+// LoginProbe), and doctor's companion_token_drift check compares the live login
+// against it. It is deliberately not a Spec.Knob, so users cannot set it
+// directly and it is never delivered as an environment variable.
+const CompanionKnobExpectedLogin = "expected_login"
+
 // Companion override kinds: how a companion's identity is delivered.
 //   - OverrideGitConfig: render a kae-owned git config file, point an env var
 //     (GIT_CONFIG_GLOBAL) at it; the file [include]s the user's own config.
@@ -122,6 +130,9 @@ const (
 	CheckCompanionMissing = "companion_missing" // a bound token knob has no stored secret
 	CheckCompanionBinary  = "companion_binary"  // a bound companion's CLI is not in PATH
 	CheckCompanionDrift   = "companion_drift"   // live git identity differs from the bound one
+	// CheckCompanionTokenDrift: the live login a bound token resolves to differs
+	// from the companion's expected_login. opt-in (it needs a network call).
+	CheckCompanionTokenDrift = "companion_token_drift"
 )
 
 // Exit codes and their stable error-code tokens.

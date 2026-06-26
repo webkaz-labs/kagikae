@@ -97,6 +97,7 @@ codex = "side"
 git.email = "you@example.com"     # non-secret knobs are stored inline
 git.name = "Your Name"
 gh.GH_TOKEN = ""                  # token marker: the value lives in the secret backend
+gh.expected_login = "octocat"     # recorded at add time; the login the token must resolve to
 kubectl.KUBECONFIG = "~/.kube/main-config"  # config-dir path (non-secret)
 ```
 
@@ -130,9 +131,13 @@ profile maps and reports the others as `skipped`.
 tolerates it as an unknown key) mapping a companion id (`git`, `gh`,
 `cloudflare`, `kubectl`) to its knob values. Non-secret knobs (git identity
 fields, config-dir paths) hold their value inline; a token knob holds an empty
-string marker and its value lives in the secret backend. Companion ids and knob
-names are validated; a value may not contain a newline or NUL. The
-switched/preserved contract per companion is [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md).
+string marker and its value lives in the secret backend. A token companion may
+also carry a reserved non-secret `expected_login` knob: kae records it at
+`kae companion add` time (from the token's live login, via the companion's login
+probe) and `doctor`'s `companion_token_drift` check compares the live login
+against it. It is not user-settable. Companion ids and knob names are validated;
+a value may not contain a newline or NUL. The switched/preserved contract per
+companion is [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md).
 
 ## Account Snapshot Metadata
 

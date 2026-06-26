@@ -51,6 +51,29 @@ var RunInteractive = func(ctx context.Context, extraEnv []string, name string, a
 	return 1, err
 }
 
+// RunWithEnv is Run with extra KEY=VALUE entries appended to the environment,
+// for probes that need a specific credential present (e.g. resolving a token's
+// live login by running a CLI with the token in its env var). It captures
+// stdout/stderr like Run; pass a nil extraEnv to run against the ambient
+// environment. Overridable in tests.
+var RunWithEnv = func(ctx context.Context, extraEnv []string, name string, args ...string) (string, string, int) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
+	err := cmd.Run()
+	if err == nil {
+		return stdout.String(), stderr.String(), 0
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return stdout.String(), stderr.String(), exitErr.ExitCode()
+	}
+	return stdout.String(), err.Error(), 1
+}
+
 // Snippet truncates subprocess stderr for safe inclusion in diagnostics.
 // It must never be applied to stdout of credential reads, which is secret.
 func Snippet(stderr string) string {

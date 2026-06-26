@@ -670,7 +670,8 @@ Check `status` vocabulary: `ok`, `warn`, `error`, `skipped`.
 Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
 `unsupported`, `file_mode`, `credential_stale`, `secret_orphan`,
-`companion_missing`, `companion_binary`, `companion_drift`.
+`companion_missing`, `companion_binary`, `companion_drift`,
+`companion_token_drift`.
 
 Credential-health checks (warn-level):
 - `credential_stale`: a captured snapshot is past its `expiresAt` with no
@@ -694,8 +695,15 @@ Companion-binding checks (warn-level, unfiltered report only):
   the effective value against the profile's `email`/`name`/`signingkey`. Flags a
   repo-local override (`git config --local`) or an inactive/untrusted pin — both
   of which would commit as the wrong identity. Names the diagnostic
-  `git config --show-origin`. token companions are out of scope (no stored
-  expected identity, and a live check would need a network call).
+  `git config --show-origin`.
+- `companion_token_drift`: the live login a token companion's token resolves to
+  differs from the bound `expected_login`, or the token is absent from the env
+  (an inactive pin). The token-side analogue of `companion_drift`. **Opt-in**: it
+  makes a network call (e.g. `gh api user`), so doctor runs it only when its
+  prompt is answered yes or `--yes` is passed; `--json`/non-interactive runs skip
+  it. `expected_login` is recorded automatically at `kae companion add` time for
+  companions that declare a login probe — currently **gh** only (cloudflare is
+  deferred; see ADAPTERS-COMPANION.md).
 
 ### `kae use ... --json` (the switch report)
 

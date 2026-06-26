@@ -844,6 +844,14 @@ git config --get user.email                        # real@personal.test (unpinne
 mise exec -- /tmp/kae doctor --json                # no companion_drift (active pin → git matches the binding)
 ```
 
+`companion_token_drift` is opt-in and needs a network call, so the temp-HOME
+smoke does not exercise it (the `ghp_smoke` token is invalid, so `kae companion
+add` records no `expected_login` — a gentle skip; unit tests cover the probe with
+a faked `gh`). To check it on a real machine: `printf '<real-token>\n' | kae
+companion add main gh GH_TOKEN` (records `expected_login` from `gh api user`),
+then in the pinned dir `mise exec -- kae doctor --yes` reports a match, and
+`kae doctor --yes` outside the pin reports the inactive-pin warn.
+
 ## Real-Machine Acceptance (release only)
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of

@@ -111,8 +111,16 @@ child could rotate the live credential unseen — a cached value would be stale.
   non-secret git identity fields, never a credential, and makes no network
   call. The live value it reads back is sanitized (control characters dropped,
   length-capped) before it reaches doctor output, so a hostile repo-local
-  `.git/config` cannot inject terminal escapes. Scoped to the git companion;
-  token companions are never probed, so no secret can reach this path.
+  `.git/config` cannot inject terminal escapes.
+- The `companion_token_drift` doctor check resolves a token companion's live
+  login (e.g. `gh api user`) and compares it to the recorded `expected_login`.
+  It is the one doctor check that makes a **network call**, so it is **opt-in**
+  (the doctor prompt or `--yes`; never under `--json`/non-interactive). The login
+  it records and reads back is a public handle, not a credential — sanitized
+  before output and safe in logs/JSON. The token reaches the probe only through
+  the env var the pin already injects (at `kae companion add` time, through
+  `internal/runner`'s env seam); it is never written to argv or stdout. The same
+  recorded login (`expected_login`) is non-secret config.toml inline.
 
 ## File Permissions
 

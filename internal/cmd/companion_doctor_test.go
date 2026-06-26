@@ -21,7 +21,7 @@ func TestDoctorCompanionChecks(t *testing.T) {
 			constants.CompanionGH:  {"GH_TOKEN": ""},
 		},
 	}
-	report := buildDoctor(context.Background(), app, "")
+	report := buildDoctor(context.Background(), app, "", false)
 	if _, ok := findCheck(report, constants.CheckCompanionMissing); !ok {
 		t.Error("expected companion_missing for an unstored gh token")
 	}
@@ -33,8 +33,10 @@ func TestDoctorCompanionChecks(t *testing.T) {
 func TestDoctorCompanionTokenStoredNoMissing(t *testing.T) {
 	app := companionCLIApp(t)
 	app.Config.Profiles["main"] = config.Profile{
-		Accounts:   map[string]string{constants.ToolClaude: "main"},
-		Companions: map[string]config.CompanionData{constants.CompanionGH: {"GH_TOKEN": ""}},
+		Accounts: map[string]string{constants.ToolClaude: "main"},
+		// expected_login is inline metadata, never in the secret backend; it must
+		// not be probed as a missing token (regression guard).
+		Companions: map[string]config.CompanionData{constants.CompanionGH: {"GH_TOKEN": "", "expected_login": "octocat"}},
 	}
 	be, err := app.secretBackend()
 	if err != nil {
@@ -43,9 +45,9 @@ func TestDoctorCompanionTokenStoredNoMissing(t *testing.T) {
 	if err := be.Set(context.Background(), companion.SecretRef("main", "gh", "GH_TOKEN"), []byte("ghp_x")); err != nil {
 		t.Fatal(err)
 	}
-	report := buildDoctor(context.Background(), app, "")
+	report := buildDoctor(context.Background(), app, "", false)
 	if _, ok := findCheck(report, constants.CheckCompanionMissing); ok {
-		t.Error("stored token must not raise companion_missing")
+		t.Error("a stored token plus expected_login metadata must not raise companion_missing")
 	}
 }
 
@@ -56,7 +58,7 @@ func TestDoctorToolFilterSkipsCompanionChecks(t *testing.T) {
 		Companions: map[string]config.CompanionData{constants.CompanionGH: {"GH_TOKEN": ""}},
 	}
 	// A tool-filtered report is about one tool; companions are not tools.
-	report := buildDoctor(context.Background(), app, constants.ToolClaude)
+	report := buildDoctor(context.Background(), app, constants.ToolClaude, false)
 	if _, ok := findCheck(report, constants.CheckCompanionMissing); ok {
 		t.Error("tool-filtered doctor must not run companion checks")
 	}

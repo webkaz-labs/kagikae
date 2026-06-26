@@ -14,5 +14,8 @@ func init() {
 		Binary: "gh",
 		Kind:   companion.KindToken,
 		Knobs:  []companion.Knob{{Name: "GH_TOKEN", EnvVar: "GH_TOKEN"}},
+		// `gh api user` reads GH_TOKEN from the environment and prints the login
+		// the token belongs to; --jq narrows it to the bare login string.
+		LoginProbe: []string{"gh", "api", "user", "--jq", ".login"},
 	})
 }

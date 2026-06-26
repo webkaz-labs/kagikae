@@ -55,7 +55,7 @@ func TestDoctorGitDriftDetected(t *testing.T) {
 		"user.name":  "main",             // matches
 	}}
 	var report *doctorReport
-	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "") })
+	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "", false) })
 
 	msg, ok := findCheck(report, constants.CheckCompanionDrift)
 	if !ok {
@@ -77,7 +77,7 @@ func TestDoctorGitDriftUnset(t *testing.T) {
 	// git config returns nothing (unset / pin not active in this shell).
 	fake := gitConfigFake{values: map[string]string{}}
 	var report *doctorReport
-	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "") })
+	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "", false) })
 
 	msg, ok := findCheck(report, constants.CheckCompanionDrift)
 	if !ok {
@@ -94,7 +94,7 @@ func TestDoctorGitDriftEmptyValue(t *testing.T) {
 	// distinct from unset, and still a drift against the non-empty binding.
 	fake := gitConfigFake{values: map[string]string{"user.email": ""}}
 	var report *doctorReport
-	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "") })
+	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "", false) })
 
 	msg, ok := findCheck(report, constants.CheckCompanionDrift)
 	if !ok {
@@ -115,7 +115,7 @@ func TestDoctorGitNoDriftWhenMatches(t *testing.T) {
 		"user.name":  "main",
 	}}
 	var report *doctorReport
-	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "") })
+	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "", false) })
 
 	if _, ok := findCheck(report, constants.CheckCompanionDrift); ok {
 		t.Error("no drift when live git identity matches the binding")
@@ -132,7 +132,7 @@ func TestDoctorGitDriftSkippedWhenNotPinned(t *testing.T) {
 	chdirTemp(t) // no fragment written: the directory is not pinned
 	fake := gitConfigFake{values: map[string]string{"user.email": "side@example.com"}}
 	var report *doctorReport
-	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "") })
+	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "", false) })
 
 	if _, ok := findCheck(report, constants.CheckCompanionDrift); ok {
 		t.Error("drift must not run outside a pinned directory")
@@ -144,7 +144,7 @@ func TestDoctorGitDriftSkippedWhenGitMissing(t *testing.T) {
 	app.Env.LookPath = func(string) (string, error) { return "", errors.New("not found") }
 	fake := gitConfigFake{values: map[string]string{"user.email": "side@example.com"}}
 	var report *doctorReport
-	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "") })
+	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "", false) })
 
 	if _, ok := findCheck(report, constants.CheckCompanionDrift); ok {
 		t.Error("drift probe must skip when git is absent (companion_binary covers it)")
@@ -156,7 +156,7 @@ func TestDoctorGitDriftToolFilterSkips(t *testing.T) {
 	fake := gitConfigFake{values: map[string]string{"user.email": "side@example.com"}}
 	var report *doctorReport
 	// A tool-filtered report is about one tool; companions are not tools.
-	runner.With(fake, func() { report = buildDoctor(context.Background(), app, constants.ToolClaude) })
+	runner.With(fake, func() { report = buildDoctor(context.Background(), app, constants.ToolClaude, false) })
 
 	if _, ok := findCheck(report, constants.CheckCompanionDrift); ok {
 		t.Error("tool-filtered doctor must not run companion drift checks")

@@ -3,9 +3,13 @@
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
 Implementation history lives in git log.
 
-Active release target: v0.10.1 (finish `kae companion` shell completion and make
-completion self-maintaining via `kae completion --refresh`; see
-[RELEASE.md](RELEASE.md)). v0.10.0 (companion-auth lockstep — bind git/gh/cloud-CLI
+Active release target: v0.11.0 (close the companion-auth drift gaps — keep
+companions in lockstep on a single-tool `kae pin <tool> <account>` re-bind, and
+add the opt-in `companion_token_drift` doctor check that resolves a bound token's
+live login (`gh api user`) against a recorded `expected_login`; see
+[RELEASE.md](RELEASE.md)). v0.10.1 (finish `kae companion` shell completion and
+make completion self-maintaining via `kae completion --refresh`) shipped
+2026-06-23. v0.10.0 (companion-auth lockstep — bind git/gh/cloud-CLI
 identity per profile, delivered by `kae pin`, plus a `companion_drift` doctor
 check that flags when the live git commit identity diverges from the binding)
 shipped 2026-06-23. v0.9.1 (manual login-identity override — `kae add

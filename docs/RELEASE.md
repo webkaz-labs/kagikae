@@ -25,7 +25,40 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
-# kae v0.10.1 (active target)
+# kae v0.11.0 (active target)
+
+Close the companion-auth identity-drift gaps: keep companions in lockstep on a
+single-tool re-bind, and add the token-side drift check that mirrors git's.
+Additive and contract-stable: `schema_version` stays `1`; the only new config is
+a reserved, kae-managed `expected_login` metadata key on token companions.
+
+Baseline: v0.10.1 (companion completion + self-maintaining completion), shipped
+2026-06-23.
+
+- **Companion re-bind in lockstep**: `kae pin <tool> <account>` now recomputes the
+  directory's effective profile and re-applies that profile's companions
+  (regenerating the git-config file), clearing them when the new account set is
+  ad-hoc (`KAE_PROFILE` empty). Before, a single-tool re-bind left the fragment's
+  companion block (git-config path, token `exec()` lines, redactions) pointing at
+  the old profile — a stale git/token identity could outlive the re-bind.
+- **Token-identity drift** (`companion_token_drift`, opt-in): the token
+  counterpart to `companion_drift`. It resolves the live login a bound token maps
+  to (`gh api user`) and compares it to a recorded `expected_login`, warning on a
+  wrong-account token or an inactive pin (token absent from the env).
+  `expected_login` is captured automatically at `kae companion add` (best-effort
+  via the spec's declarative `LoginProbe`; an offline/invalid probe leaves it
+  unset). The check makes a network call, so it is opt-in: doctor prompts on a TTY
+  or honours `--yes`, and skips under `--json`/non-interactive. gh only;
+  cloudflare is deferred (`wrangler whoami` needs the binary and a user-scoped
+  token), with the `LoginProbe`/`expected_login` mechanism generalized for it.
+- **Acceptance**: `mise run check` green; new unit tests cover re-bind companion
+  lockstep + ad-hoc clear, the drift check's match/mismatch/inactive/probe-fail
+  paths, the add-time probe (success + gentle skip), and the opt-in resolution;
+  JSON contract unaffected (`schema_version` 1).
+
+---
+
+# kae v0.10.1 (released 2026-06-23)
 
 Finish companion's command UX and make shell completion self-maintaining.
 Companion-auth shipped in v0.10.0 without completion for its subcommand, and the

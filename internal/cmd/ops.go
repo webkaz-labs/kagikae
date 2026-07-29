@@ -287,9 +287,16 @@ func (app *App) clearUnrecordedOptionals(ctx context.Context, meta backup.Meta, 
 			// looks the same as a bad KAE_CLAUDE_DRIVER value on a working one. The
 			// credential is already restored, so do not fail the rollback over the
 			// cleanup — but say so, or a stale identity cache survives silently.
+			// Point at re-applying the account, not at re-running this rollback:
+			// the rollback succeeds and then prunes, so its own id may already be
+			// gone. `kae use` reaches the same cleanup from the snapshot side.
+			target := "<account>"
+			if acct, ok := meta.ActiveBefore[tool]; ok && acct != "" {
+				target = acct
+			}
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: could not resolve %s artifacts, so its identity cache was left "+
-					"as it was (%v); fix that and re-run: kae rollback --to %s\n", tool, err, meta.ID)
+					"as it was (%v); fix that, then re-apply: kae use %s %s\n", tool, err, tool, target)
 			continue
 		}
 		for _, sp := range specs {

@@ -25,7 +25,56 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
-# kae v0.11.0 (active target)
+# kae v0.12.0 (active target)
+
+Make the *identity* a switched artifact, and start watching the upstream
+behaviour kae depends on. Prompted by a live failure: `kae` switched claude's
+credential correctly while Claude Code kept displaying the previous account, and
+no check fired — the layout had not changed, only the behaviour behind it.
+
+Baseline: v0.11.0 (companion re-bind lockstep + token-identity drift), shipped
+2026-06-27.
+
+- **`/oauthAccount` is switched with the credential** (`artifact.Spec.IdentityOnly`).
+  claude's self-heal of it is real but gated behind a 24h `profileFetchedAt` TTL
+  that every token refresh renews without rewriting `emailAddress`, so for a
+  credential in daily use it never fires. The credential remains claude's sole
+  *auth* artifact; this is attribution. Pointer-patch only — every other key of
+  `~/.claude.json` survives byte-identical.
+- **Two offline `doctor` checks for the class of failure that started this**:
+  `identity_drift` (the live identity no longer matches what kae applied — compared
+  on the account-naming keys, never byte-wise) and `upstream_version` (the
+  installed tool is a newer major/minor than the `VerifiedVersion()` its adapter
+  declares; patch bumps stay silent). `docs/VALIDATION.md` gains an "Upstream
+  Behaviour Assumptions" table — the original assumption was load-bearing and had
+  never been written down as a verifiable item, which is what let it expire
+  unnoticed.
+- **Expiry is read, not guessed.** `freshness.Info` gains `RefreshExpiresAt` and
+  `Invalid`: a refresh token now lives days rather than a month, so its mere
+  presence no longer counts as recoverable, and the tombstone claude writes after
+  a failed refresh (`accessToken:""`, `expiresAt:0`) is read as dead instead of
+  as "no expiry recorded". A one-directional recapture guard stops a dead live
+  credential from overwriting a still-usable snapshot — the one path that could
+  lose a credential unrecoverably.
+- **Stale warnings are delivered where they can be acted on**: stderr, before
+  anything is applied, not suppressed by `--quiet` (the form the mise hook runs),
+  with a roll-up line when several tools need a re-login. Exit codes unchanged.
+
+Contract: additive. `schema_version` stays `1`; two new `doctor` check codes; one
+new artifact in claude's snapshot (`oauth_account`), applied as absent when a
+snapshot predates it.
+
+**Release gate (not yet met): the macOS pin gap.** `CLAUDE_CONFIG_DIR` does not
+force file-based auth on macOS — claude namespaces its keychain service by the
+config dir and deletes kae's credential copy on the first token refresh, after
+which `kae pin <tool> <account>` reports success and changes nothing a pinned
+directory reads. That is a silent wrong-*credential*, worse than the attribution
+bug this release fixes, and it is reachable by normal `kae pin` use. Ship v0.12.0
+only once it is addressed (detection at minimum); see [ROADMAP.md](ROADMAP.md).
+
+---
+
+# kae v0.11.0 (shipped 2026-06-27)
 
 Close the companion-auth identity-drift gaps: keep companions in lockstep on a
 single-tool re-bind, and add the token-side drift check that mirrors git's.

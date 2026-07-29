@@ -83,7 +83,11 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   "Upstream Behaviour Assumptions" table of `docs/VALIDATION.md`: re-verify the
   rows, then bump both in the same commit. kae depends on undocumented upstream
   *behaviour*, not just layout, and a behaviour-only change passes every structure
-  guard (claude silently stopped self-healing `/oauthAccount`; nothing fired). The
+  guard. Record the **condition**, never an absolute: `/oauthAccount` was left
+  alone because claude was measured self-healing it, when the fact was that it
+  self-heals past a 24h TTL every token refresh renews — so for a credential in
+  daily use it never fired, no guard noticed, and switched sessions kept naming
+  the previous account. An absolute is what expires silently. The
   `upstream_version` doctor check is the only offline signal, and it *skips
   silently* on a version string it cannot parse — so a stale or typo'd value reads
   as "nothing to report".

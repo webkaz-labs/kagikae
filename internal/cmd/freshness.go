@@ -73,8 +73,12 @@ func (app *App) staleSnapshotWarning(ctx context.Context, be secret.Backend, acc
 }
 
 // snapshotExpired reports whether a known, dated credential is past expiry.
+// An expiry exactly at now counts as expired, matching refreshUsable's After(now)
+// on the other side of the same decision: with the two boundaries disagreeing, a
+// credential expiring on the tick read as usable to the warning and to the
+// recapture guard while its refresh token read as dead.
 func snapshotExpired(info freshness.Info, now time.Time) bool {
-	return info.Known && !info.ExpiresAt.IsZero() && info.ExpiresAt.Before(now)
+	return info.Known && !info.ExpiresAt.IsZero() && !info.ExpiresAt.After(now)
 }
 
 // refreshUsable reports whether info's refresh token can still buy a new access

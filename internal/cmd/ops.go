@@ -255,6 +255,22 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 	return nil
 }
 
+// rollbackTo restores a backup and then removes every identity-only artifact it
+// has no record of. The two are one step because they leave the live state in a
+// single consistent shape only together: restoring alone can leave a stale
+// identity cache naming the account the rollback just left, and failing between
+// them must look like "the rollback failed" to the caller so it restores the
+// pre-rollback backup instead of recording a half-applied state.
+func (app *App) rollbackTo(ctx context.Context, be secret.Backend, meta backup.Meta, current map[string][]artifact.Spec) error {
+	if err := app.applyBackup(ctx, be, meta, nil, current); err != nil {
+		return err
+	}
+	if err := clearUnrecordedIdentity(ctx, meta, current); err != nil {
+		return fmt.Errorf("clear a stale identity cache: %w", err)
+	}
+	return nil
+}
+
 // storedValue reads one artifact payload from the secret backend. A payload that
 // is simply gone degrades to absent for an identity-only artifact — losing it is
 // safe and it must never block the credential recorded beside it — and is a hard

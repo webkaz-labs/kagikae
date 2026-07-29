@@ -207,22 +207,25 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		return nil, err
 	}
 
-	if err := app.applyBackup(ctx, be, meta, nil, current); err != nil {
-		if restoreErr := app.applyBackup(ctx, be, preMeta, nil, current); restoreErr != nil {
+	// The restore and the identity cleanup are one transaction: state.json is not
+	// updated until both land, so a partial rollback never leaves the live
+	// credential pointing at one account while kae records another (the next
+	// switch-away recapture would then write that credential into the wrong
+	// account's snapshot). preMeta is a backup created moments ago from today's
+	// specs, so it restores with current=nil: nothing about it may degrade to
+	// absent, and a lost payload there must fail loudly rather than look restored.
+	//
+	// Only a rollback can be handed a backup that predates an artifact, so the
+	// cleanup lives here rather than inside applyBackup, whose other callers
+	// restore a backup they just created and would gain a surprising delete pass.
+	if err := app.rollbackTo(ctx, be, meta, current); err != nil {
+		if restoreErr := app.applyBackup(ctx, be, preMeta, nil, nil); restoreErr != nil {
 			return nil, errf(exitOf(err),
 				"rollback failed (%v) and restore also failed (%v); inspect backups %s and %s",
 				err, restoreErr, meta.ID, preMeta.ID)
 		}
 		return nil, errf(exitOf(err),
 			"rollback failed, live state restored from backup %s: %v", preMeta.ID, err)
-	}
-	// Only a rollback can be handed a backup that predates an artifact, so this
-	// cleanup lives here rather than inside applyBackup, whose other callers
-	// restore a backup they just created and would gain a surprising delete pass.
-	if err := clearUnrecordedIdentity(ctx, meta, current); err != nil {
-		return nil, errf(constants.ExitError,
-			"live state was rolled back but clearing a stale identity cache failed (%v); "+
-				"undo with: kae rollback --to %s", err, preMeta.ID)
 	}
 	for _, tool := range meta.Tools {
 		if before, ok := meta.ActiveBefore[tool]; ok {

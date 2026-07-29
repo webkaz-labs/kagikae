@@ -87,9 +87,11 @@ type Adapter interface {
 }
 ```
 
-`Artifacts` returns the credential **first** — `Detect`, the bond credential
-copy, and `credentialArtifactName` all treat the leading spec as the tool's
-credential. A spec may set `IdentityOnly` to mark an artifact that records *who*
+`Artifacts` returns the credential **first**, and `Detect` reads `specs[0]` as
+that credential — the only positional dependency. Nothing else infers the
+credential from order: the bond copy selects by kind (`keychainCredForBond`) and
+`credentialArtifactName` keeps its own name map, so an adapter that grows a spec
+must not assume either follows position. A spec may set `IdentityOnly` to mark an artifact that records *who*
 is logged in without being part of what authenticates (claude's
 `/oauthAccount`). Everything that follows from it is a consequence of not being a
 credential: its live presence alone is not a login, a change to it is not an auth

@@ -132,6 +132,11 @@ func TestNeedsRelogin(t *testing.T) {
 		{"expired, no refresh", freshness.Info{Known: true, ExpiresAt: past}, true},
 		{"expired, refresh expired too", freshness.Info{Known: true, ExpiresAt: past, HasRefresh: true, RefreshExpiresAt: past}, true},
 		{"tombstoned by the tool", freshness.Info{Known: true, Invalid: true}, true},
+		// Both sides of the decision must treat "exactly now" the same way, or a
+		// credential expiring on the tick reads as usable while its refresh token
+		// reads as dead.
+		{"access expires exactly now, no refresh", freshness.Info{Known: true, ExpiresAt: now}, true},
+		{"refresh expires exactly now", freshness.Info{Known: true, ExpiresAt: past, HasRefresh: true, RefreshExpiresAt: now}, true},
 	}
 	for _, c := range cases {
 		if got := needsRelogin(c.info, now); got != c.want {

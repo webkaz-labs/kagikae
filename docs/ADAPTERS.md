@@ -29,8 +29,20 @@ token refresh renews that timestamp *without* rewriting `emailAddress`. Since a
 credential in daily use refreshes well inside 24h, a switched token would leave
 the previous account's identity on screen indefinitely (measured on Claude Code
 2.1.220; supersedes the 2026-06-14 self-heal finding — docs/SCOPE-MODEL.md §6).
-The file is symlinked wholesale in isolation modes, so a pointer patch there
-resolves the link and updates the real home's copy rather than forking it.
+
+**Auth mode only (known gap).** `kae use` / `kae add` switch the cache; the
+per-directory materializers do not. Isolation modes point `CLAUDE_CONFIG_DIR` at
+a kae-owned directory, where claude keeps its cache at `<dir>/.claude.json`.
+`prepareBond` links the entries *of* `~/.claude`, and `~/.claude.json` is that
+directory's sibling — so `<dir>/.claude.json` is a link back to the real home
+only when `~/.claude/.claude.json` happens to exist, and otherwise a private
+file claude created there. Since `kae pin <tool> <account>` copies the credential
+and not the cache, a bonded or isolated directory keeps whatever account first
+ran in it. Tracked in [ROADMAP.md](ROADMAP.md).
+
+When the target *is* a link, the pointer patch resolves it before reading and
+writing, so the shared file is updated rather than forked into a private copy by
+the atomic rename; a link that cannot be resolved is refused (exit 10) instead.
 
 If `CLAUDE_CONFIG_DIR` is already set in the environment, the adapter uses it
 as the live base path for `.credentials.json`. `auth` mode never sets or
@@ -95,8 +107,8 @@ the env var takes precedence; see [DATA-MODEL.md](DATA-MODEL.md)).
 ~/.claude/skills/              ~/.claude/agents/
 ~/.claude/.credentials.json    -> all keys except /claudeAiOauth
 ~/.claude.json                 -> all keys except /oauthAccount (projects,
-                               mcpServers, onboarding, caches; symlinked
-                               wholesale in isolation modes)
+                               mcpServers, onboarding, caches). Untouched
+                               entirely by the per-directory materializers.
 project/.claude/  project/CLAUDE.md  project/.mcp.json
 MCP / hooks / permissions / trust state / session history / plugins
 ```

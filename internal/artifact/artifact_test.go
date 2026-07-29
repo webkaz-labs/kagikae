@@ -119,6 +119,34 @@ func TestJSONPointerKindWritesThroughSymlink(t *testing.T) {
 	}
 }
 
+// A link kae cannot resolve is refused rather than replaced by a private copy:
+// silently forking a bond dir's shared file is worse than failing the switch.
+// Removing the pointer is still a no-op (there is nothing behind the link).
+func TestJSONPointerKindRefusesUnresolvableSymlink(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	link := filepath.Join(dir, ".claude.json")
+	if err := os.Symlink(filepath.Join(dir, "gone", ".claude.json"), link); err != nil {
+		t.Fatal(err)
+	}
+	sp := Spec{Name: "oauth_account", Kind: constants.KindJSONPointer, Target: link, Pointer: "/oauthAccount"}
+
+	err := ApplyLive(ctx, sp, Value{Data: []byte(`{"accountUuid":"new"}`), Present: true})
+	if !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("expected an unsafe refusal, got %v", err)
+	}
+	if err := ApplyLive(ctx, sp, Value{}); err != nil {
+		t.Fatalf("removing through a dangling link should be a no-op: %v", err)
+	}
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("dangling symlink was replaced by a regular file")
+	}
+}
+
 // TestJSONPointerKindJSONCRoundTrip: a JSONC spec reads through comments and
 // writes the pointer value back while preserving the leading // comments and
 // sibling keys (GitHub Copilot's config.json shape).

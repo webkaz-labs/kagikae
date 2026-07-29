@@ -154,7 +154,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	}
 
 	if changed, err := loginChangedAuth(ctx, be, meta, plan); err != nil {
-		return finishLoginFailure(ctx, opts, be, meta, restore, "compare auth after login", err)
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, "compare auth after login", err)
 	} else if !changed {
 		// The live state is still the pre-login state, so there is nothing
 		// to capture and (with --restore) nothing to put back.
@@ -172,17 +172,17 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	// identity to record in the snapshot (§D), then snapshot.
 	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName, opts.IdentityOverride)
 	if err != nil {
-		return finishLoginFailure(ctx, opts, be, meta, restore, "detect the logged-in account", err)
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, "detect the logged-in account", err)
 	}
 	plan.Account = accountName
 	plan.Identity = identity
 
 	if err := app.captureSnapshot(ctx, be, plan); err != nil {
-		return finishLoginFailure(ctx, opts, be, meta, restore, "capture after login", err)
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, "capture after login", err)
 	}
 
 	if restore {
-		if err := applyBackup(ctx, be, meta, nil); err != nil {
+		if err := app.applyBackup(ctx, be, meta, nil); err != nil {
 			return finish(opts, errf(exitOf(err),
 				"captured %s/%s but restoring the previous login failed: %v; run: kae rollback --to %s",
 				tool, accountName, err, meta.ID))
@@ -209,6 +209,13 @@ func loginChangedAuth(ctx context.Context, be secret.Backend, meta backup.Meta, 
 		}
 	}
 	for _, sp := range plan.Specs {
+		// An Optional artifact is identity metadata, not auth. claude rewrites
+		// /oauthAccount (at minimum its profileFetchedAt) on any login, so
+		// counting it here would report "auth changed" for a re-login to the
+		// same account and defeat the auth_unchanged guard.
+		if sp.Optional {
+			continue
+		}
 		live, err := artifact.ReadLive(ctx, sp)
 		if err != nil {
 			return false, fmt.Errorf("read live %s/%s: %w", plan.Tool, sp.Name, err)
@@ -233,9 +240,9 @@ func loginChangedAuth(ctx context.Context, be secret.Backend, meta backup.Meta, 
 // finishLoginFailure reports a failed post-login step. With --restore the
 // user asked to end up on the previous login no matter what; put it back
 // even when the failed step leaves auth in the post-login state.
-func finishLoginFailure(ctx context.Context, opts commonOpts, be secret.Backend, meta backup.Meta, restore bool, op string, err error) int {
+func finishLoginFailure(ctx context.Context, app *App, opts commonOpts, be secret.Backend, meta backup.Meta, restore bool, op string, err error) int {
 	if restore {
-		if restoreErr := applyBackup(ctx, be, meta, nil); restoreErr != nil {
+		if restoreErr := app.applyBackup(ctx, be, meta, nil); restoreErr != nil {
 			return finish(opts, doubleFailure(op, err, restoreErr, meta.ID))
 		}
 		return finish(opts, errf(exitOf(err),

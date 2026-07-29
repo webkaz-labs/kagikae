@@ -80,6 +80,18 @@ Follow-up from v0.8.4 (not yet scheduled):
   and `security`-read coalescing (a per-command keychain cache). Spans every
   OAuth/JWT tool, not just claude. The codex keyring driver (§E) is **split to
   v0.8.2** — see below.
+- **Identity cache in isolation modes**: `kae use` / `kae add` switch claude's
+  `/oauthAccount` identity cache, but the per-directory materializers
+  (`swapDirCredential`, `prepareBond`, `preparePinConfig`,
+  `prepareGlobalIsolatedHome`) copy only the credential. Since
+  `CLAUDE_CONFIG_DIR` moves the cache to `<dir>/.claude.json` and
+  `prepareBond` only links the entries *of* `~/.claude`, a bonded or isolated
+  directory keeps whatever account first ran there, and `kae pin <tool>
+  <account>` does not correct it. Auth is unaffected (the token wins) — it is an
+  attribution gap: the UI can name the wrong account inside a pinned directory.
+  The fix is one shared identity step across all four materializers; the design
+  question is bond mode, where writing the cache is visible to the real home
+  (docs/SCOPE-MODEL.md §6).
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the

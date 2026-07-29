@@ -62,12 +62,14 @@ type Spec struct {
 	// ~/.copilot/config.json). Reads ignore the comments; writes preserve
 	// them and the surrounding formatting, mutating only the pointer value.
 	JSONC bool
-	// Optional marks an artifact that a snapshot captured before this spec
-	// existed may legitimately lack. Applying such a snapshot treats the
-	// missing artifact as absent (Present=false, i.e. remove it live) instead
-	// of failing the switch. Use it only where removal is a safe outcome —
-	// claude's /oauthAccount identity cache, which Claude Code refetches — not
-	// for a credential, where a silent removal would log the user out.
+	// Optional marks an artifact a snapshot or backup may legitimately lack:
+	// captured before this spec existed, or recorded but with its payload gone
+	// from the secret store. Either way it applies as absent (Present=false,
+	// i.e. removed live) instead of failing the whole switch or rollback, so it
+	// never blocks the credential recorded beside it. Use it only where removal
+	// is a safe, self-correcting outcome — claude's /oauthAccount identity cache,
+	// which Claude Code refetches — never for a credential, where a silent
+	// removal would log the user out.
 	Optional bool
 }
 
@@ -204,7 +206,26 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		return patch.WriteFileAtomic(sp.Target, v.Data, patch.CredentialFileMode)
 
 	case constants.KindJSONPointer:
-		doc, err := os.ReadFile(sp.Target)
+		// Resolve a symlink before reading, so the read and the write land on the
+		// same file. A bond dir links every entry of the real tool home into
+		// itself, so a mixed-state target there can be a link back to it
+		// (<bond>/.claude.json -> ~/.claude/.claude.json, when claude has written
+		// one inside ~/.claude); an atomic rename onto the link would replace it
+		// with a private copy and silently end the sharing. Resolving after the
+		// read would leave a window where a retargeted link makes kae write file
+		// A's content over file B. A link that cannot be resolved is refused,
+		// never forked. Whole-file credentials (KindFile) keep replacing their own
+		// path, so a credential is never written through a link.
+		target := sp.Target
+		if resolved, rerr := filepath.EvalSymlinks(target); rerr == nil {
+			target = resolved
+		} else if info, lerr := os.Lstat(target); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+			if !v.Present {
+				return nil // nothing to remove: the link points nowhere
+			}
+			return fmt.Errorf("%w: refusing to rewrite %s (unresolvable symlink: %v)", ErrUnsafe, target, rerr)
+		}
+		doc, err := os.ReadFile(target)
 		switch {
 		case os.IsNotExist(err):
 			if !v.Present {
@@ -212,7 +233,7 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 			}
 			doc = []byte("{}")
 		case err != nil:
-			return fmt.Errorf("read %s: %w", sp.Target, err)
+			return fmt.Errorf("read %s: %w", target, err)
 		}
 		var updated []byte
 		switch {
@@ -226,20 +247,10 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 			updated, err = patch.DeletePointer(doc, sp.Pointer)
 		}
 		if err != nil {
-			return fmt.Errorf("%w: refusing to rewrite %s (%v)", ErrUnsafe, sp.Target, err)
+			return fmt.Errorf("%w: refusing to rewrite %s (%v)", ErrUnsafe, target, err)
 		}
-		if err := os.MkdirAll(filepath.Dir(sp.Target), 0o700); err != nil {
-			return fmt.Errorf("create dir for %s: %w", sp.Target, err)
-		}
-		// The read above followed a symlink, so the write must too: a bond dir
-		// links a mixed-state file back to the real tool home
-		// (<bond>/.claude.json -> ~/.claude/.claude.json), and an atomic rename
-		// onto the link would replace it with a private copy, silently ending
-		// the sharing. Only pointer patches do this — a whole-file credential
-		// (KindFile) keeps replacing its path, never writing through a link.
-		target := sp.Target
-		if resolved, rerr := filepath.EvalSymlinks(target); rerr == nil {
-			target = resolved
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+			return fmt.Errorf("create dir for %s: %w", target, err)
 		}
 		return patch.WriteFileAtomic(target, updated, patch.CredentialFileMode)
 

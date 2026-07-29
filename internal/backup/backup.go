@@ -45,9 +45,15 @@ type ArtifactRecord struct {
 	// service shared with other tools (agy's gemini/antigravity), so a rollback
 	// reads/writes/deletes only that account's item and never a sibling under a
 	// different account. Empty for service-only keychain items and older backups.
-	KeychainMatchAccount bool   `json:"keychain_match_account,omitempty"`
-	SecretRef            string `json:"secret_ref"`
-	Present              bool   `json:"present"`
+	KeychainMatchAccount bool `json:"keychain_match_account,omitempty"`
+	// Optional marks an artifact whose absence is a safe outcome (claude's
+	// /oauthAccount identity cache), so a restore whose payload has gone missing
+	// removes it and lets the tool rebuild it instead of failing the whole
+	// rollback. Empty for credentials and for backups written before this field
+	// existed, which keeps the old fail-loud behaviour for them.
+	Optional  bool   `json:"optional,omitempty"`
+	SecretRef string `json:"secret_ref"`
+	Present   bool   `json:"present"`
 }
 
 // Meta is the persisted backup metadata. It never contains secret values.

@@ -14,6 +14,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
+	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/lock"
@@ -386,6 +387,126 @@ func TestRecaptureKeepsSnapshotIdentity(t *testing.T) {
 	identity := readFile(t, filepath.Join(app.Env.Home, ".claude.json"))
 	if !strings.Contains(identity, "side-uuid") {
 		t.Fatalf("recapture imported the stale identity cache: %s", identity)
+	}
+}
+
+// An Optional artifact whose payload has gone missing from the secret store must
+// not block the credential recorded beside it: the switch proceeds and clears the
+// stale cache, which claude then refetches.
+func TestSwitchSurvivesMissingOptionalPayload(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main-uuid")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	// Capture side too, so side is the active account: switching away from main
+	// would otherwise recapture main's snapshot from the live store first and
+	// mask the missing payload.
+	seedClaude(t, app, sideToken, "side-uuid")
+	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	be, err := app.secretBackend()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := be.Delete(ctx, account.SecretRef("claude", "main", "oauth_account")); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	if creds := readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json")); !strings.Contains(creds, mainToken) {
+		t.Fatalf("credential not applied: %s", creds)
+	}
+	if identity := readFile(t, filepath.Join(app.Env.Home, ".claude.json")); strings.Contains(identity, "oauthAccount") {
+		t.Fatalf("stale identity cache survived: %s", identity)
+	}
+}
+
+// A backup taken before the identity artifact existed has no record of it. The
+// rollback must clear it, or the restored credential would stay labelled with the
+// account the rollback just left.
+func TestRollbackClearsUnrecordedIdentityArtifact(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main-uuid")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	seedClaude(t, app, sideToken, "side-uuid")
+	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	// Switching to main backs up the live (side) state.
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	// Rewrite that backup the way an older kae wrote it: credential only.
+	meta, found, err := backup.Latest(app.Paths.BackupsDir())
+	if err != nil || !found {
+		t.Fatalf("latest backup: %v %v", found, err)
+	}
+	kept := meta.Artifacts[:0]
+	for _, rec := range meta.Artifacts {
+		if rec.Name != "oauth_account" {
+			kept = append(kept, rec)
+		}
+	}
+	meta.Artifacts = kept
+	if err := backup.Save(app.Paths.BackupsDir(), meta); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out = captureStdout(t, func() int { return runRollback(ctx, app, opts, "") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	if creds := readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json")); !strings.Contains(creds, sideToken) {
+		t.Fatalf("rollback did not restore the credential: %s", creds)
+	}
+	if identity := readFile(t, filepath.Join(app.Env.Home, ".claude.json")); strings.Contains(identity, "oauthAccount") {
+		t.Fatalf("rollback left an unrestorable identity cache in place: %s", identity)
+	}
+}
+
+// claude rewrites /oauthAccount (at minimum its profileFetchedAt) on any login,
+// so an identity-only difference must not read as "the login changed auth" —
+// that would defeat the auth_unchanged guard for a re-login to the same account.
+func TestLoginChangedAuthIgnoresIdentityArtifact(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+
+	seedClaude(t, app, mainToken, "main-uuid")
+	be, err := app.secretBackend()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := app.planTool(ctx, "claude", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := app.createBackup(ctx, be, []toolPlan{plan}, st, "login")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"),
+		`{"oauthAccount":{"accountUuid":"main-uuid","profileFetchedAt":999},"projects":{}}`)
+
+	changed, err := loginChangedAuth(ctx, be, meta, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("an identity-only change must not count as an auth change")
 	}
 }
 

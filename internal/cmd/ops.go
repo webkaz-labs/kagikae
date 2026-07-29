@@ -221,6 +221,7 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 				KeychainAccount: keychainAccount, KeychainReplace: sp.KeychainReplace,
 				KeychainMatchAccount: sp.KeychainMatchAccount,
 				JSONC:                sp.JSONC,
+				Optional:             sp.Optional,
 				SecretRef:            ref, Present: value.Present,
 			})
 		}
@@ -233,7 +234,7 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 
 // applyBackup restores live state from a backup, optionally limited to the
 // given tools (nil = all).
-func applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only map[string]bool) error {
+func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only map[string]bool) error {
 	for _, rec := range meta.Artifacts {
 		if only != nil && !only[rec.Tool] {
 			continue
@@ -244,16 +245,65 @@ func applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only 
 			if err != nil {
 				return fmt.Errorf("read backup payload %s: %w", rec.SecretRef, err)
 			}
-			if !found {
+			switch {
+			case found:
+				value = artifact.Value{Data: data, Present: true}
+			case rec.Optional:
+				// A lost payload for an artifact whose absence is safe degrades to
+				// "remove it" rather than failing the whole restore: the tool
+				// rebuilds it (claude refetches its identity cache), and the
+				// credential in the same backup still gets restored.
+				value = artifact.Value{}
+			default:
 				return errf(constants.ExitNotFound, "backup payload %s is missing from the secret store", rec.SecretRef)
 			}
-			value = artifact.Value{Data: data, Present: true}
 		}
 		if err := artifact.ApplyLive(ctx, specFromRecord(rec), value); err != nil {
 			return fmt.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
 		}
 	}
+	return app.clearUnrecordedOptionals(ctx, meta, only)
+}
+
+// clearUnrecordedOptionals removes every Optional artifact the backup has no
+// record of. A backup taken before an artifact existed cannot restore it, and
+// leaving today's live copy in place would keep claude's identity cache naming
+// the account the rollback just left — reintroducing the mislabelling the
+// artifact exists to prevent. Removal is the same fallback applySnapshot uses:
+// claude refetches the profile from the restored credential.
+func (app *App) clearUnrecordedOptionals(ctx context.Context, meta backup.Meta, only map[string]bool) error {
+	recorded := make(map[string]bool, len(meta.Artifacts))
+	for _, rec := range meta.Artifacts {
+		recorded[rec.Tool+"/"+rec.Name] = true
+	}
+	for _, tool := range meta.Tools {
+		if only != nil && !only[tool] {
+			continue
+		}
+		specs, err := adapterSpecs(ctx, app.Env, tool)
+		if err != nil {
+			continue // unknown tool or unsupported platform: nothing live to clear
+		}
+		for _, sp := range specs {
+			if !sp.Optional || recorded[tool+"/"+sp.Name] {
+				continue
+			}
+			if err := artifact.ApplyLive(ctx, sp, artifact.Value{}); err != nil {
+				return fmt.Errorf("clear %s/%s: %w", tool, sp.Name, err)
+			}
+		}
+	}
 	return nil
+}
+
+// adapterSpecs resolves a tool's current artifact specs, or an error when the
+// tool is unknown or unsupported on this platform.
+func adapterSpecs(ctx context.Context, env adapter.Env, tool string) ([]artifact.Spec, error) {
+	ad, err := adapter.ForTool(tool)
+	if err != nil {
+		return nil, err
+	}
+	return ad.Artifacts(ctx, env)
 }
 
 // specFromRecord rebuilds the artifact spec a backup record was captured from
@@ -264,13 +314,17 @@ func specFromRecord(rec backup.ArtifactRecord) artifact.Spec {
 		Name: rec.Name, Kind: rec.Kind, Target: rec.Target,
 		Pointer: rec.Pointer, KeychainAccount: rec.KeychainAccount,
 		KeychainReplace: rec.KeychainReplace, KeychainMatchAccount: rec.KeychainMatchAccount,
-		JSONC: rec.JSONC,
+		JSONC: rec.JSONC, Optional: rec.Optional,
 	}
 }
 
 // plansFromBackupMeta rebuilds per-tool artifact plans from backup records
 // so a rollback can itself be backed up before it overwrites live state.
-func plansFromBackupMeta(meta backup.Meta) []toolPlan {
+// Artifacts the current adapter declares but the backup has no record of are
+// added, so one introduced after the backup was taken is still captured before
+// the rollback clears it — otherwise rolling back the rollback could not put it
+// back.
+func (app *App) plansFromBackupMeta(ctx context.Context, meta backup.Meta) []toolPlan {
 	specsByTool := map[string][]artifact.Spec{}
 	order := []string{}
 	for _, rec := range meta.Artifacts {
@@ -278,6 +332,21 @@ func plansFromBackupMeta(meta backup.Meta) []toolPlan {
 			order = append(order, rec.Tool)
 		}
 		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], specFromRecord(rec))
+	}
+	for _, tool := range order {
+		current, err := adapterSpecs(ctx, app.Env, tool)
+		if err != nil {
+			continue // unknown tool or unsupported platform: records are all there is
+		}
+		recorded := make(map[string]bool, len(specsByTool[tool]))
+		for _, sp := range specsByTool[tool] {
+			recorded[sp.Name] = true
+		}
+		for _, sp := range current {
+			if !recorded[sp.Name] {
+				specsByTool[tool] = append(specsByTool[tool], sp)
+			}
+		}
 	}
 	plans := make([]toolPlan, 0, len(order))
 	for _, tool := range order {
@@ -350,12 +419,19 @@ func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error 
 			if err != nil {
 				return fmt.Errorf("read snapshot payload %s: %w", metaArt.SecretRef, err)
 			}
-			if !found {
+			switch {
+			case found:
+				value = artifact.Value{Data: data, Present: true}
+			case sp.Optional:
+				// A recorded-but-lost payload degrades to absent for the same
+				// reason a missing record does: an Optional artifact must never
+				// block the credential in the same snapshot from applying.
+				value = artifact.Value{}
+			default:
 				return errf(constants.ExitError,
 					"snapshot payload %s is missing; re-run kae add --no-login %s %s",
 					metaArt.SecretRef, plan.Tool, plan.Account)
 			}
-			value = artifact.Value{Data: data, Present: true}
 		}
 		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
 			return err

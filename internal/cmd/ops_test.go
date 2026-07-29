@@ -22,7 +22,7 @@ func TestPlansFromBackupMetaPreservesKeychainAccount(t *testing.T) {
 		Target: "cursor-access-token", KeychainAccount: "cursor-user",
 		SecretRef: "backup/x/cursor/access_token", Present: true,
 	}}}
-	plans := plansFromBackupMeta(meta)
+	plans := testApp(t, nil).plansFromBackupMeta(context.Background(), meta)
 	if len(plans) != 1 || len(plans[0].Specs) != 1 {
 		t.Fatalf("unexpected plans: %+v", plans)
 	}

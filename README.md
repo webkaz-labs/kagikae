@@ -31,8 +31,9 @@ a re-login cannot:
   tool, so `kae use main` moves Claude, Codex, Antigravity, and the rest
   together instead of six separate logins.
 
-By default a switch touches **only the credential**, so your skills, hooks,
-memory, MCP servers, project trust, and session history stay shared and intact.
+By default a switch touches **only the credential** — plus, for claude, the one
+identity field it shows in the UI — so your skills, hooks, memory, MCP servers,
+project trust, and session history stay shared and intact.
 When you *do* want separation, the same commands isolate the whole config
 directory — a private home per directory (`kae pin -i`) or per account
 (`kae use -i`) — so sessions, skills, and settings are kept apart too. Shared
@@ -51,7 +52,8 @@ login itself. `kae` separates **who you are logged in as** from **how you have
 the tool set up**:
 
 - it switches only the credential (an allowlisted token / keychain item / JSON
-  pointer), leaving mixed-state files like `~/.claude.json` untouched;
+  pointer) — in a mixed-state file like `~/.claude.json`, only claude's
+  `/oauthAccount` identity field, by pointer, never the whole file;
 - it backs up live state before every write and restores it on `kae rollback`;
 - it keeps one consistent surface across six different tools that each store
   auth differently (file, macOS Keychain, libsecret, JSON pointer);

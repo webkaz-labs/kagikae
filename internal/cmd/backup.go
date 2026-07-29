@@ -185,13 +185,13 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	}
 	// rollback is itself a live mutation: back up the current state first so
 	// it stays reversible.
-	preMeta, err := app.createBackup(ctx, be, plansFromBackupMeta(meta), st, "rollback")
+	preMeta, err := app.createBackup(ctx, be, app.plansFromBackupMeta(ctx, meta), st, "rollback")
 	if err != nil {
 		return nil, err
 	}
 
-	if err := applyBackup(ctx, be, meta, nil); err != nil {
-		if restoreErr := applyBackup(ctx, be, preMeta, nil); restoreErr != nil {
+	if err := app.applyBackup(ctx, be, meta, nil); err != nil {
+		if restoreErr := app.applyBackup(ctx, be, preMeta, nil); restoreErr != nil {
 			return nil, errf(exitOf(err),
 				"rollback failed (%v) and restore also failed (%v); inspect backups %s and %s",
 				err, restoreErr, meta.ID, preMeta.ID)

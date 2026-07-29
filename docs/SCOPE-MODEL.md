@@ -151,15 +151,23 @@ Therefore the design is: **the token stays claude's sole auth artifact, and
 `/oauthAccount` is switched alongside it as a second, identity-only artifact**
 (`oauth_account`, patched by JSON pointer). The mixed-state goal above is
 unaffected: a pointer patch rewrites one key, so `projects`, `mcpServers` and
-trust state stay live-shared, and `~/.claude.json` is still **symlinked
-wholesale** in isolation modes — `patch.WriteFileAtomic` resolves the link and
-writes through it, so the shared file is never forked into a private copy.
+trust state stay live-shared. When the target turns out to be a symlink,
+`ApplyLive` resolves it before reading and writing, so the atomic rename lands on
+the linked file instead of forking it into a private copy.
 
-Consequence to document: in `bond` (shared with the real home), the shared
-file's `/oauthAccount` names whichever account was applied last. It is no
-longer self-healing, so `kae use` / `kae pin` is what corrects it — running
-claude will not. Auth is unaffected either way (token wins). In `pin`
-(`.claude.json` not shared with the real home) there is no pollution at all.
+Scope of the fix — **auth mode only**. Isolation modes point
+`CLAUDE_CONFIG_DIR` at a kae-owned directory, and the identity cache claude uses
+there is `<dir>/.claude.json`. `prepareBond` links the entries *of* `~/.claude`,
+so that path is a link to the real home only when `~/.claude/.claude.json`
+exists; otherwise claude creates a private one. The per-directory materializers
+copy the credential, not the cache, so a bonded or isolated directory keeps
+whatever account first ran in it, and `kae pin <tool> <account>` does not correct
+it. Auth is unaffected either way (the token wins) — this is an attribution gap,
+tracked in [ROADMAP.md](ROADMAP.md).
+
+Consequence to document: where the cache *is* shared with the real home, its
+`/oauthAccount` names whichever account `kae use` applied last. It is no longer
+self-healing, so kae is what corrects it — running claude will not.
 
 **Fallback — copy+patch (not needed for claude).** The validation above removes
 the need for this for claude. It is retained only for a hypothetical future
@@ -286,7 +294,7 @@ and restored; each step a fresh-process `claude -p … --model haiku` auth check
 Outcome: `/oauthAccount` is not an auth artifact (1 and 2 are permanent), but it
 is not self-healing either, so §6 resolves to "the token is claude's sole auth
 artifact; `/oauthAccount` is switched alongside it as an identity-only pointer
-patch; `.claude.json` stays symlinked wholesale". copy+patch is not needed for
+patch in auth mode, and isolation modes keep their own copy". copy+patch is not needed for
 claude.
 
 ## 12. Implementation status

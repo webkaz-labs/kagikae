@@ -334,9 +334,12 @@ exit code — see [docs/CLI.md](docs/CLI.md).
 - **Reversible and guarded.** Atomic writes, per-tool locks, pre-write backups,
   and structure guards that refuse unknown credential layouts (exit `10`).
 - **Credential freshness.** `kae use` recaptures the account it switches away
-  from when its live token changed (so a switch back applies a live token),
-  warns on an expired snapshot with no refresh token, and `kae doctor` flags
-  stale snapshots and orphaned secret items.
+  from when its live token changed (so a switch back applies a live token) — but
+  never overwrites a usable snapshot with a live credential that has stopped
+  working. It warns on stderr, before applying, when the account you are switching
+  to needs a re-login (expired with no usable refresh token, or emptied by the tool
+  after a failed refresh) and names the tool's login command; `kae doctor` flags
+  the same snapshots and orphaned secret items.
 
 See [docs/SECURITY.md](docs/SECURITY.md).
 

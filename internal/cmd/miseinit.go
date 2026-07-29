@@ -323,10 +323,17 @@ func (app *App) prepareBond(ctx context.Context, tool, _ string, pinID string) (
 		data, err := os.ReadFile(src)
 		if os.IsNotExist(err) {
 			// Source file absent: on macOS, tools that store their credential
-			// in the OS keychain (e.g. claude) have no file to copy.
-			// Read the keychain payload verbatim so that CLAUDE_CONFIG_DIR
-			// isolation (which forces file-based auth even on macOS) can find
-			// a .credentials.json in the bond dir.
+			// in the OS keychain (e.g. claude) have no file to copy. Read the
+			// keychain payload verbatim so the bond dir has a .credentials.json.
+			//
+			// KNOWN GAP (docs/ROADMAP.md, measured on Claude Code 2.1.220):
+			// CLAUDE_CONFIG_DIR does *not* force file-based auth on macOS, as this
+			// comment used to claim. claude namespaces its keychain service by the
+			// config dir (`Claude Code-credentials-<sha8(dir)>`) and reads keychain
+			// first, falling back to this file only while that per-dir item is
+			// absent. The first token refresh writes the per-dir item — and deletes
+			// this file — after which nothing kae writes here is read again. Do not
+			// build on this copy being authoritative.
 			kdata, kerr := app.keychainCredForBond(ctx, tool)
 			if kerr != nil {
 				return "", kerr

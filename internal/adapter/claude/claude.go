@@ -1,10 +1,21 @@
 // Package claude implements the Claude Code adapter. Auth mode switches the
 // /claudeAiOauth credential (credentials file or macOS Keychain payload) plus
 // /oauthAccount, the identity cache inside the mixed-state ~/.claude.json.
-// The cache is switched because Claude Code no longer self-heals it: it skips
-// the profile refetch while the cached copy is under 24h old, and a token
-// refresh renews that timestamp without rewriting the email, so a switched
-// token leaves the previous account's identity displayed indefinitely.
+//
+// The cache is switched because Claude Code's self-heal of it is TTL-gated, not
+// unconditional: on startup it refetches the profile and rewrites emailAddress
+// only when the cached object is incomplete or its profileFetchedAt is more than
+// 24h old, and a token refresh renews profileFetchedAt without rewriting
+// emailAddress or accountUuid. A credential in daily use therefore refreshes
+// well inside the TTL, and a switched token would leave the previous account's
+// identity displayed indefinitely.
+//
+// Two consequences kae depends on. The switched identity's lifetime is the
+// snapshot's: kae applies the profileFetchedAt that was live at capture time, so
+// a snapshot older than 24h makes claude refetch on its next start (it then
+// writes the right email for the applied token by itself). And because that
+// refetch rewrites profileFetchedAt and the plan fields, a live-vs-applied
+// identity comparison must be keyed to IdentityKeys instead of comparing bytes.
 // See docs/ADAPTERS.md.
 package claude
 
@@ -37,7 +48,8 @@ func (Claude) Binary() string { return "claude" }
 
 // VerifiedVersion is the Claude Code release kae's behaviour assumptions were
 // last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). 2.1.220
-// is where /oauthAccount was measured as *not* self-healed — the finding kae's
+// is where /oauthAccount's self-heal was measured as gated behind a 24h
+// profileFetchedAt TTL that a token refresh keeps renewing — the finding kae's
 // identity switch depends on — so a newer minor is worth re-measuring.
 func (Claude) VerifiedVersion() string { return "2.1.220" }
 
@@ -101,6 +113,12 @@ func oauthAccountSpec(env adapter.Env) artifact.Spec {
 		Target:       claudeJSONPath(env),
 		Pointer:      "/oauthAccount",
 		IdentityOnly: true,
+		// The keys /login rewrites unconditionally, and exactly the ones a token
+		// refresh never touches — so they are what "is this still the account kae
+		// applied?" may look at. The rest of the object (profileFetchedAt, plan and
+		// billing fields) is refreshed by claude on its own schedule and comparing
+		// it would flag a correct switch as drift.
+		IdentityKeys: []string{"accountUuid", "emailAddress", "organizationUuid"},
 	}
 }
 
@@ -183,12 +201,24 @@ func (Claude) Identity(_ context.Context, env adapter.Env) (string, error) {
 	return doc.OAuthAccount.EmailAddress, nil
 }
 
-// Freshness reads claudeAiOauth's expiresAt (Unix ms) and refreshToken. The
-// keychain payload wraps the object under claudeAiOauth; the file-driver
-// snapshot stores the inner object directly, so both nestings are handled.
-// Callers walk every stored artifact and take the first datable one, so a
-// payload without expiresAt (the oauth_account identity cache) must report
-// Known=false rather than a zero expiry, which would read as long expired.
+// Freshness reads claudeAiOauth's expiresAt (Unix ms), refreshToken and
+// refreshTokenExpiresAt. The keychain payload wraps the object under
+// claudeAiOauth; the file-driver snapshot stores the inner object directly, so
+// both nestings are handled. Callers walk every stored artifact and take the
+// first datable one, so a payload without expiresAt (the oauth_account identity
+// cache) must report Known=false rather than a zero expiry, which would read as
+// long expired.
+//
+// refreshTokenExpiresAt is persisted next to expiresAt and matters because a
+// Claude Code refresh token now lives days, not a month: without it, an expired
+// access token plus any refresh string reads as "recoverable" long after it is
+// not. Claude Code itself warns on it (it surfaces the remaining days inside 3).
+//
+// The tombstone is the other half. When a refresh fails with invalid_grant,
+// Claude Code overwrites the credential in place with blank tokens and
+// expiresAt 0 — an explicit death certificate. Read literally that is "no expiry
+// recorded", the most harmless state kae has, so it is translated here (the one
+// place that knows this payload) into Invalid.
 func (Claude) Freshness(payload []byte) freshness.Info {
 	root, ok := freshness.DecodeObject(payload)
 	if !ok {
@@ -203,10 +233,16 @@ func (Claude) Freshness(payload []byte) freshness.Info {
 	if _, ok := obj["expiresAt"]; !ok {
 		return freshness.Info{}
 	}
+	hasAccess := freshness.NonEmptyString(obj["accessToken"])
+	hasRefresh := freshness.NonEmptyString(obj["refreshToken"])
 	return freshness.Info{
-		Known:      true,
-		ExpiresAt:  freshness.EpochToTime(freshness.NumberFrom(obj["expiresAt"])),
-		HasRefresh: freshness.NonEmptyString(obj["refreshToken"]),
+		Known:            true,
+		ExpiresAt:        freshness.EpochToTime(freshness.NumberFrom(obj["expiresAt"])),
+		HasRefresh:       hasRefresh,
+		RefreshExpiresAt: freshness.EpochToTime(freshness.NumberFrom(obj["refreshTokenExpiresAt"])),
+		// Both tokens blank in a payload that still carries expiresAt: nothing is
+		// left to authenticate or refresh with, which is what the tombstone is.
+		Invalid: !hasAccess && !hasRefresh,
 	}
 }
 

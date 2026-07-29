@@ -23,12 +23,36 @@ detected) and refuse to write when the live layout is unrecognized
 onboarding, cache keys, and `oauthAccount`. kae switches `/oauthAccount` — the
 identity claude displays — and nothing else in that file, by JSON pointer only.
 The credential is still claude's sole *auth* artifact; the identity cache is
-switched for correct attribution, because claude **no longer self-heals it**:
-it skips the profile refetch while the cached copy is under 24h old, and a
-token refresh renews that timestamp *without* rewriting `emailAddress`. Since a
-credential in daily use refreshes well inside 24h, a switched token would leave
-the previous account's identity on screen indefinitely (measured on Claude Code
-2.1.220; supersedes the 2026-06-14 self-heal finding — docs/SCOPE-MODEL.md §6).
+switched for correct attribution, because claude's **self-heal of it is
+TTL-gated, not unconditional**:
+
+- on startup it refetches the profile and rewrites `emailAddress` (and
+  `profileFetchedAt`) only when the cached object is incomplete **or** its
+  `profileFetchedAt` is more than **24h** old;
+- a **token refresh** renews `profileFetchedAt` and the org/plan fields but
+  rewrites neither `emailAddress` nor `accountUuid`;
+- `claude /login` rewrites `accountUuid` / `emailAddress` / `organizationUuid`
+  unconditionally — the TTL does not apply to it.
+
+Since a credential in daily use refreshes well inside 24h, the cache is
+effectively never stale and a switched token would leave the previous account's
+identity on screen indefinitely (measured on Claude Code 2.1.220; supersedes the
+2026-06-14 unconditional-self-heal finding — docs/SCOPE-MODEL.md §6).
+
+Two consequences of the TTL that are easy to misread as an upstream change:
+
+- **A switched identity's lifetime is its snapshot's.** kae applies the
+  `profileFetchedAt` that was live at capture time, so applying a snapshot older
+  than 24h makes claude refetch on its next start — and write the right email for
+  the applied token by itself. kae's switch is what makes the identity correct
+  *immediately*; a stale-but-correctly-switched snapshot converges either way.
+- **Comparisons of that payload must be keyed, not byte-exact.** The refetch
+  rewrites `profileFetchedAt` and the plan fields, so only the identifying keys
+  may be compared when asking "is the live identity still the one kae applied?".
+  The adapter declares them on the spec (`IdentityKeys`: `accountUuid`,
+  `emailAddress`, `organizationUuid` — exactly what `/login` writes and a refresh
+  does not), and `doctor identity_drift` compares only those. A credential is
+  still compared byte for byte.
 
 **Auth mode only (known gap).** `kae use` / `kae add` switch the cache; the
 per-directory materializers do not. Isolation modes point `CLAUDE_CONFIG_DIR` at
@@ -68,7 +92,7 @@ once (the stale cache is removed), **start claude** so it refetches the profile,
 switches move it in place, with no refetch and no network. Re-capturing before
 that refetch would store whatever account the stale cache still names.
 
-Two more consequences of kae switching a field claude no longer maintains:
+Two more consequences of kae switching a field claude maintains only lazily:
 
 - **`kae add` still requires a credential.** An `/oauthAccount` alone is not a
   login — it outlives a logout — so capture refuses (`auth_missing`, exit 3)
@@ -77,7 +101,12 @@ Two more consequences of kae switching a field claude no longer maintains:
   the snapshot of the account it switches *away* from, but deliberately does not
   import the live `/oauthAccount`: it may name a different account than the live
   credential (exactly the drift this artifact fixes), and importing it would pin
-  the wrong identity onto that account permanently.
+  the wrong identity onto that account permanently. The exception is a live
+  identity whose *identifying* keys changed: since `/login` writes them
+  unconditionally, that means the live credential belongs to another account, so
+  the recapture is **skipped entirely** with a warning rather than filing the new
+  credential under the old account's name (offline, nothing could detect that
+  afterwards — the access token is opaque).
 
 The macOS driver reads and writes the keychain through the `security` CLI via
 the runner seam. The captured keychain item is stored and restored
@@ -544,9 +573,13 @@ claims decoder is `internal/jwt`).
    `adapter.Fresher` (`Freshness(payload) freshness.Info`) using the primitives
    in `internal/freshness` (JWTExpiry / EpochToTime / DecodeObject / …) so the
    switch-time stale warning and `doctor credential_stale` can read its expiry
-   and refresh-token presence; a static API key or a pointer-only artifact stays
-   not-datable — just omit the method (Known=false). See the per-tool field map
-   in [DATA-MODEL.md](DATA-MODEL.md).
+   and refresh-token state; a static API key or a pointer-only artifact stays
+   not-datable — just omit the method (Known=false). Fill
+   `RefreshExpiresAt` when the payload publishes the refresh token's own expiry,
+   and set `Invalid` for a payload the tool has explicitly emptied or revoked.
+   Both are per-tool readings and belong here, not in `internal/freshness`, which
+   holds no per-tool knowledge. See the per-tool field map in
+   [DATA-MODEL.md](DATA-MODEL.md).
 5. Optionally implement `adapter.Identifier` so `kae add <tool>` can default the
    account name (above). Skip it when the tool exposes no readable identity.
 6. Implement `adapter.VersionVerifier` (`VerifiedVersion() string`) with the

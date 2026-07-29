@@ -82,6 +82,19 @@ type Spec struct {
 	// Never set it on a credential: every one of those would be wrong there, and
 	// the last would silently log the user out.
 	IdentityOnly bool
+	// IdentityKeys names the top-level JSON keys of an IdentityOnly payload that
+	// actually identify the account. Everything else in the payload is volatile
+	// bookkeeping the tool rewrites on its own schedule (claude renews
+	// oauthAccount.profileFetchedAt and the plan fields whenever it refetches the
+	// profile), so only these keys may be compared when asking "is the live
+	// identity still the one kae applied?" — a byte comparison would report a
+	// correctly-switched account as drift as soon as the tool touched a timestamp.
+	// Empty means "no keyed comparison available": comparers fall back to bytes.
+	//
+	// This is the identity counterpart of the credential comparison, and only
+	// that: a credential is compared byte for byte and must stay that way, since
+	// one differing bit there is a different credential.
+	IdentityKeys []string
 }
 
 // Value is one captured artifact value. Present=false records that the

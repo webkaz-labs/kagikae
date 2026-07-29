@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -145,6 +146,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	if beErr == nil {
 		be = secret.Cached(be)
 	}
+	staleTools := []string{}
 	for _, plan := range plans {
 		res := switchResult{
 			Tool: plan.Tool, Account: plan.Account, Driver: plan.Driver,
@@ -154,6 +156,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		if beErr == nil {
 			if w, err := app.staleSnapshotWarning(ctx, be, plan.Meta); err == nil && w != "" {
 				res.Warnings = append(res.Warnings, w)
+				staleTools = append(staleTools, plan.Tool)
 			}
 		}
 		report.Results = append(report.Results, res)
@@ -164,6 +167,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	if beErr != nil {
 		return nil, beErr
 	}
+	warnBeforeApply(report.Results, staleTools)
 
 	tools := make([]string, len(plans))
 	for i, plan := range plans {
@@ -224,6 +228,32 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	return report, nil
 }
 
+// warnBeforeApply emits every switch warning on stderr, before the first
+// credential is written.
+//
+// Where they used to go was the stdout success report, printed only after apply,
+// state save and backup prune had all run: a "this snapshot cannot log you in"
+// notice arrived after the switch it was about, disappeared through a pipe, sat
+// among up to six "Switched ..." lines, and under bare `kae use --quiet` — the
+// form the generated mise enter hook runs — was never printed at all. stderr and
+// pre-apply fix all four. --quiet suppresses the success report, never a warning.
+//
+// The exit code stays 0: the switch itself succeeds, and failing here would break
+// every enter hook.
+func warnBeforeApply(results []switchResult, staleTools []string) {
+	for _, res := range results {
+		for _, w := range res.Warnings {
+			fmt.Fprintf(os.Stderr, "kae: warning: %s: %s\n", res.Tool, w)
+		}
+	}
+	// A profile switch fans out over several tools, so close with one roll-up line
+	// naming them; a single-tool switch already said it once.
+	if len(staleTools) > 1 {
+		fmt.Fprintf(os.Stderr, "kae: warning: %d tools need a re-login before use: %s\n",
+			len(staleTools), strings.Join(staleTools, ", "))
+	}
+}
+
 // toolNames extracts the tool ids from switch results, preserving order. Shared
 // by runSwitch and buildUseBare to feed teardownSynced.
 func toolNames(results []switchResult) []string {
@@ -255,11 +285,11 @@ func printSwitchReport(report *switchReport) {
 		}
 		return
 	}
+	// Warnings are not repeated here: warnBeforeApply already put them on stderr,
+	// before the apply and independent of --quiet. The dry-run branch above still
+	// prints them, since nothing is applied there and no stderr line is emitted.
 	for _, result := range report.Results {
 		fmt.Printf("Switched %s -> %s\n", result.Tool, result.Account)
-		for _, warning := range result.Warnings {
-			fmt.Printf("  warning: %s\n", warning)
-		}
 	}
 	if report.Profile != nil {
 		fmt.Printf("Active profile: %s\n", *report.Profile)

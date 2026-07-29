@@ -134,13 +134,24 @@ matches.
   currently-active account** when its live credential diverges from its snapshot
   (symmetric with `run -s`), so a later switch back applies the token that was
   live at switch-away rather than a stale capture. It is divergence-gated (no
-  write when they match) and best-effort: a logged-out active account is left
-  untouched with a warning, never aborting the switch. If the account being
-  switched **to** has an expired snapshot with no refresh token, kae warns and
-  names `kae add` but still proceeds (a snapshot with a refresh token proceeds
-  silently — the tool self-refreshes). The warning rides in each result's
-  `warnings` array. Only `kae use` / bare `use` recapture; `use -i` / `pin` /
-  `run -i` write kae-owned isolation dirs and never the real store.
+  write when they match) and best-effort: it never aborts the switch, and it is
+  skipped with a warning when the live state cannot be trusted as that account's —
+  a logged-out tool, a live identity whose identifying keys name a different
+  account (someone ran the tool's own login outside kae), or a live credential that
+  needs a re-login while the snapshot still holds a usable one. That last guard is
+  one-directional: kae never prefers the older value, it only refuses to overwrite
+  a working credential with a dead one.
+
+  If the account being switched **to** needs a re-login (expired with no usable
+  refresh token, or emptied by the tool), kae warns and still proceeds; a snapshot
+  whose refresh token is still usable proceeds silently — the tool self-refreshes.
+  Warnings go to **stderr, before anything is applied**, so they survive a pipe and
+  `--quiet` (which suppresses the success report, never a warning), and a switch of
+  several tools closes with one roll-up line naming those that need a re-login. The
+  exit code stays `0` — the switch itself succeeded. The same warnings also ride in
+  each result's `warnings` array for `--json`. Only `kae use` / bare `use`
+  recapture; `use -i` / `pin` / `run -i` write kae-owned isolation dirs and never
+  the real store.
 - `--isolated` / `-i`: point every terminal at a per-account private home
   **without touching `~/.claude`**. kae prepares
   `isolation/global/<tool>/<account>/` (docs/DATA-MODEL.md) and writes a
@@ -329,8 +340,16 @@ isolation directories (with their login state) intact.
   (`isolation/<pin-id>/<tool>/isolated/<account>/config/`): all state (auth,
   sessions, memory, settings) is private to the account. Items listed in
   `tools.<tool>.isolated_shared_items` are symlinked from the real home; the
-  credential is always private-copied at `0600`. Re-running refreshes the opt-in
+  credential is private-copied at `0600`. Re-running refreshes the opt-in
   links and the credential copy.
+
+  Two limits of that copy are open gaps ([ROADMAP.md](ROADMAP.md)): it is taken
+  from the **live** store rather than the account's snapshot, so pinning an
+  account that is not currently active seeds the directory with whichever
+  credential is live; and on macOS claude resolves its keychain service from
+  `CLAUDE_CONFIG_DIR`, so after its first token refresh the directory reads a
+  per-directory keychain item instead of the copy, and a later
+  `kae pin <tool> <account>` no longer changes what claude uses.
 
 `kae mise init [-P <profile>] [--auto] [--write]` renders auth-mode tasks and
 the opt-in enter hook into a marker-delimited block in `.mise.toml`. Default
@@ -541,7 +560,9 @@ in the same transaction.
 
 ## Output Rules
 
-- Human reports go to stdout; usage and runtime errors go to stderr.
+- Human reports go to stdout; usage and runtime errors go to stderr. So do
+  warnings: they must survive a piped stdout and `--quiet`, and they are emitted
+  before the write they warn about, not after it.
 - JSON mode never emits color, progress, prompts, or localized text.
 - Secret values never appear in any output, log, or error message; artifacts
   are referenced by name and location only.
@@ -674,11 +695,15 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `companion_token_drift`, `identity_drift`, `upstream_version`.
 
 Credential-health checks (warn-level):
-- `credential_stale`: a captured snapshot is past its `expiresAt` with no
-  refresh token, so a switch to it cannot self-heal — names `kae add`. Uses the
-  same freshness predicate as the switch-time warning; it inspects only the
-  stored snapshot (no live read, so no extra keychain prompt). An expired
-  snapshot that still has a refresh token is not flagged (the tool refreshes it).
+- `credential_stale`: a captured snapshot cannot open a session again without an
+  interactive re-login — its access token expired and no **usable** refresh token
+  is left (absent, or itself past `refreshTokenExpiresAt`), or the tool emptied
+  the credential itself after a failed refresh. Names the tool's own login
+  command *and* `kae add --no-login`, in that order: re-capturing first would only
+  freeze the dead credential back into the snapshot. Uses the same freshness
+  predicate as the switch-time warning, and inspects only the stored snapshot (no
+  live read, so no extra keychain prompt). An expired snapshot whose refresh token
+  is still usable is not flagged (the tool refreshes it).
 - `secret_orphan`: a stored secret item has no matching snapshot dir — names
   `kae account rm`. Detected only where the backend can enumerate (file
   `readdir`, Linux `libsecret`); the darwin keychain cannot list by service, so
@@ -687,10 +712,14 @@ Credential-health checks (warn-level):
 Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
 <tool>`; both offline — no network call):
 - `identity_drift`: the live value of a tool's identity-only artifact (claude's
-  `/oauthAccount`) differs from the one kae applied for the active account, or has
-  disappeared. Since kae applies the identity together with the credential, a
-  divergence means it was rewritten outside kae — a manual login, or upstream
-  changing how it maintains the field. Names `kae use <tool> <account>` to
+  `/oauthAccount`) no longer names the account kae applied for the active account,
+  or has disappeared. Only the artifact's **identifying** keys are compared
+  (`IdentityKeys`: for claude `accountUuid`, `emailAddress`, `organizationUuid`) —
+  the rest of that payload is bookkeeping the tool rewrites on its own schedule
+  (`profileFetchedAt`, plan fields), and comparing it flagged correct switches as
+  drift. Since kae applies the identity together with the credential, a
+  divergence in those keys means it was rewritten outside kae — a manual login, or
+  upstream changing how it maintains the field. Names `kae use <tool> <account>` to
   re-apply, and points at docs/VALIDATION.md "Upstream Behaviour Assumptions" if
   it drifts again. The identity value itself is never printed (it is PII);
   the message names only the tool, account, and artifact. Skipped when the tool

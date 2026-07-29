@@ -208,15 +208,25 @@ and non-keychain artifacts.
 A snapshot is rewritten by `kae add`, `run -s`'s post-child recapture, and (new
 in v0.8.1) `kae use`/bare `use`'s switch-away recapture of the currently-active
 account when its live credential diverges from the snapshot. The snapshot's
-credential expiry and refresh-token presence are read (never stored separately)
-for the switch-time stale warning and the `doctor` `credential_stale` check. The
-per-tool reader is the adapter's `Freshness(payload)` capability (v0.8.3 §A),
-built from the shared primitives in `internal/freshness`: claude
-`claudeAiOauth.expiresAt` (Unix ms) + `refreshToken`, codex
+credential expiry, refresh-token state, and explicit invalidation are read (never
+stored separately) for the switch-time stale warning and the `doctor`
+`credential_stale` check. The per-tool reader is the adapter's
+`Freshness(payload)` capability (v0.8.3 §A), built from the shared primitives in
+`internal/freshness`: claude `claudeAiOauth.expiresAt` (Unix ms) +
+`refreshToken` + `refreshTokenExpiresAt` (Unix ms), codex
 `tokens.access_token`/`id_token` JWT `exp` + `refresh_token`, opencode `/openai`
 `expires` (Unix ms) + `refresh`, cursor's opaque JWT `exp` (no refresh token).
 copilot's `/lastLoggedInUser` and agy's encrypted blob carry no datable token
 (no `Freshness` method), so they are never flagged.
+
+A refresh token has its own lifetime — Claude Code's is measured in **days**, and
+upstream warns when under three remain — so "a refresh token is present" is not
+"recoverable". Where the payload publishes a refresh expiry, kae uses it; where it
+does not, presence is all there is. claude also **tombstones** a credential whose
+refresh failed (blank `accessToken`/`refreshToken`, `expiresAt: 0`): the adapter
+reports that as invalid rather than as "no expiry recorded", which is what the
+bytes literally say. Deciding which bytes mean that is per-tool knowledge and
+lives in the adapter; `internal/freshness` stays a pure parser.
 
 ## Secret References
 
@@ -323,8 +333,9 @@ need them and are absent in backups written before the field existed.
 
 Every field here is a **fact about the captured artifact**, needed to write it
 back. Restore *policy* is deliberately not recorded: whether losing a payload is
-survivable comes from today's adapter spec (`IdentityOnly`), so an old backup
-cannot pin a decision kae has since changed. That is also why a rollback can
+survivable comes from today's adapter spec (`IdentityOnly`), and so does which of
+its keys identify the account (`IdentityKeys`), so an old backup cannot pin a
+decision kae has since changed. That is also why a rollback can
 clear an identity-only artifact the backup has no record of at all — it cannot be
 restored, and a stale identity cache would mislabel the restored account.
 

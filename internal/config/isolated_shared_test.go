@@ -45,8 +45,9 @@ func TestIsolatedSharedItemsValidation(t *testing.T) {
 		}
 	}
 
-	// .claude.json is not an auth artifact (it is a token-derived cache that
-	// claude self-heals), so it may be listed in isolated_shared_items.
+	// .claude.json is not an auth artifact (it is a token-derived cache claude
+	// refetches once its 24h TTL lapses), so it may be listed in
+	// isolated_shared_items.
 	allowedIdentity := "version = 1\n[tools.claude]\nisolated_shared_items = [\".claude.json\"]\n"
 	if _, err := loadFromString(t, allowedIdentity); err != nil {
 		t.Fatalf(".claude.json must be allowed in isolated_shared_items: %v", err)

@@ -46,6 +46,26 @@ func TestDoctorReportsStaleSnapshot(t *testing.T) {
 	}
 }
 
+// §D: the credential Claude Code tombstones after a failed refresh (blank tokens,
+// expiresAt 0) reads literally as "no expiry recorded" — kae's most harmless
+// state — so it used to be the one snapshot doctor stayed silent about.
+func TestDoctorReportsTombstonedSnapshot(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaudeOAuth(t, app, `{"accessToken":"","refreshToken":"","expiresAt":0}`)
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "dead") })
+
+	msg, ok := findCheck(buildDoctor(ctx, app, "claude", false), constants.CheckCredentialStale)
+	if !ok {
+		t.Fatal("a tombstoned snapshot must be reported stale")
+	}
+	if !strings.Contains(msg, "failed token refresh") || !strings.Contains(msg, "claude /login") {
+		t.Fatalf("stale message should explain the tombstone and name the login flow: %q", msg)
+	}
+}
+
 // §D: an expired snapshot that still carries a refresh token is not flagged.
 func TestDoctorIgnoresRefreshableSnapshot(t *testing.T) {
 	app := testApp(t, nil)

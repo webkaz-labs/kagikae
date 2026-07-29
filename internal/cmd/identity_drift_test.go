@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
@@ -145,5 +147,108 @@ func TestDoctorIdentityDriftSkipsWithoutActiveAccount(t *testing.T) {
 	report := buildDoctor(context.Background(), app, "", false)
 	if msg, ok := findCheck(report, constants.CheckIdentityDrift); ok {
 		t.Fatalf("with no active account kae applied nothing to compare against: %q", msg)
+	}
+}
+
+// seedClaudeIdentity writes the live mixed-state file with a full /oauthAccount:
+// the identifying keys plus the bookkeeping claude renews on a profile refetch.
+func seedClaudeIdentity(t *testing.T, app *App, accountUUID, email string, fetchedAt int64, plan string) {
+	t.Helper()
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+		`{"claudeAiOauth":{"accessToken":"`+mainToken+`","subscriptionType":"max"}}`)
+	claudeJSON(t, app, fmt.Sprintf(
+		`{"oauthAccount":{"accountUuid":%q,"emailAddress":%q,"organizationUuid":"org-1",`+
+			`"profileFetchedAt":%d,"organizationRole":%q},"projects":{}}`,
+		accountUUID, email, fetchedAt, plan,
+	))
+}
+
+// The regression this check nearly caused itself: claude's identity self-heal is
+// TTL-gated, so once the applied (capture-time) profileFetchedAt is over 24h old
+// it refetches and rewrites that timestamp and the plan fields. Comparing the
+// whole payload therefore warned about a *correctly* switched account a day
+// later, and its remedy — re-apply the same bytes — could not fix it.
+func TestDoctorIdentityDriftIgnoresProfileRefetch(t *testing.T) {
+	app := testApp(t, nil)
+	seedClaudeIdentity(t, app, "main-uuid", "you@example.com", 1749000000000, "admin")
+	code, out := captureStdout(t, func() int {
+		return runCapture(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	// Same account; claude refetched the profile and rewrote its bookkeeping.
+	seedClaudeIdentity(t, app, "main-uuid", "you@example.com", 1750000000000, "member")
+
+	report := buildDoctor(context.Background(), app, "", false)
+	if msg, ok := findCheck(report, constants.CheckIdentityDrift); ok {
+		t.Fatalf("a profile refetch of the same account is not drift: %q", msg)
+	}
+}
+
+// The identifying keys still drift: the account uuid alone changing is a
+// different account, even with the email untouched.
+func TestDoctorIdentityDriftDetectsAccountUUIDOnly(t *testing.T) {
+	app := testApp(t, nil)
+	seedClaudeIdentity(t, app, "main-uuid", "you@example.com", 1749000000000, "admin")
+	code, out := captureStdout(t, func() int {
+		return runCapture(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	seedClaudeIdentity(t, app, "other-uuid", "you@example.com", 1749000000000, "admin")
+
+	report := buildDoctor(context.Background(), app, "", false)
+	if _, ok := findCheck(report, constants.CheckIdentityDrift); !ok {
+		t.Fatalf("a changed accountUuid must still drift: %+v", report.Checks)
+	}
+}
+
+// identityDiffers keys the comparison; anything it cannot key on falls back to the
+// strict byte comparison rather than being declared equal.
+func TestIdentityDiffers(t *testing.T) {
+	keyed := artifact.Spec{IdentityKeys: []string{"accountUuid", "emailAddress"}}
+	cases := []struct {
+		name          string
+		sp            artifact.Spec
+		stored, live  string
+		wantDifferent bool
+	}{
+		{
+			"volatile field only", keyed,
+			`{"accountUuid":"a","emailAddress":"you@example.com","profileFetchedAt":1}`,
+			`{"accountUuid":"a","emailAddress":"you@example.com","profileFetchedAt":2}`, false,
+		},
+		{
+			"email differs", keyed,
+			`{"accountUuid":"a","emailAddress":"you@example.com"}`,
+			`{"accountUuid":"a","emailAddress":"other@example.com"}`, true,
+		},
+		{
+			"identity key dropped live", keyed,
+			`{"accountUuid":"a","emailAddress":"you@example.com"}`,
+			`{"accountUuid":"a"}`, true,
+		},
+		{
+			"key order and spacing", keyed,
+			`{"accountUuid":"a","emailAddress":"you@example.com"}`,
+			`{"emailAddress":"you@example.com", "accountUuid":"a"}`, false,
+		},
+		{
+			"no keys declared: byte comparison",
+			artifact.Spec{},
+			`{"accountUuid":"a","profileFetchedAt":1}`,
+			`{"accountUuid":"a","profileFetchedAt":2}`, true,
+		},
+		{
+			"live not an object: byte comparison", keyed,
+			`{"accountUuid":"a"}`, `"a"`, true,
+		},
+		{"both unparseable but identical", keyed, `nonsense`, `nonsense`, false},
+		{"both unparseable and different", keyed, `nonsense`, `other`, true},
+	}
+	for _, c := range cases {
+		if got := identityDiffers(c.sp, []byte(c.stored), []byte(c.live)); got != c.wantDifferent {
+			t.Errorf("%s: identityDiffers = %v, want %v", c.name, got, c.wantDifferent)
+		}
 	}
 }

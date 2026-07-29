@@ -99,6 +99,16 @@ absent instead of failing, and the tool rebuilds it. Never set it on a
 credential. Whether losing it is survivable is policy, so it lives on the spec
 and is never persisted into a snapshot or backup record.
 
+Such a spec also declares `IdentityKeys`: the payload keys that actually name the
+account. An identity payload carries volatile bookkeeping the tool rewrites on its
+own schedule (claude renews `/oauthAccount.profileFetchedAt` on every profile
+refetch), so "is the live identity still the one kae applied?" is answered on
+those keys alone — `identityDiffers` in `internal/cmd`, used by both
+`doctor identity_drift` and the switch-away recapture. Comparing whole payloads
+made a correct switch look like drift a day later. Credentials keep the strict
+byte comparison (`snapshotArtifactDiffers`): one differing bit there is a
+different credential.
+
 `Env` carries the resolved home directory, OS, environment lookups, and the
 live base paths (honoring `CLAUDE_CONFIG_DIR` / `CODEX_HOME` when already
 set). Capture, apply, verify, backup, and rollback are generic operations in

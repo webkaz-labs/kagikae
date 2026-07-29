@@ -60,6 +60,17 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   updating it in the same commit.
 - Secret values must never reach stdout/stderr/JSON/metadata/logs. New output
   paths need a redaction test.
+- Two comparison predicates, never interchangeable: a **credential** is compared
+  byte-exact (`snapshotArtifactDiffers`) — one differing bit is a different
+  credential, and that strictness is never loosened. An **identity-only** payload
+  is compared on the spec's `IdentityKeys` (`identityDiffers`), because the tool
+  rewrites volatile fields in it on its own schedule (claude renews
+  `/oauthAccount.profileFetchedAt` past a 24h TTL). Reusing the credential
+  comparator for an identity makes every correct switch look like drift a day
+  later; it shipped that way once.
+- Warnings go to stderr and are emitted **before** the write they warn about.
+  `--quiet` suppresses success reports, never warnings, and a warning never
+  changes the exit code (a non-zero exit breaks the mise enter hook).
 - Mixed-state files are patched by JSON Pointer only; whole-file replacement
   of `~/.claude.json` is forbidden in code review, not just in docs.
 - `config.toml` edits go through the comment-preserving `config.Editor` via

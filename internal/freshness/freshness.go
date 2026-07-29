@@ -33,9 +33,23 @@ type Info struct {
 	// ExpiresAt is the access token's expiry. Zero when the format is known but
 	// carries no expiry (e.g. a codex auth.json holding only an API key).
 	ExpiresAt time.Time
-	// HasRefresh is true when a non-empty refresh token is present, so the tool
-	// can self-refresh an expired access token without a re-login.
+	// HasRefresh is true when a non-empty refresh token is present. Presence is
+	// not usability: a refresh token has its own lifetime (see RefreshExpiresAt),
+	// so a caller deciding "can this recover without a re-login?" must consult
+	// both fields, never HasRefresh alone.
 	HasRefresh bool
+	// RefreshExpiresAt is the refresh token's own expiry, when the payload
+	// publishes one (claude's refreshTokenExpiresAt). Zero means *unknown*, not
+	// "never expires": a tool that does not publish it leaves this zero and only
+	// HasRefresh is available. Since refresh-token lifetimes have shortened to
+	// days, an expired one is now a routine state, not an edge case.
+	RefreshExpiresAt time.Time
+	// Invalid marks a payload that is structurally intact but has been emptied by
+	// the tool itself — the tombstone Claude Code writes over the credential when
+	// a refresh fails (blank tokens, expiresAt 0). No refresh can revive it; only
+	// a re-login can, so it must not be read as "no expiry recorded". Which bytes
+	// mean this is per-tool knowledge and is decided in the adapter.
+	Invalid bool
 }
 
 // JWTExpiry decodes a JWT's claims and returns its exp (seconds since epoch).

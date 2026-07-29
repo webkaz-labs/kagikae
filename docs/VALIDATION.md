@@ -863,12 +863,19 @@ that keeps the layout byte-identical and changes only what the tool *does* passe
 every guard kae has.
 
 That is not hypothetical. `/oauthAccount` was originally left alone because Claude
-Code was measured self-healing it. It stopped (it now skips the profile refetch
-while the cached copy is under 24h old, and a token refresh renews that timestamp
-without rewriting `emailAddress`); the layout never changed, no check fired, and
-switched sessions kept displaying the previous account until a user noticed by
-hand. The assumption was real and load-bearing, and it **was not written down as
-a verifiable item** — which is the gap this table closes.
+Code was measured self-healing it. The measurement was right but incomplete: the
+self-heal is gated behind a 24h `profileFetchedAt` TTL that every token refresh
+renews without rewriting `emailAddress`, so for a credential in daily use it never
+fires. The layout never changed, no check fired, and switched sessions kept
+displaying the previous account until a user noticed by hand. The assumption was
+real and load-bearing, and it **was not written down as a verifiable item** —
+which is the gap this table closes.
+
+Note the shape of that mistake, because the rows below are worded to avoid
+repeating it: the assumption was recorded as an absolute ("claude self-heals it")
+when the fact was conditional ("claude self-heals it when its cache is over 24h
+old"). Write the condition down, or the next session will diagnose the condition
+firing as a new upstream change.
 
 Two offline `doctor` checks watch the table between releases:
 
@@ -888,9 +895,13 @@ commit**. Verifying an assumption always means launching a **fresh** tool proces
 | Assumption | How to verify |
 |---|---|
 | The credential alone authenticates: applying `/claudeAiOauth` (keychain payload or `.credentials.json`) is the whole login | `kae use claude <acct>`, then `claude -p "say AUTH-OK" </dev/null` in a **new** process returns a reply, not "Not logged in" |
-| `/oauthAccount` is **not** self-healed — a switched credential does not make claude refetch the profile and rewrite `emailAddress` | `kae use claude <other>`, launch claude, then diff `~/.claude.json`: `oauthAccount.emailAddress` is the value kae wrote and does **not** revert. If it self-heals again, kae's identity switch becomes redundant (not harmful) — record that here rather than dropping the artifact silently |
+| `/oauthAccount`'s self-heal is **TTL-gated**: claude refetches the profile and rewrites `emailAddress` only when the cached object is incomplete or its `profileFetchedAt` is over **24h** old, and a token refresh renews that timestamp without rewriting `emailAddress` / `accountUuid` | `kae use claude <other>` with a snapshot captured **within** 24h, launch claude, diff `~/.claude.json`: `oauthAccount.emailAddress` is the value kae wrote and does **not** revert. Then age it (`profileFetchedAt` older than 24h) and launch claude again: it now refetches and rewrites `emailAddress` + `profileFetchedAt` on its own. If the TTL ever stops applying, kae's identity switch becomes redundant (not harmful) — record that here rather than dropping the artifact silently |
+| `claude /login` rewrites `accountUuid` / `emailAddress` / `organizationUuid` unconditionally (no TTL), and a token **refresh** rewrites none of them | Log in to another account with `claude /login`, diff `~/.claude.json`: those three keys change. Let a session run long enough to refresh the token and diff again: `profileFetchedAt` and the plan fields change, those three do not. kae's `IdentityKeys` (the keyed identity comparison) is exactly this set — if a refresh starts rewriting them, `identity_drift` will warn on correct switches again |
+| A **refresh token** carries its own expiry in `refreshTokenExpiresAt` and lives on the order of **days** (Claude Code itself warns inside the last 3) | Read `refreshTokenExpiresAt` from a fresh login's credential and subtract `expiresAt`'s date: measured ≈2 days on 2.1.220 (it was ≈1 month earlier). kae's "recoverable without a re-login" predicate depends on it; if the field disappears, kae falls back to presence alone and under-warns |
+| A refresh that fails with `invalid_grant` makes claude **tombstone** the credential in place: `accessToken: ""`, `refreshToken: ""`, `expiresAt: 0` | Let a credential's refresh token expire, run claude, then read the credential: it is blanked rather than left alone. kae reads that as invalid, not as "no expiry recorded"; if upstream instead deletes the item, the logged-out guards cover it |
 | The keychain payload must round-trip **verbatim**; a re-serialized payload makes Claude Code reject the credential | Capture → apply → fresh-process auth check on macOS with the real keychain driver. A byte-compare of the stored payload does not cover it: an equivalent-but-re-encoded payload is exactly this failure |
 | `~/.claude.json` is mixed state whose other keys must survive a pointer patch | `git`-diff `~/.claude.json` across a switch: only `/oauthAccount` changes; `projects`, `mcpServers`, onboarding and cache keys stay byte-identical |
+| **Where the credential resolves to** is a rule, not a constant: the keychain service is `Claude Code-credentials` only while `CLAUDE_CONFIG_DIR` is unset, and `Claude Code-credentials-<sha8(configDir)>` when it is set; reads try keychain first and fall back to `<configDir>/.credentials.json`; a write goes to keychain and **deletes that file** when the item was previously absent | With `CLAUDE_CONFIG_DIR` pointed at a temp dir, seed only `<dir>/.credentials.json`, run claude (it authenticates from the file), let the token refresh, then look again: `security find-generic-password -s "Claude Code-credentials-<sha8>"` now exists and the file is gone. **This rule is the one kae itself violates today** — it sets `CLAUDE_CONFIG_DIR` for every isolation mode while modelling the service name as a constant, so a pinned directory silently stops reading what kae writes (docs/ROADMAP.md). Recording *storage resolution* as a verifiable rule is the lesson: kae had verified "the credential is at X" and never "how the tool decides where X is" |
 
 ### Other tools
 

@@ -94,6 +94,32 @@ Follow-up from v0.8.4 (not yet scheduled):
   (docs/SCOPE-MODEL.md §6). Until then `doctor`'s `identity_drift` check skips a
   kae-owned isolated home for the same reason: kae applied no identity there, so
   there is nothing of its own to compare the live value against.
+- **macOS: a pinned directory drifts out of kae's control** *(measured on Claude
+  Code 2.1.220, 2026-07-30; the most severe open gap)*: `CLAUDE_CONFIG_DIR` does
+  **not** force file-based auth on macOS. claude namespaces its keychain service
+  by the config dir (`Claude Code-credentials-<sha8(configDir)>`) and reads
+  keychain-first with a plaintext-file fallback, so a fresh pin dir does read
+  kae's `.credentials.json` — until the first token refresh, which writes the
+  per-dir keychain item **and deletes that file**. From then on `kae pin <tool>
+  <account>` rewrites a file nobody reads: it updates the fragment, reports
+  success, and claude keeps running the previous account, while `kae status` shows
+  the new one. Worse than an attribution gap — the *credential* is wrong, and
+  nothing offline compares the two. Order: (1) detect it (the per-dir item's
+  **existence** is readable with one `security` call, no secret access, and can
+  warn from `pin` / `status` / `doctor`), (2) then decide whether
+  `swapDirCredential` should write the per-dir keychain item directly (the
+  existing keychain driver works as-is if the spec's `Target` becomes
+  `Claude Code-credentials-<sha8>`), which would also open a recapture path out of
+  pinned dirs. Pinning `CLAUDE_SECURESTORAGE_CONFIG_DIR` to empty would collapse
+  every pin onto the shared item — recorded only to be rejected.
+- **`kae pin -i` copies the live credential, not the account's snapshot**:
+  `preparePinConfig` / `prepareBond` read from `app.realToolHome(tool)`, so
+  pinning an account that is not currently globally active seeds the dir with
+  whichever credential happens to be live. Only the re-bind path
+  (`swapDirCredential`) uses the snapshot. `docs/CLI.md`'s "the credential is
+  always private-copied" reads as if the account's own credential were used.
+  Silent wrong-account; fix alongside the item above since both live in the
+  materializers.
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the

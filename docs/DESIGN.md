@@ -135,8 +135,9 @@ NG:  two terminals both relying on a global shared switch for different accounts
   project trust during a global shared switch.
 - A mixed-state file (for example `~/.claude.json`) is never replaced, and only
   an explicitly allowlisted pointer inside it is written. Today that is claude's
-  `/oauthAccount` identity cache, switched with the credential because claude
-  stopped self-healing it ([ADAPTERS.md](ADAPTERS.md)); every other key —
+  `/oauthAccount` identity cache, switched with the credential because claude's
+  self-heal of it is gated behind a 24h TTL that every token refresh renews
+  ([ADAPTERS.md](ADAPTERS.md)); every other key —
   `projects`, `mcpServers`, onboarding, trust state — is left exactly as found.
   The per-directory materializers copy the credential only, so they touch no
   mixed-state file at all.

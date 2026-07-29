@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -277,14 +276,14 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 				continue
 			}
 			info, err := app.accountFreshness(ctx, be, acc)
-			if err != nil || !snapshotExpired(info, app.Now()) || info.HasRefresh {
+			if err != nil || !needsRelogin(info, app.Now()) {
 				continue
 			}
 			checks = append(checks, adapter.Check{
 				Tool: acc.Tool, Code: constants.CheckCredentialStale,
 				Status: constants.StatusWarn,
-				Message: fmt.Sprintf("snapshot %q expired %s with no refresh token; re-capture with kae add --no-login %s %s",
-					acc.Name, info.ExpiresAt.UTC().Format(time.RFC3339), acc.Tool, acc.Name),
+				Message: fmt.Sprintf("snapshot %q is stale: %s",
+					acc.Name, staleCredentialDetail(info, acc.Tool, acc.Name)),
 			})
 		}
 	}

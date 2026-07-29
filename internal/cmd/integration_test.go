@@ -117,8 +117,8 @@ func TestCaptureSwitchRollbackClaude(t *testing.T) {
 	if !strings.Contains(creds, mainToken) || strings.Contains(creds, sideToken) {
 		t.Fatalf("credentials not switched: %s", creds)
 	}
-	// /oauthAccount travels with the credential: claude no longer self-heals it
-	// (it skips the profile refetch while the cache is under 24h old), so the
+	// /oauthAccount travels with the credential: claude's self-heal of it is
+	// TTL-gated (no profile refetch while the cache is under 24h old), so the
 	// last-seeded side-uuid must be replaced by main's. Only that pointer moves;
 	// every other key of the mixed-state file survives.
 	identity := readFile(t, filepath.Join(app.Env.Home, ".claude.json"))
@@ -357,10 +357,14 @@ func TestSwitchJSONReportShape(t *testing.T) {
 	}
 }
 
-// A switch-away recapture refreshes the credential of the account being left,
-// but must not import the live identity cache: claude no longer maintains it, so
-// it can name a different account than the live credential — the very drift this
-// artifact exists to correct. Importing it would mislabel the account for good.
+// A switch-away recapture refreshes the credential of the account being left, but
+// must never import the live identity cache: claude maintains it only lazily (24h
+// TTL), so it can name a different account than the live credential — the very
+// drift this artifact exists to correct. Importing it would mislabel the account
+// for good. A live identity that names another account is stronger evidence still
+// (a login outside kae), and there the recapture is skipped altogether
+// (TestSwitchAwaySkipsRecaptureAfterOutsideLogin); either way the snapshot keeps
+// the identity it recorded.
 func TestRecaptureKeepsSnapshotIdentity(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
@@ -375,18 +379,33 @@ func TestRecaptureKeepsSnapshotIdentity(t *testing.T) {
 	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
 	mustExit(t, constants.ExitOK, code, out)
 
-	// Live now holds side's credential with an identity cache naming main.
+	// side is active. Its live identity still names side — so this is the keep
+	// path, not the outside-login skip — but claude has refetched the profile and
+	// renewed the volatile fields, and the credential rotated in-tool.
+	const rotated = "sk-ant-oat01-SIDE-ROTATED-eeee"
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+		`{"claudeAiOauth":{"accessToken":"`+rotated+`","subscriptionType":"max"}}`)
 	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"),
-		`{"oauthAccount":{"accountUuid":"main-uuid"},"projects":{}}`)
+		`{"oauthAccount":{"accountUuid":"side-uuid","emailAddress":"side-uuid@example.com",`+
+			`"profileFetchedAt":9999},"projects":{}}`)
 
 	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
 	mustExit(t, constants.ExitOK, code, out)
 	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
 	mustExit(t, constants.ExitOK, code, out)
 
+	// The rotated credential was recaptured (the point of switching away)...
+	if creds := claudeCreds(t, app); !strings.Contains(creds, rotated) {
+		t.Fatalf("recapture did not refresh the credential: %s", creds)
+	}
+	// ...while the identity stayed the one the snapshot recorded: same account, and
+	// none of the volatile fields claude renewed on its own.
 	identity := readFile(t, filepath.Join(app.Env.Home, ".claude.json"))
 	if !strings.Contains(identity, "side-uuid") {
-		t.Fatalf("recapture imported the stale identity cache: %s", identity)
+		t.Fatalf("recapture lost the recorded identity: %s", identity)
+	}
+	if strings.Contains(identity, "profileFetchedAt") {
+		t.Fatalf("recapture imported the volatile live identity: %s", identity)
 	}
 }
 

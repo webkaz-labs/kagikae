@@ -15,8 +15,9 @@
 > switch.**
 
 "Switching an account" means swapping the credential only (for claude, the
-token; `/oauthAccount` is a token-derived cache that claude self-heals — see
-§6, so it is *not* switched). Where sessions/settings are shared is an
+token; `/oauthAccount` is a token-derived cache that was believed to self-heal —
+§6 amends that: the self-heal is gated behind a 24h TTL every token refresh
+renews, so the cache **is** switched too). Where sessions/settings are shared is an
 independent axis. This principle is what keeps the command surface coherent:
 each mode decides *only* the sharing set; a separate command (`as`) handles the
 credential-only swap.
@@ -131,14 +132,17 @@ is **not an auth artifact**. Auth comes from the **token alone**: removing
 gives a fresh-process `AUTH-OK`. That half still holds.
 
 **Amended by real-machine validation (2026-07-29, Claude Code 2.1.220):** the
-*self-heal* half no longer holds. claude re-derives the identity from the token
-only when its cached copy is stale, and two behaviours together make it
-effectively never stale:
+*self-heal* half does not hold **unconditionally**. It is real but TTL-gated, and
+two behaviours together make the cache effectively never stale:
 
-- the profile refetch is skipped while `oauthAccount.profileFetchedAt` is under
-  **24h** old (and the cached object has its billing/onboarding fields);
+- on startup the profile refetch is skipped while `oauthAccount.profileFetchedAt`
+  is under **24h** old (and the cached object has its billing/onboarding fields);
+  past the TTL, or with an incomplete cache, claude *does* fetch the profile with
+  the live access token and write `emailAddress` + `profileFetchedAt`;
 - a **token refresh** renews `profileFetchedAt` and the org/plan fields but
-  does **not** rewrite `accountUuid` / `emailAddress`.
+  does **not** rewrite `accountUuid` / `emailAddress`;
+- `claude /login`, by contrast, rewrites `accountUuid` / `emailAddress` /
+  `organizationUuid` unconditionally — no TTL guards that path.
 
 A credential in daily use refreshes well inside 24h, so a switched token leaves
 the previous account's `emailAddress` in place indefinitely: `kae` had switched
@@ -146,6 +150,20 @@ the login while Claude Code kept displaying — and reporting to `kae add` — t
 old account. Measured live: keychain token resolved to account A via
 `api.anthropic.com/api/oauth/profile` while `~/.claude.json` still named
 account B, `profileFetchedAt` refreshed the same day.
+
+Two things follow from the TTL being real, and both matter more than the
+"effectively never" summary:
+
+- **A switched identity's lifetime is its snapshot's.** kae writes back the
+  `profileFetchedAt` that was live at capture time, so a snapshot older than 24h
+  makes claude refetch on its next start and fix the email itself. kae's switch is
+  what makes the identity correct *immediately*.
+- **The payload is therefore not comparable byte for byte.** A refetch rewrites
+  `profileFetchedAt` and the plan fields under kae's feet, so any "is the live
+  identity still what kae applied?" check must compare only the identifying keys
+  (`IdentityKeys` on the artifact spec: `accountUuid`, `emailAddress`,
+  `organizationUuid`). Comparing whole payloads warned about correctly switched
+  accounts a day later and pointed the user at a re-apply that could not help.
 
 Therefore the design is: **the token stays claude's sole auth artifact, and
 `/oauthAccount` is switched alongside it as a second, identity-only artifact**
@@ -166,8 +184,9 @@ it. Auth is unaffected either way (the token wins) — this is an attribution ga
 tracked in [ROADMAP.md](ROADMAP.md).
 
 Consequence to document: where the cache *is* shared with the real home, its
-`/oauthAccount` names whichever account `kae use` applied last. It is no longer
-self-healing, so kae is what corrects it — running claude will not.
+`/oauthAccount` names whichever account `kae use` applied last. Its self-heal is
+TTL-gated, so kae is what corrects it promptly — running claude corrects it only
+once the applied `profileFetchedAt` is over 24h old.
 
 **Fallback — copy+patch (not needed for claude).** The validation above removes
 the need for this for claude. It is retained only for a hypothetical future
@@ -295,16 +314,17 @@ and restored; each step a fresh-process `claude -p … --model haiku` auth check
 
 1. **Token only (no `/oauthAccount`)** → `AUTH-OK`. Auth needs the token only.
 2. **Token vs wrong `/oauthAccount`** → `AUTH-OK`. Token wins.
-3. **claude rewrites `/oauthAccount` on startup** = only while its cached copy
-   is stale, which in practice it never is (amended 2026-07-29, §6): the
-   refetch is skipped under a 24h cache TTL that every token refresh renews
-   without rewriting `emailAddress`.
+3. **claude rewrites `/oauthAccount` on startup** = only when its cached copy is
+   stale, which in daily use it never is (amended 2026-07-29, §6): the refetch is
+   skipped under a 24h `profileFetchedAt` TTL that every token refresh renews
+   without rewriting `emailAddress`. Past that TTL the refetch does happen and
+   does write the email, so the self-heal is late, not absent.
 
-Outcome: `/oauthAccount` is not an auth artifact (1 and 2 are permanent), but it
-is not self-healing either, so §6 resolves to "the token is claude's sole auth
-artifact; `/oauthAccount` is switched alongside it as an identity-only pointer
-patch in auth mode, and isolation modes keep their own copy". copy+patch is not needed for
-claude.
+Outcome: `/oauthAccount` is not an auth artifact (1 and 2 are permanent), and its
+self-heal is too late to rely on, so §6 resolves to "the token is claude's sole
+auth artifact; `/oauthAccount` is switched alongside it as an identity-only
+pointer patch in auth mode, and isolation modes keep their own copy". copy+patch is
+not needed for claude.
 
 ## 12. Implementation status
 

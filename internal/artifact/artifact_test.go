@@ -147,6 +147,25 @@ func TestJSONPointerKindRefusesUnresolvableSymlink(t *testing.T) {
 	}
 }
 
+// Only a link that resolves to nothing is logically absent. A cycle says nothing
+// about any target's contents, so even removing the pointer must be refused
+// rather than reported as a successful no-op.
+func TestJSONPointerKindRefusesSymlinkCycle(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a.json"), filepath.Join(dir, "b.json")
+	if err := os.Symlink(b, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(a, b); err != nil {
+		t.Fatal(err)
+	}
+	sp := Spec{Name: "oauth_account", Kind: constants.KindJSONPointer, Target: a, Pointer: "/oauthAccount"}
+	if err := ApplyLive(ctx, sp, Value{}); !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("expected an unsafe refusal for a cycle, got %v", err)
+	}
+}
+
 // TestJSONPointerKindJSONCRoundTrip: a JSONC spec reads through comments and
 // writes the pointer value back while preserving the leading // comments and
 // sibling keys (GitHub Copilot's config.json shape).

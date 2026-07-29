@@ -206,11 +206,14 @@ directories regardless of how the `.claude.json` auth pointer is handled.
 claude adapter resolves `.claude.json` *inside* the config dir when
 `CLAUDE_CONFIG_DIR` is set (`claudeJSONPath()`), not at `~/.claude.json`. The
 real-machine validation above was run against the real-home `~/.claude.json`.
-In `bond` this is handled by the denylist policy: `.claude.json` is not in the
-denylist, so `<config-dir>/.claude.json` is a symlink to the real
-`~/.claude.json` like any other shared file. The symlink target must be the
-*real* home (use the same self-reference guard that protects `.claude/`
-contents).
+The denylist policy does **not** share it into `bond`: `prepareBond` links the
+entries *of* `~/.claude`, and `~/.claude.json` is that directory's sibling, so
+it is never enumerated. `<config-dir>/.claude.json` is therefore a link only
+when `~/.claude/.claude.json` happens to exist; normally claude creates a
+private cache in the bond dir. That is the isolation-mode gap recorded in §6 and
+[ROADMAP.md](ROADMAP.md) — do not read this note as "symlinking already solves
+it". Any future fix must keep the symlink target the *real* home (reuse the
+self-reference guard that protects the `.claude/` contents).
 
 ## 7. Applicability
 

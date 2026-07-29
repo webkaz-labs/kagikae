@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
@@ -282,7 +283,14 @@ func (app *App) clearUnrecordedOptionals(ctx context.Context, meta backup.Meta, 
 		}
 		specs, err := adapterSpecs(ctx, app.Env, tool)
 		if err != nil {
-			continue // unknown tool or unsupported platform: nothing live to clear
+			// An error is not proof that nothing is live: an unsupported platform
+			// looks the same as a bad KAE_CLAUDE_DRIVER value on a working one. The
+			// credential is already restored, so do not fail the rollback over the
+			// cleanup — but say so, or a stale identity cache survives silently.
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: could not resolve %s artifacts to clear its identity cache (%v); "+
+					"verify with kae doctor %s\n", tool, err, tool)
+			continue
 		}
 		for _, sp := range specs {
 			if !sp.Optional || recorded[tool+"/"+sp.Name] {
@@ -336,7 +344,13 @@ func (app *App) plansFromBackupMeta(ctx context.Context, meta backup.Meta) []too
 	for _, tool := range order {
 		current, err := adapterSpecs(ctx, app.Env, tool)
 		if err != nil {
-			continue // unknown tool or unsupported platform: records are all there is
+			// Same reasoning as clearUnrecordedOptionals: an unresolvable adapter
+			// leaves the pre-rollback backup with only the recorded artifacts, so
+			// warn rather than pretend the plan is complete.
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: could not resolve current %s artifacts (%v); the pre-rollback "+
+					"backup covers only what the restored backup recorded\n", tool, err)
+			continue
 		}
 		recorded := make(map[string]bool, len(specsByTool[tool]))
 		for _, sp := range specsByTool[tool] {

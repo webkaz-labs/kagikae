@@ -473,6 +473,63 @@ func TestRollbackClearsUnrecordedIdentityArtifact(t *testing.T) {
 	}
 }
 
+// Rollback restores global state, so a kae-managed CLAUDE_CONFIG_DIR must not
+// steer it. Today's adapter specs (used for the pre-rollback backup and to clear
+// an artifact the backup never recorded) would otherwise resolve into the
+// isolation tree, leaving the real home's identity cache stale.
+func TestRollbackIgnoresPinnedConfigDir(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main-uuid")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	seedClaude(t, app, sideToken, "side-uuid")
+	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	// Rewrite the backup as an older kae did (credential only), then run the
+	// rollback as if the shell were inside a pinned directory.
+	meta, found, err := backup.Latest(app.Paths.BackupsDir())
+	if err != nil || !found {
+		t.Fatalf("latest backup: %v %v", found, err)
+	}
+	kept := meta.Artifacts[:0]
+	for _, rec := range meta.Artifacts {
+		if rec.Name != "oauth_account" {
+			kept = append(kept, rec)
+		}
+	}
+	meta.Artifacts = kept
+	if err := backup.Save(app.Paths.BackupsDir(), meta); err != nil {
+		t.Fatal(err)
+	}
+	// A fresh App, as CmdRollback builds per process: the switch above already
+	// normalized this app's scope, which would mask the env.
+	pinnedConfig := app.Paths.SharedDir("pin-id", "claude")
+	pinned := *app
+	pinned.globalScope = false
+	pinned.Env.Getenv = func(key string) string {
+		if key == "CLAUDE_CONFIG_DIR" {
+			return pinnedConfig
+		}
+		return ""
+	}
+
+	code, out = captureStdout(t, func() int { return runRollback(ctx, &pinned, opts, "") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	if identity := readFile(t, filepath.Join(app.Env.Home, ".claude.json")); strings.Contains(identity, "oauthAccount") {
+		t.Fatalf("the real home's identity cache was not cleared: %s", identity)
+	}
+	if _, err := os.Stat(filepath.Join(pinnedConfig, ".claude.json")); !os.IsNotExist(err) {
+		t.Fatalf("rollback wrote into the isolation tree: %v", err)
+	}
+}
+
 // claude rewrites /oauthAccount (at minimum its profileFetchedAt) on any login,
 // so an identity-only difference must not read as "the login changed auth" —
 // that would defeat the auth_unchanged guard for a re-login to the same account.

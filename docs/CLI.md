@@ -784,6 +784,16 @@ Ordering: newest first.
 }
 ```
 
+`restored` counts the backup's own records. Rollback restores **global** live
+state, so it ignores a kae-managed isolation env var the way `use` and `add` do:
+recorded artifacts carry absolute targets, but the pre-rollback backup and the
+cleanup of an artifact the backup never recorded resolve today's adapter specs,
+which inside a pinned shell would otherwise follow `CLAUDE_CONFIG_DIR` into the
+isolation tree. Restoring a backup taken before an optional artifact existed also
+removes that artifact live (it cannot be restored) — for claude that means the
+identity cache is cleared and refetched, never left naming the account the
+rollback just left.
+
 ### `kae env list --json`
 
 ```json

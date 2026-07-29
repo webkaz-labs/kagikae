@@ -128,6 +128,13 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	if err := app.requireConfig(); err != nil {
 		return nil, err
 	}
+	// Rollback restores global live state. Recorded artifacts carry absolute
+	// targets, but the pre-rollback backup and the unrecorded-Optional cleanup
+	// resolve today's adapter specs through app.Env — inside a pinned shell those
+	// would follow CLAUDE_CONFIG_DIR into the isolation tree and touch the wrong
+	// copy. Hide the kae-managed isolation env first, as use/add already do.
+	// applyGlobalScope, not pinnedGlobalScope: rollback keeps its output unchanged.
+	app.applyGlobalScope()
 	var meta backup.Meta
 	if toID == "" {
 		latest, found, err := backup.Latest(app.Paths.BackupsDir())

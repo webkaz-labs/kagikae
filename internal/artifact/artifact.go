@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -220,10 +221,14 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		if resolved, rerr := filepath.EvalSymlinks(target); rerr == nil {
 			target = resolved
 		} else if info, lerr := os.Lstat(target); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
-			if !v.Present {
-				return nil // nothing to remove: the link points nowhere
+			// A link that resolves to nothing is logically absent, so removing the
+			// pointer is a no-op. Any other resolution failure (a cycle, an
+			// unreadable parent directory) says nothing about the target's contents
+			// and must not be reported as a successful removal.
+			if !v.Present && errors.Is(rerr, fs.ErrNotExist) {
+				return nil
 			}
-			return fmt.Errorf("%w: refusing to rewrite %s (unresolvable symlink: %v)", ErrUnsafe, target, rerr)
+			return fmt.Errorf("%w: refusing to touch %s (unresolvable symlink: %v)", ErrUnsafe, target, rerr)
 		}
 		doc, err := os.ReadFile(target)
 		switch {

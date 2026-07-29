@@ -109,7 +109,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 				plan.Tool, plan.Tool, active)
 			continue
 		}
-		keepSnapshotOptionals(ctx, be, plan.Specs, acc, values)
+		keepSnapshotIdentity(ctx, be, plan.Specs, acc, values)
 		if !valuesDiverge(ctx, be, plan.Specs, acc, values) {
 			continue // live already matches the snapshot: skip the write
 		}
@@ -151,7 +151,7 @@ func snapshotArtifactDiffers(ctx context.Context, be secret.Backend, storedRef s
 	return !found || !bytes.Equal(stored, live.Data), nil
 }
 
-// keepSnapshotOptionals replaces the freshly-read value of every Optional
+// keepSnapshotIdentity replaces the freshly-read value of every identity-only
 // artifact with what acc's snapshot already holds, so a recapture refreshes the
 // credential without touching the identity it recorded.
 //
@@ -161,9 +161,9 @@ func snapshotArtifactDiffers(ctx context.Context, be secret.Backend, storedRef s
 // identity onto this account permanently, long after the credential is right.
 // An unreadable stored payload degrades to absent, which a later switch treats
 // as "remove it and let claude refetch": stale-but-wrong is never kept.
-func keepSnapshotOptionals(ctx context.Context, be secret.Backend, specs []artifact.Spec, acc account.Account, values []artifact.Value) {
+func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifact.Spec, acc account.Account, values []artifact.Value) {
 	for i, sp := range specs {
-		if !sp.Optional {
+		if !sp.IdentityOnly {
 			continue
 		}
 		values[i] = artifact.Value{}
@@ -185,10 +185,10 @@ func valuesDiverge(ctx context.Context, be secret.Backend, specs []artifact.Spec
 	for i, sp := range specs {
 		art, ok := acc.Artifacts[sp.Name]
 		if !ok {
-			// An Optional artifact absent from an older snapshot is not a
+			// An identity-only artifact absent from an older snapshot is not a
 			// divergence — it is simply not tracked yet. Counting it as one
 			// would recapture (and rewrite) on every single switch.
-			if sp.Optional {
+			if sp.IdentityOnly {
 				continue
 			}
 			return true

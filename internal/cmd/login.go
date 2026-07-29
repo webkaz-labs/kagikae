@@ -182,7 +182,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	}
 
 	if restore {
-		if err := app.applyBackup(ctx, be, meta, nil); err != nil {
+		if err := app.applyBackup(ctx, be, meta, nil, nil); err != nil {
 			return finish(opts, errf(exitOf(err),
 				"captured %s/%s but restoring the previous login failed: %v; run: kae rollback --to %s",
 				tool, accountName, err, meta.ID))
@@ -209,11 +209,11 @@ func loginChangedAuth(ctx context.Context, be secret.Backend, meta backup.Meta, 
 		}
 	}
 	for _, sp := range plan.Specs {
-		// An Optional artifact is identity metadata, not auth. claude rewrites
+		// An identity-only artifact is identity metadata, not auth. claude rewrites
 		// /oauthAccount (at minimum its profileFetchedAt) on any login, so
 		// counting it here would report "auth changed" for a re-login to the
 		// same account and defeat the auth_unchanged guard.
-		if sp.Optional {
+		if sp.IdentityOnly {
 			continue
 		}
 		live, err := artifact.ReadLive(ctx, sp)
@@ -242,7 +242,7 @@ func loginChangedAuth(ctx context.Context, be secret.Backend, meta backup.Meta, 
 // even when the failed step leaves auth in the post-login state.
 func finishLoginFailure(ctx context.Context, app *App, opts commonOpts, be secret.Backend, meta backup.Meta, restore bool, op string, err error) int {
 	if restore {
-		if restoreErr := app.applyBackup(ctx, be, meta, nil); restoreErr != nil {
+		if restoreErr := app.applyBackup(ctx, be, meta, nil, nil); restoreErr != nil {
 			return finish(opts, doubleFailure(op, err, restoreErr, meta.ID))
 		}
 		return finish(opts, errf(exitOf(err),

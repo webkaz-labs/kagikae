@@ -167,12 +167,14 @@ secret_ref = "claude/main/oauth_account"
 
 `[artifacts.oauth_account]` (claude only) is claude's identity cache, not a
 credential — it is switched so the UI and `kae add` report the applied account
-([ADAPTERS.md](ADAPTERS.md)). It is the one **optional** artifact: a snapshot
-captured before it existed simply has no such table, and applying that snapshot
-removes `/oauthAccount` live instead of refusing the switch. Its payload is
-identity metadata (email, account/org uuid, plan fields), stored in the secret
-backend like every other artifact payload so no code path special-cases it; it
-is PII and is never printed, exactly like `identity` below.
+([ADAPTERS.md](ADAPTERS.md)). It is the one artifact the adapter declares
+**identity-only**: a snapshot captured before it existed simply has no such
+table, and applying that snapshot removes `/oauthAccount` live instead of
+refusing the switch. That property is not recorded here — it is policy, read from
+today's adapter, so an old snapshot cannot pin a decision kae has since changed.
+Its payload is identity metadata (email, account/org uuid, plan fields), stored
+in the secret backend like every other artifact payload so no code path
+special-cases it; it is PII and is never printed, exactly like `identity` below.
 
 `identity` (optional, v0.8.3 §D) is the raw login identity detected at capture
 (an email or account id), separate from the sanitized account `account` name —
@@ -298,15 +300,15 @@ reversible:
      "secret_ref": "backup/20260611T012345Z/claude/claude_ai_oauth",
      "present": true},
     {"tool": "claude", "name": "oauth_account", "kind": "json-pointer",
-     "target": "~/.claude.json", "pointer": "/oauthAccount", "optional": true,
+     "target": "~/.claude.json", "pointer": "/oauthAccount",
      "secret_ref": "backup/20260611T012345Z/claude/oauth_account",
      "present": true}
   ]
 }
 ```
 
-`keychain_account`, `keychain_replace`, `keychain_match_account`, `jsonc`, and
-`optional` are optional restore-fidelity fields: `keychain_account` recreates a deleted
+`keychain_account`, `keychain_replace`, `keychain_match_account`, and `jsonc` are
+optional restore-fidelity fields: `keychain_account` recreates a deleted
 keychain item under the tool's own account (e.g. `cursor-user`, or codex
 keyring's captured `cli|<opaque>`) instead of the generic fallback;
 `keychain_replace` marks a per-login-account item (codex keyring) so a rollback
@@ -316,14 +318,15 @@ shared service (agy's `gemini`/`antigravity`) so a rollback scopes its
 read/write/delete to that account and never touches a sibling item; `jsonc`
 routes a JSONC target (e.g. Copilot's commented `config.json`) through
 the comment-preserving patch on restore instead of the plain-JSON path, which
-would reject the leading `//` comments; `optional` marks an artifact whose
-absence is safe (claude's identity cache), so a restore whose payload has gone
-missing from the secret store removes it and lets the tool rebuild it instead of
-failing the whole rollback. All are omitted for artifacts that do not need them
-and are absent in backups written before the field existed — where `optional`
-defaults to `false`, keeping the old fail-loud restore for them. A rollback also
-clears any `optional` artifact the backup has no record of at all, since it
-cannot be restored and a stale identity cache would mislabel the account.
+would reject the leading `//` comments. All are omitted for artifacts that do not
+need them and are absent in backups written before the field existed.
+
+Every field here is a **fact about the captured artifact**, needed to write it
+back. Restore *policy* is deliberately not recorded: whether losing a payload is
+survivable comes from today's adapter spec (`IdentityOnly`), so an old backup
+cannot pin a decision kae has since changed. That is also why a rollback can
+clear an identity-only artifact the backup has no record of at all — it cannot be
+restored, and a stale identity cache would mislabel the restored account.
 
 `present: false` records that the artifact did not exist live (so rollback
 removes/skips it instead of writing an empty value). After a successful

@@ -84,48 +84,45 @@ func driver(env adapter.Env) (string, error) {
 
 // oauthAccountSpec switches /oauthAccount, claude's identity cache, inside the
 // mixed-state ~/.claude.json — by JSON pointer only, so projects, mcpServers,
-// onboarding and every other key in that file are untouched. Optional: a
-// snapshot captured before this artifact existed has no copy of it, and the
-// safe fallback there is removal, which makes Claude Code refetch the profile
-// from the live token on its next run.
+// onboarding and every other key in that file are untouched. IdentityOnly: it
+// records who is logged in without being part of what authenticates, so losing
+// it is safe (claude refetches the profile from the live token) and its presence
+// alone is not a login.
 func oauthAccountSpec(env adapter.Env) artifact.Spec {
 	return artifact.Spec{
-		Name:     "oauth_account",
-		Kind:     constants.KindJSONPointer,
-		Target:   claudeJSONPath(env),
-		Pointer:  "/oauthAccount",
-		Optional: true,
+		Name:         "oauth_account",
+		Kind:         constants.KindJSONPointer,
+		Target:       claudeJSONPath(env),
+		Pointer:      "/oauthAccount",
+		IdentityOnly: true,
 	}
 }
 
-// Artifacts returns the credential first: Detect, keychainCredForBond and
-// credentialArtifactName all treat the leading spec as claude's credential.
+// Artifacts returns the credential first, then the identity cache. Detect reads
+// specs[0] as the credential (keychainCredForBond selects by kind instead, and
+// credentialArtifactName keeps its own name map), so the order is a contract of
+// this adapter, pinned by TestClaudeArtifactsLinux/Darwin.
 func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, error) {
 	drv, err := driver(env)
 	if err != nil {
 		return nil, err
 	}
-	if drv == constants.DriverClaudeKeychainPatch {
-		return []artifact.Spec{
-			{
-				Name:            "claude_ai_oauth",
-				Kind:            constants.KindKeychain,
-				Target:          KeychainService,
-				Pointer:         "/claudeAiOauth",
-				KeychainAccount: env.Getenv("USER"),
-			},
-			oauthAccountSpec(env),
-		}, nil
+	credential := artifact.Spec{
+		Name:    "claude_ai_oauth",
+		Kind:    constants.KindJSONPointer,
+		Target:  credentialsPath(env),
+		Pointer: "/claudeAiOauth",
 	}
-	return []artifact.Spec{
-		{
-			Name:    "claude_ai_oauth",
-			Kind:    constants.KindJSONPointer,
-			Target:  credentialsPath(env),
-			Pointer: "/claudeAiOauth",
-		},
-		oauthAccountSpec(env),
-	}, nil
+	if drv == constants.DriverClaudeKeychainPatch {
+		credential = artifact.Spec{
+			Name:            "claude_ai_oauth",
+			Kind:            constants.KindKeychain,
+			Target:          KeychainService,
+			Pointer:         "/claudeAiOauth",
+			KeychainAccount: env.Getenv("USER"),
+		}
+	}
+	return []artifact.Spec{credential, oauthAccountSpec(env)}, nil
 }
 
 func (c Claude) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) {

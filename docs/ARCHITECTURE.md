@@ -89,10 +89,15 @@ type Adapter interface {
 
 `Artifacts` returns the credential **first** — `Detect`, the bond credential
 copy, and `credentialArtifactName` all treat the leading spec as the tool's
-credential. A spec may set `Optional`, which only changes how a snapshot that
-predates it applies: the artifact counts as absent (removed live) instead of
-failing the switch. It is for an artifact whose removal is safe and
-self-correcting (claude's `/oauthAccount`), never for a credential.
+credential. A spec may set `IdentityOnly` to mark an artifact that records *who*
+is logged in without being part of what authenticates (claude's
+`/oauthAccount`). Everything that follows from it is a consequence of not being a
+credential: its live presence alone is not a login, a change to it is not an auth
+change, its live copy is not authoritative for a recapture, and losing it is safe
+— so a snapshot or backup that lacks it (or whose payload is gone) applies it as
+absent instead of failing, and the tool rebuilds it. Never set it on a
+credential. Whether losing it is survivable is policy, so it lives on the spec
+and is never persisted into a snapshot or backup record.
 
 `Env` carries the resolved home directory, OS, environment lookups, and the
 live base paths (honoring `CLAUDE_CONFIG_DIR` / `CODEX_HOME` when already

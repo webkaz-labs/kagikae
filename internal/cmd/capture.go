@@ -121,8 +121,8 @@ func (app *App) captureSnapshot(ctx context.Context, be secret.Backend, plan too
 }
 
 // readLiveValues reads each spec's current live value. anyPresent reports
-// whether at least one non-Optional artifact exists live (none means "not
-// logged in"). An Optional artifact never counts: claude's /oauthAccount
+// whether at least one credential artifact exists live (none means "not
+// logged in"). An identity-only artifact never counts: claude's /oauthAccount
 // identity cache outlives a logout, so on its own it must not make a
 // credential-less state look like a capturable login.
 func readLiveValues(ctx context.Context, specs []artifact.Spec) (values []artifact.Value, anyPresent bool, err error) {
@@ -133,7 +133,7 @@ func readLiveValues(ctx context.Context, specs []artifact.Spec) (values []artifa
 			return nil, false, err
 		}
 		values[i] = value
-		if value.Present && !sp.Optional {
+		if value.Present && !sp.IdentityOnly {
 			anyPresent = true
 		}
 	}

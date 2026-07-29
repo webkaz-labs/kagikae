@@ -63,15 +63,25 @@ type Spec struct {
 	// ~/.copilot/config.json). Reads ignore the comments; writes preserve
 	// them and the surrounding formatting, mutating only the pointer value.
 	JSONC bool
-	// Optional marks an artifact a snapshot or backup may legitimately lack:
-	// captured before this spec existed, or recorded but with its payload gone
-	// from the secret store. Either way it applies as absent (Present=false,
-	// i.e. removed live) instead of failing the whole switch or rollback, so it
-	// never blocks the credential recorded beside it. Use it only where removal
-	// is a safe, self-correcting outcome — claude's /oauthAccount identity cache,
-	// which Claude Code refetches — never for a credential, where a silent
-	// removal would log the user out.
-	Optional bool
+	// IdentityOnly marks an artifact that records *who* is logged in without
+	// being part of what authenticates (claude's /oauthAccount identity cache).
+	// kae switches it so the tool attributes work to the applied account, and
+	// every consequence follows from it not being a credential:
+	//
+	//   - it is not evidence of a login, so its live presence alone does not make
+	//     a credential-less state capturable;
+	//   - a change to it is not an auth change, so a re-login to the same account
+	//     is still reported as unchanged;
+	//   - the live copy is not authoritative — the tool may have stopped
+	//     maintaining it — so a recapture keeps the value the snapshot recorded;
+	//   - losing it is safe and self-correcting, so a snapshot or backup that
+	//     lacks it (captured before it existed, or with its payload gone from the
+	//     secret store) applies it as absent instead of failing the whole
+	//     operation, and the tool rebuilds it.
+	//
+	// Never set it on a credential: every one of those would be wrong there, and
+	// the last would silently log the user out.
+	IdentityOnly bool
 }
 
 // Value is one captured artifact value. Present=false records that the

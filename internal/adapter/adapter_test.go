@@ -94,7 +94,7 @@ func TestClaudeOAuthAccountSpec(t *testing.T) {
 		sp := specs[len(specs)-1]
 		if sp.Name != "oauth_account" || sp.Kind != constants.KindJSONPointer ||
 			sp.Target != filepath.Join(env.Home, ".claude.json") ||
-			sp.Pointer != "/oauthAccount" || !sp.Optional {
+			sp.Pointer != "/oauthAccount" || !sp.IdentityOnly {
 			t.Fatalf("%s: unexpected identity-cache spec: %+v", goos, sp)
 		}
 	}

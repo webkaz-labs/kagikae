@@ -362,7 +362,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	for _, plan := range plans {
 		if err := applySnapshot(ctx, be, plan); err != nil {
 			appliedTools[plan.Tool] = true
-			if restoreErr := app.applyBackup(ctx, be, meta, appliedTools); restoreErr != nil {
+			if restoreErr := app.applyBackup(ctx, be, meta, appliedTools, nil); restoreErr != nil {
 				return 0, doubleFailure("apply "+plan.Tool, err, restoreErr, meta.ID)
 			}
 			return 0, errf(exitOf(err),
@@ -386,7 +386,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 		}
 	}
 
-	if err := app.applyBackup(ctx, be, meta, nil); err != nil {
+	if err := app.applyBackup(ctx, be, meta, nil, nil); err != nil {
 		return 0, errf(exitOf(err),
 			"child finished but restoring the previous auth state failed: %v; run: kae rollback --to %s",
 			err, meta.ID)

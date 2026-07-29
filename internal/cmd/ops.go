@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
@@ -222,7 +221,6 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 				KeychainAccount: keychainAccount, KeychainReplace: sp.KeychainReplace,
 				KeychainMatchAccount: sp.KeychainMatchAccount,
 				JSONC:                sp.JSONC,
-				Optional:             sp.Optional,
 				SecretRef:            ref, Present: value.Present,
 			})
 		}
@@ -233,79 +231,130 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 	return meta, nil
 }
 
-// applyBackup restores live state from a backup, optionally limited to the
-// given tools (nil = all).
-func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only map[string]bool) error {
+// applyBackup restores live state from a backup, optionally limited to the given
+// tools (nil = all). current carries today's specs per tool so a lost
+// identity-only payload can degrade instead of failing the restore; pass nil
+// when the caller restores a backup it just created (there is nothing to
+// reconcile) and a missing payload should stay a hard error.
+func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only map[string]bool, current map[string][]artifact.Spec) error {
 	for _, rec := range meta.Artifacts {
 		if only != nil && !only[rec.Tool] {
 			continue
 		}
-		value := artifact.Value{}
-		if rec.Present {
-			data, found, err := be.Get(ctx, rec.SecretRef)
-			if err != nil {
-				return fmt.Errorf("read backup payload %s: %w", rec.SecretRef, err)
-			}
-			switch {
-			case found:
-				value = artifact.Value{Data: data, Present: true}
-			case rec.Optional:
-				// A lost payload for an artifact whose absence is safe degrades to
-				// "remove it" rather than failing the whole restore: the tool
-				// rebuilds it (claude refetches its identity cache), and the
-				// credential in the same backup still gets restored.
-				value = artifact.Value{}
-			default:
+		value, err := storedValue(ctx, be, rec.SecretRef, rec.Present,
+			isIdentityOnly(current, rec.Tool, rec.Name), func() error {
 				return errf(constants.ExitNotFound, "backup payload %s is missing from the secret store", rec.SecretRef)
-			}
+			})
+		if err != nil {
+			return err
 		}
 		if err := artifact.ApplyLive(ctx, specFromRecord(rec), value); err != nil {
 			return fmt.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
 		}
 	}
-	return app.clearUnrecordedOptionals(ctx, meta, only)
+	return nil
 }
 
-// clearUnrecordedOptionals removes every Optional artifact the backup has no
-// record of. A backup taken before an artifact existed cannot restore it, and
-// leaving today's live copy in place would keep claude's identity cache naming
-// the account the rollback just left — reintroducing the mislabelling the
-// artifact exists to prevent. Removal is the same fallback applySnapshot uses:
-// claude refetches the profile from the restored credential.
-func (app *App) clearUnrecordedOptionals(ctx context.Context, meta backup.Meta, only map[string]bool) error {
+// storedValue reads one artifact payload from the secret backend. A payload that
+// is simply gone degrades to absent for an identity-only artifact — losing it is
+// safe and it must never block the credential recorded beside it — and is a hard
+// error otherwise, where removing a credential would log the user out. missing
+// builds that error, so each caller keeps its own wording and exit code.
+func storedValue(ctx context.Context, be secret.Backend, ref string, present, identityOnly bool, missing func() error) (artifact.Value, error) {
+	if !present {
+		return artifact.Value{}, nil
+	}
+	data, found, err := be.Get(ctx, ref)
+	if err != nil {
+		return artifact.Value{}, fmt.Errorf("read payload %s: %w", ref, err)
+	}
+	switch {
+	case found:
+		return artifact.Value{Data: data, Present: true}, nil
+	case identityOnly:
+		return artifact.Value{}, nil
+	default:
+		return artifact.Value{}, missing()
+	}
+}
+
+// isIdentityOnly answers whether a recorded artifact is identity-only according
+// to *today's* adapter, not according to the record. Whether losing an artifact
+// is survivable is policy, and policy belongs to the code: an old backup must not
+// pin a decision kae has since changed. An unresolvable tool answers false, so
+// the fail-loud path stays the default.
+func isIdentityOnly(current map[string][]artifact.Spec, tool, name string) bool {
+	for _, sp := range current[tool] {
+		if sp.Name == name {
+			return sp.IdentityOnly
+		}
+	}
+	return false
+}
+
+// currentSpecs resolves each of a backup's tools once. A rollback needs today's
+// declaration twice over — to complete the pre-rollback backup and to clear an
+// identity artifact the backup never recorded — and resolving it per pass would
+// mean two chances to disagree plus two warnings about the same adapter. A tool
+// that cannot be resolved is absent from the map and returned in unresolved; the
+// caller warns once and proceeds with the records alone.
+func (app *App) currentSpecs(ctx context.Context, meta backup.Meta) (specs map[string][]artifact.Spec, unresolved []toolResolveError) {
+	specs = make(map[string][]artifact.Spec, len(meta.Tools))
+	for _, tool := range meta.Tools {
+		ad, err := adapter.ForTool(tool)
+		if err == nil {
+			var got []artifact.Spec
+			if got, err = ad.Artifacts(ctx, app.Env); err == nil {
+				specs[tool] = got
+				continue
+			}
+		}
+		unresolved = append(unresolved, toolResolveError{Tool: tool, Err: err})
+	}
+	return specs, unresolved
+}
+
+// toolResolveError names a tool whose current specs could not be resolved, with
+// the reason to report. An error is not proof that nothing is live — an
+// unsupported platform looks the same as a bad KAE_CLAUDE_DRIVER on a working
+// one — so callers warn rather than assume.
+type toolResolveError struct {
+	Tool string
+	Err  error
+}
+
+// reapplyHint names the command that redoes what an unresolved tool skipped.
+// It points at re-applying the account rather than re-running the rollback: the
+// rollback succeeds and then prunes, so its own id may already be gone, while
+// `kae use` reaches the same work from the snapshot side. Only an account whose
+// snapshot still exists is named — a backup's active_before keeps the name it had
+// at capture time, which a later rename or removal invalidates.
+func (app *App) reapplyHint(meta backup.Meta, tool string) string {
+	if acct, ok := meta.ActiveBefore[tool]; ok && acct != "" {
+		if _, found, err := account.Load(app.Paths.AccountDir(tool, acct)); err == nil && found {
+			return fmt.Sprintf("re-apply it: kae use %s %s", tool, acct)
+		}
+	}
+	return fmt.Sprintf("re-apply the %s account you want (see: kae accounts)", tool)
+}
+
+// clearUnrecordedIdentity removes every identity-only artifact the backup has no
+// record of. It cannot be restored, and leaving today's copy in place would keep
+// claude's identity cache naming the account the rollback just left — the
+// mislabelling the artifact exists to prevent. Removal is the same fallback
+// applySnapshot uses: the tool rebuilds it from the restored credential.
+//
+// Only a rollback needs this. Every other applyBackup caller restores a meta it
+// created moments earlier from today's specs, so nothing is ever unrecorded
+// there, and a delete pass would be a surprising duty for a recovery path.
+func clearUnrecordedIdentity(ctx context.Context, meta backup.Meta, current map[string][]artifact.Spec) error {
 	recorded := make(map[string]bool, len(meta.Artifacts))
 	for _, rec := range meta.Artifacts {
 		recorded[rec.Tool+"/"+rec.Name] = true
 	}
 	for _, tool := range meta.Tools {
-		if only != nil && !only[tool] {
-			continue
-		}
-		specs, err := adapterSpecs(ctx, app.Env, tool)
-		if err != nil {
-			// An error is not proof that nothing is live: an unsupported platform
-			// looks the same as a bad KAE_CLAUDE_DRIVER value on a working one. The
-			// credential is already restored, so do not fail the rollback over the
-			// cleanup — but say so, or a stale identity cache survives silently.
-			// Point at re-applying the account, not at re-running this rollback:
-			// the rollback succeeds and then prunes, so its own id may already be
-			// gone. `kae use` reaches the same cleanup from the snapshot side. Only
-			// name an account whose snapshot still exists — a backup's active_before
-			// keeps the name it had at capture time, and a later rename or removal
-			// would make the printed command fail before it reaches the cleanup.
-			hint := fmt.Sprintf("re-apply the %s account you want (see: kae accounts)", tool)
-			if acct, ok := meta.ActiveBefore[tool]; ok && acct != "" {
-				if _, found, lerr := account.Load(app.Paths.AccountDir(tool, acct)); lerr == nil && found {
-					hint = fmt.Sprintf("re-apply it: kae use %s %s", tool, acct)
-				}
-			}
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: could not resolve %s artifacts, so its identity cache was left "+
-					"as it was (%v); fix that, then %s\n", tool, err, hint)
-			continue
-		}
-		for _, sp := range specs {
-			if !sp.Optional || recorded[tool+"/"+sp.Name] {
+		for _, sp := range current[tool] {
+			if !sp.IdentityOnly || recorded[tool+"/"+sp.Name] {
 				continue
 			}
 			if err := artifact.ApplyLive(ctx, sp, artifact.Value{}); err != nil {
@@ -316,35 +365,25 @@ func (app *App) clearUnrecordedOptionals(ctx context.Context, meta backup.Meta, 
 	return nil
 }
 
-// adapterSpecs resolves a tool's current artifact specs, or an error when the
-// tool is unknown or unsupported on this platform.
-func adapterSpecs(ctx context.Context, env adapter.Env, tool string) ([]artifact.Spec, error) {
-	ad, err := adapter.ForTool(tool)
-	if err != nil {
-		return nil, err
-	}
-	return ad.Artifacts(ctx, env)
-}
-
 // specFromRecord rebuilds the artifact spec a backup record was captured from
 // (including the keychain account, so a rollback recreates an item under the
-// tool's own account, not the generic fallback).
+// tool's own account, not the generic fallback). IdentityOnly is deliberately
+// not recorded — see isIdentityOnly.
 func specFromRecord(rec backup.ArtifactRecord) artifact.Spec {
 	return artifact.Spec{
 		Name: rec.Name, Kind: rec.Kind, Target: rec.Target,
 		Pointer: rec.Pointer, KeychainAccount: rec.KeychainAccount,
 		KeychainReplace: rec.KeychainReplace, KeychainMatchAccount: rec.KeychainMatchAccount,
-		JSONC: rec.JSONC, Optional: rec.Optional,
+		JSONC: rec.JSONC,
 	}
 }
 
-// plansFromBackupMeta rebuilds per-tool artifact plans from backup records
-// so a rollback can itself be backed up before it overwrites live state.
-// Artifacts the current adapter declares but the backup has no record of are
-// added, so one introduced after the backup was taken is still captured before
-// the rollback clears it — otherwise rolling back the rollback could not put it
-// back.
-func (app *App) plansFromBackupMeta(ctx context.Context, meta backup.Meta) []toolPlan {
+// plansFromBackupMeta rebuilds per-tool artifact plans from backup records so a
+// rollback can itself be backed up before it overwrites live state. Artifacts
+// current declares but the backup has no record of are added, so one introduced
+// after the backup was taken is still captured before the rollback clears it —
+// otherwise rolling back the rollback could not put it back.
+func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) []toolPlan {
 	specsByTool := map[string][]artifact.Spec{}
 	order := []string{}
 	for _, rec := range meta.Artifacts {
@@ -354,21 +393,11 @@ func (app *App) plansFromBackupMeta(ctx context.Context, meta backup.Meta) []too
 		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], specFromRecord(rec))
 	}
 	for _, tool := range order {
-		current, err := adapterSpecs(ctx, app.Env, tool)
-		if err != nil {
-			// Same reasoning as clearUnrecordedOptionals: an unresolvable adapter
-			// leaves the pre-rollback backup with only the recorded artifacts, so
-			// warn rather than pretend the plan is complete.
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: could not resolve current %s artifacts (%v); the pre-rollback "+
-					"backup covers only what the restored backup recorded\n", tool, err)
-			continue
-		}
 		recorded := make(map[string]bool, len(specsByTool[tool]))
 		for _, sp := range specsByTool[tool] {
 			recorded[sp.Name] = true
 		}
-		for _, sp := range current {
+		for _, sp := range current[tool] {
 			if !recorded[sp.Name] {
 				specsByTool[tool] = append(specsByTool[tool], sp)
 			}
@@ -423,12 +452,12 @@ func (app *App) loadPlansWithSnapshots(ctx context.Context, targets []runTarget)
 func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error {
 	for _, sp := range plan.Specs {
 		metaArt, ok := plan.Meta.Artifacts[sp.Name]
-		if !ok && !sp.Optional {
+		if !ok && !sp.IdentityOnly {
 			return errf(constants.ExitError,
 				"snapshot %s/%s lacks artifact %s; re-run kae add --no-login %s %s",
 				plan.Tool, plan.Account, sp.Name, plan.Tool, plan.Account)
 		}
-		// An Optional artifact missing from an older snapshot applies as absent:
+		// An identity-only artifact missing from an older snapshot applies as absent:
 		// metaArt is the zero value, so Present=false removes it live (claude's
 		// /oauthAccount identity cache is then refetched from the token).
 		// A KeychainReplace item (codex keyring) carries its captured per-login
@@ -439,25 +468,13 @@ func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error 
 		if sp.KeychainReplace && metaArt.KeychainAccount != "" {
 			sp.KeychainAccount = metaArt.KeychainAccount
 		}
-		value := artifact.Value{}
-		if metaArt.Present {
-			data, found, err := be.Get(ctx, metaArt.SecretRef)
-			if err != nil {
-				return fmt.Errorf("read snapshot payload %s: %w", metaArt.SecretRef, err)
-			}
-			switch {
-			case found:
-				value = artifact.Value{Data: data, Present: true}
-			case sp.Optional:
-				// A recorded-but-lost payload degrades to absent for the same
-				// reason a missing record does: an Optional artifact must never
-				// block the credential in the same snapshot from applying.
-				value = artifact.Value{}
-			default:
-				return errf(constants.ExitError,
-					"snapshot payload %s is missing; re-run kae add --no-login %s %s",
-					metaArt.SecretRef, plan.Tool, plan.Account)
-			}
+		value, err := storedValue(ctx, be, metaArt.SecretRef, metaArt.Present, sp.IdentityOnly, func() error {
+			return errf(constants.ExitError,
+				"snapshot payload %s is missing; re-run kae add --no-login %s %s",
+				metaArt.SecretRef, plan.Tool, plan.Account)
+		})
+		if err != nil {
+			return err
 		}
 		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
 			return err

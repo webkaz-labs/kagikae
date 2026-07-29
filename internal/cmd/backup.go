@@ -129,7 +129,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		return nil, err
 	}
 	// Rollback restores global live state. Recorded artifacts carry absolute
-	// targets, but the pre-rollback backup and the unrecorded-Optional cleanup
+	// targets, but the pre-rollback backup and the unrecorded-identity cleanup
 	// resolve today's adapter specs through app.Env — inside a pinned shell those
 	// would follow CLAUDE_CONFIG_DIR into the isolation tree and touch the wrong
 	// copy. Hide the kae-managed isolation env first, as use/add already do.
@@ -190,21 +190,39 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	if err != nil {
 		return nil, err
 	}
+	// Resolve today's specs once: the pre-rollback backup needs them to cover an
+	// artifact this backup predates, and the identity cleanup below needs them to
+	// know which artifact that is. One resolution means one warning per tool.
+	current, unresolved := app.currentSpecs(ctx, meta)
+	for _, u := range unresolved {
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: could not resolve current %s artifacts (%v); the pre-rollback backup "+
+				"covers only what this backup recorded, and a stale %s identity cache is left as "+
+				"it is — fix that, then %s\n", u.Tool, u.Err, u.Tool, app.reapplyHint(meta, u.Tool))
+	}
 	// rollback is itself a live mutation: back up the current state first so
 	// it stays reversible.
-	preMeta, err := app.createBackup(ctx, be, app.plansFromBackupMeta(ctx, meta), st, "rollback")
+	preMeta, err := app.createBackup(ctx, be, plansFromBackupMeta(meta, current), st, "rollback")
 	if err != nil {
 		return nil, err
 	}
 
-	if err := app.applyBackup(ctx, be, meta, nil); err != nil {
-		if restoreErr := app.applyBackup(ctx, be, preMeta, nil); restoreErr != nil {
+	if err := app.applyBackup(ctx, be, meta, nil, current); err != nil {
+		if restoreErr := app.applyBackup(ctx, be, preMeta, nil, current); restoreErr != nil {
 			return nil, errf(exitOf(err),
 				"rollback failed (%v) and restore also failed (%v); inspect backups %s and %s",
 				err, restoreErr, meta.ID, preMeta.ID)
 		}
 		return nil, errf(exitOf(err),
 			"rollback failed, live state restored from backup %s: %v", preMeta.ID, err)
+	}
+	// Only a rollback can be handed a backup that predates an artifact, so this
+	// cleanup lives here rather than inside applyBackup, whose other callers
+	// restore a backup they just created and would gain a surprising delete pass.
+	if err := clearUnrecordedIdentity(ctx, meta, current); err != nil {
+		return nil, errf(constants.ExitError,
+			"live state was rolled back but clearing a stale identity cache failed (%v); "+
+				"undo with: kae rollback --to %s", err, preMeta.ID)
 	}
 	for _, tool := range meta.Tools {
 		if before, ok := meta.ActiveBefore[tool]; ok {

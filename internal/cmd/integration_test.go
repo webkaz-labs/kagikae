@@ -390,10 +390,10 @@ func TestRecaptureKeepsSnapshotIdentity(t *testing.T) {
 	}
 }
 
-// An Optional artifact whose payload has gone missing from the secret store must
+// An identity-only artifact whose payload has gone missing from the secret store must
 // not block the credential recorded beside it: the switch proceeds and clears the
 // stale cache, which claude then refetches.
-func TestSwitchSurvivesMissingOptionalPayload(t *testing.T) {
+func TestSwitchSurvivesMissingIdentityPayload(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
@@ -582,7 +582,7 @@ func TestCaptureRefusesIdentityCacheWithoutCredential(t *testing.T) {
 }
 
 // A snapshot captured before the oauth_account artifact existed still applies:
-// the artifact is Optional, so the switch removes the stale identity cache
+// the artifact is identity-only, so the switch removes the stale identity cache
 // instead of failing, and Claude Code refetches the profile from the applied
 // token. Removal must not disturb the other keys of the mixed-state file.
 func TestSwitchAppliesSnapshotWithoutIdentityArtifact(t *testing.T) {

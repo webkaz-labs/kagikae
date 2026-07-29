@@ -55,10 +55,12 @@ changes `CLAUDE_CONFIG_DIR` itself.
 | `claude-file-patch` | Linux | `~/.claude/.credentials.json` pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
 | `claude-keychain-patch` | macOS | Keychain item `Claude Code-credentials` payload pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
 
-The identity artifact (`oauth_account`) is **optional**: a snapshot captured
-before it existed carries no copy, and applying such a snapshot *removes*
-`/oauthAccount` instead of failing the switch — claude then refetches the
-profile from the applied token on its next run.
+The identity artifact (`oauth_account`) is declared **identity-only**: it records
+who is logged in without being part of what authenticates. Losing it is therefore
+safe, so a snapshot or backup that has no copy of it — captured before it existed,
+or with its payload gone from the secret store — *removes* `/oauthAccount` rather
+than failing the switch, and claude refetches the profile from the applied token
+on its next run.
 
 **Migrating an account captured before this artifact existed:** switch to it
 once (the stale cache is removed), **start claude** so it refetches the profile,

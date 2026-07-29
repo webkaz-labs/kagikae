@@ -56,7 +56,7 @@ func (app *App) identityDriftChecks(ctx context.Context, be secret.Backend, tool
 		// docs/ROADMAP.md), and state.Active names the *global* account. Comparing
 		// the two frames would warn on every pinned directory, so skip — doctor must
 		// not cry wolf about a gap that is already documented elsewhere.
-		if envVar := isolationEnvVar(tool); envVar != "" && app.isKaeManagedHome(app.Env.Getenv(envVar)) {
+		if app.toolIsolated(tool) {
 			continue
 		}
 		acc, found, err := account.Load(app.Paths.AccountDir(tool, active))

@@ -883,7 +883,11 @@ Two offline `doctor` checks watch the table between releases:
   applied for the active account. Catches an assumption that has *already* broken.
 - `upstream_version` — the installed tool is a newer major/minor than the
   `VerifiedVersion()` its adapter declares. Flags the release where one *could*
-  have broken, before it costs a wrong-account session. Patch bumps stay silent.
+  have broken, before it costs a wrong-account session. Patch bumps stay silent,
+  and **cursor is exempt**: its date version would make every new build month look
+  like a minor bump, so its adapter declares `""` and doctor never reports it
+  (docs/ADAPTERS.md "Verified Upstream Versions"). Cursor's rows are therefore due
+  on the release acceptance run, not on a doctor warning.
 
 A warning from either means: work that tool's rows below, then update the
 adapter's `VerifiedVersion()` and the version recorded here **in the same
@@ -912,7 +916,7 @@ commit**. Verifying an assumption always means launching a **fresh** tool proces
 | agy | of the shared `gemini` keychain service, only account `antigravity` is agy's; siblings belong to the Gemini ecosystem and must never be read or written | switch, confirm a fresh agy session reports the applied account and a sibling `gemini` item is unchanged | 1.0.10 |
 | agy | the live account is resolved server-side from the opaque token and never persisted, so identity can only come from `~/.gemini/google_accounts.json` `.active` (or `--identity`) | after an Antigravity login, `kae add agy` auto-names from `.active`; no other on-disk source appears | 1.0.10 |
 | opencode | `/openai` is the subscription login, and sibling provider keys are independent credentials that must survive a switch | switch with an extra provider key present in `auth.json`; the sibling key is byte-identical afterwards | 1.17.4 |
-| cursor | the credential is a single opaque raw JWT in keychain `cursor-access-token` / `cursor-user`, round-tripped verbatim | switch, then `cursor-agent status` in a fresh process reports the applied account | 2026.06.16 |
+| cursor | the credential is a single opaque raw JWT in keychain `cursor-access-token` / `cursor-user`, round-tripped verbatim | switch, then `cursor-agent status` in a fresh process reports the applied account | 2026.06.16 (recorded here only; the adapter declares "" so doctor never flags it) |
 | cursor | `cursor-agent status` prints `✓ Logged in as <email>` on one line with exit 0 (what `Identity` parses) | run it while logged in; the marker, the single line, and the exit code all hold | 2026.06.16 |
 | copilot | per-account tokens coexist in the keychain, so repointing `/lastLoggedInUser` is the entire switch | after a switch, a fresh `copilot -p "say AUTH-OK" --no-color --allow-all-tools` acts as the other account (cross-account item still open — v0.7.0) | 1.0.61 |
 | copilot | `config.json` is JSONC; its comments, trailing commas, and formatting must survive the patch | diff after a switch **and** after `kae rollback`: the leading `//` comments and `trustedFolders` survive both | 1.0.61 |

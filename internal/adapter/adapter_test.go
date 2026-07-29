@@ -585,26 +585,58 @@ func TestIdentifierConformance(t *testing.T) {
 	}
 }
 
-// TestVersionVerifierConformance pins that every tool adapter declares the
-// upstream version its behaviour assumptions were verified against, and that the
-// value parses as a version triple (doctor skips silently otherwise, which would
-// make a typo look like "nothing to report"). Unlike Fresher/Identifier this is
-// not capability-dependent: kae reads undocumented behaviour of every tool, so
-// every adapter owes a verified version.
-func TestVersionVerifierConformance(t *testing.T) {
-	all := map[string]adapter.Adapter{
-		"claude": claudeAdapter, "codex": codexAdapter, "agy": agyAdapter,
-		"opencode": opencodeAdapter, "cursor": cursorAdapter, "copilot": copilotAdapter,
-	}
+// TestVerifiedVersionFormat pins that every registered adapter's declared
+// version parses as a triple, since doctor skips an unparseable one silently and
+// a typo would look like "nothing to report". VerifiedVersion is a method of
+// adapter.Adapter, so the compiler already enforces that every tool declares one;
+// this only guards the *value*. Driven off constants.Tools so a seventh tool is
+// covered without editing the test.
+//
+// "" is allowed and means "no usable signal, skip me": cursor is date-versioned,
+// so the comparison reads a new build month as a minor bump and would warn every
+// month (see cursor.VerifiedVersion).
+func TestVerifiedVersionFormat(t *testing.T) {
 	triple := regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
-	for name, ad := range all {
-		verifier, ok := ad.(adapter.VersionVerifier)
-		if !ok {
-			t.Errorf("%s adapter does not implement adapter.VersionVerifier", name)
-			continue
+	for _, tool := range constants.Tools {
+		ad, err := adapter.ForTool(tool)
+		if err != nil {
+			t.Fatalf("adapter for %s: %v", tool, err)
 		}
-		if got := verifier.VerifiedVersion(); !triple.MatchString(got) {
-			t.Errorf("%s VerifiedVersion() = %q, want a major.minor.patch triple", name, got)
+		if got := ad.VerifiedVersion(); got != "" && !triple.MatchString(got) {
+			t.Errorf("%s VerifiedVersion() = %q, want a major.minor.patch triple or \"\"", tool, got)
+		}
+	}
+}
+
+// TestIdentityKeysConformance pins the IdentityOnly ⇔ IdentityKeys invariant for
+// every adapter on both platforms. An IdentityOnly spec that forgets
+// IdentityKeys degrades *silently* to a byte comparison, which is the false-drift
+// bug identityDiffers was written to fix (the tool renews a timestamp inside the
+// payload and doctor accuses a correctly switched account). The reverse — keys
+// without IdentityOnly — is dead declaration: both consumers filter on
+// IdentityOnly first, so it would never be read.
+func TestIdentityKeysConformance(t *testing.T) {
+	for _, tool := range constants.Tools {
+		ad, err := adapter.ForTool(tool)
+		if err != nil {
+			t.Fatalf("adapter for %s: %v", tool, err)
+		}
+		for _, goos := range []string{"linux", "darwin"} {
+			// Artifacts is pure path/config resolution (no subprocess), so this
+			// never reaches a real keychain.
+			specs, err := ad.Artifacts(context.Background(), testEnv(t, goos, nil))
+			if err != nil {
+				continue // unsupported platform: nothing to check
+			}
+			for _, sp := range specs {
+				if sp.IdentityOnly == (len(sp.IdentityKeys) > 0) {
+					continue
+				}
+				t.Errorf("%s/%s artifact %q: IdentityOnly=%v but IdentityKeys=%v; "+
+					"an identity spec without keys silently degrades to a byte comparison, "+
+					"and keys without IdentityOnly are never read",
+					tool, goos, sp.Name, sp.IdentityOnly, sp.IdentityKeys)
+			}
 		}
 	}
 }

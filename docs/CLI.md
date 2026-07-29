@@ -710,10 +710,11 @@ Credential-health checks (warn-level):
   the check is silently skipped there (documented gap; docs/SECURITY.md).
 
 Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
-<tool>`; both offline — no network call):
+<tool>`):
 - `identity_drift`: the live value of a tool's identity-only artifact (claude's
   `/oauthAccount`) no longer names the account kae applied for the active account,
-  or has disappeared. Only the artifact's **identifying** keys are compared
+  or has disappeared. Offline by construction: stored bytes against live bytes, no
+  subprocess and no network. Only the artifact's **identifying** keys are compared
   (`IdentityKeys`: for claude `accountUuid`, `emailAddress`, `organizationUuid`) —
   the rest of that payload is bookkeeping the tool rewrites on its own schedule
   (`profileFetchedAt`, plan fields), and comparing it flagged correct switches as
@@ -729,11 +730,19 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   compare against (docs/ROADMAP.md).
 - `upstream_version`: the installed tool's `--version` is a newer **major or
   minor** than the version its adapter's behaviour assumptions were verified
-  against (`adapter.VersionVerifier`). A patch bump is silent by design, an older
+  against (`VerifiedVersion()`). A patch bump is silent by design, an older
   installed version is fine, and an unparseable or failing `--version` is skipped
   rather than warned about. It exists because kae's structure guards only catch
   layout changes: a behaviour-only upstream change passes all of them and breaks
-  switching silently, so the version is the sole offline signal.
+  switching silently, so the version is the sole offline signal. **cursor is
+  exempt** (it declares no version): its date-based version would read every new
+  build month as a minor bump and warn monthly — see docs/ADAPTERS.md "Verified
+  Upstream Versions". This is the one doctor check that launches the upstream
+  CLIs: one `<binary> --version` per installed tool, run **concurrently** under a
+  5s deadline for the whole round. They are assumed offline, but that is a
+  property of the third-party binaries rather than of kae (copilot's already
+  prints an update hint), so the deadline is what guarantees `kae doctor` cannot
+  hang on one; a probe it kills is skipped like any other failing `--version`.
 
 Companion-binding checks (warn-level, unfiltered report only):
 - `companion_missing`: a bound token knob has no stored secret, so the mise

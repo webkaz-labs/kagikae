@@ -125,6 +125,15 @@ func (app *App) firstKaeManagedIsolation() string {
 	return ""
 }
 
+// toolIsolated reports whether this shell's environment redirects one tool into
+// a kae-owned isolated home (kae pin, kae use -i). It is the per-tool half of
+// firstKaeManagedIsolation, for callers that care about a single tool rather than
+// the directory's bind kind. A tool with no isolation env var reads an empty
+// value, which isKaeManagedHome already rejects.
+func (app *App) toolIsolated(tool string) bool {
+	return app.isKaeManagedHome(app.Env.Getenv(isolationEnvVar(tool)))
+}
+
 // pathWithin reports whether dir lies inside root (lexical; symlinks are
 // not resolved).
 func pathWithin(dir, root string) bool {

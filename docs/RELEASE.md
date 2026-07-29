@@ -50,7 +50,7 @@ Baseline: v0.11.0 (companion re-bind lockstep + token-identity drift), shipped
   never been written down as a verifiable item, which is what let it expire
   unnoticed.
 - **Expiry is read, not guessed.** `freshness.Info` gains `RefreshExpiresAt` and
-  `Invalid`: a refresh token now lives days rather than a month, so its mere
+  `Revoked`: a refresh token now lives days rather than a month, so its mere
   presence no longer counts as recoverable, and the tombstone claude writes after
   a failed refresh (`accessToken:""`, `expiresAt:0`) is read as dead instead of
   as "no expiry recorded". A one-directional recapture guard stops a dead live

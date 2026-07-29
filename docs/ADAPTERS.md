@@ -576,26 +576,27 @@ claims decoder is `internal/jwt`).
    and refresh-token state; a static API key or a pointer-only artifact stays
    not-datable — just omit the method (Known=false). Fill
    `RefreshExpiresAt` when the payload publishes the refresh token's own expiry,
-   and set `Invalid` for a payload the tool has explicitly emptied or revoked.
+   and set `Revoked` for a payload the tool has explicitly emptied or revoked.
    Both are per-tool readings and belong here, not in `internal/freshness`, which
    holds no per-tool knowledge. See the per-tool field map in
    [DATA-MODEL.md](DATA-MODEL.md).
 5. Optionally implement `adapter.Identifier` so `kae add <tool>` can default the
    account name (above). Skip it when the tool exposes no readable identity.
-6. Implement `adapter.VersionVerifier` (`VerifiedVersion() string`) with the
-   upstream version you verified the adapter against, and add that tool's
-   behaviour assumptions to the table in [VALIDATION.md](VALIDATION.md)
-   "Upstream Behaviour Assumptions". This one is **not** optional — see
-   "Verified Upstream Versions" below.
+6. Implement `VerifiedVersion() string` with the upstream version you verified
+   the adapter against, and add that tool's behaviour assumptions to the table in
+   [VALIDATION.md](VALIDATION.md) "Upstream Behaviour Assumptions". This one is a
+   method of `adapter.Adapter`, not an optional interface — see "Verified Upstream
+   Versions" below.
 7. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
    guard-refusal paths.
 
 ## Verified Upstream Versions
 
-Each adapter declares, via `adapter.VersionVerifier`, the upstream release its
-behaviour assumptions were last verified against. `kae doctor` compares the
-installed `<binary> --version` against it and warns (`upstream_version`) when the
-installed tool is a newer **major or minor**; a patch bump is silent.
+Each adapter declares, via the `Adapter` method `VerifiedVersion()`, the upstream
+release its behaviour assumptions were last verified against. `kae doctor`
+compares the installed `<binary> --version` against it and warns
+(`upstream_version`) when the installed tool is a newer **major or minor**; a
+patch bump is silent.
 
 | Tool | `VerifiedVersion()` | `--version` output shape |
 |------|---------------------|--------------------------|
@@ -603,16 +604,27 @@ installed tool is a newer **major or minor**; a patch bump is silent.
 | codex | `0.145.0` | `codex-cli 0.145.0` |
 | agy | `1.0.10` | `1.0.10` |
 | opencode | `1.17.4` | `1.17.4` |
-| cursor | `2026.06.16` | `2026.06.16-20-30-07-<sha>` (date-versioned; still three numbers, so the same comparison applies and a new build month reads as a minor bump) |
+| cursor | `""` (no signal — see below) | `2026.06.16-20-30-07-<sha>` (date-versioned) |
 | copilot | `1.0.61` | `GitHub Copilot CLI 1.0.61.` (note the trailing period) |
 
 The parser takes the leftmost `<major>.<minor>.<patch>` triple of stdout, which
 reads all of the shapes above; `TestParseUpstreamVersion` pins the real outputs so
 a new shape cannot silently start reporting the wrong version.
 
-**Every adapter must declare one** (`TestVersionVerifierConformance` enforces it),
-because kae depends on undocumented upstream *behaviour* as well as layout, and a
-behaviour-only change passes every structure guard. When you re-verify a tool's
-rows in [VALIDATION.md](VALIDATION.md), bump `VerifiedVersion()` and the recorded
-version there in the same commit — the check is only as honest as those two
-staying in step.
+**cursor is deliberately exempt.** Its date version parses as a triple, so the
+comparison reads the *month* as the minor: the first build of any new month is
+"past" the verified one, and doctor would warn every month about a tool built
+daily until a human edited the constant. A monthly nag is exactly what the silent
+patch bump exists to avoid — a false warning trains the user to ignore the real
+ones — so cursor returns `""` and doctor skips it. Its verified date stays
+recorded in [VALIDATION.md](VALIDATION.md), which is where the re-verification
+actually happens.
+
+**Every other adapter must declare one**: `VerifiedVersion()` is a method of
+`adapter.Adapter`, so the compiler stops a new tool that omits it, and
+`TestVerifiedVersionFormat` (driven off `constants.Tools`) rejects a value that is
+neither a triple nor `""`. kae depends on undocumented upstream *behaviour* as
+well as layout, and a behaviour-only change passes every structure guard. When you
+re-verify a tool's rows in [VALIDATION.md](VALIDATION.md), bump
+`VerifiedVersion()` and the recorded version there in the same commit — the check
+is only as honest as those two staying in step.

@@ -44,12 +44,14 @@ type Info struct {
 	// HasRefresh is available. Since refresh-token lifetimes have shortened to
 	// days, an expired one is now a routine state, not an edge case.
 	RefreshExpiresAt time.Time
-	// Invalid marks a payload that is structurally intact but has been emptied by
+	// Revoked marks a payload that is structurally intact but has been emptied by
 	// the tool itself — the tombstone Claude Code writes over the credential when
 	// a refresh fails (blank tokens, expiresAt 0). No refresh can revive it; only
 	// a re-login can, so it must not be read as "no expiry recorded". Which bytes
-	// mean this is per-tool knowledge and is decided in the adapter.
-	Invalid bool
+	// mean this is per-tool knowledge and is decided in the adapter. It says
+	// nothing about this Info being malformed — an unreadable payload is
+	// Known=false instead.
+	Revoked bool
 }
 
 // JWTExpiry decodes a JWT's claims and returns its exp (seconds since epoch).

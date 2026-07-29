@@ -59,6 +59,19 @@ type Adapter interface {
 	Artifacts(ctx context.Context, env Env) ([]artifact.Spec, error)
 	// Doctor returns adapter-specific health checks.
 	Doctor(ctx context.Context, env Env) []Check
+	// VerifiedVersion is the upstream release kae's behaviour assumptions for
+	// this tool were last verified against, so doctor can say when the installed
+	// tool has moved past it (docs/VALIDATION.md § "Upstream Behaviour
+	// Assumptions"). kae depends on undocumented upstream layout *and*
+	// behaviour, and a behaviour-only change passes every structure guard, so the
+	// version is the only signal available offline. It is a method of Adapter
+	// rather than an optional interface because every tool owes one — unlike
+	// Fresher/Identifier this is not capability-dependent.
+	//
+	// "" means "no usable signal": doctor skips the tool. Only a tool whose
+	// version scheme the comparison cannot read may return it (cursor's date
+	// versions), and the reason belongs in that adapter's doc comment.
+	VerifiedVersion() string
 }
 
 // Identifier is implemented by adapters that can read the live login identity
@@ -81,16 +94,6 @@ type Identifier interface {
 // Fresher (copilot pointer, agy blob) is treated as not-datable (Known=false).
 type Fresher interface {
 	Freshness(payload []byte) freshness.Info
-}
-
-// VersionVerifier is implemented by an adapter that records the upstream version
-// kae's behaviour assumptions were last verified against, so doctor can say when
-// the installed tool has moved past it. kae depends on undocumented upstream
-// layout *and* behaviour; a behaviour-only change (see docs/VALIDATION.md
-// § "Upstream Behaviour Assumptions") passes every structure guard, so the version is the
-// only signal available offline.
-type VersionVerifier interface {
-	VerifiedVersion() string
 }
 
 var registry = map[string]Adapter{}

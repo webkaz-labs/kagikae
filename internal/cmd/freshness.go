@@ -72,39 +72,35 @@ func (app *App) staleSnapshotWarning(ctx context.Context, be secret.Backend, acc
 	return "snapshot credential is stale: " + staleCredentialDetail(info, acc.Tool, acc.Name), nil
 }
 
-// snapshotExpired reports whether a known, dated credential is past expiry.
-// An expiry exactly at now counts as expired, matching refreshUsable's After(now)
-// on the other side of the same decision: with the two boundaries disagreeing, a
-// credential expiring on the tick read as usable to the warning and to the
-// recapture guard while its refresh token read as dead.
-func snapshotExpired(info freshness.Info, now time.Time) bool {
-	return info.Known && !info.ExpiresAt.IsZero() && !info.ExpiresAt.After(now)
-}
-
-// refreshUsable reports whether info's refresh token can still buy a new access
-// token: present, and not itself past a published expiry. A payload that
-// publishes no refresh expiry leaves RefreshExpiresAt zero and presence is all
-// kae has to go on; a zero value is "unknown", never "never expires".
-func refreshUsable(info freshness.Info, now time.Time) bool {
-	return info.HasRefresh && (info.RefreshExpiresAt.IsZero() || info.RefreshExpiresAt.After(now))
-}
-
 // needsRelogin is the shared predicate of the switch-time stale warning
 // (docs/RELEASE.md §B) and doctor's credential_stale (§D): the credential cannot
 // produce a session again without the tool's interactive login. Either the tool
-// invalidated it itself (a tombstone written after a failed refresh), or the
-// access token expired with no usable refresh token behind it. A not-datable or
+// revoked it itself (a tombstone written after a failed refresh), or the access
+// token expired with no usable refresh token behind it. A not-datable or
 // still-valid credential is false.
 //
 // What it deliberately no longer assumes: that a refresh *string* means
 // recoverable. Refresh tokens now expire in days, so a stored one is routinely
 // dead too, and treating its mere presence as recovery silenced the warning
-// exactly when the user needed it.
+// exactly when the user needed it. A payload that publishes no refresh expiry
+// leaves RefreshExpiresAt zero, and that zero is "unknown", never "never
+// expires": presence is then all kae has to go on.
+//
+// Both halves of the decision live in this one body so their boundaries cannot
+// drift apart: an expiry landing exactly on now counts as expired *and* a refresh
+// token expiring exactly on now counts as dead. Split across two helpers they
+// once disagreed, and a credential expiring on the tick read as usable while its
+// own refresh token read as unusable.
 func needsRelogin(info freshness.Info, now time.Time) bool {
 	if !info.Known {
 		return false
 	}
-	return info.Invalid || (snapshotExpired(info, now) && !refreshUsable(info, now))
+	if info.Revoked {
+		return true
+	}
+	expired := !info.ExpiresAt.IsZero() && !info.ExpiresAt.After(now)
+	canRefresh := info.HasRefresh && (info.RefreshExpiresAt.IsZero() || info.RefreshExpiresAt.After(now))
+	return expired && !canRefresh
 }
 
 // staleCredentialDetail explains why a credential needs a re-login and how to
@@ -116,7 +112,7 @@ func needsRelogin(info freshness.Info, now time.Time) bool {
 func staleCredentialDetail(info freshness.Info, tool, accountName string) string {
 	var reason string
 	switch {
-	case info.Invalid:
+	case info.Revoked:
 		reason = fmt.Sprintf("%s emptied it after a failed token refresh", tool)
 	case info.HasRefresh:
 		reason = fmt.Sprintf("it expired %s and its refresh token expired %s",

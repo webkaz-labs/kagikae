@@ -40,19 +40,19 @@ func TestClaudeFreshnessReadsRefreshExpiry(t *testing.T) {
 	if !info.Known || !info.HasRefresh || !info.RefreshExpiresAt.Equal(refreshExp) {
 		t.Fatalf("Freshness = %+v (want refresh expiry %v)", info, refreshExp)
 	}
-	if info.Invalid {
-		t.Fatalf("a populated credential must not be Invalid: %+v", info)
+	if info.Revoked {
+		t.Fatalf("a populated credential must not be Revoked: %+v", info)
 	}
 }
 
 // A refresh that fails with invalid_grant makes Claude Code overwrite the
 // credential in place with blank tokens and expiresAt 0. Read literally that is
 // "no expiry recorded" — the most harmless state kae has — so the adapter must
-// translate the tombstone into Invalid.
+// translate the tombstone into Revoked.
 func TestClaudeFreshnessTombstone(t *testing.T) {
 	info := Claude{}.Freshness([]byte(`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0}}`))
-	if !info.Known || !info.Invalid || info.HasRefresh || !info.ExpiresAt.IsZero() {
-		t.Fatalf("Freshness = %+v (want Known, Invalid, no refresh, zero expiry)", info)
+	if !info.Known || !info.Revoked || info.HasRefresh || !info.ExpiresAt.IsZero() {
+		t.Fatalf("Freshness = %+v (want Known, Revoked, no refresh, zero expiry)", info)
 	}
 }
 

@@ -256,11 +256,18 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 }
 
 // rollbackTo restores a backup and then removes every identity-only artifact it
-// has no record of. The two are one step because they leave the live state in a
-// single consistent shape only together: restoring alone can leave a stale
-// identity cache naming the account the rollback just left, and failing between
-// them must look like "the rollback failed" to the caller so it restores the
-// pre-rollback backup instead of recording a half-applied state.
+// has no record of. The two are one transaction: they leave the live state in a
+// single consistent shape only together, so a caller must not record success (or
+// update state.json) unless both landed. Restoring alone can leave a stale
+// identity cache naming the account the rollback just left, and a partial
+// rollback would put the live credential on one account while kae records
+// another — the next switch-away recapture would then file that credential into
+// the wrong account's snapshot. Failing between the two therefore surfaces as
+// "the rollback failed", so the caller restores its pre-rollback backup.
+//
+// The cleanup lives here rather than inside applyBackup because only a rollback
+// can be handed a backup that predates an artifact; applyBackup's other callers
+// restore a backup they just created and would gain a surprising delete pass.
 func (app *App) rollbackTo(ctx context.Context, be secret.Backend, meta backup.Meta, current map[string][]artifact.Spec) error {
 	if err := app.applyBackup(ctx, be, meta, nil, current); err != nil {
 		return err

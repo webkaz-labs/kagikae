@@ -218,7 +218,7 @@ func (Claude) Identity(_ context.Context, env adapter.Env) (string, error) {
 // Claude Code overwrites the credential in place with blank tokens and
 // expiresAt 0 — an explicit death certificate. Read literally that is "no expiry
 // recorded", the most harmless state kae has, so it is translated here (the one
-// place that knows this payload) into Invalid.
+// place that knows this payload) into Revoked.
 func (Claude) Freshness(payload []byte) freshness.Info {
 	root, ok := freshness.DecodeObject(payload)
 	if !ok {
@@ -242,7 +242,7 @@ func (Claude) Freshness(payload []byte) freshness.Info {
 		RefreshExpiresAt: freshness.EpochToTime(freshness.NumberFrom(obj["refreshTokenExpiresAt"])),
 		// Both tokens blank in a payload that still carries expiresAt: nothing is
 		// left to authenticate or refresh with, which is what the tombstone is.
-		Invalid: !hasAccess && !hasRefresh,
+		Revoked: !hasAccess && !hasRefresh,
 	}
 }
 

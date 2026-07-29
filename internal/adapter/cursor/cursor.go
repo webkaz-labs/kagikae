@@ -34,11 +34,16 @@ func (Cursor) ID() string { return constants.ToolCursor }
 
 func (Cursor) Binary() string { return binaryName }
 
-// VerifiedVersion is the cursor-agent release kae's behaviour assumptions were
-// last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
-// cursor-agent is date-versioned (`2026.06.16-20-30-07-<sha>`), which still
-// compares as three numbers, so a new build month reads as a minor bump.
-func (Cursor) VerifiedVersion() string { return "2026.06.16" }
+// VerifiedVersion is empty for cursor, so doctor never reports upstream_version
+// for it. cursor-agent is date-versioned (`2026.06.16-20-30-07-<sha>`), so the
+// major/minor comparison reads the *month* as the minor: the first build of any
+// new month is "past" the verified one, and doctor would then warn every month
+// until a human edited a constant. A monthly nag about a daily-built tool is the
+// exact failure the patch-bump silence exists to avoid — a false warning trains
+// the user to ignore the real ones. The verified date is recorded in
+// docs/VALIDATION.md "Upstream Behaviour Assumptions" instead, which is where the
+// re-verification actually happens.
+func (Cursor) VerifiedVersion() string { return "" }
 
 // driver maps the platform to the cursor driver, refusing the platforms whose
 // credential storage is undocumented (only macOS Keychain is known). Mirrors

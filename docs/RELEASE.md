@@ -70,7 +70,9 @@ config dir and deletes kae's credential copy on the first token refresh, after
 which `kae pin <tool> <account>` reports success and changes nothing a pinned
 directory reads. That is a silent wrong-*credential*, worse than the attribution
 bug this release fixes, and it is reachable by normal `kae pin` use. Ship v0.12.0
-only once it is addressed (detection at minimum); see [ROADMAP.md](ROADMAP.md).
+only once it is addressed (detection at minimum). The work is scoped in
+[handoff-p0-macos-pin.md](handoff-p0-macos-pin.md); the entry in
+[ROADMAP.md](ROADMAP.md) is the summary.
 
 ---
 

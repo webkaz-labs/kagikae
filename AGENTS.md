@@ -19,6 +19,7 @@ Standalone public repository. Follow the bundled Go CLI standard in
 | [docs/ROADMAP.md](docs/ROADMAP.md) | long-term ordering changes |
 | [docs/RELEASE.md](docs/RELEASE.md) | active release target changes |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | before commit and release checks |
+| [docs/handoff-p0-macos-pin.md](docs/handoff-p0-macos-pin.md) | picking up the macOS pinned-directory credential gap (v0.12.0's release gate) — delete this file when it lands |
 
 ## Validation
 

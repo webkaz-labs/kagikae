@@ -115,7 +115,9 @@ Follow-up from v0.8.4 (not yet scheduled):
   existing keychain driver works as-is if the spec's `Target` becomes
   `Claude Code-credentials-<sha8>`), which would also open a recapture path out of
   pinned dirs. Pinning `CLAUDE_SECURESTORAGE_CONFIG_DIR` to empty would collapse
-  every pin onto the shared item — recorded only to be rejected.
+  every pin onto the shared item — recorded only to be rejected. Everything needed
+  to start, including how to reproduce it and where the facts came from, is in
+  [handoff-p0-macos-pin.md](handoff-p0-macos-pin.md).
 - **`kae pin -i` copies the live credential, not the account's snapshot**:
   `preparePinConfig` / `prepareBond` read from `app.realToolHome(tool)`, so
   pinning an account that is not currently globally active seeds the dir with

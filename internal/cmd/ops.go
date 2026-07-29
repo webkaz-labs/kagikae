@@ -289,14 +289,19 @@ func (app *App) clearUnrecordedOptionals(ctx context.Context, meta backup.Meta, 
 			// cleanup — but say so, or a stale identity cache survives silently.
 			// Point at re-applying the account, not at re-running this rollback:
 			// the rollback succeeds and then prunes, so its own id may already be
-			// gone. `kae use` reaches the same cleanup from the snapshot side.
-			target := "<account>"
+			// gone. `kae use` reaches the same cleanup from the snapshot side. Only
+			// name an account whose snapshot still exists — a backup's active_before
+			// keeps the name it had at capture time, and a later rename or removal
+			// would make the printed command fail before it reaches the cleanup.
+			hint := fmt.Sprintf("re-apply the %s account you want (see: kae accounts)", tool)
 			if acct, ok := meta.ActiveBefore[tool]; ok && acct != "" {
-				target = acct
+				if _, found, lerr := account.Load(app.Paths.AccountDir(tool, acct)); lerr == nil && found {
+					hint = fmt.Sprintf("re-apply it: kae use %s %s", tool, acct)
+				}
 			}
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: could not resolve %s artifacts, so its identity cache was left "+
-					"as it was (%v); fix that, then re-apply: kae use %s %s\n", tool, err, tool, target)
+					"as it was (%v); fix that, then %s\n", tool, err, hint)
 			continue
 		}
 		for _, sp := range specs {

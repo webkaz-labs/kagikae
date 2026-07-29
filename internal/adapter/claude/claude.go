@@ -1,7 +1,10 @@
-// Package claude implements the Claude Code adapter. Auth mode switches only
-// the /claudeAiOauth credential (credentials file or macOS Keychain payload).
-// /oauthAccount in ~/.claude.json is a token-derived identity cache that
-// claude self-heals on startup; it is not an auth artifact and is not switched.
+// Package claude implements the Claude Code adapter. Auth mode switches the
+// /claudeAiOauth credential (credentials file or macOS Keychain payload) plus
+// /oauthAccount, the identity cache inside the mixed-state ~/.claude.json.
+// The cache is switched because Claude Code no longer self-heals it: it skips
+// the profile refetch while the cached copy is under 24h old, and a token
+// refresh renews that timestamp without rewriting the email, so a switched
+// token leaves the previous account's identity displayed indefinitely.
 // See docs/ADAPTERS.md.
 package claude
 
@@ -79,6 +82,24 @@ func driver(env adapter.Env) (string, error) {
 	}
 }
 
+// oauthAccountSpec switches /oauthAccount, claude's identity cache, inside the
+// mixed-state ~/.claude.json — by JSON pointer only, so projects, mcpServers,
+// onboarding and every other key in that file are untouched. Optional: a
+// snapshot captured before this artifact existed has no copy of it, and the
+// safe fallback there is removal, which makes Claude Code refetch the profile
+// from the live token on its next run.
+func oauthAccountSpec(env adapter.Env) artifact.Spec {
+	return artifact.Spec{
+		Name:     "oauth_account",
+		Kind:     constants.KindJSONPointer,
+		Target:   claudeJSONPath(env),
+		Pointer:  "/oauthAccount",
+		Optional: true,
+	}
+}
+
+// Artifacts returns the credential first: Detect, keychainCredForBond and
+// credentialArtifactName all treat the leading spec as claude's credential.
 func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, error) {
 	drv, err := driver(env)
 	if err != nil {
@@ -93,6 +114,7 @@ func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 				Pointer:         "/claudeAiOauth",
 				KeychainAccount: env.Getenv("USER"),
 			},
+			oauthAccountSpec(env),
 		}, nil
 	}
 	return []artifact.Spec{
@@ -102,6 +124,7 @@ func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 			Target:  credentialsPath(env),
 			Pointer: "/claudeAiOauth",
 		},
+		oauthAccountSpec(env),
 	}, nil
 }
 
@@ -133,9 +156,10 @@ func (c Claude) Detect(ctx context.Context, env adapter.Env) (adapter.Info, erro
 }
 
 // Identity reads oauthAccount.emailAddress from ~/.claude.json — claude's
-// token-derived identity cache — so `kae add claude` (no name) can default the
-// account name to the logged-in email. Auth mode never switches this field, but
-// it is the one place claude records who is logged in.
+// identity cache — so `kae add claude` (no name) can default the account name
+// to the logged-in email. It is the one place claude records who is logged in;
+// auth mode switches it as the oauth_account artifact, so it tracks the applied
+// account instead of the one that happened to log in last.
 func (Claude) Identity(_ context.Context, env adapter.Env) (string, error) {
 	path := claudeJSONPath(env)
 	data, err := os.ReadFile(path)
@@ -159,6 +183,9 @@ func (Claude) Identity(_ context.Context, env adapter.Env) (string, error) {
 // Freshness reads claudeAiOauth's expiresAt (Unix ms) and refreshToken. The
 // keychain payload wraps the object under claudeAiOauth; the file-driver
 // snapshot stores the inner object directly, so both nestings are handled.
+// Callers walk every stored artifact and take the first datable one, so a
+// payload without expiresAt (the oauth_account identity cache) must report
+// Known=false rather than a zero expiry, which would read as long expired.
 func (Claude) Freshness(payload []byte) freshness.Info {
 	root, ok := freshness.DecodeObject(payload)
 	if !ok {
@@ -169,6 +196,9 @@ func (Claude) Freshness(payload []byte) freshness.Info {
 		if nested, ok := freshness.DecodeObject(inner); ok {
 			obj = nested
 		}
+	}
+	if _, ok := obj["expiresAt"]; !ok {
+		return freshness.Info{}
 	}
 	return freshness.Info{
 		Known:      true,

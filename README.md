@@ -60,8 +60,8 @@ the tool set up**:
 
 ## What stands out
 
-- **Auth-only by default.** A shared switch changes the credential and nothing
-  else; claude self-heals its `/oauthAccount` identity cache from the token.
+- **Auth-only by default.** A shared switch changes the credential — plus, for
+  claude, the one identity field it shows in the UI — and nothing else.
 - **Six tools, one grammar.** `use` / `pin` × `-s` (shared) / `-i` (isolated),
   plus `run`, `add`, `ls`, `doctor` — the same verbs regardless of how the tool
   stores its credential.
@@ -284,7 +284,7 @@ The per-tool switched/preserved allowlist is the normative contract in
 
 | Tool | Switches | Login identity for `kae add` |
 |------|----------|------------------------------|
-| Claude Code (`claude`) | `/claudeAiOauth` (macOS Keychain item / Linux `.credentials.json`) | `~/.claude.json` `oauthAccount.emailAddress` |
+| Claude Code (`claude`) | `/claudeAiOauth` (macOS Keychain item / Linux `.credentials.json`) and `/oauthAccount` in `~/.claude.json` (identity only, pointer patch) | `~/.claude.json` `oauthAccount.emailAddress` |
 | Codex CLI (`codex`) | `~/.codex/auth.json`, or the `Codex Auth` keychain item (`cli_auth_credentials_store = "keyring"`) | `id_token` email / `account_id` |
 | Antigravity CLI (`agy`) | macOS `gemini`/`antigravity` Keychain item (verbatim token); Linux file driver | active Google account in `~/.gemini/google_accounts.json` |
 | OpenCode (`opencode`) | the `/openai` entry of `auth.json` (other providers preserved) | access-token email, else `accountId` |

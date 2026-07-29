@@ -861,7 +861,18 @@ Manual, on macOS, with real logged-in accounts and a fresh backup of
 2. log in to the other account with the official CLI, `kae add --no-login` it
 3. `kae use claude <first>` / back, verifying upstream CLI identity each
    time and `git`-diffing `~/.claude.json` for non-allowlist drift
+   (`/oauthAccount` **is** the allowlist there; `projects`, `mcpServers`,
+   onboarding and cache keys must be byte-identical)
 4. `kae rollback` and verify identity returns
+
+For claude, also confirm the identity cache tracks the credential, because a
+correct token with a stale cache is the exact failure this switch exists to
+prevent: after step 3, `~/.claude.json` `oauthAccount.emailAddress` must name
+the account just applied, and the live token must resolve to the same account —
+`curl -s -H "Authorization: Bearer <accessToken>" \
+https://api.anthropic.com/api/oauth/profile` reports `account.email`. Do not
+substitute "claude will fix it on the next run": it will not while its 24h
+profile cache is warm (docs/ADAPTERS.md).
 
 **Verifying identity means launching a fresh tool process and confirming it is
 actually authenticated** — e.g. `claude -p "say hi" </dev/null` returns a

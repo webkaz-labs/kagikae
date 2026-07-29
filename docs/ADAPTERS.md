@@ -20,10 +20,17 @@ detected) and refuse to write when the live layout is unrecognized
 | Windows | `%USERPROFILE%\.claude\.credentials.json` (not supported in v0.1.0) |
 
 `~/.claude.json` is **mixed state**: it contains `projects`, `mcpServers`,
-onboarding, cache keys, and `oauthAccount`. kae does **not** switch
-`oauthAccount`: it is a token-derived identity cache that claude self-heals
-on the next authenticated run (verified 2026-06-14; docs/SCOPE-MODEL.md §6).
-The file is symlinked wholesale in isolation modes; auth mode never touches it.
+onboarding, cache keys, and `oauthAccount`. kae switches `/oauthAccount` — the
+identity claude displays — and nothing else in that file, by JSON pointer only.
+The credential is still claude's sole *auth* artifact; the identity cache is
+switched for correct attribution, because claude **no longer self-heals it**:
+it skips the profile refetch while the cached copy is under 24h old, and a
+token refresh renews that timestamp *without* rewriting `emailAddress`. Since a
+credential in daily use refreshes well inside 24h, a switched token would leave
+the previous account's identity on screen indefinitely (measured on Claude Code
+2.1.220; supersedes the 2026-06-14 self-heal finding — docs/SCOPE-MODEL.md §6).
+The file is symlinked wholesale in isolation modes, so a pointer patch there
+resolves the link and updates the real home's copy rather than forking it.
 
 If `CLAUDE_CONFIG_DIR` is already set in the environment, the adapter uses it
 as the live base path for `.credentials.json`. `auth` mode never sets or
@@ -33,8 +40,30 @@ changes `CLAUDE_CONFIG_DIR` itself.
 
 | Driver | Platform | Switched artifacts |
 |--------|----------|--------------------|
-| `claude-file-patch` | Linux | `~/.claude/.credentials.json` pointer `/claudeAiOauth` |
-| `claude-keychain-patch` | macOS | Keychain item `Claude Code-credentials` payload pointer `/claudeAiOauth` |
+| `claude-file-patch` | Linux | `~/.claude/.credentials.json` pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
+| `claude-keychain-patch` | macOS | Keychain item `Claude Code-credentials` payload pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
+
+The identity artifact (`oauth_account`) is **optional**: a snapshot captured
+before it existed carries no copy, and applying such a snapshot *removes*
+`/oauthAccount` instead of failing the switch — claude then refetches the
+profile from the applied token on its next run.
+
+**Migrating an account captured before this artifact existed:** switch to it
+once (the stale cache is removed), **start claude** so it refetches the profile,
+*then* `kae add --no-login claude <account>` to record the identity — after which
+switches move it in place, with no refetch and no network. Re-capturing before
+that refetch would store whatever account the stale cache still names.
+
+Two more consequences of kae switching a field claude no longer maintains:
+
+- **`kae add` still requires a credential.** An `/oauthAccount` alone is not a
+  login — it outlives a logout — so capture refuses (`auth_missing`, exit 3)
+  when the identity cache is the only live artifact.
+- **A switch-away recapture keeps the recorded identity.** `kae use` refreshes
+  the snapshot of the account it switches *away* from, but deliberately does not
+  import the live `/oauthAccount`: it may name a different account than the live
+  credential (exactly the drift this artifact fixes), and importing it would pin
+  the wrong identity onto that account permanently.
 
 The macOS driver reads and writes the keychain through the `security` CLI via
 the runner seam. The captured keychain item is stored and restored
@@ -65,9 +94,9 @@ the env var takes precedence; see [DATA-MODEL.md](DATA-MODEL.md)).
 ~/.claude/settings.json        ~/.claude/CLAUDE.md
 ~/.claude/skills/              ~/.claude/agents/
 ~/.claude/.credentials.json    -> all keys except /claudeAiOauth
-~/.claude.json                 (symlinked wholesale in isolation modes;
-                               never touched in auth mode — /oauthAccount
-                               is token-derived and self-healed by claude)
+~/.claude.json                 -> all keys except /oauthAccount (projects,
+                               mcpServers, onboarding, caches; symlinked
+                               wholesale in isolation modes)
 project/.claude/  project/CLAUDE.md  project/.mcp.json
 MCP / hooks / permissions / trust state / session history / plugins
 ```
@@ -477,7 +506,7 @@ at 64); an explicit name always wins. The per-tool source:
 
 | Tool | Identity source |
 |------|-----------------|
-| claude | `~/.claude.json` `oauthAccount.emailAddress` |
+| claude | `~/.claude.json` `oauthAccount.emailAddress` — also a switched artifact, so it names the account kae last applied, not the one that logged in last |
 | codex | `auth.json` `id_token` email claim (JWT), else `tokens.account_id` |
 | opencode | the `/openai` access token's `https://api.openai.com/profile` email claim (JWT), else `/openai` `accountId` (an opaque UUID; v0.8.8 prefers the email) |
 | copilot | `config.json` (JSONC) `/lastLoggedInUser.login` |

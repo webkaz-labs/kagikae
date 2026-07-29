@@ -83,6 +83,42 @@ func TestJSONPointerKindPreservesSiblings(t *testing.T) {
 	}
 }
 
+// A bond dir links a mixed-state file back to the real tool home. The pointer
+// patch must write through the link (the read already does), because replacing
+// it with a regular file would fork the shared file into a private copy.
+func TestJSONPointerKindWritesThroughSymlink(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real", ".claude.json")
+	if err := os.MkdirAll(filepath.Dir(real), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(real, []byte(`{"oauthAccount":{"accountUuid":"old"},"projects":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "bond", ".claude.json")
+	if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	sp := Spec{Name: "oauth_account", Kind: constants.KindJSONPointer, Target: link, Pointer: "/oauthAccount"}
+	if err := ApplyLive(ctx, sp, Value{Data: []byte(`{"accountUuid":"new"}`), Present: true}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("symlink was replaced by a private copy")
+	}
+	if out, err := os.ReadFile(real); err != nil || !strings.Contains(string(out), `"new"`) {
+		t.Fatalf("linked file not patched: %s %v", out, err)
+	}
+}
+
 // TestJSONPointerKindJSONCRoundTrip: a JSONC spec reads through comments and
 // writes the pointer value back while preserving the leading // comments and
 // sibling keys (GitHub Copilot's config.json shape).

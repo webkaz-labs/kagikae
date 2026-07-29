@@ -48,6 +48,12 @@ here are part of the command contract.
   secret**: it is plaintext metadata exactly like the account name, never a
   token. It is read from already-trusted live state and never derived from a
   credential value.
+- claude's `oauth_account` artifact (the `/oauthAccount` identity cache) is
+  **PII but not a credential**: email, account/org uuid, plan fields, no token.
+  It is stored in the secret backend anyway, because every artifact payload goes
+  there — no path special-cases it, so it inherits the same
+  never-to-stdout/JSON/logs treatment as a credential. It is captured from
+  already-trusted live state, never derived from a token value.
 - The codex keyring payload (the `Codex Auth` keychain item, v0.8.3 §C) **is** a
   credential and is treated like every other secret: captured verbatim into the
   secret backend, never written to stdout/JSON/logs/metadata; only the item's

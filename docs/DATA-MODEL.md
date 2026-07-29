@@ -165,6 +165,15 @@ pointer = "/oauthAccount"
 secret_ref = "claude/main/oauth_account"
 ```
 
+`[artifacts.oauth_account]` (claude only) is claude's identity cache, not a
+credential — it is switched so the UI and `kae add` report the applied account
+([ADAPTERS.md](ADAPTERS.md)). It is the one **optional** artifact: a snapshot
+captured before it existed simply has no such table, and applying that snapshot
+removes `/oauthAccount` live instead of refusing the switch. Its payload is
+identity metadata (email, account/org uuid, plan fields), stored in the secret
+backend like every other artifact payload so no code path special-cases it; it
+is PII and is never printed, exactly like `identity` below.
+
 `identity` (optional, v0.8.3 §D) is the raw login identity detected at capture
 (an email or account id), separate from the sanitized account `account` name —
 it disambiguates accounts whose identities sanitize to the same name. It is PII

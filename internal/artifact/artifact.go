@@ -62,6 +62,13 @@ type Spec struct {
 	// ~/.copilot/config.json). Reads ignore the comments; writes preserve
 	// them and the surrounding formatting, mutating only the pointer value.
 	JSONC bool
+	// Optional marks an artifact that a snapshot captured before this spec
+	// existed may legitimately lack. Applying such a snapshot treats the
+	// missing artifact as absent (Present=false, i.e. remove it live) instead
+	// of failing the switch. Use it only where removal is a safe outcome —
+	// claude's /oauthAccount identity cache, which Claude Code refetches — not
+	// for a credential, where a silent removal would log the user out.
+	Optional bool
 }
 
 // Value is one captured artifact value. Present=false records that the
@@ -224,7 +231,17 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		if err := os.MkdirAll(filepath.Dir(sp.Target), 0o700); err != nil {
 			return fmt.Errorf("create dir for %s: %w", sp.Target, err)
 		}
-		return patch.WriteFileAtomic(sp.Target, updated, patch.CredentialFileMode)
+		// The read above followed a symlink, so the write must too: a bond dir
+		// links a mixed-state file back to the real tool home
+		// (<bond>/.claude.json -> ~/.claude/.claude.json), and an atomic rename
+		// onto the link would replace it with a private copy, silently ending
+		// the sharing. Only pointer patches do this — a whole-file credential
+		// (KindFile) keeps replacing its path, never writing through a link.
+		target := sp.Target
+		if resolved, rerr := filepath.EvalSymlinks(target); rerr == nil {
+			target = resolved
+		}
+		return patch.WriteFileAtomic(target, updated, patch.CredentialFileMode)
 
 	case constants.KindKeychain:
 		matchAccount := sp.matchAccount()

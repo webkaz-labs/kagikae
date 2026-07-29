@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -115,14 +116,15 @@ func TestCaptureSwitchRollbackClaude(t *testing.T) {
 	if !strings.Contains(creds, mainToken) || strings.Contains(creds, sideToken) {
 		t.Fatalf("credentials not switched: %s", creds)
 	}
-	// .claude.json is not switched: /oauthAccount is a token-derived cache that
-	// claude self-heals; kae touches only the credential. The last-seeded
-	// side-uuid must survive the switch back to main credentials.
+	// /oauthAccount travels with the credential: claude no longer self-heals it
+	// (it skips the profile refetch while the cache is under 24h old), so the
+	// last-seeded side-uuid must be replaced by main's. Only that pointer moves;
+	// every other key of the mixed-state file survives.
 	identity := readFile(t, filepath.Join(app.Env.Home, ".claude.json"))
-	if strings.Contains(identity, "main-uuid") {
-		t.Fatalf(".claude.json must not be patched by switch: %s", identity)
+	if !strings.Contains(identity, "main-uuid") || strings.Contains(identity, "side-uuid") {
+		t.Fatalf("/oauthAccount not switched: %s", identity)
 	}
-	for _, preserved := range []string{`"projects"`, `"/repo"`, `"firstStartTime"`, "side-uuid"} {
+	for _, preserved := range []string{`"projects"`, `"/repo"`, `"firstStartTime"`} {
 		if !strings.Contains(identity, preserved) {
 			t.Fatalf("mixed-state key lost: %s missing in %s", preserved, identity)
 		}
@@ -155,6 +157,9 @@ func TestCaptureSwitchRollbackClaude(t *testing.T) {
 	creds = readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"))
 	if !strings.Contains(creds, sideToken) {
 		t.Fatalf("rollback did not restore: %s", creds)
+	}
+	if identity := readFile(t, filepath.Join(app.Env.Home, ".claude.json")); !strings.Contains(identity, "side-uuid") {
+		t.Fatalf("rollback did not restore /oauthAccount: %s", identity)
 	}
 	st, _ = app.loadState()
 	if st.Active["claude"] != "side" {
@@ -331,16 +336,106 @@ func TestSwitchJSONReportShape(t *testing.T) {
 	if result["tool"] != "claude" || result["applied"] != true || result["driver"] != "claude-file-patch" {
 		t.Fatalf("unexpected result: %s", out)
 	}
+	// The claude file driver switches the credential and the identity cache;
+	// both are pointer patches and both report a home-relative target.
 	actions := result["actions"].([]any)
-	if len(actions) != 1 {
-		t.Fatalf("expected 1 action: %s", out)
+	if len(actions) != 2 {
+		t.Fatalf("expected 2 actions: %s", out)
 	}
-	first := actions[0].(map[string]any)
-	if first["kind"] != "json-pointer" || !strings.HasPrefix(first["target"].(string), "~/") {
-		t.Fatalf("unexpected action: %s", out)
+	for _, raw := range actions {
+		action := raw.(map[string]any)
+		if action["kind"] != "json-pointer" || !strings.HasPrefix(action["target"].(string), "~/") {
+			t.Fatalf("unexpected action: %s", out)
+		}
+	}
+	if pointer := actions[1].(map[string]any)["pointer"]; pointer != "/oauthAccount" {
+		t.Fatalf("identity cache missing from actions: %s", out)
 	}
 	if result["warnings"] == nil {
 		t.Fatalf("warnings must be [], not null: %s", out)
+	}
+}
+
+// A switch-away recapture refreshes the credential of the account being left,
+// but must not import the live identity cache: claude no longer maintains it, so
+// it can name a different account than the live credential — the very drift this
+// artifact exists to correct. Importing it would mislabel the account for good.
+func TestRecaptureKeepsSnapshotIdentity(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main-uuid")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	seedClaude(t, app, sideToken, "side-uuid")
+	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	// Live now holds side's credential with an identity cache naming main.
+	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"),
+		`{"oauthAccount":{"accountUuid":"main-uuid"},"projects":{}}`)
+
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	identity := readFile(t, filepath.Join(app.Env.Home, ".claude.json"))
+	if !strings.Contains(identity, "side-uuid") {
+		t.Fatalf("recapture imported the stale identity cache: %s", identity)
+	}
+}
+
+// The identity cache outlives a logout, so a ~/.claude.json carrying
+// /oauthAccount with no credential is not a capturable login: capture must
+// still refuse, or the snapshot would log the user out when applied.
+func TestCaptureRefusesIdentityCacheWithoutCredential(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"),
+		`{"oauthAccount":{"emailAddress":"you@example.com"},"projects":{}}`)
+	code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, commonOpts{Format: formatText}, "claude", "main")
+	})
+	mustExit(t, constants.ExitAuthMissing, code, out)
+}
+
+// A snapshot captured before the oauth_account artifact existed still applies:
+// the artifact is Optional, so the switch removes the stale identity cache
+// instead of failing, and Claude Code refetches the profile from the applied
+// token. Removal must not disturb the other keys of the mixed-state file.
+func TestSwitchAppliesSnapshotWithoutIdentityArtifact(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main-uuid")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	dir := app.Paths.AccountDir("claude", "main")
+	acc, found, err := account.Load(dir)
+	if err != nil || !found {
+		t.Fatalf("load snapshot: %v %v", found, err)
+	}
+	delete(acc.Artifacts, "oauth_account")
+	if err := account.Save(dir, acc); err != nil {
+		t.Fatal(err)
+	}
+
+	seedClaude(t, app, sideToken, "side-uuid")
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	identity := readFile(t, filepath.Join(app.Env.Home, ".claude.json"))
+	if strings.Contains(identity, "oauthAccount") {
+		t.Fatalf("stale identity cache survived the switch: %s", identity)
+	}
+	if !strings.Contains(identity, `"projects"`) || !strings.Contains(identity, `"firstStartTime"`) {
+		t.Fatalf("mixed-state keys lost: %s", identity)
 	}
 }
 

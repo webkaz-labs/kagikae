@@ -71,13 +71,60 @@ func TestClaudeArtifactsLinux(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 1 {
-		t.Fatalf("expected 1 spec: %+v", specs)
+	if len(specs) != 2 {
+		t.Fatalf("expected 2 specs: %+v", specs)
 	}
 	if specs[0].Kind != constants.KindJSONPointer ||
 		specs[0].Target != filepath.Join(env.Home, ".claude", ".credentials.json") ||
 		specs[0].Pointer != "/claudeAiOauth" {
 		t.Fatalf("unexpected credentials spec: %+v", specs[0])
+	}
+}
+
+// The identity cache lives in the mixed-state ~/.claude.json (never in the
+// credential file), is patched by pointer only, and is optional so snapshots
+// captured before it existed still apply.
+func TestClaudeOAuthAccountSpec(t *testing.T) {
+	for _, goos := range []string{"linux", "darwin"} {
+		env := testEnv(t, goos, map[string]string{"USER": "alice"})
+		specs, err := claudeAdapter.Artifacts(context.Background(), env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sp := specs[len(specs)-1]
+		if sp.Name != "oauth_account" || sp.Kind != constants.KindJSONPointer ||
+			sp.Target != filepath.Join(env.Home, ".claude.json") ||
+			sp.Pointer != "/oauthAccount" || !sp.Optional {
+			t.Fatalf("%s: unexpected identity-cache spec: %+v", goos, sp)
+		}
+	}
+}
+
+// The identity cache carries no expiresAt. Callers walk every stored artifact
+// and take the first datable one, so it must report Known=false: a zero expiry
+// would read as long expired and warn on every switch.
+func TestClaudeFreshnessSkipsIdentityCache(t *testing.T) {
+	identity := []byte(`{"accountUuid":"u1","emailAddress":"you@example.com"}`)
+	if info := claudeAdapter.Freshness(identity); info.Known {
+		t.Fatalf("identity cache must not be datable: %+v", info)
+	}
+	cred := []byte(`{"claudeAiOauth":{"expiresAt":1785350072021,"refreshToken":"r"}}`)
+	if info := claudeAdapter.Freshness(cred); !info.Known || !info.HasRefresh {
+		t.Fatalf("credential must stay datable: %+v", info)
+	}
+}
+
+// With CLAUDE_CONFIG_DIR set, Claude Code keeps .claude.json inside that
+// directory, so the identity cache must follow it and not the real home.
+func TestClaudeOAuthAccountHonorsConfigDir(t *testing.T) {
+	configDir := t.TempDir()
+	env := testEnv(t, "linux", map[string]string{"CLAUDE_CONFIG_DIR": configDir})
+	specs, err := claudeAdapter.Artifacts(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := specs[len(specs)-1].Target; got != filepath.Join(configDir, ".claude.json") {
+		t.Fatalf("CLAUDE_CONFIG_DIR not honored: %s", got)
 	}
 }
 

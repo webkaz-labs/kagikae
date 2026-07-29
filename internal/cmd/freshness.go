@@ -109,6 +109,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 				plan.Tool, plan.Tool, active)
 			continue
 		}
+		keepSnapshotOptionals(ctx, be, plan.Specs, acc, values)
 		if !valuesDiverge(ctx, be, plan.Specs, acc, values) {
 			continue // live already matches the snapshot: skip the write
 		}
@@ -150,6 +151,32 @@ func snapshotArtifactDiffers(ctx context.Context, be secret.Backend, storedRef s
 	return !found || !bytes.Equal(stored, live.Data), nil
 }
 
+// keepSnapshotOptionals replaces the freshly-read value of every Optional
+// artifact with what acc's snapshot already holds, so a recapture refreshes the
+// credential without touching the identity it recorded.
+//
+// This matters because claude stopped maintaining /oauthAccount (§6): the live
+// cache can name a different account than the live credential — exactly the
+// state kae now fixes — and importing that mismatch here would pin the wrong
+// identity onto this account permanently, long after the credential is right.
+// An unreadable stored payload degrades to absent, which a later switch treats
+// as "remove it and let claude refetch": stale-but-wrong is never kept.
+func keepSnapshotOptionals(ctx context.Context, be secret.Backend, specs []artifact.Spec, acc account.Account, values []artifact.Value) {
+	for i, sp := range specs {
+		if !sp.Optional {
+			continue
+		}
+		values[i] = artifact.Value{}
+		art, ok := acc.Artifacts[sp.Name]
+		if !ok || !art.Present {
+			continue
+		}
+		if data, found, err := be.Get(ctx, art.SecretRef); err == nil && found {
+			values[i] = artifact.Value{Data: data, Present: true}
+		}
+	}
+}
+
 // valuesDiverge reports whether freshly-read live values differ from acc's
 // stored snapshot: a missing artifact record, a presence mismatch, or any
 // payload difference. An unreadable stored payload is treated as divergence so
@@ -158,6 +185,12 @@ func valuesDiverge(ctx context.Context, be secret.Backend, specs []artifact.Spec
 	for i, sp := range specs {
 		art, ok := acc.Artifacts[sp.Name]
 		if !ok {
+			// An Optional artifact absent from an older snapshot is not a
+			// divergence — it is simply not tracked yet. Counting it as one
+			// would recapture (and rewrite) on every single switch.
+			if sp.Optional {
+				continue
+			}
 			return true
 		}
 		// The recapture path treats any backend-read error as divergence, so it

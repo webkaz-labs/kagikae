@@ -328,11 +328,14 @@ func (app *App) loadPlansWithSnapshots(ctx context.Context, targets []runTarget)
 func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error {
 	for _, sp := range plan.Specs {
 		metaArt, ok := plan.Meta.Artifacts[sp.Name]
-		if !ok {
+		if !ok && !sp.Optional {
 			return errf(constants.ExitError,
 				"snapshot %s/%s lacks artifact %s; re-run kae add --no-login %s %s",
 				plan.Tool, plan.Account, sp.Name, plan.Tool, plan.Account)
 		}
+		// An Optional artifact missing from an older snapshot applies as absent:
+		// metaArt is the zero value, so Present=false removes it live (claude's
+		// /oauthAccount identity cache is then refetched from the token).
 		// A KeychainReplace item (codex keyring) carries its captured per-login
 		// account in the snapshot; the fresh adapter spec cannot know it (the
 		// target is not live), so restore it here before ApplyLive writes. Gated

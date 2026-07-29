@@ -126,25 +126,40 @@ directory, and vice versa — which is exactly the confusing state we want to
 avoid.
 
 **Resolved by real-machine validation (2026-06-14, claude):** `/oauthAccount`
-is **not an auth artifact** — it is a token-derived identity cache. Verified:
+is **not an auth artifact**. Auth comes from the **token alone**: removing
+`/oauthAccount` entirely, or injecting a wrong-account `/oauthAccount`, still
+gives a fresh-process `AUTH-OK`. That half still holds.
 
-- claude authenticates from the **token alone**: removing `/oauthAccount`
-  entirely, or injecting a wrong-account `/oauthAccount`, still gives a
-  fresh-process `AUTH-OK`.
-- claude **re-derives** the identity (`emailAddress`, org fields) from the
-  token on startup and writes it back into `~/.claude.json`.
+**Amended by real-machine validation (2026-07-29, Claude Code 2.1.220):** the
+*self-heal* half no longer holds. claude re-derives the identity from the token
+only when its cached copy is stale, and two behaviours together make it
+effectively never stale:
 
-Therefore the design is: **treat the token (keychain / `.credentials.json`) as
-claude's sole auth artifact, and do not switch `/oauthAccount`.** Then
-`~/.claude.json` carries no auth value and is **symlinked wholesale** like any
-other shared file. The mixed-state problem disappears.
+- the profile refetch is skipped while `oauthAccount.profileFetchedAt` is under
+  **24h** old (and the cached object has its billing/onboarding fields);
+- a **token refresh** renews `profileFetchedAt` and the org/plan fields but
+  does **not** rewrite `accountUuid` / `emailAddress`.
 
-Consequence to document: in `bond` (shared with the real home), running claude
-as the directory's account makes claude rewrite the shared file's
-`/oauthAccount` to that account. This is **cosmetic and self-healing** — auth is
-unaffected (token wins), and the next claude run in the real home re-derives the
-real-home account. In `pin` (`.claude.json` not shared with the real home) there
-is no pollution at all.
+A credential in daily use refreshes well inside 24h, so a switched token leaves
+the previous account's `emailAddress` in place indefinitely: `kae` had switched
+the login while Claude Code kept displaying — and reporting to `kae add` — the
+old account. Measured live: keychain token resolved to account A via
+`api.anthropic.com/api/oauth/profile` while `~/.claude.json` still named
+account B, `profileFetchedAt` refreshed the same day.
+
+Therefore the design is: **the token stays claude's sole auth artifact, and
+`/oauthAccount` is switched alongside it as a second, identity-only artifact**
+(`oauth_account`, patched by JSON pointer). The mixed-state goal above is
+unaffected: a pointer patch rewrites one key, so `projects`, `mcpServers` and
+trust state stay live-shared, and `~/.claude.json` is still **symlinked
+wholesale** in isolation modes — `patch.WriteFileAtomic` resolves the link and
+writes through it, so the shared file is never forked into a private copy.
+
+Consequence to document: in `bond` (shared with the real home), the shared
+file's `/oauthAccount` names whichever account was applied last. It is no
+longer self-healing, so `kae use` / `kae pin` is what corrects it — running
+claude will not. Auth is unaffected either way (token wins). In `pin`
+(`.claude.json` not shared with the real home) there is no pollution at all.
 
 **Fallback — copy+patch (not needed for claude).** The validation above removes
 the need for this for claude. It is retained only for a hypothetical future
@@ -256,20 +271,23 @@ Real-machine fresh-process auth validation remains a release gate (see
 
 ## 11. Open questions
 
-### Blocking fork — claude mixed-state behaviour — RESOLVED (2026-06-14)
+### Blocking fork — claude mixed-state behaviour — RESOLVED (2026-06-14, amended 2026-07-29)
 
 Settled by real-machine validation (keychain untouched; `~/.claude.json` edited
 and restored; each step a fresh-process `claude -p … --model haiku` auth check):
 
 1. **Token only (no `/oauthAccount`)** → `AUTH-OK`. Auth needs the token only.
-2. **Token vs wrong `/oauthAccount`** → `AUTH-OK`; claude re-derived
-   `emailAddress` from the token (self-healed). Token wins.
-3. **claude rewrites `/oauthAccount` on startup** = yes, from the token.
+2. **Token vs wrong `/oauthAccount`** → `AUTH-OK`. Token wins.
+3. **claude rewrites `/oauthAccount` on startup** = only while its cached copy
+   is stale, which in practice it never is (amended 2026-07-29, §6): the
+   refetch is skipped under a 24h cache TTL that every token refresh renews
+   without rewriting `emailAddress`.
 
-Outcome: `/oauthAccount` is a token-derived cache, not an auth artifact. §6
-resolves to "token is claude's sole auth artifact; `.claude.json` is symlinked
-wholesale; the cosmetic `/oauthAccount` thrash in `bond` self-heals". copy+patch
-is not needed for claude.
+Outcome: `/oauthAccount` is not an auth artifact (1 and 2 are permanent), but it
+is not self-healing either, so §6 resolves to "the token is claude's sole auth
+artifact; `/oauthAccount` is switched alongside it as an identity-only pointer
+patch; `.claude.json` stays symlinked wholesale". copy+patch is not needed for
+claude.
 
 ## 12. Implementation status
 

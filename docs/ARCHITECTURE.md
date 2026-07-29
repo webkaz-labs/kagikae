@@ -87,6 +87,13 @@ type Adapter interface {
 }
 ```
 
+`Artifacts` returns the credential **first** — `Detect`, the bond credential
+copy, and `credentialArtifactName` all treat the leading spec as the tool's
+credential. A spec may set `Optional`, which only changes how a snapshot that
+predates it applies: the artifact counts as absent (removed live) instead of
+failing the switch. It is for an artifact whose removal is safe and
+self-correcting (claude's `/oauthAccount`), never for a credential.
+
 `Env` carries the resolved home directory, OS, environment lookups, and the
 live base paths (honoring `CLAUDE_CONFIG_DIR` / `CODEX_HOME` when already
 set). Capture, apply, verify, backup, and rollback are generic operations in

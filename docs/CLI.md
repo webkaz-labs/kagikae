@@ -721,7 +721,8 @@ Companion-binding checks (warn-level, unfiltered report only):
       "driver": "claude-keychain-patch",
       "applied": true,
       "actions": [
-        {"kind": "keychain", "target": "Claude Code-credentials", "pointer": "/claudeAiOauth"}
+        {"kind": "keychain", "target": "Claude Code-credentials", "pointer": "/claudeAiOauth"},
+        {"kind": "json-pointer", "target": "~/.claude.json", "pointer": "/oauthAccount"}
       ],
       "warnings": []
     }

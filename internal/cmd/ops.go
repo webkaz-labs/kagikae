@@ -288,8 +288,8 @@ func (app *App) clearUnrecordedOptionals(ctx context.Context, meta backup.Meta, 
 			// credential is already restored, so do not fail the rollback over the
 			// cleanup — but say so, or a stale identity cache survives silently.
 			fmt.Fprintf(os.Stderr,
-				"kae: warning: could not resolve %s artifacts to clear its identity cache (%v); "+
-					"verify with kae doctor %s\n", tool, err, tool)
+				"kae: warning: could not resolve %s artifacts, so its identity cache was left "+
+					"as it was (%v); fix that and re-run: kae rollback --to %s\n", tool, err, meta.ID)
 			continue
 		}
 		for _, sp := range specs {

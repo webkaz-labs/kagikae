@@ -192,11 +192,15 @@ are needed). This complexity is the reason live symlink sharing (this section)
 is strongly preferred — it makes the whole sync question moot. copy+patch with
 hook sync (a) is the fallback only if the §11 validation rules out symlinking.
 
-**This fork is settled** (§11): the real-machine validation proved the token is
-claude's sole auth artifact, so live symlink sharing is used and copy+patch is
-not needed. The caution still applies to any future tool whose auth pointer is
-*not* token-derived — given claude's proven sensitivity to auth-payload
-consistency, verify with a fresh-process auth check, never assume.
+**This fork is settled for authentication** (§11): the real-machine validation
+proved the token is claude's sole auth artifact, so no copy+patch and no sync
+strategy is needed to keep a directory authenticated. What is *not* settled is
+identity propagation into isolation modes — the cache there is normally private
+to the directory, and how (or whether) kae should switch it is the open question
+in §6 and [ROADMAP.md](ROADMAP.md). The caution above still applies to any future
+tool whose auth pointer is *not* token-derived — given claude's proven
+sensitivity to auth-payload consistency, verify with a fresh-process auth check,
+never assume.
 
 The actual conversation history lives in separate files (claude:
 `~/.claude/projects/`), so session continuity is achieved by symlinking those
@@ -212,7 +216,9 @@ it is never enumerated. `<config-dir>/.claude.json` is therefore a link only
 when `~/.claude/.claude.json` happens to exist; normally claude creates a
 private cache in the bond dir. That is the isolation-mode gap recorded in §6 and
 [ROADMAP.md](ROADMAP.md) — do not read this note as "symlinking already solves
-it". Any future fix must keep the symlink target the *real* home (reuse the
+it", and do not treat any particular fix as decided: sharing the cache back to
+the real home and keeping it private per directory are both still on the table.
+Whichever is chosen, a symlink-based one must target the *real* home (reuse the
 self-reference guard that protects the `.claude/` contents).
 
 ## 7. Applicability

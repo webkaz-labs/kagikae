@@ -324,8 +324,10 @@ exit code — see [docs/CLI.md](docs/CLI.md).
 ## Safety Model
 
 - **Auth-only by default.** Only the credential is switched (claude's token,
-  codex's `auth.json` or `Codex Auth` keyring item, agy's opaque token, …);
-  mixed-state files like `~/.claude.json` are never touched in a shared switch.
+  codex's `auth.json` or `Codex Auth` keyring item, agy's opaque token, …). In a
+  mixed-state file like `~/.claude.json`, nothing is replaced and only an
+  allowlisted pointer is written — today just claude's `/oauthAccount`, the one
+  field it shows for the logged-in account.
 - **Secrets in the OS store.** macOS Keychain / Linux libsecret; a plaintext
   file backend is explicit opt-in. Secret values never reach
   stdout/JSON/logs/metadata.

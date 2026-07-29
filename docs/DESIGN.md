@@ -133,10 +133,13 @@ NG:  two terminals both relying on a global shared switch for different accounts
   artifacts the official CLIs create.
 - `kae` never edits upstream settings, skills, hooks, memory, MCP config, or
   project trust during a global shared switch.
-- A global shared switch never touches mixed-state files (for example
-  `~/.claude.json`). In isolated environments they are symlinked wholesale; only
-  the credential file is private-copied. No mixed-state file is patched or
-  replaced.
+- A mixed-state file (for example `~/.claude.json`) is never replaced, and only
+  an explicitly allowlisted pointer inside it is written. Today that is claude's
+  `/oauthAccount` identity cache, switched with the credential because claude
+  stopped self-healing it ([ADAPTERS.md](ADAPTERS.md)); every other key —
+  `projects`, `mcpServers`, onboarding, trust state — is left exactly as found.
+  The per-directory materializers copy the credential only, so they touch no
+  mixed-state file at all.
 - Secrets are stored in the OS credential store by default; a plaintext file
   backend exists only as an explicit opt-in.
 - Every mutation is preceded by a backup and is reversible via `kae rollback`.

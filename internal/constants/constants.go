@@ -133,6 +133,13 @@ const (
 	// CheckCompanionTokenDrift: the live login a bound token resolves to differs
 	// from the companion's expected_login. opt-in (it needs a network call).
 	CheckCompanionTokenDrift = "companion_token_drift"
+	// CheckIdentityDrift: a tool's live identity-only artifact no longer matches
+	// the one kae applied for the active account — someone or something outside
+	// kae rewrote it. Offline (a stored-vs-live byte comparison).
+	CheckIdentityDrift = "identity_drift"
+	// CheckUpstreamVersion: the installed tool is a newer major/minor than the
+	// version its adapter's behaviour assumptions were verified against.
+	CheckUpstreamVersion = "upstream_version"
 )
 
 // Exit codes and their stable error-code tokens.

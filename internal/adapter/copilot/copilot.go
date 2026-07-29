@@ -37,6 +37,10 @@ func (Copilot) ID() string { return constants.ToolCopilot }
 
 func (Copilot) Binary() string { return binaryName }
 
+// VerifiedVersion is the GitHub Copilot CLI release kae's behaviour assumptions
+// were last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
+func (Copilot) VerifiedVersion() string { return "1.0.61" }
+
 func configJSONPath(env adapter.Env) string {
 	return filepath.Join(env.Home, ".copilot", "config.json")
 }

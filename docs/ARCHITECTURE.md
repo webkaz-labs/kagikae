@@ -119,6 +119,14 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   datable credential (copilot pointer, agy blob) omits it and is treated as
   not-datable. `internal/freshness` holds only the shared parsing primitives —
   no per-tool knowledge — so it stays a leaf package (no `adapter` import).
+- `VersionVerifier` (`VerifiedVersion() string`) declares the upstream release
+  the adapter's behaviour assumptions were last verified against, so
+  `doctor upstream_version` can warn when the installed tool is a newer
+  major/minor. Unlike the other two this is not capability-dependent — kae relies
+  on undocumented *behaviour* of every tool, and a behaviour-only upstream change
+  passes every structure guard — so all six adapters implement it
+  (`TestVersionVerifierConformance`). The assumptions themselves are listed in
+  [VALIDATION.md](VALIDATION.md) "Upstream Behaviour Assumptions".
 
 See [ADAPTERS.md](ADAPTERS.md).
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -580,6 +581,30 @@ func TestIdentifierConformance(t *testing.T) {
 	for name, ad := range all {
 		if _, ok := ad.(adapter.Identifier); !ok {
 			t.Errorf("%s adapter does not implement adapter.Identifier", name)
+		}
+	}
+}
+
+// TestVersionVerifierConformance pins that every tool adapter declares the
+// upstream version its behaviour assumptions were verified against, and that the
+// value parses as a version triple (doctor skips silently otherwise, which would
+// make a typo look like "nothing to report"). Unlike Fresher/Identifier this is
+// not capability-dependent: kae reads undocumented behaviour of every tool, so
+// every adapter owes a verified version.
+func TestVersionVerifierConformance(t *testing.T) {
+	all := map[string]adapter.Adapter{
+		"claude": claudeAdapter, "codex": codexAdapter, "agy": agyAdapter,
+		"opencode": opencodeAdapter, "cursor": cursorAdapter, "copilot": copilotAdapter,
+	}
+	triple := regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+	for name, ad := range all {
+		verifier, ok := ad.(adapter.VersionVerifier)
+		if !ok {
+			t.Errorf("%s adapter does not implement adapter.VersionVerifier", name)
+			continue
+		}
+		if got := verifier.VerifiedVersion(); !triple.MatchString(got) {
+			t.Errorf("%s VerifiedVersion() = %q, want a major.minor.patch triple", name, got)
 		}
 	}
 }

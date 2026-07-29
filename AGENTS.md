@@ -67,6 +67,15 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   (BurntSushi `config.Load` → re-`Marshal`) is forbidden: it silently drops
   every user comment.
 - JSON contract tokens live in `internal/constants`; never inline literals.
+- Every adapter must implement `adapter.VersionVerifier`, and its
+  `VerifiedVersion()` moves in lockstep with that tool's rows in the
+  "Upstream Behaviour Assumptions" table of `docs/VALIDATION.md`: re-verify the
+  rows, then bump both in the same commit. kae depends on undocumented upstream
+  *behaviour*, not just layout, and a behaviour-only change passes every structure
+  guard (claude silently stopped self-healing `/oauthAccount`; nothing fired). The
+  `upstream_version` doctor check is the only offline signal, and it *skips
+  silently* on a version string it cannot parse — so a stale or typo'd value reads
+  as "nothing to report".
 - Adding or changing a command or subcommand requires updating shell completion
   in lockstep: the `case` in all three scripts in `internal/cmd/completion.go`,
   any new `kae __complete` kind in `internal/cmd/complete.go`, and the parity

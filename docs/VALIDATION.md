@@ -852,7 +852,70 @@ companion add main gh GH_TOKEN` (records `expected_login` from `gh api user`),
 then in the pinned dir `mise exec -- kae doctor --yes` reports a match, and
 `kae doctor --yes` outside the pin reports the inactive-pin warn.
 
+## Upstream Behaviour Assumptions
+
+kae drives undocumented upstream state, so it depends on two different kinds of
+fact: the **layout** (where the credential lives, what shape it has) and the
+**behaviour** (what the tool does with it at runtime). Every adapter guards the
+layout — an unrecognized shape refuses with exit 10, and `kae doctor <tool>`
+reports what was detected. **Nothing guards the behaviour.** An upstream release
+that keeps the layout byte-identical and changes only what the tool *does* passes
+every guard kae has.
+
+That is not hypothetical. `/oauthAccount` was originally left alone because Claude
+Code was measured self-healing it. It stopped (it now skips the profile refetch
+while the cached copy is under 24h old, and a token refresh renews that timestamp
+without rewriting `emailAddress`); the layout never changed, no check fired, and
+switched sessions kept displaying the previous account until a user noticed by
+hand. The assumption was real and load-bearing, and it **was not written down as
+a verifiable item** — which is the gap this table closes.
+
+Two offline `doctor` checks watch the table between releases:
+
+- `identity_drift` — a tool's identity-only artifact no longer matches what kae
+  applied for the active account. Catches an assumption that has *already* broken.
+- `upstream_version` — the installed tool is a newer major/minor than the
+  `VerifiedVersion()` its adapter declares. Flags the release where one *could*
+  have broken, before it costs a wrong-account session. Patch bumps stay silent.
+
+A warning from either means: work that tool's rows below, then update the
+adapter's `VerifiedVersion()` and the version recorded here **in the same
+commit**. Verifying an assumption always means launching a **fresh** tool process
+— a still-running session and a byte-compared payload both prove nothing.
+
+### claude (verified on 2.1.220)
+
+| Assumption | How to verify |
+|---|---|
+| The credential alone authenticates: applying `/claudeAiOauth` (keychain payload or `.credentials.json`) is the whole login | `kae use claude <acct>`, then `claude -p "say AUTH-OK" </dev/null` in a **new** process returns a reply, not "Not logged in" |
+| `/oauthAccount` is **not** self-healed — a switched credential does not make claude refetch the profile and rewrite `emailAddress` | `kae use claude <other>`, launch claude, then diff `~/.claude.json`: `oauthAccount.emailAddress` is the value kae wrote and does **not** revert. If it self-heals again, kae's identity switch becomes redundant (not harmful) — record that here rather than dropping the artifact silently |
+| The keychain payload must round-trip **verbatim**; a re-serialized payload makes Claude Code reject the credential | Capture → apply → fresh-process auth check on macOS with the real keychain driver. A byte-compare of the stored payload does not cover it: an equivalent-but-re-encoded payload is exactly this failure |
+| `~/.claude.json` is mixed state whose other keys must survive a pointer patch | `git`-diff `~/.claude.json` across a switch: only `/oauthAccount` changes; `projects`, `mcpServers`, onboarding and cache keys stay byte-identical |
+
+### Other tools
+
+| Tool | Assumption | How to verify | Verified on |
+|---|---|---|---|
+| codex | `auth.json` holds only auth state, so the whole file may be swapped | switch, then `codex login status` in a fresh process names the applied account; `config.toml` and history are untouched | 0.145.0 |
+| codex | the `Codex Auth` keyring item's account is a per-login opaque `cli\|<opaque>` id kae must capture verbatim, and exactly one item may exist after a switch | `security find-generic-password -s "Codex Auth"` after a switch shows the target's opaque id and a single item (the two-account real gate is still open — v0.8.3) | 0.145.0 |
+| agy | of the shared `gemini` keychain service, only account `antigravity` is agy's; siblings belong to the Gemini ecosystem and must never be read or written | switch, confirm a fresh agy session reports the applied account and a sibling `gemini` item is unchanged | 1.0.10 |
+| agy | the live account is resolved server-side from the opaque token and never persisted, so identity can only come from `~/.gemini/google_accounts.json` `.active` (or `--identity`) | after an Antigravity login, `kae add agy` auto-names from `.active`; no other on-disk source appears | 1.0.10 |
+| opencode | `/openai` is the subscription login, and sibling provider keys are independent credentials that must survive a switch | switch with an extra provider key present in `auth.json`; the sibling key is byte-identical afterwards | 1.17.4 |
+| cursor | the credential is a single opaque raw JWT in keychain `cursor-access-token` / `cursor-user`, round-tripped verbatim | switch, then `cursor-agent status` in a fresh process reports the applied account | 2026.06.16 |
+| cursor | `cursor-agent status` prints `✓ Logged in as <email>` on one line with exit 0 (what `Identity` parses) | run it while logged in; the marker, the single line, and the exit code all hold | 2026.06.16 |
+| copilot | per-account tokens coexist in the keychain, so repointing `/lastLoggedInUser` is the entire switch | after a switch, a fresh `copilot -p "say AUTH-OK" --no-color --allow-all-tools` acts as the other account (cross-account item still open — v0.7.0) | 1.0.61 |
+| copilot | `config.json` is JSONC; its comments, trailing commas, and formatting must survive the patch | diff after a switch **and** after `kae rollback`: the leading `//` comments and `trustedFolders` survive both | 1.0.61 |
+
+The release acceptance run below is how these rows get re-verified: it already
+launches fresh tool processes against real accounts, which is what every row
+needs.
+
 ## Real-Machine Acceptance (release only)
+
+This run doubles as the re-verification pass for the **Upstream Behaviour
+Assumptions** table above: work each installed tool's rows, then update that
+tool's `VerifiedVersion()` and its recorded version in the same commit. `kae
+doctor` naming `upstream_version` for a tool is the signal that its rows are due.
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of
 `~/.claude.json`:

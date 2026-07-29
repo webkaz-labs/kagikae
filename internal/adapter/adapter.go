@@ -83,6 +83,16 @@ type Fresher interface {
 	Freshness(payload []byte) freshness.Info
 }
 
+// VersionVerifier is implemented by an adapter that records the upstream version
+// kae's behaviour assumptions were last verified against, so doctor can say when
+// the installed tool has moved past it. kae depends on undocumented upstream
+// layout *and* behaviour; a behaviour-only change (see docs/VALIDATION.md
+// § "Upstream Behaviour Assumptions") passes every structure guard, so the version is the
+// only signal available offline.
+type VersionVerifier interface {
+	VerifiedVersion() string
+}
+
 var registry = map[string]Adapter{}
 
 // Register installs an adapter; called from tool packages' init via Install.

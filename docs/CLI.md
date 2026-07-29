@@ -671,7 +671,7 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
 `unsupported`, `file_mode`, `credential_stale`, `secret_orphan`,
 `companion_missing`, `companion_binary`, `companion_drift`,
-`companion_token_drift`.
+`companion_token_drift`, `identity_drift`, `upstream_version`.
 
 Credential-health checks (warn-level):
 - `credential_stale`: a captured snapshot is past its `expiresAt` with no
@@ -683,6 +683,28 @@ Credential-health checks (warn-level):
   `kae account rm`. Detected only where the backend can enumerate (file
   `readdir`, Linux `libsecret`); the darwin keychain cannot list by service, so
   the check is silently skipped there (documented gap; docs/SECURITY.md).
+
+Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
+<tool>`; both offline — no network call):
+- `identity_drift`: the live value of a tool's identity-only artifact (claude's
+  `/oauthAccount`) differs from the one kae applied for the active account, or has
+  disappeared. Since kae applies the identity together with the credential, a
+  divergence means it was rewritten outside kae — a manual login, or upstream
+  changing how it maintains the field. Names `kae use <tool> <account>` to
+  re-apply, and points at docs/VALIDATION.md "Upstream Behaviour Assumptions" if
+  it drifts again. The identity value itself is never printed (it is PII);
+  the message names only the tool, account, and artifact. Skipped when the tool
+  has no active account, when the snapshot does not track the identity yet, and
+  inside a kae-owned isolated home (`kae pin`, `kae use -i`) — the per-directory
+  materializers never apply an identity there, so there is nothing kae wrote to
+  compare against (docs/ROADMAP.md).
+- `upstream_version`: the installed tool's `--version` is a newer **major or
+  minor** than the version its adapter's behaviour assumptions were verified
+  against (`adapter.VersionVerifier`). A patch bump is silent by design, an older
+  installed version is fine, and an unparseable or failing `--version` is skipped
+  rather than warned about. It exists because kae's structure guards only catch
+  layout changes: a behaviour-only upstream change passes all of them and breaks
+  switching silently, so the version is the sole offline signal.
 
 Companion-binding checks (warn-level, unfiltered report only):
 - `companion_missing`: a bound token knob has no stored secret, so the mise

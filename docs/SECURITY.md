@@ -118,6 +118,14 @@ child could rotate the live credential unseen — a cached value would be stale.
   call. The live value it reads back is sanitized (control characters dropped,
   length-capped) before it reaches doctor output, so a hostile repo-local
   `.git/config` cannot inject terminal escapes.
+- The `identity_drift` doctor check compares the stored identity payload against
+  the live one. It is **offline** — a byte comparison of state already on the
+  machine, no probe and no network call — so nothing about the login is
+  transmitted. Neither value reaches the output: an identity is PII (an email
+  address), so a finding names only the tool, account, and artifact.
+- The `upstream_version` doctor check runs `<binary> --version` through
+  `internal/runner` (argv array, no shell) and reads only the version string.
+  **Offline**, no credential in the environment, nothing to redact.
 - The `companion_token_drift` doctor check resolves a token companion's live
   login (e.g. `gh api user`) and compares it to the recorded `expected_login`.
   It is the one doctor check that makes a **network call**, so it is **opt-in**

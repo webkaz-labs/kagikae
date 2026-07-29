@@ -35,6 +35,12 @@ func (Claude) ID() string { return constants.ToolClaude }
 
 func (Claude) Binary() string { return "claude" }
 
+// VerifiedVersion is the Claude Code release kae's behaviour assumptions were
+// last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). 2.1.220
+// is where /oauthAccount was measured as *not* self-healed — the finding kae's
+// identity switch depends on — so a newer minor is worth re-measuring.
+func (Claude) VerifiedVersion() string { return "2.1.220" }
+
 // configDir honors CLAUDE_CONFIG_DIR as the live base path when already set.
 // Auth mode never sets it.
 func configDir(env adapter.Env) string {

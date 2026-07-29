@@ -33,6 +33,10 @@ func (Opencode) ID() string { return constants.ToolOpencode }
 
 func (Opencode) Binary() string { return "opencode" }
 
+// VerifiedVersion is the OpenCode release kae's behaviour assumptions were last
+// checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
+func (Opencode) VerifiedVersion() string { return "1.17.4" }
+
 // authJSONPath resolves opencode's credential file, honoring XDG_DATA_HOME
 // as the live base path when already set (absolute values only, as
 // everywhere in kae).

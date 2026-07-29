@@ -34,6 +34,10 @@ func (Codex) ID() string { return constants.ToolCodex }
 
 func (Codex) Binary() string { return "codex" }
 
+// VerifiedVersion is the Codex CLI release kae's behaviour assumptions were last
+// checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
+func (Codex) VerifiedVersion() string { return "0.145.0" }
+
 // codexHome honors CODEX_HOME as the live base path when already set.
 func codexHome(env adapter.Env) string {
 	if dir := env.Getenv("CODEX_HOME"); dir != "" {

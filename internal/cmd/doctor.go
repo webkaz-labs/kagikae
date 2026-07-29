@@ -175,10 +175,18 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 		report.Checks = append(report.Checks, ad.Doctor(ctx, app.Env)...)
 	}
 
+	// upstream behaviour-assumption drift: the installed tool has moved past the
+	// version kae's assumptions were verified on. Per-tool, so it honors the
+	// filter, and needs no secret backend.
+	report.Checks = append(report.Checks, app.upstreamVersionChecks(ctx, toolFilter)...)
+
 	// credential health: stale snapshots and orphaned secret items. Reuse the
 	// backend resolved above; skip when it is unavailable.
 	if err == nil {
 		report.Checks = append(report.Checks, app.credentialHealthChecks(ctx, be, toolFilter)...)
+		// live identity drift: an identity artifact rewritten outside kae. Needs
+		// the backend to read the applied payload; per-tool, so it honors the filter.
+		report.Checks = append(report.Checks, app.identityDriftChecks(ctx, be, toolFilter)...)
 	}
 
 	// companion binding health (config-level). Companions are not tools, so

@@ -549,5 +549,37 @@ claims decoder is `internal/jwt`).
    in [DATA-MODEL.md](DATA-MODEL.md).
 5. Optionally implement `adapter.Identifier` so `kae add <tool>` can default the
    account name (above). Skip it when the tool exposes no readable identity.
-6. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
+6. Implement `adapter.VersionVerifier` (`VerifiedVersion() string`) with the
+   upstream version you verified the adapter against, and add that tool's
+   behaviour assumptions to the table in [VALIDATION.md](VALIDATION.md)
+   "Upstream Behaviour Assumptions". This one is **not** optional — see
+   "Verified Upstream Versions" below.
+7. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
    guard-refusal paths.
+
+## Verified Upstream Versions
+
+Each adapter declares, via `adapter.VersionVerifier`, the upstream release its
+behaviour assumptions were last verified against. `kae doctor` compares the
+installed `<binary> --version` against it and warns (`upstream_version`) when the
+installed tool is a newer **major or minor**; a patch bump is silent.
+
+| Tool | `VerifiedVersion()` | `--version` output shape |
+|------|---------------------|--------------------------|
+| claude | `2.1.220` | `2.1.220 (Claude Code)` |
+| codex | `0.145.0` | `codex-cli 0.145.0` |
+| agy | `1.0.10` | `1.0.10` |
+| opencode | `1.17.4` | `1.17.4` |
+| cursor | `2026.06.16` | `2026.06.16-20-30-07-<sha>` (date-versioned; still three numbers, so the same comparison applies and a new build month reads as a minor bump) |
+| copilot | `1.0.61` | `GitHub Copilot CLI 1.0.61.` (note the trailing period) |
+
+The parser takes the leftmost `<major>.<minor>.<patch>` triple of stdout, which
+reads all of the shapes above; `TestParseUpstreamVersion` pins the real outputs so
+a new shape cannot silently start reporting the wrong version.
+
+**Every adapter must declare one** (`TestVersionVerifierConformance` enforces it),
+because kae depends on undocumented upstream *behaviour* as well as layout, and a
+behaviour-only change passes every structure guard. When you re-verify a tool's
+rows in [VALIDATION.md](VALIDATION.md), bump `VerifiedVersion()` and the recorded
+version there in the same commit — the check is only as honest as those two
+staying in step.

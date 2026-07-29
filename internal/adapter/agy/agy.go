@@ -48,6 +48,10 @@ func (Agy) ID() string { return constants.ToolAgy }
 
 func (Agy) Binary() string { return "agy" }
 
+// VerifiedVersion is the Antigravity CLI release kae's behaviour assumptions were
+// last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
+func (Agy) VerifiedVersion() string { return "1.0.10" }
+
 // keychainDriver reports whether this platform uses the macOS Keychain item
 // (darwin) or the file-based snapshot (Linux/WSL headless).
 func keychainDriver(env adapter.Env) bool { return env.GOOS == "darwin" }

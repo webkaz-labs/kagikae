@@ -91,7 +91,9 @@ Follow-up from v0.8.4 (not yet scheduled):
   attribution gap: the UI can name the wrong account inside a pinned directory.
   The fix is one shared identity step across all four materializers; the design
   question is bond mode, where writing the cache is visible to the real home
-  (docs/SCOPE-MODEL.md §6).
+  (docs/SCOPE-MODEL.md §6). Until then `doctor`'s `identity_drift` check skips a
+  kae-owned isolated home for the same reason: kae applied no identity there, so
+  there is nothing of its own to compare the live value against.
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the

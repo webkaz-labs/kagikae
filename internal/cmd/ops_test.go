@@ -122,6 +122,68 @@ func TestRestoreSpecFollowsAMovedStore(t *testing.T) {
 	}
 }
 
+// An **absent** record must never redirect. Redirecting it would delete the store
+// the tool moved to, and the paths that need the redirect reach this case with a
+// credential nothing has a copy of: `kae add codex --restore` under `auto` whose
+// login succeeded (creating the keychain item) and which then failed before the
+// capture — deleting there destroys the login the user just performed.
+func TestRestoreSpecNeverRedirectsADelete(t *testing.T) {
+	absentFileRec := backup.ArtifactRecord{
+		Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
+		Target: "/home/u/.codex/auth.json", SecretRef: "backup/x/codex/auth", Present: false,
+	}
+	itemNow := artifact.Spec{
+		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
+		Pointer: "/tokens", KeychainAccount: "cli|1111111111111111", KeychainMatchAccount: true,
+	}
+	sp, err := restoreSpec(map[string][]artifact.Spec{constants.ToolCodex: {itemNow}}, absentFileRec)
+	if err != nil {
+		t.Fatalf("an absent record must restore, not fail: %v", err)
+	}
+	if sp.Kind != constants.KindFile || sp.Target != absentFileRec.Target {
+		t.Fatalf("restore spec = %+v, want the recorded store (deleting the live one is unrecoverable)", sp)
+	}
+}
+
+// applyBackup must leave the moved-to store alone for an absent record, and say so:
+// the restore is partial, and silence there reads as a full one.
+func TestApplyBackupKeepsAnUnaccountedCredential(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	be := testBackend(t, app)
+	authPath := filepath.Join(app.Env.Home, ".codex", "auth.json")
+	meta := backup.Meta{Artifacts: []backup.ArtifactRecord{{
+		Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
+		Target: authPath, SecretRef: backup.SecretRef("x", constants.ToolCodex, "auth"), Present: false,
+	}}}
+	const acct = "cli|1111111111111111"
+	current := map[string][]artifact.Spec{constants.ToolCodex: {{
+		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
+		Pointer: "/tokens", KeychainAccount: acct, KeychainMatchAccount: true,
+	}}}
+	const justLoggedIn = `{"tokens":{"access_token":"just-logged-in"}}`
+	sim := &keychainSim{present: true, account: acct, payload: justLoggedIn}
+	var err error
+	_, stderr := captureStderr(t, func() int {
+		runner.With(sim, func() { err = app.applyBackup(ctx, be, meta, nil, current) })
+		return 0
+	})
+	if err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if !sim.present || sim.payload != justLoggedIn {
+		t.Fatal("the credential the backup has no copy of must survive the restore")
+	}
+	for _, op := range sim.ops {
+		if op == "delete" {
+			t.Fatalf("no delete may reach the moved-to store: %v", sim.ops)
+		}
+	}
+	if !strings.Contains(stderr, "moved its credential") {
+		t.Fatalf("a partial restore must warn: %q", stderr)
+	}
+}
+
 // The redirect is only worth anything if the restore path consults it, so this
 // covers the wiring: applyBackup must write the store the tool reads now, and must
 // not leave the recorded one behind as a credential nothing reads.

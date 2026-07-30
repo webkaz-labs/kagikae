@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
@@ -331,10 +332,15 @@ func storedValue(ctx context.Context, be secret.Backend, ref string, present, id
 // be redirected, and is refused exactly as the equivalent snapshot transition is
 // (checkPayloadShape).
 //
-// A redirect can delete the store it lands on — an absent record restores as
-// "logged out" — so every caller must have captured that store first. They do:
-// the run and login flows recapture after their child, and a rollback's
-// pre-rollback backup resolves today's specs (plansFromBackupMeta).
+// **A redirect only ever writes; it never deletes.** An absent record restores as
+// "logged out", and redirecting that would delete the store the tool moved to —
+// a credential this backup has no copy of, and on the paths that need the redirect
+// most, one nothing else has a copy of either: a login flow that failed after
+// creating the credential but before kae captured it reaches this exact case, and
+// deleting there destroys the login the user just performed. So an absent record
+// keeps the recorded spec, which removes the abandoned store (inert) and leaves the
+// live one alone, with a warning that the restore was partial. Leaving a credential
+// kae cannot account for is recoverable; deleting it is not.
 //
 // current is nil only where no declaration was resolved; the record then stands
 // alone, which is the pre-fix behaviour.
@@ -342,6 +348,14 @@ func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) 
 	for _, live := range current[rec.Tool] {
 		if live.Name != rec.Name || live.Kind == rec.Kind {
 			continue
+		}
+		if !rec.Present {
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: %s moved its credential to %s %q, which this backup has no record of; "+
+					"kae left it in place rather than deleting a credential it has no copy of, so %s "+
+					"stays logged in as whatever wrote it\n",
+				rec.Tool, live.Kind, live.Target, rec.Tool)
+			return specFromRecord(rec), nil
 		}
 		if artifact.WholeDocument(live.Kind) != artifact.WholeDocument(rec.Kind) {
 			return artifact.Spec{}, errf(constants.ExitUnsafeRefused,

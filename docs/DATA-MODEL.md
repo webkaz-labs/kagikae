@@ -367,9 +367,18 @@ nothing reads it while kae reported success. A move between shapes that are *not
 interchangeable (a whole document and a JSON pointer value) cannot be redirected
 and is refused with exit `10`, exactly as the equivalent snapshot transition is.
 
-Two supports make the redirect safe. The flows that run a child re-resolve their
-specs afterwards, so the credential the child left behind is captured before
-anything overwrites it; and a rollback's pre-rollback backup resolves **today's**
+**A redirect only ever writes; it never deletes.** An absent record restores as
+"logged out", and redirecting that would delete the store the tool moved to — a
+credential the backup has no copy of, and on the paths that most need the redirect,
+one nothing else has a copy of either (a login flow that succeeded and then failed
+before kae captured it). Such a record keeps the recorded store, so the abandoned
+one is removed and the live one is left alone, with a warning on stderr that the
+restore was partial. Leaving a credential kae cannot account for is recoverable;
+deleting it is not.
+
+Two further supports back the write case: the flows that run a child re-resolve
+their specs afterwards, so the credential the child left behind is captured before
+anything overwrites it, and a rollback's pre-rollback backup resolves **today's**
 specs, so what it overwrites is what it backed up.
 
 A legacy `keychain_replace` record with **no** recorded account is refused

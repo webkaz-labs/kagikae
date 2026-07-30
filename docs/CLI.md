@@ -884,7 +884,9 @@ report success while the live session kept the other account. A move between
 payload shapes that are not interchangeable cannot be redirected and is refused
 with exit `10`, pointing at `kae use` instead. The same redirect applies to the
 restores in `kae run -s` and `kae add --restore`, whose child process is the usual
-reason the store moved in the first place.
+reason the store moved in the first place. A backup that recorded **no** credential
+is never redirected: kae leaves the moved-to store alone rather than delete a
+credential it has no copy of, and warns on stderr that the restore was partial.
 
 ### `kae env list --json`
 

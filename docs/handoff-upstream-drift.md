@@ -14,7 +14,9 @@ defects of the same class in the restore/rollback paths (a credential written or
 deleted in a store the tool does not read there), all fixed on the branch — so
 **treat any restore-path assumption in this document as re-examined**.
 
-**Still open here**: 1.1, 1.4, 1.5, 1.6, all of Part 2, and Part 3's skill.
+**Also done** (branch `fix/doctor-orphan-namespaces`): **2.1**.
+
+**Still open here**: 1.1, 1.4, 1.5, 1.6, the rest of Part 2, and Part 3's skill.
 
 **Branch**: start a new one off `main`.
 **Why this file exists**: v0.12.0 fixed one instance of a defect class — *kae
@@ -217,7 +219,7 @@ the account rule is known and tested.
 
 # Part 2 — Gaps that are not about upstream
 
-### 2.1 `doctor`'s orphan check false-positives on two whole namespaces — **VERIFIED HERE**
+### 2.1 `doctor`'s orphan check false-positives on two whole namespaces — **FIXED** (reproduced first: the old predicate printed `kae account rm companion main`)
 
 `orphanChecks` (`internal/cmd/doctor.go:308-330`) splits a secret key on `/` and
 skips only `parts[0] == "backup"`. But the backend holds four namespaces:
@@ -236,6 +238,13 @@ enumerable backend (the file backend; the keychain backend is not an
 found the `companion/` case; the `env/` case was found while verifying it, which
 is a hint that the fix should be a shared "which namespace is this key" helper
 next to the four `SecretRef` builders, not a third special case here.
+
+**Fixed** as `secret.AccountKey` + `secret.NS*`, which the three prefixed
+builders now compose their keys from, so the classifier and the key shapes cannot
+drift apart. The account namespace is the un-prefixed one, so a tool id must
+never equal a reserved prefix — guarded by
+`TestToolIDsDoNotCollideWithKeyNamespaces`. Recorded in
+[DATA-MODEL.md](DATA-MODEL.md) § Secret References.
 
 ### 2.2 Account rename/remove and profile remove ignore per-directory bindings — **AGENT-CLAIMED**
 

@@ -268,3 +268,27 @@ func TestIdentityDiffers(t *testing.T) {
 		}
 	}
 }
+
+// TestIdentityDriftNeverPrintsTheIdentity is the redaction assertion AGENTS.md
+// requires of a new output path. Both sides of this comparison are PII — the
+// account uuid and the login email — and the whole payload is in memory when the
+// message is built, so "it happens not to be interpolated today" is exactly the
+// property a test has to hold in place.
+func TestIdentityDriftNeverPrintsTheIdentity(t *testing.T) {
+	const liveEmail = "side@example.com"
+	const liveUUID = "side-uuid"
+	app := identityDriftApp(t)
+	claudeJSON(t, app,
+		`{"oauthAccount":{"accountUuid":"`+liveUUID+`","emailAddress":"`+liveEmail+`"},"projects":{}}`)
+
+	report := buildDoctor(context.Background(), app, "", false)
+	msg, ok := findCheck(report, constants.CheckIdentityDrift)
+	if !ok {
+		t.Fatal("expected identity drift to be reported")
+	}
+	for _, secret := range []string{liveEmail, liveUUID, "main-uuid", "main@example.com"} {
+		if strings.Contains(msg, secret) {
+			t.Errorf("the identity %q reached the doctor message: %q", secret, msg)
+		}
+	}
+}

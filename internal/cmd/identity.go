@@ -90,6 +90,18 @@ func (app *App) resolveAccount(ctx context.Context, tool, explicit, identityOver
 // value cannot break --json output or inject terminal escapes), then caps the
 // length at 256 runes. It does not enforce an email shape — some tools'
 // identity is a bare handle (copilot). Returns "" when nothing usable remains.
+// redactSecret removes every occurrence of secret from s. Use it on anything a
+// subprocess hands back when kae put a secret in that subprocess's environment:
+// kae knows the value, so there is no reason for a tool that echoes it — a
+// verbose transport error, a proxy trace — to put it in a doctor message and in
+// `--json`. An empty secret is a no-op, never a match on everything.
+func redactSecret(s, secret string) string {
+	if secret == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, secret, "[redacted]")
+}
+
 func sanitizeIdentity(raw string) string {
 	raw = strings.TrimSpace(raw)
 	var b strings.Builder

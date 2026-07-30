@@ -151,3 +151,37 @@ func TestResolveTokenDriftOptIn(t *testing.T) {
 		t.Error("no eligible candidate must skip even with --yes")
 	}
 }
+
+// TestTokenDriftNeverPrintsTheToken is the redaction test AGENTS.md requires of
+// a new output path, and it found a real leak: the probe authenticates with the
+// bound token through its environment, and its stderr went into the doctor
+// message (and into --json) verbatim. A tool that echoes a request header, a
+// proxy trace, or a URL with the token in it would have published the secret.
+func TestTokenDriftNeverPrintsTheToken(t *testing.T) {
+	const token = "ghp_notarealtokenvalue0123456789"
+	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "main"}, token)
+	for _, tc := range []struct {
+		name           string
+		stdout, stderr string
+		code           int
+	}{
+		{"probe failed and echoed the token", "", "error: request failed with Authorization: bearer " + token, 1},
+		{"probe succeeded but echoed the token", token + "\n", "", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withRunWithEnv(t, func(_ context.Context, _ []string, _ string, _ ...string) (string, string, int) {
+				return tc.stdout, tc.stderr, tc.code
+			}, func() {
+				checks := app.companionTokenDriftChecks(context.Background(), true)
+				if len(checks) == 0 {
+					t.Fatal("expected a drift check to inspect")
+				}
+				for _, c := range checks {
+					if strings.Contains(c.Message, token) {
+						t.Errorf("the bound token reached a doctor message: %q", c.Message)
+					}
+				}
+			})
+		})
+	}
+}

@@ -210,3 +210,31 @@ func TestGitCompanionTemplateMatchesDriftKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestCompanionDriftNeverPrintsAStoredSecret is the redaction assertion
+// AGENTS.md requires of a new output path. companion_drift prints git identity
+// values on purpose — they are not secret, and naming them is what makes the
+// warning actionable — but it runs over a profile that can also bind a token
+// companion whose value *is* secret, and it reads that profile's whole companion
+// map to find its candidates.
+func TestCompanionDriftNeverPrintsAStoredSecret(t *testing.T) {
+	const token = "ghp_notarealtokenvalue0123456789"
+	app := driftApp(t, config.CompanionData{"email": "you@example.com"})
+	profile := app.Config.Profiles["main"]
+	profile.Companions[constants.CompanionGH] = config.CompanionData{
+		"GH_TOKEN": token, "expected_login": "main",
+	}
+	app.Config.Profiles["main"] = profile
+
+	runner.With(gitConfigFake{values: map[string]string{"user.email": "other@example.com"}}, func() {
+		checks := app.companionDriftChecks(context.Background())
+		if len(checks) == 0 {
+			t.Fatal("expected a git drift check to inspect")
+		}
+		for _, c := range checks {
+			if strings.Contains(c.Message, token) {
+				t.Errorf("a stored companion secret reached a doctor message: %q", c.Message)
+			}
+		}
+	})
+}

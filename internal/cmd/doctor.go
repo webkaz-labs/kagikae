@@ -50,6 +50,14 @@ func CmdDoctor(ctx context.Context, args []string) int {
 // exit-code table — see docs/CLI.md.
 func runDoctor(ctx context.Context, app *App, opts commonOpts, toolFilter string) int {
 	report := buildDoctor(ctx, app, toolFilter, app.resolveTokenDriftOptIn(opts, toolFilter))
+	if toolFilter != "" {
+		// Naming a tool skips every check that is not per-tool — the companion
+		// bindings and the bound directories. Say so: a filtered run that prints
+		// nothing about them reads as "they are fine". stderr, not a check, so the
+		// JSON contract does not grow a row for something the caller filtered out.
+		fmt.Fprintf(os.Stderr,
+			"kae: note: companion and pinned-directory checks are not per-tool and were skipped; run `kae doctor` with no tool to include them\n")
+	}
 	exit := constants.ExitOK
 	if !report.OK {
 		exit = constants.ExitError

@@ -388,6 +388,54 @@ func TestClaudeAllowsAbsentSecureStorageConfigDir(t *testing.T) {
 	}
 }
 
+// TestClaudeRefusesCustomOAuthURL covers the variable that renames both stores
+// through the build's OAuth suffix. The empty value must *not* refuse: claude
+// tests it for truthiness, so an empty one changes nothing — the opposite of
+// EnvSecureStorageDir, and the reason this cannot reuse IsSet.
+func TestClaudeRefusesCustomOAuthURL(t *testing.T) {
+	for _, tc := range []struct {
+		value  string
+		refuse bool
+	}{
+		{value: "https://oauth.example.com", refuse: true},
+		{value: "", refuse: false},
+	} {
+		t.Run("value="+tc.value, func(t *testing.T) {
+			env := testEnv(t, "darwin", map[string]string{
+				"USER":                       "alice",
+				claude.EnvCustomOAuthURL:     tc.value,
+				constants.EnvKaeClaudeDriver: constants.DriverValueFile,
+			})
+			_, err := claudeAdapter.Artifacts(context.Background(), env)
+			if tc.refuse != errors.Is(err, adapter.ErrUnsupported) {
+				t.Fatalf("refuse=%v, got err %v", tc.refuse, err)
+			}
+		})
+	}
+}
+
+// The host-managed provider supplies the login from outside kae's stores, and the
+// variable holding the token is whatever CLAUDE_CODE_HOST_AUTH_ENV_VAR names — so
+// the warning has to fire on the mechanism.
+func TestClaudeWarnsOnHostManagedProvider(t *testing.T) {
+	env := testEnv(t, "linux", map[string]string{
+		"CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST": "1",
+		"CLAUDE_CODE_HOST_CREDS_FILE":          "/run/host-creds.json",
+	})
+	write(t, filepath.Join(env.Home, ".claude", ".credentials.json"),
+		`{"claudeAiOauth":{"accessToken":"tok"}}`)
+	info, err := claudeAdapter.Detect(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warned := strings.Join(info.Warnings, "\n")
+	if len(info.Warnings) != 2 ||
+		!strings.Contains(warned, "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST") ||
+		!strings.Contains(warned, "CLAUDE_CODE_HOST_CREDS_FILE") {
+		t.Fatalf("expected both host-managed warnings: %+v", info.Warnings)
+	}
+}
+
 func TestClaudeDriverOverrideForcesFileOnDarwin(t *testing.T) {
 	configDir := t.TempDir()
 	env := testEnv(t, "darwin", map[string]string{

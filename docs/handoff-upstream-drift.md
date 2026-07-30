@@ -14,10 +14,15 @@ defects of the same class in the restore/rollback paths (a credential written or
 deleted in a store the tool does not read there), all fixed on the branch — so
 **treat any restore-path assumption in this document as re-examined**.
 
-**Also done**: **2.1** (branch `fix/doctor-orphan-namespaces`) and **1.1**
-(branch `fix/cursor-full-credential-set`).
+**Also done**: **2.1** (branch `fix/doctor-orphan-namespaces`), **1.1**
+(branch `fix/cursor-full-credential-set`) and **1.4** (branch
+`fix/claude-custom-oauth-url`).
 
-**Still open here**: 1.4, 1.5, 1.6, the rest of Part 2, and Part 3's skill.
+**Still open here**: 1.5, 1.6, the rest of Part 2, and Part 3's skill. Also open,
+and unrelated to this document: the two live-machine gates in
+[VALIDATION.md](VALIDATION.md) — "codex per-directory keyring bind" (which is all
+that stands between the shipped code and dropping codex from
+`bindableNotYetDeclared`) and "Cursor full credential set".
 
 **Branch**: start a new one off `main`.
 **Why this file exists**: v0.12.0 fixed one instance of a defect class — *kae
@@ -213,22 +218,40 @@ file the `Codex Auth` item does not hold. kae now models the enum, resolves `aut
 by probing for the item (attributes only), and refuses `ephemeral`, an unknown
 value, an unparseable `config.toml`, and that feature flag.
 
-### 1.4 claude: `CLAUDE_CODE_CUSTOM_OAUTH_URL` moves *both* stores — **AGENT-CLAIMED, cheap to settle**
+### 1.4 claude: `CLAUDE_CODE_CUSTOM_OAUTH_URL` moves *both* stores — **FIXED** (the claim held in full; read from the bundle, no shim needed)
 
-Already recorded in [ROADMAP.md](ROADMAP.md) for the keychain service name. The new
-part of the claim is that the same suffix appears in the **identity file name** —
-`.claude<suffix>.json` — and that a `-staging-oauth` channel exists too. If so,
-`claudeJSONPath` is wrong under that variable as well as `keychainService`.
+The claim was right on both halves, and the bundle settled it without a shim run —
+the JS is inline in the Mach-O, so offsets + `dd` read the three sites verbatim
+(the technique, and why `grep -oa` with context and `strings` both fail, is in
+[VALIDATION.md](VALIDATION.md)'s row). At 2.1.220:
 
-This is class (a): a single env var, detectable offline with no measurement. The
-cheapest correct move is the refusal `CLAUDE_SECURESTORAGE_CONFIG_DIR` already
-gets in `driver()`. Settle the file-name half with the shim procedure in
-VALIDATION.md — it takes one run.
+- The suffix function is `if (process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL) return
+  "-custom-oauth"`, else a `switch` on a build-channel function that is
+  `return"prod"` in a released binary. So **only two suffixes are reachable from
+  the environment**: `""` and `-custom-oauth`.
+- It is a **truthiness** test, so an empty value changes nothing — the refusal is on
+  a non-empty value, unlike `CLAUDE_SECURESTORAGE_CONFIG_DIR` where empty is the
+  dangerous case.
+- The service assembly is ``  `Claude Code${OAUTH_FILE_SUFFIX}${"-credentials"}${o}` ``
+  and the identity path is `` `.claude${suffix}.json` `` — claude even loops over
+  all four suffixes when hunting its own identity files. Both halves confirmed.
+- An **unapproved** endpoint makes claude *throw* (`is not an approved endpoint`),
+  not fall back, so there is no third behaviour to model.
 
-Same box, unverified: `CLAUDE_CODE_HOST_CREDS_FILE` /
-`CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` / `CLAUDE_CODE_HOST_AUTH_ENV_VAR` were
-reported present in the bundle as a host-managed third credential store. If real,
-same one-line refusal covers them.
+Fixed as the `driver()` refusal, not as a computed suffix: the build-channel half
+is invisible from the environment, so computing the name would cover one of three
+sources and stay silently wrong for the rest ([ROADMAP.md](ROADMAP.md) carries the
+residue).
+
+**The host-managed trio is real, and it is not the same class.**
+`CLAUDE_CODE_HOST_CREDS_FILE` is read (absolute path, ≤64 KiB, caller-owned, not
+group/other-readable, live `pid`/`procStart`, unexpired `expiresAt`) when
+`CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` is truthy, and its `env` entries are
+injected into `process.env` — the token landing in whatever
+`CLAUDE_CODE_HOST_AUTH_ENV_VAR` names, default `ANTHROPIC_AUTH_TOKEN`. That moves
+*what authenticates*, not *where kae writes*, so it belongs to `envConflicts`
+(warn) rather than to the refusal: those four variables are now warned on as the
+mechanism, because a fixed list cannot name a destination the host renames.
 
 ### 1.5 copilot / opencode / agy: home-var and store assumptions — **AGENT-CLAIMED**
 

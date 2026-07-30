@@ -155,14 +155,19 @@ Follow-up from v0.8.4 (not yet scheduled):
   today's derived account, which is exactly "this snapshot was captured under a
   different `CODEX_HOME`", a natural neighbour of `identity_drift`. A persisted
   field whose only rule is "never read me" is a tripwire.
-- **claude's OAuth build suffix is not modelled**: the keychain service name is
-  `Claude Code` + the build's OAuth suffix + `-credentials` + the per-config-dir
-  suffix. kae hard-codes the production spelling (empty suffix); a local build, or
-  any build run with `CLAUDE_CODE_CUSTOM_OAUTH_URL` pointing at an approved
-  endpoint, uses `-local-oauth` / `-custom-oauth` and kae would read and write the
-  wrong item. Detectable offline from the env var alone, so the cheap fix is the
-  same refusal `CLAUDE_SECURESTORAGE_CONFIG_DIR` already gets. Measured on 2.1.220
-  (docs/VALIDATION.md).
+- **claude's OAuth build suffix: the environment half is refused, the build half is
+  undetectable.** The suffix sits in both store names — keychain service
+  `Claude Code<suffix>-credentials[-<sha8>]` and identity file
+  `.claude<suffix>.json` — and kae hard-codes the production spelling (empty
+  suffix). *(2026-07-30)* The one source the environment exposes,
+  `CLAUDE_CODE_CUSTOM_OAUTH_URL`, now makes the adapter report claude unsupported
+  instead of reading and writing the wrong item. What remains is the build channel
+  (`-local-oauth`, `-staging-oauth`): a released binary hard-codes it to production
+  and **nothing in the environment reveals it**, so a locally built or staging
+  claude is still switched against the wrong names silently. Closing it means
+  fingerprinting the binary (the channel function is a `return"prod"` in the
+  bundle) — the same offset-read the assumption row records — or asking the user.
+  Measured on 2.1.220 (docs/VALIDATION.md).
 - ~~**A re-bind leaves the previous account's per-directory keychain item**~~
   *(fixed 2026-07-30)*: it does not any more. The record of "which dirs were
   previously bound" that this was waiting on turned out to be unnecessary for the

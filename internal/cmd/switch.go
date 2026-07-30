@@ -219,7 +219,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
 			return nil, doubleFailure("recording state", err, restoreErr, meta.ID)
 		}
-		return nil, errf(constants.ExitError,
+		return nil, errf(exitOf(err),
 			"recording state failed, live state restored from backup %s: %v", meta.ID, err)
 	}
 	if _, err := backup.Prune(ctx, be, app.Paths.BackupsDir(), app.Config.Security.BackupKeep); err != nil {

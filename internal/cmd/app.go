@@ -155,6 +155,15 @@ func (app *App) enabledTools() []string {
 	return tools
 }
 
+// Lock names that are not tool ids. They live in the same directory as the
+// per-tool locks, so a tool id equal to one of these would silently share that
+// tool's lock with an unrelated critical section — guarded by
+// TestNonToolLockNamesDoNotCollideWithTools.
+const (
+	lockNameConfig = "config"
+	lockNameState  = "state"
+)
+
 // acquireLocks takes per-tool locks in canonical order; on failure it
 // releases everything taken so far.
 func (app *App) acquireLocks(tools []string) ([]*lock.Lock, error) {
@@ -189,7 +198,7 @@ func releaseLocks(locks []*lock.Lock) {
 // acquireConfigLock takes the shared config lock so config.toml edits do not
 // race other kae processes. Released by the caller.
 func (app *App) acquireConfigLock() (*lock.Lock, error) {
-	l, err := lock.Acquire(app.Paths.LocksDir(), "config")
+	l, err := lock.Acquire(app.Paths.LocksDir(), lockNameConfig)
 	if err != nil {
 		if errors.Is(err, lock.ErrBusy) {
 			return nil, errf(constants.ExitLockBusy, "another kae process is editing the config; retry shortly")
@@ -215,7 +224,7 @@ func (app *App) acquireConfigLock() (*lock.Lock, error) {
 // atomic write, so a busy lock is a real collision and failing loudly is safe —
 // a switch that reaches here has a backup to restore from.
 func (app *App) mutateState(mutate func(*state.State)) error {
-	l, err := lock.Acquire(app.Paths.LocksDir(), "state")
+	l, err := lock.Acquire(app.Paths.LocksDir(), lockNameState)
 	if err != nil {
 		if errors.Is(err, lock.ErrBusy) {
 			return errf(constants.ExitLockBusy, "another kae process is recording state; retry shortly")

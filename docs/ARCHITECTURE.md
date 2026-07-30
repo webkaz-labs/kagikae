@@ -161,7 +161,8 @@ normative allowlists live in [ADAPTERS.md](ADAPTERS.md).
    live token); best-effort, never aborts the switch
 6. apply artifacts per tool (atomic writes / keychain updates)
 7. on any failure: restore the backup for already-applied tools, report
-8. update state.json; prune old backups
+8. update state.json (under the state lock, re-reading the file); prune old
+   backups
 9. release locks
 ```
 
@@ -240,6 +241,20 @@ queueing, because a queued switch could interleave with the other process's
 restore step. A separate `config` lock (same mechanism, name `config`) guards
 `config.toml` edits; commands that mutate both per-tool state and config
 (`account rm`/`rename`) take the tool lock first, then the config lock.
+
+A third lock (name `state`) guards `state.json`, and it is what makes that file
+safe to share: the per-tool locks deliberately let `kae use claude <a>` and
+`kae use codex <b>` run at the same time, so each held a copy of the whole
+document loaded before the other saved, and writing that copy back reverted the
+other tool's field with nothing reporting it. Every state write therefore goes
+through `App.mutateState`, which takes this lock, **re-reads the file**, applies
+the mutation and saves — the re-read is what makes the update lost-free, the
+lock is what makes the re-read atomic. Two consequences for callers: the state
+lock is always innermost (tool locks → config lock → state lock) and is held
+only for the read plus the write, and **a decision about the state must be made
+inside the mutation, not from a copy read earlier** — `kae account rm` re-checks
+under the lock whether the account it removes is still the active one, because a
+switch can have completed in between.
 
 ## Caching
 

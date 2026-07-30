@@ -34,3 +34,17 @@ func TestClaudeDriverGetenvPrecedence(t *testing.T) {
 		t.Fatalf("passthrough broken: %q", got)
 	}
 }
+
+// TestNonToolLockNamesDoNotCollideWithTools pins the one thing that makes the
+// shared lock directory safe: the config and state locks are named in the same
+// namespace as the per-tool locks, so a tool id equal to either would make an
+// unrelated critical section share that tool's lock — visible only as a
+// spurious lock_busy, or as two writers to state.json that both think they hold
+// it.
+func TestNonToolLockNamesDoNotCollideWithTools(t *testing.T) {
+	for _, name := range []string{lockNameConfig, lockNameState} {
+		if constants.IsTool(name) {
+			t.Errorf("lock name %q is also a tool id; give it a name no tool can take", name)
+		}
+	}
+}

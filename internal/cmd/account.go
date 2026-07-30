@@ -135,13 +135,21 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 			return nil, err
 		}
 	}
-	if active {
-		if err := app.mutateState(func(st *state.State) {
-			delete(st.Active, tool)
-			app.setActiveProfile(st, "")
-		}); err != nil {
-			return nil, err
+	// Whether this account is still the active one is decided *inside* the state
+	// lock, not from the copy read above the tool lock: a switch that completed
+	// in between makes another account active, and clearing on the stale answer
+	// would drop a binding this command was never asked to touch. The report
+	// follows what the locked decision did.
+	if err := app.mutateState(func(st *state.State) {
+		if st.Active[tool] != accountName {
+			report.ActiveCleared = false
+			return
 		}
+		delete(st.Active, tool)
+		app.setActiveProfile(st, "")
+		report.ActiveCleared = true
+	}); err != nil {
+		return nil, err
 	}
 	if err := os.RemoveAll(app.Paths.AccountDir(tool, accountName)); err != nil {
 		return nil, fmt.Errorf("remove snapshot dir: %w", err)
@@ -276,10 +284,19 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 			return nil, err
 		}
 	}
-	if activeUpdate {
-		if err := app.saveActive(map[string]string{tool: newName}, ""); err != nil {
-			return nil, err
+	// Re-decided under the state lock, for the reason `kae account rm` gives:
+	// the pre-lock copy can be older than a concurrent switch, and renaming on
+	// it would point the active binding at an account nobody selected.
+	if err := app.mutateState(func(st *state.State) {
+		if st.Active[tool] != oldName {
+			report.ActiveUpdated = false
+			return
 		}
+		st.Active[tool] = newName
+		app.setActiveProfile(st, "")
+		report.ActiveUpdated = true
+	}); err != nil {
+		return nil, err
 	}
 
 	// Secret-backend keys cannot be renamed in place, so copy each payload to

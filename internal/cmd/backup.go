@@ -231,7 +231,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		}
 		app.setActiveProfile(st, "")
 	}); err != nil {
-		return nil, errf(constants.ExitError,
+		return nil, errf(exitOf(err),
 			"live state was rolled back but recording it failed (%v); verify with kae status, undo with: kae rollback --to %s",
 			err, preMeta.ID)
 	}

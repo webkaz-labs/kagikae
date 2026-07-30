@@ -86,7 +86,7 @@ func companionDriftMessage(profile, key, want, got string, code int) string {
 	wantSafe := sanitizeIdentity(want)
 	if code != 0 {
 		return fmt.Sprintf(
-			"profile %s: git %s is unset here but the binding sets %q; the pin is not active in this shell (run `mise env`, or `mise trust` if untrusted), so a commit would use the wrong identity",
+			"profile %s: git %s is unset here but the binding sets %q; the pin is not active in this shell (run `mise env`, `mise trust` if untrusted, or re-run `kae pin` if the binding itself is gone), so a commit would use the wrong identity",
 			profile, key, wantSafe,
 		)
 	}

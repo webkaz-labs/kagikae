@@ -226,3 +226,44 @@ func TestPrepareBondDarwinKeychainWriteFailureIsNotDowngraded(t *testing.T) {
 		t.Error("a failed keychain write must not leave a plaintext credential behind")
 	}
 }
+
+// TestSharedRebindRepairsAWipedBondDir pins the asymmetry that used to exist
+// between the two mechanisms: the isolated re-bind ran preparePinConfig and
+// rebuilt its store, while the shared one wrote only the credential and left a
+// bond dir whose symlinks to the real home — settings, sessions — had been
+// deleted exactly as broken as it found it.
+func TestSharedRebindRepairsAWipedBondDir(t *testing.T) {
+	app := overlayTestApp(t)
+	seedClaude(t, app, mainToken, "main-uuid")
+	code, out := captureStdout(t, func() int {
+		return runCapture(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	chdirTemp(t)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, out = captureStdout(t, func() int {
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared)
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	bond := app.Paths.SharedDir(paths.PinID(cwd), constants.ToolClaude)
+	linked := filepath.Join(bond, "settings.json")
+	if _, err := os.Lstat(linked); err != nil {
+		t.Fatalf("premise: the bond dir must link the real home's settings: %v", err)
+	}
+	if err := os.RemoveAll(bond); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out = captureStdout(t, func() int {
+		return runRebind(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if _, err := os.Lstat(linked); err != nil {
+		t.Fatalf("a re-bind must rebuild the wiped bond dir's links: %v", err)
+	}
+}

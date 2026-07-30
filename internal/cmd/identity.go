@@ -107,6 +107,18 @@ func sanitizeIdentity(raw string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// redactSecret removes every occurrence of secret from s. Use it on anything a
+// subprocess hands back when kae put a secret in that subprocess's environment:
+// kae knows the value, so there is no reason for a tool that echoes it — a
+// verbose transport error, a proxy trace — to put it in a doctor message and in
+// `--json`. An empty secret is a no-op, never a match on everything.
+func redactSecret(s, secret string) string {
+	if secret == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, secret, "[redacted]")
+}
+
 // sanitizeAccountName turns a raw login identity into a valid account name: an
 // email keeps only its local part (before @), then characters outside
 // [a-zA-Z0-9._-] are dropped and the result is capped at 64. The output passes

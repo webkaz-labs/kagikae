@@ -50,6 +50,14 @@ func CmdDoctor(ctx context.Context, args []string) int {
 // exit-code table — see docs/CLI.md.
 func runDoctor(ctx context.Context, app *App, opts commonOpts, toolFilter string) int {
 	report := buildDoctor(ctx, app, toolFilter, app.resolveTokenDriftOptIn(opts, toolFilter))
+	if toolFilter != "" {
+		// Naming a tool skips every check that is not per-tool — the companion
+		// bindings and the bound directories. Say so: a filtered run that prints
+		// nothing about them reads as "they are fine". stderr, not a check, so the
+		// JSON contract does not grow a row for something the caller filtered out.
+		fmt.Fprintf(os.Stderr,
+			"kae: note: companion and pinned-directory checks are not per-tool and were skipped; run `kae doctor` with no tool to include them\n")
+	}
 	exit := constants.ExitOK
 	if !report.OK {
 		exit = constants.ExitError
@@ -178,6 +186,9 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// version kae's assumptions were verified on. Per-tool, so it honors the
 	// filter, and needs no secret backend.
 	report.Checks = append(report.Checks, app.upstreamVersionChecks(ctx, toolFilter)...)
+	// ...and the assumptions nobody has re-checked in six months, which the
+	// version comparison cannot see because it needs the tool to have moved.
+	report.Checks = append(report.Checks, app.assumptionAgeChecks(toolFilter)...)
 
 	// credential health: stale snapshots and orphaned secret items. Reuse the
 	// backend resolved above; skip when it is unavailable.

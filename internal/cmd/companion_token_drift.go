@@ -89,6 +89,12 @@ func (app *App) companionTokenDriftChecks(ctx context.Context, live bool) []adap
 			continue
 		}
 		stdout, stderr, code := runner.RunWithEnv(ctx, nil, c.spec.LoginProbe[0], c.spec.LoginProbe[1:]...)
+		// The probe authenticates with the bound token, which reaches it through
+		// the ambient environment. A tool that echoes it back lands it in a doctor
+		// message and in --json, so strip it here rather than trust every probe
+		// binary's error text.
+		token := app.Env.Getenv(envVar)
+		stdout, stderr = redactSecret(stdout, token), redactSecret(stderr, token)
 		got := sanitizeIdentity(stdout)
 		if code == 0 && got == c.expectedLogin {
 			continue // the live token resolves to the bound login; no drift

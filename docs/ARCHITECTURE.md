@@ -169,10 +169,10 @@ normative allowlists live in [ADAPTERS.md](ADAPTERS.md).
 The whole switch wraps `ctx` in `keychain.WithReadCache`, so the `security`
 reads steps 3–6 make of one tool's keychain service collapse to a single
 invocation (the recapture in step 5 adds no extra read or auth prompt); writes
-in step 6 invalidate the cache. The cache key is the service for the
-single-item drivers and service+account wherever the item is identified by both —
-agy's `gemini`/`antigravity` and codex's per-`CODEX_HOME` `Codex Auth` — so a
-service holding more than one legitimate item is not conflated. No child runs
+in step 6 invalidate the cache. The cache key is service+account, matching the
+specs: every keychain artifact kae ships is identified by both, so a service
+holding more than one legitimate item — agy's `gemini`/`antigravity`, codex's
+per-`CODEX_HOME` `Codex Auth` — is never conflated. No child runs
 during a switch, so the cache never serves a stale live credential (`run -s`
 does not use it).
 

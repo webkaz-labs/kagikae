@@ -84,8 +84,14 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	var boundDir string // the store this tool reads after the re-bind
 	switch info.Mode {
 	case paths.SharedSegment:
-		sharedDir := app.Paths.SharedDir(pinID, tool)
-		if err := app.writeDirCredential(ctx, be, tool, accountName, sharedDir); err != nil {
+		// prepareBond, not writeDirCredential alone: the bond dir also holds the
+		// symlinks to the real home that carry settings and sessions, and only
+		// prepareBond re-creates them. Writing just the credential left a re-bind
+		// unable to repair a bond dir that had been wiped, while the isolated
+		// branch below (preparePinConfig) could — an asymmetry with no reason
+		// behind it. prepareBond writes the credential too, and is idempotent.
+		sharedDir, err := app.prepareBond(ctx, be, tool, accountName, pinID)
+		if err != nil {
 			return finish(opts, fmt.Errorf("swap shared credential for %s: %w", tool, err))
 		}
 		boundDir = sharedDir

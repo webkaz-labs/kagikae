@@ -81,6 +81,9 @@ func (Agy) Binary() string { return "agy" }
 // last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
 func (Agy) VerifiedVersion() string { return "1.0.10" }
 
+// VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
+func (Agy) VerifiedOn() string { return "2026-07-31" }
+
 // keychainDriver reports whether this platform uses the macOS Keychain item
 // (darwin) or the file-based snapshot (Linux/WSL headless).
 func keychainDriver(env adapter.Env) bool { return env.GOOS == "darwin" }

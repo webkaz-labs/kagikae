@@ -103,6 +103,13 @@ type Adapter interface {
 	// version scheme the comparison cannot read may return it (cursor's date
 	// versions), and the reason belongs in that adapter's doc comment.
 	VerifiedVersion() string
+	// VerifiedOn is the date (YYYY-MM-DD) those assumptions were last checked,
+	// which is the half VerifiedVersion cannot supply: a user who never upgrades
+	// the tool gets no version signal at all, and an assumption nobody has looked
+	// at in months is stale whether or not the tool moved. Unlike the version it
+	// is never empty — cursor has no usable version signal but still has a date,
+	// which is exactly why the two are separate.
+	VerifiedOn() string
 }
 
 // Identifier is implemented by adapters that can read the live login identity
@@ -201,6 +208,20 @@ func EnvConflictWarnings(env Env, vars []string) []string {
 func IsRelativeEnv(env Env, name string) bool {
 	value := env.Getenv(name)
 	return value != "" && !filepath.IsAbs(value)
+}
+
+// RelativeEnvWarning is the Detect/Doctor payload for a path variable set to a
+// relative value: the caller's message, or nothing. Four adapters need it and
+// the *messages* must stay per-tool — the divergence differs (copilot and
+// opencode read a different file, claude keeps the same keychain item, codex
+// moves its keyring account too) — but the predicate and the one-or-none shape
+// are the same everywhere, and both of a tool's surfaces must read the same one
+// or they drift.
+func RelativeEnvWarning(env Env, name, message string) []string {
+	if IsRelativeEnv(env, name) {
+		return []string{message}
+	}
+	return nil
 }
 
 // EnvConflictChecksFrom wraps already-built warnings as env_conflict checks, so

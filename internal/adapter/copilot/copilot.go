@@ -52,10 +52,7 @@ const relativeHomeWarning = EnvHome + " is relative: copilot resolves it against
 // relativeHomeWarnings is the Detect/Doctor payload for a relative COPILOT_HOME:
 // one warning, or none. Both surfaces read it so neither can drift.
 func relativeHomeWarnings(env adapter.Env) []string {
-	if adapter.IsRelativeEnv(env, EnvHome) {
-		return []string{relativeHomeWarning}
-	}
-	return nil
+	return adapter.RelativeEnvWarning(env, EnvHome, relativeHomeWarning)
 }
 
 type Copilot struct{}
@@ -69,6 +66,9 @@ func (Copilot) Binary() string { return binaryName }
 // VerifiedVersion is the GitHub Copilot CLI release kae's behaviour assumptions
 // were last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
 func (Copilot) VerifiedVersion() string { return "1.0.61" }
+
+// VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
+func (Copilot) VerifiedOn() string { return "2026-07-31" }
 
 // configHome resolves the directory holding config.json. COPILOT_HOME is
 // honored verbatim, the way copilot itself uses it (`process.env.COPILOT_HOME ?

@@ -74,6 +74,30 @@ func storeKey(env adapter.Env) string {
 	return fmt.Sprintf("cli|%x", sum[:8])
 }
 
+// A **relative** CODEX_HOME diverges harder than claude's variable, which is why
+// the two get different wording. codex canonicalizes its home before using it —
+// measured at 0.145.0: from one directory `CODEX_HOME=relcfg` reported
+// `/private/var/.../relcfg/config.toml`, i.e. resolved against **codex's** working
+// directory and symlink-resolved — and that canonical path is what its keyring
+// account hashes. So a relative value moves the `auth.json` store *and* the
+// `Codex Auth` item, where claude's moves only files.
+//
+// It is also the one case that can fail loudly: from a directory with no `relcfg`
+// in it, codex refuses to start ("CODEX_HOME points to \"relcfg\", but that path
+// does not exist"). The divergence is therefore silent only when a directory of
+// that name exists under both working directories — which is exactly the case a
+// warning is for.
+const relativeHomeWarning = "CODEX_HOME is relative: codex canonicalizes it against its own working" +
+	" directory, so both the store kae writes and the keyring account it derives from that path" +
+	" can differ from codex's — set an absolute path. codex refuses to start outright when the" +
+	" relative path does not exist in its working directory."
+
+// relativeHomeWarnings is the Detect/Doctor payload for a relative CODEX_HOME:
+// one warning, or none. Both surfaces read it so neither can drift.
+func relativeHomeWarnings(env adapter.Env) []string {
+	return adapter.RelativeEnvWarning(env, "CODEX_HOME", relativeHomeWarning)
+}
+
 type Codex struct{}
 
 func init() { adapter.Register(Codex{}) }
@@ -85,6 +109,9 @@ func (Codex) Binary() string { return "codex" }
 // VerifiedVersion is the Codex CLI release kae's behaviour assumptions were last
 // checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
 func (Codex) VerifiedVersion() string { return "0.145.0" }
+
+// VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
+func (Codex) VerifiedOn() string { return "2026-07-31" }
 
 // codexHome honors CODEX_HOME as the live base path when already set.
 func codexHome(env adapter.Env) string {
@@ -241,6 +268,7 @@ func (c Codex) Artifacts(ctx context.Context, env adapter.Env) ([]artifact.Spec,
 
 func (c Codex) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) {
 	info := adapter.Info{Tool: constants.ToolCodex, Driver: constants.DriverCodexAuthJSON, Warnings: []string{}}
+	info.Warnings = append(info.Warnings, relativeHomeWarnings(env)...)
 	if _, err := env.LookPath("codex"); err == nil {
 		info.BinaryPresent = true
 	}
@@ -384,21 +412,27 @@ func (Codex) Freshness(payload []byte) freshness.Info {
 
 func (c Codex) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	tool := constants.ToolCodex
+	// The relative-home warning is about the environment, not about the store, so
+	// it must survive a store that cannot be resolved — a `config.toml` kae
+	// refuses is exactly when the user needs to know their CODEX_HOME is relative.
+	// Detect appends it unconditionally; Doctor has to as well, or the two
+	// surfaces disagree on the failure path.
+	relative := adapter.EnvConflictChecksFrom(tool, relativeHomeWarnings(env))
 	store, err := configuredStore(env)
 	if err == nil {
 		var specs []artifact.Spec
 		if specs, err = c.Artifacts(ctx, env); err == nil {
-			return append([]adapter.Check{adapter.BinaryCheck(env, tool, "codex")},
-				storeChecks(ctx, tool, store, specs[0])...)
+			return append(append([]adapter.Check{adapter.BinaryCheck(env, tool, "codex")},
+				storeChecks(ctx, env, tool, store, specs[0])...), relative...)
 		}
 	}
 	// configuredStore and Artifacts fail for an unswitchable store mode, an
 	// unreadable config.toml, or a failed keychain probe; each message names its
 	// own cause, so surface it verbatim rather than assuming one of them.
-	return []adapter.Check{{
+	return append([]adapter.Check{{
 		Tool: tool, Code: constants.CheckUnsupported,
 		Status: constants.StatusError, Message: err.Error(),
-	}}
+	}}, relative...)
 }
 
 // storeChecks reports which store the credential resolved to and whether the
@@ -408,7 +442,7 @@ func (c Codex) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 // Presence is read from the resolved spec rather than through Detect: Detect
 // re-derives the store from scratch, which under `auto` on macOS means a second
 // config.toml parse and a second `security` probe inside one `kae doctor`.
-func storeChecks(ctx context.Context, tool, store string, sp artifact.Spec) []adapter.Check {
+func storeChecks(ctx context.Context, env adapter.Env, tool, store string, sp artifact.Spec) []adapter.Check {
 	where := "auth.json"
 	if sp.Kind == constants.KindKeychain {
 		where = KeychainService + " keychain item for this codex home"
@@ -427,13 +461,46 @@ func storeChecks(ctx context.Context, tool, store string, sp artifact.Spec) []ad
 		present = true
 	}
 	if present {
-		return append(checks, adapter.Check{
+		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
 			Status: constants.StatusOK, Message: where + " found",
 		})
+	} else {
+		checks = append(checks, adapter.Check{
+			Tool: tool, Code: constants.CheckAuthPresent,
+			Status: constants.StatusWarn, Message: "no " + where + "; log in with codex first",
+		})
 	}
-	return append(checks, adapter.Check{
-		Tool: tool, Code: constants.CheckAuthPresent,
-		Status: constants.StatusWarn, Message: "no " + where + "; log in with codex first",
-	})
+	return append(checks, contradictedStoreChecks(ctx, env, tool, store, sp)...)
+}
+
+// contradictedStoreChecks reports local state that contradicts the store kae
+// resolved. It is the cheapest class of assumption watchdog there is: kae
+// modelled `cli_auth_credentials_store` as an enum whose values map onto two
+// stores, and if that model is ever wrong the disk says so — a keyring item for
+// this codex home while kae resolved the file store means codex put the
+// credential somewhere kae is not switching, which is a silent wrong-account
+// switch and not a warning any structure guard would raise.
+//
+// Only the file direction is checkable. The reverse (kae resolved the keyring,
+// auth.json also present) is *normal* mid-migration: codex writes the item and
+// then deletes the file, so a moment's overlap proves nothing.
+func contradictedStoreChecks(ctx context.Context, env adapter.Env, tool, store string, sp artifact.Spec) []adapter.Check {
+	// darwin only, matching usesKeyring: off it there is no keychain to
+	// contradict, and probing anyway spends a PATH walk per `kae doctor` to learn
+	// nothing. The probe is a `security` subprocess, so the gate is the difference
+	// between one and none for every codex user on the default file store.
+	if sp.Kind == constants.KindKeychain || env.GOOS != "darwin" {
+		return nil
+	}
+	found, err := keychain.ItemExistsForAccount(ctx, KeychainService, storeKey(env))
+	if err != nil || !found {
+		return nil // a probe failure is no evidence either way
+	}
+	return []adapter.Check{{
+		Tool: tool, Code: constants.CheckCredentialStore, Status: constants.StatusWarn,
+		Message: "a " + KeychainService + " keychain item exists for this codex home, but kae resolved the " +
+			store + " store (auth.json) — so codex may be reading a credential kae does not switch; " +
+			"check cli_auth_credentials_store in config.toml and re-verify the store rows in docs/VALIDATION.md",
+	}}
 }

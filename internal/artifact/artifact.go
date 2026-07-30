@@ -339,11 +339,18 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 			// is what removed another codex home's login.
 			return keychain.WriteItem(ctx, sp.Target, sp.KeychainAccount, v.Data)
 		}
-		// Stable-account item (claude/cursor): the existing item's account wins
-		// when present, so a re-login that changed it is honored.
+		// No spec kae ships reaches here any more — every adapter's keychain item is
+		// identified by service **and** account. What still does is a rollback of a
+		// backup written before the record carried the account, where the live item
+		// is the only evidence of what the tool reads.
+		//
+		// The adapter's account is authoritative wherever there is one; this used to
+		// have that backwards, and AGENTS.md's keychain-identity boundary carries why.
 		account := sp.KeychainAccount
-		if existing, _, err := keychain.ItemAccount(ctx, sp.Target); err == nil && existing != "" {
-			account = existing
+		if account == "" {
+			if existing, _, err := keychain.ItemAccount(ctx, sp.Target); err == nil && existing != "" {
+				account = existing
+			}
 		}
 		if account == "" {
 			account = "kagikae"

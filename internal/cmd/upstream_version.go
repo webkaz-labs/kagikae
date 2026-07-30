@@ -126,6 +126,63 @@ func (app *App) upstreamVersionChecks(ctx context.Context, toolFilter string) []
 	return checks
 }
 
+// assumptionMaxAge is how long a tool's behaviour assumptions may go unchecked
+// before doctor says so. Six months, not one or three: upstreamVersionChecks
+// already covers the case where the tool actually moved, so this one exists for
+// the case where nothing did — and a reminder that fires while the answer is
+// still right is the kind users learn to scroll past, which would cost the real
+// warnings their credibility too.
+const assumptionMaxAge = 180 * 24 * time.Hour
+
+// assumptionAgeChecks reports tools whose behaviour assumptions have gone
+// unchecked for assumptionMaxAge. It is the half upstreamVersionChecks cannot
+// cover: that one only fires when the installed tool moves past the verified
+// release, so **a user who never upgrades gets no signal at all** — and cursor,
+// whose date versions make the comparison useless, would get none ever.
+//
+// Offline and instant: it reads a date the adapter declares, spawns nothing, and
+// does not care whether the tool is installed. It reuses the upstream_version
+// check code rather than adding one, because the finding and the remedy are the
+// same — re-verify the rows and re-record.
+func (app *App) assumptionAgeChecks(toolFilter string) []adapter.Check {
+	checks := []adapter.Check{}
+	for _, tool := range app.enabledTools() {
+		if toolFilter != "" && tool != toolFilter {
+			continue
+		}
+		ad, err := adapter.ForTool(tool)
+		if err != nil {
+			continue
+		}
+		verifiedOn, err := time.Parse(time.DateOnly, ad.VerifiedOn())
+		if err != nil {
+			// A value the age check cannot read must say so rather than skip in
+			// silence: a typo here would otherwise read as "nothing to report",
+			// which is the failure mode the upstream_version parser already has.
+			checks = append(checks, adapter.Check{
+				Tool: tool, Code: constants.CheckUpstreamVersion, Status: constants.StatusWarn,
+				Message: fmt.Sprintf(
+					"kae cannot read when %s's behaviour assumptions were last verified (%q is not YYYY-MM-DD), so their age is unknown",
+					tool, ad.VerifiedOn(),
+				),
+			})
+			continue
+		}
+		age := app.Now().UTC().Sub(verifiedOn)
+		if age < assumptionMaxAge {
+			continue
+		}
+		checks = append(checks, adapter.Check{
+			Tool: tool, Code: constants.CheckUpstreamVersion, Status: constants.StatusWarn,
+			Message: fmt.Sprintf(
+				"kae's %s behaviour assumptions were last verified on %s (%d days ago) and nothing has re-checked them since; the version signal only fires when %s is upgraded, so re-verify the rows in docs/VALIDATION.md \"Upstream Behaviour Assumptions\"",
+				tool, ad.VerifiedOn(), int(age.Hours()/24), tool,
+			),
+		})
+	}
+	return checks
+}
+
 // upstreamVersionCheck compares one tool's `--version` output against the
 // version its behaviour assumptions were verified on. ok=false means no finding:
 // the installed version is not past the verified one, or one of the two is

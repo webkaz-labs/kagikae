@@ -56,6 +56,9 @@ func (Cursor) Binary() string { return binaryName }
 // re-verification actually happens.
 func (Cursor) VerifiedVersion() string { return "" }
 
+// VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
+func (Cursor) VerifiedOn() string { return "2026-07-30" }
+
 // driver maps the platform to the cursor driver, refusing the platforms whose
 // credential storage is undocumented (only macOS Keychain is known). Mirrors
 // claude's driver() so Artifacts/Doctor share one platform gate.
@@ -91,6 +94,10 @@ func (c Cursor) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 			Target:          service,
 			Pointer:         "",
 			KeychainAccount: KeychainAccount,
+			// The account is a build-time constant cursor-agent reads by, so scope
+			// to it: an item under any other account is not cursor's and must
+			// neither be captured nor overwritten.
+			KeychainMatchAccount: true,
 		}
 	}
 	return []artifact.Spec{

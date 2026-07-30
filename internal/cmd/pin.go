@@ -100,6 +100,17 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 		return finish(opts, errf(constants.ExitUsage,
 			"no profile given and no default_profile in config; use: kae pin <profile>"))
 	}
+	absDir, err := cwdAbs()
+	if err != nil {
+		return finish(opts, err)
+	}
+	// Takes the pin lock and records which directory this store belongs to; a
+	// store nothing can name is what pinindex.go exists to prevent.
+	pinLock, err := app.beginBind(absDir)
+	if err != nil {
+		return finish(opts, err)
+	}
+	defer pinLock.Release()
 	targets, _, err := app.resolveTargets("all", profileName)
 	if err != nil {
 		return finish(opts, err)
@@ -108,7 +119,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err != nil {
 		return finish(opts, err)
 	}
-	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets)
+	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets, paths.PinID(absDir))
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -131,9 +142,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// use now is unreachable: a mode toggle moves every tool to the other
 	// mechanism's dir, and an isolated re-pin to another account re-keys it. Their
 	// keychain items would otherwise hold a credential nothing points at.
-	if absDir, err := cwdAbs(); err == nil {
-		reportPruned(app.pruneDirCredentials(ctx, paths.PinID(absDir), "", boundDirs(entries)))
-	}
+	reportPruned(app.pruneDirCredentials(ctx, paths.PinID(absDir), "", boundDirs(entries)))
 	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, mode)
 	fmt.Printf("Wrote %s (added to .gitignore); your mise.toml is untouched.\n", fragmentRelPath)
 	if app.miseActivated() {
@@ -178,6 +187,24 @@ func CmdUnpin(ctx context.Context, args []string) int {
 // runUnpin is CmdUnpin with the App injected, the same split CmdPin/runPin use so
 // tests drive it against a temp HOME instead of the real environment.
 func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
+	// unpin is the escape hatch, and removing the fragment needs only a relative
+	// path — so a cwd that cannot be resolved (os.Getwd walks every ancestor, and
+	// can fail where opening a file in the directory still works) must not block
+	// it. Only the lock and --purge need the absolute path: without it, take
+	// neither, and refuse --purge rather than sweep the wrong pin.
+	absDir, absErr := cwdAbs()
+	if absErr == nil {
+		pinLock, err := app.acquirePinLock(absDir)
+		if err != nil {
+			return finish(opts, err)
+		}
+		defer pinLock.Release()
+	} else if purge {
+		return finish(opts, fmt.Errorf("resolve the current directory for --purge: %w", absErr))
+	} else {
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: could not resolve this directory (%v); removing the fragment without the pin lock\n", absErr)
+	}
 	removedFragment, err := removeDirFragment()
 	if err != nil {
 		return finish(opts, err)
@@ -201,10 +228,6 @@ func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
 	// now, so the sweep keeps none of them. Before it, a failure would leave a live
 	// binding whose credential kae had already deleted.
 	if purge {
-		absDir, err := cwdAbs()
-		if err != nil {
-			return finish(opts, err)
-		}
 		reportPruned(app.pruneDirCredentials(ctx, paths.PinID(absDir), "", nil))
 	}
 	return constants.ExitOK

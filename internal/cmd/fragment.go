@@ -169,7 +169,14 @@ type fragmentInfo struct {
 // readDirFragment reads and parses the kae-owned fragment in the current
 // directory. exists is false when no fragment is present (not an error).
 func readDirFragment() (info fragmentInfo, exists bool, err error) {
-	data, err := os.ReadFile(fragmentRelPath)
+	return readFragmentAt("")
+}
+
+// readFragmentAt is readDirFragment for a directory kae is not standing in:
+// the bound directories a breadcrumb names (pinindex.go). An empty dir means
+// the current one.
+func readFragmentAt(dir string) (info fragmentInfo, exists bool, err error) {
+	data, err := os.ReadFile(filepath.Join(dir, fragmentRelPath))
 	if os.IsNotExist(err) {
 		return fragmentInfo{Accounts: map[string]string{}}, false, nil
 	}

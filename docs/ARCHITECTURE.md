@@ -242,6 +242,15 @@ restore step. A separate `config` lock (same mechanism, name `config`) guards
 `config.toml` edits; commands that mutate both per-tool state and config
 (`account rm`/`rename`) take the tool lock first, then the config lock.
 
+A fourth, `pin-<pin-id>`, serializes the commands that bind one directory
+(`kae pin`, `kae pin <tool> <account>`, `kae unpin`): they write the credential,
+the companion files and the fragment as separate steps, so two at once in the
+same directory could interleave into a fragment pointing at a store the other
+re-keyed. It is per directory, so binding two directories at once is unaffected.
+There is deliberately no backup of the previous per-directory credential: it is a
+copy of the account snapshot, so re-running `kae pin <tool> <account>` reproduces
+it exactly.
+
 A third lock (name `state`) guards `state.json`, and it is what makes that file
 safe to share: the per-tool locks deliberately let `kae use claude <a>` and
 `kae use codex <b>` run at the same time, so each held a copy of the whole

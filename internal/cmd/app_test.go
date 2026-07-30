@@ -50,6 +50,13 @@ func TestNonToolLockNamesDoNotCollideWithTools(t *testing.T) {
 			t.Errorf("lock name %q is also a tool id; give it a name no tool can take", name)
 		}
 	}
+	// The pin locks are named pin-<pin-id> in the same directory, so a tool id
+	// with that prefix would let a bound directory and a tool share a lock.
+	for _, tool := range constants.Tools {
+		if strings.HasPrefix(tool, "pin-") {
+			t.Errorf("tool id %q collides with the pin-<pin-id> lock namespace", tool)
+		}
+	}
 }
 
 // TestStateWritesGoThroughTheSeam pins the convention App.mutateState exists to

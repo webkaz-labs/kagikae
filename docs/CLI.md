@@ -570,7 +570,7 @@ best-match candidate is named (no multi-candidate list).
 | `1` | `error` | general/runtime error |
 | `2` | `invalid_config` | config file unreadable or invalid |
 | `3` | `auth_missing` | live auth state not found for the requested tool |
-| `4` | `lock_busy` | another kae process holds the per-tool, config, or state lock |
+| `4` | `lock_busy` | another kae process holds the per-tool, config, state, or per-directory pin lock |
 | `5` | `unsupported` | platform or tool operation not supported |
 | `6` | `cli_missing` | upstream CLI binary not found when required |
 | `7` | `not_found` | account / profile / backup not found |
@@ -727,7 +727,7 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
 `unsupported`, `file_mode`, `credential_stale`, `secret_orphan`,
 `companion_missing`, `companion_binary`, `companion_drift`,
-`companion_token_drift`, `identity_drift`, `upstream_version`.
+`companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`.
 
 Credential-health checks (warn-level):
 - `credential_stale`: a captured snapshot cannot open a session again without an
@@ -745,6 +745,18 @@ Credential-health checks (warn-level):
   by design and are never reported. Detected only where the backend can enumerate (file
   `readdir`, Linux `libsecret`); the darwin keychain cannot list by service, so
   the check is silently skipped there (documented gap; docs/SECURITY.md).
+
+Bound-directory checks (warn-level, unfiltered like the companion ones — a
+binding is a property of the directory, not of one tool):
+- `pin_stale`: a directory bound with `kae pin` either no longer exists — its
+  per-directory store is then orphaned, since the store is named by a hash of the
+  path and nothing else records it — or it is still pinned to an account that is
+  no longer captured, which is what `kae account rm`/`rename` and
+  `kae profile rm` leave behind. Names the directory and the `kae pin` that
+  re-binds it. Offline: it reads the breadcrumb each store carries, the fragment
+  in the directory it names, and the account snapshots. A directory that was
+  simply `kae unpin`-ed is **not** reported: unpin keeps the store on purpose so
+  a re-pin restores its sessions and settings.
 
 Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
 <tool>`):

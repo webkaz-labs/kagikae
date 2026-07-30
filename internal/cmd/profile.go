@@ -310,6 +310,13 @@ func buildProfileRm(_ context.Context, app *App, opts commonOpts, name string, f
 	}); err != nil {
 		return nil, err
 	}
+	app.warnPinnedDirs(
+		func(info fragmentInfo) bool { return info.Profile == name },
+		func(dir string) string {
+			return fmt.Sprintf("%s is still pinned to profile %s, which no longer exists; re-pin it with: cd %s && kae pin <profile>",
+				dir, name, dir)
+		},
+	)
 	return report, nil
 }
 

@@ -158,6 +158,7 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 			return nil, fmt.Errorf("delete secret %s: %w", acc.Artifacts[name].SecretRef, err)
 		}
 	}
+	app.warnPinnedAccountGone(tool, accountName, "")
 	return report, nil
 }
 
@@ -326,6 +327,7 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	if err := os.RemoveAll(app.Paths.AccountDir(tool, oldName)); err != nil {
 		return nil, fmt.Errorf("remove old snapshot dir: %w", err)
 	}
+	app.warnPinnedAccountGone(tool, oldName, newName)
 	return report, nil
 }
 

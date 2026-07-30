@@ -18,12 +18,13 @@ deleted in a store the tool does not read there), all fixed on the branch — so
 (branch `fix/cursor-full-credential-set`), **1.4** (branch
 `fix/claude-custom-oauth-url`), **1.5** (branch `fix/upstream-drift-1-5`,
 where one of the three claims was overturned by measurement — see the entry)
-and **2.3** (branch `fix/state-lost-update`, where the claim held but review
-found the lock alone did not close it — see the entry).
+**2.3** (branch `fix/state-lost-update`, where the claim held but review
+found the lock alone did not close it — see the entry) and **2.2 / 2.4**
+(branch `fix/pin-directory-index`, where two of 2.4's sub-claims were
+overturned — see the entry).
 
 **Still open here**: 1.6, **1.7** (new — a relative path variable diverges for
-claude and codex too, generalized out of 1.5), the rest of Part 2 (2.3 is now
-fixed), and Part 3's skill. Also open,
+claude and codex too, generalized out of 1.5), 2.5, and Part 3's skill. Also open,
 and unrelated to this document: the two live-machine gates in
 [VALIDATION.md](VALIDATION.md) — "codex per-directory keyring bind" (which is all
 that stands between the shipped code and dropping codex from
@@ -369,19 +370,29 @@ never equal a reserved prefix — guarded by
 `TestToolIDsDoNotCollideWithKeyNamespaces`. Recorded in
 [DATA-MODEL.md](DATA-MODEL.md) § Secret References.
 
-### 2.2 Account rename/remove and profile remove ignore per-directory bindings — **AGENT-CLAIMED**
+### 2.2 Account rename/remove and profile remove ignore per-directory bindings — **FIXED** (the structural half; the claim was right that the index was the whole problem)
 
-`kae account rm` / `rename` reportedly never touch `IsolatedConfigDir` or any
-directory fragment, and **there is no index of pinned directories anywhere**. A
-renamed account would leave a pinned directory bound to a name that no longer
-exists, with no command able to find or fix it. `kae profile rm` reportedly also
-leaves companion secrets in the backend and gives no diagnostic in a directory
-pinned to the deleted profile.
+Held. Neither `kae account rm`/`rename` nor `kae profile rm` touched a directory
+binding, and nothing anywhere recorded which directories were bound — the
+fragment that names the store lives *in* the directory, and the store is named by
+a hash of that path, so from outside there was nothing to enumerate.
 
-The missing pinned-directory index is the structural item here — several findings
-in this part reduce to it. Consider whether kae should record bound directories
-(it already derives a stable `PinID`), because "no command can find it" is what
-makes each of these unrecoverable rather than merely untidy.
+Fixed by recording the bound path as a **breadcrumb inside the store**
+(`isolation/<pin-id>/dir`), not as a registry beside it: a registry is a second
+source of truth that drifts from the directory tree and needs its own repair
+path, whereas here the store's existence *is* the record and the two cannot
+disagree. On top of it: `kae account rm`/`rename` and `kae profile rm` now warn
+per affected directory, naming the `kae pin` that re-binds it, and `kae doctor`
+grows `pin_stale` for the two states nothing could see before — a bound directory
+that is gone (its store orphaned forever) and one still pinned to an account that
+is not captured.
+
+**Not done, deliberately**: nothing rewrites another directory's fragment. Naming
+the directory is the half that was impossible; the fix is one `cd` and one
+`kae pin`, and a command that silently edits files outside the directory it was
+run in is a worse trade. A directory that was merely `kae unpin`-ed is not
+reported either — unpin keeps the store on purpose so a re-pin restores its
+sessions.
 
 ### 2.3 `state.json` has no lock; concurrent switches on different tools lost-update — **FIXED** (the main claim held; the `agy` half was overturned)
 
@@ -416,15 +427,42 @@ the identity guard has nothing to compare for it. agy implements
 `TestIdentifierConformance` requires it of **every** adapter, so the claim could
 not have been true of any tool. Nothing to do.
 
-### 2.4 The pin family is unlocked, unbacked-up, and leaves stores behind — **AGENT-CLAIMED**
+### 2.4 The pin family is unlocked, unbacked-up, and leaves stores behind — **PARTLY FIXED; two of the three sub-claims were overturned**
 
-- `kae pin <tool> <account>` mutates the directory's credential, then companion
-  files, then the fragment, with no lock and **no backup of the previous
-  per-directory credential** — `kae rollback` has no concept of pin state. A
-  mid-sequence failure leaves the live credential and the fragment disagreeing.
-- Toggling `pin -s` ↔ `pin -i` in one directory never tears down the old store.
-- `PinID` hashes `filepath.Abs` without resolving symlinks, so two path aliases for
-  one directory fork its isolation store in two.
+- **Unlocked — held, fixed.** `kae pin`, `kae pin <tool> <account>` and
+  `kae unpin` took no lock at all. They now take a per-directory `pin-<pin-id>`
+  lock, so two of them in one directory cannot interleave into a fragment that
+  points at a store the other re-keyed. Per directory, not global: binding two
+  different directories at once was never a problem.
+- **"No backup of the previous per-directory credential" — true, and it does not
+  matter.** That credential is a *copy* of the account snapshot
+  (`writeDirCredential` reads the snapshot, never the live store — that was fixed
+  in v0.12.0), so `kae pin <tool> <account>` reproduces it byte for byte. A
+  half-done bind is re-runnable, not lost data, which is why `kae rollback` has no
+  pin state and does not need one. Recorded in
+  [ARCHITECTURE.md](ARCHITECTURE.md).
+- **"Toggling `pin -s` ↔ `pin -i` never tears down the old store" — overturned.**
+  `pruneDirCredentials` (shipped with the codex per-directory work) already sweeps
+  every store of the pin the new binding does not keep. It sweeps **keychain items
+  only**, and that asymmetry is deliberate and documented: a file store's
+  credential lives *inside* the store directory, which a mode toggle and `kae
+  unpin` keep along with its sessions and settings, while an item is invisible from
+  the directory tree and would otherwise hold a credential nothing can find.
+- **`PinID` does not resolve symlinks — held as a fact, rejected as a fix.** The
+  reasoning that made it look mandatory does not survive checking: codex hashes a
+  *canonicalized* `CODEX_HOME`, but `codex.storeKey` already applies
+  `EvalSymlinks` itself (`internal/adapter/codex/codex.go`), so kae's account and
+  codex's agree whatever shape `PinID` takes. What is left is narrow: the fragment
+  lives in the directory, so both aliases of a symlinked path load the *same*
+  fragment and the same store — the split only happens if you re-run `kae pin`
+  through the other alias, which orphans the first store rather than splitting a
+  live one, and `kae unpin --purge` through the other alias then sweeps nothing.
+  Against that, canonicalizing changes the pin id for **every** user whose project
+  path contains a symlink (`/tmp` on macOS, a symlinked `~/dev`), silently moving
+  their sessions, settings and per-directory credential to a new store — with the
+  old keychain items unreachable, because they are keyed by the old path. A
+  guaranteed migration hazard for everyone to close a leak for a few. Left as is,
+  now *visible* through `pin_stale`, and recorded in [ROADMAP.md](ROADMAP.md).
 
 ### 2.5 Smaller items — **AGENT-CLAIMED**
 

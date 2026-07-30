@@ -137,6 +137,14 @@ func (p Paths) PinDir(pinID string) string {
 	return filepath.Join(p.IsolationDir(), pinID)
 }
 
+// PinRecordFile returns isolation/<pinID>/dir, the breadcrumb holding the
+// absolute path <pinID> hashes. It is what lets any command enumerate the bound
+// directories: the mise fragment that selects a store lives *in* the bound
+// directory, so without this nothing outside could name one.
+func (p Paths) PinRecordFile(pinID string) string {
+	return filepath.Join(p.PinDir(pinID), "dir")
+}
+
 // toolIsolDir returns the per-tool isolation root isolation/<pinID>/<tool>
 // shared by SharedDir and IsolatedConfigDir.
 func (p Paths) toolIsolDir(pinID, tool string) string {

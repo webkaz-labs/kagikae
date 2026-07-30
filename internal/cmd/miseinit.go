@@ -10,7 +10,6 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
-	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -86,13 +85,9 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 // isolationPlan resolves the per-tool env entries and the matching directory
 // preparer for a per-directory bind (shared/isolated). Used by `kae pin`, which
 // renders the kae-owned mise fragment; both mechanisms key their stores by the
-// bound directory, so it resolves pin-id here.
-func (app *App) isolationPlan(ctx context.Context, be secret.Backend, mode string, targets []runTarget) ([]isolationEntry, func(tool, account string) (string, error), error) {
-	absDir, err := cwdAbs()
-	if err != nil {
-		return nil, nil, err
-	}
-	pinID := paths.PinID(absDir)
+// bound directory, whose pin id the caller has already resolved (it needs it for
+// the pin lock and the breadcrumb, and two derivations of one id is one too many).
+func (app *App) isolationPlan(ctx context.Context, be secret.Backend, mode string, targets []runTarget, pinID string) ([]isolationEntry, func(tool, account string) (string, error), error) {
 	switch mode {
 	case modeShared:
 		return app.bondIsolationEntries(targets, pinID),

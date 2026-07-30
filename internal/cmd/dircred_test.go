@@ -57,7 +57,7 @@ func TestWriteDirCredentialWritesDirScopedKeychainStore(t *testing.T) {
 	app.Env.GOOS = "darwin"
 	payload := `{"claudeAiOauth":{"accessToken":"` + mainToken + `","subscriptionType":"max"}}`
 	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
-		captureClaudeAccount(t, app, "main", mainToken)
+		captureClaude(t, app, "main", mainToken)
 	})
 	credDir := t.TempDir()
 
@@ -70,6 +70,45 @@ func TestWriteDirCredentialWritesDirScopedKeychainStore(t *testing.T) {
 	})
 	if !strings.Contains(strings.Join(fake.Args, " "), sha8Of(credDir)) {
 		t.Fatalf("credential not written to the per-directory item: %v", fake.Args)
+	}
+}
+
+// TestCheckPayloadShapeRejectsIncompatibleTransitions covers the transition that
+// would corrupt rather than fail: a keychain snapshot holds the whole
+// `{"claudeAiOauth":…}` document, so applying it through a pointer spec nests it
+// under its own key and claude reads a malformed credential. Reachable by
+// capturing under one driver and applying under the KAE_CLAUDE_DRIVER override.
+func TestCheckPayloadShapeRejectsIncompatibleTransitions(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		stored, dest string
+		wantRefused  bool
+	}{
+		{"keychain snapshot into a pointer spec", constants.KindKeychain, constants.KindJSONPointer, true},
+		{"pointer snapshot into a keychain spec", constants.KindJSONPointer, constants.KindKeychain, true},
+		{"pointer snapshot into a pointer spec", constants.KindJSONPointer, constants.KindJSONPointer, false},
+		{"keychain snapshot into a keychain spec", constants.KindKeychain, constants.KindKeychain, false},
+		// Both are whole documents, which is what makes codex's auth.json and its
+		// keyring item the same bytes.
+		{"file snapshot into a keychain spec", constants.KindFile, constants.KindKeychain, false},
+		// A snapshot predating the recorded kind must not be refused on a guess.
+		{"unrecorded kind", "", constants.KindJSONPointer, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkPayloadShape(constants.ToolClaude, "main", tc.stored, tc.dest)
+			if tc.wantRefused {
+				if err == nil {
+					t.Fatal("incompatible payload shapes must be refused, not applied")
+				}
+				if code := exitOf(err); code != constants.ExitUnsafeRefused {
+					t.Fatalf("exit code = %d, want %d", code, constants.ExitUnsafeRefused)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("compatible shapes must apply: %v", err)
+			}
+		})
 	}
 }
 

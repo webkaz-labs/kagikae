@@ -18,25 +18,13 @@ import (
 )
 
 // setupBondHome seeds the non-credential half of a realistic claude real home.
-// The credential comes from captureClaudeAccount, because a bond materializes
+// The credential comes from captureClaude, because a bond materializes
 // the bound account's snapshot rather than whatever is live.
 func setupBondHome(t *testing.T, app *App) {
 	t.Helper()
 	home := filepath.Join(app.Env.Home, ".claude")
 	writeFile(t, filepath.Join(home, "settings.json"), `{"theme":"dark"}`)
 	writeFile(t, filepath.Join(home, "CLAUDE.md"), "# project\n")
-}
-
-// captureClaudeAccount seeds a live claude login and captures it under name, so
-// the temp-HOME store holds a real snapshot for the per-directory materializers
-// to read.
-func captureClaudeAccount(t *testing.T, app *App, name, token string) {
-	t.Helper()
-	seedClaude(t, app, token, name+"-uuid")
-	code, out := captureStdout(t, func() int {
-		return runCapture(context.Background(), app, commonOpts{Format: formatText}, "claude", name)
-	})
-	mustExit(t, constants.ExitOK, code, out)
 }
 
 // sha8Of mirrors the per-config-dir suffix claude derives. The formula itself is
@@ -58,7 +46,7 @@ func testBackend(t *testing.T, app *App) secret.Backend {
 
 func TestPrepareBondSymlinksNonDenylist(t *testing.T) {
 	app := testApp(t, nil)
-	captureClaudeAccount(t, app, "main", mainToken)
+	captureClaude(t, app, "main", mainToken)
 	setupBondHome(t, app)
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
@@ -92,7 +80,7 @@ func TestPrepareBondSymlinksNonDenylist(t *testing.T) {
 // whichever credential happened to be live.
 func TestPrepareBondCredentialComesFromSnapshotNotLiveHome(t *testing.T) {
 	app := testApp(t, nil)
-	captureClaudeAccount(t, app, "main", mainToken)
+	captureClaude(t, app, "main", mainToken)
 	// Another account is live now. A bond for main must still materialize main's
 	// credential, not this one.
 	seedClaude(t, app, sideToken, "side-uuid")
@@ -124,7 +112,7 @@ func TestPrepareBondCredentialComesFromSnapshotNotLiveHome(t *testing.T) {
 
 func TestPrepareBondIdempotent(t *testing.T) {
 	app := testApp(t, nil)
-	captureClaudeAccount(t, app, "main", mainToken)
+	captureClaude(t, app, "main", mainToken)
 	setupBondHome(t, app)
 	be := testBackend(t, app)
 	cwd := t.TempDir()
@@ -180,7 +168,7 @@ func TestPrepareBondDarwinWritesPerDirKeychainItem(t *testing.T) {
 	// Capture under the keychain driver so the snapshot holds the verbatim
 	// keychain payload the apply path writes back.
 	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
-		captureClaudeAccount(t, app, "main", mainToken)
+		captureClaude(t, app, "main", mainToken)
 	})
 
 	cwd := t.TempDir()
@@ -221,7 +209,7 @@ func TestPrepareBondDarwinKeychainWriteFailureIsNotDowngraded(t *testing.T) {
 	setupBondHome(t, app)
 	payload := `{"claudeAiOauth":{"accessToken":"` + mainToken + `","subscriptionType":"max"}}`
 	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
-		captureClaudeAccount(t, app, "main", mainToken)
+		captureClaude(t, app, "main", mainToken)
 	})
 
 	cwd := t.TempDir()

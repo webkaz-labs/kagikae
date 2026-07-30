@@ -93,7 +93,7 @@ func TestPreparePinConfigSharesOptInItems(t *testing.T) {
 	writeFile(t, filepath.Join(app.Env.Home, ".claude", "output-styles", "x.json"), "{}")
 	pinID := "abcdef0123456789"
 
-	captureClaudeAccount(t, app, "main", mainToken)
+	captureClaude(t, app, "main", mainToken)
 	if _, err := app.preparePinConfig(context.Background(), testBackend(t, app),
 		constants.ToolClaude, "main", pinID); err != nil {
 		t.Fatal(err)

@@ -118,8 +118,8 @@ func TestPinRebindIsolatedRepointsFragment(t *testing.T) {
 
 	// Both accounts must be captured: a re-bind names one account explicitly, so
 	// an uncaptured one is refused rather than bound without a credential.
-	captureClaudeAccount(t, app, "main", mainToken)
-	captureClaudeAccount(t, app, "beta", sideToken)
+	captureClaude(t, app, "main", mainToken)
+	captureClaude(t, app, "beta", sideToken)
 
 	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
 		t.Fatalf("runPin isolated exit %d", code)
@@ -164,9 +164,9 @@ func rebindCompanionApp(t *testing.T) *App {
 	writeFile(t, filepath.Join(app.Env.Home, ".gitconfig"), "[alias]\n\tlol = log --oneline\n")
 	// Every account a re-bind targets has to be captured; a re-bind names one
 	// account, so an uncaptured one is refused instead of bound credential-less.
-	captureClaudeAccount(t, app, "main", mainToken)
-	captureClaudeAccount(t, app, "side", sideToken)
-	captureClaudeAccount(t, app, "zeta", sideToken)
+	captureClaude(t, app, "main", mainToken)
+	captureClaude(t, app, "side", sideToken)
+	captureClaude(t, app, "zeta", sideToken)
 	return app
 }
 

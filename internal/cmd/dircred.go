@@ -93,8 +93,11 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		return fmt.Errorf("%w: %s keeps one global credential store that %s does not namespace",
 			errGlobalCredentialStore, tool, isolationEnvVar(tool))
 	}
-	data, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
+	data, storedKind, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
 	if err != nil {
+		return err
+	}
+	if err := checkPayloadShape(tool, accountName, storedKind, sp.Kind); err != nil {
 		return err
 	}
 	if err := artifact.ApplyLive(ctx, sp, artifact.Value{Data: data, Present: true}); err != nil {
@@ -154,33 +157,67 @@ func (app *App) dirCredentialSpec(ctx context.Context, tool, artName, credDir st
 	return artifact.Spec{}, false, nil
 }
 
-// snapshotCredential returns the captured credential payload for tool/account.
+// wholeDocumentKind reports whether a spec kind stores the artifact's *whole*
+// document rather than the value under a JSON pointer. It is the shape a payload
+// has, and the two families are not interchangeable: KindFile and KindKeychain
+// round-trip the entire document, while KindJSONPointer carries only the inner
+// pointer value.
+func wholeDocumentKind(kind string) bool {
+	return kind == constants.KindFile || kind == constants.KindKeychain
+}
+
+// checkPayloadShape refuses to apply a snapshot whose payload has the other
+// shape from what the destination spec expects, because one of those transitions
+// corrupts silently rather than failing: applying a whole-document payload
+// through a pointer spec nests it under its own key
+// (`{"claudeAiOauth":{"claudeAiOauth":…}}`), which claude reads as a malformed
+// credential. The reverse writes an inner object as a whole document.
+//
+// Reachable by capturing under one driver and applying under another — the
+// KAE_CLAUDE_DRIVER / [tools.claude] driver override does exactly that. A
+// KindFile/KindKeychain transition is allowed: both are whole documents, which is
+// what makes codex's auth.json and its keyring item the same bytes.
+func checkPayloadShape(tool, accountName, storedKind, destKind string) error {
+	if storedKind == "" || wholeDocumentKind(storedKind) == wholeDocumentKind(destKind) {
+		return nil
+	}
+	return errf(constants.ExitUnsafeRefused,
+		"account %s/%s was captured as %q but this environment resolves %s's credential as %q, "+
+			"and the two payload shapes are not interchangeable; recapture with "+
+			"`kae add --no-login %s %s` under the current driver",
+		tool, accountName, storedKind, tool, destKind, tool, accountName)
+}
+
+// snapshotCredential returns the captured credential payload for tool/account
+// together with the spec kind it was captured as, which fixes the payload's
+// shape (checkPayloadShape).
+//
 // The snapshot is the only correct source for a per-directory bind: the live
 // store holds whichever account is globally active, which is the account being
 // bound only by coincidence.
-func (app *App) snapshotCredential(ctx context.Context, be secret.Backend, tool, accountName, artName string) ([]byte, error) {
+func (app *App) snapshotCredential(ctx context.Context, be secret.Backend, tool, accountName, artName string) ([]byte, string, error) {
 	acc, found, err := account.Load(app.Paths.AccountDir(tool, accountName))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if !found {
-		return nil, errf(constants.ExitNotFound,
+		return nil, "", errf(constants.ExitNotFound,
 			"account %s/%s is not captured yet (run: kae add --no-login %s %s)",
 			tool, accountName, tool, accountName)
 	}
 	metaArt, ok := acc.Artifacts[artName]
 	if !ok || !metaArt.Present {
-		return nil, errf(constants.ExitAuthMissing,
+		return nil, "", errf(constants.ExitAuthMissing,
 			"account %s/%s has no credential snapshot; re-run kae add --no-login %s %s",
 			tool, accountName, tool, accountName)
 	}
 	data, found, err := be.Get(ctx, metaArt.SecretRef)
 	if err != nil {
-		return nil, fmt.Errorf("read snapshot credential: %w", err)
+		return nil, "", fmt.Errorf("read snapshot credential: %w", err)
 	}
 	if !found {
-		return nil, errf(constants.ExitError,
+		return nil, "", errf(constants.ExitError,
 			"snapshot payload missing; re-run kae add --no-login %s %s", tool, accountName)
 	}
-	return data, nil
+	return data, metaArt.Kind, nil
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"runtime"
 	"time"
 
@@ -62,13 +63,27 @@ func newApp(configPath string) *App {
 		ConfigWarnings: warnings,
 		ConfigErr:      cfgErr,
 		Env: adapter.Env{
-			GOOS:     runtime.GOOS,
-			Home:     home,
-			Getenv:   claudeDriverGetenv(os.Getenv, cfg),
-			LookPath: exec.LookPath,
+			GOOS:      runtime.GOOS,
+			Home:      home,
+			Getenv:    claudeDriverGetenv(os.Getenv, cfg),
+			Username:  osUsername(),
+			LookupEnv: os.LookupEnv,
+			LookPath:  exec.LookPath,
 		},
 		Now: time.Now,
 	}
+}
+
+// osUsername resolves the OS account name for adapter.Env.Username. It is only
+// a fallback for tools that fall back to it themselves when $USER is unset
+// (claude's keychain account attribute), so a lookup failure yields "" and the
+// adapter applies its own default rather than kae inventing one.
+func osUsername() string {
+	u, err := user.Current()
+	if err != nil {
+		return ""
+	}
+	return u.Username
 }
 
 // claudeDriverGetenv wraps a Getenv so the persisted [tools.claude] driver

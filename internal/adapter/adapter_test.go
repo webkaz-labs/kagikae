@@ -143,6 +143,107 @@ func TestClaudeArtifactsDarwin(t *testing.T) {
 	}
 }
 
+// pinConfigDir is the shape of a real `kae pin --isolated` config dir, and
+// pinConfigDirSHA8 is the suffix Claude Code derives from it. The expected
+// hashes are computed **outside** kae (`printf %s <path> | shasum -a 256`) on
+// purpose: deriving them with kae's own hash would make this test agree with any
+// formula, including a wrong one. Re-deriving them is only correct if the rule in
+// docs/VALIDATION.md still says raw-string sha256.
+const (
+	pinConfigDir     = "/home/u/.local/share/kagikae/isolation/deadbeefdeadbeef/claude/isolated/side/config"
+	pinConfigDirSHA8 = "b43dacab"
+	// The same path with a trailing slash is a *different* keychain item, because
+	// claude hashes the raw environment string with no path cleaning.
+	pinConfigDirTrailingSlashSHA8 = "430765be"
+)
+
+func TestClaudeKeychainServiceIsPerConfigDir(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		configDir string
+		want      string
+	}{
+		{"unset keeps the shared item", "", claude.KeychainService},
+		{"set namespaces by config dir", pinConfigDir, claude.KeychainService + "-" + pinConfigDirSHA8},
+		{"trailing slash is a different item", pinConfigDir + "/", claude.KeychainService + "-" + pinConfigDirTrailingSlashSHA8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := testEnv(t, "darwin", map[string]string{
+				"USER":              "alice",
+				"CLAUDE_CONFIG_DIR": tc.configDir,
+			})
+			specs, err := claudeAdapter.Artifacts(context.Background(), env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if specs[0].Kind != constants.KindKeychain || specs[0].Target != tc.want {
+				t.Fatalf("keychain target = %q, want %q", specs[0].Target, tc.want)
+			}
+		})
+	}
+}
+
+// TestClaudeKeychainAccountMirrorsUpstream pins claude's own rule
+// (`$USER || os.userInfo().username`, then validate, else the literal). The
+// account attribute is load-bearing: claude's reads are account-scoped, so an
+// item written under the wrong one is invisible to it even with the right
+// service name.
+func TestClaudeKeychainAccountMirrorsUpstream(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		user     string
+		username string
+		want     string
+	}{
+		{"USER wins", "alice", "beta", "alice"},
+		{"OS username fills in for an unset USER", "", "beta", "beta"},
+		{"an invalid USER does not fall through to the OS name", "not a name", "beta", "claude-code-user"},
+		{"neither usable", "", "", "claude-code-user"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := testEnv(t, "darwin", map[string]string{"USER": tc.user})
+			env.Username = tc.username
+			specs, err := claudeAdapter.Artifacts(context.Background(), env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if specs[0].KeychainAccount != tc.want {
+				t.Fatalf("KeychainAccount = %q, want %q", specs[0].KeychainAccount, tc.want)
+			}
+		})
+	}
+}
+
+// TestClaudeRefusesSecureStorageConfigDir covers the variable that moves both of
+// claude's stores at once. The empty-value case is the dangerous one — it removes
+// the per-directory suffix entirely, so every pin would collapse onto one shared
+// item — and it is only visible through LookupEnv, which is why Env carries one.
+func TestClaudeRefusesSecureStorageConfigDir(t *testing.T) {
+	for _, value := range []string{"", "/somewhere/else"} {
+		t.Run("value="+value, func(t *testing.T) {
+			env := testEnv(t, "darwin", map[string]string{"USER": "alice"})
+			env.LookupEnv = func(key string) (string, bool) {
+				if key == claude.EnvSecureStorageDir {
+					return value, true
+				}
+				return "", false
+			}
+			if _, err := claudeAdapter.Artifacts(context.Background(), env); !errors.Is(err, adapter.ErrUnsupported) {
+				t.Fatalf("expected unsupported, got %v", err)
+			}
+		})
+	}
+}
+
+// The refusal must not fire on an absent variable — that is every normal run.
+func TestClaudeAllowsAbsentSecureStorageConfigDir(t *testing.T) {
+	env := testEnv(t, "darwin", map[string]string{"USER": "alice"})
+	env.LookupEnv = func(string) (string, bool) { return "", false }
+	if _, err := claudeAdapter.Artifacts(context.Background(), env); err != nil {
+		t.Fatalf("unexpected refusal: %v", err)
+	}
+}
+
 func TestClaudeDriverOverrideForcesFileOnDarwin(t *testing.T) {
 	configDir := t.TempDir()
 	env := testEnv(t, "darwin", map[string]string{

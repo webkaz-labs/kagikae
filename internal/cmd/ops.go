@@ -219,6 +219,9 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 		if err != nil {
 			return err
 		}
+		if err := checkStoreMoved(current, rec); err != nil {
+			return err
+		}
 		if err := artifact.ApplyLive(ctx, specFromRecord(rec), value); err != nil {
 			return fmt.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
 		}
@@ -277,6 +280,40 @@ func storedValue(ctx context.Context, be secret.Backend, ref string, present, id
 // is survivable is policy, and policy belongs to the code: an old backup must not
 // pin a decision kae has since changed. An unresolvable tool answers false, so
 // the fail-loud path stays the default.
+// checkStoreMoved refuses to restore a credential into a store the tool has since
+// stopped reading. A backup record carries the store it was captured from (that is
+// the point — `specFromRecord` rebuilds the spec from the record, so the payload's
+// shape is the captured one by construction), but the tool may have moved between
+// its two stores in the meantime, and for codex both stores hold the same bytes so
+// nothing about the payload gives it away.
+//
+// The reachable case is codex's `auto` store, which reads the keyring item first
+// and `auth.json` only when the item is absent. A backup taken with no item
+// records the file; if codex then logs in or refreshes (a `kae run -s` child is
+// enough) it creates the item and deletes the file — after which restoring the
+// file alone puts the old credential where nothing reads it, and kae would report a
+// successful rollback while the live session stays on the other account.
+//
+// Refusing is deliberate rather than "restore both": the item created after the
+// backup has no payload in it, so clearing it would destroy a live login kae has
+// no copy of. The message names the recovery, which does not need this backup.
+//
+// current is nil when the caller restores a backup it just created, where the
+// records came from those same specs and no mismatch is possible.
+func checkStoreMoved(current map[string][]artifact.Spec, rec backup.ArtifactRecord) error {
+	for _, sp := range current[rec.Tool] {
+		if sp.Name != rec.Name || sp.Kind == rec.Kind {
+			continue
+		}
+		return errf(constants.ExitUnsafeRefused,
+			"%s/%s was backed up from %s %q but %s now keeps it in %s %q, "+
+				"so restoring the backup would write where nothing reads; "+
+				"switch with `kae use %s <account>` instead",
+			rec.Tool, rec.Name, rec.Kind, rec.Target, rec.Tool, sp.Kind, sp.Target, rec.Tool)
+	}
+	return nil
+}
+
 func isIdentityOnly(current map[string][]artifact.Spec, tool, name string) bool {
 	for _, sp := range current[tool] {
 		if sp.Name == name {

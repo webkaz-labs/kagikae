@@ -867,7 +867,11 @@ which inside a pinned shell would otherwise follow `CLAUDE_CONFIG_DIR` into the
 isolation tree. Restoring a backup taken before an optional artifact existed also
 removes that artifact live (it cannot be restored) — for claude that means the
 identity cache is cleared and refetched, never left naming the account the
-rollback just left.
+rollback just left. A rollback whose credential would land in a store the tool no
+longer reads (codex moving between `auth.json` and its keyring item under
+`cli_auth_credentials_store = "auto"`) is refused with exit `10` and points at
+`kae use` instead, since restoring there would report success while the live
+session keeps the other account.
 
 ### `kae env list --json`
 

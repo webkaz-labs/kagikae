@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,6 +31,102 @@ func TestPlansFromBackupMetaPreservesKeychainAccount(t *testing.T) {
 	}
 	if got := plans[0].Specs[0].KeychainAccount; got != "cursor-user" {
 		t.Fatalf("keychain account lost in metadata round-trip: %q", got)
+	}
+}
+
+// A legacy codex backup record — `keychain_replace` with **no** recorded account,
+// which is what the old capture wrote when no `Codex Auth` item was live — must not
+// restore as a delete of the whole service. That was still destructive after the
+// account-scoping fix: `specFromRecord` marked it account-scoped, but with an empty
+// account the primitive fell back to a service-only delete and removed another
+// CODEX_HOME's login. It is refused instead, and the refusal is visible here rather
+// than only in the artifact primitive because this record shape can only arrive
+// through a backup.
+func TestSpecFromRecordLegacyReplaceWithoutAccountRefused(t *testing.T) {
+	rec := backup.ArtifactRecord{
+		Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindKeychain,
+		Target: "Codex Auth", Pointer: "/tokens", KeychainReplace: true,
+		SecretRef: "backup/x/codex/auth", Present: false,
+	}
+	sp := specFromRecord(rec)
+	if !sp.KeychainMatchAccount {
+		t.Fatal("a legacy keychain_replace record must restore account-scoped")
+	}
+	fake := &runnertest.Fake{Code: 0}
+	var err error
+	runner.With(fake, func() {
+		err = artifact.ApplyLive(context.Background(), sp, artifact.Value{Present: false})
+	})
+	if !errors.Is(err, artifact.ErrUnsafe) {
+		t.Fatalf("err = %v, want ErrUnsafe", err)
+	}
+	if fake.Name != "" {
+		t.Fatalf("the refusal must not touch the keychain, ran %q %v", fake.Name, fake.Args)
+	}
+}
+
+// checkStoreMoved covers codex's `auto` store moving between the two places it can
+// live. A backup taken with no keychain item records `auth.json`; if codex then
+// creates the item (a token refresh inside `kae run -s` is enough) and deletes the
+// file, restoring the file alone writes where nothing reads — `auto` prefers the
+// item — and kae would report a successful rollback while the live session stays on
+// the other account. It must refuse instead, and it must stay quiet when the store
+// has not moved or when the caller passes no current specs.
+func TestCheckStoreMovedRefusesAStaleStore(t *testing.T) {
+	rec := backup.ArtifactRecord{
+		Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
+		Target: "/home/u/.codex/auth.json", SecretRef: "backup/x/codex/auth", Present: true,
+	}
+	keychainNow := map[string][]artifact.Spec{constants.ToolCodex: {{
+		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
+		Pointer: "/tokens", KeychainAccount: "cli|1111111111111111", KeychainMatchAccount: true,
+	}}}
+	err := checkStoreMoved(keychainNow, rec)
+	if exitOf(err) != constants.ExitUnsafeRefused {
+		t.Fatalf("err = %v (exit %d), want a refusal with exit %d",
+			err, exitOf(err), constants.ExitUnsafeRefused)
+	}
+	if msg := err.Error(); !strings.Contains(msg, "kae use") {
+		t.Fatalf("the refusal must name the recovery: %s", msg)
+	}
+	fileNow := map[string][]artifact.Spec{constants.ToolCodex: {{
+		Name: "auth", Kind: constants.KindFile, Target: "/home/u/.codex/auth.json",
+	}}}
+	if err := checkStoreMoved(fileNow, rec); err != nil {
+		t.Fatalf("an unmoved store must restore: %v", err)
+	}
+	if err := checkStoreMoved(nil, rec); err != nil {
+		t.Fatalf("a just-created backup has nothing to reconcile: %v", err)
+	}
+}
+
+// The refusal above is only worth anything if the restore path actually consults
+// it, so this covers the wiring: applyBackup must not write the recorded store
+// when the live one has moved.
+func TestApplyBackupRefusesAStaleStore(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	be := testBackend(t, app)
+	authPath := filepath.Join(app.Env.Home, ".codex", "auth.json")
+	ref := backup.SecretRef("x", constants.ToolCodex, "auth")
+	if err := be.Set(ctx, ref, []byte(`{"tokens":{"access_token":"backed-up"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	meta := backup.Meta{Artifacts: []backup.ArtifactRecord{{
+		Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
+		Target: authPath, SecretRef: ref, Present: true,
+	}}}
+	current := map[string][]artifact.Spec{constants.ToolCodex: {{
+		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
+		Pointer: "/tokens", KeychainAccount: "cli|1111111111111111", KeychainMatchAccount: true,
+	}}}
+	err := app.applyBackup(ctx, be, meta, nil, current)
+	if exitOf(err) != constants.ExitUnsafeRefused {
+		t.Fatalf("err = %v (exit %d), want a refusal with exit %d",
+			err, exitOf(err), constants.ExitUnsafeRefused)
+	}
+	if _, statErr := os.Stat(authPath); statErr == nil {
+		t.Fatal("the refused restore must not have written auth.json")
 	}
 }
 

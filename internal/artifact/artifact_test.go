@@ -370,6 +370,48 @@ func TestKeychainCodexHomesCoexist(t *testing.T) {
 	}
 }
 
+// A spec that says its item is identified by service+account but carries no
+// account must be refused, never widened to the service. The reachable case is a
+// legacy codex backup record: the old capture recorded `keychain_replace` with no
+// account when no item was live, so restoring it fell through to a service-only
+// delete and removed another CODEX_HOME's login.
+func TestKeychainMatchAccountWithoutAccountRefused(t *testing.T) {
+	ctx := context.Background()
+	other := acctKey("Codex Auth", "cli|2222222222222222")
+	otherItem := `{"tokens":{"access_token":"other-home"}}`
+	sp := Spec{
+		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
+		Pointer: "/tokens", KeychainMatchAccount: true, // no KeychainAccount
+	}
+	for _, tc := range []struct {
+		name string
+		call func() error
+	}{
+		{name: "apply absent (the destructive one)", call: func() error {
+			return ApplyLive(ctx, sp, Value{Present: false})
+		}},
+		{name: "apply present", call: func() error {
+			return ApplyLive(ctx, sp, Value{Data: []byte(`{"tokens":{}}`), Present: true})
+		}},
+		{name: "read", call: func() error {
+			_, err := ReadLive(ctx, sp)
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &acctFakeRunner{items: map[string]string{other: otherItem}}
+			var err error
+			runner.With(fake, func() { err = tc.call() })
+			if !errors.Is(err, ErrUnsafe) {
+				t.Fatalf("err = %v, want ErrUnsafe", err)
+			}
+			if fake.items[other] != otherItem || len(fake.writes) != 0 {
+				t.Fatalf("another home's item was touched: items=%v writes=%v", fake.items, fake.writes)
+			}
+		})
+	}
+}
+
 // TestKeychainKindWritesVerbatim guards the core fix: the captured bytes are
 // written exactly as-is. Claude Code stores compact, unsorted JSON and rejects
 // a re-serialized payload, so kagikae must not pretty-print or sort keys.

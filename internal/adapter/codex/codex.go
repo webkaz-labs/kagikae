@@ -1,6 +1,7 @@
-// Package codex implements the Codex CLI adapter. Auth mode swaps only
-// ~/.codex/auth.json; the OS-keyring credential store is detect-only in
-// v0.1.0 (see docs/ADAPTERS.md and docs/ROADMAP.md).
+// Package codex implements the Codex CLI adapter. Auth mode swaps the credential
+// store codex resolves for this codex home — CODEX_HOME/auth.json, or this home's
+// `Codex Auth` keychain item — and nothing else under CODEX_HOME
+// (see docs/ADAPTERS.md).
 package codex
 
 import (

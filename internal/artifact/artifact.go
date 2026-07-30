@@ -63,12 +63,12 @@ type Spec struct {
 	// own item (claude on macOS: `Claude Code-credentials-<sha8(configDir)>`).
 	//
 	// It is what makes a keychain item safe to write for a per-directory bind, and
-	// the default of false is the safe one. codex's keyring item is a single global
-	// `Codex Auth` regardless of CODEX_HOME, so writing it for a bound directory
-	// would overwrite the *global* login instead of isolating anything — and with
-	// KeychainReplace it deletes the prior item first, so there would be nothing
-	// to restore. A tool whose credential store cannot be scoped to a directory is
-	// reported as unisolatable rather than written to.
+	// the default of false is the safe one: an undeclared item is left alone and the
+	// tool reported as unisolatable. codex is why the default matters. Its
+	// `Codex Auth` item is shared by every codex home and scoped by the account
+	// instead (KeychainMatchAccount), so a per-directory write would have to derive
+	// the bond dir's account correctly or touch a store the directory does not own —
+	// a capability kae has not verified end to end and therefore does not declare.
 	KeychainDirScoped bool
 	// JSONC marks a KindJSONPointer Target as a JSONC document (standard JSON
 	// plus // and /* */ comments and trailing commas, e.g. GitHub Copilot's
@@ -131,11 +131,28 @@ type Value struct {
 	Present bool
 }
 
-// matchAccount reports whether this keychain spec is scoped to a fixed account
-// of a shared service (agy's gemini/antigravity): read/write/delete touch only
-// the KeychainAccount item, never a sibling under a different account.
+// matchAccount reports whether this keychain spec is identified by service *and*
+// account: read/write/delete touch only the KeychainAccount item, never a sibling
+// under a different account. keychainIdentified has already refused the case
+// where the flag is set but the account is unknown.
 func (sp Spec) matchAccount() bool {
-	return sp.KeychainMatchAccount && sp.KeychainAccount != ""
+	return sp.KeychainMatchAccount
+}
+
+// keychainIdentified refuses a keychain spec that says its item is identified by
+// service+account but carries no account. Widening such a spec to a service-only
+// match is never safe: the service holds items kae does not own (another codex
+// home's login, another tool's `gemini` item), so a read would capture one and a
+// delete would destroy one. The case is reachable from a **legacy backup record**
+// — codex's old capture wrote `keychain_replace` with no account when no item was
+// live — so it is refused at the primitive rather than trusted to callers.
+func keychainIdentified(sp Spec) error {
+	if sp.KeychainMatchAccount && sp.KeychainAccount == "" {
+		return fmt.Errorf("%w: keychain item %q is identified by service and account, "+
+			"but this record carries no account; refusing to touch the service as a whole",
+			ErrUnsafe, sp.Target)
+	}
+	return nil
 }
 
 // keychainGuard verifies a captured keychain payload before it is stored or
@@ -201,6 +218,9 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 		return Value{Data: raw, Present: true}, nil
 
 	case constants.KindKeychain:
+		if err := keychainIdentified(sp); err != nil {
+			return Value{}, err
+		}
 		var payload []byte
 		var found bool
 		var err error
@@ -297,6 +317,9 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		return patch.WriteFileAtomic(target, updated, patch.CredentialFileMode)
 
 	case constants.KindKeychain:
+		if err := keychainIdentified(sp); err != nil {
+			return err
+		}
 		matchAccount := sp.matchAccount()
 		if !v.Present {
 			// The captured account had no keychain item; applying it removes

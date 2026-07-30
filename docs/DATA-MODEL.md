@@ -356,6 +356,17 @@ removes/skips it instead of writing an empty value). After a successful
 switch, backups beyond `backup_keep` are pruned oldest-first (metadata and
 secret payloads together).
 
+Because a record carries the store it was captured from, a rollback is **refused**
+(exit `10`) when the tool has since moved the credential to its other store — the
+reachable case is codex's `auto`, which reads the keyring item first and
+`auth.json` only when the item is absent, so a backup taken before codex created
+the item would otherwise be restored into a file nothing reads while kae reported
+success. Refusing rather than restoring both is deliberate: the item created after
+the backup has no payload in it, so clearing it would destroy a live login kae has
+no copy of. A legacy `keychain_replace` record with **no** recorded account is
+refused for the same reason — without the account it cannot name its own item, and
+widening the delete to the service is what destroyed another codex home's login.
+
 **`account rm`/`rename` do not rewrite existing backups.** A backup's
 `active_before` keeps the old account name, so rolling back to a backup taken
 before a remove/rename restores that name into `state.json` while the snapshot

@@ -215,9 +215,9 @@ func oauthAccountSpec(env adapter.Env) artifact.Spec {
 }
 
 // Artifacts returns the credential first, then the identity cache. Detect reads
-// specs[0] as the credential (keychainCredForBond selects by kind instead, and
-// credentialArtifactName keeps its own name map), so the order is a contract of
-// this adapter, pinned by TestClaudeArtifactsLinux/Darwin.
+// specs[0] as the credential (the per-directory materializer resolves it by name
+// through credentialArtifactName instead), so the order is a contract of this
+// adapter, pinned by TestClaudeArtifactsLinux/Darwin.
 func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, error) {
 	drv, err := driver(env)
 	if err != nil {

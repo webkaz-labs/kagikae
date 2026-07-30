@@ -154,6 +154,12 @@ captured_at = 2026-06-11T01:23:45Z
 
 [artifacts.claude_ai_oauth]
 kind = "keychain"              # json-pointer | file | keychain
+# The recorded target is the name resolved at capture time, not a constant:
+# claude namespaces its keychain service by CLAUDE_CONFIG_DIR, so a capture taken
+# inside a bound directory records `Claude Code-credentials-<sha8>`
+# (docs/ADAPTERS.md "Credential storage resolution"). Applying resolves the spec
+# fresh from the adapter for the environment it is applying to; this field
+# records what was read.
 target = "Claude Code-credentials"
 pointer = "/claudeAiOauth"
 secret_ref = "claude/main/claude_ai_oauth"

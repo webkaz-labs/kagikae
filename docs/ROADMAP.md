@@ -86,46 +86,39 @@ Follow-up from v0.8.4 (not yet scheduled):
   v0.8.2** — see below.
 - **Identity cache in isolation modes**: `kae use` / `kae add` switch claude's
   `/oauthAccount` identity cache, but the per-directory materializers
-  (`swapDirCredential`, `prepareBond`, `preparePinConfig`,
-  `prepareGlobalIsolatedHome`) copy only the credential. Since
+  (`writeDirCredential`, and its callers `prepareBond`, `preparePinConfig`,
+  `prepareGlobalIsolatedHome`) write only the credential. Since
   `CLAUDE_CONFIG_DIR` moves the cache to `<dir>/.claude.json` and
   `prepareBond` only links the entries *of* `~/.claude`, a bonded or isolated
   directory keeps whatever account first ran there, and `kae pin <tool>
   <account>` does not correct it. Auth is unaffected (the token wins) — it is an
   attribution gap: the UI can name the wrong account inside a pinned directory.
-  The fix is one shared identity step across all four materializers; the design
+  The fix is now one identity step alongside `writeDirCredential`, which all four
+  already route through; the design
   question is bond mode, where writing the cache is visible to the real home
   (docs/SCOPE-MODEL.md §6). Until then `doctor`'s `identity_drift` check skips a
   kae-owned isolated home for the same reason: kae applied no identity there, so
   there is nothing of its own to compare the live value against.
-- **macOS: a pinned directory drifts out of kae's control** *(measured on Claude
-  Code 2.1.220, 2026-07-30; the most severe open gap)*: `CLAUDE_CONFIG_DIR` does
-  **not** force file-based auth on macOS. claude namespaces its keychain service
-  by the config dir (`Claude Code-credentials-<sha8(configDir)>`) and reads
-  keychain-first with a plaintext-file fallback, so a fresh pin dir does read
-  kae's `.credentials.json` — until the first token refresh, which writes the
-  per-dir keychain item **and deletes that file**. From then on `kae pin <tool>
-  <account>` rewrites a file nobody reads: it updates the fragment, reports
-  success, and claude keeps running the previous account, while `kae status` shows
-  the new one. Worse than an attribution gap — the *credential* is wrong, and
-  nothing offline compares the two. Order: (1) detect it (the per-dir item's
-  **existence** is readable with one `security` call, no secret access, and can
-  warn from `pin` / `status` / `doctor`), (2) then decide whether
-  `swapDirCredential` should write the per-dir keychain item directly (the
-  existing keychain driver works as-is if the spec's `Target` becomes
-  `Claude Code-credentials-<sha8>`), which would also open a recapture path out of
-  pinned dirs. Pinning `CLAUDE_SECURESTORAGE_CONFIG_DIR` to empty would collapse
-  every pin onto the shared item — recorded only to be rejected. Everything needed
-  to start, including how to reproduce it and where the facts came from, is in
-  [handoff-p0-macos-pin.md](handoff-p0-macos-pin.md).
-- **`kae pin -i` copies the live credential, not the account's snapshot**:
-  `preparePinConfig` / `prepareBond` read from `app.realToolHome(tool)`, so
-  pinning an account that is not currently globally active seeds the dir with
-  whichever credential happens to be live. Only the re-bind path
-  (`swapDirCredential`) uses the snapshot. `docs/CLI.md`'s "the credential is
-  always private-copied" reads as if the account's own credential were used.
-  Silent wrong-account; fix alongside the item above since both live in the
-  materializers.
+- **claude's OAuth build suffix is not modelled**: the keychain service name is
+  `Claude Code` + the build's OAuth suffix + `-credentials` + the per-config-dir
+  suffix. kae hard-codes the production spelling (empty suffix); a local build, or
+  any build run with `CLAUDE_CODE_CUSTOM_OAUTH_URL` pointing at an approved
+  endpoint, uses `-local-oauth` / `-custom-oauth` and kae would read and write the
+  wrong item. Detectable offline from the env var alone, so the cheap fix is the
+  same refusal `CLAUDE_SECURESTORAGE_CONFIG_DIR` already gets. Measured on 2.1.220
+  (docs/VALIDATION.md).
+- **A re-bind leaves the previous account's per-directory keychain item**: in
+  isolated mode the config dir is keyed by account, so re-binding moves the
+  binding to a new dir and the old dir's keychain item keeps its credential. It is
+  unreachable (nothing points `CLAUDE_CONFIG_DIR` there anymore) but not removed,
+  the same way `kae unpin` leaves the isolation directories intact. Cleaning it up
+  needs a record of which dirs were previously bound, which is why it is not part
+  of the write path.
+- **Pinned directories never refresh their snapshot**: a bound directory's tool
+  refreshes its own token in place, so kae's snapshot for that account ages. Now
+  that kae writes and can read the per-directory store, a recapture path out of a
+  pinned directory is reachable — it was not while kae only wrote a file the tool
+  had stopped reading.
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the

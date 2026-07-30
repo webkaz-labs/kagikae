@@ -132,6 +132,7 @@ replace it.
   Never `-w`. Never `security delete-generic-password` — clean up with the tool's
   own `logout`, which deletes the item it owns and only that one.
 - No credential value in a commit message, a doc, a test fixture or a report.
-- Example names: `main` / `side`, extra accounts `alt` / `beta` / `zeta`,
-  `you@example.com`, `~/code/side-project`. **Never a real login handle** — not
-  even a well-known example account, which is still a real account.
+- Example names follow [AGENTS.md](../../../AGENTS.md) § "Example Names in Docs
+  and Tests" — that table is the list. The half worth repeating because it is
+  easy to get wrong: **never a real login handle**, not even a well-known example
+  account, which is still somebody's real account.

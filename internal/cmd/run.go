@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
-	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/envprofile"
 	"github.com/webkaz-labs/kagikae/internal/runner"
@@ -415,9 +414,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			"child finished but restoring the previous auth state failed: %v; run: kae rollback --to %s",
 			err, meta.ID)
 	}
-	if _, err := backup.Prune(ctx, be, app.Paths.BackupsDir(), app.Config.Security.BackupKeep); err != nil {
-		fmt.Fprintf(os.Stderr, "kae: warning: backup pruning failed: %v\n", err)
-	}
+	app.pruneBackups(ctx, be)
 	fmt.Fprintf(os.Stderr, "kae: previous auth state restored (backup %s)\n", meta.ID)
 
 	if runErr != nil && !errors.Is(runErr, context.Canceled) {

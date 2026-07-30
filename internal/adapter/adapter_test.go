@@ -1146,12 +1146,12 @@ func TestKeychainSpecsAreAccountScoped(t *testing.T) {
 			if err != nil {
 				continue // unsupported platform: nothing to check
 			}
-			keychainSpecs := 0
+			anyKeychain := false
 			for _, sp := range specs {
 				if sp.Kind != constants.KindKeychain {
 					continue
 				}
-				keychainSpecs++
+				anyKeychain = true
 				if !sp.KeychainMatchAccount || sp.KeychainAccount == "" {
 					t.Errorf("%s/%s artifact %q: keychain specs must set KeychainMatchAccount "+
 						"and a non-empty KeychainAccount (got %v / %q); service-only IO reads the "+
@@ -1159,7 +1159,7 @@ func TestKeychainSpecsAreAccountScoped(t *testing.T) {
 						tool, goos, sp.Name, sp.KeychainMatchAccount, sp.KeychainAccount)
 				}
 			}
-			if goos == "darwin" && keychainSpecs > 0 {
+			if goos == "darwin" && anyKeychain {
 				checked[tool] = true
 			}
 		}

@@ -95,10 +95,7 @@ const relativeHomeWarning = "CODEX_HOME is relative: codex canonicalizes it agai
 // relativeHomeWarnings is the Detect/Doctor payload for a relative CODEX_HOME:
 // one warning, or none. Both surfaces read it so neither can drift.
 func relativeHomeWarnings(env adapter.Env) []string {
-	if adapter.IsRelativeEnv(env, "CODEX_HOME") {
-		return []string{relativeHomeWarning}
-	}
-	return nil
+	return adapter.RelativeEnvWarning(env, "CODEX_HOME", relativeHomeWarning)
 }
 
 type Codex struct{}
@@ -425,9 +422,8 @@ func (c Codex) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	if err == nil {
 		var specs []artifact.Spec
 		if specs, err = c.Artifacts(ctx, env); err == nil {
-			checks := append([]adapter.Check{adapter.BinaryCheck(env, tool, "codex")},
-				storeChecks(ctx, env, tool, store, specs[0])...)
-			return append(checks, relative...)
+			return append(append([]adapter.Check{adapter.BinaryCheck(env, tool, "codex")},
+				storeChecks(ctx, env, tool, store, specs[0])...), relative...)
 		}
 	}
 	// configuredStore and Artifacts fail for an unswitchable store mode, an
@@ -490,7 +486,11 @@ func storeChecks(ctx context.Context, env adapter.Env, tool, store string, sp ar
 // auth.json also present) is *normal* mid-migration: codex writes the item and
 // then deletes the file, so a moment's overlap proves nothing.
 func contradictedStoreChecks(ctx context.Context, env adapter.Env, tool, store string, sp artifact.Spec) []adapter.Check {
-	if sp.Kind == constants.KindKeychain {
+	// darwin only, matching usesKeyring: off it there is no keychain to
+	// contradict, and probing anyway spends a PATH walk per `kae doctor` to learn
+	// nothing. The probe is a `security` subprocess, so the gate is the difference
+	// between one and none for every codex user on the default file store.
+	if sp.Kind == constants.KindKeychain || env.GOOS != "darwin" {
 		return nil
 	}
 	found, err := keychain.ItemExistsForAccount(ctx, KeychainService, storeKey(env))

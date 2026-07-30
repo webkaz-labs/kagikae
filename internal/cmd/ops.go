@@ -201,6 +201,12 @@ func (app *App) saveActive(updates map[string]string, explicitProfile string) er
 func (app *App) pruneBackups(ctx context.Context, be secret.Backend) {
 	l, err := app.acquireNamedLock("backups", "")
 	if err != nil {
+		// Only a *busy* lock is someone else doing this work. Anything else — an
+		// unwritable lock dir, a full disk — means nothing will prune, ever, and
+		// silence there is the one asymmetry in an otherwise fail-loud path.
+		if exitOf(err) != constants.ExitLockBusy {
+			fmt.Fprintf(os.Stderr, "kae: warning: could not take the backup lock: %v\n", err)
+		}
 		return
 	}
 	defer l.Release()

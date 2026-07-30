@@ -210,6 +210,20 @@ func IsRelativeEnv(env Env, name string) bool {
 	return value != "" && !filepath.IsAbs(value)
 }
 
+// RelativeEnvWarning is the Detect/Doctor payload for a path variable set to a
+// relative value: the caller's message, or nothing. Four adapters need it and
+// the *messages* must stay per-tool — the divergence differs (copilot and
+// opencode read a different file, claude keeps the same keychain item, codex
+// moves its keyring account too) — but the predicate and the one-or-none shape
+// are the same everywhere, and both of a tool's surfaces must read the same one
+// or they drift.
+func RelativeEnvWarning(env Env, name, message string) []string {
+	if IsRelativeEnv(env, name) {
+		return []string{message}
+	}
+	return nil
+}
+
 // EnvConflictChecksFrom wraps already-built warnings as env_conflict checks, so
 // the Doctor half of an environment warning is assembled in one place. Adapters
 // whose warning is not a per-variable "overrides the login" message (a relative

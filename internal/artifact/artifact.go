@@ -344,12 +344,8 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		// backup written before the record carried the account, where the live item
 		// is the only evidence of what the tool reads.
 		//
-		// The adapter's account is authoritative wherever there is one, and this used
-		// to have that backwards: preferring the existing item's account let a single
-		// item created under a wrong one (a former `$USER`, or the fallback below)
-		// pin kae's writes there for good, while the tool went on reading the account
-		// its own rule names. Self-perpetuating, and invisible — the item exists, the
-		// write succeeds, and the tool reports no login.
+		// The adapter's account is authoritative wherever there is one; this used to
+		// have that backwards, and AGENTS.md's keychain-identity boundary carries why.
 		account := sp.KeychainAccount
 		if account == "" {
 			if existing, _, err := keychain.ItemAccount(ctx, sp.Target); err == nil && existing != "" {

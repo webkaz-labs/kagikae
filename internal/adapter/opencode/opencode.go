@@ -49,10 +49,7 @@ const xdgRelativeWarning = "XDG_DATA_HOME is relative: opencode joins it against
 // xdgRelativeWarnings is the Detect/Doctor payload for a relative XDG_DATA_HOME:
 // one warning, or none. Both surfaces read it so neither can drift.
 func xdgRelativeWarnings(env adapter.Env) []string {
-	if adapter.IsRelativeEnv(env, "XDG_DATA_HOME") {
-		return []string{xdgRelativeWarning}
-	}
-	return nil
+	return adapter.RelativeEnvWarning(env, "XDG_DATA_HOME", xdgRelativeWarning)
 }
 
 type Opencode struct{}

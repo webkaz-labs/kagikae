@@ -97,10 +97,7 @@ const relativeConfigDirWarning = "CLAUDE_CONFIG_DIR is relative: claude resolves
 // CLAUDE_CONFIG_DIR: one warning, or none. Both surfaces read it so neither
 // can drift.
 func relativeConfigDirWarnings(env adapter.Env) []string {
-	if adapter.IsRelativeEnv(env, "CLAUDE_CONFIG_DIR") {
-		return []string{relativeConfigDirWarning}
-	}
-	return nil
+	return adapter.RelativeEnvWarning(env, "CLAUDE_CONFIG_DIR", relativeConfigDirWarning)
 }
 
 // keychainAccountPattern is the validation Claude Code applies to the account

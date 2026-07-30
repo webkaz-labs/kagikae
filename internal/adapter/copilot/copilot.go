@@ -52,10 +52,7 @@ const relativeHomeWarning = EnvHome + " is relative: copilot resolves it against
 // relativeHomeWarnings is the Detect/Doctor payload for a relative COPILOT_HOME:
 // one warning, or none. Both surfaces read it so neither can drift.
 func relativeHomeWarnings(env adapter.Env) []string {
-	if adapter.IsRelativeEnv(env, EnvHome) {
-		return []string{relativeHomeWarning}
-	}
-	return nil
+	return adapter.RelativeEnvWarning(env, EnvHome, relativeHomeWarning)
 }
 
 type Copilot struct{}

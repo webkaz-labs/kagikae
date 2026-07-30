@@ -286,6 +286,10 @@ guidance to either install libsecret tools or opt in to the file backend with
 }
 ```
 
+Every write to this file is a read-modify-write under its own `state` lock,
+because the per-tool locks do not cover it and switches on different tools run
+concurrently — see [ARCHITECTURE.md](ARCHITECTURE.md) § Locking.
+
 `active` records what kae last applied (or captured from a matching live
 state); it is kae's belief, not upstream truth. `status` re-verifies
 `auth_present` against the live state. `active_profile` is set by a

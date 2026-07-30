@@ -16,12 +16,14 @@ deleted in a store the tool does not read there), all fixed on the branch — so
 
 **Also done**: **2.1** (branch `fix/doctor-orphan-namespaces`), **1.1**
 (branch `fix/cursor-full-credential-set`), **1.4** (branch
-`fix/claude-custom-oauth-url`) and **1.5** (branch `fix/upstream-drift-1-5`,
-where one of the three claims was overturned by measurement — see the entry).
+`fix/claude-custom-oauth-url`), **1.5** (branch `fix/upstream-drift-1-5`,
+where one of the three claims was overturned by measurement — see the entry)
+and **2.3** (branch `fix/state-lost-update`, where the claim held but review
+found the lock alone did not close it — see the entry).
 
 **Still open here**: 1.6, **1.7** (new — a relative path variable diverges for
-claude and codex too, generalized out of 1.5), the rest of Part 2, and Part 3's
-skill. Also open,
+claude and codex too, generalized out of 1.5), the rest of Part 2 (2.3 is now
+fixed), and Part 3's skill. Also open,
 and unrelated to this document: the two live-machine gates in
 [VALIDATION.md](VALIDATION.md) — "codex per-directory keyring bind" (which is all
 that stands between the shipped code and dropping codex from
@@ -381,18 +383,38 @@ in this part reduce to it. Consider whether kae should record bound directories
 (it already derives a stable `PinID`), because "no command can find it" is what
 makes each of these unrecoverable rather than merely untidy.
 
-### 2.3 `state.json` has no lock; concurrent switches on different tools lost-update — **AGENT-CLAIMED**
+### 2.3 `state.json` has no lock; concurrent switches on different tools lost-update — **FIXED** (the main claim held; the `agy` half was overturned)
 
-Per-tool locks let `kae use claude X` and `kae use codex Y` run concurrently, and
-`saveActive` writes the whole document from a copy loaded before the other
-finished. The loser's field silently reverts, so `status` and `MatchProfile`
-report a wrong active account that `kae rollback` does not fix. Claimed to recur
-at every `loadState`/`state.Save` pair. Also claimed: `agy` has no `Identifier`,
-so the identity guard that would catch a resulting mismatch has nothing to compare
-for that tool.
+The main claim held exactly as written. `buildSwitch` loads state under the
+per-tool locks only (`switch.go`), then spends seconds writing credentials
+before `saveActive` writes the whole document back — and `kae use claude <a>`
+and `kae use codex <b>` hold different locks, so both run. Five load→mutate→save
+sequences had the shape, not one: `saveActive` (switch/capture/login/account),
+rollback, `teardownSynced`, `runUseIsolated`.
 
-Verify by reading `switch.go` around `acquireLocks`/`saveActive`; the fix is
-presumably a state-file lock or a read-modify-write immediately before save.
+Fixed as one seam, `App.mutateState`: take a new `state` lock, **re-read the
+file**, apply the mutation, save. The re-read is what makes the update
+lost-free; the lock is what makes the re-read atomic. Recorded in
+[ARCHITECTURE.md](ARCHITECTURE.md) § Locking and as a boundary in
+[AGENTS.md](../AGENTS.md), with a guard test keeping `state.Save` out of the
+rest of `internal/cmd` — the seam is a convention, since `state.Save` stays
+exported for fixtures and read paths.
+
+**What review found that the audit did not, and it is the more interesting
+half:** a lock is not enough, because the *decision* can be stale even when the
+write is not. `kae account rm` and `kae account rename` read "is this the active
+account" **before** taking the tool lock and then applied that answer inside the
+fresh, locked read — so a switch completing in between made them clear or rename
+a binding nobody asked them to touch. The lock relocated that bug rather than
+closing it. Both now re-derive the answer inside the mutation. Generalize:
+**whenever a seam re-reads, every predicate over what it re-read has to move
+inside it too.**
+
+**Overturned:** the audit's companion claim that `agy` has no `Identifier`, so
+the identity guard has nothing to compare for it. agy implements
+`Identity()` (`internal/adapter/agy/agy.go`), and
+`TestIdentifierConformance` requires it of **every** adapter, so the claim could
+not have been true of any tool. Nothing to do.
 
 ### 2.4 The pin family is unlocked, unbacked-up, and leaves stores behind — **AGENT-CLAIMED**
 

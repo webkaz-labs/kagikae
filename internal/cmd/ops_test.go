@@ -9,11 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
+	"github.com/webkaz-labs/kagikae/internal/testutil/secrettest"
 )
 
 // TestPlansFromBackupMetaPreservesKeychainAccount guards the rollback path:
@@ -63,6 +65,49 @@ func TestSpecFromRecordLegacyReplaceWithoutAccountRefused(t *testing.T) {
 	}
 	if fake.Name != "" {
 		t.Fatalf("the refusal must not touch the keychain, ran %q %v", fake.Name, fake.Args)
+	}
+}
+
+// A snapshot captured by an older kae lacks an artifact today's adapter declares
+// — every pre-existing cursor snapshot lacks refresh_token and api_key. The
+// refusal must land before the *first* live write: applying access_token and then
+// refusing would leave cursor-agent holding one account's access token beside
+// another account's refresh token until the caller's restore undid it.
+func TestApplySnapshotRefusesMissingArtifactBeforeAnyWrite(t *testing.T) {
+	ctx := context.Background()
+	be := secrettest.NewMem()
+	ref := account.SecretRef(constants.ToolCursor, "main", "access_token")
+	if err := be.Set(ctx, ref, []byte("raw-jwt")); err != nil {
+		t.Fatal(err)
+	}
+	spec := func(name, service string) artifact.Spec {
+		return artifact.Spec{
+			Name: name, Kind: constants.KindKeychain,
+			Target: service, KeychainAccount: "cursor-user",
+		}
+	}
+	plan := toolPlan{
+		Tool: constants.ToolCursor, Account: "main",
+		Specs: []artifact.Spec{
+			spec("access_token", "cursor-access-token"),
+			spec("refresh_token", "cursor-refresh-token"),
+		},
+		Meta: account.Account{
+			Tool: constants.ToolCursor, Name: "main",
+			Artifacts: map[string]account.Artifact{"access_token": {
+				Kind: constants.KindKeychain, Target: "cursor-access-token",
+				SecretRef: ref, Present: true,
+			}},
+		},
+	}
+	fake := &runnertest.Fake{Code: 0}
+	var err error
+	runner.With(fake, func() { err = applySnapshot(ctx, be, plan) })
+	if err == nil || !strings.Contains(err.Error(), "refresh_token") {
+		t.Fatalf("err = %v, want a refusal naming the missing artifact", err)
+	}
+	if fake.Name != "" {
+		t.Fatalf("the refusal must precede every write, ran %q %v", fake.Name, fake.Args)
 	}
 }
 

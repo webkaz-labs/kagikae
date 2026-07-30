@@ -427,11 +427,12 @@ Two ways that file stops being what opencode reads, both **warned** on
 
 kae switches `auth.json` and nothing else. Two other stores exist and are
 deliberately not modelled: `account.json` (`{version, accounts, active}`), which
-1.16.2–1.17.3 **derive** from auth.json on every run and 1.17.4 stopped reading
-at all, and the `credential` table in `opencode.db`, which 1.17.4 populates from
-auth.json exactly once behind a `data_migration` marker and then leaves alone.
-Measured across 1.17.3 / 1.17.4 / 1.18.5: `auth login`, `auth logout` and
-`auth list` all read and write **auth.json**, so it is the live store — a logout
+1.17.3 **derives** from auth.json on every run and 1.17.4 stopped referencing at
+all (the filename appears in 1.16.2 too, but a bare `auth list` there does not
+produce the file), and the `credential` table in `opencode.db`, which 1.17.4
+populates from auth.json exactly once behind a `data_migration` marker and then
+leaves alone. Measured across 1.16.2 / 1.17.3 / 1.17.4 / 1.18.5: `auth list` and
+`auth logout` read and write **auth.json**, so it is the live store — a logout
 empties auth.json and leaves the imported DB row in place. That balance is what a
 version bump has to re-check ([VALIDATION.md](VALIDATION.md)).
 
@@ -573,6 +574,19 @@ check, because copilot applies none either
 (`process.env.COPILOT_HOME ? process.env.COPILOT_HOME : join(homedir(), ".copilot")`).
 Setting it also disables copilot's one-way `$XDG_CONFIG_HOME/.copilot` →
 `~/.copilot` migration.
+
+A **relative** value is followed but **warned** about (`kae doctor`,
+`env_conflict`): copilot resolves it against *its* working directory and kae is
+invoked from anywhere in the project, so the file kae writes is the file copilot
+reads only while both run from the same directory. Verbatim is still the closest
+kae can get — with the variable set there is no default to fall back to, unlike
+opencode's XDG case — so the warning is the guard, and `kae rollback` inherits
+the same condition because the backup records the target as given.
+
+One branch of the precedence is **invisible to kae**: `--config-dir` is a CLI
+flag, so a session that passes it reads a directory no environment can reveal.
+That is recorded here rather than turned into a warning on `COPILOT_HOME`
+([AGENTS.md](../AGENTS.md)).
 
 kae targets `config.json` and not the bare `config` file copilot's
 settings-migration loader falls back to when `config.json` is absent: no auth

@@ -810,6 +810,41 @@ func TestCopilotHonorsCopilotHome(t *testing.T) {
 	if err != nil || !info.AuthPresent {
 		t.Fatalf("COPILOT_HOME config.json not detected: %+v %v", info, err)
 	}
+	if len(info.Warnings) != 0 {
+		t.Fatalf("an absolute COPILOT_HOME must not warn: %+v", info.Warnings)
+	}
+}
+
+// A relative COPILOT_HOME resolves against the *tool's* working directory, and
+// kae is invoked from anywhere in a project — so the file kae writes is the file
+// copilot reads only while both run from the same directory. kae keeps following
+// the value (there is no default to fall back to while it is set) and warns,
+// because the alternative is a silently wrong write with every guard green.
+func TestCopilotWarnsOnRelativeCopilotHome(t *testing.T) {
+	env := testEnv(t, "darwin", map[string]string{copilot.EnvHome: ".copilot-local"})
+	info, err := copilotAdapter.Detect(context.Background(), env)
+	if err != nil {
+		t.Fatalf("detect: %v", err)
+	}
+	found := false
+	for _, warning := range info.Warnings {
+		if strings.Contains(warning, copilot.EnvHome) && strings.Contains(warning, "is relative") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a relative-COPILOT_HOME warning: %+v", info.Warnings)
+	}
+	found = false
+	for _, check := range copilotAdapter.Doctor(context.Background(), env) {
+		if check.Code == constants.CheckEnvConflict && check.Status == constants.StatusWarn &&
+			strings.Contains(check.Message, copilot.EnvHome) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a doctor env_conflict warning for a relative %s", copilot.EnvHome)
+	}
 }
 
 func TestCopilotDetect(t *testing.T) {

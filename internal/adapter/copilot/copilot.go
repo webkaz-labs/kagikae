@@ -37,6 +37,24 @@ const (
 // envConflicts override the keychain login (login --help precedence order).
 var envConflicts = []string{"COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"}
 
+// relativeHomeWarning is shared by Detect and Doctor so the two cannot drift.
+//
+// copilot applies no normalization to COPILOT_HOME, so a relative value resolves
+// against **copilot's** working directory — and kae, invoked from anywhere in the
+// project, resolves the same value against its own. Following it verbatim is still
+// the closest kae can get (there is no default to fall back to while the variable
+// is set, unlike opencode's XDG case), so kae keeps the value and warns: the two
+// agree only while both run from the same directory.
+const relativeHomeWarning = EnvHome + " is relative: copilot resolves it against its own working" +
+	" directory, so kae only writes the file copilot reads while both run from the same" +
+	" directory (set an absolute path)"
+
+// homeIsRelative reports whether COPILOT_HOME is set to a relative value.
+func homeIsRelative(env adapter.Env) bool {
+	dir := env.Getenv(EnvHome)
+	return dir != "" && !filepath.IsAbs(dir)
+}
+
 type Copilot struct{}
 
 func init() { adapter.Register(Copilot{}) }
@@ -87,6 +105,9 @@ func (c Copilot) Detect(ctx context.Context, env adapter.Env) (adapter.Info, err
 		info.BinaryPresent = true
 	}
 	info.Warnings = append(info.Warnings, adapter.EnvConflictWarnings(env, envConflicts)...)
+	if homeIsRelative(env) {
+		info.Warnings = append(info.Warnings, relativeHomeWarning)
+	}
 	specs, err := c.Artifacts(ctx, env)
 	if err != nil {
 		return info, err
@@ -154,6 +175,12 @@ func (c Copilot) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 		Status: constants.StatusOK, Message: "driver: " + constants.DriverCopilotConfigPointer,
 	})
 	checks = append(checks, adapter.EnvConflictChecks(env, tool, envConflicts)...)
+	if homeIsRelative(env) {
+		checks = append(checks, adapter.Check{
+			Tool: tool, Code: constants.CheckEnvConflict,
+			Status: constants.StatusWarn, Message: relativeHomeWarning,
+		})
+	}
 	if check, ok := adapter.FileModeCheck(env, tool, configJSONPath(env)); ok {
 		checks = append(checks, check)
 	}

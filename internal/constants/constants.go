@@ -141,6 +141,9 @@ const (
 	// CheckUpstreamVersion: the installed tool is a newer major/minor than the
 	// version its adapter's behaviour assumptions were verified against.
 	CheckUpstreamVersion = "upstream_version"
+	// CheckPinStale: a directory bound with `kae pin` no longer exists, or binds
+	// an account that no longer does.
+	CheckPinStale = "pin_stale"
 )
 
 // Exit codes and their stable error-code tokens.

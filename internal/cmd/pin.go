@@ -100,6 +100,15 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 		return finish(opts, errf(constants.ExitUsage,
 			"no profile given and no default_profile in config; use: kae pin <profile>"))
 	}
+	absDir, err := cwdAbs()
+	if err != nil {
+		return finish(opts, err)
+	}
+	pinLock, err := app.acquirePinLock(absDir)
+	if err != nil {
+		return finish(opts, err)
+	}
+	defer pinLock.Release()
 	targets, _, err := app.resolveTargets("all", profileName)
 	if err != nil {
 		return finish(opts, err)
@@ -119,6 +128,11 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
 		return finish(opts, err)
 	}
+	// Record which directory this store belongs to, before the fragment: the
+	// store now exists, and a store nothing can name is what pinindex.go is for.
+	if err := app.recordPinnedDir(paths.PinID(absDir), absDir); err != nil {
+		return finish(opts, err)
+	}
 	if err := prepareCompanions(); err != nil {
 		return finish(opts, err)
 	}
@@ -131,9 +145,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// use now is unreachable: a mode toggle moves every tool to the other
 	// mechanism's dir, and an isolated re-pin to another account re-keys it. Their
 	// keychain items would otherwise hold a credential nothing points at.
-	if absDir, err := cwdAbs(); err == nil {
-		reportPruned(app.pruneDirCredentials(ctx, paths.PinID(absDir), "", boundDirs(entries)))
-	}
+	reportPruned(app.pruneDirCredentials(ctx, paths.PinID(absDir), "", boundDirs(entries)))
 	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, mode)
 	fmt.Printf("Wrote %s (added to .gitignore); your mise.toml is untouched.\n", fragmentRelPath)
 	if app.miseActivated() {
@@ -178,6 +190,15 @@ func CmdUnpin(ctx context.Context, args []string) int {
 // runUnpin is CmdUnpin with the App injected, the same split CmdPin/runPin use so
 // tests drive it against a temp HOME instead of the real environment.
 func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
+	absDir, err := cwdAbs()
+	if err != nil {
+		return finish(opts, err)
+	}
+	pinLock, err := app.acquirePinLock(absDir)
+	if err != nil {
+		return finish(opts, err)
+	}
+	defer pinLock.Release()
 	removedFragment, err := removeDirFragment()
 	if err != nil {
 		return finish(opts, err)
@@ -201,10 +222,6 @@ func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
 	// now, so the sweep keeps none of them. Before it, a failure would leave a live
 	// binding whose credential kae had already deleted.
 	if purge {
-		absDir, err := cwdAbs()
-		if err != nil {
-			return finish(opts, err)
-		}
 		reportPruned(app.pruneDirCredentials(ctx, paths.PinID(absDir), "", nil))
 	}
 	return constants.ExitOK

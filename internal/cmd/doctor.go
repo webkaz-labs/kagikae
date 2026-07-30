@@ -188,6 +188,13 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 		report.Checks = append(report.Checks, app.identityDriftChecks(ctx, be, toolFilter)...)
 	}
 
+	// bound-directory health: a pinned directory that is gone, or that binds an
+	// account that is. Offline and backend-free; unfiltered, like the companion
+	// checks, because a stale binding is a property of the directory.
+	if toolFilter == "" {
+		report.Checks = append(report.Checks, app.pinChecks()...)
+	}
+
 	// companion binding health (config-level). Companions are not tools, so
 	// these run only for the unfiltered report.
 	if err == nil && toolFilter == "" {

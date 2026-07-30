@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
@@ -203,5 +204,31 @@ func TestPruneDirCredentialsHonorsToolFilter(t *testing.T) {
 	})
 	if strings.Contains(strings.Join(fake.Args, " "), sha8Of(claudeStore)) {
 		t.Fatalf("a sibling tool's store must be out of scope: %v", fake.Args)
+	}
+}
+
+// The delete primitive treats "no such item" as success, so the sweep probes
+// first: a store that never had an item must not be announced as cleaned up, and
+// nothing should be deleted for it either.
+func TestPruneDirCredentialsReportsNothingWhenNoItemExists(t *testing.T) {
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	pinID := paths.PinID(t.TempDir())
+	stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
+	if err := os.MkdirAll(stale, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	fake := &runnertest.Fake{Stderr: "security: " + keychain.NotFoundMarker, Code: 44}
+	var lines []string
+	runner.With(fake, func() {
+		lines = app.pruneDirCredentials(context.Background(), pinID, "", nil)
+	})
+
+	if len(lines) != 0 {
+		t.Fatalf("an absent item must not be reported as removed: %v", lines)
+	}
+	if args := strings.Join(fake.Args, " "); strings.Contains(args, "delete-generic-password") {
+		t.Fatalf("nothing to delete, yet a delete ran: %v", fake.Args)
 	}
 }

@@ -117,8 +117,24 @@ func decodeHexPayload(s string) ([]byte, bool) {
 // with invalidate extended to prefix-match accounts) if it ever shows up as
 // repeated subprocesses in a profile.
 func ItemExistsForAccount(ctx context.Context, service, account string) (bool, error) {
-	_, stderr, code := runner.Run(ctx, "security",
-		"find-generic-password", "-s", service, "-a", account)
+	return itemExists(ctx, service, account)
+}
+
+// ItemExists reports whether the service has any item, attributes only. It is the
+// service-only half of ItemExistsForAccount, for a service that holds at most one
+// legitimate item (the split mirrors ReadItem/DeleteItem): asking with an account a
+// service does not scope by would answer "absent" for an item a service-only
+// delete would still remove.
+func ItemExists(ctx context.Context, service string) (bool, error) {
+	return itemExists(ctx, service, "")
+}
+
+func itemExists(ctx context.Context, service, account string) (bool, error) {
+	args := []string{"find-generic-password", "-s", service}
+	if account != "" {
+		args = append(args, "-a", account)
+	}
+	_, stderr, code := runner.Run(ctx, "security", args...)
 	if code == 0 {
 		return true, nil
 	}

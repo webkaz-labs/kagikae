@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -97,9 +98,10 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	//
 	// codex is the case that shows why the declaration is per-adapter and defaults
 	// to false. Its item *is* scoped by CODEX_HOME — through the account attribute,
-	// not the service name — but kae has never verified a bound directory end to
-	// end there (does codex resolve the bond dir to the same canonical path kae
-	// hashes?), so the capability stays undeclared rather than assumed.
+	// not the service name — and codex is now measured resolving a bond-dir-shaped
+	// path (symlink included) to the same canonical path kae hashes. What the
+	// capability still waits on is the pin round-trip on a real machine
+	// (docs/ROADMAP.md), so it stays undeclared rather than assumed.
 	if sp.Kind == constants.KindKeychain && !sp.KeychainDirBindable {
 		return fmt.Errorf("%w: kae cannot give this directory its own %s credential store (%s)",
 			errGlobalCredentialStore, tool, isolationEnvVar(tool))
@@ -334,8 +336,28 @@ func (app *App) removeDirCredential(ctx context.Context, tool, credDir string) (
 	if sp.Kind != constants.KindKeychain || !sp.KeychainDirBindable {
 		return false, nil
 	}
+	// Probe before deleting, attributes only, so the caller can report what it
+	// actually removed: the delete primitive treats "no such item" as success, so
+	// without this a store that never had an item is announced as cleaned up. The
+	// probe is scoped the way the delete is — account-scoped only for a service that
+	// holds more than one legitimate item, since asking with an account a service
+	// does not scope by would answer "absent" for an item the delete still removes.
+	existed, err := dirItemExists(ctx, sp)
+	if err != nil || !existed {
+		return false, err
+	}
 	if err := artifact.ApplyLive(ctx, sp, artifact.Value{Present: false}); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// dirItemExists answers "is there an item to delete" for a keychain spec, scoped
+// the way that spec's delete is: account-scoped only where the service can hold
+// more than one legitimate item.
+func dirItemExists(ctx context.Context, sp artifact.Spec) (bool, error) {
+	if sp.KeychainMatchAccount {
+		return keychain.ItemExistsForAccount(ctx, sp.Target, sp.KeychainAccount)
+	}
+	return keychain.ItemExists(ctx, sp.Target)
 }

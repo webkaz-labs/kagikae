@@ -179,7 +179,33 @@ func TestClaudeKeychainServiceIsPerConfigDir(t *testing.T) {
 			if specs[0].Kind != constants.KindKeychain || specs[0].Target != tc.want {
 				t.Fatalf("keychain target = %q, want %q", specs[0].Target, tc.want)
 			}
+			// KeychainDirScoped is what tells the per-directory materializer the
+			// item is safe to write for one bound directory; it must be true
+			// exactly when the name is namespaced.
+			if wantScoped := tc.configDir != ""; specs[0].KeychainDirScoped != wantScoped {
+				t.Fatalf("KeychainDirScoped = %v, want %v", specs[0].KeychainDirScoped, wantScoped)
+			}
 		})
+	}
+}
+
+// codex's keyring item is a single global `Codex Auth` regardless of CODEX_HOME,
+// so it must never claim to be directory-scoped: writing it for a bound
+// directory would overwrite the global login, and KeychainReplace would delete
+// the previous item first.
+func TestCodexKeyringIsNotDirScoped(t *testing.T) {
+	home := t.TempDir()
+	write(t, filepath.Join(home, "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")
+	env := testEnv(t, "darwin", map[string]string{"CODEX_HOME": home})
+	specs, err := codexAdapter.Artifacts(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if specs[0].Kind != constants.KindKeychain {
+		t.Fatalf("expected the keyring spec, got %+v", specs[0])
+	}
+	if specs[0].KeychainDirScoped {
+		t.Fatal("a global keyring item must not be marked directory-scoped")
 	}
 }
 

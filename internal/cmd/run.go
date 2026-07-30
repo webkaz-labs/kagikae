@@ -212,7 +212,13 @@ func (app *App) runIsolatedChild(ctx context.Context, opts commonOpts, targets [
 	for _, tgt := range supported {
 		home, err := app.prepareGlobalIsolatedHome(ctx, be, tgt.Tool, tgt.Account)
 		if err != nil {
-			return finish(opts, fmt.Errorf("prepare isolated home for %s/%s: %w", tgt.Tool, tgt.Account, err))
+			// From a profile, one tool whose credential store cannot be scoped to a
+			// directory is a warning; named explicitly it is the whole request, so it
+			// stays an error (the same split isolatableTargets already applies).
+			tolerated := fromProfile && warnUnisolatableCredential(err, tgt.Tool, tgt.Account)
+			if !tolerated {
+				return finish(opts, fmt.Errorf("prepare isolated home for %s/%s: %w", tgt.Tool, tgt.Account, err))
+			}
 		}
 		extraEnv = append(extraEnv, isolationEnvVar(tgt.Tool)+"="+home)
 		rows = append(rows, homeRow{tgt.Tool, tgt.Account, home})
@@ -275,10 +281,11 @@ func (app *App) prepareGlobalIsolatedHome(ctx context.Context, be secret.Backend
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return "", fmt.Errorf("create global isolated home: %w", err)
 	}
-	if err := app.writeDirCredential(ctx, be, tool, account, home); err != nil {
-		return "", err
-	}
-	return home, nil
+	// The home exists from here on, so it is returned even when the credential
+	// could not be materialized: a caller that tolerates that (a whole-profile
+	// switch, see warnUnisolatableCredential) still needs the path to point the
+	// tool at, and returning "" would set the isolation env var to empty.
+	return home, app.writeDirCredential(ctx, be, tool, account, home)
 }
 
 // runTarget is one tool/account pair resolved from CLI arguments.

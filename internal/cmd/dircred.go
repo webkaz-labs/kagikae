@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,41 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
+
+// errGlobalCredentialStore reports that a tool keeps one global credential store
+// that no isolation env var namespaces, so a bound directory cannot have its own
+// copy of it and kae must not write it.
+//
+// Callers differ, matching how a tool with no isolation env var is already
+// handled: binding a *set* of tools warns and carries on (the others still bind,
+// and the tool's non-auth state is still isolated), while an operation naming the
+// tool refuses.
+var errGlobalCredentialStore = errors.New("credential store is not per-directory")
+
+// warnUnisolatableCredential reports whether err is a per-directory credential
+// limitation the caller may continue past, printing the warning when it is.
+// Emitted here so it precedes the fragment or state write it qualifies, and it
+// never changes an exit code.
+//
+// Only for operations that bind a set of tools resolved from a profile. An
+// operation naming one tool and account must let the error through: there the
+// unisolatable tool is the whole request, not one row of it.
+func warnUnisolatableCredential(err error, tool, account string) bool {
+	switch {
+	case errors.Is(err, errGlobalCredentialStore):
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: %s keeps one global credential store, so this directory shares %s's login "+
+				"with every other directory (its settings and sessions are still isolated)\n", tool, tool)
+		return true
+	case exitOf(err) == constants.ExitNotFound || exitOf(err) == constants.ExitAuthMissing:
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: %s/%s has no captured credential, so this directory binds %s without one; "+
+				"capture it with `kae add --no-login %s %s` and re-run\n",
+			tool, account, tool, tool, account)
+		return true
+	}
+	return false
+}
 
 // writeDirCredential materializes one captured account's credential for a
 // per-directory bind, at the location the tool bound to credDir will actually
@@ -46,6 +82,16 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	}
 	if !ok {
 		return nil // no such artifact on this platform
+	}
+	// Writing a keychain item for a bound directory is only isolation if the item
+	// belongs to that directory. codex's keyring item is one global `Codex Auth`
+	// whatever CODEX_HOME says, so writing it here would overwrite the *global*
+	// login — and KeychainReplace deletes the prior item first, leaving nothing to
+	// restore. Refuse before touching anything; the caller decides whether one
+	// unisolatable tool is fatal.
+	if sp.Kind == constants.KindKeychain && !sp.KeychainDirScoped {
+		return fmt.Errorf("%w: %s keeps one global credential store that %s does not namespace",
+			errGlobalCredentialStore, tool, isolationEnvVar(tool))
 	}
 	data, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
 	if err != nil {

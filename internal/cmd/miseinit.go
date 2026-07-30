@@ -111,32 +111,27 @@ func (app *App) isolationPlan(ctx context.Context, be secret.Backend, mode strin
 // failure surfaces before kae writes a fragment or block pointing at a
 // directory that does not exist.
 //
-// A profile may name an account that was never captured, or one whose snapshot
-// holds no credential. Binding the whole profile then still makes sense — the
-// other tools bind, and the directory is usable once that account is captured —
-// so those two are warnings rather than failures, matching how a tool with no
-// isolation env var is handled. The warning is what makes it honest: the
-// materializers used to skip a missing credential silently. Every other error
+// A profile may name an account that was never captured, or a tool whose
+// credential store cannot be scoped to a directory at all. Binding the whole
+// profile still makes sense then — the other tools bind, and the directory is
+// usable once that account is captured — so those are warnings rather than
+// failures, matching how a tool with no isolation env var is handled
+// (warnUnisolatableCredential). The warning is what makes it honest: the
+// materializers used to skip a missing credential in silence. Every other error
 // still fails the bind.
 //
-// Single-account operations do not take this path and keep failing loudly:
-// `kae pin <tool> <account>`, `kae use -i` and `kae run -i` name one account, so
-// an uncaptured one there is a mistake, not a partially satisfiable request.
+// Operations naming one tool and account do not take this path and keep failing
+// loudly: for `kae pin <tool> <account>` the unisolatable tool is the whole
+// request, not one row of it.
 func (app *App) prepareIsolationDirs(mode string, entries []isolationEntry, prepare func(tool, account string) (string, error)) error {
 	for _, entry := range entries {
 		if entry.Warning != "" {
 			continue
 		}
 		_, err := prepare(entry.Tool, entry.Account)
-		if err == nil {
-			continue
-		}
-		switch exitOf(err) {
-		case constants.ExitNotFound, constants.ExitAuthMissing:
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: %s/%s has no captured credential, so this directory binds %s without one; "+
-					"capture it with `kae add --no-login %s %s` and re-run `kae pin`\n",
-				entry.Tool, entry.Account, entry.Tool, entry.Tool, entry.Account)
+		switch {
+		case err == nil:
+		case warnUnisolatableCredential(err, entry.Tool, entry.Account):
 		default:
 			return fmt.Errorf("prepare %s-mode dir for %s: %w", mode, entry.Tool, err)
 		}

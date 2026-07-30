@@ -78,13 +78,15 @@ var keychainAccountPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 // Deliberately not modelled: the build's OAuth suffix, which sits between
 // "Claude Code" and "-credentials" and is empty only for the production build
 // (docs/ROADMAP.md).
-func keychainService(env adapter.Env) string {
+// dirScoped reports whether the returned name is namespaced by the config dir,
+// which is what makes the item safe to write for one bound directory.
+func keychainService(env adapter.Env) (name string, dirScoped bool) {
 	dir := env.Getenv("CLAUDE_CONFIG_DIR")
 	if dir == "" {
-		return KeychainService
+		return KeychainService, false
 	}
 	sum := sha256.Sum256([]byte(dir))
-	return fmt.Sprintf("%s-%x", KeychainService, sum[:4])
+	return fmt.Sprintf("%s-%x", KeychainService, sum[:4]), true
 }
 
 // keychainAccount returns the account attribute Claude Code uses for its
@@ -230,12 +232,14 @@ func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 		Pointer: "/claudeAiOauth",
 	}
 	if drv == constants.DriverClaudeKeychainPatch {
+		service, dirScoped := keychainService(env)
 		credential = artifact.Spec{
-			Name:            "claude_ai_oauth",
-			Kind:            constants.KindKeychain,
-			Target:          keychainService(env),
-			Pointer:         "/claudeAiOauth",
-			KeychainAccount: keychainAccount(env),
+			Name:              "claude_ai_oauth",
+			Kind:              constants.KindKeychain,
+			Target:            service,
+			Pointer:           "/claudeAiOauth",
+			KeychainAccount:   keychainAccount(env),
+			KeychainDirScoped: dirScoped,
 		}
 	}
 	return []artifact.Spec{credential, oauthAccountSpec(env)}, nil

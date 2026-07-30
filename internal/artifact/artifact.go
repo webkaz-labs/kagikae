@@ -58,6 +58,18 @@ type Spec struct {
 	// a fixed literal (not captured per-login), so it is incompatible with
 	// KeychainReplace. See docs/ADAPTERS.md (agy keyring).
 	KeychainMatchAccount bool
+	// KeychainDirScoped marks a KindKeychain item whose service name is derived
+	// from the tool's isolation env var, so each bound directory resolves to its
+	// own item (claude on macOS: `Claude Code-credentials-<sha8(configDir)>`).
+	//
+	// It is what makes a keychain item safe to write for a per-directory bind, and
+	// the default of false is the safe one. codex's keyring item is a single global
+	// `Codex Auth` regardless of CODEX_HOME, so writing it for a bound directory
+	// would overwrite the *global* login instead of isolating anything — and with
+	// KeychainReplace it deletes the prior item first, so there would be nothing
+	// to restore. A tool whose credential store cannot be scoped to a directory is
+	// reported as unisolatable rather than written to.
+	KeychainDirScoped bool
 	// JSONC marks a KindJSONPointer Target as a JSONC document (standard JSON
 	// plus // and /* */ comments and trailing commas, e.g. GitHub Copilot's
 	// ~/.copilot/config.json). Reads ignore the comments; writes preserve

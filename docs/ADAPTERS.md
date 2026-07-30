@@ -521,12 +521,29 @@ thing that writes it, for all four:
   that would report success while leaving the directory reading something else;
 - the payload comes from the **account's snapshot**, never the live store — the
   live store holds whichever account is globally active, which is the account
-  being bound only by coincidence.
+  being bound only by coincidence;
+- a keychain item is written **only** when the spec marks it
+  `KeychainDirScoped`, i.e. its service name is derived from the isolation env
+  var. A tool whose credential store is one global item is reported as
+  unisolatable and nothing is written to it.
 
-Binding a whole profile whose account has no captured credential warns and
-continues (the other tools still bind, and the directory works once that account
-is captured). Operations naming one account — `kae pin <tool> <account>`,
-`kae use -i`, `kae run -i` — fail instead.
+That last rule is a hard safety boundary, not a nicety. codex's keyring item is a
+single `Codex Auth` whatever `CODEX_HOME` says, and its spec carries
+`KeychainReplace`, which deletes the existing item before writing — so treating
+it as per-directory would destroy the user's global codex login while isolating
+nothing. `kae pin -s` makes it reachable, because it symlinks `config.toml` from
+the real home into the bound directory, so a user who set
+`cli_auth_credentials_store = "keyring"` resolves the keyring there too. Nothing
+is written in that case, not even the credential *file*: codex reads the keyring,
+so a file would be a plaintext secret nothing reads.
+
+Two situations are tolerable rather than fatal, and both warn: an account with no
+captured credential, and a tool whose credential store is global. Binding a set
+of tools resolved from a profile continues past either — the other tools bind,
+the tool's own settings and sessions are still isolated, and the directory works
+once the account is captured. An operation naming one tool and account
+(`kae pin <tool> <account>`, or `kae run -i <tool> <account>`) fails instead:
+there the unisolatable tool is the whole request, not one row of it.
 
 ### Per-directory shared bind (`kae pin -s`)
 

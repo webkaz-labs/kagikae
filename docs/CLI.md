@@ -352,7 +352,12 @@ isolation directories (with their login state) intact.
   removed. See docs/ADAPTERS.md "Per-directory credential store".
 
   Binding a profile whose account has no captured credential warns and binds the
-  rest; `kae pin <tool> <account>` on an uncaptured account fails (exit `7`).
+  rest; `kae pin <tool> <account>` on an uncaptured account fails (exit `7`). A
+  tool whose credential store cannot be scoped to a directory at all (codex with
+  `cli_auth_credentials_store = "keyring"`, one global keychain item) warns the
+  same way and keeps its login shared, with its settings and sessions still
+  isolated — kae never writes that item, since doing so would change the global
+  login rather than this directory's.
 
 `kae mise init [-P <profile>] [--auto] [--write]` renders auth-mode tasks and
 the opt-in enter hook into a marker-delimited block in `.mise.toml`. Default

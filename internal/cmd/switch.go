@@ -385,8 +385,13 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 		st.Synced = map[string]string{}
 	}
 	for _, r := range report.Results {
+		// A tool whose credential store cannot be scoped to a directory is warned
+		// about and still gets its isolated home for everything else, rather than
+		// failing a whole-profile switch over one tool (warnUnisolatableCredential).
 		if _, err := app.prepareGlobalIsolatedHome(ctx, be, r.Tool, r.Account); err != nil {
-			return finish(opts, fmt.Errorf("materialize credential for %s/%s: %w", r.Tool, r.Account, err))
+			if !warnUnisolatableCredential(err, r.Tool, r.Account) {
+				return finish(opts, fmt.Errorf("materialize credential for %s/%s: %w", r.Tool, r.Account, err))
+			}
 		}
 		st.Synced[r.Tool] = r.Account
 	}

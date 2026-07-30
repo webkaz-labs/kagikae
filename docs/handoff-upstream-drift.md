@@ -19,7 +19,9 @@ deleted in a store the tool does not read there), all fixed on the branch — so
 `fix/claude-custom-oauth-url`) and **1.5** (branch `fix/upstream-drift-1-5`,
 where one of the three claims was overturned by measurement — see the entry).
 
-**Still open here**: 1.6, the rest of Part 2, and Part 3's skill. Also open,
+**Still open here**: 1.6, **1.7** (new — a relative path variable diverges for
+claude and codex too, generalized out of 1.5), the rest of Part 2, and Part 3's
+skill. Also open,
 and unrelated to this document: the two live-machine gates in
 [VALIDATION.md](VALIDATION.md) — "codex per-directory keyring bind" (which is all
 that stands between the shipped code and dropping codex from
@@ -303,7 +305,7 @@ evidence are now rows in [VALIDATION.md](VALIDATION.md); what changed:
 
 `keychain.ReadItem` matches by service and takes the first item. claude reads
 `find-generic-password -a <account> -s <service>`. Verified here that claude's live
-item carries `"acct"<blob>="yamawaki"` — i.e. `$USER`, matching what
+item carries `"acct"<blob>="<the machine's $USER>"` — matching what
 `keychainAccount` now computes, so today they agree.
 
 The claimed consequence is worse than the read: `internal/artifact/artifact.go`
@@ -314,6 +316,25 @@ elsewhere — self-perpetuating, and invisible. This is the same shape as
 [ROADMAP.md](ROADMAP.md)'s recorded stale-account item, but the audit argues it is
 broader than recorded. Consider `KeychainMatchAccount` for claude/cursor now that
 the account rule is known and tested.
+
+### 1.7 A relative path variable diverges for *every* tool, not just the two measured — **OPEN** (generalized out of 1.5)
+
+1.5 established the shape: a tool that uses a path variable **verbatim** resolves a
+relative value against its own working directory, while kae resolves the same
+string against kae's — and kae is invoked from anywhere in the project. copilot
+(`COPILOT_HOME`) and opencode (`XDG_DATA_HOME`) now warn. **The same shape applies
+to `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, which nothing warns about.**
+
+Two things make it narrower than it looks, and neither closes it: kae itself only
+ever sets those variables to absolute kae-owned paths (`kae pin`, `use -i`,
+`run -i`), so only a **user-set** relative value is at risk; and codex
+*canonicalizes* its home before hashing the keyring account, which means a
+relative value there also moves the keychain item, not just a file path. So the
+work is not "copy the warning twice": establish per tool whether a relative value
+is used verbatim (claude) or resolved (codex), then warn or refuse accordingly.
+The predicate already exists — `adapter.IsRelativeEnv` — so the code is small; the
+measurement is the work. Raised by the review of 1.5 rather than by an audit, and
+recorded here because the cheap-looking half would ship the wrong model for codex.
 
 ---
 

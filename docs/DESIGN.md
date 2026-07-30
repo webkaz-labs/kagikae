@@ -184,9 +184,12 @@ fragment; `kae env` profiles; account lifecycle (`add`, `account rm` /
 and adapters for claude, codex, agy, opencode, cursor, and copilot. Keychain
 items are captured and restored verbatim; a file-driver override keeps macOS
 smoke checks off the real login keychain. `kae use -i` / `kae run -i` isolate
-claude and codex only; tools with no redirectable home (agy, opencode, cursor,
-copilot) are skipped with a warning when addressed through a profile; a
-single-tool `kae use -i agy <account>` exits `5`. agy credential switching works
+claude and codex only; every other tool is skipped with a warning when addressed
+through a profile, and a single-tool `kae use -i agy <account>` exits `5`. For agy,
+opencode and cursor that is because no redirectable home is known; **copilot is a
+different case** — `COPILOT_HOME` is a verified config-dir variable (2026-07-31)
+that kae reads, so isolation is *possible* there and simply not built
+([ROADMAP.md](ROADMAP.md) carries what has to be settled first). agy credential switching works
 on macOS via the `gemini`/`antigravity` Keychain item (v0.8.6) and on Linux/WSL
 via the file driver. Windows and home isolation for agy/opencode/cursor/copilot
 remain roadmap items (v0.6.0 removed the gemini adapter after upstream retired

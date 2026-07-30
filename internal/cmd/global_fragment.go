@@ -71,25 +71,23 @@ func (app *App) regenGlobalFragment(synced map[string]string) error {
 // run by kae use -s / bare kae use after it switches the real home in place. A
 // no-op (no state write) when none of the tools is globally isolated.
 func (app *App) teardownSynced(tools []string) error {
-	st, err := app.loadState()
-	if err != nil {
-		return err
-	}
 	changed := false
-	for _, tool := range tools {
-		if _, ok := st.Synced[tool]; ok {
-			delete(st.Synced, tool)
-			changed = true
+	var synced map[string]string
+	if err := app.mutateState(func(st *state.State) {
+		for _, tool := range tools {
+			if _, ok := st.Synced[tool]; ok {
+				delete(st.Synced, tool)
+				changed = true
+			}
 		}
+		synced = st.Synced
+	}); err != nil {
+		return err
 	}
 	if !changed {
 		return nil
 	}
-	st.UpdatedAt = app.Now().UTC()
-	if err := state.Save(app.Paths.StateFile(), st); err != nil {
-		return err
-	}
-	return app.regenGlobalFragment(st.Synced)
+	return app.regenGlobalFragment(synced)
 }
 
 // globalExportFallback renders the `export VAR=value` lines reproducing the

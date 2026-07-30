@@ -18,6 +18,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 // App bundles the resolved environment every command needs. Tests construct
@@ -196,6 +197,39 @@ func (app *App) acquireConfigLock() (*lock.Lock, error) {
 		return nil, err
 	}
 	return l, nil
+}
+
+// mutateState applies mutate to a freshly-loaded state.json under the state
+// lock and writes the result back. **Every** state.json write goes through
+// here.
+//
+// The per-tool locks do not cover this file. `kae use claude <a>` and
+// `kae use codex <b>` therefore run concurrently by design, and each holds a
+// copy of the whole document loaded before the other finished — so writing that
+// copy back reverts the other tool's field with no error anywhere. The revert is
+// silent and sticky: `status` and `MatchProfile` then report an account that is
+// not the live one, and `kae rollback` restores credentials, not this file.
+//
+// Re-reading inside the lock is what makes the update lost-free; the lock is
+// what makes the re-read atomic. The critical section is one read plus one
+// atomic write, so a busy lock is a real collision and failing loudly is safe —
+// a switch that reaches here has a backup to restore from.
+func (app *App) mutateState(mutate func(*state.State)) error {
+	l, err := lock.Acquire(app.Paths.LocksDir(), "state")
+	if err != nil {
+		if errors.Is(err, lock.ErrBusy) {
+			return errf(constants.ExitLockBusy, "another kae process is recording state; retry shortly")
+		}
+		return err
+	}
+	defer l.Release()
+	st, err := app.loadState()
+	if err != nil {
+		return err
+	}
+	mutate(st)
+	st.UpdatedAt = app.Now().UTC()
+	return state.Save(app.Paths.StateFile(), st)
 }
 
 // editConfig applies mutate to config.toml through the comment-preserving

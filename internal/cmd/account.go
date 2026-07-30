@@ -10,6 +10,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 // CmdAccount manages captured account lifecycle:
@@ -135,8 +136,10 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 		}
 	}
 	if active {
-		delete(st.Active, tool)
-		if err := app.saveActive(st, nil, ""); err != nil {
+		if err := app.mutateState(func(st *state.State) {
+			delete(st.Active, tool)
+			app.setActiveProfile(st, "")
+		}); err != nil {
 			return nil, err
 		}
 	}
@@ -274,7 +277,7 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		}
 	}
 	if activeUpdate {
-		if err := app.saveActive(st, map[string]string{tool: newName}, ""); err != nil {
+		if err := app.saveActive(map[string]string{tool: newName}, ""); err != nil {
 			return nil, err
 		}
 	}

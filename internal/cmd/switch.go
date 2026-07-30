@@ -213,7 +213,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	for _, plan := range plans {
 		updates[plan.Tool] = plan.Account
 	}
-	if err := app.saveActive(st, updates, profileName); err != nil {
+	if err := app.saveActive(updates, profileName); err != nil {
 		// live state changed but the record failed: restore so state.json and
 		// reality cannot diverge.
 		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
@@ -377,24 +377,24 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 	if err != nil {
 		return finish(opts, err)
 	}
-	st, err := app.loadState()
-	if err != nil {
-		return finish(opts, err)
-	}
-	if st.Synced == nil {
-		st.Synced = map[string]string{}
-	}
 	for _, r := range report.Results {
 		if _, err := app.prepareGlobalIsolatedHome(ctx, be, r.Tool, r.Account, profileName != ""); err != nil {
 			return finish(opts, fmt.Errorf("materialize credential for %s/%s: %w", r.Tool, r.Account, err))
 		}
-		st.Synced[r.Tool] = r.Account
 	}
-	st.UpdatedAt = app.Now().UTC()
-	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+	var synced map[string]string
+	if err := app.mutateState(func(st *state.State) {
+		if st.Synced == nil {
+			st.Synced = map[string]string{}
+		}
+		for _, r := range report.Results {
+			st.Synced[r.Tool] = r.Account
+		}
+		synced = st.Synced
+	}); err != nil {
 		return finish(opts, err)
 	}
-	if err := app.regenGlobalFragment(st.Synced); err != nil {
+	if err := app.regenGlobalFragment(synced); err != nil {
 		return finish(opts, err)
 	}
 
@@ -410,7 +410,7 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 	} else {
 		fmt.Fprintln(os.Stderr, "kae: warning: mise activation not detected; the binding takes effect once mise is active.")
 		fmt.Fprintln(os.Stderr, "kae: to apply it in the current shell now, run:")
-		fmt.Fprint(os.Stderr, app.globalExportFallback(st.Synced))
+		fmt.Fprint(os.Stderr, app.globalExportFallback(synced))
 	}
 	return constants.ExitOK
 }

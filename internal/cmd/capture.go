@@ -92,11 +92,7 @@ func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, explicit
 	if err := app.captureSnapshot(ctx, be, plan); err != nil {
 		return nil, err
 	}
-	st, err := app.loadState()
-	if err != nil {
-		return nil, err
-	}
-	if err := app.saveActive(st, map[string]string{tool: accountName}, ""); err != nil {
+	if err := app.saveActive(map[string]string{tool: accountName}, ""); err != nil {
 		return nil, err
 	}
 	return report, nil

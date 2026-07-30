@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 
@@ -175,19 +176,24 @@ func (app *App) loadState() (*state.State, error) {
 	return state.Load(app.Paths.StateFile())
 }
 
-// saveActive updates the active map and recomputes the matching profile.
+// saveActive records the switched accounts and recomputes the matching profile,
+// against the state on disk at save time (see mutateState).
 // explicitProfile overrides recomputation (used by switch all).
-func (app *App) saveActive(st *state.State, updates map[string]string, explicitProfile string) error {
-	for tool, accountName := range updates {
-		st.Active[tool] = accountName
-	}
+func (app *App) saveActive(updates map[string]string, explicitProfile string) error {
+	return app.mutateState(func(st *state.State) {
+		maps.Copy(st.Active, updates)
+		app.setActiveProfile(st, explicitProfile)
+	})
+}
+
+// setActiveProfile records explicitProfile, or the profile matching the active
+// map when it is empty.
+func (app *App) setActiveProfile(st *state.State, explicitProfile string) {
 	if explicitProfile != "" {
 		st.ActiveProfile = explicitProfile
-	} else {
-		st.ActiveProfile = app.Config.MatchProfile(st.Active)
+		return
 	}
-	st.UpdatedAt = app.Now().UTC()
-	return state.Save(app.Paths.StateFile(), st)
+	st.ActiveProfile = app.Config.MatchProfile(st.Active)
 }
 
 // createBackup snapshots the live values of every plan into one backup.

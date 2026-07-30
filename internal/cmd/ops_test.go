@@ -208,26 +208,29 @@ func TestRestoreSpecNeverRedirectsADelete(t *testing.T) {
 }
 
 // applyBackup must leave the moved-to store alone for an absent record, and say so:
-// the restore is partial, and silence there reads as a full one.
+// the restore is partial, and silence there reads as a full one. The live store is
+// resolved by the real codex adapter here (config.toml + GOOS), not injected, so
+// this also covers applyBackup deriving today's specs for itself.
 func TestApplyBackupKeepsAnUnaccountedCredential(t *testing.T) {
 	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
 	ctx := context.Background()
 	be := testBackend(t, app)
 	authPath := filepath.Join(app.Env.Home, ".codex", "auth.json")
-	meta := backup.Meta{Artifacts: []backup.ArtifactRecord{{
-		Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
-		Target: authPath, SecretRef: backup.SecretRef("x", constants.ToolCodex, "auth"), Present: false,
-	}}}
-	const acct = "cli|1111111111111111"
-	current := map[string][]artifact.Spec{constants.ToolCodex: {{
-		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
-		Pointer: "/tokens", KeychainAccount: acct, KeychainMatchAccount: true,
-	}}}
+	writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"),
+		"cli_auth_credentials_store = \"keyring\"\n")
+	meta := backup.Meta{
+		Tools: []string{constants.ToolCodex},
+		Artifacts: []backup.ArtifactRecord{{
+			Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
+			Target: authPath, SecretRef: backup.SecretRef("x", constants.ToolCodex, "auth"), Present: false,
+		}},
+	}
 	const justLoggedIn = `{"tokens":{"access_token":"just-logged-in"}}`
-	sim := &keychainSim{present: true, account: acct, payload: justLoggedIn}
+	sim := &keychainSim{present: true, payload: justLoggedIn}
 	var err error
 	_, stderr := captureStderr(t, func() int {
-		runner.With(sim, func() { err = app.applyBackup(ctx, be, meta, nil, current) })
+		runner.With(sim, func() { err = app.applyBackup(ctx, be, meta, nil, false) })
 		return 0
 	})
 	if err != nil {
@@ -247,35 +250,40 @@ func TestApplyBackupKeepsAnUnaccountedCredential(t *testing.T) {
 }
 
 // The redirect is only worth anything if the restore path consults it, so this
-// covers the wiring: applyBackup must write the store the tool reads now, and must
-// not leave the recorded one behind as a credential nothing reads.
+// covers the wiring end to end: applyBackup resolves the live store itself (the
+// real codex adapter, from config.toml) and writes the backed-up credential there,
+// leaving the store the tool abandoned alone.
 func TestApplyBackupFollowsAMovedStore(t *testing.T) {
 	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
 	ctx := context.Background()
 	be := testBackend(t, app)
 	authPath := filepath.Join(app.Env.Home, ".codex", "auth.json")
+	writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"),
+		"cli_auth_credentials_store = \"keyring\"\n")
 	ref := backup.SecretRef("x", constants.ToolCodex, "auth")
 	const backedUp = `{"tokens":{"access_token":"backed-up"}}`
 	if err := be.Set(ctx, ref, []byte(backedUp)); err != nil {
 		t.Fatal(err)
 	}
-	meta := backup.Meta{Artifacts: []backup.ArtifactRecord{{
-		Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
-		Target: authPath, SecretRef: ref, Present: true,
-	}}}
-	const acct = "cli|1111111111111111"
-	current := map[string][]artifact.Spec{constants.ToolCodex: {{
-		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
-		Pointer: "/tokens", KeychainAccount: acct, KeychainMatchAccount: true,
-	}}}
-	sim := &keychainSim{account: acct}
+	meta := backup.Meta{
+		Tools: []string{constants.ToolCodex},
+		Artifacts: []backup.ArtifactRecord{{
+			Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
+			Target: authPath, SecretRef: ref, Present: true,
+		}},
+	}
+	sim := &keychainSim{}
 	var err error
-	runner.With(sim, func() { err = app.applyBackup(ctx, be, meta, nil, current) })
+	runner.With(sim, func() { err = app.applyBackup(ctx, be, meta, nil, false) })
 	if err != nil {
 		t.Fatalf("restore into the live store: %v", err)
 	}
-	if sim.payload != backedUp || sim.account != acct {
+	if sim.payload != backedUp {
 		t.Fatalf("the backed-up credential did not land in this home's item: %+v", sim)
+	}
+	if !strings.HasPrefix(sim.account, "cli|") {
+		t.Fatalf("item account = %q, want codex's derived cli|<hash>", sim.account)
 	}
 	if _, statErr := os.Stat(authPath); statErr == nil {
 		t.Fatal("the restore must not write the store the tool abandoned")

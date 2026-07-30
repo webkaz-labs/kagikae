@@ -170,16 +170,6 @@ func (app *App) refreshPlan(ctx context.Context, plan toolPlan) toolPlan {
 	return fresh
 }
 
-// specsOf indexes plans by tool for the restore path, which needs today's
-// declaration to notice that a credential moved stores (restoreSpec).
-func specsOf(plans []toolPlan) map[string][]artifact.Spec {
-	specs := make(map[string][]artifact.Spec, len(plans))
-	for _, plan := range plans {
-		specs[plan.Tool] = plan.Specs
-	}
-	return specs
-}
-
 // loadState reads state.json.
 func (app *App) loadState() (*state.State, error) {
 	return state.Load(app.Paths.StateFile())
@@ -245,17 +235,31 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 }
 
 // applyBackup restores live state from a backup, optionally limited to the given
-// tools (nil = all). current carries today's specs per tool so a lost
-// identity-only payload can degrade instead of failing the restore; pass nil
-// when the caller restores a backup it just created (there is nothing to
-// reconcile) and a missing payload should stay a hard error.
-func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only map[string]bool, current map[string][]artifact.Spec) error {
+// tools (nil = all).
+//
+// It resolves today's specs **itself** rather than taking them from the caller.
+// The restore has to know where each credential lives *now* — a child process can
+// move it between a tool's stores (restoreSpec) — and threading that in made it a
+// thing five call sites could forget: four of them did, which silently restored the
+// pre-fix behaviour of writing a store nothing reads and reporting success. Derived
+// here it cannot be forgotten. It is also safe to derive: only the tool moves its
+// own store, never kae, so a resolution taken now cannot disagree with one taken a
+// moment earlier in the same command, and a tool that fails to resolve falls back
+// to its records exactly as before.
+//
+// degradeLostIdentity is the caller's separate decision about a payload that has
+// gone missing from the secret store: a rollback lets an identity-only artifact
+// degrade to absent (losing it is safe and self-correcting), while a caller
+// restoring a backup it just created treats any missing payload as a hard error,
+// because it wrote them moments ago.
+func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only map[string]bool, degradeLostIdentity bool) error {
+	current, _ := app.currentSpecs(ctx, meta)
 	for _, rec := range meta.Artifacts {
 		if only != nil && !only[rec.Tool] {
 			continue
 		}
 		value, err := storedValue(ctx, be, rec.SecretRef, rec.Present,
-			isIdentityOnly(current, rec.Tool, rec.Name), func() error {
+			degradeLostIdentity && isIdentityOnly(current, rec.Tool, rec.Name), func() error {
 				return errf(constants.ExitNotFound, "backup payload %s is missing from the secret store", rec.SecretRef)
 			})
 		if err != nil {
@@ -289,7 +293,7 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 // can be handed a backup that predates an artifact; applyBackup's other callers
 // restore a backup they just created and would gain a surprising delete pass.
 func (app *App) rollbackTo(ctx context.Context, be secret.Backend, meta backup.Meta, current map[string][]artifact.Spec) error {
-	if err := app.applyBackup(ctx, be, meta, nil, current); err != nil {
+	if err := app.applyBackup(ctx, be, meta, nil, true); err != nil {
 		return err
 	}
 	if err := clearUnrecordedIdentity(ctx, meta, current); err != nil {
@@ -321,11 +325,6 @@ func storedValue(ctx context.Context, be secret.Backend, ref string, present, id
 	}
 }
 
-// isIdentityOnly answers whether a recorded artifact is identity-only according
-// to *today's* adapter, not according to the record. Whether losing an artifact
-// is survivable is policy, and policy belongs to the code: an old backup must not
-// pin a decision kae has since changed. An unresolvable tool answers false, so
-// the fail-loud path stays the default.
 // restoreSpec resolves the spec a backup record must be written through.
 //
 // By default that is the record's own: `specFromRecord` rebuilds the store the
@@ -353,8 +352,14 @@ func storedValue(ctx context.Context, be secret.Backend, ref string, present, id
 // live one alone, with a warning that the restore was partial. Leaving a credential
 // kae cannot account for is recoverable; deleting it is not.
 //
+// Only a change of **kind** redirects. A record naming the same kind is restored as
+// recorded even when today's spec points elsewhere: a different `CODEX_HOME` (or
+// `CLAUDE_CONFIG_DIR`) resolves a different item of the same service, and that is
+// another home's credential store — not a place this backup belongs.
+//
 // current is nil only where no declaration was resolved; the record then stands
 // alone, which is the pre-fix behaviour.
+//
 // The returned warning is non-empty when the restore is knowingly partial. It is
 // returned rather than printed so the caller that performs the write emits it once,
 // immediately before that write — the pre-rollback capture resolves the same spec
@@ -383,6 +388,11 @@ func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) 
 	return specFromRecord(rec), "", nil
 }
 
+// isIdentityOnly answers whether a recorded artifact is identity-only according
+// to *today's* adapter, not according to the record. Whether losing an artifact
+// is survivable is policy, and policy belongs to the code: an old backup must not
+// pin a decision kae has since changed. An unresolvable tool answers false, so
+// the fail-loud path stays the default.
 func isIdentityOnly(current map[string][]artifact.Spec, tool, name string) bool {
 	for _, sp := range current[tool] {
 		if sp.Name == name {

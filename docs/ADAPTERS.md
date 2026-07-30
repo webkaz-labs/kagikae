@@ -232,9 +232,9 @@ enum**, not "keyring or else file":
 | Value | What codex does | What kae switches |
 |---|---|---|
 | absent (the upstream default) or `file` | `CODEX_HOME/auth.json` | the file |
-| `keyring` | the `Codex Auth` keychain item only | the item |
-| `auto` | the item when it exists, `auth.json` when it does not | whichever one is live: kae probes for the item (attributes only) and resolves the same store codex will read |
-| `ephemeral` | keeps it in memory for one process | nothing — refused as unsupported (exit `4`) |
+| `keyring` | the `Codex Auth` keychain item only | the item — **macOS only**: kae reads a keyring through the `security` CLI, so elsewhere this store is refused as unsupported (exit `5`) instead of yielding a spec whose every operation fails |
+| `auto` | the item when it exists, `auth.json` when it does not | whichever one is live: kae probes for the item (attributes only) and resolves the same store codex will read. Off macOS it resolves to `auth.json` with no probe — that is where codex falls back with no keyring, but kae **cannot verify** that a Linux Secret Service is not holding the credential instead (an open row in [VALIDATION.md](VALIDATION.md)) |
+| `ephemeral` | keeps it in memory for one process | nothing — refused as unsupported (exit `5`) |
 
 Anything else, an unreadable/unparseable `config.toml`, and
 `[features] secret_auth_storage = true` (which moves the credential into an

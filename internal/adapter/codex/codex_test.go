@@ -146,7 +146,9 @@ func TestConfiguredStoreMapsUpstreamEnum(t *testing.T) {
 			if tc.config != "" {
 				writeConfig(t, home, tc.config)
 			}
-			got, err := configuredStore(testEnv(home))
+			env := testEnv(home)
+			env.GOOS = "darwin" // the keyring store is only readable there
+			got, err := configuredStore(env)
 			switch {
 			case tc.wantUnsupported:
 				if !errors.Is(err, adapter.ErrUnsupported) {
@@ -170,6 +172,7 @@ func TestCodexKeyringSpecIsAccountScoped(t *testing.T) {
 	home := t.TempDir()
 	writeConfig(t, home, "cli_auth_credentials_store = \"keyring\"\n")
 	env := testEnv(home)
+	env.GOOS = "darwin"
 	specs, err := Codex{}.Artifacts(t.Context(), env)
 	if err != nil || len(specs) != 1 {
 		t.Fatalf("Artifacts = %+v, err = %v", specs, err)
@@ -186,14 +189,22 @@ func TestCodexKeyringSpecIsAccountScoped(t *testing.T) {
 	}
 }
 
-// `auto` outside macOS resolves to the file store without probing a keychain kae
-// cannot reach there.
-func TestCodexAutoStoreOffDarwinIsFile(t *testing.T) {
+// Off macOS the two keyring-capable modes part ways, because kae reads a keyring
+// only through the macOS `security` CLI: `auto` resolves to the file store (where
+// codex falls back with no keyring, and no probe is issued), while keyring-*only*
+// is refused at the declaration point rather than handed out as a keychain spec
+// whose every operation would fail with a raw `security` error.
+func TestCodexKeyringStoresOffDarwin(t *testing.T) {
 	home := t.TempDir()
 	writeConfig(t, home, "cli_auth_credentials_store = \"auto\"\n")
 	specs, err := Codex{}.Artifacts(t.Context(), testEnv(home))
 	if err != nil || len(specs) != 1 || specs[0].Kind != constants.KindFile {
-		t.Fatalf("Artifacts = %+v, err = %v; want the file spec", specs, err)
+		t.Fatalf("auto: Artifacts = %+v, err = %v; want the file spec", specs, err)
+	}
+	writeConfig(t, home, "cli_auth_credentials_store = \"keyring\"\n")
+	specs, err = Codex{}.Artifacts(t.Context(), testEnv(home))
+	if !errors.Is(err, adapter.ErrUnsupported) {
+		t.Fatalf("keyring: Artifacts = %+v, err = %v; want ErrUnsupported", specs, err)
 	}
 }
 

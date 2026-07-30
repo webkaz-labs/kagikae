@@ -145,6 +145,18 @@ func configuredStore(env adapter.Env) (string, error) {
 				adapter.ErrUnsupported, KeychainService,
 			)
 		}
+		// kae reads a keyring only through the macOS `security` CLI, so the
+		// keyring-*only* store is unswitchable elsewhere. Refuse it here, at the
+		// declaration point, rather than hand back a keychain spec whose every
+		// operation fails with a raw `security` error — the same shape claude's
+		// driver() uses for an unsupported platform. `auto` stays supported: it
+		// resolves to auth.json, which is where codex falls back with no keyring.
+		if store == storeKeyring && env.GOOS != "darwin" {
+			return "", fmt.Errorf(
+				"%w: codex cli_auth_credentials_store = %q keeps the credential in the OS keyring, which kae can only read on macOS (this is %s)",
+				adapter.ErrUnsupported, storeKeyring, env.GOOS,
+			)
+		}
 		return store, nil
 	case storeEphemeral:
 		return "", fmt.Errorf(

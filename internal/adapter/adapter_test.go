@@ -247,10 +247,11 @@ func TestKeychainDirScopedMatchesTheServiceName(t *testing.T) {
 	}
 }
 
-// codex's keyring item is a single global `Codex Auth` regardless of CODEX_HOME,
-// so it must never claim to be directory-scoped: writing it for a bound
-// directory would overwrite the global login, and KeychainReplace would delete
-// the previous item first.
+// codex's `Codex Auth` item is shared by every codex home, scoped by the account
+// rather than the service name, so it must not claim to be directory-scoped: the
+// flag's consumer would write an item for a bound directory whose account kae has
+// never verified codex resolves the same way (docs/ROADMAP.md). Do not "fix" this by
+// setting the flag — the account-scoping half is real, the verification is not.
 func TestCodexKeyringIsNotDirScoped(t *testing.T) {
 	home := t.TempDir()
 	write(t, filepath.Join(home, "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")
@@ -263,7 +264,7 @@ func TestCodexKeyringIsNotDirScoped(t *testing.T) {
 		t.Fatalf("expected the keyring spec, got %+v", specs[0])
 	}
 	if specs[0].KeychainDirScoped {
-		t.Fatal("a global keyring item must not be marked directory-scoped")
+		t.Fatal("an account-scoped keyring item must not claim to be directory-scoped")
 	}
 }
 
@@ -417,7 +418,9 @@ func TestClaudeDetectLinux(t *testing.T) {
 }
 
 func TestCodexArtifactsFileAndKeyring(t *testing.T) {
-	env := testEnv(t, "linux", nil)
+	// darwin: the keyring store is refused off macOS, where kae cannot read a
+	// keyring at all (TestCodexKeyringStoresOffDarwin covers that half).
+	env := testEnv(t, "darwin", nil)
 	specs, err := codexAdapter.Artifacts(context.Background(), env)
 	if err != nil || len(specs) != 1 || specs[0].Kind != constants.KindFile {
 		t.Fatalf("file store: %+v %v", specs, err)

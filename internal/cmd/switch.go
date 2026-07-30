@@ -385,7 +385,7 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 		st.Synced = map[string]string{}
 	}
 	for _, r := range report.Results {
-		if _, err := app.prepareGlobalIsolatedHome(ctx, be, r.Tool, r.Account); err != nil {
+		if _, err := app.prepareGlobalIsolatedHome(ctx, be, r.Tool, r.Account, profileName != ""); err != nil {
 			return finish(opts, fmt.Errorf("materialize credential for %s/%s: %w", r.Tool, r.Account, err))
 		}
 		st.Synced[r.Tool] = r.Account

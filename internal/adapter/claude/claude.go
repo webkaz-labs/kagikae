@@ -21,10 +21,14 @@ package claude
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
@@ -32,8 +36,87 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/freshness"
 )
 
-// KeychainService is Claude Code's macOS Keychain item service name.
+// KeychainService is the base of Claude Code's macOS Keychain item service
+// name — and the whole name only while CLAUDE_CONFIG_DIR is unset. Anything
+// that needs the name for a specific environment must go through
+// keychainService, never this constant.
 const KeychainService = "Claude Code-credentials"
+
+// EnvSecureStorageDir replaces CLAUDE_CONFIG_DIR as the input to *both* the
+// keychain service name and the plaintext credential's directory whenever it is
+// present in the environment. kae cannot model a credential location it does not
+// control, so driver() refuses instead of guessing — see its doc comment.
+const EnvSecureStorageDir = "CLAUDE_SECURESTORAGE_CONFIG_DIR"
+
+// fallbackKeychainAccount is the literal Claude Code uses when neither $USER
+// nor the OS username is a usable account attribute.
+const fallbackKeychainAccount = "claude-code-user"
+
+// keychainAccountPattern is the validation Claude Code applies to the account
+// attribute before using it.
+var keychainAccountPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+
+// keychainService returns the Keychain service name Claude Code resolves for
+// this environment. The name is a rule, not a constant, and kae's own isolation
+// modes are what trigger the interesting branch:
+//
+//	CLAUDE_CONFIG_DIR unset  ->  "Claude Code-credentials"
+//	CLAUDE_CONFIG_DIR set    ->  "Claude Code-credentials-<sha8>"
+//
+// where <sha8> is the first 8 hex characters of sha256 over the env string,
+// NFC-normalized. There is no path resolution or cleaning in that hash, so a
+// trailing slash is a different item — callers must hash exactly the string they
+// put in the environment, which is why kae hashes the directory it writes into
+// the mise fragment rather than a re-derived path.
+//
+// The NFC step is not cosmetic on macOS: a decomposed path (a home or
+// XDG_DATA_HOME carrying non-ASCII characters, which the filesystem may hand
+// back in NFD) would hash differently here than in claude, and kae would write an
+// item claude never reads — the very failure this function exists to prevent.
+// Normalization applies to the hash input only; the path itself stays byte-exact
+// so it still resolves on disk, which is what claude does too.
+//
+// Modelling this as a constant is what made a pinned directory silently drift out
+// of kae's control: kae wrote `<pinDir>/.credentials.json`, claude read the
+// per-directory keychain item instead (reads are keychain-first and its first
+// token refresh creates that item and deletes the file), and every offline guard
+// stayed green while the session ran the previous account. docs/VALIDATION.md
+// § "Upstream Behaviour Assumptions" carries the rule and a login-free procedure
+// for re-verifying it.
+//
+// Deliberately not modelled: the build's OAuth suffix, which sits between
+// "Claude Code" and "-credentials" and is empty only for the production build
+// (docs/ROADMAP.md).
+// dirScoped reports whether the returned name is namespaced by the config dir,
+// which is what makes the item safe to write for one bound directory.
+func keychainService(env adapter.Env) (name string, dirScoped bool) {
+	dir := env.Getenv("CLAUDE_CONFIG_DIR")
+	if dir == "" {
+		return KeychainService, false
+	}
+	sum := sha256.Sum256([]byte(norm.NFC.String(dir)))
+	return fmt.Sprintf("%s-%x", KeychainService, sum[:4]), true
+}
+
+// keychainAccount returns the account attribute Claude Code uses for its
+// keychain item: $USER, or the OS username when that is unset, and the
+// fallback literal when the result is not a valid attribute.
+//
+// It has to match, not merely be plausible: claude's reads are account-scoped
+// (`find-generic-password -a <account> -s <service>`), so an item kae creates
+// under a different account attribute is invisible to claude even when the
+// service name is right — the same silent wrong-credential outcome as a wrong
+// service name.
+func keychainAccount(env adapter.Env) string {
+	name := env.Getenv("USER")
+	if name == "" {
+		name = env.Username
+	}
+	if !keychainAccountPattern.MatchString(name) {
+		return fallbackKeychainAccount
+	}
+	return name
+}
 
 // envConflicts override subscription login inside Claude Code.
 var envConflicts = []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"}
@@ -50,7 +133,11 @@ func (Claude) Binary() string { return "claude" }
 // last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). 2.1.220
 // is where /oauthAccount's self-heal was measured as gated behind a 24h
 // profileFetchedAt TTL that a token refresh keeps renewing — the finding kae's
-// identity switch depends on — so a newer minor is worth re-measuring.
+// identity switch depends on — and where the credential's *storage resolution*
+// was measured: the keychain service name, its per-config-dir suffix, and the
+// account attribute that keychainService and keychainAccount reproduce. Two
+// assumptions now hang on a version whose only offline signal is this string, so
+// a newer minor is worth re-measuring (that procedure needs no login).
 func (Claude) VerifiedVersion() string { return "2.1.220" }
 
 // configDir honors CLAUDE_CONFIG_DIR as the live base path when already set.
@@ -76,6 +163,22 @@ func credentialsPath(env adapter.Env) string {
 }
 
 func driver(env adapter.Env) (string, error) {
+	// CLAUDE_SECURESTORAGE_CONFIG_DIR moves *both* stores at once: it becomes the
+	// hash input for the keychain service name and the directory holding
+	// .credentials.json, displacing CLAUDE_CONFIG_DIR for both. Set to the empty
+	// string it goes further and removes the per-directory suffix entirely,
+	// collapsing every config dir onto one shared item — which would silently
+	// destroy the isolation `kae pin` exists to provide. kae has no way to keep
+	// per-directory bindings honest under any of those, so refuse the tool rather
+	// than write a credential nothing reads. Checked before the driver override
+	// because it invalidates the file location too, not just the keychain one.
+	if env.IsSet(EnvSecureStorageDir) {
+		return "", fmt.Errorf(
+			"%w: %s is set, which moves claude's credential store outside what kae can model"+
+				" (unset it to let kae manage claude)",
+			adapter.ErrUnsupported, EnvSecureStorageDir,
+		)
+	}
 	// KAE_CLAUDE_DRIVER=file forces the file-patch driver even on darwin so
 	// smoke/container checks close the round-trip on .credentials.json and
 	// never touch the real login keychain. Read here, the override applies to
@@ -123,9 +226,9 @@ func oauthAccountSpec(env adapter.Env) artifact.Spec {
 }
 
 // Artifacts returns the credential first, then the identity cache. Detect reads
-// specs[0] as the credential (keychainCredForBond selects by kind instead, and
-// credentialArtifactName keeps its own name map), so the order is a contract of
-// this adapter, pinned by TestClaudeArtifactsLinux/Darwin.
+// specs[0] as the credential (the per-directory materializer resolves it by name
+// through credentialArtifactName instead), so the order is a contract of this
+// adapter, pinned by TestClaudeArtifactsLinux/Darwin.
 func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, error) {
 	drv, err := driver(env)
 	if err != nil {
@@ -138,12 +241,14 @@ func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 		Pointer: "/claudeAiOauth",
 	}
 	if drv == constants.DriverClaudeKeychainPatch {
+		service, dirScoped := keychainService(env)
 		credential = artifact.Spec{
-			Name:            "claude_ai_oauth",
-			Kind:            constants.KindKeychain,
-			Target:          KeychainService,
-			Pointer:         "/claudeAiOauth",
-			KeychainAccount: env.Getenv("USER"),
+			Name:              "claude_ai_oauth",
+			Kind:              constants.KindKeychain,
+			Target:            service,
+			Pointer:           "/claudeAiOauth",
+			KeychainAccount:   keychainAccount(env),
+			KeychainDirScoped: dirScoped,
 		}
 	}
 	return []artifact.Spec{credential, oauthAccountSpec(env)}, nil

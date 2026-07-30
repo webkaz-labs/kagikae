@@ -59,20 +59,49 @@ Baseline: v0.11.0 (companion re-bind lockstep + token-identity drift), shipped
 - **Stale warnings are delivered where they can be acted on**: stderr, before
   anything is applied, not suppressed by `--quiet` (the form the mise hook runs),
   with a roll-up line when several tools need a re-login. Exit codes unchanged.
+- **A bound directory's credential goes where the tool reads it.** claude's
+  keychain service name is derived from `CLAUDE_CONFIG_DIR`, not modelled as a
+  constant, so the four mechanisms that set an isolation env var
+  (`kae pin -s|-i`, `kae use -i`, `kae run -i`) write the per-directory item
+  rather than a file the tool stops reading after its first token refresh. One
+  helper does it for all four, which also fixes the credential being taken from
+  the live store instead of the bound account's snapshot. See the release gate
+  below.
 
-Contract: additive. `schema_version` stays `1`; two new `doctor` check codes; one
-new artifact in claude's snapshot (`oauth_account`), applied as absent when a
-snapshot predates it.
+Contract: additive apart from four deliberate behaviour changes.
+`schema_version` stays `1`; two new `doctor` check codes; one new artifact in
+claude's snapshot (`oauth_account`), applied as absent when a snapshot predates
+it. The changes: claude reports as unsupported (exit `5`) while
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` is set, because it moves the credential store
+outside what kae can model; binding a profile whose account has no captured
+credential now warns instead of skipping in silence; `kae pin <tool> <account>`
+on an uncaptured account fails (exit `7`) in isolated mode as it already did in
+shared mode; and applying a snapshot whose payload shape does not match the
+artifact the current environment resolves is refused (exit `10`) with recapture
+guidance, instead of silently nesting a whole document under its own JSON pointer
+— reachable by switching claude's driver after a capture.
 
-**Release gate (not yet met): the macOS pin gap.** `CLAUDE_CONFIG_DIR` does not
-force file-based auth on macOS — claude namespaces its keychain service by the
-config dir and deletes kae's credential copy on the first token refresh, after
-which `kae pin <tool> <account>` reports success and changes nothing a pinned
-directory reads. That is a silent wrong-*credential*, worse than the attribution
-bug this release fixes, and it is reachable by normal `kae pin` use. Ship v0.12.0
-only once it is addressed (detection at minimum). The work is scoped in
-[handoff-p0-macos-pin.md](handoff-p0-macos-pin.md); the entry in
-[ROADMAP.md](ROADMAP.md) is the summary.
+One dependency added: `golang.org/x/text`, for the NFC normalization claude
+applies before hashing a config dir into its keychain service name. Getting that
+wrong is the same silent wrong-credential class this release fixes, and it is not
+a few lines of our own.
+
+**Release gate (met): the macOS pin gap.** `CLAUDE_CONFIG_DIR` does not force
+file-based auth on macOS — claude namespaces its keychain service by the config
+dir and deletes kae's credential copy on the first token refresh, after which
+`kae pin <tool> <account>` reported success and changed nothing a pinned
+directory read. Fixed at the root: the service name is now derived from the
+config dir (`claude.keychainService`), and one helper writes a bound directory's
+credential into the store the tool actually reads, for all four mechanisms that
+set an isolation env var (`kae pin -s|-i`, `kae use -i`, `kae run -i`) — the
+defect reached further than `kae pin`. The same change fixes the credential being
+copied from the live store instead of the account's snapshot.
+
+Acceptance for this gate is the login-free `security`-shim procedure in
+[VALIDATION.md](VALIDATION.md) § "Upstream Behaviour Assumptions" (confirm the
+service name claude resolves matches what kae wrote), plus a real two-account pin
+on macOS: re-bind, launch claude in the directory, and confirm it reports the
+account kae bound.
 
 ---
 

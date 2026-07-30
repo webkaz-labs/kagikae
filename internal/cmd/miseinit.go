@@ -8,11 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/webkaz-labs/kagikae/internal/adapter"
-	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
 const (
@@ -88,7 +87,7 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 // preparer for a per-directory bind (shared/isolated). Used by `kae pin`, which
 // renders the kae-owned mise fragment; both mechanisms key their stores by the
 // bound directory, so it resolves pin-id here.
-func (app *App) isolationPlan(ctx context.Context, mode string, targets []runTarget) ([]isolationEntry, func(tool, account string) (string, error), error) {
+func (app *App) isolationPlan(ctx context.Context, be secret.Backend, mode string, targets []runTarget) ([]isolationEntry, func(tool, account string) (string, error), error) {
 	absDir, err := cwdAbs()
 	if err != nil {
 		return nil, nil, err
@@ -97,10 +96,12 @@ func (app *App) isolationPlan(ctx context.Context, mode string, targets []runTar
 	switch mode {
 	case modeShared:
 		return app.bondIsolationEntries(targets, pinID),
-			func(tool, account string) (string, error) { return app.prepareBond(ctx, tool, account, pinID) }, nil
+			func(tool, account string) (string, error) { return app.prepareBond(ctx, be, tool, account, pinID) }, nil
 	case modeIsolated:
 		return app.pinIsolationEntries(targets, pinID),
-			func(tool, account string) (string, error) { return app.preparePinConfig(ctx, tool, account, pinID) }, nil
+			func(tool, account string) (string, error) {
+				return app.preparePinConfig(ctx, be, tool, account, pinID)
+			}, nil
 	default:
 		return nil, nil, errf(constants.ExitError, "unknown per-directory bind kind %q", mode)
 	}
@@ -109,12 +110,26 @@ func (app *App) isolationPlan(ctx context.Context, mode string, targets []runTar
 // prepareIsolationDirs runs the preparer for every non-warning entry, so a
 // failure surfaces before kae writes a fragment or block pointing at a
 // directory that does not exist.
+//
+// A profile may name an account that was never captured, or a tool whose
+// credential store cannot be scoped to a directory at all. Binding the whole
+// profile still makes sense then — the other tools bind, and the directory is
+// usable once that account is captured — so those are warnings rather than
+// failures, matching how a tool with no isolation env var is handled
+// (warnUnisolatableCredential). The warning is what makes it honest: the
+// materializers used to skip a missing credential in silence. Every other error
+// still fails the bind.
+//
+// Operations naming one tool and account do not take this path and keep failing
+// loudly: for `kae pin <tool> <account>` the unisolatable tool is the whole
+// request, not one row of it.
 func (app *App) prepareIsolationDirs(mode string, entries []isolationEntry, prepare func(tool, account string) (string, error)) error {
 	for _, entry := range entries {
 		if entry.Warning != "" {
 			continue
 		}
-		if _, err := prepare(entry.Tool, entry.Account); err != nil {
+		if _, err := prepare(entry.Tool, entry.Account); err != nil &&
+			!warnUnisolatableCredential(err, entry.Tool, entry.Account) {
 			return fmt.Errorf("prepare %s-mode dir for %s: %w", mode, entry.Tool, err)
 		}
 	}
@@ -262,10 +277,11 @@ func (app *App) bondIsolationEntries(targets []runTarget, pinID string) []isolat
 }
 
 // prepareBond creates the bond directory for one tool/pinID: symlinks every
-// real-home entry except the hard-coded denylist, then copies the current
-// credential privately. Idempotent: stale symlinks are refreshed; real files
-// in the bond dir (private overrides) are left untouched.
-func (app *App) prepareBond(ctx context.Context, tool, _ string, pinID string) (string, error) {
+// real-home entry except the hard-coded denylist, then materializes the bound
+// account's credential privately (writeDirCredential). Idempotent: stale
+// symlinks are refreshed; real files in the bond dir (private overrides) are
+// left untouched.
+func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, account, pinID string) (string, error) {
 	bondDir := app.Paths.SharedDir(pinID, tool)
 	if err := os.MkdirAll(bondDir, 0o700); err != nil {
 		return "", fmt.Errorf("create shared dir: %w", err)
@@ -316,46 +332,9 @@ func (app *App) prepareBond(ctx context.Context, tool, _ string, pinID string) (
 		}
 	}
 
-	// Private-copy the current credential for each denylist item.
-	for _, item := range denylist {
-		src := filepath.Join(realHome, item)
-		dst := filepath.Join(bondDir, item)
-		data, err := os.ReadFile(src)
-		if os.IsNotExist(err) {
-			// Source file absent: on macOS, tools that store their credential
-			// in the OS keychain (e.g. claude) have no file to copy. Read the
-			// keychain payload verbatim so the bond dir has a .credentials.json.
-			//
-			// KNOWN GAP (docs/ROADMAP.md, measured on Claude Code 2.1.220):
-			// CLAUDE_CONFIG_DIR does *not* force file-based auth on macOS, as this
-			// comment used to claim. claude namespaces its keychain service by the
-			// config dir (`Claude Code-credentials-<sha8(dir)>`) and reads keychain
-			// first, falling back to this file only while that per-dir item is
-			// absent. The first token refresh writes the per-dir item — and deletes
-			// this file — after which nothing kae writes here is read again. Do not
-			// build on this copy being authoritative.
-			kdata, kerr := app.keychainCredForBond(ctx, tool)
-			if kerr != nil {
-				return "", kerr
-			}
-			if kdata == nil {
-				continue // not logged in; skip silently
-			}
-			data = kdata
-		} else if err != nil {
-			return "", fmt.Errorf("read credential %s: %w", src, err)
-		}
-		existing, readErr := os.ReadFile(dst)
-		if readErr == nil {
-			if string(existing) == string(data) {
-				continue // already up to date
-			}
-		} else if !os.IsNotExist(readErr) {
-			return "", fmt.Errorf("check existing credential %s: %w", dst, readErr)
-		}
-		if err := patch.WriteFileAtomic(dst, data, 0o600); err != nil {
-			return "", fmt.Errorf("copy credential to bond dir: %w", err)
-		}
+	// Materialize the bound account's credential where the tool will read it.
+	if err := app.writeDirCredential(ctx, be, tool, account, bondDir); err != nil {
+		return "", err
 	}
 
 	return bondDir, nil
@@ -374,9 +353,10 @@ func (app *App) pinIsolationEntries(targets []runTarget, pinID string) []isolati
 }
 
 // preparePinConfig creates the pin config directory for one tool/account/pinID:
-// symlinks opt-in shared items from the real home, then copies the credential
-// privately. Idempotent: stale symlinks are refreshed; real files are left.
-func (app *App) preparePinConfig(ctx context.Context, tool, account, pinID string) (string, error) {
+// symlinks opt-in shared items from the real home, then materializes the
+// account's credential privately (writeDirCredential). Idempotent: stale
+// symlinks are refreshed; real files are left.
+func (app *App) preparePinConfig(ctx context.Context, be secret.Backend, tool, account, pinID string) (string, error) {
 	configDir := app.Paths.IsolatedConfigDir(pinID, tool, account)
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return "", fmt.Errorf("create isolated config dir: %w", err)
@@ -415,39 +395,18 @@ func (app *App) preparePinConfig(ctx context.Context, tool, account, pinID strin
 		}
 	}
 
-	// Private-copy the credential — same logic as prepareBond.
-	for _, item := range app.pinCredItems(tool) {
-		src := filepath.Join(realHome, item)
-		dst := filepath.Join(configDir, item)
-		data, err := os.ReadFile(src)
-		if os.IsNotExist(err) {
-			kdata, kerr := app.keychainCredForBond(ctx, tool)
-			if kerr != nil {
-				return "", kerr
-			}
-			if kdata == nil {
-				continue
-			}
-			data = kdata
-		} else if err != nil {
-			return "", fmt.Errorf("read credential %s: %w", src, err)
-		}
-		existing, readErr := os.ReadFile(dst)
-		if readErr == nil && string(existing) == string(data) {
-			continue
-		} else if readErr != nil && !os.IsNotExist(readErr) {
-			return "", fmt.Errorf("check existing credential %s: %w", dst, readErr)
-		}
-		if err := patch.WriteFileAtomic(dst, data, 0o600); err != nil {
-			return "", fmt.Errorf("copy credential to pin dir: %w", err)
-		}
+	// Materialize the bound account's credential where the tool will read it.
+	if err := app.writeDirCredential(ctx, be, tool, account, configDir); err != nil {
+		return "", err
 	}
 
 	return configDir, nil
 }
 
-// pinCredItems returns the credential file names to private-copy into a pin
-// config dir. Mirrors bondDenylistItems but for pin mode.
+// pinCredItems returns the plaintext credential file names a bound directory
+// may hold for a tool. On a keychain platform the item, not the file, is what
+// the tool reads, so writeDirCredential uses this list to remove the superseded
+// file rather than to write it.
 func (app *App) pinCredItems(tool string) []string {
 	switch tool {
 	case constants.ToolClaude:
@@ -457,45 +416,6 @@ func (app *App) pinCredItems(tool string) []string {
 	default:
 		return nil
 	}
-}
-
-// keychainCredForBond returns the raw keychain payload for a tool's primary
-// keychain artifact (verbatim bytes), suitable for writing as the tool's
-// credential file in the bond dir. Returns (nil, nil) when the tool has no
-// keychain artifact, is not on macOS, or the keychain item is absent (not
-// logged in). Returns a non-nil error when the keychain read fails (ACL,
-// security CLI error, or keychainGuard shape mismatch).
-//
-// Claude Code stores its credential in the macOS Keychain as compact JSON
-// (`{"claudeAiOauth":{...}}`), which is byte-for-byte the content it expects
-// in .credentials.json when CLAUDE_CONFIG_DIR is set. The verbatim round-trip
-// is intentional: re-serializing the payload would make Claude Code reject it.
-func (app *App) keychainCredForBond(ctx context.Context, tool string) ([]byte, error) {
-	if app.Env.GOOS != "darwin" {
-		return nil, nil
-	}
-	adp, err := adapter.ForTool(tool)
-	if err != nil {
-		return nil, nil // tool has no adapter or no keychain on this platform
-	}
-	specs, err := adp.Artifacts(ctx, app.Env)
-	if err != nil {
-		return nil, nil // unsupported platform/tool combination
-	}
-	for _, sp := range specs {
-		if sp.Kind != constants.KindKeychain {
-			continue
-		}
-		v, err := artifact.ReadLive(ctx, sp)
-		if err != nil {
-			return nil, fmt.Errorf("read keychain credential for %s: %w", tool, err)
-		}
-		if !v.Present {
-			continue
-		}
-		return v.Data, nil
-	}
-	return nil, nil
 }
 
 // cutMiseBlock splits content around the marker-delimited kagikae block:

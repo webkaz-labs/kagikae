@@ -93,7 +93,9 @@ func TestPreparePinConfigSharesOptInItems(t *testing.T) {
 	writeFile(t, filepath.Join(app.Env.Home, ".claude", "output-styles", "x.json"), "{}")
 	pinID := "abcdef0123456789"
 
-	if _, err := app.preparePinConfig(context.Background(), constants.ToolClaude, "main", pinID); err != nil {
+	captureClaude(t, app, "main", mainToken)
+	if _, err := app.preparePinConfig(context.Background(), testBackend(t, app),
+		constants.ToolClaude, "main", pinID); err != nil {
 		t.Fatal(err)
 	}
 	target := filepath.Join(app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main"), "output-styles")

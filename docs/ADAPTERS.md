@@ -69,15 +69,58 @@ writing, so the shared file is updated rather than forked into a private copy by
 the atomic rename; a link that cannot be resolved is refused (exit 10) instead.
 
 If `CLAUDE_CONFIG_DIR` is already set in the environment, the adapter uses it
-as the live base path for `.credentials.json`. `auth` mode never sets or
-changes `CLAUDE_CONFIG_DIR` itself.
+as the live base path — for `.credentials.json`, for `.claude.json`, **and for
+the keychain service name**, which claude namespaces as
+`Claude Code-credentials-<sha8>` over the raw value of that variable (see
+"Credential storage resolution" below). `auth` mode never sets or changes
+`CLAUDE_CONFIG_DIR` itself.
+
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` displaces `CLAUDE_CONFIG_DIR` for both stores
+at once, and set to the empty string it removes the namespacing entirely. kae
+cannot keep a per-directory binding honest under either, so the adapter reports
+the tool as unsupported (exit `5`) while that variable is present, rather than
+writing a credential nothing reads.
 
 ### Drivers
 
 | Driver | Platform | Switched artifacts |
 |--------|----------|--------------------|
 | `claude-file-patch` | Linux | `~/.claude/.credentials.json` pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
-| `claude-keychain-patch` | macOS | Keychain item `Claude Code-credentials` payload pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
+| `claude-keychain-patch` | macOS | Keychain item `Claude Code-credentials[-<sha8>]` payload pointer `/claudeAiOauth`; `~/.claude.json` pointer `/oauthAccount` |
+
+### Credential storage resolution
+
+Where claude's credential lives is a **rule**, not a constant, and kae's own
+isolation modes are what make the difference visible:
+
+| `CLAUDE_CONFIG_DIR` | Keychain service | Plaintext fallback |
+|---|---|---|
+| unset | `Claude Code-credentials` | `~/.claude/.credentials.json` |
+| set to `<dir>` | `Claude Code-credentials-<sha8>` | `<dir>/.credentials.json` |
+
+`<sha8>` is the first 8 hex characters of `sha256` over the value of the
+variable, **NFC-normalized** — no path resolution and no cleaning, so `/x/y` and
+`/x/y/` are different items. Anything computing the name must hash exactly the
+string it puts in the environment; `claude.keychainService` is the only place that
+derives it.
+
+The NFC step matters on macOS, where a path component with non-ASCII characters
+(a home or `XDG_DATA_HOME`) can come back decomposed: claude normalizes before
+hashing, so kae must too, or it writes an item claude never reads. Only the hash
+input is normalized — the path itself stays byte-exact so it still resolves on
+disk. This is the one thing kae needs `golang.org/x/text/unicode/norm` for.
+
+Reads try the keychain first and fall back to the file. A write goes to the
+keychain, and **deletes the plaintext file** when the item was absent
+immediately before it. So a freshly materialized directory does authenticate
+from a file kae wrote — until the first token refresh, after which only the
+per-directory item is read. That is why kae writes the item, not the file, and
+removes the superseded copy (see "Per-directory credential store").
+
+The service name also carries the build's OAuth suffix (empty for the production
+build, non-empty for a local build or with `CLAUDE_CODE_CUSTOM_OAUTH_URL` set).
+kae models the production spelling only; a build with a non-empty suffix is
+outside what it can switch ([ROADMAP.md](ROADMAP.md)).
 
 The identity artifact (`oauth_account`) is declared **identity-only**: it records
 who is logged in without being part of what authenticates. Losing it is therefore
@@ -466,6 +509,57 @@ it would create self-referential symlinks (ELOOP); re-running `kae pin` repairs
 any such stale links. A global command run inside a bound directory (`kae use`
 / `kae add`) resolves the real home automatically — it ignores the directory's
 isolation env vars — and `kae use` warns that the change is global.
+
+### Per-directory credential store
+
+Every isolation mechanism — `kae pin -s`, `kae pin -i`, `kae use -i`,
+`kae run -i` — works by pointing the tool's isolation env var at a kae-owned
+directory. For a tool whose credential store is namespaced by that variable
+(claude on macOS, see "Credential storage resolution"), the credential belongs in
+**that directory's own store**, and one helper (`writeDirCredential`) is the only
+thing that writes it, for all four:
+
+- the location comes from the adapter, resolved against an env whose isolation
+  variable already points at the bound directory — never recomputed;
+- on a keychain platform the per-directory **item** is written and the plaintext
+  copy in the directory is removed, because nothing reads it once the item exists
+  and the tool only deletes it itself when it finds no item;
+- a failed keychain write is an error. It is never downgraded to a file write:
+  that would report success while leaving the directory reading something else;
+- the payload comes from the **account's snapshot**, never the live store — the
+  live store holds whichever account is globally active, which is the account
+  being bound only by coincidence;
+- the snapshot's payload **shape** must match the artifact being written.
+  `KindFile` and `KindKeychain` hold a whole document, `KindJSONPointer` holds only
+  the value under its pointer, and the two are not interchangeable: applying a
+  whole document through a pointer spec nests it under its own key
+  (`{"claudeAiOauth":{"claudeAiOauth":…}}`) and succeeds, which the tool reads as
+  malformed. Capturing under one claude driver and applying under the other is
+  enough to reach it, so a mismatch is refused (exit `10`) with recapture guidance,
+  on this path and on the global switch alike. Rollback needs no check: it rebuilds
+  the spec from the backup record, so the kind is the captured one by construction;
+- a keychain item is written **only** when the spec marks it
+  `KeychainDirScoped`, i.e. its service name is derived from the isolation env
+  var. A tool whose credential store is one global item is reported as
+  unisolatable and nothing is written to it.
+
+That last rule is a hard safety boundary, not a nicety. codex's keyring item is a
+single `Codex Auth` whatever `CODEX_HOME` says, and its spec carries
+`KeychainReplace`, which deletes the existing item before writing — so treating
+it as per-directory would destroy the user's global codex login while isolating
+nothing. `kae pin -s` makes it reachable, because it symlinks `config.toml` from
+the real home into the bound directory, so a user who set
+`cli_auth_credentials_store = "keyring"` resolves the keyring there too. Nothing
+is written in that case, not even the credential *file*: codex reads the keyring,
+so a file would be a plaintext secret nothing reads.
+
+Two situations are tolerable rather than fatal, and both warn: an account with no
+captured credential, and a tool whose credential store is global. Binding a set
+of tools resolved from a profile continues past either — the other tools bind,
+the tool's own settings and sessions are still isolated, and the directory works
+once the account is captured. An operation naming one tool and account
+(`kae pin <tool> <account>`, or `kae run -i <tool> <account>`) fails instead:
+there the unisolatable tool is the whole request, not one row of it.
 
 ### Per-directory shared bind (`kae pin -s`)
 

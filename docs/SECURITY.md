@@ -147,7 +147,15 @@ child could rotate the live credential unseen — a cached value would be stale.
 - Isolated homes (`isolation/global/<tool>/<account>/`) are created `0700`
   and treated as credential-bearing. Credential files within them (e.g.
   `.credentials.json`, `auth.json`) are written `0600`. The real
-  `~/.claude`/`~/.codex` and the live keychain are never touched by isolation.
+  `~/.claude`/`~/.codex` and the *globally shared* keychain item are never
+  touched by isolation.
+- Where the tool namespaces its keychain item by the isolation env var (claude on
+  macOS), a bound directory's credential is written to **that directory's own
+  keychain item** rather than to a file, and any superseded plaintext copy in the
+  directory is removed. So on macOS an isolation directory normally holds no
+  credential on disk at all — the reason is correctness (a plaintext file there is
+  a credential the tool stops reading), and one less plaintext secret is the
+  side benefit. See docs/ADAPTERS.md "Per-directory credential store".
 
 ## Environment Conflicts
 
@@ -189,7 +197,7 @@ Three isolation scopes exist; their credential boundaries are:
 | Scope | Command | Credential store | Live home touched? |
 |-------|---------|------------------|--------------------|
 | Global isolated | `use -i` / `run -i` | `isolation/global/<tool>/<account>/` | No |
-| Per-directory shared | `pin -s` | `isolation/<pin-id>/<tool>/shared/` (symlinks to the real home, credential private-copied) | No (symlink source only) |
+| Per-directory shared | `pin -s` | `isolation/<pin-id>/<tool>/shared/` (symlinks to the real home; the credential is private — a per-directory keychain item where the tool uses one) | No (symlink source only) |
 | Per-directory isolated | `pin -i` | `isolation/<pin-id>/<tool>/isolated/<account>/config/` | No |
 
 The hard-coded credential denylist for shared binds (enforced at config load)

@@ -19,7 +19,6 @@ Standalone public repository. Follow the bundled Go CLI standard in
 | [docs/ROADMAP.md](docs/ROADMAP.md) | long-term ordering changes |
 | [docs/RELEASE.md](docs/RELEASE.md) | active release target changes |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | before commit and release checks |
-| [docs/handoff-p0-macos-pin.md](docs/handoff-p0-macos-pin.md) | picking up the macOS pinned-directory credential gap (v0.12.0's release gate) — delete this file when it lands |
 
 ## Validation
 
@@ -59,6 +58,21 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
 - The per-tool switched/preserved allowlists in `docs/ADAPTERS.md` are the
   normative contract: code must match that document, and any change requires
   updating it in the same commit.
+- Where a credential lives can be a **rule, not a constant**, and only the
+  adapter may evaluate it. claude derives its keychain service name from
+  `CLAUDE_CONFIG_DIR` (`Claude Code-credentials-<sha8>` over the env string
+  **NFC-normalized**, with no path cleaning at all — so a trailing slash is a
+  different item, and a decomposed non-ASCII component must be normalized before
+  hashing or kae writes an item claude never reads), and kae's own isolation modes
+  are what set that variable. Modelling the name as a
+  constant made every pinned directory on macOS run the previous account with
+  every offline guard green, because the tool reads the keychain first and its
+  first token refresh creates the per-directory item and deletes the file kae
+  wrote. So: resolve a credential's location by asking the adapter with an env
+  built for the target directory (`dirCredentialSpec`), never by recomputing a
+  path or a service name at the call site; and when a write to the authoritative
+  store fails, return the error — a fallback to the secondary store reports
+  success while the tool reads something else.
 - Secret values must never reach stdout/stderr/JSON/metadata/logs. New output
   paths need a redaction test.
 - Two comparison predicates, never interchangeable: a **credential** is compared

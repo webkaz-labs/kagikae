@@ -21,10 +21,40 @@ var ErrUnsupported = errors.New("unsupported")
 
 // Env is the injected view of the live environment.
 type Env struct {
-	GOOS     string
-	Home     string
-	Getenv   func(string) string
-	LookPath func(string) (string, error)
+	GOOS   string
+	Home   string
+	Getenv func(string) string
+	// Username is the OS account name, used only as the fallback a tool itself
+	// falls back to when $USER is unset (claude names its keychain item
+	// `$USER || os.userInfo().username`). Reading it from the environment view
+	// instead of os/user keeps adapters injectable; empty is allowed and each
+	// adapter decides what to do with it.
+	Username string
+	// LookupEnv reports a variable's value together with whether it is set at
+	// all, for the rare case where an explicitly empty value means something
+	// different from an absent one (claude's CLAUDE_SECURESTORAGE_CONFIG_DIR
+	// set to "" disables its keychain namespacing, while unset does not).
+	// Optional: use Env.IsSet, which degrades to Getenv when this is nil.
+	LookupEnv func(string) (string, bool)
+	LookPath  func(string) (string, error)
+}
+
+// IsSet reports whether key is present in the environment, including when its
+// value is the empty string. Without an injected LookupEnv it degrades to a
+// non-empty test, which cannot see an explicitly-emptied variable — so an
+// adapter that refuses on IsSet stays correct in the common case and merely
+// under-refuses in a test env that did not inject one.
+//
+// Not subject to the global-scope masking that wraps Getenv (cmd.applyGlobalScope
+// hides kae-managed isolation values): that masking covers only variables kae
+// itself sets, and every variable reached through IsSet is user-set by
+// definition.
+func (e Env) IsSet(key string) bool {
+	if e.LookupEnv != nil {
+		_, ok := e.LookupEnv(key)
+		return ok
+	}
+	return e.Getenv(key) != ""
 }
 
 // Info is the result of detecting a tool's live state.

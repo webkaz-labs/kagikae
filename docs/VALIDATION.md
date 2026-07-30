@@ -905,7 +905,9 @@ commit**. Verifying an assumption always means launching a **fresh** tool proces
 | A refresh that fails with `invalid_grant` makes claude **tombstone** the credential in place: `accessToken: ""`, `refreshToken: ""`, `expiresAt: 0` | Let a credential's refresh token expire, run claude, then read the credential: it is blanked rather than left alone. kae reads that as invalid, not as "no expiry recorded"; if upstream instead deletes the item, the logged-out guards cover it |
 | The keychain payload must round-trip **verbatim**; a re-serialized payload makes Claude Code reject the credential | Capture → apply → fresh-process auth check on macOS with the real keychain driver. A byte-compare of the stored payload does not cover it: an equivalent-but-re-encoded payload is exactly this failure |
 | `~/.claude.json` is mixed state whose other keys must survive a pointer patch | `git`-diff `~/.claude.json` across a switch: only `/oauthAccount` changes; `projects`, `mcpServers`, onboarding and cache keys stay byte-identical |
-| **Where the credential resolves to** is a rule, not a constant: the keychain service is `Claude Code-credentials` only while `CLAUDE_CONFIG_DIR` is unset, and `Claude Code-credentials-<sha8(configDir)>` when it is set; reads try keychain first and fall back to `<configDir>/.credentials.json`; a write goes to keychain and **deletes that file** when the item was previously absent | With `CLAUDE_CONFIG_DIR` pointed at a temp dir, seed only `<dir>/.credentials.json`, run claude (it authenticates from the file), let the token refresh, then look again: `security find-generic-password -s "Claude Code-credentials-<sha8>"` now exists and the file is gone. **This rule is the one kae itself violates today** — it sets `CLAUDE_CONFIG_DIR` for every isolation mode while modelling the service name as a constant, so a pinned directory silently stops reading what kae writes (docs/ROADMAP.md). Recording *storage resolution* as a verifiable rule is the lesson: kae had verified "the credential is at X" and never "how the tool decides where X is" |
+| **Where the credential resolves to** is a rule, not a constant. The keychain service is `Claude Code` + the build's OAuth suffix + `-credentials` + a per-config-dir suffix. That last suffix is empty only while `CLAUDE_CONFIG_DIR` is unset or empty; otherwise it is `-<first 8 hex of sha256(value)>` over the env string **NFC-normalized** — no `resolve`, no cleaning, so a trailing `/` hashes to a different item, and a decomposed non-ASCII component hashes as its composed form. Reads try keychain first and fall back to `<configDir>/.credentials.json`; a write goes to keychain and **deletes that file** when the item was previously absent. `CLAUDE_SECURESTORAGE_CONFIG_DIR`, when set, replaces `CLAUDE_CONFIG_DIR` as both the hash input and the file's directory — and set to the *empty string* it drops the suffix entirely, collapsing every config dir onto one shared item | Shim `security` rather than logging in. Put an executable ahead of `/usr/bin` on `PATH` that appends `"$*"` to a log and exits 44 (item-not-found), then run `env -i HOME=<temp> PATH=<shim>:/usr/bin:/bin USER="$USER" CLAUDE_CONFIG_DIR=<dir> claude -p hi </dev/null`. The logged `-s <service>` is the name claude actually resolves; check the suffix against `python3 -c 'import hashlib,sys,unicodedata;print(hashlib.sha256(unicodedata.normalize("NFC",sys.argv[1]).encode()).hexdigest()[:8])' <dir>` — the NFC step is not optional, and a `<dir>` with a decomposed non-ASCII component is the case that needs it. Re-run with a trailing slash, with `CLAUDE_SECURESTORAGE_CONFIG_DIR=`, and with it set to another dir to cover all four branches. **No login and no real-keychain access**, so this row is re-verifiable in seconds on any macOS machine — prefer it to the old seed-and-wait-for-refresh procedure. The delete-on-write half is the exception: it is read from the composed store's `update()` in the bundle (`if the keychain read returned absent, delete the plaintext file`) and reproducing it at runtime needs a live refresh token, so treat that half as **source-confirmed, not run-confirmed**. kae reproduces the rule in `claude.keychainService`, so every mechanism that sets `CLAUDE_CONFIG_DIR` writes into the item that config dir resolves to. Recording *storage resolution* as a verifiable rule is the lesson: kae had verified "the credential is at X" and never "how the tool decides where X is", and modelling the name as a constant is exactly what let a pinned directory run the previous account with every offline guard green |
+| The service name carries the **build's OAuth suffix**: `""` for the production build, `-local-oauth` for a local build, `-custom-oauth` whenever `CLAUDE_CODE_CUSTOM_OAUTH_URL` names an approved endpoint. kae models the production build only | Same shim run with `CLAUDE_CODE_CUSTOM_OAUTH_URL` set: the logged service becomes `Claude Code-custom-oauth-credentials…`. kae hard-codes the production spelling, so a build with a non-empty suffix is outside what it can switch (docs/ROADMAP.md) |
+| The keychain item's **account attribute** is `$USER` when it matches `^[a-zA-Z0-9._-]+$`, otherwise the OS username, and the literal `claude-code-user` when neither is usable | The shim log's `-a <account>` names it. It is load-bearing because claude's reads are account-scoped (`find-generic-password -a <account> -s <service>`): an item kae writes under a different account attribute is invisible to claude even when the service name matches exactly |
 
 ### Other tools
 
@@ -981,6 +983,36 @@ emits ANSI/spinner control codes, so strip them
 (`sed 's/\033\[[0-9;]*[a-zA-Z]//g'`) before asserting on the output. Switching
 between two accounts is a v0.7.0 acceptance item; with a single account this
 verifies the verbatim round-trip and comment preservation only.
+
+### Bound-directory credential store (macOS, no login needed)
+
+kae and claude must agree on the keychain service name for a bound directory; a
+disagreement is silent, because kae's write succeeds and claude simply reads a
+different item. Shim `security` for **both** processes and compare, which needs
+no real account and touches neither the real `$HOME` nor the real keychain:
+
+1. Temp `HOME` plus temp `XDG_*`, and a `security` shim first on `PATH` that logs
+   `"$*"`, prints a canned `{"claudeAiOauth":{…}}` for `find-generic-password`,
+   and exits 0 otherwise.
+2. `kae init`, a config with `secret_backend = "file"` and a one-account profile,
+   then `kae add --no-login claude main` (the capture reads the canned payload).
+3. `kae pin -i main` in a temp project dir. Read `CLAUDE_CONFIG_DIR` out of
+   `.config/mise/conf.d/kagikae.toml`, and the `-s <service>` kae passed to
+   `add-generic-password` out of the shim log.
+4. Run the real binary against that same directory —
+   `env -i HOME=<temp> PATH=<shim>:/usr/bin:/bin USER="$USER"
+   CLAUDE_CONFIG_DIR=<dir> claude -p hi </dev/null` — and read the `-s <service>`
+   it passed to `find-generic-password`.
+
+The two service names must be identical, and `<dir>/.credentials.json` must not
+exist (the superseded plaintext copy is removed). Confirmed on kae's fix commit
+with Claude Code 2.1.220; the same run against a pre-fix build writes no keychain
+item at all and reads only the unsuffixed shared one, which is the defect.
+
+This is a naming-agreement check. That the payload itself round-trips is the
+separate verbatim/ACL assumption above, and it needs the real keychain and a real
+account — so a release still runs the two-account pin: re-bind in a pinned
+directory, then launch claude there and confirm it reports the account kae bound.
 
 Never run real-machine acceptance with uncommitted work in progress in the
 live tool sessions.

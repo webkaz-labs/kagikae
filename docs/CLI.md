@@ -330,7 +330,8 @@ isolation directories (with their login state) intact.
 - **`-s` / `--shared`** (default): the fragment points each tool at a
   per-directory shared home (`isolation/<pin-id>/<tool>/shared/`): every
   real-home file except the hard-coded auth artifacts (`.credentials.json`,
-  `auth.json`) is symlinked in; the credential is private-copied at `0600`.
+  `auth.json`) is symlinked in; the account's credential is written privately
+  (same rule as `-i` below).
   Settings, sessions, and memory are shared with the real home while
   authentication is private to the directory. The bound account is recorded in
   the fragment so `kae status` and the profile match survive re-entry. See
@@ -340,16 +341,23 @@ isolation directories (with their login state) intact.
   (`isolation/<pin-id>/<tool>/isolated/<account>/config/`): all state (auth,
   sessions, memory, settings) is private to the account. Items listed in
   `tools.<tool>.isolated_shared_items` are symlinked from the real home; the
-  credential is private-copied at `0600`. Re-running refreshes the opt-in
-  links and the credential copy.
+  account's credential is written privately. Re-running refreshes the opt-in
+  links and the credential.
 
-  Two limits of that copy are open gaps ([ROADMAP.md](ROADMAP.md)): it is taken
-  from the **live** store rather than the account's snapshot, so pinning an
-  account that is not currently active seeds the directory with whichever
-  credential is live; and on macOS claude resolves its keychain service from
-  `CLAUDE_CONFIG_DIR`, so after its first token refresh the directory reads a
-  per-directory keychain item instead of the copy, and a later
-  `kae pin <tool> <account>` no longer changes what claude uses.
+  The credential always comes from **the account's own snapshot**, so binding an
+  account that is not currently active is exact. It is written where the tool
+  bound to that directory actually reads it: a private file at `0600`, or — on a
+  platform where the tool namespaces a keychain item by the config dir (claude on
+  macOS) — that directory's keychain item, with any superseded plaintext copy
+  removed. See docs/ADAPTERS.md "Per-directory credential store".
+
+  Binding a profile whose account has no captured credential warns and binds the
+  rest; `kae pin <tool> <account>` on an uncaptured account fails (exit `7`). A
+  tool whose credential store cannot be scoped to a directory at all (codex with
+  `cli_auth_credentials_store = "keyring"`, one global keychain item) warns the
+  same way and keeps its login shared, with its settings and sessions still
+  isolated — kae never writes that item, since doing so would change the global
+  login rather than this directory's.
 
 `kae mise init [-P <profile>] [--auto] [--write]` renders auth-mode tasks and
 the opt-in enter hook into a marker-delimited block in `.mise.toml`. Default

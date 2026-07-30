@@ -210,7 +210,7 @@ func (app *App) runIsolatedChild(ctx context.Context, opts commonOpts, targets [
 	type homeRow struct{ tool, account, home string }
 	var rows []homeRow
 	for _, tgt := range supported {
-		home, err := app.prepareGlobalIsolatedHome(ctx, be, tgt.Tool, tgt.Account)
+		home, err := app.prepareGlobalIsolatedHome(ctx, be, tgt.Tool, tgt.Account, fromProfile)
 		if err != nil {
 			return finish(opts, fmt.Errorf("prepare isolated home for %s/%s: %w", tgt.Tool, tgt.Account, err))
 		}
@@ -264,16 +264,31 @@ func isolatableTargets(targets []runTarget, fromProfile bool, modeDesc, flagName
 // isolation/global/<tool>/<account>/ (the captured credential written into it)
 // and returns its path. Shared by kae use -i (runUseIsolated) and kae run -i so
 // both point at the same home for a given account. The real ~/.<tool> and the
-// live credential store are never touched.
-func (app *App) prepareGlobalIsolatedHome(ctx context.Context, be secret.Backend, tool, account string) (string, error) {
+// global live credential store are never touched.
+//
+// The home becomes the tool's isolation env var (global_fragment.go), so it is
+// a bound directory in exactly the sense writeDirCredential means: on a keychain
+// platform the credential belongs in this home's own keychain item, not in a
+// file the tool stops reading.
+//
+// fromProfile carries the same profile-vs-explicit split isolatableTargets
+// applies to a tool with no isolation env var, and it lives here rather than in
+// the callers so a third one cannot get it wrong: a tool resolved from a profile
+// whose credential store cannot be scoped to a directory is warned about and
+// still gets its home for everything else, while a tool the user named is the
+// whole request and the error stands. The home is returned in the tolerated case
+// too — it exists by then, and returning "" would set the isolation env var to
+// the empty string.
+func (app *App) prepareGlobalIsolatedHome(ctx context.Context, be secret.Backend, tool, account string, fromProfile bool) (string, error) {
 	home := app.Paths.GlobalIsolatedHomeDir(tool, account)
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return "", fmt.Errorf("create global isolated home: %w", err)
 	}
-	if err := app.swapDirCredential(ctx, be, tool, account, home); err != nil {
-		return "", err
+	err := app.writeDirCredential(ctx, be, tool, account, home)
+	if err != nil && fromProfile && warnUnisolatableCredential(err, tool, account) {
+		err = nil
 	}
-	return home, nil
+	return home, err
 }
 
 // runTarget is one tool/account pair resolved from CLI arguments.

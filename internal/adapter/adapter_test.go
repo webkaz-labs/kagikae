@@ -31,6 +31,10 @@ var (
 	copilotAdapter  = copilot.Copilot{}
 )
 
+// testEnv injects LookupEnv as well as Getenv so tests exercise the same
+// set-vs-empty predicate production does (Env.IsSet degrades to a non-empty test
+// without it, which is a *different* predicate — a variable set to "" would read
+// as absent).
 func testEnv(t *testing.T, goos string, vars map[string]string) adapter.Env {
 	t.Helper()
 	home := t.TempDir()
@@ -39,6 +43,10 @@ func testEnv(t *testing.T, goos string, vars map[string]string) adapter.Env {
 		Home: home,
 		Getenv: func(key string) string {
 			return vars[key]
+		},
+		LookupEnv: func(key string) (string, bool) {
+			value, ok := vars[key]
+			return value, ok
 		},
 		LookPath: func(string) (string, error) { return "", errors.New("not found") },
 	}
@@ -140,6 +148,213 @@ func TestClaudeArtifactsDarwin(t *testing.T) {
 	}
 	if specs[0].KeychainAccount != "alice" {
 		t.Fatalf("fallback account not propagated: %+v", specs[0])
+	}
+}
+
+// pinConfigDir is the shape of a real `kae pin --isolated` config dir, and
+// pinConfigDirSHA8 is the suffix Claude Code derives from it. The expected
+// hashes are computed **outside** kae (`printf %s <path> | shasum -a 256`) on
+// purpose: deriving them with kae's own hash would make this test agree with any
+// formula, including a wrong one. These paths are pure ASCII, so NFC leaves them
+// alone and `shasum` is exact; the normalization step has its own test below.
+const (
+	pinConfigDir     = "/home/u/.local/share/kagikae/isolation/deadbeefdeadbeef/claude/isolated/side/config"
+	pinConfigDirSHA8 = "b43dacab"
+	// The same path with a trailing slash is a *different* keychain item, because
+	// claude hashes the environment string with no path cleaning at all.
+	pinConfigDirTrailingSlashSHA8 = "430765be"
+)
+
+func TestClaudeKeychainServiceIsPerConfigDir(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		configDir string
+		want      string
+	}{
+		{"unset keeps the shared item", "", claude.KeychainService},
+		{"set namespaces by config dir", pinConfigDir, claude.KeychainService + "-" + pinConfigDirSHA8},
+		{"trailing slash is a different item", pinConfigDir + "/", claude.KeychainService + "-" + pinConfigDirTrailingSlashSHA8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := testEnv(t, "darwin", map[string]string{
+				"USER":              "alice",
+				"CLAUDE_CONFIG_DIR": tc.configDir,
+			})
+			specs, err := claudeAdapter.Artifacts(context.Background(), env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if specs[0].Kind != constants.KindKeychain || specs[0].Target != tc.want {
+				t.Fatalf("keychain target = %q, want %q", specs[0].Target, tc.want)
+			}
+			// KeychainDirScoped is what tells the per-directory materializer the
+			// item is safe to write for one bound directory; it must be true
+			// exactly when the name is namespaced.
+			if wantScoped := tc.configDir != ""; specs[0].KeychainDirScoped != wantScoped {
+				t.Fatalf("KeychainDirScoped = %v, want %v", specs[0].KeychainDirScoped, wantScoped)
+			}
+		})
+	}
+}
+
+// TestKeychainDirScopedMatchesTheServiceName is the drift guard on the flag a
+// seventh adapter would otherwise forget. KeychainDirScoped is a *claim* that the
+// item's service name moves with the tool's isolation env var, and the
+// per-directory materializer trusts it: claim it wrongly and kae writes a global
+// login; omit it on a tool that does move and per-directory credentials silently
+// degrade to a warning. So derive the truth — resolve each tool's specs with its
+// isolation variable pointed at two different directories — and require the flag
+// to agree.
+func TestKeychainDirScopedMatchesTheServiceName(t *testing.T) {
+	isolationEnvVar := map[string]string{
+		constants.ToolClaude: "CLAUDE_CONFIG_DIR",
+		constants.ToolCodex:  "CODEX_HOME",
+	}
+	for _, tool := range constants.Tools {
+		t.Run(tool, func(t *testing.T) {
+			adp, err := adapter.ForTool(tool)
+			if err != nil {
+				t.Fatal(err)
+			}
+			specsFor := func(dir string) []artifact.Spec {
+				vars := map[string]string{"USER": "alice"}
+				if envVar := isolationEnvVar[tool]; envVar != "" {
+					vars[envVar] = dir
+				}
+				specs, err := adp.Artifacts(context.Background(), testEnv(t, "darwin", vars))
+				if err != nil {
+					t.Skipf("%s has no darwin artifacts: %v", tool, err)
+				}
+				return specs
+			}
+			// Two directories that exist, so a tool reading config out of the dir
+			// (codex's cli_auth_credentials_store) resolves the same way for both and
+			// only the name is under test.
+			first, second := specsFor(t.TempDir()), specsFor(t.TempDir())
+			for i := range first {
+				if first[i].Kind != constants.KindKeychain {
+					continue
+				}
+				moves := first[i].Target != second[i].Target
+				if first[i].KeychainDirScoped != moves {
+					t.Errorf("%s/%s: KeychainDirScoped = %v but the service name %s (%q vs %q)",
+						tool, first[i].Name, first[i].KeychainDirScoped,
+						map[bool]string{true: "moves with the isolation env var", false: "is fixed"}[moves],
+						first[i].Target, second[i].Target)
+				}
+			}
+		})
+	}
+}
+
+// codex's keyring item is a single global `Codex Auth` regardless of CODEX_HOME,
+// so it must never claim to be directory-scoped: writing it for a bound
+// directory would overwrite the global login, and KeychainReplace would delete
+// the previous item first.
+func TestCodexKeyringIsNotDirScoped(t *testing.T) {
+	home := t.TempDir()
+	write(t, filepath.Join(home, "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")
+	env := testEnv(t, "darwin", map[string]string{"CODEX_HOME": home})
+	specs, err := codexAdapter.Artifacts(context.Background(), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if specs[0].Kind != constants.KindKeychain {
+		t.Fatalf("expected the keyring spec, got %+v", specs[0])
+	}
+	if specs[0].KeychainDirScoped {
+		t.Fatal("a global keyring item must not be marked directory-scoped")
+	}
+}
+
+// TestClaudeKeychainServiceNormalizesToNFC pins the normalization step. claude
+// hashes the config dir after NFC-normalizing it, so a decomposed path — which
+// macOS can hand back for any non-ASCII component of a home or XDG_DATA_HOME —
+// must resolve to the *same* item as its composed form. Hashing the bytes as
+// given would make kae write an item claude never reads, which is the failure
+// this whole area exists to prevent.
+//
+// Both expected hashes are computed outside kae (python3 hashlib over the NFC
+// form), so the composed spelling is pinned rather than merely self-consistent.
+func TestClaudeKeychainServiceNormalizesToNFC(t *testing.T) {
+	// Escapes, not literal accents: the two forms must stay distinguishable in
+	// the source, where they would render identically.
+	const (
+		nfc  = "/home/u/caf\u00e9/config"  // \u00e9 as a single code point
+		nfd  = "/home/u/cafe\u0301/config" // e + combining acute accent
+		want = claude.KeychainService + "-42ef30c3"
+	)
+	for name, dir := range map[string]string{"composed": nfc, "decomposed": nfd} {
+		t.Run(name, func(t *testing.T) {
+			env := testEnv(t, "darwin", map[string]string{
+				"USER":              "alice",
+				"CLAUDE_CONFIG_DIR": dir,
+			})
+			specs, err := claudeAdapter.Artifacts(context.Background(), env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if specs[0].Target != want {
+				t.Fatalf("keychain target = %q, want %q", specs[0].Target, want)
+			}
+		})
+	}
+}
+
+// TestClaudeKeychainAccountMirrorsUpstream pins claude's own rule
+// (`$USER || os.userInfo().username`, then validate, else the literal). The
+// account attribute is load-bearing: claude's reads are account-scoped, so an
+// item written under the wrong one is invisible to it even with the right
+// service name.
+func TestClaudeKeychainAccountMirrorsUpstream(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		user     string
+		username string
+		want     string
+	}{
+		{"USER wins", "alice", "beta", "alice"},
+		{"OS username fills in for an unset USER", "", "beta", "beta"},
+		{"an invalid USER does not fall through to the OS name", "not a name", "beta", "claude-code-user"},
+		{"neither usable", "", "", "claude-code-user"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := testEnv(t, "darwin", map[string]string{"USER": tc.user})
+			env.Username = tc.username
+			specs, err := claudeAdapter.Artifacts(context.Background(), env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if specs[0].KeychainAccount != tc.want {
+				t.Fatalf("KeychainAccount = %q, want %q", specs[0].KeychainAccount, tc.want)
+			}
+		})
+	}
+}
+
+// TestClaudeRefusesSecureStorageConfigDir covers the variable that moves both of
+// claude's stores at once. The empty-value case is the dangerous one — it removes
+// the per-directory suffix entirely, so every pin would collapse onto one shared
+// item — and it is only visible through LookupEnv, which is why Env carries one.
+func TestClaudeRefusesSecureStorageConfigDir(t *testing.T) {
+	for _, value := range []string{"", "/somewhere/else"} {
+		t.Run("value="+value, func(t *testing.T) {
+			env := testEnv(t, "darwin", map[string]string{
+				"USER":                     "alice",
+				claude.EnvSecureStorageDir: value,
+			})
+			if _, err := claudeAdapter.Artifacts(context.Background(), env); !errors.Is(err, adapter.ErrUnsupported) {
+				t.Fatalf("expected unsupported, got %v", err)
+			}
+		})
+	}
+}
+
+// The refusal must not fire on an absent variable — that is every normal run.
+func TestClaudeAllowsAbsentSecureStorageConfigDir(t *testing.T) {
+	env := testEnv(t, "darwin", map[string]string{"USER": "alice"})
+	if _, err := claudeAdapter.Artifacts(context.Background(), env); err != nil {
+		t.Fatalf("unexpected refusal: %v", err)
 	}
 }
 

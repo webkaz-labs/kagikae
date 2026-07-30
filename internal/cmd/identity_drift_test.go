@@ -93,7 +93,7 @@ func TestDoctorIdentityDriftLiveAbsent(t *testing.T) {
 
 // A snapshot captured while the tool had no identity records it absent. kae never
 // applied one, so the live value that appears later is not drift.
-func TestDoctorIdentityDriftSkipsUntrackedSnapshot(t *testing.T) {
+func TestDoctorIdentityDriftReportsUntrackedSnapshot(t *testing.T) {
 	app := testApp(t, nil)
 	seedClaudeOAuth(t, app, `{"accessToken":"`+mainToken+`"}`)
 	claudeJSON(t, app, `{"projects":{}}`)
@@ -104,8 +104,24 @@ func TestDoctorIdentityDriftSkipsUntrackedSnapshot(t *testing.T) {
 
 	claudeJSON(t, app, `{"oauthAccount":{"emailAddress":"you@example.com"}}`)
 	report := buildDoctor(context.Background(), app, "", false)
-	if msg, ok := findCheck(report, constants.CheckIdentityDrift); ok {
-		t.Fatalf("an identity the snapshot never recorded must not drift: %q", msg)
+	msg, ok := findCheck(report, constants.CheckIdentityDrift)
+	if !ok {
+		t.Fatal("an untracked identity must be reported, not silently skipped")
+	}
+	// Not a warning: the display still ends up right (the tool refetches), so this
+	// must not read as a problem. It says that, then names the one-time step.
+	for _, c := range report.Checks {
+		if c.Code == constants.CheckIdentityDrift && c.Status != constants.StatusOK {
+			t.Fatalf("an untracked identity must be status ok, got %q", c.Status)
+		}
+	}
+	for _, want := range []string{"no oauth_account identity recorded yet", "refetches it", "kae add --no-login claude main"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("message missing %q: %s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "you@example.com") {
+		t.Fatalf("an identity is PII and must not reach the output: %s", msg)
 	}
 }
 

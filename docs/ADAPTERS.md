@@ -86,11 +86,23 @@ or with its payload gone from the secret store — *removes* `/oauthAccount` rat
 than failing the switch, and claude refetches the profile from the applied token
 on its next run.
 
-**Migrating an account captured before this artifact existed:** switch to it
-once (the stale cache is removed), **start claude** so it refetches the profile,
-*then* `kae add --no-login claude <account>` to record the identity — after which
-switches move it in place, with no refetch and no network. Re-capturing before
-that refetch would store whatever account the stale cache still names.
+**An account captured before this artifact existed keeps working.** Switching to
+it removes the stale cache (there is nothing recorded to apply) and claude
+refetches the profile on its next start, so the account still displays correctly.
+What is missing is only kae's own copy, which matters when claude cannot refetch
+(offline) and for the moment right between the switch and claude's next start.
+
+Recording it is a **one-time step per account**: start claude once, *then*
+`kae add --no-login claude <account>`. In that order — re-capturing before the
+refetch would store whatever account the stale cache still names. `kae doctor`
+reports an active account that is still untracked, at `ok` level.
+
+Note what is deliberately *not* done: the switch-away recapture does not adopt a
+live identity into a snapshot that has none. It could, and that would migrate
+accounts silently — but with nothing recorded to compare against there is also no
+way to notice that the live identity belongs to a different account (someone
+logged in outside kae), and adopting it would make the wrong identity this
+account's recorded truth. A once-per-account manual step is the cheaper trade.
 
 Two more consequences of kae switching a field claude maintains only lazily:
 

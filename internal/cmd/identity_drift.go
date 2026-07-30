@@ -77,7 +77,16 @@ func (app *App) identityDriftChecks(ctx context.Context, be secret.Backend, tool
 			}
 			art, ok := acc.Artifacts[sp.Name]
 			if !ok || !art.Present {
-				continue // this snapshot does not track the identity yet
+				// Captured before kae switched identities, so there is nothing to
+				// compare against — but say so rather than staying silent: until it
+				// is recorded, every switch to this account removes the live cache
+				// and leans on the tool to refetch it. Status ok, not warn: the
+				// display still ends up right, and recording it is a one-time step.
+				checks = append(checks, adapter.Check{
+					Tool: tool, Code: constants.CheckIdentityDrift, Status: constants.StatusOK,
+					Message: identityUntrackedMessage(tool, active, sp.Name),
+				})
+				continue
 			}
 			live, err := artifact.ReadLive(ctx, sp)
 			if err != nil {
@@ -153,6 +162,21 @@ func identityDiffers(sp artifact.Spec, stored, live []byte) bool {
 		}
 	}
 	return false
+}
+
+// identityUntrackedMessage frames an account whose snapshot has no identity yet:
+// captured before kae switched identities. Deliberately not a warning — the
+// display still ends up right, because a switch clears the stale cache and the
+// tool refetches it. What is missing is only kae's copy, which matters when the
+// tool cannot refetch (offline) and for the moment right after a switch. Recording
+// it is a one-time step per account, so this states it once and moves on.
+func identityUntrackedMessage(tool, accountName, artifactName string) string {
+	return fmt.Sprintf(
+		"account %s: no %s identity recorded yet (captured before kae switched it); %s refetches it on "+
+			"its next start, so the account still shows correctly — to record it here, start %s once, "+
+			"then: kae add --no-login %s %s",
+		accountName, artifactName, tool, tool, tool, accountName,
+	)
 }
 
 // identityDriftMessage frames a live identity artifact that no longer matches the

@@ -724,10 +724,16 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   re-apply, and points at docs/VALIDATION.md "Upstream Behaviour Assumptions" if
   it drifts again. The identity value itself is never printed (it is PII);
   the message names only the tool, account, and artifact. Skipped when the tool
-  has no active account, when the snapshot does not track the identity yet, and
-  inside a kae-owned isolated home (`kae pin`, `kae use -i`) — the per-directory
-  materializers never apply an identity there, so there is nothing kae wrote to
-  compare against (docs/ROADMAP.md).
+  has no active account, and inside a kae-owned isolated home (`kae pin`,
+  `kae use -i`) — the per-directory materializers never apply an identity there,
+  so there is nothing kae wrote to compare against (docs/ROADMAP.md).
+
+  When the active account's snapshot has **no** identity recorded yet (captured
+  before kae switched it), the same code reports it at **`ok`** level instead: not
+  a problem — a switch clears the stale cache and the tool refetches it, so the
+  account still displays correctly — but worth knowing, because kae has no copy to
+  apply offline. The message names the one-time fix (start the tool once, then
+  `kae add --no-login <tool> <account>`).
 - `upstream_version`: the installed tool's `--version` is a newer **major or
   minor** than the version its adapter's behaviour assumptions were verified
   against (`VerifiedVersion()`). A patch bump is silent by design, an older

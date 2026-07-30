@@ -21,10 +21,10 @@ where one of the three claims was overturned by measurement — see the entry)
 **2.3** (branch `fix/state-lost-update`, where the claim held but review
 found the lock alone did not close it — see the entry) and **2.2 / 2.4**
 (branch `fix/pin-directory-index`, where two of 2.4's sub-claims were
-overturned — see the entry).
+overturned — see the entry) and **1.6 / 1.7** (branch
+`fix/upstream-store-identity`).
 
-**Still open here**: 1.6, **1.7** (new — a relative path variable diverges for
-claude and codex too, generalized out of 1.5), 2.5, and Part 3's skill. Also open,
+**Still open here**: 2.5 and Part 3's skill. Also open,
 and unrelated to this document: the two live-machine gates in
 [VALIDATION.md](VALIDATION.md) — "codex per-directory keyring bind" (which is all
 that stands between the shipped code and dropping codex from
@@ -304,40 +304,73 @@ evidence are now rows in [VALIDATION.md](VALIDATION.md); what changed:
   `credentialFiles` occurs in it. Correction for Part 3's box below: **agy shells
   out to `/usr/bin/security`**, so the shim applies to it.
 
-### 1.6 Cross-cutting: kae reads keychain items service-only, tools read account-scoped — **VERIFIED HERE (mechanism), AGENT-CLAIMED (consequence)**
+### 1.6 Cross-cutting: kae reads keychain items service-only, tools read account-scoped — **FIXED** (both halves held; the write direction was the worse one)
 
-`keychain.ReadItem` matches by service and takes the first item. claude reads
-`find-generic-password -a <account> -s <service>`. Verified here that claude's live
-item carries `"acct"<blob>="<the machine's $USER>"` — matching what
-`keychainAccount` now computes, so today they agree.
+Held, and the claimed consequence was the more serious half. `artifact.go`'s
+create path preferred **the existing item's account** over the adapter's, with
+the comment "so a re-login that changed it is honored" — which has the causality
+backwards. Every adapter's account is a *rule* over the environment (claude's
+`$USER`, cursor's build-time constant), so a re-login does not change it; what
+changes it is the input changing, and then the live item carries the **old**
+answer. Preferring it meant one item created under a wrong account pinned every
+later kae write to it while the tool went on reading the account its own rule
+names — the write succeeds, the item exists, and the tool reports no login.
+Self-perpetuating and invisible, exactly as claimed.
 
-The claimed consequence is worse than the read: `internal/artifact/artifact.go`
-prefers **the existing item's account** over the adapter-computed one for
-claude/cursor. So one item created under a wrong account (an old `$USER`, or the
-`"kagikae"` fallback) makes kae write there forever while the tool looks
-elsewhere — self-perpetuating, and invisible. This is the same shape as
-[ROADMAP.md](ROADMAP.md)'s recorded stale-account item, but the audit argues it is
-broader than recorded. Consider `KeychainMatchAccount` for claude/cursor now that
-the account rule is known and tested.
+Fixed on both halves. claude and cursor now declare `KeychainMatchAccount`, so
+their reads, writes and deletes are scoped to the account the adapter derives
+rather than to the service's first item — which also closes the read half, where
+a capture could have taken a sibling item's payload. With that, **every** keychain
+spec kae ships is account-scoped, and `TestKeychainSpecsAreAccountScoped` refuses
+a new one that is not. The create-path precedence is inverted: the adapter's
+account wins, and the live item is consulted only when the spec has none — which
+now happens solely on a rollback of a backup written before the record carried
+the account, where the live item genuinely is the only evidence left.
 
-### 1.7 A relative path variable diverges for *every* tool, not just the two measured — **OPEN** (generalized out of 1.5)
+Blast radius checked before generalizing, per the rule v0.12.0 wrote: the only
+two specs affected were claude's and cursor's (codex and agy already declared it),
+and both services hold exactly one legitimate item, so scoping cannot orphan a
+sibling. A user whose live item sits under an account the adapter does not derive
+now gets an honest "no login" instead of a silent write nothing reads — and that
+user was already broken, because the tool could not see that item either.
 
-1.5 established the shape: a tool that uses a path variable **verbatim** resolves a
-relative value against its own working directory, while kae resolves the same
+### 1.7 A relative path variable diverges for *every* tool, not just the two measured — **FIXED** (measured per tool, and the two divergences are not the same)
+
+1.5 established the shape: a tool that uses a path variable **verbatim** resolves
+a relative value against its own working directory, while kae resolves the same
 string against kae's — and kae is invoked from anywhere in the project. copilot
-(`COPILOT_HOME`) and opencode (`XDG_DATA_HOME`) now warn. **The same shape applies
-to `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, which nothing warns about.**
+(`COPILOT_HOME`) and opencode (`XDG_DATA_HOME`) warned; `CLAUDE_CONFIG_DIR` and
+`CODEX_HOME` did not. Both warn now, and the measurement was the work, because
+copying one warning to the other tool would have shipped the wrong model.
 
-Two things make it narrower than it looks, and neither closes it: kae itself only
-ever sets those variables to absolute kae-owned paths (`kae pin`, `use -i`,
-`run -i`), so only a **user-set** relative value is at risk; and codex
-*canonicalizes* its home before hashing the keyring account, which means a
-relative value there also moves the keychain item, not just a file path. So the
-work is not "copy the warning twice": establish per tool whether a relative value
-is used verbatim (claude) or resolved (codex), then warn or refuse accordingly.
-The predicate already exists — `adapter.IsRelativeEnv` — so the code is small; the
-measurement is the work. Raised by the review of 1.5 rather than by an audit, and
-recorded here because the cheap-looking half would ship the wrong model for codex.
+- **claude 2.1.220 — verbatim, and the keychain item does *not* move.** Read from
+  the installed bundle: `AIl()` returns `process.env.CLAUDE_CONFIG_DIR` raw, and
+  the resolver is
+  `fn = Vr(() => (AIl() ?? join(homedir(), ".claude")).normalize("NFC"), AIl)` —
+  Unicode normalization and no path resolution. The identity file is
+  `join(process.env.CLAUDE_CONFIG_DIR || homedir(), ".claude<suffix>.json")`, and
+  `path.join` does not anchor a relative first segment. A corroborating string in
+  the same bundle asks that a subprocess's `CLAUDE_CONFIG_DIR` match the parent's
+  "same path, same separators" — claude treats the value as an opaque string.
+  **So the keychain service, which hashes that same raw string, resolves to the
+  *same item* for both processes**; what diverges is every file artifact. The
+  warning says so, because a warning that overstates its blast radius is the kind
+  users learn to ignore.
+- **codex 0.145.0 — canonicalized, and both stores move.** Behavioural, no login:
+  with `CODEX_HOME=relcfg` and a deliberately invalid `relcfg/config.toml`, codex
+  reported the error against `/private/var/.../relcfg/config.toml` — resolved
+  against **codex's** working directory and symlink-resolved. That canonical path
+  is what the keyring account hashes, so a relative value moves `auth.json` *and*
+  the `Codex Auth` item. From a directory with no `relcfg` in it, codex refuses to
+  start outright (`CODEX_HOME points to "relcfg", but that path does not exist`),
+  so the divergence is silent only when a directory of that name exists under both
+  working directories — which is precisely what the warning is for.
+
+Both **warn** rather than refuse, matching copilot: kae keeps honoring the
+variable, since there is no default to fall back to while it is set, and kae
+itself only ever sets these to absolute kae-owned paths — so only a user-set
+relative value is at risk. `TestRelativeConfigVariablesWarnPerTool` pins that the
+two messages stay different, which is the part a later edit would flatten.
 
 ---
 

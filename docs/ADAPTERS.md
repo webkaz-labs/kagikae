@@ -279,8 +279,18 @@ state. `doctor` and `status` carry the same hint as a warning.
 - **payload** the whole `auth.json` JSON (`tokens`, `OPENAI_API_KEY`,
   `auth_mode`, `last_refresh`) — file-mode-equivalent content.
 
-So the item is identified by **service + account**, and one service legitimately
-holds one item per codex home. Every read, write and delete is scoped to this
+**Every** keychain artifact kae ships is identified by **service + account**, and
+kae derives the account from the environment rather than reading it off the live
+item: claude's is `$USER` (its own validated rule, falling back to
+`claude-code-user`), cursor's the build-time constant `cursor-user`, agy's the
+literal `antigravity`, codex's the hash below. Preferring the live item's account
+— which kae did for claude and cursor until 2026-07-31 — makes one item created
+under a stale account capture every later write while the tool reads the account
+its rule names. `TestKeychainSpecsAreAccountScoped` refuses a spec that is not
+scoped.
+
+For codex specifically the item is identified by **service + account**, and one
+service legitimately holds one item per codex home. Every read, write and delete is scoped to this
 home's account (`KeychainMatchAccount`); the structure guard is that the payload
 parses as a JSON object containing `/tokens`. Identity auto-detection reads that
 payload's `id_token` email / `account_id` just like the file store.

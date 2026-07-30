@@ -110,10 +110,15 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   incompatible formulas: derive each in its own adapter and never port one.
   Consequently **never delete a keychain item by service name alone before writing**
   (`keychain.DeleteItem` on a service another home also uses): that deleted a second
-  `CODEX_HOME`'s codex login on every switch, shipped through v0.12.0. Scope
-  read/write/delete with `KeychainMatchAccount` whenever a service can hold more
-  than one legitimate item, and derive the account from the environment being
-  written — never from the live item, and never from a snapshot captured elsewhere.
+  `CODEX_HOME`'s codex login on every switch, shipped through v0.12.0. **Every**
+  keychain spec is `KeychainMatchAccount` now — a guard
+  (`TestKeychainSpecsAreAccountScoped`) refuses a new one that is not — and the
+  account is derived from the environment being written, never from the live item
+  and never from a snapshot captured elsewhere. The direction matters as much as
+  the scoping: kae used to prefer the *existing* item's account over the adapter's
+  when creating one, so a single item under a wrong account (a former `$USER`)
+  pinned every later write to it while the tool went on reading the account its own
+  rule names — the write succeeds, the item exists, and the tool reports no login.
 - A tool's credential can be a **set** of stores written as one unit, and kae must
   switch the whole set. cursor-agent's `setAuthentication` writes the access token,
   the refresh token and (for an api-key login) the api key together, and its logout

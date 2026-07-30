@@ -14,9 +14,11 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
-// errGlobalCredentialStore reports that a tool keeps one global credential store
-// that no isolation env var namespaces, so a bound directory cannot have its own
-// copy of it and kae must not write it.
+// errGlobalCredentialStore reports that kae cannot give a bound directory its own
+// copy of a tool's credential store, so it must not write one. The store may be
+// genuinely global, or scoped in a way kae has not verified for a bound directory
+// (codex's keyring item, scoped by an account derived from CODEX_HOME) — either
+// way the safe action is the same, and only the adapter may declare otherwise.
 //
 // Callers differ, matching how a tool with no isolation env var is already
 // handled: binding a *set* of tools warns and carries on (the others still bind,
@@ -35,9 +37,13 @@ var errGlobalCredentialStore = errors.New("credential store is not per-directory
 func warnUnisolatableCredential(err error, tool, account string) bool {
 	switch {
 	case errors.Is(err, errGlobalCredentialStore):
+		// Not "shares the global login": for the one tool that reaches this today
+		// (codex under the keyring store) the bound directory resolves a *different*
+		// keychain item, so it starts out with no login at all. Say that, and name
+		// the fix the user can actually apply.
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: %s keeps one global credential store, so this directory shares %s's login "+
-				"with every other directory (its settings and sessions are still isolated)\n", tool, tool)
+			"kae: warning: kae cannot bind %s's credential to this directory, so %s may have no login "+
+				"here until you log in inside it (its settings and sessions are still isolated)\n", tool, tool)
 		return true
 	case exitOf(err) == constants.ExitNotFound || exitOf(err) == constants.ExitAuthMissing:
 		fmt.Fprintf(os.Stderr,
@@ -84,13 +90,17 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		return nil // no such artifact on this platform
 	}
 	// Writing a keychain item for a bound directory is only isolation if the item
-	// belongs to that directory. codex's keyring item is one global `Codex Auth`
-	// whatever CODEX_HOME says, so writing it here would overwrite the *global*
-	// login — and KeychainReplace deletes the prior item first, leaving nothing to
-	// restore. Refuse before touching anything; the caller decides whether one
-	// unisolatable tool is fatal.
+	// belongs to that directory, and the adapter is what declares that its item
+	// moves with the isolation variable. Anything else is refused before touching
+	// the keychain; the caller decides whether one unisolatable tool is fatal.
+	//
+	// codex is the case that shows why the declaration is per-adapter and defaults
+	// to false. Its item *is* scoped by CODEX_HOME — through the account attribute,
+	// not the service name — but kae has never verified a bound directory end to
+	// end there (does codex resolve the bond dir to the same canonical path kae
+	// hashes?), so the capability stays undeclared rather than assumed.
 	if sp.Kind == constants.KindKeychain && !sp.KeychainDirScoped {
-		return fmt.Errorf("%w: %s keeps one global credential store that %s does not namespace",
+		return fmt.Errorf("%w: kae cannot give this directory its own %s credential store (%s)",
 			errGlobalCredentialStore, tool, isolationEnvVar(tool))
 	}
 	data, storedKind, err := app.snapshotCredential(ctx, be, tool, accountName, artName)

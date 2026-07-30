@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -706,9 +707,11 @@ func TestCodexKeyringRoundTrip(t *testing.T) {
 		writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"),
 			"cli_auth_credentials_store = \"keyring\"\n")
 
-		// codex logged in as main: one keychain item under its opaque account.
+		// codex logged in as main in this codex home: one keychain item, under the
+		// account codex derives from CODEX_HOME. The sim answers any account here so
+		// the derivation stays pinned in the codex package's golden test; what this
+		// test pins is that capture and apply agree on one item.
 		sim.present = true
-		sim.account = "cli|opaqueMAIN"
 		sim.payload = `{"tokens":{"access_token":"main-access","refresh_token":"main-refresh"}}`
 		captureCode, captureOut := captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "main") })
 		if captureCode != constants.ExitOK {
@@ -723,16 +726,17 @@ func TestCodexKeyringRoundTrip(t *testing.T) {
 		if strings.Contains(meta, "main-access") {
 			t.Fatalf("keyring token leaked into account.toml: %s", meta)
 		}
-		if !strings.Contains(meta, "cli|opaqueMAIN") {
-			t.Fatalf("captured keychain account missing from account.toml: %s", meta)
+		recorded := keychainAccountOf(t, meta)
+		if !strings.HasPrefix(recorded, "cli|") {
+			t.Fatalf("account.toml records no derived keychain account: %s", meta)
 		}
-		// A re-login as side replaced the live item (new opaque account).
-		sim.account = "cli|opaqueSIDE"
+		// A re-login as side rewrote the item's payload. Its account did not change:
+		// one codex home has one item, whatever account is logged in.
 		sim.payload = `{"tokens":{"access_token":"side-access","refresh_token":"side-refresh"}}`
 		if code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "side") }); code != constants.ExitOK {
 			t.Fatalf("capture side: %s", out)
 		}
-		// Switch back to main: delete the side item, recreate main's verbatim.
+		// Switch back to main: upsert this home's item, and nothing else.
 		sim.ops = nil // isolate the apply's keychain mutations
 		if code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "codex", "main") }); code != constants.ExitOK {
 			t.Fatalf("switch to main: %s", out)
@@ -740,13 +744,13 @@ func TestCodexKeyringRoundTrip(t *testing.T) {
 		if !sim.present {
 			t.Fatal("no Codex Auth item after switch")
 		}
-		// Apply must delete the prior item before writing the target's, so a
-		// single item remains (robust to service-only or service+account match).
-		if len(sim.ops) < 2 || sim.ops[0] != "delete" || sim.ops[1] != "add" {
-			t.Fatalf("expected delete-then-add on apply, got %v", sim.ops)
+		// A single add, no delete: `Codex Auth` holds one item per CODEX_HOME, so a
+		// delete on this path removed another codex home's login (shipped in v0.12.0).
+		if len(sim.ops) != 1 || sim.ops[0] != "add" {
+			t.Fatalf("expected a single add on apply, got %v", sim.ops)
 		}
-		if sim.account != "cli|opaqueMAIN" {
-			t.Fatalf("item account = %q, want cli|opaqueMAIN (captured verbatim)", sim.account)
+		if sim.account != recorded {
+			t.Fatalf("item account = %q, want the derived %q", sim.account, recorded)
 		}
 		if !strings.Contains(sim.payload, "main-access") || strings.Contains(sim.payload, "side-access") {
 			t.Fatalf("item payload not restored to main verbatim: %s", sim.payload)
@@ -754,11 +758,26 @@ func TestCodexKeyringRoundTrip(t *testing.T) {
 	})
 }
 
-// §C: a keyring item present but with an empty account attribute is refused at
-// capture rather than stored as an unusable snapshot (which apply could not
-// recreate correctly).
-func TestCodexKeyringEmptyAccountRefused(t *testing.T) {
-	sim := &keychainSim{present: true, account: "", payload: `{"tokens":{"access_token":"x"}}`}
+// keychainAccountOf extracts account.toml's recorded keychain_account.
+func keychainAccountOf(t *testing.T, meta string) string {
+	t.Helper()
+	m := regexp.MustCompile(`keychain_account = "([^"]*)"`).FindStringSubmatch(meta)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// A `Codex Auth` item belonging to *another* CODEX_HOME is not this home's
+// credential: capture must report none rather than storing a stranger's login
+// under this home's account. kae used to read the service's first item, so a
+// second codex home's credential was capturable — and then written back here.
+func TestCodexKeyringForeignHomeItemNotCaptured(t *testing.T) {
+	sim := &keychainSim{
+		present: true,
+		account: "cli|0000000000000000", // some other CODEX_HOME's item
+		payload: `{"tokens":{"access_token":"other-home-access"}}`,
+	}
 	runner.With(sim, func() {
 		app := testApp(t, nil)
 		app.Env.GOOS = "darwin"
@@ -767,7 +786,10 @@ func TestCodexKeyringEmptyAccountRefused(t *testing.T) {
 			"cli_auth_credentials_store = \"keyring\"\n")
 		code, out := captureStdout(t, func() int { return runCapture(ctx, app, commonOpts{Format: formatText}, "codex", "main") })
 		if code == constants.ExitOK {
-			t.Fatalf("expected capture to refuse an item with an empty account: %s", out)
+			t.Fatalf("expected capture to find no credential for this codex home: %s", out)
+		}
+		if strings.Contains(out, "other-home-access") {
+			t.Fatalf("another home's payload reached the output: %s", out)
 		}
 	})
 }

@@ -57,7 +57,8 @@ here are part of the command contract.
 - The codex keyring payload (the `Codex Auth` keychain item, v0.8.3 §C) **is** a
   credential and is treated like every other secret: captured verbatim into the
   secret backend, never written to stdout/JSON/logs/metadata; only the item's
-  opaque account id (`cli|<opaque>`, not a secret) is recorded in `account.toml`.
+  account attribute (`cli|<16 hex of sha256(CODEX_HOME)>` — derived from a path,
+  not a secret) is recorded in `account.toml`.
 - The agy keychain payload (the `gemini`/`antigravity` item, v0.8.6 §A) **is** a
   credential — an opaque ~686-byte token — and is treated identically: captured
   verbatim into the secret backend, never written to stdout/JSON/logs/metadata.

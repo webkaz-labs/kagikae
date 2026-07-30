@@ -36,15 +36,19 @@ type ArtifactRecord struct {
 	// which rejects the leading // comments. Empty for plain-JSON artifacts and
 	// for backups written before this field existed.
 	JSONC bool `json:"jsonc,omitempty"`
-	// KeychainReplace marks a keychain item whose account is a per-login opaque
-	// id (codex keyring), so a rollback deletes the live item before writing
-	// the backed-up one under KeychainAccount (the same single-item guarantee
-	// as apply). Empty for stable-account keychain items and older backups.
+	// KeychainReplace is **legacy**: kae no longer writes it. It marked codex's
+	// keyring item back when its account was modelled as an opaque per-login id and
+	// its service as holding one item, and it meant "delete every item of the
+	// service, then write" — which deleted another CODEX_HOME's login. Records
+	// carrying it restore as KeychainMatchAccount (specFromRecord): the recorded
+	// account is the item's, and only that item may be touched.
 	KeychainReplace bool `json:"keychain_replace,omitempty"`
-	// KeychainMatchAccount marks a keychain item kept under a fixed account of a
-	// service shared with other tools (agy's gemini/antigravity), so a rollback
-	// reads/writes/deletes only that account's item and never a sibling under a
-	// different account. Empty for service-only keychain items and older backups.
+	// KeychainMatchAccount marks a keychain item identified by service **and**
+	// account, because the service can hold more than one legitimate item: a
+	// service shared with other tools (agy's gemini/antigravity) or one item per
+	// tool home (codex's `Codex Auth`). A rollback then reads/writes/deletes only
+	// that account's item and never a sibling. Empty for single-item services
+	// (claude, cursor) and older backups.
 	KeychainMatchAccount bool `json:"keychain_match_account,omitempty"`
 	// Every field above is a fact about the captured artifact, needed to write it
 	// back. Nothing here records *policy* — whether losing a payload is

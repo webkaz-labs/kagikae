@@ -430,8 +430,14 @@ func TestCodexArtifactsFileAndKeyring(t *testing.T) {
 	}
 	sp := specs[0]
 	if sp.Kind != constants.KindKeychain || sp.Target != codex.KeychainService ||
-		sp.Pointer != "/tokens" || !sp.KeychainReplace {
+		sp.Pointer != "/tokens" || !sp.KeychainMatchAccount {
 		t.Fatalf("unexpected keyring spec: %+v", sp)
+	}
+	// The account is derived from CODEX_HOME (`cli|` + 16 hex), which is what scopes
+	// the item to one codex home; the exact derivation is pinned in the codex
+	// package's own golden test.
+	if len(sp.KeychainAccount) != len("cli|")+16 || !strings.HasPrefix(sp.KeychainAccount, "cli|") {
+		t.Fatalf("KeychainAccount = %q, want cli| + 16 hex", sp.KeychainAccount)
 	}
 }
 
@@ -474,14 +480,27 @@ func TestCodexHonorsCodexHome(t *testing.T) {
 	}
 }
 
-func TestCodexDetectMissingAuthWarnsAboutKeyring(t *testing.T) {
+// Only `auto` leaves the store ambiguous, so only `auto` speculates about the
+// keyring. An absent config.toml is upstream's `file` default, where a missing
+// auth.json means exactly one thing — codex is logged out — and inventing a
+// keyring possibility there is what let kae describe the wrong store.
+func TestCodexDetectMissingAuthWarnings(t *testing.T) {
 	env := testEnv(t, "linux", nil)
 	info, err := codexAdapter.Detect(context.Background(), env)
 	if err != nil || info.AuthPresent {
 		t.Fatalf("unexpected: %+v %v", info, err)
 	}
+	if len(info.Warnings) != 0 {
+		t.Fatalf("the file store must not speculate about a keyring: %+v", info.Warnings)
+	}
+	write(t, filepath.Join(env.Home, ".codex", "config.toml"),
+		"cli_auth_credentials_store = \"auto\"\n")
+	info, err = codexAdapter.Detect(context.Background(), env)
+	if err != nil || info.AuthPresent {
+		t.Fatalf("unexpected: %+v %v", info, err)
+	}
 	if len(info.Warnings) != 1 || !strings.Contains(info.Warnings[0], "keyring") {
-		t.Fatalf("expected keyring-possibility warning: %+v", info.Warnings)
+		t.Fatalf("expected keyring-possibility warning under auto: %+v", info.Warnings)
 	}
 }
 

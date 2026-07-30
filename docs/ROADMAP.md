@@ -108,13 +108,15 @@ Follow-up from v0.8.4 (not yet scheduled):
   reports "not logged in" (an honest failure, not a wrong credential — which is
   why this is not a release gate). A directory-scoped spec should write under the
   adapter-resolved account instead.
-- **codex's keyring store cannot be isolated per directory**: with
-  `cli_auth_credentials_store = "keyring"` codex keeps one global `Codex Auth`
-  keychain item, not namespaced by `CODEX_HOME`, so a bound directory cannot have
-  its own login. kae warns and leaves the item alone (writing it would change the
-  global login, and its `KeychainReplace` would delete the previous item first).
-  Fixing it needs upstream namespacing; until then `cli_auth_credentials_store =
-  "auto"` is the isolatable configuration.
+- **codex's keyring store is not yet isolated per directory** — a *capability gap*
+  now, not an upstream limitation. codex scopes the `Codex Auth` item by an account
+  derived from the canonical `CODEX_HOME` (see [ADAPTERS.md](ADAPTERS.md)), so a
+  bound directory could have its own item; kae warns and writes nothing because the
+  end-to-end path is unverified. What it needs: confirm codex canonicalizes the
+  bond dir to the same path kae hashes (bond dirs sit under kae's data dir, which
+  may itself be reached through symlinks), then declare `KeychainDirScoped` for the
+  keyring spec and add the pin round-trip to the real-machine gate. Until then a
+  pinned directory has no codex login until you log in inside it.
 - **claude's OAuth build suffix is not modelled**: the keychain service name is
   `Claude Code` + the build's OAuth suffix + `-credentials` + the per-config-dir
   suffix. kae hard-codes the production spelling (empty suffix); a local build, or
@@ -142,13 +144,11 @@ Follow-up from v0.8.4 (not yet scheduled):
 - **Remote share-list definitions (ship)**: implement the v0.6.0 design if
   it holds — published defaults for the overlay share list, explicit
   fetch, diff-before-adopt, hard-coded auth denylist.
-- **Codex keyring driver** *(v0.8.3 §C — discovery done)*: lift the detect-only
-  restriction on `cli_auth_credentials_store = "keyring"`. The item contract was
-  discovered on a real machine 2026-06-16 (service `Codex Auth`, account
-  `cli|<opaque>` captured verbatim, payload = whole `auth.json` JSON; see
-  [ADAPTERS.md](ADAPTERS.md)), so the verbatim-keychain driver is now
-  implementable with structure guards. The detect-only refusal stays until the
-  v0.8.3 driver lands (and its two-account real-keychain gate).
+- **Codex keyring driver** *(shipped v0.8.3; item contract corrected 2026-07-30)*:
+  `cli_auth_credentials_store = "keyring"` switches this codex home's `Codex Auth`
+  item, identified by service **and** the account codex derives from `CODEX_HOME`
+  (see [ADAPTERS.md](ADAPTERS.md)). The two-account real-keychain gate is still
+  open, and now also covers "a second `CODEX_HOME`'s login survives a switch".
 - **Login UX polish** *(v0.8.6 §C — claude verified; agy deferred)*: `claude
   /login` is launched via the upstream flow (`internal/cmd/login.go`); the
   "login flow exited without changing auth" case is detected and refused with

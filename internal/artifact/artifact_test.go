@@ -326,34 +326,47 @@ func TestKeychainKindRoundTrip(t *testing.T) {
 	}
 }
 
-// TestKeychainReplaceUsesCapturedAccount covers the codex-keyring path: a
-// KeychainReplace spec writes under its captured opaque account (not the live
-// item's) and deletes the prior item first, so exactly one item remains.
-func TestKeychainReplaceUsesCapturedAccount(t *testing.T) {
+// TestKeychainCodexHomesCoexist is the regression test for the shipped defect
+// this replaced: two CODEX_HOMEs hold two legitimate items under the one
+// `Codex Auth` service (codex keys them by an account derived from the home), and
+// kae switched by deleting the service's item — which deleted whichever home's
+// login happened to be there. Applying one home's credential must leave the other
+// home's item byte-identical and issue no delete at all.
+func TestKeychainCodexHomesCoexist(t *testing.T) {
 	ctx := context.Background()
-	fake := &fakeRunner{
-		payloads: map[string]string{"Codex Auth": `{"tokens":{"access_token":"live-other"}}`},
-		accounts: map[string]string{"Codex Auth": "cli|opaqueLIVE"},
-	}
+	const (
+		mine  = "cli|1111111111111111" // this CODEX_HOME
+		other = "cli|2222222222222222" // another CODEX_HOME, logged in too
+	)
+	otherItem := `{"tokens":{"access_token":"other-home"}}`
+	fake := &acctFakeRunner{items: map[string]string{
+		acctKey("Codex Auth", mine):  `{"tokens":{"access_token":"old"}}`,
+		acctKey("Codex Auth", other): otherItem,
+	}}
 	sp := Spec{
 		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
-		Pointer: "/tokens", KeychainAccount: "cli|opaqueTARGET", KeychainReplace: true,
+		Pointer: "/tokens", KeychainAccount: mine, KeychainMatchAccount: true,
 	}
 	const target = `{"tokens":{"access_token":"target"}}`
 	runner.With(fake, func() {
+		v, err := ReadLive(ctx, sp)
+		if err != nil || !v.Present || string(v.Data) != `{"tokens":{"access_token":"old"}}` {
+			t.Fatalf("read must come from this home's item: %+v %v", v, err)
+		}
 		if err := ApplyLive(ctx, sp, Value{Data: []byte(target), Present: true}); err != nil {
 			t.Fatal(err)
 		}
 	})
-	if fake.accounts["Codex Auth"] != "cli|opaqueTARGET" {
-		t.Fatalf("account = %q, want the captured cli|opaqueTARGET", fake.accounts["Codex Auth"])
+	if fake.items[acctKey("Codex Auth", mine)] != target {
+		t.Fatalf("this home's item = %q, want %q", fake.items[acctKey("Codex Auth", mine)], target)
 	}
-	if fake.payloads["Codex Auth"] != target {
-		t.Fatalf("payload = %q, want %q", fake.payloads["Codex Auth"], target)
+	if fake.items[acctKey("Codex Auth", other)] != otherItem {
+		t.Fatalf("another CODEX_HOME's login was destroyed: %q", fake.items[acctKey("Codex Auth", other)])
 	}
-	// The prior item must have been deleted before the write (a delete then an add).
-	if len(fake.writes) != 2 || fake.writes[0] != "Codex Auth" || fake.writes[1] != "Codex Auth" {
-		t.Fatalf("expected delete-then-add, got writes %v", fake.writes)
+	for _, w := range fake.writes {
+		if strings.HasPrefix(w, "delete:") {
+			t.Fatalf("a codex switch must not delete any item: %v", fake.writes)
+		}
 	}
 }
 
@@ -530,6 +543,20 @@ func (f *acctFakeRunner) Run(_ context.Context, name string, args ...string) (st
 		f.writes = append(f.writes, "add:"+key)
 		return "", "", 0
 	case "delete-generic-password":
+		if account == "" {
+			// A service-only delete removes *a* matching item regardless of account,
+			// which is the real CLI's behaviour and the hazard under a service holding
+			// several legitimate items. Modelled (rather than reported as not-found) so
+			// a regression to that form fails a test instead of passing silently.
+			for k := range f.items {
+				if strings.HasPrefix(k, service+"\x00") {
+					delete(f.items, k)
+					f.writes = append(f.writes, "delete:"+k)
+					return "", "", 0
+				}
+			}
+			return "", "security: ... could not be found ...", 44
+		}
 		key := acctKey(service, account)
 		if _, ok := f.items[key]; !ok {
 			return "", "security: ... could not be found ...", 44

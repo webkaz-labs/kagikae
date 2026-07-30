@@ -138,26 +138,6 @@ func (app *App) planTool(ctx context.Context, tool, accountName string) (toolPla
 	return plan, nil
 }
 
-// captureKeychainAccount reads the verbatim per-login account to persist for a
-// present KeychainReplace keychain item (codex keyring's `cli|<opaque>`),
-// refusing an item with no account attribute (apply could not recreate it).
-// For a non-replace or absent spec it returns ok=false so the caller keeps its
-// own default. It is the shared capture-or-refuse policy for the snapshot
-// (persistSnapshot) and backup (createBackup) paths.
-func captureKeychainAccount(ctx context.Context, tool string, sp artifact.Spec, present bool) (account string, ok bool, err error) {
-	if !sp.KeychainReplace || !present {
-		return "", false, nil
-	}
-	acctName, err := artifact.ReadKeychainAccount(ctx, sp)
-	if err != nil {
-		return "", false, fmt.Errorf("read %s keychain account: %w", tool, err)
-	}
-	if acctName == "" {
-		return "", false, fmt.Errorf("%s keychain item %q has no account attribute; cannot capture it safely", tool, sp.Target)
-	}
-	return acctName, true, nil
-}
-
 // loadState reads state.json.
 func (app *App) loadState() (*state.State, error) {
 	return state.Load(app.Paths.StateFile())
@@ -206,19 +186,10 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 					return meta, fmt.Errorf("store backup payload: %w", err)
 				}
 			}
-			// A per-login dynamic keychain account (codex keyring) is captured
-			// verbatim so a rollback recreates the right item; stable-account
-			// items keep the spec's constant account.
-			keychainAccount := sp.KeychainAccount
-			if acctName, ok, err := captureKeychainAccount(ctx, plan.Tool, sp, value.Present); err != nil {
-				return meta, err
-			} else if ok {
-				keychainAccount = acctName
-			}
 			meta.Artifacts = append(meta.Artifacts, backup.ArtifactRecord{
 				Tool: plan.Tool, Name: sp.Name, Kind: sp.Kind,
 				Target: sp.Target, Pointer: sp.Pointer,
-				KeychainAccount: keychainAccount, KeychainReplace: sp.KeychainReplace,
+				KeychainAccount:      sp.KeychainAccount,
 				KeychainMatchAccount: sp.KeychainMatchAccount,
 				JSONC:                sp.JSONC,
 				SecretRef:            ref, Present: value.Present,
@@ -392,12 +363,17 @@ func clearUnrecordedIdentity(ctx context.Context, meta backup.Meta, current map[
 // (including the keychain account, so a rollback recreates an item under the
 // tool's own account, not the generic fallback). IdentityOnly is deliberately
 // not recorded — see isIdentityOnly.
+//
+// A legacy record's `keychain_replace` (codex keyring, written before the item
+// was known to be account-scoped) restores as account-scoped: its recorded
+// account is the one the item had, and the flag's own semantics — delete every
+// item of the service, then write — is what removed another CODEX_HOME's login.
 func specFromRecord(rec backup.ArtifactRecord) artifact.Spec {
 	return artifact.Spec{
 		Name: rec.Name, Kind: rec.Kind, Target: rec.Target,
 		Pointer: rec.Pointer, KeychainAccount: rec.KeychainAccount,
-		KeychainReplace: rec.KeychainReplace, KeychainMatchAccount: rec.KeychainMatchAccount,
-		JSONC: rec.JSONC,
+		KeychainMatchAccount: rec.KeychainMatchAccount || rec.KeychainReplace,
+		JSONC:                rec.JSONC,
 	}
 }
 
@@ -518,14 +494,13 @@ func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error 
 		// An identity-only artifact missing from an older snapshot applies as absent:
 		// metaArt is the zero value, so Present=false removes it live (claude's
 		// /oauthAccount identity cache is then refetched from the token).
-		// A KeychainReplace item (codex keyring) carries its captured per-login
-		// account in the snapshot; the fresh adapter spec cannot know it (the
-		// target is not live), so restore it here before ApplyLive writes. Gated
-		// on the structural KeychainReplace flag (not just a non-empty field) so
-		// a stable-account item's adapter-supplied constant is never overridden.
-		if sp.KeychainReplace && metaArt.KeychainAccount != "" {
-			sp.KeychainAccount = metaArt.KeychainAccount
-		}
+		//
+		// A keychain account recorded in the snapshot is deliberately *not* restored
+		// over the spec's. Where a keychain item lives is the adapter's answer for
+		// the current environment; the snapshot's is the answer for the environment
+		// it was captured in, and applying that one is how kae writes an item the
+		// tool never reads (a snapshot taken under one CODEX_HOME applied under
+		// another).
 		// The snapshot's bytes and the freshly resolved spec must agree on payload
 		// shape. They can disagree because the spec comes from the *current*
 		// environment while the payload was captured under an earlier one — switching

@@ -371,7 +371,7 @@ the **login Keychain**, not a file. Lift the file-only agy adapter so kae can
 switch agy on macOS, mirroring the codex keyring driver (v0.8.3 §C):
 
 - **Item contract**: service `gemini`, account `antigravity` (a fixed literal,
-  **not** an opaque per-login id like codex's `cli|<opaque>`). The payload is a
+  **not** derived per tool home like codex's `cli|<hash of CODEX_HOME>`). The payload is a
   single **opaque ~686-byte token string** — not JSON. kae captures and applies
   it **verbatim** through `security` (the `internal/runner` seam), with a
   structure guard of "non-empty, single-line" (no JSON parse, unlike codex).
@@ -803,6 +803,14 @@ the target's (so exactly one active item exists); if service-only, an `add -U`
 replace suffices. The detect-only refusal (exit 10) is replaced by the working
 driver; `auto` store with neither `auth.json` nor a keyring item stays "not
 logged in".
+
+> **Settled 2026-07-30, and the guess above was wrong in the dangerous
+> direction.** codex matches by **service + account**, the account is *derived*
+> from `CODEX_HOME` (never opaque, never captured), and one service holds one item
+> per codex home — so the delete-before-add this section chose deleted another
+> home's login. Current contract: [ADAPTERS.md](ADAPTERS.md) § "Keyring item
+> contract"; the assumption row and its login-free verification:
+> [VALIDATION.md](VALIDATION.md) § "Upstream Behaviour Assumptions".
 
 ### D. Store and display the detected account identity
 

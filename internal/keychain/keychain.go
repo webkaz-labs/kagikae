@@ -104,6 +104,31 @@ func decodeHexPayload(s string) ([]byte, bool) {
 	return decoded, true
 }
 
+// ItemExistsForAccount reports whether the service has an item under account,
+// reading its attributes only — never the payload (`-w`) — so it can answer
+// "is the item there" without touching a secret or prompting for access to one.
+//
+// It exists for a store whose location depends on that answer: codex's `auto`
+// mode reads the keyring item when it exists and auth.json only when it does
+// not, so kae has to ask the same question to resolve the same store.
+//
+// ponytail: no read cache, unlike readItem/ItemAccount. The probe runs once per
+// artifact resolution and reads no payload; cache it here (keyed like itemKey,
+// with invalidate extended to prefix-match accounts) if it ever shows up as
+// repeated subprocesses in a profile.
+func ItemExistsForAccount(ctx context.Context, service, account string) (bool, error) {
+	_, stderr, code := runner.Run(ctx, "security",
+		"find-generic-password", "-s", service, "-a", account)
+	if code == 0 {
+		return true, nil
+	}
+	if strings.Contains(stderr, NotFoundMarker) {
+		return false, nil
+	}
+	return false, fmt.Errorf("security find-generic-password %q (account %q) failed (exit %d)",
+		service, account, code)
+}
+
 // ItemAccount returns the account attribute of the service's item.
 func ItemAccount(ctx context.Context, service string) (string, bool, error) {
 	if c := cacheFrom(ctx); c != nil {

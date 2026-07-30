@@ -24,10 +24,14 @@ type Artifact struct {
 	Kind    string `toml:"kind"`
 	Target  string `toml:"target"`
 	Pointer string `toml:"pointer,omitempty"`
-	// KeychainAccount is the captured account attribute of a KeychainReplace
-	// item (codex keyring's per-login `cli|<opaque>` id), recorded verbatim so
-	// apply recreates the right item. Empty for stable-account keychain items
-	// (claude/cursor) and non-keychain artifacts.
+	// KeychainAccount records which item of the service the payload came from
+	// (claude's `$USER`, codex's `cli|<16 hex of sha256(CODEX_HOME)>`), for
+	// diagnosis only — empty for non-keychain artifacts.
+	//
+	// Apply deliberately ignores it: where a keychain item lives is the adapter's
+	// answer for the environment being written, and this is the answer for the
+	// environment the snapshot was captured in. Restoring it over the spec's is how
+	// a snapshot taken under one CODEX_HOME would write the item of another.
 	KeychainAccount string `toml:"keychain_account,omitempty"`
 	SecretRef       string `toml:"secret_ref"`
 	Present         bool   `toml:"present"`

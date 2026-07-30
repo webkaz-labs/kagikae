@@ -71,6 +71,23 @@ Follow-up from v0.8.4 (not yet scheduled):
 
 ## Hardening backlog — daily-use robustness
 
+- **`PinID` does not resolve symlinks, and changing that needs a migration**
+  (recorded 2026-07-31, deliberately not fixed). `paths.PinID` hashes
+  `filepath.Abs` only, so two path aliases for one directory — a symlinked
+  project dir, `/tmp` on macOS — are two pins. In practice they still share one
+  store, because the fragment that selects it lives *in* the directory; the split
+  only appears when `kae pin` is re-run through the other alias, which orphans
+  the first store, and `kae unpin --purge` through that alias then sweeps nothing.
+  Canonicalizing would fix that but re-key the store of **every** user whose path
+  contains a symlink, moving their sessions and per-directory credential and
+  stranding the old keychain items (which are named by the old path). So the
+  prerequisite is a migration: at pin time, detect a store under the unresolved id
+  with no resolved counterpart, sweep its items *before* renaming the directory,
+  and say so. Note that codex parity is **not** a reason to hurry — `codex.storeKey`
+  already resolves symlinks itself, so kae's keyring account matches whatever shape
+  `PinID` takes. `doctor`'s `pin_stale` now makes an orphaned store visible, which
+  was the part that used to be silent.
+
 - **Surface vocabulary unification (`run` / `apply` / `mise init`)** *(shipped
   in v0.8.0 — see [RELEASE.md](RELEASE.md))*: folded `apply` into `use`,
   redesigned `run` onto `-s`/`-i`/`--env`, trimmed `mise init`, and hard-renamed

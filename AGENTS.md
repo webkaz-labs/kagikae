@@ -74,6 +74,18 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   path or a service name at the call site; and when a write to the authoritative
   store fails, return the error — a fallback to the secondary store reports
   success while the tool reads something else.
+- **A per-directory keychain item has to be removed when nothing points at it any
+  more**, and the sweep (`pruneDirCredentials`) mirrors the write gate exactly:
+  keychain items only, only where the adapter declares them `KeychainDirBindable`.
+  The asymmetry with a file store is deliberate — a file credential lives *inside*
+  the store directory, which `kae unpin` and a mode toggle keep on purpose, while an
+  item lives under a per-directory service name that appears nowhere in kae's data
+  dir and cannot be enumerated on darwin, so nothing could ever find it again.
+  Two things must move in lockstep with it: a **third** per-directory mechanism
+  (today `shared` and `isolated`) has to be added to `dirCredentialStores`, or its
+  stores are silently never swept; and the sweep must run **after** the new binding
+  is written, or a mid-sequence failure leaves the live binding pointing at a store
+  whose credential is already gone.
 - **A keychain item's identity is service + account, and per-tool.** codex derives
   the account of its single-service `Codex Auth` item from `CODEX_HOME`
   (`cli|` + 16 hex of sha256 over the **canonicalized** path — symlinks resolved),

@@ -243,12 +243,12 @@ func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 	if drv == constants.DriverClaudeKeychainPatch {
 		service, dirScoped := keychainService(env)
 		credential = artifact.Spec{
-			Name:              "claude_ai_oauth",
-			Kind:              constants.KindKeychain,
-			Target:            service,
-			Pointer:           "/claudeAiOauth",
-			KeychainAccount:   keychainAccount(env),
-			KeychainDirScoped: dirScoped,
+			Name:                "claude_ai_oauth",
+			Kind:                constants.KindKeychain,
+			Target:              service,
+			Pointer:             "/claudeAiOauth",
+			KeychainAccount:     keychainAccount(env),
+			KeychainDirBindable: dirScoped,
 		}
 	}
 	return []artifact.Spec{credential, oauthAccountSpec(env)}, nil

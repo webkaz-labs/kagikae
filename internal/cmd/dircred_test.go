@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
@@ -115,5 +116,117 @@ func TestPrepareBondWarnsOnGlobalStoreAndKeepsBinding(t *testing.T) {
 	// keyring, so a file here would be a plaintext secret nothing reads.
 	if _, statErr := os.Stat(filepath.Join(bondDir, "auth.json")); !os.IsNotExist(statErr) {
 		t.Error("no credential file may be written for a tool that reads a global keyring")
+	}
+}
+
+// prunableApp is the shared setup of the sweep tests: a temp-HOME app on the
+// keychain driver (darwin — a file store has nothing invisible to sweep) plus the
+// pin id of a directory that is not the test's cwd, since the sweep takes the id
+// from its caller.
+func prunableApp(t *testing.T) (*App, string) {
+	t.Helper()
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	return app, paths.PinID(t.TempDir())
+}
+
+func mkdirs(t *testing.T, dirs ...string) {
+	t.Helper()
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// The teardown mirrors the write gate: a per-directory keychain item exists only
+// where the adapter declares the item bindable, so that is exactly what a sweep
+// removes. The stale store here is an isolated store for an account the directory
+// no longer binds.
+func TestPruneDirCredentialsRemovesSupersededItem(t *testing.T) {
+	app, pinID := prunableApp(t)
+	stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
+	bound := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+	mkdirs(t, stale, bound)
+
+	fake := &runnertest.Fake{Code: 0}
+	var lines []string
+	runner.With(fake, func() {
+		lines = app.pruneDirCredentials(context.Background(), pinID, "", map[string]bool{bound: true})
+	})
+
+	args := strings.Join(fake.Args, " ")
+	if !strings.Contains(args, "delete-generic-password") || !strings.Contains(args, sha8Of(stale)) {
+		t.Fatalf("the superseded item was not deleted: %q %v", fake.Name, fake.Args)
+	}
+	if strings.Contains(args, sha8Of(bound)) {
+		t.Fatalf("the bound store's item must survive: %v", fake.Args)
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], stale) {
+		t.Fatalf("the removal must be reported: %v", lines)
+	}
+}
+
+// Two stores a sweep must never touch: one the binding still points at, and one
+// whose credential is not a bindable keychain item at all. codex's keyring item is
+// the second case — kae never wrote it for this directory, so removing it would
+// delete a login kae does not own (the same asymmetry writeDirCredential refuses).
+func TestPruneDirCredentialsSkipsBoundAndUnbindableStores(t *testing.T) {
+	app, pinID := prunableApp(t)
+	claudeStore := app.Paths.SharedDir(pinID, constants.ToolClaude)
+	codexStore := app.Paths.SharedDir(pinID, constants.ToolCodex)
+	mkdirs(t, claudeStore, codexStore)
+	seedKeyringCodex(t, codexStore)
+
+	fake := &runnertest.Fake{Code: 0}
+	var lines []string
+	runner.With(fake, func() {
+		lines = app.pruneDirCredentials(context.Background(), pinID, "", map[string]bool{claudeStore: true})
+	})
+
+	if fake.Name != "" {
+		t.Fatalf("nothing was superseded, yet the keychain was touched: %q %v", fake.Name, fake.Args)
+	}
+	if len(lines) != 0 {
+		t.Fatalf("nothing to report: %v", lines)
+	}
+}
+
+// onlyTool is what keeps a single-tool re-bind from sweeping a sibling tool's
+// store, which the same fragment still binds.
+func TestPruneDirCredentialsHonorsToolFilter(t *testing.T) {
+	app, pinID := prunableApp(t)
+	claudeStore := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
+	codexStore := app.Paths.IsolatedConfigDir(pinID, constants.ToolCodex, "side")
+	mkdirs(t, claudeStore, codexStore)
+
+	fake := &runnertest.Fake{Code: 0}
+	runner.With(fake, func() {
+		app.pruneDirCredentials(context.Background(), pinID, constants.ToolCodex, nil)
+	})
+	if strings.Contains(strings.Join(fake.Args, " "), sha8Of(claudeStore)) {
+		t.Fatalf("a sibling tool's store must be out of scope: %v", fake.Args)
+	}
+}
+
+// The delete primitive treats "no such item" as success, so the sweep probes
+// first: a store that never had an item must not be announced as cleaned up, and
+// nothing should be deleted for it either.
+func TestPruneDirCredentialsReportsNothingWhenNoItemExists(t *testing.T) {
+	app, pinID := prunableApp(t)
+	stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
+	mkdirs(t, stale)
+
+	fake := &runnertest.Fake{Stderr: "security: " + keychain.NotFoundMarker, Code: 44}
+	var lines []string
+	runner.With(fake, func() {
+		lines = app.pruneDirCredentials(context.Background(), pinID, "", nil)
+	})
+
+	if len(lines) != 0 {
+		t.Fatalf("an absent item must not be reported as removed: %v", lines)
+	}
+	if args := strings.Join(fake.Args, " "); strings.Contains(args, "delete-generic-password") {
+		t.Fatalf("nothing to delete, yet a delete ran: %v", fake.Args)
 	}
 }

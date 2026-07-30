@@ -576,6 +576,30 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
       account **without** one, `cursor-api-key` is absent (kae removed it) rather
       than still holding the other account's key.
 
+**codex per-directory keyring bind** (macOS, two codex homes — open; this is the
+gate that must pass **before** codex is dropped from `bindableNotYetDeclared` in
+`TestKeychainDirBindableMatchesTheItemIdentity`). Everything else is in place: the
+account derivation is measured (§ "Upstream Behaviour Assumptions"), the flag now
+measures item identity, and the teardown ships. What has never run is the whole
+round-trip, and the failure it would hide is kae writing an item under an account
+codex does not look up from that directory:
+
+- [ ] With `cli_auth_credentials_store = "keyring"` and two captured accounts,
+      `kae pin -i <profile>` in a scratch directory reports no unisolatable-credential
+      warning for codex, and
+      `security find-generic-password -s "Codex Auth" -a "cli|<16 hex of sha256 of
+      the realpath of the pin config dir>"` (attributes only, hash computed with
+      `shasum` outside kae) finds the item.
+- [ ] In that directory, with mise active, a fresh `codex login status` names the
+      bound account — the check that kae's account and codex's agree.
+- [ ] The **global** `Codex Auth` item is untouched: its account attribute still
+      resolves from `~/.codex` and its login still works outside the directory.
+- [ ] `kae pin -s <profile>` in the same directory: the isolated store's item is
+      gone (attributes probe returns not-found) and codex in the directory now reads
+      the shared store's item.
+- [ ] `kae unpin --purge`: both are gone, the global item survives, and the store
+      directories remain.
+
 Run with a committed tree and a throwaway/second account; record the result in
 the Release Acceptance Log below.
 
@@ -939,7 +963,7 @@ commit**. Verifying an assumption always means launching a **fresh** tool proces
 | Tool | Assumption | How to verify | Verified on |
 |---|---|---|---|
 | codex | `auth.json` holds only auth state, so the whole file may be swapped | switch, then `codex login status` in a fresh process names the applied account; `config.toml` and history are untouched | 0.145.0 |
-| codex | the `Codex Auth` keyring item is identified by service **and account**, where the account is a **rule**: `cli\|` + the first 16 hex chars of `sha256(canonical CODEX_HOME)` (symlink-resolved, absolute — codex canonicalizes the path before hashing, and refuses to start when it does not resolve). One service therefore holds **one item per codex home**, all legitimate, and codex's own delete is service+account scoped | Read `codex-rs/login/src/auth/storage.rs` (`compute_store_key`, `DirectKeyringAuthStorage::delete`) at the tag matching `codex --version` — codex is public, so this is a file read, not a measurement. Beware: `compute_store_key` exists in **two** modules and symbol-grepping the stripped binary finds the MCP-OAuth one first. To confirm against a live item without a real login: `printf 'sk-not-a-real-key' \| CODEX_HOME=<temp> codex login --with-api-key` (a purely local write, no network), then `security find-generic-password -s "Codex Auth" -a "cli\|$(printf '%s' "$(python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' <temp>)" \| shasum -a 256 \| cut -c1-16)"` — attributes only, never `-w`. Clean up with `CODEX_HOME=<temp> codex logout` (its own scoped delete), not `security delete-generic-password`. Modelling the account as an opaque per-login id made a kae switch delete another `CODEX_HOME`'s login | 0.145.0 (source + live item, 2026-07-30) |
+| codex | the `Codex Auth` keyring item is identified by service **and account**, where the account is a **rule**: `cli\|` + the first 16 hex chars of `sha256(canonical CODEX_HOME)` (symlink-resolved, absolute — codex canonicalizes the path before hashing, and refuses to start when it does not resolve). One service therefore holds **one item per codex home**, all legitimate, and codex's own delete is service+account scoped | Read `codex-rs/login/src/auth/storage.rs` (`compute_store_key`, `DirectKeyringAuthStorage::delete`) at the tag matching `codex --version` — codex is public, so this is a file read, not a measurement. Beware: `compute_store_key` exists in **two** modules and symbol-grepping the stripped binary finds the MCP-OAuth one first. To confirm against a live item without a real login: `printf 'sk-not-a-real-key' \| CODEX_HOME=<temp> codex login --with-api-key` (a purely local write, no network), then `security find-generic-password -s "Codex Auth" -a "cli\|$(printf '%s' "$(python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' <temp>)" \| shasum -a 256 \| cut -c1-16)"` — attributes only, never `-w`. Clean up with `CODEX_HOME=<temp> codex logout` (its own scoped delete), not `security delete-generic-password`. Modelling the account as an opaque per-login id made a kae switch delete another `CODEX_HOME`'s login. **Also confirmed for a path reached through a symlink** (2026-07-30), which is the case that matters for a bond dir: with `CODEX_HOME` set to `<tmp>/link/shared/<pinID>/codex` where `link -> real`, codex created the item under the account of the **resolved** path and the raw-path account was absent — so kae's `EvalSymlinks` step is required, not defensive | 0.145.0 (source + live item, 2026-07-30) |
 | codex | `cli_auth_credentials_store` is the enum `file` (**the default for an absent key**) \| `keyring` \| `auto` \| `ephemeral`, and `auto` reads the keyring **first**, falling back to `auth.json` only when the item is absent or unreadable. A successful keyring write **deletes** the `auth.json` fallback. `[features] secret_auth_storage` (default: on only on Windows) swaps the keyring backend for an encrypted secrets file, so the credential is not in the item at all | Same file plus `codex-rs/config/src/types.rs` (`AuthCredentialsStoreMode`, `#[default] File`) and `AutoAuthStorage::load`. The delete-the-file half is also live-confirmed: after `codex login --with-api-key` under a keyring store, `CODEX_HOME/auth.json` is gone. Treating everything that is not `keyring` as the file store is what would let kae write `auth.json` while codex reads the item — the failure shape that shipped for claude's per-directory keychain item | 0.145.0 (source + live, 2026-07-30) |
 | codex | **Open (Linux/WSL).** Under `auto`, kae resolves `auth.json` off macOS on the assumption that a keyring codex could use is not holding the credential. codex's keyring crate does reach the Linux Secret Service, so a desktop with one running is the codex-shaped repeat of the macOS pin defect: kae would switch a file codex no longer reads | Needs a Linux box with a running Secret Service: set `cli_auth_credentials_store = "auto"`, log in, and see which store codex wrote (`secret-tool search`-equivalent attributes, plus whether `auth.json` was deleted). If it uses the keyring, kae must refuse `auto` there too, the way it already refuses keyring-only. Until then treat the Linux `auto` path as unverified rather than confirmed | not verified |
 | agy | of the shared `gemini` keychain service, only account `antigravity` is agy's; siblings belong to the Gemini ecosystem and must never be read or written | switch, confirm a fresh agy session reports the applied account and a sibling `gemini` item is unchanged | 1.0.10 |

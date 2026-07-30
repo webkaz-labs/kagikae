@@ -10,6 +10,8 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
+	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
 // overlayTestApp (pin_test.go) defines profile "main" = {claude:main, agy:main}
@@ -347,4 +349,126 @@ func TestUnpinDeletesFragment(t *testing.T) {
 	// A second unpin with neither a fragment nor a legacy block is not_found.
 	code, out = captureStdout(t, func() int { return CmdUnpin(context.Background(), nil) })
 	mustExit(t, constants.ExitNotFound, code, out)
+}
+
+// A mode toggle moves every tool to the other mechanism's store, so the store the
+// directory used before is unreachable the moment the fragment is rewritten. Its
+// keychain item is invisible from the directory tree, so kae removes it rather than
+// leaving a credential nothing points at.
+func TestRunPinModeToggleRemovesTheOldModesItem(t *testing.T) {
+	app := overlayTestApp(t)
+	app.Env.GOOS = "darwin" // the keychain driver: the store is an item, not a file
+	chdirTemp(t)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinID := paths.PinID(cwd)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	payload := `{"claudeAiOauth":{"accessToken":"` + mainToken + `"}}`
+	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
+		captureClaude(t, app, "main", mainToken)
+	})
+
+	isolatedDir := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
+		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+			t.Fatalf("pin --isolated exit %d", code)
+		}
+	})
+
+	fake := &runnertest.Fake{Stdout: payload, Code: 0}
+	var out string
+	runner.With(fake, func() {
+		var code int
+		code, out = captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+		mustExit(t, constants.ExitOK, code, out)
+	})
+	if !strings.Contains(out, isolatedDir) {
+		t.Fatalf("the superseded store must be reported as removed:\n%s", out)
+	}
+	// The store directory itself stays: it holds the sessions and settings a re-pin
+	// restores, and only the credential was unreachable.
+	if _, err := os.Stat(isolatedDir); err != nil {
+		t.Fatalf("the isolated store dir must survive a mode toggle: %v", err)
+	}
+}
+
+// unpin leaves everything by default — the promise that makes re-pinning restore a
+// directory — and --purge is the opt-in for the one part that is invisible.
+func TestUnpinPurgeRemovesTheItemAndPlainUnpinDoesNot(t *testing.T) {
+	for _, purge := range []bool{false, true} {
+		t.Run(map[bool]string{false: "plain", true: "purge"}[purge], func(t *testing.T) {
+			app := overlayTestApp(t)
+			app.Env.GOOS = "darwin"
+			chdirTemp(t)
+			cwd, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			pinID := paths.PinID(cwd)
+			ctx := context.Background()
+			payload := `{"claudeAiOauth":{"accessToken":"` + mainToken + `"}}`
+			runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
+				captureClaude(t, app, "main", mainToken)
+				if code := runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared); code != constants.ExitOK {
+					t.Fatal("pin failed")
+				}
+			})
+			sharedDir := app.Paths.SharedDir(pinID, constants.ToolClaude)
+
+			fake := &runnertest.Fake{Code: 0}
+			runner.With(fake, func() {
+				if code, out := captureStdout(t, func() int { return runUnpin(ctx, app, commonOpts{Format: formatText}, purge) }); code != constants.ExitOK {
+					t.Fatalf("unpin exit %d: %s", code, out)
+				}
+			})
+			deleted := strings.Contains(strings.Join(fake.Args, " "), sha8Of(sharedDir))
+			if deleted != purge {
+				t.Fatalf("purge=%v: item deleted=%v (ran %q %v)", purge, deleted, fake.Name, fake.Args)
+			}
+		})
+	}
+}
+
+// An isolated re-bind re-keys the store by account, so the account the directory
+// left behind owns a store nothing points at. Its item goes; a sibling tool's does
+// not, because the same fragment still binds that one.
+func TestPinRebindIsolatedRemovesThePreviousAccountsItem(t *testing.T) {
+	app := overlayTestApp(t)
+	app.Env.GOOS = "darwin"
+	chdirTemp(t)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinID := paths.PinID(cwd)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	payload := `{"claudeAiOauth":{"accessToken":"` + mainToken + `"}}`
+
+	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
+		captureClaude(t, app, "main", mainToken)
+		captureClaude(t, app, "beta", sideToken)
+		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+			t.Fatal("pin --isolated failed")
+		}
+	})
+	oldDir := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+	newDir := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "beta")
+
+	fake := &runnertest.Fake{Stdout: payload, Code: 0}
+	var out string
+	runner.With(fake, func() {
+		var code int
+		code, out = captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "beta") })
+		mustExit(t, constants.ExitOK, code, out)
+	})
+	if !strings.Contains(out, oldDir) {
+		t.Fatalf("the previous account's store must be reported as removed:\n%s", out)
+	}
+	if strings.Contains(out, newDir) {
+		t.Fatalf("the newly bound store must not be swept:\n%s", out)
+	}
 }

@@ -211,6 +211,16 @@ refuses adding credential files (`.credentials.json`, `auth.json`, etc.) to
 the `shared_denylist_extra` or `isolated_shared_items` config keys. This
 prevents accidentally leaking credentials across directories.
 
+**A per-directory keychain item is removed once nothing points at it.** A `-s` ↔
+`-i` toggle or an isolated re-bind supersedes a store, and its item would otherwise
+keep a credential that cannot be found again: it lives under a per-directory
+service name, so it appears nowhere in kae's data dir, and the darwin keychain
+cannot be enumerated, so `secret_orphan` cannot report it either. The sweep is
+scoped by the item identity the adapter resolves for that directory, so it can only
+reach the directory's own item and never a global login; store directories, with
+their sessions and settings, are left intact. `kae unpin` keeps the current
+credentials (a re-pin restores the directory); `kae unpin --purge` removes them.
+
 ## Env Profiles And kae run
 
 - `kae env set ... KEY=VALUE` receives the value via argv, which also lands

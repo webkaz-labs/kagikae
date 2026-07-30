@@ -128,10 +128,19 @@ const (
 	GlobalSegment   = "global"   // global isolated homes (kae use --isolated)
 )
 
+// PinDir returns the root of one bound directory's per-directory stores,
+// isolation/<pinID>: the parent of every tool's shared/ and isolated/ store.
+// Callers walk it to find the stores a directory has actually materialized,
+// which is how a superseded store is found without an index of bound
+// directories (cmd.dirCredentialStores).
+func (p Paths) PinDir(pinID string) string {
+	return filepath.Join(p.IsolationDir(), pinID)
+}
+
 // toolIsolDir returns the per-tool isolation root isolation/<pinID>/<tool>
 // shared by SharedDir and IsolatedConfigDir.
 func (p Paths) toolIsolDir(pinID, tool string) string {
-	return filepath.Join(p.IsolationDir(), pinID, tool)
+	return filepath.Join(p.PinDir(pinID), tool)
 }
 
 // SharedDir returns the config directory for the per-directory shared

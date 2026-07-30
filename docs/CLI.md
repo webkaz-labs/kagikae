@@ -26,7 +26,9 @@ kae use [-s|-i] <profile>            # switch every enabled tool now, global (al
 kae use [-s|-i] <tool> <account>     # switch one tool now, global
 kae pin [-s|-i] [<profile>]          # bind this directory (alias: kae p; default shared)
 kae pin [-s|-i] <tool> <account>     # re-bind one tool in this directory
-kae unpin                            # delete the kae-owned mise fragment
+kae unpin [--purge]                  # delete the kae-owned mise fragment
+                                     # --purge: also delete this directory's
+                                     # per-directory keychain credentials
 kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>
                                      # run cmd with an account applied (alias: kae r)
 kae env set <tool> <account> KEY=VALUE...          # store env-mode variables
@@ -333,6 +335,21 @@ one-tool re-bind never leaves a stale git/token identity bound; see
 also strips a pre-v0.7.2 kagikae marker block from `mise.toml` (so `kae unpin &&
 kae pin` migrates cleanly), leaving the user's own `mise.toml` content and any
 isolation directories (with their login state) intact.
+
+Both commands sweep a **superseded per-directory keychain credential**: a `-s` ↔
+`-i` toggle moves every tool to the other mechanism's store and an isolated
+re-bind re-keys the store by account, so the store the directory used before is
+unreachable, and its keychain item would otherwise hold a credential nothing
+points at — invisible, since it lives under a per-directory service name and the
+darwin keychain cannot be enumerated. Only the item goes: the store directory, its
+sessions and its settings stay, and a file-backed per-directory credential is left
+alone because it lives *inside* that directory. The sweep runs after the new
+binding is in place, reports each removal, and never changes the exit code.
+
+`kae unpin --purge` extends that to the directory's *current* stores, which plain
+`unpin` deliberately keeps so a re-pin restores the directory. Sessions and
+settings survive `--purge` too; only the credentials go, and a re-pin restores them
+from the account snapshots.
 
 `kae pin` defaults to **shared** (`-s`); pass `-i` for isolated:
 

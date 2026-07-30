@@ -305,7 +305,7 @@ globally.
 | `kae` / `kae status` (`kae s`) | Show what is active per tool. |
 | `kae use <profile\|tool account>` (`kae u`) | Switch globally (`-i` isolated, `--quiet` for hooks). |
 | `kae pin [<profile>]` (`kae p`) | Bind the current directory (`-i` isolated). |
-| `kae unpin` | Remove the directory binding. |
+| `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials (sessions and settings are kept). |
 | `kae run <tool> <account> [-- <cmd>]` (`kae r`) | Run one process under an account (`-s`/`-i`/`--env`). |
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
 | `kae ls` | List accounts and profiles in one view. |

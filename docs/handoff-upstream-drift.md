@@ -165,7 +165,12 @@ Three consequences, all now confirmed:
    is a capability kae currently declines. Safe, but wrong; and it means
    `KeychainDirScoped` as currently defined ("the *service name* moves") is too
    narrow a question. The real question is "does the *item identity* move", which
-   for codex means the account.
+   for codex means the account. **Done**: the flag is now `KeychainDirBindable` and
+   its parity guard derives the truth from `Target` + `KeychainAccount` — which also
+   revealed that the guard had been skipping codex entirely (no `config.toml` in the
+   probe dirs meant its spec resolved to `auth.json`, not the keychain). The
+   capability itself still waits on the item's lifecycle
+   ([ROADMAP.md](ROADMAP.md)).
 2. **kae's delete is broader than codex's, and that is destructive.**
    `artifact.Spec.KeychainReplace` deletes via `keychain.DeleteItem(service)` —
    **service only**. With two codex homes there are two legitimate items under

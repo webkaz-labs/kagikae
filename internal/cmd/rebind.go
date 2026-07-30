@@ -73,19 +73,22 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	effective[tool] = accountName
 	profile := app.Config.MatchProfile(effective)
 
-	var envDir string // fragment env entry to repoint (isolated only)
+	var envDir string   // fragment env entry to repoint (isolated only)
+	var boundDir string // the store this tool reads after the re-bind
 	switch info.Mode {
 	case paths.SharedSegment:
 		sharedDir := app.Paths.SharedDir(pinID, tool)
 		if err := app.writeDirCredential(ctx, be, tool, accountName, sharedDir); err != nil {
 			return finish(opts, fmt.Errorf("swap shared credential for %s: %w", tool, err))
 		}
+		boundDir = sharedDir
 	case paths.IsolatedSegment:
 		newDir, err := app.preparePinConfig(ctx, be, tool, accountName, pinID)
 		if err != nil {
 			return finish(opts, fmt.Errorf("prepare isolated config for %s/%s: %w", tool, accountName, err))
 		}
 		envDir = newDir
+		boundDir = newDir
 	default:
 		return finish(opts, errf(constants.ExitError,
 			"fragment %s has an unrecognized mode %q", fragmentRelPath, info.Mode))
@@ -104,6 +107,11 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	if err := rebindFragment(tool, accountName, envDir, profile, companionLines, redactions); err != nil {
 		return finish(opts, fmt.Errorf("update %s: %w", fragmentRelPath, err))
 	}
+	// In isolated mode the store is keyed by account, so the previous account's dir
+	// is now unreachable and its keychain item would keep that credential with
+	// nothing pointing at it. Scoped to this tool: a sibling tool's store is still
+	// bound by the same fragment. (Shared mode re-uses one dir, so nothing is stale.)
+	reportPruned(app.pruneDirCredentials(ctx, pinID, tool, map[string]bool{boundDir: true}))
 	fmt.Printf("Re-bound %s to account %s (%s; sessions/settings unchanged)\n", tool, accountName, info.Mode)
 	return constants.ExitOK
 }

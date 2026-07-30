@@ -58,18 +58,22 @@ type Spec struct {
 	// per-login id and its service as single-item is what made a switch delete
 	// another CODEX_HOME's login. See docs/ADAPTERS.md.
 	KeychainMatchAccount bool
-	// KeychainDirScoped marks a KindKeychain item whose service name is derived
-	// from the tool's isolation env var, so each bound directory resolves to its
-	// own item (claude on macOS: `Claude Code-credentials-<sha8(configDir)>`).
+	// KeychainDirBindable marks a KindKeychain item whose **identity** is derived
+	// from the tool's isolation env var, so each bound directory resolves to its own
+	// item. An item's identity is service + account, and either half can be what
+	// moves: claude's service name does (`Claude Code-credentials-<sha8(configDir)>`)
+	// while codex's account does (`cli|<16 hex of sha256(canonical CODEX_HOME)>`
+	// under one fixed service). The flag is about the whole identity because that is
+	// what its consumer asks — may kae give this directory its own item — and naming
+	// it after the service name alone made the two questions look like one.
 	//
-	// It is what makes a keychain item safe to write for a per-directory bind, and
-	// the default of false is the safe one: an undeclared item is left alone and the
-	// tool reported as unisolatable. codex is why the default matters. Its
-	// `Codex Auth` item is shared by every codex home and scoped by the account
-	// instead (KeychainMatchAccount), so a per-directory write would have to derive
-	// the bond dir's account correctly or touch a store the directory does not own —
-	// a capability kae has not verified end to end and therefore does not declare.
-	KeychainDirScoped bool
+	// The default of false is the safe one: an undeclared item is left alone and the
+	// tool reported as unisolatable, rather than kae writing a *global* login for
+	// what the user asked to be per-directory. Declaring it is a claim kae has
+	// verified end to end, not an inference from the derivation existing — codex's
+	// identity has moved with `CODEX_HOME` all along, and the missing half was never
+	// the hash but the item's lifecycle (docs/ROADMAP.md).
+	KeychainDirBindable bool
 	// JSONC marks a KindJSONPointer Target as a JSONC document (standard JSON
 	// plus // and /* */ comments and trailing commas, e.g. GitHub Copilot's
 	// ~/.copilot/config.json). Reads ignore the comments; writes preserve

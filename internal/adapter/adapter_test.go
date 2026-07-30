@@ -187,25 +187,41 @@ func TestClaudeKeychainServiceIsPerConfigDir(t *testing.T) {
 			if specs[0].Kind != constants.KindKeychain || specs[0].Target != tc.want {
 				t.Fatalf("keychain target = %q, want %q", specs[0].Target, tc.want)
 			}
-			// KeychainDirScoped is what tells the per-directory materializer the
+			// KeychainDirBindable is what tells the per-directory materializer the
 			// item is safe to write for one bound directory; it must be true
 			// exactly when the name is namespaced.
-			if wantScoped := tc.configDir != ""; specs[0].KeychainDirScoped != wantScoped {
-				t.Fatalf("KeychainDirScoped = %v, want %v", specs[0].KeychainDirScoped, wantScoped)
+			if wantScoped := tc.configDir != ""; specs[0].KeychainDirBindable != wantScoped {
+				t.Fatalf("KeychainDirBindable = %v, want %v", specs[0].KeychainDirBindable, wantScoped)
 			}
 		})
 	}
 }
 
-// TestKeychainDirScopedMatchesTheServiceName is the drift guard on the flag a
-// seventh adapter would otherwise forget. KeychainDirScoped is a *claim* that the
-// item's service name moves with the tool's isolation env var, and the
-// per-directory materializer trusts it: claim it wrongly and kae writes a global
-// login; omit it on a tool that does move and per-directory credentials silently
-// degrade to a warning. So derive the truth — resolve each tool's specs with its
-// isolation variable pointed at two different directories — and require the flag
-// to agree.
-func TestKeychainDirScopedMatchesTheServiceName(t *testing.T) {
+// TestKeychainDirBindableMatchesTheItemIdentity is the drift guard on the flag a
+// seventh adapter would otherwise forget. KeychainDirBindable is a *claim* that the
+// item's identity moves with the tool's isolation env var, and the per-directory
+// materializer trusts it: claim it wrongly and kae writes a global login; omit it
+// on a tool that does move and per-directory credentials silently degrade to a
+// warning. So derive the truth — resolve each tool's specs with its isolation
+// variable pointed at two different directories — and require the flag to agree.
+//
+// The truth is the whole item identity, service **and** account, because either
+// half can be the one that moves: claude's service name is namespaced by
+// `CLAUDE_CONFIG_DIR`, codex's account is a hash of `CODEX_HOME` under one fixed
+// service. Deriving it from `Target` alone did worse than under-measure — it made
+// the guard *contradict* its own consumer, so an adapter that binds by account and
+// declared the flag honestly would fail here.
+//
+// The keyring `config.toml` matters as much as the derivation: without it codex
+// resolves to `auth.json` (the store's default is `file`), its spec is not
+// KindKeychain, and the tool the guard exists for is skipped entirely.
+func TestKeychainDirBindableMatchesTheItemIdentity(t *testing.T) {
+	// codex's identity does move, but the capability is not declared yet: each bound
+	// directory would add a `Codex Auth` item and nothing tears it down on unpin or a
+	// `pin -s` ↔ `pin -i` toggle (docs/ROADMAP.md). Carried by name so the gap stays a
+	// gap, instead of being encoded here as "codex's identity is fixed" — which is
+	// false, and is what a Target-only derivation quietly asserted.
+	bindableNotYetDeclared := map[string]bool{constants.ToolCodex: true}
 	isolationEnvVar := map[string]string{
 		constants.ToolClaude: "CLAUDE_CONFIG_DIR",
 		constants.ToolCodex:  "CODEX_HOME",
@@ -221,38 +237,51 @@ func TestKeychainDirScopedMatchesTheServiceName(t *testing.T) {
 				if envVar := isolationEnvVar[tool]; envVar != "" {
 					vars[envVar] = dir
 				}
+				// The keychain store, explicitly: `keyring` needs no live probe, so the
+				// keychain spec resolves without a runner double.
+				write(t, filepath.Join(dir, "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")
 				specs, err := adp.Artifacts(context.Background(), testEnv(t, "darwin", vars))
 				if err != nil {
 					t.Skipf("%s has no darwin artifacts: %v", tool, err)
 				}
 				return specs
 			}
-			// Two directories that exist, so a tool reading config out of the dir
-			// (codex's cli_auth_credentials_store) resolves the same way for both and
-			// only the name is under test.
+			// Two directories that exist, so only the identity is under test.
 			first, second := specsFor(t.TempDir()), specsFor(t.TempDir())
+			identity := func(sp artifact.Spec) string { return sp.Target + "\x00" + sp.KeychainAccount }
+			keychainSpecs := 0
 			for i := range first {
 				if first[i].Kind != constants.KindKeychain {
 					continue
 				}
-				moves := first[i].Target != second[i].Target
-				if first[i].KeychainDirScoped != moves {
-					t.Errorf("%s/%s: KeychainDirScoped = %v but the service name %s (%q vs %q)",
-						tool, first[i].Name, first[i].KeychainDirScoped,
+				keychainSpecs++
+				moves := identity(first[i]) != identity(second[i])
+				want := moves && !bindableNotYetDeclared[tool]
+				if first[i].KeychainDirBindable != want {
+					t.Errorf("%s/%s: KeychainDirBindable = %v but the item identity %s (%q vs %q)",
+						tool, first[i].Name, first[i].KeychainDirBindable,
 						map[bool]string{true: "moves with the isolation env var", false: "is fixed"}[moves],
-						first[i].Target, second[i].Target)
+						identity(first[i]), identity(second[i]))
 				}
+			}
+			// A tool with an isolation variable and no keychain spec here means the
+			// resolution went somewhere this guard cannot see, and the loop above
+			// silently passed. That is how codex went unchecked.
+			if isolationEnvVar[tool] != "" && keychainSpecs == 0 {
+				t.Errorf("%s: no keychain spec resolved, so the flag was never checked", tool)
 			}
 		})
 	}
 }
 
-// codex's `Codex Auth` item is shared by every codex home, scoped by the account
-// rather than the service name, so it must not claim to be directory-scoped: the
-// flag's consumer would write an item for a bound directory whose account kae has
-// never verified codex resolves the same way (docs/ROADMAP.md). Do not "fix" this by
-// setting the flag — the account-scoping half is real, the verification is not.
-func TestCodexKeyringIsNotDirScoped(t *testing.T) {
+// codex's `Codex Auth` item is scoped by its account rather than its service name,
+// and that account *is* derived from `CODEX_HOME` — confirmed against a real item
+// for a bond-dir-shaped path, symlink included (docs/VALIDATION.md). So the reason
+// the flag stays false is no longer "unverified derivation": it is the item's
+// lifecycle. Declaring it makes every pinned directory create a `Codex Auth` item,
+// and nothing removes one on unpin or a `pin -s` ↔ `pin -i` toggle
+// (docs/ROADMAP.md). Do not "fix" this by setting the flag; land the teardown.
+func TestCodexKeyringIsNotDirBindable(t *testing.T) {
 	home := t.TempDir()
 	write(t, filepath.Join(home, "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")
 	env := testEnv(t, "darwin", map[string]string{"CODEX_HOME": home})
@@ -263,8 +292,8 @@ func TestCodexKeyringIsNotDirScoped(t *testing.T) {
 	if specs[0].Kind != constants.KindKeychain {
 		t.Fatalf("expected the keyring spec, got %+v", specs[0])
 	}
-	if specs[0].KeychainDirScoped {
-		t.Fatal("an account-scoped keyring item must not claim to be directory-scoped")
+	if specs[0].KeychainDirBindable {
+		t.Fatal("an item whose per-directory lifecycle is unowned must not claim to be bindable")
 	}
 }
 

@@ -376,10 +376,18 @@ one is removed and the live one is left alone, with a warning on stderr that the
 restore was partial. Leaving a credential kae cannot account for is recoverable;
 deleting it is not.
 
+A *move* means the same artifact of the same tool home changing store kind. A
+record that names the same kind is restored as recorded even when the live spec
+points elsewhere — a different `CODEX_HOME` resolves a different `Codex Auth` item,
+and that is another home's credential store, not a place this backup belongs.
+
 Two further supports back the write case: the flows that run a child re-resolve
 their specs afterwards, so the credential the child left behind is captured before
-anything overwrites it, and a rollback's pre-rollback backup resolves **today's**
-specs, so what it overwrites is what it backed up.
+anything overwrites it, and a rollback's pre-rollback backup is captured through
+**the same resolution the rollback will write through**, so what it overwrites is
+exactly what it backed up. Resolving those two independently is what breaks the
+pairing: preferring today's spec by artifact name alone once made the pre-rollback
+backup capture one codex home's item while the rollback deleted another's.
 
 A legacy `keychain_replace` record with **no** recorded account is refused
 outright: without the account it cannot name its own item, and widening the delete

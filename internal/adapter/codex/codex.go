@@ -53,11 +53,15 @@ const (
 // alone, while codex reads and deletes it by service **and** this account — so a
 // second codex home holds a second legitimate item, and a kae switch removed it.
 //
-// The resolution branch mirrors upstream: codex canonicalizes CODEX_HOME before
-// hashing (and refuses to start when it does not resolve), so an unresolvable
-// path only reaches this hash through kae's own error paths — where the absolute
-// path is the closest available answer. docs/VALIDATION.md § "Upstream Behaviour
-// Assumptions" carries the rule and its login-free verification.
+// The fallback for an unresolvable path mirrors upstream's own: codex hashes the
+// unresolved path when canonicalize fails, which it reaches on a machine where
+// CODEX_HOME is unset and `~/.codex` does not exist yet. It is unreachable for a
+// spec kae actually uses, and deliberately so rather than by luck: the keyring and
+// `auto` stores are only resolved by reading `config.toml` *inside* that directory,
+// so the directory exists whenever this hash is asked for. Returning an error here
+// instead would therefore trade upstream parity for a branch nothing takes.
+// docs/VALIDATION.md § "Upstream Behaviour Assumptions" carries the rule and its
+// login-free verification.
 func storeKey(env adapter.Env) string {
 	home := codexHome(env)
 	if abs, err := filepath.Abs(home); err == nil {

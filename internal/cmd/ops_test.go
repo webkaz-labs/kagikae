@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -81,7 +82,7 @@ func TestRestoreSpecFollowsAMovedStore(t *testing.T) {
 		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
 		Pointer: "/tokens", KeychainAccount: "cli|1111111111111111", KeychainMatchAccount: true,
 	}
-	sp, err := restoreSpec(map[string][]artifact.Spec{constants.ToolCodex: {itemNow}}, fileRec)
+	sp, _, err := restoreSpec(map[string][]artifact.Spec{constants.ToolCodex: {itemNow}}, fileRec)
 	if err != nil {
 		t.Fatalf("a whole-document payload must follow the tool: %v", err)
 	}
@@ -94,7 +95,7 @@ func TestRestoreSpecFollowsAMovedStore(t *testing.T) {
 		Name: "auth", Kind: constants.KindFile, Target: "/home/u/.codex/auth.json",
 	}}}
 	for _, current := range []map[string][]artifact.Spec{fileNow, nil} {
-		sp, err := restoreSpec(current, fileRec)
+		sp, _, err := restoreSpec(current, fileRec)
 		if err != nil || sp.Kind != constants.KindFile || sp.Target != fileRec.Target {
 			t.Fatalf("an unmoved store must restore from the record: %+v %v", sp, err)
 		}
@@ -112,13 +113,74 @@ func TestRestoreSpecFollowsAMovedStore(t *testing.T) {
 		Target: "Claude Code-credentials", Pointer: "/claudeAiOauth",
 		SecretRef: "backup/x/claude/claude_ai_oauth", Present: true,
 	}
-	_, err = restoreSpec(pointerNow, keychainRec)
+	_, _, err = restoreSpec(pointerNow, keychainRec)
 	if exitOf(err) != constants.ExitUnsafeRefused {
 		t.Fatalf("err = %v (exit %d), want a refusal with exit %d",
 			err, exitOf(err), constants.ExitUnsafeRefused)
 	}
 	if msg := err.Error(); !strings.Contains(msg, "kae use") {
 		t.Fatalf("the refusal must name the recovery: %s", msg)
+	}
+}
+
+// The pre-rollback backup must capture **exactly** the store the rollback then
+// writes, or rolling back the rollback cannot put it back. Resolving the two
+// independently is what breaks it: preferring today's spec by name alone once made
+// this capture a different codex home's item from the one the restore deleted, so a
+// rollback destroyed a login it had not backed up. The property is checked as an
+// identity, per record, across the cases that differ (moved store, absent record,
+// same store, and a record today's adapter no longer declares).
+func TestPlansFromBackupMetaCapturesWhatTheRollbackWrites(t *testing.T) {
+	itemA := artifact.Spec{
+		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
+		Pointer: "/tokens", KeychainAccount: "cli|aaaaaaaaaaaaaaaa", KeychainMatchAccount: true,
+	}
+	itemB := itemA
+	itemB.KeychainAccount = "cli|bbbbbbbbbbbbbbbb" // another CODEX_HOME's item
+	fileRec := func(present bool) backup.ArtifactRecord {
+		return backup.ArtifactRecord{
+			Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
+			Target: "/home/u/.codex/auth.json", SecretRef: "backup/x/codex/auth", Present: present,
+		}
+	}
+	itemRec := backup.ArtifactRecord{
+		Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindKeychain,
+		Target: "Codex Auth", Pointer: "/tokens", KeychainAccount: itemA.KeychainAccount,
+		KeychainMatchAccount: true, SecretRef: "backup/x/codex/auth", Present: false,
+	}
+	for _, tc := range []struct {
+		name    string
+		rec     backup.ArtifactRecord
+		current map[string][]artifact.Spec
+	}{
+		{
+			name: "store moved, payload to write", rec: fileRec(true),
+			current: map[string][]artifact.Spec{constants.ToolCodex: {itemA}},
+		},
+		{
+			name: "store moved, nothing to write", rec: fileRec(false),
+			current: map[string][]artifact.Spec{constants.ToolCodex: {itemA}},
+		},
+		{
+			name: "same kind, another codex home", rec: itemRec,
+			current: map[string][]artifact.Spec{constants.ToolCodex: {itemB}},
+		},
+		{name: "artifact no longer declared", rec: fileRec(true), current: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plans := plansFromBackupMeta(backup.Meta{Artifacts: []backup.ArtifactRecord{tc.rec}}, tc.current)
+			if len(plans) != 1 || len(plans[0].Specs) != 1 {
+				t.Fatalf("unexpected plans: %+v", plans)
+			}
+			captured := plans[0].Specs[0]
+			written, _, err := restoreSpec(tc.current, tc.rec)
+			if err != nil {
+				t.Fatalf("restoreSpec: %v", err)
+			}
+			if !reflect.DeepEqual(captured, written) {
+				t.Fatalf("the pre-rollback backup captures %+v but the rollback writes %+v", captured, written)
+			}
+		})
 	}
 }
 
@@ -136,7 +198,7 @@ func TestRestoreSpecNeverRedirectsADelete(t *testing.T) {
 		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
 		Pointer: "/tokens", KeychainAccount: "cli|1111111111111111", KeychainMatchAccount: true,
 	}
-	sp, err := restoreSpec(map[string][]artifact.Spec{constants.ToolCodex: {itemNow}}, absentFileRec)
+	sp, _, err := restoreSpec(map[string][]artifact.Spec{constants.ToolCodex: {itemNow}}, absentFileRec)
 	if err != nil {
 		t.Fatalf("an absent record must restore, not fail: %v", err)
 	}

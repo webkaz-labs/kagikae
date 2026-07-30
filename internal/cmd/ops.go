@@ -151,11 +151,19 @@ func (app *App) planTool(ctx context.Context, tool, accountName string) (toolPla
 // unchanged" and captures nothing, and the restore writes a file nothing reads
 // while reporting success. All three are one cause: specs older than the child.
 //
-// A resolution failure keeps the pre-child specs. They are the best answer left,
-// and failing here would abort a restore that is better attempted.
+// A resolution failure keeps the pre-child specs and **warns**: they are the best
+// answer left, and failing here would abort a restore that is better attempted —
+// but they may be stale, so "restored the previous state" would be a claim kae
+// cannot support. The child can even be what broke resolution (a codex config the
+// adapter now refuses, `ephemeral` say), which is exactly when silence would be
+// worst.
 func (app *App) refreshPlan(ctx context.Context, plan toolPlan) toolPlan {
 	fresh, err := app.planTool(ctx, plan.Tool, plan.Account)
 	if err != nil {
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: could not re-resolve %s's credential store after the child (%v); "+
+				"continuing with the store resolved before it, which may no longer be the one %s reads\n",
+			plan.Tool, err, plan.Tool)
 		return plan
 	}
 	fresh.Identity, fresh.Meta = plan.Identity, plan.Meta
@@ -253,9 +261,12 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 		if err != nil {
 			return err
 		}
-		sp, err := restoreSpec(current, rec)
+		sp, warning, err := restoreSpec(current, rec)
 		if err != nil {
 			return err
+		}
+		if warning != "" {
+			fmt.Fprintf(os.Stderr, "kae: warning: %s\n", warning)
 		}
 		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
 			return fmt.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
@@ -344,28 +355,32 @@ func storedValue(ctx context.Context, be secret.Backend, ref string, present, id
 //
 // current is nil only where no declaration was resolved; the record then stands
 // alone, which is the pre-fix behaviour.
-func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) (artifact.Spec, error) {
+// The returned warning is non-empty when the restore is knowingly partial. It is
+// returned rather than printed so the caller that performs the write emits it once,
+// immediately before that write — the pre-rollback capture resolves the same spec
+// and must not print it a second time.
+func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) (sp artifact.Spec, warning string, err error) {
 	for _, live := range current[rec.Tool] {
 		if live.Name != rec.Name || live.Kind == rec.Kind {
 			continue
 		}
 		if !rec.Present {
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: %s moved its credential to %s %q, which this backup has no record of; "+
+			return specFromRecord(rec), fmt.Sprintf(
+				"%s moved its credential to %s %q, which this backup has no record of; "+
 					"kae left it in place rather than deleting a credential it has no copy of, so %s "+
-					"stays logged in as whatever wrote it\n",
-				rec.Tool, live.Kind, live.Target, rec.Tool)
-			return specFromRecord(rec), nil
+					"stays logged in as whatever wrote it",
+				rec.Tool, live.Kind, live.Target, rec.Tool,
+			), nil
 		}
 		if artifact.WholeDocument(live.Kind) != artifact.WholeDocument(rec.Kind) {
-			return artifact.Spec{}, errf(constants.ExitUnsafeRefused,
+			return artifact.Spec{}, "", errf(constants.ExitUnsafeRefused,
 				"%s/%s was backed up from %s %q but %s now keeps it in %s %q, and the two "+
 					"payload shapes are not interchangeable; switch with `kae use %s <account>` instead",
 				rec.Tool, rec.Name, rec.Kind, rec.Target, rec.Tool, live.Kind, live.Target, rec.Tool)
 		}
-		return live, nil
+		return live, "", nil
 	}
-	return specFromRecord(rec), nil
+	return specFromRecord(rec), "", nil
 }
 
 func isIdentityOnly(current map[string][]artifact.Spec, tool, name string) bool {
@@ -474,12 +489,14 @@ func specFromRecord(rec backup.ArtifactRecord) artifact.Spec {
 // after the backup was taken is still captured before the rollback clears it —
 // otherwise rolling back the rollback could not put it back.
 //
-// Today's declaration wins over the record wherever both describe an artifact,
-// because these plans read *live* state: a tool that has moved its credential
-// between stores since the backup (codex under `auto`) keeps it where the adapter
-// says it is now, and capturing the recorded store would back up an empty file
-// while the rollback overwrote the live item. The record still supplies any
-// artifact today's adapter no longer declares, which only it can restore.
+// Each record is captured through **the spec the rollback will act on**
+// (restoreSpec), never one merely resolved beside it. That pairing is the whole
+// safety property: what the pre-rollback backup records is exactly what the
+// rollback then overwrites, so rolling back the rollback puts it back. Resolving
+// the two independently is what breaks it — preferring today's spec by name alone
+// once made this capture a *different* codex home's item from the one the restore
+// deleted. A spec restoreSpec refuses is captured from the record; the rollback
+// refuses it too, so nothing is overwritten either way.
 func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) []toolPlan {
 	specsByTool := map[string][]artifact.Spec{}
 	order := []string{}
@@ -487,12 +504,9 @@ func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) [
 		if _, seen := specsByTool[rec.Tool]; !seen {
 			order = append(order, rec.Tool)
 		}
-		sp := specFromRecord(rec)
-		for _, live := range current[rec.Tool] {
-			if live.Name == rec.Name {
-				sp = live
-				break
-			}
+		sp, _, err := restoreSpec(current, rec)
+		if err != nil {
+			sp = specFromRecord(rec)
 		}
 		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], sp)
 	}

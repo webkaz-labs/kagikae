@@ -6,8 +6,9 @@
 modelled an upstream storage location as a constant when it is actually a rule* —
 and the audit that followed found the same class in four more places, plus a set
 of gaps that have nothing to do with upstream at all. This file carries the
-findings with their evidence, and a design for the recurring process that should
-have caught them.
+findings with their evidence, and a design for the workflow that should exist for
+the next time an upstream tool changes its authentication: detect it, establish the
+new rule, **update kae to match**, and re-record the assumption.
 
 Read [VALIDATION.md](VALIDATION.md) § "Upstream Behaviour Assumptions" first: it
 is the current mechanism, and Part 3 here is about replacing its manual half.
@@ -20,9 +21,13 @@ by who verified it, because the labels change what you should do first:**
 - **VERIFIED HERE** — reproduced in this session, with the command that did it.
   Act on these directly.
 - **AGENT-CLAIMED** — an audit agent reported it with a plausible citation, and it
-  was *not* independently reproduced. Re-verify before building on it. One
-  agent claim was already found wrong (see the box in Part 3) — treat the rest as
-  leads, not facts.
+  was *not* independently reproduced. Re-verify before building on it.
+
+Both outcomes happened while checking, which is why the labels are worth keeping:
+one claim was **wrong** and would have wasted a session (the shim generalization —
+see the box in Part 3), and one was **right and the most serious item here** (1.2,
+settled from official source in a minute). Treat AGENT-CLAIMED as a lead worth an
+hour, not as a fact and not as noise.
 
 ---
 
@@ -55,48 +60,94 @@ robustness gap. `cursor-api-key` was absent here, so it is presumably created on
 for API-key logins; enumerate what a real login writes rather than trusting a
 list.
 
-### 1.2 codex: the keyring account attribute may be derived from `CODEX_HOME` — **AGENT-CLAIMED**
+### 1.2 codex: the keyring account attribute IS derived from `CODEX_HOME` — **VERIFIED HERE, from official source**
 
-The claim: the `Codex Auth` item's account is not a per-login opaque id but
-`cli|` + `sha256(canonical CODEX_HOME)[:16]`, i.e. the same shape of rule claude
-uses for its *service* name.
+codex is open source, and reading it settled in seconds what binary inspection had
+left ambiguous. `codex-rs/login/src/auth/storage.rs` at tag `rust-v0.145.0` (the
+installed version):
 
-Corroborated here: `cli|` does appear in the binary next to
-`login/src/auth/storage.rs`, "failed to load CLI auth from keyring", and
-**"Failed to remove auth.json"** — that last one is claude's delete-the-file
-behaviour in codex too. Not corroborated: the hash derivation. A
-`compute_store_key` symbol exists but in `codex_rmcp_client::oauth`, which is MCP
-server OAuth, **not** CLI auth storage — so the obvious symbol is a red herring
-and the audit may have conflated them.
+```rust
+const KEYRING_SERVICE: &str = "Codex Auth";
 
-`Codex Auth` does not exist on this machine (this codex uses the file store), so a
-live attribute read cannot settle it. If the claim holds, three things follow and
-all three matter:
+// turns codex_home path into a stable, short key string
+fn compute_store_key(codex_home: &Path) -> std::io::Result<String> {
+    let canonical = codex_home.canonicalize().unwrap_or_else(|_| codex_home.to_path_buf());
+    let path_str = canonical.to_string_lossy();
+    let mut hasher = Sha256::new();
+    hasher.update(path_str.as_bytes());
+    let hex = format!("{:x}", hasher.finalize());
+    let truncated = hex.get(..16).unwrap_or(&hex);
+    Ok(format!("cli|{truncated}"))
+}
+```
 
-1. `internal/cmd/dircred.go`'s refusal for codex is **over-strict** — codex would
-   be per-directory scopeable after all, by account rather than by service. That is
-   a capability we are currently declining, not a bug.
-2. `artifact.Spec.KeychainReplace` deletes by **service only**
-   (`internal/artifact/artifact.go`, `keychain.DeleteItem`). With two codex homes
-   there are two legitimate items under one service, so a global codex switch could
-   **delete another directory's login**. This is the destructive one.
-3. `docs/ADAPTERS.md` and `docs/VALIDATION.md` both describe the account as an
-   opaque per-login id and assert "exactly one item after a switch". Both would be
-   wrong.
+So the account attribute is `cli|` + the first **16** hex chars of
+`sha256(canonicalize(CODEX_HOME))`. **Do not reuse claude's derivation**: claude
+hashes the *raw* env string NFC-normalized with no path resolution, codex
+canonicalizes (resolving symlinks, falling back to the raw path when that fails)
+and takes 16 chars, not 8. Two tools, two different rules — which is the whole
+point of Part 3.
 
-### 1.3 codex: `auto` and `ephemeral` stores are folded into "file" — **AGENT-CLAIMED**
+Also confirmed in the same file: `save_to_keyring` is followed by
+`delete_file_if_exists(&self.codex_home)`, i.e. codex deletes its `auth.json`
+fallback after a keyring write — claude's behaviour, in codex.
+
+And codex's own delete is **service + key** scoped:
+
+```rust
+fn delete(&self) -> std::io::Result<bool> {
+    let key = compute_store_key(&self.codex_home)?;
+    let keyring_removed = self.keyring_store.delete(KEYRING_SERVICE, &key)?;
+    ...
+}
+```
+
+Three consequences, all now confirmed:
+
+1. **`internal/cmd/dircred.go`'s refusal for codex is over-strict.** codex *is*
+   per-directory scopeable — by account attribute rather than by service name. That
+   is a capability kae currently declines. Safe, but wrong; and it means
+   `KeychainDirScoped` as currently defined ("the *service name* moves") is too
+   narrow a question. The real question is "does the *item identity* move", which
+   for codex means the account.
+2. **kae's delete is broader than codex's, and that is destructive.**
+   `artifact.Spec.KeychainReplace` deletes via `keychain.DeleteItem(service)` —
+   **service only**. With two codex homes there are two legitimate items under
+   `Codex Auth`, so a kae codex switch under the keyring store **deletes another
+   directory's codex login**. This is on the *global* switch path (`ops.go` →
+   `ApplyLive`), which v0.12.0 did not touch, so it is shipped today. Reachable by
+   any user with `cli_auth_credentials_store = "keyring"` and more than one
+   `CODEX_HOME`. **Treat this as the highest-priority item in this document.**
+3. **kae's read can capture the wrong home's credential.**
+   `keychain.ReadItem(service)` takes the first item of the service. Same cause.
+
+The fix direction is `KeychainMatchAccount` for codex with a computed account
+(kae would have to implement codex's derivation), which also makes item 1's
+capability available. The docs to correct in the same commit:
+`docs/ADAPTERS.md` and `docs/VALIDATION.md` both describe the account as a
+"per-login opaque id" kae must capture verbatim and never compute, and assert
+"exactly one item of the service exists after a switch" — all three statements are
+wrong.
+
+Note for whoever reads the binary instead: `compute_store_key` exists in **two**
+modules — `codex_login::auth::storage` (this one, the CLI credential) and
+`codex_rmcp_client::oauth` (MCP server OAuth). Symbol-name grepping in the stripped
+binary finds the MCP one first and reads as a red herring; that is exactly the trap
+the official source avoids.
+
+### 1.3 codex: `auto` and `ephemeral` stores are folded into "file" — **AGENT-CLAIMED, settle it from the same source**
 
 `configuredStore` (`internal/adapter/codex/codex.go:51-68`) maps everything that
 is not `"keyring"` to the file driver, and returns `"auto"` on a parse failure
 (fail-open). The claim is that upstream's enum is `file` | `keyring` | `auto` |
-`ephemeral`, that `auto` means *keyring first, file only on failure* and **deletes
-`auth.json` when it stores to the keyring**, and that a `secrets` keyring backend
-adds an encrypted file store kae does not model at all.
+`ephemeral`, that `auto` means *keyring first, file only on failure*, and that a
+`secrets` keyring backend adds an encrypted file store kae does not model.
 
-The `auth.json` deletion half is corroborated by the binary string above. If the
-rest holds, a user who sets `auto` — a value kae's own docs list — gets the
-v0.12.0 failure shape on codex: kae writes `auth.json`, codex reads the keyring,
-every guard green.
+The `delete_file_if_exists` half is confirmed above. The enum and `auto`'s
+precedence are one more file read away in the same public repo — do that rather
+than measuring. If the claim holds, a user who sets `auto` — a value kae's own docs
+list — gets the v0.12.0 failure shape on codex: kae writes `auth.json`, codex reads
+the keyring, every guard green.
 
 ### 1.4 claude: `CLAUDE_CODE_CUSTOM_OAUTH_URL` moves *both* stores — **AGENT-CLAIMED, cheap to settle**
 
@@ -235,11 +286,17 @@ AGENTS.md requires for a new output path.
 
 ---
 
-# Part 3 — The recurring process (proposed skill)
+# Part 3 — Proposed skill: respond to an upstream auth change
 
-The manual half of VALIDATION.md is the weak point: re-verifying an assumption
-currently means a human deciding to. Two failures in a row were found by a user
-noticing, not by a check.
+The gap is not that kae lacks a monitor. It is that when an upstream tool changes
+how its authentication works, getting from "something is off" to "kae is correct
+again and the assumption is re-recorded" is a long, easy-to-botch sequence that a
+session without prior context has to rediscover — which is precisely what happened
+twice, and what this whole document is the residue of.
+
+So the skill is a **response workflow**, not a watchdog. Detection is one of its
+four entry points and the least valuable one: both real failures were noticed by a
+human first.
 
 > **Correct an audit claim before you build on it.** The audit proposed
 > generalizing the `security` PATH shim to "every keychain-backed tool: claude,
@@ -251,71 +308,174 @@ noticing, not by a check.
 > whether it shells out before assuming the shim applies** — agy is a Go binary
 > using a keyring library and is probably in codex's camp; cursor is unverified.
 
-## What the skill should do
+## What the skill is for
 
-Name it for the job — something like `upstream-drift-audit`. It is a *tool-facing*
-skill: given a tool (or all), it runs the cheap checks, reports a re-verify
-worklist, and updates kae's recorded assumptions in lockstep.
+**One sentence: when an upstream tool changes how its authentication works, the
+skill detects it, establishes what the new rule actually is, updates kae to match,
+and re-records the assumption — as one workflow.**
 
-**Techniques, ranked by cost/benefit. The first two need no upstream tool at all:**
+The mistake to avoid in designing it: treating it as a *monitor*. Detection is the
+cheapest part and the least valuable, because both failures kae has actually had
+were noticed by a human before any check existed. The expensive, error-prone part
+is the middle — measuring the new behaviour without a login, and getting kae's
+model to match it exactly — and that is where a skill earns its keep, because it
+is the part where a session without prior context flails.
 
-1. **Version-copy agreement + assumption age.** Each tool's verified version is
-   written in three places (`VerifiedVersion()`, the `docs/ADAPTERS.md` table, the
-   per-row column in `docs/VALIDATION.md`) with nothing asserting they agree. Add a
-   Go test that parses the docs and asserts all three match, plus a `verified_on`
-   date per tool and a doctor check that warns past N days. **Sub-second, and it
-   closes `upstream_version`'s biggest blind spot: a user who never upgrades never
-   gets any signal at all.**
-2. **Offline doctor checks for assumptions that local state can contradict**
-   (~10 lines each): a `Codex Auth` item existing while the resolved store is
-   file/auto (or the reverse); `CLAUDE_CODE_CUSTOM_OAUTH_URL` set; more than one
-   keychain item under a resolved service; an active snapshot whose credential
-   lacks `refreshTokenExpiresAt`.
-3. **Literal-count fingerprint over the installed bundle.** Per tool, a table of
-   the load-bearing literals kae models with their expected occurrence counts.
-   Measured across claude 2.1.218/219/220: `-credentials` 17, `profileFetchedAt` 3,
-   `refreshTokenExpiresAt` 5, `CLAUDE_CONFIG_DIR` 27,
-   `CLAUDE_SECURESTORAGE_CONFIG_DIR` 11, `claude-code-user` 2, `86400000` 37 —
-   **identical across all three**, while minified identifiers churned underneath.
-   Proves every name kae models still exists and is referenced as often. Does not
-   prove semantics; a cosmetic count change is a false alarm that costs one manual
-   re-verify, which is the safe direction.
-4. **Identifier-normalized behaviour-site hash.** Take ±110 chars around a semantic
-   anchor, replace every identifier with `X`, hash. For
-   `oauthAccount?.profileFetchedAt` the hash was **identical across 2.1.218–220**
-   even though the TTL identifier changed (`TSg` → `sxg`), and resolving it still
-   yields `86400000`. This is how you confirm a *behaviour* statically, with no
-   login. ~30s per bundle; release-time, not per-commit. Note `strings -n 6` is
-   useless on a minified bundle — it is one multi-MB "string"; use bounded
-   `grep -o` or split on delimiters.
-5. **The subprocess-shim harness, for tools that shell out.** Table-driven:
-   expected (subcommand, `-s`, `-a`) tuples per tool, temp HOME, shim on PATH, and
-   **diff the tool's argv log against kae's own argv log** — the naming-agreement
-   check already written up in VALIDATION.md, turned into a script. Runs on macOS
-   CI, no login, no real keychain. Gate it on the per-tool "does it shell out"
-   answer from the box above.
-6. **Bundle-pair diff on upgrade.** claude keeps old versions on disk; on a version
-   change, run 3 and 4 against old and new and report only the sites that moved —
-   a targeted re-verify list instead of "re-verify everything".
+Name it for the job: `upstream-auth-drift`.
 
-**Deliberately not automated:** anything needing a valid signed token or a real
-account (does the credential alone authenticate; does the keychain payload
-round-trip and pass the ACL; the 24h refetch actually rewriting the email; the
-delete-on-write half of the storage rule). Those stay in the release acceptance
-run, and the skill's job is to shrink that list, not pretend to replace it.
+### Entry points (all four are normal, not just the first)
 
-**The skill must also write back.** Finding drift is half the job; the other half
-is updating `VerifiedVersion()`, the ADAPTERS table, and the VALIDATION rows **in
-the same commit** — the discipline AGENTS.md already requires and that
-[nothing currently enforces](VALIDATION.md). Note for whoever builds this: as of
-2026-07-30 no `VerifiedVersion()` value has ever been bumped
-(`git log -S 'VerifiedVersion() string { return'` returns only the commit that
-introduced it), so the lockstep rule has never actually been exercised.
+1. **A signal fired** — `upstream_version` warns, `identity_drift` warns, or one of
+   the fingerprints in step 2 below moved.
+2. **A tool upgraded** — the highest-yield moment, because the old bundle is often
+   still on disk to diff against.
+3. **A human suspects something** — "kae says I switched but the tool shows the old
+   account". *This is how both real failures were found.* The skill must accept a
+   symptom as input, not only a check code.
+4. **Routine** — the age check (nothing has re-verified tool X in N days).
+
+### The phases
+
+**Phase 1 — Scope the suspicion.** Turn the symptom into a falsifiable statement
+about *one* assumption. Read [VALIDATION.md](VALIDATION.md) § "Upstream Behaviour
+Assumptions" for the tool and pick the row(s) that would produce this symptom; if
+no row would, that itself is the finding (a load-bearing assumption nobody wrote
+down — Part 1 and Part 2 above are full of those). State what you expect to see if
+the assumption still holds, before measuring.
+
+**Phase 2a — Read the official source first.** Reverse-engineering is the fallback,
+not the first move. Finding 1.2 in this document is the case study: binary
+inspection left the codex store key ambiguous and led to a wrong-module red
+herring, and one file read from the public repo settled it exactly — including a
+detail measurement would probably have missed (16 hex chars, over a *canonicalized*
+path, where claude uses 8 over the raw NFC string).
+
+| Tool | Public source of truth | Notes |
+|---|---|---|
+| codex | `openai/codex` (Rust, public). Tags are `rust-v<version>`, matching `codex --version` | authoritative; read the file at the **installed** tag, not `main` |
+| opencode | public (the `sst/opencode` path now redirects to `anomalyco/opencode` — confirm the canonical owner before citing it) | authoritative |
+| claude | not open source. Public docs + changelog/release notes only; auth internals (keychain naming, TTLs) are **undocumented** | docs give intent; the bundle gives what shipped |
+| cursor / copilot / agy | closed | bundle inspection only |
+
+Two disciplines that matter:
+
+- **Pin the version.** Read the source at the tag matching the installed binary.
+  `main` describes a future the user is not running, and a doc page describes
+  whatever shipped last week.
+- **When docs and the shipped artifact disagree, the artifact wins.** kae depends on
+  behaviour, not intent. Docs are for finding *what to look for* and for
+  understanding *why* something changed; the measurement is what you record. When
+  both agree, say so in the VALIDATION row — an assumption confirmed from two
+  independent sources is the one you can leave alone longest.
+
+Beyond source: release notes and changelogs are the cheapest way to spot an auth
+change *before* a user does, and an issue tracker often has the change discussed in
+plain language. For a closed tool, the public docs plus the bundle-pair diff
+(technique below) is the whole available surface.
+
+**Phase 2b — Measure what no source documents.** For claude's TTLs and keychain
+naming, and for every closed tool, there is nothing to read — so measure. The
+toolkit, and which tool each technique works on:
+
+| Technique | Proves | Applies to |
+|---|---|---|
+| Subprocess PATH shim (temp HOME, log argv, exit non-zero) | the exact store name/attribute the tool asks for | **only tools that shell out** — claude yes, codex **no** (verified above) |
+| Live keychain *attribute* read (`security find-generic-password -s <svc>`, never `-w`) | which items exist and their account attributes | any macOS keychain tool, read-only, no payload |
+| Literal-count fingerprint over the bundle | every name kae models still exists and is referenced as often | any bundled tool |
+| Identifier-normalized behaviour-site hash | the *control flow* around a semantic anchor is unchanged, even when minified names churn | any bundled tool |
+| Bundle-pair diff (old vs new version on disk) | a targeted re-verify list for this specific upgrade | tools that keep old versions (claude does) |
+| Loopback stub endpoint | refresh-failure paths (tombstone) without a real account | tools whose token endpoint is configurable |
+
+Measured facts worth keeping (all reproduced in this session): across claude
+2.1.218/219/220 the counts `-credentials` 17, `profileFetchedAt` 3,
+`refreshTokenExpiresAt` 5, `CLAUDE_CONFIG_DIR` 27,
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` 11, `claude-code-user` 2, `86400000` 37 are
+**identical**, while minified identifiers changed underneath; the
+`oauthAccount?.profileFetchedAt` site hash is identical across all three even
+though the TTL identifier went `TSg` → `sxg`, and resolving it still yields
+`86400000`. `strings -n 6` is useless on a minified bundle — it is one multi-MB
+"string"; use bounded `grep -o` or split on delimiters.
+
+**Record the condition, never an absolute.** The v0.12.0 post-mortem is exactly
+this: "`/oauthAccount` self-heals" was recorded as a fact when the fact was "it
+self-heals past a 24h TTL that every refresh renews". An absolute is what expires
+silently.
+
+**Phase 3 — Update kae to match.** The part the first draft of this document
+under-specified. In order:
+
+1. **Find every place kae encodes the old rule.** The v0.12.0 bug lived in one
+   constant, but the *fix* had to touch four call sites because the same credential
+   copy was written four times. Grep for the constant, then grep for the callers of
+   whatever resolves it — a rule encoded once but consumed four times fails in four
+   places.
+2. **Put the rule in the adapter, never at the call site.** This is now a boundary
+   in [AGENTS.md](../AGENTS.md): only the adapter may evaluate where a credential
+   lives. If a caller needs it for a different environment, build an `adapter.Env`
+   for that environment and ask again (`dirCredentialSpec` is the worked example) —
+   do not recompute a name.
+3. **Decide fail-loud vs warn vs refuse, and prefer refusing to guessing.** When the
+   new rule puts the credential somewhere kae cannot model, report the tool
+   unsupported rather than writing where nothing reads
+   (`CLAUDE_SECURESTORAGE_CONFIG_DIR` is the pattern). When one tool of a profile is
+   affected, warn and bind the rest; when the user named that tool, fail.
+4. **Check the blast radius on the other tools before generalizing.** The single
+   most dangerous moment in the v0.12.0 work was generalizing "write the
+   per-directory keychain item" to every keychain artifact — which would have
+   destroyed codex's *global* login, because its item is one global item and its
+   spec deletes before writing. Any change to shared credential IO must be checked
+   against every adapter, and a capability like that should be **declared by the
+   adapter with the safe default** (`KeychainDirScoped`, default false), with a
+   parity test that derives the truth and fails if the declaration disagrees.
+5. **Leave a regression test that fails on the old behaviour.** Compute expected
+   values *outside* kae (an external `shasum`/`hashlib`), or the test agrees with
+   whatever formula the code has, including a wrong one.
+
+**Phase 4 — Re-record, in the same commit.** `VerifiedVersion()`, the
+`docs/ADAPTERS.md` table, and the VALIDATION row(s). The condition, not the
+absolute. Also update the row's *verification procedure* if you found a cheaper one
+— the shim procedure replaced a "seed the file, wait for a token refresh" recipe
+that needed a real account, and that is a permanent improvement for everyone after
+you. **As of 2026-07-30 no `VerifiedVersion()` has ever been bumped**
+(`git log -S 'VerifiedVersion() string { return'` returns only the introducing
+commit), so this discipline has never actually been exercised — expect to be the
+first, and expect nothing mechanical to remind you until technique 1 below exists.
+
+**Phase 5 — Verify.** `mise run check` is the only gate. Add the login-free smoke
+for the rule you just changed, and prove it has teeth by running it against the
+pre-fix build or by mutating the new code — a smoke that cannot fail is
+documentation, not verification. What genuinely needs a real account (does the
+credential alone authenticate; does the payload round-trip and pass the keychain
+ACL) stays in release acceptance; the skill's job is to shrink that list, not to
+pretend to replace it.
+
+### What to automate first (each pays for itself before the next)
+
+1. **Version-copy agreement + assumption age.** A Go test parsing the two doc
+   tables and asserting both match `VerifiedVersion()`, plus a `verified_on` date
+   per tool and a doctor check that warns past N days. Sub-second, needs no upstream
+   tool, and covers the blind spot `upstream_version` cannot: **a user who never
+   upgrades gets no signal at all today.**
+2. **Offline doctor checks where local state can contradict a modelled assumption**
+   (~10 lines each): a `Codex Auth` item present while the resolved store is
+   file/auto, or the reverse; `CLAUDE_CODE_CUSTOM_OAUTH_URL` set; more than one
+   keychain item under a resolved service; an active snapshot lacking
+   `refreshTokenExpiresAt`.
+3. **Literal-count fingerprints**, per tool, wired into `mise run audit`.
+4. **The shim harness**, table-driven, gated on the per-tool "does it shell out"
+   answer — and it should diff *the tool's* argv log against *kae's* argv log, which
+   is the naming-agreement check in VALIDATION.md turned into a script.
+5. **Behaviour-site hashes** for the three or four sites that encode real behaviour,
+   then bundle-pair diff on upgrade.
 
 ## Suggested order
 
-Part 2.1 first — it is verified, self-contained, and makes `doctor` trustworthy
-again. Then Part 1.1 (measure cursor's refresh behaviour; it may be a P0). Then
-skill techniques 1 and 2, which need no upstream tool and pay for themselves
-immediately. Then settle the codex claims in 1.2/1.3, since one of them is
-potentially destructive. Techniques 3–6 after that.
+**1.2's second consequence first** — a kae codex switch under the keyring store
+deletes another `CODEX_HOME`'s login, it is confirmed from official source, and it
+is shipped. Everything else in this document is a wrong-credential or a warning; that
+one destroys a login.
+
+Then Part 2.1 (verified, self-contained, makes `doctor` trustworthy again), then
+Part 1.1 (measure cursor's refresh behaviour — it may be a P0), then 1.3 and 1.4
+(both settle from a source read, not a measurement), then automation items 1 and 2,
+which need no upstream tool at all. The rest after that.

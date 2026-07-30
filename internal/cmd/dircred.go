@@ -99,7 +99,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// not the service name — but kae has never verified a bound directory end to
 	// end there (does codex resolve the bond dir to the same canonical path kae
 	// hashes?), so the capability stays undeclared rather than assumed.
-	if sp.Kind == constants.KindKeychain && !sp.KeychainDirScoped {
+	if sp.Kind == constants.KindKeychain && !sp.KeychainDirBindable {
 		return fmt.Errorf("%w: kae cannot give this directory its own %s credential store (%s)",
 			errGlobalCredentialStore, tool, isolationEnvVar(tool))
 	}

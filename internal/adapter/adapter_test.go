@@ -247,10 +247,11 @@ func TestKeychainDirScopedMatchesTheServiceName(t *testing.T) {
 	}
 }
 
-// codex's keyring item is a single global `Codex Auth` regardless of CODEX_HOME,
-// so it must never claim to be directory-scoped: writing it for a bound
-// directory would overwrite the global login, and KeychainReplace would delete
-// the previous item first.
+// codex's `Codex Auth` item is shared by every codex home, scoped by the account
+// rather than the service name, so it must not claim to be directory-scoped: the
+// flag's consumer would write an item for a bound directory whose account kae has
+// never verified codex resolves the same way (docs/ROADMAP.md). Do not "fix" this by
+// setting the flag — the account-scoping half is real, the verification is not.
 func TestCodexKeyringIsNotDirScoped(t *testing.T) {
 	home := t.TempDir()
 	write(t, filepath.Join(home, "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")
@@ -263,7 +264,7 @@ func TestCodexKeyringIsNotDirScoped(t *testing.T) {
 		t.Fatalf("expected the keyring spec, got %+v", specs[0])
 	}
 	if specs[0].KeychainDirScoped {
-		t.Fatal("a global keyring item must not be marked directory-scoped")
+		t.Fatal("an account-scoped keyring item must not claim to be directory-scoped")
 	}
 }
 
@@ -417,7 +418,9 @@ func TestClaudeDetectLinux(t *testing.T) {
 }
 
 func TestCodexArtifactsFileAndKeyring(t *testing.T) {
-	env := testEnv(t, "linux", nil)
+	// darwin: the keyring store is refused off macOS, where kae cannot read a
+	// keyring at all (TestCodexKeyringStoresOffDarwin covers that half).
+	env := testEnv(t, "darwin", nil)
 	specs, err := codexAdapter.Artifacts(context.Background(), env)
 	if err != nil || len(specs) != 1 || specs[0].Kind != constants.KindFile {
 		t.Fatalf("file store: %+v %v", specs, err)
@@ -428,10 +431,12 @@ func TestCodexArtifactsFileAndKeyring(t *testing.T) {
 	if err != nil || len(specs) != 1 {
 		t.Fatalf("keyring store: %+v %v", specs, err)
 	}
-	sp := specs[0]
-	if sp.Kind != constants.KindKeychain || sp.Target != codex.KeychainService ||
-		sp.Pointer != "/tokens" || !sp.KeychainReplace {
-		t.Fatalf("unexpected keyring spec: %+v", sp)
+	// Only the selection is this test's business: the config value is what picks the
+	// keychain spec over the file one. The spec's shape and its derived account are
+	// pinned in the codex package's own tests (TestCodexKeyringSpecIsAccountScoped,
+	// TestStoreKeyGolden).
+	if specs[0].Kind != constants.KindKeychain {
+		t.Fatalf("the keyring store must select the keychain spec: %+v", specs[0])
 	}
 }
 
@@ -474,14 +479,27 @@ func TestCodexHonorsCodexHome(t *testing.T) {
 	}
 }
 
-func TestCodexDetectMissingAuthWarnsAboutKeyring(t *testing.T) {
+// Only `auto` leaves the store ambiguous, so only `auto` speculates about the
+// keyring. An absent config.toml is upstream's `file` default, where a missing
+// auth.json means exactly one thing — codex is logged out — and inventing a
+// keyring possibility there is what let kae describe the wrong store.
+func TestCodexDetectMissingAuthWarnings(t *testing.T) {
 	env := testEnv(t, "linux", nil)
 	info, err := codexAdapter.Detect(context.Background(), env)
 	if err != nil || info.AuthPresent {
 		t.Fatalf("unexpected: %+v %v", info, err)
 	}
+	if len(info.Warnings) != 0 {
+		t.Fatalf("the file store must not speculate about a keyring: %+v", info.Warnings)
+	}
+	write(t, filepath.Join(env.Home, ".codex", "config.toml"),
+		"cli_auth_credentials_store = \"auto\"\n")
+	info, err = codexAdapter.Detect(context.Background(), env)
+	if err != nil || info.AuthPresent {
+		t.Fatalf("unexpected: %+v %v", info, err)
+	}
 	if len(info.Warnings) != 1 || !strings.Contains(info.Warnings[0], "keyring") {
-		t.Fatalf("expected keyring-possibility warning: %+v", info.Warnings)
+		t.Fatalf("expected keyring-possibility warning under auto: %+v", info.Warnings)
 	}
 }
 

@@ -119,9 +119,10 @@ symlinked), and its containing store has no shared content, so nothing is lost.
 "Private" is a property of the *store*, and whether the store can be private at
 all is the tool's decision, not kae's. claude namespaces its keychain item by
 `CLAUDE_CONFIG_DIR`, so a bound directory gets its own item and the credential is
-genuinely private there. codex's keyring item is one global `Codex Auth` whatever
-`CODEX_HOME` says, so for a keyring-configured codex the credential **cannot** be
-per-directory: kae warns and leaves it shared rather than writing that global item
+genuinely private there. codex scopes its `Codex Auth` item by an **account**
+derived from `CODEX_HOME` rather than by the service name — so the store *can* be
+private, but kae has not verified a bound directory end to end there and does not
+declare the capability: it warns and writes nothing rather than assuming
 (docs/ADAPTERS.md "Per-directory credential store"). Assuming a store is private
 because kae pointed an env var at a directory is what let a pinned claude
 directory silently keep running the previous account.

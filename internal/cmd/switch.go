@@ -199,7 +199,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	for _, plan := range plans {
 		if err := applySnapshot(ctx, be, plan); err != nil {
 			appliedTools[plan.Tool] = true // partially-applied tool needs restore too
-			if restoreErr := app.applyBackup(ctx, be, meta, appliedTools, nil); restoreErr != nil {
+			if restoreErr := app.applyBackup(ctx, be, meta, appliedTools, false); restoreErr != nil {
 				return nil, doubleFailure("switch "+plan.Tool, err, restoreErr, meta.ID)
 			}
 			return nil, errf(exitOf(err),
@@ -216,7 +216,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	if err := app.saveActive(st, updates, profileName); err != nil {
 		// live state changed but the record failed: restore so state.json and
 		// reality cannot diverge.
-		if restoreErr := app.applyBackup(ctx, be, meta, nil, nil); restoreErr != nil {
+		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
 			return nil, doubleFailure("recording state", err, restoreErr, meta.ID)
 		}
 		return nil, errf(constants.ExitError,

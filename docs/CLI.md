@@ -182,9 +182,14 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
 
 - `-s` (default): per-tool locks are held for the entire child run; the live
   state is backed up (`reason: "run"`), the target accounts applied, and after
-  the child exits kae **recaptures refreshed credentials into the account
-  snapshots** and restores the previous live state. (This is the former `auth`
-  mode.)
+  the child exits kae **re-resolves each tool's credential store**, then
+  **recaptures refreshed credentials into the account snapshots** and restores the
+  previous live state. The re-resolution matters because the child can move the
+  credential to the tool's other store (codex under
+  `cli_auth_credentials_store = "auto"` creates its keychain item and deletes
+  `auth.json` on its first save); reading the pre-run store instead would report
+  the tool as logged out and restore into a file nothing reads. (This is the former
+  `auth` mode.)
 - `-i`: runs the child with the per-account global isolated home
   (`isolation/global/<tool>/<account>/`) injected via the tool's home-isolation
   env var. This home is **shared with `kae use -i`** for the same account; no
@@ -220,7 +225,11 @@ the result into the account, and makes it active — or restores the previous lo
 `--restore`. If the flow exits
 without changing the live auth state (login refused, window closed, already
 cancelled), kae refuses to capture and exits `11` (`auth_unchanged`) instead
-of recording a duplicate of the previous account. **agy has no login flow**
+of recording a duplicate of the previous account. That comparison, the capture, and
+`--restore` all run against **re-resolved** specs, because the login flow itself can
+move the credential to the tool's other store (codex under
+`cli_auth_credentials_store = "auto"`): compared against the store the tool
+abandoned, a successful login looks like no change at all. **agy has no login flow**
 (GUI/browser OAuth, no kae-drivable login subcommand), so `kae add agy` is
 `--no-login` only; the account name is auto-detected from the active Google
 account (`~/.gemini/google_accounts.json`) when omitted, like the other tools
@@ -353,11 +362,12 @@ isolation directories (with their login state) intact.
 
   Binding a profile whose account has no captured credential warns and binds the
   rest; `kae pin <tool> <account>` on an uncaptured account fails (exit `7`). A
-  tool whose credential store cannot be scoped to a directory at all (codex with
-  `cli_auth_credentials_store = "keyring"`, one global keychain item) warns the
-  same way and keeps its login shared, with its settings and sessions still
-  isolated — kae never writes that item, since doing so would change the global
-  login rather than this directory's.
+  tool whose credential store kae cannot bind per directory (codex with
+  `cli_auth_credentials_store = "keyring"`) warns the same way and binds without a
+  credential, with its settings and sessions still isolated — kae writes no
+  keychain item unless the adapter declares that the item moves with the isolation
+  variable. For codex that means the bound directory may have no login until you
+  log in inside it (docs/ADAPTERS.md "Per-directory credential store").
 
 `kae mise init [-P <profile>] [--auto] [--write]` renders auth-mode tasks and
 the opt-in enter hook into a marker-delimited block in `.mise.toml`. Default
@@ -866,7 +876,17 @@ which inside a pinned shell would otherwise follow `CLAUDE_CONFIG_DIR` into the
 isolation tree. Restoring a backup taken before an optional artifact existed also
 removes that artifact live (it cannot be restored) — for claude that means the
 identity cache is cleared and refetched, never left naming the account the
-rollback just left.
+rollback just left. When the tool has moved the credential between its stores since
+the backup (codex between `auth.json` and its keyring item under
+`cli_auth_credentials_store = "auto"`), the payload is restored into the store the
+tool reads **now** rather than the recorded one — restoring the recorded one would
+report success while the live session kept the other account. A move between
+payload shapes that are not interchangeable cannot be redirected and is refused
+with exit `10`, pointing at `kae use` instead. The same redirect applies to the
+restores in `kae run -s` and `kae add --restore`, whose child process is the usual
+reason the store moved in the first place. A backup that recorded **no** credential
+is never redirected: kae leaves the moved-to store alone rather than delete a
+credential it has no copy of, and warns on stderr that the restore was partial.
 
 ### `kae env list --json`
 

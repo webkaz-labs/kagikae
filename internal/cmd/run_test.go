@@ -326,6 +326,62 @@ func TestLoginRestoreOnCaptureFailure(t *testing.T) {
 	}
 }
 
+// End-to-end cover for the store a child moves under kae's feet, which is the one
+// gap both review rounds named: everything else about it is unit-tested per
+// function, and the defect that shipped was in the *wiring*.
+//
+// codex under `cli_auth_credentials_store = "auto"` reads its keychain item first
+// and auth.json only when the item is absent, and its first save creates the item
+// and deletes the file — so a login flow moves the store. On the specs resolved
+// before the child, all three post-child steps read the store codex abandoned: the
+// comparison sees no change, the capture sees no credential, and the restore writes
+// a file nothing reads while reporting success.
+func TestLoginRestoreFollowsAStoreTheChildMoved(t *testing.T) {
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	authPath := filepath.Join(app.Env.Home, ".codex", "auth.json")
+	writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"),
+		"cli_auth_credentials_store = \"auto\"\n")
+	const previous = `{"tokens":{"access_token":"previous-access","account_id":"acct-main"}}`
+	const loggedIn = `{"tokens":{"access_token":"new-access","account_id":"acct-side"}}`
+	writeFile(t, authPath, previous)
+
+	// No keychain item yet, so `auto` resolves to auth.json and the backup records it.
+	sim := &keychainSim{}
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		// codex's first save under `auto`: write the item, delete the file.
+		sim.present, sim.payload = true, loggedIn
+		if err := os.Remove(authPath); err != nil {
+			t.Fatal(err)
+		}
+		return 0, nil
+	})
+
+	var code int
+	var out string
+	runner.With(sim, func() {
+		code, out = captureStdout(t, func() int { return runLogin(ctx, app, opts, "codex", "side", true) })
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	// The login was captured from the item the child created, not reported as
+	// "auth unchanged" against the file it deleted.
+	meta := readFile(t, filepath.Join(app.Paths.AccountDir("codex", "side"), "account.toml"))
+	if !strings.Contains(meta, constants.KindKeychain) {
+		t.Fatalf("the snapshot must record the store the child moved to: %s", meta)
+	}
+	// --restore put the previous credential back **into the item codex now reads**,
+	// not into the abandoned file.
+	if sim.payload != previous {
+		t.Fatalf("keychain item = %s, want the previous credential restored into it", sim.payload)
+	}
+	if _, err := os.Stat(authPath); err == nil {
+		t.Fatal("the restore must not resurrect the store codex abandoned")
+	}
+}
+
 func TestLoginUnsupportedTool(t *testing.T) {
 	app := testApp(t, nil)
 	code, out := captureStdout(t, func() int {

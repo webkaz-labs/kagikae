@@ -197,11 +197,14 @@ disk (docs/ADAPTERS.md) — so it is settable explicitly (v0.9.1): `kae add
 `kae accounts` / `kae status` show it (an `Identity` column; an additive
 `identity` field in `--json`, `omitempty`, `schema_version` still `1`).
 
-A `keychain` artifact may carry `keychain_account`: the captured account
-attribute of an item whose account is a **per-login opaque id** (codex keyring's
-`cli|<opaque>`), recorded verbatim so apply recreates the right item. It is
-omitted for stable-account keychain items (claude `$USER`, cursor `cursor-user`)
-and non-keychain artifacts.
+A `keychain` artifact may carry `keychain_account`: which item of the service the
+payload came from (claude `$USER`, cursor `cursor-user`, codex keyring's
+`cli|<16 hex of sha256(CODEX_HOME)>`). It is **diagnostic only** — omitted for
+non-keychain artifacts, and deliberately *not* used on apply, because where a
+keychain item lives is the adapter's answer for the environment being written,
+while this is the answer for the environment the snapshot was captured in.
+Applying the recorded one is how a snapshot taken under one `CODEX_HOME` would
+write the item of another.
 
 `kind` semantics:
 
@@ -209,7 +212,7 @@ and non-keychain artifacts.
 |------|---------|-------|
 | `json-pointer` | read pointer value from JSON file | patch pointer in JSON file atomically, preserving all other keys |
 | `file` | read whole file | atomic replace, mode `0600` |
-| `keychain` | read whole item payload verbatim (pointer guards the shape; an empty pointer marks an opaque non-JSON payload, e.g. a raw token, guarded as non-empty **and single-line**) | write captured bytes back verbatim via `security -U`; absent value deletes the item. A per-login-account item (codex keyring, `KeychainReplace`) is rewritten under its captured `keychain_account`, deleting the prior item first so exactly one item of the service remains. A fixed-account item on a **shared** service (agy's `gemini`/`antigravity`, `KeychainMatchAccount`) scopes read/write/delete to that account (`-a`) so a sibling item under a different account is never touched |
+| `keychain` | read whole item payload verbatim (pointer guards the shape; an empty pointer marks an opaque non-JSON payload, e.g. a raw token, guarded as non-empty **and single-line**) | write captured bytes back verbatim via `security -U`; absent value deletes the item. An item identified by service **and** account (`KeychainMatchAccount`) scopes read/write/delete to that account (`-a`) so a sibling item is never touched — used where the service holds more than one legitimate item: shared with another tool (agy's `gemini`/`antigravity`) or one item per tool home (codex's `Codex Auth`, account derived from `CODEX_HOME`). No path deletes by service name alone before writing; that is what destroyed another codex home's login |
 
 A snapshot is rewritten by `kae add`, `run -s`'s post-child recapture, and (new
 in v0.8.1) `kae use`/bare `use`'s switch-away recapture of the currently-active
@@ -326,12 +329,15 @@ reversible:
 `keychain_account`, `keychain_replace`, `keychain_match_account`, and `jsonc` are
 optional restore-fidelity fields: `keychain_account` recreates a deleted
 keychain item under the tool's own account (e.g. `cursor-user`, or codex
-keyring's captured `cli|<opaque>`) instead of the generic fallback;
-`keychain_replace` marks a per-login-account item (codex keyring) so a rollback
-deletes the live item before writing the backed-up one (the same single-item
-guarantee as apply); `keychain_match_account` marks a fixed-account item on a
-shared service (agy's `gemini`/`antigravity`) so a rollback scopes its
-read/write/delete to that account and never touches a sibling item; `jsonc`
+keyring's derived `cli|<16 hex>`) instead of the generic fallback;
+`keychain_match_account` marks an item identified by service **and** account,
+because the service holds more than one legitimate item — a service shared with
+another tool (agy's `gemini`/`antigravity`) or one item per tool home (codex's
+`Codex Auth`) — so a rollback scopes its read/write/delete to that account and
+never touches a sibling; `keychain_replace` is **legacy and no longer written**
+(it meant "delete every item of the service, then write", which destroyed another
+`CODEX_HOME`'s codex login), and a record carrying it restores as
+`keychain_match_account`; `jsonc`
 routes a JSONC target (e.g. Copilot's commented `config.json`) through
 the comment-preserving patch on restore instead of the plain-JSON path, which
 would reject the leading `//` comments. All are omitted for artifacts that do not
@@ -349,6 +355,43 @@ restored, and a stale identity cache would mislabel the restored account.
 removes/skips it instead of writing an empty value). After a successful
 switch, backups beyond `backup_keep` are pruned oldest-first (metadata and
 secret payloads together).
+
+A record carries the store its payload came from, and a tool can move its
+credential between stores while kae is not looking: codex under
+`cli_auth_credentials_store = "auto"` creates its keychain item and deletes
+`auth.json` on its first save, which a `kae run -s` child or a `kae add` login flow
+is enough to trigger. A restore therefore lets the **payload follow the tool** — a
+whole-document payload is written through today's spec, the same bytes in either
+store — instead of writing the recorded store, which would put the credential where
+nothing reads it while kae reported success. A move between shapes that are *not*
+interchangeable (a whole document and a JSON pointer value) cannot be redirected
+and is refused with exit `10`, exactly as the equivalent snapshot transition is.
+
+**A redirect only ever writes; it never deletes.** An absent record restores as
+"logged out", and redirecting that would delete the store the tool moved to — a
+credential the backup has no copy of, and on the paths that most need the redirect,
+one nothing else has a copy of either (a login flow that succeeded and then failed
+before kae captured it). Such a record keeps the recorded store, so the abandoned
+one is removed and the live one is left alone, with a warning on stderr that the
+restore was partial. Leaving a credential kae cannot account for is recoverable;
+deleting it is not.
+
+A *move* means the same artifact of the same tool home changing store kind. A
+record that names the same kind is restored as recorded even when the live spec
+points elsewhere — a different `CODEX_HOME` resolves a different `Codex Auth` item,
+and that is another home's credential store, not a place this backup belongs.
+
+Two further supports back the write case: the flows that run a child re-resolve
+their specs afterwards, so the credential the child left behind is captured before
+anything overwrites it, and a rollback's pre-rollback backup is captured through
+**the same resolution the rollback will write through**, so what it overwrites is
+exactly what it backed up. Resolving those two independently is what breaks the
+pairing: preferring today's spec by artifact name alone once made the pre-rollback
+backup capture one codex home's item while the rollback deleted another's.
+
+A legacy `keychain_replace` record with **no** recorded account is refused
+outright: without the account it cannot name its own item, and widening the delete
+to the whole service is what destroyed another codex home's login.
 
 **`account rm`/`rename` do not rewrite existing backups.** A backup's
 `active_before` keeps the old account name, so rolling back to a backup taken

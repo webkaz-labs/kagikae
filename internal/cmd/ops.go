@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
@@ -138,24 +139,35 @@ func (app *App) planTool(ctx context.Context, tool, accountName string) (toolPla
 	return plan, nil
 }
 
-// captureKeychainAccount reads the verbatim per-login account to persist for a
-// present KeychainReplace keychain item (codex keyring's `cli|<opaque>`),
-// refusing an item with no account attribute (apply could not recreate it).
-// For a non-replace or absent spec it returns ok=false so the caller keeps its
-// own default. It is the shared capture-or-refuse policy for the snapshot
-// (persistSnapshot) and backup (createBackup) paths.
-func captureKeychainAccount(ctx context.Context, tool string, sp artifact.Spec, present bool) (account string, ok bool, err error) {
-	if !sp.KeychainReplace || !present {
-		return "", false, nil
-	}
-	acctName, err := artifact.ReadKeychainAccount(ctx, sp)
+// refreshPlan re-resolves a plan's driver and artifact specs after a child process
+// ran, keeping the account, identity and snapshot the caller already resolved.
+//
+// A child can move the tool's credential between the stores it supports: codex
+// under `cli_auth_credentials_store = "auto"` creates its keychain item and deletes
+// `auth.json` on its first save, and a login flow does it on purpose. Every read
+// and write kae then makes through the specs it resolved *before* the child lands
+// on a store the tool no longer reads — the recapture reports "logged out during
+// the run" and keeps a stale snapshot, the login comparison reports "auth
+// unchanged" and captures nothing, and the restore writes a file nothing reads
+// while reporting success. All three are one cause: specs older than the child.
+//
+// A resolution failure keeps the pre-child specs and **warns**: they are the best
+// answer left, and failing here would abort a restore that is better attempted —
+// but they may be stale, so "restored the previous state" would be a claim kae
+// cannot support. The child can even be what broke resolution (a codex config the
+// adapter now refuses, `ephemeral` say), which is exactly when silence would be
+// worst.
+func (app *App) refreshPlan(ctx context.Context, plan toolPlan) toolPlan {
+	fresh, err := app.planTool(ctx, plan.Tool, plan.Account)
 	if err != nil {
-		return "", false, fmt.Errorf("read %s keychain account: %w", tool, err)
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: could not re-resolve %s's credential store after the child (%v); "+
+				"continuing with the store resolved before it, which may no longer be the one %s reads\n",
+			plan.Tool, err, plan.Tool)
+		return plan
 	}
-	if acctName == "" {
-		return "", false, fmt.Errorf("%s keychain item %q has no account attribute; cannot capture it safely", tool, sp.Target)
-	}
-	return acctName, true, nil
+	fresh.Identity, fresh.Meta = plan.Identity, plan.Meta
+	return fresh
 }
 
 // loadState reads state.json.
@@ -206,19 +218,10 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 					return meta, fmt.Errorf("store backup payload: %w", err)
 				}
 			}
-			// A per-login dynamic keychain account (codex keyring) is captured
-			// verbatim so a rollback recreates the right item; stable-account
-			// items keep the spec's constant account.
-			keychainAccount := sp.KeychainAccount
-			if acctName, ok, err := captureKeychainAccount(ctx, plan.Tool, sp, value.Present); err != nil {
-				return meta, err
-			} else if ok {
-				keychainAccount = acctName
-			}
 			meta.Artifacts = append(meta.Artifacts, backup.ArtifactRecord{
 				Tool: plan.Tool, Name: sp.Name, Kind: sp.Kind,
 				Target: sp.Target, Pointer: sp.Pointer,
-				KeychainAccount: keychainAccount, KeychainReplace: sp.KeychainReplace,
+				KeychainAccount:      sp.KeychainAccount,
 				KeychainMatchAccount: sp.KeychainMatchAccount,
 				JSONC:                sp.JSONC,
 				SecretRef:            ref, Present: value.Present,
@@ -232,23 +235,58 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 }
 
 // applyBackup restores live state from a backup, optionally limited to the given
-// tools (nil = all). current carries today's specs per tool so a lost
-// identity-only payload can degrade instead of failing the restore; pass nil
-// when the caller restores a backup it just created (there is nothing to
-// reconcile) and a missing payload should stay a hard error.
-func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only map[string]bool, current map[string][]artifact.Spec) error {
+// tools (nil = all).
+//
+// It resolves today's specs **itself** rather than taking them from the caller.
+// The restore has to know where each credential lives *now* — a child process can
+// move it between a tool's stores (restoreSpec) — and threading that in made it a
+// thing five call sites could forget: four of them did, which silently restored the
+// pre-fix behaviour of writing a store nothing reads and reporting success. Derived
+// here it cannot be forgotten. It is also safe to derive: only the tool moves its
+// own store, never kae, so a resolution taken now cannot disagree with one taken a
+// moment earlier in the same command, and a tool that fails to resolve falls back
+// to its records exactly as before.
+//
+// degradeLostIdentity is the caller's separate decision about a payload that has
+// gone missing from the secret store: a rollback lets an identity-only artifact
+// degrade to absent (losing it is safe and self-correcting), while a caller
+// restoring a backup it just created treats any missing payload as a hard error,
+// because it wrote them moments ago.
+func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only map[string]bool, degradeLostIdentity bool) error {
+	current, unresolved := app.currentSpecs(ctx, meta)
+	// A tool whose declaration cannot be resolved gets no moved-store check at all:
+	// restoreSpec falls back to the record, which is the pre-fix behaviour. Say so
+	// before writing, because the alternative is reporting "previous state restored"
+	// with the one check that would have caught a moved store silently skipped — and
+	// a child rewriting config.toml (to `ephemeral`, say) is a way to *cause* this.
+	for _, u := range unresolved {
+		if only != nil && !only[u.Tool] {
+			continue
+		}
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: could not resolve where %s keeps its credential now (%v), so this restore "+
+				"writes the store the backup recorded without checking whether %s has moved it\n",
+			u.Tool, u.Err, u.Tool)
+	}
 	for _, rec := range meta.Artifacts {
 		if only != nil && !only[rec.Tool] {
 			continue
 		}
 		value, err := storedValue(ctx, be, rec.SecretRef, rec.Present,
-			isIdentityOnly(current, rec.Tool, rec.Name), func() error {
+			degradeLostIdentity && isIdentityOnly(current, rec.Tool, rec.Name), func() error {
 				return errf(constants.ExitNotFound, "backup payload %s is missing from the secret store", rec.SecretRef)
 			})
 		if err != nil {
 			return err
 		}
-		if err := artifact.ApplyLive(ctx, specFromRecord(rec), value); err != nil {
+		sp, warning, err := restoreSpec(current, rec)
+		if err != nil {
+			return err
+		}
+		if warning != "" {
+			fmt.Fprintf(os.Stderr, "kae: warning: %s\n", warning)
+		}
+		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
 			return fmt.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
 		}
 	}
@@ -269,7 +307,7 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 // can be handed a backup that predates an artifact; applyBackup's other callers
 // restore a backup they just created and would gain a surprising delete pass.
 func (app *App) rollbackTo(ctx context.Context, be secret.Backend, meta backup.Meta, current map[string][]artifact.Spec) error {
-	if err := app.applyBackup(ctx, be, meta, nil, current); err != nil {
+	if err := app.applyBackup(ctx, be, meta, nil, true); err != nil {
 		return err
 	}
 	if err := clearUnrecordedIdentity(ctx, meta, current); err != nil {
@@ -299,6 +337,69 @@ func storedValue(ctx context.Context, be secret.Backend, ref string, present, id
 	default:
 		return artifact.Value{}, missing()
 	}
+}
+
+// restoreSpec resolves the spec a backup record must be written through.
+//
+// By default that is the record's own: `specFromRecord` rebuilds the store the
+// payload came from, so the payload's shape is the recorded kind's by
+// construction. But a tool can move its credential between the stores it supports
+// while kae is not looking — codex under `cli_auth_credentials_store = "auto"`
+// creates its keychain item and deletes `auth.json` on its first save — and then
+// writing the recorded store puts the credential where nothing reads it while kae
+// reports the restore as successful.
+//
+// So when today's declaration disagrees about *where* the artifact lives, the
+// payload follows the tool: a whole-document payload is written through today's
+// spec, which for codex is the same bytes in either store. A move between shapes
+// that are not interchangeable (a whole document and a JSON pointer value) cannot
+// be redirected, and is refused exactly as the equivalent snapshot transition is
+// (checkPayloadShape).
+//
+// **A redirect only ever writes; it never deletes.** An absent record restores as
+// "logged out", and redirecting that would delete the store the tool moved to —
+// a credential this backup has no copy of, and on the paths that need the redirect
+// most, one nothing else has a copy of either: a login flow that failed after
+// creating the credential but before kae captured it reaches this exact case, and
+// deleting there destroys the login the user just performed. So an absent record
+// keeps the recorded spec, which removes the abandoned store (inert) and leaves the
+// live one alone, with a warning that the restore was partial. Leaving a credential
+// kae cannot account for is recoverable; deleting it is not.
+//
+// Only a change of **kind** redirects. A record naming the same kind is restored as
+// recorded even when today's spec points elsewhere: a different `CODEX_HOME` (or
+// `CLAUDE_CONFIG_DIR`) resolves a different item of the same service, and that is
+// another home's credential store — not a place this backup belongs.
+//
+// current is nil only where no declaration was resolved; the record then stands
+// alone, which is the pre-fix behaviour.
+//
+// The returned warning is non-empty when the restore is knowingly partial. It is
+// returned rather than printed so the caller that performs the write emits it once,
+// immediately before that write — the pre-rollback capture resolves the same spec
+// and must not print it a second time.
+func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) (sp artifact.Spec, warning string, err error) {
+	for _, live := range current[rec.Tool] {
+		if live.Name != rec.Name || live.Kind == rec.Kind {
+			continue
+		}
+		if !rec.Present {
+			return specFromRecord(rec), fmt.Sprintf(
+				"%s moved its credential to %s %q, which this backup has no record of; "+
+					"kae left it in place rather than deleting a credential it has no copy of, so %s "+
+					"stays logged in as whatever wrote it",
+				rec.Tool, live.Kind, live.Target, rec.Tool,
+			), nil
+		}
+		if artifact.WholeDocument(live.Kind) != artifact.WholeDocument(rec.Kind) {
+			return artifact.Spec{}, "", errf(constants.ExitUnsafeRefused,
+				"%s/%s was backed up from %s %q but %s now keeps it in %s %q, and the two "+
+					"payload shapes are not interchangeable; switch with `kae use %s <account>` instead",
+				rec.Tool, rec.Name, rec.Kind, rec.Target, rec.Tool, live.Kind, live.Target, rec.Tool)
+		}
+		return live, "", nil
+	}
+	return specFromRecord(rec), "", nil
 }
 
 // isIdentityOnly answers whether a recorded artifact is identity-only according
@@ -392,12 +493,17 @@ func clearUnrecordedIdentity(ctx context.Context, meta backup.Meta, current map[
 // (including the keychain account, so a rollback recreates an item under the
 // tool's own account, not the generic fallback). IdentityOnly is deliberately
 // not recorded — see isIdentityOnly.
+//
+// A legacy record's `keychain_replace` (codex keyring, written before the item
+// was known to be account-scoped) restores as account-scoped: its recorded
+// account is the one the item had, and the flag's own semantics — delete every
+// item of the service, then write — is what removed another CODEX_HOME's login.
 func specFromRecord(rec backup.ArtifactRecord) artifact.Spec {
 	return artifact.Spec{
 		Name: rec.Name, Kind: rec.Kind, Target: rec.Target,
 		Pointer: rec.Pointer, KeychainAccount: rec.KeychainAccount,
-		KeychainReplace: rec.KeychainReplace, KeychainMatchAccount: rec.KeychainMatchAccount,
-		JSONC: rec.JSONC,
+		KeychainMatchAccount: rec.KeychainMatchAccount || rec.KeychainReplace,
+		JSONC:                rec.JSONC,
 	}
 }
 
@@ -406,6 +512,15 @@ func specFromRecord(rec backup.ArtifactRecord) artifact.Spec {
 // current declares but the backup has no record of are added, so one introduced
 // after the backup was taken is still captured before the rollback clears it —
 // otherwise rolling back the rollback could not put it back.
+//
+// Each record is captured through **the spec the rollback will act on**
+// (restoreSpec), never one merely resolved beside it. That pairing is the whole
+// safety property: what the pre-rollback backup records is exactly what the
+// rollback then overwrites, so rolling back the rollback puts it back. Resolving
+// the two independently is what breaks it — preferring today's spec by name alone
+// once made this capture a *different* codex home's item from the one the restore
+// deleted. A spec restoreSpec refuses is captured from the record; the rollback
+// refuses it too, so nothing is overwritten either way.
 func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) []toolPlan {
 	specsByTool := map[string][]artifact.Spec{}
 	order := []string{}
@@ -413,7 +528,11 @@ func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) [
 		if _, seen := specsByTool[rec.Tool]; !seen {
 			order = append(order, rec.Tool)
 		}
-		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], specFromRecord(rec))
+		sp, _, err := restoreSpec(current, rec)
+		if err != nil {
+			sp = specFromRecord(rec)
+		}
+		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], sp)
 	}
 	for _, tool := range order {
 		recorded := make(map[string]bool, len(specsByTool[tool]))
@@ -518,14 +637,13 @@ func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error 
 		// An identity-only artifact missing from an older snapshot applies as absent:
 		// metaArt is the zero value, so Present=false removes it live (claude's
 		// /oauthAccount identity cache is then refetched from the token).
-		// A KeychainReplace item (codex keyring) carries its captured per-login
-		// account in the snapshot; the fresh adapter spec cannot know it (the
-		// target is not live), so restore it here before ApplyLive writes. Gated
-		// on the structural KeychainReplace flag (not just a non-empty field) so
-		// a stable-account item's adapter-supplied constant is never overridden.
-		if sp.KeychainReplace && metaArt.KeychainAccount != "" {
-			sp.KeychainAccount = metaArt.KeychainAccount
-		}
+		//
+		// A keychain account recorded in the snapshot is deliberately *not* restored
+		// over the spec's. Where a keychain item lives is the adapter's answer for
+		// the current environment; the snapshot's is the answer for the environment
+		// it was captured in, and applying that one is how kae writes an item the
+		// tool never reads (a snapshot taken under one CODEX_HOME applied under
+		// another).
 		// The snapshot's bytes and the freshly resolved spec must agree on payload
 		// shape. They can disagree because the spec comes from the *current*
 		// environment while the payload was captured under an earlier one — switching

@@ -15,18 +15,18 @@ import (
 )
 
 // seedKeyringCodex configures codex's keyring store inside a bound directory, the
-// shape that makes its credential a single global keychain item.
+// shape whose credential kae will not bind per directory.
 func seedKeyringCodex(t *testing.T, dir string) {
 	t.Helper()
 	writeFile(t, filepath.Join(dir, "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")
 }
 
 // TestWriteDirCredentialRefusesGlobalKeychainStore is the guard on the most
-// destructive thing this code could do. codex's keyring item is one global
-// `Codex Auth` whatever CODEX_HOME says, and its spec carries KeychainReplace —
-// which deletes the existing item before writing. Writing it for a bound
-// directory would therefore destroy the user's global codex login while
-// isolating nothing.
+// destructive thing this code could do: writing a keychain item for a bound
+// directory when the adapter has not declared that the item moves with the
+// isolation variable. codex's `Codex Auth` item is shared by every codex home
+// (scoped by an account kae would have to derive for the bond dir), so writing it
+// here touches a store the bound directory does not own.
 func TestWriteDirCredentialRefusesGlobalKeychainStore(t *testing.T) {
 	app := testApp(t, nil)
 	app.Env.GOOS = "darwin"

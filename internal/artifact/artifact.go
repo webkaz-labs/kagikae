@@ -40,35 +40,35 @@ type Spec struct {
 	// reused). Every KindKeychain spec must set it, or new items fall back
 	// to the literal account "kagikae".
 	KeychainAccount string
-	// KeychainReplace marks a KindKeychain item whose account attribute is a
-	// per-login opaque id that varies between accounts (codex keyring's
-	// `cli|<opaque>`), unlike claude/cursor whose account is a stable constant.
-	// kae captures the live account verbatim into the snapshot (the apply path
-	// sets KeychainAccount from it) and, on apply, deletes the existing item
-	// before writing the target's, so exactly one item of the service exists
-	// afterwards (robust whether the tool matches by service only or
-	// service+account). See docs/ADAPTERS.md (Codex keyring) and docs/DATA-MODEL.md.
-	KeychainReplace bool
-	// KeychainMatchAccount scopes a KindKeychain item to KeychainAccount on
-	// both read and write, for a service shared with other tools where only one
-	// account is kae's (agy's gemini service: only acct=antigravity is agy's,
-	// the rest belong to the Gemini ecosystem). Unlike the default service-only
-	// match, kae reads/writes/deletes solely the KeychainAccount item and never
-	// reuses or touches a sibling item under a different account. The account is
-	// a fixed literal (not captured per-login), so it is incompatible with
-	// KeychainReplace. See docs/ADAPTERS.md (agy keyring).
+	// KeychainMatchAccount scopes a KindKeychain item to KeychainAccount on read,
+	// write and delete, for a service under which more than one legitimate item
+	// can live. Two shapes need it:
+	//
+	//   - a service shared with other tools, where only one account is kae's
+	//     (agy's gemini service: only acct=antigravity is agy's, the rest belong
+	//     to the Gemini ecosystem);
+	//   - a service whose *account* is what scopes the item to one tool home
+	//     (codex's `Codex Auth`, one item per CODEX_HOME).
+	//
+	// Either way kae reads, writes and deletes solely the KeychainAccount item and
+	// never reuses or touches a sibling under a different account. The account
+	// comes from the adapter — a fixed literal (agy) or derived from the tool's
+	// home (codex) — never from the live item, which is a different item's account
+	// whenever more than one exists. Treating codex's account as an opaque
+	// per-login id and its service as single-item is what made a switch delete
+	// another CODEX_HOME's login. See docs/ADAPTERS.md.
 	KeychainMatchAccount bool
 	// KeychainDirScoped marks a KindKeychain item whose service name is derived
 	// from the tool's isolation env var, so each bound directory resolves to its
 	// own item (claude on macOS: `Claude Code-credentials-<sha8(configDir)>`).
 	//
 	// It is what makes a keychain item safe to write for a per-directory bind, and
-	// the default of false is the safe one. codex's keyring item is a single global
-	// `Codex Auth` regardless of CODEX_HOME, so writing it for a bound directory
-	// would overwrite the *global* login instead of isolating anything — and with
-	// KeychainReplace it deletes the prior item first, so there would be nothing
-	// to restore. A tool whose credential store cannot be scoped to a directory is
-	// reported as unisolatable rather than written to.
+	// the default of false is the safe one: an undeclared item is left alone and the
+	// tool reported as unisolatable. codex is why the default matters. Its
+	// `Codex Auth` item is shared by every codex home and scoped by the account
+	// instead (KeychainMatchAccount), so a per-directory write would have to derive
+	// the bond dir's account correctly or touch a store the directory does not own —
+	// a capability kae has not verified end to end and therefore does not declare.
 	KeychainDirScoped bool
 	// JSONC marks a KindJSONPointer Target as a JSONC document (standard JSON
 	// plus // and /* */ comments and trailing commas, e.g. GitHub Copilot's
@@ -131,11 +131,20 @@ type Value struct {
 	Present bool
 }
 
-// matchAccount reports whether this keychain spec is scoped to a fixed account
-// of a shared service (agy's gemini/antigravity): read/write/delete touch only
-// the KeychainAccount item, never a sibling under a different account.
-func (sp Spec) matchAccount() bool {
-	return sp.KeychainMatchAccount && sp.KeychainAccount != ""
+// keychainIdentified refuses a keychain spec that says its item is identified by
+// service+account but carries no account. Widening such a spec to a service-only
+// match is never safe: the service holds items kae does not own (another codex
+// home's login, another tool's `gemini` item), so a read would capture one and a
+// delete would destroy one. The case is reachable from a **legacy backup record**
+// — codex's old capture wrote `keychain_replace` with no account when no item was
+// live — so it is refused at the primitive rather than trusted to callers.
+func keychainIdentified(sp Spec) error {
+	if sp.KeychainMatchAccount && sp.KeychainAccount == "" {
+		return fmt.Errorf("%w: keychain item %q is identified by service and account, "+
+			"but this record carries no account; refusing to touch the service as a whole",
+			ErrUnsafe, sp.Target)
+	}
+	return nil
 }
 
 // keychainGuard verifies a captured keychain payload before it is stored or
@@ -162,19 +171,6 @@ func keychainGuard(sp Spec, payload []byte) error {
 		return fmt.Errorf("%w: keychain item %q payload is not the expected JSON shape", ErrUnsafe, sp.Target)
 	}
 	return nil
-}
-
-// ReadKeychainAccount returns the live account attribute of a KindKeychain
-// spec's item, for capturing a per-login dynamic account (codex keyring's
-// `cli|<opaque>`) into the snapshot so apply can recreate the right item. It is
-// a separate read so the hot status/Detect path (plain ReadLive) never pays for
-// it. Returns "" for a non-keychain spec or an absent item.
-func ReadKeychainAccount(ctx context.Context, sp Spec) (string, error) {
-	if sp.Kind != constants.KindKeychain {
-		return "", nil
-	}
-	account, _, err := keychain.ItemAccount(ctx, sp.Target)
-	return account, err
 }
 
 // ReadLive captures the current live value of the artifact.
@@ -214,10 +210,13 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 		return Value{Data: raw, Present: true}, nil
 
 	case constants.KindKeychain:
+		if err := keychainIdentified(sp); err != nil {
+			return Value{}, err
+		}
 		var payload []byte
 		var found bool
 		var err error
-		if sp.matchAccount() {
+		if sp.KeychainMatchAccount {
 			payload, found, err = keychain.ReadItemForAccount(ctx, sp.Target, sp.KeychainAccount)
 		} else {
 			payload, found, err = keychain.ReadItem(ctx, sp.Target)
@@ -310,13 +309,15 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		return patch.WriteFileAtomic(target, updated, patch.CredentialFileMode)
 
 	case constants.KindKeychain:
-		matchAccount := sp.matchAccount()
+		if err := keychainIdentified(sp); err != nil {
+			return err
+		}
 		if !v.Present {
 			// The captured account had no keychain item; applying it removes
 			// the live item (mirrors the file/json-pointer absent cases). A
 			// match-account spec deletes only its own account's item, never a
 			// sibling under a different account of the shared service.
-			if matchAccount {
+			if sp.KeychainMatchAccount {
 				return keychain.DeleteItemForAccount(ctx, sp.Target, sp.KeychainAccount)
 			}
 			return keychain.DeleteItem(ctx, sp.Target)
@@ -326,36 +327,22 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		if err := keychainGuard(sp, v.Data); err != nil {
 			return err
 		}
-		if matchAccount {
-			// Shared-service item keyed by a fixed account (agy gemini/antigravity):
-			// upsert only that account's item (-U matches service+account), so a
-			// sibling item under a different account is never read, reused, or
-			// overwritten. No replace-delete: that could remove a sibling.
+		if sp.KeychainMatchAccount {
+			// Item keyed by service+account (agy's gemini/antigravity, codex's
+			// per-CODEX_HOME `Codex Auth`): upsert only that account's item (-U
+			// matches service+account), so a sibling item under a different account
+			// is never read, reused, or overwritten. No delete-before-write — that
+			// is what removed another codex home's login.
 			return keychain.WriteItem(ctx, sp.Target, sp.KeychainAccount, v.Data)
 		}
-		// A KeychainReplace item (codex keyring) carries its captured opaque
-		// account verbatim, so that account wins and the prior item is deleted
-		// first to guarantee a single live item. Otherwise (claude/cursor, a
-		// stable constant account) the existing item's account is reused.
+		// Stable-account item (claude/cursor): the existing item's account wins
+		// when present, so a re-login that changed it is honored.
 		account := sp.KeychainAccount
-		replace := sp.KeychainReplace && account != ""
-		if !replace {
-			// Stable-account item (claude/cursor): the existing item's account
-			// wins when present, so a re-login that changed it is honored.
-			if existing, _, err := keychain.ItemAccount(ctx, sp.Target); err == nil && existing != "" {
-				account = existing
-			}
+		if existing, _, err := keychain.ItemAccount(ctx, sp.Target); err == nil && existing != "" {
+			account = existing
 		}
 		if account == "" {
 			account = "kagikae"
-		}
-		if replace {
-			// Per-login dynamic account (codex keyring): delete the prior item
-			// so exactly one item of this service exists after writing the
-			// target's, under its captured account.
-			if err := keychain.DeleteItem(ctx, sp.Target); err != nil {
-				return err
-			}
 		}
 		return keychain.WriteItem(ctx, sp.Target, account, v.Data)
 

@@ -520,7 +520,7 @@ adapters (`internal/adapter/*/...` `TestClaudeFreshness*`, `TestCodexFreshness*`
 `TestFresherConformance`, and the unchanged switch/login/doctor/stale tests.
 §B/§C use fake-runner tests (`internal/adapter/cursor` `TestCursorIdentity*`,
 `internal/adapter/codex` keyring + `internal/cmd` `TestCodexKeyringRoundTrip` /
-`TestCodexKeyringEmptyAccountRefused` / `TestKeychainReplaceUsesCapturedAccount`).
+`TestCodexKeyringForeignHomeItemNotCaptured` / `TestKeychainCodexHomesCoexist`).
 §D round-trip + recapture-preservation by `internal/cmd`
 `TestAddRecordsIdentity*` / `TestRecapturePreservesIdentity`.
 
@@ -534,14 +534,23 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
 
 - [ ] `kae add codex` (no name) on a live keyring login captures under the
       detected account (the `id_token` email / `account_id`), and `account.toml`
-      records the opaque `keychain_account` (`cli|<opaque>`), not the payload.
+      records the derived `keychain_account` (`cli|` + 16 hex), not the payload.
 - [ ] Log in as a second account; `kae add codex` it.
 - [ ] `kae use codex <first>`: a fresh-process `codex login status` (or a
       `codex` run) reports logged in as the first account — the verbatim keyring
-      round-trip restored it; exactly one `Codex Auth` item exists afterwards
-      (`security find-generic-password -s "Codex Auth"` shows the first
-      account's opaque id). **Settles the open discovery point** (service-only
-      vs service+account match): record which it turned out to be.
+      round-trip restored it. The item's account attribute is unchanged
+      (`security find-generic-password -s "Codex Auth"`, attributes only): one
+      codex home has one item whichever account is logged into it.
+- [ ] A **second `CODEX_HOME`** logged in at the same time still is afterwards:
+      `CODEX_HOME=<other> codex login status` reports its own account. This is the
+      regression that shipped through v0.12.0 (a switch deleted the service's item
+      by service name alone). The login-free half is covered by
+      `TestKeychainCodexHomesCoexist`; this checks the real keychain.
+- [ ] The payload read works without a keychain prompt. **Open**: codex writes its
+      item through the Rust `keyring` crate (Security.framework directly, not
+      `/usr/bin/security`), so whether `security -w` is in the item's ACL
+      trusted-application list is unverified — if it prompts, the keyring driver
+      needs the prompt documented or an ACL fix.
 - [ ] No token value ever appeared in `kae` output, `--json`, or `account.toml`.
 
 **Cursor `kae add` identity** (macOS, live `cursor-agent` login):
@@ -914,7 +923,9 @@ commit**. Verifying an assumption always means launching a **fresh** tool proces
 | Tool | Assumption | How to verify | Verified on |
 |---|---|---|---|
 | codex | `auth.json` holds only auth state, so the whole file may be swapped | switch, then `codex login status` in a fresh process names the applied account; `config.toml` and history are untouched | 0.145.0 |
-| codex | the `Codex Auth` keyring item's account is a per-login opaque `cli\|<opaque>` id kae must capture verbatim, and exactly one item may exist after a switch | `security find-generic-password -s "Codex Auth"` after a switch shows the target's opaque id and a single item (the two-account real gate is still open — v0.8.3) | 0.145.0 |
+| codex | the `Codex Auth` keyring item is identified by service **and account**, where the account is a **rule**: `cli\|` + the first 16 hex chars of `sha256(canonical CODEX_HOME)` (symlink-resolved, absolute — codex canonicalizes the path before hashing, and refuses to start when it does not resolve). One service therefore holds **one item per codex home**, all legitimate, and codex's own delete is service+account scoped | Read `codex-rs/login/src/auth/storage.rs` (`compute_store_key`, `DirectKeyringAuthStorage::delete`) at the tag matching `codex --version` — codex is public, so this is a file read, not a measurement. Beware: `compute_store_key` exists in **two** modules and symbol-grepping the stripped binary finds the MCP-OAuth one first. To confirm against a live item without a real login: `printf 'sk-not-a-real-key' \| CODEX_HOME=<temp> codex login --with-api-key` (a purely local write, no network), then `security find-generic-password -s "Codex Auth" -a "cli\|$(printf '%s' "$(python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' <temp>)" \| shasum -a 256 \| cut -c1-16)"` — attributes only, never `-w`. Clean up with `CODEX_HOME=<temp> codex logout` (its own scoped delete), not `security delete-generic-password`. Modelling the account as an opaque per-login id made a kae switch delete another `CODEX_HOME`'s login | 0.145.0 (source + live item, 2026-07-30) |
+| codex | `cli_auth_credentials_store` is the enum `file` (**the default for an absent key**) \| `keyring` \| `auto` \| `ephemeral`, and `auto` reads the keyring **first**, falling back to `auth.json` only when the item is absent or unreadable. A successful keyring write **deletes** the `auth.json` fallback. `[features] secret_auth_storage` (default: on only on Windows) swaps the keyring backend for an encrypted secrets file, so the credential is not in the item at all | Same file plus `codex-rs/config/src/types.rs` (`AuthCredentialsStoreMode`, `#[default] File`) and `AutoAuthStorage::load`. The delete-the-file half is also live-confirmed: after `codex login --with-api-key` under a keyring store, `CODEX_HOME/auth.json` is gone. Treating everything that is not `keyring` as the file store is what would let kae write `auth.json` while codex reads the item — the failure shape that shipped for claude's per-directory keychain item | 0.145.0 (source + live, 2026-07-30) |
+| codex | **Open (Linux/WSL).** Under `auto`, kae resolves `auth.json` off macOS on the assumption that a keyring codex could use is not holding the credential. codex's keyring crate does reach the Linux Secret Service, so a desktop with one running is the codex-shaped repeat of the macOS pin defect: kae would switch a file codex no longer reads | Needs a Linux box with a running Secret Service: set `cli_auth_credentials_store = "auto"`, log in, and see which store codex wrote (`secret-tool search`-equivalent attributes, plus whether `auth.json` was deleted). If it uses the keyring, kae must refuse `auto` there too, the way it already refuses keyring-only. Until then treat the Linux `auto` path as unverified rather than confirmed | not verified |
 | agy | of the shared `gemini` keychain service, only account `antigravity` is agy's; siblings belong to the Gemini ecosystem and must never be read or written | switch, confirm a fresh agy session reports the applied account and a sibling `gemini` item is unchanged | 1.0.10 |
 | agy | the live account is resolved server-side from the opaque token and never persisted, so identity can only come from `~/.gemini/google_accounts.json` `.active` (or `--identity`) | after an Antigravity login, `kae add agy` auto-names from `.active`; no other on-disk source appears | 1.0.10 |
 | opencode | `/openai` is the subscription login, and sibling provider keys are independent credentials that must survive a switch | switch with an extra provider key present in `auth.json`; the sibling key is byte-identical afterwards | 1.17.4 |
@@ -1101,7 +1112,7 @@ agy keyring driver on macOS (§A), terser one-shot `kae run` default child (§B)
   (`schema_version` 1); no new `go.mod` dependency.
 - Code review: APPROVE after one round (the `account.Artifact` finding was
   rebutted — that struct intentionally persists no adapter-structural flags
-  [`KeychainReplace`/`JSONC` are absent too]; apply re-derives specs from the
+  [`JSONC` is absent too]; apply re-derives specs from the
   live adapter, and only the adapter-independent backup record carries
   `keychain_match_account`). `/simplify` cleanups (`Spec.matchAccount()`, the
   shared agy no-item message const) were re-reviewed APPROVE.
@@ -1166,11 +1177,13 @@ identity, §C codex keyring driver, §D store + display the detected identity.
   interactive OAuth re-logins with two accounts is disruptive and was deferred
   by decision. The driver is covered by fake-`security` round-trip tests
   (`TestCodexKeyringRoundTrip` — capture A → re-login B → `use A` restores A's
-  verbatim item with delete-then-add; `TestCodexKeyringEmptyAccountRefused`;
-  `TestKeychainReplaceUsesCapturedAccount`). The two-account **real**-keychain
-  gate (settling service-only vs service+account match) remains the one open
-  acceptance item — run it per the "v0.8.3 real-machine gate" procedure before
-  relying on the keyring driver in production.
+  verbatim item as a single upsert; `TestCodexKeyringForeignHomeItemNotCaptured`;
+  `TestKeychainCodexHomesCoexist`). The two-account **real**-keychain gate remains
+  the one open acceptance item — run it per the "v0.8.3 real-machine gate"
+  procedure before relying on the keyring driver in production. The
+  service-only-vs-service+account question this section left open was settled from
+  upstream source on 2026-07-30 (service+account), and the service-only answer kae
+  had shipped deleted another `CODEX_HOME`'s login.
 
 ### v0.8.2 (2026-06-16, macOS darwin 24.6.0)
 

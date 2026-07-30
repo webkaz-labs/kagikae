@@ -163,18 +163,15 @@ func (app *App) persistSnapshot(ctx context.Context, be secret.Backend, plan too
 		} else if err := be.Delete(ctx, ref); err != nil {
 			return fmt.Errorf("clear stale payload: %w", err)
 		}
-		art := account.Artifact{
+		// The keychain account is recorded from the spec, never read back from the
+		// live item: the adapter derives where the item lives (codex's account is a
+		// hash of CODEX_HOME), and a service can hold several legitimate items, so
+		// the live item's account can belong to a different one.
+		acc.Artifacts[sp.Name] = account.Artifact{
 			Kind: sp.Kind, Target: sp.Target, Pointer: sp.Pointer,
-			SecretRef: ref, Present: values[i].Present,
+			KeychainAccount: sp.KeychainAccount,
+			SecretRef:       ref, Present: values[i].Present,
 		}
-		// Capture a per-login dynamic keychain account (codex keyring) verbatim
-		// so apply recreates the right item; stable-account items need none.
-		if acctName, ok, err := captureKeychainAccount(ctx, plan.Tool, sp, values[i].Present); err != nil {
-			return err
-		} else if ok {
-			art.KeychainAccount = acctName
-		}
-		acc.Artifacts[sp.Name] = art
 	}
 	return account.Save(app.Paths.AccountDir(plan.Tool, plan.Account), acc)
 }

@@ -169,8 +169,9 @@ The whole switch wraps `ctx` in `keychain.WithReadCache`, so the `security`
 reads steps 3–6 make of one tool's keychain service collapse to a single
 invocation (the recapture in step 5 adds no extra read or auth prompt); writes
 in step 6 invalidate the cache. The cache key is the service for the
-service-only drivers and service+account for agy's account-scoped match
-(`gemini`/`antigravity`), so a shared service is not conflated. No child runs
+single-item drivers and service+account wherever the item is identified by both —
+agy's `gemini`/`antigravity` and codex's per-`CODEX_HOME` `Codex Auth` — so a
+service holding more than one legitimate item is not conflated. No child runs
 during a switch, so the cache never serves a stale live credential (`run -s`
 does not use it).
 
@@ -191,9 +192,21 @@ process:
 
 ```text
 lock (held for the entire child run) -> backup (reason "run") -> apply
--> child runs with inherited stdio -> recapture refreshed credentials into
-the account snapshots -> restore the backup -> prune -> unlock
+-> child runs with inherited stdio -> re-resolve each tool's specs
+-> recapture refreshed credentials into the account snapshots
+-> restore the backup -> prune -> unlock
 ```
+
+The re-resolution step is not bookkeeping: a child can move the credential to the
+tool's *other* store (codex under `cli_auth_credentials_store = "auto"` creates its
+keychain item and deletes `auth.json` on its first save), and every read or write
+made through the specs resolved before the child then lands on a store the tool no
+longer reads. The restore that follows reconciles the backup's record with today's
+declaration rather than trusting either alone: a payload follows the tool into the
+store it now reads, a move between non-interchangeable payload shapes is refused,
+and a record with no payload is never redirected — that could only delete a
+credential kae has no copy of ([DATA-MODEL.md](DATA-MODEL.md) "backup metadata").
+`kae add` (the login flow) runs the same child-then-re-resolve sequence.
 
 state.json is untouched: the temporary switch is invisible to the bare `kae`
 status summary. `run -i` (the per-account global isolated home, shared with

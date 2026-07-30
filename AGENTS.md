@@ -74,6 +74,24 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   path or a service name at the call site; and when a write to the authoritative
   store fails, return the error — a fallback to the secondary store reports
   success while the tool reads something else.
+- **A keychain item's identity is service + account, and per-tool.** codex derives
+  the account of its single-service `Codex Auth` item from `CODEX_HOME`
+  (`cli|` + 16 hex of sha256 over the **canonicalized** path — symlinks resolved),
+  so one service holds one legitimate item per tool home; claude hashes the *raw*
+  env string, NFC-normalized, to 8 hex, into the **service** name. Same idea, two
+  incompatible formulas: derive each in its own adapter and never port one.
+  Consequently **never delete a keychain item by service name alone before writing**
+  (`keychain.DeleteItem` on a service another home also uses): that deleted a second
+  `CODEX_HOME`'s codex login on every switch, shipped through v0.12.0. Scope
+  read/write/delete with `KeychainMatchAccount` whenever a service can hold more
+  than one legitimate item, and derive the account from the environment being
+  written — never from the live item, and never from a snapshot captured elsewhere.
+- Upstream config values that select a **store** are an enum kae must model whole,
+  including its default. codex's `cli_auth_credentials_store` defaults to `file`
+  when absent and `auto` means *keyring first, file only if absent* — so mapping
+  "anything that is not keyring" to the file store writes `auth.json` while codex
+  reads the keychain. A value kae cannot switch (`ephemeral`, or
+  `[features] secret_auth_storage`) is refused, not approximated.
 - Secret values must never reach stdout/stderr/JSON/metadata/logs. New output
   paths need a redaction test.
 - Two comparison predicates, never interchangeable: a **credential** is compared

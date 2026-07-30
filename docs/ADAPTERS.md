@@ -211,7 +211,7 @@ them is set, because a switch would silently have no effect.
 
 Codex keeps everything under `CODEX_HOME` (default `~/.codex`). Credentials
 live in `~/.codex/auth.json` or in the OS credential store, selected by
-`cli_auth_credentials_store = "file" | "keyring" | "auto"` in
+`cli_auth_credentials_store = "file" | "keyring" | "auto" | "ephemeral"` in
 `~/.codex/config.toml`. `auth.json` contains only authentication state
 (tokens, account id, last refresh), so unlike `~/.claude.json` it may be
 swapped as a whole file.
@@ -224,38 +224,56 @@ environment, the adapter uses it as the live base path.
 | Driver | Status | Switched artifacts |
 |--------|--------|--------------------|
 | `codex-auth-json` | implemented | whole `~/.codex/auth.json` (file mode `0600`) |
-| `codex-keyring` | implemented (v0.8.3) | keychain item service `Codex Auth`, captured and restored verbatim |
+| `codex-keyring` | implemented (v0.8.3) | this codex home's `Codex Auth` keychain item (service + derived account), captured and restored verbatim |
 
-Store selection by `cli_auth_credentials_store`:
+Store selection by `cli_auth_credentials_store`, which is **upstream's four-value
+enum**, not "keyring or else file":
 
-- explicit `cli_auth_credentials_store = "keyring"`: kae switches the `Codex
-  Auth` keychain item (driver below). `auto` (or unset) with neither `auth.json`
-  nor a keyring item is indistinguishable from "not logged in", so `capture`
-  fails with `auth_missing` (exit 3) including a keyring hint, while `switch`
-  proceeds normally — switching to a captured account legitimately creates the
-  live state. `doctor` and `status` carry the same hint as a warning.
+| Value | What codex does | What kae switches |
+|---|---|---|
+| absent (the upstream default) or `file` | `CODEX_HOME/auth.json` | the file |
+| `keyring` | the `Codex Auth` keychain item only | the item — **macOS only**: kae reads a keyring through the `security` CLI, so elsewhere this store is refused as unsupported (exit `5`) instead of yielding a spec whose every operation fails |
+| `auto` | the item when it exists, `auth.json` when it does not | whichever one is live: kae probes for the item (attributes only) and resolves the same store codex will read. Off macOS it resolves to `auth.json` with no probe — that is where codex falls back with no keyring, but kae **cannot verify** that a Linux Secret Service is not holding the credential instead (an open row in [VALIDATION.md](VALIDATION.md)) |
+| `ephemeral` | keeps it in memory for one process | nothing — refused as unsupported (exit `5`) |
 
-#### Keyring item contract (discovery 2026-06-16; driver shipped v0.8.3)
+Anything else, an unreadable/unparseable `config.toml`, and
+`[features] secret_auth_storage = true` (which moves the credential into an
+encrypted secrets file whose key alone is in the keyring) are **refused** rather
+than treated as the file store. Folding every non-`keyring` value into the file
+store is the codex-shaped version of the macOS pin defect: kae writes
+`auth.json`, codex reads the item first, and every offline guard stays green.
 
-Real-machine discovery (`cli_auth_credentials_store = "keyring"` + `codex
-login` on macOS) found the keychain item:
+With `auto` and neither store populated, "not logged in" is indistinguishable
+from "not yet captured", so `capture` fails with `auth_missing` (exit 3) while
+`switch` proceeds — switching to a captured account legitimately creates the live
+state. `doctor` and `status` carry the same hint as a warning.
 
-- **service** `Codex Auth`
-- **account** `cli|<opaque>` — a per-login opaque id (not a hash of
-  `account_id` / `sub` / `email` / `jti` / `sid`), so kae **captures it
-  verbatim and never computes it**.
+#### Keyring item contract (source-confirmed 2026-07-30 against `rust-v0.145.0`)
+
+- **service** `Codex Auth` — shared by **every** codex home.
+- **account** `cli|` + the first **16** hex characters of
+  `sha256(canonical CODEX_HOME)`, where canonical means symlink-resolved and
+  absolute (`codex-rs/login/src/auth/storage.rs`, `compute_store_key`). kae
+  **derives** it (`codex.storeKey`) and never captures it from the live item.
 - **payload** the whole `auth.json` JSON (`tokens`, `OPENAI_API_KEY`,
   `auth_mode`, `last_refresh`) — file-mode-equivalent content.
 
-The `codex-keyring` driver reuses the verbatim-keychain pattern (as claude /
-cursor): capture the single live `Codex Auth` item's account (`KeychainReplace`,
-stored as the snapshot's `keychain_account`) and payload; structure guard =
-payload parses as a JSON object containing `/tokens`. On apply kae **deletes the
-existing `Codex Auth` item before writing the target's** under its captured
-account, so exactly one item remains — robust whether codex matches by service
-only or service+account (the open discovery point, conservatively covered). The
-detect-only exit-10 refusal is gone; identity auto-detection reads the keychain
+So the item is identified by **service + account**, and one service legitimately
+holds one item per codex home. Every read, write and delete is scoped to this
+home's account (`KeychainMatchAccount`); the structure guard is that the payload
+parses as a JSON object containing `/tokens`. Identity auto-detection reads that
 payload's `id_token` email / `account_id` just like the file store.
+
+Modelling the account as an opaque per-login id kae captured verbatim, under a
+service holding one item, is what made a switch **destructive**: kae deleted the
+item by service alone before writing, so switching codex removed another
+`CODEX_HOME`'s login (shipped through v0.12.0). A codex switch now issues no
+delete at all — an upsert of one item — and a `Codex Auth` item belonging to
+another home is not capturable as this home's credential.
+
+Also confirmed in the same file: after a successful keyring write codex
+**deletes its `auth.json` fallback**, so a plaintext copy left beside a live item
+is a credential nothing reads.
 
 ### Preserved
 
@@ -289,8 +307,8 @@ the **login Keychain**, not a file:
 
 - **service** `gemini` — **shared with the Gemini ecosystem**, so it alone does
   not identify agy's item.
-- **account** `antigravity` — a **fixed literal** (not a per-login opaque id
-  like codex's), so kae matches by **service *and* account** and never reads,
+- **account** `antigravity` — a **fixed literal** (not derived per tool home like
+  codex's), so kae matches by **service *and* account** and never reads,
   writes, or deletes a `gemini` item under a different account.
 - **payload** a single opaque ~686-byte token (single line, not JSON, not a
   JWT) — captured and applied **verbatim**. Structure guard = non-empty,
@@ -300,8 +318,9 @@ The `agy-keychain` driver reuses the verbatim-keychain pattern (as claude /
 cursor / codex): capture reads the live `gemini`/`antigravity` item's payload;
 apply upserts it back (`security add-generic-password -U -s gemini -a
 antigravity`, matched on service+account, so a sibling item is never touched).
-No delete-replace and no account reuse, unlike codex's per-login opaque
-account. `Detect`/`doctor` report the keychain item's presence on macOS; the
+No delete-replace and no account reuse — the same shape codex's keyring item now
+uses, with a literal account instead of a derived one.
+`Detect`/`doctor` report the keychain item's presence on macOS; the
 "kae cannot switch agy yet" warning is gone there. On Linux/WSL the file driver
 is unchanged: when no credential file exists, `capture` fails with
 `auth_missing`, and `doctor` warns the keyring may be in use.
@@ -539,22 +558,26 @@ thing that writes it, for all four:
   on this path and on the global switch alike. Rollback needs no check: it rebuilds
   the spec from the backup record, so the kind is the captured one by construction;
 - a keychain item is written **only** when the spec marks it
-  `KeychainDirScoped`, i.e. its service name is derived from the isolation env
-  var. A tool whose credential store is one global item is reported as
-  unisolatable and nothing is written to it.
+  `KeychainDirScoped`, i.e. the adapter declares that the item kae resolves moves
+  with the isolation env var. Anything else is reported as unisolatable and
+  nothing is written to it.
 
-That last rule is a hard safety boundary, not a nicety. codex's keyring item is a
-single `Codex Auth` whatever `CODEX_HOME` says, and its spec carries
-`KeychainReplace`, which deletes the existing item before writing — so treating
-it as per-directory would destroy the user's global codex login while isolating
-nothing. `kae pin -s` makes it reachable, because it symlinks `config.toml` from
-the real home into the bound directory, so a user who set
-`cli_auth_credentials_store = "keyring"` resolves the keyring there too. Nothing
-is written in that case, not even the credential *file*: codex reads the keyring,
-so a file would be a plaintext secret nothing reads.
+That last rule is a hard safety boundary, not a nicety, and the declaration is
+per-adapter with the safe default (`false`). codex is why: `kae pin -s` symlinks
+`config.toml` from the real home into the bound directory, so a user who set
+`cli_auth_credentials_store = "keyring"` resolves the keyring there too. Its item
+*is* scoped by `CODEX_HOME` — through the account attribute rather than the
+service name — but kae has never verified a bound directory end to end there (does
+codex canonicalize the bond dir to the same path kae hashes?), so the capability
+stays **undeclared rather than assumed**. Nothing is written, not even the
+credential *file*: codex reads the keyring first and deletes that file on its next
+write, so a file would be a plaintext secret nothing reads. The warning says the
+directory may have no codex login until you log in inside it — which is what
+actually happens, since the bound directory resolves a different item.
 
 Two situations are tolerable rather than fatal, and both warn: an account with no
-captured credential, and a tool whose credential store is global. Binding a set
+captured credential, and a tool whose credential store kae cannot bind per
+directory. Binding a set
 of tools resolved from a profile continues past either — the other tools bind,
 the tool's own settings and sessions are still isolated, and the directory works
 once the account is captured. An operation naming one tool and account

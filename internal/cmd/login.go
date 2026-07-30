@@ -153,6 +153,14 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 		fmt.Fprintf(os.Stderr, "kae: %s exited with %d; capturing whatever auth state is live now\n", command[0], code)
 	}
 
+	// A login flow can move the credential to the tool's other store — codex under
+	// `cli_auth_credentials_store = "auto"` writes its keychain item and deletes
+	// auth.json — so re-resolve before comparing, capturing, or restoring. On the
+	// pre-login specs the comparison below reads the store the tool abandoned, finds
+	// it unchanged (empty before, empty after), and reports that a successful login
+	// changed nothing.
+	plan = app.refreshPlan(ctx, plan)
+
 	if changed, err := loginChangedAuth(ctx, be, meta, plan); err != nil {
 		return finishLoginFailure(ctx, app, opts, be, meta, restore, "compare auth after login", err)
 	} else if !changed {
@@ -182,7 +190,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	}
 
 	if restore {
-		if err := app.applyBackup(ctx, be, meta, nil, nil); err != nil {
+		if err := app.applyBackup(ctx, be, meta, nil, false); err != nil {
 			return finish(opts, errf(exitOf(err),
 				"captured %s/%s but restoring the previous login failed: %v; run: kae rollback --to %s",
 				tool, accountName, err, meta.ID))
@@ -242,7 +250,7 @@ func loginChangedAuth(ctx context.Context, be secret.Backend, meta backup.Meta, 
 // even when the failed step leaves auth in the post-login state.
 func finishLoginFailure(ctx context.Context, app *App, opts commonOpts, be secret.Backend, meta backup.Meta, restore bool, op string, err error) int {
 	if restore {
-		if restoreErr := app.applyBackup(ctx, be, meta, nil, nil); restoreErr != nil {
+		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
 			return finish(opts, doubleFailure(op, err, restoreErr, meta.ID))
 		}
 		return finish(opts, errf(exitOf(err),

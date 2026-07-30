@@ -39,6 +39,12 @@ func (k *keychainSim) Run(_ context.Context, _ string, args ...string) (string, 
 		if !k.present {
 			return "", "security: could not be found", 44
 		}
+		// An account-scoped read (-a) sees the item only when the accounts agree:
+		// service+account is how a service holding more than one legitimate item is
+		// addressed (codex's `Codex Auth`, one item per CODEX_HOME).
+		if want := valueAfter(args, "-a"); want != "" && k.account != "" && want != k.account {
+			return "", "security: could not be found", 44
+		}
 		hasW := false
 		for _, a := range args {
 			if a == "-w" {
@@ -57,6 +63,9 @@ func (k *keychainSim) Run(_ context.Context, _ string, args ...string) (string, 
 		k.ops = append(k.ops, "add")
 		return "", "", 0
 	case "delete-generic-password":
+		if want := valueAfter(args, "-a"); want != "" && k.account != "" && want != k.account {
+			return "", "security: could not be found", 44
+		}
 		k.present = false
 		k.ops = append(k.ops, "delete")
 		return "", "", 0

@@ -1,7 +1,22 @@
 # Handoff — upstream drift: what is still wrong, and how to stop finding out the hard way
 
-**Status**: not started. Written 2026-07-30, right after v0.12.0 shipped.
-**Branch**: start a new one off `main` (`535d31f` or later).
+**Status**: in progress. Written 2026-07-30, right after v0.12.0 shipped.
+
+**Done since** (branch `fix/codex-keyring-account-scope`): **1.2** — all three
+consequences of the codex keyring account rule, except the per-directory capability
+(consequence 1), which is now a recorded gap in [ROADMAP.md](ROADMAP.md) with its
+prerequisites rather than a wrong model — and **1.3**, settled from the same
+upstream source. The account rule was additionally confirmed against a real
+keychain item without a login; the procedure is in
+[VALIDATION.md](VALIDATION.md) § "Upstream Behaviour Assumptions" and is reusable
+for any codex re-verify. Four review rounds on that branch found five further
+defects of the same class in the restore/rollback paths (a credential written or
+deleted in a store the tool does not read there), all fixed on the branch — so
+**treat any restore-path assumption in this document as re-examined**.
+
+**Still open here**: 1.1, 1.4, 1.5, 1.6, all of Part 2, and Part 3's skill.
+
+**Branch**: start a new one off `main`.
 **Why this file exists**: v0.12.0 fixed one instance of a defect class — *kae
 modelled an upstream storage location as a constant when it is actually a rule* —
 and the audit that followed found the same class in four more places, plus a set
@@ -60,7 +75,7 @@ robustness gap. `cursor-api-key` was absent here, so it is presumably created on
 for API-key logins; enumerate what a real login writes rather than trusting a
 list.
 
-### 1.2 codex: the keyring account attribute IS derived from `CODEX_HOME` — **VERIFIED HERE, from official source**
+### 1.2 codex: the keyring account attribute IS derived from `CODEX_HOME` — **FIXED** (verified from official source *and* against a real item)
 
 codex is open source, and reading it settled in seconds what binary inspection had
 left ambiguous. `codex-rs/login/src/auth/storage.rs` at tag `rust-v0.145.0` (the
@@ -135,7 +150,7 @@ modules — `codex_login::auth::storage` (this one, the CLI credential) and
 binary finds the MCP one first and reads as a red herring; that is exactly the trap
 the official source avoids.
 
-### 1.3 codex: `auto` and `ephemeral` stores are folded into "file" — **AGENT-CLAIMED, settle it from the same source**
+### 1.3 codex: `auto` and `ephemeral` stores are folded into "file" — **FIXED** (the claim held, plus two facts it missed)
 
 `configuredStore` (`internal/adapter/codex/codex.go:51-68`) maps everything that
 is not `"keyring"` to the file driver, and returns `"auto"` on a parse failure
@@ -143,11 +158,14 @@ is not `"keyring"` to the file driver, and returns `"auto"` on a parse failure
 `ephemeral`, that `auto` means *keyring first, file only on failure*, and that a
 `secrets` keyring backend adds an encrypted file store kae does not model.
 
-The `delete_file_if_exists` half is confirmed above. The enum and `auto`'s
-precedence are one more file read away in the same public repo — do that rather
-than measuring. If the claim holds, a user who sets `auto` — a value kae's own docs
-list — gets the v0.12.0 failure shape on codex: kae writes `auth.json`, codex reads
-the keyring, every guard green.
+The claim held (`codex-rs/config/src/types.rs`, `AutoAuthStorage::load`), and the
+read turned up two things it missed: the enum's **default is `file`**, not `auto`, so
+kae's "unset means auto" was wrong in the other direction too; and the fourth store
+is selected by a **feature flag** (`[features] secret_auth_storage`, default on only
+on Windows), not by this key, which moves the credential into an encrypted secrets
+file the `Codex Auth` item does not hold. kae now models the enum, resolves `auto`
+by probing for the item (attributes only), and refuses `ephemeral`, an unknown
+value, an unparseable `config.toml`, and that feature flag.
 
 ### 1.4 claude: `CLAUDE_CODE_CUSTOM_OAUTH_URL` moves *both* stores — **AGENT-CLAIMED, cheap to settle**
 

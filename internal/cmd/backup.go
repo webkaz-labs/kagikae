@@ -213,7 +213,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	// nothing in it may degrade to absent — a lost payload there must fail loudly
 	// rather than look restored.
 	if err := app.rollbackTo(ctx, be, meta, current); err != nil {
-		if restoreErr := app.applyBackup(ctx, be, preMeta, nil, nil); restoreErr != nil {
+		if restoreErr := app.applyBackup(ctx, be, preMeta, nil, false); restoreErr != nil {
 			return nil, errf(exitOf(err),
 				"rollback failed (%v) and restore also failed (%v); inspect backups %s and %s",
 				err, restoreErr, meta.ID, preMeta.ID)

@@ -81,6 +81,17 @@ cannot keep a per-directory binding honest under either, so the adapter reports
 the tool as unsupported (exit `5`) while that variable is present, rather than
 writing a credential nothing reads.
 
+`CLAUDE_CODE_CUSTOM_OAUTH_URL` renames both stores a second way: with a non-empty
+value the build's OAuth suffix becomes `-custom-oauth`, which goes into the
+keychain service name (`Claude Code-custom-oauth-credentials[-<sha8>]`) **and**
+into the identity file name (`.claude-custom-oauth.json`). The adapter reports the
+tool as unsupported (exit `5`) for the same reason. Unlike
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` an *empty* value is harmless — claude tests this
+one for truthiness — so the refusal is on a non-empty value only. kae refuses
+instead of computing the suffix because its other two values (`-local-oauth`,
+`-staging-oauth`) come from the build channel, which a released binary hard-codes
+and which no environment variable exposes ([ROADMAP.md](ROADMAP.md)).
+
 ### Drivers
 
 | Driver | Platform | Switched artifacts |
@@ -204,6 +215,16 @@ MCP / hooks / permissions / trust state / session history / plugins
 `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN`
 override subscription login inside Claude Code. `kae doctor` warns when any of
 them is set, because a switch would silently have no effect.
+
+So does a **host-managed provider**, which is a third credential source rather
+than an override of the switched one: with `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST`
+truthy, Claude Code reads the JSON file `CLAUDE_CODE_HOST_CREDS_FILE` names and
+injects its token into the variable `CLAUDE_CODE_HOST_AUTH_ENV_VAR` names —
+defaulting to `ANTHROPIC_AUTH_TOKEN`, but the host may name any variable, so kae
+warns on `ANTHROPIC_UNIX_SOCKET`, `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST`,
+`CLAUDE_CODE_HOST_CREDS_FILE` and `CLAUDE_CODE_HOST_AUTH_ENV_VAR` — the mechanism
+— instead of a destination a fixed list cannot know. These warn rather than making
+the tool unsupported because they do not move kae's stores.
 
 ## Codex CLI
 

@@ -168,7 +168,11 @@ child could rotate the live credential unseen — a cached value would be stale.
 `doctor` warns when environment variables override the subscription login the
 user thinks they are switching: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
 `CLAUDE_CODE_OAUTH_TOKEN`, `GEMINI_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`,
-`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`.
+`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, and — for Claude Code's
+host-managed provider, whose token variable the host may rename —
+`ANTHROPIC_UNIX_SOCKET`, `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST`,
+`CLAUDE_CODE_HOST_CREDS_FILE`, `CLAUDE_CODE_HOST_AUTH_ENV_VAR`
+(docs/ADAPTERS.md "Environment conflicts").
 
 ## Concurrency
 

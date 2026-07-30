@@ -48,6 +48,29 @@ const KeychainService = "Claude Code-credentials"
 // control, so driver() refuses instead of guessing — see its doc comment.
 const EnvSecureStorageDir = "CLAUDE_SECURESTORAGE_CONFIG_DIR"
 
+// EnvCustomOAuthURL points claude at a non-production OAuth endpoint, and a
+// non-empty value renames *both* stores: the build's OAuth suffix becomes
+// "-custom-oauth", and that suffix sits inside the keychain service name
+// ("Claude Code" + suffix + "-credentials" + the per-config-dir suffix) *and*
+// inside the identity file name (".claude-custom-oauth.json", in the same config
+// dir claudeJSONPath resolves). Measured on 2.1.220 from the bundle: the suffix
+// comes from one function whose only environment-visible input is this variable
+// (`if (process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL) return "-custom-oauth"`), and
+// claude enumerates all four suffixes ("", "-staging-oauth", "-local-oauth",
+// "-custom-oauth") when it looks for its own identity files.
+//
+// The empty string is *not* the dangerous case here, unlike EnvSecureStorageDir:
+// claude tests this value for truthiness, so an empty value changes nothing and
+// refusing on it would be a false refusal.
+//
+// kae refuses rather than models the suffix because the other three values come
+// from the build channel, which a released binary hard-codes to "prod" and which
+// is not readable from the environment at all (docs/ROADMAP.md). Modelling the
+// name would cover exactly one of the suffix's sources and stay silently wrong
+// for the rest — and a credential captured against one OAuth endpoint is not the
+// same account universe as another, which kae's snapshots do not record.
+const EnvCustomOAuthURL = "CLAUDE_CODE_CUSTOM_OAUTH_URL"
+
 // fallbackKeychainAccount is the literal Claude Code uses when neither $USER
 // nor the OS username is a usable account attribute.
 const fallbackKeychainAccount = "claude-code-user"
@@ -119,7 +142,21 @@ func keychainAccount(env adapter.Env) string {
 }
 
 // envConflicts override subscription login inside Claude Code.
-var envConflicts = []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"}
+//
+// The host-managed entries are a third credential source, measured on 2.1.220:
+// with CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST truthy, claude reads the JSON file
+// CLAUDE_CODE_HOST_CREDS_FILE names and injects its token into the variable
+// CLAUDE_CODE_HOST_AUTH_ENV_VAR names — default ANTHROPIC_AUTH_TOKEN, but the
+// host may name any variable, which is why kae warns on the mechanism rather than
+// on the destination a static list cannot know. ANTHROPIC_UNIX_SOCKET is the same
+// predicate's third arm (requests go to a host socket instead). None of these
+// moves kae's stores, so they warn like the token variables rather than making the
+// tool unsupported the way EnvCustomOAuthURL does.
+var envConflicts = []string{
+	"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
+	"ANTHROPIC_UNIX_SOCKET", "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
+	"CLAUDE_CODE_HOST_CREDS_FILE", "CLAUDE_CODE_HOST_AUTH_ENV_VAR",
+}
 
 type Claude struct{}
 
@@ -177,6 +214,17 @@ func driver(env adapter.Env) (string, error) {
 			"%w: %s is set, which moves claude's credential store outside what kae can model"+
 				" (unset it to let kae manage claude)",
 			adapter.ErrUnsupported, EnvSecureStorageDir,
+		)
+	}
+	// CLAUDE_CODE_CUSTOM_OAUTH_URL renames both stores through the build's OAuth
+	// suffix — see EnvCustomOAuthURL. Checked before the driver override because the
+	// override only redirects the credential to a file, while the suffix also moves
+	// the identity file the oauth_account artifact patches.
+	if env.Getenv(EnvCustomOAuthURL) != "" {
+		return "", fmt.Errorf(
+			"%w: %s is set, which renames claude's keychain item and identity file"+
+				" (unset it to let kae manage claude)",
+			adapter.ErrUnsupported, EnvCustomOAuthURL,
 		)
 	}
 	// KAE_CLAUDE_DRIVER=file forces the file-patch driver even on darwin so

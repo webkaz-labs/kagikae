@@ -71,6 +71,17 @@ Follow-up from v0.8.4 (not yet scheduled):
 
 ## Hardening backlog — daily-use robustness
 
+- **`run -i` inside a `pin -i` directory keeps a second credential copy**
+  (recorded 2026-07-31, deliberately not fixed). The two mechanisms own separate
+  stores by design — `isolation/global/<tool>/<account>` for global isolation and
+  `isolation/<pin-id>/<tool>/isolated/<account>/config` for the directory's — so
+  asking for `run -i` inside a bound directory materializes both, and they never
+  sync. Coupling them would tie two deliberately independent mechanisms together
+  for a combination that is a mistake to begin with (`kae run` with no `-i` uses
+  the directory's binding, which is what the user wants there). If it turns out to
+  bite in practice, the answer is a warning at `run -i` inside a pinned directory,
+  not synchronization.
+
 - **`PinID` does not resolve symlinks, and changing that needs a migration**
   (recorded 2026-07-31, deliberately not fixed). `paths.PinID` hashes
   `filepath.Abs` only, so two path aliases for one directory — a symlinked

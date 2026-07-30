@@ -21,10 +21,11 @@ where one of the three claims was overturned by measurement — see the entry)
 **2.3** (branch `fix/state-lost-update`, where the claim held but review
 found the lock alone did not close it — see the entry) and **2.2 / 2.4**
 (branch `fix/pin-directory-index`, where two of 2.4's sub-claims were
-overturned — see the entry) and **1.6 / 1.7** (branch
-`fix/upstream-store-identity`).
+overturned — see the entry) and **1.6 / 1.7 / 2.5 / 2.6's redaction gap**
+(branch `fix/upstream-store-identity`, which also landed Part 3's first two
+automation items).
 
-**Still open here**: 2.5 and Part 3's skill. Also open,
+**Still open here**: Part 3's skill. Also open,
 and unrelated to this document: the two live-machine gates in
 [VALIDATION.md](VALIDATION.md) — "codex per-directory keyring bind" (which is all
 that stands between the shipped code and dropping codex from
@@ -497,14 +498,41 @@ not have been true of any tool. Nothing to do.
   guaranteed migration hazard for everyone to close a leak for a few. Left as is,
   now *visible* through `pin_stale`, and recorded in [ROADMAP.md](ROADMAP.md).
 
-### 2.5 Smaller items — **AGENT-CLAIMED**
+### 2.5 Smaller items — **FIXED**, except two declined with reasons
 
-`backup.Prune` races across tools (one global dir, per-tool locks); shared-mode
-single-tool rebind cannot self-heal a wiped bond dir while isolated-mode can;
-`run -i` inside a `pin -i` directory for the same account makes two never-synced
-credential copies; `kae doctor <tool>` silently skips all companion checks;
-`kae pin` never checks the tool binary exists; `companion_drift`'s remediation
-suggests `mise env`/`mise trust` when the real fix is re-running `kae pin`.
+- **`backup.Prune` races across tools — held, fixed.** The backups directory is
+  global while the locks are per tool, so two switches prune it at once: each
+  lists the same newest-first set and deletes from its own tail, which can remove
+  a backup the other just created and shifted out of the window. One seam, one
+  `backups` lock, and a busy lock is skipped rather than escalated — the other
+  process is doing exactly this work.
+- **Shared-mode re-bind cannot self-heal a wiped bond dir — held, fixed.** It
+  wrote only the credential, while the isolated branch re-ran `preparePinConfig`
+  and rebuilt its store. The bond dir also holds the symlinks that carry settings
+  and sessions, and only `prepareBond` re-creates them; the shared branch now
+  calls it (it writes the credential too, and is idempotent). There was no reason
+  behind the asymmetry, which is what made it worth fixing rather than recording.
+- **`kae doctor <tool>` silently skips the companion checks — held, fixed** as a
+  stderr note rather than a check row: the caller filtered those out on purpose,
+  so the JSON contract should not grow a row for them, but a filtered run that
+  prints nothing about them reads as "they are fine". The note names the pinned
+  directory checks too, which have the same shape.
+- **`companion_drift`'s remediation — half right, corrected.** `mise env` /
+  `mise trust` *is* the fix when the fragment exists but is not loaded, which is
+  the case that message is printed for. What it never mentioned is the case where
+  the binding itself is gone, and there the fix is re-running `kae pin`.
+- **Declined: `kae pin` does not check the tool binary exists.** `kae doctor`
+  already reports a missing binary (`binary_present`), and `kae pin <profile>`
+  binds every enabled tool — requiring each one installed would break a partial
+  install and a provisioning run, where binding a directory before installing the
+  tool is the point.
+- **Declined: `run -i` inside a `pin -i` directory makes two credential copies.**
+  It does, and they are the two mechanisms' own stores —
+  `isolation/global/<tool>/<account>` and
+  `isolation/<pin-id>/<tool>/isolated/<account>/config`. `run -i` is documented as
+  *global* isolation; asking for it inside a directory already bound to a
+  per-directory store is asking for the other mechanism. Syncing them would couple
+  two deliberately independent stores; the honest fix is documentation, not code.
 
 ### 2.6 Confirmed clean
 
@@ -521,9 +549,15 @@ macOS CLI constraint, already accepted in [SECURITY.md](SECURITY.md), and kae us
 stdin wherever an alternative exists (`secret-tool`).
 
 One small real gap in that area: the three newest doctor probes
-(`identity_drift`, `companion_drift`, `companion_token_drift`) are safe by
-inspection but none has the "the value never appears in the message" assertion
-AGENTS.md requires for a new output path.
+(`identity_drift`, `companion_drift`, `companion_token_drift`) were safe by
+inspection but none had the "the value never appears in the message" assertion
+AGENTS.md requires for a new output path. **Fixed — and writing the assertion
+found a real leak**, which is the argument for the rule. `companion_token_drift`
+authenticates its probe with the bound token and put the probe's stderr into the
+warning verbatim (`runner.Snippet` truncates, it does not redact), so a tool that
+echoed a request header or a URL carrying the token would have published it to
+stdout, to `--json`, and to whatever collects doctor output. kae knows the value
+it injected, so it now strips it from both streams.
 
 ---
 
@@ -695,16 +729,29 @@ pretend to replace it.
 
 ### What to automate first (each pays for itself before the next)
 
-1. **Version-copy agreement + assumption age.** A Go test parsing the two doc
-   tables and asserting both match `VerifiedVersion()`, plus a `verified_on` date
-   per tool and a doctor check that warns past N days. Sub-second, needs no upstream
-   tool, and covers the blind spot `upstream_version` cannot: **a user who never
-   upgrades gets no signal at all today.**
-2. **Offline doctor checks where local state can contradict a modelled assumption**
-   (~10 lines each): a `Codex Auth` item present while the resolved store is
-   file/auto, or the reverse; `CLAUDE_CODE_CUSTOM_OAUTH_URL` set; more than one
-   keychain item under a resolved service; an active snapshot lacking
-   `refreshTokenExpiresAt`.
+1. **Version-copy agreement + assumption age — DONE.** `VerifiedOn()` joins
+   `VerifiedVersion()` on every adapter, `TestVerifiedVersionsMatchTheDocs` parses
+   the ADAPTERS.md table and fails when a cell disagrees, and doctor warns once a
+   tool's assumptions have gone six months unchecked. Only that one table is
+   parsed: VALIDATION.md's per-row cells are prose carrying the procedure and the
+   evidence, and pinning their wording is how a guard gets deleted instead of
+   fixed. Six months rather than one or three because the version check already
+   covers the case where something changed.
+2. **Offline contradiction checks — one of the four shipped, two are not
+   checkable, one is already covered.** codex now warns when a `Codex Auth` item
+   exists for this home while the resolved store is the file one. The **reverse**
+   direction is not a finding: codex writes the item and then deletes `auth.json`,
+   so an overlap is a normal migration. **`CLAUDE_CODE_CUSTOM_OAUTH_URL` set** is
+   already handled — 1.4 made it an `ErrUnsupported` refusal, which doctor reports
+   as `unsupported`; a second warning would be noise. **More than one keychain item
+   under a resolved service** cannot be done offline on darwin:
+   `find-generic-password` returns one item and the keychain cannot be enumerated
+   by service (the same limitation `secret_orphan` already documents), so kae can
+   only ask about an item it can name. **An active snapshot lacking
+   `refreshTokenExpiresAt`** was left out on purpose: absence is legitimate for
+   tools whose credential carries no refresh expiry (cursor's JWT), so the check
+   would need per-tool expectations that `Fresher` does not currently express —
+   worth doing when that abstraction earns it, not before.
 3. **Literal-count fingerprints**, per tool, wired into `mise run audit`.
 4. **The shim harness**, table-driven, gated on the per-tool "does it shell out"
    answer — and it should diff *the tool's* argv log against *kae's* argv log, which

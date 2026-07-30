@@ -799,6 +799,19 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   prints an update hint), so the deadline is what guarantees `kae doctor` cannot
   hang on one; a probe it kills is skipped like any other failing `--version`.
 
+  `upstream_version` also carries the **age** half, which the version comparison
+  cannot see: every adapter declares when its assumptions were last verified
+  (`VerifiedOn()`), and doctor warns once that is more than six months ago. That
+  is the only signal a user who never upgrades the tool ever gets — and the only
+  one cursor gets at all, since its date versions make the comparison useless. A
+  date kae cannot parse is reported as such rather than skipped, because a typo
+  would otherwise read as "nothing to report".
+
+  `kae doctor <tool>` runs only the per-tool checks. The companion and
+  pinned-directory checks are not per-tool, so they are skipped — and a note on
+  stderr says so, since a filtered run that prints nothing about them otherwise
+  reads as "they are fine".
+
 Companion-binding checks (warn-level, unfiltered report only):
 - `companion_missing`: a bound token knob has no stored secret, so the mise
   `exec()` lookup would fail at eval — names `kae companion add`.

@@ -388,6 +388,15 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 
 	childCode, runErr := runner.RunInteractive(ctx, nil, childCmd[0], childCmd[1:]...)
 
+	// The child may have moved the credential to the tool's other store (codex
+	// under `auto` writes its keychain item and deletes auth.json on its first
+	// save), so re-resolve before reading or writing anything: both the recapture
+	// below and the restore after it must act on the store the tool reads now
+	// (refreshPlan).
+	for i := range plans {
+		plans[i] = app.refreshPlan(ctx, plans[i])
+	}
+
 	// Recapture: the child may have refreshed OAuth tokens; persist them into
 	// the account snapshots so the next switch applies fresh credentials.
 	for _, plan := range plans {
@@ -401,7 +410,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 		}
 	}
 
-	if err := app.applyBackup(ctx, be, meta, nil, nil); err != nil {
+	if err := app.applyBackup(ctx, be, meta, nil, specsOf(plans)); err != nil {
 		return 0, errf(exitOf(err),
 			"child finished but restoring the previous auth state failed: %v; run: kae rollback --to %s",
 			err, meta.ID)

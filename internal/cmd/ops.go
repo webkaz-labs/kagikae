@@ -138,6 +138,39 @@ func (app *App) planTool(ctx context.Context, tool, accountName string) (toolPla
 	return plan, nil
 }
 
+// refreshPlan re-resolves a plan's driver and artifact specs after a child process
+// ran, keeping the account, identity and snapshot the caller already resolved.
+//
+// A child can move the tool's credential between the stores it supports: codex
+// under `cli_auth_credentials_store = "auto"` creates its keychain item and deletes
+// `auth.json` on its first save, and a login flow does it on purpose. Every read
+// and write kae then makes through the specs it resolved *before* the child lands
+// on a store the tool no longer reads — the recapture reports "logged out during
+// the run" and keeps a stale snapshot, the login comparison reports "auth
+// unchanged" and captures nothing, and the restore writes a file nothing reads
+// while reporting success. All three are one cause: specs older than the child.
+//
+// A resolution failure keeps the pre-child specs. They are the best answer left,
+// and failing here would abort a restore that is better attempted.
+func (app *App) refreshPlan(ctx context.Context, plan toolPlan) toolPlan {
+	fresh, err := app.planTool(ctx, plan.Tool, plan.Account)
+	if err != nil {
+		return plan
+	}
+	fresh.Identity, fresh.Meta = plan.Identity, plan.Meta
+	return fresh
+}
+
+// specsOf indexes plans by tool for the restore path, which needs today's
+// declaration to notice that a credential moved stores (restoreSpec).
+func specsOf(plans []toolPlan) map[string][]artifact.Spec {
+	specs := make(map[string][]artifact.Spec, len(plans))
+	for _, plan := range plans {
+		specs[plan.Tool] = plan.Specs
+	}
+	return specs
+}
+
 // loadState reads state.json.
 func (app *App) loadState() (*state.State, error) {
 	return state.Load(app.Paths.StateFile())
@@ -219,10 +252,11 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 		if err != nil {
 			return err
 		}
-		if err := checkStoreMoved(current, rec); err != nil {
+		sp, err := restoreSpec(current, rec)
+		if err != nil {
 			return err
 		}
-		if err := artifact.ApplyLive(ctx, specFromRecord(rec), value); err != nil {
+		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
 			return fmt.Errorf("restore %s/%s: %w", rec.Tool, rec.Name, err)
 		}
 	}
@@ -280,38 +314,44 @@ func storedValue(ctx context.Context, be secret.Backend, ref string, present, id
 // is survivable is policy, and policy belongs to the code: an old backup must not
 // pin a decision kae has since changed. An unresolvable tool answers false, so
 // the fail-loud path stays the default.
-// checkStoreMoved refuses to restore a credential into a store the tool has since
-// stopped reading. A backup record carries the store it was captured from (that is
-// the point — `specFromRecord` rebuilds the spec from the record, so the payload's
-// shape is the captured one by construction), but the tool may have moved between
-// its two stores in the meantime, and for codex both stores hold the same bytes so
-// nothing about the payload gives it away.
+// restoreSpec resolves the spec a backup record must be written through.
 //
-// The reachable case is codex's `auto` store, which reads the keyring item first
-// and `auth.json` only when the item is absent. A backup taken with no item
-// records the file; if codex then logs in or refreshes (a `kae run -s` child is
-// enough) it creates the item and deletes the file — after which restoring the
-// file alone puts the old credential where nothing reads it, and kae would report a
-// successful rollback while the live session stays on the other account.
+// By default that is the record's own: `specFromRecord` rebuilds the store the
+// payload came from, so the payload's shape is the recorded kind's by
+// construction. But a tool can move its credential between the stores it supports
+// while kae is not looking — codex under `cli_auth_credentials_store = "auto"`
+// creates its keychain item and deletes `auth.json` on its first save — and then
+// writing the recorded store puts the credential where nothing reads it while kae
+// reports the restore as successful.
 //
-// Refusing is deliberate rather than "restore both": the item created after the
-// backup has no payload in it, so clearing it would destroy a live login kae has
-// no copy of. The message names the recovery, which does not need this backup.
+// So when today's declaration disagrees about *where* the artifact lives, the
+// payload follows the tool: a whole-document payload is written through today's
+// spec, which for codex is the same bytes in either store. A move between shapes
+// that are not interchangeable (a whole document and a JSON pointer value) cannot
+// be redirected, and is refused exactly as the equivalent snapshot transition is
+// (checkPayloadShape).
 //
-// current is nil when the caller restores a backup it just created, where the
-// records came from those same specs and no mismatch is possible.
-func checkStoreMoved(current map[string][]artifact.Spec, rec backup.ArtifactRecord) error {
-	for _, sp := range current[rec.Tool] {
-		if sp.Name != rec.Name || sp.Kind == rec.Kind {
+// A redirect can delete the store it lands on — an absent record restores as
+// "logged out" — so every caller must have captured that store first. They do:
+// the run and login flows recapture after their child, and a rollback's
+// pre-rollback backup resolves today's specs (plansFromBackupMeta).
+//
+// current is nil only where no declaration was resolved; the record then stands
+// alone, which is the pre-fix behaviour.
+func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) (artifact.Spec, error) {
+	for _, live := range current[rec.Tool] {
+		if live.Name != rec.Name || live.Kind == rec.Kind {
 			continue
 		}
-		return errf(constants.ExitUnsafeRefused,
-			"%s/%s was backed up from %s %q but %s now keeps it in %s %q, "+
-				"so restoring the backup would write where nothing reads; "+
-				"switch with `kae use %s <account>` instead",
-			rec.Tool, rec.Name, rec.Kind, rec.Target, rec.Tool, sp.Kind, sp.Target, rec.Tool)
+		if artifact.WholeDocument(live.Kind) != artifact.WholeDocument(rec.Kind) {
+			return artifact.Spec{}, errf(constants.ExitUnsafeRefused,
+				"%s/%s was backed up from %s %q but %s now keeps it in %s %q, and the two "+
+					"payload shapes are not interchangeable; switch with `kae use %s <account>` instead",
+				rec.Tool, rec.Name, rec.Kind, rec.Target, rec.Tool, live.Kind, live.Target, rec.Tool)
+		}
+		return live, nil
 	}
-	return nil
+	return specFromRecord(rec), nil
 }
 
 func isIdentityOnly(current map[string][]artifact.Spec, tool, name string) bool {
@@ -419,6 +459,13 @@ func specFromRecord(rec backup.ArtifactRecord) artifact.Spec {
 // current declares but the backup has no record of are added, so one introduced
 // after the backup was taken is still captured before the rollback clears it —
 // otherwise rolling back the rollback could not put it back.
+//
+// Today's declaration wins over the record wherever both describe an artifact,
+// because these plans read *live* state: a tool that has moved its credential
+// between stores since the backup (codex under `auto`) keeps it where the adapter
+// says it is now, and capturing the recorded store would back up an empty file
+// while the rollback overwrote the live item. The record still supplies any
+// artifact today's adapter no longer declares, which only it can restore.
 func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) []toolPlan {
 	specsByTool := map[string][]artifact.Spec{}
 	order := []string{}
@@ -426,7 +473,14 @@ func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) [
 		if _, seen := specsByTool[rec.Tool]; !seen {
 			order = append(order, rec.Tool)
 		}
-		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], specFromRecord(rec))
+		sp := specFromRecord(rec)
+		for _, live := range current[rec.Tool] {
+			if live.Name == rec.Name {
+				sp = live
+				break
+			}
+		}
+		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], sp)
 	}
 	for _, tool := range order {
 		recorded := make(map[string]bool, len(specsByTool[tool]))

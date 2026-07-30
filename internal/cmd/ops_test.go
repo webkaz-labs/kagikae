@@ -65,23 +65,54 @@ func TestSpecFromRecordLegacyReplaceWithoutAccountRefused(t *testing.T) {
 	}
 }
 
-// checkStoreMoved covers codex's `auto` store moving between the two places it can
-// live. A backup taken with no keychain item records `auth.json`; if codex then
-// creates the item (a token refresh inside `kae run -s` is enough) and deletes the
-// file, restoring the file alone writes where nothing reads — `auto` prefers the
-// item — and kae would report a successful rollback while the live session stays on
-// the other account. It must refuse instead, and it must stay quiet when the store
-// has not moved or when the caller passes no current specs.
-func TestCheckStoreMovedRefusesAStaleStore(t *testing.T) {
-	rec := backup.ArtifactRecord{
+// restoreSpec covers a credential that moved stores between the backup and the
+// restore — codex under `auto` creates its keychain item and deletes auth.json on
+// its first save, which a `kae run -s` child or a login flow is enough to trigger.
+// The payload must follow the tool (the same bytes live in either store), because
+// writing the recorded store puts the credential where nothing reads it while kae
+// reports success. A move between shapes that are *not* interchangeable cannot be
+// redirected and is refused instead.
+func TestRestoreSpecFollowsAMovedStore(t *testing.T) {
+	fileRec := backup.ArtifactRecord{
 		Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
 		Target: "/home/u/.codex/auth.json", SecretRef: "backup/x/codex/auth", Present: true,
 	}
-	keychainNow := map[string][]artifact.Spec{constants.ToolCodex: {{
+	itemNow := artifact.Spec{
 		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
 		Pointer: "/tokens", KeychainAccount: "cli|1111111111111111", KeychainMatchAccount: true,
+	}
+	sp, err := restoreSpec(map[string][]artifact.Spec{constants.ToolCodex: {itemNow}}, fileRec)
+	if err != nil {
+		t.Fatalf("a whole-document payload must follow the tool: %v", err)
+	}
+	if sp.Kind != constants.KindKeychain || sp.KeychainAccount != itemNow.KeychainAccount {
+		t.Fatalf("restore spec = %+v, want today's keychain item", sp)
+	}
+
+	// Same kind, and no declaration at all: the record stands.
+	fileNow := map[string][]artifact.Spec{constants.ToolCodex: {{
+		Name: "auth", Kind: constants.KindFile, Target: "/home/u/.codex/auth.json",
 	}}}
-	err := checkStoreMoved(keychainNow, rec)
+	for _, current := range []map[string][]artifact.Spec{fileNow, nil} {
+		sp, err := restoreSpec(current, fileRec)
+		if err != nil || sp.Kind != constants.KindFile || sp.Target != fileRec.Target {
+			t.Fatalf("an unmoved store must restore from the record: %+v %v", sp, err)
+		}
+	}
+
+	// A whole document cannot be restored through a pointer spec (claude's two
+	// drivers): that nests it under its own key and the tool reads it as malformed,
+	// so it is refused rather than redirected.
+	pointerNow := map[string][]artifact.Spec{constants.ToolClaude: {{
+		Name: "claude_ai_oauth", Kind: constants.KindJSONPointer,
+		Target: "/home/u/.claude/.credentials.json", Pointer: "/claudeAiOauth",
+	}}}
+	keychainRec := backup.ArtifactRecord{
+		Tool: constants.ToolClaude, Name: "claude_ai_oauth", Kind: constants.KindKeychain,
+		Target: "Claude Code-credentials", Pointer: "/claudeAiOauth",
+		SecretRef: "backup/x/claude/claude_ai_oauth", Present: true,
+	}
+	_, err = restoreSpec(pointerNow, keychainRec)
 	if exitOf(err) != constants.ExitUnsafeRefused {
 		t.Fatalf("err = %v (exit %d), want a refusal with exit %d",
 			err, exitOf(err), constants.ExitUnsafeRefused)
@@ -89,44 +120,41 @@ func TestCheckStoreMovedRefusesAStaleStore(t *testing.T) {
 	if msg := err.Error(); !strings.Contains(msg, "kae use") {
 		t.Fatalf("the refusal must name the recovery: %s", msg)
 	}
-	fileNow := map[string][]artifact.Spec{constants.ToolCodex: {{
-		Name: "auth", Kind: constants.KindFile, Target: "/home/u/.codex/auth.json",
-	}}}
-	if err := checkStoreMoved(fileNow, rec); err != nil {
-		t.Fatalf("an unmoved store must restore: %v", err)
-	}
-	if err := checkStoreMoved(nil, rec); err != nil {
-		t.Fatalf("a just-created backup has nothing to reconcile: %v", err)
-	}
 }
 
-// The refusal above is only worth anything if the restore path actually consults
-// it, so this covers the wiring: applyBackup must not write the recorded store
-// when the live one has moved.
-func TestApplyBackupRefusesAStaleStore(t *testing.T) {
+// The redirect is only worth anything if the restore path consults it, so this
+// covers the wiring: applyBackup must write the store the tool reads now, and must
+// not leave the recorded one behind as a credential nothing reads.
+func TestApplyBackupFollowsAMovedStore(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
 	be := testBackend(t, app)
 	authPath := filepath.Join(app.Env.Home, ".codex", "auth.json")
 	ref := backup.SecretRef("x", constants.ToolCodex, "auth")
-	if err := be.Set(ctx, ref, []byte(`{"tokens":{"access_token":"backed-up"}}`)); err != nil {
+	const backedUp = `{"tokens":{"access_token":"backed-up"}}`
+	if err := be.Set(ctx, ref, []byte(backedUp)); err != nil {
 		t.Fatal(err)
 	}
 	meta := backup.Meta{Artifacts: []backup.ArtifactRecord{{
 		Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
 		Target: authPath, SecretRef: ref, Present: true,
 	}}}
+	const acct = "cli|1111111111111111"
 	current := map[string][]artifact.Spec{constants.ToolCodex: {{
 		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
-		Pointer: "/tokens", KeychainAccount: "cli|1111111111111111", KeychainMatchAccount: true,
+		Pointer: "/tokens", KeychainAccount: acct, KeychainMatchAccount: true,
 	}}}
-	err := app.applyBackup(ctx, be, meta, nil, current)
-	if exitOf(err) != constants.ExitUnsafeRefused {
-		t.Fatalf("err = %v (exit %d), want a refusal with exit %d",
-			err, exitOf(err), constants.ExitUnsafeRefused)
+	sim := &keychainSim{account: acct}
+	var err error
+	runner.With(sim, func() { err = app.applyBackup(ctx, be, meta, nil, current) })
+	if err != nil {
+		t.Fatalf("restore into the live store: %v", err)
+	}
+	if sim.payload != backedUp || sim.account != acct {
+		t.Fatalf("the backed-up credential did not land in this home's item: %+v", sim)
 	}
 	if _, statErr := os.Stat(authPath); statErr == nil {
-		t.Fatal("the refused restore must not have written auth.json")
+		t.Fatal("the restore must not write the store the tool abandoned")
 	}
 }
 

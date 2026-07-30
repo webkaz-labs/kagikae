@@ -356,16 +356,25 @@ removes/skips it instead of writing an empty value). After a successful
 switch, backups beyond `backup_keep` are pruned oldest-first (metadata and
 secret payloads together).
 
-Because a record carries the store it was captured from, a rollback is **refused**
-(exit `10`) when the tool has since moved the credential to its other store — the
-reachable case is codex's `auto`, which reads the keyring item first and
-`auth.json` only when the item is absent, so a backup taken before codex created
-the item would otherwise be restored into a file nothing reads while kae reported
-success. Refusing rather than restoring both is deliberate: the item created after
-the backup has no payload in it, so clearing it would destroy a live login kae has
-no copy of. A legacy `keychain_replace` record with **no** recorded account is
-refused for the same reason — without the account it cannot name its own item, and
-widening the delete to the service is what destroyed another codex home's login.
+A record carries the store its payload came from, and a tool can move its
+credential between stores while kae is not looking: codex under
+`cli_auth_credentials_store = "auto"` creates its keychain item and deletes
+`auth.json` on its first save, which a `kae run -s` child or a `kae add` login flow
+is enough to trigger. A restore therefore lets the **payload follow the tool** — a
+whole-document payload is written through today's spec, the same bytes in either
+store — instead of writing the recorded store, which would put the credential where
+nothing reads it while kae reported success. A move between shapes that are *not*
+interchangeable (a whole document and a JSON pointer value) cannot be redirected
+and is refused with exit `10`, exactly as the equivalent snapshot transition is.
+
+Two supports make the redirect safe. The flows that run a child re-resolve their
+specs afterwards, so the credential the child left behind is captured before
+anything overwrites it; and a rollback's pre-rollback backup resolves **today's**
+specs, so what it overwrites is what it backed up.
+
+A legacy `keychain_replace` record with **no** recorded account is refused
+outright: without the account it cannot name its own item, and widening the delete
+to the whole service is what destroyed another codex home's login.
 
 **`account rm`/`rename` do not rewrite existing backups.** A backup's
 `active_before` keeps the old account name, so rolling back to a backup taken

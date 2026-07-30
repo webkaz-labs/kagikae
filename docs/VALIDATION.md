@@ -984,6 +984,36 @@ emits ANSI/spinner control codes, so strip them
 between two accounts is a v0.7.0 acceptance item; with a single account this
 verifies the verbatim round-trip and comment preservation only.
 
+### Bound-directory credential store (macOS, no login needed)
+
+kae and claude must agree on the keychain service name for a bound directory; a
+disagreement is silent, because kae's write succeeds and claude simply reads a
+different item. Shim `security` for **both** processes and compare, which needs
+no real account and touches neither the real `$HOME` nor the real keychain:
+
+1. Temp `HOME` plus temp `XDG_*`, and a `security` shim first on `PATH` that logs
+   `"$*"`, prints a canned `{"claudeAiOauth":{…}}` for `find-generic-password`,
+   and exits 0 otherwise.
+2. `kae init`, a config with `secret_backend = "file"` and a one-account profile,
+   then `kae add --no-login claude main` (the capture reads the canned payload).
+3. `kae pin -i main` in a temp project dir. Read `CLAUDE_CONFIG_DIR` out of
+   `.config/mise/conf.d/kagikae.toml`, and the `-s <service>` kae passed to
+   `add-generic-password` out of the shim log.
+4. Run the real binary against that same directory —
+   `env -i HOME=<temp> PATH=<shim>:/usr/bin:/bin USER="$USER"
+   CLAUDE_CONFIG_DIR=<dir> claude -p hi </dev/null` — and read the `-s <service>`
+   it passed to `find-generic-password`.
+
+The two service names must be identical, and `<dir>/.credentials.json` must not
+exist (the superseded plaintext copy is removed). Confirmed on kae's fix commit
+with Claude Code 2.1.220; the same run against a pre-fix build writes no keychain
+item at all and reads only the unsuffixed shared one, which is the defect.
+
+This is a naming-agreement check. That the payload itself round-trips is the
+separate verbatim/ACL assumption above, and it needs the real keychain and a real
+account — so a release still runs the two-account pin: re-bind in a pinned
+directory, then launch claude there and confirm it reports the account kae bound.
+
 Never run real-machine acceptance with uncommitted work in progress in the
 live tool sessions.
 

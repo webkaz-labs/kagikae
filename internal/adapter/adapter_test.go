@@ -61,7 +61,17 @@ func testEnv(t *testing.T, goos string, vars map[string]string) adapter.Env {
 // this pins.
 func wantEnvConflictWarning(t *testing.T, adp adapter.Adapter, vars map[string]string, want string) {
 	t.Helper()
-	env := testEnv(t, "darwin", vars)
+	wantEnvConflictWarningOn(t, "darwin", adp, vars, want)
+}
+
+// wantEnvConflictWarningOn is wantEnvConflictWarning for a chosen platform. An
+// environment warning is platform-independent by construction, but Detect is
+// not: claude's darwin driver reads the keychain, which needs a `security` this
+// repository's CI does not have. Assert those on linux rather than making the
+// test depend on the host.
+func wantEnvConflictWarningOn(t *testing.T, goos string, adp adapter.Adapter, vars map[string]string, want string) {
+	t.Helper()
+	env := testEnv(t, goos, vars)
 	info, err := adp.Detect(context.Background(), env)
 	if err != nil {
 		t.Fatalf("detect: %v", err)
@@ -1182,18 +1192,20 @@ func TestKeychainSpecsAreAccountScoped(t *testing.T) {
 // keyring account, so a relative value moves both stores. Copying one warning to
 // the other tool would have shipped the wrong model for one of them.
 func TestRelativeConfigVariablesWarnPerTool(t *testing.T) {
-	wantEnvConflictWarning(t, claudeAdapter,
+	// linux: the warning does not depend on the platform, but claude's darwin
+	// driver reads the keychain, and Detect fails without a `security` binary.
+	wantEnvConflictWarningOn(t, "linux", claudeAdapter,
 		map[string]string{"CLAUDE_CONFIG_DIR": "relcfg"}, "CLAUDE_CONFIG_DIR is relative")
-	wantEnvConflictWarning(t, codexAdapter,
+	wantEnvConflictWarningOn(t, "linux", codexAdapter,
 		map[string]string{"CODEX_HOME": "relcfg"}, "CODEX_HOME is relative")
 
 	// The distinction is the point: only codex's says the keyring account moves,
 	// and only claude's says the keychain item does not.
-	claudeWarn := warningsOf(t, claudeAdapter, map[string]string{"CLAUDE_CONFIG_DIR": "relcfg"})
+	claudeWarn := warningsOf(t, "linux", claudeAdapter, map[string]string{"CLAUDE_CONFIG_DIR": "relcfg"})
 	if !strings.Contains(claudeWarn, "keychain item is unaffected") {
 		t.Errorf("claude's warning must say the item is unaffected: %s", claudeWarn)
 	}
-	codexWarn := warningsOf(t, codexAdapter, map[string]string{"CODEX_HOME": "relcfg"})
+	codexWarn := warningsOf(t, "linux", codexAdapter, map[string]string{"CODEX_HOME": "relcfg"})
 	if !strings.Contains(codexWarn, "keyring account") {
 		t.Errorf("codex's warning must say the keyring account moves too: %s", codexWarn)
 	}
@@ -1207,7 +1219,7 @@ func TestRelativeConfigVariablesWarnPerTool(t *testing.T) {
 		{claudeAdapter, map[string]string{"CLAUDE_CONFIG_DIR": t.TempDir()}},
 		{codexAdapter, map[string]string{"CODEX_HOME": t.TempDir()}},
 	} {
-		if got := warningsOf(t, tc.adp, tc.vars); strings.Contains(got, "is relative") {
+		if got := warningsOf(t, "linux", tc.adp, tc.vars); strings.Contains(got, "is relative") {
 			t.Errorf("%s: an absolute value must not warn: %s", tc.adp.ID(), got)
 		}
 	}
@@ -1215,9 +1227,9 @@ func TestRelativeConfigVariablesWarnPerTool(t *testing.T) {
 
 // warningsOf joins one adapter's Detect warnings for an environment, so a test
 // can assert on their content without pinning their order.
-func warningsOf(t *testing.T, adp adapter.Adapter, vars map[string]string) string {
+func warningsOf(t *testing.T, goos string, adp adapter.Adapter, vars map[string]string) string {
 	t.Helper()
-	info, err := adp.Detect(context.Background(), testEnv(t, "darwin", vars))
+	info, err := adp.Detect(context.Background(), testEnv(t, goos, vars))
 	if err != nil {
 		t.Fatalf("detect %s: %v", adp.ID(), err)
 	}

@@ -25,6 +25,82 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
+# kae v0.14.0 (shipped 2026-07-31)
+
+v0.13.0 fixed a class — *kae modelled an upstream store location as a constant
+when it is a rule*. This release finishes the audit that found it and closes the
+gaps that were **not** about upstream at all: two silent lost updates in kae's
+own state, a credential store no command could name, and a token that could
+reach a doctor message. It also ships the workflow for the next time, as a
+skill.
+
+Baseline: v0.13.0, shipped 2026-07-31. Contract-stable: `schema_version` stays
+`1`, no flag changes. One **new doctor check code**, `pin_stale`, and
+`upstream_version` now covers a second condition (assumption age) — both
+warn-level, so no exit code changes. Nothing needs re-capturing.
+
+- **`state.json` lost updates between concurrent switches.** The per-tool locks
+  deliberately let `kae use claude <a>` and `kae use codex <b>` run at once, and
+  each wrote back a copy of the whole document loaded before the other finished —
+  so the loser's field reverted with no error anywhere, `kae status` then named an
+  account that was not live, and `kae rollback` restores credentials, not this
+  file. Every state write now re-reads under a `state` lock. The same applies to
+  *decisions*: `kae account rm` re-checks under that lock whether the account it
+  removes is still the active one, because the pre-lock answer can predate a
+  switch that finished in between.
+- **A bound directory is findable again.** The fragment that selects a
+  per-directory store lives *in* the bound directory and the store is named by a
+  hash of the path, so nothing outside could answer "which directories bind this
+  account": `kae account rm` / `rename` and `kae profile rm` invalidated bindings
+  in silence, and a deleted directory stranded its store forever. Each store now
+  records the directory it belongs to. Those three commands name the directories
+  they invalidate, and `kae doctor` gains **`pin_stale`** for a bound directory
+  that is gone or that binds an account you no longer have. `kae pin`,
+  `kae pin <tool> <account>` and `kae unpin` also take a per-directory lock, and a
+  shared-mode re-bind now repairs a bond dir whose links were wiped — the isolated
+  one always could.
+- **Every keychain item is scoped to its account, and the adapter's answer wins.**
+  claude and cursor were read, written and deleted by service name alone. Worse
+  than the read was the write: creating an item preferred *the live item's*
+  account over the adapter's, so one item under a stale account (a former `$USER`)
+  captured every later write while the tool went on reading the account its own
+  rule names — the write succeeds, the item exists, and the tool reports no login.
+  A conformance guard now refuses a keychain spec that is not account-scoped.
+- **A relative `CLAUDE_CONFIG_DIR` or `CODEX_HOME` warns, per tool.** Both were
+  measured rather than assumed, and they diverge differently: claude uses the
+  value verbatim, so a relative one moves its files but **not** its keychain item
+  (the service name hashes the raw string), while codex canonicalizes against its
+  own working directory, which moves the file store *and* the keyring account.
+- **A doctor probe's own token can no longer reach its warning.**
+  `companion_token_drift` authenticates with the bound token and put the probe's
+  stderr into the message verbatim, so a tool that echoed a request header or a
+  URL carrying it would have published the secret to stdout and to `--json`. Found
+  by writing the redaction assertion AGENTS.md requires of every new output path;
+  all three of the newest probes now have one.
+- **`upstream_version` also watches the assumptions' age.** It only fired when the
+  installed tool moved past the verified release, so a user who never upgrades got
+  no signal at all and cursor — which declares no usable version — would get none
+  ever. Adapters now declare `VerifiedOn()`, doctor warns at six months, and a
+  test parses the version table in `docs/ADAPTERS.md` so the "bump both in one
+  commit" lockstep cannot be half-done. codex additionally reports a keychain item
+  that exists while kae resolved its file store, which is the disk contradicting
+  the model.
+- **`kae doctor <tool>` says what it skipped**, and backup pruning takes a lock
+  (the backups directory is global while the tool locks are not).
+- **New skill: `upstream-auth-drift`.** A *response* workflow, not a monitor —
+  detection is its least valuable entry point, because both real failures kae has
+  had were noticed by a human first. It carries the expensive middle: measure the
+  new behaviour without a login, make kae's model match it, re-record the
+  assumption in the same commit. `docs/handoff-upstream-drift.md` is retired; its
+  techniques are in the skill, its remaining automation ideas and its
+  audited-clean list in [ROADMAP.md](ROADMAP.md).
+
+Still open and unchanged: the two live-machine gates in
+[VALIDATION.md](VALIDATION.md) — "codex per-directory keyring bind" and "Cursor
+full credential set" — both of which need a real keychain and two real accounts.
+
+---
+
 # kae v0.13.0 (shipped 2026-07-31)
 
 One theme, found by auditing every adapter after v0.12.0: kae modelled several

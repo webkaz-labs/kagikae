@@ -15,10 +15,11 @@ deleted in a store the tool does not read there), all fixed on the branch — so
 **treat any restore-path assumption in this document as re-examined**.
 
 **Also done**: **2.1** (branch `fix/doctor-orphan-namespaces`), **1.1**
-(branch `fix/cursor-full-credential-set`) and **1.4** (branch
-`fix/claude-custom-oauth-url`).
+(branch `fix/cursor-full-credential-set`), **1.4** (branch
+`fix/claude-custom-oauth-url`) and **1.5** (branch `fix/upstream-drift-1-5`,
+where one of the three claims was overturned by measurement — see the entry).
 
-**Still open here**: 1.5, 1.6, the rest of Part 2, and Part 3's skill. Also open,
+**Still open here**: 1.6, the rest of Part 2, and Part 3's skill. Also open,
 and unrelated to this document: the two live-machine gates in
 [VALIDATION.md](VALIDATION.md) — "codex per-directory keyring bind" (which is all
 that stands between the shipped code and dropping codex from
@@ -253,18 +254,50 @@ injected into `process.env` — the token landing in whatever
 (warn) rather than to the refusal: those four variables are now warned on as the
 mechanism, because a fixed list cannot name a destination the host renames.
 
-### 1.5 copilot / opencode / agy: home-var and store assumptions — **AGENT-CLAIMED**
+### 1.5 copilot / opencode / agy: home-var and store assumptions — **FIXED** (two claims held, the store-move claim was overturned)
 
-- **copilot** does not honour `COPILOT_HOME`; `copilot.go:44-46` hard-codes
-  `$HOME/.copilot/config.json`. One-line fix if true.
-- **opencode**: upstream reportedly uses `XDG_DATA_HOME` without an absolute-path
-  check, while `paths.go` ignores a relative value per the XDG spec. A relative
-  value would put the two on different files. kae should warn rather than silently
-  diverge. Also claimed: the credential store moved across versions
-  (`account.json` → `auth.json` → a DB), and an `account.json` reportedly exists on
-  this machine — check whether kae is patching a file nothing reads.
-- **agy** may fall back to a file when the keychain write fails; kae treats darwin
-  as keychain-only and skips the file check there.
+All three were re-verified against the **installed** versions on 2026-07-31, with
+no login and without touching the real `$HOME` or keychain. Procedures and
+evidence are now rows in [VALIDATION.md](VALIDATION.md); what changed:
+
+- **copilot — held.** `COPILOT_HOME` *is* the config directory (`ss()`:
+  `--config-dir` → `COPILOT_HOME` → `~/.copilot`, used verbatim), so
+  `$HOME/.copilot/config.json` was patching a file copilot does not read whenever
+  it is set. Fixed in `configHome`. Three facts the claim missed: the precedence
+  has a **flag** above the variable that no environment can show kae; setting the
+  variable also disables copilot's `$XDG_CONFIG_HOME/.copilot` → `~/.copilot`
+  migration; and the loader falls back to a bare `config` file, which no auth path
+  writes to — so kae still targets `config.json`, deliberately. Also worth
+  knowing: **the binary on `PATH` is a launcher** and the real CLI is
+  `~/.copilot/pkg/universal/<newest>/app.js`, so a version manager can pin an old
+  launcher while `copilot --version` reports the newer package. That is why
+  `VerifiedVersion() == "1.0.61"` was right while the pinned launcher said 1.0.48.
+- **opencode — the XDG half held, the store-move half did not.** `XDG_DATA_HOME`
+  is used with no absolute-path check (three resolvers, one in the main module and
+  two in bundled plugins), confirmed behaviourally: `XDG_DATA_HOME=reldata` makes
+  opencode read `reldata/opencode/auth.json` relative to *its* cwd. kae warns
+  rather than following it, because following verbatim would resolve the value
+  against kae's cwd instead. Found alongside it: **`OPENCODE_AUTH_CONTENT`**
+  supplies a whole auth.json inline and is read before the file — also a warning
+  (opencode sets it itself for workspace children, so it can be inherited).
+  **kae is *not* patching a file nothing reads.** `auth.json` is the live store on
+  1.17.3, 1.17.4 and 1.18.5: `auth logout` empties it and leaves the DB row alone.
+  `account.json` is *derived* from auth.json on every run by ≤1.17.3 and dropped
+  at 1.17.4 (this machine's copy is a leftover), and the `credential` table in
+  `opencode.db` is a one-shot import behind a `data_migration` marker, dormant
+  afterwards. The forward risk is recorded: on 1.17.4 that row freezes whichever
+  account auth.json held at first run, so a release where the DB wins turns kae's
+  patch into a silent no-op.
+- **agy — held, and broader than claimed.** The fallback is real and its strings
+  are in the binary ("Failed to save token to keyring, falling back to file", plus
+  load and remove), but it is not only a write-failure path: every keyring
+  operation has a **1s timeout**, and `shouldBypassKeyring` skips the keyring
+  outright next to an ssh / wsl / container detector — so a remote-shell session
+  on a Mac uses the file store from the start. kae warns on the detectors' env
+  inputs and does **not** declare a file artifact on darwin: the fallback file's
+  path is not derivable from the binary, and none of the three names in kae's
+  `credentialFiles` occurs in it. Correction for Part 3's box below: **agy shells
+  out to `/usr/bin/security`**, so the shim applies to it.
 
 ### 1.6 Cross-cutting: kae reads keychain items service-only, tools read account-scoped — **VERIFIED HERE (mechanism), AGENT-CLAIMED (consequence)**
 
@@ -399,8 +432,11 @@ human first.
 > "Platform secure storage failure: A default keychain could not be found", i.e.
 > the Rust `keyring` crate calls Security.framework directly. The shim works for
 > claude because claude shells out to `/usr/bin/security`. **Establish per tool
-> whether it shells out before assuming the shim applies** — agy is a Go binary
-> using a keyring library and is probably in codex's camp; cursor is unverified.
+> whether it shells out before assuming the shim applies** — and note that the
+> guess in this box was itself wrong once: **agy does shell out** (its Go keyring
+> library invokes `/usr/bin/security` with `find`/`add`/`delete-generic-password`
+> and no `SecItemAdd`/`SecItemCopyMatching` appears in the binary), so the shim
+> applies to it after all, settled in 1.5. cursor is still unverified.
 
 ## What the skill is for
 

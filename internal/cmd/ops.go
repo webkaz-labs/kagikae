@@ -253,7 +253,26 @@ func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []too
 // restoring a backup it just created treats any missing payload as a hard error,
 // because it wrote them moments ago.
 func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.Meta, only map[string]bool, degradeLostIdentity bool) error {
-	current, _ := app.currentSpecs(ctx, meta)
+	current, unresolved := app.currentSpecs(ctx, meta)
+	// A tool whose declaration cannot be resolved gets no moved-store check at all:
+	// restoreSpec falls back to the record, which is the pre-fix behaviour. Say so
+	// before writing, because the alternative is reporting "previous state restored"
+	// with the one check that would have caught a moved store silently skipped — and
+	// a child rewriting config.toml (to `ephemeral`, say) is a way to *cause* this.
+	for _, u := range unresolved {
+		if only != nil && !only[u.Tool] {
+			continue
+		}
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: could not resolve where %s keeps its credential now (%v), so this restore "+
+				"writes the store the backup recorded without checking whether %s has moved it\n",
+			u.Tool, u.Err, u.Tool)
+	}
+	// A tool whose declaration cannot be resolved gets no moved-store check at all:
+	// restoreSpec falls back to the record, which is the pre-fix behaviour. Say so
+	// before writing, because the alternative is reporting "previous state restored"
+	// with the one check that would have caught a moved store silently skipped — and
+	// a child rewriting config.toml (to `ephemeral`, say) is a way to *cause* this.
 	for _, rec := range meta.Artifacts {
 		if only != nil && !only[rec.Tool] {
 			continue

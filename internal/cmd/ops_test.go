@@ -249,6 +249,45 @@ func TestApplyBackupKeepsAnUnaccountedCredential(t *testing.T) {
 	}
 }
 
+// When today's declaration cannot be resolved at all, the moved-store check does
+// not run and the restore falls back to the record — correct, but it must not be
+// silent: "previous state restored" would then be a claim kae did not check. A
+// child rewriting config.toml to a store kae refuses is a way to cause exactly this.
+func TestApplyBackupWarnsWhenTheStoreCannotBeResolved(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	be := testBackend(t, app)
+	authPath := filepath.Join(app.Env.Home, ".codex", "auth.json")
+	writeFile(t, filepath.Join(app.Env.Home, ".codex", "config.toml"),
+		"cli_auth_credentials_store = \"ephemeral\"\n")
+	ref := backup.SecretRef("x", constants.ToolCodex, "auth")
+	const backedUp = `{"tokens":{"access_token":"backed-up"}}`
+	if err := be.Set(ctx, ref, []byte(backedUp)); err != nil {
+		t.Fatal(err)
+	}
+	meta := backup.Meta{
+		Tools: []string{constants.ToolCodex},
+		Artifacts: []backup.ArtifactRecord{{
+			Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
+			Target: authPath, SecretRef: ref, Present: true,
+		}},
+	}
+	var err error
+	_, stderr := captureStderr(t, func() int {
+		err = app.applyBackup(ctx, be, meta, nil, false)
+		return 0
+	})
+	if err != nil {
+		t.Fatalf("the restore must still put the recorded store back: %v", err)
+	}
+	if got := readFile(t, authPath); got != backedUp {
+		t.Fatalf("recorded store = %q, want the backed-up credential", got)
+	}
+	if !strings.Contains(stderr, "could not resolve where codex keeps its credential") {
+		t.Fatalf("an unchecked restore must warn: %q", stderr)
+	}
+}
+
 // The redirect is only worth anything if the restore path consults it, so this
 // covers the wiring end to end: applyBackup resolves the live store itself (the
 // real codex adapter, from config.toml) and writes the backed-up credential there,

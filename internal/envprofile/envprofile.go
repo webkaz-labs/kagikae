@@ -37,7 +37,7 @@ type Profile struct {
 
 // SecretRef builds the secret-backend key for one profile variable.
 func SecretRef(tool, account, varName string) string {
-	return "env/" + tool + "/" + account + "/" + varName
+	return secret.NSEnv + "/" + tool + "/" + account + "/" + varName
 }
 
 func metaFile(dir string) string { return filepath.Join(dir, "env.toml") }

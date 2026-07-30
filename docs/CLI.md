@@ -722,8 +722,10 @@ Credential-health checks (warn-level):
   predicate as the switch-time warning, and inspects only the stored snapshot (no
   live read, so no extra keychain prompt). An expired snapshot whose refresh token
   is still usable is not flagged (the tool refreshes it).
-- `secret_orphan`: a stored secret item has no matching snapshot dir — names
-  `kae account rm`. Detected only where the backend can enumerate (file
+- `secret_orphan`: a stored secret item **of the account namespace**
+  (`<tool>/<account>/<artifact>`) has no matching snapshot dir — names
+  `kae account rm`. Backup, companion, and env-profile keys have no snapshot dir
+  by design and are never reported. Detected only where the backend can enumerate (file
   `readdir`, Linux `libsecret`); the darwin keychain cannot list by service, so
   the check is silently skipped there (documented gap; docs/SECURITY.md).
 

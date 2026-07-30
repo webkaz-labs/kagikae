@@ -86,6 +86,11 @@ check (a secret item with no matching `accounts/<tool>/<account>` snapshot dir):
 `kae account rm` deletes the snapshot dir and every secret item together, so
 orphans are rare; the check catches leftovers from manual cleanup.
 
+The check reads **only the account namespace** (`secret.AccountKey`): a backup,
+companion, or env-profile key has no `accounts/<tool>/<account>` dir behind it by
+design, so it is skipped rather than reported (docs/DATA-MODEL.md § Secret
+References).
+
 ### Per-switch `security` read coalescing (v0.8.1)
 
 A single switch reads one tool's keychain service several times (`Detect`, the

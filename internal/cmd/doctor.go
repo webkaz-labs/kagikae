@@ -306,11 +306,10 @@ func (app *App) orphanChecks(ctx context.Context, be secret.Backend, toolFilter 
 	checks := []adapter.Check{}
 	seen := map[string]bool{}
 	for _, key := range keys {
-		parts := strings.Split(key, "/")
-		if len(parts) < 3 || parts[0] == "backup" {
-			continue // not an account ref (backup/<id>/... or malformed)
+		tool, acct, ok := secret.AccountKey(key)
+		if !ok {
+			continue // backup, companion, or env-profile key: no snapshot dir behind it
 		}
-		tool, acct := parts[0], parts[1]
 		id := tool + "/" + acct
 		if seen[id] {
 			continue

@@ -249,6 +249,15 @@ key:     env/<tool>/<account>/<VAR>           # env-profile variables
 key:     companion/<profile>/<id>/<knob>      # companion token knobs
 ```
 
+The account namespace is the **un-prefixed** one, so `secret.AccountKey` tells the
+four apart by the absence of a reserved first segment (`secret.NSBackup` /
+`NSCompanion` / `NSEnv`, which the other three builders compose their keys from).
+Two consequences: a tool id must never equal one of those prefixes
+(`TestToolIDsDoNotCollideWithKeyNamespaces` guards it), and a new namespace must
+be prefixed and registered there — a key parsed as `<tool>/<account>` by mistake
+is reported as an orphaned account by `doctor` — which is what happened to every
+companion binding and env-profile variable while the check split the key itself.
+
 Backends:
 
 | Backend | Platform | Mechanism |

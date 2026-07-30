@@ -16,6 +16,7 @@ import (
 	"regexp"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
 // OverrideKind classifies how a companion's identity reaches the tool.
@@ -152,7 +153,7 @@ func (s Spec) validate() error {
 // SecretRef builds the secret-backend key for one companion knob value.
 // Mirrors envprofile.SecretRef but is profile-scoped, not tool/account-scoped.
 func SecretRef(profile, id, knob string) string {
-	return "companion/" + profile + "/" + id + "/" + knob
+	return secret.NSCompanion + "/" + profile + "/" + id + "/" + knob
 }
 
 var registry []Spec

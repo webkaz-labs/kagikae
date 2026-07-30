@@ -47,6 +47,43 @@ type Enumerator interface {
 	Keys(ctx context.Context) ([]string, error)
 }
 
+// Reserved first segments of a stored key. Every namespace but the account one
+// prefixes its keys with one of these, so an account key is recognized by the
+// absence of a prefix. The three builders that own those namespaces
+// (backup.SecretRef, companion.SecretRef, envprofile.SecretRef) compose their
+// keys from these constants, so this list cannot drift away from the key shapes
+// it describes.
+const (
+	NSBackup    = "backup"
+	NSCompanion = "companion"
+	NSEnv       = "env"
+)
+
+// AccountKey reports whether key belongs to the account namespace
+// (<tool>/<account>/<artifact>, built by account.SecretRef) and returns its
+// tool and account. Every other namespace returns ok=false: those keys have no
+// snapshot dir behind them, and reading one as <tool>/<account> is what made
+// doctor's orphan check warn forever on every companion binding and every
+// env-profile variable.
+//
+// A namespace added later must be listed above *and* in the switch below. Today's
+// three are excluded twice over — none of them has three segments — but a new
+// three-segment namespace would be read as an account with nothing failing.
+func AccountKey(key string) (tool, account string, ok bool) {
+	parts := strings.Split(key, "/")
+	if len(parts) != 3 {
+		return "", "", false // backup/companion/env keys carry four segments
+	}
+	switch parts[0] {
+	case NSBackup, NSCompanion, NSEnv:
+		return "", "", false
+	}
+	if parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
 // Resolve picks the backend for the configured name. lookPath is an
 // exec.LookPath-compatible probe injected for tests.
 func Resolve(configured, goos, secretsDir string, lookPath func(string) (string, error)) (Backend, error) {

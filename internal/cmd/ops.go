@@ -190,6 +190,25 @@ func (app *App) saveActive(updates map[string]string, explicitProfile string) er
 	return err
 }
 
+// pruneBackups trims the backup directory to the configured keep count, under a
+// lock. The directory is **global** while the tool locks are per tool, so two
+// switches on different tools prune it at the same time: each lists the same
+// newest-first set, and each deletes from its own tail — which can delete a
+// backup the other just created and shifted out of the window, and reports a
+// spurious failure when they both delete the same one. Pruning is bookkeeping,
+// so a busy lock is skipped rather than escalated: the other process is doing
+// exactly this work.
+func (app *App) pruneBackups(ctx context.Context, be secret.Backend) {
+	l, err := app.acquireNamedLock("backups", "")
+	if err != nil {
+		return
+	}
+	defer l.Release()
+	if _, err := backup.Prune(ctx, be, app.Paths.BackupsDir(), app.Config.Security.BackupKeep); err != nil {
+		fmt.Fprintf(os.Stderr, "kae: warning: backup pruning failed: %v\n", err)
+	}
+}
+
 // createBackup snapshots the live values of every plan into one backup.
 func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []toolPlan, st *state.State, reason string) (backup.Meta, error) {
 	id := backup.NewID(app.Paths.BackupsDir(), app.Now())

@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/secret"
@@ -222,9 +221,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		return nil, errf(exitOf(err),
 			"recording state failed, live state restored from backup %s: %v", meta.ID, err)
 	}
-	if _, err := backup.Prune(ctx, be, app.Paths.BackupsDir(), app.Config.Security.BackupKeep); err != nil {
-		fmt.Fprintf(os.Stderr, "kae: warning: backup pruning failed: %v\n", err)
-	}
+	app.pruneBackups(ctx, be)
 	return report, nil
 }
 

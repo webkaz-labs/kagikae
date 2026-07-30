@@ -235,8 +235,6 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 			"live state was rolled back but recording it failed (%v); verify with kae status, undo with: kae rollback --to %s",
 			err, preMeta.ID)
 	}
-	if _, err := backup.Prune(ctx, be, app.Paths.BackupsDir(), app.Config.Security.BackupKeep); err != nil {
-		fmt.Fprintf(os.Stderr, "kae: warning: backup pruning failed: %v\n", err)
-	}
+	app.pruneBackups(ctx, be)
 	return report, nil
 }

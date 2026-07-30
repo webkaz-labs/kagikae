@@ -147,13 +147,13 @@ func TestClaudeArtifactsDarwin(t *testing.T) {
 // pinConfigDirSHA8 is the suffix Claude Code derives from it. The expected
 // hashes are computed **outside** kae (`printf %s <path> | shasum -a 256`) on
 // purpose: deriving them with kae's own hash would make this test agree with any
-// formula, including a wrong one. Re-deriving them is only correct if the rule in
-// docs/VALIDATION.md still says raw-string sha256.
+// formula, including a wrong one. These paths are pure ASCII, so NFC leaves them
+// alone and `shasum` is exact; the normalization step has its own test below.
 const (
 	pinConfigDir     = "/home/u/.local/share/kagikae/isolation/deadbeefdeadbeef/claude/isolated/side/config"
 	pinConfigDirSHA8 = "b43dacab"
 	// The same path with a trailing slash is a *different* keychain item, because
-	// claude hashes the raw environment string with no path cleaning.
+	// claude hashes the environment string with no path cleaning at all.
 	pinConfigDirTrailingSlashSHA8 = "430765be"
 )
 
@@ -206,6 +206,40 @@ func TestCodexKeyringIsNotDirScoped(t *testing.T) {
 	}
 	if specs[0].KeychainDirScoped {
 		t.Fatal("a global keyring item must not be marked directory-scoped")
+	}
+}
+
+// TestClaudeKeychainServiceNormalizesToNFC pins the normalization step. claude
+// hashes the config dir after NFC-normalizing it, so a decomposed path — which
+// macOS can hand back for any non-ASCII component of a home or XDG_DATA_HOME —
+// must resolve to the *same* item as its composed form. Hashing the bytes as
+// given would make kae write an item claude never reads, which is the failure
+// this whole area exists to prevent.
+//
+// Both expected hashes are computed outside kae (python3 hashlib over the NFC
+// form), so the composed spelling is pinned rather than merely self-consistent.
+func TestClaudeKeychainServiceNormalizesToNFC(t *testing.T) {
+	// Escapes, not literal accents: the two forms must stay distinguishable in
+	// the source, where they would render identically.
+	const (
+		nfc  = "/home/u/caf\u00e9/config"  // \u00e9 as a single code point
+		nfd  = "/home/u/cafe\u0301/config" // e + combining acute accent
+		want = claude.KeychainService + "-42ef30c3"
+	)
+	for name, dir := range map[string]string{"composed": nfc, "decomposed": nfd} {
+		t.Run(name, func(t *testing.T) {
+			env := testEnv(t, "darwin", map[string]string{
+				"USER":              "alice",
+				"CLAUDE_CONFIG_DIR": dir,
+			})
+			specs, err := claudeAdapter.Artifacts(context.Background(), env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if specs[0].Target != want {
+				t.Fatalf("keychain target = %q, want %q", specs[0].Target, want)
+			}
+		})
 	}
 }
 

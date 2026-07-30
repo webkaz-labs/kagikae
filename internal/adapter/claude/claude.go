@@ -28,6 +28,8 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -61,11 +63,18 @@ var keychainAccountPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 //	CLAUDE_CONFIG_DIR unset  ->  "Claude Code-credentials"
 //	CLAUDE_CONFIG_DIR set    ->  "Claude Code-credentials-<sha8>"
 //
-// where <sha8> is the first 8 hex characters of sha256 over the **raw env
-// string**. There is no path resolution or cleaning in that hash, so a trailing
-// slash is a different item — callers must hash exactly the string they put in
-// the environment, which is why kae hashes the directory it writes into the mise
-// fragment rather than a re-derived path.
+// where <sha8> is the first 8 hex characters of sha256 over the env string,
+// NFC-normalized. There is no path resolution or cleaning in that hash, so a
+// trailing slash is a different item — callers must hash exactly the string they
+// put in the environment, which is why kae hashes the directory it writes into
+// the mise fragment rather than a re-derived path.
+//
+// The NFC step is not cosmetic on macOS: a decomposed path (a home or
+// XDG_DATA_HOME carrying non-ASCII characters, which the filesystem may hand
+// back in NFD) would hash differently here than in claude, and kae would write an
+// item claude never reads — the very failure this function exists to prevent.
+// Normalization applies to the hash input only; the path itself stays byte-exact
+// so it still resolves on disk, which is what claude does too.
 //
 // Modelling this as a constant is what made a pinned directory silently drift out
 // of kae's control: kae wrote `<pinDir>/.credentials.json`, claude read the
@@ -85,7 +94,7 @@ func keychainService(env adapter.Env) (name string, dirScoped bool) {
 	if dir == "" {
 		return KeychainService, false
 	}
-	sum := sha256.Sum256([]byte(dir))
+	sum := sha256.Sum256([]byte(norm.NFC.String(dir)))
 	return fmt.Sprintf("%s-%x", KeychainService, sum[:4]), true
 }
 

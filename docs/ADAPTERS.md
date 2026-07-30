@@ -98,10 +98,17 @@ isolation modes are what make the difference visible:
 | unset | `Claude Code-credentials` | `~/.claude/.credentials.json` |
 | set to `<dir>` | `Claude Code-credentials-<sha8>` | `<dir>/.credentials.json` |
 
-`<sha8>` is the first 8 hex characters of `sha256` over the **raw value** of the
-variable — no path resolution and no cleaning, so `/x/y` and `/x/y/` are
-different items. Anything computing the name must hash exactly the string it puts
-in the environment; `claude.keychainService` is the only place that derives it.
+`<sha8>` is the first 8 hex characters of `sha256` over the value of the
+variable, **NFC-normalized** — no path resolution and no cleaning, so `/x/y` and
+`/x/y/` are different items. Anything computing the name must hash exactly the
+string it puts in the environment; `claude.keychainService` is the only place that
+derives it.
+
+The NFC step matters on macOS, where a path component with non-ASCII characters
+(a home or `XDG_DATA_HOME`) can come back decomposed: claude normalizes before
+hashing, so kae must too, or it writes an item claude never reads. Only the hash
+input is normalized — the path itself stays byte-exact so it still resolves on
+disk. This is the one thing kae needs `golang.org/x/text/unicode/norm` for.
 
 Reads try the keychain first and fall back to the file. A write goes to the
 keychain, and **deletes the plaintext file** when the item was absent
@@ -522,6 +529,15 @@ thing that writes it, for all four:
 - the payload comes from the **account's snapshot**, never the live store — the
   live store holds whichever account is globally active, which is the account
   being bound only by coincidence;
+- the snapshot's payload **shape** must match the artifact being written.
+  `KindFile` and `KindKeychain` hold a whole document, `KindJSONPointer` holds only
+  the value under its pointer, and the two are not interchangeable: applying a
+  whole document through a pointer spec nests it under its own key
+  (`{"claudeAiOauth":{"claudeAiOauth":…}}`) and succeeds, which the tool reads as
+  malformed. Capturing under one claude driver and applying under the other is
+  enough to reach it, so a mismatch is refused (exit `10`) with recapture guidance,
+  on this path and on the global switch alike. Rollback needs no check: it rebuilds
+  the spec from the backup record, so the kind is the captured one by construction;
 - a keychain item is written **only** when the spec marks it
   `KeychainDirScoped`, i.e. its service name is derived from the isolation env
   var. A tool whose credential store is one global item is reported as

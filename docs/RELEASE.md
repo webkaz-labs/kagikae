@@ -68,15 +68,23 @@ Baseline: v0.11.0 (companion re-bind lockstep + token-identity drift), shipped
   the live store instead of the bound account's snapshot. See the release gate
   below.
 
-Contract: additive apart from three deliberate behaviour changes.
+Contract: additive apart from four deliberate behaviour changes.
 `schema_version` stays `1`; two new `doctor` check codes; one new artifact in
 claude's snapshot (`oauth_account`), applied as absent when a snapshot predates
 it. The changes: claude reports as unsupported (exit `5`) while
 `CLAUDE_SECURESTORAGE_CONFIG_DIR` is set, because it moves the credential store
 outside what kae can model; binding a profile whose account has no captured
-credential now warns instead of skipping in silence; and `kae pin <tool>
-<account>` on an uncaptured account fails (exit `7`) in isolated mode as it
-already did in shared mode.
+credential now warns instead of skipping in silence; `kae pin <tool> <account>`
+on an uncaptured account fails (exit `7`) in isolated mode as it already did in
+shared mode; and applying a snapshot whose payload shape does not match the
+artifact the current environment resolves is refused (exit `10`) with recapture
+guidance, instead of silently nesting a whole document under its own JSON pointer
+— reachable by switching claude's driver after a capture.
+
+One dependency added: `golang.org/x/text`, for the NFC normalization claude
+applies before hashing a config dir into its keychain service name. Getting that
+wrong is the same silent wrong-credential class this release fixes, and it is not
+a few lines of our own.
 
 **Release gate (met): the macOS pin gap.** `CLAUDE_CONFIG_DIR` does not force
 file-based auth on macOS — claude namespaces its keychain service by the config

@@ -97,7 +97,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	if err != nil {
 		return err
 	}
-	if err := checkPayloadShape(tool, accountName, storedKind, sp.Kind); err != nil {
+	if err := checkPayloadShape(tool, accountName, artName, storedKind, sp.Kind); err != nil {
 		return err
 	}
 	if err := artifact.ApplyLive(ctx, sp, artifact.Value{Data: data, Present: true}); err != nil {
@@ -177,15 +177,21 @@ func wholeDocumentKind(kind string) bool {
 // KAE_CLAUDE_DRIVER / [tools.claude] driver override does exactly that. A
 // KindFile/KindKeychain transition is allowed: both are whole documents, which is
 // what makes codex's auth.json and its keyring item the same bytes.
-func checkPayloadShape(tool, accountName, storedKind, destKind string) error {
+//
+// An empty storedKind is a snapshot from before the kind was recorded, or an
+// identity artifact absent from an older snapshot: nothing to compare, so nothing
+// to refuse. The rollback path needs no such check — specFromRecord rebuilds the
+// spec *from the backup record*, so its kind is the one the payload was captured
+// under by construction.
+func checkPayloadShape(tool, accountName, artName, storedKind, destKind string) error {
 	if storedKind == "" || wholeDocumentKind(storedKind) == wholeDocumentKind(destKind) {
 		return nil
 	}
 	return errf(constants.ExitUnsafeRefused,
-		"account %s/%s was captured as %q but this environment resolves %s's credential as %q, "+
+		"account %s/%s captured %s as %q but this environment resolves it as %q, "+
 			"and the two payload shapes are not interchangeable; recapture with "+
 			"`kae add --no-login %s %s` under the current driver",
-		tool, accountName, storedKind, tool, destKind, tool, accountName)
+		tool, accountName, artName, storedKind, destKind, tool, accountName)
 }
 
 // snapshotCredential returns the captured credential payload for tool/account

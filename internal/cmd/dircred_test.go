@@ -95,7 +95,7 @@ func TestCheckPayloadShapeRejectsIncompatibleTransitions(t *testing.T) {
 		{"unrecorded kind", "", constants.KindJSONPointer, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := checkPayloadShape(constants.ToolClaude, "main", tc.stored, tc.dest)
+			err := checkPayloadShape(constants.ToolClaude, "main", "claude_ai_oauth", tc.stored, tc.dest)
 			if tc.wantRefused {
 				if err == nil {
 					t.Fatal("incompatible payload shapes must be refused, not applied")
@@ -109,6 +109,45 @@ func TestCheckPayloadShapeRejectsIncompatibleTransitions(t *testing.T) {
 				t.Fatalf("compatible shapes must apply: %v", err)
 			}
 		})
+	}
+}
+
+// TestSwitchRefusesIncompatibleSnapshotShape is the same guard on the global
+// path. Capturing under the keychain driver stores the whole
+// `{"claudeAiOauth":…}` document; switching afterwards under the forced file
+// driver resolves a pointer spec, and applying one to the other would nest the
+// document under its own key and report success. The live credential must be
+// untouched.
+func TestSwitchRefusesIncompatibleSnapshotShape(t *testing.T) {
+	envVars := map[string]string{}
+	app := testApp(t, envVars)
+	app.Env.GOOS = "darwin"
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	payload := `{"claudeAiOauth":{"accessToken":"` + mainToken + `","subscriptionType":"max"}}`
+	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
+		captureClaude(t, app, "main", mainToken)
+	})
+
+	// The live file the forced file driver will resolve, with a value of its own so
+	// "untouched" is testable.
+	live := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+	writeFile(t, live, `{"claudeAiOauth":{"accessToken":"`+sideToken+`"}}`)
+
+	// Force the file driver for the apply, the way [tools.claude] driver does.
+	envVars[constants.EnvKaeClaudeDriver] = constants.DriverValueFile
+
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	if code != constants.ExitUnsafeRefused {
+		t.Fatalf("expected exit %d, got %d (%s)", constants.ExitUnsafeRefused, code, out)
+	}
+	got := readFile(t, live)
+	if strings.Contains(got, `"claudeAiOauth":{"claudeAiOauth"`) {
+		t.Fatalf("the credential was nested under its own key: %s", got)
+	}
+	if !strings.Contains(got, sideToken) {
+		t.Fatalf("a refused switch must leave the live credential alone: %s", got)
 	}
 }
 

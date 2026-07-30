@@ -99,17 +99,6 @@ Follow-up from v0.8.4 (not yet scheduled):
   (docs/SCOPE-MODEL.md §6). Until then `doctor`'s `identity_drift` check skips a
   kae-owned isolated home for the same reason: kae applied no identity there, so
   there is nothing of its own to compare the live value against.
-- **The global apply path does not check the snapshot's payload shape**: a
-  `KindFile`/`KindKeychain` snapshot holds a whole document while a
-  `KindJSONPointer` one holds only the pointer value, and `applyPlan`
-  (`internal/cmd/ops.go`) applies stored bytes to whatever spec the current
-  environment resolves. Capture under one claude driver and switch under the other
-  (the `KAE_CLAUDE_DRIVER` / `[tools.claude] driver` override does exactly that)
-  and the whole document is nested under its own key —
-  `{"claudeAiOauth":{"claudeAiOauth":…}}` — which claude reads as malformed. The
-  per-directory path refuses this (`checkPayloadShape`); the global switch, backup
-  and rollback paths still need the same guard, ideally by recording the shape
-  once and comparing it in one place rather than three.
 - **A directory-scoped keychain item keeps a stale account attribute**: `ApplyLive`
   reuses an existing item's account attribute so a re-login that changed it is
   honored, which is right for the single global item but not for a per-directory

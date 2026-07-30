@@ -491,6 +491,15 @@ func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error 
 		if sp.KeychainReplace && metaArt.KeychainAccount != "" {
 			sp.KeychainAccount = metaArt.KeychainAccount
 		}
+		// The snapshot's bytes and the freshly resolved spec must agree on payload
+		// shape. They can disagree because the spec comes from the *current*
+		// environment while the payload was captured under an earlier one — switching
+		// claude's driver between the two is enough — and one of those transitions
+		// corrupts silently instead of failing (checkPayloadShape). Refusing before
+		// ApplyLive keeps it an apply error, so the caller's restore still runs.
+		if err := checkPayloadShape(plan.Tool, plan.Account, sp.Name, metaArt.Kind, sp.Kind); err != nil {
+			return err
+		}
 		value, err := storedValue(ctx, be, metaArt.SecretRef, metaArt.Present, sp.IdentityOnly, func() error {
 			return errf(constants.ExitError,
 				"snapshot payload %s is missing; re-run kae add --no-login %s %s",

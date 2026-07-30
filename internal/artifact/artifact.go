@@ -131,14 +131,6 @@ type Value struct {
 	Present bool
 }
 
-// matchAccount reports whether this keychain spec is identified by service *and*
-// account: read/write/delete touch only the KeychainAccount item, never a sibling
-// under a different account. keychainIdentified has already refused the case
-// where the flag is set but the account is unknown.
-func (sp Spec) matchAccount() bool {
-	return sp.KeychainMatchAccount
-}
-
 // keychainIdentified refuses a keychain spec that says its item is identified by
 // service+account but carries no account. Widening such a spec to a service-only
 // match is never safe: the service holds items kae does not own (another codex
@@ -224,7 +216,7 @@ func ReadLive(ctx context.Context, sp Spec) (Value, error) {
 		var payload []byte
 		var found bool
 		var err error
-		if sp.matchAccount() {
+		if sp.KeychainMatchAccount {
 			payload, found, err = keychain.ReadItemForAccount(ctx, sp.Target, sp.KeychainAccount)
 		} else {
 			payload, found, err = keychain.ReadItem(ctx, sp.Target)
@@ -320,13 +312,12 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		if err := keychainIdentified(sp); err != nil {
 			return err
 		}
-		matchAccount := sp.matchAccount()
 		if !v.Present {
 			// The captured account had no keychain item; applying it removes
 			// the live item (mirrors the file/json-pointer absent cases). A
 			// match-account spec deletes only its own account's item, never a
 			// sibling under a different account of the shared service.
-			if matchAccount {
+			if sp.KeychainMatchAccount {
 				return keychain.DeleteItemForAccount(ctx, sp.Target, sp.KeychainAccount)
 			}
 			return keychain.DeleteItem(ctx, sp.Target)
@@ -336,7 +327,7 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		if err := keychainGuard(sp, v.Data); err != nil {
 			return err
 		}
-		if matchAccount {
+		if sp.KeychainMatchAccount {
 			// Item keyed by service+account (agy's gemini/antigravity, codex's
 			// per-CODEX_HOME `Codex Auth`): upsert only that account's item (-U
 			// matches service+account), so a sibling item under a different account

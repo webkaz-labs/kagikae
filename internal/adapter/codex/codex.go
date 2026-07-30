@@ -164,13 +164,13 @@ func configuredStore(env adapter.Env) (string, error) {
 // read, write and delete touches this home's item and never another home's — the
 // two coexist under one service name. The structure guard requires a JSON object
 // holding /tokens (the OAuth login shape; docs/ADAPTERS.md).
-func keyringSpec(env adapter.Env) artifact.Spec {
+func keyringSpec(account string) artifact.Spec {
 	return artifact.Spec{
 		Name:                 "auth",
 		Kind:                 constants.KindKeychain,
 		Target:               KeychainService,
 		Pointer:              "/tokens",
-		KeychainAccount:      storeKey(env),
+		KeychainAccount:      account,
 		KeychainMatchAccount: true,
 	}
 }
@@ -192,7 +192,10 @@ func fileSpec(env adapter.Env) artifact.Spec {
 // (and kae writes) auth.json; once codex's first save creates the item and
 // deletes the file, both move to the item. The probe reads attributes only, so it
 // never touches a payload.
-func usesKeyring(ctx context.Context, env adapter.Env, store string) (bool, error) {
+//
+// account is this codex home's derived item account, passed in rather than
+// recomputed so one resolution resolves the path once (storeKey is two syscalls).
+func usesKeyring(ctx context.Context, env adapter.Env, store, account string) (bool, error) {
 	switch store {
 	case storeKeyring:
 		return true, nil
@@ -203,7 +206,7 @@ func usesKeyring(ctx context.Context, env adapter.Env, store string) (bool, erro
 		if env.GOOS != "darwin" {
 			return false, nil
 		}
-		return keychain.ItemExistsForAccount(ctx, KeychainService, storeKey(env))
+		return keychain.ItemExistsForAccount(ctx, KeychainService, account)
 	}
 	return false, nil
 }
@@ -213,12 +216,13 @@ func (c Codex) Artifacts(ctx context.Context, env adapter.Env) ([]artifact.Spec,
 	if err != nil {
 		return nil, err
 	}
-	keyring, err := usesKeyring(ctx, env, store)
+	account := storeKey(env)
+	keyring, err := usesKeyring(ctx, env, store, account)
 	if err != nil {
 		return nil, err
 	}
 	if keyring {
-		return []artifact.Spec{keyringSpec(env)}, nil
+		return []artifact.Spec{keyringSpec(account)}, nil
 	}
 	return []artifact.Spec{fileSpec(env)}, nil
 }
@@ -373,7 +377,7 @@ func (c Codex) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 		var specs []artifact.Spec
 		if specs, err = c.Artifacts(ctx, env); err == nil {
 			return append([]adapter.Check{adapter.BinaryCheck(env, tool, "codex")},
-				c.storeChecks(ctx, env, tool, store, specs[0])...)
+				storeChecks(ctx, tool, store, specs[0])...)
 		}
 	}
 	// configuredStore and Artifacts fail for an unswitchable store mode, an
@@ -388,7 +392,11 @@ func (c Codex) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 // storeChecks reports which store the credential resolved to and whether the
 // credential is there. Under `auto` the resolved store is the informative half:
 // the configured value alone does not say which of the two codex will read.
-func (c Codex) storeChecks(ctx context.Context, env adapter.Env, tool, store string, sp artifact.Spec) []adapter.Check {
+//
+// Presence is read from the resolved spec rather than through Detect: Detect
+// re-derives the store from scratch, which under `auto` on macOS means a second
+// config.toml parse and a second `security` probe inside one `kae doctor`.
+func storeChecks(ctx context.Context, tool, store string, sp artifact.Spec) []adapter.Check {
 	where := "auth.json"
 	if sp.Kind == constants.KindKeychain {
 		where = KeychainService + " keychain item for this codex home"
@@ -397,8 +405,16 @@ func (c Codex) storeChecks(ctx context.Context, env adapter.Env, tool, store str
 		Tool: tool, Code: constants.CheckCredentialStore,
 		Status: constants.StatusOK, Message: "credential store: " + store + " (" + where + ")",
 	}}
-	info, _ := c.Detect(ctx, env)
-	if info.AuthPresent {
+	// A read error is reported as absent, exactly as Detect's swallowed error was.
+	present := false
+	if sp.Kind == constants.KindKeychain {
+		if v, err := artifact.ReadLive(ctx, sp); err == nil {
+			present = v.Present
+		}
+	} else if _, err := os.Stat(sp.Target); err == nil {
+		present = true
+	}
+	if present {
 		return append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckAuthPresent,
 			Status: constants.StatusOK, Message: where + " found",

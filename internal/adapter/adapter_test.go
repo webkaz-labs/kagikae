@@ -428,16 +428,12 @@ func TestCodexArtifactsFileAndKeyring(t *testing.T) {
 	if err != nil || len(specs) != 1 {
 		t.Fatalf("keyring store: %+v %v", specs, err)
 	}
-	sp := specs[0]
-	if sp.Kind != constants.KindKeychain || sp.Target != codex.KeychainService ||
-		sp.Pointer != "/tokens" || !sp.KeychainMatchAccount {
-		t.Fatalf("unexpected keyring spec: %+v", sp)
-	}
-	// The account is derived from CODEX_HOME (`cli|` + 16 hex), which is what scopes
-	// the item to one codex home; the exact derivation is pinned in the codex
-	// package's own golden test.
-	if len(sp.KeychainAccount) != len("cli|")+16 || !strings.HasPrefix(sp.KeychainAccount, "cli|") {
-		t.Fatalf("KeychainAccount = %q, want cli| + 16 hex", sp.KeychainAccount)
+	// Only the selection is this test's business: the config value is what picks the
+	// keychain spec over the file one. The spec's shape and its derived account are
+	// pinned in the codex package's own tests (TestCodexKeyringSpecIsAccountScoped,
+	// TestStoreKeyGolden).
+	if specs[0].Kind != constants.KindKeychain {
+		t.Fatalf("the keyring store must select the keychain spec: %+v", specs[0])
 	}
 }
 

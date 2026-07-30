@@ -84,26 +84,26 @@ func makeJWT(payloadJSON string) string {
 	return seg(`{"alg":"none"}`) + "." + seg(payloadJSON) + "."
 }
 
-func writeAuth(t *testing.T, home, body string) {
+// writeCodexHome writes one file of the default codex home (created 0700).
+func writeCodexHome(t *testing.T, home, name, body string) {
 	t.Helper()
 	dir := filepath.Join(home, ".codex")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "auth.json"), []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
 
+func writeAuth(t *testing.T, home, body string) {
+	t.Helper()
+	writeCodexHome(t, home, "auth.json", body)
+}
+
 func writeConfig(t *testing.T, home, body string) {
 	t.Helper()
-	dir := filepath.Join(home, ".codex")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCodexHome(t, home, "config.toml", body)
 }
 
 // The store mapping is upstream's enum, not "keyring or else file": an absent key

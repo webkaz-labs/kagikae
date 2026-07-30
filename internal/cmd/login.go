@@ -160,7 +160,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	// it unchanged (empty before, empty after), and reports that a successful login
 	// changed nothing.
 	plan = app.refreshPlan(ctx, plan)
-	current := specsOf([]toolPlan{plan})
+	current := map[string][]artifact.Spec{plan.Tool: plan.Specs}
 
 	if changed, err := loginChangedAuth(ctx, be, meta, plan); err != nil {
 		return finishLoginFailure(ctx, app, opts, be, meta, restore, current, "compare auth after login", err)

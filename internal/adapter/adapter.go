@@ -103,6 +103,13 @@ type Adapter interface {
 	// version scheme the comparison cannot read may return it (cursor's date
 	// versions), and the reason belongs in that adapter's doc comment.
 	VerifiedVersion() string
+	// VerifiedOn is the date (YYYY-MM-DD) those assumptions were last checked,
+	// which is the half VerifiedVersion cannot supply: a user who never upgrades
+	// the tool gets no version signal at all, and an assumption nobody has looked
+	// at in months is stale whether or not the tool moved. Unlike the version it
+	// is never empty — cursor has no usable version signal but still has a date,
+	// which is exactly why the two are separate.
+	VerifiedOn() string
 }
 
 // Identifier is implemented by adapters that can read the live login identity

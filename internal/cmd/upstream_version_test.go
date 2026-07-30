@@ -282,3 +282,45 @@ func TestDoctorJSONCarriesUpstreamAndIdentityDrift(t *testing.T) {
 		t.Errorf("identity payload must never reach --json: %s", out)
 	}
 }
+
+// TestAssumptionAgeChecks covers the blind spot upstream_version cannot: it only
+// fires when the installed tool moves past the verified release, so a user who
+// never upgrades — or who uses cursor, which declares no usable version — gets
+// no signal that an assumption set has gone unexamined.
+func TestAssumptionAgeChecks(t *testing.T) {
+	app := testApp(t, nil)
+	verified, err := time.Parse(time.DateOnly, mustAdapter(t, constants.ToolClaude).VerifiedOn())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// One day short of the threshold: silent.
+	app.Now = func() time.Time { return verified.Add(assumptionMaxAge - 24*time.Hour) }
+	for _, c := range app.assumptionAgeChecks(constants.ToolClaude) {
+		t.Fatalf("a fresh assumption set must not warn: %q", c.Message)
+	}
+
+	// One day past it: one warning, naming the date and the doc to work.
+	app.Now = func() time.Time { return verified.Add(assumptionMaxAge + 24*time.Hour) }
+	checks := app.assumptionAgeChecks(constants.ToolClaude)
+	if len(checks) != 1 {
+		t.Fatalf("expected one stale-assumption check, got %+v", checks)
+	}
+	if checks[0].Code != constants.CheckUpstreamVersion || checks[0].Status != constants.StatusWarn {
+		t.Fatalf("unexpected check shape: %+v", checks[0])
+	}
+	for _, want := range []string{mustAdapter(t, constants.ToolClaude).VerifiedOn(), "VALIDATION.md", "181 days ago"} {
+		if !strings.Contains(checks[0].Message, want) {
+			t.Errorf("message must contain %q: %q", want, checks[0].Message)
+		}
+	}
+}
+
+func mustAdapter(t *testing.T, tool string) adapter.Adapter {
+	t.Helper()
+	ad, err := adapter.ForTool(tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ad
+}

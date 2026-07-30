@@ -1,11 +1,13 @@
 package codex
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -257,5 +259,46 @@ func TestCodexFreshnessAPIKeyOnly(t *testing.T) {
 func TestCodexFreshnessUnparseable(t *testing.T) {
 	if info := (Codex{}).Freshness([]byte("not json")); info.Known {
 		t.Fatalf("Freshness on garbage = %+v (want Known=false)", info)
+	}
+}
+
+// TestCodexDoctorWarnsRelativeHomeEvenWhenTheStoreIsUnreadable pins that the
+// environment warning survives a store kae refuses. A `config.toml` it cannot
+// parse is exactly when a relative CODEX_HOME matters most — kae is about to
+// report the tool unsupported, and the relative path may be why it read the
+// wrong file — but Doctor returned only the unsupported check, disagreeing with
+// Detect, which appends the warning unconditionally.
+func TestCodexDoctorWarnsRelativeHomeEvenWhenTheStoreIsUnreadable(t *testing.T) {
+	home := t.TempDir()
+	// A relative CODEX_HOME resolves against the *process* cwd, which is the
+	// whole point of the warning, so the fixture has to live there too.
+	t.Chdir(home)
+	if err := os.MkdirAll(filepath.Join(home, "relcfg"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "relcfg", "config.toml"),
+		[]byte("this is not = valid toml [[[\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := adapter.Env{
+		GOOS: "darwin", Home: home,
+		Getenv:    func(k string) string { return map[string]string{"CODEX_HOME": "relcfg"}[k] },
+		LookupEnv: func(k string) (string, bool) { v, ok := map[string]string{"CODEX_HOME": "relcfg"}[k]; return v, ok },
+		LookPath:  func(string) (string, error) { return "", errors.New("not found") },
+	}
+	var unsupported, relative bool
+	for _, c := range (Codex{}).Doctor(context.Background(), env) {
+		if c.Code == constants.CheckUnsupported {
+			unsupported = true
+		}
+		if c.Code == constants.CheckEnvConflict && strings.Contains(c.Message, "CODEX_HOME is relative") {
+			relative = true
+		}
+	}
+	if !unsupported {
+		t.Error("an unparseable config.toml must still be reported")
+	}
+	if !relative {
+		t.Error("the relative CODEX_HOME warning must survive an unreadable store")
 	}
 }

@@ -178,6 +178,9 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// version kae's assumptions were verified on. Per-tool, so it honors the
 	// filter, and needs no secret backend.
 	report.Checks = append(report.Checks, app.upstreamVersionChecks(ctx, toolFilter)...)
+	// ...and the assumptions nobody has re-checked in six months, which the
+	// version comparison cannot see because it needs the tool to have moved.
+	report.Checks = append(report.Checks, app.assumptionAgeChecks(toolFilter)...)
 
 	// credential health: stale snapshots and orphaned secret items. Reuse the
 	// backend resolved above; skip when it is unavailable.

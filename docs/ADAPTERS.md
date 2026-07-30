@@ -874,14 +874,27 @@ compares the installed `<binary> --version` against it and warns
 (`upstream_version`) when the installed tool is a newer **major or minor**; a
 patch bump is silent.
 
-| Tool | `VerifiedVersion()` | `--version` output shape |
-|------|---------------------|--------------------------|
-| claude | `2.1.220` | `2.1.220 (Claude Code)` |
-| codex | `0.145.0` | `codex-cli 0.145.0` |
-| agy | `1.0.10` | `1.0.10` |
-| opencode | `1.17.4` | `1.17.4` |
-| cursor | `""` (no signal — see below) | `2026.06.16-20-30-07-<sha>` (date-versioned) |
-| copilot | `1.0.61` | `GitHub Copilot CLI 1.0.61.` (note the trailing period) |
+This table is **machine-checked**: `TestVerifiedVersionsMatchTheDocs` parses it
+and fails when a cell disagrees with the adapter, so the lockstep below cannot be
+half-done. Do not reformat the rows without updating that test.
+
+| Tool | `VerifiedVersion()` | `VerifiedOn()` | `--version` output shape |
+|------|---------------------|----------------|--------------------------|
+| claude | `2.1.220` | `2026-07-31` | `2.1.220 (Claude Code)` |
+| codex | `0.145.0` | `2026-07-31` | `codex-cli 0.145.0` |
+| agy | `1.0.10` | `2026-07-31` | `1.0.10` |
+| opencode | `1.17.4` | `2026-07-31` | `1.17.4` |
+| cursor | `""` (no signal — see below) | `2026-07-30` | `2026.06.16-20-30-07-<sha>` (date-versioned) |
+| copilot | `1.0.61` | `2026-07-31` | `GitHub Copilot CLI 1.0.61.` (note the trailing period) |
+
+`VerifiedOn()` is the half the version cannot supply. `upstream_version` only
+fires when the installed tool moves past the verified release, so a user who
+never upgrades gets **no signal at all** — and cursor, which declares no usable
+version, would get none ever. The date closes both: `kae doctor` warns once an
+assumption set has gone unchecked for six months. Six, not one or three, because
+the version check already covers the case where something actually changed; this
+one exists for the case where nothing did, and a warning that fires while the
+answer is still right is the kind users learn to scroll past.
 
 The parser takes the leftmost `<major>.<minor>.<patch>` triple of stdout, which
 reads all of the shapes above; `TestParseUpstreamVersion` pins the real outputs so

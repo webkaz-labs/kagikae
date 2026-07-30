@@ -205,6 +205,9 @@ func (Claude) Binary() string { return "claude" }
 // a newer minor is worth re-measuring (that procedure needs no login).
 func (Claude) VerifiedVersion() string { return "2.1.220" }
 
+// VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
+func (Claude) VerifiedOn() string { return "2026-07-31" }
+
 // configDir honors CLAUDE_CONFIG_DIR as the live base path when already set.
 // Auth mode never sets it.
 func configDir(env adapter.Env) string {

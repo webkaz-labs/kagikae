@@ -70,6 +70,9 @@ func (Copilot) Binary() string { return binaryName }
 // were last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
 func (Copilot) VerifiedVersion() string { return "1.0.61" }
 
+// VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
+func (Copilot) VerifiedOn() string { return "2026-07-31" }
+
 // configHome resolves the directory holding config.json. COPILOT_HOME is
 // honored verbatim, the way copilot itself uses it (`process.env.COPILOT_HOME ?
 // process.env.COPILOT_HOME : join(homedir(), ".copilot")`, measured at 1.0.61):

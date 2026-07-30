@@ -3,11 +3,13 @@ package adapter_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/adapter/agy"
@@ -1117,20 +1119,39 @@ func TestFresherConformance(t *testing.T) {
 // derivable — a constant (cursor, agy), $USER (claude) or the tool home (codex) —
 // so there is no case left for guessing it from the live item.
 func TestKeychainSpecsAreAccountScoped(t *testing.T) {
+	// A guard that silently checks nothing is worse than none — codex's keychain
+	// spec only appears under a keyring config.toml, and this test skipped it
+	// entirely until that was noticed. So assert *which* adapters it reached.
+	wantChecked := map[string]bool{
+		constants.ToolClaude: true, constants.ToolCodex: true,
+		constants.ToolCursor: true, constants.ToolAgy: true,
+	}
+	checked := map[string]bool{}
 	for _, tool := range constants.Tools {
 		ad, err := adapter.ForTool(tool)
 		if err != nil {
 			t.Fatalf("adapter for %s: %v", tool, err)
 		}
 		for _, goos := range []string{"linux", "darwin"} {
-			specs, err := ad.Artifacts(context.Background(), testEnv(t, goos, nil))
+			env := testEnv(t, goos, nil)
+			// codex is the one tool whose keychain spec is *conditional*: with no
+			// config.toml the store resolves to the default `file`, so a plain
+			// environment produces no KindKeychain spec and this guard would skip
+			// the very adapter the v0.12.0 regression came from.
+			if tool == constants.ToolCodex {
+				write(t, filepath.Join(env.Home, ".codex", "config.toml"),
+					"cli_auth_credentials_store = \"keyring\"\n")
+			}
+			specs, err := ad.Artifacts(context.Background(), env)
 			if err != nil {
 				continue // unsupported platform: nothing to check
 			}
+			keychainSpecs := 0
 			for _, sp := range specs {
 				if sp.Kind != constants.KindKeychain {
 					continue
 				}
+				keychainSpecs++
 				if !sp.KeychainMatchAccount || sp.KeychainAccount == "" {
 					t.Errorf("%s/%s artifact %q: keychain specs must set KeychainMatchAccount "+
 						"and a non-empty KeychainAccount (got %v / %q); service-only IO reads the "+
@@ -1138,7 +1159,15 @@ func TestKeychainSpecsAreAccountScoped(t *testing.T) {
 						tool, goos, sp.Name, sp.KeychainMatchAccount, sp.KeychainAccount)
 				}
 			}
+			if goos == "darwin" && keychainSpecs > 0 {
+				checked[tool] = true
+			}
 		}
+	}
+	if !maps.Equal(checked, wantChecked) {
+		t.Errorf("this guard reached %v on darwin, want %v; a tool that stopped producing a "+
+			"keychain spec is either a real change or a test environment that no longer resolves it",
+			checked, wantChecked)
 	}
 }
 
@@ -1193,4 +1222,58 @@ func warningsOf(t *testing.T, adp adapter.Adapter, vars map[string]string) strin
 		t.Fatalf("detect %s: %v", adp.ID(), err)
 	}
 	return strings.Join(info.Warnings, "\n")
+}
+
+// verifiedRow matches one row of the "Verified Upstream Versions" table in
+// docs/ADAPTERS.md: | <tool> | `<version>` | `<date>` | ... |
+var verifiedRow = regexp.MustCompile(`(?m)^\| (\w+) \| ` + "`" + `([^` + "`" + `]*)` + "`" + `[^|]*\| ` + "`" + `([0-9-]+)` + "`" + ` \|`)
+
+// TestVerifiedVersionsMatchTheDocs closes the one gap in the re-verification
+// discipline that nothing else can: the lockstep is "bump VerifiedVersion() and
+// the recorded version in the same commit", and until now only a human enforced
+// it. A doc that still names the old release is worse than no doc — the next
+// session reads it, believes the assumptions were checked there, and skips the
+// re-verification the code is actually asking for.
+//
+// It parses only this one table, deliberately. The per-row "Verified on" cells
+// in docs/VALIDATION.md are prose with the procedure and the evidence in them,
+// at a finer grain than one date per tool; parsing those would make every
+// wording change a test failure, which is how a guard gets deleted.
+func TestVerifiedVersionsMatchTheDocs(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "ADAPTERS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	documented := map[string][2]string{}
+	for _, m := range verifiedRow.FindAllStringSubmatch(string(data), -1) {
+		documented[m[1]] = [2]string{strings.Trim(m[2], `"`), m[3]}
+	}
+	if len(documented) != len(constants.Tools) {
+		t.Fatalf("parsed %d rows from the Verified Upstream Versions table, want %d "+
+			"(the table's shape changed; fix verifiedRow or the table): %v",
+			len(documented), len(constants.Tools), documented)
+	}
+	for _, tool := range constants.Tools {
+		ad, err := adapter.ForTool(tool)
+		if err != nil {
+			t.Fatalf("adapter for %s: %v", tool, err)
+		}
+		row, ok := documented[tool]
+		if !ok {
+			t.Errorf("%s has no row in docs/ADAPTERS.md's Verified Upstream Versions table", tool)
+			continue
+		}
+		if row[0] != ad.VerifiedVersion() {
+			t.Errorf("%s: docs/ADAPTERS.md says version %q, the adapter says %q — bump both in one commit",
+				tool, row[0], ad.VerifiedVersion())
+		}
+		if row[1] != ad.VerifiedOn() {
+			t.Errorf("%s: docs/ADAPTERS.md says verified on %q, the adapter says %q",
+				tool, row[1], ad.VerifiedOn())
+		}
+		if _, err := time.Parse(time.DateOnly, ad.VerifiedOn()); err != nil {
+			t.Errorf("%s: VerifiedOn() %q is not YYYY-MM-DD; the age check parses it",
+				tool, ad.VerifiedOn())
+		}
+	}
 }

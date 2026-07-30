@@ -221,12 +221,7 @@ func (a Agy) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 			Tool: tool, Code: constants.CheckDriver,
 			Status: constants.StatusOK, Message: "driver: " + constants.DriverAgyKeychain,
 		})
-		for _, warning := range keyringBypassWarnings(env) {
-			checks = append(checks, adapter.Check{
-				Tool: tool, Code: constants.CheckEnvConflict,
-				Status: constants.StatusWarn, Message: warning,
-			})
-		}
+		checks = append(checks, adapter.EnvConflictChecksFrom(tool, keyringBypassWarnings(env))...)
 		return checks
 	}
 	switch {

@@ -52,6 +52,39 @@ func testEnv(t *testing.T, goos string, vars map[string]string) adapter.Env {
 	}
 }
 
+// wantEnvConflictWarning asserts that an environment condition is reported on
+// **both** surfaces: Detect's Info.Warnings (which reaches the pre-write stderr
+// warning) and Doctor's env_conflict check. Every adapter that warns about the
+// environment owes both, and a warning present on one surface only is the bug
+// this pins.
+func wantEnvConflictWarning(t *testing.T, adp adapter.Adapter, vars map[string]string, want string) {
+	t.Helper()
+	env := testEnv(t, "darwin", vars)
+	info, err := adp.Detect(context.Background(), env)
+	if err != nil {
+		t.Fatalf("detect: %v", err)
+	}
+	found := false
+	for _, warning := range info.Warnings {
+		if strings.Contains(warning, want) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a Detect warning containing %q: %+v", want, info.Warnings)
+	}
+	found = false
+	for _, check := range adp.Doctor(context.Background(), env) {
+		if check.Code == constants.CheckEnvConflict && check.Status == constants.StatusWarn &&
+			strings.Contains(check.Message, want) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a doctor env_conflict warning containing %q", want)
+	}
+}
+
 func write(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -643,35 +676,10 @@ func TestOpencodeDetect(t *testing.T) {
 // the two on different files. Neither can be fixed by writing somewhere else, so
 // both warn on Detect and in doctor.
 func TestOpencodeWarnsWhenAuthJSONIsNotWhatItReads(t *testing.T) {
-	hasWarning := func(t *testing.T, vars map[string]string, want string) {
-		t.Helper()
-		env := testEnv(t, "darwin", vars)
-		info, err := opencodeAdapter.Detect(context.Background(), env)
-		if err != nil {
-			t.Fatalf("detect: %v", err)
-		}
-		found := false
-		for _, warning := range info.Warnings {
-			if strings.Contains(warning, want) {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("expected a Detect warning containing %q: %+v", want, info.Warnings)
-		}
-		found = false
-		for _, check := range opencodeAdapter.Doctor(context.Background(), env) {
-			if check.Code == constants.CheckEnvConflict && check.Status == constants.StatusWarn &&
-				strings.Contains(check.Message, want) {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("expected a doctor env_conflict warning containing %q", want)
-		}
-	}
-	hasWarning(t, map[string]string{opencode.EnvAuthContent: `{"openai":{}}`}, opencode.EnvAuthContent)
-	hasWarning(t, map[string]string{"XDG_DATA_HOME": "relative/data"}, "XDG_DATA_HOME is relative")
+	wantEnvConflictWarning(t, opencodeAdapter,
+		map[string]string{opencode.EnvAuthContent: `{"openai":{}}`}, opencode.EnvAuthContent)
+	wantEnvConflictWarning(t, opencodeAdapter,
+		map[string]string{"XDG_DATA_HOME": "relative/data"}, "XDG_DATA_HOME is relative")
 
 	// An absolute value is the normal case and must stay silent.
 	env := testEnv(t, "darwin", map[string]string{"XDG_DATA_HOME": t.TempDir()})
@@ -821,30 +829,8 @@ func TestCopilotHonorsCopilotHome(t *testing.T) {
 // the value (there is no default to fall back to while it is set) and warns,
 // because the alternative is a silently wrong write with every guard green.
 func TestCopilotWarnsOnRelativeCopilotHome(t *testing.T) {
-	env := testEnv(t, "darwin", map[string]string{copilot.EnvHome: ".copilot-local"})
-	info, err := copilotAdapter.Detect(context.Background(), env)
-	if err != nil {
-		t.Fatalf("detect: %v", err)
-	}
-	found := false
-	for _, warning := range info.Warnings {
-		if strings.Contains(warning, copilot.EnvHome) && strings.Contains(warning, "is relative") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("expected a relative-COPILOT_HOME warning: %+v", info.Warnings)
-	}
-	found = false
-	for _, check := range copilotAdapter.Doctor(context.Background(), env) {
-		if check.Code == constants.CheckEnvConflict && check.Status == constants.StatusWarn &&
-			strings.Contains(check.Message, copilot.EnvHome) {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("expected a doctor env_conflict warning for a relative %s", copilot.EnvHome)
-	}
+	wantEnvConflictWarning(t, copilotAdapter,
+		map[string]string{copilot.EnvHome: ".copilot-local"}, copilot.EnvHome+" is relative")
 }
 
 func TestCopilotDetect(t *testing.T) {
@@ -949,32 +935,12 @@ func TestAgyDarwinKeychainDriver(t *testing.T) {
 // fallback file's path is not derivable from the binary — so kae warns instead of
 // switching a store it cannot name.
 func TestAgyWarnsWhenTheKeychainMayBeBypassed(t *testing.T) {
-	env := testEnv(t, "darwin", map[string]string{"SSH_TTY": "/dev/ttys001"})
+	// The keychain probe is stubbed as logged-in, so the only warning left to see
+	// is the bypass one.
 	present := &runnertest.Fake{Stdout: "opaque-antigravity-token\n"}
 	runner.With(present, func() {
-		info, err := agyAdapter.Detect(context.Background(), env)
-		if err != nil {
-			t.Fatalf("detect: %v", err)
-		}
-		found := false
-		for _, warning := range info.Warnings {
-			if strings.Contains(warning, "SSH_TTY") && strings.Contains(warning, "bypass the keychain") {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("expected an SSH_TTY bypass warning: %+v", info.Warnings)
-		}
-		found = false
-		for _, check := range agyAdapter.Doctor(context.Background(), env) {
-			if check.Code == constants.CheckEnvConflict && check.Status == constants.StatusWarn &&
-				strings.Contains(check.Message, "SSH_TTY") {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("expected a doctor env_conflict warning for SSH_TTY")
-		}
+		wantEnvConflictWarning(t, agyAdapter, map[string]string{"SSH_TTY": "/dev/ttys001"},
+			"SSH_TTY is set: agy may bypass the keychain")
 	})
 
 	// A local session must stay silent.

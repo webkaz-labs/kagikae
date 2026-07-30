@@ -46,10 +46,13 @@ var envConflicts = []string{EnvAuthContent}
 // upstream verbatim would only trade a visible divergence for an invisible one.
 const xdgRelativeWarning = "XDG_DATA_HOME is relative: opencode joins it against its working directory while kae ignores it per the XDG spec, so kae switches a different auth.json than opencode reads (set an absolute path)"
 
-// xdgDataHomeDiverges reports whether XDG_DATA_HOME is set to a relative value.
-func xdgDataHomeDiverges(env adapter.Env) bool {
-	v := env.Getenv("XDG_DATA_HOME")
-	return v != "" && !filepath.IsAbs(v)
+// xdgRelativeWarnings is the Detect/Doctor payload for a relative XDG_DATA_HOME:
+// one warning, or none. Both surfaces read it so neither can drift.
+func xdgRelativeWarnings(env adapter.Env) []string {
+	if adapter.IsRelativeEnv(env, "XDG_DATA_HOME") {
+		return []string{xdgRelativeWarning}
+	}
+	return nil
 }
 
 type Opencode struct{}
@@ -95,9 +98,7 @@ func (o Opencode) Detect(ctx context.Context, env adapter.Env) (adapter.Info, er
 	}
 	info.AuthPresent = v.Present
 	info.Warnings = append(info.Warnings, adapter.EnvConflictWarnings(env, envConflicts)...)
-	if xdgDataHomeDiverges(env) {
-		info.Warnings = append(info.Warnings, xdgRelativeWarning)
-	}
+	info.Warnings = append(info.Warnings, xdgRelativeWarnings(env)...)
 	if !v.Present {
 		// ReadLive cannot distinguish a missing file from a file without
 		// the openai key, and only the latter deserves an explanation.
@@ -199,12 +200,7 @@ func (o Opencode) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 		Status: constants.StatusOK, Message: "driver: " + constants.DriverOpencodeFilePatch,
 	})
 	checks = append(checks, adapter.EnvConflictChecks(env, tool, envConflicts)...)
-	if xdgDataHomeDiverges(env) {
-		checks = append(checks, adapter.Check{
-			Tool: tool, Code: constants.CheckEnvConflict,
-			Status: constants.StatusWarn, Message: xdgRelativeWarning,
-		})
-	}
+	checks = append(checks, adapter.EnvConflictChecksFrom(tool, xdgRelativeWarnings(env))...)
 	if check, ok := adapter.FileModeCheck(env, tool, authJSONPath(env)); ok {
 		checks = append(checks, check)
 	}

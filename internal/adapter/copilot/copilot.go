@@ -49,10 +49,13 @@ const relativeHomeWarning = EnvHome + " is relative: copilot resolves it against
 	" directory, so kae only writes the file copilot reads while both run from the same" +
 	" directory (set an absolute path)"
 
-// homeIsRelative reports whether COPILOT_HOME is set to a relative value.
-func homeIsRelative(env adapter.Env) bool {
-	dir := env.Getenv(EnvHome)
-	return dir != "" && !filepath.IsAbs(dir)
+// relativeHomeWarnings is the Detect/Doctor payload for a relative COPILOT_HOME:
+// one warning, or none. Both surfaces read it so neither can drift.
+func relativeHomeWarnings(env adapter.Env) []string {
+	if adapter.IsRelativeEnv(env, EnvHome) {
+		return []string{relativeHomeWarning}
+	}
+	return nil
 }
 
 type Copilot struct{}
@@ -105,9 +108,7 @@ func (c Copilot) Detect(ctx context.Context, env adapter.Env) (adapter.Info, err
 		info.BinaryPresent = true
 	}
 	info.Warnings = append(info.Warnings, adapter.EnvConflictWarnings(env, envConflicts)...)
-	if homeIsRelative(env) {
-		info.Warnings = append(info.Warnings, relativeHomeWarning)
-	}
+	info.Warnings = append(info.Warnings, relativeHomeWarnings(env)...)
 	specs, err := c.Artifacts(ctx, env)
 	if err != nil {
 		return info, err
@@ -175,12 +176,7 @@ func (c Copilot) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 		Status: constants.StatusOK, Message: "driver: " + constants.DriverCopilotConfigPointer,
 	})
 	checks = append(checks, adapter.EnvConflictChecks(env, tool, envConflicts)...)
-	if homeIsRelative(env) {
-		checks = append(checks, adapter.Check{
-			Tool: tool, Code: constants.CheckEnvConflict,
-			Status: constants.StatusWarn, Message: relativeHomeWarning,
-		})
-	}
+	checks = append(checks, adapter.EnvConflictChecksFrom(tool, relativeHomeWarnings(env))...)
 	if check, ok := adapter.FileModeCheck(env, tool, configJSONPath(env)); ok {
 		checks = append(checks, check)
 	}

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -190,18 +191,36 @@ func EnvConflictWarnings(env Env, vars []string) []string {
 	return warnings
 }
 
+// IsRelativeEnv reports whether a path variable is set to a relative value —
+// the case where kae and the tool resolve one variable against two different
+// working directories and therefore two different files. Every tool measured so
+// far uses such a variable verbatim, without the absolute-path check the XDG spec
+// asks for, so the divergence is real and the adapter's job is to warn about it
+// (docs/ADAPTERS.md; the per-variable wording stays with the adapter because the
+// consequence differs per tool).
+func IsRelativeEnv(env Env, name string) bool {
+	value := env.Getenv(name)
+	return value != "" && !filepath.IsAbs(value)
+}
+
+// EnvConflictChecksFrom wraps already-built warnings as env_conflict checks, so
+// the Doctor half of an environment warning is assembled in one place. Adapters
+// whose warning is not a per-variable "overrides the login" message (a relative
+// path variable, a store the tool may bypass) reach it directly with their own
+// text; EnvConflictChecks is the same thing for a plain variable list.
+func EnvConflictChecksFrom(tool string, warnings []string) []Check {
+	checks := make([]Check, 0, len(warnings))
+	for _, warning := range warnings {
+		checks = append(checks, Check{
+			Tool: tool, Code: constants.CheckEnvConflict,
+			Status: constants.StatusWarn, Message: warning,
+		})
+	}
+	return checks
+}
+
 // EnvConflictChecks warns for each set environment variable that overrides
 // the subscription login kae switches.
 func EnvConflictChecks(env Env, tool string, vars []string) []Check {
-	checks := []Check{}
-	for _, name := range vars {
-		if env.Getenv(name) != "" {
-			checks = append(checks, Check{
-				Tool: tool, Code: constants.CheckEnvConflict,
-				Status:  constants.StatusWarn,
-				Message: EnvConflictWarning(name),
-			})
-		}
-	}
-	return checks
+	return EnvConflictChecksFrom(tool, EnvConflictWarnings(env, vars))
 }

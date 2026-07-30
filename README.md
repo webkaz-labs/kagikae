@@ -291,7 +291,7 @@ The per-tool switched/preserved allowlist is the normative contract in
 | Antigravity CLI (`agy`) | macOS `gemini`/`antigravity` Keychain item (verbatim token); Linux file driver | active Google account in `~/.gemini/google_accounts.json` |
 | OpenCode (`opencode`) | the `/openai` entry of `auth.json` (other providers preserved) | access-token email, else `accountId` |
 | Cursor CLI (`cursor-agent`) | the access-token, refresh-token and api-key Keychain items (macOS), which cursor-agent writes as one unit | `cursor-agent status` email |
-| GitHub Copilot (`copilot`) | `/lastLoggedInUser` in `~/.copilot/config.json` (all platforms) | `lastLoggedInUser.login` |
+| GitHub Copilot (`copilot`) | `/lastLoggedInUser` in `$COPILOT_HOME/config.json`, default `~/.copilot/config.json` (all platforms) | `lastLoggedInUser.login` |
 
 One account per tool at a time globally: a shared switch (`kae use`) changes the
 live credential store, so running different accounts of the same tool at once

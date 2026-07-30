@@ -24,6 +24,14 @@ import (
 const (
 	binaryName      = "copilot"
 	lastUserPointer = "/lastLoggedInUser"
+
+	// EnvHome relocates copilot's configuration directory. It replaces
+	// ~/.copilot outright — the value is that directory, not a parent — and it is
+	// copilot's own sanctioned mechanism: the deprecated `--config-dir` flag it
+	// takes precedence over says "use COPILOT_HOME env var", and the flag's help
+	// text describes the variable as "override the directory where configuration
+	// and state files are stored".
+	EnvHome = "COPILOT_HOME"
 )
 
 // envConflicts override the keychain login (login --help precedence order).
@@ -41,8 +49,26 @@ func (Copilot) Binary() string { return binaryName }
 // were last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
 func (Copilot) VerifiedVersion() string { return "1.0.61" }
 
+// configHome resolves the directory holding config.json. COPILOT_HOME is
+// honored verbatim, the way copilot itself uses it (`process.env.COPILOT_HOME ?
+// process.env.COPILOT_HOME : join(homedir(), ".copilot")`, measured at 1.0.61):
+// no normalization, no absolute-path check. Modelling it as $HOME/.copilot made
+// every switch in a directory with COPILOT_HOME set patch a config.json copilot
+// never reads.
+func configHome(env adapter.Env) string {
+	if dir := env.Getenv(EnvHome); dir != "" {
+		return dir
+	}
+	return filepath.Join(env.Home, ".copilot")
+}
+
+// configJSONPath is the config file copilot's own login writes
+// (`writeKey("lastLoggedInUser", ...)`), which is always config.json. The
+// settings-migration loader additionally falls back to a bare `config` in the
+// same directory when config.json is absent, but no auth path writes there, so
+// kae targets config.json exactly as an upstream login does.
 func configJSONPath(env adapter.Env) string {
-	return filepath.Join(env.Home, ".copilot", "config.json")
+	return filepath.Join(configHome(env), "config.json")
 }
 
 func (c Copilot) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, error) {
@@ -60,11 +86,7 @@ func (c Copilot) Detect(ctx context.Context, env adapter.Env) (adapter.Info, err
 	if _, err := env.LookPath(binaryName); err == nil {
 		info.BinaryPresent = true
 	}
-	for _, name := range envConflicts {
-		if env.Getenv(name) != "" {
-			info.Warnings = append(info.Warnings, name+" is set and overrides the switched login")
-		}
-	}
+	info.Warnings = append(info.Warnings, adapter.EnvConflictWarnings(env, envConflicts)...)
 	specs, err := c.Artifacts(ctx, env)
 	if err != nil {
 		return info, err

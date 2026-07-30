@@ -346,6 +346,22 @@ uses, with a literal account instead of a derived one.
 is unchanged: when no credential file exists, `capture` fails with
 `auth_missing`, and `doctor` warns the keyring may be in use.
 
+**The keychain is not unconditional on macOS**, which the platform-only driver
+choice above cannot express. Read from the 1.0.10 binary: agy's auth package
+holds a keyring store *and* a file store behind one chooser, and the keyring half
+is skipped or abandoned three ways — a `shouldBypassKeyring` decision next to an
+ssh / wsl / container detector (`SSH_TTY`, `SSH_CONNECTION`, `SSH_CLIENT`,
+`WSL_DISTRO_NAME`, `WSL_INTEROP`, `/.dockerenv`, `/proc/1/cgroup`), a **1s
+timeout** on every keyring operation, and an explicit fallback on failure
+("Failed to save token to keyring, falling back to file", with load and remove
+variants). A remote-shell session on a Mac therefore reaches the file store.
+
+kae **warns** (`env_conflict`) when one of those variables is set on macOS and
+does not model the file store there: the fallback file's path is not derivable
+from the binary — none of the three `credentialFiles` names occurs in it — so
+declaring an artifact for it would write where nothing reads. The names in the
+Linux row are the 2026-06-18 discovery, unverified against 1.0.10.
+
 `kae add agy` is **`--no-login` only**: agy has no kae-drivable login
 (authentication is GUI/browser OAuth via the Antigravity app — no
 `login`/`auth`/`whoami` subcommand). agy's `Identity` reads the active Google
@@ -395,6 +411,29 @@ only, never replaced.
 If `XDG_DATA_HOME` is already set in the environment, the adapter uses it as
 the live base path (absolute values only — a relative value is ignored per
 the XDG spec, as everywhere in kae). `auth` mode never sets or changes it.
+
+Two ways that file stops being what opencode reads, both **warned** on
+(`kae doctor`, `env_conflict`) rather than followed:
+
+- **`OPENCODE_AUTH_CONTENT`** carries an entire auth.json body inline and is
+  consulted *before* the file — `Auth.all()` returns
+  `JSON.parse(process.env.OPENCODE_AUTH_CONTENT)` and never opens auth.json.
+  opencode sets it itself for a workspace child process, so a session can
+  inherit one.
+- **a relative `XDG_DATA_HOME`**, which opencode joins against its own working
+  directory (it has no absolute-path check). kae keeps the spec-correct reading
+  and warns, because following upstream verbatim would resolve the value against
+  *kae's* cwd instead — trading a visible divergence for an invisible one.
+
+kae switches `auth.json` and nothing else. Two other stores exist and are
+deliberately not modelled: `account.json` (`{version, accounts, active}`), which
+1.16.2–1.17.3 **derive** from auth.json on every run and 1.17.4 stopped reading
+at all, and the `credential` table in `opencode.db`, which 1.17.4 populates from
+auth.json exactly once behind a `data_migration` marker and then leaves alone.
+Measured across 1.17.3 / 1.17.4 / 1.18.5: `auth login`, `auth logout` and
+`auth list` all read and write **auth.json**, so it is the live store — a logout
+empties auth.json and leaves the imported DB row in place. That balance is what a
+version bump has to re-check ([VALIDATION.md](VALIDATION.md)).
 
 ### Driver
 
@@ -525,6 +564,21 @@ block) and mixed-state:
 }
 ```
 
+**`COPILOT_HOME` moves that directory**, and kae honors it: the value replaces
+`~/.copilot` outright — it is the config directory itself, not a parent — and it
+is copilot's own sanctioned mechanism (the deprecated, hidden `--config-dir`
+flag, which outranks it, tells users to "use COPILOT_HOME env var" instead).
+kae passes it through verbatim, with no normalization and no absolute-path
+check, because copilot applies none either
+(`process.env.COPILOT_HOME ? process.env.COPILOT_HOME : join(homedir(), ".copilot")`).
+Setting it also disables copilot's one-way `$XDG_CONFIG_HOME/.copilot` →
+`~/.copilot` migration.
+
+kae targets `config.json` and not the bare `config` file copilot's
+settings-migration loader falls back to when `config.json` is absent: no auth
+path writes to that fallback — a login's `writeKey("lastLoggedInUser", …)` always
+goes to `config.json` — so kae writes exactly where an upstream login does.
+
 The CLI has no native account-switch or logout command (only `copilot login`,
 an OAuth device flow). Tokens are env-overridable, precedence
 `COPILOT_GITHUB_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN`.
@@ -533,7 +587,7 @@ an OAuth device flow). Tokens are env-overridable, precedence
 
 | Driver | Platform | Switched artifacts |
 |--------|----------|--------------------|
-| `copilot-config-pointer` | all | `~/.copilot/config.json` pointer `/lastLoggedInUser` (JSONC; comments preserved) |
+| `copilot-config-pointer` | all | `$COPILOT_HOME/config.json` (default `~/.copilot/config.json`) pointer `/lastLoggedInUser` (JSONC; comments preserved) |
 
 Only `/lastLoggedInUser` is switched. The per-account keychain tokens are
 **never touched** (they coexist), so a switch only works between accounts

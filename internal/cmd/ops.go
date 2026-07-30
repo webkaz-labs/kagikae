@@ -268,11 +268,6 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 				"writes the store the backup recorded without checking whether %s has moved it\n",
 			u.Tool, u.Err, u.Tool)
 	}
-	// A tool whose declaration cannot be resolved gets no moved-store check at all:
-	// restoreSpec falls back to the record, which is the pre-fix behaviour. Say so
-	// before writing, because the alternative is reporting "previous state restored"
-	// with the one check that would have caught a moved store silently skipped — and
-	// a child rewriting config.toml (to `ephemeral`, say) is a way to *cause* this.
 	for _, rec := range meta.Artifacts {
 		if only != nil && !only[rec.Tool] {
 			continue

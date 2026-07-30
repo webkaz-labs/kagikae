@@ -190,15 +190,24 @@ func CmdUnpin(ctx context.Context, args []string) int {
 // runUnpin is CmdUnpin with the App injected, the same split CmdPin/runPin use so
 // tests drive it against a temp HOME instead of the real environment.
 func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
-	absDir, err := cwdAbs()
-	if err != nil {
-		return finish(opts, err)
+	// unpin is the escape hatch, and removing the fragment needs only a relative
+	// path — so a cwd that cannot be resolved (os.Getwd walks every ancestor, and
+	// can fail where opening a file in the directory still works) must not block
+	// it. Only the lock and --purge need the absolute path: without it, take
+	// neither, and refuse --purge rather than sweep the wrong pin.
+	absDir, absErr := cwdAbs()
+	if absErr == nil {
+		pinLock, err := app.acquirePinLock(absDir)
+		if err != nil {
+			return finish(opts, err)
+		}
+		defer pinLock.Release()
+	} else if purge {
+		return finish(opts, fmt.Errorf("resolve the current directory for --purge: %w", absErr))
+	} else {
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: could not resolve this directory (%v); removing the fragment without the pin lock\n", absErr)
 	}
-	pinLock, err := app.acquirePinLock(absDir)
-	if err != nil {
-		return finish(opts, err)
-	}
-	defer pinLock.Release()
 	removedFragment, err := removeDirFragment()
 	if err != nil {
 		return finish(opts, err)

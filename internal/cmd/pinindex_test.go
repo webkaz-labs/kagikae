@@ -123,3 +123,33 @@ func TestUnpinnedDirectoryIsNotReportedStale(t *testing.T) {
 		t.Fatalf("an unpinned directory must not warn: %+v", checks)
 	}
 }
+
+// TestPinCheckDoesNotCallALiveDirectoryOrphaned pins the distinction the
+// orphaned branch depends on. It tells the user to delete a per-directory store
+// — sessions, settings and a credential — so it must fire only when the bound
+// directory is confirmed gone, never when the fragment inside a live directory
+// merely could not be read (a permission change, an I/O error on a network
+// mount).
+func TestPinCheckDoesNotCallALiveDirectoryOrphaned(t *testing.T) {
+	app := overlayTestApp(t)
+	cwd := pinHere(t, app, modeShared)
+	// A fragment that exists but cannot be read: a directory in its place makes
+	// ReadFile fail with something other than "not exist".
+	if err := os.Remove(fragmentRelPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(fragmentRelPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	checks := app.pinChecks()
+	if len(checks) != 1 {
+		t.Fatalf("pinChecks() = %+v, want one unreadable-fragment check", checks)
+	}
+	if strings.Contains(checks[0].Message, "orphaned") {
+		t.Fatalf("a live directory must never be reported as orphaned: %q", checks[0].Message)
+	}
+	if !strings.Contains(checks[0].Message, cwd) || !strings.Contains(checks[0].Message, "could not be read") {
+		t.Fatalf("the check must name the directory and say the fragment was unreadable: %q", checks[0].Message)
+	}
+}

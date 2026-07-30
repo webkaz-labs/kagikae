@@ -107,6 +107,15 @@ triple ([ADAPTERS.md](ADAPTERS.md)). Existing cursor snapshots must be
 re-captured, which is why `applySnapshot` now resolves every artifact before the
 first live write.
 
+**Left undone, deliberately:** that refusal still lands *after* `kae use` has taken
+the tool locks, written a backup, and possibly recaptured the account being left —
+`loadPlansWithSnapshots` already holds both `plan.Specs` and
+`plan.Meta.Artifacts`, so it could refuse before any of that. Not done here
+because the harmful half (a live tool holding two accounts' items) is closed, and
+hoisting the check either duplicates its tolerance rule (`!ok && !sp.IdentityOnly`)
+in two layers or removes the guard from `applySnapshot`, which `run -s` also calls
+directly. Worth doing as its own change, with the check *moved* rather than copied.
+
 ### 1.2 codex: the keyring account attribute IS derived from `CODEX_HOME` — **FIXED** (verified from official source *and* against a real item)
 
 codex is open source, and reading it settled in seconds what binary inspection had

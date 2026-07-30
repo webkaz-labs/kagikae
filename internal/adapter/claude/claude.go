@@ -292,12 +292,18 @@ func (c Claude) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 	if drv == constants.DriverClaudeKeychainPatch {
 		service, dirScoped := keychainService(env)
 		credential = artifact.Spec{
-			Name:                "claude_ai_oauth",
-			Kind:                constants.KindKeychain,
-			Target:              service,
-			Pointer:             "/claudeAiOauth",
-			KeychainAccount:     keychainAccount(env),
-			KeychainDirBindable: dirScoped,
+			Name:            "claude_ai_oauth",
+			Kind:            constants.KindKeychain,
+			Target:          service,
+			Pointer:         "/claudeAiOauth",
+			KeychainAccount: keychainAccount(env),
+			// The account is a rule claude applies to every read
+			// (`find-generic-password -a <account> -s <service>`), so kae must
+			// scope to it rather than take the service's first item: an item left
+			// under a former $USER is one claude cannot see, and reusing its
+			// account would keep kae writing where claude never looks.
+			KeychainMatchAccount: true,
+			KeychainDirBindable:  dirScoped,
 		}
 	}
 	return []artifact.Spec{credential, oauthAccountSpec(env)}, nil

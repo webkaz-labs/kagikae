@@ -1104,3 +1104,41 @@ func TestFresherConformance(t *testing.T) {
 		}
 	}
 }
+
+// TestKeychainSpecsAreAccountScoped pins that every keychain artifact kae ships
+// is identified by service **and** account.
+//
+// A service-only spec reads the service's *first* item, writes with whatever
+// account the live item happens to carry, and deletes every item of the service.
+// All three are wrong the moment a service holds an item kae did not put there:
+// codex shipped a switch that deleted another CODEX_HOME's login that way, and
+// claude's reads are account-scoped, so an item left under a former $USER is one
+// the tool cannot see while kae keeps writing to it. Every adapter's account is
+// derivable — a constant (cursor, agy), $USER (claude) or the tool home (codex) —
+// so there is no case left for guessing it from the live item.
+func TestKeychainSpecsAreAccountScoped(t *testing.T) {
+	for _, tool := range constants.Tools {
+		ad, err := adapter.ForTool(tool)
+		if err != nil {
+			t.Fatalf("adapter for %s: %v", tool, err)
+		}
+		for _, goos := range []string{"linux", "darwin"} {
+			specs, err := ad.Artifacts(context.Background(), testEnv(t, goos, nil))
+			if err != nil {
+				continue // unsupported platform: nothing to check
+			}
+			for _, sp := range specs {
+				if sp.Kind != constants.KindKeychain {
+					continue
+				}
+				if !sp.KeychainMatchAccount || sp.KeychainAccount == "" {
+					t.Errorf("%s/%s artifact %q: keychain specs must set KeychainMatchAccount "+
+						"and a non-empty KeychainAccount (got %v / %q); service-only IO reads the "+
+						"first item, writes under the live item's account and deletes every sibling",
+						tool, goos, sp.Name, sp.KeychainMatchAccount, sp.KeychainAccount)
+				}
+			}
+		}
+	}
+}
+

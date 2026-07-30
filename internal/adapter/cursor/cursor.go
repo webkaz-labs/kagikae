@@ -91,6 +91,10 @@ func (c Cursor) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, 
 			Target:          service,
 			Pointer:         "",
 			KeychainAccount: KeychainAccount,
+			// The account is a build-time constant cursor-agent reads by, so scope
+			// to it: an item under any other account is not cursor's and must
+			// neither be captured nor overwritten.
+			KeychainMatchAccount: true,
 		}
 	}
 	return []artifact.Spec{

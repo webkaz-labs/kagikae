@@ -297,12 +297,12 @@ func TestKeychainKindRoundTrip(t *testing.T) {
 	const liveItem = `{"claudeAiOauth":{"accessToken":"old"}}`
 	fake := &fakeRunner{
 		payloads: map[string]string{"Claude Code-credentials": liveItem},
-		accounts: map[string]string{"Claude Code-credentials": "realuser"},
+		accounts: map[string]string{"Claude Code-credentials": "stale"},
 	}
 	sp := Spec{
 		Name: "claude_ai_oauth", Kind: constants.KindKeychain,
 		Target: "Claude Code-credentials", Pointer: "/claudeAiOauth",
-		KeychainAccount: "fallback",
+		KeychainAccount: "realuser",
 	}
 	const newItem = `{"claudeAiOauth":{"accessToken":"new"}}`
 	runner.With(fake, func() {
@@ -321,8 +321,36 @@ func TestKeychainKindRoundTrip(t *testing.T) {
 	if got := fake.payloads["Claude Code-credentials"]; got != newItem {
 		t.Fatalf("payload not written verbatim: %s", got)
 	}
+	// The adapter's account wins over the live item's. It used to be the other
+	// way round, which meant one item created under a wrong account (a former
+	// $USER, say) pinned every later kae write to it while the tool went on
+	// reading the account its own rule names — the write succeeds, the item
+	// exists, and the tool reports no login.
 	if fake.accounts["Claude Code-credentials"] != "realuser" {
-		t.Fatalf("existing account not reused: %s", fake.accounts["Claude Code-credentials"])
+		t.Fatalf("the adapter's account must win, got %q", fake.accounts["Claude Code-credentials"])
+	}
+}
+
+// TestKeychainAccountFallsBackToTheLiveItem covers the one case left where the
+// live item is the best evidence available: a rollback of a backup written
+// before the record carried the account, so the reconstructed spec has none.
+func TestKeychainAccountFallsBackToTheLiveItem(t *testing.T) {
+	ctx := context.Background()
+	fake := &fakeRunner{
+		payloads: map[string]string{"Claude Code-credentials": `{"claudeAiOauth":{"accessToken":"old"}}`},
+		accounts: map[string]string{"Claude Code-credentials": "realuser"},
+	}
+	sp := Spec{
+		Name: "claude_ai_oauth", Kind: constants.KindKeychain,
+		Target: "Claude Code-credentials", Pointer: "/claudeAiOauth",
+	}
+	runner.With(fake, func() {
+		if err := ApplyLive(ctx, sp, Value{Data: []byte(`{"claudeAiOauth":{"accessToken":"new"}}`), Present: true}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if got := fake.accounts["Claude Code-credentials"]; got != "realuser" {
+		t.Fatalf("with no account in the spec the live item's must be kept, got %q", got)
 	}
 }
 

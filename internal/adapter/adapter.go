@@ -171,6 +171,25 @@ func FileModeCheck(env Env, tool, path string) (Check, bool) {
 	}, true
 }
 
+// EnvConflictWarning is the message for one environment variable that overrides
+// the subscription login kae switches. Detect reports it in Info.Warnings and
+// Doctor in a Check, so the wording lives here instead of once per surface.
+func EnvConflictWarning(name string) string {
+	return name + " is set and overrides the switched login"
+}
+
+// EnvConflictWarnings returns one EnvConflictWarning per set variable, for an
+// adapter's Detect.
+func EnvConflictWarnings(env Env, vars []string) []string {
+	warnings := []string{}
+	for _, name := range vars {
+		if env.Getenv(name) != "" {
+			warnings = append(warnings, EnvConflictWarning(name))
+		}
+	}
+	return warnings
+}
+
 // EnvConflictChecks warns for each set environment variable that overrides
 // the subscription login kae switches.
 func EnvConflictChecks(env Env, tool string, vars []string) []Check {
@@ -180,7 +199,7 @@ func EnvConflictChecks(env Env, tool string, vars []string) []Check {
 			checks = append(checks, Check{
 				Tool: tool, Code: constants.CheckEnvConflict,
 				Status:  constants.StatusWarn,
-				Message: name + " is set and overrides the switched login",
+				Message: EnvConflictWarning(name),
 			})
 		}
 	}

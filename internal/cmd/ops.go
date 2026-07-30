@@ -180,20 +180,14 @@ func (app *App) loadState() (*state.State, error) {
 // against the state on disk at save time (see mutateState).
 // explicitProfile overrides recomputation (used by switch all).
 func (app *App) saveActive(updates map[string]string, explicitProfile string) error {
-	return app.mutateState(func(st *state.State) {
+	_, err := app.mutateState(func(st *state.State) {
 		maps.Copy(st.Active, updates)
-		app.setActiveProfile(st, explicitProfile)
-	})
-}
-
-// setActiveProfile records explicitProfile, or the profile matching the active
-// map when it is empty.
-func (app *App) setActiveProfile(st *state.State, explicitProfile string) {
-	if explicitProfile != "" {
 		st.ActiveProfile = explicitProfile
-		return
-	}
-	st.ActiveProfile = app.Config.MatchProfile(st.Active)
+		if explicitProfile == "" {
+			st.ActiveProfile = app.Config.MatchProfile(st.Active)
+		}
+	})
+	return err
 }
 
 // createBackup snapshots the live values of every plan into one backup.

@@ -176,12 +176,10 @@ func (app *App) acquireLocks(tools []string) ([]*lock.Lock, error) {
 		if !wanted[tool] {
 			continue
 		}
-		l, err := lock.Acquire(app.Paths.LocksDir(), tool)
+		l, err := app.acquireNamedLock(tool,
+			fmt.Sprintf("another kae process is switching %s; retry shortly", tool))
 		if err != nil {
 			releaseLocks(locks)
-			if errors.Is(err, lock.ErrBusy) {
-				return nil, errf(constants.ExitLockBusy, "another kae process is switching %s; retry shortly", tool)
-			}
 			return nil, err
 		}
 		locks = append(locks, l)
@@ -195,50 +193,52 @@ func releaseLocks(locks []*lock.Lock) {
 	}
 }
 
-// acquireConfigLock takes the shared config lock so config.toml edits do not
-// race other kae processes. Released by the caller.
-func (app *App) acquireConfigLock() (*lock.Lock, error) {
-	l, err := lock.Acquire(app.Paths.LocksDir(), lockNameConfig)
+// acquireNamedLock takes one advisory lock under the runtime lock dir, turning
+// a busy lock into the shared lock_busy exit code with the caller's wording.
+func (app *App) acquireNamedLock(name, busy string) (*lock.Lock, error) {
+	l, err := lock.Acquire(app.Paths.LocksDir(), name)
 	if err != nil {
 		if errors.Is(err, lock.ErrBusy) {
-			return nil, errf(constants.ExitLockBusy, "another kae process is editing the config; retry shortly")
+			return nil, errf(constants.ExitLockBusy, "%s", busy)
 		}
 		return nil, err
 	}
 	return l, nil
 }
 
-// mutateState applies mutate to a freshly-loaded state.json under the state
-// lock and writes the result back. **Every** state.json write goes through
-// here.
+// acquireConfigLock takes the shared config lock so config.toml edits do not
+// race other kae processes. Released by the caller.
+func (app *App) acquireConfigLock() (*lock.Lock, error) {
+	return app.acquireNamedLock(lockNameConfig, "another kae process is editing the config; retry shortly")
+}
+
+// mutateState is the single seam for state.json writes: take the state lock,
+// re-read the file, apply mutate, save. It returns the state as written, so a
+// caller can act on the values it just recorded.
 //
-// The per-tool locks do not cover this file. `kae use claude <a>` and
-// `kae use codex <b>` therefore run concurrently by design, and each holds a
-// copy of the whole document loaded before the other finished — so writing that
-// copy back reverts the other tool's field with no error anywhere. The revert is
-// silent and sticky: `status` and `MatchProfile` then report an account that is
-// not the live one, and `kae rollback` restores credentials, not this file.
-//
-// Re-reading inside the lock is what makes the update lost-free; the lock is
-// what makes the re-read atomic. The critical section is one read plus one
-// atomic write, so a busy lock is a real collision and failing loudly is safe —
-// a switch that reaches here has a backup to restore from.
-func (app *App) mutateState(mutate func(*state.State)) error {
-	l, err := lock.Acquire(app.Paths.LocksDir(), lockNameState)
+// It exists because the per-tool locks do not cover this file, so a copy loaded
+// earlier in the command can already be stale — see docs/ARCHITECTURE.md
+// ("Locking") for the lost update it closes. Two rules follow for callers: a
+// *decision* about the state must be made inside mutate, not from a copy read
+// before the lock; and a busy lock fails loudly rather than retrying, which is
+// safe here because the critical section is one read plus one atomic write and
+// a switch that reaches it has a backup to restore from.
+func (app *App) mutateState(mutate func(*state.State)) (*state.State, error) {
+	l, err := app.acquireNamedLock(lockNameState, "another kae process is recording state; retry shortly")
 	if err != nil {
-		if errors.Is(err, lock.ErrBusy) {
-			return errf(constants.ExitLockBusy, "another kae process is recording state; retry shortly")
-		}
-		return err
+		return nil, err
 	}
 	defer l.Release()
 	st, err := app.loadState()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	mutate(st)
 	st.UpdatedAt = app.Now().UTC()
-	return state.Save(app.Paths.StateFile(), st)
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		return nil, err
+	}
+	return st, nil
 }
 
 // editConfig applies mutate to config.toml through the comment-preserving

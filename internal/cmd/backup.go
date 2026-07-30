@@ -221,7 +221,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		return nil, errf(exitOf(err),
 			"rollback failed, live state restored from backup %s: %v", preMeta.ID, err)
 	}
-	if err := app.mutateState(func(st *state.State) {
+	if _, err := app.mutateState(func(st *state.State) {
 		for _, tool := range meta.Tools {
 			if before, ok := meta.ActiveBefore[tool]; ok {
 				st.Active[tool] = before
@@ -229,7 +229,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 				delete(st.Active, tool)
 			}
 		}
-		app.setActiveProfile(st, "")
+		st.ActiveProfile = app.Config.MatchProfile(st.Active)
 	}); err != nil {
 		return nil, errf(exitOf(err),
 			"live state was rolled back but recording it failed (%v); verify with kae status, undo with: kae rollback --to %s",

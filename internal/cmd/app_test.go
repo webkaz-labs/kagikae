@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/config"
@@ -45,6 +48,32 @@ func TestNonToolLockNamesDoNotCollideWithTools(t *testing.T) {
 	for _, name := range []string{lockNameConfig, lockNameState} {
 		if constants.IsTool(name) {
 			t.Errorf("lock name %q is also a tool id; give it a name no tool can take", name)
+		}
+	}
+}
+
+// TestStateWritesGoThroughTheSeam pins the convention App.mutateState exists to
+// carry. state.Save stays exported (tests fixture state.json with it, and
+// unexporting it would ripple through every read-only status path), so nothing
+// but this stops a later change from writing state.json directly and silently
+// reintroducing the lost update between concurrent tool switches — a normal
+// exported call that compiles, passes review, and fails only under concurrency.
+func TestStateWritesGoThroughTheSeam(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") || name == "app.go" {
+			continue // app.go holds the seam; tests fixture state directly
+		}
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "state.Save(") {
+			t.Errorf("%s writes state.json directly; go through App.mutateState so the write "+
+				"re-reads under the state lock", name)
 		}
 	}
 }

@@ -140,14 +140,13 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 	// in between makes another account active, and clearing on the stale answer
 	// would drop a binding this command was never asked to touch. The report
 	// follows what the locked decision did.
-	if err := app.mutateState(func(st *state.State) {
-		if st.Active[tool] != accountName {
-			report.ActiveCleared = false
+	if _, err := app.mutateState(func(st *state.State) {
+		report.ActiveCleared = st.Active[tool] == accountName
+		if !report.ActiveCleared {
 			return
 		}
 		delete(st.Active, tool)
-		app.setActiveProfile(st, "")
-		report.ActiveCleared = true
+		st.ActiveProfile = app.Config.MatchProfile(st.Active)
 	}); err != nil {
 		return nil, err
 	}
@@ -287,14 +286,13 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	// Re-decided under the state lock, for the reason `kae account rm` gives:
 	// the pre-lock copy can be older than a concurrent switch, and renaming on
 	// it would point the active binding at an account nobody selected.
-	if err := app.mutateState(func(st *state.State) {
-		if st.Active[tool] != oldName {
-			report.ActiveUpdated = false
+	if _, err := app.mutateState(func(st *state.State) {
+		report.ActiveUpdated = st.Active[tool] == oldName
+		if !report.ActiveUpdated {
 			return
 		}
 		st.Active[tool] = newName
-		app.setActiveProfile(st, "")
-		report.ActiveUpdated = true
+		st.ActiveProfile = app.Config.MatchProfile(st.Active)
 	}); err != nil {
 		return nil, err
 	}

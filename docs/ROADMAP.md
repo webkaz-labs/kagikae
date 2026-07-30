@@ -113,25 +113,27 @@ Follow-up from v0.8.4 (not yet scheduled):
   derived from the canonical `CODEX_HOME` (see [ADAPTERS.md](ADAPTERS.md)), so a
   bound directory could have its own item; kae warns and writes nothing because the
   end-to-end path is unverified. Three things it needs, in order:
-  1. **Confirm the paths agree.** codex canonicalizes `CODEX_HOME` before hashing and
-     kae resolves symlinks too, so they should — but bond dirs sit under kae's data
-     dir, which may itself be reached through a symlink, and this has never been
-     measured. The login-free procedure in [VALIDATION.md](VALIDATION.md) settles it.
-  2. **Fix what the flag measures.** `Spec.KeychainDirScoped` means "the *service
-     name* moves with the isolation env var" — that is literally what its parity
-     guard derives, comparing `Target` alone — while its consumer needs "may kae give
-     this directory its own item". codex proves the two differ: its item moves via
-     the *account*. As written, an adapter that per-dir-scopes by account and
-     correctly sets the flag **fails that guard**. Derive the guard from the whole
-     item identity (`Target` + `KeychainAccount`) and rename the field to what it
-     gates (`KeychainDirBindable`), with codex carried as a named exception until
-     step 1 lands rather than as a definitional truth.
+  1. ~~**Confirm the paths agree.**~~ **Done** (2026-07-30). Measured with the
+     login-free procedure in [VALIDATION.md](VALIDATION.md) against a bond-dir-shaped
+     `CODEX_HOME` reached through a symlink: codex created the item under the account
+     derived from the **resolved** path (the raw-path account was absent), matching
+     `storeKey`. Expected values computed outside kae; cleaned up with `codex logout`.
+  2. ~~**Fix what the flag measures.**~~ **Done** (2026-07-30). The field is now
+     `Spec.KeychainDirBindable` and its parity guard derives the truth from the whole
+     item identity (`Target` + `KeychainAccount`), so an adapter that binds by
+     account can declare it honestly — under the old Target-only derivation, doing so
+     **failed** the guard. Fixing it exposed a second defect: the guard had never
+     examined codex at all, because its probe directories held no `config.toml` and
+     the store therefore defaulted to `file`. It now selects the keyring store
+     explicitly and fails when a tool with an isolation variable yields no keychain
+     spec. codex is carried as a named exception (`bindableNotYetDeclared`) pending
+     step 3.
   3. **Own the item's lifecycle.** Each pinned directory then adds a `Codex Auth`
      item, so unpin and `pin -s` ↔ `pin -i` toggling need teardown — the same gap
      already recorded for isolation stores, with a new class of orphan.
-  Then declare the capability and add the pin round-trip to the real-machine gate.
-  Until all three land, a pinned directory has no codex login until you log in
-  inside it.
+  Then declare the capability (drop codex from `bindableNotYetDeclared`) and add the
+  pin round-trip to the real-machine gate. Until step 3 lands, a pinned directory has
+  no codex login until you log in inside it.
 - **A tool that resolves its store from live state is modelled per artifact, not as
   a set.** codex's `auto` is the only such artifact today (the adapter probes and
   returns one spec), and the restore path reconciles a backup record against it.

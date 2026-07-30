@@ -605,7 +605,8 @@ thing that writes it, for all four:
   on this path and on the global switch alike. Rollback needs no check: it rebuilds
   the spec from the backup record, so the kind is the captured one by construction;
 - a keychain item is written **only** when the spec marks it
-  `KeychainDirScoped`, i.e. the adapter declares that the item kae resolves moves
+  `KeychainDirBindable`, i.e. the adapter declares that the **identity** of the
+  item kae resolves — its service name, its account attribute, or both — moves
   with the isolation env var. Anything else is reported as unisolatable and
   nothing is written to it.
 

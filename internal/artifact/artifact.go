@@ -109,6 +109,21 @@ type Spec struct {
 	IdentityKeys []string
 }
 
+// WholeDocument reports whether a spec kind round-trips the artifact's *entire*
+// document rather than the value under a JSON pointer. It lives here, next to the
+// kinds, because it is a property of what ReadLive and ApplyLive do with each one:
+// KindFile and KindKeychain carry the whole document, KindJSONPointer carries only
+// the pointer value.
+//
+// The two shapes are not interchangeable, and callers comparing a stored payload
+// against a freshly resolved spec use this to refuse a transition between them —
+// applying a whole document through a pointer spec nests it under its own key and
+// succeeds, which the owning tool then reads as malformed. A new kind must be
+// classified here, or that check silently mis-files it.
+func WholeDocument(kind string) bool {
+	return kind == constants.KindFile || kind == constants.KindKeychain
+}
+
 // Value is one captured artifact value. Present=false records that the
 // artifact did not exist live; applying it removes the live artifact.
 type Value struct {

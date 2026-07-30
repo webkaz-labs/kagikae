@@ -210,15 +210,9 @@ func (app *App) runIsolatedChild(ctx context.Context, opts commonOpts, targets [
 	type homeRow struct{ tool, account, home string }
 	var rows []homeRow
 	for _, tgt := range supported {
-		home, err := app.prepareGlobalIsolatedHome(ctx, be, tgt.Tool, tgt.Account)
+		home, err := app.prepareGlobalIsolatedHome(ctx, be, tgt.Tool, tgt.Account, fromProfile)
 		if err != nil {
-			// From a profile, one tool whose credential store cannot be scoped to a
-			// directory is a warning; named explicitly it is the whole request, so it
-			// stays an error (the same split isolatableTargets already applies).
-			tolerated := fromProfile && warnUnisolatableCredential(err, tgt.Tool, tgt.Account)
-			if !tolerated {
-				return finish(opts, fmt.Errorf("prepare isolated home for %s/%s: %w", tgt.Tool, tgt.Account, err))
-			}
+			return finish(opts, fmt.Errorf("prepare isolated home for %s/%s: %w", tgt.Tool, tgt.Account, err))
 		}
 		extraEnv = append(extraEnv, isolationEnvVar(tgt.Tool)+"="+home)
 		rows = append(rows, homeRow{tgt.Tool, tgt.Account, home})
@@ -276,16 +270,25 @@ func isolatableTargets(targets []runTarget, fromProfile bool, modeDesc, flagName
 // a bound directory in exactly the sense writeDirCredential means: on a keychain
 // platform the credential belongs in this home's own keychain item, not in a
 // file the tool stops reading.
-func (app *App) prepareGlobalIsolatedHome(ctx context.Context, be secret.Backend, tool, account string) (string, error) {
+//
+// fromProfile carries the same profile-vs-explicit split isolatableTargets
+// applies to a tool with no isolation env var, and it lives here rather than in
+// the callers so a third one cannot get it wrong: a tool resolved from a profile
+// whose credential store cannot be scoped to a directory is warned about and
+// still gets its home for everything else, while a tool the user named is the
+// whole request and the error stands. The home is returned in the tolerated case
+// too — it exists by then, and returning "" would set the isolation env var to
+// the empty string.
+func (app *App) prepareGlobalIsolatedHome(ctx context.Context, be secret.Backend, tool, account string, fromProfile bool) (string, error) {
 	home := app.Paths.GlobalIsolatedHomeDir(tool, account)
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return "", fmt.Errorf("create global isolated home: %w", err)
 	}
-	// The home exists from here on, so it is returned even when the credential
-	// could not be materialized: a caller that tolerates that (a whole-profile
-	// switch, see warnUnisolatableCredential) still needs the path to point the
-	// tool at, and returning "" would set the isolation env var to empty.
-	return home, app.writeDirCredential(ctx, be, tool, account, home)
+	err := app.writeDirCredential(ctx, be, tool, account, home)
+	if err != nil && fromProfile && warnUnisolatableCredential(err, tool, account) {
+		err = nil
+	}
+	return home, err
 }
 
 // runTarget is one tool/account pair resolved from CLI arguments.

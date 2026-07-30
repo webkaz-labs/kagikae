@@ -31,6 +31,10 @@ var (
 	copilotAdapter  = copilot.Copilot{}
 )
 
+// testEnv injects LookupEnv as well as Getenv so tests exercise the same
+// set-vs-empty predicate production does (Env.IsSet degrades to a non-empty test
+// without it, which is a *different* predicate — a variable set to "" would read
+// as absent).
 func testEnv(t *testing.T, goos string, vars map[string]string) adapter.Env {
 	t.Helper()
 	home := t.TempDir()
@@ -39,6 +43,10 @@ func testEnv(t *testing.T, goos string, vars map[string]string) adapter.Env {
 		Home: home,
 		Getenv: func(key string) string {
 			return vars[key]
+		},
+		LookupEnv: func(key string) (string, bool) {
+			value, ok := vars[key]
+			return value, ok
 		},
 		LookPath: func(string) (string, error) { return "", errors.New("not found") },
 	}
@@ -189,6 +197,56 @@ func TestClaudeKeychainServiceIsPerConfigDir(t *testing.T) {
 	}
 }
 
+// TestKeychainDirScopedMatchesTheServiceName is the drift guard on the flag a
+// seventh adapter would otherwise forget. KeychainDirScoped is a *claim* that the
+// item's service name moves with the tool's isolation env var, and the
+// per-directory materializer trusts it: claim it wrongly and kae writes a global
+// login; omit it on a tool that does move and per-directory credentials silently
+// degrade to a warning. So derive the truth — resolve each tool's specs with its
+// isolation variable pointed at two different directories — and require the flag
+// to agree.
+func TestKeychainDirScopedMatchesTheServiceName(t *testing.T) {
+	isolationEnvVar := map[string]string{
+		constants.ToolClaude: "CLAUDE_CONFIG_DIR",
+		constants.ToolCodex:  "CODEX_HOME",
+	}
+	for _, tool := range constants.Tools {
+		t.Run(tool, func(t *testing.T) {
+			adp, err := adapter.ForTool(tool)
+			if err != nil {
+				t.Fatal(err)
+			}
+			specsFor := func(dir string) []artifact.Spec {
+				vars := map[string]string{"USER": "alice"}
+				if envVar := isolationEnvVar[tool]; envVar != "" {
+					vars[envVar] = dir
+				}
+				specs, err := adp.Artifacts(context.Background(), testEnv(t, "darwin", vars))
+				if err != nil {
+					t.Skipf("%s has no darwin artifacts: %v", tool, err)
+				}
+				return specs
+			}
+			// Two directories that exist, so a tool reading config out of the dir
+			// (codex's cli_auth_credentials_store) resolves the same way for both and
+			// only the name is under test.
+			first, second := specsFor(t.TempDir()), specsFor(t.TempDir())
+			for i := range first {
+				if first[i].Kind != constants.KindKeychain {
+					continue
+				}
+				moves := first[i].Target != second[i].Target
+				if first[i].KeychainDirScoped != moves {
+					t.Errorf("%s/%s: KeychainDirScoped = %v but the service name %s (%q vs %q)",
+						tool, first[i].Name, first[i].KeychainDirScoped,
+						map[bool]string{true: "moves with the isolation env var", false: "is fixed"}[moves],
+						first[i].Target, second[i].Target)
+				}
+			}
+		})
+	}
+}
+
 // codex's keyring item is a single global `Codex Auth` regardless of CODEX_HOME,
 // so it must never claim to be directory-scoped: writing it for a bound
 // directory would overwrite the global login, and KeychainReplace would delete
@@ -281,13 +339,10 @@ func TestClaudeKeychainAccountMirrorsUpstream(t *testing.T) {
 func TestClaudeRefusesSecureStorageConfigDir(t *testing.T) {
 	for _, value := range []string{"", "/somewhere/else"} {
 		t.Run("value="+value, func(t *testing.T) {
-			env := testEnv(t, "darwin", map[string]string{"USER": "alice"})
-			env.LookupEnv = func(key string) (string, bool) {
-				if key == claude.EnvSecureStorageDir {
-					return value, true
-				}
-				return "", false
-			}
+			env := testEnv(t, "darwin", map[string]string{
+				"USER":                     "alice",
+				claude.EnvSecureStorageDir: value,
+			})
 			if _, err := claudeAdapter.Artifacts(context.Background(), env); !errors.Is(err, adapter.ErrUnsupported) {
 				t.Fatalf("expected unsupported, got %v", err)
 			}
@@ -298,7 +353,6 @@ func TestClaudeRefusesSecureStorageConfigDir(t *testing.T) {
 // The refusal must not fire on an absent variable — that is every normal run.
 func TestClaudeAllowsAbsentSecureStorageConfigDir(t *testing.T) {
 	env := testEnv(t, "darwin", map[string]string{"USER": "alice"})
-	env.LookupEnv = func(string) (string, bool) { return "", false }
 	if _, err := claudeAdapter.Artifacts(context.Background(), env); err != nil {
 		t.Fatalf("unexpected refusal: %v", err)
 	}

@@ -471,6 +471,41 @@ func (app *App) loadPlansWithSnapshots(ctx context.Context, targets []runTarget)
 	return plans, nil
 }
 
+// checkPayloadShape refuses to apply a snapshot whose payload has the other shape
+// from what the destination spec expects (artifact.WholeDocument), because one of
+// those transitions corrupts silently rather than failing: applying a
+// whole-document payload through a pointer spec nests it under its own key
+// (`{"claudeAiOauth":{"claudeAiOauth":…}}`), which claude reads as a malformed
+// credential. The reverse writes an inner object as a whole document.
+//
+// The spec comes from the *current* environment while the payload was captured
+// under an earlier one, which is how the two can disagree: switching claude's
+// driver between capture and apply (KAE_CLAUDE_DRIVER, or [tools.claude] driver)
+// is enough. A KindFile/KindKeychain transition is allowed — both are whole
+// documents, which is what makes codex's auth.json and its keyring item the same
+// bytes.
+//
+// An empty storedKind is a snapshot from before the kind was recorded, or an
+// identity artifact absent from an older snapshot: nothing to compare, so nothing
+// to refuse. The rollback path needs no such check at all — specFromRecord
+// rebuilds the spec *from the backup record*, so its kind is the one its payload
+// was captured under by construction.
+//
+// It lives here rather than in the artifact package because the refusal is a
+// command-level decision: it reads account metadata, carries an exit code, and
+// names the recapture that fixes it. Only the shape classification belongs to
+// artifact, and that is where it is.
+func checkPayloadShape(tool, accountName, artName, storedKind, destKind string) error {
+	if storedKind == "" || artifact.WholeDocument(storedKind) == artifact.WholeDocument(destKind) {
+		return nil
+	}
+	return errf(constants.ExitUnsafeRefused,
+		"account %s/%s captured %s as %q but this environment resolves it as %q, "+
+			"and the two payload shapes are not interchangeable; recapture with "+
+			"`kae add --no-login %s %s` under the current driver",
+		tool, accountName, artName, storedKind, destKind, tool, accountName)
+}
+
 // applySnapshot applies one captured account to the live state.
 func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error {
 	for _, sp := range plan.Specs {

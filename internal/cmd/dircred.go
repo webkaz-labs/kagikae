@@ -137,13 +137,29 @@ func (app *App) dirCredentialSpec(ctx context.Context, tool, artName, credDir st
 	// Outermost wrapper, so the override wins over any inner masking of
 	// kae-managed isolation values (applyGlobalScope) and over an outer bind's
 	// value leaking in from the caller's own environment.
+	//
+	// Both env-reading seams are overridden. Only Getenv resolves the isolation
+	// variable today, but leaving LookupEnv pointing at the real environment would
+	// mean an adapter that later reads it through Env.IsSet silently escapes the
+	// per-directory override — the exact class of "kae's view differs from the
+	// tool's" this file exists to close.
 	env := app.Env
-	inner := app.Env.Getenv
+	innerGetenv, innerLookup := app.Env.Getenv, app.Env.LookupEnv
 	env.Getenv = func(key string) string {
 		if key == envVar {
 			return credDir
 		}
-		return inner(key)
+		return innerGetenv(key)
+	}
+	env.LookupEnv = func(key string) (string, bool) {
+		if key == envVar {
+			return credDir, true
+		}
+		if innerLookup == nil {
+			value := innerGetenv(key)
+			return value, value != ""
+		}
+		return innerLookup(key)
 	}
 	specs, err := adp.Artifacts(ctx, env)
 	if err != nil {
@@ -155,43 +171,6 @@ func (app *App) dirCredentialSpec(ctx context.Context, tool, artName, credDir st
 		}
 	}
 	return artifact.Spec{}, false, nil
-}
-
-// wholeDocumentKind reports whether a spec kind stores the artifact's *whole*
-// document rather than the value under a JSON pointer. It is the shape a payload
-// has, and the two families are not interchangeable: KindFile and KindKeychain
-// round-trip the entire document, while KindJSONPointer carries only the inner
-// pointer value.
-func wholeDocumentKind(kind string) bool {
-	return kind == constants.KindFile || kind == constants.KindKeychain
-}
-
-// checkPayloadShape refuses to apply a snapshot whose payload has the other
-// shape from what the destination spec expects, because one of those transitions
-// corrupts silently rather than failing: applying a whole-document payload
-// through a pointer spec nests it under its own key
-// (`{"claudeAiOauth":{"claudeAiOauth":…}}`), which claude reads as a malformed
-// credential. The reverse writes an inner object as a whole document.
-//
-// Reachable by capturing under one driver and applying under another — the
-// KAE_CLAUDE_DRIVER / [tools.claude] driver override does exactly that. A
-// KindFile/KindKeychain transition is allowed: both are whole documents, which is
-// what makes codex's auth.json and its keyring item the same bytes.
-//
-// An empty storedKind is a snapshot from before the kind was recorded, or an
-// identity artifact absent from an older snapshot: nothing to compare, so nothing
-// to refuse. The rollback path needs no such check — specFromRecord rebuilds the
-// spec *from the backup record*, so its kind is the one the payload was captured
-// under by construction.
-func checkPayloadShape(tool, accountName, artName, storedKind, destKind string) error {
-	if storedKind == "" || wholeDocumentKind(storedKind) == wholeDocumentKind(destKind) {
-		return nil
-	}
-	return errf(constants.ExitUnsafeRefused,
-		"account %s/%s captured %s as %q but this environment resolves it as %q, "+
-			"and the two payload shapes are not interchangeable; recapture with "+
-			"`kae add --no-login %s %s` under the current driver",
-		tool, accountName, artName, storedKind, destKind, tool, accountName)
 }
 
 // snapshotCredential returns the captured credential payload for tool/account

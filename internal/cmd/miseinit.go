@@ -128,11 +128,8 @@ func (app *App) prepareIsolationDirs(mode string, entries []isolationEntry, prep
 		if entry.Warning != "" {
 			continue
 		}
-		_, err := prepare(entry.Tool, entry.Account)
-		switch {
-		case err == nil:
-		case warnUnisolatableCredential(err, entry.Tool, entry.Account):
-		default:
+		if _, err := prepare(entry.Tool, entry.Account); err != nil &&
+			!warnUnisolatableCredential(err, entry.Tool, entry.Account) {
 			return fmt.Errorf("prepare %s-mode dir for %s: %w", mode, entry.Tool, err)
 		}
 	}

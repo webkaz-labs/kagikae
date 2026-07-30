@@ -2,33 +2,68 @@ package cmd
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
-// setupBondHome seeds a realistic claude real home in app.Env.Home.
+// setupBondHome seeds the non-credential half of a realistic claude real home.
+// The credential comes from captureClaudeAccount, because a bond materializes
+// the bound account's snapshot rather than whatever is live.
 func setupBondHome(t *testing.T, app *App) {
 	t.Helper()
 	home := filepath.Join(app.Env.Home, ".claude")
-	writeFile(t, filepath.Join(home, ".credentials.json"), `{"token":"real"}`)
 	writeFile(t, filepath.Join(home, "settings.json"), `{"theme":"dark"}`)
 	writeFile(t, filepath.Join(home, "CLAUDE.md"), "# project\n")
 }
 
+// captureClaudeAccount seeds a live claude login and captures it under name, so
+// the temp-HOME store holds a real snapshot for the per-directory materializers
+// to read.
+func captureClaudeAccount(t *testing.T, app *App, name, token string) {
+	t.Helper()
+	seedClaude(t, app, token, name+"-uuid")
+	code, out := captureStdout(t, func() int {
+		return runCapture(context.Background(), app, commonOpts{Format: formatText}, "claude", name)
+	})
+	mustExit(t, constants.ExitOK, code, out)
+}
+
+// sha8Of mirrors the per-config-dir suffix claude derives. The formula itself is
+// pinned against an externally computed hash in the adapter's tests; here it only
+// has to agree with the service name the write actually targeted.
+func sha8Of(dir string) string {
+	sum := sha256.Sum256([]byte(dir))
+	return fmt.Sprintf("%x", sum[:4])
+}
+
+func testBackend(t *testing.T, app *App) secret.Backend {
+	t.Helper()
+	be, err := app.secretBackend()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return be
+}
+
 func TestPrepareBondSymlinksNonDenylist(t *testing.T) {
 	app := testApp(t, nil)
+	captureClaudeAccount(t, app, "main", mainToken)
 	setupBondHome(t, app)
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
 
-	bondDir, err := app.prepareBond(context.Background(), constants.ToolClaude, "main", pinID)
+	bondDir, err := app.prepareBond(context.Background(), testBackend(t, app), constants.ToolClaude, "main", pinID)
 	if err != nil {
 		t.Fatalf("prepareBond: %v", err)
 	}
@@ -51,13 +86,21 @@ func TestPrepareBondSymlinksNonDenylist(t *testing.T) {
 	}
 }
 
-func TestPrepareBondCredentialIsPrivateCopy(t *testing.T) {
+// TestPrepareBondCredentialComesFromSnapshotNotLiveHome pins the second defect
+// fixed alongside the macOS pin gap: the materializers copied the *live* store,
+// so binding an account that was not currently active seeded the directory with
+// whichever credential happened to be live.
+func TestPrepareBondCredentialComesFromSnapshotNotLiveHome(t *testing.T) {
 	app := testApp(t, nil)
+	captureClaudeAccount(t, app, "main", mainToken)
+	// Another account is live now. A bond for main must still materialize main's
+	// credential, not this one.
+	seedClaude(t, app, sideToken, "side-uuid")
 	setupBondHome(t, app)
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
 
-	bondDir, err := app.prepareBond(context.Background(), constants.ToolClaude, "main", pinID)
+	bondDir, err := app.prepareBond(context.Background(), testBackend(t, app), constants.ToolClaude, "main", pinID)
 	if err != nil {
 		t.Fatalf("prepareBond: %v", err)
 	}
@@ -67,27 +110,32 @@ func TestPrepareBondCredentialIsPrivateCopy(t *testing.T) {
 	if err != nil {
 		t.Fatalf(".credentials.json missing in bond dir: %v", err)
 	}
-	// Must be a regular file, not a symlink.
 	if info.Mode()&os.ModeSymlink != 0 {
 		t.Error(".credentials.json must be a private copy, not a symlink")
 	}
-	if got := readFile(t, dst); !strings.Contains(got, "real") {
-		t.Errorf(".credentials.json private copy has wrong content: %q", got)
+	got := readFile(t, dst)
+	if !strings.Contains(got, mainToken) {
+		t.Errorf("bond dir must hold the bound account's snapshot, got %q", got)
+	}
+	if strings.Contains(got, sideToken) {
+		t.Errorf("bond dir holds the live account's credential instead of the bound one: %q", got)
 	}
 }
 
 func TestPrepareBondIdempotent(t *testing.T) {
 	app := testApp(t, nil)
+	captureClaudeAccount(t, app, "main", mainToken)
 	setupBondHome(t, app)
+	be := testBackend(t, app)
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
 
 	// First run.
-	if _, err := app.prepareBond(context.Background(), constants.ToolClaude, "main", pinID); err != nil {
+	if _, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID); err != nil {
 		t.Fatalf("first prepareBond: %v", err)
 	}
 	// Second run must succeed without error.
-	bondDir, err := app.prepareBond(context.Background(), constants.ToolClaude, "main", pinID)
+	bondDir, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID)
 	if err != nil {
 		t.Fatalf("second prepareBond (idempotent): %v", err)
 	}
@@ -100,98 +148,93 @@ func TestPrepareBondIdempotent(t *testing.T) {
 	}
 }
 
-func TestPrepareBondSkipsCredentialWhenNotLoggedIn(t *testing.T) {
+// An account with no captured credential used to be skipped silently, leaving a
+// bond that reported success and had no credential in it. The snapshot is now
+// the source, so its absence is reported instead.
+func TestPrepareBondFailsWhenAccountNotCaptured(t *testing.T) {
 	app := testApp(t, nil)
-	// Real home exists but has no .credentials.json (not yet logged in).
-	home := filepath.Join(app.Env.Home, ".claude")
-	writeFile(t, filepath.Join(home, "settings.json"), `{}`)
+	setupBondHome(t, app)
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
 
-	bondDir, err := app.prepareBond(context.Background(), constants.ToolClaude, "main", pinID)
-	if err != nil {
-		t.Fatalf("prepareBond: %v", err)
+	_, err := app.prepareBond(context.Background(), testBackend(t, app), constants.ToolClaude, "main", pinID)
+	if err == nil {
+		t.Fatal("binding an uncaptured account must fail, not silently produce a credential-less bond")
+	}
+	if code := exitOf(err); code != constants.ExitNotFound {
+		t.Fatalf("exit code = %d, want %d (%v)", code, constants.ExitNotFound, err)
+	}
+}
+
+// TestPrepareBondDarwinWritesPerDirKeychainItem is the macOS pin gap's
+// regression test. claude namespaces its keychain service by the config dir and
+// reads the keychain before the file, so the credential for a bound directory
+// belongs in *that directory's* item; writing the file instead is what let a
+// pinned directory keep running the previous account.
+func TestPrepareBondDarwinWritesPerDirKeychainItem(t *testing.T) {
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	setupBondHome(t, app)
+	payload := `{"claudeAiOauth":{"accessToken":"` + mainToken + `","subscriptionType":"max"}}`
+
+	// Capture under the keychain driver so the snapshot holds the verbatim
+	// keychain payload the apply path writes back.
+	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
+		captureClaudeAccount(t, app, "main", mainToken)
+	})
+
+	cwd := t.TempDir()
+	pinID := paths.PinID(cwd)
+	bondDir := app.Paths.SharedDir(pinID, constants.ToolClaude)
+	// A plaintext copy left behind by an earlier kae version must not survive:
+	// nothing reads it once the keychain item exists, and claude only deletes it
+	// itself when it finds no item.
+	writeFile(t, filepath.Join(bondDir, ".credentials.json"), payload)
+
+	fake := &runnertest.Fake{Code: 0}
+	runner.With(fake, func() {
+		if _, err := app.prepareBond(context.Background(), testBackend(t, app),
+			constants.ToolClaude, "main", pinID); err != nil {
+			t.Fatalf("prepareBond: %v", err)
+		}
+	})
+
+	wantService := claude.KeychainService + "-" + sha8Of(bondDir)
+	if fake.Name != "security" {
+		t.Fatalf("keychain write did not go through the security CLI: %q", fake.Name)
+	}
+	args := strings.Join(fake.Args, " ")
+	if !strings.Contains(args, "add-generic-password") || !strings.Contains(args, wantService) {
+		t.Fatalf("credential was not written to the per-directory item %q: %v", wantService, fake.Args)
 	}
 	if _, err := os.Stat(filepath.Join(bondDir, ".credentials.json")); !os.IsNotExist(err) {
-		t.Error(".credentials.json must not exist in bond dir when tool is not logged in")
+		t.Error("the superseded plaintext copy must be removed once the keychain item holds the credential")
 	}
 }
 
-func TestPrepareBondDarwinKeychainFallback(t *testing.T) {
-	// Simulate macOS: no .credentials.json file, but keychain has the payload.
+// A keychain write that fails must surface. Falling back to the plaintext file
+// would report success and rebuild the original defect: a credential file in a
+// directory whose tool reads the keychain first.
+func TestPrepareBondDarwinKeychainWriteFailureIsNotDowngraded(t *testing.T) {
 	app := testApp(t, nil)
 	app.Env.GOOS = "darwin"
-	home := filepath.Join(app.Env.Home, ".claude")
-	writeFile(t, filepath.Join(home, "settings.json"), `{"theme":"dark"}`)
-	// No .credentials.json in real home.
-
-	keychainPayload := `{"claudeAiOauth":{"accessToken":"tok-darwin","subscriptionType":"max"}}`
-	fake := &runnertest.Fake{Stdout: keychainPayload, Code: 0}
+	setupBondHome(t, app)
+	payload := `{"claudeAiOauth":{"accessToken":"` + mainToken + `","subscriptionType":"max"}}`
+	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
+		captureClaudeAccount(t, app, "main", mainToken)
+	})
 
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
+	bondDir := app.Paths.SharedDir(pinID, constants.ToolClaude)
 
-	var bondDir string
-	runner.With(fake, func() {
-		var err error
-		bondDir, err = app.prepareBond(context.Background(), constants.ToolClaude, "main", pinID)
-		if err != nil {
-			t.Fatalf("prepareBond: %v", err)
+	runner.With(&runnertest.Fake{Stderr: "keychain is locked", Code: 1}, func() {
+		if _, err := app.prepareBond(context.Background(), testBackend(t, app),
+			constants.ToolClaude, "main", pinID); err == nil {
+			t.Fatal("a failed keychain write must be reported, not downgraded to a file write")
 		}
 	})
-
-	dst := filepath.Join(bondDir, ".credentials.json")
-	info, err := os.Lstat(dst)
-	if err != nil {
-		t.Fatalf(".credentials.json missing in bond dir: %v", err)
+	if _, err := os.Stat(filepath.Join(bondDir, ".credentials.json")); !os.IsNotExist(err) {
+		t.Error("a failed keychain write must not leave a plaintext credential behind")
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		t.Error(".credentials.json must be a regular file, not a symlink")
-	}
-	if got := readFile(t, dst); !strings.Contains(got, "tok-darwin") {
-		t.Errorf(".credentials.json from keychain fallback: %q", got)
-	}
-}
-
-func TestPrepareBondDarwinSkipsWhenKeychainEmpty(t *testing.T) {
-	// macOS, no .credentials.json, keychain item not found.
-	app := testApp(t, nil)
-	app.Env.GOOS = "darwin"
-	home := filepath.Join(app.Env.Home, ".claude")
-	writeFile(t, filepath.Join(home, "settings.json"), `{}`)
-
-	fake := &runnertest.Fake{Stderr: "The specified item could not be found in the keychain.", Code: 1}
-
-	cwd := t.TempDir()
-	pinID := paths.PinID(cwd)
-
-	runner.With(fake, func() {
-		bondDir, err := app.prepareBond(context.Background(), constants.ToolClaude, "main", pinID)
-		if err != nil {
-			t.Fatalf("prepareBond: %v", err)
-		}
-		if _, statErr := os.Stat(filepath.Join(bondDir, ".credentials.json")); !os.IsNotExist(statErr) {
-			t.Error(".credentials.json must not exist when keychain item absent")
-		}
-	})
-}
-
-func TestPrepareBondDarwinMalformedKeychainPayload(t *testing.T) {
-	// macOS, payload exists but lacks /claudeAiOauth → keychainGuard fails → error.
-	app := testApp(t, nil)
-	app.Env.GOOS = "darwin"
-	home := filepath.Join(app.Env.Home, ".claude")
-	writeFile(t, filepath.Join(home, "settings.json"), `{}`)
-
-	fake := &runnertest.Fake{Stdout: `{"notTheRightKey":"value"}`, Code: 0}
-
-	cwd := t.TempDir()
-	pinID := paths.PinID(cwd)
-
-	runner.With(fake, func() {
-		_, err := app.prepareBond(context.Background(), constants.ToolClaude, "main", pinID)
-		if err == nil {
-			t.Fatal("expected error for malformed keychain payload, got nil")
-		}
-	})
 }

@@ -264,13 +264,18 @@ func isolatableTargets(targets []runTarget, fromProfile bool, modeDesc, flagName
 // isolation/global/<tool>/<account>/ (the captured credential written into it)
 // and returns its path. Shared by kae use -i (runUseIsolated) and kae run -i so
 // both point at the same home for a given account. The real ~/.<tool> and the
-// live credential store are never touched.
+// global live credential store are never touched.
+//
+// The home becomes the tool's isolation env var (global_fragment.go), so it is
+// a bound directory in exactly the sense writeDirCredential means: on a keychain
+// platform the credential belongs in this home's own keychain item, not in a
+// file the tool stops reading.
 func (app *App) prepareGlobalIsolatedHome(ctx context.Context, be secret.Backend, tool, account string) (string, error) {
 	home := app.Paths.GlobalIsolatedHomeDir(tool, account)
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return "", fmt.Errorf("create global isolated home: %w", err)
 	}
-	if err := app.swapDirCredential(ctx, be, tool, account, home); err != nil {
+	if err := app.writeDirCredential(ctx, be, tool, account, home); err != nil {
 		return "", err
 	}
 	return home, nil

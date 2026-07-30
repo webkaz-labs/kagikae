@@ -3,15 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
-	"github.com/webkaz-labs/kagikae/internal/account"
-	"github.com/webkaz-labs/kagikae/internal/adapter"
-	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
-	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
-	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
 // runRebind re-binds one tool's credential inside a pinned directory to a
@@ -83,11 +77,11 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	switch info.Mode {
 	case paths.SharedSegment:
 		sharedDir := app.Paths.SharedDir(pinID, tool)
-		if err := app.swapDirCredential(ctx, be, tool, accountName, sharedDir); err != nil {
+		if err := app.writeDirCredential(ctx, be, tool, accountName, sharedDir); err != nil {
 			return finish(opts, fmt.Errorf("swap shared credential for %s: %w", tool, err))
 		}
 	case paths.IsolatedSegment:
-		newDir, err := app.preparePinConfig(ctx, tool, accountName, pinID)
+		newDir, err := app.preparePinConfig(ctx, be, tool, accountName, pinID)
 		if err != nil {
 			return finish(opts, fmt.Errorf("prepare isolated config for %s/%s: %w", tool, accountName, err))
 		}
@@ -112,78 +106,6 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	}
 	fmt.Printf("Re-bound %s to account %s (%s; sessions/settings unchanged)\n", tool, accountName, info.Mode)
 	return constants.ExitOK
-}
-
-// swapDirCredential reads the captured credential for tool/accountName from
-// the secret backend and writes it as the private credential file in credDir.
-//
-// KindJSONPointer snapshots (Linux claude) store only the pointer value, not
-// the wrapper file. The wrapper is reconstructed here via patch.SetPointer so
-// the resulting file has the correct structure (e.g. {"claudeAiOauth":{...}}).
-// KindKeychain (macOS claude) and KindFile snapshots store verbatim file
-// content and are written directly.
-func (app *App) swapDirCredential(ctx context.Context, be secret.Backend, tool, accountName, credDir string) error {
-	acc, found, err := account.Load(app.Paths.AccountDir(tool, accountName))
-	if err != nil {
-		return err
-	}
-	if !found {
-		return errf(constants.ExitNotFound,
-			"account %s/%s is not captured yet (run: kae add --no-login %s %s)",
-			tool, accountName, tool, accountName)
-	}
-	artName := credentialArtifactName(tool)
-	if artName == "" {
-		return nil
-	}
-	metaArt, ok := acc.Artifacts[artName]
-	if !ok || !metaArt.Present {
-		return errf(constants.ExitAuthMissing,
-			"account %s/%s has no credential snapshot; re-run kae add --no-login %s %s",
-			tool, accountName, tool, accountName)
-	}
-	data, found, err := be.Get(ctx, metaArt.SecretRef)
-	if err != nil {
-		return fmt.Errorf("read snapshot credential: %w", err)
-	}
-	if !found {
-		return errf(constants.ExitError,
-			"snapshot payload missing; re-run kae add --no-login %s %s", tool, accountName)
-	}
-
-	// Resolve the artifact spec to determine write semantics.
-	var credSpec *artifact.Spec
-	if adp, aerr := adapter.ForTool(tool); aerr == nil {
-		if specs, serr := adp.Artifacts(ctx, app.Env); serr == nil {
-			for i := range specs {
-				if specs[i].Name == artName {
-					credSpec = &specs[i]
-					break
-				}
-			}
-		}
-	}
-
-	for _, credFile := range app.pinCredItems(tool) {
-		dst := filepath.Join(credDir, credFile)
-		if credSpec != nil && credSpec.Kind != constants.KindKeychain {
-			// For KindJSONPointer and KindFile, redirect ApplyLive to credDir.
-			// ApplyLive handles wrapper reconstruction and JSONC, keeping IO
-			// logic in the artifact package.
-			sp := *credSpec
-			sp.Target = dst
-			if err := artifact.ApplyLive(ctx, sp, artifact.Value{Data: data, Present: true}); err != nil {
-				return fmt.Errorf("write credential %s: %w", dst, err)
-			}
-		} else {
-			// KindKeychain: snapshot payload is the verbatim JSON object;
-			// write directly to credDir as a file.
-			if err := patch.WriteFileAtomic(dst, data, 0o600); err != nil {
-				return fmt.Errorf("write credential %s: %w", dst, err)
-			}
-		}
-	}
-	return nil
 }
 
 // credentialArtifactName returns the snapshot artifact name that holds the

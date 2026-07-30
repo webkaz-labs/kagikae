@@ -103,7 +103,11 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err != nil {
 		return finish(opts, err)
 	}
-	entries, prepare, err := app.isolationPlan(ctx, mode, targets)
+	be, err := app.secretBackend()
+	if err != nil {
+		return finish(opts, err)
+	}
+	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets)
 	if err != nil {
 		return finish(opts, err)
 	}

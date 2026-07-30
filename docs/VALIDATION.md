@@ -576,6 +576,30 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
       account **without** one, `cursor-api-key` is absent (kae removed it) rather
       than still holding the other account's key.
 
+**codex per-directory keyring bind** (macOS, two codex homes — open; this is the
+gate that must pass **before** codex is dropped from `bindableNotYetDeclared` in
+`TestKeychainDirBindableMatchesTheItemIdentity`). Everything else is in place: the
+account derivation is measured (§ "Upstream Behaviour Assumptions"), the flag now
+measures item identity, and the teardown ships. What has never run is the whole
+round-trip, and the failure it would hide is kae writing an item under an account
+codex does not look up from that directory:
+
+- [ ] With `cli_auth_credentials_store = "keyring"` and two captured accounts,
+      `kae pin -i <profile>` in a scratch directory reports no unisolatable-credential
+      warning for codex, and
+      `security find-generic-password -s "Codex Auth" -a "cli|<16 hex of sha256 of
+      the realpath of the pin config dir>"` (attributes only, hash computed with
+      `shasum` outside kae) finds the item.
+- [ ] In that directory, with mise active, a fresh `codex login status` names the
+      bound account — the check that kae's account and codex's agree.
+- [ ] The **global** `Codex Auth` item is untouched: its account attribute still
+      resolves from `~/.codex` and its login still works outside the directory.
+- [ ] `kae pin -s <profile>` in the same directory: the isolated store's item is
+      gone (attributes probe returns not-found) and codex in the directory now reads
+      the shared store's item.
+- [ ] `kae unpin --purge`: both are gone, the global item survives, and the store
+      directories remain.
+
 Run with a committed tree and a throwaway/second account; record the result in
 the Release Acceptance Log below.
 

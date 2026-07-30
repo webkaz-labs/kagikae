@@ -128,9 +128,14 @@ Follow-up from v0.8.4 (not yet scheduled):
      explicitly and fails when a tool with an isolation variable yields no keychain
      spec. codex is carried as a named exception (`bindableNotYetDeclared`) pending
      step 3.
-  3. **Own the item's lifecycle.** Each pinned directory then adds a `Codex Auth`
-     item, so unpin and `pin -s` ↔ `pin -i` toggling need teardown — the same gap
-     already recorded for isolation stores, with a new class of orphan.
+  3. ~~**Own the item's lifecycle.**~~ **Done** (2026-07-30). A `pin -s` ↔ `pin -i`
+     toggle and an isolated re-bind now sweep the keychain item of the store they
+     supersede, and `kae unpin --purge` sweeps the current ones (plain `unpin` still
+     keeps everything, so a re-pin restores the directory). The sweep mirrors the
+     write gate — keychain items only, only where the adapter declares them bindable
+     — so it starts covering codex the moment the capability is declared, with no
+     further work. It also closed the same gap for claude, which had been creating
+     per-directory items since v0.12.0 with nothing removing them.
   Then declare the capability (drop codex from `bindableNotYetDeclared`) and add the
   pin round-trip to the real-machine gate. Until step 3 lands, a pinned directory has
   no codex login until you log in inside it.
@@ -158,13 +163,20 @@ Follow-up from v0.8.4 (not yet scheduled):
   wrong item. Detectable offline from the env var alone, so the cheap fix is the
   same refusal `CLAUDE_SECURESTORAGE_CONFIG_DIR` already gets. Measured on 2.1.220
   (docs/VALIDATION.md).
-- **A re-bind leaves the previous account's per-directory keychain item**: in
-  isolated mode the config dir is keyed by account, so re-binding moves the
-  binding to a new dir and the old dir's keychain item keeps its credential. It is
-  unreachable (nothing points `CLAUDE_CONFIG_DIR` there anymore) but not removed,
-  the same way `kae unpin` leaves the isolation directories intact. Cleaning it up
-  needs a record of which dirs were previously bound, which is why it is not part
-  of the write path.
+- ~~**A re-bind leaves the previous account's per-directory keychain item**~~
+  *(fixed 2026-07-30)*: it does not any more. The record of "which dirs were
+  previously bound" that this was waiting on turned out to be unnecessary for the
+  cases that matter: every command that supersedes a store is standing *in* the
+  bound directory, so walking `isolation/<pinID>` — computed from its own cwd —
+  finds the stores, and anything the new binding does not point at is stale by
+  definition. The store directory still stays (it holds sessions and settings a
+  re-pin restores); only the invisible half, the keychain item, is removed
+  ([CLI.md](CLI.md) § pin). What an index would still add is the *other* direction —
+  reaching a bound directory from outside it — and there is one concrete leak left
+  that needs it: a bound directory that is **deleted or renamed** can never be
+  stood in again, so its `isolation/<pin-id>` stores (and their keychain items) are
+  orphaned permanently, with no command able to find them. Same missing index as
+  account rename/remove (the handoff's §2.2).
 - **Pinned directories never refresh their snapshot**: a bound directory's tool
   refreshes its own token in place, so kae's snapshot for that account ages. Now
   that kae writes and can read the per-directory store, a recapture path out of a

@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -215,4 +216,126 @@ func (app *App) snapshotCredential(ctx context.Context, be secret.Backend, tool,
 			"snapshot payload missing; re-run kae add --no-login %s %s", tool, accountName)
 	}
 	return data, metaArt.Kind, nil
+}
+
+// dirStore is one per-directory credential store a bound directory has
+// materialized: the tool it belongs to and the config dir the tool reads.
+type dirStore struct {
+	Tool string
+	Dir  string
+}
+
+// dirCredentialStores lists the per-directory stores that exist on disk for one
+// bound directory, across both mechanisms and every account of the isolated one.
+//
+// It walks isolation/<pinID> rather than consulting a record of past bindings,
+// because no such record exists: the mise fragment describes the binding kae is
+// about to replace, not the ones before it. The directory tree is the only
+// history, and it is enough for the operations that need one — every caller is
+// standing *in* the bound directory, so pinID comes from its own cwd and the walk
+// can never reach another directory's stores.
+func (app *App) dirCredentialStores(pinID string) ([]dirStore, error) {
+	pinDir := app.Paths.PinDir(pinID)
+	tools, err := os.ReadDir(pinDir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list per-directory stores in %s: %w", pinDir, err)
+	}
+	stores := []dirStore{}
+	for _, toolEntry := range tools {
+		if !toolEntry.IsDir() {
+			continue
+		}
+		tool := toolEntry.Name()
+		if shared := app.Paths.SharedDir(pinID, tool); dirExists(shared) {
+			stores = append(stores, dirStore{Tool: tool, Dir: shared})
+		}
+		accounts, err := os.ReadDir(filepath.Join(pinDir, tool, paths.IsolatedSegment))
+		if err != nil {
+			continue // no isolated stores for this tool
+		}
+		for _, acct := range accounts {
+			if !acct.IsDir() {
+				continue
+			}
+			if dir := app.Paths.IsolatedConfigDir(pinID, tool, acct.Name()); dirExists(dir) {
+				stores = append(stores, dirStore{Tool: tool, Dir: dir})
+			}
+		}
+	}
+	return stores, nil
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+// pruneDirCredentials removes the per-directory keychain credential of every
+// store of this pin that keep does not name, and returns one line per removal
+// plus one per failure. Nothing fails the caller: the new binding is already
+// correct, and a store kae could not clean is a leftover secret, not a broken
+// bind — so it is reported, never escalated.
+//
+// Call it **after** the new binding is in place. Before, a failure part-way
+// through the re-bind would leave the live binding pointing at a store whose
+// credential kae had already deleted.
+//
+// onlyTool limits the sweep to one tool ("" sweeps every tool of this pin), for
+// the single-tool re-bind that must not touch a sibling tool's store.
+//
+// Only a keychain item is removed, and only where the adapter declares the item
+// bindable — exactly the class writeDirCredential creates. A file store's
+// credential lives *inside* the store directory, which a mode toggle and
+// `kae unpin` deliberately leave intact along with its sessions and settings; an
+// item, by contrast, is invisible from the directory tree and would otherwise
+// hold a credential nothing can find.
+func (app *App) pruneDirCredentials(ctx context.Context, pinID, onlyTool string, keep map[string]bool) []string {
+	stores, err := app.dirCredentialStores(pinID)
+	if err != nil {
+		return []string{fmt.Sprintf("kae: warning: %v", err)}
+	}
+	lines := []string{}
+	for _, store := range stores {
+		if keep[store.Dir] || (onlyTool != "" && store.Tool != onlyTool) {
+			continue
+		}
+		removed, err := app.removeDirCredential(ctx, store.Tool, store.Dir)
+		switch {
+		case err != nil:
+			lines = append(lines, fmt.Sprintf(
+				"kae: warning: could not remove the superseded %s credential for %s: %v",
+				store.Tool, store.Dir, err,
+			))
+		case removed:
+			lines = append(lines, fmt.Sprintf(
+				"Removed the superseded per-directory %s credential (%s)", store.Tool, store.Dir,
+			))
+		}
+	}
+	return lines
+}
+
+// removeDirCredential deletes the keychain item one store directory's tool reads,
+// reporting whether there was one to delete. It resolves the item the same way
+// writeDirCredential does — by asking the adapter with an env pointed at credDir
+// — so the item removed is the one that directory owns and never a global login.
+func (app *App) removeDirCredential(ctx context.Context, tool, credDir string) (bool, error) {
+	artName := credentialArtifactName(tool)
+	if artName == "" {
+		return false, nil
+	}
+	sp, ok, err := app.dirCredentialSpec(ctx, tool, artName, credDir)
+	if err != nil || !ok {
+		return false, err
+	}
+	if sp.Kind != constants.KindKeychain || !sp.KeychainDirBindable {
+		return false, nil
+	}
+	if err := artifact.ApplyLive(ctx, sp, artifact.Value{Present: false}); err != nil {
+		return false, err
+	}
+	return true, nil
 }

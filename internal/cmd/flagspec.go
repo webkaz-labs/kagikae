@@ -59,6 +59,12 @@ func registerRollbackFlags(fs *flag.FlagSet, to *string) {
 	fs.StringVar(to, "to", "", "backup id to restore (default: most recent)")
 }
 
+// registerUnpinFlags is the `kae unpin` extra-flag registrar, shared with the
+// completion flag registry so `kae unpin --<TAB>` offers it.
+func registerUnpinFlags(fs *flag.FlagSet, purge *bool) {
+	fs.BoolVar(purge, "purge", false, "also delete this directory's per-directory keychain credentials (sessions and settings are kept)")
+}
+
 func registerCompletionFlags(fs *flag.FlagSet, install, refresh *bool) {
 	fs.BoolVar(install, "install", false, "register the completion script interactively")
 	fs.BoolVar(refresh, "refresh", false, "rewrite already-registered completion files from this binary (no shell arg; never creates a new registration)")
@@ -76,10 +82,11 @@ type commandFlagSpec struct {
 // common set). Subcommand-only flags are attached to the parent command so
 // `kae account --<TAB>` / `kae profile --<TAB>` still offer them.
 var commandFlagSpecs = map[string]commandFlagSpec{
-	"add": {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
-	"use": {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
-	"pin": {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool)) }},
-	"run": {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
+	"add":   {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
+	"use":   {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
+	"pin":   {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool)) }},
+	"unpin": {extra: func(fs *flag.FlagSet) { registerUnpinFlags(fs, new(bool)) }},
+	"run":   {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
 	"mise": {extra: func(fs *flag.FlagSet) {
 		registerMiseInitFlags(fs, new(string), new(string), new(bool), new(bool))
 	}},

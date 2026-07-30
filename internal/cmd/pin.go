@@ -9,6 +9,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
+	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
 // CmdPin binds the current directory to a profile, by scope and environment:
@@ -126,6 +127,13 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err := writeDirFragment(renderDirFragment(profileName, mode, entries, companionLines, redactions)); err != nil {
 		return finish(opts, err)
 	}
+	// The binding is in place, so any store this directory used before and does not
+	// use now is unreachable: a mode toggle moves every tool to the other
+	// mechanism's dir, and an isolated re-pin to another account re-keys it. Their
+	// keychain items would otherwise hold a credential nothing points at.
+	if absDir, err := cwdAbs(); err == nil {
+		reportPruned(app.pruneDirCredentials(ctx, paths.PinID(absDir), "", boundDirs(entries)))
+	}
 	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, mode)
 	fmt.Printf("Wrote %s (added to .gitignore); your mise.toml is untouched.\n", fragmentRelPath)
 	if app.miseActivated() {
@@ -142,16 +150,34 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 // kae-owned mise fragment and also strips a pre-v0.7.2 kagikae marker block
 // from .mise.toml (so `kae unpin && kae pin` migrates cleanly). The isolation
 // directories and their login state, and everything else in the user's files,
-// are left intact.
-func CmdUnpin(_ context.Context, args []string) int {
+// are left intact — re-pinning the directory restores the sessions and settings
+// that were there.
+//
+// --purge additionally deletes the per-directory **keychain** credentials this
+// directory's tools used. That is opt-in because it is the one part of the store a
+// re-pin cannot restore from the directory tree (it is restored from the account
+// snapshot instead), and because leaving it is otherwise invisible: an item under a
+// per-directory service name appears nowhere in kae's data dir, and the darwin
+// keychain cannot be enumerated, so doctor cannot report it either. Sessions,
+// settings and the isolation directories survive --purge; only the credential goes.
+func CmdUnpin(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	opts, ok := parseCommon("unpin", flags, false, nil)
+	var purge bool
+	opts, ok := parseCommon("unpin", flags, false, func(fs *flag.FlagSet) {
+		registerUnpinFlags(fs, &purge)
+	})
 	if !ok {
 		return constants.ExitUsage
 	}
 	if len(positionals) != 0 {
-		return usageError("usage: %s unpin", toolName)
+		return usageError("usage: %s unpin [--purge]", toolName)
 	}
+	return runUnpin(ctx, newApp(opts.ConfigPath), opts, purge)
+}
+
+// runUnpin is CmdUnpin with the App injected, the same split CmdPin/runPin use so
+// tests drive it against a temp HOME instead of the real environment.
+func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
 	removedFragment, err := removeDirFragment()
 	if err != nil {
 		return finish(opts, err)
@@ -170,6 +196,16 @@ func CmdUnpin(_ context.Context, args []string) int {
 	default:
 		return finish(opts, errf(constants.ExitNotFound,
 			"this directory is not pinned (no %s and no kagikae block in .mise.toml)", fragmentRelPath))
+	}
+	// After the fragment is gone: nothing points at any of this directory's stores
+	// now, so the sweep keeps none of them. Before it, a failure would leave a live
+	// binding whose credential kae had already deleted.
+	if purge {
+		absDir, err := cwdAbs()
+		if err != nil {
+			return finish(opts, err)
+		}
+		reportPruned(app.pruneDirCredentials(ctx, paths.PinID(absDir), "", nil))
 	}
 	return constants.ExitOK
 }
@@ -194,4 +230,30 @@ func removeLegacyMiseBlock(path string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// boundDirs is the set of store directories a binding points at, which is what
+// pruneDirCredentials must keep. A warning entry has no env entry and therefore
+// no store to keep.
+func boundDirs(entries []isolationEntry) map[string]bool {
+	dirs := map[string]bool{}
+	for _, entry := range entries {
+		if entry.Warning == "" && entry.Dir != "" {
+			dirs[entry.Dir] = true
+		}
+	}
+	return dirs
+}
+
+// reportPruned prints what a credential sweep removed (stdout: it is part of the
+// command's result) and what it could not (stderr: a warning, which never changes
+// the exit code).
+func reportPruned(lines []string) {
+	for _, line := range lines {
+		if strings.HasPrefix(line, "kae: warning:") {
+			fmt.Fprintln(os.Stderr, line)
+			continue
+		}
+		fmt.Println(line)
+	}
 }

@@ -279,6 +279,7 @@ func TestFlagSpecWiring(t *testing.T) {
 		"u":          {"isolated", "profile", "dry-run"},
 		"run":        {"env", "shared", "profile"},
 		"pin":        {"shared", "isolated"},
+		"unpin":      {"purge"},
 		"mise":       {"mode", "auto", "write", "profile"},
 		"completion": {"install", "refresh"},
 		"rollback":   {"to", "dry-run"},

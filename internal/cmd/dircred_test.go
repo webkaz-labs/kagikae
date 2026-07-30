@@ -117,3 +117,91 @@ func TestPrepareBondWarnsOnGlobalStoreAndKeepsBinding(t *testing.T) {
 		t.Error("no credential file may be written for a tool that reads a global keyring")
 	}
 }
+
+// The teardown mirrors the write gate: a per-directory keychain item exists only
+// where the adapter declares the item bindable, so that is exactly what a sweep
+// removes. The stale store here is an isolated store for an account the directory
+// no longer binds.
+func TestPruneDirCredentialsRemovesSupersededItem(t *testing.T) {
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	pinID := paths.PinID(t.TempDir())
+	stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
+	bound := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+	for _, dir := range []string{stale, bound} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	fake := &runnertest.Fake{Code: 0}
+	var lines []string
+	runner.With(fake, func() {
+		lines = app.pruneDirCredentials(context.Background(), pinID, "", map[string]bool{bound: true})
+	})
+
+	args := strings.Join(fake.Args, " ")
+	if !strings.Contains(args, "delete-generic-password") || !strings.Contains(args, sha8Of(stale)) {
+		t.Fatalf("the superseded item was not deleted: %q %v", fake.Name, fake.Args)
+	}
+	if strings.Contains(args, sha8Of(bound)) {
+		t.Fatalf("the bound store's item must survive: %v", fake.Args)
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], stale) {
+		t.Fatalf("the removal must be reported: %v", lines)
+	}
+}
+
+// Two stores a sweep must never touch: one the binding still points at, and one
+// whose credential is not a bindable keychain item at all. codex's keyring item is
+// the second case — kae never wrote it for this directory, so removing it would
+// delete a login kae does not own (the same asymmetry writeDirCredential refuses).
+func TestPruneDirCredentialsSkipsBoundAndUnbindableStores(t *testing.T) {
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	pinID := paths.PinID(t.TempDir())
+	claudeStore := app.Paths.SharedDir(pinID, constants.ToolClaude)
+	codexStore := app.Paths.SharedDir(pinID, constants.ToolCodex)
+	for _, dir := range []string{claudeStore, codexStore} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seedKeyringCodex(t, codexStore)
+
+	fake := &runnertest.Fake{Code: 0}
+	var lines []string
+	runner.With(fake, func() {
+		lines = app.pruneDirCredentials(context.Background(), pinID, "", map[string]bool{claudeStore: true})
+	})
+
+	if fake.Name != "" {
+		t.Fatalf("nothing was superseded, yet the keychain was touched: %q %v", fake.Name, fake.Args)
+	}
+	if len(lines) != 0 {
+		t.Fatalf("nothing to report: %v", lines)
+	}
+}
+
+// onlyTool is what keeps a single-tool re-bind from sweeping a sibling tool's
+// store, which the same fragment still binds.
+func TestPruneDirCredentialsHonorsToolFilter(t *testing.T) {
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	pinID := paths.PinID(t.TempDir())
+	claudeStore := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
+	codexStore := app.Paths.IsolatedConfigDir(pinID, constants.ToolCodex, "side")
+	for _, dir := range []string{claudeStore, codexStore} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	fake := &runnertest.Fake{Code: 0}
+	runner.With(fake, func() {
+		app.pruneDirCredentials(context.Background(), pinID, constants.ToolCodex, nil)
+	})
+	if strings.Contains(strings.Join(fake.Args, " "), sha8Of(claudeStore)) {
+		t.Fatalf("a sibling tool's store must be out of scope: %v", fake.Args)
+	}
+}

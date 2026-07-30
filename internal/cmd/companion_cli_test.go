@@ -62,7 +62,7 @@ func TestCompanionAddTokenFromStdin(t *testing.T) {
 	// Stub the login probe (`gh api user`) so the add records expected_login
 	// without a real subprocess/network call.
 	withRunWithEnv(t, func(_ context.Context, _ []string, _ string, _ ...string) (string, string, int) {
-		return "octocat\n", "", 0
+		return "main\n", "", 0
 	}, func() {
 		withStdin(t, "ghp_secret_token_123\n", func() {
 			code := runCompanionAdd(context.Background(), app, commonOpts{}, []string{"main", "gh", "GH_TOKEN"})
@@ -79,8 +79,8 @@ func TestCompanionAddTokenFromStdin(t *testing.T) {
 		t.Fatalf("token must not be written to config.toml:\n%s", raw)
 	}
 	// The token's live login is recorded as expected_login for drift detection.
-	if v := app.Config.Profiles["main"].Companions["gh"][constants.CompanionKnobExpectedLogin]; v != "octocat" {
-		t.Fatalf("expected_login = %q, want octocat", v)
+	if v := app.Config.Profiles["main"].Companions["gh"][constants.CompanionKnobExpectedLogin]; v != "main" {
+		t.Fatalf("expected_login = %q, want main", v)
 	}
 	// The value lives in the secret backend and round-trips via the helper.
 	code, out := captureStdout(t, func() int {
@@ -201,13 +201,13 @@ func TestCompanionRmTokenDeletesSecret(t *testing.T) {
 func TestCompanionRmTokenKnobDropsExpectedLogin(t *testing.T) {
 	app := companionCLIApp(t)
 	withRunWithEnv(t, func(context.Context, []string, string, ...string) (string, string, int) {
-		return "octocat\n", "", 0
+		return "main\n", "", 0
 	}, func() {
 		withStdin(t, "ghp_secret_token_123\n", func() {
 			_ = runCompanionAdd(context.Background(), app, commonOpts{}, []string{"main", "gh", "GH_TOKEN"})
 		})
 	})
-	if app.Config.Profiles["main"].Companions["gh"][constants.CompanionKnobExpectedLogin] != "octocat" {
+	if app.Config.Profiles["main"].Companions["gh"][constants.CompanionKnobExpectedLogin] != "main" {
 		t.Fatal("setup: expected_login not recorded")
 	}
 	// Removing the token knob also drops its orphaned expected_login metadata, so

@@ -36,7 +36,7 @@ func TestDoctorCompanionTokenStoredNoMissing(t *testing.T) {
 		Accounts: map[string]string{constants.ToolClaude: "main"},
 		// expected_login is inline metadata, never in the secret backend; it must
 		// not be probed as a missing token (regression guard).
-		Companions: map[string]config.CompanionData{constants.CompanionGH: {"GH_TOKEN": "", "expected_login": "octocat"}},
+		Companions: map[string]config.CompanionData{constants.CompanionGH: {"GH_TOKEN": "", "expected_login": "main"}},
 	}
 	be, err := app.secretBackend()
 	if err != nil {

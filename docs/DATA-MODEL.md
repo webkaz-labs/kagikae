@@ -97,7 +97,7 @@ codex = "side"
 git.email = "you@example.com"     # non-secret knobs are stored inline
 git.name = "Your Name"
 gh.GH_TOKEN = ""                  # token marker: the value lives in the secret backend
-gh.expected_login = "octocat"     # recorded at add time; the login the token must resolve to
+gh.expected_login = "main"        # recorded at add time; the login the token must resolve to
 kubectl.KUBECONFIG = "~/.kube/main-config"  # config-dir path (non-secret)
 ```
 

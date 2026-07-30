@@ -81,8 +81,9 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   `XDG_DATA_HOME` / `COPILOT_HOME` resolves against the *tool's* cwd, and kae is
   invoked from anywhere in the project — so following it verbatim is not by itself
   the fix), and a store chosen by something outside the variable that still has an
-  env-visible trigger (agy skips the keychain on an ssh/container detector, and on
-  a 1s keyring timeout that has none). The third leaves **no proxy at all** — a
+  env-visible trigger (agy skips the keychain on an ssh/wsl detector, which reads
+  variables, though its sibling container detector reads `/.dockerenv` and its 1s
+  keyring timeout has no proxy at all). The third leaves **no proxy at all** — a
   flag outranks the variable (copilot's deprecated `--config-dir` beats
   `COPILOT_HOME`) — and an unobservable branch must not be turned into a warning
   on the observable one; record it in `docs/ADAPTERS.md` and move on. In every

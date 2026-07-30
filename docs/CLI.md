@@ -716,7 +716,7 @@ empty.
       "tool": "claude",
       "code": "env_conflict",
       "status": "warn",
-      "message": "ANTHROPIC_API_KEY is set and overrides subscription login"
+      "message": "ANTHROPIC_API_KEY is set and overrides the switched login"
     }
   ]
 }

@@ -24,10 +24,39 @@ import (
 const (
 	binaryName      = "copilot"
 	lastUserPointer = "/lastLoggedInUser"
+
+	// EnvHome relocates copilot's configuration directory. It replaces
+	// ~/.copilot outright — the value is that directory, not a parent — and it is
+	// copilot's own sanctioned mechanism: the deprecated `--config-dir` flag it
+	// takes precedence over says "use COPILOT_HOME env var", and the flag's help
+	// text describes the variable as "override the directory where configuration
+	// and state files are stored".
+	EnvHome = "COPILOT_HOME"
 )
 
 // envConflicts override the keychain login (login --help precedence order).
 var envConflicts = []string{"COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"}
+
+// relativeHomeWarning is shared by Detect and Doctor so the two cannot drift.
+//
+// copilot applies no normalization to COPILOT_HOME, so a relative value resolves
+// against **copilot's** working directory — and kae, invoked from anywhere in the
+// project, resolves the same value against its own. Following it verbatim is still
+// the closest kae can get (there is no default to fall back to while the variable
+// is set, unlike opencode's XDG case), so kae keeps the value and warns: the two
+// agree only while both run from the same directory.
+const relativeHomeWarning = EnvHome + " is relative: copilot resolves it against its own working" +
+	" directory, so kae only writes the file copilot reads while both run from the same" +
+	" directory (set an absolute path)"
+
+// relativeHomeWarnings is the Detect/Doctor payload for a relative COPILOT_HOME:
+// one warning, or none. Both surfaces read it so neither can drift.
+func relativeHomeWarnings(env adapter.Env) []string {
+	if adapter.IsRelativeEnv(env, EnvHome) {
+		return []string{relativeHomeWarning}
+	}
+	return nil
+}
 
 type Copilot struct{}
 
@@ -41,8 +70,26 @@ func (Copilot) Binary() string { return binaryName }
 // were last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
 func (Copilot) VerifiedVersion() string { return "1.0.61" }
 
+// configHome resolves the directory holding config.json. COPILOT_HOME is
+// honored verbatim, the way copilot itself uses it (`process.env.COPILOT_HOME ?
+// process.env.COPILOT_HOME : join(homedir(), ".copilot")`, measured at 1.0.61):
+// no normalization, no absolute-path check. Modelling it as $HOME/.copilot made
+// every switch in a directory with COPILOT_HOME set patch a config.json copilot
+// never reads.
+func configHome(env adapter.Env) string {
+	if dir := env.Getenv(EnvHome); dir != "" {
+		return dir
+	}
+	return filepath.Join(env.Home, ".copilot")
+}
+
+// configJSONPath is the config file copilot's own login writes
+// (`writeKey("lastLoggedInUser", ...)`), which is always config.json. The
+// settings-migration loader additionally falls back to a bare `config` in the
+// same directory when config.json is absent, but no auth path writes there, so
+// kae targets config.json exactly as an upstream login does.
 func configJSONPath(env adapter.Env) string {
-	return filepath.Join(env.Home, ".copilot", "config.json")
+	return filepath.Join(configHome(env), "config.json")
 }
 
 func (c Copilot) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, error) {
@@ -60,11 +107,8 @@ func (c Copilot) Detect(ctx context.Context, env adapter.Env) (adapter.Info, err
 	if _, err := env.LookPath(binaryName); err == nil {
 		info.BinaryPresent = true
 	}
-	for _, name := range envConflicts {
-		if env.Getenv(name) != "" {
-			info.Warnings = append(info.Warnings, name+" is set and overrides the switched login")
-		}
-	}
+	info.Warnings = append(info.Warnings, adapter.EnvConflictWarnings(env, envConflicts)...)
+	info.Warnings = append(info.Warnings, relativeHomeWarnings(env)...)
 	specs, err := c.Artifacts(ctx, env)
 	if err != nil {
 		return info, err
@@ -132,6 +176,7 @@ func (c Copilot) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 		Status: constants.StatusOK, Message: "driver: " + constants.DriverCopilotConfigPointer,
 	})
 	checks = append(checks, adapter.EnvConflictChecks(env, tool, envConflicts)...)
+	checks = append(checks, adapter.EnvConflictChecksFrom(tool, relativeHomeWarnings(env))...)
 	if check, ok := adapter.FileModeCheck(env, tool, configJSONPath(env)); ok {
 		checks = append(checks, check)
 	}

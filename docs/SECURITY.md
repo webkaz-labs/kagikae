@@ -147,8 +147,9 @@ child could rotate the live credential unseen — a cached value would be stale.
 - `~/.claude/.credentials.json`, `~/.codex/auth.json`,
   `~/.local/share/opencode/auth.json`, and agy credential files under
   `~/.gemini/antigravity-cli/` are written `0600`; kagikae metadata/state
-  dirs `0700`. `~/.copilot/config.json` is owned by copilot (kae only patches
-  its `/lastLoggedInUser` pointer); `doctor` warns if it is not `0600`.
+  dirs `0700`. `$COPILOT_HOME/config.json` (default `~/.copilot/config.json`) is
+  owned by copilot (kae only patches its `/lastLoggedInUser` pointer); `doctor`
+  warns if it is not `0600`.
 - `doctor` warns when live credential files are group/world readable.
 - Isolated homes (`isolation/global/<tool>/<account>/`) are created `0700`
   and treated as credential-bearing. Credential files within them (e.g.

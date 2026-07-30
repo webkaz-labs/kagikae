@@ -36,11 +36,11 @@ func TestCopilotIdentityFromLogin(t *testing.T) {
 // This file is managed automatically.
 {
   "trustedFolders": ["/workspaces"],
-  "lastLoggedInUser": {"host": "https://github.com", "login": "octocat"},
+  "lastLoggedInUser": {"host": "https://github.com", "login": "main"},
 }`)
 	got, err := Copilot{}.Identity(t.Context(), testEnv(home))
-	if err != nil || got != "octocat" {
-		t.Fatalf("Identity = %q, err = %v; want octocat", got, err)
+	if err != nil || got != "main" {
+		t.Fatalf("Identity = %q, err = %v; want main", got, err)
 	}
 }
 

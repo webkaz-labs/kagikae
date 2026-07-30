@@ -25,6 +25,36 @@ import (
 // providers' credentials that must survive an account switch.
 const openaiPointer = "/openai"
 
+// EnvAuthContent carries a whole auth.json body inline and is read *before* the
+// file: `Auth.all()` returns `JSON.parse(process.env.OPENCODE_AUTH_CONTENT)` and
+// never opens auth.json when it is set (measured at 1.17.4). opencode sets it
+// itself when it spawns a workspace child, so a session can inherit one, and
+// then no switched file reaches the tool.
+const EnvAuthContent = "OPENCODE_AUTH_CONTENT"
+
+// envConflicts override the credential store kae switches.
+var envConflicts = []string{EnvAuthContent}
+
+// xdgRelativeWarning is shared by Detect and Doctor so the two cannot drift.
+//
+// opencode resolves its data home as `process.env.XDG_DATA_HOME || join(homedir(),
+// ".local","share")` with no absolute-path check (measured at 1.17.4 in the main
+// Global module and in two bundled plugins), so a relative value is joined against
+// opencode's *working directory*. kae ignores a relative value per the XDG spec
+// (paths.XDGDataHome), which is the spec-correct reading but puts the two on
+// different files — and kae's own cwd is not necessarily the tool's, so following
+// upstream verbatim would only trade a visible divergence for an invisible one.
+const xdgRelativeWarning = "XDG_DATA_HOME is relative: opencode joins it against its working directory while kae ignores it per the XDG spec, so kae switches a different auth.json than opencode reads (set an absolute path)"
+
+// xdgRelativeWarnings is the Detect/Doctor payload for a relative XDG_DATA_HOME:
+// one warning, or none. Both surfaces read it so neither can drift.
+func xdgRelativeWarnings(env adapter.Env) []string {
+	if adapter.IsRelativeEnv(env, "XDG_DATA_HOME") {
+		return []string{xdgRelativeWarning}
+	}
+	return nil
+}
+
 type Opencode struct{}
 
 func init() { adapter.Register(Opencode{}) }
@@ -67,6 +97,8 @@ func (o Opencode) Detect(ctx context.Context, env adapter.Env) (adapter.Info, er
 		return info, err
 	}
 	info.AuthPresent = v.Present
+	info.Warnings = append(info.Warnings, adapter.EnvConflictWarnings(env, envConflicts)...)
+	info.Warnings = append(info.Warnings, xdgRelativeWarnings(env)...)
 	if !v.Present {
 		// ReadLive cannot distinguish a missing file from a file without
 		// the openai key, and only the latter deserves an explanation.
@@ -167,6 +199,8 @@ func (o Opencode) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 		Tool: tool, Code: constants.CheckDriver,
 		Status: constants.StatusOK, Message: "driver: " + constants.DriverOpencodeFilePatch,
 	})
+	checks = append(checks, adapter.EnvConflictChecks(env, tool, envConflicts)...)
+	checks = append(checks, adapter.EnvConflictChecksFrom(tool, xdgRelativeWarnings(env))...)
 	if check, ok := adapter.FileModeCheck(env, tool, authJSONPath(env)); ok {
 		checks = append(checks, check)
 	}

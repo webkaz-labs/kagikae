@@ -25,6 +25,107 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
+# kae v0.13.0 (shipped 2026-07-31)
+
+One theme, found by auditing every adapter after v0.12.0: kae modelled several
+upstream **store locations as constants when they are rules**, and the rules
+resolve per environment, per tool home, and — in two cases — to more than one
+store at once. v0.12.0 fixed the first instance (claude's per-config-dir keychain
+item); this release fixes the rest of the class, including one that was
+**destructive** and shipped.
+
+Baseline: v0.12.0 (identity as a switched artifact + upstream-behaviour checks),
+shipped 2026-07-30. Contract-stable: `schema_version` stays `1`, no flag or
+exit-code changes. Two credential models changed, so **cursor and codex snapshots
+captured before this release must be re-captured** (kae refuses to apply an
+incomplete one rather than switching half a credential).
+
+- **codex's keyring item is one item per codex home, and kae was deleting the
+  wrong one.** `Codex Auth` is a single service whose *account* attribute is
+  derived from `CODEX_HOME` (`cli|` + 16 hex of `sha256` over the **canonicalized**
+  path). kae deleted by service name alone, so a codex switch under
+  `cli_auth_credentials_store = "keyring"` **destroyed another `CODEX_HOME`'s
+  login** — reachable by any user with more than one codex home, and shipped
+  through v0.12.0. Reads had the mirror bug (first item of the service wins). Now
+  every read, write and delete is scoped by the account kae computes for the
+  environment being written, never from the live item or a snapshot. Four review
+  rounds on that fix found five more instances of the same shape in the
+  restore/rollback paths (a credential written or deleted in a store the tool does
+  not read *there*), all closed: a rollback re-resolves the store after a login
+  child moved it, a delete is never redirected into the store a tool moved to, and
+  a keychain spec with no account is refused rather than applied broadly.
+- **codex's store selector is modelled as the enum it is.** `file` (the default
+  for an absent key) | `keyring` | `auto` | `ephemeral`, where `auto` means
+  *keyring first, file only if the item is absent*. Mapping "anything not keyring"
+  to the file store wrote `auth.json` while codex read the keychain. `ephemeral`,
+  an unknown value, an unparseable `config.toml`, and the
+  `[features] secret_auth_storage` flag are **refused**, not approximated.
+- **cursor's credential is a set of three keychain items, not one.** cursor-agent
+  writes the access token, the refresh token and the api key as a unit and clears
+  them together. kae switched only the access token, so `cursor-agent status`
+  reported a consistent-looking pair from two accounts, and an api key left behind
+  re-minted the **previous** account's tokens on the next expiry. All three now
+  switch as one unit, absent applies as absent, and the `cursor-bedrock-*` triple
+  is refused rather than approximated. `applySnapshot` resolves every artifact
+  before the first live write, so an incomplete pre-v0.13.0 snapshot fails before
+  anything is touched.
+- **A per-directory keychain credential is now cleaned up, and the capability is
+  declared by item identity.** The flag that decides whether a keychain item can
+  be bound to one directory asks "does the item's *identity* move" (service **or**
+  account) rather than "does the service name move", and its parity guard derives
+  that truth from the spec — which revealed the guard had been skipping codex
+  entirely. A superseded per-directory item is removed once nothing points at it
+  (`kae unpin`, or a mode toggle), sweeping after the new binding is written so a
+  mid-sequence failure cannot leave a live binding pointing at a deleted
+  credential.
+- **`doctor` stops crying orphan over two whole namespaces.** The secret backend
+  holds four key shapes; the orphan check understood two, so every companion
+  binding and every env-profile variable warned forever on an enumerable backend —
+  with a remediation line that did not even parse. Keys are now composed from one
+  shared classifier, so the check and the key builders cannot drift.
+- **claude is refused where `CLAUDE_CODE_CUSTOM_OAUTH_URL` renames its stores.**
+  A non-empty value moves *both* the keychain service and the identity file
+  (`.claude<suffix>.json`). Refused rather than computed, because the other source
+  of that suffix — the build channel — is invisible from the environment, so
+  computing it would cover one of three sources and stay silently wrong for the
+  rest. The host-managed credential trio (`CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST`
+  and friends) is a different class — it moves *what authenticates*, not where kae
+  writes — so it warns instead.
+- **copilot honours `COPILOT_HOME`.** It replaces `~/.copilot` outright, so every
+  switch in a directory that sets it was patching a `config.json` copilot does not
+  read. A **relative** value is followed but warned about: copilot resolves it
+  against its own working directory and kae is invoked from anywhere in a project.
+  One branch of copilot's precedence — the deprecated `--config-dir` flag — cannot
+  be seen from the environment at all and is documented rather than guessed at.
+- **opencode warns where `auth.json` is not what opencode reads**:
+  `OPENCODE_AUTH_CONTENT` supplies a whole credential file inline and is consulted
+  before the file, and a relative `XDG_DATA_HOME` (which opencode uses verbatim,
+  against its own cwd) puts kae and the tool on different files. Re-verified in the
+  same pass: `auth.json` **is** still the live store — `account.json` is derived
+  from it and the `credential` table in `opencode.db` is a dormant one-shot import
+  — so the store did not move, and the audit's claim that kae patches a dead file
+  did not hold.
+- **agy warns where it will skip the keychain.** agy's keyring is conditional: an
+  ssh/wsl/container detector bypasses it, every keyring operation has a 1s timeout,
+  and any failure falls back to a file. kae warns on the env-visible triggers and
+  deliberately declares **no** file artifact on macOS, because the fallback file's
+  path is not derivable from the binary and a guessed path is a write nothing
+  reads.
+- **Recorded, not guessed** ([ROADMAP.md](ROADMAP.md)): codex's per-directory
+  keyring capability (declared unavailable until the item lifecycle is settled),
+  agy's unmeasured macOS fallback path, opencode's dormant DB store, copilot
+  isolation (now possible, not built), and claude's build-channel OAuth suffix.
+  Every assumption above is a row in [VALIDATION.md](VALIDATION.md) with a
+  login-free re-verification procedure — several of them replacing recipes that
+  used to need a real account.
+- **Acceptance**: `mise run check`, `mise run audit` (govulncheck: 0 reachable),
+  and `mise run goreleaser-check` green; every fix carries a regression test
+  confirmed to fail against the old behaviour. Two real-machine gates stay open
+  and are listed in [VALIDATION.md](VALIDATION.md): the codex per-directory
+  keyring bind and the cursor three-item credential set both need two live logins.
+
+---
+
 # kae v0.12.0 (shipped 2026-07-30)
 
 Make the *identity* a switched artifact, and start watching the upstream

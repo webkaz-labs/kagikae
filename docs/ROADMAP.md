@@ -315,6 +315,26 @@ plain-CLI layer; the TUI sits on top of them.
 - **agy home isolation**: revisit once upstream exposes a stable
   home/config env var; until then `home` / `overlay` modes refuse it (the
   same applies to the v0.6.0 adapters until their env vars are verified).
+- **copilot isolation** (newly possible, not built): `COPILOT_HOME` is now a
+  verified home variable (2026-07-31), so copilot could join claude and codex in
+  `isolationEnvVar` and become `use -i` / `pin -i`-capable. Not done with the
+  read-the-variable fix: the per-account keychain items coexist and are never
+  switched, so what a second home changes (and whether copilot's own
+  `--config-dir` precedence can defeat it) has to be established first.
+- **agy's file store on macOS** (recorded gap, 2026-07-31): agy skips the
+  keychain under ssh/wsl/container detection, on a 1s keyring timeout, and on any
+  keyring failure, so the file store is reachable on macOS too — but the fallback
+  file's path is not derivable from the 1.0.10 binary, so kae warns instead of
+  switching it ([ADAPTERS.md](ADAPTERS.md), [VALIDATION.md](VALIDATION.md)).
+  Blocked on a way to make agy write a token without a real login: it has no
+  kae-drivable login, so the `security` PATH shim (which does apply to agy) has
+  nothing to intercept yet.
+- **opencode's DB credential store** (recorded gap, 2026-07-31): `auth.json` is
+  still the live store through 1.18.5, and the `credential` table in
+  `opencode.db` is a dormant one-shot import. When a release makes that table
+  authoritative, kae's pointer patch becomes a silent no-op — and on 1.17.4 the
+  imported row is frozen at whichever account auth.json held on first run. The
+  `upstream_version` doctor warning is the trigger to re-run the VALIDATION row.
 
 ## Exploratory
 

@@ -322,11 +322,7 @@ func (c Claude) Detect(ctx context.Context, env adapter.Env) (adapter.Info, erro
 		return info, err
 	}
 	info.AuthPresent = v.Present
-	for _, name := range envConflicts {
-		if env.Getenv(name) != "" {
-			info.Warnings = append(info.Warnings, name+" is set and overrides the switched login")
-		}
-	}
+	info.Warnings = append(info.Warnings, adapter.EnvConflictWarnings(env, envConflicts)...)
 	return info, nil
 }
 

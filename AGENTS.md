@@ -74,6 +74,22 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   path or a service name at the call site; and when a write to the authoritative
   store fails, return the error — a fallback to the secondary store reports
   success while the tool reads something else.
+- **Some of a store's rule is not knowable from the environment, and there the
+  answer is never a guess.** Three shapes, all live. Two leave a proxy in the
+  environment, so they **warn** (`env_conflict`, and the adapter keeps its own
+  path): kae and the tool read the *same* variable differently (a **relative**
+  `XDG_DATA_HOME` / `COPILOT_HOME` resolves against the *tool's* cwd, and kae is
+  invoked from anywhere in the project — so following it verbatim is not by itself
+  the fix), and a store chosen by something outside the variable that still has an
+  env-visible trigger (agy skips the keychain on an ssh/wsl detector, which reads
+  variables, though its sibling container detector reads `/.dockerenv` and its 1s
+  keyring timeout has no proxy at all). The third leaves **no proxy at all** — a
+  flag outranks the variable (copilot's deprecated `--config-dir` beats
+  `COPILOT_HOME`) — and an unobservable branch must not be turned into a warning
+  on the observable one; record it in `docs/ADAPTERS.md` and move on. In every
+  shape: **never declare an artifact for a location you could not measure** — a
+  guessed path is a write nothing reads, which is the defect this whole section
+  exists for.
 - **A per-directory keychain item has to be removed when nothing points at it any
   more**, and the sweep (`pruneDirCredentials`) mirrors the write gate exactly:
   keychain items only, only where the adapter declares them `KeychainDirBindable`.

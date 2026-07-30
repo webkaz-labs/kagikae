@@ -43,7 +43,7 @@ func tokenDriftApp(t *testing.T, data config.CompanionData, ghToken string) *App
 }
 
 func TestTokenDriftOptInGate(t *testing.T) {
-	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "octocat"}, "tok")
+	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "main"}, "tok")
 	// live=false (not opted in) never probes, regardless of state.
 	if got := app.companionTokenDriftChecks(context.Background(), false); got != nil {
 		t.Fatalf("opt-out must skip the check, got %v", got)
@@ -51,9 +51,9 @@ func TestTokenDriftOptInGate(t *testing.T) {
 }
 
 func TestTokenDriftMatchNoCheck(t *testing.T) {
-	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "octocat"}, "tok")
+	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "main"}, "tok")
 	withRunWithEnv(t, func(_ context.Context, _ []string, _ string, _ ...string) (string, string, int) {
-		return "octocat\n", "", 0
+		return "main\n", "", 0
 	}, func() {
 		if got := app.companionTokenDriftChecks(context.Background(), true); len(got) != 0 {
 			t.Fatalf("matching login must not drift, got %v", got)
@@ -62,7 +62,7 @@ func TestTokenDriftMatchNoCheck(t *testing.T) {
 }
 
 func TestTokenDriftWrongAccount(t *testing.T) {
-	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "octocat"}, "tok")
+	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "main"}, "tok")
 	withRunWithEnv(t, func(_ context.Context, _ []string, _ string, _ ...string) (string, string, int) {
 		return "someone-else\n", "", 0
 	}, func() {
@@ -70,14 +70,14 @@ func TestTokenDriftWrongAccount(t *testing.T) {
 		if len(checks) != 1 || checks[0].Code != constants.CheckCompanionTokenDrift {
 			t.Fatalf("expected one token-drift check, got %v", checks)
 		}
-		if !strings.Contains(checks[0].Message, "octocat") || !strings.Contains(checks[0].Message, "someone-else") {
+		if !strings.Contains(checks[0].Message, "main") || !strings.Contains(checks[0].Message, "someone-else") {
 			t.Errorf("message should name expected and live login: %q", checks[0].Message)
 		}
 	})
 }
 
 func TestTokenDriftProbeFailure(t *testing.T) {
-	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "octocat"}, "tok")
+	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "main"}, "tok")
 	withRunWithEnv(t, func(_ context.Context, _ []string, _ string, _ ...string) (string, string, int) {
 		return "", "Bad credentials", 1
 	}, func() {
@@ -90,11 +90,11 @@ func TestTokenDriftProbeFailure(t *testing.T) {
 
 func TestTokenDriftPinInactive(t *testing.T) {
 	// GH_TOKEN empty in env = the pin is not active; warn without probing.
-	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "octocat"}, "")
+	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "main"}, "")
 	probed := false
 	withRunWithEnv(t, func(_ context.Context, _ []string, _ string, _ ...string) (string, string, int) {
 		probed = true
-		return "octocat\n", "", 0
+		return "main\n", "", 0
 	}, func() {
 		checks := app.companionTokenDriftChecks(context.Background(), true)
 		if len(checks) != 1 || !strings.Contains(checks[0].Message, "not active") {
@@ -110,7 +110,7 @@ func TestTokenDriftNoExpectedLoginSkips(t *testing.T) {
 	// No expected_login recorded → not a candidate → no check even when opted in.
 	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": ""}, "tok")
 	withRunWithEnv(t, func(_ context.Context, _ []string, _ string, _ ...string) (string, string, int) {
-		return "octocat\n", "", 0
+		return "main\n", "", 0
 	}, func() {
 		if got := app.companionTokenDriftChecks(context.Background(), true); got != nil {
 			t.Fatalf("no expected_login means no candidate, got %v", got)
@@ -121,9 +121,9 @@ func TestTokenDriftNoExpectedLoginSkips(t *testing.T) {
 func TestTokenDriftSkipsWhenTokenUnbound(t *testing.T) {
 	// expected_login present but the token knob is gone (e.g. `kae companion rm gh
 	// GH_TOKEN`): stale metadata, not a live candidate.
-	app := tokenDriftApp(t, config.CompanionData{"expected_login": "octocat"}, "tok")
+	app := tokenDriftApp(t, config.CompanionData{"expected_login": "main"}, "tok")
 	withRunWithEnv(t, func(context.Context, []string, string, ...string) (string, string, int) {
-		return "octocat\n", "", 0
+		return "main\n", "", 0
 	}, func() {
 		if got := app.companionTokenDriftChecks(context.Background(), true); got != nil {
 			t.Fatalf("expected_login without a bound token must not be checked, got %v", got)
@@ -132,7 +132,7 @@ func TestTokenDriftSkipsWhenTokenUnbound(t *testing.T) {
 }
 
 func TestResolveTokenDriftOptIn(t *testing.T) {
-	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "octocat"}, "tok")
+	app := tokenDriftApp(t, config.CompanionData{"GH_TOKEN": "", "expected_login": "main"}, "tok")
 	// --yes opts in non-interactively.
 	if !app.resolveTokenDriftOptIn(commonOpts{Yes: true}, "") {
 		t.Error("--yes should opt in to the token drift check")

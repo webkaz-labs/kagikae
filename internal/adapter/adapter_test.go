@@ -52,6 +52,39 @@ func testEnv(t *testing.T, goos string, vars map[string]string) adapter.Env {
 	}
 }
 
+// wantEnvConflictWarning asserts that an environment condition is reported on
+// **both** surfaces: Detect's Info.Warnings (which reaches the pre-write stderr
+// warning) and Doctor's env_conflict check. Every adapter that warns about the
+// environment owes both, and a warning present on one surface only is the bug
+// this pins.
+func wantEnvConflictWarning(t *testing.T, adp adapter.Adapter, vars map[string]string, want string) {
+	t.Helper()
+	env := testEnv(t, "darwin", vars)
+	info, err := adp.Detect(context.Background(), env)
+	if err != nil {
+		t.Fatalf("detect: %v", err)
+	}
+	found := false
+	for _, warning := range info.Warnings {
+		if strings.Contains(warning, want) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a Detect warning containing %q: %+v", want, info.Warnings)
+	}
+	found = false
+	for _, check := range adp.Doctor(context.Background(), env) {
+		if check.Code == constants.CheckEnvConflict && check.Status == constants.StatusWarn &&
+			strings.Contains(check.Message, want) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a doctor env_conflict warning containing %q", want)
+	}
+}
+
 func write(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -636,6 +669,26 @@ func TestOpencodeDetect(t *testing.T) {
 	}
 }
 
+// Two ways the switched auth.json stops being what opencode reads, both visible
+// offline: OPENCODE_AUTH_CONTENT carries the whole body inline and is consulted
+// before the file, and a relative XDG_DATA_HOME (which opencode uses verbatim,
+// against its own working directory, while kae ignores it per the XDG spec) puts
+// the two on different files. Neither can be fixed by writing somewhere else, so
+// both warn on Detect and in doctor.
+func TestOpencodeWarnsWhenAuthJSONIsNotWhatItReads(t *testing.T) {
+	wantEnvConflictWarning(t, opencodeAdapter,
+		map[string]string{opencode.EnvAuthContent: `{"openai":{}}`}, opencode.EnvAuthContent)
+	wantEnvConflictWarning(t, opencodeAdapter,
+		map[string]string{"XDG_DATA_HOME": "relative/data"}, "XDG_DATA_HOME is relative")
+
+	// An absolute value is the normal case and must stay silent.
+	env := testEnv(t, "darwin", map[string]string{"XDG_DATA_HOME": t.TempDir()})
+	info, err := opencodeAdapter.Detect(context.Background(), env)
+	if err != nil || len(info.Warnings) != 0 {
+		t.Fatalf("an absolute XDG_DATA_HOME must not warn: %+v %v", info.Warnings, err)
+	}
+}
+
 func TestOpencodeRefusesUnrecognizedAuthJSON(t *testing.T) {
 	env := testEnv(t, "darwin", nil)
 	specs, err := opencodeAdapter.Artifacts(context.Background(), env)
@@ -740,6 +793,46 @@ func TestCopilotArtifactsJSONCPointer(t *testing.T) {
 	}
 }
 
+// COPILOT_HOME replaces ~/.copilot outright — it is the config directory itself,
+// not a parent. Measured at 1.0.61, where it is also the mechanism copilot's own
+// (deprecated) --config-dir flag points users at.
+func TestCopilotHonorsCopilotHome(t *testing.T) {
+	copilotHome := t.TempDir()
+	env := testEnv(t, "darwin", map[string]string{copilot.EnvHome: copilotHome})
+	specs, err := copilotAdapter.Artifacts(context.Background(), env)
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("unexpected specs: %+v %v", specs, err)
+	}
+	if specs[0].Target != filepath.Join(copilotHome, "config.json") {
+		t.Fatalf("COPILOT_HOME not honored: %+v", specs[0])
+	}
+	// The default location must not be consulted at all: a config.json there is
+	// a different account's pointer, so reading it would report the wrong login.
+	write(t, filepath.Join(env.Home, ".copilot", "config.json"), copilotConfigFixture)
+	info, err := copilotAdapter.Detect(context.Background(), env)
+	if err != nil || info.AuthPresent {
+		t.Fatalf("$HOME/.copilot must be ignored while COPILOT_HOME is set: %+v %v", info, err)
+	}
+	write(t, filepath.Join(copilotHome, "config.json"), copilotConfigFixture)
+	info, err = copilotAdapter.Detect(context.Background(), env)
+	if err != nil || !info.AuthPresent {
+		t.Fatalf("COPILOT_HOME config.json not detected: %+v %v", info, err)
+	}
+	if len(info.Warnings) != 0 {
+		t.Fatalf("an absolute COPILOT_HOME must not warn: %+v", info.Warnings)
+	}
+}
+
+// A relative COPILOT_HOME resolves against the *tool's* working directory, and
+// kae is invoked from anywhere in a project — so the file kae writes is the file
+// copilot reads only while both run from the same directory. kae keeps following
+// the value (there is no default to fall back to while it is set) and warns,
+// because the alternative is a silently wrong write with every guard green.
+func TestCopilotWarnsOnRelativeCopilotHome(t *testing.T) {
+	wantEnvConflictWarning(t, copilotAdapter,
+		map[string]string{copilot.EnvHome: ".copilot-local"}, copilot.EnvHome+" is relative")
+}
+
 func TestCopilotDetect(t *testing.T) {
 	env := testEnv(t, "linux", nil)
 	info, err := copilotAdapter.Detect(context.Background(), env)
@@ -832,6 +925,30 @@ func TestAgyDarwinKeychainDriver(t *testing.T) {
 		}
 		if !authOK || !driverOK {
 			t.Fatalf("keychain doctor: authOK=%v driverOK=%v", authOK, driverOK)
+		}
+	})
+}
+
+// agy's keychain is not unconditional on macOS: its auth package chooses between a
+// keyring store and a file store, and an ssh/wsl/container detector can skip the
+// keyring outright. Only the detectors' inputs are visible offline, and the
+// fallback file's path is not derivable from the binary — so kae warns instead of
+// switching a store it cannot name.
+func TestAgyWarnsWhenTheKeychainMayBeBypassed(t *testing.T) {
+	// The keychain probe is stubbed as logged-in, so the only warning left to see
+	// is the bypass one.
+	present := &runnertest.Fake{Stdout: "opaque-antigravity-token\n"}
+	runner.With(present, func() {
+		wantEnvConflictWarning(t, agyAdapter, map[string]string{"SSH_TTY": "/dev/ttys001"},
+			"SSH_TTY is set: agy may bypass the keychain")
+	})
+
+	// A local session must stay silent.
+	clean := testEnv(t, "darwin", nil)
+	runner.With(present, func() {
+		info, err := agyAdapter.Detect(context.Background(), clean)
+		if err != nil || len(info.Warnings) != 0 {
+			t.Fatalf("a local darwin session must not warn: %+v %v", info.Warnings, err)
 		}
 	})
 }

@@ -40,6 +40,35 @@ const noKeychainItemMsg = "no gemini/antigravity keychain item; log in with the 
 // versions (Linux/WSL). All are captured/applied so version changes round-trip.
 var credentialFiles = []string{"credentials.enc", "credentials.json", "oauth_creds.json"}
 
+// keyringBypassEnv are the variables agy's keyring-bypass detectors read. agy
+// does not treat the keychain as unconditional on macOS: its auth package holds a
+// keyring store *and* a file store behind one chooser, and the keyring half is
+// skipped or abandoned in three ways measured in the 1.0.10 binary —
+// `shouldBypassKeyring` next to an ssh / wsl / container detector, a 1s timeout
+// per keyring operation, and an explicit fallback on failure ("Failed to save
+// token to keyring, falling back to file", plus load and remove variants). Of the
+// three only the detectors are visible offline, and only through these variables.
+//
+// kae warns rather than modelling the file store: the fallback file's path is not
+// derivable from the binary (none of credentialFiles appears in it), so adding a
+// guessed artifact would write where nothing reads — the failure this whole class
+// of bug is made of. The WSL entries cannot fire on darwin; they stay in one list
+// because the detector set is one upstream decision.
+var keyringBypassEnv = []string{"SSH_TTY", "SSH_CONNECTION", "SSH_CLIENT", "WSL_DISTRO_NAME", "WSL_INTEROP"}
+
+// keyringBypassWarnings returns one warning per set bypass variable, shared by
+// Detect and Doctor so the two cannot drift.
+func keyringBypassWarnings(env adapter.Env) []string {
+	warnings := []string{}
+	for _, name := range keyringBypassEnv {
+		if env.Getenv(name) != "" {
+			warnings = append(warnings, name+" is set: agy may bypass the keychain here"+
+				" and use a file credential kae does not model, so a switch may not reach the tool")
+		}
+	}
+	return warnings
+}
+
 type Agy struct{}
 
 func init() { adapter.Register(Agy{}) }
@@ -151,6 +180,7 @@ func (a Agy) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) 
 		if !v.Present {
 			info.Warnings = append(info.Warnings, noKeychainItemMsg)
 		}
+		info.Warnings = append(info.Warnings, keyringBypassWarnings(env)...)
 		return info, nil
 	}
 	info.Driver = constants.DriverAgyFileSnapshot
@@ -191,6 +221,7 @@ func (a Agy) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 			Tool: tool, Code: constants.CheckDriver,
 			Status: constants.StatusOK, Message: "driver: " + constants.DriverAgyKeychain,
 		})
+		checks = append(checks, adapter.EnvConflictChecksFrom(tool, keyringBypassWarnings(env))...)
 		return checks
 	}
 	switch {

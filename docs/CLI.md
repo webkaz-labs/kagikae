@@ -570,7 +570,7 @@ best-match candidate is named (no multi-candidate list).
 | `1` | `error` | general/runtime error |
 | `2` | `invalid_config` | config file unreadable or invalid |
 | `3` | `auth_missing` | live auth state not found for the requested tool |
-| `4` | `lock_busy` | another kae process holds the per-tool lock |
+| `4` | `lock_busy` | another kae process holds the per-tool, config, or state lock |
 | `5` | `unsupported` | platform or tool operation not supported |
 | `6` | `cli_missing` | upstream CLI binary not found when required |
 | `7` | `not_found` | account / profile / backup not found |

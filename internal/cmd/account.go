@@ -10,6 +10,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 // CmdAccount manages captured account lifecycle:
@@ -134,11 +135,20 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 			return nil, err
 		}
 	}
-	if active {
-		delete(st.Active, tool)
-		if err := app.saveActive(st, nil, ""); err != nil {
-			return nil, err
+	// Whether this account is still the active one is decided *inside* the state
+	// lock, not from the copy read above the tool lock: a switch that completed
+	// in between makes another account active, and clearing on the stale answer
+	// would drop a binding this command was never asked to touch. The report
+	// follows what the locked decision did.
+	if _, err := app.mutateState(func(st *state.State) {
+		report.ActiveCleared = st.Active[tool] == accountName
+		if !report.ActiveCleared {
+			return
 		}
+		delete(st.Active, tool)
+		st.ActiveProfile = app.Config.MatchProfile(st.Active)
+	}); err != nil {
+		return nil, err
 	}
 	if err := os.RemoveAll(app.Paths.AccountDir(tool, accountName)); err != nil {
 		return nil, fmt.Errorf("remove snapshot dir: %w", err)
@@ -273,10 +283,18 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 			return nil, err
 		}
 	}
-	if activeUpdate {
-		if err := app.saveActive(st, map[string]string{tool: newName}, ""); err != nil {
-			return nil, err
+	// Re-decided under the state lock, for the reason `kae account rm` gives:
+	// the pre-lock copy can be older than a concurrent switch, and renaming on
+	// it would point the active binding at an account nobody selected.
+	if _, err := app.mutateState(func(st *state.State) {
+		report.ActiveUpdated = st.Active[tool] == oldName
+		if !report.ActiveUpdated {
+			return
 		}
+		st.Active[tool] = newName
+		st.ActiveProfile = app.Config.MatchProfile(st.Active)
+	}); err != nil {
+		return nil, err
 	}
 
 	// Secret-backend keys cannot be renamed in place, so copy each payload to

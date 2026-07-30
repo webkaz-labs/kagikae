@@ -71,25 +71,34 @@ func (app *App) regenGlobalFragment(synced map[string]string) error {
 // run by kae use -s / bare kae use after it switches the real home in place. A
 // no-op (no state write) when none of the tools is globally isolated.
 func (app *App) teardownSynced(tools []string) error {
-	st, err := app.loadState()
+	// Fast path, so bare `kae use` on an installation that never ran `kae use -i`
+	// takes no state lock and writes nothing: the common case is that none of
+	// these tools is globally isolated. The decision that matters is still the
+	// one made under the lock below.
+	if st, err := app.loadState(); err != nil {
+		return err
+	} else if !anySynced(st, tools) {
+		return nil
+	}
+	st, err := app.mutateState(func(st *state.State) {
+		for _, tool := range tools {
+			delete(st.Synced, tool)
+		}
+	})
 	if err != nil {
 		return err
 	}
-	changed := false
+	return app.regenGlobalFragment(st.Synced)
+}
+
+// anySynced reports whether any of tools is globally isolated in st.
+func anySynced(st *state.State, tools []string) bool {
 	for _, tool := range tools {
 		if _, ok := st.Synced[tool]; ok {
-			delete(st.Synced, tool)
-			changed = true
+			return true
 		}
 	}
-	if !changed {
-		return nil
-	}
-	st.UpdatedAt = app.Now().UTC()
-	if err := state.Save(app.Paths.StateFile(), st); err != nil {
-		return err
-	}
-	return app.regenGlobalFragment(st.Synced)
+	return false
 }
 
 // globalExportFallback renders the `export VAR=value` lines reproducing the

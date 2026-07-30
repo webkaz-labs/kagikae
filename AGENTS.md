@@ -147,6 +147,16 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   changes the exit code (a non-zero exit breaks the mise enter hook).
 - Mixed-state files are patched by JSON Pointer only; whole-file replacement
   of `~/.claude.json` is forbidden in code review, not just in docs.
+- **`state.json` writes go through `App.mutateState`, and a decision about the
+  state is made inside the mutation.** The per-tool locks deliberately let
+  `kae use claude <a>` and `kae use codex <b>` run at once, so a copy of the
+  document loaded earlier in a command is already stale by the time it is
+  written back — that reverted the other tool's field with nothing reporting it,
+  and `kae rollback` restores credentials, not this file. The seam re-reads
+  under a `state` lock; a guard test keeps `state.Save` out of the rest of
+  `internal/cmd`. The second half matters just as much: `kae account rm` decides
+  *inside* the mutation whether the account it removes is still the active one,
+  because the pre-lock answer can predate a switch that finished in between.
 - `config.toml` edits go through the comment-preserving `config.Editor` via
   `App.editConfig` (under the config lock). A decode-then-encode round-trip
   (BurntSushi `config.Load` → re-`Marshal`) is forbidden: it silently drops

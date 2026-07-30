@@ -482,3 +482,45 @@ func TestSwitchRefusesIncompatibleSnapshotShape(t *testing.T) {
 		t.Fatalf("a refused switch must leave the live credential alone: %s", got)
 	}
 }
+
+// TestSaveActiveDoesNotRevertAConcurrentToolsUpdate reproduces the lost update
+// the per-tool locks cannot prevent: `kae use claude <a>` and `kae use codex <b>`
+// hold different locks, so both run, and each loads the whole state document
+// before the other saves. Writing that copy back reverted the other tool's
+// field with no error anywhere.
+func TestSaveActiveDoesNotRevertAConcurrentToolsUpdate(t *testing.T) {
+	app := testApp(t, nil)
+	if err := app.saveActive(map[string]string{"claude": "main"}, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// A switch loads the state early — switch.go does, for the backup's
+	// ActiveBefore — and then spends seconds writing credentials.
+	early, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if early.Active["codex"] != "" {
+		t.Fatalf("premise: codex must be unset when the switch starts, got %q", early.Active["codex"])
+	}
+
+	// Meanwhile another kae records its own tool.
+	if err := app.saveActive(map[string]string{"codex": "side"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	// The first switch finishes and records its result.
+	if err := app.saveActive(map[string]string{"claude": "alt"}, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Active["claude"] != "alt" {
+		t.Errorf("claude = %q, want alt", st.Active["claude"])
+	}
+	if st.Active["codex"] != "side" {
+		t.Errorf("codex = %q, want side (the concurrent switch was reverted)", st.Active["codex"])
+	}
+}

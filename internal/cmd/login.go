@@ -198,7 +198,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 		fmt.Printf("Captured %s/%s and restored the previous login\n", tool, accountName)
 		return constants.ExitOK
 	}
-	if err := app.saveActive(st, map[string]string{tool: accountName}, ""); err != nil {
+	if err := app.saveActive(map[string]string{tool: accountName}, ""); err != nil {
 		return finish(opts, err)
 	}
 	fmt.Printf("Captured %s/%s (now active)\n", tool, accountName)

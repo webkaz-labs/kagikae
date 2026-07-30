@@ -18,6 +18,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 // App bundles the resolved environment every command needs. Tests construct
@@ -154,6 +155,15 @@ func (app *App) enabledTools() []string {
 	return tools
 }
 
+// Lock names that are not tool ids. They live in the same directory as the
+// per-tool locks, so a tool id equal to one of these would silently share that
+// tool's lock with an unrelated critical section — guarded by
+// TestNonToolLockNamesDoNotCollideWithTools.
+const (
+	lockNameConfig = "config"
+	lockNameState  = "state"
+)
+
 // acquireLocks takes per-tool locks in canonical order; on failure it
 // releases everything taken so far.
 func (app *App) acquireLocks(tools []string) ([]*lock.Lock, error) {
@@ -166,12 +176,10 @@ func (app *App) acquireLocks(tools []string) ([]*lock.Lock, error) {
 		if !wanted[tool] {
 			continue
 		}
-		l, err := lock.Acquire(app.Paths.LocksDir(), tool)
+		l, err := app.acquireNamedLock(tool,
+			fmt.Sprintf("another kae process is switching %s; retry shortly", tool))
 		if err != nil {
 			releaseLocks(locks)
-			if errors.Is(err, lock.ErrBusy) {
-				return nil, errf(constants.ExitLockBusy, "another kae process is switching %s; retry shortly", tool)
-			}
 			return nil, err
 		}
 		locks = append(locks, l)
@@ -185,17 +193,52 @@ func releaseLocks(locks []*lock.Lock) {
 	}
 }
 
-// acquireConfigLock takes the shared config lock so config.toml edits do not
-// race other kae processes. Released by the caller.
-func (app *App) acquireConfigLock() (*lock.Lock, error) {
-	l, err := lock.Acquire(app.Paths.LocksDir(), "config")
+// acquireNamedLock takes one advisory lock under the runtime lock dir, turning
+// a busy lock into the shared lock_busy exit code with the caller's wording.
+func (app *App) acquireNamedLock(name, busy string) (*lock.Lock, error) {
+	l, err := lock.Acquire(app.Paths.LocksDir(), name)
 	if err != nil {
 		if errors.Is(err, lock.ErrBusy) {
-			return nil, errf(constants.ExitLockBusy, "another kae process is editing the config; retry shortly")
+			return nil, errf(constants.ExitLockBusy, "%s", busy)
 		}
 		return nil, err
 	}
 	return l, nil
+}
+
+// acquireConfigLock takes the shared config lock so config.toml edits do not
+// race other kae processes. Released by the caller.
+func (app *App) acquireConfigLock() (*lock.Lock, error) {
+	return app.acquireNamedLock(lockNameConfig, "another kae process is editing the config; retry shortly")
+}
+
+// mutateState is the single seam for state.json writes: take the state lock,
+// re-read the file, apply mutate, save. It returns the state as written, so a
+// caller can act on the values it just recorded.
+//
+// It exists because the per-tool locks do not cover this file, so a copy loaded
+// earlier in the command can already be stale — see docs/ARCHITECTURE.md
+// ("Locking") for the lost update it closes. Two rules follow for callers: a
+// *decision* about the state must be made inside mutate, not from a copy read
+// before the lock; and a busy lock fails loudly rather than retrying, which is
+// safe here because the critical section is one read plus one atomic write and
+// a switch that reaches it has a backup to restore from.
+func (app *App) mutateState(mutate func(*state.State)) (*state.State, error) {
+	l, err := app.acquireNamedLock(lockNameState, "another kae process is recording state; retry shortly")
+	if err != nil {
+		return nil, err
+	}
+	defer l.Release()
+	st, err := app.loadState()
+	if err != nil {
+		return nil, err
+	}
+	mutate(st)
+	st.UpdatedAt = app.Now().UTC()
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		return nil, err
+	}
+	return st, nil
 }
 
 // editConfig applies mutate to config.toml through the comment-preserving

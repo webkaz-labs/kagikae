@@ -60,9 +60,11 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   updating it in the same commit.
 - Where a credential lives can be a **rule, not a constant**, and only the
   adapter may evaluate it. claude derives its keychain service name from
-  `CLAUDE_CONFIG_DIR` (`Claude Code-credentials-<sha8>` over the *raw* env
-  string — no path cleaning, so a trailing slash is a different item), and kae's
-  own isolation modes are what set that variable. Modelling the name as a
+  `CLAUDE_CONFIG_DIR` (`Claude Code-credentials-<sha8>` over the env string
+  **NFC-normalized**, with no path cleaning at all — so a trailing slash is a
+  different item, and a decomposed non-ASCII component must be normalized before
+  hashing or kae writes an item claude never reads), and kae's own isolation modes
+  are what set that variable. Modelling the name as a
   constant made every pinned directory on macOS run the previous account with
   every offline guard green, because the tool reads the keychain first and its
   first token refresh creates the per-directory item and deletes the file kae

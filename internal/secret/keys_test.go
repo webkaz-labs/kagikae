@@ -3,8 +3,25 @@ package secret
 import (
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
+
+// account.SecretRef is the builder AccountKey has to recognize, and it composes
+// its shape by hand (the account namespace is the un-prefixed one, so there is no
+// constant to share). Round-trip it here so a change to either side fails: giving
+// account keys a prefix, or a fourth segment, would otherwise just make every
+// account key invisible to the orphan check.
+func TestAccountKeyRoundTripsAccountSecretRef(t *testing.T) {
+	ref := account.SecretRef(constants.ToolClaude, "main", "claude_ai_oauth")
+	tool, acct, ok := AccountKey(ref)
+	if !ok {
+		t.Fatalf("AccountKey(%q) did not recognize an account.SecretRef key", ref)
+	}
+	if tool != constants.ToolClaude || acct != "main" {
+		t.Fatalf("AccountKey(%q) = %q/%q, want %q/main", ref, tool, acct, constants.ToolClaude)
+	}
+}
 
 func TestAccountKey(t *testing.T) {
 	cases := []struct {

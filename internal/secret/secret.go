@@ -65,6 +65,10 @@ const (
 // snapshot dir behind them, and reading one as <tool>/<account> is what made
 // doctor's orphan check warn forever on every companion binding and every
 // env-profile variable.
+//
+// A namespace added later must be listed above *and* in the switch below. Today's
+// three are excluded twice over — none of them has three segments — but a new
+// three-segment namespace would be read as an account with nothing failing.
 func AccountKey(key string) (tool, account string, ok bool) {
 	parts := strings.Split(key, "/")
 	if len(parts) != 3 {

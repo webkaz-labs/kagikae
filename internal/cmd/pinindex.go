@@ -1,9 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
@@ -26,25 +26,33 @@ import (
 // registry would be a second source of truth that drifts from the directory
 // tree the stores actually live in, and would need a repair path of its own;
 // here the store's own existence is the record, so the two cannot disagree.
-// It holds a path, never a secret.
-const pinDirRecord = "dir"
+// It holds a path, never a secret. Its location is paths.PinRecordFile.
 
-// acquirePinLock serializes the commands that bind one directory. `kae pin`
-// writes the credential, then the companion files, then the fragment, with no
-// step atomic across the others, so two of them at once in the same directory
-// could interleave into a fragment that points at a store the other command
-// re-keyed. The lock is per bound directory (its pin id), not global: binding
-// two different directories at once is fine, and pinning is interactive enough
-// that a busy lock is better reported than queued.
-//
-// There is deliberately no backup of the previous per-directory credential —
-// `kae rollback` has no pin state and does not need one. That credential is a
-// copy of the account snapshot (writeDirCredential reads the snapshot, never the
-// live store), so `kae pin <tool> <account>` reproduces it exactly; a half-done
-// bind is re-runnable, not lost data.
+// acquirePinLock serializes the commands that touch one directory's binding, so
+// a `kae pin` and a `kae unpin` in the same directory cannot interleave into a
+// fragment pointing at a store the other re-keyed. Per bound directory, and
+// fail-fast: see docs/ARCHITECTURE.md § Locking. A half-done bind is re-runnable,
+// which is why nothing has to be rolled back.
 func (app *App) acquirePinLock(absDir string) (*lock.Lock, error) {
 	return app.acquireNamedLock("pin-"+paths.PinID(absDir),
 		"another kae process is binding this directory; retry shortly")
+}
+
+// beginBind is what a command that *binds* a directory calls instead of
+// acquirePinLock: it takes the same lock and records the breadcrumb in one step.
+// One seam, so a future binding command cannot take the lock and forget the
+// record — which is the failure this whole file exists to prevent. `kae unpin`
+// uses the bare lock: it is removing a binding, not making one.
+func (app *App) beginBind(absDir string) (*lock.Lock, error) {
+	l, err := app.acquirePinLock(absDir)
+	if err != nil {
+		return nil, err
+	}
+	if err := app.recordPinnedDir(paths.PinID(absDir), absDir); err != nil {
+		l.Release()
+		return nil, err
+	}
+	return l, nil
 }
 
 // pinnedDir is one bound directory kae has materialized a per-directory store
@@ -56,12 +64,20 @@ type pinnedDir struct {
 
 // recordPinnedDir writes the breadcrumb naming absDir inside that directory's
 // own store root. Idempotent; called by every path that binds a directory.
+//
+// Re-pinning an already-recorded directory is the common case, and the atomic
+// write is a temp file plus an fsync plus a rename — so read first and skip it
+// when the bytes already match.
 func (app *App) recordPinnedDir(pinID, absDir string) error {
-	root := app.Paths.PinDir(pinID)
-	if err := os.MkdirAll(root, 0o700); err != nil {
+	record := app.Paths.PinRecordFile(pinID)
+	want := []byte(absDir + "\n")
+	if have, err := os.ReadFile(record); err == nil && bytes.Equal(have, want) {
+		return nil
+	}
+	if err := os.MkdirAll(app.Paths.PinDir(pinID), 0o700); err != nil {
 		return fmt.Errorf("create per-directory store root: %w", err)
 	}
-	return patch.WriteFileAtomic(filepath.Join(root, pinDirRecord), []byte(absDir+"\n"), 0o600)
+	return patch.WriteFileAtomic(record, want, 0o600)
 }
 
 // pinnedDirs lists the bound directories kae has a store for. A store without
@@ -82,7 +98,7 @@ func (app *App) pinnedDirs() ([]pinnedDir, error) {
 		if !entry.IsDir() || entry.Name() == paths.GlobalSegment {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(app.Paths.IsolationDir(), entry.Name(), pinDirRecord))
+		data, err := os.ReadFile(app.Paths.PinRecordFile(entry.Name()))
 		if err != nil {
 			continue
 		}
@@ -118,15 +134,28 @@ func (app *App) pinnedDirsMatching(match func(fragmentInfo) bool) []string {
 }
 
 // warnPinnedAccountGone warns for every bound directory still pinned to
-// tool/accountName, which the caller has just removed or renamed. fix is the
-// `kae pin` invocation that re-binds the directory.
-func (app *App) warnPinnedAccountGone(tool, accountName, fix string) {
-	for _, dir := range app.pinnedDirsMatching(func(info fragmentInfo) bool {
-		return info.Accounts[tool] == accountName
-	}) {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: %s is still pinned to %s/%s, which no longer exists; re-bind it with: cd %s && %s\n",
-			dir, tool, accountName, dir, fix)
+// tool/accountName, which the caller has just removed or renamed. replacement is
+// the account to re-bind to — the new name after a rename, empty after a removal,
+// where kae has none to suggest.
+func (app *App) warnPinnedAccountGone(tool, accountName, replacement string) {
+	if replacement == "" {
+		replacement = "<account>"
+	}
+	app.warnPinnedDirs(
+		func(info fragmentInfo) bool { return info.Accounts[tool] == accountName },
+		func(dir string) string {
+			return fmt.Sprintf("%s is still pinned to %s/%s, which no longer exists; re-bind it with: cd %s && kae pin %s %s",
+				dir, tool, accountName, dir, tool, replacement)
+		},
+	)
+}
+
+// warnPinnedDirs prints one stderr warning per bound directory the caller's edit
+// just invalidated. The loop is shared so the stream, the prefix and any future
+// suppression stay in one place.
+func (app *App) warnPinnedDirs(match func(fragmentInfo) bool, message func(dir string) string) {
+	for _, dir := range app.pinnedDirsMatching(match) {
+		fmt.Fprintf(os.Stderr, "kae: warning: %s\n", message(dir))
 	}
 }
 

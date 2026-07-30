@@ -104,7 +104,9 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err != nil {
 		return finish(opts, err)
 	}
-	pinLock, err := app.acquirePinLock(absDir)
+	// Takes the pin lock and records which directory this store belongs to; a
+	// store nothing can name is what pinindex.go exists to prevent.
+	pinLock, err := app.beginBind(absDir)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -117,7 +119,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err != nil {
 		return finish(opts, err)
 	}
-	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets)
+	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets, paths.PinID(absDir))
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -126,11 +128,6 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 		return finish(opts, err)
 	}
 	if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
-		return finish(opts, err)
-	}
-	// Record which directory this store belongs to, before the fragment: the
-	// store now exists, and a store nothing can name is what pinindex.go is for.
-	if err := app.recordPinnedDir(paths.PinID(absDir), absDir); err != nil {
 		return finish(opts, err)
 	}
 	if err := prepareCompanions(); err != nil {

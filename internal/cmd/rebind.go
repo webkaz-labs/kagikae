@@ -49,17 +49,14 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	if err != nil {
 		return finish(opts, err)
 	}
-	pinLock, err := app.acquirePinLock(absDir)
+	// A directory bound by a kae older than the breadcrumb has none, and a
+	// re-bind is the other moment kae knows both halves, so beginBind backfills.
+	pinLock, err := app.beginBind(absDir)
 	if err != nil {
 		return finish(opts, err)
 	}
 	defer pinLock.Release()
 	pinID := paths.PinID(absDir)
-	// A directory bound by a kae older than the breadcrumb has none; a re-bind is
-	// the other moment kae knows both halves, so it backfills one.
-	if err := app.recordPinnedDir(pinID, absDir); err != nil {
-		return finish(opts, err)
-	}
 	be, err := app.secretBackend()
 	if err != nil {
 		return finish(opts, err)

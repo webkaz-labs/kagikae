@@ -245,15 +245,11 @@ func boundDirs(entries []isolationEntry) map[string]bool {
 	return dirs
 }
 
-// reportPruned prints what a credential sweep removed (stdout: it is part of the
-// command's result) and what it could not (stderr: a warning, which never changes
-// the exit code).
-func reportPruned(lines []string) {
-	for _, line := range lines {
-		if strings.HasPrefix(line, "kae: warning:") {
-			fmt.Fprintln(os.Stderr, line)
-			continue
-		}
+// reportPruned prints what a credential sweep removed. It is part of the command's
+// result, so it goes to stdout; the sweep's own warnings go to stderr where they
+// are detected.
+func reportPruned(removals []string) {
+	for _, line := range removals {
 		fmt.Println(line)
 	}
 }

@@ -119,21 +119,35 @@ func TestPrepareBondWarnsOnGlobalStoreAndKeepsBinding(t *testing.T) {
 	}
 }
 
+// prunableApp is the shared setup of the sweep tests: a temp-HOME app on the
+// keychain driver (darwin — a file store has nothing invisible to sweep) plus the
+// pin id of a directory that is not the test's cwd, since the sweep takes the id
+// from its caller.
+func prunableApp(t *testing.T) (*App, string) {
+	t.Helper()
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	return app, paths.PinID(t.TempDir())
+}
+
+func mkdirs(t *testing.T, dirs ...string) {
+	t.Helper()
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // The teardown mirrors the write gate: a per-directory keychain item exists only
 // where the adapter declares the item bindable, so that is exactly what a sweep
 // removes. The stale store here is an isolated store for an account the directory
 // no longer binds.
 func TestPruneDirCredentialsRemovesSupersededItem(t *testing.T) {
-	app := testApp(t, nil)
-	app.Env.GOOS = "darwin"
-	pinID := paths.PinID(t.TempDir())
+	app, pinID := prunableApp(t)
 	stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
 	bound := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
-	for _, dir := range []string{stale, bound} {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
+	mkdirs(t, stale, bound)
 
 	fake := &runnertest.Fake{Code: 0}
 	var lines []string
@@ -158,16 +172,10 @@ func TestPruneDirCredentialsRemovesSupersededItem(t *testing.T) {
 // the second case — kae never wrote it for this directory, so removing it would
 // delete a login kae does not own (the same asymmetry writeDirCredential refuses).
 func TestPruneDirCredentialsSkipsBoundAndUnbindableStores(t *testing.T) {
-	app := testApp(t, nil)
-	app.Env.GOOS = "darwin"
-	pinID := paths.PinID(t.TempDir())
+	app, pinID := prunableApp(t)
 	claudeStore := app.Paths.SharedDir(pinID, constants.ToolClaude)
 	codexStore := app.Paths.SharedDir(pinID, constants.ToolCodex)
-	for _, dir := range []string{claudeStore, codexStore} {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
+	mkdirs(t, claudeStore, codexStore)
 	seedKeyringCodex(t, codexStore)
 
 	fake := &runnertest.Fake{Code: 0}
@@ -187,16 +195,10 @@ func TestPruneDirCredentialsSkipsBoundAndUnbindableStores(t *testing.T) {
 // onlyTool is what keeps a single-tool re-bind from sweeping a sibling tool's
 // store, which the same fragment still binds.
 func TestPruneDirCredentialsHonorsToolFilter(t *testing.T) {
-	app := testApp(t, nil)
-	app.Env.GOOS = "darwin"
-	pinID := paths.PinID(t.TempDir())
+	app, pinID := prunableApp(t)
 	claudeStore := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
 	codexStore := app.Paths.IsolatedConfigDir(pinID, constants.ToolCodex, "side")
-	for _, dir := range []string{claudeStore, codexStore} {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
+	mkdirs(t, claudeStore, codexStore)
 
 	fake := &runnertest.Fake{Code: 0}
 	runner.With(fake, func() {
@@ -211,13 +213,9 @@ func TestPruneDirCredentialsHonorsToolFilter(t *testing.T) {
 // first: a store that never had an item must not be announced as cleaned up, and
 // nothing should be deleted for it either.
 func TestPruneDirCredentialsReportsNothingWhenNoItemExists(t *testing.T) {
-	app := testApp(t, nil)
-	app.Env.GOOS = "darwin"
-	pinID := paths.PinID(t.TempDir())
+	app, pinID := prunableApp(t)
 	stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
-	if err := os.MkdirAll(stale, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	mkdirs(t, stale)
 
 	fake := &runnertest.Fake{Stderr: "security: " + keychain.NotFoundMarker, Code: 44}
 	var lines []string

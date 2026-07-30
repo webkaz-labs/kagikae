@@ -221,7 +221,8 @@ func (app *App) snapshotCredential(ctx context.Context, be secret.Backend, tool,
 }
 
 // dirStore is one per-directory credential store a bound directory has
-// materialized: the tool it belongs to and the config dir the tool reads.
+// materialized. Dir is the config dir the tool reads, i.e. what its isolation env
+// var points at, which is what resolves the store's item identity.
 type dirStore struct {
 	Tool string
 	Dir  string
@@ -236,6 +237,11 @@ type dirStore struct {
 // history, and it is enough for the operations that need one — every caller is
 // standing *in* the bound directory, so pinID comes from its own cwd and the walk
 // can never reach another directory's stores.
+// ponytail: a store directory is kept forever (a re-pin restores its sessions), so
+// a stale isolated account's dir is re-probed on every later pin — one extra
+// attributes-only `security` call per such account per pin. Fine at single-digit
+// account counts; record swept stores (or cache the probe) if `kae pin` latency
+// ever shows up.
 func (app *App) dirCredentialStores(pinID string) ([]dirStore, error) {
 	pinDir := app.Paths.PinDir(pinID)
 	tools, err := os.ReadDir(pinDir)
@@ -275,11 +281,12 @@ func dirExists(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-// pruneDirCredentials removes the per-directory keychain credential of every
-// store of this pin that keep does not name, and returns one line per removal
-// plus one per failure. Nothing fails the caller: the new binding is already
-// correct, and a store kae could not clean is a leftover secret, not a broken
-// bind — so it is reported, never escalated.
+// pruneDirCredentials removes the per-directory keychain credential of every store
+// of this pin that keep does not name, and returns one line per removal for the
+// caller to print as part of its result. A failure is warned about here, where it
+// is detected, and never escalated: the new binding is already correct, so a store
+// kae could not clean is a leftover secret rather than a broken bind — and a
+// warning must not change an exit code.
 //
 // Call it **after** the new binding is in place. Before, a failure part-way
 // through the re-bind would leave the live binding pointing at a store whose
@@ -297,9 +304,10 @@ func dirExists(path string) bool {
 func (app *App) pruneDirCredentials(ctx context.Context, pinID, onlyTool string, keep map[string]bool) []string {
 	stores, err := app.dirCredentialStores(pinID)
 	if err != nil {
-		return []string{fmt.Sprintf("kae: warning: %v", err)}
+		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", err)
+		return nil
 	}
-	lines := []string{}
+	removals := []string{}
 	for _, store := range stores {
 		if keep[store.Dir] || (onlyTool != "" && store.Tool != onlyTool) {
 			continue
@@ -307,17 +315,16 @@ func (app *App) pruneDirCredentials(ctx context.Context, pinID, onlyTool string,
 		removed, err := app.removeDirCredential(ctx, store.Tool, store.Dir)
 		switch {
 		case err != nil:
-			lines = append(lines, fmt.Sprintf(
-				"kae: warning: could not remove the superseded %s credential for %s: %v",
-				store.Tool, store.Dir, err,
-			))
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: could not remove the superseded %s credential for %s: %v\n",
+				store.Tool, store.Dir, err)
 		case removed:
-			lines = append(lines, fmt.Sprintf(
+			removals = append(removals, fmt.Sprintf(
 				"Removed the superseded per-directory %s credential (%s)", store.Tool, store.Dir,
 			))
 		}
 	}
-	return lines
+	return removals
 }
 
 // removeDirCredential deletes the keychain item one store directory's tool reads,

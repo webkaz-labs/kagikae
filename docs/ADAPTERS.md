@@ -402,12 +402,41 @@ ChatGPT subscription login is switched.
 
 | Platform | Credential storage |
 |----------|--------------------|
-| macOS | Keychain generic password, service `cursor-access-token`, account `cursor-user`; the payload is an opaque raw JWT (not JSON) |
-| Linux | undocumented; unsupported in v0.6.0 |
-| Windows | unsupported |
+| macOS | Keychain generic passwords, all under account `cursor-user`: `cursor-access-token`, `cursor-refresh-token`, `cursor-api-key`; each payload is an opaque token (the access token is a raw JWT), not JSON |
+| Linux | `${XDG_CONFIG_HOME:-~/.config}/cursor/auth.json`, one JSON object `{accessToken, refreshToken, apiKey, bedrockCredentials}` — known but **not implemented** ([ROADMAP.md](ROADMAP.md)) |
+| Windows | `%APPDATA%/Cursor/auth.json`, same object; unsupported |
 
-`cursor-agent login` (browser flow) creates the item. The access token is the
-whole credential — there is no mixed-state file to patch.
+cursor-agent picks the store by platform alone — keychain on darwin, the file
+everywhere else — so there is **no file fallback on macOS** to check.
+`AGENT_CLI_CREDENTIAL_STORE=memory` makes a single invocation persist nothing;
+kae never sets it, and a shell that exports it makes any switch invisible to that
+process.
+
+`cursor-agent login` (browser flow) creates the access and refresh items;
+`cursor-api-key` appears only for an api-key login (or after an api-key
+exchange). There is no mixed-state file to patch.
+
+**The three items are one credential.** cursor-agent's `setAuthentication` writes
+access + refresh (+ the api key when the login had one) together and its
+`clearAuthentication` deletes all three, so kae switches the set. Switching a
+subset is not merely untidy:
+
+- `cursor-agent status` reports `authenticated` only when the access **and** the
+  refresh item exist (access alone is `partially-authenticated`), so a leftover
+  refresh token from the previous account makes a mixed pair look consistent;
+- with an api key present, cursor-agent re-mints an expiring access token from it
+  — the **only** way it mints one, see the Freshness note below — and writes all
+  three items back, so an unswitched api key silently restores the previous
+  account.
+
+Three further services exist under the same account —
+`cursor-bedrock-access-key`, `cursor-bedrock-secret-key`,
+`cursor-bedrock-session-token` — and kae deliberately **does not** switch them:
+upstream writes them through a separate path (`setBedrockCredentials`, behind the
+`cli_bedrock` feature), and they hold AWS keys rather than a cursor identity, so
+one set can legitimately serve several cursor accounts of the same organization.
+They are preserved, not captured. Their behaviour is unverified; switching them
+would be widening the contract on an assumption.
 
 `~/.cursor/agent-cli-state.json` holds only UI tip flags, not auth, and the
 rest of `~/.cursor` belongs to the Cursor IDE (extensions, hooks); all of it
@@ -418,20 +447,38 @@ Electron safeStorage key and is never touched.
 
 | Driver | Platform | Switched artifacts |
 |--------|----------|--------------------|
-| `cursor-keychain` | macOS | Keychain item `cursor-access-token`, captured and restored verbatim |
+| `cursor-keychain` | macOS | Keychain items `cursor-access-token` (`access_token`), `cursor-refresh-token` (`refresh_token`), `cursor-api-key` (`api_key`), captured and restored verbatim |
 
-The payload round-trips verbatim through the `security` CLI, ACL-preserving,
-exactly as for claude — but it is opaque (a raw JWT, not JSON), so there is no
+Each payload round-trips verbatim through the `security` CLI, ACL-preserving,
+exactly as for claude — but they are opaque (raw tokens, not JSON), so there is no
 JSON-pointer structure guard (an empty pointer marks the opaque payload; see
 docs/DATA-MODEL.md). On a non-darwin platform capture / switch refuse with
 exit `5` (unsupported).
+
+None of the three is `IdentityOnly`: all are credentials, so an artifact absent at
+capture (the usual case for `api_key`) is applied as absent and the live item is
+**removed**. That is what stops a switch leaving the previous account's token
+behind, and it is why a snapshot captured before kae switched the set — which has
+no `refresh_token` or `api_key` entry at all — is refused with
+`kae add --no-login cursor <account>` rather than partially applied. Recapturing
+requires being logged in as that account, so migrating means one
+`cursor-agent login` per account.
+
+`access_token` is `specs[0]` by contract: `Detect` reads it as the artifact whose
+presence means "logged in" (the api key is normally absent, and a refresh token
+alone is not a login).
 
 ### Preserved
 
 ```text
 ~/.cursor/                     -> IDE extensions, hooks, agent-cli-state.json
 Cursor Safe Storage (keychain) -> the IDE's Electron key, never touched
+cursor-bedrock-* (keychain)    -> AWS keys behind the cli_bedrock feature,
+                                  written by a separate upstream path
 ```
+
+The Cursor IDE does not use the `cursor-*` services at all (it stores its login
+through Electron safeStorage), so the switch reaches the CLI only.
 
 ## GitHub Copilot CLI (`copilot`)
 

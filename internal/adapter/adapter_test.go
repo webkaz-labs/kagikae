@@ -592,18 +592,38 @@ func TestOpencodeRefusesUnrecognizedAuthJSON(t *testing.T) {
 	}
 }
 
+// cursor-agent writes access token, refresh token and API key as one unit, so all
+// three are switched. The order is a contract: Detect reads specs[0] as the
+// credential whose presence means "logged in", and it must be the access token —
+// the API key is normally absent, and the refresh token alone is not a login.
 func TestCursorArtifactsDarwinOpaqueKeychain(t *testing.T) {
 	env := testEnv(t, "darwin", nil)
 	specs, err := cursorAdapter.Artifacts(context.Background(), env)
-	if err != nil || len(specs) != 1 {
-		t.Fatalf("unexpected specs: %+v %v", specs, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if specs[0].Kind != constants.KindKeychain || specs[0].Target != cursor.KeychainService {
-		t.Fatalf("unexpected keychain spec: %+v", specs[0])
+	want := []struct{ name, service string }{
+		{"access_token", cursor.KeychainService},
+		{"refresh_token", cursor.KeychainServiceRefresh},
+		{"api_key", cursor.KeychainServiceAPIKey},
 	}
-	// An empty pointer marks the opaque (raw-JWT) payload.
-	if specs[0].Pointer != "" || specs[0].KeychainAccount != cursor.KeychainAccount {
-		t.Fatalf("opaque spec must carry an empty pointer and the cursor-user account: %+v", specs[0])
+	if len(specs) != len(want) {
+		t.Fatalf("unexpected specs: %+v", specs)
+	}
+	for i, w := range want {
+		sp := specs[i]
+		if sp.Name != w.name || sp.Target != w.service || sp.Kind != constants.KindKeychain {
+			t.Fatalf("spec %d: got %+v, want %s/%s", i, sp, w.name, w.service)
+		}
+		// An empty pointer marks the opaque (raw token) payload.
+		if sp.Pointer != "" || sp.KeychainAccount != cursor.KeychainAccount {
+			t.Fatalf("opaque spec %s must carry an empty pointer and the cursor-user account: %+v", w.name, sp)
+		}
+		// None of the three is IdentityOnly: an absent one must apply as absent so a
+		// switch cannot leave the previous account's token behind.
+		if sp.IdentityOnly {
+			t.Fatalf("spec %s is a credential and must not be IdentityOnly", w.name)
+		}
 	}
 }
 

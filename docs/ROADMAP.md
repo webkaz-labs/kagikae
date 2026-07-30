@@ -199,6 +199,18 @@ Follow-up from v0.8.4 (not yet scheduled):
   stays for Linux/WSL. Identity auto-detection stays deferred (no whoami; the
   token is opaque). See [ADAPTERS.md](ADAPTERS.md); the two-account real-keychain
   gate is the open acceptance item ([VALIDATION.md](VALIDATION.md)).
+- **cursor off macOS is now unblocked but unimplemented**: the adapter refuses
+  non-darwin because the storage was undocumented. It no longer is — cursor-agent
+  picks its store by platform alone (keychain on darwin, a file everywhere else,
+  with no fallback either way) and writes one JSON object
+  `{accessToken, refreshToken, apiKey, bedrockCredentials}` to
+  `${XDG_CONFIG_HOME:-~/.config}/cursor/auth.json` on Linux (`%APPDATA%/Cursor/`
+  on Windows, mode 0600, dir 0700). A Linux driver is therefore three artifacts
+  under one `KindJSONPointer` file (`/accessToken`, `/refreshToken`, `/apiKey`) so
+  `bedrockCredentials` survives, mirroring the keychain set. What is missing is a
+  Linux box to verify it on: the paths come from reading the installed macOS
+  bundle's platform switch, and the file store has never been exercised
+  ([ADAPTERS.md](ADAPTERS.md) records the layout).
 - **`kae env export --dotenv --reveal`** *(deferred — no current use)*:
   explicit-flag value export for CI bootstrapping (today values are
   injection-only by design). Considered for v0.8.6 but dropped: CI does not use

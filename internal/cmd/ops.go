@@ -626,8 +626,17 @@ func checkPayloadShape(tool, accountName, artName, storedKind, destKind string) 
 }
 
 // applySnapshot applies one captured account to the live state.
+//
+// Every artifact is resolved and every refusal raised *before* the first live
+// write. A snapshot can legitimately lack an artifact today's adapter declares —
+// it was captured by an older kae, before that artifact was switched — and
+// resolving one spec at a time meant the refusal landed after the earlier specs
+// had already been written, leaving the tool with a credential set from two
+// accounts until the caller's restore undid it. The same ordering covers the
+// payload-shape refusal and a missing stored payload.
 func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error {
-	for _, sp := range plan.Specs {
+	values := make([]artifact.Value, len(plan.Specs))
+	for i, sp := range plan.Specs {
 		metaArt, ok := plan.Meta.Artifacts[sp.Name]
 		if !ok && !sp.IdentityOnly {
 			return errf(constants.ExitError,
@@ -661,7 +670,10 @@ func applySnapshot(ctx context.Context, be secret.Backend, plan toolPlan) error 
 		if err != nil {
 			return err
 		}
-		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
+		values[i] = value
+	}
+	for i, sp := range plan.Specs {
+		if err := artifact.ApplyLive(ctx, sp, values[i]); err != nil {
 			return err
 		}
 	}

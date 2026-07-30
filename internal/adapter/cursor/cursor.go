@@ -1,8 +1,8 @@
 // Package cursor implements the Cursor CLI (cursor-agent) adapter. Auth mode
-// switches the single macOS Keychain item that holds the access token; the
-// payload is an opaque raw JWT (not JSON), captured and restored verbatim.
-// Linux credential storage is undocumented, so the adapter is darwin-only for
-// now (see docs/ADAPTERS.md and docs/ROADMAP.md).
+// switches the three macOS Keychain items cursor-agent writes as one unit; each
+// payload is an opaque token (not JSON), captured and restored verbatim.
+// Linux credential storage is now known but unimplemented, so the adapter stays
+// darwin-only (see docs/ADAPTERS.md and docs/ROADMAP.md).
 package cursor
 
 import (
@@ -17,13 +17,24 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
-// binaryName is the Cursor CLI executable; KeychainService is the access-token
-// item's service name; KeychainAccount is the account attribute cursor-agent
-// creates it with.
+// binaryName is the Cursor CLI executable. cursor-agent builds every keychain
+// name below from one credential "domain" it holds as a build-time constant
+// ("cursor" in a release build, "cursor-dev" in a dev build) —
+// `<domain>-access-token`, `<domain>-refresh-token`, `<domain>-api-key`, under
+// account `<domain>-user`. Unlike claude's and codex's, that is a constant and not
+// a rule (nothing in the environment moves it), which is why kae may spell the
+// resulting names out.
+//
+// The three services are one credential: cursor-agent's setAuthentication writes
+// access + refresh (+ api key, when the login had one) together, and its
+// clearAuthentication deletes all three. Switching a subset leaves a mixed pair
+// (docs/ADAPTERS.md § Cursor).
 const (
-	binaryName      = "cursor-agent"
-	KeychainService = "cursor-access-token"
-	KeychainAccount = "cursor-user"
+	binaryName             = "cursor-agent"
+	KeychainService        = "cursor-access-token"
+	KeychainServiceRefresh = "cursor-refresh-token"
+	KeychainServiceAPIKey  = "cursor-api-key"
+	KeychainAccount        = "cursor-user"
 )
 
 type Cursor struct{}
@@ -56,17 +67,37 @@ func driver(env adapter.Env) (string, error) {
 		adapter.ErrUnsupported, env.GOOS)
 }
 
+// Artifacts returns the access token first, then the refresh token, then the API
+// key. Detect reads specs[0] as the credential whose presence means "logged in",
+// so the order is a contract of this adapter, pinned by
+// TestCursorArtifactsDarwinOpaqueKeychain.
+//
+// All three are credentials, never IdentityOnly: an absent one is applied as
+// absent (the item is removed), which is what keeps a switch from leaving the
+// previous account's token behind. The API key is normally absent — only an
+// api-key login creates it — and switching it is what closes the one silent
+// wrong-account path measured here: with an API key present, cursor-agent
+// re-mints an expiring access token from it and writes all three items back, so
+// an unswitched API key silently restores the previous account.
 func (c Cursor) Artifacts(_ context.Context, env adapter.Env) ([]artifact.Spec, error) {
 	if _, err := driver(env); err != nil {
 		return nil, err
 	}
-	return []artifact.Spec{{
-		Name:            "access_token",
-		Kind:            constants.KindKeychain,
-		Target:          KeychainService,
-		Pointer:         "", // opaque: the payload is a raw JWT, not JSON
-		KeychainAccount: KeychainAccount,
-	}}, nil
+	// Pointer is empty on all three: the payloads are opaque tokens, not JSON.
+	spec := func(name, service string) artifact.Spec {
+		return artifact.Spec{
+			Name:            name,
+			Kind:            constants.KindKeychain,
+			Target:          service,
+			Pointer:         "",
+			KeychainAccount: KeychainAccount,
+		}
+	}
+	return []artifact.Spec{
+		spec("access_token", KeychainService),
+		spec("refresh_token", KeychainServiceRefresh),
+		spec("api_key", KeychainServiceAPIKey),
+	}, nil
 }
 
 func (c Cursor) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) {
@@ -116,9 +147,27 @@ func (Cursor) Identity(ctx context.Context, _ adapter.Env) (string, error) {
 	return identity, nil
 }
 
-// Freshness reads the expiry of cursor's opaque raw-JWT credential. There is no
-// refresh token (the JWT is the whole credential), so an expired snapshot
-// always warns rather than self-refreshing.
+// Freshness reads the expiry of cursor's opaque raw-JWT access token, so an
+// expired snapshot warns rather than being treated as self-refreshing.
+//
+// A refresh token **does** exist (kae switches it), and this still holds — but for
+// a measured reason, not because the JWT is the whole credential: cursor-agent
+// never redeems the stored refresh token. Its only path to a new access token
+// exchanges an **API key** (`cursor-api-key`, else `CURSOR_API_KEY`) at
+// /auth/exchange_user_api_key; with no API key an expiring token is returned
+// as-is and the request fails. The `grant_type=refresh_token` code in the bundle
+// belongs to the MCP client's own OAuth, not to cursor's login. Measured against
+// cursor-agent 2026.06.16 (docs/VALIDATION.md § Upstream Behaviour Assumptions);
+// if a release starts redeeming it, this becomes "refreshable" and the warning has
+// to learn about the refresh token.
+//
+// Called with one artifact payload at a time and with no idea which artifact it
+// is, so the *set* has a tie-break: cmd.accountFreshness takes the first artifact
+// that answers, in sorted-name order, and "access_token" < "api_key" <
+// "refresh_token". Nothing here can tell an access token from another JWT — if a
+// release ever shipped a JWT-shaped refresh token, that order is the only thing
+// choosing between them — so the contract is pinned by
+// cmd.TestCursorFreshnessComesFromTheAccessToken rather than left to the alphabet.
 func (Cursor) Freshness(payload []byte) freshness.Info {
 	if exp, ok := freshness.JWTExpiry(strings.TrimSpace(string(payload))); ok {
 		return freshness.Info{Known: true, ExpiresAt: exp}

@@ -1070,8 +1070,11 @@ guidance) is unchanged.
   recapture is skipped (no keychain read) when live and snapshot already match.
 - **stale warning**: a switch to an account whose snapshot `expiresAt` is past
   warns and names `kae add`; with a usable refresh token it still proceeds.
-- **coalescing**: a single `use` performs at most one `security` read per tool
-  for the recapture decision (asserted via the runner seam call count).
+- **coalescing**: a single `use` performs at most one `security` read per
+  keychain **item** (service + account) for the recapture decision (asserted via
+  the runner seam call count). Per *tool* until cursor gained a three-item
+  credential set: the cache is keyed by item, so a tool with three services costs
+  three reads — and possibly three keychain prompts — not one.
 - **doctor**: a stale snapshot produces a `credential_stale` warn-level check;
   the JSON report keeps `schema_version: 1`; file-backend orphans are detected.
 - **codex keyring** (if kept): `kae add`/`use` round-trip through the keyring

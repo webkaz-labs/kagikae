@@ -14,9 +14,10 @@ defects of the same class in the restore/rollback paths (a credential written or
 deleted in a store the tool does not read there), all fixed on the branch — so
 **treat any restore-path assumption in this document as re-examined**.
 
-**Also done** (branch `fix/doctor-orphan-namespaces`): **2.1**.
+**Also done**: **2.1** (branch `fix/doctor-orphan-namespaces`) and **1.1**
+(branch `fix/cursor-full-credential-set`).
 
-**Still open here**: 1.1, 1.4, 1.5, 1.6, the rest of Part 2, and Part 3's skill.
+**Still open here**: 1.4, 1.5, 1.6, the rest of Part 2, and Part 3's skill.
 
 **Branch**: start a new one off `main`.
 **Why this file exists**: v0.12.0 fixed one instance of a defect class — *kae
@@ -52,7 +53,7 @@ hour, not as a fact and not as noise.
 
 Each of these is "kae treats an upstream location/name as fixed; it isn't."
 
-### 1.1 cursor: kae switches one of at least two keychain items — **VERIFIED HERE**
+### 1.1 cursor: kae switches one of at least two keychain items — **FIXED** (measured from the installed bundle: the refresh token was the wrong suspect)
 
 `internal/adapter/cursor/cursor.go:63-69` switches only `cursor-access-token`.
 On this machine:
@@ -76,6 +77,44 @@ The second would be a silent wrong-credential exactly like the v0.12.0 gate.
 robustness gap. `cursor-api-key` was absent here, so it is presumably created only
 for API-key logins; enumerate what a real login writes rather than trusting a
 list.
+
+**Measured, and the answer inverted the priority.** cursor-agent ships as
+unminified-enough JS at
+`~/.local/share/cursor-agent/versions/<version>/index.js`, so this was a source
+read, not a behavioural experiment (`grep -oa` on the credential-store class;
+`strings` is useless, same as claude's bundle). At 2026.06.16:
+
+- There are **six** services, all under account `cursor-user`, derived from a
+  build-time domain constant (`cursor`): access token, refresh token, api key, and
+  three `cursor-bedrock-*`. A constant, not a rule — the environment cannot move
+  it, unlike claude's and codex's.
+- **The stored refresh token is never redeemed.** The refresh path only exchanges
+  an **api key** at `/auth/exchange_user_api_key`. So a mismatched access/refresh
+  pair does not revert the session: it is a *robustness* gap. The
+  `grant_type=refresh_token` code in the bundle belongs to the MCP client's OAuth
+  in `cursor-agent-svc.js` — the same two-modules red herring codex has.
+- The **P0-shaped path was `cursor-api-key`**, which the audit did not name: with
+  one present, an expiring access token is re-minted from it and all three items
+  are written back, silently restoring the api key's account.
+- `cursor-agent status` reports `authenticated` only with access **and** refresh
+  present, which is why the mixed pair looked consistent.
+- No file fallback on macOS (the store is chosen by platform alone), so kae's
+  darwin=keychain-only model was right; the Linux path is now known and recorded
+  in [ROADMAP.md](ROADMAP.md). The IDE does not use these services at all.
+
+Fixed by switching the three-item unit and refusing to approximate the bedrock
+triple ([ADAPTERS.md](ADAPTERS.md)). Existing cursor snapshots must be
+re-captured, which is why `applySnapshot` now resolves every artifact before the
+first live write.
+
+**Left undone, deliberately:** that refusal still lands *after* `kae use` has taken
+the tool locks, written a backup, and possibly recaptured the account being left —
+`loadPlansWithSnapshots` already holds both `plan.Specs` and
+`plan.Meta.Artifacts`, so it could refuse before any of that. Not done here
+because the harmful half (a live tool holding two accounts' items) is closed, and
+hoisting the check either duplicates its tolerance rule (`!ok && !sp.IdentityOnly`)
+in two layers or removes the guard from `applySnapshot`, which `run -s` also calls
+directly. Worth doing as its own change, with the check *moved* rather than copied.
 
 ### 1.2 codex: the keyring account attribute IS derived from `CODEX_HOME` — **FIXED** (verified from official source *and* against a real item)
 

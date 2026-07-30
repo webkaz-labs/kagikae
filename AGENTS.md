@@ -86,6 +86,18 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   read/write/delete with `KeychainMatchAccount` whenever a service can hold more
   than one legitimate item, and derive the account from the environment being
   written — never from the live item, and never from a snapshot captured elsewhere.
+- A tool's credential can be a **set** of stores written as one unit, and kae must
+  switch the whole set. cursor-agent's `setAuthentication` writes the access token,
+  the refresh token and (for an api-key login) the api key together, and its logout
+  deletes all three; kae switched only the access token, so `cursor-agent status`
+  saw a consistent-looking pair from two accounts, and an api key left behind
+  re-minted the *previous* account's tokens on the next expiry. Enumerate what one
+  login writes — every item of every service the tool derives — before declaring the
+  artifacts, and when a sibling store is deliberately excluded (cursor's
+  `cursor-bedrock-*`, written by a separate upstream path) say so in
+  `docs/ADAPTERS.md` rather than leaving it unmentioned. A credential artifact is
+  never `IdentityOnly`: absent must apply as absent, or the previous account's token
+  survives the switch.
 - Upstream config values that select a **store** are an enum kae must model whole,
   including its default. codex's `cli_auth_credentials_store` defaults to `file`
   when absent and `auto` means *keyring first, file only if absent* — so mapping

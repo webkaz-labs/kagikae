@@ -2,12 +2,16 @@ package cmd
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/testutil/secrettest"
 )
 
 // keychainSim is a stateful security-CLI double holding one generic-password
@@ -115,4 +119,51 @@ func TestSwitchCoalescesKeychainReads(t *testing.T) {
 			t.Fatalf("switch did not apply side token: %s", sim.payload)
 		}
 	})
+}
+
+// cursor's three artifacts are all opaque tokens, and Freshness cannot tell an
+// access token from any other JWT — it dates whatever parses. accountFreshness
+// takes the first artifact that answers in sorted-name order, so which of the
+// three dates the account is decided by the sort ("access_token" < "api_key" <
+// "refresh_token"). Pin that: if the artifacts are ever renamed, or the iteration
+// stops being sorted, the account would be dated from a refresh token that
+// outlives the access token and a stale credential would read as fresh.
+func TestCursorFreshnessComesFromTheAccessToken(t *testing.T) {
+	ctx := context.Background()
+	app := testApp(t, nil)
+	be := secrettest.NewMem()
+
+	accessExp := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+	refreshExp := time.Date(2029, 1, 1, 0, 0, 0, 0, time.UTC)
+	acc := account.Account{
+		Version: 1, Tool: constants.ToolCursor, Name: "main",
+		Artifacts: map[string]account.Artifact{},
+	}
+	for name, exp := range map[string]time.Time{
+		"access_token":  accessExp,
+		"refresh_token": refreshExp, // a JWT too, so both would answer
+	} {
+		ref := account.SecretRef(constants.ToolCursor, "main", name)
+		if err := be.Set(ctx, ref, []byte(jwtWithExp(exp))); err != nil {
+			t.Fatal(err)
+		}
+		acc.Artifacts[name] = account.Artifact{
+			Kind: constants.KindKeychain, Target: name, SecretRef: ref, Present: true,
+		}
+	}
+
+	info, err := app.accountFreshness(ctx, be, acc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.Known || !info.ExpiresAt.Equal(accessExp) {
+		t.Fatalf("accountFreshness = %+v, want the access token's expiry %v", info, accessExp)
+	}
+}
+
+// jwtWithExp builds a minimal unsigned JWT carrying only exp.
+func jwtWithExp(exp time.Time) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
+	payload := base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, `{"exp":%d}`, exp.Unix()))
+	return header + "." + payload + ".sig"
 }

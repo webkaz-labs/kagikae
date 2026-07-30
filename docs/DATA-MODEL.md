@@ -224,7 +224,8 @@ stored separately) for the switch-time stale warning and the `doctor`
 `internal/freshness`: claude `claudeAiOauth.expiresAt` (Unix ms) +
 `refreshToken` + `refreshTokenExpiresAt` (Unix ms), codex
 `tokens.access_token`/`id_token` JWT `exp` + `refresh_token`, opencode `/openai`
-`expires` (Unix ms) + `refresh`, cursor's opaque JWT `exp` (no refresh token).
+`expires` (Unix ms) + `refresh`, cursor's opaque JWT `exp` (a refresh token exists
+and is switched, but cursor-agent never redeems it — see docs/ADAPTERS.md).
 copilot's `/lastLoggedInUser` and agy's encrypted blob carry no datable token
 (no `Freshness` method), so they are never flagged.
 

@@ -560,6 +560,22 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
 - [ ] Logged out (or `cursor-agent status` unparseable): `kae add cursor` exits
       `64` naming the explicit form.
 
+**Cursor full credential set** (macOS, two live `cursor-agent` logins — open):
+
+- [ ] `kae add cursor <name>` records `access_token` and `refresh_token` present;
+      `api_key` present only for an api-key login.
+- [ ] After `kae use cursor <other>`, `cursor-agent status` reports
+      `authenticated` (not `partially-authenticated`) **and** the other account,
+      and `security find-generic-password -s cursor-refresh-token` (attributes
+      only) shows an `mdat` newer than the switch.
+- [ ] A snapshot captured before the set was switched (no `refresh_token` entry,
+      e.g. by deleting that key from `account.toml`) refuses the
+      switch naming `kae add --no-login cursor <account>`, and the live items are
+      unchanged afterwards.
+- [ ] With an api key configured on one account only: after switching to the
+      account **without** one, `cursor-api-key` is absent (kae removed it) rather
+      than still holding the other account's key.
+
 Run with a committed tree and a throwaway/second account; record the result in
 the Release Acceptance Log below.
 
@@ -929,7 +945,8 @@ commit**. Verifying an assumption always means launching a **fresh** tool proces
 | agy | of the shared `gemini` keychain service, only account `antigravity` is agy's; siblings belong to the Gemini ecosystem and must never be read or written | switch, confirm a fresh agy session reports the applied account and a sibling `gemini` item is unchanged | 1.0.10 |
 | agy | the live account is resolved server-side from the opaque token and never persisted, so identity can only come from `~/.gemini/google_accounts.json` `.active` (or `--identity`) | after an Antigravity login, `kae add agy` auto-names from `.active`; no other on-disk source appears | 1.0.10 |
 | opencode | `/openai` is the subscription login, and sibling provider keys are independent credentials that must survive a switch | switch with an extra provider key present in `auth.json`; the sibling key is byte-identical afterwards | 1.17.4 |
-| cursor | the credential is a single opaque raw JWT in keychain `cursor-access-token` / `cursor-user`, round-tripped verbatim | switch, then `cursor-agent status` in a fresh process reports the applied account | 2026.06.16 (recorded here only; the adapter declares "" so doctor never flags it) |
+| cursor | the credential is **three** opaque items under account `cursor-user` — `cursor-access-token` (a raw JWT), `cursor-refresh-token`, `cursor-api-key` — written and cleared as one unit, round-tripped verbatim. The service names come from a build-time domain constant (`cursor`), not from the environment, so kae may model them as constants | switch, then `cursor-agent status` in a fresh process reports the applied account **and** `authenticated` (not `partially-authenticated`, which is what a missing refresh item gives). The unit-ness is a source fact: read `setAuthentication` / `clearAuthentication` in the installed bundle — `~/.local/share/cursor-agent/versions/<version>/index.js` is unminified-enough JS, so `grep -oa` on the credential-store class settles it without a login. Attribute-only `security find-generic-password -s cursor-refresh-token` (never `-w`) shows which items exist | 2026.06.16 (bundle source read, 2026-07-30) |
+| cursor | **cursor-agent never redeems the stored refresh token.** Its only path to a new access token exchanges an **api key** (`cursor-api-key`, else `CURSOR_API_KEY`) at `/auth/exchange_user_api_key`, and that write persists all three items. With no api key an expiring token is returned as-is and the request fails — so an expired snapshot needs an interactive login and `Freshness` is right to say so, but for this reason and not "there is no refresh token" | Same file: the refresh helper takes `{currentToken, ephemeralToken, isTokenExpiringSoon, refreshToken}` and its `refreshToken` closure returns null without an api key. Beware the red herring: the bundle's `grant_type=refresh_token` code is the **MCP client's** OAuth (in `cursor-agent-svc.js`), not cursor's own login — the same two-modules trap codex has. If a release starts redeeming it, cursor becomes refreshable and the stale warning has to learn about it | 2026.06.16 (bundle source read, 2026-07-30) |
 | cursor | `cursor-agent status` prints `✓ Logged in as <email>` on one line with exit 0 (what `Identity` parses) | run it while logged in; the marker, the single line, and the exit code all hold | 2026.06.16 |
 | copilot | per-account tokens coexist in the keychain, so repointing `/lastLoggedInUser` is the entire switch | after a switch, a fresh `copilot -p "say AUTH-OK" --no-color --allow-all-tools` acts as the other account (cross-account item still open — v0.7.0) | 1.0.61 |
 | copilot | `config.json` is JSONC; its comments, trailing commas, and formatting must survive the patch | diff after a switch **and** after `kae rollback`: the leading `//` comments and `trustedFolders` survive both | 1.0.61 |

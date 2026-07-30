@@ -19,7 +19,7 @@ Standalone public repository. Follow the bundled Go CLI standard in
 | [docs/ROADMAP.md](docs/ROADMAP.md) | long-term ordering changes |
 | [docs/RELEASE.md](docs/RELEASE.md) | active release target changes |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | before commit and release checks |
-| [docs/handoff-upstream-drift.md](docs/handoff-upstream-drift.md) | picking up the post-v0.12.0 audit findings, or building the upstream-drift audit skill — delete this file when both land |
+| [.claude/skills/upstream-auth-drift/](.claude/skills/upstream-auth-drift/SKILL.md) | an upstream tool may have changed how its authentication works: a doctor `upstream_version` / `identity_drift` warning, a tool upgrade, a "kae says it switched but the tool shows the old account" report, or a routine re-verification |
 
 ## Validation
 

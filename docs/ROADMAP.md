@@ -69,6 +69,43 @@ Follow-up from v0.8.4 (not yet scheduled):
   would make `mise run ai-switch <TAB>` available in every directory. Scope
   addition; design before implementing.
 
+## Upstream-drift automation — what is left
+
+The post-v0.12.0 audit and its follow-up are finished; the response workflow
+lives in the `upstream-auth-drift` skill
+(`.claude/skills/upstream-auth-drift/`), and the assumptions themselves in
+[VALIDATION.md](VALIDATION.md). Two of the five automation ideas shipped —
+version/date agreement with a doc-parsing test plus a six-month age check, and
+the offline contradiction check for codex's store. The remaining three, in the
+order each pays for itself:
+
+3. **Literal-count fingerprints**, per tool, wired into `mise run audit`: assert
+   every name kae models still exists in the bundle and is referenced as often.
+   Measured stable across claude 2.1.218/219/220 while the minified identifiers
+   around them churned, which is what makes the count a usable signal.
+4. **The shim harness**, table-driven and gated on the per-tool "does this tool
+   shell out to `/usr/bin/security`" answer (claude yes, agy yes, codex **no**,
+   cursor unverified). It should diff *the tool's* argv log against *kae's*,
+   which turns the naming-agreement check in VALIDATION.md into a script.
+5. **Behaviour-site hashes** for the three or four sites that encode real
+   behaviour, then a bundle-pair diff on upgrade. The
+   `oauthAccount?.profileFetchedAt` site hash was identical across three claude
+   releases even though the TTL identifier went `TSg` → `sxg`, so the hash sees
+   through minification where a name grep does not.
+
+**Confirmed clean, recorded so nobody re-audits** (four read-only audits,
+2026-07-30): backup-before-write ordering in the switch/run transaction
+(including restoring *all* tools when the state write fails); lock acquisition in
+canonical order (no deadlock); pin materializes directories before writing the
+fragment that points at them; the TOCTOU between a switch's `account.Load` and a
+concurrent `account rm` fails loudly and restores; atomic writes chmod before
+writing bytes; metadata files never carry secret bytes; `runner.Snippet` is never
+applied to a credential read's stdout; rebind round-trips and full re-pin are
+idempotent and self-healing; `run --env` fails loud on a missing env profile. The
+`security -w` argv exposure is a real but unavoidable macOS CLI constraint,
+already accepted in [SECURITY.md](SECURITY.md), and kae uses stdin wherever an
+alternative exists (`secret-tool`).
+
 ## Hardening backlog — daily-use robustness
 
 - **`run -i` inside a `pin -i` directory keeps a second credential copy**
@@ -205,11 +242,13 @@ Follow-up from v0.8.4 (not yet scheduled):
   definition. The store directory still stays (it holds sessions and settings a
   re-pin restores); only the invisible half, the keychain item, is removed
   ([CLI.md](CLI.md) § pin). What an index would still add is the *other* direction —
-  reaching a bound directory from outside it — and there is one concrete leak left
-  that needs it: a bound directory that is **deleted or renamed** can never be
-  stood in again, so its `isolation/<pin-id>` stores (and their keychain items) are
-  orphaned permanently, with no command able to find them. Same missing index as
-  account rename/remove (the handoff's §2.2).
+  reaching a bound directory from outside it — which **landed on 2026-07-31** as a
+  breadcrumb inside each store (`isolation/<pin-id>/dir`), so `kae account rm` /
+  `rename` / `kae profile rm` now name the directories they invalidate and
+  `kae doctor`'s `pin_stale` reports a bound directory that is gone. The keychain
+  items of a *deleted* bound directory are still unreachable — they are named by
+  the path that no longer exists — so the store can be removed but its items
+  cannot; `kae unpin --purge` before deleting a directory is the way to avoid it.
 - **Pinned directories never refresh their snapshot**: a bound directory's tool
   refreshes its own token in place, so kae's snapshot for that account ages. Now
   that kae writes and can read the per-directory store, a recapture path out of a

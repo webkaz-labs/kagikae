@@ -221,7 +221,11 @@ kae pin main                           # the bound directory now commits and gh'
 ```
 
 Bindings are opt-in per profile, delivered through the per-directory `kae pin`
-fragment, and reverted by `kae unpin`. `kae doctor` reports binding health and,
+fragment, and reverted by `kae unpin`. A bound directory records which directory
+it belongs to, so `kae account rm` / `rename` and `kae profile rm` name the
+directories they just invalidated instead of leaving them dangling, and
+`kae doctor` reports a bound directory that has been deleted or that binds an
+account you no longer have. `kae doctor` reports binding health and,
 inside a pinned directory, flags when the identity git would actually commit
 with has drifted from the binding — a stray `git config --local` or an inactive
 pin — the silent wrong-author commit this exists to prevent. With `--yes` (or

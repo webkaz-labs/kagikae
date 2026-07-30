@@ -25,7 +25,7 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
-# kae v0.12.0 (active target)
+# kae v0.12.0 (shipped 2026-07-30)
 
 Make the *identity* a switched artifact, and start watching the upstream
 behaviour kae depends on. Prompted by a live failure: `kae` switched claude's

@@ -1142,3 +1142,55 @@ func TestKeychainSpecsAreAccountScoped(t *testing.T) {
 	}
 }
 
+// TestRelativeConfigVariablesWarnPerTool covers 1.7: the divergence copilot and
+// opencode already warn about reaches claude and codex too, and it is *not* the
+// same divergence, which is why each tool measures its own before warning.
+//
+// claude uses CLAUDE_CONFIG_DIR verbatim (2.1.220 applies Unicode NFC and no path
+// resolution), so a relative value moves its file artifacts but leaves the
+// keychain item alone — the service name hashes the raw string. codex
+// canonicalizes CODEX_HOME against its own working directory before hashing the
+// keyring account, so a relative value moves both stores. Copying one warning to
+// the other tool would have shipped the wrong model for one of them.
+func TestRelativeConfigVariablesWarnPerTool(t *testing.T) {
+	wantEnvConflictWarning(t, claudeAdapter,
+		map[string]string{"CLAUDE_CONFIG_DIR": "relcfg"}, "CLAUDE_CONFIG_DIR is relative")
+	wantEnvConflictWarning(t, codexAdapter,
+		map[string]string{"CODEX_HOME": "relcfg"}, "CODEX_HOME is relative")
+
+	// The distinction is the point: only codex's says the keyring account moves,
+	// and only claude's says the keychain item does not.
+	claudeWarn := warningsOf(t, claudeAdapter, map[string]string{"CLAUDE_CONFIG_DIR": "relcfg"})
+	if !strings.Contains(claudeWarn, "keychain item is unaffected") {
+		t.Errorf("claude's warning must say the item is unaffected: %s", claudeWarn)
+	}
+	codexWarn := warningsOf(t, codexAdapter, map[string]string{"CODEX_HOME": "relcfg"})
+	if !strings.Contains(codexWarn, "keyring account") {
+		t.Errorf("codex's warning must say the keyring account moves too: %s", codexWarn)
+	}
+
+	// kae itself only ever sets these to absolute kae-owned paths, so the normal
+	// case must stay silent or every pinned shell warns.
+	for _, tc := range []struct {
+		adp  adapter.Adapter
+		vars map[string]string
+	}{
+		{claudeAdapter, map[string]string{"CLAUDE_CONFIG_DIR": t.TempDir()}},
+		{codexAdapter, map[string]string{"CODEX_HOME": t.TempDir()}},
+	} {
+		if got := warningsOf(t, tc.adp, tc.vars); strings.Contains(got, "is relative") {
+			t.Errorf("%s: an absolute value must not warn: %s", tc.adp.ID(), got)
+		}
+	}
+}
+
+// warningsOf joins one adapter's Detect warnings for an environment, so a test
+// can assert on their content without pinning their order.
+func warningsOf(t *testing.T, adp adapter.Adapter, vars map[string]string) string {
+	t.Helper()
+	info, err := adp.Detect(context.Background(), testEnv(t, "darwin", vars))
+	if err != nil {
+		t.Fatalf("detect %s: %v", adp.ID(), err)
+	}
+	return strings.Join(info.Warnings, "\n")
+}

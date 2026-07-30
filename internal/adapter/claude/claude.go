@@ -76,6 +76,33 @@ const EnvCustomOAuthURL = "CLAUDE_CODE_CUSTOM_OAUTH_URL"
 // nor the OS username is a usable account attribute.
 const fallbackKeychainAccount = "claude-code-user"
 
+// A **relative** CLAUDE_CONFIG_DIR resolves against whichever process reads it,
+// and kae is invoked from anywhere in the project while claude runs from the
+// user's shell. claude uses the value verbatim — at 2.1.220 the resolver is
+// `(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude")).normalize("NFC")`,
+// Unicode normalization and nothing else — so the two read different directories
+// whenever their working directories differ. There is no default to fall back to
+// while the variable is set, so kae keeps the value and warns.
+//
+// Half of it is safe, and saying so is what keeps the warning honest: the
+// keychain service hashes that same raw string, so both processes resolve the
+// **same item**. What diverges is every file artifact — the identity cache, and
+// the credential itself under the file driver.
+const relativeConfigDirWarning = "CLAUDE_CONFIG_DIR is relative: claude resolves it against its own" +
+	" working directory, so kae writes the identity cache (and, under the file driver, the" +
+	" credential) where claude does not read it — set an absolute path. The keychain item is" +
+	" unaffected: its service name hashes the variable's raw value, not a resolved path."
+
+// relativeConfigDirWarnings is the Detect/Doctor payload for a relative
+// CLAUDE_CONFIG_DIR: one warning, or none. Both surfaces read it so neither
+// can drift.
+func relativeConfigDirWarnings(env adapter.Env) []string {
+	if adapter.IsRelativeEnv(env, "CLAUDE_CONFIG_DIR") {
+		return []string{relativeConfigDirWarning}
+	}
+	return nil
+}
+
 // keychainAccountPattern is the validation Claude Code applies to the account
 // attribute before using it.
 var keychainAccountPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
@@ -329,6 +356,7 @@ func (c Claude) Detect(ctx context.Context, env adapter.Env) (adapter.Info, erro
 	}
 	info.AuthPresent = v.Present
 	info.Warnings = append(info.Warnings, adapter.EnvConflictWarnings(env, envConflicts)...)
+	info.Warnings = append(info.Warnings, relativeConfigDirWarnings(env)...)
 	return info, nil
 }
 
@@ -437,6 +465,7 @@ func (c Claude) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 		Status: constants.StatusOK, Message: "driver: " + info.Driver,
 	})
 	checks = append(checks, adapter.EnvConflictChecks(env, tool, envConflicts)...)
+	checks = append(checks, adapter.EnvConflictChecksFrom(tool, relativeConfigDirWarnings(env))...)
 	// The macOS driver is keychain-based, but a stray plaintext credential
 	// file with loose permissions deserves the warning there too.
 	if check, ok := adapter.FileModeCheck(env, tool, credentialsPath(env)); ok {

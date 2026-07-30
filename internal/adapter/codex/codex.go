@@ -74,6 +74,33 @@ func storeKey(env adapter.Env) string {
 	return fmt.Sprintf("cli|%x", sum[:8])
 }
 
+// A **relative** CODEX_HOME diverges harder than claude's variable, which is why
+// the two get different wording. codex canonicalizes its home before using it —
+// measured at 0.145.0: from one directory `CODEX_HOME=relcfg` reported
+// `/private/var/.../relcfg/config.toml`, i.e. resolved against **codex's** working
+// directory and symlink-resolved — and that canonical path is what its keyring
+// account hashes. So a relative value moves the `auth.json` store *and* the
+// `Codex Auth` item, where claude's moves only files.
+//
+// It is also the one case that can fail loudly: from a directory with no `relcfg`
+// in it, codex refuses to start ("CODEX_HOME points to \"relcfg\", but that path
+// does not exist"). The divergence is therefore silent only when a directory of
+// that name exists under both working directories — which is exactly the case a
+// warning is for.
+const relativeHomeWarning = "CODEX_HOME is relative: codex canonicalizes it against its own working" +
+	" directory, so both the store kae writes and the keyring account it derives from that path" +
+	" can differ from codex's — set an absolute path. codex refuses to start outright when the" +
+	" relative path does not exist in its working directory."
+
+// relativeHomeWarnings is the Detect/Doctor payload for a relative CODEX_HOME:
+// one warning, or none. Both surfaces read it so neither can drift.
+func relativeHomeWarnings(env adapter.Env) []string {
+	if adapter.IsRelativeEnv(env, "CODEX_HOME") {
+		return []string{relativeHomeWarning}
+	}
+	return nil
+}
+
 type Codex struct{}
 
 func init() { adapter.Register(Codex{}) }
@@ -241,6 +268,7 @@ func (c Codex) Artifacts(ctx context.Context, env adapter.Env) ([]artifact.Spec,
 
 func (c Codex) Detect(ctx context.Context, env adapter.Env) (adapter.Info, error) {
 	info := adapter.Info{Tool: constants.ToolCodex, Driver: constants.DriverCodexAuthJSON, Warnings: []string{}}
+	info.Warnings = append(info.Warnings, relativeHomeWarnings(env)...)
 	if _, err := env.LookPath("codex"); err == nil {
 		info.BinaryPresent = true
 	}
@@ -388,8 +416,9 @@ func (c Codex) Doctor(ctx context.Context, env adapter.Env) []adapter.Check {
 	if err == nil {
 		var specs []artifact.Spec
 		if specs, err = c.Artifacts(ctx, env); err == nil {
-			return append([]adapter.Check{adapter.BinaryCheck(env, tool, "codex")},
+			checks := append([]adapter.Check{adapter.BinaryCheck(env, tool, "codex")},
 				storeChecks(ctx, tool, store, specs[0])...)
+			return append(checks, adapter.EnvConflictChecksFrom(tool, relativeHomeWarnings(env))...)
 		}
 	}
 	// configuredStore and Artifacts fail for an unswitchable store mode, an

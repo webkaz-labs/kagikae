@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
+	"github.com/webkaz-labs/kagikae/internal/adapter/cursor"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -83,19 +84,19 @@ func TestApplySnapshotRefusesMissingArtifactBeforeAnyWrite(t *testing.T) {
 	spec := func(name, service string) artifact.Spec {
 		return artifact.Spec{
 			Name: name, Kind: constants.KindKeychain,
-			Target: service, KeychainAccount: "cursor-user",
+			Target: service, KeychainAccount: cursor.KeychainAccount,
 		}
 	}
 	plan := toolPlan{
 		Tool: constants.ToolCursor, Account: "main",
 		Specs: []artifact.Spec{
-			spec("access_token", "cursor-access-token"),
-			spec("refresh_token", "cursor-refresh-token"),
+			spec("access_token", cursor.KeychainService),
+			spec("refresh_token", cursor.KeychainServiceRefresh),
 		},
 		Meta: account.Account{
 			Tool: constants.ToolCursor, Name: "main",
 			Artifacts: map[string]account.Artifact{"access_token": {
-				Kind: constants.KindKeychain, Target: "cursor-access-token",
+				Kind: constants.KindKeychain, Target: cursor.KeychainService,
 				SecretRef: ref, Present: true,
 			}},
 		},

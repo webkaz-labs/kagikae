@@ -17,12 +17,13 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
-// binaryName is the Cursor CLI executable. The keychain names below are all
-// derived from one credential "domain" cursor-agent holds as a build-time
-// constant ("cursor" in every release build, "cursor-dev" in a dev build):
-// `<domain>-access-token`, `<domain>-refresh-token`, `<domain>-api-key`, all under
-// account `<domain>-user`. Unlike claude's and codex's, this is a constant and not
-// a rule — nothing in the environment moves it — so kae may model it as one.
+// binaryName is the Cursor CLI executable. cursor-agent builds every keychain
+// name below from one credential "domain" it holds as a build-time constant
+// ("cursor" in a release build, "cursor-dev" in a dev build) —
+// `<domain>-access-token`, `<domain>-refresh-token`, `<domain>-api-key`, under
+// account `<domain>-user`. Unlike claude's and codex's, that is a constant and not
+// a rule (nothing in the environment moves it), which is why kae may spell the
+// resulting names out.
 //
 // The three services are one credential: cursor-agent's setAuthentication writes
 // access + refresh (+ api key, when the login had one) together, and its
@@ -30,11 +31,10 @@ import (
 // (docs/ADAPTERS.md § Cursor).
 const (
 	binaryName             = "cursor-agent"
-	keychainDomain         = "cursor"
-	KeychainService        = keychainDomain + "-access-token"
-	KeychainServiceRefresh = keychainDomain + "-refresh-token"
-	KeychainServiceAPIKey  = keychainDomain + "-api-key"
-	KeychainAccount        = keychainDomain + "-user"
+	KeychainService        = "cursor-access-token"
+	KeychainServiceRefresh = "cursor-refresh-token"
+	KeychainServiceAPIKey  = "cursor-api-key"
+	KeychainAccount        = "cursor-user"
 )
 
 type Cursor struct{}
@@ -161,10 +161,13 @@ func (Cursor) Identity(ctx context.Context, _ adapter.Env) (string, error) {
 // if a release starts redeeming it, this becomes "refreshable" and the warning has
 // to learn about the refresh token.
 //
-// Called with one artifact payload at a time, so it must reject what it cannot
-// date: only a raw JWT with an exp answers. That makes access_token the answer in
-// practice because it sorts first among cursor's artifact names
-// (account.ArtifactNames sorts, and "access_token" < "api_key" < "refresh_token").
+// Called with one artifact payload at a time and with no idea which artifact it
+// is, so the *set* has a tie-break: cmd.accountFreshness takes the first artifact
+// that answers, in sorted-name order, and "access_token" < "api_key" <
+// "refresh_token". Nothing here can tell an access token from another JWT — if a
+// release ever shipped a JWT-shaped refresh token, that order is the only thing
+// choosing between them — so the contract is pinned by
+// cmd.TestCursorFreshnessComesFromTheAccessToken rather than left to the alphabet.
 func (Cursor) Freshness(payload []byte) freshness.Info {
 	if exp, ok := freshness.JWTExpiry(strings.TrimSpace(string(payload))); ok {
 		return freshness.Info{Known: true, ExpiresAt: exp}

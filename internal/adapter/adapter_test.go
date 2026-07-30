@@ -428,7 +428,10 @@ func TestClaudeWarnsOnHostManagedProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(info.Warnings) != 2 {
+	warned := strings.Join(info.Warnings, "\n")
+	if len(info.Warnings) != 2 ||
+		!strings.Contains(warned, "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST") ||
+		!strings.Contains(warned, "CLAUDE_CODE_HOST_CREDS_FILE") {
 		t.Fatalf("expected both host-managed warnings: %+v", info.Warnings)
 	}
 }

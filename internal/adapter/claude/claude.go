@@ -54,10 +54,11 @@ const EnvSecureStorageDir = "CLAUDE_SECURESTORAGE_CONFIG_DIR"
 // ("Claude Code" + suffix + "-credentials" + the per-config-dir suffix) *and*
 // inside the identity file name (".claude-custom-oauth.json", in the same config
 // dir claudeJSONPath resolves). Measured on 2.1.220 from the bundle: the suffix
-// comes from one function whose only environment-visible input is this variable
-// (`if (process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL) return "-custom-oauth"`), and
-// claude enumerates all four suffixes ("", "-staging-oauth", "-local-oauth",
-// "-custom-oauth") when it looks for its own identity files.
+// comes from one function whose only environment-visible input is this variable,
+// and claude enumerates all four suffixes ("", "-staging-oauth", "-local-oauth",
+// "-custom-oauth") when it looks for its own identity files. docs/VALIDATION.md
+// § "Upstream Behaviour Assumptions" carries the source lines and the procedure
+// that reads them.
 //
 // The empty string is *not* the dangerous case here, unlike EnvSecureStorageDir:
 // claude tests this value for truthiness, so an empty value changes nothing and

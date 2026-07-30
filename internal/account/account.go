@@ -56,7 +56,10 @@ type Account struct {
 	Artifacts  map[string]Artifact `toml:"artifacts"`
 }
 
-// SecretRef builds the secret-backend key for one account artifact.
+// SecretRef builds the secret-backend key for one account artifact. This is the
+// only un-prefixed key namespace, which is how secret.AccountKey tells it apart
+// from the backup, companion, and env-profile ones — so a tool name must never
+// collide with a secret.NS* constant.
 func SecretRef(tool, account, artifactName string) string {
 	return tool + "/" + account + "/" + artifactName
 }

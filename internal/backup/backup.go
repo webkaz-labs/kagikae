@@ -71,7 +71,7 @@ type Meta struct {
 
 // SecretRef builds the secret-backend key for one backed-up artifact.
 func SecretRef(id, tool, name string) string {
-	return "backup/" + id + "/" + tool + "/" + name
+	return secret.NSBackup + "/" + id + "/" + tool + "/" + name
 }
 
 // NewID returns a unique backup id under dir, e.g. 20260611T012345Z, with a

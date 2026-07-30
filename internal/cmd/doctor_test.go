@@ -5,7 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/backup"
+	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/envprofile"
 )
 
 // findCheck returns the first check with the given code, or false.
@@ -101,5 +104,33 @@ func TestDoctorReportsSecretOrphan(t *testing.T) {
 	}
 	if !strings.Contains(msg, "ghost") || !strings.Contains(msg, "kae account rm") {
 		t.Fatalf("orphan message should name the account and kae account rm: %q", msg)
+	}
+}
+
+// §D: keys of the prefixed namespaces have no snapshot dir by design, so they
+// are not orphans. Reading them as <tool>/<account> warned forever on every
+// companion binding and env-profile variable, with a remediation
+// (`kae account rm companion <profile>`) naming a tool that does not exist.
+func TestDoctorIgnoresNonAccountSecretNamespaces(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+
+	be, err := app.secretBackend()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := []string{
+		companion.SecretRef("main", "git", "email"),
+		envprofile.SecretRef("claude", "main", "API_KEY"),
+		backup.SecretRef("20260101T000000Z", "claude", "claude_ai_oauth"),
+	}
+	for _, key := range keys {
+		if err := be.Set(ctx, key, []byte("payload")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report := buildDoctor(ctx, app, "", false)
+	if msg, ok := findCheck(report, constants.CheckSecretOrphan); ok {
+		t.Fatalf("no namespace but the account one can be orphaned: %q", msg)
 	}
 }

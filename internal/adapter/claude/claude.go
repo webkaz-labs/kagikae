@@ -393,10 +393,13 @@ func (Claude) Identity(_ context.Context, env adapter.Env) (string, error) {
 // cache) must report Known=false rather than a zero expiry, which would read as
 // long expired.
 //
-// refreshTokenExpiresAt is persisted next to expiresAt and matters because a
-// Claude Code refresh token now lives days, not a month: without it, an expired
-// access token plus any refresh string reads as "recoverable" long after it is
-// not. Claude Code itself warns on it (it surfaces the remaining days inside 3).
+// refreshTokenExpiresAt is persisted next to expiresAt and is the **login's own
+// deadline**, not a second rolling token: expiresAt moves forward on every refresh,
+// this one is set when `/login` runs and stays put. Claude Code warns on exactly it
+// ("Your login expires in N days · run /login to renew", inside 3 days). It matters
+// because without it an expired access token plus any refresh string reads as
+// "recoverable" long after the login is not. See the claude row in
+// docs/VALIDATION.md for the lifetime and how to measure it.
 //
 // The tombstone is the other half. When a refresh fails with invalid_grant,
 // Claude Code overwrites the credential in place with blank tokens and

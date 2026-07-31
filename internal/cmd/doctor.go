@@ -339,16 +339,11 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 // not load. Either way kae believes it applied an account it cannot see, and
 // `kae status` displays a name that may not be there.
 //
-// Two ways to get here, and the first is inside kae. `kae account rename` updates
-// `state.Active` in its state mutation and only *afterwards* copies the secret
-// payloads and writes the renamed snapshot dir, so a failure in between — a secret
-// backend that errors, a killed process — leaves the active pointer naming a
-// snapshot that does not exist yet (docs/ROADMAP.md carries the ordering fix;
-// `kae account rm` already clears the pointer before removing anything, which is
-// the safe direction). The second is a foreign writer: a smoke run that isolated
-// HOME, XDG_CONFIG_HOME and XDG_DATA_HOME but inherited a real XDG_STATE_HOME
-// captured a fixture account straight into a live state file on 2026-07-31, and
-// doctor reported nothing wrong while `kae status` named an account that was gone.
+// It compares the two records rather than watching for a cause, because several
+// paths reach this state — an interrupted `kae account rename`, a `kae rollback`
+// restoring a backup's stale `active_before`, a writer outside kae altogether — and
+// that list is not closed. **docs/CLI.md § doctor owns it; do not re-enumerate it
+// here**, or the next cause has to be added in two places and will be added to one.
 //
 // Offline and backend-free — it compares two things kae has already loaded, which
 // is why it is wired in beside the other backend-free checks rather than with the
@@ -374,8 +369,11 @@ func (app *App) activeOrphanChecks(toolFilter string) []adapter.Check {
 	}
 	checks := []adapter.Check{}
 	for _, tool := range constants.Tools {
+		if toolFilter != "" && tool != toolFilter {
+			continue
+		}
 		name := st.Active[tool]
-		if name == "" || (toolFilter != "" && tool != toolFilter) {
+		if name == "" {
 			continue
 		}
 		_, found, lerr := account.Load(app.Paths.AccountDir(tool, name))

@@ -151,9 +151,8 @@ const (
 	// an account that no longer does.
 	CheckPinStale = "pin_stale"
 	// CheckActiveOrphan: kae cannot confirm the account state.json records as
-	// active — no snapshot by that name, a snapshot whose metadata will not parse,
-	// or a state file it cannot read at all. An interrupted `kae account rename`
-	// can produce the first; so can a writer outside kae.
+	// active — no snapshot by that name, one whose metadata will not parse, or a
+	// state file it cannot read at all.
 	CheckActiveOrphan = "active_orphan"
 )
 

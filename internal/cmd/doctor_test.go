@@ -259,11 +259,11 @@ func TestCredentialFreshnessMessagesNeverCarryTheToken(t *testing.T) {
 }
 
 // state.json naming an account that has no snapshot: kae believes it applied
-// something that does not exist. Two causes (see activeOrphanChecks) — an
-// interrupted `kae account rename`, and a writer outside kae. This test covers the
-// second, which is what a smoke run with an un-isolated XDG_STATE_HOME did on
-// 2026-07-31, while doctor reported no problems and `kae status` displayed the
-// phantom account.
+// something that does not exist. Several causes reach it (see activeOrphanChecks);
+// this test writes the state directly, standing in for all of them, and matches
+// what a writer outside kae leaves behind — a smoke run with an un-isolated
+// XDG_STATE_HOME did exactly this on 2026-07-31, while doctor reported no problems
+// and `kae status` displayed the phantom account.
 func TestDoctorReportsAnActiveAccountWithNoSnapshot(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()

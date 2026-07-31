@@ -157,6 +157,24 @@ alternative exists (`secret-tool`).
   the doctor check, and reordering a different command's write sequence deserves its
   own change. `doctor`'s new `active_orphan` reports the state if it happens.
 
+- **`kae rollback` restores an active pointer without checking its snapshot is still
+  there** (recorded 2026-07-31, **not fixed** — the sibling of the entry above). The
+  rollback's state mutation writes `st.Active[tool] = meta.ActiveBefore[tool]`
+  unconditionally (`internal/cmd/backup.go`), and a backup taken before an
+  `account rm`/`rename` keeps the name it had at capture time — so rolling back to it
+  names a snapshot that is gone and the next `kae use` fails with `account
+  <tool>/<name> is not captured yet` (`loadPlansWithSnapshots`, `internal/cmd/ops.go`).
+  `reapplyHint` (same file) already guards that same value
+  with an `account.Load` existence check, but only to shape a hint string; the live
+  pointer gets no guard. The fix is that guard at the write: record the name when its
+  snapshot loads, otherwise `delete` the entry so nothing claims an account that does
+  not exist. It is a **behaviour change to `kae rollback`** — one that would stop
+  restoring a stale pointer at all — which is why v0.15.3 documents and detects the
+  state (`active_orphan`) rather than changing rollback in a release about something
+  else. Decide at the same time whether `account rm`/`rename` should rewrite
+  `active_before` in existing backups, which is the other end of the same gap
+  ([DATA-MODEL.md](DATA-MODEL.md) § Backups).
+
 - **`applySnapshot`'s refusals could be raised one step earlier, in
   `loadPlansWithSnapshots`** (recorded 2026-07-31, deliberately not done). Both
   refusals — a snapshot missing an artifact today's adapter declares

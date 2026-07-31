@@ -326,7 +326,48 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 			}
 		}
 	}
+	checks = append(checks, app.activeOrphanChecks(toolFilter)...)
 	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)
+}
+
+// activeOrphanChecks reports a tool whose recorded active account has no captured
+// snapshot — kae believing it applied an account that does not exist.
+//
+// Every kae path keeps these two in step (`kae account rm` decides *inside* the
+// state mutation whether the account it removes is still active, and a switch only
+// records an account it just applied), so reaching this state means something
+// outside kae wrote state.json. That is not hypothetical: a smoke run that isolated
+// HOME, XDG_CONFIG_HOME and XDG_DATA_HOME but inherited a real XDG_STATE_HOME
+// captured a fixture account straight into a live state file, and doctor reported
+// nothing wrong while `kae status` named an account that was not there.
+//
+// Offline and backend-free — it compares two things kae has already loaded. Warn,
+// never error: the recorded name is bookkeeping, and the live credential it refers
+// to may well still be fine.
+func (app *App) activeOrphanChecks(toolFilter string) []adapter.Check {
+	st, err := app.loadState()
+	if err != nil {
+		return nil // the config/state check owns an unreadable state file
+	}
+	checks := []adapter.Check{}
+	for _, tool := range constants.Tools {
+		name := st.Active[tool]
+		if name == "" || (toolFilter != "" && tool != toolFilter) {
+			continue
+		}
+		if _, found, lerr := account.Load(app.Paths.AccountDir(tool, name)); lerr != nil || found {
+			continue
+		}
+		checks = append(checks, adapter.Check{
+			Tool: tool, Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
+			Message: fmt.Sprintf(
+				"state records %s/%s as active but no such snapshot exists, so kae cannot say which %s account is live; "+
+					"pick one with: kae use %s <account> (kae ls shows the captured ones)",
+				tool, name, tool, tool,
+			),
+		})
+	}
+	return checks
 }
 
 // orphanChecks warns when a stored secret item has no matching snapshot dir (a

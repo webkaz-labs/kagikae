@@ -48,6 +48,17 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
 `t.TempDir()` HOME/XDG roots, and smoke checks export a temp HOME
 ([docs/VALIDATION.md](docs/VALIDATION.md)).
 
+**A temp `HOME` is not enough, and this has drawn blood.** `paths.Resolve` reads
+`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG_RUNTIME_DIR`
+*independently*, and an absolute value already in the environment **wins over the
+temp HOME** — so a shell that exports HOME plus only the first two still resolves
+`state.json` under the operator's real `~/.local/state`. A smoke run shaped exactly
+that way wrote a fixture account into a live `state.json` (2026-07-31), leaving
+`active.claude` pointing at an account that did not exist. Isolate **every** root,
+on separate export lines, and take the ready-made preamble from
+docs/VALIDATION.md § "Smoke Checks" rather than writing a new one — the omission
+happened while editing that very file, next to two correct blocks.
+
 ## Implementation Boundaries
 
 - Keep `main.go` as dispatch only; handlers and report builders in

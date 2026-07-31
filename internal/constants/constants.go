@@ -150,6 +150,10 @@ const (
 	// CheckPinStale: a directory bound with `kae pin` no longer exists, or binds
 	// an account that no longer does.
 	CheckPinStale = "pin_stale"
+	// CheckActiveOrphan: state.json records an active account that has no captured
+	// snapshot. kae's own commands keep the two in step, so reaching this means
+	// something outside kae wrote the state file.
+	CheckActiveOrphan = "active_orphan"
 )
 
 // Credential freshness states, the `credential` field of a `kae ls` /

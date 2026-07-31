@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/envprofile"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 // findCheck returns the first check with the given code, or false.
@@ -252,5 +253,60 @@ func TestCredentialFreshnessMessagesNeverCarryTheToken(t *testing.T) {
 				t.Fatalf("the switch-time warning leaked a credential value: %q / %q", stdout, stderr)
 			}
 		})
+	}
+}
+
+// state.json naming an account that has no snapshot: kae believes it applied
+// something that does not exist. Every kae path keeps the two in step, so this only
+// happens when something outside kae writes the state file — which is exactly what a
+// smoke run with an un-isolated XDG_STATE_HOME did on 2026-07-31, while doctor
+// reported no problems and `kae status` displayed the phantom account.
+func TestDoctorReportsAnActiveAccountWithNoSnapshot(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main-uuid")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+
+	// Write the state a foreign writer would leave behind.
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Active[constants.ToolClaude] = "ghost"
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+
+	report := buildDoctor(ctx, app, "", false)
+	msg, ok := findCheck(report, constants.CheckActiveOrphan)
+	if !ok {
+		t.Fatalf("a dangling active account must be reported, got %+v", report.Checks)
+	}
+	for _, want := range []string{"claude/ghost", "kae use claude"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message missing %q: %q", want, msg)
+		}
+	}
+	for _, c := range report.Checks {
+		if c.Code == constants.CheckActiveOrphan && c.Status != constants.StatusWarn {
+			t.Fatalf("active_orphan must be warn-level, got %q", c.Status)
+		}
+	}
+	// A real active account is silent, and so is a tool with none recorded.
+	st.Active[constants.ToolClaude] = "main"
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan); ok {
+		t.Fatal("a captured active account must not be reported")
+	}
+	delete(st.Active, constants.ToolClaude)
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan); ok {
+		t.Fatal("no recorded active account is not a finding")
 	}
 }

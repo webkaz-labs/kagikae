@@ -774,7 +774,8 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `unsupported`, `file_mode`, `credential_stale`, `credential_expiring`,
 `secret_orphan`,
 `companion_missing`, `companion_binary`, `companion_drift`,
-`companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`.
+`companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`,
+`active_orphan`.
 
 Credential-health checks (warn-level):
 - `credential_stale`: a captured snapshot cannot open a session again without an
@@ -830,6 +831,14 @@ Credential-health checks (warn-level):
   The same lead-time notice is emitted at switch time next to the stale one
   (stderr, before the write, surviving `--quiet`), but it is **not** counted in
   the "N tools need a re-login before use" roll-up: that switch works today.
+- `active_orphan`: `state.json` records an account as active for a tool, but no
+  snapshot by that name exists — so kae cannot say which account is live, and
+  `kae status` would display a name that is not there. Offline and backend-free.
+  Every kae path keeps the two in step (`kae account rm` decides *inside* the state
+  mutation whether the account it removes is still active; a switch only records one
+  it just applied), so reaching this means something outside kae wrote the state
+  file. Names `kae use <tool> <account>` to settle it. Warn, never error: the
+  recorded name is bookkeeping and the live credential may well be fine.
 - `secret_orphan`: a stored secret item **of the account namespace**
   (`<tool>/<account>/<artifact>`) has no matching snapshot dir — names
   `kae account rm`. Backup, companion, and env-profile keys have no snapshot dir

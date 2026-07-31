@@ -51,9 +51,16 @@ printf '{"claudeAiOauth":{"accessToken":"tok-A"}}' > "$HOME/.claude/.credentials
 go build -o /tmp/kae .
 # Two separate export lines: in `export A=new B=$A`, $A expands to A's OLD
 # value, so a single line would point every XDG_* path at the real HOME.
+#
+# And **every** root, not just HOME: paths.Resolve reads XDG_CONFIG_HOME,
+# XDG_DATA_HOME, XDG_STATE_HOME and XDG_RUNTIME_DIR independently, and an
+# absolute value in the real environment wins over the temp HOME. A smoke run
+# that set HOME and the first two but inherited a real XDG_STATE_HOME wrote a
+# fixture account into the operator's live state.json (2026-07-31).
 export HOME=$(mktemp -d)
 export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share \
-       XDG_STATE_HOME=$HOME/.local/state NO_COLOR=1
+       XDG_STATE_HOME=$HOME/.local/state XDG_RUNTIME_DIR=$HOME/.local/run \
+       NO_COLOR=1
 
 /tmp/kae init
 /tmp/kae doctor --json
@@ -183,7 +190,8 @@ and `secret_backend = "file"` throughout.
 go build -o /tmp/kae .
 export HOME=$(mktemp -d)
 export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share \
-       XDG_STATE_HOME=$HOME/.local/state NO_COLOR=1
+       XDG_STATE_HOME=$HOME/.local/state XDG_RUNTIME_DIR=$HOME/.local/run \
+       NO_COLOR=1
 export KAE_CLAUDE_DRIVER=file
 mkdir -p "$XDG_CONFIG_HOME/kagikae"
 printf 'version = 1\n[security]\nsecret_backend = "file"\nbackup_keep = 30\n' \
@@ -873,9 +881,13 @@ the file driver and the file backend — no real `$HOME`, no real keychain. Dead
 are computed from `date +%s` so the fixtures stay valid whenever this is re-run.
 
 ```bash
-S=$(mktemp -d); export HOME="$S/home" \
-  XDG_CONFIG_HOME="$S/home/.config" XDG_DATA_HOME="$S/home/.local/share"
-mkdir -p "$HOME/.claude" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"
+# Every root paths.Resolve reads, on separate export lines (see the note in
+# "Smoke Checks"). Missing XDG_STATE_HOME is what wrote a fixture account into a
+# real state.json on 2026-07-31.
+export HOME=$(mktemp -d)
+export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share \
+       XDG_STATE_HOME=$HOME/.local/state XDG_RUNTIME_DIR=$HOME/.local/run
+mkdir -p "$HOME/.claude" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"
 export KAE_CLAUDE_DRIVER=file
 /tmp/kae init
 printf 'default_profile = "main"\n[security]\nsecret_backend = "file"\n[profiles.main]\naccounts = { claude = "main" }\n' \
@@ -907,7 +919,7 @@ cred 1609459200000;      /tmp/kae add --no-login claude dead      # expired in 2
 
 # --- C. a bound directory's own credential (the sweep) ---
 cred "$FAR"; /tmp/kae add --no-login claude main
-P="$S/project"; mkdir -p "$P"; cd "$P"; /tmp/kae pin main
+P="$HOME/project"; mkdir -p "$P"; cd "$P"; /tmp/kae pin main
 STORE=$(find "$XDG_DATA_HOME/kagikae/isolation" -name '.credentials.json' | head -1)
 /tmp/kae doctor --json     # assert: NO credential_* check (the copy is healthy)
 printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}' > "$STORE"

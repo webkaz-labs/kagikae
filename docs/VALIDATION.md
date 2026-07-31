@@ -866,6 +866,77 @@ expects — keep the two in sync.
 - [ ] `mise x github:webkaz-labs/kagikae@v0.9.0 -- kae version` resolves the
       release archive and runs.
 
+## v0.15.0 surfaces — credential lead time, inventory freshness, bound directories
+
+All three are read-only reporting, so the whole block runs against a temp HOME with
+the file driver and the file backend — no real `$HOME`, no real keychain. Deadlines
+are computed from `date +%s` so the fixtures stay valid whenever this is re-run.
+
+```bash
+S=$(mktemp -d); export HOME="$S/home" \
+  XDG_CONFIG_HOME="$S/home/.config" XDG_DATA_HOME="$S/home/.local/share"
+mkdir -p "$HOME/.claude" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"
+export KAE_CLAUDE_DRIVER=file
+/tmp/kae init
+printf 'default_profile = "main"\n[security]\nsecret_backend = "file"\n[profiles.main]\naccounts = { claude = "main" }\n' \
+  > "$XDG_CONFIG_HOME/kagikae/config.toml"
+NOW=$(date +%s); SOON=$(( (NOW + 3*86400) * 1000 )); FAR=$(( (NOW + 60*86400) * 1000 ))
+cred() { printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%s}}' "$1" \
+  > "$HOME/.claude/.credentials.json"; }
+
+# --- A. the three bands, on account snapshots ---
+cred "$SOON";                 /tmp/kae add --no-login claude soon
+cred "$FAR";                  /tmp/kae add --no-login claude healthy
+cred 1609459200000;           /tmp/kae add --no-login claude dead   # refresh expired 2021
+/tmp/kae doctor claude --json
+#   assert: {code:"credential_expiring", status:"warn"} for "soon", naming the day
+#           count and `kae add --restore claude soon`
+#   assert: {code:"credential_stale",    status:"warn"} for "dead"
+#   assert: NO credential_* check for "healthy" (a month out stays silent)
+/tmp/kae doctor claude --json >/dev/null; echo "exit=$?"   # assert: 0 (warn never fails)
+
+# --- B. the inventory column (ls / accounts / status) ---
+/tmp/kae ls --no-color        # assert: a Credential column reading
+                              #   dead=re-login now, healthy=ok, soon=N day(s) left
+/tmp/kae ls --json
+#   assert: schema_version still 1; each row has additive credential + relogin_by
+#   assert: relogin_by parses as RFC3339 and is the *refresh* deadline, not expiresAt
+
+# --- C. a bound directory's own credential (the sweep) ---
+cred "$FAR"; /tmp/kae add --no-login claude main
+P="$S/project"; mkdir -p "$P"; cd "$P"; /tmp/kae pin main
+STORE=$(find "$XDG_DATA_HOME/kagikae/isolation" -name '.credentials.json' | head -1)
+/tmp/kae doctor --json     # assert: NO credential_* check (the copy is healthy)
+printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}' > "$STORE"
+/tmp/kae doctor --json
+#   assert: {code:"credential_stale"} whose message says `bound to <P>` and
+#           `cd <P> && claude /login` — and NOT `kae pin` / `kae add`
+#   assert: the healthy claude/main *snapshot* is not reported alongside it
+/tmp/kae unpin
+/tmp/kae doctor --json     # assert: silent again — unpin keeps the store on
+                           # purpose, so nothing points at it and "bound to" would lie
+
+# --- D. kae pin still writes a real store path in both modes (modeStoreDir) ---
+cd "$P" && /tmp/kae pin main    && grep CLAUDE_CONFIG_DIR .config/mise/conf.d/kagikae.toml
+cd "$P" && /tmp/kae pin -i main && grep CLAUDE_CONFIG_DIR .config/mise/conf.d/kagikae.toml
+#   assert: non-empty, ending .../claude/shared and .../claude/isolated/main/config
+#           respectively, and both directories exist
+```
+
+**PASSED 2026-07-31** on the pre-release binary: A, B, C and D all as asserted.
+
+Two things this block deliberately pins, because each is a failure that looks like
+success:
+
+- **`credential_expiring` must be silent for a healthy account.** The seven-day
+  lead time is only useful while it is a minority of the credential's life; if it
+  ever fires for every account, the check is worse than absent. See the claude row
+  in "Upstream Behaviour Assumptions" for the upstream condition it rides on.
+- **The unpinned case must be silent.** `kae unpin` keeps the store, so the
+  breadcrumb still names the directory — reporting its credential would name a
+  directory that is not bound and a remedy that lands where nothing reads. The
+  sweep therefore reads the mise **fragment**, not the store tree.
+
 ## companion-auth surfaces
 
 Companion-auth lockstep (`kae companion`, delivered per-directory by `kae pin`).
@@ -952,7 +1023,7 @@ commit**. Verifying an assumption always means launching a **fresh** tool proces
 | The credential alone authenticates: applying `/claudeAiOauth` (keychain payload or `.credentials.json`) is the whole login | `kae use claude <acct>`, then `claude -p "say AUTH-OK" </dev/null` in a **new** process returns a reply, not "Not logged in" |
 | `/oauthAccount`'s self-heal is **TTL-gated**: claude refetches the profile and rewrites `emailAddress` only when the cached object is incomplete or its `profileFetchedAt` is over **24h** old, and a token refresh renews that timestamp without rewriting `emailAddress` / `accountUuid` | `kae use claude <other>` with a snapshot captured **within** 24h, launch claude, diff `~/.claude.json`: `oauthAccount.emailAddress` is the value kae wrote and does **not** revert. Then age it (`profileFetchedAt` older than 24h) and launch claude again: it now refetches and rewrites `emailAddress` + `profileFetchedAt` on its own. If the TTL ever stops applying, kae's identity switch becomes redundant (not harmful) — record that here rather than dropping the artifact silently |
 | `claude /login` rewrites `accountUuid` / `emailAddress` / `organizationUuid` unconditionally (no TTL), and a token **refresh** rewrites none of them | Log in to another account with `claude /login`, diff `~/.claude.json`: those three keys change. Let a session run long enough to refresh the token and diff again: `profileFetchedAt` and the plan fields change, those three do not. kae's `IdentityKeys` (the keyed identity comparison) is exactly this set — if a refresh starts rewriting them, `identity_drift` will warn on correct switches again |
-| A **refresh token** carries its own expiry in `refreshTokenExpiresAt` and lives on the order of **days** (Claude Code itself warns inside the last 3) | Read `refreshTokenExpiresAt` from a fresh login's credential and subtract `expiresAt`'s date: measured ≈2 days on 2.1.220 (it was ≈1 month earlier). kae's "recoverable without a re-login" predicate depends on it; if the field disappears, kae falls back to presence alone and under-warns |
+| A **refresh token** carries its own expiry in `refreshTokenExpiresAt`, and each refresh mints a new one — so the number is a **rolling window**, not the credential's life (Claude Code itself warns inside the last 3 days) | Read `refreshTokenExpiresAt` from a fresh login's credential and subtract `expiresAt`'s date: measured ≈2 days on 2.1.220 (it was ≈1 month earlier). **Do not read that 2 days as the time until a re-login**: because a refresh renews the token, a credential in regular use stays alive far longer, and the operator reports the real cadence as roughly a month with `kae doctor` staying quiet (confirmed 2026-07-31). Two kae behaviours ride on this. The "recoverable without a re-login" predicate needs the field to exist at all: if it disappears, kae falls back to presence alone and under-warns. And `credential_expiring`'s **seven-day lead time** assumes the effective lifetime is comfortably longer than seven days — if a release ever made the window genuinely short and non-renewing, that check would be permanently lit for every claude account, which is worse than not having it. Re-measure by taking `refreshTokenExpiresAt` from a credential that has been in daily use for a week, not from a fresh login |
 | A refresh that fails with `invalid_grant` makes claude **tombstone** the credential in place: `accessToken: ""`, `refreshToken: ""`, `expiresAt: 0` | Let a credential's refresh token expire, run claude, then read the credential: it is blanked rather than left alone. kae reads that as invalid, not as "no expiry recorded"; if upstream instead deletes the item, the logged-out guards cover it |
 | The keychain payload must round-trip **verbatim**; a re-serialized payload makes Claude Code reject the credential | Capture → apply → fresh-process auth check on macOS with the real keychain driver. A byte-compare of the stored payload does not cover it: an equivalent-but-re-encoded payload is exactly this failure |
 | `~/.claude.json` is mixed state whose other keys must survive a pointer patch | `git`-diff `~/.claude.json` across a switch: only `/oauthAccount` changes; `projects`, `mcpServers`, onboarding and cache keys stay byte-identical |

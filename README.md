@@ -225,7 +225,10 @@ fragment, and reverted by `kae unpin`. A bound directory records which directory
 it belongs to, so `kae account rm` / `rename` and `kae profile rm` name the
 directories they just invalidated instead of leaving them dangling, and
 `kae doctor` reports a bound directory that has been deleted or that binds an
-account you no longer have. `kae doctor` reports binding health and,
+account you no longer have — and, since a bound directory keeps its own copy of
+the credential which the tool refreshes in place, one whose login has expired or is
+about to, telling you to log in inside that directory. `kae doctor` reports binding
+health and,
 inside a pinned directory, flags when the identity git would actually commit
 with has drifted from the binding — a stray `git config --local` or an inactive
 pin — the silent wrong-author commit this exists to prevent. With `--yes` (or
@@ -312,7 +315,7 @@ globally.
 | `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials (sessions and settings are kept). |
 | `kae run <tool> <account> [-- <cmd>]` (`kae r`) | Run one process under an account (`-s`/`-i`/`--env`). |
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
-| `kae ls` | List accounts and profiles in one view. |
+| `kae ls` | List accounts and profiles in one view, with each snapshot's credential freshness. |
 | `kae account rm\|rename` | Delete or rename a captured account. |
 | `kae profile save\|set\|unset\|rm\|default` | Manage profiles without editing TOML. |
 | `kae env set\|...` | Manage API-key env profiles for `run --env`. |
@@ -344,6 +347,14 @@ exit code — see [docs/CLI.md](docs/CLI.md).
   to needs a re-login (expired with no usable refresh token, or emptied by the tool
   after a failed refresh) and names the tool's login command; `kae doctor` flags
   the same snapshots and orphaned secret items.
+
+  It also warns **seven days ahead** of that point, so a re-login is a choice
+  rather than an interruption, and names `kae add --restore <tool> <account>` — the
+  one command that logs that account in and puts your currently-live login back
+  afterwards. `kae ls`, `kae accounts` and `kae status` carry the same state in a
+  `Credential` column (`ok`, `3 day(s) left`, `re-login now`, or `-` when the
+  deadline is not knowable), so the inventory itself shows what needs attention
+  instead of only `kae doctor`.
 
 See [docs/SECURITY.md](docs/SECURITY.md).
 

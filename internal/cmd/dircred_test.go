@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/freshness"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
@@ -228,5 +229,65 @@ func TestPruneDirCredentialsReportsNothingWhenNoItemExists(t *testing.T) {
 	}
 	if args := strings.Join(fake.Args, " "); strings.Contains(args, "delete-generic-password") {
 		t.Fatalf("nothing to delete, yet a delete ran: %v", fake.Args)
+	}
+}
+
+// The read side of the same gate, and the reason it has to be there. The doctor
+// sweep resolves a bound directory's credential to judge its freshness; for a tool
+// whose keychain item does *not* move with its isolation variable, the item it
+// would read is the **global** login. Reporting that as this directory's credential
+// blames a healthy global login on a directory it has nothing to do with — and a
+// stale one on every bound directory at once.
+//
+// Asserted through the subprocess seam rather than through the absence of a check,
+// because on a non-darwin host every keychain read fails anyway and a missing check
+// would prove nothing.
+func TestDirCredentialFreshnessRefusesGlobalKeychainStore(t *testing.T) {
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	credDir := t.TempDir()
+	seedKeyringCodex(t, credDir)
+
+	fake := &runnertest.Fake{Code: 0}
+	var ok bool
+	runner.With(fake, func() {
+		_, ok = app.dirCredentialFreshness(context.Background(),
+			dirStore{Tool: constants.ToolCodex, Dir: credDir})
+	})
+	if ok {
+		t.Fatal("a store kae cannot bind per directory must not be judged")
+	}
+	if fake.Name != "" {
+		t.Fatalf("the refusal must happen before the keychain is touched, ran %q %v", fake.Name, fake.Args)
+	}
+}
+
+// The permitted counterpart: claude's item is namespaced by the config dir, so the
+// sweep reads the item that directory owns — proven by the per-directory hash in
+// the service name, the same assertion the write side makes.
+func TestDirCredentialFreshnessReadsTheDirScopedItem(t *testing.T) {
+	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	credDir := t.TempDir()
+
+	fake := &runnertest.Fake{
+		Stdout: `{"claudeAiOauth":{"accessToken":"a","refreshToken":"","expiresAt":1577836800000}}`,
+		Code:   0,
+	}
+	var info freshness.Info
+	var ok bool
+	runner.With(fake, func() {
+		info, ok = app.dirCredentialFreshness(context.Background(),
+			dirStore{Tool: constants.ToolClaude, Dir: credDir})
+	})
+	if !ok || !info.Known {
+		t.Fatalf("a dir-scoped store must be judged, got %+v (ok=%v)", info, ok)
+	}
+	if !strings.Contains(strings.Join(fake.Args, " "), sha8Of(credDir)) {
+		t.Fatalf("freshness read the wrong item (not this directory's): %v", fake.Args)
+	}
+	// And the payload it read is the one that decided the verdict.
+	if !needsRelogin(info, app.Now()) {
+		t.Fatalf("an expiry of 2020 with no refresh token must read as needing a re-login: %+v", info)
 	}
 }

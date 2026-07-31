@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
+	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
@@ -31,12 +33,32 @@ func freshnessOf(tool string, payload []byte) freshness.Info {
 	return freshness.Info{}
 }
 
+// toolIsDatable reports whether tool's adapter can read an expiry out of a
+// credential payload at all (adapter.Fresher). Callers use it to skip reads whose
+// result is already determined.
+func toolIsDatable(tool string) bool {
+	ad, err := adapter.ForTool(tool)
+	if err != nil {
+		return false
+	}
+	_, ok := ad.(adapter.Fresher)
+	return ok
+}
+
 // accountFreshness reads acc's stored credential and reports its expiry and
 // refresh-token presence. It returns the first artifact whose payload parses as
 // the tool's known credential format; a not-datable account (copilot pointer,
 // agy blob) yields Known=false. Shared by the switch-time stale warning
 // (docs/RELEASE.md §B) and doctor credential-health (§D).
 func (app *App) accountFreshness(ctx context.Context, be secret.Backend, acc account.Account) (freshness.Info, error) {
+	// A tool with no Fresher (copilot's pointer, agy's opaque blob) can never produce
+	// a Known reading, so reading its payloads is guaranteed-wasted work — and on
+	// darwin each one is a `security` subprocess, now paid by `kae ls` and
+	// `kae status` too. agy declares three file artifacts on Linux; that was three
+	// reads per listing for an answer fixed in advance.
+	if !toolIsDatable(acc.Tool) {
+		return freshness.Info{}, nil
+	}
 	for _, name := range acc.ArtifactNames() {
 		art := acc.Artifacts[name]
 		if !art.Present {
@@ -56,41 +78,240 @@ func (app *App) accountFreshness(ctx context.Context, be secret.Backend, acc acc
 	return freshness.Info{}, nil
 }
 
-// staleSnapshotWarning returns a switch-time warning when acc's snapshot
-// credential can no longer open a session without an interactive re-login, so a
-// switch to it cannot self-heal (docs/RELEASE.md §B). An expired credential with
-// a still-usable refresh token returns "" — the tool refreshes it on next use.
-// A fresh, undated, or not-datable account returns "".
-func (app *App) staleSnapshotWarning(ctx context.Context, be secret.Backend, acc account.Account) (string, error) {
+// reloginLeadTime is how far ahead of the deadline kae reports that a credential
+// will need an interactive re-login (doctor's credential_expiring, and the
+// switch-time notice).
+//
+// Seven days, and the number is a judgement rather than a constant kae measured.
+// Claude Code warns at three, which is enough for the account you are *using* —
+// you look at that tool every day, so three days is three chances to act. A kae
+// account that is not the active one is different: nothing shows it to you until
+// you run kae or switch to it, which may be twice a week, so three days can pass
+// unseen. One week is the shortest horizon that still contains a working day for
+// anyone who does not run kae daily.
+//
+// It is deliberately not longer. Against the roughly month-long effective lifetime
+// these credentials have in regular use, seven days keeps the notice silent for
+// most of a credential's life, so when it does appear it reads as "act now" — the
+// same reasoning that keeps cursor out of upstream_version and puts the
+// assumption-age threshold at six months. A two-week window would warn for half of
+// every credential's life, which is how a warning becomes wallpaper.
+//
+// "Effective" is the load-bearing word, and it is the one thing here that an
+// upstream change could invalidate. claude's `refreshTokenExpiresAt` is a *rolling*
+// window that every refresh renews — measured at ≈2 days on 2.1.220 — so the raw
+// number is far shorter than the time until a re-login. If a release ever made that
+// window short *and* non-renewing, this notice would be permanently lit for every
+// claude account, which is worse than not having it. docs/VALIDATION.md's claude
+// assumption row carries that condition and how to re-measure it.
+const reloginLeadTime = 7 * 24 * time.Hour
+
+// snapshotFreshnessWarning returns the switch-time warning acc's snapshot
+// credential deserves (docs/RELEASE.md §B): the stale message once it can no
+// longer open a session without an interactive re-login, the expiring notice while
+// that deadline is still ahead but within reloginLeadTime, and "" when the
+// credential is fine, undated, or not-datable.
+//
+// It returns the state token rather than a "was it stale" bool so the caller reads
+// the same vocabulary every other freshness surface uses, and a third band would
+// add a case rather than change this signature. Only a credential that cannot log
+// in at all makes the switch unusable, and that is the one the caller's roll-up
+// line counts; a switch to an account with five days left works today.
+func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend, acc account.Account) (msg, state string, err error) {
 	info, err := app.accountFreshness(ctx, be, acc)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	if !needsRelogin(info, app.Now()) {
-		return "", nil
+	now := app.Now()
+	cred := credentialStateAt(info, now)
+	switch cred.State {
+	case constants.CredentialStale:
+		return "snapshot credential is stale: " + staleCredentialDetail(info, acc.Tool, acc.Name), cred.State, nil
+	case constants.CredentialExpiring:
+		return "snapshot credential " + expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name), cred.State, nil
 	}
-	return "snapshot credential is stale: " + staleCredentialDetail(info, acc.Tool, acc.Name), nil
+	return "", cred.State, nil
+}
+
+// credentialState is one account's snapshot freshness as the inventory commands
+// report it: a state token from the JSON vocabulary plus, when kae knows it, the
+// deadline that state was decided against. The zero value means kae could not
+// judge (an opaque payload, an unreadable backend), and every consumer renders
+// that as "unknown" rather than as "fine".
+type credentialState struct {
+	State     string
+	ReloginBy time.Time
+}
+
+// credentialStates reads the snapshot freshness of every captured account, for the
+// inventory commands (`kae ls`, `kae accounts`, `kae status`). Accounts kae cannot
+// judge are simply absent from the map.
+//
+// It exists because the freshness a user needs — "which of my accounts needs
+// attention" — was only reachable through `kae doctor`, while the commands that
+// list the accounts showed none of it.
+//
+// The payload is the single source of truth, deliberately: an expiry copied into
+// account.toml at capture time would be a second record of the same fact, and this
+// repo has paid for that twice (a snapshot's recorded keychain account overriding
+// the adapter's, a pin registry drifting from the store tree). A recapture path
+// that forgot to refresh the copy would make `kae ls` report a healthy account
+// that is dead. The snapshot bytes only change when kae rewrites them, so reading
+// them is exactly as accurate and cannot go out of step.
+//
+// The reads run concurrently. On darwin each one is a `security` invocation, so a
+// sequential loop would put the sum of them in front of the most-run commands —
+// the same reason detectTools fans out. A backend error for one account leaves
+// that account unjudged instead of failing the listing: `kae ls` answers from
+// metadata and must keep working when the secret store does not.
+func (app *App) credentialStates(ctx context.Context, be secret.Backend, captured []account.Account) map[toolAccount]credentialState {
+	states := make([]credentialState, len(captured))
+	now := app.Now()
+	var wg sync.WaitGroup
+	for i, acc := range captured {
+		wg.Add(1)
+		go func(i int, acc account.Account) {
+			defer wg.Done()
+			info, err := app.accountFreshness(ctx, be, acc)
+			if err != nil {
+				return
+			}
+			states[i] = credentialStateAt(info, now)
+		}(i, acc)
+	}
+	wg.Wait()
+	out := map[toolAccount]credentialState{}
+	for i, acc := range captured {
+		if states[i].State != "" {
+			out[toolAccount{acc.Tool, acc.Name}] = states[i]
+		}
+	}
+	return out
+}
+
+// capturedCredentialStates is what the read-only inventory commands call: it
+// resolves the secret backend itself and reports nothing at all when that fails.
+//
+// Best-effort is the contract here, not a shortcut. `kae ls`, `kae accounts` and
+// `kae status` answer from metadata and must keep listing the inventory when the
+// secret store is unavailable — turning a freshness column into a reason those
+// commands exit non-zero would be a regression in the commands a user reaches for
+// when something is already wrong.
+func (app *App) capturedCredentialStates(ctx context.Context, captured []account.Account) map[toolAccount]credentialState {
+	be, err := app.secretBackend()
+	if err != nil {
+		return nil
+	}
+	// No secret.Cached wrap: it only does anything under a secret.WithReadCache
+	// context, which these commands do not install, and credentialStates reads each
+	// account's key exactly once regardless — there is nothing to coalesce.
+	return app.credentialStates(ctx, be, captured)
+}
+
+// credentialStateAt classifies one freshness reading into the three states every
+// freshness surface reports. It is the **only** place that decides which of them a
+// credential is in: doctor's two checks, the bound-directory sweep, the switch-time
+// warning and the inventory column all route through it, so none of them can
+// disagree with another about the same credential — the same reason needsRelogin
+// and reloginDueWithin are both defined on one reloginDeadline. Three copies of
+// this branch existed briefly and that is exactly how a boundary drifts.
+//
+// It reads the deadline once and compares, rather than asking the two predicates
+// (which would each re-derive it), and takes now as a parameter so one report
+// cannot straddle two clock readings.
+//
+// The zero credentialState means kae cannot judge: an unparseable payload, or one
+// it parses that records no deadline it can trust (codex stores a refresh token
+// without publishing its expiry; an api-key-only auth.json has no expiry at all).
+// That is never rendered as "ok" — claiming a credential is fine is knowledge kae
+// does not have here.
+func credentialStateAt(info freshness.Info, now time.Time) credentialState {
+	if !info.Known {
+		return credentialState{}
+	}
+	if info.Revoked {
+		// A tombstone is past every deadline with no timestamp to name, which is why
+		// this state can carry no ReloginBy.
+		return credentialState{State: constants.CredentialStale}
+	}
+	deadline, ok := reloginDeadline(info)
+	if !ok {
+		return credentialState{}
+	}
+	switch {
+	case !deadline.After(now):
+		return credentialState{State: constants.CredentialStale, ReloginBy: deadline}
+	case !deadline.After(now.Add(reloginLeadTime)):
+		return credentialState{State: constants.CredentialExpiring, ReloginBy: deadline}
+	default:
+		return credentialState{State: constants.CredentialOK, ReloginBy: deadline}
+	}
+}
+
+// reloginDeadline returns the instant at which info stops being able to open a
+// session without the tool's interactive login, and whether kae can know it.
+//
+// It is the one place that decides where that line falls, so the "is it past?"
+// question (needsRelogin) and the "how long until it is?" question
+// (reloginDueWithin) cannot disagree about it. They once were separate predicates
+// and a credential expiring exactly on the tick read as usable to one and
+// unusable to the other.
+//
+// ok is false in three cases, and all three mean *unknown*, never "never":
+//   - a payload kae cannot parse (Known=false),
+//   - a tombstone (Revoked) — already past every deadline, with no timestamp to
+//     name, which is why needsRelogin answers that case before asking here,
+//   - a refresh token whose own expiry the payload does not publish
+//     (RefreshExpiresAt zero with HasRefresh). Only claude publishes one; codex
+//     and opencode do not, so for them the deadline is genuinely unknowable and
+//     kae says nothing rather than guessing that the access-token expiry is it.
+//     Reading that zero as "never expires" is the mistake this comment exists for.
+//   - a known format that records no access-token expiry at all (an api-key-only
+//     codex auth.json). That is "no expiry", so nothing here can move it: the
+//     refresh expiry must not be promoted into a deadline the access token does
+//     not have.
+//
+// The refresh expiry extends the deadline only when a refresh token is actually
+// there. HasRefresh and RefreshExpiresAt are read from the payload independently
+// — claude takes one from `refreshToken` and the other from
+// `refreshTokenExpiresAt` — so a blanked refresh token can sit next to a leftover
+// future expiry, and folding that in ungated made an expired credential with no
+// way to recover read as good for another month. That is the exact false negative
+// this whole file exists to prevent, so the gate is not defensive.
+//
+// Where a refresh token *is* present the deadline is the *later* of the two: one
+// that died before the access token it backs still leaves the access token good
+// until its own expiry.
+func reloginDeadline(info freshness.Info) (time.Time, bool) {
+	if !info.Known || info.Revoked {
+		return time.Time{}, false
+	}
+	if info.HasRefresh && info.RefreshExpiresAt.IsZero() {
+		return time.Time{}, false
+	}
+	if info.ExpiresAt.IsZero() {
+		return time.Time{}, false
+	}
+	deadline := info.ExpiresAt
+	if info.HasRefresh && info.RefreshExpiresAt.After(deadline) {
+		deadline = info.RefreshExpiresAt
+	}
+	return deadline, true
 }
 
 // needsRelogin is the shared predicate of the switch-time stale warning
 // (docs/RELEASE.md §B) and doctor's credential_stale (§D): the credential cannot
 // produce a session again without the tool's interactive login. Either the tool
-// revoked it itself (a tombstone written after a failed refresh), or the access
-// token expired with no usable refresh token behind it. A not-datable or
-// still-valid credential is false.
+// revoked it itself (a tombstone written after a failed refresh), or its
+// re-login deadline has passed. A not-datable or still-valid credential is false.
 //
-// What it deliberately no longer assumes: that a refresh *string* means
+// What it deliberately does not assume: that a refresh *string* means
 // recoverable. Refresh tokens now expire in days, so a stored one is routinely
 // dead too, and treating its mere presence as recovery silenced the warning
-// exactly when the user needed it. A payload that publishes no refresh expiry
-// leaves RefreshExpiresAt zero, and that zero is "unknown", never "never
-// expires": presence is then all kae has to go on.
+// exactly when the user needed it. That, and the treatment of an unpublished
+// refresh expiry, are reloginDeadline's business.
 //
-// Both halves of the decision live in this one body so their boundaries cannot
-// drift apart: an expiry landing exactly on now counts as expired *and* a refresh
-// token expiring exactly on now counts as dead. Split across two helpers they
-// once disagreed, and a credential expiring on the tick read as usable while its
-// own refresh token read as unusable.
+// A deadline landing exactly on now counts as passed.
 func needsRelogin(info freshness.Info, now time.Time) bool {
 	if !info.Known {
 		return false
@@ -98,9 +319,8 @@ func needsRelogin(info freshness.Info, now time.Time) bool {
 	if info.Revoked {
 		return true
 	}
-	expired := !info.ExpiresAt.IsZero() && !info.ExpiresAt.After(now)
-	canRefresh := info.HasRefresh && (info.RefreshExpiresAt.IsZero() || info.RefreshExpiresAt.After(now))
-	return expired && !canRefresh
+	deadline, ok := reloginDeadline(info)
+	return ok && !deadline.After(now)
 }
 
 // staleCredentialDetail explains why a credential needs a re-login and how to
@@ -110,21 +330,69 @@ func needsRelogin(info freshness.Info, now time.Time) bool {
 // (as both messages used to) sends the user to freeze the same dead credential
 // back into the snapshot.
 func staleCredentialDetail(info freshness.Info, tool, accountName string) string {
-	var reason string
-	switch {
-	case info.Revoked:
-		reason = fmt.Sprintf("%s emptied it after a failed token refresh", tool)
-	case info.HasRefresh:
-		reason = fmt.Sprintf("it expired %s and its refresh token expired %s",
-			utcStamp(info.ExpiresAt), utcStamp(info.RefreshExpiresAt))
-	default:
-		reason = fmt.Sprintf("it expired %s and has no refresh token", utcStamp(info.ExpiresAt))
-	}
+	reason := staleCredentialReason(info, tool)
 	capture := fmt.Sprintf("re-capture with: kae add --no-login %s %s", tool, accountName)
 	if login := loginCommand(tool); login != nil {
 		return fmt.Sprintf("%s; log in again with: %s, then %s", reason, strings.Join(login, " "), capture)
 	}
 	return fmt.Sprintf("%s; log in again in %s, then %s", reason, tool, capture)
+}
+
+// staleCredentialReason states why a credential can no longer open a session,
+// without naming a remedy. It is split out because the *reason* is a property of
+// the credential while the remedy is a property of where it lives: an account
+// snapshot is fixed by a login plus a re-capture, and the copy inside a bound
+// directory by a login performed in that directory (pinCredentialChecks). Writing
+// the three-way explanation twice is how the two would drift apart.
+//
+// Callers only reach it for a credential that is actually past its deadline, so
+// the dated branches always have the timestamp they print.
+func staleCredentialReason(info freshness.Info, tool string) string {
+	switch {
+	case info.Revoked:
+		return fmt.Sprintf("%s emptied it after a failed token refresh", tool)
+	case info.HasRefresh:
+		return fmt.Sprintf("it expired %s and its refresh token expired %s",
+			utcStamp(info.ExpiresAt), utcStamp(info.RefreshExpiresAt))
+	default:
+		return fmt.Sprintf("it expired %s and has no refresh token", utcStamp(info.ExpiresAt))
+	}
+}
+
+// expiringCredentialDetail explains that a credential is still good but will need
+// an interactive re-login soon, and names the one command that refreshes it.
+//
+// `kae add --restore` rather than the two steps the stale message names, because
+// this credential still works and that is what makes the difference: --restore
+// backs up the login that is live right now, runs the tool's own login flow for
+// this account, captures it, and puts the previous login back — so the account
+// that needs attention is refreshed without disturbing whichever one you are
+// currently using. That is the whole point of warning ahead of the deadline
+// instead of after it. A tool kae cannot drive a login for (agy) falls back to
+// naming the manual pair.
+func expiringCredentialDetail(deadline, now time.Time, tool, accountName string) string {
+	when := fmt.Sprintf("needs an interactive re-login in %s (%s)",
+		roundDays(deadline.Sub(now)), utcStamp(deadline))
+	if loginCommand(tool) != nil {
+		return fmt.Sprintf("%s; refresh it now without disturbing the active login: kae add --restore %s %s",
+			when, tool, accountName)
+	}
+	return fmt.Sprintf("%s; log in again in %s, then re-capture with: kae add --no-login %s %s",
+		when, tool, tool, accountName)
+}
+
+// roundDays renders a lead time the way a human reads a deadline. Under a day it
+// says hours, because "in 0 days" is worse than useless on the last day; a
+// fraction of a day is rounded down so the number never overstates the time left.
+func roundDays(d time.Duration) string {
+	if days := int(d / (24 * time.Hour)); days >= 1 {
+		return fmt.Sprintf("%d day(s)", days)
+	}
+	hours := int(d / time.Hour)
+	if hours < 1 {
+		return "under an hour"
+	}
+	return fmt.Sprintf("%d hour(s)", hours)
 }
 
 // utcStamp formats a credential timestamp for a human-readable warning.

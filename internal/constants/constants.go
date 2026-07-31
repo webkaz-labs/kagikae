@@ -116,20 +116,26 @@ const (
 
 // Doctor check codes.
 const (
-	CheckBinaryPresent    = "binary_present"
-	CheckAuthPresent      = "auth_present"
-	CheckDriver           = "driver"
-	CheckEnvConflict      = "env_conflict"
-	CheckCredentialStore  = "credential_store"
-	CheckSecretBackend    = "secret_backend"
-	CheckConfigValid      = "config_valid"
-	CheckUnsupported      = "unsupported"
-	CheckFileMode         = "file_mode"
-	CheckCredentialStale  = "credential_stale"
-	CheckSecretOrphan     = "secret_orphan"
-	CheckCompanionMissing = "companion_missing" // a bound token knob has no stored secret
-	CheckCompanionBinary  = "companion_binary"  // a bound companion's CLI is not in PATH
-	CheckCompanionDrift   = "companion_drift"   // live git identity differs from the bound one
+	CheckBinaryPresent   = "binary_present"
+	CheckAuthPresent     = "auth_present"
+	CheckDriver          = "driver"
+	CheckEnvConflict     = "env_conflict"
+	CheckCredentialStore = "credential_store"
+	CheckSecretBackend   = "secret_backend"
+	CheckConfigValid     = "config_valid"
+	CheckUnsupported     = "unsupported"
+	CheckFileMode        = "file_mode"
+	CheckCredentialStale = "credential_stale"
+	// CheckCredentialExpiring: a captured snapshot still works but will need an
+	// interactive re-login within the lead time. Deliberately its own code rather
+	// than a second band of credential_stale: that code means "cannot open a
+	// session", and a consumer filtering on it to find broken accounts must not
+	// start matching accounts that are fine for another five days.
+	CheckCredentialExpiring = "credential_expiring"
+	CheckSecretOrphan       = "secret_orphan"
+	CheckCompanionMissing   = "companion_missing" // a bound token knob has no stored secret
+	CheckCompanionBinary    = "companion_binary"  // a bound companion's CLI is not in PATH
+	CheckCompanionDrift     = "companion_drift"   // live git identity differs from the bound one
 	// CheckCompanionTokenDrift: the live login a bound token resolves to differs
 	// from the companion's expected_login. opt-in (it needs a network call).
 	CheckCompanionTokenDrift = "companion_token_drift"
@@ -144,6 +150,18 @@ const (
 	// CheckPinStale: a directory bound with `kae pin` no longer exists, or binds
 	// an account that no longer does.
 	CheckPinStale = "pin_stale"
+)
+
+// Credential freshness states, the `credential` field of a `kae ls` /
+// `kae accounts` account row and a `kae status` tool row. Absent (omitempty)
+// means kae could not judge the snapshot: an opaque payload, one that records no
+// usable deadline, or a secret store it could not read. The two non-ok states
+// mirror the credential_stale / credential_expiring doctor checks exactly — they
+// read the same predicates, so a row and a check can never disagree.
+const (
+	CredentialOK       = "ok"
+	CredentialExpiring = "expiring"
+	CredentialStale    = "stale"
 )
 
 // Exit codes and their stable error-code tokens.

@@ -25,6 +25,73 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
+# kae v0.15.0 (shipped 2026-07-31)
+
+The expiry story had a working *back* half and no *front* half. kae could tell you
+a credential was already dead — and only ever after it was, only for accounts it
+kept snapshots of, and only if you thought to run `kae doctor`. This release makes
+the same knowledge arrive early, arrive in the commands you already run, and cover
+the one place kae could not see at all.
+
+Baseline: v0.14.0, shipped 2026-07-31. Contract-stable: `schema_version` stays
+`1`, no flag changes. One **new doctor check code** (`credential_expiring`) and two
+**additive `omitempty` fields** on the `kae ls` / `kae accounts` / `kae status`
+rows (`credential`, `relogin_by`). Everything new is warn-level, so no exit code
+changes. Nothing needs re-capturing.
+
+- **A seven-day warning before a credential needs a re-login.** kae's freshness
+  was binary: it spoke up only once the access token had expired *and* no usable
+  refresh token was left. Claude Code warns at three days, but only about the
+  account it is currently using, so the first thing kae ever said about any other
+  account was that it was already dead. Both questions now read one deadline, so
+  "has it passed?" and "how long until it does?" cannot disagree about where the
+  line is. Seven days is a judgement, not a measurement — three is enough for the
+  tool you look at daily, and against the roughly month-long *effective* lifetime
+  these credentials have in regular use, seven keeps the notice silent for most of a
+  credential's life, so it still reads as "act now". (claude's stored
+  `refreshTokenExpiresAt` is a rolling window each refresh renews, so the raw field
+  is far shorter than the time until a re-login; VALIDATION.md records the
+  condition.) It names `kae add --restore <tool> <account>`, the one command
+  that logs that account in and puts your currently-live login back afterwards,
+  which is the whole point of warning before the deadline rather than after it.
+  Silent where the deadline is genuinely unknowable: codex and opencode store a
+  refresh token without publishing its expiry, and that zero means *unknown*, never
+  "never expires".
+- **The inventory shows what needs attention.** `kae ls`, `kae accounts` and
+  `kae status` referenced freshness nowhere, so the command that lists your
+  accounts could not tell you which one was about to strand you. Each row now
+  carries `credential` (`ok` / `expiring` / `stale`) and `relogin_by`, and the human
+  tables a `Credential` column that spells out the time left. Absent means kae could
+  not judge the snapshot and **never** that it is fine — including when the secret
+  store is unreadable, because these are the commands you reach for when something
+  is already wrong, so they drop the column rather than fail. The expiry is read
+  from the payload every time rather than cached into `account.toml`: a copy of a
+  fact is a second source of truth, and a recapture path that forgot to refresh it
+  would have `kae ls` calling a dead account healthy.
+- **A bound directory's own credential is finally visible.** `kae pin` gives a
+  directory its own copy of the credential and the tool refreshes *that copy* in
+  place, so a pinned project's login could expire while every snapshot kae has
+  still looked fine — and nothing said so, because the stale check reads snapshots.
+  `kae doctor` now reports it under the same two codes, naming the directory, and
+  the fix is a login *inside* that directory (not `kae pin`, which would re-copy a
+  snapshot that may be just as expired). It reads a keychain item only where the
+  adapter declares the item moves with its isolation variable — the same gate the
+  write side uses, and load-bearing: without it codex's **global** login would be
+  read and blamed on an unrelated directory.
+
+Deliberately not shipped: recapturing a bound directory's refreshed token back into
+the account snapshot. Several directories can bind one account, each with its own
+independently-refreshed token, so nothing says which the single global snapshot
+should take — and a directory not opened in weeks holds an *older* token, a
+downgrade that "is it usable" cannot detect because both are usable.
+[ROADMAP.md](ROADMAP.md) records the two ways it could be defined.
+
+Still open and unchanged: the two live-machine gates in
+[VALIDATION.md](VALIDATION.md) — "codex per-directory keyring bind" and "Cursor
+full credential set" — both of which need a real keychain and two real accounts.
+
+---
+
 # kae v0.14.0 (shipped 2026-07-31)
 
 v0.13.0 fixed a class — *kae modelled an upstream store location as a constant

@@ -161,9 +161,16 @@ func shellSingleQuote(s string) string {
 // account for each isolated tool. It is the source of truth for `kae status`
 // (the real per-tool account) and `kae pin <tool> <account>` re-binds.
 type fragmentInfo struct {
-	Profile  string
-	Mode     string            // userScopeMode: shared|isolated
-	Accounts map[string]string // tool -> bound account (isolated tools only)
+	Profile string
+	Mode    string // userScopeMode: shared|isolated
+	// Accounts maps each tool this directory binds to its account — **every** bound
+	// tool, in either mode, because renderDirFragment writes the record for any
+	// entry without a Warning and both mode planners build entries the same way. A
+	// tool is absent only when it could not be bound at all (no isolation env var),
+	// which is what pinChecks and boundStoreDir both read it as. This said
+	// "isolated tools only" for several releases while every consumer relied on the
+	// opposite, and it sent a reviewer looking for a bug that was not there.
+	Accounts map[string]string
 }
 
 // readDirFragment reads and parses the kae-owned fragment in the current

@@ -102,6 +102,19 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
   stores are silently never swept; and the sweep must run **after** the new binding
   is written, or a mid-sequence failure leaves the live binding pointing at a store
   whose credential is already gone.
+- **A bound directory's store tree is history; its mise fragment is the binding.**
+  `dirCredentialStores` walks `isolation/<pinID>` and *deliberately* returns stores
+  nothing points at any more: `kae unpin` keeps a store so a re-pin restores its
+  sessions, and a single-tool re-bind leaves the previously bound tools' stores in
+  place. That is exactly right for the teardown sweep, whose job is finding
+  leftovers, and wrong for anything that reports on the **live** binding — a leftover
+  reported as `bound to <dir>` names a directory that is not bound and a remedy that
+  lands where nothing reads. For what is bound *now*, read the fragment
+  (`readFragmentAt` → `boundStoreDir`, which derives the store from its mode and
+  account). The two functions look interchangeable and are not; `pinChecks` has
+  skipped an unpinned directory since it shipped, and the doctor credential sweep
+  still shipped its first draft without that gate. Note also that
+  `fragmentInfo.Accounts` covers **every** bound tool, shared mode included.
 - **A keychain item's identity is service + account, and per-tool.** codex derives
   the account of its single-service `Codex Auth` item from `CODEX_HOME`
   (`cli|` + 16 hex of sha256 over the **canonicalized** path — symlinks resolved),

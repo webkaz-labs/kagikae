@@ -628,6 +628,8 @@ in the same transaction.
       "driver": "claude-keychain-patch",
       "auth_present": true,
       "accounts": ["side", "main"],
+      "credential": "expiring",
+      "relogin_by": "2026-06-14T01:23:45Z",
       "warnings": []
     }
   ],
@@ -650,9 +652,11 @@ isolated path or the recorded shared-dir account), never a stale profile label.
 `profiles` lists every defined profile (name ascending) with its mapping and an
 `active` marker. `global_isolated` lists every tool currently pointed at a
 global isolated home by `kae use -i` or `kae run -i`, with its private home
-path; it is `[]` when no tool is globally isolated. The human text leads with
-the same data: the global-isolated homes (if any), the pin banner, the global
-active profile, the per-tool table, then the profiles list.
+path; it is `[]` when no tool is globally isolated. `credential` / `relogin_by`
+describe the **active** account's snapshot freshness (see "Credential freshness
+in listings" below); both are absent when no account is active. The human text
+leads with the same data: the global-isolated homes (if any), the pin banner, the
+global active profile, the per-tool table, then the profiles list.
 
 ### `kae accounts --json`
 
@@ -666,7 +670,9 @@ active profile, the per-tool table, then the profiles list.
       "identity": "you@example.com",
       "driver": "claude-keychain-patch",
       "active": true,
-      "captured_at": "2026-06-11T01:23:45Z"
+      "captured_at": "2026-06-11T01:23:45Z",
+      "credential": "ok",
+      "relogin_by": "2026-07-11T01:23:45Z"
     }
   ]
 }
@@ -675,7 +681,46 @@ active profile, the per-tool table, then the profiles list.
 Ordering: tool (claude, codex, agy, opencode, cursor, copilot), then
 account name ascending. `identity` (the raw detected login identity) is
 additive and `omitempty` — absent for pre-v0.8.3 snapshots and tools with no
-readable identity; `schema_version` stays `1`.
+readable identity; `schema_version` stays `1`. `credential` / `relogin_by` are
+additive and `omitempty` too — see "Credential freshness in listings" below.
+
+#### Credential freshness in listings
+
+`kae ls`, `kae accounts` and `kae status` rows carry two additive, `omitempty`
+fields describing the **snapshot** kae would apply — a different question from
+`auth_present` / the `Auth` column, which report the live store. A tool can be
+logged in right now while the snapshot kae would re-apply is already dead.
+
+- `credential`: `ok`, `expiring`, or `stale`. The last two mirror the
+  `credential_expiring` / `credential_stale` doctor checks exactly (same
+  predicates, same seven-day lead time), so a row and a check can never disagree
+  about the same account.
+- `relogin_by`: RFC3339 — the instant the credential stops being able to open a
+  session without an interactive login (the later of the access-token and
+  refresh-token expiries).
+
+**Both fields absent means kae could not judge the snapshot, never that it is
+fine.** Three ways to get there: a payload kae cannot parse (copilot's pointer,
+agy's blob), one it parses but that records no deadline it can trust (codex stores
+a refresh token without publishing an expiry; an `auth.json` holding only an API
+key has no expiry at all), and a secret backend it could not read. That last case
+is deliberately not an error: these commands answer from metadata and are what a
+user reaches for when something is already wrong, so an unreadable secret store
+drops the two fields and the listing still succeeds.
+
+Cost: one secret-store read per captured account **of a tool whose credential kae
+can date at all**, which is what `kae doctor` already does. copilot and agy expose
+no expiry, so their accounts are skipped before any read rather than read and then
+discarded, and the remaining reads run concurrently so the wall clock is one read
+rather than the sum. The expiry is read from the payload every time rather than cached
+into `account.toml`, because a copy of a fact is a second source of truth — a
+recapture path that forgot to refresh it would have `kae ls` reporting a healthy
+account that is dead. Snapshot bytes only change when kae rewrites them, so
+reading them is exactly as accurate and cannot fall out of step.
+
+The human tables render this as a `Credential` column, spelling out the time left
+(`3 day(s) left`) rather than repeating the state word, `re-login now` for a stale
+one, and `-` for one kae could not judge.
 
 ### `kae ls --json`
 
@@ -685,7 +730,8 @@ readable identity; `schema_version` stays `1`.
   "accounts": [
     {"tool": "claude", "account": "main", "identity": "you@example.com",
      "driver": "claude-keychain-patch", "active": true,
-     "captured_at": "2026-06-11T01:23:45Z"}
+     "captured_at": "2026-06-11T01:23:45Z",
+     "credential": "ok", "relogin_by": "2026-07-11T01:23:45Z"}
   ],
   "profiles": [
     {"name": "main", "accounts": {"claude": "main"}, "active": true}
@@ -725,7 +771,8 @@ empty.
 Check `status` vocabulary: `ok`, `warn`, `error`, `skipped`.
 Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
-`unsupported`, `file_mode`, `credential_stale`, `secret_orphan`,
+`unsupported`, `file_mode`, `credential_stale`, `credential_expiring`,
+`secret_orphan`,
 `companion_missing`, `companion_binary`, `companion_drift`,
 `companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`.
 
@@ -736,9 +783,47 @@ Credential-health checks (warn-level):
   the credential itself after a failed refresh. Names the tool's own login
   command *and* `kae add --no-login`, in that order: re-capturing first would only
   freeze the dead credential back into the snapshot. Uses the same freshness
-  predicate as the switch-time warning, and inspects only the stored snapshot (no
-  live read, so no extra keychain prompt). An expired snapshot whose refresh token
+  predicate as the switch-time warning. An expired snapshot whose refresh token
   is still usable is not flagged (the tool refreshes it).
+
+  The **account-snapshot** half inspects only stored bytes — no live read, so no
+  extra keychain prompt. The same code also reports the credential of a **bound
+  directory** (see "Bound-directory credentials" below), and that half does read
+  live, because a bound directory does not use a snapshot. Both halves are told
+  apart by the message: the snapshot one names `snapshot "<account>"`, the
+  directory one `bound to <dir>`.
+- `credential_expiring`: the lead-time half of the same question — the snapshot
+  still opens a session, but the point where it stops doing so is **less than
+  seven days away**. It names the remaining days, the deadline, and
+  `kae add --restore <tool> <account>`: the one command that runs the tool's login
+  flow for *that* account and puts the currently-live login back afterwards, so
+  the account needing attention is refreshed without disturbing the one in use.
+  Mutually exclusive with `credential_stale` by construction — both read one
+  deadline, which is why this is a separate code and not a second band of that
+  one: a consumer filtering on `credential_stale` to find broken accounts must not
+  start matching accounts that are fine for another five days.
+
+  Seven days is a judgement, not a measurement: Claude Code's own three-day
+  warning is enough for the account you are *using* (you see that tool daily),
+  while a kae account that is not active is only shown to you when you run kae.
+  It is deliberately not longer — against the roughly month-long *effective*
+  lifetime these credentials have in regular use, seven days keeps the check silent
+  for most of a credential's life, so it still reads as "act now" rather than as
+  wallpaper. Note that claude's stored `refreshTokenExpiresAt` is a **rolling**
+  window every refresh renews (≈2 days on 2.1.220), so the raw field is much shorter
+  than the time until a re-login; docs/VALIDATION.md records the condition this
+  threshold depends on.
+
+  It is silent, by design, wherever the deadline is **unknowable**: a tool that
+  stores a refresh token but publishes no expiry for it (codex, opencode) leaves
+  `refreshTokenExpiresAt` at zero, and zero means *unknown*, never "never
+  expires". Guessing the access-token expiry is the deadline there would warn
+  every few hours about a perfectly healthy credential. It therefore fires today
+  for claude (which publishes the refresh expiry) and for credentials with no
+  refresh token at all (cursor's access-token JWT is the whole deadline).
+  The same lead-time notice is emitted at switch time next to the stale one
+  (stderr, before the write, surviving `--quiet`), but it is **not** counted in
+  the "N tools need a re-login before use" roll-up: that switch works today.
 - `secret_orphan`: a stored secret item **of the account namespace**
   (`<tool>/<account>/<artifact>`) has no matching snapshot dir — names
   `kae account rm`. Backup, companion, and env-profile keys have no snapshot dir
@@ -757,6 +842,43 @@ binding is a property of the directory, not of one tool):
   in the directory it names, and the account snapshots. A directory that was
   simply `kae unpin`-ed is **not** reported: unpin keeps the store on purpose so
   a re-pin restores its sessions and settings.
+
+**Bound-directory credentials** (reported under `credential_stale` /
+`credential_expiring`, also unfiltered): a bound directory holds its **own copy**
+of the credential and the tool refreshes *that copy* in place, so it can die while
+every account snapshot kae has still looks fine. Nothing reported this before — the
+first signal was the tool refusing to start in that directory.
+
+- The remedy is a login **inside** that directory (`cd <dir> && claude /login`).
+  The isolation variable the directory exports is what makes the login land in the
+  store kae bound, so no kae step follows. Deliberately **not** `kae pin`: that
+  re-copies the account snapshot, which may be just as expired, and would report
+  success while changing nothing.
+- Reads live, unlike the snapshot half: up to one store read per bound directory
+  per tool that has a credential kae materializes — claude and codex only, so the
+  fan-out is small. On darwin a claude store read is the same single `security`
+  call `Detect` already makes for the global item.
+- The location comes from the adapter (`dirCredentialSpec`), asked with an
+  environment pointed at that store, and a keychain item is read **only** where the
+  adapter declares it bindable — the same gate the write side uses. Without it, a
+  tool whose item does not move with its isolation variable (codex under the
+  keyring store) would have its *global* login read and reported as the
+  directory's: a healthy global login blamed on an unrelated directory, or a stale
+  one reported once per bound directory.
+- What counts as bound comes from the directory's **mise fragment**, not from the
+  store tree. The tree is history: `kae unpin` keeps a store on purpose, and
+  re-binding one tool of a profile leaves the previous tools' stores in place — so a
+  walk of it returns stores nothing points at any more. A check that says "bound to"
+  has to mean it, or its remedy sends the user to a login the tool will not read.
+- Silent, therefore, for a directory that is **gone** (`pin_stale` already reports
+  its orphaned store; naming it twice would be one problem reported as two), for one
+  that was `kae unpin`-ed, for a tool the directory **no longer binds**, and for a
+  store whose tool has never been started in it (no credential there yet).
+- There is deliberately **no** recapture back into the account snapshot. Several
+  directories can bind one account, each refreshing its own token, so no
+  non-arbitrary rule says which of them the single global snapshot should take —
+  and a directory not visited in weeks would overwrite a newer global one. See
+  docs/ROADMAP.md.
 
 Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
 <tool>`):

@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/companion"
@@ -132,5 +134,111 @@ func TestDoctorIgnoresNonAccountSecretNamespaces(t *testing.T) {
 	report := buildDoctor(ctx, app, "", false)
 	if msg, ok := findCheck(report, constants.CheckSecretOrphan); ok {
 		t.Fatalf("no namespace but the account one can be orphaned: %q", msg)
+	}
+}
+
+// §D lead time: a snapshot that still works but whose re-login deadline is inside
+// the lead window is reported under its own code, at warn level, naming the
+// proactive refresh. credential_stale must stay silent — a consumer filtering on
+// that code to find broken accounts must not start matching healthy ones.
+func TestDoctorReportsExpiringSnapshot(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	refreshExp := app.Now().Add(4 * 24 * time.Hour).UnixMilli()
+	seedClaudeOAuth(t, app, fmt.Sprintf(
+		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`, refreshExp,
+	))
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
+
+	report := buildDoctor(ctx, app, "claude", false)
+	if report.SchemaVersion != constants.SchemaVersion {
+		t.Fatalf("schema_version changed: %d", report.SchemaVersion)
+	}
+	msg, ok := findCheck(report, constants.CheckCredentialExpiring)
+	if !ok {
+		t.Fatalf("expected a credential_expiring check, got %+v", report.Checks)
+	}
+	if !strings.Contains(msg, "4 day(s)") || !strings.Contains(msg, "kae add --restore claude soon") {
+		t.Fatalf("expiring message should name the lead time and the refresh command: %q", msg)
+	}
+	if _, ok := findCheck(report, constants.CheckCredentialStale); ok {
+		t.Fatal("a credential that still works must not also be reported stale")
+	}
+	for _, c := range report.Checks {
+		if c.Code == constants.CheckCredentialExpiring && c.Status != constants.StatusWarn {
+			t.Fatalf("credential_expiring must be warn-level, got %q", c.Status)
+		}
+	}
+	// A doctor whose only findings are warnings still exits 0.
+	if !report.OK {
+		t.Fatal("a warn-level check must not fail the report")
+	}
+}
+
+// A snapshot with a month left is not the lead window's business.
+func TestDoctorIgnoresHealthySnapshot(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	refreshExp := app.Now().Add(30 * 24 * time.Hour).UnixMilli()
+	seedClaudeOAuth(t, app, fmt.Sprintf(
+		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`, refreshExp,
+	))
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "healthy") })
+
+	if _, ok := findCheck(buildDoctor(ctx, app, "claude", false), constants.CheckCredentialExpiring); ok {
+		t.Fatal("a credential with a month left must not be reported as expiring")
+	}
+}
+
+// Both freshness messages are built from a parsed credential, so both are new
+// paths for a token to reach stdout, --json and stderr. AGENTS.md requires a
+// redaction test for every new output path; the last one found a real leak.
+func TestCredentialFreshnessMessagesNeverCarryTheToken(t *testing.T) {
+	const secretToken = "sk-ant-oat01-LEAK-CANARY-ffff"
+	const secretRefresh = "refresh-LEAK-CANARY-gggg"
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	for _, tc := range []struct {
+		name, oauth string
+	}{
+		{"expiring", `{"accessToken":"` + secretToken + `","refreshToken":"` + secretRefresh +
+			`","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`},
+		{"stale", `{"accessToken":"` + secretToken + `","refreshToken":"` + secretRefresh +
+			`","expiresAt":1577836800000,"refreshTokenExpiresAt":1577836800000}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := testApp(t, nil)
+			payload := tc.oauth
+			if strings.Contains(payload, "%d") {
+				payload = fmt.Sprintf(payload, app.Now().Add(2*24*time.Hour).UnixMilli())
+			}
+			seedClaudeOAuth(t, app, payload)
+			captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "canary") })
+
+			// The human report and the JSON contract, both streams.
+			for _, format := range []string{formatText, formatJSON} {
+				_, stdout, stderr := captureBoth(t, func() int {
+					return runDoctor(ctx, app, commonOpts{Format: format}, "claude")
+				})
+				for stream, out := range map[string]string{"stdout": stdout, "stderr": stderr} {
+					if strings.Contains(out, secretToken) || strings.Contains(out, secretRefresh) {
+						t.Fatalf("%s (%s) leaked a credential value: %q", stream, format, out)
+					}
+				}
+			}
+			// And the switch-time warning, which is the other consumer.
+			seedClaude(t, app, sideToken, "side-uuid")
+			captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "current") })
+			captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "current") })
+			_, stdout, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "canary") })
+			if strings.Contains(stdout+stderr, secretToken) || strings.Contains(stdout+stderr, secretRefresh) {
+				t.Fatalf("the switch-time warning leaked a credential value: %q / %q", stdout, stderr)
+			}
+		})
 	}
 }

@@ -189,3 +189,25 @@ func (app *App) applyGlobalScope() {
 		return value
 	}
 }
+
+// modeStoreDir answers "which directory does a per-directory bind in mode point
+// tool at" — the one place that maps the bind mechanism to its store layout. ok is
+// false for a mode kae does not recognize, so a caller reading a hand-edited or
+// future fragment gets nothing rather than a guessed path.
+//
+// It exists because that mapping was written three times: the two bind planners
+// (which materialize the store) and the doctor sweep that reads a bound directory's
+// credential. A third per-directory mechanism has to be added to `dirCredentialStores`
+// in lockstep already (AGENTS.md); three switches to keep in step instead of one is
+// how the new one ends up half-added, silently pointing some caller at a store that
+// does not exist.
+func (app *App) modeStoreDir(mode, pinID, tool, account string) (dir string, ok bool) {
+	switch mode {
+	case modeShared:
+		// Account-agnostic: one shared store per pinID×tool.
+		return app.Paths.SharedDir(pinID, tool), true
+	case modeIsolated:
+		return app.Paths.IsolatedConfigDir(pinID, tool, account), true
+	}
+	return "", false
+}

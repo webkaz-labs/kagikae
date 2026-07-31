@@ -132,6 +132,22 @@ child could rotate the live credential unseen — a cached value would be stale.
 - The `upstream_version` doctor check runs `<binary> --version` through
   `internal/runner` (argv array, no shell) and reads only the version string.
   **Offline**, no credential in the environment, nothing to redact.
+- The `credential_stale` / `credential_expiring` doctor checks parse a credential
+  payload to read its expiry. **Offline**, no network. Their messages carry only
+  timestamps, a tool name, an account name or a directory path, and a suggested
+  command — never a token, and a redaction test pins each of the two message
+  builders plus the switch-time warning against exactly that.
+
+  Two payload sources, and one of them reads live. The account-snapshot half reads
+  kae's own secret store; the **bound-directory** half reads the per-directory
+  credential store itself, which on darwin is one `security find-generic-password
+  -w` per bound directory per tool — the same call `Detect` already makes for the
+  global item, through `internal/runner`. It resolves the item only via the
+  adapter (`dirCredentialSpec`, asked with an environment pointed at that store),
+  and only where the adapter declares the item moves with its isolation variable,
+  so a tool whose item is global (codex under the keyring store) is never read —
+  that gate is what keeps a bound-directory finding from being about the global
+  login. Read-only throughout: the sweep never writes or deletes an item.
 - The `companion_token_drift` doctor check resolves a token companion's live
   login (e.g. `gh api user`) and compares it to the recorded `expected_login`.
   It is the one doctor check that makes a **network call**, so it is **opt-in**

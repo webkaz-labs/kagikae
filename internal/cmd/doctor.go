@@ -202,8 +202,14 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// bound-directory health: a pinned directory that is gone, or that binds an
 	// account that is. Offline and backend-free; unfiltered, like the companion
 	// checks, because a stale binding is a property of the directory.
+	//
+	// pinCredentialChecks is the other half — the credential *inside* a live
+	// binding, which the snapshot checks above cannot see because a bound directory
+	// does not use a snapshot. It reads the per-directory stores live and needs no
+	// secret backend, so it runs even when the backend is unavailable.
 	if toolFilter == "" {
 		report.Checks = append(report.Checks, app.pinChecks()...)
+		report.Checks = append(report.Checks, app.pinCredentialChecks(ctx)...)
 	}
 
 	// companion binding health (config-level). Companions are not tools, so
@@ -294,15 +300,30 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 				continue
 			}
 			info, err := app.accountFreshness(ctx, be, acc)
-			if err != nil || !needsRelogin(info, app.Now()) {
+			if err != nil {
 				continue
 			}
-			checks = append(checks, adapter.Check{
-				Tool: acc.Tool, Code: constants.CheckCredentialStale,
-				Status: constants.StatusWarn,
-				Message: fmt.Sprintf("snapshot %q is stale: %s",
-					acc.Name, staleCredentialDetail(info, acc.Tool, acc.Name)),
-			})
+			now := app.Now()
+			cred := credentialStateAt(info, now)
+			switch cred.State {
+			case constants.CredentialStale:
+				checks = append(checks, adapter.Check{
+					Tool: acc.Tool, Code: constants.CheckCredentialStale,
+					Status: constants.StatusWarn,
+					Message: fmt.Sprintf("snapshot %q is stale: %s",
+						acc.Name, staleCredentialDetail(info, acc.Tool, acc.Name)),
+				})
+			case constants.CredentialExpiring:
+				// Ahead of the deadline, so this is the window in which a re-login is
+				// still a choice rather than an interruption — which is the whole
+				// difference between this check and credential_stale.
+				checks = append(checks, adapter.Check{
+					Tool: acc.Tool, Code: constants.CheckCredentialExpiring,
+					Status: constants.StatusWarn,
+					Message: fmt.Sprintf("snapshot %q %s",
+						acc.Name, expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name)),
+				})
+			}
 		}
 	}
 	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)

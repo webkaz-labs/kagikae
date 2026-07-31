@@ -189,6 +189,11 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// ...and the assumptions nobody has re-checked in six months, which the
 	// version comparison cannot see because it needs the tool to have moved.
 	report.Checks = append(report.Checks, app.assumptionAgeChecks(toolFilter)...)
+	// state.json naming an account that has no snapshot. Deliberately out here and
+	// not with the credential-health checks: it needs no secret backend, and an
+	// unavailable backend is exactly when a user is diagnosing and least wants a
+	// check to vanish.
+	report.Checks = append(report.Checks, app.activeOrphanChecks(toolFilter)...)
 
 	// credential health: stale snapshots and orphaned secret items. Reuse the
 	// backend resolved above; skip when it is unavailable.
@@ -326,7 +331,6 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 			}
 		}
 	}
-	checks = append(checks, app.activeOrphanChecks(toolFilter)...)
 	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)
 }
 
@@ -341,9 +345,11 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 // captured a fixture account straight into a live state file, and doctor reported
 // nothing wrong while `kae status` named an account that was not there.
 //
-// Offline and backend-free — it compares two things kae has already loaded. Warn,
-// never error: the recorded name is bookkeeping, and the live credential it refers
-// to may well still be fine.
+// Offline and backend-free — it compares two things kae has already loaded, which
+// is why it is wired in beside the other backend-free checks rather than with the
+// credential-health ones: those are skipped when the secret backend is unavailable,
+// and that is precisely when a user is diagnosing. Warn, never error: the recorded
+// name is bookkeeping, and the live credential it refers to may well still be fine.
 func (app *App) activeOrphanChecks(toolFilter string) []adapter.Check {
 	st, err := app.loadState()
 	if err != nil {

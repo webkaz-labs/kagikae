@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/envprofile"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -308,5 +309,41 @@ func TestDoctorReportsAnActiveAccountWithNoSnapshot(t *testing.T) {
 	}
 	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan); ok {
 		t.Fatal("no recorded active account is not a finding")
+	}
+}
+
+// The check needs no secret backend, and an unavailable one is exactly when a user
+// is diagnosing — so it must not be wired in behind the backend gate that skips the
+// credential-health checks. It was, in its first draft.
+func TestActiveOrphanIsReportedWithNoSecretBackend(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main-uuid")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Active[constants.ToolClaude] = "ghost"
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+
+	// keychain on linux is unavailable, so secretBackend() fails and every
+	// backend-dependent check is skipped.
+	app.Config.Security.SecretBackend = secret.BackendKeychain
+	if _, err := app.secretBackend(); err == nil {
+		t.Fatal("this test needs an unavailable backend to be meaningful")
+	}
+
+	report := buildDoctor(ctx, app, "", false)
+	if _, ok := findCheck(report, constants.CheckActiveOrphan); !ok {
+		t.Fatalf("active_orphan must survive an unavailable secret backend, got %+v", report.Checks)
+	}
+	// And the backend itself is still reported, so the two findings coexist.
+	if _, ok := findCheck(report, constants.CheckSecretBackend); !ok {
+		t.Fatal("the backend failure must still be reported")
 	}
 }

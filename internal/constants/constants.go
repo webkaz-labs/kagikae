@@ -152,6 +152,18 @@ const (
 	CheckPinStale = "pin_stale"
 )
 
+// Credential freshness states, the `credential` field of a `kae ls` /
+// `kae accounts` account row and a `kae status` tool row. Absent (omitempty)
+// means kae could not judge the snapshot: an opaque payload, one that records no
+// usable deadline, or a secret store it could not read. The two non-ok states
+// mirror the credential_stale / credential_expiring doctor checks exactly — they
+// read the same predicates, so a row and a check can never disagree.
+const (
+	CredentialOK       = "ok"
+	CredentialExpiring = "expiring"
+	CredentialStale    = "stale"
+)
+
 // Exit codes and their stable error-code tokens.
 const (
 	ExitOK            = 0

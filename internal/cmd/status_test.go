@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -195,5 +196,55 @@ func TestOrDashRendersEmptyAsDash(t *testing.T) {
 	}
 	if got := orDash("you@example.com"); got != "you@example.com" {
 		t.Fatalf("orDash passthrough = %q", got)
+	}
+}
+
+// `kae status` answers "what is my current setup", so the freshness it shows is
+// the *active* account's. It is a different question from the existing Auth
+// column, which reports the live store: a tool can be logged in right now while
+// the snapshot kae would re-apply is already dead.
+func TestStatusReportsActiveAccountCredentialFreshness(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaudeOAuth(t, app, fmt.Sprintf(
+		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
+		app.Now().Add(2*24*time.Hour).UnixMilli(),
+	))
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
+	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "soon") })
+
+	_, out := captureStdout(t, func() int { return runStatus(ctx, app, commonOpts{Format: formatJSON}) })
+	var report statusReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("invalid status JSON: %v: %s", err, out)
+	}
+	if report.SchemaVersion != constants.SchemaVersion {
+		t.Fatalf("schema_version = %d, want %d", report.SchemaVersion, constants.SchemaVersion)
+	}
+	var found bool
+	for _, ts := range report.Tools {
+		if ts.Tool != constants.ToolClaude {
+			// A tool with no active account claims nothing.
+			if ts.Credential != "" || ts.ReloginBy != "" {
+				t.Errorf("%s has no active account but reported %q/%q", ts.Tool, ts.Credential, ts.ReloginBy)
+			}
+			continue
+		}
+		found = true
+		if ts.Credential != constants.CredentialExpiring {
+			t.Errorf("claude credential = %q, want %q", ts.Credential, constants.CredentialExpiring)
+		}
+		if ts.ReloginBy == "" {
+			t.Error("a judged tool row must publish its deadline")
+		}
+	}
+	if !found {
+		t.Fatalf("claude row missing: %s", out)
+	}
+	_, text := captureStdout(t, func() int { return runStatus(ctx, app, commonOpts{Format: formatText, NoColor: true}) })
+	if !strings.Contains(text, "Credential") || !strings.Contains(text, "2 day(s) left") {
+		t.Fatalf("status table lost the credential column:\n%s", text)
 	}
 }

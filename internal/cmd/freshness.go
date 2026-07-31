@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
+	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
@@ -102,6 +104,104 @@ func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend,
 		return "snapshot credential " + expiringCredentialDetail(deadline, now, acc.Tool, acc.Name), false, nil
 	}
 	return "", false, nil
+}
+
+// credentialState is one account's snapshot freshness as the inventory commands
+// report it: a state token from the JSON vocabulary plus, when kae knows it, the
+// deadline that state was decided against. The zero value means kae could not
+// judge (an opaque payload, an unreadable backend), and every consumer renders
+// that as "unknown" rather than as "fine".
+type credentialState struct {
+	State     string
+	ReloginBy time.Time
+}
+
+// credentialStates reads the snapshot freshness of every captured account, for the
+// inventory commands (`kae ls`, `kae accounts`, `kae status`). Accounts kae cannot
+// judge are simply absent from the map.
+//
+// It exists because the freshness a user needs — "which of my accounts needs
+// attention" — was only reachable through `kae doctor`, while the commands that
+// list the accounts showed none of it.
+//
+// The payload is the single source of truth, deliberately: an expiry copied into
+// account.toml at capture time would be a second record of the same fact, and this
+// repo has paid for that twice (a snapshot's recorded keychain account overriding
+// the adapter's, a pin registry drifting from the store tree). A recapture path
+// that forgot to refresh the copy would make `kae ls` report a healthy account
+// that is dead. The snapshot bytes only change when kae rewrites them, so reading
+// them is exactly as accurate and cannot go out of step.
+//
+// The reads run concurrently. On darwin each one is a `security` invocation, so a
+// sequential loop would put the sum of them in front of the most-run commands —
+// the same reason detectTools fans out. A backend error for one account leaves
+// that account unjudged instead of failing the listing: `kae ls` answers from
+// metadata and must keep working when the secret store does not.
+func (app *App) credentialStates(ctx context.Context, be secret.Backend, captured []account.Account) map[toolAccount]credentialState {
+	states := make([]credentialState, len(captured))
+	var wg sync.WaitGroup
+	for i, acc := range captured {
+		wg.Add(1)
+		go func(i int, acc account.Account) {
+			defer wg.Done()
+			info, err := app.accountFreshness(ctx, be, acc)
+			if err != nil {
+				return
+			}
+			states[i] = app.credentialStateOf(info)
+		}(i, acc)
+	}
+	wg.Wait()
+	out := map[toolAccount]credentialState{}
+	for i, acc := range captured {
+		if states[i].State != "" {
+			out[toolAccount{acc.Tool, acc.Name}] = states[i]
+		}
+	}
+	return out
+}
+
+// capturedCredentialStates is what the read-only inventory commands call: it
+// resolves the secret backend itself and reports nothing at all when that fails.
+//
+// Best-effort is the contract here, not a shortcut. `kae ls`, `kae accounts` and
+// `kae status` answer from metadata and must keep listing the inventory when the
+// secret store is unavailable — turning a freshness column into a reason those
+// commands exit non-zero would be a regression in the commands a user reaches for
+// when something is already wrong.
+func (app *App) capturedCredentialStates(ctx context.Context, captured []account.Account) map[toolAccount]credentialState {
+	be, err := app.secretBackend()
+	if err != nil {
+		return nil
+	}
+	return app.credentialStates(ctx, secret.Cached(be), captured)
+}
+
+// credentialStateOf classifies one freshness reading into the three states the
+// inventory commands report, built from the same two predicates doctor uses so a
+// row can never disagree with the check about the same account.
+func (app *App) credentialStateOf(info freshness.Info) credentialState {
+	now := app.Now()
+	switch deadline, soon := reloginDueWithin(info, now, reloginLeadTime); {
+	case needsRelogin(info, now):
+		// A tombstone is past every deadline with no timestamp to name, so this state
+		// deliberately carries no ReloginBy.
+		if d, ok := reloginDeadline(info); ok {
+			return credentialState{State: constants.CredentialStale, ReloginBy: d}
+		}
+		return credentialState{State: constants.CredentialStale}
+	case soon:
+		return credentialState{State: constants.CredentialExpiring, ReloginBy: deadline}
+	case info.Known:
+		// Known and not due: "ok" only where kae actually has a deadline it is ahead
+		// of. A payload kae parses but that records no usable deadline (codex's
+		// refresh token with no published expiry, an api-key-only auth.json) is left
+		// unjudged — reporting it "ok" would claim knowledge kae does not have.
+		if d, ok := reloginDeadline(info); ok {
+			return credentialState{State: constants.CredentialOK, ReloginBy: d}
+		}
+	}
+	return credentialState{}
 }
 
 // reloginDeadline returns the instant at which info stops being able to open a

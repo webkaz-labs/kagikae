@@ -26,6 +26,11 @@ type toolStatus struct {
 	AuthPresent bool     `json:"auth_present"`
 	Accounts    []string `json:"accounts"`
 	Warnings    []string `json:"warnings"`
+	// Credential / ReloginBy describe the *active* account's snapshot freshness,
+	// the same pair accountItem carries and with the same "absent is not fine"
+	// rule. Additive and omitempty; both absent when no account is active.
+	Credential string `json:"credential,omitempty"`
+	ReloginBy  string `json:"relogin_by,omitempty"`
 }
 
 // toolAccount is a (tool, account) map key for the captured-identity lookup.
@@ -132,6 +137,7 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 			pinnedAccounts = info.Accounts
 		}
 	}
+	credentials := app.capturedCredentialStates(ctx, captured)
 	activeProfile := app.activeProfileName(st)
 	if activeProfile != "" {
 		report.ActiveProfile = &activeProfile
@@ -161,6 +167,8 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		}
 		if ts.Account != nil {
 			ts.Identity = identityByAccount[toolAccount{tool, *ts.Account}]
+			cred := credentials[toolAccount{tool, *ts.Account}]
+			ts.Credential, ts.ReloginBy = cred.State, stampOrEmpty(cred.ReloginBy)
 		}
 		if det := detections[i]; det.err != nil {
 			ts.Warnings = append(ts.Warnings, det.err.Error())
@@ -237,10 +245,14 @@ func (app *App) profileStatuses(activeProfile string) []profileStatus {
 }
 
 // accountItems builds the captured-account listing rows shared by
-// `kae accounts` and `kae ls`, marking the active account per tool.
-func accountItems(st *state.State, captured []account.Account) []accountItem {
+// `kae accounts` and `kae ls`, marking the active account per tool. states carries
+// each account's snapshot freshness; an account absent from it (or a nil map, when
+// the secret backend was unavailable) reports no credential state at all rather
+// than a healthy-looking one.
+func accountItems(st *state.State, captured []account.Account, states map[toolAccount]credentialState) []accountItem {
 	items := []accountItem{}
 	for _, acc := range captured {
+		cred := states[toolAccount{acc.Tool, acc.Name}]
 		items = append(items, accountItem{
 			Tool:       acc.Tool,
 			Account:    acc.Name,
@@ -248,9 +260,45 @@ func accountItems(st *state.State, captured []account.Account) []accountItem {
 			Driver:     acc.Driver,
 			Active:     st.Active[acc.Tool] == acc.Name,
 			CapturedAt: acc.CapturedAt.UTC().Format(time.RFC3339),
+			Credential: cred.State,
+			ReloginBy:  stampOrEmpty(cred.ReloginBy),
 		})
 	}
 	return items
+}
+
+// stampOrEmpty renders a credential deadline for the JSON contract, or "" when kae
+// has none — which omitempty then drops, so a consumer never sees a zero time
+// masquerading as a real deadline.
+func stampOrEmpty(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return utcStamp(t)
+}
+
+// credentialCell renders a credential state for a human table. It says how much
+// time is left rather than repeating the state word, because the number is the
+// part that decides whether to act; a state kae could not judge is the same "-"
+// every other unknown optional cell uses.
+//
+// It reads the report's own fields, not the state map, so the table and `--json`
+// cannot describe the same account differently. An unparseable deadline degrades
+// to the bare state word instead of inventing a duration.
+func credentialCell(state, reloginBy string, now time.Time) string {
+	switch state {
+	case constants.CredentialStale:
+		return "re-login now"
+	case constants.CredentialExpiring:
+		if by, err := time.Parse(time.RFC3339, reloginBy); err == nil {
+			return roundDays(by.Sub(now)) + " left"
+		}
+		return constants.CredentialExpiring
+	case constants.CredentialOK:
+		return constants.CredentialOK
+	default:
+		return "-"
+	}
 }
 
 // globalIsolatedStatuses resolves state.synced into per-tool private homes in
@@ -287,6 +335,7 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 	} else {
 		fmt.Print("Global active profile: (none)\n\n")
 	}
+	now := app.Now()
 	rows := [][]string{}
 	for _, ts := range report.Tools {
 		accountName := "-"
@@ -301,9 +350,16 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		if len(ts.Warnings) > 0 {
 			notes = paint(constants.StatusWarn, fmt.Sprintf("%d warning(s)", len(ts.Warnings)), color)
 		}
-		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, notes})
+		// Auth is about the live store ("is anything logged in here"); Credential is
+		// about the snapshot kae would apply, which is a different question and the
+		// one that goes stale unnoticed.
+		cred := credentialCell(ts.Credential, ts.ReloginBy, now)
+		if ts.Credential == constants.CredentialStale || ts.Credential == constants.CredentialExpiring {
+			cred = paint(constants.StatusWarn, cred, color)
+		}
+		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, cred, notes})
 	}
-	printTable([]string{"Tool", "Account", "Identity", "Driver", "Auth", "Notes"}, rows)
+	printTable([]string{"Tool", "Account", "Identity", "Driver", "Auth", "Credential", "Notes"}, rows)
 	warned := false
 	for _, ts := range report.Tools {
 		for _, warning := range ts.Warnings {
@@ -344,6 +400,13 @@ type accountItem struct {
 	Driver     string `json:"driver"`
 	Active     bool   `json:"active"`
 	CapturedAt string `json:"captured_at"`
+	// Credential is the snapshot's freshness state (constants.Credential*) and
+	// ReloginBy the deadline it was judged against. Additive and omitempty, so
+	// schema_version stays 1; both absent when kae could not judge the snapshot —
+	// an opaque payload, one recording no usable deadline, or an unreadable secret
+	// store. Absent is never "fine".
+	Credential string `json:"credential,omitempty"`
+	ReloginBy  string `json:"relogin_by,omitempty"`
 }
 
 type accountsReport struct {
@@ -364,7 +427,7 @@ func CmdAccounts(ctx context.Context, args []string) int {
 	return runAccounts(ctx, app, opts)
 }
 
-func runAccounts(_ context.Context, app *App, opts commonOpts) int {
+func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
 	}
@@ -376,7 +439,10 @@ func runAccounts(_ context.Context, app *App, opts commonOpts) int {
 	if err != nil {
 		return finish(opts, err)
 	}
-	report := accountsReport{SchemaVersion: constants.SchemaVersion, Accounts: accountItems(st, captured)}
+	report := accountsReport{
+		SchemaVersion: constants.SchemaVersion,
+		Accounts:      accountItems(st, captured, app.capturedCredentialStates(ctx, captured)),
+	}
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
@@ -384,15 +450,19 @@ func runAccounts(_ context.Context, app *App, opts commonOpts) int {
 		fmt.Println("no captured accounts (run: kae add <tool> <account>)")
 		return constants.ExitOK
 	}
+	now := app.Now()
 	rows := [][]string{}
 	for _, item := range report.Accounts {
 		active := ""
 		if item.Active {
 			active = "*"
 		}
-		rows = append(rows, []string{item.Tool, item.Account, orDash(item.Identity), active, item.Driver, item.CapturedAt})
+		rows = append(rows, []string{
+			item.Tool, item.Account, orDash(item.Identity), active, item.Driver,
+			credentialCell(item.Credential, item.ReloginBy, now), item.CapturedAt,
+		})
 	}
-	printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Captured"}, rows)
+	printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Captured"}, rows)
 	return constants.ExitOK
 }
 

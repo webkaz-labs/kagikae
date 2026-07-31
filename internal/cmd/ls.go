@@ -34,19 +34,19 @@ func CmdLs(ctx context.Context, args []string) int {
 	return runLs(ctx, app, opts)
 }
 
-func runLs(_ context.Context, app *App, opts commonOpts) int {
-	report, err := buildLs(app)
+func runLs(ctx context.Context, app *App, opts commonOpts) int {
+	report, err := buildLs(ctx, app)
 	if err != nil {
 		return finish(opts, err)
 	}
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
-	printLsReport(report)
+	printLsReport(app, report)
 	return constants.ExitOK
 }
 
-func buildLs(app *App) (*lsReport, error) {
+func buildLs(ctx context.Context, app *App) (*lsReport, error) {
 	if err := app.requireConfig(); err != nil {
 		return nil, err
 	}
@@ -60,25 +60,29 @@ func buildLs(app *App) (*lsReport, error) {
 	}
 	return &lsReport{
 		SchemaVersion: constants.SchemaVersion,
-		Accounts:      accountItems(st, captured),
+		Accounts:      accountItems(st, captured, app.capturedCredentialStates(ctx, captured)),
 		Profiles:      app.profileStatuses(app.activeProfileName(st)),
 	}, nil
 }
 
-func printLsReport(report *lsReport) {
+func printLsReport(app *App, report *lsReport) {
 	if len(report.Accounts) == 0 {
 		fmt.Println("Accounts: (none — register one with: kae add <tool>)")
 	} else {
 		fmt.Println("Accounts:")
+		now := app.Now()
 		rows := [][]string{}
 		for _, item := range report.Accounts {
 			active := ""
 			if item.Active {
 				active = "*"
 			}
-			rows = append(rows, []string{item.Tool, item.Account, item.Identity, active, item.Driver})
+			rows = append(rows, []string{
+				item.Tool, item.Account, item.Identity, active, item.Driver,
+				credentialCell(item.Credential, item.ReloginBy, now),
+			})
 		}
-		printTable([]string{"Tool", "Account", "Identity", "Active", "Driver"}, rows)
+		printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential"}, rows)
 	}
 	fmt.Println()
 	if len(report.Profiles) == 0 {

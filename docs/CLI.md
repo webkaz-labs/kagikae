@@ -628,6 +628,8 @@ in the same transaction.
       "driver": "claude-keychain-patch",
       "auth_present": true,
       "accounts": ["side", "main"],
+      "credential": "expiring",
+      "relogin_by": "2026-06-14T01:23:45Z",
       "warnings": []
     }
   ],
@@ -650,9 +652,11 @@ isolated path or the recorded shared-dir account), never a stale profile label.
 `profiles` lists every defined profile (name ascending) with its mapping and an
 `active` marker. `global_isolated` lists every tool currently pointed at a
 global isolated home by `kae use -i` or `kae run -i`, with its private home
-path; it is `[]` when no tool is globally isolated. The human text leads with
-the same data: the global-isolated homes (if any), the pin banner, the global
-active profile, the per-tool table, then the profiles list.
+path; it is `[]` when no tool is globally isolated. `credential` / `relogin_by`
+describe the **active** account's snapshot freshness (see "Credential freshness
+in listings" below); both are absent when no account is active. The human text
+leads with the same data: the global-isolated homes (if any), the pin banner, the
+global active profile, the per-tool table, then the profiles list.
 
 ### `kae accounts --json`
 
@@ -666,7 +670,9 @@ active profile, the per-tool table, then the profiles list.
       "identity": "you@example.com",
       "driver": "claude-keychain-patch",
       "active": true,
-      "captured_at": "2026-06-11T01:23:45Z"
+      "captured_at": "2026-06-11T01:23:45Z",
+      "credential": "ok",
+      "relogin_by": "2026-07-11T01:23:45Z"
     }
   ]
 }
@@ -675,7 +681,44 @@ active profile, the per-tool table, then the profiles list.
 Ordering: tool (claude, codex, agy, opencode, cursor, copilot), then
 account name ascending. `identity` (the raw detected login identity) is
 additive and `omitempty` — absent for pre-v0.8.3 snapshots and tools with no
-readable identity; `schema_version` stays `1`.
+readable identity; `schema_version` stays `1`. `credential` / `relogin_by` are
+additive and `omitempty` too — see "Credential freshness in listings" below.
+
+#### Credential freshness in listings
+
+`kae ls`, `kae accounts` and `kae status` rows carry two additive, `omitempty`
+fields describing the **snapshot** kae would apply — a different question from
+`auth_present` / the `Auth` column, which report the live store. A tool can be
+logged in right now while the snapshot kae would re-apply is already dead.
+
+- `credential`: `ok`, `expiring`, or `stale`. The last two mirror the
+  `credential_expiring` / `credential_stale` doctor checks exactly (same
+  predicates, same seven-day lead time), so a row and a check can never disagree
+  about the same account.
+- `relogin_by`: RFC3339 — the instant the credential stops being able to open a
+  session without an interactive login (the later of the access-token and
+  refresh-token expiries).
+
+**Both fields absent means kae could not judge the snapshot, never that it is
+fine.** Three ways to get there: a payload kae cannot parse (copilot's pointer,
+agy's blob), one it parses but that records no deadline it can trust (codex stores
+a refresh token without publishing an expiry; an `auth.json` holding only an API
+key has no expiry at all), and a secret backend it could not read. That last case
+is deliberately not an error: these commands answer from metadata and are what a
+user reaches for when something is already wrong, so an unreadable secret store
+drops the two fields and the listing still succeeds.
+
+Cost: one secret-store read per captured account, which is what `kae doctor`
+already does, and the reads run concurrently so the wall clock is one read rather
+than the sum. The expiry is read from the payload every time rather than cached
+into `account.toml`, because a copy of a fact is a second source of truth — a
+recapture path that forgot to refresh it would have `kae ls` reporting a healthy
+account that is dead. Snapshot bytes only change when kae rewrites them, so
+reading them is exactly as accurate and cannot fall out of step.
+
+The human tables render this as a `Credential` column, spelling out the time left
+(`3 day(s) left`) rather than repeating the state word, `re-login now` for a stale
+one, and `-` for one kae could not judge.
 
 ### `kae ls --json`
 
@@ -685,7 +728,8 @@ readable identity; `schema_version` stays `1`.
   "accounts": [
     {"tool": "claude", "account": "main", "identity": "you@example.com",
      "driver": "claude-keychain-patch", "active": true,
-     "captured_at": "2026-06-11T01:23:45Z"}
+     "captured_at": "2026-06-11T01:23:45Z",
+     "credential": "ok", "relogin_by": "2026-07-11T01:23:45Z"}
   ],
   "profiles": [
     {"name": "main", "accounts": {"claude": "main"}, "active": true}

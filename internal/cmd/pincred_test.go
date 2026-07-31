@@ -21,11 +21,13 @@ import (
 // drift into meaning something else.
 const deadClaudeCred = `{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`
 
-// endOfLifeClaudeCred is the oauth object of a claude credential whose deadline is a
-// real end of life: no refresh token, so the access-token expiry is the whole story
-// and it is the only shape credential_expiring anticipates (leadTimeApplies). Six
-// tests across five files build it with different tokens and horizons, which is one
-// shape in six places — the same reason deadClaudeCred exists.
+// endOfLifeClaudeCred is the oauth object of a claude credential with **no refresh
+// token**, so its access-token expiry is the whole deadline — cursor's shape, and the
+// simplest fixture for exercising the lead-time band without a second timestamp in
+// play. (A refresh-backed credential is judged on its login deadline the same way;
+// TestRefreshBackedLoginDeadlineInTheBandWarns covers that side.) Six tests across
+// five files build this with different tokens and horizons, which is one shape in six
+// places — the same reason deadClaudeCred exists.
 func endOfLifeClaudeCred(now time.Time, in time.Duration, token string) string {
 	return fmt.Sprintf(`{"accessToken":%q,"refreshToken":"","expiresAt":%d}`,
 		token, now.Add(in).UnixMilli())

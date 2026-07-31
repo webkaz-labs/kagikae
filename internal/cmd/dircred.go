@@ -92,10 +92,15 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	if artName == "" {
 		return nil // the tool has no credential kae materializes per directory
 	}
-	sp, ok, err := app.dirCredentialSpec(ctx, tool, artName, credDir)
+	// Resolved once for both halves. Asking the adapter twice is not free: codex
+	// under `cli_auth_credentials_store = "auto"` probes the keychain to decide which
+	// store it is on, so a second resolution is a second `security` subprocess per
+	// bind (and a second read of its config.toml).
+	specs, err := app.dirSpecs(ctx, tool, credDir)
 	if err != nil {
 		return err
 	}
+	sp, ok := specByName(specs, artName)
 	if !ok {
 		return nil // no such artifact on this platform
 	}
@@ -114,7 +119,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		return fmt.Errorf("%w: kae cannot give this directory its own %s credential store (%s)",
 			errGlobalCredentialStore, tool, isolationEnvVar(tool))
 	}
-	data, storedKind, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
+	acc, data, storedKind, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
 	if err != nil {
 		return err
 	}
@@ -150,13 +155,23 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// would be left with a fresh private credential and no binding pointing at it.
 	// A malformed `.claude.json` the tool left behind, or a momentarily unreadable
 	// secret store, is not a reason for that.
-	if err := app.writeDirIdentity(ctx, be, tool, accountName, credDir); err != nil {
+	if err := writeDirIdentity(ctx, be, specs, acc, credDir); err != nil {
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: could not apply %s's identity cache for account %s in this directory (%v); "+
 				"%s may display another account until you log in inside it\n",
 			tool, accountName, err, tool)
 	}
 	return nil
+}
+
+// specByName picks one artifact spec out of a resolved set.
+func specByName(specs []artifact.Spec, name string) (artifact.Spec, bool) {
+	for _, sp := range specs {
+		if sp.Name == name {
+			return sp, true
+		}
+	}
+	return artifact.Spec{}, false
 }
 
 // writeDirIdentity applies the bound account's identity-only artifacts inside
@@ -173,25 +188,13 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 // credential it can now see, whereas a kept one is a label for an account that is
 // no longer there.
 //
-// Called only after the credential write has succeeded, and it inherits every one
-// of that function's early exits. The order is not interchangeable: a directory
-// labelled with an account whose credential kae could not put there is worse than
-// an unlabelled one, since the label is the only thing a user checks.
-func (app *App) writeDirIdentity(ctx context.Context, be secret.Backend, tool, accountName, credDir string) error {
-	specs, err := app.dirSpecs(ctx, tool, credDir)
-	if err != nil {
-		return err
-	}
-	acc, found, err := account.Load(app.Paths.AccountDir(tool, accountName))
-	if err != nil {
-		return err
-	}
-	if !found {
-		// Unreachable through the credential write, which resolves the same snapshot
-		// first — kept so this cannot silently apply "absent everywhere" if it is ever
-		// called on its own.
-		return errf(constants.ExitNotFound, "account %s/%s is not captured yet", tool, accountName)
-	}
+// Called only after the credential write has succeeded, with the specs and the
+// snapshot that write already resolved — asking the adapter or reloading
+// `account.toml` a second time would buy nothing and costs a `security` subprocess
+// for codex. The order is not interchangeable: a directory labelled with an account
+// whose credential kae could not put there is worse than an unlabelled one, since
+// the label is the only thing a user checks.
+func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.Spec, acc account.Account, credDir string) error {
 	for _, sp := range specs {
 		if !sp.IdentityOnly {
 			continue
@@ -209,21 +212,23 @@ func (app *App) writeDirIdentity(ctx context.Context, be secret.Backend, tool, a
 				"kae: warning: %s's identity cache in this directory is shared with the real %s home "+
 					"(%s), so kae is not writing it here; %s may display an account other than %s "+
 					"until you log in inside the directory\n",
-				tool, tool, sp.Target, tool, accountName)
+				acc.Tool, acc.Tool, sp.Target, acc.Tool, acc.Name)
 			continue
 		}
-		value := artifact.Value{}
-		if art, ok := acc.Artifacts[sp.Name]; ok && art.Present {
-			data, found, err := be.Get(ctx, art.SecretRef)
-			if err != nil {
-				return fmt.Errorf("read snapshot identity %s: %w", art.SecretRef, err)
-			}
-			if found {
-				value = artifact.Value{Data: data, Present: true}
-			}
+		art := acc.Artifacts[sp.Name]
+		// identityOnly is true, so a payload the backend has lost degrades to absent
+		// rather than erroring — the same rule applySnapshot and the rollback cleanup
+		// apply to this artifact class, from the same helper. The missing callback is
+		// unreachable at that flag, and is written honestly rather than nil so it stays
+		// correct if the flag ever moves.
+		value, err := storedValue(ctx, be, art.SecretRef, art.Present, true, func() error {
+			return errf(constants.ExitError, "identity payload %s is missing from the secret store", art.SecretRef)
+		})
+		if err != nil {
+			return err
 		}
 		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
-			return fmt.Errorf("write %s identity for account %s: %w", tool, accountName, err)
+			return fmt.Errorf("write %s identity for account %s: %w", acc.Tool, acc.Name, err)
 		}
 	}
 	return nil
@@ -263,26 +268,23 @@ func identityTargetEscapes(target, credDir string) (bool, error) {
 		}
 		resolved = filepath.Join(parent, filepath.Base(target))
 	}
-	rel, err := filepath.Rel(root, resolved)
-	if err != nil {
-		return true, nil // not expressible relative to the store: treat as outside
-	}
-	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)), nil
+	// pathWithin owns what counts as inside, so "escapes" cannot drift from the
+	// answer the rest of the package gives; the work above is only about *which*
+	// paths to hand it.
+	return !pathWithin(resolved, root), nil
 }
 
 // dirCredentialSpec resolves the tool's credential spec as it applies *inside*
-// credDir. ok is false when this platform has no artifact by that name.
+// credDir. ok is false when this platform has no artifact by that name. For a
+// caller that needs a second spec of the same tool and directory, resolve once with
+// dirSpecs and pick with specByName instead — each resolution can cost a subprocess.
 func (app *App) dirCredentialSpec(ctx context.Context, tool, artName, credDir string) (artifact.Spec, bool, error) {
 	specs, err := app.dirSpecs(ctx, tool, credDir)
 	if err != nil {
 		return artifact.Spec{}, false, err
 	}
-	for _, sp := range specs {
-		if sp.Name == artName {
-			return sp, true, nil
-		}
-	}
-	return artifact.Spec{}, false, nil
+	sp, ok := specByName(specs, artName)
+	return sp, ok, nil
 }
 
 // dirSpecs resolves every artifact spec of tool as it applies *inside* credDir, by
@@ -331,38 +333,42 @@ func (app *App) dirSpecs(ctx context.Context, tool, credDir string) ([]artifact.
 	return specs, nil
 }
 
-// snapshotCredential returns the captured credential payload for tool/account
-// together with the spec kind it was captured as, which fixes the payload's
-// shape (checkPayloadShape).
+// snapshotCredential returns the captured account, its credential payload, and the
+// spec kind the payload was captured as, which fixes its shape (checkPayloadShape).
 //
 // The snapshot is the only correct source for a per-directory bind: the live
 // store holds whichever account is globally active, which is the account being
 // bound only by coincidence.
-func (app *App) snapshotCredential(ctx context.Context, be secret.Backend, tool, accountName, artName string) ([]byte, string, error) {
+//
+// It returns the loaded account because the identity step needs the same one, and
+// loading `account.toml` twice for a single bind meant two copies of the
+// "is it captured at all" guard, one of which then argued in a comment that it could
+// never fire.
+func (app *App) snapshotCredential(ctx context.Context, be secret.Backend, tool, accountName, artName string) (account.Account, []byte, string, error) {
 	acc, found, err := account.Load(app.Paths.AccountDir(tool, accountName))
 	if err != nil {
-		return nil, "", err
+		return account.Account{}, nil, "", err
 	}
 	if !found {
-		return nil, "", errf(constants.ExitNotFound,
+		return account.Account{}, nil, "", errf(constants.ExitNotFound,
 			"account %s/%s is not captured yet (run: kae add --no-login %s %s)",
 			tool, accountName, tool, accountName)
 	}
 	metaArt, ok := acc.Artifacts[artName]
 	if !ok || !metaArt.Present {
-		return nil, "", errf(constants.ExitAuthMissing,
+		return account.Account{}, nil, "", errf(constants.ExitAuthMissing,
 			"account %s/%s has no credential snapshot; re-run kae add --no-login %s %s",
 			tool, accountName, tool, accountName)
 	}
 	data, found, err := be.Get(ctx, metaArt.SecretRef)
 	if err != nil {
-		return nil, "", fmt.Errorf("read snapshot credential: %w", err)
+		return account.Account{}, nil, "", fmt.Errorf("read snapshot credential: %w", err)
 	}
 	if !found {
-		return nil, "", errf(constants.ExitError,
+		return account.Account{}, nil, "", errf(constants.ExitError,
 			"snapshot payload missing; re-run kae add --no-login %s %s", tool, accountName)
 	}
-	return data, metaArt.Kind, nil
+	return acc, data, metaArt.Kind, nil
 }
 
 // dirStore is one per-directory credential store a bound directory has

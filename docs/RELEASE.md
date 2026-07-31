@@ -149,8 +149,9 @@ themselves.
   *credentials*, and this file is not one, so opting it in was permitted — and did
   the same damage in the stricter mode, every `kae pin -i` directory displaying the
   real home's account whichever one it was logged in as. If your config has it,
-  remove that entry; the two fields now refuse the same set, with a guard test
-  keeping them from drifting apart.
+  remove that entry. Both fields and the shared bind's denylist now read one table
+  (`constants.PrivateBindItems`) instead of three hand-kept copies — which is what
+  let this diverge in the first place — with a guard test pinning the wiring.
 
 - **`account.toml` no longer records a keychain account (removed field).** It was
   written at capture and read nowhere, with a doc comment telling apply to ignore it

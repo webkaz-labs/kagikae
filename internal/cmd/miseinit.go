@@ -243,33 +243,13 @@ func writeEnvEntries(b *strings.Builder, profileName string, entries []isolation
 	}
 }
 
-// bondDenylistItems returns the items excluded from bond-mode symlink sharing
-// for a tool: the hard-coded auth artifacts plus user-configured extras.
-// The hard-coded list is per-tool and intentionally minimal; docs/ADAPTERS.md
-// "Isolation" is the normative reference — keep them in sync.
+// bondDenylistItems returns the items excluded from bond-mode symlink sharing for
+// a tool: the files a bind must keep private (constants.PrivateBindItems, the one
+// literal — internal/config refuses a user from re-listing any of them, which is
+// why it lives a layer down) plus the user's own extras. docs/ADAPTERS.md
+// "Per-directory shared bind" is the normative description of both halves.
 func (app *App) bondDenylistItems(tool string) []string {
-	var base []string
-	switch tool {
-	case constants.ToolClaude:
-		// .credentials.json is Linux-only (macOS uses keychain), but harmless
-		// to include on all platforms: if absent the copy step is a no-op.
-		//
-		// .claude.json is the mixed-state file holding the /oauthAccount identity
-		// cache, and it has to be private for a reason no other entry shares: a
-		// bound directory cannot both name its own account *and* live-share the file
-		// that records which account it is. Whether it was ever shared here was an
-		// accident of where claude puts the file — inside CLAUDE_CONFIG_DIR when the
-		// user sets it (so an entry of the real home, and linked), at $HOME
-		// otherwise (so not an entry at all, and never linked). Denying it makes the
-		// two configurations behave the same, and the cost lands on the keys claude
-		// keeps alongside the identity — projects, mcpServers, trust state and the
-		// rest — which stop being live-shared into a bond dir for the users who had
-		// that by chance (docs/SCOPE-MODEL.md §6).
-		base = []string{".credentials.json", ".claude.json"}
-	case constants.ToolCodex:
-		base = []string{"auth.json"}
-	}
-	return append(base, app.Config.SharedDenylistExtra(tool)...)
+	return append(constants.PrivateBindNames(tool), app.Config.SharedDenylistExtra(tool)...)
 }
 
 // bondIsolationEntries resolves the per-tool env entries for bond mode.

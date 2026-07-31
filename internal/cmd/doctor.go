@@ -299,7 +299,17 @@ func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapte
 // can disagree — a payload the snapshot declares and the backend lacks
 // (secretMissingChecks), and a stored key with no snapshot dir behind it
 // (orphanChecks, only where the backend can enumerate).
+//
+// The two snapshot-reading halves are given a coalescing view of the backend,
+// because they read the same payloads: accountFreshness reads each datable account's
+// credential to date it, and secretMissingChecks reads it again to ask whether it is
+// there at all. On darwin every such read is a `security` subprocess, so without the
+// cache adding the second check doubled them. orphanChecks keeps the **raw** backend
+// on purpose — secret.Cached does not forward the Enumerator capability, and passing
+// the wrapper would silently switch orphan detection off wherever it still works.
 func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, toolFilter string) []adapter.Check {
+	ctx = secret.WithReadCache(ctx)
+	cached := secret.Cached(be)
 	checks := []adapter.Check{}
 	accounts, err := account.List(app.Paths.AccountsDir())
 	if err == nil {
@@ -307,7 +317,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 			if toolFilter != "" && acc.Tool != toolFilter {
 				continue
 			}
-			info, err := app.accountFreshness(ctx, be, acc)
+			info, err := app.accountFreshness(ctx, cached, acc)
 			if err != nil {
 				continue
 			}
@@ -334,7 +344,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 			}
 		}
 	}
-	checks = append(checks, app.secretMissingChecks(ctx, be, toolFilter)...)
+	checks = append(checks, app.secretMissingChecks(ctx, cached, toolFilter)...)
 	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)
 }
 
@@ -461,10 +471,11 @@ func (app *App) orphanChecks(ctx context.Context, be secret.Backend, toolFilter 
 // switched to may well still be working, and a diagnostic must not fail the
 // command that is reporting it.
 //
-// ponytail: one backend read per present artifact, and doctor installs no
-// secret.WithReadCache, so a datable tool's credential is read here and again in
-// accountFreshness — two `security` calls instead of one on darwin. Wrap the
-// doctor path in secret.WithReadCache if the latency ever shows up.
+// One backend read per present artifact, coalesced with accountFreshness's reads of
+// the same payloads by the cache its caller installs — so adding this check does not
+// add a `security` subprocess for a credential that was already going to be read.
+// What is genuinely new is the reads for artifacts nothing else looks at (a
+// non-datable tool's, and every non-credential artifact).
 func (app *App) secretMissingChecks(ctx context.Context, be secret.Backend, toolFilter string) []adapter.Check {
 	accounts, err := account.List(app.Paths.AccountsDir())
 	if err != nil {

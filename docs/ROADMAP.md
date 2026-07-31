@@ -127,25 +127,17 @@ alternative exists (`secret-tool`).
   update `state.Active[tool] = newName` inside its state mutation and only
   *afterwards* copy the secret payloads and write the renamed snapshot dir, so a
   failure in between left state naming a snapshot that did not exist yet.
-  It is now three stages — build the new snapshot, flip the logical pointers
-  (config references + state), destroy the old snapshot — and the shape matters
-  more than the reorder. Simply moving the flip below the old single pass would have
-  made the failure *worse*: that pass was per-artifact `Get(old)` → `Set(new)` →
-  **`Delete(old)`**, so the crash window would have become "`state.Active` names
-  `oldName`, whose dir loads fine while the `SecretRef` its `account.toml` declares
-  is already deleted" — a state nothing reported, since `orphanChecks` only looks
-  the other way. So the copy and the delete are separate passes, with the flip
-  between them, and stage 3 deletes the refs *before* removing the dir: that maps
-  its own crash window onto `secret_missing` (added with this fix), which works on
-  every backend, rather than onto `secret_orphan`, which needs an enumerable one and
-  is therefore silent on the darwin keychain.
-  Every crash window is now either "old is intact and active" or "both exist and
-  active is valid". Not uniformly re-runnable, though: a crash after the new dir is
-  saved but before the flip leaves both dirs present, so re-running hits the
-  "account already exists" guard. That guard was deliberately left strict — a
-  half-written rename target is indistinguishable from a genuinely taken name, so
-  tolerating it would mean guessing — and the manual step is documented instead
-  ([CLI.md](CLI.md) § `account rename`).
+  It is now three stages — build the new snapshot, flip the logical pointers, destroy
+  the old snapshot — so every crash window leaves the pointers on a snapshot that is
+  complete. **`buildAccountRename`'s comment is normative for why the ordering is
+  what it is**, including why a naive reorder would have been worse than the original
+  and why stage 3 deletes refs before the dir; it sits beside the code and cannot
+  drift from it, so this entry does not restate the argument.
+  Two decisions worth having outside the code: the "account already exists" guard was
+  deliberately left strict, because a half-written rename target is indistinguishable
+  from a genuinely taken name, and the manual recovery is documented instead
+  ([CLI.md](CLI.md) § `kae account`). The doctor check the reorder needed,
+  `secret_missing`, shipped with it.
 
 - ~~**`kae rollback` restores an active pointer without checking its snapshot is
   still there**~~ (recorded 2026-07-31, **fixed** — the sibling of the entry above;

@@ -240,8 +240,9 @@ stay private so a directory authenticates as its own account — refusing them k
 credential from leaking across directories. claude's `.claude.json` must stay private
 so a directory can *name* its own account: shared back to the real home, it makes
 every bound directory display whatever the real home displays, whichever account it
-is logged in as. A guard test keeps the two keys refusing the same set — a name added
-to one and forgotten in the other would reopen the hole in that mode alone.
+is logged in as. Both keys read one table (`constants.PrivateBindItems`), which is
+also what the shared bind builds its symlink denylist from, so a name cannot be
+denied in one place and permitted in another; a guard test pins that wiring.
 
 **A per-directory keychain item is removed once nothing points at it.** A `-s` ↔
 `-i` toggle or an isolated re-bind supersedes a store, and its item would otherwise

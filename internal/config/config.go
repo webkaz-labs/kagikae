@@ -152,7 +152,7 @@ func (c *Config) validate() error {
 			if !ValidFileName(item) {
 				return fmt.Errorf("tools.%s.shared_denylist_extra item %q is not a bare file name", tool, item)
 			}
-			if refusedSharedDenylistExtra[item] {
+			if _, refused := constants.PrivateBindKind(item); refused {
 				return fmt.Errorf("tools.%s.shared_denylist_extra: %q is already on the hard-coded denylist", tool, item)
 			}
 		}
@@ -160,7 +160,7 @@ func (c *Config) validate() error {
 			if !ValidFileName(item) {
 				return fmt.Errorf("tools.%s.isolated_shared_items item %q is not a bare file name", tool, item)
 			}
-			if kind, refused := refusedIsolatedShare[item]; refused {
+			if kind, refused := constants.PrivateBindKind(item); refused {
 				return fmt.Errorf(
 					"tools.%s.isolated_shared_items must not share the %s %q; remove it — kae keeps that file "+
 						"private to the directory so it can be a different account than the real home",
@@ -222,35 +222,14 @@ var renamedToolKeys = map[string]string{
 	"home_mode_enabled":    "", // home mode removed
 }
 
-// refusedSharedDenylistExtra lists the entries that are always on the hard-coded
-// shared-bind denylist (see bondDenylistItems in internal/cmd/miseinit.go);
-// adding them to SharedDenylistExtra is rejected to avoid confusion. The names
-// mirror what the tool adapters switch (claude: .credentials.json, plus
-// .claude.json for the identity cache it holds; codex: auth.json).
-var refusedSharedDenylistExtra = map[string]bool{
-	".credentials.json": true,
-	".claude.json":      true,
-	"auth.json":         true,
-}
-
-// refusedIsolatedShare lists the entries that must never appear in
-// isolated_shared_items, mapped to what each one is — the reasons differ and one
-// message would be wrong for the other.
-//
-// A credential must stay private so the directory *authenticates* as its own
-// account. `.claude.json` must stay private so the directory can *name* its own
-// account: it holds claude's `/oauthAccount` cache, and a link back to the real home
-// means every isolated directory displays whatever the real home displays, no matter
-// which account it is logged in as. That is the attribution gap v0.16.0 closed, and
-// it was reachable through this knob because the field's rule used to be about auth
-// alone — `.claude.json` is not a credential, so it was permitted (docs/ADAPTERS.md
-// "Identity cache"). The sibling field refuses it for the same reason
-// (refusedSharedDenylistExtra), and the two must not drift apart.
-var refusedIsolatedShare = map[string]string{
-	".credentials.json": "auth credential",
-	"auth.json":         "auth credential",
-	".claude.json":      "identity cache",
-}
+// Both fields above refuse the same set, and that set is
+// constants.PrivateBindItems — one literal, shared with the shared bind that
+// actually keeps those files private. It used to be two maps here plus a third
+// literal in internal/cmd, kept aligned by hand: v0.16.0 added `.claude.json` to
+// two of the three and missed the isolated bind, which reopened the gap in the
+// mode that promises the most isolation. The two fields refuse it for their own
+// reasons — one because the file is *already* denied, the other because sharing it
+// back would undo the bind — and neither reason survives the set drifting.
 
 // SharedDenylistExtra returns the user-configured extra items to exclude from
 // the per-directory shared bind's symlink sharing (validated at load time).

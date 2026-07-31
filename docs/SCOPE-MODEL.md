@@ -199,16 +199,13 @@ cannot be live-shared with the real home *and* say something different in this
 directory. So in a per-directory bind the file is **private**, by denylist
 ([ADAPTERS.md](ADAPTERS.md) "Per-directory shared bind").
 
-Worth being precise about what that gives up, because it is less than it sounds.
-Whether a bond dir shared that file at all depended on where claude puts it: inside
-`CLAUDE_CONFIG_DIR` when the user sets one — an entry of the real home, so linked —
-and at `$HOME/.claude.json` when they do not, which is not an entry of the tool home
-and was therefore never linked for anyone. The goal was thus achieved for one
-configuration and not the other, by accident of file placement rather than by
-design. Denying it makes both behave the same way, and the users who had the sharing
-by chance lose it: a bond dir starts with claude's own defaults for those keys, so a
-trust prompt reappears once per bound directory. Session history is unaffected — it
-lives in `projects/` under the tool home and is still symlinked.
+What that gives up is less than it sounds, and how much depended on a setting rather
+than on any decision — the mechanics are in [ADAPTERS.md](ADAPTERS.md) "Identity
+cache", which is the normative site for what claude switches and preserves. In
+scope-model terms the consequence is: a bond dir no longer inherits the real home's
+`projects` / `mcpServers` / trust state for that one file, so it starts from claude's
+defaults there and a trust prompt reappears once per bound directory. Session history
+is unaffected — it lives in `projects/` under the tool home and is still symlinked.
 
 The symlink-following rule above still matters as a **guard**. Following a link is
 right for a global switch and wrong for a bind, where it would relabel the real home

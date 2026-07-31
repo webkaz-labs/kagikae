@@ -53,17 +53,9 @@ func TestIsolatedSharedItemsValidation(t *testing.T) {
 		}
 	}
 
-	// The two fields refuse the same set, and must keep doing so: the shared bind
-	// denies these by denylist and the isolated bind by refusing the opt-in, so a
-	// name added to one and forgotten in the other reopens the gap in that mode only.
-	for item := range refusedIsolatedShare {
-		if !refusedSharedDenylistExtra[item] {
-			t.Errorf("%q is refused for isolated_shared_items but not for shared_denylist_extra", item)
-		}
-	}
-	for item := range refusedSharedDenylistExtra {
-		if _, ok := refusedIsolatedShare[item]; !ok {
-			t.Errorf("%q is refused for shared_denylist_extra but not for isolated_shared_items", item)
-		}
-	}
+	// Both fields read constants.PrivateBindItems, so there is nothing here that can
+	// drift from anything: the guard this used to need — two maps in this package
+	// asserting they held the same keys — went away with the second map.
+	// TestBondDenylistIsRefusedInBothConfigFields in internal/cmd still checks the
+	// remaining seam, that the shared bind's denylist is built from the same table.
 }

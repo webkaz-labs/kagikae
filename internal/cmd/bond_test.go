@@ -18,14 +18,14 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
-// The two config refusal sets guard each other, but neither can see the thing they
-// are copies *of*: bondDenylistItems is the behaviour — what a shared bind actually
-// keeps private — and internal/config holds a hand-maintained mirror of it per
-// config field. Add a must-be-private file there and forget both maps, and it is
-// shareable again through `shared_denylist_extra` or `isolated_shared_items`, which
-// is the hole this release closed twice, once per field. config cannot import cmd,
-// so the guard lives here; and it asks through config.Load rather than reading the
-// maps, so what is pinned is the refusal a user actually meets.
+// The set of must-be-private files is one literal now
+// (constants.PrivateBindItems), so this no longer guards data against data — it
+// guards the **wiring**: that the shared bind's denylist is still derived from that
+// table rather than a fresh local literal, and that both config fields still consult
+// it. Re-hardcode either side and this fails.
+//
+// It asks through config.Load rather than reading the table twice, so what is pinned
+// is the refusal a user actually meets.
 func TestBondDenylistIsRefusedInBothConfigFields(t *testing.T) {
 	app := testApp(t, nil) // empty config, so the denylist is the hard-coded half only
 	for _, tool := range constants.Tools {

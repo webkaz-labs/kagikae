@@ -221,20 +221,34 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		return nil, errf(exitOf(err),
 			"rollback failed, live state restored from backup %s: %v", preMeta.ID, err)
 	}
-	// Warned before the write it qualifies, and never fatal: the credentials are
-	// already rolled back, and what cannot be restored is a label.
+	// Decided once, for both the warning and the write, so the two cannot answer
+	// differently about the same tool — and so `restorableActiveAccount`'s
+	// `account.Load` is paid once per tool instead of twice.
+	//
+	// The recorded name is only written back when its snapshot still resolves.
+	// `active_before` keeps the name it had at capture time, so rolling back across
+	// an `account rm`/`rename` used to record an account that no longer exists —
+	// state naming a snapshot nothing can load (doctor's active_orphan) and the next
+	// `kae use <tool>` failing with "is not captured yet". Dropping the entry is the
+	// established way to say "no active account for this tool", the same thing an
+	// unrecorded tool here and `kae account rm` do. An *empty* recorded value lands in
+	// the same branch, where the old code wrote `st.Active[tool] = ""`: a change in
+	// representation only, and a better one — every consumer treats a blank entry as
+	// no selection, while the deleted key stops `kae status --json` and
+	// `kae profile save` from carrying an empty account name.
+	restorable := make(map[string]string, len(meta.Tools))
 	for _, tool := range meta.Tools {
-		recorded, ok := meta.ActiveBefore[tool]
-		if !ok || recorded == "" {
-			// No pointer to fail to restore, so nothing to warn about. An empty
-			// recorded value reaches the mutation below as a `delete` where the old
-			// code wrote `st.Active[tool] = ""`; that is a change in representation
-			// only — every consumer treats a blank entry as no selection, and the
-			// deleted key stops `kae status --json` and `kae profile save` from
-			// carrying an empty account name.
-			continue
+		if acct, ok := app.restorableActiveAccount(meta, tool); ok {
+			restorable[tool] = acct
 		}
-		if _, ok := app.restorableActiveAccount(meta, tool); ok {
+	}
+	// Warned before the write it qualifies, and never fatal: the credentials are
+	// already rolled back, and what cannot be restored is a label. Nothing is said
+	// about a tool the backup recorded no account for — there is no pointer that
+	// failed to come back.
+	for _, tool := range meta.Tools {
+		recorded := meta.ActiveBefore[tool]
+		if recorded == "" || restorable[tool] != "" {
 			continue
 		}
 		fmt.Fprintf(os.Stderr,
@@ -242,16 +256,9 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 				"captured, so kae is leaving %s with no active account rather than naming one that is gone; %s\n",
 			meta.ID, tool, recorded, tool, app.reapplyHint(meta, tool))
 	}
-	// The recorded name is only written back when its snapshot still resolves.
-	// `active_before` keeps the name it had at capture time, so rolling back across
-	// an `account rm`/`rename` used to record an account that no longer exists —
-	// state naming a snapshot nothing can load (doctor's active_orphan) and the next
-	// `kae use <tool>` failing with "is not captured yet". Dropping the entry is the
-	// established way to say "no active account for this tool", the same thing the
-	// unrecorded branch here and `kae account rm` do.
 	if _, err := app.mutateState(func(st *state.State) {
 		for _, tool := range meta.Tools {
-			if before, ok := app.restorableActiveAccount(meta, tool); ok {
+			if before := restorable[tool]; before != "" {
 				st.Active[tool] = before
 			} else {
 				delete(st.Active, tool)

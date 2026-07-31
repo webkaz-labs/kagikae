@@ -131,16 +131,20 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   not-datable. `internal/freshness` holds only the shared parsing primitives —
   no per-tool knowledge — so it stays a leaf package (no `adapter` import).
 
-  Five consumers, one deadline. `cmd.reloginDeadline` turns an `Info` into the
-  instant the credential stops being able to open a session without an interactive
-  login, and `needsRelogin` ("past it?") and `reloginDueWithin` ("how long until?")
-  are both defined on it — so the switch-time warnings, `doctor credential_stale`,
-  `doctor credential_expiring`, the `kae ls`/`accounts`/`status` freshness column,
-  and the bound-directory sweep can never disagree about where the line falls. The
-  two predicates were separate bodies once and drifted on the exact-tick boundary.
+  Five consumers, one deadline, one classifier. `cmd.reloginDeadline` turns an
+  `Info` into the instant the credential stops being able to open a session without
+  an interactive login; `cmd.credentialStateAt` is the only thing that decides which
+  band it is in (`ok` / `expiring` / `stale`). The switch-time warnings,
+  `doctor credential_stale`, `doctor credential_expiring`, the
+  `kae ls`/`accounts`/`status` freshness column and the bound-directory sweep all
+  route through it, so none of them can disagree with another about the same
+  credential — that branch was written three times briefly, which is exactly how a
+  boundary drifts (two predicates on separate bodies had already drifted once on the
+  exact-tick case). `needsRelogin` is the second predicate on the same deadline, for
+  the recapture-downgrade guard that needs only the past/not-past half.
   A zero `RefreshExpiresAt` alongside a refresh token means *unknown* and yields no
-  deadline at all; treating it as "never expires" is the failure that keeps being
-  rediscovered.
+  deadline at all — so no state, never `ok`; treating it as "never expires" is the
+  failure that keeps being rediscovered.
 
 `VerifiedVersion() string` is **not** one of them: it is a method of `Adapter`
 itself, because kae relies on undocumented *behaviour* of every tool and a

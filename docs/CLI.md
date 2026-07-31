@@ -708,9 +708,11 @@ is deliberately not an error: these commands answer from metadata and are what a
 user reaches for when something is already wrong, so an unreadable secret store
 drops the two fields and the listing still succeeds.
 
-Cost: one secret-store read per captured account, which is what `kae doctor`
-already does, and the reads run concurrently so the wall clock is one read rather
-than the sum. The expiry is read from the payload every time rather than cached
+Cost: one secret-store read per captured account **of a tool whose credential kae
+can date at all**, which is what `kae doctor` already does. copilot and agy expose
+no expiry, so their accounts are skipped before any read rather than read and then
+discarded, and the remaining reads run concurrently so the wall clock is one read
+rather than the sum. The expiry is read from the payload every time rather than cached
 into `account.toml`, because a copy of a fact is a second source of truth — a
 recapture path that forgot to refresh it would have `kae ls` reporting a healthy
 account that is dead. Snapshot bytes only change when kae rewrites them, so

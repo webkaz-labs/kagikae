@@ -304,15 +304,16 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 				continue
 			}
 			now := app.Now()
-			switch deadline, soon := reloginDueWithin(info, now, reloginLeadTime); {
-			case needsRelogin(info, now):
+			cred := credentialStateAt(info, now)
+			switch cred.State {
+			case constants.CredentialStale:
 				checks = append(checks, adapter.Check{
 					Tool: acc.Tool, Code: constants.CheckCredentialStale,
 					Status: constants.StatusWarn,
 					Message: fmt.Sprintf("snapshot %q is stale: %s",
 						acc.Name, staleCredentialDetail(info, acc.Tool, acc.Name)),
 				})
-			case soon:
+			case constants.CredentialExpiring:
 				// Ahead of the deadline, so this is the window in which a re-login is
 				// still a choice rather than an interruption — which is the whole
 				// difference between this check and credential_stale.
@@ -320,7 +321,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 					Tool: acc.Tool, Code: constants.CheckCredentialExpiring,
 					Status: constants.StatusWarn,
 					Message: fmt.Sprintf("snapshot %q %s",
-						acc.Name, expiringCredentialDetail(deadline, now, acc.Tool, acc.Name)),
+						acc.Name, expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name)),
 				})
 			}
 		}

@@ -266,7 +266,8 @@ func (app *App) bondDenylistItems(tool string) []string {
 func (app *App) bondIsolationEntries(targets []runTarget, pinID string) []isolationEntry {
 	entries := make([]isolationEntry, 0, len(targets))
 	for _, tgt := range targets {
-		entries = append(entries, isolationEntryFor(tgt, app.Paths.SharedDir(pinID, tgt.Tool)))
+		dir, _ := app.modeStoreDir(modeShared, pinID, tgt.Tool, tgt.Account)
+		entries = append(entries, isolationEntryFor(tgt, dir))
 	}
 	return entries
 }
@@ -342,7 +343,8 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 func (app *App) pinIsolationEntries(targets []runTarget, pinID string) []isolationEntry {
 	entries := make([]isolationEntry, 0, len(targets))
 	for _, tgt := range targets {
-		entries = append(entries, isolationEntryFor(tgt, app.Paths.IsolatedConfigDir(pinID, tgt.Tool, tgt.Account)))
+		dir, _ := app.modeStoreDir(modeIsolated, pinID, tgt.Tool, tgt.Account)
+		entries = append(entries, isolationEntryFor(tgt, dir))
 	}
 	return entries
 }

@@ -407,70 +407,86 @@ func TestWarnBeforeApplyRollsUpMultipleTools(t *testing.T) {
 	}
 }
 
-// The lead-time band: reloginDueWithin must fire only while the deadline is
-// still ahead, and only for a deadline kae can actually know. The load-bearing
-// rows are the two "unknown" ones — a refresh token whose expiry the payload
-// does not publish (codex, opencode), and a not-datable payload — where a zero
+// The lead-time band, on the one classifier that owns it. The load-bearing rows
+// are the "unknown" ones — a refresh token whose expiry the payload does not
+// publish (codex, opencode), and a not-datable payload — where a zero
 // RefreshExpiresAt read as "never expires" would put every such account
-// permanently in the band or permanently out of it by accident.
-func TestReloginDueWithin(t *testing.T) {
+// permanently in the band or permanently out of it by accident. An unknown
+// deadline must produce no state at all, never "ok": that would claim knowledge
+// kae does not have.
+func TestCredentialStateAtBands(t *testing.T) {
 	now := time.Date(2026, 6, 11, 0, 0, 0, 0, time.UTC)
-	const lead = 7 * 24 * time.Hour
 	in := now.Add(5 * 24 * time.Hour)   // inside the band
 	out := now.Add(30 * 24 * time.Hour) // beyond it
-	edge := now.Add(lead)               // exactly on the boundary
+	edge := now.Add(reloginLeadTime)    // exactly on the boundary
 	cases := []struct {
 		name string
 		info freshness.Info
-		want bool
+		want string
 	}{
-		{"not datable", freshness.Info{}, false},
-		{"no expiry recorded", freshness.Info{Known: true}, false},
-		{"no refresh, expiring inside the band", freshness.Info{Known: true, ExpiresAt: in}, true},
-		{"no refresh, expiring beyond the band", freshness.Info{Known: true, ExpiresAt: out}, false},
-		{"no refresh, exactly on the boundary", freshness.Info{Known: true, ExpiresAt: edge}, true},
-		{"already past the deadline", freshness.Info{Known: true, ExpiresAt: now.Add(-time.Hour)}, false},
-		{"deadline exactly now", freshness.Info{Known: true, ExpiresAt: now}, false},
-		{"tombstoned", freshness.Info{Known: true, Revoked: true}, false},
-		// The deadline is the refresh token's, not the access token's: an access
-		// token expiring in an hour is the normal state of a healthy credential.
+		{"not datable", freshness.Info{}, ""},
+		{"no expiry recorded", freshness.Info{Known: true}, ""},
+		{"no refresh, expiring inside the band", freshness.Info{Known: true, ExpiresAt: in}, constants.CredentialExpiring},
+		{"no refresh, expiring beyond the band", freshness.Info{Known: true, ExpiresAt: out}, constants.CredentialOK},
+		{"no refresh, exactly on the boundary", freshness.Info{Known: true, ExpiresAt: edge}, constants.CredentialExpiring},
+		{"already past the deadline", freshness.Info{Known: true, ExpiresAt: now.Add(-time.Hour)}, constants.CredentialStale},
+		{"deadline exactly now", freshness.Info{Known: true, ExpiresAt: now}, constants.CredentialStale},
+		{"tombstoned", freshness.Info{Known: true, Revoked: true}, constants.CredentialStale},
+		// The deadline is the refresh token's, not the access token's: an access token
+		// expiring in an hour is the normal state of a healthy credential.
 		{"access expires soon, refresh far away", freshness.Info{
 			Known: true, ExpiresAt: now.Add(time.Hour), HasRefresh: true, RefreshExpiresAt: out,
-		}, false},
+		}, constants.CredentialOK},
 		{"access expired, refresh inside the band", freshness.Info{
 			Known: true, ExpiresAt: now.Add(-time.Hour), HasRefresh: true, RefreshExpiresAt: in,
-		}, true},
-		// A refresh token with no published expiry: unknowable, so silent. Reading
+		}, constants.CredentialExpiring},
+		// A refresh token with no published expiry: unknowable, so no state. Reading
 		// the zero as "far future" or as "expired" would both be inventions.
 		{"refresh with no published expiry, access soon", freshness.Info{
 			Known: true, ExpiresAt: in, HasRefresh: true,
-		}, false},
+		}, ""},
 		{"refresh with no published expiry, access past", freshness.Info{
 			Known: true, ExpiresAt: now.Add(-time.Hour), HasRefresh: true,
-		}, false},
-		// A refresh expiry with no refresh token behind it must not push the deadline
-		// out of the band (which would silence a credential that is already dead) nor
-		// into it when the access token records no expiry at all.
+		}, ""},
+		// A refresh expiry with no refresh token behind it must not move the deadline
+		// out of the band (silencing a credential that is already dead) nor into it
+		// when the access token records no expiry at all.
 		{"no refresh token, future refresh expiry left over", freshness.Info{
 			Known: true, ExpiresAt: now.Add(-time.Hour), RefreshExpiresAt: in,
-		}, false},
+		}, constants.CredentialStale},
 		{"no access expiry, refresh expiry left over", freshness.Info{
 			Known: true, RefreshExpiresAt: in,
-		}, false},
+		}, ""},
 	}
 	for _, c := range cases {
-		deadline, got := reloginDueWithin(c.info, now, lead)
-		if got != c.want {
-			t.Errorf("%s: reloginDueWithin ok = %v, want %v", c.name, got, c.want)
+		got := credentialStateAt(c.info, now)
+		if got.State != c.want {
+			t.Errorf("%s: state = %q, want %q", c.name, got.State, c.want)
 		}
-		if got && deadline.IsZero() {
-			t.Errorf("%s: a reported deadline must carry its timestamp", c.name)
+		// A judged state must carry the deadline it was judged against — except the
+		// tombstone, which is past every deadline with none to name.
+		wantStamp := c.want != "" && !c.info.Revoked
+		if hasStamp := !got.ReloginBy.IsZero(); hasStamp != wantStamp {
+			t.Errorf("%s: ReloginBy set = %v, want %v", c.name, hasStamp, wantStamp)
+		}
+		// The states must stay consistent with the boundary they claim.
+		switch got.State {
+		case constants.CredentialStale:
+			if !c.info.Revoked && got.ReloginBy.After(now) {
+				t.Errorf("%s: stale but the deadline is in the future", c.name)
+			}
+		case constants.CredentialExpiring, constants.CredentialOK:
+			if !got.ReloginBy.After(now) {
+				t.Errorf("%s: %s but the deadline has passed", c.name, got.State)
+			}
 		}
 	}
-	// The two predicates read one deadline, so they can never both be true.
+	// needsRelogin is the other predicate on the same deadline; the two must never
+	// call the same credential both stale and still-usable.
 	for _, c := range cases {
-		if _, soon := reloginDueWithin(c.info, now, lead); soon && needsRelogin(c.info, now) {
-			t.Errorf("%s: expiring and stale must be mutually exclusive", c.name)
+		stale := credentialStateAt(c.info, now).State == constants.CredentialStale
+		if stale != needsRelogin(c.info, now) {
+			t.Errorf("%s: credentialStateAt and needsRelogin disagree", c.name)
 		}
 	}
 }

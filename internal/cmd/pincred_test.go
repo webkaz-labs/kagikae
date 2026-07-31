@@ -14,6 +14,12 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
+// deadClaudeCred is a claude credential past every deadline: access token expired
+// in 2020, refresh token in 2021. Named because six tests age a store's credential
+// to exactly this state, and six copies of one payload is six chances for one to
+// drift into meaning something else.
+const deadClaudeCred = `{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`
+
 // pinWithCapturedClaude captures a healthy claude/main, binds a temp directory to
 // it, and returns the bound directory plus the path of the credential copy that
 // directory now owns. The tool refreshes *that* copy in place, which is why it can
@@ -47,7 +53,7 @@ func TestDoctorReportsStaleBoundDirectoryCredential(t *testing.T) {
 
 	// The directory's copy died; the account snapshot is untouched and healthy.
 	writeFile(t, credFile,
-		`{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`)
+		deadClaudeCred)
 
 	report := buildDoctor(ctx, app, "", false)
 	if report.SchemaVersion != constants.SchemaVersion {
@@ -134,7 +140,7 @@ func TestUnpinnedDirectoryCredentialIsNotReported(t *testing.T) {
 	code, out := captureStdout(t, func() int { return runUnpin(ctx, app, commonOpts{Format: formatText}, false) })
 	mustExit(t, constants.ExitOK, code, out)
 	writeFile(t, credFile,
-		`{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`)
+		deadClaudeCred)
 
 	if checks := app.pinCredentialChecks(ctx); len(checks) != 0 {
 		t.Fatalf("an unpinned directory's kept store must stay silent even when stale, got %+v", checks)
@@ -168,7 +174,7 @@ func TestUnboundToolsStoreInABoundDirectoryIsNotReported(t *testing.T) {
 
 	// claude's leftover store dies; the directory no longer binds claude.
 	writeFile(t, credFile,
-		`{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`)
+		deadClaudeCred)
 
 	for _, c := range app.pinCredentialChecks(ctx) {
 		if c.Tool == constants.ToolClaude {
@@ -185,7 +191,7 @@ func TestDeletedBoundDirectoryCredentialIsNotReportedTwice(t *testing.T) {
 	ctx := context.Background()
 	dir, credFile := pinWithCapturedClaude(t, app)
 	writeFile(t, credFile,
-		`{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`)
+		deadClaudeCred)
 
 	chdirTemp(t) // step out before removing it
 	if err := os.RemoveAll(dir); err != nil {
@@ -206,7 +212,7 @@ func TestFilteredDoctorSkipsBoundDirectoryCredentials(t *testing.T) {
 	ctx := context.Background()
 	_, credFile := pinWithCapturedClaude(t, app)
 	writeFile(t, credFile,
-		`{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`)
+		deadClaudeCred)
 
 	for _, c := range buildDoctor(ctx, app, constants.ToolClaude, false).Checks {
 		if strings.Contains(c.Message, "bound to ") {
@@ -270,7 +276,7 @@ func TestDoctorReportsStaleCredentialInAnIsolatedBoundDirectory(t *testing.T) {
 		t.Fatalf("an isolated pin must materialize a credential at %s", credFile)
 	}
 	writeFile(t, credFile,
-		`{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`)
+		deadClaudeCred)
 
 	msg, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckCredentialStale)
 	if !ok {

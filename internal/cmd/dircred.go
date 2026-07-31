@@ -435,8 +435,8 @@ func (app *App) pinCredentialChecks(ctx context.Context) []adapter.Check {
 			if !ok {
 				continue
 			}
-			switch deadline, soon := reloginDueWithin(info, now, reloginLeadTime); {
-			case needsRelogin(info, now):
+			switch cred := credentialStateAt(info, now); cred.State {
+			case constants.CredentialStale:
 				checks = append(checks, adapter.Check{
 					Tool: store.Tool, Code: constants.CheckCredentialStale,
 					Status: constants.StatusWarn,
@@ -444,12 +444,12 @@ func (app *App) pinCredentialChecks(ctx context.Context) []adapter.Check {
 						store.Tool, pin.Dir, staleCredentialReason(info, store.Tool),
 						pinLoginRemedy(store.Tool, pin.Dir)),
 				})
-			case soon:
+			case constants.CredentialExpiring:
 				checks = append(checks, adapter.Check{
 					Tool: store.Tool, Code: constants.CheckCredentialExpiring,
 					Status: constants.StatusWarn,
 					Message: fmt.Sprintf("the %s credential bound to %s needs an interactive re-login in %s (%s); %s",
-						store.Tool, pin.Dir, roundDays(deadline.Sub(now)), utcStamp(deadline),
+						store.Tool, pin.Dir, roundDays(cred.ReloginBy.Sub(now)), utcStamp(cred.ReloginBy),
 						pinLoginRemedy(store.Tool, pin.Dir)),
 				})
 			}
@@ -477,13 +477,7 @@ func (app *App) boundStoreDir(pinID, tool string, fragment fragmentInfo) (dir st
 	if !ok {
 		return "", false
 	}
-	switch fragment.Mode {
-	case modeShared:
-		return app.Paths.SharedDir(pinID, tool), true
-	case modeIsolated:
-		return app.Paths.IsolatedConfigDir(pinID, tool, account), true
-	}
-	return "", false
+	return app.modeStoreDir(fragment.Mode, pinID, tool, account)
 }
 
 // pinLoginRemedy names the fix for a bound directory's credential: log in *inside*

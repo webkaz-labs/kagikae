@@ -33,12 +33,32 @@ func freshnessOf(tool string, payload []byte) freshness.Info {
 	return freshness.Info{}
 }
 
+// toolIsDatable reports whether tool's adapter can read an expiry out of a
+// credential payload at all (adapter.Fresher). Callers use it to skip reads whose
+// result is already determined.
+func toolIsDatable(tool string) bool {
+	ad, err := adapter.ForTool(tool)
+	if err != nil {
+		return false
+	}
+	_, ok := ad.(adapter.Fresher)
+	return ok
+}
+
 // accountFreshness reads acc's stored credential and reports its expiry and
 // refresh-token presence. It returns the first artifact whose payload parses as
 // the tool's known credential format; a not-datable account (copilot pointer,
 // agy blob) yields Known=false. Shared by the switch-time stale warning
 // (docs/RELEASE.md §B) and doctor credential-health (§D).
 func (app *App) accountFreshness(ctx context.Context, be secret.Backend, acc account.Account) (freshness.Info, error) {
+	// A tool with no Fresher (copilot's pointer, agy's opaque blob) can never produce
+	// a Known reading, so reading its payloads is guaranteed-wasted work — and on
+	// darwin each one is a `security` subprocess, now paid by `kae ls` and
+	// `kae status` too. agy declares three file artifacts on Linux; that was three
+	// reads per listing for an answer fixed in advance.
+	if !toolIsDatable(acc.Tool) {
+		return freshness.Info{}, nil
+	}
 	for _, name := range acc.ArtifactNames() {
 		art := acc.Artifacts[name]
 		if !art.Present {
@@ -88,30 +108,29 @@ const reloginLeadTime = 7 * 24 * time.Hour
 
 // snapshotFreshnessWarning returns the switch-time warning acc's snapshot
 // credential deserves (docs/RELEASE.md §B): the stale message once it can no
-// longer open a session without an interactive re-login, the expiring notice
-// while that deadline is still ahead but within reloginLeadTime, and "" when the
+// longer open a session without an interactive re-login, the expiring notice while
+// that deadline is still ahead but within reloginLeadTime, and "" when the
 // credential is fine, undated, or not-datable.
 //
-// stale reports which of the two it is. Only a credential that cannot log in at
-// all makes the switch unusable, and that is the one the caller's roll-up line
-// counts; a switch to an account with five days left works today.
-//
-// The snapshot is read once for both questions, because doctor's backend is not
-// the switch path's cached one and a second read there would be a second
-// `security` invocation per account.
-func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend, acc account.Account) (msg string, stale bool, err error) {
+// It returns the state token rather than a "was it stale" bool so the caller reads
+// the same vocabulary every other freshness surface uses, and a third band would
+// add a case rather than change this signature. Only a credential that cannot log
+// in at all makes the switch unusable, and that is the one the caller's roll-up
+// line counts; a switch to an account with five days left works today.
+func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend, acc account.Account) (msg, state string, err error) {
 	info, err := app.accountFreshness(ctx, be, acc)
 	if err != nil {
-		return "", false, err
+		return "", "", err
 	}
 	now := app.Now()
-	if needsRelogin(info, now) {
-		return "snapshot credential is stale: " + staleCredentialDetail(info, acc.Tool, acc.Name), true, nil
+	cred := credentialStateAt(info, now)
+	switch cred.State {
+	case constants.CredentialStale:
+		return "snapshot credential is stale: " + staleCredentialDetail(info, acc.Tool, acc.Name), cred.State, nil
+	case constants.CredentialExpiring:
+		return "snapshot credential " + expiringCredentialDetail(cred.ReloginBy, now, acc.Tool, acc.Name), cred.State, nil
 	}
-	if deadline, ok := reloginDueWithin(info, now, reloginLeadTime); ok {
-		return "snapshot credential " + expiringCredentialDetail(deadline, now, acc.Tool, acc.Name), false, nil
-	}
-	return "", false, nil
+	return "", cred.State, nil
 }
 
 // credentialState is one account's snapshot freshness as the inventory commands
@@ -147,6 +166,7 @@ type credentialState struct {
 // metadata and must keep working when the secret store does not.
 func (app *App) credentialStates(ctx context.Context, be secret.Backend, captured []account.Account) map[toolAccount]credentialState {
 	states := make([]credentialState, len(captured))
+	now := app.Now()
 	var wg sync.WaitGroup
 	for i, acc := range captured {
 		wg.Add(1)
@@ -156,7 +176,7 @@ func (app *App) credentialStates(ctx context.Context, be secret.Backend, capture
 			if err != nil {
 				return
 			}
-			states[i] = app.credentialStateOf(info)
+			states[i] = credentialStateAt(info, now)
 		}(i, acc)
 	}
 	wg.Wait()
@@ -182,34 +202,50 @@ func (app *App) capturedCredentialStates(ctx context.Context, captured []account
 	if err != nil {
 		return nil
 	}
-	return app.credentialStates(ctx, secret.Cached(be), captured)
+	// No secret.Cached wrap: it only does anything under a secret.WithReadCache
+	// context, which these commands do not install, and credentialStates reads each
+	// account's key exactly once regardless — there is nothing to coalesce.
+	return app.credentialStates(ctx, be, captured)
 }
 
-// credentialStateOf classifies one freshness reading into the three states the
-// inventory commands report, built from the same two predicates doctor uses so a
-// row can never disagree with the check about the same account.
-func (app *App) credentialStateOf(info freshness.Info) credentialState {
-	now := app.Now()
-	switch deadline, soon := reloginDueWithin(info, now, reloginLeadTime); {
-	case needsRelogin(info, now):
-		// A tombstone is past every deadline with no timestamp to name, so this state
-		// deliberately carries no ReloginBy.
-		if d, ok := reloginDeadline(info); ok {
-			return credentialState{State: constants.CredentialStale, ReloginBy: d}
-		}
-		return credentialState{State: constants.CredentialStale}
-	case soon:
-		return credentialState{State: constants.CredentialExpiring, ReloginBy: deadline}
-	case info.Known:
-		// Known and not due: "ok" only where kae actually has a deadline it is ahead
-		// of. A payload kae parses but that records no usable deadline (codex's
-		// refresh token with no published expiry, an api-key-only auth.json) is left
-		// unjudged — reporting it "ok" would claim knowledge kae does not have.
-		if d, ok := reloginDeadline(info); ok {
-			return credentialState{State: constants.CredentialOK, ReloginBy: d}
-		}
+// credentialStateAt classifies one freshness reading into the three states every
+// freshness surface reports. It is the **only** place that decides which of them a
+// credential is in: doctor's two checks, the bound-directory sweep, the switch-time
+// warning and the inventory column all route through it, so none of them can
+// disagree with another about the same credential — the same reason needsRelogin
+// and reloginDueWithin are both defined on one reloginDeadline. Three copies of
+// this branch existed briefly and that is exactly how a boundary drifts.
+//
+// It reads the deadline once and compares, rather than asking the two predicates
+// (which would each re-derive it), and takes now as a parameter so one report
+// cannot straddle two clock readings.
+//
+// The zero credentialState means kae cannot judge: an unparseable payload, or one
+// it parses that records no deadline it can trust (codex stores a refresh token
+// without publishing its expiry; an api-key-only auth.json has no expiry at all).
+// That is never rendered as "ok" — claiming a credential is fine is knowledge kae
+// does not have here.
+func credentialStateAt(info freshness.Info, now time.Time) credentialState {
+	if !info.Known {
+		return credentialState{}
 	}
-	return credentialState{}
+	if info.Revoked {
+		// A tombstone is past every deadline with no timestamp to name, which is why
+		// this state can carry no ReloginBy.
+		return credentialState{State: constants.CredentialStale}
+	}
+	deadline, ok := reloginDeadline(info)
+	if !ok {
+		return credentialState{}
+	}
+	switch {
+	case !deadline.After(now):
+		return credentialState{State: constants.CredentialStale, ReloginBy: deadline}
+	case !deadline.After(now.Add(reloginLeadTime)):
+		return credentialState{State: constants.CredentialExpiring, ReloginBy: deadline}
+	default:
+		return credentialState{State: constants.CredentialOK, ReloginBy: deadline}
+	}
 }
 
 // reloginDeadline returns the instant at which info stops being able to open a
@@ -285,19 +321,6 @@ func needsRelogin(info freshness.Info, now time.Time) bool {
 	}
 	deadline, ok := reloginDeadline(info)
 	return ok && !deadline.After(now)
-}
-
-// reloginDueWithin reports the re-login deadline when it is still ahead of now
-// but no further away than lead — the lead-time band that gives a human time to
-// re-login before the credential stops working. ok is false for a credential
-// that is already past its deadline (needsRelogin's case, a different message),
-// one with more than lead to go, and one whose deadline kae cannot know.
-func reloginDueWithin(info freshness.Info, now time.Time, lead time.Duration) (time.Time, bool) {
-	deadline, ok := reloginDeadline(info)
-	if !ok || !deadline.After(now) || deadline.After(now.Add(lead)) {
-		return time.Time{}, false
-	}
-	return deadline, true
 }
 
 // staleCredentialDetail explains why a credential needs a re-login and how to

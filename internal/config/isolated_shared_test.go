@@ -37,6 +37,14 @@ func TestIsolatedSharedItemsValidation(t *testing.T) {
 		"dot-dot":        "version = 1\n[tools.claude]\nisolated_shared_items = [\"..\"]\n",
 		"credentials":    "version = 1\n[tools.claude]\nisolated_shared_items = [\".credentials.json\"]\n",
 		"codex auth":     "version = 1\n[tools.codex]\nisolated_shared_items = [\"auth.json\"]\n",
+		// .claude.json is refused on a different axis, and getting the axis wrong is
+		// how it used to be *allowed* here: it is not an auth artifact (it is a
+		// token-derived cache claude refetches once its 24h TTL lapses), so a rule
+		// about credentials let it through. The reason it must stay private is
+		// attribution — linked back to the real home, every isolated directory
+		// displays whatever the real home displays whichever account it is logged in
+		// as, which is exactly the gap v0.16.0 closed for the shared bind.
+		"identity cache": "version = 1\n[tools.claude]\nisolated_shared_items = [\".claude.json\"]\n",
 	} {
 		if _, err := loadFromString(t, content); err == nil {
 			t.Fatalf("%s must be rejected", name)
@@ -45,11 +53,17 @@ func TestIsolatedSharedItemsValidation(t *testing.T) {
 		}
 	}
 
-	// .claude.json is not an auth artifact (it is a token-derived cache claude
-	// refetches once its 24h TTL lapses), so it may be listed in
-	// isolated_shared_items.
-	allowedIdentity := "version = 1\n[tools.claude]\nisolated_shared_items = [\".claude.json\"]\n"
-	if _, err := loadFromString(t, allowedIdentity); err != nil {
-		t.Fatalf(".claude.json must be allowed in isolated_shared_items: %v", err)
+	// The two fields refuse the same set, and must keep doing so: the shared bind
+	// denies these by denylist and the isolated bind by refusing the opt-in, so a
+	// name added to one and forgotten in the other reopens the gap in that mode only.
+	for item := range refusedIsolatedShare {
+		if !refusedSharedDenylistExtra[item] {
+			t.Errorf("%q is refused for isolated_shared_items but not for shared_denylist_extra", item)
+		}
+	}
+	for item := range refusedSharedDenylistExtra {
+		if _, ok := refusedIsolatedShare[item]; !ok {
+			t.Errorf("%q is refused for shared_denylist_extra but not for isolated_shared_items", item)
+		}
 	}
 }

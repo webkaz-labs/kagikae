@@ -225,8 +225,12 @@ the env var takes precedence; see [DATA-MODEL.md](DATA-MODEL.md)).
 ~/.claude/skills/              ~/.claude/agents/
 ~/.claude/.credentials.json    -> all keys except /claudeAiOauth
 ~/.claude.json                 -> all keys except /oauthAccount (projects,
-                               mcpServers, onboarding, caches). Same in a bound
-                               directory, whose copy is <dir>/.claude.json.
+                               mcpServers, onboarding, caches). kae writes only
+                               that pointer in a bound directory too, but there
+                               the file is <dir>/.claude.json and is *private*
+                               (denylisted), so its other keys start from
+                               claude's defaults rather than tracking the real
+                               home's — see "Per-directory shared bind".
 project/.claude/  project/CLAUDE.md  project/.mcp.json
 MCP / hooks / permissions / trust state / session history / plugins
 ```
@@ -804,13 +808,24 @@ stop sharing.
 Uses a per-account *private config dir*
 (`isolation/<pin-id>/<tool>/isolated/<account>/config/`): nothing is shared
 with the real home by default. Items explicitly listed in
-`tools.<tool>.isolated_shared_items` (bare file names; credential files
-`.credentials.json` / `auth.json` are refused at config load) are symlinked
-from the real home; the credential is private-copied at `0600`.
+`tools.<tool>.isolated_shared_items` (bare file names) are symlinked from the real
+home; the credential and identity are private-copied.
+
+The opt-in list refuses **the same set the shared bind denies**, and for the same
+two reasons: `.credentials.json` / `auth.json` because the directory must
+authenticate as its own account, and `.claude.json` because it must be able to
+*name* its own account. That second one is the correction: this field's rule used to
+be about credentials only, so the identity cache — which is not one — could be opted
+in, and a link back to the real home then made every isolated directory display
+whatever the real home displayed, whichever account it was logged in as. A guard test
+keeps the two lists from drifting apart, since a name added to one and forgotten in
+the other reopens the gap in that mode alone.
 
 `isolated_shared_items` is the opt-in share list: default is empty (full
 isolation). Re-running `kae pin` refreshes opt-in shared-item links and the
-credential copy.
+credential copy. It does **not** retract a link for an entry you *remove* from the
+list, and neither does the shared bind for a stale link whose name is no longer an
+entry of the real home ([ROADMAP.md](ROADMAP.md)).
 
 Re-bind one tool to another account with `kae pin <tool> <account>`:
 

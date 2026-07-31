@@ -233,10 +233,15 @@ Three isolation scopes exist; their credential boundaries are:
 | Per-directory shared | `pin -s` | `isolation/<pin-id>/<tool>/shared/` (symlinks to the real home; the credential is private — a per-directory keychain item where the tool uses one) | No (symlink source only) |
 | Per-directory isolated | `pin -i` | `isolation/<pin-id>/<tool>/isolated/<account>/config/` | No |
 
-The hard-coded credential denylist for shared binds (enforced at config load)
-refuses adding credential files (`.credentials.json`, `auth.json`, etc.) to
-the `shared_denylist_extra` or `isolated_shared_items` config keys. This
-prevents accidentally leaking credentials across directories.
+One hard-coded set governs both config keys (`shared_denylist_extra` and
+`isolated_shared_items`, enforced at config load), and it covers two kinds of file
+for two different reasons. Credential files (`.credentials.json`, `auth.json`) must
+stay private so a directory authenticates as its own account — refusing them keeps a
+credential from leaking across directories. claude's `.claude.json` must stay private
+so a directory can *name* its own account: shared back to the real home, it makes
+every bound directory display whatever the real home displays, whichever account it
+is logged in as. A guard test keeps the two keys refusing the same set — a name added
+to one and forgotten in the other would reopen the hole in that mode alone.
 
 **A per-directory keychain item is removed once nothing points at it.** A `-s` ↔
 `-i` toggle or an isolated re-bind supersedes a store, and its item would otherwise

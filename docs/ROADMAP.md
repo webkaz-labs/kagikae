@@ -165,6 +165,32 @@ alternative exists (`secret-tool`).
   state) into two commands, to save a value the restore can re-check for free
   ([DATA-MODEL.md](DATA-MODEL.md) § Backups).
 
+- **Link retraction only covers a name the real home still has** (recorded
+  2026-07-31, **not fixed**). v0.16.0 made `prepareBond` remove a symlink for a
+  denied entry, but the removal lives inside the loop over `os.ReadDir(realHome)`,
+  so it never sees a link whose name is no longer a real-home entry. Concrete
+  residual: bond a directory with `CLAUDE_CONFIG_DIR` set, then unset it, and
+  `<bondDir>/.claude.json -> <oldConfigDir>/.claude.json` stays forever — declined
+  by `identityTargetEscapes` on every pin, with a warning each time and no
+  documented remedy beyond removing the link by hand. The mirror gap is in the
+  isolated bind: `isolated_shared_items` has no retraction at all, so *removing* an
+  entry leaves its link in place. Both want the same shape — reconcile the directory
+  against the intended set rather than only walking the source — which is why they
+  are one entry: fixing one and not the other is how they drift.
+
+- **`kae account rename` / `kae account rm` delete a recorded `SecretRef`
+  verbatim** (recorded 2026-07-31, **deliberately not fixed**). Both delete the ref
+  the snapshot's metadata names, without checking it is the ref this account would
+  produce (`account.SecretRef(tool, name, artifact)`). A snapshot dir whose metadata
+  names *another* account's ref — reachable by hand-copying an account directory,
+  which is a plausible way to try to duplicate an account — therefore has that other
+  account's payload deleted by a command that was not asked to touch it. Not a
+  regression from the v0.16.0 two-pass reorder (the single pass did the same, and
+  `account rm` shares the flaw), and it needs someone to have edited kae's data dir
+  by hand, which is why it is recorded rather than fixed inside a release about
+  something else. The fix is a comparison at both delete sites, and it belongs with
+  whatever else next audits "does this snapshot describe itself".
+
 - **`applySnapshot`'s refusals could be raised one step earlier, in
   `loadPlansWithSnapshots`** (recorded 2026-07-31, deliberately not done). Both
   refusals — a snapshot missing an artifact today's adapter declares

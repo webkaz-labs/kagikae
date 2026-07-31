@@ -114,12 +114,31 @@ themselves.
   difference: their bond dirs start from claude's defaults for `projects`,
   `mcpServers` and project trust, which means one trust prompt per bound directory.
   Sessions are unaffected — they live in `projects/` under the tool home and are still
-  shared. There is deliberately no knob to restore it: the two behaviours are
+  shared. There is deliberately no knob to restore the sharing: the two behaviours are
   exclusive. Nothing changes until the directory is re-pinned; upgrading the binary
   alone leaves an existing bond dir as it was, and the first `kae pin` there retracts
   the stale link. That retraction closes an older gap of its own — a denied entry's
   existing symlink was never removed, so `tools.<tool>.shared_denylist_extra` gaining
   a name had no effect on directories already bound.
+
+  **To carry those keys over instead of starting fresh**, copy the file into the bond
+  dir *before* the first re-pin: `cp "$CLAUDE_CONFIG_DIR/.claude.json"
+  ~/.local/share/kagikae/isolation/<pin-id>/claude/shared/.claude.json` (`kae pin
+  --json` reports the pin id). A **real file** there is a private override and
+  survives retraction, and the identity step then rewrites only `/oauthAccount` in
+  it, so the directory gets the real home's projects and MCP servers as a starting
+  point with its own account name. Retraction deliberately deletes rather than
+  copies: it fires for every denied entry, including credentials — copying the real
+  home's `.credentials.json` into a bound directory is the opposite of what the
+  denylist is for.
+
+  Refused alongside it: `tools.claude.isolated_shared_items = [".claude.json"]`,
+  which used to load. `isolated_shared_items` was governed by a rule about
+  *credentials*, and this file is not one, so opting it in was permitted — and did
+  the same damage in the stricter mode, every `kae pin -i` directory displaying the
+  real home's account whichever one it was logged in as. If your config has it,
+  remove that entry; the two fields now refuse the same set, with a guard test
+  keeping them from drifting apart.
 
 - **`account.toml` no longer records a keychain account (removed field).** It was
   written at capture and read nowhere, with a doc comment telling apply to ignore it

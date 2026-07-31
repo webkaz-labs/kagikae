@@ -808,11 +808,13 @@ Credential-health checks (warn-level):
   whole story there, since cursor-agent never redeems a refresh token. A deadline
   that comes *from* a refresh token is a **shelf life, not an end of life**: every
   refresh mints a new one, so the stored number says "this frozen copy stops being
-  able to refresh at T", not "this login dies at T". Measured on a real machine
-  (2026-07-31), two claude snapshots carried refresh expiries 1.6 and 2.0 days past
-  their own capture, for logins performed a *month* earlier — so a seven-day notice
-  fired from the moment of capture and never stopped, and no claude account could
-  ever read `ok`. Anticipating that quantity carries no information, so kae does not.
+  able to refresh at T", not "this login dies at T". Measured on a real machine,
+  claude's refresh expiry sat *well inside* a seven-day window while the login behind
+  it was a month old — so the notice fired from the moment of capture and never
+  stopped, and no claude account could ever read `ok`. Anticipating that quantity
+  carries no information, so kae does not. The figures, and how to re-measure them,
+  live in one place: the claude row of docs/VALIDATION.md § Upstream Behaviour
+  Assumptions.
 
   What still holds for those credentials is the stale half: once the shelf life is
   out, applying that snapshot cannot open a session, and `credential_stale` says so

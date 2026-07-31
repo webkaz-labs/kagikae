@@ -119,10 +119,7 @@ func TestInventoryCommandsReportCredentialFreshness(t *testing.T) {
 	seedClaudeOAuth(t, app,
 		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}`)
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "dying") })
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"","expiresAt":%d}`,
-		app.Now().Add(3*24*time.Hour).UnixMilli(),
-	))
+	seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), 3*24*time.Hour, "a"))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
 	seedClaudeOAuth(t, app, fmt.Sprintf(
 		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
@@ -239,10 +236,7 @@ func TestInventoryFreshnessNeverCarriesTheToken(t *testing.T) {
 	// No refresh token, so this really classifies as expiring — the state whose
 	// rendering (the day count in the Credential column) is the one being canaried.
 	// A refresh-backed payload would read ok and cover nothing.
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"%s","refreshToken":"","expiresAt":%d}`,
-		canary, app.Now().Add(2*24*time.Hour).UnixMilli(),
-	))
+	seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), 2*24*time.Hour, canary))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "canary") })
 	_, probe := captureStdout(t, func() int { return runLs(ctx, app, commonOpts{Format: formatJSON}) })
 	var probed lsReport

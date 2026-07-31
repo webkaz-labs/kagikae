@@ -512,10 +512,7 @@ func TestSwitchToExpiringSnapshotWarnsWithLeadTime(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"","expiresAt":%d}`,
-		app.Now().Add(3*24*time.Hour).UnixMilli(),
-	))
+	seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), 3*24*time.Hour, "a"))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
 	seedClaude(t, app, sideToken, "side-uuid")
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "current") })

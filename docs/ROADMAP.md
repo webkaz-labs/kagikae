@@ -109,17 +109,16 @@ alternative exists (`secret-tool`).
 ## Hardening backlog — daily-use robustness
 
 - **"A spent refresh token forces an interactive login" has never been observed**
-  (recorded 2026-07-31). It is the premise of `credential_stale` and of the
-  switch-time stale warning, both of which shipped long before this was written down.
-  The 2026-07-31 measurement makes it matter: a claude snapshot's refresh token is
-  spent ~2 days after capture while the login behind it is a month old, so kae calls
-  such a snapshot stale far more often than the operator re-logs in. If claude in fact
+  (recorded 2026-07-31, **open**). It is the premise of `credential_stale` and of the
+  switch-time stale warning, both of which shipped long before it was written down.
+  Settling it matters because kae currently calls a claude snapshot stale
+  considerably more often than the operator actually re-logs in; if claude in fact
   recovers, the stale half over-warns and `kae add --restore`'s framing is wrong too.
-  `credential_expiring` no longer anticipates that deadline (`cmd.leadTimeApplies`),
-  which removes the loudest consequence, but not the question.
-  The procedure is in [VALIDATION.md](VALIDATION.md) § "does a spent refresh token
-  really force a login?" — it needs a real login and about two days of not touching
-  one account, and **either outcome is a result**.
+  `credential_expiring` no longer anticipates that deadline
+  (`cmd.leadTimeApplies`), which removed the loudest consequence but not the question.
+  Procedure, measurements and acceptance criteria:
+  [VALIDATION.md](VALIDATION.md) § "does a spent refresh token really force a login?"
+  — **either outcome is a result**.
 
 - **`applySnapshot`'s refusals could be raised one step earlier, in
   `loadPlansWithSnapshots`** (recorded 2026-07-31, deliberately not done). Both

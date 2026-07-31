@@ -149,9 +149,7 @@ func TestDoctorReportsExpiringSnapshot(t *testing.T) {
 	// No refresh token, so the access-token expiry is the whole deadline — the shape a
 	// lead-time notice is for (cursor's). A refresh-backed deadline is a shelf life
 	// that renews, so it is silent by design (leadTimeApplies).
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"","expiresAt":%d}`, app.Now().Add(4*24*time.Hour).UnixMilli(),
-	))
+	seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), 4*24*time.Hour, "a"))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
 
 	report := buildDoctor(ctx, app, "claude", false)

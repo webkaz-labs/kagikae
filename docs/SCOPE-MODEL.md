@@ -69,8 +69,8 @@ bound directory is `kae pin <tool> <account>`.
 
 (v0.7.2 folded `kae as` into `kae pin <tool> <account>`; the semantics below are
 unchanged.) Re-binding one tool in a bound directory changes the account that
-directory is bound to: it swaps **only the credential** (and the auth pointer of
-any mixed-state file), leaving the sharing set untouched.
+directory is bound to: it swaps **only the credential** and the identity pointer of
+a mixed-state file (§6), leaving the sharing set untouched.
 
 - **Persists within the directory** and survives re-entry.
 - **Does not leak outside the directory**: the isolation env var is

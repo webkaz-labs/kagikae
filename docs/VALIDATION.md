@@ -385,6 +385,16 @@ printf 'eA==\n' > "$XDG_DATA_HOME/kagikae/secrets/claude/ghost/claude_ai_oauth.s
 mkdir -p "$XDG_DATA_HOME/kagikae/secrets/claude/ghost" 2>/dev/null
 /tmp/kae doctor claude --json
 #   assert: a check {code:"secret_orphan", status:"warn"} for claude/ghost (names kae account rm)
+# the mirror direction (v0.16.0): a snapshot whose declared payload is gone —
+# delete the secret, leave the metadata that names it. Unlike secret_orphan this
+# needs no enumeration, so it is the one of the two that also fires on the darwin
+# keychain. A throwaway account, so the ones the blocks above rely on stay intact.
+printf '{"claudeAiOauth":{"accessToken":"tok-zeta"}}' > "$HOME/.claude/.credentials.json"
+/tmp/kae add --no-login claude zeta
+rm "$XDG_DATA_HOME/kagikae/secrets/claude/zeta/claude_ai_oauth.secret"
+/tmp/kae doctor claude --json
+#   assert: a check {code:"secret_missing", status:"warn"} naming snapshot "zeta",
+#          the artifact, and `kae add --no-login` — and no secret value anywhere in it
 ```
 
 §C `security`-read coalescing is asserted by unit tests

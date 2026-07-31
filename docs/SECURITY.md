@@ -70,7 +70,13 @@ here are part of the command contract.
 
 The base `Backend` interface is get/set/delete by key only. `secret.Enumerator`
 (optional, `Keys(ctx)`) adds listing, used by the `doctor` `secret_orphan`
-check (a secret item with no matching `accounts/<tool>/<account>` snapshot dir):
+check (a secret item with no matching `accounts/<tool>/<account>` snapshot dir).
+
+The mirror check needs no listing and therefore has no such gap: `secret_missing`
+(v0.16.0) asks whether the payload a snapshot *declares* is still in the backend,
+which is a lookup of keys the snapshots name. On darwin it is the only one of the
+two that reports anything. What enumeration is still required for is the direction
+below — a stored key kae has no snapshot for cannot be found by asking snapshots:
 
 - **darwin keychain: cannot enumerate via the `security` CLI**, so
   `keychainBackend` does **not** implement `Enumerator` and the orphan check is

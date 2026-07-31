@@ -1,6 +1,7 @@
 package account
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -31,6 +32,39 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 	if acc.Tool != "codex" || acc.Artifacts["auth"].SecretRef != "codex/main/auth" {
 		t.Fatalf("round trip lost data: %+v", acc)
+	}
+}
+
+// A snapshot written by an older kae carries keys this one no longer has —
+// `keychain_account`, recorded through v0.15.3 and read nowhere, is the concrete
+// case. Loading such a file must succeed and keep every key that is still
+// modelled: a decoder that rejected the unknown one would make every account
+// captured before the removal unreadable, which is a migration nobody asked for.
+func TestLoadIgnoresRetiredKeys(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "codex", "main")
+	if err := Save(dir, sample("codex", "main")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "account.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const header = "[artifacts.auth]\n"
+	aged := strings.Replace(string(data), header,
+		header+"    keychain_account = \"cli|1111111111111111\"\n", 1)
+	if aged == string(data) {
+		t.Fatalf("could not place the retired key; the metadata layout changed:\n%s", data)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "account.toml"), []byte(aged), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	acc, found, err := Load(dir)
+	if err != nil || !found {
+		t.Fatalf("a snapshot with a retired key must still load: found=%v err=%v", found, err)
+	}
+	if acc.Artifacts["auth"].SecretRef != "codex/main/auth" || !acc.Artifacts["auth"].Present {
+		t.Fatalf("modelled keys lost alongside the retired one: %+v", acc.Artifacts["auth"])
 	}
 }
 

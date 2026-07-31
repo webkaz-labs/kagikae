@@ -219,8 +219,22 @@ A snapshot is rewritten by `kae add`, `run -s`'s post-child recapture, and (new
 in v0.8.1) `kae use`/bare `use`'s switch-away recapture of the currently-active
 account when its live credential diverges from the snapshot. The snapshot's
 credential expiry, refresh-token state, and explicit invalidation are read (never
-stored separately) for the switch-time stale warning and the `doctor`
-`credential_stale` check. The per-tool reader is the adapter's
+stored separately) for the switch-time warnings, the `doctor` `credential_stale`
+and `credential_expiring` checks, and the freshness column of `kae ls` /
+`kae accounts` / `kae status`.
+
+**"Never stored separately" is a rule, not an accident.** The obvious way to give
+the listing commands a freshness column with no IO is to record the expiry in
+`account.toml` at capture time, and it would even be accurate — a snapshot's bytes
+only change when kae rewrites them. It is refused because it is a *second record of
+the same fact*, the shape this file already warns about for
+`Artifact.KeychainAccount` and that `docs/ROADMAP.md` records for the pin
+breadcrumb: a recapture path that forgot to refresh the copy would make `kae ls`
+report a healthy account that is dead, and nothing would detect the disagreement.
+Reading the payload costs one secret-store read per account — what `kae doctor`
+already does — and the reads are concurrent, so the wall clock is one read.
+
+The per-tool reader is the adapter's
 `Freshness(payload)` capability (v0.8.3 §A), built from the shared primitives in
 `internal/freshness`: claude `claudeAiOauth.expiresAt` (Unix ms) +
 `refreshToken` + `refreshTokenExpiresAt` (Unix ms), codex

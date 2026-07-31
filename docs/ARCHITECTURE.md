@@ -125,12 +125,22 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   identity so `kae add <tool>` can default the account name and record it in the
   snapshot. A tool without a readable identity (agy) does not implement it, and
   `cmd` falls back to requiring an explicit name.
-- `Fresher` (`Freshness(payload) freshness.Info`) reads a captured credential's
-  expiry and refresh-token presence for the switch-time stale warning and
-  `doctor credential_stale`. `cmd.freshnessOf` dispatches to it; a tool with no
+- `Fresher` (`Freshness(payload) freshness.Info`) reads a credential's expiry and
+  refresh-token presence. `cmd.freshnessOf` dispatches to it; a tool with no
   datable credential (copilot pointer, agy blob) omits it and is treated as
   not-datable. `internal/freshness` holds only the shared parsing primitives —
   no per-tool knowledge — so it stays a leaf package (no `adapter` import).
+
+  Five consumers, one deadline. `cmd.reloginDeadline` turns an `Info` into the
+  instant the credential stops being able to open a session without an interactive
+  login, and `needsRelogin` ("past it?") and `reloginDueWithin` ("how long until?")
+  are both defined on it — so the switch-time warnings, `doctor credential_stale`,
+  `doctor credential_expiring`, the `kae ls`/`accounts`/`status` freshness column,
+  and the bound-directory sweep can never disagree about where the line falls. The
+  two predicates were separate bodies once and drifted on the exact-tick boundary.
+  A zero `RefreshExpiresAt` alongside a refresh token means *unknown* and yields no
+  deadline at all; treating it as "never expires" is the failure that keeps being
+  rediscovered.
 
 `VerifiedVersion() string` is **not** one of them: it is a method of `Adapter`
 itself, because kae relies on undocumented *behaviour* of every tool and a

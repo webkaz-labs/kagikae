@@ -163,6 +163,13 @@ kind = "keychain"              # json-pointer | file | keychain
 # records what was read.
 target = "Claude Code-credentials"
 pointer = "/claudeAiOauth"
+# No keychain *account* is recorded (it was, through v0.15.3, and nothing ever
+# read it — removed in v0.16.0). Which item of a service a payload lives in is the
+# adapter's answer for the environment being written; a snapshot can only hold the
+# answer for the environment it was captured in, and restoring that over the
+# spec's is how a snapshot taken under one CODEX_HOME writes another's item. A
+# **backup** record does carry the account, because a restore addresses the item
+# it captured — see § Backups.
 secret_ref = "claude/main/claude_ai_oauth"
 
 [artifacts.oauth_account]
@@ -198,14 +205,16 @@ disk (docs/ADAPTERS.md) — so it is settable explicitly (v0.9.1): `kae add
 `kae accounts` / `kae status` show it (an `Identity` column; an additive
 `identity` field in `--json`, `omitempty`, `schema_version` still `1`).
 
-A `keychain` artifact may carry `keychain_account`: which item of the service the
+A `keychain` artifact records no **account** — which item of the service the
 payload came from (claude `$USER`, cursor `cursor-user`, codex keyring's
-`cli|<16 hex of sha256(CODEX_HOME)>`). It is **diagnostic only** — omitted for
-non-keychain artifacts, and deliberately *not* used on apply, because where a
-keychain item lives is the adapter's answer for the environment being written,
-while this is the answer for the environment the snapshot was captured in.
-Applying the recorded one is how a snapshot taken under one `CODEX_HOME` would
-write the item of another.
+`cli|<16 hex of sha256(CODEX_HOME)>`). It did through v0.15.3, diagnostically, and
+apply was documented to ignore it: where a keychain item lives is the adapter's
+answer for the environment being *written*, while a snapshot can only hold the
+answer for the environment it was captured in, and applying the recorded one is how
+a snapshot taken under one `CODEX_HOME` writes the item of another. Nothing ever
+read it, so v0.16.0 dropped it rather than keep a persisted field whose only rule is
+"never read me". A **backup** record is the opposite case and does carry the
+account (§ Backups): a restore addresses the item it captured, by identity.
 
 `kind` semantics:
 
@@ -227,10 +236,11 @@ and `credential_expiring` checks, and the freshness column of `kae ls` /
 the listing commands a freshness column with no IO is to record the expiry in
 `account.toml` at capture time, and it would even be accurate — a snapshot's bytes
 only change when kae rewrites them. It is refused because it is a *second record of
-the same fact*, the shape this file already warns about for
-`Artifact.KeychainAccount` and that `docs/ROADMAP.md` records for the pin
-breadcrumb: a recapture path that forgot to refresh the copy would make `kae ls`
-report a healthy account that is dead, and nothing would detect the disagreement.
+the same fact* — the shape `docs/ROADMAP.md` records for the pin breadcrumb, and
+the reason the recorded keychain account was deleted from this very table in
+v0.16.0 (above): a recapture path that forgot to refresh the copy would make
+`kae ls` report a healthy account that is dead, and nothing would detect the
+disagreement.
 Reading the payload costs one secret-store read per account — what `kae doctor`
 already does — and the reads are concurrent, so the wall clock is one read.
 

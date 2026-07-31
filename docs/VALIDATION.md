@@ -543,7 +543,10 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
 
 - [ ] `kae add codex` (no name) on a live keyring login captures under the
       detected account (the `id_token` email / `account_id`), and `account.toml`
-      records the derived `keychain_account` (`cli|` + 16 hex), not the payload.
+      holds no payload — nor a keychain account, which it deliberately no longer
+      records (v0.16.0; [DATA-MODEL.md](DATA-MODEL.md)). The derived item account
+      (`cli|` + 16 hex) is observable on the item itself:
+      `security find-generic-password -s "Codex Auth"`, attributes only.
 - [ ] Log in as a second account; `kae add codex` it.
 - [ ] `kae use codex <first>`: a fresh-process `codex login status` (or a
       `codex` run) reports logged in as the first account — the verbatim keyring

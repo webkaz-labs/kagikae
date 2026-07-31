@@ -159,14 +159,13 @@ func (app *App) persistSnapshot(ctx context.Context, be secret.Backend, plan too
 		} else if err := be.Delete(ctx, ref); err != nil {
 			return fmt.Errorf("clear stale payload: %w", err)
 		}
-		// The keychain account is recorded from the spec, never read back from the
-		// live item: the adapter derives where the item lives (codex's account is a
-		// hash of CODEX_HOME), and a service can hold several legitimate items, so
-		// the live item's account can belong to a different one.
+		// No keychain account is recorded: apply resolves the item from the adapter
+		// for the environment it is writing, so a captured account could only ever be
+		// the wrong answer there (account.Artifact says why). A backup record does keep
+		// it, because a restore addresses the item it captured.
 		acc.Artifacts[sp.Name] = account.Artifact{
 			Kind: sp.Kind, Target: sp.Target, Pointer: sp.Pointer,
-			KeychainAccount: sp.KeychainAccount,
-			SecretRef:       ref, Present: values[i].Present,
+			SecretRef: ref, Present: values[i].Present,
 		}
 	}
 	return account.Save(app.Paths.AccountDir(plan.Tool, plan.Account), acc)

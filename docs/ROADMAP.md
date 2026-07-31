@@ -291,13 +291,18 @@ alternative exists (`secret-tool`).
   that migrates its own credential. Note the reconciliation would not fully
   disappear even then: "an absent record must never delete the store the tool moved
   to" and the whole-document-vs-pointer refusal are properties of the payload.
-- **`account.toml`'s `keychain_account` is write-only.** It is recorded at capture
-  and read nowhere, with a doc that tells apply to ignore it (rightly: it is the
-  answer for the environment the snapshot was captured in). Either drop the field or
-  give it the reader it is evidence for — a doctor check comparing it against
-  today's derived account, which is exactly "this snapshot was captured under a
-  different `CODEX_HOME`", a natural neighbour of `identity_drift`. A persisted
-  field whose only rule is "never read me" is a tripwire.
+- ~~**`account.toml`'s `keychain_account` is write-only.**~~ **Dropped** in v0.16.0
+  (see [RELEASE.md](RELEASE.md)). It was recorded at capture and read nowhere, with
+  a doc that told apply to ignore it — rightly, since it is the answer for the
+  environment the snapshot was captured in, and apply resolves the item for the
+  environment it is writing. The alternative considered was to give it the reader it
+  would be evidence for (a doctor check comparing it against today's derived
+  account: "this snapshot was captured under a different `CODEX_HOME`"). Rejected:
+  applying a snapshot captured under a different home is *correct* behaviour, so the
+  check would warn about kae working as designed. Removing it also removes a second
+  record of a fact only the adapter owns ([DATA-MODEL.md](DATA-MODEL.md)). Note the
+  asymmetry that stays: `backup.ArtifactRecord` keeps its account, because a restore
+  must address the item it captured.
 - **claude's OAuth build suffix: the environment half is refused, the build half is
   undetectable.** The suffix sits in both store names — keychain service
   `Claude Code<suffix>-credentials[-<sha8>]` and identity file

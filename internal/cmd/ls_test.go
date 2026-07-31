@@ -113,12 +113,14 @@ func TestInventoryCommandsReportCredentialFreshness(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	// dying: past its deadline. soon: 3 days left. healthy: a month left.
+	// dying: past its deadline (refresh-backed, shelf life spent). soon: 3 days left
+	// with no refresh token, so its access expiry is a real end of life and earns the
+	// lead-time band. healthy: refresh-backed with a month of shelf life -> ok.
 	seedClaudeOAuth(t, app,
 		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}`)
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "dying") })
 	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
+		`{"accessToken":"a","refreshToken":"","expiresAt":%d}`,
 		app.Now().Add(3*24*time.Hour).UnixMilli(),
 	))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })

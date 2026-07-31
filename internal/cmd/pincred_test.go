@@ -94,8 +94,8 @@ func TestDoctorReportsExpiringBoundDirectoryCredential(t *testing.T) {
 	ctx := context.Background()
 	dir, credFile := pinWithCapturedClaude(t, app)
 
-	writeFile(t, credFile, `{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,`+
-		`"refreshTokenExpiresAt":`+strconv.FormatInt(app.Now().Add(5*24*time.Hour).UnixMilli(), 10)+`}}`)
+	writeFile(t, credFile, `{"claudeAiOauth":{"accessToken":"a","refreshToken":"",`+
+		`"expiresAt":`+strconv.FormatInt(app.Now().Add(5*24*time.Hour).UnixMilli(), 10)+`}}`)
 
 	report := buildDoctor(ctx, app, "", false)
 	msg, ok := findCheck(report, constants.CheckCredentialExpiring)

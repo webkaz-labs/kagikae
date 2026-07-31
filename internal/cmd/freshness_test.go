@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -437,9 +438,15 @@ func TestCredentialStateAtBands(t *testing.T) {
 		{"access expires soon, refresh far away", freshness.Info{
 			Known: true, ExpiresAt: now.Add(time.Hour), HasRefresh: true, RefreshExpiresAt: out,
 		}, constants.CredentialOK},
+		// A refresh token's expiry is a shelf life, not an end of life (every refresh
+		// mints a new one), so it gets no lead-time notice however close it is — only
+		// the stale half once it is actually out. See leadTimeApplies.
 		{"access expired, refresh inside the band", freshness.Info{
 			Known: true, ExpiresAt: now.Add(-time.Hour), HasRefresh: true, RefreshExpiresAt: in,
-		}, constants.CredentialExpiring},
+		}, constants.CredentialOK},
+		{"refresh-backed, deadline hours away", freshness.Info{
+			Known: true, ExpiresAt: now.Add(-time.Hour), HasRefresh: true, RefreshExpiresAt: now.Add(6 * time.Hour),
+		}, constants.CredentialOK},
 		// A refresh token with no published expiry: unknowable, so no state. Reading
 		// the zero as "far future" or as "expired" would both be inventions.
 		{"refresh with no published expiry, access soon", freshness.Info{
@@ -491,21 +498,23 @@ func TestCredentialStateAtBands(t *testing.T) {
 	}
 }
 
-// §B lead time: switching to an account whose re-login deadline is days away must
-// say so, name `kae add --restore` (the one command that refreshes it without
-// disturbing the login that is live now), and — unlike the stale warning — must
-// not be counted among the tools that "need a re-login before use", because this
-// switch works today.
+// §B lead time: switching to an account whose deadline is a real end of life and
+// days away must say so, name `kae add --restore` (the one command that refreshes it
+// without disturbing the login that is live now), and — unlike the stale warning —
+// must not be counted among the tools that "need a re-login before use", because
+// this switch works today.
+//
+// The credential carries **no refresh token**, which is what makes its access-token
+// expiry the whole deadline (cursor's shape). A refresh-backed one is deliberately
+// silent here; TestRefreshBackedCredentialGetsNoLeadTimeNotice pins that.
 func TestSwitchToExpiringSnapshotWarnsWithLeadTime(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	// Access token long gone, refresh token good for 3 more days (app.Now is
-	// 2026-06-11T01:23:45Z).
-	refreshExp := app.Now().Add(3 * 24 * time.Hour).UnixMilli()
 	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`, refreshExp,
+		`{"accessToken":"a","refreshToken":"","expiresAt":%d}`,
+		app.Now().Add(3*24*time.Hour).UnixMilli(),
 	))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
 	seedClaude(t, app, sideToken, "side-uuid")
@@ -525,6 +534,54 @@ func TestSwitchToExpiringSnapshotWarnsWithLeadTime(t *testing.T) {
 	}
 	if strings.Contains(stderr, "need a re-login before use") {
 		t.Errorf("an expiring account must stay out of the stale roll-up: %q", stderr)
+	}
+}
+
+// The measured reason the lead time is scoped: a claude snapshot's
+// refreshTokenExpiresAt sat 1.6-2.0 days past its own capture, for logins performed
+// a month earlier. With a seven-day window that fires from the moment of capture and
+// never stops, so no claude account could ever read "ok" and the notice carried no
+// information. The stale half still fires once the shelf life is actually out.
+func TestRefreshBackedCredentialGetsNoLeadTimeNotice(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	// Refresh token good for 9 more hours — deep inside any lead window.
+	seedClaudeOAuth(t, app, fmt.Sprintf(
+		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
+		app.Now().Add(9*time.Hour).UnixMilli(),
+	))
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "rolling") })
+	seedClaude(t, app, sideToken, "side-uuid")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "current") })
+	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "current") })
+
+	_, _, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "rolling") })
+	if strings.Contains(stderr, "re-login in") {
+		t.Errorf("a rolling refresh window must not produce a lead-time notice: %q", stderr)
+	}
+	if _, ok := findCheck(buildDoctor(ctx, app, "claude", false), constants.CheckCredentialExpiring); ok {
+		t.Error("doctor must not report a refresh-backed credential as expiring")
+	}
+	// It reads as ok, not as unjudged: kae does know its deadline, it just will not
+	// anticipate it.
+	_, out := captureStdout(t, func() int { return runLs(ctx, app, commonOpts{Format: formatJSON}) })
+	var report lsReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("invalid ls JSON: %v: %s", err, out)
+	}
+	for _, a := range report.Accounts {
+		if a.Account == "rolling" && a.Credential != constants.CredentialOK {
+			t.Errorf("a refresh-backed credential still reads ok, got %q", a.Credential)
+		}
+	}
+	// And once the shelf life is out, the stale half still fires.
+	seedClaudeOAuth(t, app,
+		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}`)
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "spent") })
+	if _, ok := findCheck(buildDoctor(ctx, app, "claude", false), constants.CheckCredentialStale); !ok {
+		t.Error("an expired shelf life must still be reported stale")
 	}
 }
 

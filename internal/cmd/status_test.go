@@ -209,7 +209,7 @@ func TestStatusReportsActiveAccountCredentialFreshness(t *testing.T) {
 	opts := commonOpts{Format: formatText}
 
 	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
+		`{"accessToken":"a","refreshToken":"","expiresAt":%d}`,
 		app.Now().Add(2*24*time.Hour).UnixMilli(),
 	))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })

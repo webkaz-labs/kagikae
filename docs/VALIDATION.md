@@ -1023,7 +1023,7 @@ commit**. Verifying an assumption always means launching a **fresh** tool proces
 | The credential alone authenticates: applying `/claudeAiOauth` (keychain payload or `.credentials.json`) is the whole login | `kae use claude <acct>`, then `claude -p "say AUTH-OK" </dev/null` in a **new** process returns a reply, not "Not logged in" |
 | `/oauthAccount`'s self-heal is **TTL-gated**: claude refetches the profile and rewrites `emailAddress` only when the cached object is incomplete or its `profileFetchedAt` is over **24h** old, and a token refresh renews that timestamp without rewriting `emailAddress` / `accountUuid` | `kae use claude <other>` with a snapshot captured **within** 24h, launch claude, diff `~/.claude.json`: `oauthAccount.emailAddress` is the value kae wrote and does **not** revert. Then age it (`profileFetchedAt` older than 24h) and launch claude again: it now refetches and rewrites `emailAddress` + `profileFetchedAt` on its own. If the TTL ever stops applying, kae's identity switch becomes redundant (not harmful) — record that here rather than dropping the artifact silently |
 | `claude /login` rewrites `accountUuid` / `emailAddress` / `organizationUuid` unconditionally (no TTL), and a token **refresh** rewrites none of them | Log in to another account with `claude /login`, diff `~/.claude.json`: those three keys change. Let a session run long enough to refresh the token and diff again: `profileFetchedAt` and the plan fields change, those three do not. kae's `IdentityKeys` (the keyed identity comparison) is exactly this set — if a refresh starts rewriting them, `identity_drift` will warn on correct switches again |
-| A **refresh token** carries its own expiry in `refreshTokenExpiresAt`, and each refresh mints a new one — so the number is a **rolling window**, not the credential's life (Claude Code itself warns inside the last 3 days) | Read `refreshTokenExpiresAt` from a fresh login's credential and subtract `expiresAt`'s date: measured ≈2 days on 2.1.220 (it was ≈1 month earlier). **Do not read that 2 days as the time until a re-login**: because a refresh renews the token, a credential in regular use stays alive far longer, and the operator reports the real cadence as roughly a month with `kae doctor` staying quiet (confirmed 2026-07-31). Two kae behaviours ride on this. The "recoverable without a re-login" predicate needs the field to exist at all: if it disappears, kae falls back to presence alone and under-warns. And `credential_expiring`'s **seven-day lead time** assumes the effective lifetime is comfortably longer than seven days — if a release ever made the window genuinely short and non-renewing, that check would be permanently lit for every claude account, which is worse than not having it. Re-measure by taking `refreshTokenExpiresAt` from a credential that has been in daily use for a week, not from a fresh login |
+| A **refresh token** carries its own expiry in `refreshTokenExpiresAt`, and each refresh mints a new one — so the number is a **rolling window**, not the credential's life (Claude Code itself warns inside the last 3 days) | Read `refreshTokenExpiresAt` from a fresh login's credential and subtract `expiresAt`'s date: measured ≈2 days on 2.1.220 (it was ≈1 month earlier). **Do not read that number as the time until a re-login** — it is a *shelf life*, not an end of life. **Measured on the operator's machine 2026-07-31**: two live claude snapshots carried refresh expiries **1.6 and 2.0 days past their own `captured_at`**, for logins performed a **month** earlier. So the field measures how long a *frozen copy* can still refresh, while the account behind it lives on. That is why `credential_expiring` does **not** anticipate a refresh-backed deadline (`cmd.leadTimeApplies`): a seven-day window against a two-day shelf life fired from the moment of capture and never stopped, so no claude account could ever read `ok`. `credential_stale` is unaffected and still fires once the shelf life is out. The "recoverable without a re-login" predicate needs the field to exist at all: if it disappears, kae falls back to presence alone and under-warns. Re-measure with `kae ls --json` and subtract `captured_at` from `relogin_by` — no login and no secret read required |
 | A refresh that fails with `invalid_grant` makes claude **tombstone** the credential in place: `accessToken: ""`, `refreshToken: ""`, `expiresAt: 0` | Let a credential's refresh token expire, run claude, then read the credential: it is blanked rather than left alone. kae reads that as invalid, not as "no expiry recorded"; if upstream instead deletes the item, the logged-out guards cover it |
 | The keychain payload must round-trip **verbatim**; a re-serialized payload makes Claude Code reject the credential | Capture → apply → fresh-process auth check on macOS with the real keychain driver. A byte-compare of the stored payload does not cover it: an equivalent-but-re-encoded payload is exactly this failure |
 | `~/.claude.json` is mixed state whose other keys must survive a pointer patch | `git`-diff `~/.claude.json` across a switch: only `/oauthAccount` changes; `projects`, `mcpServers`, onboarding and cache keys stay byte-identical |
@@ -1058,6 +1058,35 @@ commit**. Verifying an assumption always means launching a **fresh** tool proces
 The release acceptance run below is how these rows get re-verified: it already
 launches fresh tool processes against real accounts, which is what every row
 needs.
+
+## Real-machine gate — does a spent refresh token really force a login? (**open**)
+
+kae has assumed since long before `credential_expiring` existed that a credential
+whose refresh token has expired cannot open a session without the tool's interactive
+login. That assumption *is* what `credential_stale` means, and what `kae use` warns
+about before applying such a snapshot. It has never been observed directly.
+
+The 2026-07-31 measurement above makes it worth settling: a claude snapshot's refresh
+token is spent ~2 days after capture while the login behind it is a month old, so
+kae calls such a snapshot stale far more often than the operator actually re-logs in.
+Either kae is right and those switches do prompt a login, or claude recovers by some
+path kae does not model — and in that case the **stale** half is over-warning too,
+not just the anticipation that has now been dropped.
+
+**Procedure** (needs a real machine, a real login, and patience — no second account):
+1. `kae add --no-login claude <acct>` right after a fresh `claude /login`, then note
+   `relogin_by` from `kae ls --json`.
+2. Leave that account untouched past `relogin_by` (about two days). Keep using a
+   *different* account so the snapshot is not recaptured by the switch-away refresh.
+3. `kae doctor --json` — assert it now reports `credential_stale` for it.
+4. `kae use claude <acct>`, then start claude in a **fresh process** and see whether
+   it serves a session or asks for a login.
+
+**Either outcome is a result.** If it asks for a login, the assumption is confirmed —
+record it here and close the gate. If it serves a session, then `needsRelogin` is
+wrong for a refresh-backed credential and both the stale warning and
+`kae add --restore`'s framing need revisiting; open it as a defect. Record the
+outcome and the version measured on either way.
 
 ## Real-Machine Acceptance (release only)
 

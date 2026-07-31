@@ -1073,6 +1073,135 @@ The release acceptance run below is how these rows get re-verified: it already
 launches fresh tool processes against real accounts, which is what every row
 needs.
 
+## Upstream Literal Fingerprints (`mise run audit`)
+
+The table above is verified by a human on a release run. This one is verified by a
+machine on every audit: for each literal the *upstream tool* owns and kae depends
+on, how many times it occurs in that tool's installed artifact. A count that moves
+means the tool's own code around kae's assumption changed — the earliest signal
+available offline, and the only one that fires on a release where the layout is
+byte-identical.
+
+**Why a count and not just presence.** Measured across the three claude builds on
+one machine (2026-07-31): every count below was **identical** on 2.1.218, 2.1.219
+and 2.1.220, while the bundle itself grew from 264,548,368 to 266,397,712 bytes.
+The minified identifiers around these literals churn between builds; the counts do
+not. Presence alone would miss a literal that survives in one place and disappears
+from another.
+
+**The counts are measured, never derived from kae's own constants.** Two of kae's
+most important literals do not exist in the bundle at all, because upstream
+*composes* them:
+
+- `claude.KeychainService` is `"Claude Code-credentials"`, and that string occurs
+  **0** times in 2.1.220. Upstream builds it as `"Claude Code"` + the OAuth suffix +
+  `"-credentials"`, so only the parts are countable (`Claude Code` occurs 1070
+  times — noise; `-credentials` 24 times — usable).
+- cursor's four service names (`cursor-access-token`, `cursor-refresh-token`,
+  `cursor-api-key`, `cursor-user`) each occur **0** times, because cursor-agent
+  composes them from a build-time domain constant. The suffixes are what to count.
+
+Generating this table from kae's Go constants would therefore make its two most
+load-bearing rows permanently red. Measure the artifact, then write the number down.
+
+**Zero is a legitimate expected value.** `google_accounts.json` occurs **0** times
+in agy 1.0.10 even though kae reads that file for agy's identity — it is a
+leftover from the Gemini-CLI era that current Antigravity does not name. Recorded
+as 0, the row says "kae depends on this *not* being upstream's business", and a
+change to nonzero is news worth acting on.
+
+**Noise beats nothing only in one direction: a noisy row is worse than no row.**
+Rejected for that reason, with what they measured: `gemini` (4507 in the agy
+binary — the whole Gemini ecosystem's package paths), `Claude Code` (1070),
+`antigravity` (175 — mostly Go package paths, so any added file moves it), and the
+short generic JSON keys (`email`, `active`, `login`, `tokens`, `accountId`) and
+bare enum words (`file`, `keyring`, `auto`, `ephemeral`). Prefer a literal that is
+hyphenated, compound, URL-shaped, or an env-var name.
+
+**codex is deliberately absent from the table.** It has no fingerprintable
+artifact here: the release binary is stripped Rust, `compute_store_key` exists in
+**two** modules so a symbol grep finds the MCP-OAuth one first
+([measuring.md](../.claude/skills/upstream-auth-drift/references/measuring.md)),
+and on the machine this was measured on codex is not installed as an inspectable
+binary at all. Its instrument is the public source at tag
+`rust-v<VerifiedVersion()>` — read `codex-rs/login/src/auth/storage.rs`, which is
+what every codex row in the table above already does.
+
+### How it runs, and what it refuses to do silently
+
+`TestUpstreamLiteralFingerprints` has two halves:
+
+- The **table parse** runs in `mise run check`, on every commit, with no tool
+  installed: it fails on a malformed row, a count that is not a number, a tool
+  outside `constants.Tools`, and on a tool that is neither in the table nor in the
+  test's named exclusion list. A new adapter therefore cannot be added without
+  either fingerprints or a recorded reason.
+- The **counting** runs only under `mise run audit` (`KAE_FINGERPRINT=1`), which is
+  where reading a 266 MB binary belongs. It reads the **newest** installed artifact
+  and names the version it read, so an upgrade is what the check sees.
+
+A tool whose artifact is not installed is **reported by name, with the paths that
+were tried, and the audit still fails** unless every absent tool is expected. A
+fingerprint check that passes because it found nothing to check would be worse than
+not having one — that is the failure shape this repo has already shipped twice (a
+conformance guard that never examined codex, a doctor check that skipped silently).
+
+### Re-measuring
+
+```bash
+# occurrence count, not line count: `grep -c` counts lines even with -o
+grep -oa -- '<literal>' <artifact> | wc -l
+grep -roa -- '<literal>' <artifact-dir> | wc -l   # cursor: many webpack chunks
+```
+
+| Tool | Artifact | Measured on |
+|---|---|---|
+| claude | `~/.local/share/claude/versions/<version>` (one Mach-O, JS inline) | `2.1.220` |
+| cursor | `~/.local/share/cursor-agent/versions/<version>/` (webpack chunks) | `2026.06.16-20-30-07-a07d3ac` |
+| copilot | `~/.copilot/pkg/universal/<version>/app.js` (plain JS) | `1.0.61` |
+| opencode | `~/.local/share/mise/installs/opencode/<version>/opencode` (Bun single-file executable) | `1.17.4` |
+| agy | `/usr/local/bin/agy` (Go binary; no versions directory) | `1.0.10` |
+
+opencode's path is mise's install tree because that is how it is installed here;
+the check tries `PATH` first and falls back to that layout. agy installs straight
+to `/usr/local/bin` with no per-version directory, so its row cannot name a version
+from the path — `agy --version` is the only source, which is why its
+`VerifiedVersion()` is the value recorded above.
+
+| Tool | Literal | Count |
+|---|---|---|
+| claude | `-credentials` | 24 |
+| claude | `claude-code-user` | 3 |
+| claude | `CLAUDE_CONFIG_DIR` | 42 |
+| claude | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | 13 |
+| claude | `CLAUDE_CODE_CUSTOM_OAUTH_URL` | 8 |
+| claude | `claudeAiOauth` | 17 |
+| claude | `oauthAccount` | 70 |
+| claude | `refreshTokenExpiresAt` | 12 |
+| claude | `profileFetchedAt` | 7 |
+| cursor | `-access-token` | 4 |
+| cursor | `-refresh-token` | 1 |
+| cursor | `-api-key` | 17 |
+| cursor | `exchange_user_api_key` | 1 |
+| cursor | `partially-authenticated` | 2 |
+| cursor | `Logged in as` | 12 |
+| copilot | `COPILOT_HOME` | 23 |
+| copilot | `lastLoggedInUser` | 4 |
+| copilot | `COPILOT_GITHUB_TOKEN` | 21 |
+| opencode | `OPENCODE_AUTH_CONTENT` | 3 |
+| opencode | `XDG_DATA_HOME` | 9 |
+| opencode | `auth.json` | 12 |
+| agy | `go-keyring-base64:` | 1 |
+| agy | `shouldBypassKeyring` | 3 |
+| agy | `falling back to file` | 6 |
+| agy | `WSL_DISTRO_NAME` | 1 |
+| agy | `WSL_INTEROP` | 1 |
+| agy | `SSH_CONNECTION` | 1 |
+| agy | `google_accounts.json` | 0 |
+
+What each row is evidence *for* lives in the assumptions table above — these are
+counts, not explanations. When a count moves, work that tool's rows there.
+
 ## Real-machine gate — does `refreshTokenExpiresAt` predict the login's death? (**open**)
 
 Opened 2026-07-31, then briefly closed on a documentation citation and reopened the

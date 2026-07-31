@@ -866,6 +866,77 @@ expects — keep the two in sync.
 - [ ] `mise x github:webkaz-labs/kagikae@v0.9.0 -- kae version` resolves the
       release archive and runs.
 
+## v0.15.0 surfaces — credential lead time, inventory freshness, bound directories
+
+All three are read-only reporting, so the whole block runs against a temp HOME with
+the file driver and the file backend — no real `$HOME`, no real keychain. Deadlines
+are computed from `date +%s` so the fixtures stay valid whenever this is re-run.
+
+```bash
+S=$(mktemp -d); export HOME="$S/home" \
+  XDG_CONFIG_HOME="$S/home/.config" XDG_DATA_HOME="$S/home/.local/share"
+mkdir -p "$HOME/.claude" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"
+export KAE_CLAUDE_DRIVER=file
+/tmp/kae init
+printf 'default_profile = "main"\n[security]\nsecret_backend = "file"\n[profiles.main]\naccounts = { claude = "main" }\n' \
+  > "$XDG_CONFIG_HOME/kagikae/config.toml"
+NOW=$(date +%s); SOON=$(( (NOW + 3*86400) * 1000 )); FAR=$(( (NOW + 60*86400) * 1000 ))
+cred() { printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%s}}' "$1" \
+  > "$HOME/.claude/.credentials.json"; }
+
+# --- A. the three bands, on account snapshots ---
+cred "$SOON";                 /tmp/kae add --no-login claude soon
+cred "$FAR";                  /tmp/kae add --no-login claude healthy
+cred 1609459200000;           /tmp/kae add --no-login claude dead   # refresh expired 2021
+/tmp/kae doctor claude --json
+#   assert: {code:"credential_expiring", status:"warn"} for "soon", naming the day
+#           count and `kae add --restore claude soon`
+#   assert: {code:"credential_stale",    status:"warn"} for "dead"
+#   assert: NO credential_* check for "healthy" (a month out stays silent)
+/tmp/kae doctor claude --json >/dev/null; echo "exit=$?"   # assert: 0 (warn never fails)
+
+# --- B. the inventory column (ls / accounts / status) ---
+/tmp/kae ls --no-color        # assert: a Credential column reading
+                              #   dead=re-login now, healthy=ok, soon=N day(s) left
+/tmp/kae ls --json
+#   assert: schema_version still 1; each row has additive credential + relogin_by
+#   assert: relogin_by parses as RFC3339 and is the *refresh* deadline, not expiresAt
+
+# --- C. a bound directory's own credential (the sweep) ---
+cred "$FAR"; /tmp/kae add --no-login claude main
+P="$S/project"; mkdir -p "$P"; cd "$P"; /tmp/kae pin main
+STORE=$(find "$XDG_DATA_HOME/kagikae/isolation" -name '.credentials.json' | head -1)
+/tmp/kae doctor --json     # assert: NO credential_* check (the copy is healthy)
+printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}' > "$STORE"
+/tmp/kae doctor --json
+#   assert: {code:"credential_stale"} whose message says `bound to <P>` and
+#           `cd <P> && claude /login` — and NOT `kae pin` / `kae add`
+#   assert: the healthy claude/main *snapshot* is not reported alongside it
+/tmp/kae unpin
+/tmp/kae doctor --json     # assert: silent again — unpin keeps the store on
+                           # purpose, so nothing points at it and "bound to" would lie
+
+# --- D. kae pin still writes a real store path in both modes (modeStoreDir) ---
+cd "$P" && /tmp/kae pin main    && grep CLAUDE_CONFIG_DIR .config/mise/conf.d/kagikae.toml
+cd "$P" && /tmp/kae pin -i main && grep CLAUDE_CONFIG_DIR .config/mise/conf.d/kagikae.toml
+#   assert: non-empty, ending .../claude/shared and .../claude/isolated/main/config
+#           respectively, and both directories exist
+```
+
+**PASSED 2026-07-31** on the pre-release binary: A, B, C and D all as asserted.
+
+Two things this block deliberately pins, because each is a failure that looks like
+success:
+
+- **`credential_expiring` must be silent for a healthy account.** The seven-day
+  lead time is only useful while it is a minority of the credential's life; if it
+  ever fires for every account, the check is worse than absent. See the claude row
+  in "Upstream Behaviour Assumptions" for the upstream condition it rides on.
+- **The unpinned case must be silent.** `kae unpin` keeps the store, so the
+  breadcrumb still names the directory — reporting its credential would name a
+  directory that is not bound and a remedy that lands where nothing reads. The
+  sweep therefore reads the mise **fragment**, not the store tree.
+
 ## companion-auth surfaces
 
 Companion-auth lockstep (`kae companion`, delivered per-directory by `kae pin`).

@@ -147,22 +147,22 @@ alternative exists (`secret-tool`).
   tolerating it would mean guessing — and the manual step is documented instead
   ([CLI.md](CLI.md) § `account rename`).
 
-- **`kae rollback` restores an active pointer without checking its snapshot is still
-  there** (recorded 2026-07-31, **not fixed** — the sibling of the entry above). The
-  rollback's state mutation writes `st.Active[tool] = meta.ActiveBefore[tool]`
-  unconditionally (`internal/cmd/backup.go`), and a backup taken before an
-  `account rm`/`rename` keeps the name it had at capture time — so rolling back to it
-  names a snapshot that is gone and the next `kae use` fails with `account
-  <tool>/<name> is not captured yet` (`loadPlansWithSnapshots`, `internal/cmd/ops.go`).
-  `reapplyHint` (same file) already guards that same value
-  with an `account.Load` existence check, but only to shape a hint string; the live
-  pointer gets no guard. The fix is that guard at the write: record the name when its
-  snapshot loads, otherwise `delete` the entry so nothing claims an account that does
-  not exist. It is a **behaviour change to `kae rollback`** — one that would stop
-  restoring a stale pointer at all — which is why v0.15.3 documents and detects the
-  state (`active_orphan`) rather than changing rollback in a release about something
-  else. Decide at the same time whether `account rm`/`rename` should rewrite
-  `active_before` in existing backups, which is the other end of the same gap
+- ~~**`kae rollback` restores an active pointer without checking its snapshot is
+  still there**~~ (recorded 2026-07-31, **fixed** — the sibling of the entry above;
+  see [RELEASE.md](RELEASE.md) v0.16.0). The rollback's state mutation wrote
+  `st.Active[tool] = meta.ActiveBefore[tool]` unconditionally, so a backup taken
+  before an `account rm`/`rename` named a snapshot that was gone and the next
+  `kae use` failed with `account <tool>/<name> is not captured yet`
+  (`loadPlansWithSnapshots`). The predicate `reapplyHint` had always applied to that
+  same value — for a hint string only — is now the shared
+  `restorableActiveAccount`, and the live pointer goes through it: recorded when its
+  snapshot loads, `delete`d otherwise, with a stderr warning naming what it could
+  not restore.
+  The other end of the same gap was decided the other way: `account rm`/`rename`
+  still do **not** rewrite `active_before` in existing backups. A backup is the
+  record of what was true when it was taken, and rewriting every stored `Meta` on an
+  account edit would put a whole-directory mutation (and its own half-finished
+  state) into two commands, to save a value the restore can re-check for free
   ([DATA-MODEL.md](DATA-MODEL.md) § Backups).
 
 - **`applySnapshot`'s refusals could be raised one step earlier, in

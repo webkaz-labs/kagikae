@@ -425,13 +425,19 @@ A legacy `keychain_replace` record with **no** recorded account is refused
 outright: without the account it cannot name its own item, and widening the delete
 to the whole service is what destroyed another codex home's login.
 
-**`account rm`/`rename` do not rewrite existing backups.** A backup's
-`active_before` keeps the old account name, so rolling back to a backup taken
-before a remove/rename restores that name into `state.json` while the snapshot
-no longer exists under it; the next `kae use` then errors with `account
-<tool>/<name> is not captured yet`. `kae doctor` reports that gap as
-`active_orphan` before you hit it
-([CLI.md](CLI.md) § doctor). Prune the affected backups manually if this matters.
+**`account rm`/`rename` do not rewrite existing backups**, deliberately: a backup
+is the record of what was true when it was taken, and rewriting every stored
+`Meta` on an account edit would make two commands walk and mutate the whole backup
+directory — a new half-finished state to worry about, in exchange for a value the
+restore can simply re-check.
+
+So the re-check is where the guard lives. A backup's `active_before` keeps the
+name it had at capture time, and `kae rollback` restores it into `state.json` only
+if a snapshot by that name is still captured; otherwise it drops the entry and says
+so on stderr ([CLI.md](CLI.md) § `kae rollback --json`). What a stale
+`active_before` costs is therefore the *label* — the tool comes back with no active
+account recorded rather than with one that is gone. Everything else in the backup is
+still restored, and `kae use <tool> <account>` sets the pointer again.
 
 ## Status Vocabulary
 

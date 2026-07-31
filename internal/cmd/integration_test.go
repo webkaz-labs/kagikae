@@ -183,6 +183,55 @@ func TestCaptureSwitchRollbackClaude(t *testing.T) {
 	}
 }
 
+// A backup's active_before keeps the name it had at capture time, so a rollback
+// across a `kae account rm` used to record an account that is gone: state named a
+// snapshot nothing could load (doctor's active_orphan) and the next `kae use
+// claude` failed with "is not captured yet". The pointer is dropped instead — and
+// the credential rollback, which is the part that was never broken, still happens.
+func TestRollbackDropsActivePointerWhoseSnapshotIsGone(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, sideToken, "side-uuid")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+	seedClaude(t, app, mainToken, "main-uuid")
+	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	// Make side active, then switch away: the backup that switch takes is the one
+	// recording side as the account to restore.
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	if _, err := buildAccountRm(ctx, app, opts, "claude", "side", false); err != nil {
+		t.Fatalf("account rm side: %v", err)
+	}
+
+	code, stderr := captureStderr(t, func() int {
+		code, _ := captureStdout(t, func() int { return runRollback(ctx, app, opts, "") })
+		return code
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+	if !strings.Contains(stderr, "side") || !strings.Contains(stderr, "no active account") {
+		t.Fatalf("rollback must say which pointer it dropped and that it dropped it: %q", stderr)
+	}
+
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name, ok := st.Active["claude"]; ok {
+		t.Fatalf("state kept an active account whose snapshot is gone: %q", name)
+	}
+	if creds := readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json")); !strings.Contains(creds, sideToken) {
+		t.Fatalf("rollback did not restore the credential: %s", creds)
+	}
+}
+
 func TestSwitchAllProfileAndDivergence(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()

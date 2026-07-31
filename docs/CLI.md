@@ -314,9 +314,9 @@ so the rename can be re-run, or `kae account rm <tool> <old>` keeps it and
 
 Both hold the per-tool lock plus the config lock, and edit `config.toml`
 through a comment-preserving writer (comments, field order, and unrelated keys
-survive). Limitation: existing backups are **not** rewritten — a backup's
-`Meta.ActiveBefore` keeps the old account name (see
-[DATA-MODEL.md](DATA-MODEL.md)).
+survive). Existing backups are **not** rewritten — a backup's `Meta.ActiveBefore`
+keeps the old account name, and `kae rollback` re-checks it rather than trusting it
+(see [DATA-MODEL.md](DATA-MODEL.md) § Backups).
 
 ## kae profile Semantics
 
@@ -852,16 +852,14 @@ Credential-health checks (warn-level):
   snapshot by that name exists — so kae cannot say which account is live, and
   `kae status` would display a name that is not there. Offline and backend-free.
   Known ways to get here, not a closed set — the check compares the two records
-  rather than watching for a cause. `kae rollback` restores the backup's
-  `active_before` without checking the snapshot is still there, so a backup
-  predating an `account rm`/`rename` names an account that is gone
-  ([DATA-MODEL.md](DATA-MODEL.md) § Backups). A writer outside kae reaches it too: a
-  test or smoke run that isolated `HOME` but inherited a real `XDG_STATE_HOME` will
-  capture straight into the live state file. kae's own account-lifecycle commands no
-  longer do — `kae account rm` clears the pointer before removing anything, and
-  `kae account rename` completes the new snapshot before moving the pointer to it
-  (both above) — but a `state.json` that predates those fixes can still hold the
-  result.
+  rather than watching for a cause. A writer outside kae reaches it: a test or smoke
+  run that isolated `HOME` but inherited a real `XDG_STATE_HOME` will capture
+  straight into the live state file. kae's own commands no longer do — `kae account
+  rm` clears the pointer before removing anything, `kae account rename` completes
+  the new snapshot before moving the pointer to it, and `kae rollback` restores a
+  backup's `active_before` only when its snapshot is still captured (all three
+  above) — but a `state.json` written before those fixes can still hold the result,
+  which is why the check compares records rather than trusting the writers.
   The same code also fires when `state.json` itself cannot be read, or when the
   active account's snapshot metadata will not parse: nothing else in doctor looks at
   either. Names `kae use <tool> <account>` to settle it. Warn, never error: the
@@ -1105,6 +1103,18 @@ restores in `kae run -s` and `kae add --restore`, whose child process is the usu
 reason the store moved in the first place. A backup that recorded **no** credential
 is never redirected: kae leaves the moved-to store alone rather than delete a
 credential it has no copy of, and warns on stderr that the restore was partial.
+
+The **active-account pointer** is restored only when its snapshot is still
+captured. A backup's `active_before` keeps the name it had at capture time, so a
+rollback across a `kae account rm`/`rename` would otherwise record an account that
+no longer exists — `kae status` naming a phantom and the next `kae use <tool>`
+failing with `account <tool>/<name> is not captured yet`. kae drops the entry for
+that tool instead (the same "no active account" state `kae account rm` leaves) and
+warns on stderr, naming the account it could not restore. Never fatal and never a
+non-zero exit: the credentials are already rolled back, and what was lost is a
+label. Existing backups are **not** rewritten when an account is removed or renamed
+(see [DATA-MODEL.md](DATA-MODEL.md) § Backups) — the guard is at the restore, so a
+backup stays the record of what was true when it was taken.
 
 ### `kae env list --json`
 

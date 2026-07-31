@@ -10,12 +10,37 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
+	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
+
+// The two config refusal sets guard each other, but neither can see the thing they
+// are copies *of*: bondDenylistItems is the behaviour — what a shared bind actually
+// keeps private — and internal/config holds a hand-maintained mirror of it per
+// config field. Add a must-be-private file there and forget both maps, and it is
+// shareable again through `shared_denylist_extra` or `isolated_shared_items`, which
+// is the hole this release closed twice, once per field. config cannot import cmd,
+// so the guard lives here; and it asks through config.Load rather than reading the
+// maps, so what is pinned is the refusal a user actually meets.
+func TestBondDenylistIsRefusedInBothConfigFields(t *testing.T) {
+	app := testApp(t, nil) // empty config, so the denylist is the hard-coded half only
+	for _, tool := range constants.Tools {
+		for _, item := range app.bondDenylistItems(tool) {
+			for _, field := range []string{"shared_denylist_extra", "isolated_shared_items"} {
+				path := filepath.Join(t.TempDir(), "config.toml")
+				writeFile(t, path, fmt.Sprintf("version = 1\n[tools.%s]\n%s = [%q]\n", tool, field, item))
+				if _, _, err := config.Load(path); err == nil {
+					t.Errorf("%s keeps %q private in a shared bind, but %s accepts it",
+						tool, item, field)
+				}
+			}
+		}
+	}
+}
 
 // setupBondHome seeds the non-credential half of a realistic claude real home.
 // The credential comes from captureClaude, because a bond materializes

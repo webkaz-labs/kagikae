@@ -133,6 +133,11 @@ themselves.
   real="$(readlink "$link")" && rm "$link" && cp "$real" "$link"
   ```
 
+  If mise is not active in that shell, the same path is written verbatim in the
+  directory's fragment: `grep CLAUDE_CONFIG_DIR .config/mise/conf.d/kagikae.toml`.
+  Do not assemble it from a pin id — `kae pin` does not report one, and the store
+  root moves with `XDG_DATA_HOME`.
+
   Removing the link first is the part that matters: `cp` onto a symlink writes
   *through* it, into the real home. For the same reason retraction deletes rather
   than copies — it fires for every denied entry, credentials included, and copying

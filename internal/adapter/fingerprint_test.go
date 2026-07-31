@@ -3,11 +3,11 @@ package adapter_test
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,18 +40,16 @@ var fingerprintExclusions = map[string]string{
 // the version the table records. Relative paths resolve against $HOME. Mirrors the
 // artifact table in docs/VALIDATION.md § "Upstream Literal Fingerprints".
 //
-// The version is **pinned from the table, never guessed**. Choosing the newest
-// match instead was tried and is worse than useless: on the machine this was
-// written, "newest by modification time" read copilot 1.0.36 while 1.0.61 was the
-// installed CLI, and mise's `opencode/1` version alias beat `opencode/1.17.4` — both
-// of which report a pile of moved counts for a tool that never changed, which is the
-// noise this whole check is supposed to be quieter than. Sorting by version instead
-// would need a comparator per tool (claude semver, cursor a timestamp, agy no
-// version in the path at all).
+// The version is **pinned from the table, never guessed** — picking the newest match
+// instead was tried and read the wrong build for two tools (docs/VALIDATION.md
+// § "Upstream Literal Fingerprints" records what it did). An upgrade therefore shows
+// up as "not installed" against the recorded version, whose remedy is the re-measure
+// an upgrade calls for anyway; `doctor`'s upstream_version check is the one that
+// watches for the upgrade itself.
 //
-// So an upgrade shows up as "not installed" against the recorded version, whose
-// remedy is exactly what an upgrade calls for: re-measure and update both tables.
-// `doctor`'s upstream_version check is the one that watches for the upgrade itself.
+// The `.local/share` prefixes are written as measured, not resolved through
+// XDG_DATA_HOME: whether these installers honour that variable for their own install
+// location is unmeasured, and this file is the wrong place to guess.
 var fingerprintArtifacts = map[string]string{
 	constants.ToolClaude:   ".local/share/claude/versions/" + versionToken,
 	constants.ToolCursor:   ".local/share/cursor-agent/versions/" + versionToken,
@@ -162,17 +160,21 @@ func TestUpstreamLiteralFingerprints(t *testing.T) {
 			continue
 		}
 		t.Logf("%s: reading %s", tool, artifact)
-		for _, fp := range documented[tool] {
-			got, err := countInPath(artifact, []byte(fp.literal))
-			if err != nil {
-				t.Errorf("%s %q: %v", tool, fp.literal, err)
-				continue
-			}
-			if got != fp.count {
+		literals := make([][]byte, len(documented[tool]))
+		for i, fp := range documented[tool] {
+			literals[i] = []byte(fp.literal)
+		}
+		counts, err := countAll(artifact, literals)
+		if err != nil {
+			t.Errorf("%s: reading %s: %v", tool, artifact, err)
+			continue
+		}
+		for i, fp := range documented[tool] {
+			if counts[i] != fp.count {
 				t.Errorf("%s: %q occurs %d times in %s, docs/VALIDATION.md records %d — "+
 					"the upstream code around this assumption moved; work that tool's rows in "+
 					"the Upstream Behaviour Assumptions table, then update the count",
-					tool, fp.literal, got, artifact, fp.count)
+					tool, fp.literal, counts[i], artifact, fp.count)
 			}
 		}
 	}
@@ -203,148 +205,95 @@ func artifactPath(pattern, version string) (string, error) {
 	return path, nil
 }
 
-// countInPath counts occurrences of literal in a file, or summed over every file
-// under a directory (cursor ships thousands of webpack chunks).
-func countInPath(path string, literal []byte) (int, error) {
+// countAll returns one count per literal, reading the artifact once — a file whole,
+// a directory once per file (cursor ships thousands of webpack chunks).
+//
+// Reading whole costs the file's size in memory: 266 MB for claude's bundle, at
+// release time, on a developer machine. That buys the thing that matters, which is
+// that `bytes.Count` over one contiguous buffer is *exactly* the non-overlapping
+// single pass `grep -Foa … | wc -l` reports — the procedure the table was measured
+// with. A chunked reader has to carry bytes between reads, and this one got that
+// carry wrong: it re-formed a match across the boundary out of bytes an earlier
+// match had already consumed, so a literal with a border (`abab` over `ababab`)
+// counted 2 where one pass counts 1. No literal in today's table has a border, so it
+// was a latent miscount that would have been indistinguishable from the upstream
+// drift this check exists to report. If an artifact ever grows big enough that
+// holding it is a problem, the replacement is one pass counting every literal at
+// once (Aho-Corasick), not a per-literal carry.
+func countAll(path string, literals [][]byte) ([]int, error) {
+	counts := make([]int, len(literals))
 	info, err := os.Stat(path)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if !info.IsDir() {
-		return countInFile(path, literal)
+		return counts, addFileCounts(path, literals, counts)
 	}
-	total := 0
 	err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !d.Type().IsRegular() {
 			return err
 		}
-		n, err := countInFile(p, literal)
-		total += n
-		return err
+		return addFileCounts(p, literals, counts)
 	})
-	return total, err
+	return counts, err
 }
 
-func countInFile(path string, literal []byte) (int, error) {
-	f, err := os.Open(path)
+func addFileCounts(path string, literals [][]byte, counts []int) error {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	defer f.Close()
-	return countReader(f, literal, 1<<20)
+	for i, literal := range literals {
+		if len(literal) == 0 {
+			return fmt.Errorf("empty literal")
+		}
+		counts[i] += bytes.Count(data, literal)
+	}
+	return nil
 }
 
-// countReader streams so a 266 MB bundle costs one buffer rather than its own size in
-// memory, and counts what a single non-overlapping pass would — the same thing
-// `grep -Foa … | wc -l` reports, which is what the table was measured with.
-//
-// Matching them takes more than carrying len(literal)-1 bytes between reads. The
-// carry has to start **after the last match already counted**, because a literal with
-// a border (`abab`, whose prefix `ab` is also its suffix) would otherwise re-form
-// across the boundary out of bytes a counted match already consumed: `abab` over
-// `ababab` counted 2 that way, where one pass counts 1. Hence the explicit scan
-// rather than bytes.Count, and `max(pos, …)` rather than always keeping the tail.
-//
-// chunk is a parameter only so a test can shrink it below a literal's length;
-// production always passes 1 MiB.
-func countReader(r io.Reader, literal []byte, chunk int) (int, error) {
-	if len(literal) == 0 {
-		return 0, fmt.Errorf("empty literal")
-	}
-	carry := len(literal) - 1
-	buf := make([]byte, chunk+carry)
-	total, held := 0, 0
-	for {
-		n, err := r.Read(buf[held:])
-		if n > 0 {
-			window := buf[:held+n]
-			pos := 0
-			for {
-				i := bytes.Index(window[pos:], literal)
-				if i < 0 {
-					break
-				}
-				total++
-				pos += i + len(literal)
-			}
-			tail := max(pos, len(window)-carry)
-			held = len(window) - tail
-			copy(buf, window[tail:])
-		}
-		if err == io.EOF {
-			return total, nil
-		}
-		if err != nil {
-			return total, err
-		}
-	}
-}
-
-// TestFingerprintCountingSpansReadBoundaries is the fingerprint check's own teeth: an
-// undercount from a literal straddling two reads would read as upstream drift on a
-// tool that never moved, which is indistinguishable from the signal the check exists
-// to produce. Every case runs with a chunk smaller than the literal, so the carry is
-// exercised on every read rather than once in a 266 MB file.
-func TestFingerprintCountingSpansReadBoundaries(t *testing.T) {
-	const lit = "auth.json"
-	for _, tc := range []struct {
-		name string
-		data string
-		want int
-	}{
-		{"absent", strings.Repeat("x", 100), 0},
-		{"one", "xxauth.jsonxx", 1},
-		{"adjacent", "auth.jsonauth.json", 2},
-		{"at both ends", "auth.json" + strings.Repeat("y", 50) + "auth.json", 2},
-		{"truncated tail", "xxauth.jso", 0},
-		{"literal-ish neighbour", "auth-json auth.json", 1},
-		{"dense", strings.Repeat("auth.json|", 40), 40},
+// TestFingerprintCountingSumsEveryFile covers what countAll adds on top of
+// bytes.Count: the per-literal accumulation and the directory walk. Cursor's artifact
+// is a directory of thousands of chunks, so a count that stopped at the first file,
+// or that credited one literal's hits to another, would read as upstream drift on a
+// tool that never moved.
+func TestFingerprintCountingSumsEveryFile(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"a.js":            "auth.json auth.json COPILOT_HOME",
+		"b.js":            "auth-json auth.json",
+		"sub/c.js":        "COPILOT_HOME COPILOT_HOME",
+		"sub/deep/d.js":   "nothing here",
+		"sub/deep/e.json": "auth.json",
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, chunk := range []int{1, 2, 4, len(lit) - 1, len(lit), len(lit) + 1, 1024} {
-				got, err := countReader(strings.NewReader(tc.data), []byte(lit), chunk)
-				if err != nil {
-					t.Fatalf("chunk %d: %v", chunk, err)
-				}
-				if got != tc.want {
-					t.Errorf("chunk %d: counted %d, want %d", chunk, got, tc.want)
-				}
-			}
-		})
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	literals := [][]byte{[]byte("auth.json"), []byte("COPILOT_HOME"), []byte("absent")}
+	got, err := countAll(dir, literals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// auth.json: 2 + 1 + 1, and `auth-json` must not count for it. COPILOT_HOME: 1 + 2.
+	if want := []int{4, 3, 0}; !slices.Equal(got, want) {
+		t.Errorf("counted %v over the tree, want %v", got, want)
 	}
 
-	// A literal with a border is the case the carry gets wrong if it keeps the tail
-	// unconditionally: the boundary re-forms a match out of bytes a counted one already
-	// consumed. No literal in the table has a border today, which is exactly why this
-	// has to be a test rather than a comment.
-	t.Run("self-overlapping literal", func(t *testing.T) {
-		for _, tc := range []struct {
-			literal, data string
-			want          int
-		}{
-			{"abab", "ababab", 1},
-			{"abab", "abababab", 2},
-			{"aa", "aaa", 1},
-			{"aa", "aaaa", 2},
-			{"aaa", "aaaaa", 1},
-		} {
-			for chunk := 1; chunk <= len(tc.data)+1; chunk++ {
-				got, err := countReader(strings.NewReader(tc.data), []byte(tc.literal), chunk)
-				if err != nil {
-					t.Fatalf("%q in %q chunk %d: %v", tc.literal, tc.data, chunk, err)
-				}
-				if want := strings.Count(tc.data, tc.literal); want != tc.want {
-					t.Fatalf("the case itself is wrong: strings.Count says %d, the case says %d",
-						want, tc.want)
-				}
-				if got != tc.want {
-					t.Errorf("%q in %q chunk %d: counted %d, want %d (one non-overlapping pass)",
-						tc.literal, tc.data, chunk, got, tc.want)
-				}
-			}
-		}
-	})
-	if _, err := countReader(strings.NewReader("x"), nil, 8); err == nil {
+	single := filepath.Join(dir, "a.js")
+	if got, err := countAll(single, literals); err != nil {
+		t.Fatal(err)
+	} else if want := []int{2, 1, 0}; !slices.Equal(got, want) {
+		t.Errorf("counted %v in one file, want %v", got, want)
+	}
+	if _, err := countAll(single, [][]byte{nil}); err == nil {
 		t.Error("an empty literal must be an error, not a count of every position")
+	}
+	if _, err := countAll(filepath.Join(dir, "missing"), literals); err == nil {
+		t.Error("a missing artifact must be an error, not a zero count")
 	}
 }

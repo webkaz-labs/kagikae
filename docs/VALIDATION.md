@@ -1137,8 +1137,8 @@ what every codex row in the table above already does.
   test's named exclusion list. A new adapter therefore cannot be added without
   either fingerprints or a recorded reason.
 - The **counting** runs only under `mise run audit` (`KAE_FINGERPRINT=1`), which is
-  where reading a 266 MB binary belongs. It reads the **newest** installed artifact
-  and names the version it read, so an upgrade is what the check sees.
+  where reading a 266 MB binary belongs. It reads the artifact of the version this
+  table records, once per tool, and logs the path it read.
 
 A tool whose artifact is not where the table says is a **failure naming that exact
 path**, never a skip: a fingerprint run that passes because it found nothing to read
@@ -1158,6 +1158,9 @@ pile of moved counts for a tool that never changed.
 # `wc -l`, not `grep -c`: -c counts matching *lines* even with -o.
 grep -Foa -- '<literal>' <artifact> | wc -l
 grep -Froa -- '<literal>' <artifact-dir> | wc -l   # cursor: many webpack chunks
+
+# Every literal in one pass — one read of a 266 MB bundle instead of nine:
+grep -Foa -f literals.txt <artifact> | sort | uniq -c
 ```
 
 **`-F` is not optional, and leaving it off is how the first version of this table
@@ -1174,11 +1177,20 @@ upstream drift on a tool that never moved.
 | opencode | `~/.local/share/mise/installs/opencode/<version>/opencode` (Bun single-file executable) | `1.17.4` |
 | agy | `/usr/local/bin/agy` (Go binary; no versions directory) | `1.0.10` |
 
-opencode's path is mise's install tree because that is how it is installed here;
-the check tries `PATH` first and falls back to that layout. agy installs straight
-to `/usr/local/bin` with no per-version directory, so its row cannot name a version
-from the path — `agy --version` is the only source, which is why its
-`VerifiedVersion()` is the value recorded above.
+Only the **version** column is machine-checked. The paths themselves live in
+`fingerprintArtifacts` in the test, which is what the check actually opens — this
+table documents them, and the audit logs the path it read, so a disagreement shows
+up the first time it runs rather than staying hidden.
+
+Three things these paths are not: opencode's is mise's install tree because that is
+how it is installed here, not a layout opencode defines; agy installs straight to
+`/usr/local/bin` with no per-version directory, so its recorded version cannot be
+checked against the path at all (a bump shows up as moved counts instead); and the
+`~/.local/share` prefixes are written as measured, **not** resolved through
+`XDG_DATA_HOME`. Whether these installers honour that variable for their own install
+location is unmeasured, and guessing it is the mistake this file exists to stop — on
+a machine where the variable points elsewhere the check fails naming the path it
+tried, which is the honest outcome.
 
 A row does not have to be a string kae's code compares. `partially-authenticated`
 appears nowhere in kae's source at all, and `exchange_user_api_key` only inside a

@@ -834,10 +834,15 @@ Credential-health checks (warn-level):
 - `active_orphan`: `state.json` records an account as active for a tool, but no
   snapshot by that name exists — so kae cannot say which account is live, and
   `kae status` would display a name that is not there. Offline and backend-free.
-  Every kae path keeps the two in step (`kae account rm` decides *inside* the state
-  mutation whether the account it removes is still active; a switch only records one
-  it just applied), so reaching this means something outside kae wrote the state
-  file. Names `kae use <tool> <account>` to settle it. Warn, never error: the
+  Two ways to get here. An interrupted `kae account rename` is one: it flips the
+  active pointer before writing the renamed snapshot, so a failure in between leaves
+  the pointer ahead of the data (docs/ROADMAP.md carries the ordering fix;
+  `kae account rm` already clears the pointer first, which is the safe direction).
+  A writer outside kae is the other — a test or smoke run that isolated `HOME` but
+  inherited a real `XDG_STATE_HOME` will capture straight into the live state file.
+  The same code also fires when `state.json` itself cannot be read, or when the
+  active account's snapshot metadata will not parse: nothing else in doctor looks at
+  either. Names `kae use <tool> <account>` to settle it. Warn, never error: the
   recorded name is bookkeeping and the live credential may well be fine.
 - `secret_orphan`: a stored secret item **of the account namespace**
   (`<tool>/<account>/<artifact>`) has no matching snapshot dir — names

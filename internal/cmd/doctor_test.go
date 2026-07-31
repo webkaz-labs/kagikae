@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -346,4 +347,43 @@ func TestActiveOrphanIsReportedWithNoSecretBackend(t *testing.T) {
 	if _, ok := findCheck(report, constants.CheckSecretBackend); !ok {
 		t.Fatal("the backend failure must still be reported")
 	}
+}
+
+// The two ways kae can fail to *read* what it needs, both of which returned
+// silently in the first draft — an unreadable state file with no other check
+// covering it, and an active account whose own metadata will not parse.
+func TestActiveOrphanReportsUnreadableStateAndSnapshot(t *testing.T) {
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	t.Run("unreadable state file", func(t *testing.T) {
+		app := testApp(t, nil)
+		// Invalid JSON: state.Load surfaces a parse error, which nothing else in
+		// doctor looks at (config_valid reflects config.toml only).
+		writeFile(t, app.Paths.StateFile(), "{not json")
+		msg, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan)
+		if !ok {
+			t.Fatal("an unreadable state.json must be reported by something")
+		}
+		if !strings.Contains(msg, "could not read") {
+			t.Fatalf("message should say what failed: %q", msg)
+		}
+	})
+
+	t.Run("unreadable active snapshot", func(t *testing.T) {
+		app := testApp(t, nil)
+		seedClaude(t, app, mainToken, "main-uuid")
+		captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+		// The snapshot dir exists and is named by state, but its metadata is corrupt:
+		// "found" is false and the error is real, which must not read as "fine".
+		writeFile(t, filepath.Join(app.Paths.AccountDir(constants.ToolClaude, "main"), "account.toml"),
+			"this is not toml = = =")
+		msg, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan)
+		if !ok {
+			t.Fatal("an unreadable active snapshot must be reported, not skipped")
+		}
+		if !strings.Contains(msg, "claude/main") || !strings.Contains(msg, "could not be read") {
+			t.Fatalf("message should name the account and the failure: %q", msg)
+		}
+	})
 }

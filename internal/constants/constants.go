@@ -150,9 +150,10 @@ const (
 	// CheckPinStale: a directory bound with `kae pin` no longer exists, or binds
 	// an account that no longer does.
 	CheckPinStale = "pin_stale"
-	// CheckActiveOrphan: state.json records an active account that has no captured
-	// snapshot. kae's own commands keep the two in step, so reaching this means
-	// something outside kae wrote the state file.
+	// CheckActiveOrphan: kae cannot confirm the account state.json records as
+	// active — no snapshot by that name, a snapshot whose metadata will not parse,
+	// or a state file it cannot read at all. An interrupted `kae account rename`
+	// can produce the first; so can a writer outside kae.
 	CheckActiveOrphan = "active_orphan"
 )
 

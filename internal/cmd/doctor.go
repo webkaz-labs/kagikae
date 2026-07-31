@@ -334,26 +334,43 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)
 }
 
-// activeOrphanChecks reports a tool whose recorded active account has no captured
-// snapshot — kae believing it applied an account that does not exist.
+// activeOrphanChecks reports a tool whose recorded active account kae cannot
+// confirm — no captured snapshot by that name, or a snapshot whose metadata will
+// not load. Either way kae believes it applied an account it cannot see, and
+// `kae status` displays a name that may not be there.
 //
-// Every kae path keeps these two in step (`kae account rm` decides *inside* the
-// state mutation whether the account it removes is still active, and a switch only
-// records an account it just applied), so reaching this state means something
-// outside kae wrote state.json. That is not hypothetical: a smoke run that isolated
+// Two ways to get here, and the first is inside kae. `kae account rename` updates
+// `state.Active` in its state mutation and only *afterwards* copies the secret
+// payloads and writes the renamed snapshot dir, so a failure in between — a secret
+// backend that errors, a killed process — leaves the active pointer naming a
+// snapshot that does not exist yet (docs/ROADMAP.md carries the ordering fix;
+// `kae account rm` already clears the pointer before removing anything, which is
+// the safe direction). The second is a foreign writer: a smoke run that isolated
 // HOME, XDG_CONFIG_HOME and XDG_DATA_HOME but inherited a real XDG_STATE_HOME
-// captured a fixture account straight into a live state file, and doctor reported
-// nothing wrong while `kae status` named an account that was not there.
+// captured a fixture account straight into a live state file on 2026-07-31, and
+// doctor reported nothing wrong while `kae status` named an account that was gone.
 //
 // Offline and backend-free — it compares two things kae has already loaded, which
 // is why it is wired in beside the other backend-free checks rather than with the
 // credential-health ones: those are skipped when the secret backend is unavailable,
 // and that is precisely when a user is diagnosing. Warn, never error: the recorded
 // name is bookkeeping, and the live credential it refers to may well still be fine.
+//
+// An unreadable `state.json` is reported here too. Nothing else in doctor looks at
+// that file — `config_valid` reflects `config.toml` only — so silently returning
+// would leave kae's most basic piece of bookkeeping unchecked by the command whose
+// job is to check it.
 func (app *App) activeOrphanChecks(toolFilter string) []adapter.Check {
 	st, err := app.loadState()
 	if err != nil {
-		return nil // the config/state check owns an unreadable state file
+		return []adapter.Check{{
+			Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
+			Message: fmt.Sprintf(
+				"could not read %s (%v), so kae cannot say which account is active for any tool; "+
+					"`kae use <tool> <account>` rewrites it",
+				app.displayPath(app.Paths.StateFile()), err,
+			),
+		}}
 	}
 	checks := []adapter.Check{}
 	for _, tool := range constants.Tools {
@@ -361,17 +378,26 @@ func (app *App) activeOrphanChecks(toolFilter string) []adapter.Check {
 		if name == "" || (toolFilter != "" && tool != toolFilter) {
 			continue
 		}
-		if _, found, lerr := account.Load(app.Paths.AccountDir(tool, name)); lerr != nil || found {
-			continue
+		_, found, lerr := account.Load(app.Paths.AccountDir(tool, name))
+		switch {
+		case lerr != nil:
+			checks = append(checks, adapter.Check{
+				Tool: tool, Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
+				Message: fmt.Sprintf(
+					"state records %s/%s as active but its snapshot could not be read (%v), so kae cannot confirm it",
+					tool, name, lerr,
+				),
+			})
+		case !found:
+			checks = append(checks, adapter.Check{
+				Tool: tool, Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
+				Message: fmt.Sprintf(
+					"state records %s/%s as active but no such snapshot exists, so kae cannot say which %s account is live; "+
+						"pick one with: kae use %s <account> (kae ls shows the captured ones)",
+					tool, name, tool, tool,
+				),
+			})
 		}
-		checks = append(checks, adapter.Check{
-			Tool: tool, Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
-			Message: fmt.Sprintf(
-				"state records %s/%s as active but no such snapshot exists, so kae cannot say which %s account is live; "+
-					"pick one with: kae use %s <account> (kae ls shows the captured ones)",
-				tool, name, tool, tool,
-			),
-		})
 	}
 	return checks
 }

@@ -121,6 +121,24 @@ alternative exists (`secret-tool`).
   worth re-checking whether kae's `keychain.WithReadCache` / per-tool locks are enough
   when a switch overlaps a live session's own refresh.
 
+- **`kae account rename` can strand the active pointer** (recorded 2026-07-31,
+  **not fixed**). `buildAccountRename` updates `state.Active[tool] = newName` inside
+  its state mutation, and only *afterwards* copies the secret payloads and writes
+  the renamed snapshot dir. A failure in between — a secret backend that errors on
+  read/write/delete, a killed process — leaves state naming a snapshot that does not
+  exist yet. `kae account rm` gets this right by clearing the pointer *before*
+  removing anything; rename has the unsafe direction.
+  The fix is to reorder: write the new snapshot dir and copy the secrets first, then
+  flip `state.Active`, then remove the old dir. That window leaves two snapshots and
+  a valid active pointer, which is benign and re-runnable — strictly better than the
+  current one. The existing comment defends "logical update first" on the grounds
+  that the reverse "could strand config/state on a name whose dir is gone", but that
+  only applies to an ordering that also removes the old dir early; create-new →
+  update-state → remove-old strands nothing.
+  Left out of the v0.15.3 fix deliberately: that release is about smoke isolation and
+  the doctor check, and reordering a different command's write sequence deserves its
+  own change. `doctor`'s new `active_orphan` reports the state if it happens.
+
 - **`applySnapshot`'s refusals could be raised one step earlier, in
   `loadPlansWithSnapshots`** (recorded 2026-07-31, deliberately not done). Both
   refusals — a snapshot missing an artifact today's adapter declares

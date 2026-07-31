@@ -253,7 +253,19 @@ func (app *App) bondDenylistItems(tool string) []string {
 	case constants.ToolClaude:
 		// .credentials.json is Linux-only (macOS uses keychain), but harmless
 		// to include on all platforms: if absent the copy step is a no-op.
-		base = []string{".credentials.json"}
+		//
+		// .claude.json is the mixed-state file holding the /oauthAccount identity
+		// cache, and it has to be private for a reason no other entry shares: a
+		// bound directory cannot both name its own account *and* live-share the file
+		// that records which account it is. Whether it was ever shared here was an
+		// accident of where claude puts the file — inside CLAUDE_CONFIG_DIR when the
+		// user sets it (so an entry of the real home, and linked), at $HOME
+		// otherwise (so not an entry at all, and never linked). Denying it makes the
+		// two configurations behave the same, and the cost lands on the keys claude
+		// keeps alongside the identity — projects, mcpServers, trust state and the
+		// rest — which stop being live-shared into a bond dir for the users who had
+		// that by chance (docs/SCOPE-MODEL.md §6).
+		base = []string{".credentials.json", ".claude.json"}
 	case constants.ToolCodex:
 		base = []string{"auth.json"}
 	}
@@ -303,6 +315,22 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 	for _, de := range des {
 		name := de.Name()
 		if denied[name] {
+			// Retract a link this directory made before the item was denied, or the
+			// denylist only governs new bond dirs: an existing one keeps sharing what
+			// it was told to stop sharing, and nothing here would ever notice. Reached
+			// by `tools.<tool>.shared_denylist_extra` gaining an entry as much as by
+			// the hard-coded list growing one, so it was already a gap before
+			// `.claude.json` joined the list.
+			//
+			// Symlinks only. A real file by that name is a private override — the same
+			// rule the sharing loop below follows — and for a denied auth artifact it
+			// is usually kae's own per-directory copy, which must survive.
+			dst := filepath.Join(bondDir, name)
+			if info, lerr := os.Lstat(dst); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+				if err := os.Remove(dst); err != nil {
+					return "", fmt.Errorf("retract shared link %s: %w", dst, err)
+				}
+			}
 			continue
 		}
 		src := filepath.Join(realHome, name)

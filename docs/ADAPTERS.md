@@ -54,29 +54,40 @@ Two consequences of the TTL that are easy to misread as an upstream change:
   does not), and `doctor identity_drift` compares only those. A credential is
   still compared byte for byte.
 
-**Switched in every mode, with one refusal.** `kae use` / `kae add` switch the
-cache, and so do the per-directory materializers (`writeDirIdentity`, alongside
-the credential and only after it succeeds). Isolation modes point
-`CLAUDE_CONFIG_DIR` at a kae-owned directory, where claude keeps its cache at
-`<dir>/.claude.json`, so that is where the bound account's cache is written. A
-snapshot with no recorded identity applies as **absent** — the cache is removed
-and claude refetches it — never left naming the account the bind replaced. Before
-this, `kae pin <tool> <account>` copied the credential and not the cache, so a
-bonded or isolated directory kept whatever account first ran in it: auth was
-correct and the display was not.
+**Switched in every mode.** `kae use` / `kae add` switch the cache, and so do the
+per-directory materializers (`writeDirIdentity`, alongside the credential and only
+after it succeeds). Isolation modes point `CLAUDE_CONFIG_DIR` at a kae-owned
+directory, where claude keeps its cache at `<dir>/.claude.json`, so that is where
+the bound account's cache is written. A snapshot with no recorded identity applies
+as **absent** — the cache is removed and claude refetches it — never left naming
+the account the bind replaced. Before this, `kae pin <tool> <account>` copied the
+credential and not the cache, so a bonded or isolated directory kept whatever
+account first ran in it: auth was correct and the display was not.
 
-The refusal is bond mode's shared link. `prepareBond` links the entries *of*
-`~/.claude`, and `~/.claude.json` is that directory's sibling — so
-`<dir>/.claude.json` is a link back to the real home only when
-`~/.claude/.claude.json` happens to exist, and otherwise a private file. When the
-target *is* a link, the pointer patch resolves it before reading and writing, so
-the shared file is updated rather than forked into a private copy by the atomic
-rename (a link that cannot be resolved is refused, exit 10) — which is right for a
-global switch and wrong here: it would relabel the **real** home with one
-directory's account, turning one directory's attribution gap into a global one. So
-a per-directory identity write whose target resolves outside the store is declined
-with a stderr warning; the credential half still lands, because that store is
-private to the directory.
+**That file is therefore private in a bound directory, by denylist**, and the
+reason is not shared by any other entry: a directory cannot both name its own
+account and live-share the file that records which account it is. Where the file
+sits depends on the environment — inside `CLAUDE_CONFIG_DIR` when the user sets one
+(so an entry of the real home, which `prepareBond` would link) and at
+`$HOME/.claude.json` when they do not (so not an entry at all, and never linked) —
+which means it used to be shared for one configuration and private for the other,
+by accident rather than by decision. Denying it makes both behave the same. The
+cost falls on whatever else claude keeps in that file — `projects`, `mcpServers`,
+onboarding, project trust, and anything it adds later — which stops being
+live-shared into a bond dir for the users who had that by chance
+([SCOPE-MODEL.md](SCOPE-MODEL.md) §6).
+
+A guard behind it (`identityTargetEscapes`) declines any per-directory identity
+write whose target resolves *outside* the store, warning on stderr and leaving the
+credential in place. With the denylist it should not normally be reached; it stays
+because the hazard it prevents is severe and reachable by other routes — a
+hand-made symlink, `tools.claude.isolated_shared_items` naming the file, a future
+tool with a mixed-state file kae has not denied. What it prevents: the pointer patch
+resolves a symlink before reading and writing, so the shared file is updated rather
+than forked by the atomic rename (an unresolvable link is refused, exit 10). That
+is right for a global switch and wrong for a bind, where it would relabel the
+**real** home with one directory's account — turning one directory's attribution
+gap into a global one.
 
 If `CLAUDE_CONFIG_DIR` is already set in the environment, the adapter uses it
 as the live base path — for `.credentials.json`, for `.claude.json`, **and for
@@ -723,8 +734,14 @@ thing that writes it — plus the identity cache that names it — for all four:
   authenticated as. The order is not interchangeable: a directory labelled with an
   account whose credential kae could not put there is worse than an unlabelled one,
   because the label is what a user checks. Every early exit above skips the identity
-  too, and so does a target that resolves outside the store (bond mode's shared
-  link — see "Identity cache" under claude); that one warns.
+  too, and so does a target that resolves outside the store (see "Identity cache"
+  under claude); that one warns;
+- an identity write that fails for any *other* reason — a malformed mixed-state
+  file the tool left behind, a momentarily unreadable secret store — also warns
+  rather than failing. The credential is already written and correct, an identity is
+  a label the tool can rebuild, and returning here would abandon the caller
+  mid-bind: `kae pin` gives up before writing its mise fragment, leaving a fresh
+  private credential with no binding pointing at it.
 
 That last rule is a hard safety boundary, not a nicety, and the declaration is
 per-adapter with the safe default (`false`). codex is why: `kae pin -s` symlinks
@@ -751,15 +768,19 @@ there the unisolatable tool is the whole request, not one row of it.
 ### Per-directory shared bind (`kae pin -s`)
 
 Uses a *denylist*: every real-home entry is symlinked into the shared directory
-(`isolation/<pin-id>/<tool>/shared/`) **except** the hard-coded credential
-artifacts below. The credential is private-copied (not symlinked), so
-authentication is private to the directory while all other files — settings,
-sessions, memory, MCP configs — stay shared with the real home.
+(`isolation/<pin-id>/<tool>/shared/`) **except** the entries below. Those are
+private-copied (not symlinked), so who the directory is logged in as is private to
+it while all other files — settings, sessions, memory, MCP configs — stay shared
+with the real home.
 
 Hard-coded denylist (always excluded from symlink sharing):
 
 ```text
 claude: .credentials.json  (Linux-only; macOS uses keychain — harmless to list)
+        .claude.json       (the /oauthAccount identity cache — see "Identity
+                            cache"; only an entry of the real home when the user
+                            sets CLAUDE_CONFIG_DIR, denied on all platforms so
+                            both configurations behave the same)
 codex:  auth.json
 ```
 
@@ -768,11 +789,15 @@ of isolated-bind's fail-safe), because shared-bind's purpose is sharing — a ne
 file is more likely config or memory than an auth secret.
 
 To add extra items to the denylist:
-`tools.<tool>.shared_denylist_extra` (bare file names; the hard-coded auth
-artifacts above are refused at config load to avoid confusion).
+`tools.<tool>.shared_denylist_extra` (bare file names; the hard-coded entries
+above are refused at config load to avoid confusion).
 
 A real file already present in the shared directory is treated as a private
-override and is never replaced or linked over.
+override and is never replaced or linked over. A **symlink** by the name of a
+denied entry is retracted instead — otherwise the denylist would govern only new
+bond dirs, and a directory bound before an entry was denied (by an upgrade, or by
+`shared_denylist_extra` gaining a name) would go on sharing what it was told to
+stop sharing.
 
 ### Per-directory isolated bind (`kae pin -i`)
 

@@ -139,10 +139,10 @@ NG:  two terminals both relying on a global shared switch for different accounts
   self-heal of it is gated behind a 24h TTL that every token refresh renews
   ([ADAPTERS.md](ADAPTERS.md)); every other key —
   `projects`, `mcpServers`, onboarding, trust state — is left exactly as found.
-  The per-directory materializers write the same pointer in the bound directory's
-  own copy of that file, with one refusal: where the copy is a link back to the real
-  tool home, writing it would relabel that home with one directory's account, so kae
-  declines and warns ([SCOPE-MODEL.md](SCOPE-MODEL.md) §6).
+  The per-directory materializers write the same pointer, in the bound directory's
+  **own** copy of that file: a directory cannot both name its own account and
+  live-share the file that records which account it is, so there the file is private
+  rather than shared ([SCOPE-MODEL.md](SCOPE-MODEL.md) §6).
 - Secrets are stored in the OS credential store by default; a plaintext file
   backend exists only as an explicit opt-in.
 - Every mutation is preceded by a backup and is reversible via `kae rollback`.

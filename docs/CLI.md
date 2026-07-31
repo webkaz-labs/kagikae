@@ -308,9 +308,15 @@ The one state that needs a manual step: a crash between stages 1 and 2 leaves
 `10` (`<new>` already exists). That refusal is deliberately not relaxed — a
 half-written rename target is indistinguishable from a name that is genuinely
 taken, so tolerating it would mean guessing. Recover by choosing which copy to
-keep: `kae ls` shows both, `kae account rm <tool> <new>` discards the partial copy
-so the rename can be re-run, or `kae account rm <tool> <old>` keeps it and
-`kae use <tool> <new>` moves the pointer.
+keep — `kae ls` shows both:
+
+- **discard the new one** and re-run the rename: `kae account rm <tool> <new>`.
+  `<new>` is not active in this window (the flip had not happened), so this needs
+  no `--force`, and it removes only the copies stage 1 made.
+- **keep the new one**: `kae use <tool> <new>` **first**, then
+  `kae account rm <tool> <old>`. The order matters — until the pointer moves,
+  `<old>` is still the active account and `kae account rm` refuses it with exit
+  `10` unless you pass `--force`.
 
 Both hold the per-tool lock plus the config lock, and edit `config.toml`
 through a comment-preserving writer (comments, field order, and unrelated keys
@@ -372,11 +378,13 @@ from the account snapshots.
 
 - **`-s` / `--shared`** (default): the fragment points each tool at a
   per-directory shared home (`isolation/<pin-id>/<tool>/shared/`): every
-  real-home file except the hard-coded auth artifacts (`.credentials.json`,
-  `auth.json`) is symlinked in; the account's credential is written privately
-  (same rule as `-i` below).
-  Settings, sessions, and memory are shared with the real home while
-  authentication is private to the directory. The bound account is recorded in
+  real-home file except the hard-coded denylist (`.credentials.json` and
+  `.claude.json` for claude, `auth.json` for codex) is symlinked in; the account's
+  credential and identity are written privately (same rule as `-i` below). A
+  symlink left by an earlier bind for an entry that is now denied is retracted, so
+  the denylist governs existing bound directories and not only new ones.
+  Settings, sessions, and memory are shared with the real home while who the
+  directory is logged in as is private to it. The bound account is recorded in
   the fragment so `kae status` and the profile match survive re-entry. See
   docs/ADAPTERS.md for the per-tool denylist and `shared_denylist_extra`.
 - **`-i` / `--isolated`**: the fragment points `CLAUDE_CONFIG_DIR` / `CODEX_HOME`
@@ -396,11 +404,16 @@ from the account snapshots.
 
   The account's **identity cache** is written with it, after it, so the tool names
   the account the directory is authenticated as rather than whichever one first ran
-  there. One case is declined with a stderr warning instead: in shared mode the
-  file holding the cache can be a symlink back to the real tool home, and writing
-  through it would relabel the real home with this directory's account. That
-  directory then keeps displaying the previous account until you log in inside it;
-  its credential is unaffected.
+  there. For claude that cache lives in the mixed-state `.claude.json`, which is
+  therefore **private** to a bound directory rather than shared — a directory cannot
+  both name its own account and live-share the file recording which account it is.
+  If you set `CLAUDE_CONFIG_DIR` yourself, that file used to be shared into a bond
+  dir and is not any more, so `projects`, `mcpServers` and project trust start from
+  claude's defaults there (sessions are unaffected; they live in `projects/` and are
+  still shared). A write that would land outside the directory's own store is
+  declined with a stderr warning instead, leaving the credential in place. So is one
+  that fails for any other reason — an identity is a label the tool can rebuild, and
+  a bind must not be abandoned half-done over it.
 
   Binding a profile whose account has no captured credential warns and binds the
   rest; `kae pin <tool> <account>` on an uncaptured account fails (exit `7`). A

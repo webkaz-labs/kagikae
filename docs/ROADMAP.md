@@ -231,11 +231,16 @@ alternative exists (`secret-tool`).
   not correct it. Auth was unaffected (the token wins) — it was an attribution gap,
   and the UI naming the wrong account inside a pinned directory is what a user sees.
   Now one identity step (`writeDirIdentity`) sits alongside `writeDirCredential`,
-  which all four materializers already route through. Bond mode was the open design
-  question and the answer is a refusal: when the target resolves *outside* the store
-  (`<dir>/.claude.json` is a link back to the real home, which happens only when
-  `~/.claude/.claude.json` exists), writing it would relabel the real home, so kae
-  declines that one write and warns.
+  which all four materializers already route through. Shared (bond) mode was the open
+  design question, and the answer is that the mixed-state file is **private** in a
+  bound directory (denylisted): a directory cannot both name its own account and
+  live-share the file that records which account it is. Whether it was shared there
+  at all had depended on where claude puts it — inside `CLAUDE_CONFIG_DIR` when the
+  user sets one, at `$HOME` otherwise — so the sharing was an accident of file
+  placement, and denying it makes both configurations behave alike. A guard
+  (`identityTargetEscapes`) still declines any per-directory identity write resolving
+  outside the store, kept as defence in depth for the routes the denylist does not
+  cover.
   **What is left**: `doctor`'s `identity_drift` still skips a kae-owned isolated
   home, but for the remaining half of the old reason — `state.Active` names the
   *global* account while the live cache is the *bound* directory's, so the two sides

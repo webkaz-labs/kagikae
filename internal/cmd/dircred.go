@@ -141,7 +141,22 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// Last, and on both store kinds — a file credential needs the matching identity
 	// exactly as much as a keychain item does. This used to `return nil` above for a
 	// non-keychain spec, which would have skipped the identity on every Linux bind.
-	return app.writeDirIdentity(ctx, be, tool, accountName, credDir)
+	//
+	// The only failure in this function that warns instead of returning, and the
+	// asymmetry is deliberate. An identity is a label — "losing it is safe" is the
+	// property the adapter asserts by marking the artifact `IdentityOnly` — while the
+	// credential above is the bind. Returning here would also abandon the caller
+	// mid-bind: `kae pin` gives up before writing its mise fragment, so the directory
+	// would be left with a fresh private credential and no binding pointing at it.
+	// A malformed `.claude.json` the tool left behind, or a momentarily unreadable
+	// secret store, is not a reason for that.
+	if err := app.writeDirIdentity(ctx, be, tool, accountName, credDir); err != nil {
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: could not apply %s's identity cache for account %s in this directory (%v); "+
+				"%s may display another account until you log in inside it\n",
+			tool, accountName, err, tool)
+	}
+	return nil
 }
 
 // writeDirIdentity applies the bound account's identity-only artifacts inside
@@ -231,6 +246,16 @@ func identityTargetEscapes(target, credDir string) (bool, error) {
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return false, fmt.Errorf("resolve identity target %s: %w", target, err)
+		}
+		// "Not exist" covers two states that need opposite answers, so ask what the
+		// path *is* rather than inferring it from the failure. A path that simply does
+		// not exist yet will be created inside its parent — but a symlink whose
+		// destination is gone reports the same error, and it leaves the store exactly
+		// as much as a live link does. Resolving its parent would call it inside, and
+		// the write would then reach artifact.ApplyLive's own symlink guard, which
+		// refuses (correctly) and turns a declinable case into a failure.
+		if info, lerr := os.Lstat(target); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+			return true, nil
 		}
 		parent, perr := filepath.EvalSymlinks(filepath.Dir(target))
 		if perr != nil {

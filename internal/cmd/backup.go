@@ -226,7 +226,13 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	for _, tool := range meta.Tools {
 		recorded, ok := meta.ActiveBefore[tool]
 		if !ok || recorded == "" {
-			continue // the backup recorded no active account for this tool
+			// No pointer to fail to restore, so nothing to warn about. An empty
+			// recorded value reaches the mutation below as a `delete` where the old
+			// code wrote `st.Active[tool] = ""`; that is a change in representation
+			// only — every consumer treats a blank entry as no selection, and the
+			// deleted key stops `kae status --json` and `kae profile save` from
+			// carrying an empty account name.
+			continue
 		}
 		if _, ok := app.restorableActiveAccount(meta, tool); ok {
 			continue

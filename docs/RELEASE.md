@@ -32,8 +32,11 @@ that could leave kae's own records naming something that is not there, plus the
 attribution gap that made a pinned directory display the wrong account.
 
 Baseline: v0.15.3. Contract-additive — one new `doctor` check code,
-`secret_missing`; `schema_version` stays `1`. One **behaviour change** to
-`kae rollback` and one **removed field** in `account.toml`, both below.
+`secret_missing`; `schema_version` stays `1`. Three changes are not additive and are
+each described below: a **behaviour change** to `kae rollback`, a **removed field**
+in `account.toml`, and claude's `.claude.json` joining the shared-bind denylist,
+which changes what a bond dir shares for users who set `CLAUDE_CONFIG_DIR`
+themselves.
 
 - **`kae account rename` completes the new snapshot before anything points at it.**
   It used to set `state.Active[tool] = newName` inside its state mutation and only
@@ -90,14 +93,33 @@ Baseline: v0.15.3. Contract-additive — one new `doctor` check code,
   four route through and runs **last**, because a directory labelled with an account
   whose credential kae could not put there is worse than an unlabelled one. A
   snapshot with no recorded identity applies as absent, so the tool refetches rather
-  than keeping a label for an account that is no longer there. Shared (bond) mode was
-  the open design question and the answer is a refusal: its store links every entry
-  of the real tool home into itself, so the target can be a link back out, and
-  `ApplyLive` follows such a link deliberately — that sharing is what bond mode is
-  for. Following it here would relabel the **real** home with one directory's
-  account, so a target resolving outside the store is declined with a warning and the
-  credential still lands. Fixed with it: the credential path returned early for a
-  non-keychain spec, which would have skipped the identity on every Linux bind.
+  than keeping a label for an account that is no longer there. An identity write that
+  fails warns instead of failing the bind: the credential is already correct, an
+  identity is a label the tool rebuilds, and returning would leave `kae pin` without
+  the mise fragment it had not written yet. Fixed with it: the credential path
+  returned early for a non-keychain spec, which would have skipped the identity on
+  every Linux bind.
+
+- **claude's mixed-state file is private in a bound directory (behaviour change for
+  one configuration).** This was the open design question of the item above, and the
+  answer had to be one or the other: a directory cannot both name its own account and
+  live-share the file that records which account it is. `.claude.json` joins claude's
+  hard-coded shared-bind denylist, so a bond dir gets a private copy and the identity
+  lands there. What that changes depends on a setting, which is the part worth
+  reading: claude keeps the file **inside** `CLAUDE_CONFIG_DIR` when the user sets one
+  and at `$HOME/.claude.json` when they do not, so it was an entry of the real tool
+  home — and therefore symlinked into every bond dir — only for the first group.
+  Everyone else never shared it. So the sharing this removes was an accident of file
+  placement rather than a design choice, and only `CLAUDE_CONFIG_DIR` users see a
+  difference: their bond dirs start from claude's defaults for `projects`,
+  `mcpServers` and project trust, which means one trust prompt per bound directory.
+  Sessions are unaffected — they live in `projects/` under the tool home and are still
+  shared. There is deliberately no knob to restore it: the two behaviours are
+  exclusive. Nothing changes until the directory is re-pinned; upgrading the binary
+  alone leaves an existing bond dir as it was, and the first `kae pin` there retracts
+  the stale link. That retraction closes an older gap of its own — a denied entry's
+  existing symlink was never removed, so `tools.<tool>.shared_denylist_extra` gaining
+  a name had no effect on directories already bound.
 
 - **`account.toml` no longer records a keychain account (removed field).** It was
   written at capture and read nowhere, with a doc comment telling apply to ignore it

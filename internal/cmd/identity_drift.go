@@ -99,8 +99,9 @@ func (app *App) identityDriftChecks(ctx context.Context, be secret.Backend, tool
 			if err != nil {
 				continue // unreadable live state is auth_present's finding, not this one
 			}
-			// An unreadable stored payload (err) is not drift — nothing to compare
-			// against — and credential_stale / secret_orphan cover it.
+			// A stored payload that is unreadable or gone is not drift — there is
+			// nothing to compare against — and `secret_missing` reports that state with
+			// the remedy that fits it.
 			differs, err := identityArtifactDiffers(ctx, be, art.SecretRef, art.Present, sp, live)
 			if err != nil || !differs {
 				continue
@@ -118,9 +119,14 @@ func (app *App) identityDriftChecks(ctx context.Context, be secret.Backend, tool
 // names the account the snapshot recorded. It is the identity counterpart of
 // snapshotArtifactDiffers and treats presence the same way, but two present
 // payloads are compared through identityDiffers instead of byte-for-byte. err is
-// the backend read error; the caller chooses whether to propagate it. A stored
-// payload that has gone missing counts as a difference, as it does for a
-// credential.
+// the backend read error; the caller chooses whether to propagate it.
+//
+// A stored payload that has gone **missing** is not a difference here, unlike for
+// a credential: there is nothing to compare against, and `secret_missing` reports
+// exactly that state with the remedy that fits it (`kae add --no-login`, which
+// records the payload again). Calling it drift produced two warnings for one fact,
+// the second of them recommending `kae use` — a switch that would apply the
+// identity as *absent*, so it cannot restore what the message says is missing.
 func identityArtifactDiffers(ctx context.Context, be secret.Backend, storedRef string, storedPresent bool, sp artifact.Spec, live artifact.Value) (bool, error) {
 	if storedPresent != live.Present {
 		return true, nil
@@ -129,11 +135,8 @@ func identityArtifactDiffers(ctx context.Context, be secret.Backend, storedRef s
 		return false, nil
 	}
 	stored, found, err := be.Get(ctx, storedRef)
-	if err != nil {
+	if err != nil || !found {
 		return false, err
-	}
-	if !found {
-		return true, nil
 	}
 	return identityDiffers(sp, stored, live.Data), nil
 }

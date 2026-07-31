@@ -184,21 +184,39 @@ trust state stay live-shared. When the target turns out to be a symlink,
 `ApplyLive` resolves it before reading and writing, so the atomic rename lands on
 the linked file instead of forking it into a private copy.
 
-Scope of the fix — **every mode, with one refusal**. Isolation modes point
-`CLAUDE_CONFIG_DIR` at a kae-owned directory, and the identity cache claude uses
-there is `<dir>/.claude.json`, so that is where a per-directory bind writes the
-bound account's cache (`writeDirIdentity`, after the credential).
+Scope of the fix — **every mode**. Isolation modes point `CLAUDE_CONFIG_DIR` at a
+kae-owned directory, and the identity cache claude uses there is
+`<dir>/.claude.json`, so that is where a per-directory bind writes the bound
+account's cache (`writeDirIdentity`, after the credential).
 
-The refusal is the symlink case, and it is where the symlink-following rule above
-inverts. `prepareBond` links the entries *of* `~/.claude`, so `<dir>/.claude.json`
-is a link to the real home only when `~/.claude/.claude.json` exists; otherwise
-claude creates a private one. Following the link is right for a global switch —
-that is what keeps the mixed-state file shared — and wrong for a per-directory
-bind, where it would relabel the **real** home with one directory's account:
-one directory's attribution gap becomes a global one. So a per-directory identity
-write whose target resolves outside the store is declined with a warning, and that
-directory keeps the gap rather than exporting it. The credential still lands; that
-store is genuinely private.
+**And that is where the live-sharing goal above stops applying, because in a bound
+directory it cannot hold.** The goal is about the *global* switch, where a pointer
+patch rewrites one key of the real home's file and everything else stays exactly as
+found. A bound directory is the opposite situation: it exists to name a different
+account than the real home, and the file that records which account that is also
+holds `projects`, `mcpServers`, trust state and whatever claude adds next. One file
+cannot be live-shared with the real home *and* say something different in this
+directory. So in a per-directory bind the file is **private**, by denylist
+([ADAPTERS.md](ADAPTERS.md) "Per-directory shared bind").
+
+Worth being precise about what that gives up, because it is less than it sounds.
+Whether a bond dir shared that file at all depended on where claude puts it: inside
+`CLAUDE_CONFIG_DIR` when the user sets one — an entry of the real home, so linked —
+and at `$HOME/.claude.json` when they do not, which is not an entry of the tool home
+and was therefore never linked for anyone. The goal was thus achieved for one
+configuration and not the other, by accident of file placement rather than by
+design. Denying it makes both behave the same way, and the users who had the sharing
+by chance lose it: a bond dir starts with claude's own defaults for those keys, so a
+trust prompt reappears once per bound directory. Session history is unaffected — it
+lives in `projects/` under the tool home and is still symlinked.
+
+The symlink-following rule above still matters as a **guard**. Following a link is
+right for a global switch and wrong for a bind, where it would relabel the real home
+with one directory's account, so `identityTargetEscapes` declines any per-directory
+identity write resolving outside the store and warns; the credential still lands.
+With the file denied it should not normally fire, and it is kept because the hazard
+is severe and reachable by other routes — a hand-made link, an
+`isolated_shared_items` entry naming the file, a future tool kae has not denied.
 
 Consequence to document: where the cache *is* shared with the real home, its
 `/oauthAccount` names whichever account `kae use` applied last. Its self-heal is
@@ -242,20 +260,20 @@ The actual conversation history lives in separate files (claude:
 `~/.claude/projects/`), so session continuity is achieved by symlinking those
 directories regardless of how the `.claude.json` auth pointer is handled.
 
-**Implementation note — `.claude.json` path under `CLAUDE_CONFIG_DIR`.** The
-claude adapter resolves `.claude.json` *inside* the config dir when
-`CLAUDE_CONFIG_DIR` is set (`claudeJSONPath()`), not at `~/.claude.json`. The
-real-machine validation above was run against the real-home `~/.claude.json`.
-The denylist policy does **not** share it into `bond`: `prepareBond` links the
-entries *of* `~/.claude`, and `~/.claude.json` is that directory's sibling, so
-it is never enumerated. `<config-dir>/.claude.json` is therefore a link only
-when `~/.claude/.claude.json` happens to exist; normally claude creates a
-private cache in the bond dir. That is the isolation-mode gap recorded in §6 and
-[ROADMAP.md](ROADMAP.md) — do not read this note as "symlinking already solves
-it", and do not treat any particular fix as decided: sharing the cache back to
-the real home and keeping it private per directory are both still on the table.
-Whichever is chosen, a symlink-based one must target the *real* home (reuse the
-self-reference guard that protects the `.claude/` contents).
+**Implementation note — `.claude.json` path under `CLAUDE_CONFIG_DIR`.** The claude
+adapter resolves `.claude.json` *inside* the config dir when `CLAUDE_CONFIG_DIR` is
+set (`claudeJSONPath()`), not at `~/.claude.json`. The real-machine validation above
+was run against the real-home `~/.claude.json`.
+
+This is why the file's sharing used to depend on a setting rather than on a
+decision, and it is worth keeping straight because the two configurations look
+identical from the outside. `prepareBond` links the entries of
+`app.realToolHome(tool)`, which is the user's own `CLAUDE_CONFIG_DIR` when they set
+one and `~/.claude` otherwise. With it unset, `$HOME/.claude.json` is that
+directory's *sibling* and is never enumerated, so the bond dir always held a private
+copy. With it set, the file is an entry of the real home and was linked into every
+bond dir. It is now on the hard-coded denylist for both, which is what §6 describes;
+do not restore the sharing on the strength of this note.
 
 ## 7. Applicability
 

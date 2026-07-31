@@ -218,13 +218,14 @@ var renamedToolKeys = map[string]string{
 	"home_mode_enabled":    "", // home mode removed
 }
 
-// refusedSharedDenylistExtra lists the auth artifacts that are always on the
-// hard-coded shared-bind denylist (see bondDenylistItems in
-// internal/cmd/miseinit.go); adding them to SharedDenylistExtra is rejected to
-// avoid confusion. The names mirror what the tool adapters switch (claude:
-// .credentials.json; codex: auth.json).
+// refusedSharedDenylistExtra lists the entries that are always on the hard-coded
+// shared-bind denylist (see bondDenylistItems in internal/cmd/miseinit.go);
+// adding them to SharedDenylistExtra is rejected to avoid confusion. The names
+// mirror what the tool adapters switch (claude: .credentials.json, plus
+// .claude.json for the identity cache it holds; codex: auth.json).
 var refusedSharedDenylistExtra = map[string]bool{
 	".credentials.json": true,
+	".claude.json":      true,
 	"auth.json":         true,
 }
 

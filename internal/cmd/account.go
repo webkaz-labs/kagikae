@@ -345,6 +345,12 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	// would leave backend keys with no snapshot dir, which secret_orphan reports
 	// only on a backend kae can *enumerate* — never on the darwin keychain, where
 	// the leftover would be silent.
+	//
+	// Stage 1 can leave that same silent shape (new refs, no dir behind them yet),
+	// and the difference is that it heals itself: the pre-checks above find no dir
+	// under newName, so re-running the identical command overwrites those copies and
+	// finishes. Nothing re-runs stage 3 for you, which is why its window is the one
+	// that has to land on a check that fires everywhere.
 	for _, ref := range supersededRefs {
 		if err := be.Delete(ctx, ref); err != nil {
 			return nil, fmt.Errorf("delete old secret %s: %w", ref, err)

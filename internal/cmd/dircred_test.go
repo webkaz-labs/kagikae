@@ -63,6 +63,11 @@ func TestWriteDirCredentialWritesDirScopedKeychainStore(t *testing.T) {
 	})
 	credDir := t.TempDir()
 
+	// A stale plaintext copy the tool left in the directory: the keychain branch
+	// removes it, and the identity must still be applied after that removal — the
+	// restructure that made the identity unconditional runs it past this sweep.
+	writeFile(t, filepath.Join(credDir, ".credentials.json"), `{"claudeAiOauth":{"accessToken":"stale"}}`)
+
 	fake := &runnertest.Fake{Code: 0}
 	runner.With(fake, func() {
 		if err := app.writeDirCredential(context.Background(), testBackend(t, app),
@@ -72,6 +77,12 @@ func TestWriteDirCredentialWritesDirScopedKeychainStore(t *testing.T) {
 	})
 	if !strings.Contains(strings.Join(fake.Args, " "), sha8Of(credDir)) {
 		t.Fatalf("credential not written to the per-directory item: %v", fake.Args)
+	}
+	if _, err := os.Stat(filepath.Join(credDir, ".credentials.json")); !os.IsNotExist(err) {
+		t.Fatalf("superseded plaintext copy not removed: %v", err)
+	}
+	if got := readFile(t, filepath.Join(credDir, ".claude.json")); !strings.Contains(got, "main-uuid") {
+		t.Fatalf("identity not applied on the keychain path: %s", got)
 	}
 }
 
@@ -132,6 +143,99 @@ func TestWriteDirCredentialDeclinesIdentityThroughSharedLink(t *testing.T) {
 		t.Fatalf("the real home's identity cache was relabelled: %s", got)
 	}
 	// The credential half is unaffected: that store is private to the directory.
+	if got := readFile(t, filepath.Join(credDir, ".credentials.json")); !strings.Contains(got, mainToken) {
+		t.Fatalf("credential not materialized for the bind: %s", got)
+	}
+}
+
+// The destructive branch, which needs to be intentional rather than incidental: a
+// snapshot with no recorded identity applies as **absent**, so the bound
+// directory's live cache is *removed* rather than left. That is the same choice the
+// global switch makes — the tool refetches from the credential it can now see,
+// while a kept cache is a label for an account that is no longer there — and every
+// snapshot captured before kae tracked identities is in this state.
+func TestWriteDirCredentialRemovesIdentityWithoutSnapshot(t *testing.T) {
+	app := testApp(t, nil)
+	// A credential but no identity: the mixed-state file does not exist at capture,
+	// so the identity artifact is captured absent.
+	seedClaudeOAuth(t, app, `{"accessToken":"`+mainToken+`"}`)
+	code, out := captureStdout(t, func() int {
+		return runCapture(context.Background(), app, commonOpts{Format: formatText}, "claude", "main")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	credDir := t.TempDir()
+	writeFile(t, filepath.Join(credDir, ".claude.json"),
+		`{"oauthAccount":{"accountUuid":"side-uuid"},"projects":{"/repo":{}}}`)
+
+	if err := app.writeDirCredential(context.Background(), testBackend(t, app),
+		constants.ToolClaude, "main", credDir); err != nil {
+		t.Fatalf("writeDirCredential: %v", err)
+	}
+	got := readFile(t, filepath.Join(credDir, ".claude.json"))
+	if strings.Contains(got, "oauthAccount") {
+		t.Fatalf("a snapshot with no identity must clear the live cache, not keep it: %s", got)
+	}
+	if !strings.Contains(got, `"/repo"`) {
+		t.Fatalf("only the identity pointer may be removed; mixed-state key lost: %s", got)
+	}
+}
+
+// A target that is a symlink whose destination is gone reports "not exist" exactly
+// as an absent file does, and the two need opposite answers: the dangling link
+// still leaves the store. Resolving its parent instead classified it as inside, and
+// artifact.ApplyLive then refused it — turning a case kae can decline into a failed
+// bind. The bind must survive, with the same decline warning as a live link.
+func TestWriteDirCredentialDeclinesIdentityThroughDanglingLink(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	credDir := t.TempDir()
+	if err := os.Symlink(filepath.Join(app.Env.Home, ".claude", "gone.json"),
+		filepath.Join(credDir, ".claude.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	var werr error
+	_, stderr := captureStderr(t, func() int {
+		werr = app.writeDirCredential(context.Background(), testBackend(t, app),
+			constants.ToolClaude, "main", credDir)
+		return 0
+	})
+	if werr != nil {
+		t.Fatalf("a dangling shared link must not fail the bind: %v", werr)
+	}
+	if !strings.Contains(stderr, "identity cache") {
+		t.Fatalf("the decline must be warned about: %q", stderr)
+	}
+	if got := readFile(t, filepath.Join(credDir, ".credentials.json")); !strings.Contains(got, mainToken) {
+		t.Fatalf("credential not materialized for the bind: %s", got)
+	}
+}
+
+// An identity write that fails for any other reason also must not fail the bind —
+// the credential is already correct and an identity is a label. A malformed
+// mixed-state file left behind by the tool is the reachable case. The warning that
+// replaces the error must not carry the identity payload, which is PII.
+func TestWriteDirCredentialIdentityFailureWarnsWithoutLeaking(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	credDir := t.TempDir()
+	writeFile(t, filepath.Join(credDir, ".claude.json"), `{"oauthAccount":`) // truncated
+
+	var werr error
+	_, stderr := captureStderr(t, func() int {
+		werr = app.writeDirCredential(context.Background(), testBackend(t, app),
+			constants.ToolClaude, "main", credDir)
+		return 0
+	})
+	if werr != nil {
+		t.Fatalf("an unwritable identity must not fail the bind: %v", werr)
+	}
+	if !strings.Contains(stderr, "identity cache") {
+		t.Fatalf("the failure must be warned about: %q", stderr)
+	}
+	if strings.Contains(stderr, "main-uuid") || strings.Contains(stderr, "@example.com") {
+		t.Fatalf("the identity payload must never reach a warning: %q", stderr)
+	}
 	if got := readFile(t, filepath.Join(credDir, ".credentials.json")); !strings.Contains(got, mainToken) {
 		t.Fatalf("credential not materialized for the bind: %s", got)
 	}

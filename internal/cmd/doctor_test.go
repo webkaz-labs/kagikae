@@ -146,9 +146,9 @@ func TestDoctorReportsExpiringSnapshot(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	// No refresh token, so the access-token expiry is the whole deadline — the shape a
-	// lead-time notice is for (cursor's). A refresh-backed deadline is a shelf life
-	// that renews, so it is silent by design (leadTimeApplies).
+	// No refresh token, so the access-token expiry is the login deadline itself
+	// (cursor's shape). A refresh-backed one is covered by
+	// TestRefreshBackedLoginDeadlineInTheBandWarns.
 	seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), 4*24*time.Hour, "a"))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
 
@@ -183,10 +183,7 @@ func TestDoctorIgnoresHealthySnapshot(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	refreshExp := app.Now().Add(30 * 24 * time.Hour).UnixMilli()
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`, refreshExp,
-	))
+	seedClaudeOAuth(t, app, refreshBackedClaudeCred(app.Now(), 30*24*time.Hour))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "healthy") })
 
 	if _, ok := findCheck(buildDoctor(ctx, app, "claude", false), constants.CheckCredentialExpiring); ok {

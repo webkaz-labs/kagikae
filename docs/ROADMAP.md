@@ -108,17 +108,18 @@ alternative exists (`secret-tool`).
 
 ## Hardening backlog — daily-use robustness
 
-- **"A spent refresh token forces an interactive login" has never been observed**
-  (recorded 2026-07-31, **open**). It is the premise of `credential_stale` and of the
-  switch-time stale warning, both of which shipped long before it was written down.
-  Settling it matters because kae currently calls a claude snapshot stale
-  considerably more often than the operator actually re-logs in; if claude in fact
-  recovers, the stale half over-warns and `kae add --restore`'s framing is wrong too.
-  `credential_expiring` no longer anticipates that deadline
-  (`cmd.leadTimeApplies`), which removed the loudest consequence but not the question.
-  Procedure, measurements and acceptance criteria:
-  [VALIDATION.md](VALIDATION.md) § "does a spent refresh token really force a login?"
-  — **either outcome is a result**.
+- **Upstream now documents parallel sessions racing on one credential store**
+  (recorded 2026-07-31). Claude Code v2.1.211: *"Fixed parallel Claude Code sessions
+  all logging out simultaneously after wake-from-sleep when many sessions share one
+  credential store"*
+  ([changelog](https://code.claude.com/docs/en/changelog)). That is kae's own
+  territory — several accounts through one store, and `kae run` can have more than one
+  session live at once — and it is the strongest published evidence that the refresh
+  token is **single-use/rotating** (one session's refresh invalidating the others is
+  what that failure mode means). Worth a row in
+  [VALIDATION.md](VALIDATION.md)'s claude assumptions once someone measures it, and
+  worth re-checking whether kae's `keychain.WithReadCache` / per-tool locks are enough
+  when a switch overlaps a live session's own refresh.
 
 - **`applySnapshot`'s refusals could be raised one step earlier, in
   `loadPlansWithSnapshots`** (recorded 2026-07-31, deliberately not done). Both

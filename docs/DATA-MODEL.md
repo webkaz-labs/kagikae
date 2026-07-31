@@ -244,10 +244,13 @@ and is switched, but cursor-agent never redeems it — see docs/ADAPTERS.md).
 copilot's `/lastLoggedInUser` and agy's encrypted blob carry no datable token
 (no `Freshness` method), so they are never flagged.
 
-A refresh token has its own lifetime — Claude Code's is measured in **days**, and
-upstream warns when under three remain — so "a refresh token is present" is not
-"recoverable". Where the payload publishes a refresh expiry, kae uses it; where it
-does not, presence is all there is. claude also **tombstones** a credential whose
+A refresh token has its own expiry, and for claude that expiry is the **login's**
+deadline rather than the token's own rolling window — the access token moves forward
+on every refresh, this one is fixed when `/login` runs, and upstream warns ahead of it
+(the threshold is version-dependent; see the claude row in
+[VALIDATION.md](VALIDATION.md)). So "a refresh
+token is present" is not "recoverable". Where the payload publishes a refresh expiry,
+kae uses it; where it does not (codex, opencode), presence is all there is. claude also **tombstones** a credential whose
 refresh failed (blank `accessToken`/`refreshToken`, `expiresAt: 0`): the adapter
 reports that as invalid rather than as "no expiry recorded", which is what the
 bytes literally say. Deciding which bytes mean that is per-tool knowledge and

@@ -189,6 +189,11 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// ...and the assumptions nobody has re-checked in six months, which the
 	// version comparison cannot see because it needs the tool to have moved.
 	report.Checks = append(report.Checks, app.assumptionAgeChecks(toolFilter)...)
+	// state.json naming an account that has no snapshot. Deliberately out here and
+	// not with the credential-health checks: it needs no secret backend, and an
+	// unavailable backend is exactly when a user is diagnosing and least wants a
+	// check to vanish.
+	report.Checks = append(report.Checks, app.activeOrphanChecks(toolFilter)...)
 
 	// credential health: stale snapshots and orphaned secret items. Reuse the
 	// backend resolved above; skip when it is unavailable.
@@ -327,6 +332,72 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 		}
 	}
 	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)
+}
+
+// activeOrphanChecks reports a tool whose recorded active account kae cannot
+// confirm — no captured snapshot by that name, or a snapshot whose metadata will
+// not load. Either way kae believes it applied an account it cannot see, and
+// `kae status` displays a name that may not be there.
+//
+// It compares the two records rather than watching for a cause, because several
+// paths reach this state — an interrupted `kae account rename`, a `kae rollback`
+// restoring a backup's stale `active_before`, a writer outside kae altogether — and
+// that list is not closed. **docs/CLI.md § doctor owns it; do not re-enumerate it
+// here**, or the next cause has to be added in two places and will be added to one.
+//
+// Offline and backend-free — it compares two things kae has already loaded, which
+// is why it is wired in beside the other backend-free checks rather than with the
+// credential-health ones: those are skipped when the secret backend is unavailable,
+// and that is precisely when a user is diagnosing. Warn, never error: the recorded
+// name is bookkeeping, and the live credential it refers to may well still be fine.
+//
+// An unreadable `state.json` is reported here too. Nothing else in doctor looks at
+// that file — `config_valid` reflects `config.toml` only — so silently returning
+// would leave kae's most basic piece of bookkeeping unchecked by the command whose
+// job is to check it.
+func (app *App) activeOrphanChecks(toolFilter string) []adapter.Check {
+	st, err := app.loadState()
+	if err != nil {
+		return []adapter.Check{{
+			Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
+			Message: fmt.Sprintf(
+				"could not read %s (%v), so kae cannot say which account is active for any tool; "+
+					"`kae use <tool> <account>` rewrites it",
+				app.displayPath(app.Paths.StateFile()), err,
+			),
+		}}
+	}
+	checks := []adapter.Check{}
+	for _, tool := range constants.Tools {
+		if toolFilter != "" && tool != toolFilter {
+			continue
+		}
+		name := st.Active[tool]
+		if name == "" {
+			continue
+		}
+		_, found, lerr := account.Load(app.Paths.AccountDir(tool, name))
+		switch {
+		case lerr != nil:
+			checks = append(checks, adapter.Check{
+				Tool: tool, Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
+				Message: fmt.Sprintf(
+					"state records %s/%s as active but its snapshot could not be read (%v), so kae cannot confirm it",
+					tool, name, lerr,
+				),
+			})
+		case !found:
+			checks = append(checks, adapter.Check{
+				Tool: tool, Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
+				Message: fmt.Sprintf(
+					"state records %s/%s as active but no such snapshot exists, so kae cannot say which %s account is live; "+
+						"pick one with: kae use %s <account> (kae ls shows the captured ones)",
+					tool, name, tool, tool,
+				),
+			})
+		}
+	}
+	return checks
 }
 
 // orphanChecks warns when a stored secret item has no matching snapshot dir (a

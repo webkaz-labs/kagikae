@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/envprofile"
+	"github.com/webkaz-labs/kagikae/internal/secret"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 // findCheck returns the first check with the given code, or false.
@@ -253,4 +256,135 @@ func TestCredentialFreshnessMessagesNeverCarryTheToken(t *testing.T) {
 			}
 		})
 	}
+}
+
+// state.json naming an account that has no snapshot: kae believes it applied
+// something that does not exist. Several causes reach it (see activeOrphanChecks);
+// this test writes the state directly, standing in for all of them, and matches
+// what a writer outside kae leaves behind — a smoke run with an un-isolated
+// XDG_STATE_HOME did exactly this on 2026-07-31, while doctor reported no problems
+// and `kae status` displayed the phantom account.
+func TestDoctorReportsAnActiveAccountWithNoSnapshot(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main-uuid")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+
+	// Write the state a foreign writer would leave behind.
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Active[constants.ToolClaude] = "ghost"
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+
+	report := buildDoctor(ctx, app, "", false)
+	msg, ok := findCheck(report, constants.CheckActiveOrphan)
+	if !ok {
+		t.Fatalf("a dangling active account must be reported, got %+v", report.Checks)
+	}
+	for _, want := range []string{"claude/ghost", "kae use claude"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message missing %q: %q", want, msg)
+		}
+	}
+	for _, c := range report.Checks {
+		if c.Code == constants.CheckActiveOrphan && c.Status != constants.StatusWarn {
+			t.Fatalf("active_orphan must be warn-level, got %q", c.Status)
+		}
+	}
+	// A real active account is silent, and so is a tool with none recorded.
+	st.Active[constants.ToolClaude] = "main"
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan); ok {
+		t.Fatal("a captured active account must not be reported")
+	}
+	delete(st.Active, constants.ToolClaude)
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan); ok {
+		t.Fatal("no recorded active account is not a finding")
+	}
+}
+
+// The check needs no secret backend, and an unavailable one is exactly when a user
+// is diagnosing — so it must not be wired in behind the backend gate that skips the
+// credential-health checks. It was, in its first draft.
+func TestActiveOrphanIsReportedWithNoSecretBackend(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main-uuid")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Active[constants.ToolClaude] = "ghost"
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+
+	// keychain on linux is unavailable, so secretBackend() fails and every
+	// backend-dependent check is skipped.
+	app.Config.Security.SecretBackend = secret.BackendKeychain
+	if _, err := app.secretBackend(); err == nil {
+		t.Fatal("this test needs an unavailable backend to be meaningful")
+	}
+
+	report := buildDoctor(ctx, app, "", false)
+	if _, ok := findCheck(report, constants.CheckActiveOrphan); !ok {
+		t.Fatalf("active_orphan must survive an unavailable secret backend, got %+v", report.Checks)
+	}
+	// And the backend itself is still reported, so the two findings coexist.
+	if _, ok := findCheck(report, constants.CheckSecretBackend); !ok {
+		t.Fatal("the backend failure must still be reported")
+	}
+}
+
+// The two ways kae can fail to *read* what it needs, both of which returned
+// silently in the first draft — an unreadable state file with no other check
+// covering it, and an active account whose own metadata will not parse.
+func TestActiveOrphanReportsUnreadableStateAndSnapshot(t *testing.T) {
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	t.Run("unreadable state file", func(t *testing.T) {
+		app := testApp(t, nil)
+		// Invalid JSON: state.Load surfaces a parse error, which nothing else in
+		// doctor looks at (config_valid reflects config.toml only).
+		writeFile(t, app.Paths.StateFile(), "{not json")
+		msg, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan)
+		if !ok {
+			t.Fatal("an unreadable state.json must be reported by something")
+		}
+		if !strings.Contains(msg, "could not read") {
+			t.Fatalf("message should say what failed: %q", msg)
+		}
+	})
+
+	t.Run("unreadable active snapshot", func(t *testing.T) {
+		app := testApp(t, nil)
+		seedClaude(t, app, mainToken, "main-uuid")
+		captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+		// The snapshot dir exists and is named by state, but its metadata is corrupt:
+		// "found" is false and the error is real, which must not read as "fine".
+		writeFile(t, filepath.Join(app.Paths.AccountDir(constants.ToolClaude, "main"), "account.toml"),
+			"this is not toml = = =")
+		msg, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckActiveOrphan)
+		if !ok {
+			t.Fatal("an unreadable active snapshot must be reported, not skipped")
+		}
+		if !strings.Contains(msg, "claude/main") || !strings.Contains(msg, "could not be read") {
+			t.Fatalf("message should name the account and the failure: %q", msg)
+		}
+	})
 }

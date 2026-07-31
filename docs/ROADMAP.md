@@ -121,6 +121,60 @@ alternative exists (`secret-tool`).
   worth re-checking whether kae's `keychain.WithReadCache` / per-tool locks are enough
   when a switch overlaps a live session's own refresh.
 
+- **`kae account rename` can strand the active pointer** (recorded 2026-07-31,
+  **not fixed**). `buildAccountRename` updates `state.Active[tool] = newName` inside
+  its state mutation, and only *afterwards* copies the secret payloads and writes
+  the renamed snapshot dir. A failure in between — a secret backend that errors on
+  read/write/delete, a killed process — leaves state naming a snapshot that does not
+  exist yet. `kae account rm` gets this right by clearing the pointer *before*
+  removing anything; rename has the unsafe direction.
+  The fix is to reorder — but **relocating the existing loop is not enough, and doing
+  only that makes the failure worse**. That loop is per-artifact `Get(old)` →
+  `Set(new)` → **`Delete(old)`**, so a crash inside it already destroys old secrets
+  before the new snapshot dir exists. Move the state flip below it and the crash
+  window becomes: `state.Active` still names `oldName`, `oldName`'s dir still loads
+  fine, and its `account.toml` still declares a `SecretRef` that has been deleted
+  from the backend. `active_orphan` would stay silent, and so would everything else —
+  `orphanChecks` only looks the other way (a backend key with no snapshot dir), so
+  nothing in doctor detects a snapshot whose declared secret is gone.
+  So: split the loop into two passes. First copy every payload to its new ref and
+  `account.Save` the new dir; only then delete the old refs and remove the old dir;
+  flip `state.Active` between the two, once the new snapshot is complete. Every
+  crash window is then either "old is intact and active" or "both exist and active
+  is valid" — benign in every case, though not uniformly re-runnable: a crash after
+  the new dir is saved but before the flip leaves both dirs present, so re-running
+  the same command hits the existing "account already exists" guard rather than
+  completing. That is a clear error rather than silent damage, but the implementer
+  should decide whether to make the guard tolerate a half-finished rename (its own
+  new dir, same tool) or to document the manual step. The existing comment defends "logical update
+  first" on the grounds that the reverse "could strand config/state on a name whose
+  dir is gone", but that only applies to an ordering that removes the old dir early;
+  the two-pass shape above strands nothing.
+  Worth pairing with a doctor check for the direction nothing covers — a snapshot
+  declaring a `SecretRef` the backend does not have — since that is the hazard this
+  reorder trades into if it is done carelessly.
+  Left out of the v0.15.3 fix deliberately: that release is about smoke isolation and
+  the doctor check, and reordering a different command's write sequence deserves its
+  own change. `doctor`'s new `active_orphan` reports the state if it happens.
+
+- **`kae rollback` restores an active pointer without checking its snapshot is still
+  there** (recorded 2026-07-31, **not fixed** — the sibling of the entry above). The
+  rollback's state mutation writes `st.Active[tool] = meta.ActiveBefore[tool]`
+  unconditionally (`internal/cmd/backup.go`), and a backup taken before an
+  `account rm`/`rename` keeps the name it had at capture time — so rolling back to it
+  names a snapshot that is gone and the next `kae use` fails with `account
+  <tool>/<name> is not captured yet` (`loadPlansWithSnapshots`, `internal/cmd/ops.go`).
+  `reapplyHint` (same file) already guards that same value
+  with an `account.Load` existence check, but only to shape a hint string; the live
+  pointer gets no guard. The fix is that guard at the write: record the name when its
+  snapshot loads, otherwise `delete` the entry so nothing claims an account that does
+  not exist. It is a **behaviour change to `kae rollback`** — one that would stop
+  restoring a stale pointer at all — which is why v0.15.3 documents and detects the
+  state (`active_orphan`) rather than changing rollback in a release about something
+  else. Decide at the same time whether `account rm`/`rename` should rewrite
+  `active_before` in existing backups, which is the other end of the same gap
+  ([DATA-MODEL.md](DATA-MODEL.md) § Backups).
+
 - **`applySnapshot`'s refusals could be raised one step earlier, in
   `loadPlansWithSnapshots`** (recorded 2026-07-31, deliberately not done). Both
   refusals — a snapshot missing an artifact today's adapter declares

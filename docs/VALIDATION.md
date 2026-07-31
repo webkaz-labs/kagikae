@@ -15,6 +15,17 @@ Run `go mod tidy` before committing dependency changes.
 
 ## Smoke Checks (built binary, isolated env)
 
+**Every code block in this file, including the per-release acceptance sections
+further down, assumes `. scripts/smoke-env.sh` is already in effect in the current
+shell.** They seed fixtures by writing to whatever `$HOME` and `$XDG_*` path the
+surface under test reads — kae's own `config.toml` and `state.json`, a tool's
+credential file, an identity file such as `~/.claude.json` or
+`~/.gemini/google_accounts.json`, `~/.gitconfig` — so the list is as long as the
+sections are, and the rule is per block, not per file: **anything a block writes, it
+overwrites for real if the preamble is not live.** Re-running an old section means
+sourcing the preamble first — and sourcing it again mid-section starts a *new* temp
+HOME, discarding the accounts the earlier blocks of that section set up.
+
 All smoke checks run against a temp HOME. On Linux this isolates every
 credential path. **On macOS it does not isolate the keychain-backed tools
 (claude, cursor)**: those adapters always select a keychain driver and the
@@ -37,8 +48,10 @@ writing the captured payload to the `kagikae` keychain item, which prompts a
 macOS authorization dialog.
 
 ```bash
+go build -o /tmp/kae .
+. scripts/smoke-env.sh   # every line below writes where kae or claude reads
 export KAE_CLAUDE_DRIVER=file
-mkdir -p "$XDG_CONFIG_HOME/kagikae"
+mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
 printf 'version = 1\n[security]\nsecret_backend = "file"\nbackup_keep = 30\n' \
   > "$XDG_CONFIG_HOME/kagikae/config.toml"
 # seed $CLAUDE_CONFIG_DIR/.credentials.json (or ~/.claude/.credentials.json):
@@ -49,11 +62,7 @@ printf '{"claudeAiOauth":{"accessToken":"tok-A"}}' > "$HOME/.claude/.credentials
 
 ```bash
 go build -o /tmp/kae .
-# Two separate export lines: in `export A=new B=$A`, $A expands to A's OLD
-# value, so a single line would point every XDG_* path at the real HOME.
-export HOME=$(mktemp -d)
-export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share \
-       XDG_STATE_HOME=$HOME/.local/state NO_COLOR=1
+. scripts/smoke-env.sh   # HOME + every root paths.Resolve reads; the script says why
 
 /tmp/kae init
 /tmp/kae doctor --json
@@ -181,11 +190,9 @@ and `secret_backend = "file"` throughout.
 
 ```bash
 go build -o /tmp/kae .
-export HOME=$(mktemp -d)
-export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share \
-       XDG_STATE_HOME=$HOME/.local/state NO_COLOR=1
+. scripts/smoke-env.sh
 export KAE_CLAUDE_DRIVER=file
-mkdir -p "$XDG_CONFIG_HOME/kagikae"
+mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
 printf 'version = 1\n[security]\nsecret_backend = "file"\nbackup_keep = 30\n' \
   > "$XDG_CONFIG_HOME/kagikae/config.toml"
 # seed credentials and add accounts:
@@ -873,9 +880,8 @@ the file driver and the file backend — no real `$HOME`, no real keychain. Dead
 are computed from `date +%s` so the fixtures stay valid whenever this is re-run.
 
 ```bash
-S=$(mktemp -d); export HOME="$S/home" \
-  XDG_CONFIG_HOME="$S/home/.config" XDG_DATA_HOME="$S/home/.local/share"
-mkdir -p "$HOME/.claude" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"
+. scripts/smoke-env.sh
+mkdir -p "$HOME/.claude" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"
 export KAE_CLAUDE_DRIVER=file
 /tmp/kae init
 printf 'default_profile = "main"\n[security]\nsecret_backend = "file"\n[profiles.main]\naccounts = { claude = "main" }\n' \
@@ -907,7 +913,7 @@ cred 1609459200000;      /tmp/kae add --no-login claude dead      # expired in 2
 
 # --- C. a bound directory's own credential (the sweep) ---
 cred "$FAR"; /tmp/kae add --no-login claude main
-P="$S/project"; mkdir -p "$P"; cd "$P"; /tmp/kae pin main
+P="$HOME/project"; mkdir -p "$P"; cd "$P"; /tmp/kae pin main
 STORE=$(find "$XDG_DATA_HOME/kagikae/isolation" -name '.credentials.json' | head -1)
 /tmp/kae doctor --json     # assert: NO credential_* check (the copy is healthy)
 printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}' > "$STORE"
@@ -949,6 +955,9 @@ Smoke against a temp HOME with the file backend; the `exec()` token path needs
 `mise trust` (the same step any pin fragment needs):
 
 ```bash
+# (continues from the v0.8.0 setup: /tmp/kae built, temp HOME + file config, plus
+#  proj=$(mktemp -d) for the directory to pin). The first line below overwrites
+#  $HOME/.gitconfig, so an un-isolated shell loses the operator's real one.
 # config: [security] secret_backend = "file" + a profile, e.g. [profiles.main]
 printf '[alias]\n\tlol = log --oneline\n[user]\n\temail = real@personal.test\n' > "$HOME/.gitconfig"
 /tmp/kae companion add main git email=you@example.com name=You

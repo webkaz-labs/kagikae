@@ -428,8 +428,10 @@ to the whole service is what destroyed another codex home's login.
 **`account rm`/`rename` do not rewrite existing backups.** A backup's
 `active_before` keeps the old account name, so rolling back to a backup taken
 before a remove/rename restores that name into `state.json` while the snapshot
-no longer exists under it; the next `kae use` then errors with "account not
-captured". Prune the affected backups manually if this matters.
+no longer exists under it; the next `kae use` then errors with `account
+<tool>/<name> is not captured yet`. `kae doctor` reports that gap as
+`active_orphan` before you hit it
+([CLI.md](CLI.md) § doctor). Prune the affected backups manually if this matters.
 
 ## Status Vocabulary
 

@@ -25,6 +25,47 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
+# kae v0.15.3 (shipped 2026-07-31)
+
+**A smoke procedure that was not isolated, and a state kae could not see.** The two
+ship together because the first produced the second on the operator's own machine.
+
+Baseline: v0.15.2. Contract-additive — one new `doctor` check code,
+`active_orphan`; no field, flag or exit-code changes, and `schema_version` stays `1`.
+
+- **`kae doctor` reports an active account it cannot confirm (`active_orphan`).**
+  `state.json` can name an account for a tool with no snapshot behind it, and nothing
+  said so: `kae status` displayed the phantom name, and no check looked at
+  `state.json` at all (`config_valid` reflects `config.toml` only). Warn-level and
+  offline, and wired in **outside** the secret-backend gate on purpose — an
+  unavailable backend is exactly when someone is diagnosing, and the check needs no
+  backend. The same code covers a `state.json` that cannot be read and an active
+  snapshot whose metadata will not parse; both returned silently in the first draft.
+  The causes are open-ended, so the check compares the two records rather than
+  watching for one: an interrupted `kae account rename` (ordering fix recorded in
+  [ROADMAP.md](ROADMAP.md), deliberately not in this release), `kae rollback`
+  restoring an `active_before` that a later `account rm`/`rename` invalidated, and a
+  writer outside kae.
+
+- **The documented smoke procedure no longer writes to the real machine.** A temp
+  `HOME` does not isolate kae: `paths.Resolve` reads `XDG_CONFIG_HOME`,
+  `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG_RUNTIME_DIR` independently, and an
+  absolute value inherited from the environment beats the temp `HOME`. A smoke run
+  shaped exactly that way wrote a fixture account into the operator's live
+  `state.json` on 2026-07-31, leaving `active.claude` naming an account that did not
+  exist — precisely the state `active_orphan` now reports. The exports now live in
+  one shellcheck-covered file, `scripts/smoke-env.sh`, sourced by every block:
+  three hand-written copies is *how* the omission happened, added next to two correct
+  ones. Two blocks in [VALIDATION.md](VALIDATION.md) were not isolated at all — the
+  first runnable block in § Smoke Checks would have overwritten the operator's real
+  `~/.config/kagikae/config.toml` and `~/.claude/.credentials.json`, and the
+  companion-auth block its real `~/.gitconfig`.
+
+No code path other than `doctor` changed; `kae`'s switching, capture and rollback
+behaviour is byte-identical to v0.15.2.
+
+---
+
 # kae v0.15.2 (shipped 2026-07-31)
 
 **v0.15.1 was an over-correction and this reverts it.** One fix, and an apology in

@@ -774,7 +774,8 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `unsupported`, `file_mode`, `credential_stale`, `credential_expiring`,
 `secret_orphan`,
 `companion_missing`, `companion_binary`, `companion_drift`,
-`companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`.
+`companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`,
+`active_orphan`.
 
 Credential-health checks (warn-level):
 - `credential_stale`: a captured snapshot cannot open a session again without an
@@ -830,6 +831,23 @@ Credential-health checks (warn-level):
   The same lead-time notice is emitted at switch time next to the stale one
   (stderr, before the write, surviving `--quiet`), but it is **not** counted in
   the "N tools need a re-login before use" roll-up: that switch works today.
+- `active_orphan`: `state.json` records an account as active for a tool, but no
+  snapshot by that name exists — so kae cannot say which account is live, and
+  `kae status` would display a name that is not there. Offline and backend-free.
+  Known ways to get here, not a closed set — the check compares the two records
+  rather than watching for a cause. An interrupted `kae account rename` flips the
+  active pointer before writing the renamed snapshot, so a failure in between leaves
+  the pointer ahead of the data (docs/ROADMAP.md carries the ordering fix;
+  `kae account rm` already clears the pointer first, which is the safe direction).
+  `kae rollback` restores the backup's `active_before` without checking the snapshot
+  is still there, so a backup predating an `account rm`/`rename` names an account
+  that is gone ([DATA-MODEL.md](DATA-MODEL.md) § Backups). And a writer outside kae
+  reaches it too — a test or smoke run that isolated `HOME` but inherited a real
+  `XDG_STATE_HOME` will capture straight into the live state file.
+  The same code also fires when `state.json` itself cannot be read, or when the
+  active account's snapshot metadata will not parse: nothing else in doctor looks at
+  either. Names `kae use <tool> <account>` to settle it. Warn, never error: the
+  recorded name is bookkeeping and the live credential may well be fine.
 - `secret_orphan`: a stored secret item **of the account namespace**
   (`<tool>/<account>/<artifact>`) has no matching snapshot dir — names
   `kae account rm`. Backup, companion, and env-profile keys have no snapshot dir

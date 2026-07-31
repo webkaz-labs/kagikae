@@ -245,7 +245,13 @@ func TestInventoryFreshnessNeverCarriesTheToken(t *testing.T) {
 	))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "canary") })
 	_, probe := captureStdout(t, func() int { return runLs(ctx, app, commonOpts{Format: formatJSON}) })
-	if !strings.Contains(probe, constants.CredentialExpiring) {
+	var probed lsReport
+	if err := json.Unmarshal([]byte(probe), &probed); err != nil {
+		t.Fatalf("invalid ls JSON: %v: %s", err, probe)
+	}
+	// Matched on the row's own field, not as a substring of the whole document: the
+	// token would also match a future field or an account named for it.
+	if len(probed.Accounts) != 1 || probed.Accounts[0].Credential != constants.CredentialExpiring {
 		t.Fatalf("fixture no longer reaches the expiring state; this canary would pass vacuously: %s", probe)
 	}
 

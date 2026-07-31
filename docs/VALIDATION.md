@@ -866,7 +866,7 @@ expects — keep the two in sync.
 - [ ] `mise x github:webkaz-labs/kagikae@v0.9.0 -- kae version` resolves the
       release archive and runs.
 
-## v0.15.0 surfaces — credential lead time, inventory freshness, bound directories
+## v0.15.0/v0.15.1 surfaces — credential lead time, inventory freshness, bound directories
 
 All three are read-only reporting, so the whole block runs against a temp HOME with
 the file driver and the file backend — no real `$HOME`, no real keychain. Deadlines
@@ -881,26 +881,37 @@ export KAE_CLAUDE_DRIVER=file
 printf 'default_profile = "main"\n[security]\nsecret_backend = "file"\n[profiles.main]\naccounts = { claude = "main" }\n' \
   > "$XDG_CONFIG_HOME/kagikae/config.toml"
 NOW=$(date +%s); SOON=$(( (NOW + 3*86400) * 1000 )); FAR=$(( (NOW + 60*86400) * 1000 ))
-cred() { printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%s}}' "$1" \
+# Refresh-backed: the deadline is a rolling shelf life, so it never earns the
+# lead-time notice — only `ok` while it holds and `stale` once it is spent (v0.15.1).
+rolling() { printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%s}}' "$1" \
+  > "$HOME/.claude/.credentials.json"; }
+# No refresh token: the access-token expiry is a real end of life, which is the only
+# shape `credential_expiring` anticipates. cursor's JWT is the live example.
+endoflife() { printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"","expiresAt":%s}}' "$1" \
   > "$HOME/.claude/.credentials.json"; }
 
-# --- A. the three bands, on account snapshots ---
-cred "$SOON";                 /tmp/kae add --no-login claude soon
-cred "$FAR";                  /tmp/kae add --no-login claude healthy
-cred 1609459200000;           /tmp/kae add --no-login claude dead   # refresh expired 2021
+# --- A. the bands, on account snapshots ---
+endoflife "$SOON";  /tmp/kae add --no-login claude soon      # end of life, 3 days out
+rolling   "$SOON";  /tmp/kae add --no-login claude rolling   # shelf life, 3 days out
+rolling   "$FAR";   /tmp/kae add --no-login claude healthy
+rolling   1609459200000; /tmp/kae add --no-login claude dead # shelf life spent in 2021
 /tmp/kae doctor claude --json
-#   assert: {code:"credential_expiring", status:"warn"} for "soon", naming the day
-#           count and `kae add --restore claude soon`
-#   assert: {code:"credential_stale",    status:"warn"} for "dead"
-#   assert: NO credential_* check for "healthy" (a month out stays silent)
+#   assert: {code:"credential_expiring", status:"warn"} for "soon" ONLY, naming the
+#           day count and `kae add --restore claude soon`
+#   assert: NO credential_expiring for "rolling" — same 3 days, but a shelf life.
+#           This is the v0.15.1 regression: with it, every claude account warned
+#           forever and none could read ok.
+#   assert: {code:"credential_stale", status:"warn"} for "dead"
+#   assert: NO credential_* check for "healthy"
 /tmp/kae doctor claude --json >/dev/null; echo "exit=$?"   # assert: 0 (warn never fails)
 
 # --- B. the inventory column (ls / accounts / status) ---
-/tmp/kae ls --no-color        # assert: a Credential column reading
-                              #   dead=re-login now, healthy=ok, soon=N day(s) left
+/tmp/kae ls --no-color        # assert: a Credential column reading dead=re-login now,
+                              #   healthy=ok, rolling=ok, soon=N day(s) left
 /tmp/kae ls --json
 #   assert: schema_version still 1; each row has additive credential + relogin_by
-#   assert: relogin_by parses as RFC3339 and is the *refresh* deadline, not expiresAt
+#   assert: relogin_by parses as RFC3339 and is the deadline the state was judged on
+#           (the refresh expiry when there is one, else the access-token expiry)
 
 # --- C. a bound directory's own credential (the sweep) ---
 cred "$FAR"; /tmp/kae add --no-login claude main
@@ -923,15 +934,19 @@ cd "$P" && /tmp/kae pin -i main && grep CLAUDE_CONFIG_DIR .config/mise/conf.d/ka
 #           respectively, and both directories exist
 ```
 
-**PASSED 2026-07-31** on the pre-release binary: A, B, C and D all as asserted.
+**PASSED 2026-07-31** on the pre-release binaries: A, B, C and D as asserted (§A's
+"rolling" assertion added with v0.15.1, after the real machine showed the v0.15.0
+form of the check firing for every live claude snapshot).
 
 Two things this block deliberately pins, because each is a failure that looks like
 success:
 
-- **`credential_expiring` must be silent for a healthy account.** The seven-day
-  lead time is only useful while it is a minority of the credential's life; if it
-  ever fires for every account, the check is worse than absent. See the claude row
-  in "Upstream Behaviour Assumptions" for the upstream condition it rides on.
+- **`credential_expiring` must be silent for a refresh-backed account, however soon
+  its deadline is.** That deadline is a shelf life every refresh renews, so
+  anticipating it fired from the moment of capture and never stopped — measured on a
+  real machine, no claude account could ever read `ok`. This is the assertion the
+  v0.15.1 fix exists for; the "rolling" fixture in §A is there solely to pin it. See
+  the claude row in "Upstream Behaviour Assumptions".
 - **The unpinned case must be silent.** `kae unpin` keeps the store, so the
   breadcrumb still names the directory — reporting its credential would name a
   directory that is not bound and a remedy that lands where nothing reads. The

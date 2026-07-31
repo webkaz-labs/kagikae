@@ -70,12 +70,20 @@ func (app *App) accountFreshness(ctx context.Context, be secret.Backend, acc acc
 // unseen. One week is the shortest horizon that still contains a working day for
 // anyone who does not run kae daily.
 //
-// It is deliberately not longer. Against the ~30-day refresh-token lifetime these
-// credentials have, seven days keeps the notice silent for roughly three quarters
-// of the credential's life, so when it does appear it reads as "act now" — the
+// It is deliberately not longer. Against the roughly month-long effective lifetime
+// these credentials have in regular use, seven days keeps the notice silent for
+// most of a credential's life, so when it does appear it reads as "act now" — the
 // same reasoning that keeps cursor out of upstream_version and puts the
-// assumption-age threshold at six months. A two-week window would warn for half
-// of every credential's life, which is how a warning becomes wallpaper.
+// assumption-age threshold at six months. A two-week window would warn for half of
+// every credential's life, which is how a warning becomes wallpaper.
+//
+// "Effective" is the load-bearing word, and it is the one thing here that an
+// upstream change could invalidate. claude's `refreshTokenExpiresAt` is a *rolling*
+// window that every refresh renews — measured at ≈2 days on 2.1.220 — so the raw
+// number is far shorter than the time until a re-login. If a release ever made that
+// window short *and* non-renewing, this notice would be permanently lit for every
+// claude account, which is worse than not having it. docs/VALIDATION.md's claude
+// assumption row carries that condition and how to re-measure it.
 const reloginLeadTime = 7 * 24 * time.Hour
 
 // snapshotFreshnessWarning returns the switch-time warning acc's snapshot

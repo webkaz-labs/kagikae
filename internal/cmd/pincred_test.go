@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 )
@@ -105,10 +106,8 @@ func TestDoctorReportsExpiringBoundDirectoryCredential(t *testing.T) {
 	}
 }
 
-// The negatives, all of which used to be the whole behaviour: a healthy bound
-// credential says nothing, and a directory whose binding is already broken is
-// pinChecks' finding, not reported twice.
-func TestBoundDirectoryCredentialNegatives(t *testing.T) {
+// A healthy bound credential says nothing.
+func TestHealthyBoundDirectoryCredentialIsSilent(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
 	pinWithCapturedClaude(t, app)
@@ -116,13 +115,65 @@ func TestBoundDirectoryCredentialNegatives(t *testing.T) {
 	if checks := app.pinCredentialChecks(ctx); len(checks) != 0 {
 		t.Fatalf("a healthy bound credential must be silent, got %+v", checks)
 	}
+}
 
-	// An unpinned directory keeps its store on purpose; its credential is not a
-	// finding, exactly as pinChecks treats the binding.
+// `kae unpin` keeps the store on purpose so a re-pin restores its sessions — but
+// nothing in that directory points at it any more. Reporting its credential would
+// claim "bound to" about a directory that is not bound, and send the user to a
+// login that lands somewhere the tool will no longer read. pinChecks skips an
+// unpinned directory for the same reason.
+//
+// The credential is aged *after* unpinning here on purpose: with a healthy one this
+// test passes whether or not the gate exists, which is exactly how the gate came to
+// be missing in the first place.
+func TestUnpinnedDirectoryCredentialIsNotReported(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	_, credFile := pinWithCapturedClaude(t, app)
+
 	code, out := captureStdout(t, func() int { return runUnpin(ctx, app, commonOpts{Format: formatText}, false) })
 	mustExit(t, constants.ExitOK, code, out)
+	writeFile(t, credFile,
+		`{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`)
+
 	if checks := app.pinCredentialChecks(ctx); len(checks) != 0 {
-		t.Fatalf("an unpinned directory's kept store must stay silent, got %+v", checks)
+		t.Fatalf("an unpinned directory's kept store must stay silent even when stale, got %+v", checks)
+	}
+}
+
+// The same rule one level down: re-binding a single tool leaves the previously
+// bound tools' stores on disk, and those are no longer what the directory points
+// at. Only what the fragment binds *now* may be reported, so the sweep reads the
+// fragment rather than walking the store tree.
+func TestUnboundToolsStoreInABoundDirectoryIsNotReported(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	dir, credFile := pinWithCapturedClaude(t, app)
+
+	// Re-bind this directory to codex alone; claude's store stays on disk.
+	seedCodex(t, app, "codex-main")
+	if code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, commonOpts{Format: formatText}, "codex", "main")
+	}); code != constants.ExitOK {
+		t.Fatalf("capture codex/main: %s", out)
+	}
+	app.Config.Profiles = map[string]config.Profile{
+		"main": {Accounts: map[string]string{constants.ToolCodex: "main"}},
+	}
+	if code, out := captureStdout(t, func() int {
+		return runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared)
+	}); code != constants.ExitOK {
+		t.Fatalf("re-pin to codex only: %s", out)
+	}
+
+	// claude's leftover store dies; the directory no longer binds claude.
+	writeFile(t, credFile,
+		`{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`)
+
+	for _, c := range app.pinCredentialChecks(ctx) {
+		if c.Tool == constants.ToolClaude {
+			t.Fatalf("%s no longer binds claude; its leftover store must not be reported: %q", dir, c.Message)
+		}
 	}
 }
 

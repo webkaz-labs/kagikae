@@ -236,15 +236,14 @@ type dirStore struct {
 // It walks isolation/<pinID> rather than consulting a record of past bindings,
 // because no such record exists: the mise fragment describes the binding kae is
 // about to replace, not the ones before it. The directory tree is the only
-// history, and it is enough for the operations that need one.
+// history, and it is enough for the operations that need one — every caller is
+// standing *in* the bound directory, so pinID comes from its own cwd and the walk
+// can never reach another directory's stores.
 //
-// pinID is a parameter and not the caller's cwd on purpose. The mutating callers
-// (pin, re-bind, unpin --purge) do stand in the bound directory, so theirs comes
-// from their own cwd; the read-only doctor sweep (pinCredentialChecks) walks every
-// bound directory the breadcrumbs name. That is safe precisely because the walk is
-// scoped by the pinID it is handed — a caller that passed the wrong one would read
-// another directory's stores, so it must never be derived from anything but a
-// breadcrumb or the caller's own cwd.
+// The history is what makes it the wrong tool for asking "what is bound *now*":
+// the walk returns stores of tools this directory no longer binds, and stores of a
+// directory that has been unpinned. A reader of the live binding must go through
+// the fragment instead (boundStoreDir).
 // ponytail: a store directory is kept forever (a re-pin restores its sessions), so
 // a stale isolated account's dir is re-probed on every later pin — one extra
 // attributes-only `security` call per such account per pin. Fine at single-digit
@@ -408,14 +407,30 @@ func (app *App) pinCredentialChecks(ctx context.Context) []adapter.Check {
 		// A directory that is gone is pinChecks' finding (its whole store is
 		// orphaned); the freshness of a credential nothing can reach is moot, and
 		// reporting both would name the same directory twice for one problem.
+		// Decided by the directory, never by a failed read of the fragment inside it
+		// — the same rule pinChecks states, for the same reason.
 		if !dirExists(pin.Dir) {
 			continue
 		}
-		stores, serr := app.dirCredentialStores(pin.PinID)
-		if serr != nil {
-			continue // best-effort, like every other doctor probe
+		fragment, exists, ferr := readFragmentAt(pin.Dir)
+		switch {
+		case ferr != nil:
+			continue // pinChecks reports an unreadable fragment; not twice
+		case !exists:
+			// Unpinned. `kae unpin` keeps the store on purpose so a re-pin restores
+			// its sessions, but nothing in that directory points at it any more: a
+			// finding here would say "bound to" about a directory that is not, and
+			// name a login that would land somewhere else. pinChecks skips it too.
+			continue
 		}
-		for _, store := range stores {
+		// Canonical tool order, so the report is deterministic — a JSON contract
+		// must not reorder with a map iteration.
+		for _, tool := range constants.Tools {
+			credDir, bound := app.boundStoreDir(pin.PinID, tool, fragment)
+			if !bound || !dirExists(credDir) {
+				continue
+			}
+			store := dirStore{Tool: tool, Dir: credDir}
 			info, ok := app.dirCredentialFreshness(ctx, store)
 			if !ok {
 				continue
@@ -441,6 +456,34 @@ func (app *App) pinCredentialChecks(ctx context.Context) []adapter.Check {
 		}
 	}
 	return checks
+}
+
+// boundStoreDir returns the store directory tool's credential lives in under the
+// binding fragment describes, and whether that binding covers tool at all.
+//
+// It reads the fragment rather than the store tree because the two answer
+// different questions. The tree is history: `kae unpin` keeps a store on purpose,
+// and re-binding one tool of a profile leaves the previous tools' stores in place,
+// so a walk returns stores nothing points at any more. Only the fragment says what
+// this directory binds *now* — and a report that says "bound to" has to mean it,
+// or its remedy (log in here) lands somewhere the tool will not read.
+//
+// A mode kae does not recognize yields bound=false rather than a guessed path: a
+// third per-directory mechanism must be added here deliberately, the same lockstep
+// dirCredentialStores needs, and inventing a path for one is how kae ends up
+// judging a store that does not exist.
+func (app *App) boundStoreDir(pinID, tool string, fragment fragmentInfo) (dir string, bound bool) {
+	account, ok := fragment.Accounts[tool]
+	if !ok {
+		return "", false
+	}
+	switch fragment.Mode {
+	case modeShared:
+		return app.Paths.SharedDir(pinID, tool), true
+	case modeIsolated:
+		return app.Paths.IsolatedConfigDir(pinID, tool, account), true
+	}
+	return "", false
 }
 
 // pinLoginRemedy names the fix for a bound directory's credential: log in *inside*

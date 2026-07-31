@@ -804,9 +804,13 @@ Credential-health checks (warn-level):
   Seven days is a judgement, not a measurement: Claude Code's own three-day
   warning is enough for the account you are *using* (you see that tool daily),
   while a kae account that is not active is only shown to you when you run kae.
-  It is deliberately not longer — against a ~30-day refresh-token lifetime, seven
-  days keeps the check silent for about three quarters of a credential's life, so
-  it still reads as "act now" rather than as wallpaper.
+  It is deliberately not longer — against the roughly month-long *effective*
+  lifetime these credentials have in regular use, seven days keeps the check silent
+  for most of a credential's life, so it still reads as "act now" rather than as
+  wallpaper. Note that claude's stored `refreshTokenExpiresAt` is a **rolling**
+  window every refresh renews (≈2 days on 2.1.220), so the raw field is much shorter
+  than the time until a re-login; docs/VALIDATION.md records the condition this
+  threshold depends on.
 
   It is silent, by design, wherever the deadline is **unknowable**: a tool that
   stores a refresh token but publishes no expiry for it (codex, opencode) leaves
@@ -859,10 +863,15 @@ first signal was the tool refusing to start in that directory.
   keyring store) would have its *global* login read and reported as the
   directory's: a healthy global login blamed on an unrelated directory, or a stale
   one reported once per bound directory.
-- Silent for a directory that is **gone** (`pin_stale` already reports its orphaned
-  store; naming it twice would be one problem reported as two), for one that was
-  `kae unpin`-ed (its store is kept on purpose), and for a store whose tool has
-  never been started in it (no credential there yet).
+- What counts as bound comes from the directory's **mise fragment**, not from the
+  store tree. The tree is history: `kae unpin` keeps a store on purpose, and
+  re-binding one tool of a profile leaves the previous tools' stores in place — so a
+  walk of it returns stores nothing points at any more. A check that says "bound to"
+  has to mean it, or its remedy sends the user to a login the tool will not read.
+- Silent, therefore, for a directory that is **gone** (`pin_stale` already reports
+  its orphaned store; naming it twice would be one problem reported as two), for one
+  that was `kae unpin`-ed, for a tool the directory **no longer binds**, and for a
+  store whose tool has never been started in it (no credential there yet).
 - There is deliberately **no** recapture back into the account snapshot. Several
   directories can bind one account, each refreshing its own token, so no
   non-arbitrary rule says which of them the single global snapshot should take —

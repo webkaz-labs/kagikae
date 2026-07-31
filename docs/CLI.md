@@ -394,6 +394,14 @@ from the account snapshots.
   macOS) — that directory's keychain item, with any superseded plaintext copy
   removed. See docs/ADAPTERS.md "Per-directory credential store".
 
+  The account's **identity cache** is written with it, after it, so the tool names
+  the account the directory is authenticated as rather than whichever one first ran
+  there. One case is declined with a stderr warning instead: in shared mode the
+  file holding the cache can be a symlink back to the real tool home, and writing
+  through it would relabel the real home with this directory's account. That
+  directory then keeps displaying the previous account until you log in inside it;
+  its credential is unaffected.
+
   Binding a profile whose account has no captured credential warns and binds the
   rest; `kae pin <tool> <account>` on an uncaptured account fails (exit `7`). A
   tool whose credential store kae cannot bind per directory (codex with

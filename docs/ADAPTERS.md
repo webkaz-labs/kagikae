@@ -54,19 +54,29 @@ Two consequences of the TTL that are easy to misread as an upstream change:
   does not), and `doctor identity_drift` compares only those. A credential is
   still compared byte for byte.
 
-**Auth mode only (known gap).** `kae use` / `kae add` switch the cache; the
-per-directory materializers do not. Isolation modes point `CLAUDE_CONFIG_DIR` at
-a kae-owned directory, where claude keeps its cache at `<dir>/.claude.json`.
-`prepareBond` links the entries *of* `~/.claude`, and `~/.claude.json` is that
-directory's sibling — so `<dir>/.claude.json` is a link back to the real home
-only when `~/.claude/.claude.json` happens to exist, and otherwise a private
-file claude created there. Since `kae pin <tool> <account>` copies the credential
-and not the cache, a bonded or isolated directory keeps whatever account first
-ran in it. Tracked in [ROADMAP.md](ROADMAP.md).
+**Switched in every mode, with one refusal.** `kae use` / `kae add` switch the
+cache, and so do the per-directory materializers (`writeDirIdentity`, alongside
+the credential and only after it succeeds). Isolation modes point
+`CLAUDE_CONFIG_DIR` at a kae-owned directory, where claude keeps its cache at
+`<dir>/.claude.json`, so that is where the bound account's cache is written. A
+snapshot with no recorded identity applies as **absent** — the cache is removed
+and claude refetches it — never left naming the account the bind replaced. Before
+this, `kae pin <tool> <account>` copied the credential and not the cache, so a
+bonded or isolated directory kept whatever account first ran in it: auth was
+correct and the display was not.
 
-When the target *is* a link, the pointer patch resolves it before reading and
-writing, so the shared file is updated rather than forked into a private copy by
-the atomic rename; a link that cannot be resolved is refused (exit 10) instead.
+The refusal is bond mode's shared link. `prepareBond` links the entries *of*
+`~/.claude`, and `~/.claude.json` is that directory's sibling — so
+`<dir>/.claude.json` is a link back to the real home only when
+`~/.claude/.claude.json` happens to exist, and otherwise a private file. When the
+target *is* a link, the pointer patch resolves it before reading and writing, so
+the shared file is updated rather than forked into a private copy by the atomic
+rename (a link that cannot be resolved is refused, exit 10) — which is right for a
+global switch and wrong here: it would relabel the **real** home with one
+directory's account, turning one directory's attribution gap into a global one. So
+a per-directory identity write whose target resolves outside the store is declined
+with a stderr warning; the credential half still lands, because that store is
+private to the directory.
 
 If `CLAUDE_CONFIG_DIR` is already set in the environment, the adapter uses it
 as the live base path — for `.credentials.json`, for `.claude.json`, **and for
@@ -204,8 +214,8 @@ the env var takes precedence; see [DATA-MODEL.md](DATA-MODEL.md)).
 ~/.claude/skills/              ~/.claude/agents/
 ~/.claude/.credentials.json    -> all keys except /claudeAiOauth
 ~/.claude.json                 -> all keys except /oauthAccount (projects,
-                               mcpServers, onboarding, caches). Untouched
-                               entirely by the per-directory materializers.
+                               mcpServers, onboarding, caches). Same in a bound
+                               directory, whose copy is <dir>/.claude.json.
 project/.claude/  project/CLAUDE.md  project/.mcp.json
 MCP / hooks / permissions / trust state / session history / plugins
 ```
@@ -682,7 +692,7 @@ Every isolation mechanism — `kae pin -s`, `kae pin -i`, `kae use -i`,
 directory. For a tool whose credential store is namespaced by that variable
 (claude on macOS, see "Credential storage resolution"), the credential belongs in
 **that directory's own store**, and one helper (`writeDirCredential`) is the only
-thing that writes it, for all four:
+thing that writes it — plus the identity cache that names it — for all four:
 
 - the location comes from the adapter, resolved against an env whose isolation
   variable already points at the bound directory — never recomputed;
@@ -707,7 +717,14 @@ thing that writes it, for all four:
   `KeychainDirBindable`, i.e. the adapter declares that the **identity** of the
   item kae resolves — its service name, its account attribute, or both — moves
   with the isolation env var. Anything else is reported as unisolatable and
-  nothing is written to it.
+  nothing is written to it;
+- the account's **identity-only** artifacts follow, last and only once the
+  credential write has succeeded, so the directory names the account it is
+  authenticated as. The order is not interchangeable: a directory labelled with an
+  account whose credential kae could not put there is worse than an unlabelled one,
+  because the label is what a user checks. Every early exit above skips the identity
+  too, and so does a target that resolves outside the store (bond mode's shared
+  link — see "Identity cache" under claude); that one warns.
 
 That last rule is a hard safety boundary, not a nicety, and the declaration is
 per-adapter with the safe default (`false`). codex is why: `kae pin -s` symlinks

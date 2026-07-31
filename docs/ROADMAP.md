@@ -224,21 +224,25 @@ alternative exists (`secret-tool`).
   and `security`-read coalescing (a per-command keychain cache). Spans every
   OAuth/JWT tool, not just claude. The codex keyring driver (§E) is **split to
   v0.8.2** — see below.
-- **Identity cache in isolation modes**: `kae use` / `kae add` switch claude's
-  `/oauthAccount` identity cache, but the per-directory materializers
-  (`writeDirCredential`, and its callers `prepareBond`, `preparePinConfig`,
-  `prepareGlobalIsolatedHome`) write only the credential. Since
-  `CLAUDE_CONFIG_DIR` moves the cache to `<dir>/.claude.json` and
-  `prepareBond` only links the entries *of* `~/.claude`, a bonded or isolated
-  directory keeps whatever account first ran there, and `kae pin <tool>
-  <account>` does not correct it. Auth is unaffected (the token wins) — it is an
-  attribution gap: the UI can name the wrong account inside a pinned directory.
-  The fix is now one identity step alongside `writeDirCredential`, which all four
-  already route through; the design
-  question is bond mode, where writing the cache is visible to the real home
-  (docs/SCOPE-MODEL.md §6). Until then `doctor`'s `identity_drift` check skips a
-  kae-owned isolated home for the same reason: kae applied no identity there, so
-  there is nothing of its own to compare the live value against.
+- **Identity cache in isolation modes** *(v0.16.0 — see [RELEASE.md](RELEASE.md))*:
+  `kae use` / `kae add` switched claude's `/oauthAccount` identity cache while the
+  per-directory materializers wrote only the credential, so a bonded or isolated
+  directory kept whatever account first ran there and `kae pin <tool> <account>` did
+  not correct it. Auth was unaffected (the token wins) — it was an attribution gap,
+  and the UI naming the wrong account inside a pinned directory is what a user sees.
+  Now one identity step (`writeDirIdentity`) sits alongside `writeDirCredential`,
+  which all four materializers already route through. Bond mode was the open design
+  question and the answer is a refusal: when the target resolves *outside* the store
+  (`<dir>/.claude.json` is a link back to the real home, which happens only when
+  `~/.claude/.claude.json` exists), writing it would relabel the real home, so kae
+  declines that one write and warns.
+  **What is left**: `doctor`'s `identity_drift` still skips a kae-owned isolated
+  home, but for the remaining half of the old reason — `state.Active` names the
+  *global* account while the live cache is the *bound* directory's, so the two sides
+  are different frames. There is now something of kae's own to compare against
+  there; doing it means reading the directory's binding and comparing against that
+  snapshot, which belongs next to `pinCredentialChecks` (it already resolves each
+  bound directory's fragment and store for credential health).
 - **A directory-scoped keychain item keeps a stale account attribute**: `ApplyLive`
   reuses an existing item's account attribute so a re-login that changed it is
   honored, which is right for the single global item but not for a per-directory

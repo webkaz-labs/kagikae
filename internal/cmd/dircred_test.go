@@ -75,6 +75,68 @@ func TestWriteDirCredentialWritesDirScopedKeychainStore(t *testing.T) {
 	}
 }
 
+// A per-directory bind applies the identity cache as well as the credential, so
+// the tool names the account it is actually authenticated as. Without this a bonded
+// or isolated directory kept whichever account first ran there and `kae pin <tool>
+// <account>` could not correct it — auth was right and the display was wrong.
+func TestWriteDirCredentialAppliesIdentityCache(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	credDir := t.TempDir()
+	// The stale cache of whichever account ran here first, alongside a non-auth key
+	// that must survive the patch.
+	writeFile(t, filepath.Join(credDir, ".claude.json"),
+		`{"oauthAccount":{"accountUuid":"side-uuid","emailAddress":"side@example.com"},"projects":{"/repo":{}}}`)
+
+	if err := app.writeDirCredential(context.Background(), testBackend(t, app),
+		constants.ToolClaude, "main", credDir); err != nil {
+		t.Fatalf("writeDirCredential: %v", err)
+	}
+	got := readFile(t, filepath.Join(credDir, ".claude.json"))
+	if !strings.Contains(got, "main-uuid") || strings.Contains(got, "side-uuid") {
+		t.Fatalf("identity cache not switched to the bound account: %s", got)
+	}
+	if !strings.Contains(got, `"/repo"`) {
+		t.Fatalf("only the identity pointer may move; mixed-state key lost: %s", got)
+	}
+}
+
+// In bond mode the store links every entry of the real tool home into itself, so
+// the identity target can be a link back *out* of the store. artifact.ApplyLive
+// follows such a link deliberately — that sharing is what bond mode is for — which
+// here would relabel the real home with this one directory's account. kae declines
+// that single write and warns instead.
+func TestWriteDirCredentialDeclinesIdentityThroughSharedLink(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	credDir := t.TempDir()
+	shared := filepath.Join(app.Env.Home, ".claude", ".claude.json")
+	writeFile(t, shared, `{"oauthAccount":{"accountUuid":"side-uuid"}}`)
+	if err := os.Symlink(shared, filepath.Join(credDir, ".claude.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	var werr error
+	_, stderr := captureStderr(t, func() int {
+		werr = app.writeDirCredential(context.Background(), testBackend(t, app),
+			constants.ToolClaude, "main", credDir)
+		return 0
+	})
+	if werr != nil {
+		t.Fatalf("declining the identity write must not fail the bind: %v", werr)
+	}
+	if !strings.Contains(stderr, "identity cache") {
+		t.Fatalf("declining to write it must be warned about: %q", stderr)
+	}
+	if got := readFile(t, shared); strings.Contains(got, "main-uuid") {
+		t.Fatalf("the real home's identity cache was relabelled: %s", got)
+	}
+	// The credential half is unaffected: that store is private to the directory.
+	if got := readFile(t, filepath.Join(credDir, ".credentials.json")); !strings.Contains(got, mainToken) {
+		t.Fatalf("credential not materialized for the bind: %s", got)
+	}
+}
+
 // A whole-profile bind must not fail over one tool whose credential store cannot
 // be scoped to a directory: the others still bind, and that tool's settings and
 // sessions are still isolated. Only the credential is shared, and the warning

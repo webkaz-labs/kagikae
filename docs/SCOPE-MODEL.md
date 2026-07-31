@@ -184,15 +184,21 @@ trust state stay live-shared. When the target turns out to be a symlink,
 `ApplyLive` resolves it before reading and writing, so the atomic rename lands on
 the linked file instead of forking it into a private copy.
 
-Scope of the fix — **auth mode only**. Isolation modes point
+Scope of the fix — **every mode, with one refusal**. Isolation modes point
 `CLAUDE_CONFIG_DIR` at a kae-owned directory, and the identity cache claude uses
-there is `<dir>/.claude.json`. `prepareBond` links the entries *of* `~/.claude`,
-so that path is a link to the real home only when `~/.claude/.claude.json`
-exists; otherwise claude creates a private one. The per-directory materializers
-copy the credential, not the cache, so a bonded or isolated directory keeps
-whatever account first ran in it, and `kae pin <tool> <account>` does not correct
-it. Auth is unaffected either way (the token wins) — this is an attribution gap,
-tracked in [ROADMAP.md](ROADMAP.md).
+there is `<dir>/.claude.json`, so that is where a per-directory bind writes the
+bound account's cache (`writeDirIdentity`, after the credential).
+
+The refusal is the symlink case, and it is where the symlink-following rule above
+inverts. `prepareBond` links the entries *of* `~/.claude`, so `<dir>/.claude.json`
+is a link to the real home only when `~/.claude/.claude.json` exists; otherwise
+claude creates a private one. Following the link is right for a global switch —
+that is what keeps the mixed-state file shared — and wrong for a per-directory
+bind, where it would relabel the **real** home with one directory's account:
+one directory's attribution gap becomes a global one. So a per-directory identity
+write whose target resolves outside the store is declined with a warning, and that
+directory keeps the gap rather than exporting it. The credential still lands; that
+store is genuinely private.
 
 Consequence to document: where the cache *is* shared with the real home, its
 `/oauthAccount` names whichever account `kae use` applied last. Its self-heal is

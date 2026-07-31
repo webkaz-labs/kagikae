@@ -51,11 +51,18 @@ func (app *App) identityDriftChecks(ctx context.Context, be secret.Backend, tool
 			continue // nothing applied yet: kae has no expected identity to compare
 		}
 		// Inside a kae-owned isolated home (kae pin, kae use -i) this shell's live
-		// state is not what a global switch applied: the per-directory materializers
-		// copy the credential but not the identity (the attribution gap tracked in
-		// docs/ROADMAP.md), and state.Active names the *global* account. Comparing
-		// the two frames would warn on every pinned directory, so skip — doctor must
-		// not cry wolf about a gap that is already documented elsewhere.
+		// state is not what a global switch applied, so the two sides of this
+		// comparison are different frames: the live identity is the *bound*
+		// directory's, and state.Active names the *global* account. Comparing them
+		// would warn on every pinned directory whose binding is not also the global
+		// selection, which is the normal case.
+		//
+		// Note what is no longer a reason: the per-directory materializers do apply
+		// the identity now (writeDirIdentity), so there *is* something of kae's own to
+		// compare against here — it is just not this account's. Doing it properly means
+		// reading the directory's binding and comparing against that snapshot, next to
+		// the bound-directory credential checks that already do exactly that
+		// (docs/ROADMAP.md).
 		if app.toolIsolated(tool) {
 			continue
 		}

@@ -122,10 +122,22 @@ func (app *App) snapshotFreshnessWarning(ctx context.Context, be secret.Backend,
 //     and opencode do not, so for them the deadline is genuinely unknowable and
 //     kae says nothing rather than guessing that the access-token expiry is it.
 //     Reading that zero as "never expires" is the mistake this comment exists for.
+//   - a known format that records no access-token expiry at all (an api-key-only
+//     codex auth.json). That is "no expiry", so nothing here can move it: the
+//     refresh expiry must not be promoted into a deadline the access token does
+//     not have.
 //
-// The deadline is the *later* of the two expiries, not the refresh one: a refresh
-// token that died before the access token it backs leaves the access token still
-// good until its own expiry.
+// The refresh expiry extends the deadline only when a refresh token is actually
+// there. HasRefresh and RefreshExpiresAt are read from the payload independently
+// — claude takes one from `refreshToken` and the other from
+// `refreshTokenExpiresAt` — so a blanked refresh token can sit next to a leftover
+// future expiry, and folding that in ungated made an expired credential with no
+// way to recover read as good for another month. That is the exact false negative
+// this whole file exists to prevent, so the gate is not defensive.
+//
+// Where a refresh token *is* present the deadline is the *later* of the two: one
+// that died before the access token it backs still leaves the access token good
+// until its own expiry.
 func reloginDeadline(info freshness.Info) (time.Time, bool) {
 	if !info.Known || info.Revoked {
 		return time.Time{}, false
@@ -133,12 +145,12 @@ func reloginDeadline(info freshness.Info) (time.Time, bool) {
 	if info.HasRefresh && info.RefreshExpiresAt.IsZero() {
 		return time.Time{}, false
 	}
-	deadline := info.ExpiresAt
-	if info.RefreshExpiresAt.After(deadline) {
-		deadline = info.RefreshExpiresAt
+	if info.ExpiresAt.IsZero() {
+		return time.Time{}, false
 	}
-	if deadline.IsZero() {
-		return time.Time{}, false // a known format that records no expiry at all
+	deadline := info.ExpiresAt
+	if info.HasRefresh && info.RefreshExpiresAt.After(deadline) {
+		deadline = info.RefreshExpiresAt
 	}
 	return deadline, true
 }

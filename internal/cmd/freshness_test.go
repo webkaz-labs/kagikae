@@ -138,6 +138,19 @@ func TestNeedsRelogin(t *testing.T) {
 		// reads as dead.
 		{"access expires exactly now, no refresh", freshness.Info{Known: true, ExpiresAt: now}, true},
 		{"refresh expires exactly now", freshness.Info{Known: true, ExpiresAt: past, HasRefresh: true, RefreshExpiresAt: now}, true},
+		// No refresh token, but a refresh expiry left behind in the payload. claude
+		// reads HasRefresh from `refreshToken` and RefreshExpiresAt from
+		// `refreshTokenExpiresAt` independently, so a blanked token can sit next to a
+		// stale future number — and letting that number extend the deadline made a
+		// dead credential with no recovery path read as good for another month.
+		{"no refresh token, future refresh expiry left over", freshness.Info{
+			Known: true, ExpiresAt: past, RefreshExpiresAt: future,
+		}, true},
+		// The mirror image: no access-token expiry recorded means "no expiry", and a
+		// past refresh expiry must not conjure a deadline the access token never had.
+		{"no access expiry, past refresh expiry left over", freshness.Info{
+			Known: true, RefreshExpiresAt: past,
+		}, false},
 	}
 	for _, c := range cases {
 		if got := needsRelogin(c.info, now); got != c.want {
@@ -434,6 +447,15 @@ func TestReloginDueWithin(t *testing.T) {
 		}, false},
 		{"refresh with no published expiry, access past", freshness.Info{
 			Known: true, ExpiresAt: now.Add(-time.Hour), HasRefresh: true,
+		}, false},
+		// A refresh expiry with no refresh token behind it must not push the deadline
+		// out of the band (which would silence a credential that is already dead) nor
+		// into it when the access token records no expiry at all.
+		{"no refresh token, future refresh expiry left over", freshness.Info{
+			Known: true, ExpiresAt: now.Add(-time.Hour), RefreshExpiresAt: in,
+		}, false},
+		{"no access expiry, refresh expiry left over", freshness.Info{
+			Known: true, RefreshExpiresAt: in,
 		}, false},
 	}
 	for _, c := range cases {

@@ -271,10 +271,50 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	}
 	defer cfgLock.Release()
 
-	// Logical update first (config references + state), then the physical
-	// secret move and snapshot rename. If the process dies mid-rename the old
-	// snapshot is still intact and `kae account rename` is simply re-runnable;
-	// the reverse order could strand config/state on a name whose dir is gone.
+	// A rename is a copy-then-destroy in three stages — build the new snapshot,
+	// flip the logical pointers, destroy the old snapshot — so that every crash
+	// window leaves the pointers on a snapshot that is complete. Do not collapse
+	// it back into one pass. This used to flip `state.Active` *first* and only
+	// then move the payloads, which left state naming a snapshot that did not
+	// exist yet; and moving the flip below a single Get/Set/Delete pass would
+	// trade that for a window nothing reports at all, since the old dir would
+	// keep loading fine while the `SecretRef` its metadata declares was already
+	// deleted from the backend (docs/ROADMAP.md records the whole argument).
+
+	// Stage 1: copy every payload to its new ref and complete the new snapshot
+	// dir. Secret-backend keys cannot be renamed in place, hence a copy; the old
+	// refs stay readable, so nothing is lost if this stage dies part-way.
+	//
+	// supersededRefs collects exactly the old refs whose payload reached the new
+	// name, which is what stage 3 may delete — an artifact captured as absent, or
+	// one whose payload the backend no longer holds, was never copied and must
+	// not be deleted as though it had been.
+	supersededRefs := make([]string, 0, len(acc.Artifacts))
+	for _, name := range acc.ArtifactNames() {
+		art := acc.Artifacts[name]
+		newRef := account.SecretRef(tool, newName, name)
+		if art.Present {
+			payload, ok, err := be.Get(ctx, art.SecretRef)
+			if err != nil {
+				return nil, fmt.Errorf("read secret %s: %w", art.SecretRef, err)
+			}
+			if ok {
+				if err := be.Set(ctx, newRef, payload); err != nil {
+					return nil, fmt.Errorf("write secret %s: %w", newRef, err)
+				}
+				supersededRefs = append(supersededRefs, art.SecretRef)
+			}
+		}
+		art.SecretRef = newRef
+		acc.Artifacts[name] = art
+	}
+	acc.Name = newName
+	if err := account.Save(app.Paths.AccountDir(tool, newName), acc); err != nil {
+		return nil, err
+	}
+
+	// Stage 2: move the logical pointers (config references + state), now that
+	// both names resolve to a complete snapshot and before either is destroyed.
 	if len(profiles) > 0 {
 		if err := app.editConfig(func(e *config.Editor) {
 			for _, name := range profiles {
@@ -298,31 +338,17 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		return nil, err
 	}
 
-	// Secret-backend keys cannot be renamed in place, so copy each payload to
-	// its new ref before deleting the old one, rewriting the metadata refs.
-	for _, name := range acc.ArtifactNames() {
-		art := acc.Artifacts[name]
-		newRef := account.SecretRef(tool, newName, name)
-		if art.Present {
-			payload, ok, err := be.Get(ctx, art.SecretRef)
-			if err != nil {
-				return nil, fmt.Errorf("read secret %s: %w", art.SecretRef, err)
-			}
-			if ok {
-				if err := be.Set(ctx, newRef, payload); err != nil {
-					return nil, fmt.Errorf("write secret %s: %w", newRef, err)
-				}
-				if err := be.Delete(ctx, art.SecretRef); err != nil {
-					return nil, fmt.Errorf("delete old secret %s: %w", art.SecretRef, err)
-				}
-			}
+	// Stage 3: destroy the old copy. Refs first, dir last — deliberately, and not
+	// interchangeable. A crash between them leaves a snapshot dir declaring a ref
+	// the backend no longer has, which `kae doctor` reports for any backend
+	// (secret_missing looks up the refs one snapshot names). The reverse order
+	// would leave backend keys with no snapshot dir, which secret_orphan reports
+	// only on a backend kae can *enumerate* — never on the darwin keychain, where
+	// the leftover would be silent.
+	for _, ref := range supersededRefs {
+		if err := be.Delete(ctx, ref); err != nil {
+			return nil, fmt.Errorf("delete old secret %s: %w", ref, err)
 		}
-		art.SecretRef = newRef
-		acc.Artifacts[name] = art
-	}
-	acc.Name = newName
-	if err := account.Save(app.Paths.AccountDir(tool, newName), acc); err != nil {
-		return nil, err
 	}
 	if err := os.RemoveAll(app.Paths.AccountDir(tool, oldName)); err != nil {
 		return nil, fmt.Errorf("remove old snapshot dir: %w", err)

@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
@@ -181,6 +183,49 @@ func TestAccountRenameUnknownOldExitsNotFound(t *testing.T) {
 	if _, err := buildAccountRename(context.Background(), app, commonOpts{Format: formatText}, "claude", "ghost", "new"); exitOf(err) != constants.ExitNotFound {
 		t.Fatalf("expected exit %d, got %v", constants.ExitNotFound, err)
 	}
+}
+
+// setFailBackend wraps a real backend and refuses every Set of a key naming one
+// account, which is how a test stops `kae account rename` inside its copy stage
+// — the failure a secret backend can genuinely produce there.
+type setFailBackend struct {
+	secret.Backend
+	failFor string
+}
+
+func (b setFailBackend) Set(ctx context.Context, key string, value []byte) error {
+	if strings.Contains(key, b.failFor) {
+		return fmt.Errorf("backend refused %s", key)
+	}
+	return b.Backend.Set(ctx, key, value)
+}
+
+// A rename that dies while copying payloads must leave the old account whole and
+// still active, because the new snapshot is not complete and nothing may point at
+// it. buildAccountRename's three-stage order is what guarantees that: kae flipped
+// state.Active *first* through v0.15.3, which left state naming a snapshot dir
+// that did not exist yet (docs/ROADMAP.md).
+func TestAccountRenameCopyFailureLeavesOldAccountActive(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken) // main active
+	app.backendForTest = setFailBackend{Backend: testBackend(t, app), failFor: "main2"}
+
+	if _, err := buildAccountRename(ctx, app, commonOpts{Format: formatText}, "claude", "main", "main2"); err == nil {
+		t.Fatal("rename reported success even though the secret copy failed")
+	}
+	st, _ := app.loadState()
+	if st.Active["claude"] != "main" {
+		t.Fatalf("active moved off the only complete snapshot: %+v", st.Active)
+	}
+	if _, found, err := account.Load(app.Paths.AccountDir("claude", "main")); err != nil || !found {
+		t.Fatalf("old snapshot dir did not survive: found=%v err=%v", found, err)
+	}
+	// Intact means usable, not merely present: the payload the surviving metadata
+	// declares must still be in the backend, or the account it is active for
+	// cannot be switched to.
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, commonOpts{Format: formatText}, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
 }
 
 func TestAccountRenameRewritesProfileReference(t *testing.T) {

@@ -122,41 +122,30 @@ alternative exists (`secret-tool`).
   worth re-checking whether kae's `keychain.WithReadCache` / per-tool locks are enough
   when a switch overlaps a live session's own refresh.
 
-- **`kae account rename` can strand the active pointer** (recorded 2026-07-31,
-  **not fixed**). `buildAccountRename` updates `state.Active[tool] = newName` inside
-  its state mutation, and only *afterwards* copies the secret payloads and writes
-  the renamed snapshot dir. A failure in between — a secret backend that errors on
-  read/write/delete, a killed process — leaves state naming a snapshot that does not
-  exist yet. `kae account rm` gets this right by clearing the pointer *before*
-  removing anything; rename has the unsafe direction.
-  The fix is to reorder — but **relocating the existing loop is not enough, and doing
-  only that makes the failure worse**. That loop is per-artifact `Get(old)` →
-  `Set(new)` → **`Delete(old)`**, so a crash inside it already destroys old secrets
-  before the new snapshot dir exists. Move the state flip below it and the crash
-  window becomes: `state.Active` still names `oldName`, `oldName`'s dir still loads
-  fine, and its `account.toml` still declares a `SecretRef` that has been deleted
-  from the backend. `active_orphan` would stay silent, and so would everything else —
-  `orphanChecks` only looks the other way (a backend key with no snapshot dir), so
-  nothing in doctor detects a snapshot whose declared secret is gone.
-  So: split the loop into two passes. First copy every payload to its new ref and
-  `account.Save` the new dir; only then delete the old refs and remove the old dir;
-  flip `state.Active` between the two, once the new snapshot is complete. Every
-  crash window is then either "old is intact and active" or "both exist and active
-  is valid" — benign in every case, though not uniformly re-runnable: a crash after
-  the new dir is saved but before the flip leaves both dirs present, so re-running
-  the same command hits the existing "account already exists" guard rather than
-  completing. That is a clear error rather than silent damage, but the implementer
-  should decide whether to make the guard tolerate a half-finished rename (its own
-  new dir, same tool) or to document the manual step. The existing comment defends "logical update
-  first" on the grounds that the reverse "could strand config/state on a name whose
-  dir is gone", but that only applies to an ordering that removes the old dir early;
-  the two-pass shape above strands nothing.
-  Worth pairing with a doctor check for the direction nothing covers — a snapshot
-  declaring a `SecretRef` the backend does not have — since that is the hazard this
-  reorder trades into if it is done carelessly.
-  Left out of the v0.15.3 fix deliberately: that release is about smoke isolation and
-  the doctor check, and reordering a different command's write sequence deserves its
-  own change. `doctor`'s new `active_orphan` reports the state if it happens.
+- ~~**`kae account rename` can strand the active pointer**~~ (recorded 2026-07-31,
+  **fixed** — see [RELEASE.md](RELEASE.md) v0.16.0). `buildAccountRename` used to
+  update `state.Active[tool] = newName` inside its state mutation and only
+  *afterwards* copy the secret payloads and write the renamed snapshot dir, so a
+  failure in between left state naming a snapshot that did not exist yet.
+  It is now three stages — build the new snapshot, flip the logical pointers
+  (config references + state), destroy the old snapshot — and the shape matters
+  more than the reorder. Simply moving the flip below the old single pass would have
+  made the failure *worse*: that pass was per-artifact `Get(old)` → `Set(new)` →
+  **`Delete(old)`**, so the crash window would have become "`state.Active` names
+  `oldName`, whose dir loads fine while the `SecretRef` its `account.toml` declares
+  is already deleted" — a state nothing reported, since `orphanChecks` only looks
+  the other way. So the copy and the delete are separate passes, with the flip
+  between them, and stage 3 deletes the refs *before* removing the dir: that maps
+  its own crash window onto `secret_missing` (added with this fix), which works on
+  every backend, rather than onto `secret_orphan`, which needs an enumerable one and
+  is therefore silent on the darwin keychain.
+  Every crash window is now either "old is intact and active" or "both exist and
+  active is valid". Not uniformly re-runnable, though: a crash after the new dir is
+  saved but before the flip leaves both dirs present, so re-running hits the
+  "account already exists" guard. That guard was deliberately left strict — a
+  half-written rename target is indistinguishable from a genuinely taken name, so
+  tolerating it would mean guessing — and the manual step is documented instead
+  ([CLI.md](CLI.md) § `account rename`).
 
 - **`kae rollback` restores an active pointer without checking its snapshot is still
   there** (recorded 2026-07-31, **not fixed** — the sibling of the entry above). The

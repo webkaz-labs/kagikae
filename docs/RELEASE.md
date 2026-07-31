@@ -25,7 +25,7 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
-# kae v0.16.0 (not released yet — `toolVersion` and the tag are still v0.15.3)
+# kae v0.16.0 (shipped 2026-07-31)
 
 **The bookkeeping, and who a bound directory says it is.** Four write sequences
 that could leave kae's own records naming something that is not there, plus the

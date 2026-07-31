@@ -177,7 +177,7 @@ alternative exists (`secret-tool`).
   names *another* account's ref — reachable by hand-copying an account directory,
   which is a plausible way to try to duplicate an account — therefore has that other
   account's payload deleted by a command that was not asked to touch it. Not a
-  regression from the v0.16.0 two-pass reorder (the single pass did the same, and
+  regression from the v0.16.0 restaging (the single pass did the same, and
   `account rm` shares the flaw), and it needs someone to have edited kae's data dir
   by hand, which is why it is recorded rather than fixed inside a release about
   something else. The fix is a comparison at both delete sites, and it belongs with

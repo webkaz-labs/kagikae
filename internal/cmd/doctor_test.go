@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -109,6 +110,51 @@ func TestDoctorReportsSecretOrphan(t *testing.T) {
 	}
 	if !strings.Contains(msg, "ghost") || !strings.Contains(msg, "kae account rm") {
 		t.Fatalf("orphan message should name the account and kae account rm: %q", msg)
+	}
+}
+
+// The mirror of the orphan check: a snapshot declaring a payload the backend does
+// not have. Applying that account cannot restore the artifact, and nothing
+// reported it before — orphanChecks only looks the other way, and on the darwin
+// keychain it cannot look at all.
+func TestDoctorReportsSecretMissing(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+
+	acc, found, err := account.Load(app.Paths.AccountDir("claude", "main"))
+	if err != nil || !found {
+		t.Fatalf("captured snapshot missing: found=%v err=%v", found, err)
+	}
+	be := testBackend(t, app)
+	// Delete the payload behind the snapshot's own ref, leaving the metadata that
+	// declares it untouched — the state an interrupted rename or an outside writer
+	// leaves behind.
+	ref := acc.Artifacts[credentialArtifactName("claude")].SecretRef
+	if err := be.Delete(ctx, ref); err != nil {
+		t.Fatal(err)
+	}
+
+	report := buildDoctor(ctx, app, "claude", false)
+	msg, ok := findCheck(report, constants.CheckSecretMissing)
+	if !ok {
+		t.Fatalf("expected a secret_missing check, got %+v", report.Checks)
+	}
+	if !strings.Contains(msg, "main") || !strings.Contains(msg, "kae add --no-login") {
+		t.Fatalf("message should name the snapshot and the re-capture remedy: %q", msg)
+	}
+}
+
+// The same check must stay silent on a healthy inventory, or every doctor run on
+// a working machine reports one finding per captured artifact.
+func TestDoctorSilentWhenSnapshotPayloadsPresent(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+
+	report := buildDoctor(ctx, app, "claude", false)
+	if msg, ok := findCheck(report, constants.CheckSecretMissing); ok {
+		t.Fatalf("healthy snapshot reported as missing its payload: %q", msg)
 	}
 }
 

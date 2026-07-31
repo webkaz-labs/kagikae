@@ -295,6 +295,23 @@ if it pointed at `<old>`, and rewrites every `[profiles]` reference from
 exit `10`, an unknown `<old>` with exit `7`, and sanitizes `<new>` with the
 account-name rule. `--dry-run` writes nothing.
 
+The order is three stages, and it is a contract rather than an implementation
+detail, because it is what an interrupted rename leaves behind: **(1)** copy every
+payload to the new refs and complete the new snapshot dir, **(2)** move the
+logical pointers (`[profiles]` references, then `state.json`), **(3)** delete the
+old refs and remove the old snapshot dir. So a rename that dies leaves either the
+old account intact and still pointed at, or both accounts present with the pointer
+on a complete one — never a pointer at a snapshot that does not exist.
+
+The one state that needs a manual step: a crash between stages 1 and 2 leaves
+**both** snapshots present, and re-running the same rename then refuses with exit
+`10` (`<new>` already exists). That refusal is deliberately not relaxed — a
+half-written rename target is indistinguishable from a name that is genuinely
+taken, so tolerating it would mean guessing. Recover by choosing which copy to
+keep: `kae ls` shows both, `kae account rm <tool> <new>` discards the partial copy
+so the rename can be re-run, or `kae account rm <tool> <old>` keeps it and
+`kae use <tool> <new>` moves the pointer.
+
 Both hold the per-tool lock plus the config lock, and edit `config.toml`
 through a comment-preserving writer (comments, field order, and unrelated keys
 survive). Limitation: existing backups are **not** rewritten — a backup's
@@ -772,7 +789,7 @@ Check `status` vocabulary: `ok`, `warn`, `error`, `skipped`.
 Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
 `unsupported`, `file_mode`, `credential_stale`, `credential_expiring`,
-`secret_orphan`,
+`secret_orphan`, `secret_missing`,
 `companion_missing`, `companion_binary`, `companion_drift`,
 `companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`,
 `active_orphan`.
@@ -835,15 +852,16 @@ Credential-health checks (warn-level):
   snapshot by that name exists — so kae cannot say which account is live, and
   `kae status` would display a name that is not there. Offline and backend-free.
   Known ways to get here, not a closed set — the check compares the two records
-  rather than watching for a cause. An interrupted `kae account rename` flips the
-  active pointer before writing the renamed snapshot, so a failure in between leaves
-  the pointer ahead of the data (docs/ROADMAP.md carries the ordering fix;
-  `kae account rm` already clears the pointer first, which is the safe direction).
-  `kae rollback` restores the backup's `active_before` without checking the snapshot
-  is still there, so a backup predating an `account rm`/`rename` names an account
-  that is gone ([DATA-MODEL.md](DATA-MODEL.md) § Backups). And a writer outside kae
-  reaches it too — a test or smoke run that isolated `HOME` but inherited a real
-  `XDG_STATE_HOME` will capture straight into the live state file.
+  rather than watching for a cause. `kae rollback` restores the backup's
+  `active_before` without checking the snapshot is still there, so a backup
+  predating an `account rm`/`rename` names an account that is gone
+  ([DATA-MODEL.md](DATA-MODEL.md) § Backups). A writer outside kae reaches it too: a
+  test or smoke run that isolated `HOME` but inherited a real `XDG_STATE_HOME` will
+  capture straight into the live state file. kae's own account-lifecycle commands no
+  longer do — `kae account rm` clears the pointer before removing anything, and
+  `kae account rename` completes the new snapshot before moving the pointer to it
+  (both above) — but a `state.json` that predates those fixes can still hold the
+  result.
   The same code also fires when `state.json` itself cannot be read, or when the
   active account's snapshot metadata will not parse: nothing else in doctor looks at
   either. Names `kae use <tool> <account>` to settle it. Warn, never error: the
@@ -854,6 +872,16 @@ Credential-health checks (warn-level):
   by design and are never reported. Detected only where the backend can enumerate (file
   `readdir`, Linux `libsecret`); the darwin keychain cannot list by service, so
   the check is silently skipped there (documented gap; docs/SECURITY.md).
+- `secret_missing`: the mirror of `secret_orphan` — a snapshot declares a stored
+  payload (an artifact recorded `present`) that the secret backend does not have,
+  so applying that account cannot restore the artifact. Names the snapshot, the
+  artifact, and `kae add --no-login` to re-capture. Unlike `secret_orphan` it
+  needs no enumeration — it looks up the refs the snapshots themselves name — so
+  it works on the darwin keychain, where it is the only one of the two that
+  reports anything. An artifact captured as **absent** is never reported: there is
+  no payload for it to be missing. A backend that errors on the read is not
+  reported here either; `secret_backend` already reports an unusable store, and
+  blaming every account for one broken backend would bury it.
 
 Bound-directory checks (warn-level, unfiltered like the companion ones — a
 binding is a property of the directory, not of one tool):

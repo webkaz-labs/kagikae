@@ -133,9 +133,15 @@ const (
 	// start matching accounts that are fine for another five days.
 	CheckCredentialExpiring = "credential_expiring"
 	CheckSecretOrphan       = "secret_orphan"
-	CheckCompanionMissing   = "companion_missing" // a bound token knob has no stored secret
-	CheckCompanionBinary    = "companion_binary"  // a bound companion's CLI is not in PATH
-	CheckCompanionDrift     = "companion_drift"   // live git identity differs from the bound one
+	// CheckSecretMissing: the mirror of secret_orphan — a snapshot declares a
+	// stored payload the secret backend does not have, so applying that account
+	// cannot restore the artifact. Its own code because it needs no enumeration:
+	// it looks up the refs one snapshot names, so unlike secret_orphan it works on
+	// the darwin keychain too.
+	CheckSecretMissing    = "secret_missing"
+	CheckCompanionMissing = "companion_missing" // a bound token knob has no stored secret
+	CheckCompanionBinary  = "companion_binary"  // a bound companion's CLI is not in PATH
+	CheckCompanionDrift   = "companion_drift"   // live git identity differs from the bound one
 	// CheckCompanionTokenDrift: the live login a bound token resolves to differs
 	// from the companion's expected_login. opt-in (it needs a network call).
 	CheckCompanionTokenDrift = "companion_token_drift"

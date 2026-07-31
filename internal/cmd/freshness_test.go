@@ -506,8 +506,9 @@ func TestCredentialStateAtBands(t *testing.T) {
 // this switch works today.
 //
 // The credential carries **no refresh token**, which is what makes its access-token
-// expiry the whole deadline (cursor's shape). A refresh-backed one is deliberately
-// silent here; TestRefreshBackedCredentialGetsNoLeadTimeNotice pins that.
+// expiry the whole deadline (cursor's shape). A refresh-backed one is judged the same
+// way, on its login deadline (`refreshTokenExpiresAt`) rather than this access-token
+// expiry; TestRefreshBackedLoginDeadlineInTheBandWarns covers that side.
 func TestSwitchToExpiringSnapshotWarnsWithLeadTime(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()

@@ -820,8 +820,8 @@ Credential-health checks (warn-level):
   wallpaper. Both failure directions have been shipped once and are pinned by tests:
   firing for every account, and firing for none.
 
-  It is also silent where the deadline is **unknowable**, which is a separate case
-  from the shelf-life one above: a tool that stores a refresh token but publishes no
+  It is also silent where the deadline is **unknowable**, a separate case from the
+  no-refresh-token one above: a tool that stores a refresh token but publishes no
   expiry for it (codex, opencode) leaves `refreshTokenExpiresAt` at zero, and zero
   means *unknown*, never "never expires". Guessing the access-token expiry is the
   deadline there would warn every few hours about a perfectly healthy credential.

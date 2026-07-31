@@ -208,9 +208,9 @@ func (app *App) capturedCredentialStates(ctx context.Context, captured []account
 // freshness surface reports. It is the **only** place that decides which of them a
 // credential is in: doctor's two checks, the bound-directory sweep, the switch-time
 // warning and the inventory column all route through it, so none of them can
-// disagree with another about the same credential — the same reason needsRelogin
-// and reloginDueWithin are both defined on one reloginDeadline. Three copies of
-// this branch existed briefly and that is exactly how a boundary drifts.
+// disagree with another about the same credential — the same reason it and
+// needsRelogin are both defined on one reloginDeadline. Three copies of this branch
+// existed briefly and that is exactly how a boundary drifts.
 //
 // It reads the deadline once and compares, rather than asking the two predicates
 // (which would each re-derive it), and takes now as a parameter so one report
@@ -248,10 +248,10 @@ func credentialStateAt(info freshness.Info, now time.Time) credentialState {
 // session without the tool's interactive login, and whether kae can know it.
 //
 // It is the one place that decides where that line falls, so the "is it past?"
-// question (needsRelogin) and the "how long until it is?" question
-// (reloginDueWithin) cannot disagree about it. They once were separate predicates
-// and a credential expiring exactly on the tick read as usable to one and
-// unusable to the other.
+// question (needsRelogin) and the "which band is it in?" question
+// (credentialStateAt) cannot disagree about it. Those were separate predicates once
+// and a credential expiring exactly on the tick read as usable to one and unusable
+// to the other.
 //
 // ok is false in three cases, and all three mean *unknown*, never "never":
 //   - a payload kae cannot parse (Known=false),

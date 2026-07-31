@@ -108,9 +108,15 @@ export GOMODCACHE="$cache_root/gomodcache"
 go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
 """
 
+[tasks.fingerprint]
+description = "Count the upstream literals kae depends on against the installed tools"
+# -count=1 defeats the test cache: a cached pass would report that today's installed
+# tools still agree with the table when it never opened them.
+run = "KAE_FINGERPRINT=1 go test ./internal/adapter/ -run TestUpstreamLiteralFingerprints -count=1 -v"
+
 [tasks.audit]
 description = "Run slower release or scheduled audit checks"
-depends = ["vuln"]
+depends = ["vuln", "fingerprint"]
 
 [tasks.goreleaser-check]
 description = "Validate GoReleaser release configuration"

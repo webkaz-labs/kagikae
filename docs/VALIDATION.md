@@ -1140,19 +1140,31 @@ what every codex row in the table above already does.
   where reading a 266 MB binary belongs. It reads the **newest** installed artifact
   and names the version it read, so an upgrade is what the check sees.
 
-A tool whose artifact is not installed is **reported by name, with the paths that
-were tried, and the audit still fails** unless every absent tool is expected. A
-fingerprint check that passes because it found nothing to check would be worse than
-not having one — that is the failure shape this repo has already shipped twice (a
-conformance guard that never examined codex, a doctor check that skipped silently).
+A tool whose artifact is not where the table says is a **failure naming that exact
+path**, never a skip: a fingerprint run that passes because it found nothing to read
+would report "the assumptions hold" on no evidence at all — the failure shape this
+repo has already shipped twice (a conformance guard that never examined codex, a
+doctor check that returned silently). The version comes from the table, so an
+upgraded tool lands here, and the remedy is what an upgrade calls for anyway:
+re-measure and update both tables. Choosing the newest installed build instead was
+tried and is worse — on one machine it read copilot 1.0.36 while 1.0.61 was the
+installed CLI, and mise's `opencode/1` alias beat `opencode/1.17.4`, each reporting a
+pile of moved counts for a tool that never changed.
 
 ### Re-measuring
 
 ```bash
-# occurrence count, not line count: `grep -c` counts lines even with -o
-grep -oa -- '<literal>' <artifact> | wc -l
-grep -roa -- '<literal>' <artifact-dir> | wc -l   # cursor: many webpack chunks
+# -F: a literal, not a regex. -a: treat the binary as text.
+# `wc -l`, not `grep -c`: -c counts matching *lines* even with -o.
+grep -Foa -- '<literal>' <artifact> | wc -l
+grep -Froa -- '<literal>' <artifact-dir> | wc -l   # cursor: many webpack chunks
 ```
+
+**`-F` is not optional, and leaving it off is how the first version of this table
+shipped a wrong number.** Without it, `auth.json` is a pattern whose `.` matches any
+byte: it counted 12 in opencode 1.17.4, of which 3 were `auth-json`. The literal
+occurs 9 times. The check compares literals, so a regex-inflated count reads as
+upstream drift on a tool that never moved.
 
 | Tool | Artifact | Measured on |
 |---|---|---|
@@ -1190,7 +1202,7 @@ from the path — `agy --version` is the only source, which is why its
 | copilot | `COPILOT_GITHUB_TOKEN` | 21 |
 | opencode | `OPENCODE_AUTH_CONTENT` | 3 |
 | opencode | `XDG_DATA_HOME` | 9 |
-| opencode | `auth.json` | 12 |
+| opencode | `auth.json` | 9 |
 | agy | `go-keyring-base64:` | 1 |
 | agy | `shouldBypassKeyring` | 3 |
 | agy | `falling back to file` | 6 |

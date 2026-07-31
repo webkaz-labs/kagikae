@@ -31,9 +31,11 @@ git diff --check
 `mise run check` is the authoritative gate; it must pass before every commit.
 It runs `lint` (gofumpt + goimports format check, `staticcheck -checks=SA*`,
 curated `golangci-lint`, `shellcheck`), `go test ./...`, `go vet`,
-`go mod verify`, and `go build ./...`. `mise run audit` (govulncheck) and
-`mise run goreleaser-check` are slower release-time checks. Lint tools run via
-`go run <tool>@<pinned version>`; the first run downloads them.
+`go mod verify`, and `go build ./...`. `mise run audit` (govulncheck, plus the
+upstream literal fingerprints — it reads the installed tools' own binaries, so it
+only means anything on a machine that has them) and `mise run goreleaser-check` are
+slower release-time checks. Lint tools run via `go run <tool>@<pinned version>`; the
+first run downloads them.
 
 While editing (this is a Go module — the LSP is `gopls`):
 

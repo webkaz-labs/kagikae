@@ -74,15 +74,15 @@ Follow-up from v0.8.4 (not yet scheduled):
 The post-v0.12.0 audit and its follow-up are finished; the response workflow
 lives in the `upstream-auth-drift` skill
 (`.claude/skills/upstream-auth-drift/`), and the assumptions themselves in
-[VALIDATION.md](VALIDATION.md). Two of the five automation ideas shipped —
-version/date agreement with a doc-parsing test plus a six-month age check, and
-the offline contradiction check for codex's store. The remaining three, in the
-order each pays for itself:
+[VALIDATION.md](VALIDATION.md). Three of the five automation ideas have shipped —
+version/date agreement with a doc-parsing test plus a six-month age check, the
+offline contradiction check for codex's store, and the literal-count fingerprints
+(`mise run audit`, table in [VALIDATION.md](VALIDATION.md) § "Upstream Literal
+Fingerprints"; the stability the idea rested on reproduced — every count identical
+across claude 2.1.218/219/220 while the bundle grew 1.8 MB — and the measuring
+turned up three things the design had wrong, all recorded there). The remaining two,
+in the order each pays for itself:
 
-3. **Literal-count fingerprints**, per tool, wired into `mise run audit`: assert
-   every name kae models still exists in the bundle and is referenced as often.
-   Measured stable across claude 2.1.218/219/220 while the minified identifiers
-   around them churned, which is what makes the count a usable signal.
 4. **The shim harness**, table-driven and gated on the per-tool "does this tool
    shell out to `/usr/bin/security`" answer (claude yes, agy yes, codex **no**,
    cursor unverified). It should diff *the tool's* argv log against *kae's*,

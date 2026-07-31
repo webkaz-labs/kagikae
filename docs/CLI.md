@@ -781,9 +781,15 @@ Credential-health checks (warn-level):
   the credential itself after a failed refresh. Names the tool's own login
   command *and* `kae add --no-login`, in that order: re-capturing first would only
   freeze the dead credential back into the snapshot. Uses the same freshness
-  predicate as the switch-time warning, and inspects only the stored snapshot (no
-  live read, so no extra keychain prompt). An expired snapshot whose refresh token
+  predicate as the switch-time warning. An expired snapshot whose refresh token
   is still usable is not flagged (the tool refreshes it).
+
+  The **account-snapshot** half inspects only stored bytes — no live read, so no
+  extra keychain prompt. The same code also reports the credential of a **bound
+  directory** (see "Bound-directory credentials" below), and that half does read
+  live, because a bound directory does not use a snapshot. Both halves are told
+  apart by the message: the snapshot one names `snapshot "<account>"`, the
+  directory one `bound to <dir>`.
 - `credential_expiring`: the lead-time half of the same question — the snapshot
   still opens a session, but the point where it stops doing so is **less than
   seven days away**. It names the remaining days, the deadline, and
@@ -830,6 +836,38 @@ binding is a property of the directory, not of one tool):
   in the directory it names, and the account snapshots. A directory that was
   simply `kae unpin`-ed is **not** reported: unpin keeps the store on purpose so
   a re-pin restores its sessions and settings.
+
+**Bound-directory credentials** (reported under `credential_stale` /
+`credential_expiring`, also unfiltered): a bound directory holds its **own copy**
+of the credential and the tool refreshes *that copy* in place, so it can die while
+every account snapshot kae has still looks fine. Nothing reported this before — the
+first signal was the tool refusing to start in that directory.
+
+- The remedy is a login **inside** that directory (`cd <dir> && claude /login`).
+  The isolation variable the directory exports is what makes the login land in the
+  store kae bound, so no kae step follows. Deliberately **not** `kae pin`: that
+  re-copies the account snapshot, which may be just as expired, and would report
+  success while changing nothing.
+- Reads live, unlike the snapshot half: up to one store read per bound directory
+  per tool that has a credential kae materializes — claude and codex only, so the
+  fan-out is small. On darwin a claude store read is the same single `security`
+  call `Detect` already makes for the global item.
+- The location comes from the adapter (`dirCredentialSpec`), asked with an
+  environment pointed at that store, and a keychain item is read **only** where the
+  adapter declares it bindable — the same gate the write side uses. Without it, a
+  tool whose item does not move with its isolation variable (codex under the
+  keyring store) would have its *global* login read and reported as the
+  directory's: a healthy global login blamed on an unrelated directory, or a stale
+  one reported once per bound directory.
+- Silent for a directory that is **gone** (`pin_stale` already reports its orphaned
+  store; naming it twice would be one problem reported as two), for one that was
+  `kae unpin`-ed (its store is kept on purpose), and for a store whose tool has
+  never been started in it (no credential there yet).
+- There is deliberately **no** recapture back into the account snapshot. Several
+  directories can bind one account, each refreshing its own token, so no
+  non-arbitrary rule says which of them the single global snapshot should take —
+  and a directory not visited in weeks would overwrite a newer global one. See
+  docs/ROADMAP.md.
 
 Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
 <tool>`):

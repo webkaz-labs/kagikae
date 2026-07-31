@@ -202,8 +202,14 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// bound-directory health: a pinned directory that is gone, or that binds an
 	// account that is. Offline and backend-free; unfiltered, like the companion
 	// checks, because a stale binding is a property of the directory.
+	//
+	// pinCredentialChecks is the other half — the credential *inside* a live
+	// binding, which the snapshot checks above cannot see because a bound directory
+	// does not use a snapshot. It reads the per-directory stores live and needs no
+	// secret backend, so it runs even when the backend is unavailable.
 	if toolFilter == "" {
 		report.Checks = append(report.Checks, app.pinChecks()...)
+		report.Checks = append(report.Checks, app.pinCredentialChecks(ctx)...)
 	}
 
 	// companion binding health (config-level). Companions are not tools, so

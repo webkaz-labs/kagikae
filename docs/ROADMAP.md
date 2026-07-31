@@ -108,6 +108,23 @@ alternative exists (`secret-tool`).
 
 ## Hardening backlog — daily-use robustness
 
+- **`applySnapshot`'s refusals could be raised one step earlier, in
+  `loadPlansWithSnapshots`** (recorded 2026-07-31, deliberately not done). Both
+  refusals — a snapshot missing an artifact today's adapter declares
+  (`!ok && !sp.IdentityOnly`) and `checkPayloadShape` — need only `plan.Specs` and
+  `plan.Meta`, which `loadPlansWithSnapshots` already has, so a profile switch could
+  fail before it takes a backup, runs `recaptureActiveBeforeSwitch`, and applies the
+  first tool of several.
+  Not done because the defect that motivates it is already closed: every refusal is
+  raised before the *first live write* of its own tool, and a multi-tool switch that
+  refuses on tool two restores tool one from the backup it just took. What is left to
+  win is a wasted backup entry, and the cost of winning it is that `applySnapshot`
+  stops being safe to call on its own — it would rely on an unenforced ordering
+  invariant with every caller, and the refusals would no longer sit next to the
+  writes they protect. **Whichever way this is taken, do not copy the tolerance rule
+  into both layers**: two copies of `!ok && !sp.IdentityOnly` is how the identity-only
+  case drifts apart. Move it, or leave it.
+
 - **`run -i` inside a `pin -i` directory keeps a second credential copy**
   (recorded 2026-07-31, deliberately not fixed). The two mechanisms own separate
   stores by design — `isolation/global/<tool>/<account>` for global isolation and
@@ -249,11 +266,27 @@ alternative exists (`secret-tool`).
   items of a *deleted* bound directory are still unreachable — they are named by
   the path that no longer exists — so the store can be removed but its items
   cannot; `kae unpin --purge` before deleting a directory is the way to avoid it.
-- **Pinned directories never refresh their snapshot**: a bound directory's tool
-  refreshes its own token in place, so kae's snapshot for that account ages. Now
-  that kae writes and can read the per-directory store, a recapture path out of a
-  pinned directory is reachable — it was not while kae only wrote a file the tool
-  had stopped reading.
+- **Pinned directories never refresh their snapshot** *(detection shipped; the
+  recapture is deliberately still open)*: a bound directory's tool refreshes its own
+  token in place, so kae's snapshot for that account ages and the directory's own
+  copy ages independently of it.
+  `kae doctor` now **reports** a bound directory whose credential is stale or within
+  the lead time (`credential_stale` / `credential_expiring`, message `bound to
+  <dir>`; see [CLI.md](CLI.md) "Bound-directory credentials"), which is the half
+  with one right answer: the remedy is a login inside that directory.
+  **Recapturing a pin store's token back into the account snapshot is still not
+  done, and not merely unimplemented — it has no non-arbitrary definition yet.**
+  Several directories can bind the same account, each with its own
+  independently-refreshed token, so nothing says which of them the single global
+  snapshot should take; and a directory not opened in weeks holds an *older* token
+  than the global one, so writing it back is a downgrade that
+  `recaptureWouldDowngrade`'s "is it usable" test cannot catch — both tokens are
+  usable, they are just different. Two directions if it is ever wanted: pick the
+  store with the latest deadline (needs every store read on every switch, and is
+  still wrong when two are equally fresh), or make it explicit —
+  `kae add --no-login <tool> <account> --from-dir <dir>` — so the user names the
+  authoritative one. The explicit form is the only one that is honest about the
+  ambiguity.
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the

@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/freshness"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
@@ -234,9 +236,15 @@ type dirStore struct {
 // It walks isolation/<pinID> rather than consulting a record of past bindings,
 // because no such record exists: the mise fragment describes the binding kae is
 // about to replace, not the ones before it. The directory tree is the only
-// history, and it is enough for the operations that need one — every caller is
-// standing *in* the bound directory, so pinID comes from its own cwd and the walk
-// can never reach another directory's stores.
+// history, and it is enough for the operations that need one.
+//
+// pinID is a parameter and not the caller's cwd on purpose. The mutating callers
+// (pin, re-bind, unpin --purge) do stand in the bound directory, so theirs comes
+// from their own cwd; the read-only doctor sweep (pinCredentialChecks) walks every
+// bound directory the breadcrumbs name. That is safe precisely because the walk is
+// scoped by the pinID it is handed — a caller that passed the wrong one would read
+// another directory's stores, so it must never be derived from anything but a
+// breadcrumb or the caller's own cwd.
 // ponytail: a store directory is kept forever (a re-pin restores its sessions), so
 // a stale isolated account's dir is re-probed on every later pin — one extra
 // attributes-only `security` call per such account per pin. Fine at single-digit
@@ -367,4 +375,121 @@ func dirItemExists(ctx context.Context, sp artifact.Spec) (bool, error) {
 		return keychain.ItemExistsForAccount(ctx, sp.Target, sp.KeychainAccount)
 	}
 	return keychain.ItemExists(ctx, sp.Target)
+}
+
+// pinCredentialChecks reports the credential of every bound directory that can no
+// longer open a session there, or is within the lead time of that point.
+//
+// It closes a blind spot that had no signal at all: `credential_stale` reads
+// account snapshots, and a bound directory does not use one. It holds its own copy
+// of the credential, and the tool refreshes *that* copy in place — so a bound
+// directory's login can die while every account snapshot kae has looks fine, and
+// nothing said so until the tool refused to start in that directory.
+//
+// It reads live, unlike the snapshot half: up to one store read per bound
+// directory per tool that has a credential kae materializes (claude and codex
+// only, so the fan-out is small). On darwin a claude store read is one
+// attributes-plus-payload `security` call, the same call Detect already makes for
+// the global item.
+//
+// Deliberately not paired with a recapture into the account snapshot: several
+// directories can bind one account, each refreshing its own token, so there is no
+// non-arbitrary answer to which of them the single global snapshot should take —
+// and a directory not visited in weeks would overwrite a newer global one. Telling
+// the user is the part with one right answer; docs/ROADMAP.md carries the rest.
+func (app *App) pinCredentialChecks(ctx context.Context) []adapter.Check {
+	pins, err := app.pinnedDirs()
+	if err != nil {
+		return nil // pinChecks already reports an unreadable store root; not twice
+	}
+	checks := []adapter.Check{}
+	now := app.Now()
+	for _, pin := range pins {
+		// A directory that is gone is pinChecks' finding (its whole store is
+		// orphaned); the freshness of a credential nothing can reach is moot, and
+		// reporting both would name the same directory twice for one problem.
+		if !dirExists(pin.Dir) {
+			continue
+		}
+		stores, serr := app.dirCredentialStores(pin.PinID)
+		if serr != nil {
+			continue // best-effort, like every other doctor probe
+		}
+		for _, store := range stores {
+			info, ok := app.dirCredentialFreshness(ctx, store)
+			if !ok {
+				continue
+			}
+			switch deadline, soon := reloginDueWithin(info, now, reloginLeadTime); {
+			case needsRelogin(info, now):
+				checks = append(checks, adapter.Check{
+					Tool: store.Tool, Code: constants.CheckCredentialStale,
+					Status: constants.StatusWarn,
+					Message: fmt.Sprintf("the %s credential bound to %s is stale: %s; %s",
+						store.Tool, pin.Dir, staleCredentialReason(info, store.Tool),
+						pinLoginRemedy(store.Tool, pin.Dir)),
+				})
+			case soon:
+				checks = append(checks, adapter.Check{
+					Tool: store.Tool, Code: constants.CheckCredentialExpiring,
+					Status: constants.StatusWarn,
+					Message: fmt.Sprintf("the %s credential bound to %s needs an interactive re-login in %s (%s); %s",
+						store.Tool, pin.Dir, roundDays(deadline.Sub(now)), utcStamp(deadline),
+						pinLoginRemedy(store.Tool, pin.Dir)),
+				})
+			}
+		}
+	}
+	return checks
+}
+
+// pinLoginRemedy names the fix for a bound directory's credential: log in *inside*
+// that directory. The isolation variable the directory exports is what makes the
+// tool write to the store kae bound, so the login lands in the right place with no
+// kae step afterwards.
+//
+// Deliberately not `kae pin` (which would re-copy the account snapshot): that
+// snapshot may be just as expired as this copy, in which case re-binding would
+// report success and change nothing.
+func pinLoginRemedy(tool, dir string) string {
+	if login := loginCommand(tool); login != nil {
+		return fmt.Sprintf("log in inside that directory: cd %s && %s", dir, strings.Join(login, " "))
+	}
+	return fmt.Sprintf("log in again in %s from inside that directory (cd %s)", tool, dir)
+}
+
+// dirCredentialFreshness reads one per-directory store's credential and parses it,
+// reporting ok=false for anything it cannot judge.
+//
+// The location comes from dirCredentialSpec — the adapter's answer for an
+// environment pointed at this store — never from a path or a service name rebuilt
+// here. That is the same rule writeDirCredential and removeDirCredential follow,
+// and breaking it is the defect that made every pinned directory on macOS run the
+// previous account with all offline guards green.
+//
+// The KeychainDirBindable gate mirrors the write gate exactly. Without it, a tool
+// whose item does not move with its isolation variable would have its *global*
+// login read here and reported as this directory's, so a healthy global login
+// would be blamed on a directory it has nothing to do with — and a stale one would
+// be reported once per bound directory.
+func (app *App) dirCredentialFreshness(ctx context.Context, store dirStore) (freshness.Info, bool) {
+	artName := credentialArtifactName(store.Tool)
+	if artName == "" {
+		return freshness.Info{}, false // no credential kae materializes per directory
+	}
+	sp, ok, err := app.dirCredentialSpec(ctx, store.Tool, artName, store.Dir)
+	if err != nil || !ok {
+		return freshness.Info{}, false
+	}
+	if sp.Kind == constants.KindKeychain && !sp.KeychainDirBindable {
+		return freshness.Info{}, false
+	}
+	value, err := artifact.ReadLive(ctx, sp)
+	if err != nil || !value.Present {
+		// Absent is not a finding here: `kae unpin` keeps the store on purpose, and a
+		// bound directory whose tool was never started in it has no credential yet.
+		return freshness.Info{}, false
+	}
+	info := freshnessOf(store.Tool, value.Data)
+	return info, info.Known
 }

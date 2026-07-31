@@ -299,21 +299,33 @@ func reloginDueWithin(info freshness.Info, now time.Time, lead time.Duration) (t
 // (as both messages used to) sends the user to freeze the same dead credential
 // back into the snapshot.
 func staleCredentialDetail(info freshness.Info, tool, accountName string) string {
-	var reason string
-	switch {
-	case info.Revoked:
-		reason = fmt.Sprintf("%s emptied it after a failed token refresh", tool)
-	case info.HasRefresh:
-		reason = fmt.Sprintf("it expired %s and its refresh token expired %s",
-			utcStamp(info.ExpiresAt), utcStamp(info.RefreshExpiresAt))
-	default:
-		reason = fmt.Sprintf("it expired %s and has no refresh token", utcStamp(info.ExpiresAt))
-	}
+	reason := staleCredentialReason(info, tool)
 	capture := fmt.Sprintf("re-capture with: kae add --no-login %s %s", tool, accountName)
 	if login := loginCommand(tool); login != nil {
 		return fmt.Sprintf("%s; log in again with: %s, then %s", reason, strings.Join(login, " "), capture)
 	}
 	return fmt.Sprintf("%s; log in again in %s, then %s", reason, tool, capture)
+}
+
+// staleCredentialReason states why a credential can no longer open a session,
+// without naming a remedy. It is split out because the *reason* is a property of
+// the credential while the remedy is a property of where it lives: an account
+// snapshot is fixed by a login plus a re-capture, and the copy inside a bound
+// directory by a login performed in that directory (pinCredentialChecks). Writing
+// the three-way explanation twice is how the two would drift apart.
+//
+// Callers only reach it for a credential that is actually past its deadline, so
+// the dated branches always have the timestamp they print.
+func staleCredentialReason(info freshness.Info, tool string) string {
+	switch {
+	case info.Revoked:
+		return fmt.Sprintf("%s emptied it after a failed token refresh", tool)
+	case info.HasRefresh:
+		return fmt.Sprintf("it expired %s and its refresh token expired %s",
+			utcStamp(info.ExpiresAt), utcStamp(info.RefreshExpiresAt))
+	default:
+		return fmt.Sprintf("it expired %s and has no refresh token", utcStamp(info.ExpiresAt))
+	}
 }
 
 // expiringCredentialDetail explains that a credential is still good but will need

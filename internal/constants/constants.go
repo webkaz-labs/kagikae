@@ -116,20 +116,26 @@ const (
 
 // Doctor check codes.
 const (
-	CheckBinaryPresent    = "binary_present"
-	CheckAuthPresent      = "auth_present"
-	CheckDriver           = "driver"
-	CheckEnvConflict      = "env_conflict"
-	CheckCredentialStore  = "credential_store"
-	CheckSecretBackend    = "secret_backend"
-	CheckConfigValid      = "config_valid"
-	CheckUnsupported      = "unsupported"
-	CheckFileMode         = "file_mode"
-	CheckCredentialStale  = "credential_stale"
-	CheckSecretOrphan     = "secret_orphan"
-	CheckCompanionMissing = "companion_missing" // a bound token knob has no stored secret
-	CheckCompanionBinary  = "companion_binary"  // a bound companion's CLI is not in PATH
-	CheckCompanionDrift   = "companion_drift"   // live git identity differs from the bound one
+	CheckBinaryPresent   = "binary_present"
+	CheckAuthPresent     = "auth_present"
+	CheckDriver          = "driver"
+	CheckEnvConflict     = "env_conflict"
+	CheckCredentialStore = "credential_store"
+	CheckSecretBackend   = "secret_backend"
+	CheckConfigValid     = "config_valid"
+	CheckUnsupported     = "unsupported"
+	CheckFileMode        = "file_mode"
+	CheckCredentialStale = "credential_stale"
+	// CheckCredentialExpiring: a captured snapshot still works but will need an
+	// interactive re-login within the lead time. Deliberately its own code rather
+	// than a second band of credential_stale: that code means "cannot open a
+	// session", and a consumer filtering on it to find broken accounts must not
+	// start matching accounts that are fine for another five days.
+	CheckCredentialExpiring = "credential_expiring"
+	CheckSecretOrphan       = "secret_orphan"
+	CheckCompanionMissing   = "companion_missing" // a bound token knob has no stored secret
+	CheckCompanionBinary    = "companion_binary"  // a bound companion's CLI is not in PATH
+	CheckCompanionDrift     = "companion_drift"   // live git identity differs from the bound one
 	// CheckCompanionTokenDrift: the live login a bound token resolves to differs
 	// from the companion's expected_login. opt-in (it needs a network call).
 	CheckCompanionTokenDrift = "companion_token_drift"

@@ -153,9 +153,14 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 			Warnings: plan.Warnings,
 		}
 		if beErr == nil {
-			if w, err := app.staleSnapshotWarning(ctx, be, plan.Meta); err == nil && w != "" {
+			if w, stale, err := app.snapshotFreshnessWarning(ctx, be, plan.Meta); err == nil && w != "" {
 				res.Warnings = append(res.Warnings, w)
-				staleTools = append(staleTools, plan.Tool)
+				if stale {
+					// Only a credential that cannot log in at all belongs in the roll-up
+					// line: it says "these tools need a re-login before use", and a
+					// credential with days left does not.
+					staleTools = append(staleTools, plan.Tool)
+				}
 			}
 		}
 		report.Results = append(report.Results, res)

@@ -725,7 +725,8 @@ empty.
 Check `status` vocabulary: `ok`, `warn`, `error`, `skipped`.
 Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
-`unsupported`, `file_mode`, `credential_stale`, `secret_orphan`,
+`unsupported`, `file_mode`, `credential_stale`, `credential_expiring`,
+`secret_orphan`,
 `companion_missing`, `companion_binary`, `companion_drift`,
 `companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`.
 
@@ -739,6 +740,34 @@ Credential-health checks (warn-level):
   predicate as the switch-time warning, and inspects only the stored snapshot (no
   live read, so no extra keychain prompt). An expired snapshot whose refresh token
   is still usable is not flagged (the tool refreshes it).
+- `credential_expiring`: the lead-time half of the same question — the snapshot
+  still opens a session, but the point where it stops doing so is **less than
+  seven days away**. It names the remaining days, the deadline, and
+  `kae add --restore <tool> <account>`: the one command that runs the tool's login
+  flow for *that* account and puts the currently-live login back afterwards, so
+  the account needing attention is refreshed without disturbing the one in use.
+  Mutually exclusive with `credential_stale` by construction — both read one
+  deadline, which is why this is a separate code and not a second band of that
+  one: a consumer filtering on `credential_stale` to find broken accounts must not
+  start matching accounts that are fine for another five days.
+
+  Seven days is a judgement, not a measurement: Claude Code's own three-day
+  warning is enough for the account you are *using* (you see that tool daily),
+  while a kae account that is not active is only shown to you when you run kae.
+  It is deliberately not longer — against a ~30-day refresh-token lifetime, seven
+  days keeps the check silent for about three quarters of a credential's life, so
+  it still reads as "act now" rather than as wallpaper.
+
+  It is silent, by design, wherever the deadline is **unknowable**: a tool that
+  stores a refresh token but publishes no expiry for it (codex, opencode) leaves
+  `refreshTokenExpiresAt` at zero, and zero means *unknown*, never "never
+  expires". Guessing the access-token expiry is the deadline there would warn
+  every few hours about a perfectly healthy credential. It therefore fires today
+  for claude (which publishes the refresh expiry) and for credentials with no
+  refresh token at all (cursor's access-token JWT is the whole deadline).
+  The same lead-time notice is emitted at switch time next to the stale one
+  (stderr, before the write, surviving `--quiet`), but it is **not** counted in
+  the "N tools need a re-login before use" roll-up: that switch works today.
 - `secret_orphan`: a stored secret item **of the account namespace**
   (`<tool>/<account>/<artifact>`) has no matching snapshot dir — names
   `kae account rm`. Backup, companion, and env-profile keys have no snapshot dir

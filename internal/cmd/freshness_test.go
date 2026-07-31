@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -390,5 +391,123 @@ func TestWarnBeforeApplyRollsUpMultipleTools(t *testing.T) {
 	})
 	if strings.Contains(single, "need a re-login before use") {
 		t.Errorf("single-tool switch must not repeat itself: %q", single)
+	}
+}
+
+// The lead-time band: reloginDueWithin must fire only while the deadline is
+// still ahead, and only for a deadline kae can actually know. The load-bearing
+// rows are the two "unknown" ones — a refresh token whose expiry the payload
+// does not publish (codex, opencode), and a not-datable payload — where a zero
+// RefreshExpiresAt read as "never expires" would put every such account
+// permanently in the band or permanently out of it by accident.
+func TestReloginDueWithin(t *testing.T) {
+	now := time.Date(2026, 6, 11, 0, 0, 0, 0, time.UTC)
+	const lead = 7 * 24 * time.Hour
+	in := now.Add(5 * 24 * time.Hour)   // inside the band
+	out := now.Add(30 * 24 * time.Hour) // beyond it
+	edge := now.Add(lead)               // exactly on the boundary
+	cases := []struct {
+		name string
+		info freshness.Info
+		want bool
+	}{
+		{"not datable", freshness.Info{}, false},
+		{"no expiry recorded", freshness.Info{Known: true}, false},
+		{"no refresh, expiring inside the band", freshness.Info{Known: true, ExpiresAt: in}, true},
+		{"no refresh, expiring beyond the band", freshness.Info{Known: true, ExpiresAt: out}, false},
+		{"no refresh, exactly on the boundary", freshness.Info{Known: true, ExpiresAt: edge}, true},
+		{"already past the deadline", freshness.Info{Known: true, ExpiresAt: now.Add(-time.Hour)}, false},
+		{"deadline exactly now", freshness.Info{Known: true, ExpiresAt: now}, false},
+		{"tombstoned", freshness.Info{Known: true, Revoked: true}, false},
+		// The deadline is the refresh token's, not the access token's: an access
+		// token expiring in an hour is the normal state of a healthy credential.
+		{"access expires soon, refresh far away", freshness.Info{
+			Known: true, ExpiresAt: now.Add(time.Hour), HasRefresh: true, RefreshExpiresAt: out,
+		}, false},
+		{"access expired, refresh inside the band", freshness.Info{
+			Known: true, ExpiresAt: now.Add(-time.Hour), HasRefresh: true, RefreshExpiresAt: in,
+		}, true},
+		// A refresh token with no published expiry: unknowable, so silent. Reading
+		// the zero as "far future" or as "expired" would both be inventions.
+		{"refresh with no published expiry, access soon", freshness.Info{
+			Known: true, ExpiresAt: in, HasRefresh: true,
+		}, false},
+		{"refresh with no published expiry, access past", freshness.Info{
+			Known: true, ExpiresAt: now.Add(-time.Hour), HasRefresh: true,
+		}, false},
+	}
+	for _, c := range cases {
+		deadline, got := reloginDueWithin(c.info, now, lead)
+		if got != c.want {
+			t.Errorf("%s: reloginDueWithin ok = %v, want %v", c.name, got, c.want)
+		}
+		if got && deadline.IsZero() {
+			t.Errorf("%s: a reported deadline must carry its timestamp", c.name)
+		}
+	}
+	// The two predicates read one deadline, so they can never both be true.
+	for _, c := range cases {
+		if _, soon := reloginDueWithin(c.info, now, lead); soon && needsRelogin(c.info, now) {
+			t.Errorf("%s: expiring and stale must be mutually exclusive", c.name)
+		}
+	}
+}
+
+// §B lead time: switching to an account whose re-login deadline is days away must
+// say so, name `kae add --restore` (the one command that refreshes it without
+// disturbing the login that is live now), and — unlike the stale warning — must
+// not be counted among the tools that "need a re-login before use", because this
+// switch works today.
+func TestSwitchToExpiringSnapshotWarnsWithLeadTime(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	// Access token long gone, refresh token good for 3 more days (app.Now is
+	// 2026-06-11T01:23:45Z).
+	refreshExp := app.Now().Add(3 * 24 * time.Hour).UnixMilli()
+	seedClaudeOAuth(t, app, fmt.Sprintf(
+		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`, refreshExp,
+	))
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
+	seedClaude(t, app, sideToken, "side-uuid")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "current") })
+	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "current") })
+
+	code, stdout, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "soon") })
+	mustExit(t, constants.ExitOK, code, stdout)
+	if !strings.Contains(stderr, "needs an interactive re-login in 3 day(s)") {
+		t.Errorf("lead-time notice missing or not counting days: %q", stderr)
+	}
+	if !strings.Contains(stderr, "kae add --restore claude soon") {
+		t.Errorf("lead-time notice must name the proactive refresh command: %q", stderr)
+	}
+	if strings.Contains(stderr, "is stale") {
+		t.Errorf("a credential that still works must not be called stale: %q", stderr)
+	}
+	if strings.Contains(stderr, "need a re-login before use") {
+		t.Errorf("an expiring account must stay out of the stale roll-up: %q", stderr)
+	}
+}
+
+// The band has an outer edge: a credential with a month left must stay silent, or
+// the notice is on for most of every credential's life and stops being read.
+func TestSwitchToHealthySnapshotHasNoLeadTimeNotice(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	refreshExp := app.Now().Add(30 * 24 * time.Hour).UnixMilli()
+	seedClaudeOAuth(t, app, fmt.Sprintf(
+		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`, refreshExp,
+	))
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "healthy") })
+	seedClaude(t, app, sideToken, "side-uuid")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "current") })
+	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "current") })
+
+	_, _, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "healthy") })
+	if strings.Contains(stderr, "re-login") {
+		t.Errorf("a credential with a month left must be silent: %q", stderr)
 	}
 }

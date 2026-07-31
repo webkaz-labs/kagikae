@@ -294,15 +294,29 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 				continue
 			}
 			info, err := app.accountFreshness(ctx, be, acc)
-			if err != nil || !needsRelogin(info, app.Now()) {
+			if err != nil {
 				continue
 			}
-			checks = append(checks, adapter.Check{
-				Tool: acc.Tool, Code: constants.CheckCredentialStale,
-				Status: constants.StatusWarn,
-				Message: fmt.Sprintf("snapshot %q is stale: %s",
-					acc.Name, staleCredentialDetail(info, acc.Tool, acc.Name)),
-			})
+			now := app.Now()
+			switch deadline, soon := reloginDueWithin(info, now, reloginLeadTime); {
+			case needsRelogin(info, now):
+				checks = append(checks, adapter.Check{
+					Tool: acc.Tool, Code: constants.CheckCredentialStale,
+					Status: constants.StatusWarn,
+					Message: fmt.Sprintf("snapshot %q is stale: %s",
+						acc.Name, staleCredentialDetail(info, acc.Tool, acc.Name)),
+				})
+			case soon:
+				// Ahead of the deadline, so this is the window in which a re-login is
+				// still a choice rather than an interruption — which is the whole
+				// difference between this check and credential_stale.
+				checks = append(checks, adapter.Check{
+					Tool: acc.Tool, Code: constants.CheckCredentialExpiring,
+					Status: constants.StatusWarn,
+					Message: fmt.Sprintf("snapshot %q %s",
+						acc.Name, expiringCredentialDetail(deadline, now, acc.Tool, acc.Name)),
+				})
+			}
 		}
 	}
 	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)

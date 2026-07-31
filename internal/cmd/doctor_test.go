@@ -206,12 +206,21 @@ func TestCredentialFreshnessMessagesNeverCarryTheToken(t *testing.T) {
 	opts := commonOpts{Format: formatText}
 
 	for _, tc := range []struct {
-		name, oauth string
+		name, oauth, wantCode string
 	}{
-		{"expiring", `{"accessToken":"` + secretToken + `","refreshToken":"` + secretRefresh +
-			`","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`},
-		{"stale", `{"accessToken":"` + secretToken + `","refreshToken":"` + secretRefresh +
-			`","expiresAt":1577836800000,"refreshTokenExpiresAt":1577836800000}`},
+		// No refresh token, so the access-token expiry is the deadline and this really
+		// does classify as expiring. With a refresh token it would read ok, and this
+		// subtest would silently stop covering the path it is named for — which is
+		// exactly what happened once, so wantCode below is asserted rather than assumed.
+		{
+			"expiring", `{"accessToken":"` + secretToken + `","refreshToken":"","expiresAt":%d}`,
+			constants.CheckCredentialExpiring,
+		},
+		{
+			"stale", `{"accessToken":"` + secretToken + `","refreshToken":"` + secretRefresh +
+				`","expiresAt":1577836800000,"refreshTokenExpiresAt":1577836800000}`,
+			constants.CheckCredentialStale,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app := testApp(t, nil)
@@ -221,6 +230,12 @@ func TestCredentialFreshnessMessagesNeverCarryTheToken(t *testing.T) {
 			}
 			seedClaudeOAuth(t, app, payload)
 			captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "canary") })
+
+			// The fixture must actually reach the state this subtest is named for, or
+			// the redaction assertions below prove nothing about that path.
+			if _, ok := findCheck(buildDoctor(ctx, app, "claude", false), tc.wantCode); !ok {
+				t.Fatalf("fixture no longer produces %s; this canary would pass vacuously", tc.wantCode)
+			}
 
 			// The human report and the JSON contract, both streams.
 			for _, format := range []string{formatText, formatJSON} {

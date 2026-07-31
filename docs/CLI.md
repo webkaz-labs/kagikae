@@ -824,13 +824,18 @@ Credential-health checks (warn-level):
   you run kae. It is deliberately not longer — a window covering most of a
   credential's life makes the notice wallpaper.
 
-  It is silent, by design, wherever the deadline is **unknowable**: a tool that
-  stores a refresh token but publishes no expiry for it (codex, opencode) leaves
-  `refreshTokenExpiresAt` at zero, and zero means *unknown*, never "never
-  expires". Guessing the access-token expiry is the deadline there would warn
-  every few hours about a perfectly healthy credential. It therefore fires today
-  for claude (which publishes the refresh expiry) and for credentials with no
-  refresh token at all (cursor's access-token JWT is the whole deadline).
+  It is also silent where the deadline is **unknowable**, which is a separate case
+  from the shelf-life one above: a tool that stores a refresh token but publishes no
+  expiry for it (codex, opencode) leaves `refreshTokenExpiresAt` at zero, and zero
+  means *unknown*, never "never expires". Guessing the access-token expiry is the
+  deadline there would warn every few hours about a perfectly healthy credential.
+
+  So `credential_expiring` fires today **only** for a credential with no refresh
+  token at all — cursor is the live case, where the access-token JWT is the whole
+  deadline (cursor-agent never redeems a refresh token, so nothing renews it). A
+  claude credential, which does carry a refresh token, is the shelf-life case: it
+  reads `ok` however soon that shelf life ends, and `credential_stale` once it is
+  out. Since cursor is macOS-only, this check has nothing to report on Linux today.
   The same lead-time notice is emitted at switch time next to the stale one
   (stderr, before the write, surviving `--quiet`), but it is **not** counted in
   the "N tools need a re-login before use" roll-up: that switch works today.

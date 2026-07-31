@@ -236,11 +236,18 @@ func TestInventoryFreshnessNeverCarriesTheToken(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
+	// No refresh token, so this really classifies as expiring — the state whose
+	// rendering (the day count in the Credential column) is the one being canaried.
+	// A refresh-backed payload would read ok and cover nothing.
 	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"%s","refreshToken":"%s-r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
-		canary, canary, app.Now().Add(2*24*time.Hour).UnixMilli(),
+		`{"accessToken":"%s","refreshToken":"","expiresAt":%d}`,
+		canary, app.Now().Add(2*24*time.Hour).UnixMilli(),
 	))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "canary") })
+	_, probe := captureStdout(t, func() int { return runLs(ctx, app, commonOpts{Format: formatJSON}) })
+	if !strings.Contains(probe, constants.CredentialExpiring) {
+		t.Fatalf("fixture no longer reaches the expiring state; this canary would pass vacuously: %s", probe)
+	}
 
 	for _, format := range []string{formatText, formatJSON} {
 		for name, run := range map[string]func() int{

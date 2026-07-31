@@ -245,3 +245,38 @@ func TestBoundDirectoryCredentialMessageNeverCarriesTheToken(t *testing.T) {
 		}
 	}
 }
+
+// boundStoreDir branches on the fragment's mode, and a two-branch switch with one
+// branch untested is the shape of a guard that checks nothing. Isolated mode puts
+// the store at a per-account path instead of the shared one, so a wrong branch
+// reads a directory that does not exist and the check goes quietly silent — the
+// failure that looks exactly like "no problem found".
+func TestDoctorReportsStaleCredentialInAnIsolatedBoundDirectory(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaudeOAuth(t, app,
+		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":4000000000000}`)
+	if code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") }); code != constants.ExitOK {
+		t.Fatalf("capture claude/main: %s", out)
+	}
+	dir := pinHere(t, app, modeIsolated)
+
+	credFile := filepath.Join(
+		app.Paths.IsolatedConfigDir(paths.PinID(dir), constants.ToolClaude, "main"), ".credentials.json",
+	)
+	if readFile(t, credFile) == "" {
+		t.Fatalf("an isolated pin must materialize a credential at %s", credFile)
+	}
+	writeFile(t, credFile,
+		`{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`)
+
+	msg, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckCredentialStale)
+	if !ok {
+		t.Fatal("an isolated bound directory's dead credential must be reported too")
+	}
+	if !strings.Contains(msg, "bound to "+dir) {
+		t.Fatalf("message must name the bound directory: %q", msg)
+	}
+}

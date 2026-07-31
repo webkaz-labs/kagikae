@@ -25,9 +25,46 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
-# kae v0.15.1 (shipped 2026-07-31)
+# kae v0.15.2 (shipped 2026-07-31)
 
-One fix, found by running v0.15.0 against a real machine an hour after shipping it.
+**v0.15.1 was an over-correction and this reverts it.** One fix, and an apology in
+changelog form.
+
+Baseline: v0.15.1. Contract-stable — no codes, fields or flags change.
+`credential_expiring` starts firing again for the credentials v0.15.1 silenced.
+
+- **The lead-time notice is restored for refresh-backed credentials.** v0.15.0 warned
+  on `refreshTokenExpiresAt`; v0.15.1 stopped, on the theory that it was a rolling
+  shelf life renewed by every refresh. It is not. It is the **login's absolute
+  expiry**: `expiresAt` (the access token, ~8h) rolls forward on every refresh, that
+  one is set when `/login` runs and stays put. Anthropic's own documentation is the
+  giveaway — Claude Code warns `Your login expires in N days · run /login to renew`
+  three days ahead of it, and the operator confirms that warning appears only near the
+  end rather than at every startup, with a real re-login cadence of about a month.
+
+  The measurement that misled me was my own: `relogin_by − captured_at` is the time
+  *left* at capture, not the lifetime. Two snapshots taken a day or two before their
+  deadline, of logins performed a month earlier, read as "1.6 and 2.0 days" and I
+  called that the window. So v0.15.0's original report — two accounts needing
+  attention within hours — was correct, and v0.15.1 removed a true warning.
+
+  The seven-day threshold stands as first shipped: against a month-long login it is
+  silent for most of a credential's life, and Claude Code's own three-day warning
+  covers only the account you are actively using, which is precisely the one kae does
+  not need to tell you about.
+
+Both failure directions are now pinned by tests — firing for every account, and firing
+for none — and `docs/VALIDATION.md` records what the deadline actually is, retracts the
+two-day figure, and says how to re-measure it correctly (only from a credential
+captured immediately after a completed `/login`).
+
+---
+
+# kae v0.15.1 (shipped 2026-07-31) — superseded by v0.15.2
+
+**The reasoning below is wrong and v0.15.2 reverts it**; kept as the record of what
+was shipped. One fix, found by running v0.15.0 against a real machine an hour after
+shipping it.
 
 Baseline: v0.15.0. Contract-stable — no new codes, no field changes, `schema_version`
 stays `1`. `credential_expiring` simply stops firing where it carried no information.

@@ -348,13 +348,11 @@ exit code — see [docs/CLI.md](docs/CLI.md).
   after a failed refresh) and names the tool's login command; `kae doctor` flags
   the same snapshots and orphaned secret items.
 
-  Where a credential's deadline is a real end of life — one with no refresh token
-  behind it — it also warns **seven days ahead**, so a re-login is a choice rather
-  than an interruption, and names `kae add --restore <tool> <account>`: the one
-  command that logs that account in and puts your currently-live login back
-  afterwards. A deadline that comes from a *refresh* token is a shelf life rather
-  than an end of life (each refresh mints a new one), so kae does not anticipate
-  those — it still tells you once one is spent. `kae ls`, `kae accounts` and `kae status` carry the same state in a
+  It also warns **seven days before the login itself expires**, so a re-login is a
+  choice rather than an interruption, and names `kae add --restore <tool> <account>`:
+  the one command that logs that account in and puts your currently-live login back
+  afterwards. Claude Code warns you three days out about the account you are *using*;
+  kae's job is the accounts you are not, which nothing else shows you. `kae ls`, `kae accounts` and `kae status` carry the same state in a
   `Credential` column (`ok`, `3 day(s) left`, `re-login now`, or `-` when the
   deadline is not knowable), so the inventory itself shows what needs attention
   instead of only `kae doctor`.

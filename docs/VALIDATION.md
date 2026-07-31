@@ -1180,11 +1180,12 @@ to `/usr/local/bin` with no per-version directory, so its row cannot name a vers
 from the path — `agy --version` is the only source, which is why its
 `VerifiedVersion()` is the value recorded above.
 
-A row does not have to be a string kae's Go source contains. `partially-authenticated`
-and `exchange_user_api_key` appear nowhere in kae — they anchor cursor assumptions in
-the table above (a switch that leaves a mixed pair, and the only path that mints a new
-access token), and they are what would move if either changed. Do not delete a row for
-not matching a Go literal.
+A row does not have to be a string kae's code compares. `partially-authenticated`
+appears nowhere in kae's source at all, and `exchange_user_api_key` only inside a
+comment (`internal/adapter/cursor/cursor.go`, explaining why cursor cannot refresh).
+Both anchor cursor assumptions in the table above — a switch that leaves a mixed pair,
+and the only path that mints a new access token — and each is what would move if that
+assumption changed. Do not delete a row for not matching a Go literal.
 
 | Tool | Literal | Count |
 |---|---|---|

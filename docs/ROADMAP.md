@@ -128,13 +128,26 @@ alternative exists (`secret-tool`).
   read/write/delete, a killed process — leaves state naming a snapshot that does not
   exist yet. `kae account rm` gets this right by clearing the pointer *before*
   removing anything; rename has the unsafe direction.
-  The fix is to reorder: write the new snapshot dir and copy the secrets first, then
-  flip `state.Active`, then remove the old dir. That window leaves two snapshots and
-  a valid active pointer, which is benign and re-runnable — strictly better than the
-  current one. The existing comment defends "logical update first" on the grounds
-  that the reverse "could strand config/state on a name whose dir is gone", but that
-  only applies to an ordering that also removes the old dir early; create-new →
-  update-state → remove-old strands nothing.
+  The fix is to reorder — but **relocating the existing loop is not enough, and doing
+  only that makes the failure worse**. That loop is per-artifact `Get(old)` →
+  `Set(new)` → **`Delete(old)`**, so a crash inside it already destroys old secrets
+  before the new snapshot dir exists. Move the state flip below it and the crash
+  window becomes: `state.Active` still names `oldName`, `oldName`'s dir still loads
+  fine, and its `account.toml` still declares a `SecretRef` that has been deleted
+  from the backend. `active_orphan` would stay silent, and so would everything else —
+  `orphanChecks` only looks the other way (a backend key with no snapshot dir), so
+  nothing in doctor detects a snapshot whose declared secret is gone.
+  So: split the loop into two passes. First copy every payload to its new ref and
+  `account.Save` the new dir; only then delete the old refs and remove the old dir;
+  flip `state.Active` between the two, once the new snapshot is complete. Every
+  crash window is then either "old is intact and active" or "both exist and active
+  is valid" — benign and re-runnable. The existing comment defends "logical update
+  first" on the grounds that the reverse "could strand config/state on a name whose
+  dir is gone", but that only applies to an ordering that removes the old dir early;
+  the two-pass shape above strands nothing.
+  Worth pairing with a doctor check for the direction nothing covers — a snapshot
+  declaring a `SecretRef` the backend does not have — since that is the hazard this
+  reorder trades into if it is done carelessly.
   Left out of the v0.15.3 fix deliberately: that release is about smoke isolation and
   the doctor check, and reordering a different command's write sequence deserves its
   own change. `doctor`'s new `active_orphan` reports the state if it happens.

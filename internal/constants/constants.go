@@ -1,6 +1,13 @@
 // Package constants holds the JSON contract vocabulary: tool ids, drivers,
 // artifact kinds, status tokens, error codes, and exit codes. Commands and
 // adapters must use these constants instead of inline literals.
+//
+// It also holds the few tables that are not contract vocabulary but have nowhere
+// else to live: two packages need the same answer and cannot import each other, so
+// the shared low layer owns the one copy. PrivateBindItems is the case to compare a
+// new one against — internal/cmd builds a bind's symlink denylist from it while
+// internal/config refuses a user from re-listing any of it, and config cannot import
+// cmd. Do not put anything here that a single package could own.
 package constants
 
 // SchemaVersion is the integer schema version of all stable JSON reports.

@@ -25,6 +25,41 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
+# kae v0.15.1 (shipped 2026-07-31)
+
+One fix, found by running v0.15.0 against a real machine an hour after shipping it.
+
+Baseline: v0.15.0. Contract-stable — no new codes, no field changes, `schema_version`
+stays `1`. `credential_expiring` simply stops firing where it carried no information.
+
+- **`credential_expiring` no longer anticipates a refresh-backed deadline.** The
+  v0.15.0 lead time treated `refreshTokenExpiresAt` as an end of life. It is a
+  **shelf life**: every refresh mints a new refresh token, so the stored number says
+  "this frozen copy stops being able to refresh at T", not "this login dies at T".
+  Measured on the operator's machine: two claude snapshots carried refresh expiries
+  **1.6 and 2.0 days past their own capture**, for logins performed a **month**
+  earlier. Against that, a seven-day window fired from the moment of capture and
+  never stopped — no claude account could ever read `ok`, and the notice said the
+  same thing forever, which is precisely the desensitisation the threshold was
+  chosen to avoid.
+
+  The notice is now scoped to deadlines that really are an end of life: a credential
+  with **no refresh token** behind it, where the access token's own expiry is the
+  whole story (cursor's JWT — cursor-agent never redeems a refresh token). One
+  predicate, no per-tool constants. `credential_stale` is untouched and still reports
+  a spent shelf life at switch time and in doctor, and the `Credential` column now
+  reads `ok` for a refresh-backed credential rather than a permanent `expiring`.
+
+Newly written down rather than fixed: **kae has never actually observed that a spent
+refresh token forces an interactive login.** That is the premise of `credential_stale`
+itself, and it long predates this release. The same measurement makes it worth
+settling, because kae calls a claude snapshot stale considerably more often than the
+operator re-logs in. [VALIDATION.md](VALIDATION.md) carries a real-machine gate for
+it where either outcome is a result, and [ROADMAP.md](ROADMAP.md) the consequence if
+it goes the other way.
+
+---
+
 # kae v0.15.0 (shipped 2026-07-31)
 
 The expiry story had a working *back* half and no *front* half. kae could tell you
@@ -46,12 +81,9 @@ changes. Nothing needs re-capturing.
   account was that it was already dead. Both questions now read one deadline, so
   "has it passed?" and "how long until it does?" cannot disagree about where the
   line is. Seven days is a judgement, not a measurement — three is enough for the
-  tool you look at daily, and against the roughly month-long *effective* lifetime
-  these credentials have in regular use, seven keeps the notice silent for most of a
-  credential's life, so it still reads as "act now". (claude's stored
-  `refreshTokenExpiresAt` is a rolling window each refresh renews, so the raw field
-  is far shorter than the time until a re-login; VALIDATION.md records the
-  condition.) It names `kae add --restore <tool> <account>`, the one command
+  tool you look at daily, while a kae account that is not active is only shown to you
+  when you run kae. **The scoping of this notice was wrong in v0.15.0 and is fixed in
+  v0.15.1** — see below. It names `kae add --restore <tool> <account>`, the one command
   that logs that account in and puts your currently-live login back afterwards,
   which is the whole point of warning before the deadline rather than after it.
   Silent where the deadline is genuinely unknowable: codex and opencode store a

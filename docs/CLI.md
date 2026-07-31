@@ -799,28 +799,45 @@ Credential-health checks (warn-level):
   flow for *that* account and puts the currently-live login back afterwards, so
   the account needing attention is refreshed without disturbing the one in use.
   Mutually exclusive with `credential_stale` by construction — both read one
-  deadline, which is why this is a separate code and not a second band of that
+  deadline through one classifier, which is why this is a separate code and not a second band of that
   one: a consumer filtering on `credential_stale` to find broken accounts must not
   start matching accounts that are fine for another five days.
 
-  Seven days is a judgement, not a measurement: Claude Code's own three-day
-  warning is enough for the account you are *using* (you see that tool daily),
-  while a kae account that is not active is only shown to you when you run kae.
-  It is deliberately not longer — against the roughly month-long *effective*
-  lifetime these credentials have in regular use, seven days keeps the check silent
-  for most of a credential's life, so it still reads as "act now" rather than as
-  wallpaper. Note that claude's stored `refreshTokenExpiresAt` is a **rolling**
-  window every refresh renews (≈2 days on 2.1.220), so the raw field is much shorter
-  than the time until a re-login; docs/VALIDATION.md records the condition this
-  threshold depends on.
+  It fires only where the deadline is a real **end of life**, which in practice means
+  a credential with **no refresh token** behind it — cursor's access-token JWT is the
+  whole story there, since cursor-agent never redeems a refresh token. A deadline
+  that comes *from* a refresh token is a **shelf life, not an end of life**: every
+  refresh mints a new one, so the stored number says "this frozen copy stops being
+  able to refresh at T", not "this login dies at T". Measured on a real machine,
+  claude's refresh expiry sat *well inside* a seven-day window while the login behind
+  it was a month old — so the notice fired from the moment of capture and never
+  stopped, and no claude account could ever read `ok`. Anticipating that quantity
+  carries no information, so kae does not. The figures, and how to re-measure them,
+  live in one place: the claude row of docs/VALIDATION.md § Upstream Behaviour
+  Assumptions.
 
-  It is silent, by design, wherever the deadline is **unknowable**: a tool that
-  stores a refresh token but publishes no expiry for it (codex, opencode) leaves
-  `refreshTokenExpiresAt` at zero, and zero means *unknown*, never "never
-  expires". Guessing the access-token expiry is the deadline there would warn
-  every few hours about a perfectly healthy credential. It therefore fires today
-  for claude (which publishes the refresh expiry) and for credentials with no
-  refresh token at all (cursor's access-token JWT is the whole deadline).
+  What still holds for those credentials is the stale half: once the shelf life is
+  out, applying that snapshot cannot open a session, and `credential_stale` says so
+  at switch time and in doctor exactly as before. Only the anticipation is dropped.
+
+  Seven days, where it does apply, is a judgement rather than a measurement: Claude
+  Code's own three-day warning is enough for the account you are *using* (you see
+  that tool daily), while a kae account that is not active is only shown to you when
+  you run kae. It is deliberately not longer — a window covering most of a
+  credential's life makes the notice wallpaper.
+
+  It is also silent where the deadline is **unknowable**, which is a separate case
+  from the shelf-life one above: a tool that stores a refresh token but publishes no
+  expiry for it (codex, opencode) leaves `refreshTokenExpiresAt` at zero, and zero
+  means *unknown*, never "never expires". Guessing the access-token expiry is the
+  deadline there would warn every few hours about a perfectly healthy credential.
+
+  So `credential_expiring` fires today **only** for a credential with no refresh
+  token at all — cursor is the live case, where the access-token JWT is the whole
+  deadline (cursor-agent never redeems a refresh token, so nothing renews it). A
+  claude credential, which does carry a refresh token, is the shelf-life case: it
+  reads `ok` however soon that shelf life ends, and `credential_stale` once it is
+  out. Since cursor is macOS-only, this check has nothing to report on Linux today.
   The same lead-time notice is emitted at switch time next to the stale one
   (stderr, before the write, surviving `--quiet`), but it is **not** counted in
   the "N tools need a re-login before use" roll-up: that switch works today.

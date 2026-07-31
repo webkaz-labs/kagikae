@@ -80,7 +80,8 @@ func (app *App) accountFreshness(ctx context.Context, be secret.Backend, acc acc
 
 // reloginLeadTime is how far ahead of the deadline kae reports that a credential
 // will need an interactive re-login (doctor's credential_expiring, and the
-// switch-time notice).
+// switch-time notice). It applies only where that deadline is a real end of life —
+// see leadTimeApplies.
 //
 // Seven days, and the number is a judgement rather than a constant kae measured.
 // Claude Code warns at three, which is enough for the account you are *using* —
@@ -90,20 +91,9 @@ func (app *App) accountFreshness(ctx context.Context, be secret.Backend, acc acc
 // unseen. One week is the shortest horizon that still contains a working day for
 // anyone who does not run kae daily.
 //
-// It is deliberately not longer. Against the roughly month-long effective lifetime
-// these credentials have in regular use, seven days keeps the notice silent for
-// most of a credential's life, so when it does appear it reads as "act now" — the
-// same reasoning that keeps cursor out of upstream_version and puts the
-// assumption-age threshold at six months. A two-week window would warn for half of
-// every credential's life, which is how a warning becomes wallpaper.
-//
-// "Effective" is the load-bearing word, and it is the one thing here that an
-// upstream change could invalidate. claude's `refreshTokenExpiresAt` is a *rolling*
-// window that every refresh renews — measured at ≈2 days on 2.1.220 — so the raw
-// number is far shorter than the time until a re-login. If a release ever made that
-// window short *and* non-renewing, this notice would be permanently lit for every
-// claude account, which is worse than not having it. docs/VALIDATION.md's claude
-// assumption row carries that condition and how to re-measure it.
+// It is deliberately not longer: a window that covers most of a credential's life
+// makes the notice wallpaper, which is the same reasoning that keeps cursor out of
+// upstream_version and puts the assumption-age threshold at six months.
 const reloginLeadTime = 7 * 24 * time.Hour
 
 // snapshotFreshnessWarning returns the switch-time warning acc's snapshot
@@ -208,6 +198,53 @@ func (app *App) capturedCredentialStates(ctx context.Context, captured []account
 	return app.credentialStates(ctx, be, captured)
 }
 
+// leadTimeApplies reports whether a lead-time notice about info's deadline would
+// mean anything.
+//
+// It would not, when the deadline comes from a refresh token, because such a
+// deadline is a **shelf life and not an end of life**. Every refresh mints a new
+// refresh token with a new expiry, so the stored number says "this frozen copy
+// stops being able to refresh at T" — not "this login dies at T". The account
+// behind it can be, and usually is, months older than any of them.
+//
+// Measured on a real machine: claude's published refresh expiry sat *well inside*
+// the seven-day window while the login behind it was a month old, so the notice
+// fired from the moment of capture and never stopped — no claude account could ever
+// read "ok", and it carried no information at all. Narrowing the window would only
+// trade one bad duty cycle for a smaller one, because the quantity itself is the
+// wrong one to warn ahead of. The current figures and how to re-measure them live in
+// one place, the claude row of docs/VALIDATION.md § Upstream Behaviour Assumptions;
+// restating them here is how a stale number outlives its measurement.
+//
+// What still holds for those credentials is the *stale* half: once the shelf life
+// is out, applying that snapshot cannot open a session and kae says so, at switch
+// time and in doctor, exactly as before. Only the anticipation is dropped.
+//
+// So the notice is left to the credentials whose deadline really is an end of life:
+// one with no refresh token behind it at all, where the access token's own expiry
+// is the whole story (cursor's JWT — cursor-agent never redeems a refresh token,
+// docs/ADAPTERS.md). A credential with a refresh token but no published expiry for
+// it already produced no deadline at all.
+//
+// The predicate reads `!HasRefresh` rather than asking the adapter, and that carries
+// an assumption worth naming: **any** tool that publishes a refresh expiry is taken
+// to renew it. Only claude publishes one today, and only claude's renewal is
+// measured. A future adapter that published a non-renewing refresh expiry would be
+// silenced here without anyone having checked — note the direction, though: the
+// failure is *under*-warning, never the permanent over-warning this fix removed, so
+// the default is the safe one. If such a tool ever appears, measure it and give
+// freshness.Info a per-adapter field for it, the way Revoked is decided in the
+// adapter rather than inferred here.
+//
+// ⚠ Whether an expired *frozen* refresh token truly forces an interactive login is
+// an assumption kae has relied on since long before this notice existed (it is what
+// credential_stale means), and it cannot be checked offline. It is recorded as a
+// real-machine gate in docs/VALIDATION.md; if it turns out claude recovers without
+// one, the stale half needs revisiting too, not just this.
+func leadTimeApplies(info freshness.Info) bool {
+	return !info.HasRefresh
+}
+
 // credentialStateAt classifies one freshness reading into the three states every
 // freshness surface reports. It is the **only** place that decides which of them a
 // credential is in: doctor's two checks, the bound-directory sweep, the switch-time
@@ -241,7 +278,7 @@ func credentialStateAt(info freshness.Info, now time.Time) credentialState {
 	switch {
 	case !deadline.After(now):
 		return credentialState{State: constants.CredentialStale, ReloginBy: deadline}
-	case !deadline.After(now.Add(reloginLeadTime)):
+	case leadTimeApplies(info) && !deadline.After(now.Add(reloginLeadTime)):
 		return credentialState{State: constants.CredentialExpiring, ReloginBy: deadline}
 	default:
 		return credentialState{State: constants.CredentialOK, ReloginBy: deadline}

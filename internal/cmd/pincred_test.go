@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,6 +20,16 @@ import (
 // to exactly this state, and six copies of one payload is six chances for one to
 // drift into meaning something else.
 const deadClaudeCred = `{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`
+
+// endOfLifeClaudeCred is the oauth object of a claude credential whose deadline is a
+// real end of life: no refresh token, so the access-token expiry is the whole story
+// and it is the only shape credential_expiring anticipates (leadTimeApplies). Six
+// tests across five files build it with different tokens and horizons, which is one
+// shape in six places — the same reason deadClaudeCred exists.
+func endOfLifeClaudeCred(now time.Time, in time.Duration, token string) string {
+	return fmt.Sprintf(`{"accessToken":%q,"refreshToken":"","expiresAt":%d}`,
+		token, now.Add(in).UnixMilli())
+}
 
 // pinWithCapturedClaude captures a healthy claude/main, binds a temp directory to
 // it, and returns the bound directory plus the path of the credential copy that
@@ -94,8 +105,7 @@ func TestDoctorReportsExpiringBoundDirectoryCredential(t *testing.T) {
 	ctx := context.Background()
 	dir, credFile := pinWithCapturedClaude(t, app)
 
-	writeFile(t, credFile, `{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,`+
-		`"refreshTokenExpiresAt":`+strconv.FormatInt(app.Now().Add(5*24*time.Hour).UnixMilli(), 10)+`}}`)
+	writeFile(t, credFile, `{"claudeAiOauth":`+endOfLifeClaudeCred(app.Now(), 5*24*time.Hour, "a")+`}`)
 
 	report := buildDoctor(ctx, app, "", false)
 	msg, ok := findCheck(report, constants.CheckCredentialExpiring)

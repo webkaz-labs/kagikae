@@ -113,14 +113,13 @@ func TestInventoryCommandsReportCredentialFreshness(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	// dying: past its deadline. soon: 3 days left. healthy: a month left.
+	// dying: past its deadline (refresh-backed, shelf life spent). soon: 3 days left
+	// with no refresh token, so its access expiry is a real end of life and earns the
+	// lead-time band. healthy: refresh-backed with a month of shelf life -> ok.
 	seedClaudeOAuth(t, app,
 		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}`)
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "dying") })
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
-		app.Now().Add(3*24*time.Hour).UnixMilli(),
-	))
+	seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), 3*24*time.Hour, "a"))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
 	seedClaudeOAuth(t, app, fmt.Sprintf(
 		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
@@ -234,11 +233,21 @@ func TestInventoryFreshnessNeverCarriesTheToken(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"%s","refreshToken":"%s-r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
-		canary, canary, app.Now().Add(2*24*time.Hour).UnixMilli(),
-	))
+	// No refresh token, so this really classifies as expiring — the state whose
+	// rendering (the day count in the Credential column) is the one being canaried.
+	// A refresh-backed payload would read ok and cover nothing.
+	seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), 2*24*time.Hour, canary))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "canary") })
+	_, probe := captureStdout(t, func() int { return runLs(ctx, app, commonOpts{Format: formatJSON}) })
+	var probed lsReport
+	if err := json.Unmarshal([]byte(probe), &probed); err != nil {
+		t.Fatalf("invalid ls JSON: %v: %s", err, probe)
+	}
+	// Matched on the row's own field, not as a substring of the whole document: the
+	// token would also match a future field or an account named for it.
+	if len(probed.Accounts) != 1 || probed.Accounts[0].Credential != constants.CredentialExpiring {
+		t.Fatalf("fixture no longer reaches the expiring state; this canary would pass vacuously: %s", probe)
+	}
 
 	for _, format := range []string{formatText, formatJSON} {
 		for name, run := range map[string]func() int{

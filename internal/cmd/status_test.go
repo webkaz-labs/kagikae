@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -208,10 +207,7 @@ func TestStatusReportsActiveAccountCredentialFreshness(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
-		app.Now().Add(2*24*time.Hour).UnixMilli(),
-	))
+	seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), 2*24*time.Hour, "a"))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
 	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "soon") })
 

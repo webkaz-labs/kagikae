@@ -295,11 +295,34 @@ if it pointed at `<old>`, and rewrites every `[profiles]` reference from
 exit `10`, an unknown `<old>` with exit `7`, and sanitizes `<new>` with the
 account-name rule. `--dry-run` writes nothing.
 
+The order is three stages, and it is a contract rather than an implementation
+detail, because it is what an interrupted rename leaves behind: **(1)** copy every
+payload to the new refs and complete the new snapshot dir, **(2)** move the
+logical pointers (`[profiles]` references, then `state.json`), **(3)** delete the
+old refs and remove the old snapshot dir. So a rename that dies leaves either the
+old account intact and still pointed at, or both accounts present with the pointer
+on a complete one — never a pointer at a snapshot that does not exist.
+
+The one state that needs a manual step: a crash between stages 1 and 2 leaves
+**both** snapshots present, and re-running the same rename then refuses with exit
+`10` (`<new>` already exists). That refusal is deliberately not relaxed — a
+half-written rename target is indistinguishable from a name that is genuinely
+taken, so tolerating it would mean guessing. Recover by choosing which copy to
+keep — `kae ls` shows both:
+
+- **discard the new one** and re-run the rename: `kae account rm <tool> <new>`.
+  `<new>` is not active in this window (the flip had not happened), so this needs
+  no `--force`, and it removes only the copies stage 1 made.
+- **keep the new one**: `kae use <tool> <new>` **first**, then
+  `kae account rm <tool> <old>`. The order matters — until the pointer moves,
+  `<old>` is still the active account and `kae account rm` refuses it with exit
+  `10` unless you pass `--force`.
+
 Both hold the per-tool lock plus the config lock, and edit `config.toml`
 through a comment-preserving writer (comments, field order, and unrelated keys
-survive). Limitation: existing backups are **not** rewritten — a backup's
-`Meta.ActiveBefore` keeps the old account name (see
-[DATA-MODEL.md](DATA-MODEL.md)).
+survive). Existing backups are **not** rewritten — a backup's `Meta.ActiveBefore`
+keeps the old account name, and `kae rollback` re-checks it rather than trusting it
+(see [DATA-MODEL.md](DATA-MODEL.md) § Backups).
 
 ## kae profile Semantics
 
@@ -355,11 +378,13 @@ from the account snapshots.
 
 - **`-s` / `--shared`** (default): the fragment points each tool at a
   per-directory shared home (`isolation/<pin-id>/<tool>/shared/`): every
-  real-home file except the hard-coded auth artifacts (`.credentials.json`,
-  `auth.json`) is symlinked in; the account's credential is written privately
-  (same rule as `-i` below).
-  Settings, sessions, and memory are shared with the real home while
-  authentication is private to the directory. The bound account is recorded in
+  real-home file except the hard-coded denylist (`.credentials.json` and
+  `.claude.json` for claude, `auth.json` for codex) is symlinked in; the account's
+  credential and identity are written privately (same rule as `-i` below). A
+  symlink left by an earlier bind for an entry that is now denied is retracted, so
+  the denylist governs existing bound directories and not only new ones.
+  Settings, sessions, and memory are shared with the real home while who the
+  directory is logged in as is private to it. The bound account is recorded in
   the fragment so `kae status` and the profile match survive re-entry. See
   docs/ADAPTERS.md for the per-tool denylist and `shared_denylist_extra`.
 - **`-i` / `--isolated`**: the fragment points `CLAUDE_CONFIG_DIR` / `CODEX_HOME`
@@ -376,6 +401,19 @@ from the account snapshots.
   platform where the tool namespaces a keychain item by the config dir (claude on
   macOS) — that directory's keychain item, with any superseded plaintext copy
   removed. See docs/ADAPTERS.md "Per-directory credential store".
+
+  The account's **identity cache** is written with it, after it, so the tool names
+  the account the directory is authenticated as rather than whichever one first ran
+  there. For claude that cache lives in the mixed-state `.claude.json`, which is
+  therefore **private** to a bound directory rather than shared — a directory cannot
+  both name its own account and live-share the file recording which account it is.
+  If you set `CLAUDE_CONFIG_DIR` yourself, that file used to be shared into a bond
+  dir and is not any more, so `projects`, `mcpServers` and project trust start from
+  claude's defaults there (sessions are unaffected; they live in `projects/` and are
+  still shared). A write that would land outside the directory's own store is
+  declined with a stderr warning instead, leaving the credential in place. So is one
+  that fails for any other reason — an identity is a label the tool can rebuild, and
+  a bind must not be abandoned half-done over it.
 
   Binding a profile whose account has no captured credential warns and binds the
   rest; `kae pin <tool> <account>` on an uncaptured account fails (exit `7`). A
@@ -772,7 +810,7 @@ Check `status` vocabulary: `ok`, `warn`, `error`, `skipped`.
 Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
 `unsupported`, `file_mode`, `credential_stale`, `credential_expiring`,
-`secret_orphan`,
+`secret_orphan`, `secret_missing`,
 `companion_missing`, `companion_binary`, `companion_drift`,
 `companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`,
 `active_orphan`.
@@ -835,15 +873,14 @@ Credential-health checks (warn-level):
   snapshot by that name exists — so kae cannot say which account is live, and
   `kae status` would display a name that is not there. Offline and backend-free.
   Known ways to get here, not a closed set — the check compares the two records
-  rather than watching for a cause. An interrupted `kae account rename` flips the
-  active pointer before writing the renamed snapshot, so a failure in between leaves
-  the pointer ahead of the data (docs/ROADMAP.md carries the ordering fix;
-  `kae account rm` already clears the pointer first, which is the safe direction).
-  `kae rollback` restores the backup's `active_before` without checking the snapshot
-  is still there, so a backup predating an `account rm`/`rename` names an account
-  that is gone ([DATA-MODEL.md](DATA-MODEL.md) § Backups). And a writer outside kae
-  reaches it too — a test or smoke run that isolated `HOME` but inherited a real
-  `XDG_STATE_HOME` will capture straight into the live state file.
+  rather than watching for a cause. A writer outside kae reaches it: a test or smoke
+  run that isolated `HOME` but inherited a real `XDG_STATE_HOME` will capture
+  straight into the live state file. kae's own commands no longer do — `kae account
+  rm` clears the pointer before removing anything, `kae account rename` completes
+  the new snapshot before moving the pointer to it, and `kae rollback` restores a
+  backup's `active_before` only when its snapshot is still captured (all three
+  above) — but a `state.json` written before those fixes can still hold the result,
+  which is why the check compares records rather than trusting the writers.
   The same code also fires when `state.json` itself cannot be read, or when the
   active account's snapshot metadata will not parse: nothing else in doctor looks at
   either. Names `kae use <tool> <account>` to settle it. Warn, never error: the
@@ -854,6 +891,16 @@ Credential-health checks (warn-level):
   by design and are never reported. Detected only where the backend can enumerate (file
   `readdir`, Linux `libsecret`); the darwin keychain cannot list by service, so
   the check is silently skipped there (documented gap; docs/SECURITY.md).
+- `secret_missing`: the mirror of `secret_orphan` — a snapshot declares a stored
+  payload (an artifact recorded `present`) that the secret backend does not have,
+  so applying that account cannot restore the artifact. Names the snapshot, the
+  artifact, and `kae add --no-login` to re-capture. Unlike `secret_orphan` it
+  needs no enumeration — it looks up the refs the snapshots themselves name — so
+  it works on the darwin keychain, where it is the only one of the two that
+  reports anything. An artifact captured as **absent** is never reported: there is
+  no payload for it to be missing. A backend that errors on the read is not
+  reported here either; `secret_backend` already reports an unusable store, and
+  blaming every account for one broken backend would bury it.
 
 Bound-directory checks (warn-level, unfiltered like the companion ones — a
 binding is a property of the directory, not of one tool):
@@ -1077,6 +1124,18 @@ restores in `kae run -s` and `kae add --restore`, whose child process is the usu
 reason the store moved in the first place. A backup that recorded **no** credential
 is never redirected: kae leaves the moved-to store alone rather than delete a
 credential it has no copy of, and warns on stderr that the restore was partial.
+
+The **active-account pointer** is restored only when its snapshot is still
+captured. A backup's `active_before` keeps the name it had at capture time, so a
+rollback across a `kae account rm`/`rename` would otherwise record an account that
+no longer exists — `kae status` naming a phantom and the next `kae use <tool>`
+failing with `account <tool>/<name> is not captured yet`. kae drops the entry for
+that tool instead (the same "no active account" state `kae account rm` leaves) and
+warns on stderr, naming the account it could not restore. Never fatal and never a
+non-zero exit: the credentials are already rolled back, and what was lost is a
+label. Existing backups are **not** rewritten when an account is removed or renamed
+(see [DATA-MODEL.md](DATA-MODEL.md) § Backups) — the guard is at the restore, so a
+backup stays the record of what was true when it was taken.
 
 ### `kae env list --json`
 

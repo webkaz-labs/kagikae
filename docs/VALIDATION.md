@@ -385,6 +385,16 @@ printf 'eA==\n' > "$XDG_DATA_HOME/kagikae/secrets/claude/ghost/claude_ai_oauth.s
 mkdir -p "$XDG_DATA_HOME/kagikae/secrets/claude/ghost" 2>/dev/null
 /tmp/kae doctor claude --json
 #   assert: a check {code:"secret_orphan", status:"warn"} for claude/ghost (names kae account rm)
+# the mirror direction (v0.16.0): a snapshot whose declared payload is gone —
+# delete the secret, leave the metadata that names it. Unlike secret_orphan this
+# needs no enumeration, so it is the one of the two that also fires on the darwin
+# keychain. A throwaway account, so the ones the blocks above rely on stay intact.
+printf '{"claudeAiOauth":{"accessToken":"tok-zeta"}}' > "$HOME/.claude/.credentials.json"
+/tmp/kae add --no-login claude zeta
+rm "$XDG_DATA_HOME/kagikae/secrets/claude/zeta/claude_ai_oauth.secret"
+/tmp/kae doctor claude --json
+#   assert: a check {code:"secret_missing", status:"warn"} naming snapshot "zeta",
+#          the artifact, and `kae add --no-login` — and no secret value anywhere in it
 ```
 
 §C `security`-read coalescing is asserted by unit tests
@@ -543,7 +553,10 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
 
 - [ ] `kae add codex` (no name) on a live keyring login captures under the
       detected account (the `id_token` email / `account_id`), and `account.toml`
-      records the derived `keychain_account` (`cli|` + 16 hex), not the payload.
+      holds no payload — nor a keychain account, which it deliberately no longer
+      records (v0.16.0; [DATA-MODEL.md](DATA-MODEL.md)). The derived item account
+      (`cli|` + 16 hex) is observable on the item itself:
+      `security find-generic-password -s "Codex Auth"`, attributes only.
 - [ ] Log in as a second account; `kae add codex` it.
 - [ ] `kae use codex <first>`: a fresh-process `codex login status` (or a
       `codex` run) reports logged in as the first account — the verbatim keyring

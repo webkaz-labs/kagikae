@@ -295,8 +295,21 @@ func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapte
 
 // credentialHealthChecks surfaces credential staleness the switch path only
 // warns about inline (docs/RELEASE.md §D): expired snapshots reusing §B's
-// predicate, plus orphaned secret items where the backend can enumerate.
+// predicate, plus the two directions in which a snapshot and the secret backend
+// can disagree — a payload the snapshot declares and the backend lacks
+// (secretMissingChecks), and a stored key with no snapshot dir behind it
+// (orphanChecks, only where the backend can enumerate).
+//
+// The two snapshot-reading halves are given a coalescing view of the backend,
+// because they read the same payloads: accountFreshness reads each datable account's
+// credential to date it, and secretMissingChecks reads it again to ask whether it is
+// there at all. On darwin every such read is a `security` subprocess, so without the
+// cache adding the second check doubled them. orphanChecks keeps the **raw** backend
+// on purpose — secret.Cached does not forward the Enumerator capability, and passing
+// the wrapper would silently switch orphan detection off wherever it still works.
 func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, toolFilter string) []adapter.Check {
+	ctx = secret.WithReadCache(ctx)
+	cached := secret.Cached(be)
 	checks := []adapter.Check{}
 	accounts, err := account.List(app.Paths.AccountsDir())
 	if err == nil {
@@ -304,7 +317,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 			if toolFilter != "" && acc.Tool != toolFilter {
 				continue
 			}
-			info, err := app.accountFreshness(ctx, be, acc)
+			info, err := app.accountFreshness(ctx, cached, acc)
 			if err != nil {
 				continue
 			}
@@ -331,6 +344,7 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 			}
 		}
 	}
+	checks = append(checks, app.secretMissingChecks(ctx, cached, toolFilter)...)
 	return append(checks, app.orphanChecks(ctx, be, toolFilter)...)
 }
 
@@ -437,6 +451,62 @@ func (app *App) orphanChecks(ctx context.Context, be secret.Backend, toolFilter 
 			Message: fmt.Sprintf("secret item for %s/%s has no snapshot dir; remove it with kae account rm %s %s",
 				tool, acct, tool, acct),
 		})
+	}
+	return checks
+}
+
+// secretMissingChecks warns when a snapshot declares a stored payload the secret
+// backend does not have — the direction orphanChecks cannot see. That one asks
+// "does this stored key still have a snapshot dir"; this one asks the reverse of
+// every artifact each snapshot records, which is the half that matters more:
+// applying such an account cannot restore the artifact, and until now nothing
+// said so.
+//
+// It works on every backend precisely because it needs no enumeration — it looks
+// up refs the snapshots name. orphanChecks is skipped on the darwin keychain for
+// want of a listing primitive, so on the primary platform this is the *only*
+// check of the two.
+//
+// Warn, like every other bookkeeping finding: the live login this account was
+// switched to may well still be working, and a diagnostic must not fail the
+// command that is reporting it.
+//
+// One backend read per present artifact, coalesced with accountFreshness's reads of
+// the same payloads by the cache its caller installs — so adding this check does not
+// add a `security` subprocess for a credential that was already going to be read.
+// What is genuinely new is the reads for artifacts nothing else looks at (a
+// non-datable tool's, and every non-credential artifact).
+func (app *App) secretMissingChecks(ctx context.Context, be secret.Backend, toolFilter string) []adapter.Check {
+	accounts, err := account.List(app.Paths.AccountsDir())
+	if err != nil {
+		return nil // the inventory itself is unreadable; not this check's finding
+	}
+	checks := []adapter.Check{}
+	for _, acc := range accounts {
+		if toolFilter != "" && acc.Tool != toolFilter {
+			continue
+		}
+		for _, name := range acc.ArtifactNames() {
+			art := acc.Artifacts[name]
+			if !art.Present {
+				continue // captured as absent: there is no payload to be missing
+			}
+			if _, found, err := be.Get(ctx, art.SecretRef); err != nil || found {
+				// A read error is the secret backend's own finding (secret_backend
+				// already reports an unusable store); reporting it per artifact would
+				// blame every account for one broken backend.
+				continue
+			}
+			checks = append(checks, adapter.Check{
+				Tool: acc.Tool, Code: constants.CheckSecretMissing,
+				Status: constants.StatusWarn,
+				Message: fmt.Sprintf(
+					"snapshot %q declares a stored %s payload the secret backend does not have, so applying "+
+						"it cannot restore that artifact; re-capture with: kae add --no-login %s %s",
+					acc.Name, name, acc.Tool, acc.Name,
+				),
+			})
+		}
 	}
 	return checks
 }

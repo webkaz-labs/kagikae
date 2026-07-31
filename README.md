@@ -161,7 +161,8 @@ restores it. `--dry-run` previews exactly what would be patched.
 ```bash
 cd ~/code/side-project
 kae pin side                   # this directory now uses the side profile
-                               # (shared: settings/sessions shared, credential private)
+                               # (shared: settings/sessions shared; the credential
+                               # and the account name it displays are private)
 mise trust                     # mise refuses untrusted configs; its error
                                # between pin and trust is expected
 ```

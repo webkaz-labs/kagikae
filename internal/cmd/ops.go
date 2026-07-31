@@ -472,17 +472,37 @@ type toolResolveError struct {
 	Err  error
 }
 
+// restorableActiveAccount returns the account meta records as active for tool,
+// but only if a snapshot by that name is still captured.
+//
+// A backup's `active_before` keeps the name it had at capture time, and a later
+// `kae account rm` / `kae account rename` invalidates it — so every consumer of
+// that value has to ask this question, which is why the predicate lives here
+// rather than at either call site. It shaped only a hint string for a long time
+// while `kae rollback` wrote the same value into `state.Active` unguarded, leaving
+// a tool active on an account that was gone.
+//
+// An unreadable snapshot answers false, like an absent one: kae cannot confirm
+// the account either way, and recording a name it cannot resolve is precisely the
+// state doctor's active_orphan exists to report.
+func (app *App) restorableActiveAccount(meta backup.Meta, tool string) (string, bool) {
+	acct, ok := meta.ActiveBefore[tool]
+	if !ok || acct == "" {
+		return "", false
+	}
+	if _, found, err := account.Load(app.Paths.AccountDir(tool, acct)); err != nil || !found {
+		return "", false
+	}
+	return acct, true
+}
+
 // reapplyHint names the command that redoes what an unresolved tool skipped.
 // It points at re-applying the account rather than re-running the rollback: the
 // rollback succeeds and then prunes, so its own id may already be gone, while
-// `kae use` reaches the same work from the snapshot side. Only an account whose
-// snapshot still exists is named — a backup's active_before keeps the name it had
-// at capture time, which a later rename or removal invalidates.
+// `kae use` reaches the same work from the snapshot side.
 func (app *App) reapplyHint(meta backup.Meta, tool string) string {
-	if acct, ok := meta.ActiveBefore[tool]; ok && acct != "" {
-		if _, found, err := account.Load(app.Paths.AccountDir(tool, acct)); err == nil && found {
-			return fmt.Sprintf("re-apply it: kae use %s %s", tool, acct)
-		}
+	if acct, ok := app.restorableActiveAccount(meta, tool); ok {
+		return fmt.Sprintf("re-apply it: kae use %s %s", tool, acct)
 	}
 	return fmt.Sprintf("re-apply the %s account you want (see: kae accounts)", tool)
 }

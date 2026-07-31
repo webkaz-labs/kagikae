@@ -1,6 +1,13 @@
 // Package constants holds the JSON contract vocabulary: tool ids, drivers,
 // artifact kinds, status tokens, error codes, and exit codes. Commands and
 // adapters must use these constants instead of inline literals.
+//
+// It also holds the few tables that are not contract vocabulary but have nowhere
+// else to live: two packages need the same answer and cannot import each other, so
+// the shared low layer owns the one copy. PrivateBindItems is the case to compare a
+// new one against — internal/cmd builds a bind's symlink denylist from it while
+// internal/config refuses a user from re-listing any of it, and config cannot import
+// cmd. Do not put anything here that a single package could own.
 package constants
 
 // SchemaVersion is the integer schema version of all stable JSON reports.
@@ -106,6 +113,68 @@ const (
 	KindKeychain    = "keychain"
 )
 
+// PrivateBindItem is one file a per-directory bind must keep private instead of
+// sharing with the real tool home, and what that file is.
+//
+// Kind is not decoration: the two reasons are different and a single message
+// would be wrong for one of them. An auth credential must stay private so the
+// directory *authenticates* as its own account; claude's `.claude.json` must stay
+// private so the directory can *name* its own account, since it holds the
+// `/oauthAccount` cache and a link back to the real home makes every bound
+// directory display whatever that home displays.
+type PrivateBindItem struct {
+	Tool string
+	Name string
+	Kind string
+}
+
+// PrivateBindItems is the **one** literal for that set, and it is deliberately
+// here rather than beside either consumer. Three sites need it and they sit in
+// two packages that cannot both own it: `internal/cmd` builds the shared bind's
+// symlink denylist from it, and `internal/config` refuses a user from re-listing
+// any of these in `shared_denylist_extra` (already denied) or
+// `isolated_shared_items` (must never be shared) — and config cannot import cmd.
+// Three hand-kept copies is what this was before, and v0.16.0 added `.claude.json`
+// to two of them and missed the third, in the mode that promises more isolation.
+//
+// docs/ADAPTERS.md "Per-directory shared bind" is the normative description; this
+// is the code it must match.
+var PrivateBindItems = []PrivateBindItem{
+	// .credentials.json is Linux-only for claude (macOS uses the keychain), but
+	// listing it on every platform is harmless: absent means the link step is a no-op.
+	{Tool: ToolClaude, Name: ".credentials.json", Kind: "auth credential"},
+	{Tool: ToolClaude, Name: ".claude.json", Kind: "identity cache"},
+	{Tool: ToolCodex, Name: "auth.json", Kind: "auth credential"},
+}
+
+// PrivateBindNames returns the file names a bind must keep private for one tool.
+func PrivateBindNames(tool string) []string {
+	names := []string{}
+	for _, item := range PrivateBindItems {
+		if item.Tool == tool {
+			names = append(names, item.Name)
+		}
+	}
+	return names
+}
+
+// PrivateBindKind reports what a file name is, for any tool that has it, and
+// whether it is on the list at all.
+//
+// Tool-agnostic on purpose, because the two config fields it serves are: they are
+// validated per `[tools.<tool>]` table but the answer does not depend on which,
+// so `auth.json` is refused under `[tools.claude]` too. That over-refuses by one
+// name per tool and misleads nobody; keying it per tool would let a user list
+// another tool's credential file and be told it is fine.
+func PrivateBindKind(name string) (string, bool) {
+	for _, item := range PrivateBindItems {
+		if item.Name == name {
+			return item.Kind, true
+		}
+	}
+	return "", false
+}
+
 // Check status tokens for doctor and warnings.
 const (
 	StatusOK      = "ok"
@@ -133,9 +202,15 @@ const (
 	// start matching accounts that are fine for another five days.
 	CheckCredentialExpiring = "credential_expiring"
 	CheckSecretOrphan       = "secret_orphan"
-	CheckCompanionMissing   = "companion_missing" // a bound token knob has no stored secret
-	CheckCompanionBinary    = "companion_binary"  // a bound companion's CLI is not in PATH
-	CheckCompanionDrift     = "companion_drift"   // live git identity differs from the bound one
+	// CheckSecretMissing: the mirror of secret_orphan — a snapshot declares a
+	// stored payload the secret backend does not have, so applying that account
+	// cannot restore the artifact. Its own code because it needs no enumeration:
+	// it looks up the refs one snapshot names, so unlike secret_orphan it works on
+	// the darwin keychain too.
+	CheckSecretMissing    = "secret_missing"
+	CheckCompanionMissing = "companion_missing" // a bound token knob has no stored secret
+	CheckCompanionBinary  = "companion_binary"  // a bound companion's CLI is not in PATH
+	CheckCompanionDrift   = "companion_drift"   // live git identity differs from the bound one
 	// CheckCompanionTokenDrift: the live login a bound token resolves to differs
 	// from the companion's expected_login. opt-in (it needs a network call).
 	CheckCompanionTokenDrift = "companion_token_drift"

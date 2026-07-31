@@ -243,21 +243,13 @@ func writeEnvEntries(b *strings.Builder, profileName string, entries []isolation
 	}
 }
 
-// bondDenylistItems returns the items excluded from bond-mode symlink sharing
-// for a tool: the hard-coded auth artifacts plus user-configured extras.
-// The hard-coded list is per-tool and intentionally minimal; docs/ADAPTERS.md
-// "Isolation" is the normative reference — keep them in sync.
+// bondDenylistItems returns the items excluded from bond-mode symlink sharing for
+// a tool: the files a bind must keep private (constants.PrivateBindItems, the one
+// literal — internal/config refuses a user from re-listing any of them, which is
+// why it lives a layer down) plus the user's own extras. docs/ADAPTERS.md
+// "Per-directory shared bind" is the normative description of both halves.
 func (app *App) bondDenylistItems(tool string) []string {
-	var base []string
-	switch tool {
-	case constants.ToolClaude:
-		// .credentials.json is Linux-only (macOS uses keychain), but harmless
-		// to include on all platforms: if absent the copy step is a no-op.
-		base = []string{".credentials.json"}
-	case constants.ToolCodex:
-		base = []string{"auth.json"}
-	}
-	return append(base, app.Config.SharedDenylistExtra(tool)...)
+	return append(constants.PrivateBindNames(tool), app.Config.SharedDenylistExtra(tool)...)
 }
 
 // bondIsolationEntries resolves the per-tool env entries for bond mode.
@@ -303,6 +295,22 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 	for _, de := range des {
 		name := de.Name()
 		if denied[name] {
+			// Retract a link this directory made before the item was denied, or the
+			// denylist only governs new bond dirs: an existing one keeps sharing what
+			// it was told to stop sharing, and nothing here would ever notice. Reached
+			// by `tools.<tool>.shared_denylist_extra` gaining an entry as much as by
+			// the hard-coded list growing one, so it was already a gap before
+			// `.claude.json` joined the list.
+			//
+			// Symlinks only. A real file by that name is a private override — the same
+			// rule the sharing loop below follows — and for a denied auth artifact it
+			// is usually kae's own per-directory copy, which must survive.
+			dst := filepath.Join(bondDir, name)
+			if info, lerr := os.Lstat(dst); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+				if err := os.Remove(dst); err != nil {
+					return "", fmt.Errorf("retract shared link %s: %w", dst, err)
+				}
+			}
 			continue
 		}
 		src := filepath.Join(realHome, name)

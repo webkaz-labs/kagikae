@@ -25,6 +25,161 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
+# kae v0.16.0 (shipped 2026-07-31)
+
+**The bookkeeping, and who a bound directory says it is.** Four write sequences
+that could leave kae's own records naming something that is not there, plus the
+attribution gap that made a pinned directory display the wrong account.
+
+Baseline: v0.15.3. Contract-additive — one new `doctor` check code,
+`secret_missing`; `schema_version` stays `1`. Three changes are not additive and are
+each described below: a **behaviour change** to `kae rollback`, a **removed field**
+in `account.toml`, and claude's `.claude.json` joining the shared-bind denylist,
+which changes what a bond dir shares for users who set `CLAUDE_CONFIG_DIR`
+themselves.
+
+- **`kae account rename` completes the new snapshot before anything points at it.**
+  It used to set `state.Active[tool] = newName` inside its state mutation and only
+  *afterwards* copy the secret payloads and write the renamed snapshot dir, so a
+  failure in between left state naming a snapshot that did not exist (the state
+  v0.15.3's `active_orphan` reports). It is now three stages — build the new
+  snapshot, move the logical pointers (`[profiles]` references, then `state.json`),
+  destroy the old snapshot — and the *shape* is what matters, not the reorder:
+  moving the flip below the old single `Get(old)` → `Set(new)` → `Delete(old)` pass
+  would have traded one detectable state for an undetectable one, the old dir
+  loading fine while the `SecretRef` its metadata declares was already deleted.
+  Stage 3 deletes the refs before removing the dir, which maps its own crash window
+  onto `secret_missing` rather than `secret_orphan` (see below for why that
+  matters). One state still needs a manual step and is documented rather than
+  guessed at: a crash between stages 1 and 2 leaves both snapshots present, and
+  re-running hits the existing `account already exists` refusal, which is
+  deliberately not relaxed — a half-written rename target is indistinguishable from
+  a name that is genuinely taken ([CLI.md](CLI.md) § `kae account`).
+
+- **`kae doctor` reports a snapshot whose stored payload is gone
+  (`secret_missing`).** `secret_orphan` asks whether a stored key still has a
+  snapshot dir behind it; nothing asked the reverse, so an account that could not be
+  applied at all looked healthy. This direction needs no enumeration primitive — it
+  looks up the refs the snapshots themselves name — which is why it matters more
+  than a mirror check usually would: `secret_orphan` is skipped on the darwin
+  keychain for want of a listing primitive, so on the primary platform this is the
+  only one of the two that reports anything. An artifact captured as *absent* is
+  never reported, and a backend that errors on the read is left to `secret_backend`.
+
+- **`kae rollback` restores an active pointer only when its snapshot is still there
+  (behaviour change).** The state mutation wrote `st.Active[tool] =
+  meta.ActiveBefore[tool]` unconditionally, and a backup's `active_before` keeps the
+  name it had at capture time — so rolling back across a `kae account rm`/`rename`
+  recorded an account that was gone, and the next `kae use <tool>` failed with
+  `account <tool>/<name> is not captured yet`. `reapplyHint` had applied exactly the
+  right predicate to exactly that value since it shipped, but only to shape a hint
+  string; it is now the shared `restorableActiveAccount` and the live pointer goes
+  through it. A pointer that cannot be restored is dropped — the same "no active
+  account for this tool" state `kae account rm` leaves — and warned about on stderr.
+  Never fatal: the credentials are rolled back either way, and what is lost is a
+  label. The other end of the same gap is decided the other way: `account
+  rm`/`rename` still do **not** rewrite existing backups, because a backup is the
+  record of what was true when it was taken and the restore can re-check the one
+  value that goes stale ([DATA-MODEL.md](DATA-MODEL.md) § Backups).
+
+- **A bound directory now carries the identity of the account it is bound to.**
+  `kae use` / `kae add` switched claude's `/oauthAccount` cache; the four
+  per-directory materializers wrote only the credential. Since `CLAUDE_CONFIG_DIR`
+  moves the cache to `<dir>/.claude.json`, a bonded or isolated directory kept
+  whichever account first ran there, and `kae pin <tool> <account>` could not
+  correct it. Auth was never wrong — the token decides — which is exactly why it
+  survived: the only symptom was a UI, and a `kae add` identity detection, naming
+  the previous account. The step (`writeDirIdentity`) sits inside the one helper all
+  four route through and runs **last**, because a directory labelled with an account
+  whose credential kae could not put there is worse than an unlabelled one. A
+  snapshot with no recorded identity applies as absent, so the tool refetches rather
+  than keeping a label for an account that is no longer there. An identity write that
+  fails warns instead of failing the bind: the credential is already correct, an
+  identity is a label the tool rebuilds, and returning would leave `kae pin` without
+  the mise fragment it had not written yet. Fixed with it: the credential path
+  returned early for a non-keychain spec, which would have skipped the identity on
+  every Linux bind.
+
+- **claude's mixed-state file is private in a bound directory (behaviour change for
+  one configuration).** This was the open design question of the item above, and the
+  answer had to be one or the other: a directory cannot both name its own account and
+  live-share the file that records which account it is. `.claude.json` joins claude's
+  hard-coded shared-bind denylist, so a bond dir gets a private copy and the identity
+  lands there. What that changes depends on a setting, which is the part worth
+  reading: claude keeps the file **inside** `CLAUDE_CONFIG_DIR` when the user sets one
+  and at `$HOME/.claude.json` when they do not, so it was an entry of the real tool
+  home — and therefore symlinked into every bond dir — only for the first group.
+  Everyone else never shared it. So the sharing this removes was an accident of file
+  placement rather than a design choice, and only `CLAUDE_CONFIG_DIR` users see a
+  difference: their bond dirs start from claude's defaults for `projects`,
+  `mcpServers` and project trust, which means one trust prompt per bound directory.
+  Sessions are unaffected — they live in `projects/` under the tool home and are still
+  shared. There is deliberately no knob to restore the sharing: the two behaviours are
+  exclusive. Nothing changes until the directory is re-pinned; upgrading the binary
+  alone leaves an existing bond dir as it was, and the first `kae pin` there retracts
+  the stale link. That retraction closes an older gap of its own — a denied entry's
+  existing symlink was never removed, so `tools.<tool>.shared_denylist_extra` gaining
+  a name had no effect on directories already bound.
+
+  **To carry those keys over instead of starting fresh**, replace the bond dir's link
+  with a real copy of the file *before* the first re-pin. A real file there is a
+  private override, so retraction leaves it and the identity step then rewrites only
+  `/oauthAccount` in it — the directory starts from the real home's projects and MCP
+  servers under its own account name. Inside the still-pinned directory mise exports
+  `CLAUDE_CONFIG_DIR` pointing at the bond dir, so:
+
+  ```bash
+  link="$CLAUDE_CONFIG_DIR/.claude.json"
+  real="$(readlink "$link")" && rm "$link" && cp "$real" "$link"
+  ```
+
+  If mise is not active in that shell, the same path is written verbatim in the
+  directory's fragment: `grep CLAUDE_CONFIG_DIR .config/mise/conf.d/kagikae.toml`.
+  Do not assemble it from a pin id — `kae pin` does not report one, and the store
+  root moves with `XDG_DATA_HOME`.
+
+  Removing the link first is the part that matters: `cp` onto a symlink writes
+  *through* it, into the real home. For the same reason retraction deletes rather
+  than copies — it fires for every denied entry, credentials included, and copying
+  the real home's `.credentials.json` into a bound directory is the opposite of what
+  the denylist is for.
+
+  Refused alongside it: `tools.claude.isolated_shared_items = [".claude.json"]`,
+  which used to load. `isolated_shared_items` was governed by a rule about
+  *credentials*, and this file is not one, so opting it in was permitted — and did
+  the same damage in the stricter mode, every `kae pin -i` directory displaying the
+  real home's account whichever one it was logged in as. If your config has it,
+  remove that entry. Both fields and the shared bind's denylist now read one table
+  (`constants.PrivateBindItems`) instead of three hand-kept copies — which is what
+  let this diverge in the first place — with a guard test pinning the wiring.
+
+- **`account.toml` no longer records a keychain account (removed field).** It was
+  written at capture and read nowhere, with a doc comment telling apply to ignore it
+  — rightly, since where a keychain item lives is the adapter's answer for the
+  environment being *written*, while a snapshot can only hold the answer for the
+  environment it was captured in. The alternative was to give it the reader it would
+  be evidence for (a doctor check for "this snapshot was captured under a different
+  `CODEX_HOME`"), rejected because applying such a snapshot is *correct* behaviour.
+  Reading an older `account.toml` is unaffected — the decoder ignores a key it no
+  longer models, pinned by `TestLoadIgnoresRetiredKeys` — and nothing consulted the
+  value, so there is no migration. `backup.ArtifactRecord` keeps its account, and the
+  asymmetry is the point: a restore addresses the item it captured, by identity.
+
+- **`mise run audit` checks the upstream literal fingerprints** (in `main` since
+  before this release, `c4e6ad4`, and shipped by it). Counts of chosen literals in
+  each installed tool's own artifacts, recorded in
+  [VALIDATION.md](VALIDATION.md) and enforced in lockstep with the behaviour
+  assumptions, so an upstream release that moves a store or renames a variable shows
+  up offline. Untagged at the time because it changes no shipped byte — tests, docs
+  and a mise task only. Notes worth keeping: the table must **not** be generated from
+  kae's own constants (`Claude Code-credentials` and cursor's service names are
+  assembled upstream, so they legitimately count **0**, and a generated table would
+  keep the most important rows permanently red); `0` is a valid expectation and "it
+  changed from 0" is the news; versions are pinned in the table, because picking the
+  newest by mtime read the wrong build twice.
+
+---
+
 # kae v0.15.3 (shipped 2026-07-31)
 
 **A smoke procedure that was not isolated, and a state kae could not see.** The two

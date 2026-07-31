@@ -10,12 +10,37 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
+	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
+
+// The set of must-be-private files is one literal now
+// (constants.PrivateBindItems), so this no longer guards data against data — it
+// guards the **wiring**: that the shared bind's denylist is still derived from that
+// table rather than a fresh local literal, and that both config fields still consult
+// it. Re-hardcode either side and this fails.
+//
+// It asks through config.Load rather than reading the table twice, so what is pinned
+// is the refusal a user actually meets.
+func TestBondDenylistIsRefusedInBothConfigFields(t *testing.T) {
+	app := testApp(t, nil) // empty config, so the denylist is the hard-coded half only
+	for _, tool := range constants.Tools {
+		for _, item := range app.bondDenylistItems(tool) {
+			for _, field := range []string{"shared_denylist_extra", "isolated_shared_items"} {
+				path := filepath.Join(t.TempDir(), "config.toml")
+				writeFile(t, path, fmt.Sprintf("version = 1\n[tools.%s]\n%s = [%q]\n", tool, field, item))
+				if _, _, err := config.Load(path); err == nil {
+					t.Errorf("%s keeps %q private in a shared bind, but %s accepts it",
+						tool, item, field)
+				}
+			}
+		}
+	}
+}
 
 // setupBondHome seeds the non-credential half of a realistic claude real home.
 // The credential comes from captureClaude, because a bond materializes
@@ -71,6 +96,118 @@ func TestPrepareBondSymlinksNonDenylist(t *testing.T) {
 		if target != want {
 			t.Errorf("%s symlink points to %q, want %q", item, target, want)
 		}
+	}
+}
+
+// With a user-set CLAUDE_CONFIG_DIR, claude keeps its mixed-state file *inside*
+// that directory, so it is an entry of the real home and used to be symlinked into
+// every bond dir — which made the per-directory identity write land on the real
+// home and therefore be declined, permanently, for exactly that class of user. It
+// is denylisted now, so the bond dir gets a private copy and the identity lands.
+func TestPrepareBondKeepsIdentityPrivateUnderUserConfigDir(t *testing.T) {
+	app := testApp(t, nil)
+	custom := filepath.Join(app.Env.Home, "custom-claude")
+	app.Env.Getenv = func(key string) string {
+		if key == "CLAUDE_CONFIG_DIR" {
+			return custom
+		}
+		return ""
+	}
+	// claude's whole home is the user-set config dir, mixed-state file included.
+	writeFile(t, filepath.Join(custom, "settings.json"), `{"theme":"dark"}`)
+	writeFile(t, filepath.Join(custom, ".credentials.json"),
+		`{"claudeAiOauth":{"accessToken":"`+mainToken+`","subscriptionType":"max"}}`)
+	writeFile(t, filepath.Join(custom, ".claude.json"),
+		`{"oauthAccount":{"accountUuid":"main-uuid","emailAddress":"main-uuid@example.com"},"projects":{"/repo":{}}}`)
+	code, out := captureStdout(t, func() int {
+		return runCapture(context.Background(), app, commonOpts{Format: formatText}, "claude", "main")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	// Another account is live in the real home now, so "the bond dir names main"
+	// and "the real home still names side" are distinguishable.
+	writeFile(t, filepath.Join(custom, ".claude.json"),
+		`{"oauthAccount":{"accountUuid":"side-uuid"},"projects":{"/repo":{}}}`)
+
+	var stderr string
+	var bondDir string
+	_, stderr = captureStderr(t, func() int {
+		dir, err := app.prepareBond(context.Background(), testBackend(t, app),
+			constants.ToolClaude, "main", paths.PinID(t.TempDir()))
+		if err != nil {
+			t.Errorf("prepareBond: %v", err)
+			return 1
+		}
+		bondDir = dir
+		return 0
+	})
+	if bondDir == "" {
+		t.FailNow()
+	}
+	if strings.Contains(stderr, "identity cache") {
+		t.Fatalf("the identity must not be declined once the file is private: %q", stderr)
+	}
+	info, err := os.Lstat(filepath.Join(bondDir, ".claude.json"))
+	if err != nil {
+		t.Fatalf("bond dir has no identity file: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("the identity file must be private, not a link back to the real home")
+	}
+	if got := readFile(t, filepath.Join(bondDir, ".claude.json")); !strings.Contains(got, "main-uuid") {
+		t.Fatalf("bound account's identity not applied: %s", got)
+	}
+	// The real home is untouched — the whole point of keeping the copy private.
+	if got := readFile(t, filepath.Join(custom, ".claude.json")); !strings.Contains(got, "side-uuid") {
+		t.Fatalf("real home's identity was relabelled: %s", got)
+	}
+	// Everything else still shares.
+	if info, err := os.Lstat(filepath.Join(bondDir, "settings.json")); err != nil ||
+		info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("non-denied entries must still be shared: %v", err)
+	}
+}
+
+// A denylist that only governs new bond dirs is not a denylist: an existing
+// directory keeps sharing what it was told to stop sharing. prepareBond retracts a
+// link for a denied entry — and only a *link*, since a real file by that name is a
+// private override, usually kae's own per-directory copy. Reached by
+// shared_denylist_extra gaining an entry as much as by an upgrade, so this was a
+// gap before .claude.json joined the list.
+func TestPrepareBondRetractsLinkForDeniedEntry(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	setupBondHome(t, app)
+	pinID := paths.PinID(t.TempDir())
+	bondDir := app.Paths.SharedDir(pinID, constants.ToolClaude)
+	if err := os.MkdirAll(bondDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// The state an older kae left: the now-denied entry linked into the bond dir.
+	realIdentity := filepath.Join(app.Env.Home, ".claude", ".claude.json")
+	writeFile(t, realIdentity, `{"oauthAccount":{"accountUuid":"side-uuid"}}`)
+	if err := os.Symlink(realIdentity, filepath.Join(bondDir, ".claude.json")); err != nil {
+		t.Fatal(err)
+	}
+	// A real file for another denied entry must survive: it is a private override.
+	writeFile(t, filepath.Join(bondDir, ".credentials.json"), `{"claudeAiOauth":{"accessToken":"private"}}`)
+
+	if _, err := app.prepareBond(context.Background(), testBackend(t, app),
+		constants.ToolClaude, "main", pinID); err != nil {
+		t.Fatalf("prepareBond: %v", err)
+	}
+
+	info, err := os.Lstat(filepath.Join(bondDir, ".claude.json"))
+	if err != nil {
+		t.Fatalf("identity file missing after retraction: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("the stale link to the real home was not retracted")
+	}
+	if got := readFile(t, realIdentity); !strings.Contains(got, "side-uuid") {
+		t.Fatalf("real home written through the stale link: %s", got)
+	}
+	if got := readFile(t, filepath.Join(bondDir, ".credentials.json")); !strings.Contains(got, mainToken) {
+		t.Fatalf("kae's own per-directory credential must be refreshed, not retracted: %s", got)
 	}
 }
 

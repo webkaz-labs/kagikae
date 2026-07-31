@@ -122,59 +122,66 @@ alternative exists (`secret-tool`).
   worth re-checking whether kae's `keychain.WithReadCache` / per-tool locks are enough
   when a switch overlaps a live session's own refresh.
 
-- **`kae account rename` can strand the active pointer** (recorded 2026-07-31,
-  **not fixed**). `buildAccountRename` updates `state.Active[tool] = newName` inside
-  its state mutation, and only *afterwards* copies the secret payloads and writes
-  the renamed snapshot dir. A failure in between — a secret backend that errors on
-  read/write/delete, a killed process — leaves state naming a snapshot that does not
-  exist yet. `kae account rm` gets this right by clearing the pointer *before*
-  removing anything; rename has the unsafe direction.
-  The fix is to reorder — but **relocating the existing loop is not enough, and doing
-  only that makes the failure worse**. That loop is per-artifact `Get(old)` →
-  `Set(new)` → **`Delete(old)`**, so a crash inside it already destroys old secrets
-  before the new snapshot dir exists. Move the state flip below it and the crash
-  window becomes: `state.Active` still names `oldName`, `oldName`'s dir still loads
-  fine, and its `account.toml` still declares a `SecretRef` that has been deleted
-  from the backend. `active_orphan` would stay silent, and so would everything else —
-  `orphanChecks` only looks the other way (a backend key with no snapshot dir), so
-  nothing in doctor detects a snapshot whose declared secret is gone.
-  So: split the loop into two passes. First copy every payload to its new ref and
-  `account.Save` the new dir; only then delete the old refs and remove the old dir;
-  flip `state.Active` between the two, once the new snapshot is complete. Every
-  crash window is then either "old is intact and active" or "both exist and active
-  is valid" — benign in every case, though not uniformly re-runnable: a crash after
-  the new dir is saved but before the flip leaves both dirs present, so re-running
-  the same command hits the existing "account already exists" guard rather than
-  completing. That is a clear error rather than silent damage, but the implementer
-  should decide whether to make the guard tolerate a half-finished rename (its own
-  new dir, same tool) or to document the manual step. The existing comment defends "logical update
-  first" on the grounds that the reverse "could strand config/state on a name whose
-  dir is gone", but that only applies to an ordering that removes the old dir early;
-  the two-pass shape above strands nothing.
-  Worth pairing with a doctor check for the direction nothing covers — a snapshot
-  declaring a `SecretRef` the backend does not have — since that is the hazard this
-  reorder trades into if it is done carelessly.
-  Left out of the v0.15.3 fix deliberately: that release is about smoke isolation and
-  the doctor check, and reordering a different command's write sequence deserves its
-  own change. `doctor`'s new `active_orphan` reports the state if it happens.
+- ~~**`kae account rename` can strand the active pointer**~~ (recorded 2026-07-31,
+  **fixed** — see [RELEASE.md](RELEASE.md) v0.16.0). `buildAccountRename` used to
+  update `state.Active[tool] = newName` inside its state mutation and only
+  *afterwards* copy the secret payloads and write the renamed snapshot dir, so a
+  failure in between left state naming a snapshot that did not exist yet.
+  It is now three stages — build the new snapshot, flip the logical pointers, destroy
+  the old snapshot — so every crash window leaves the pointers on a snapshot that is
+  complete. **`buildAccountRename`'s comment is normative for why the ordering is
+  what it is**, including why a naive reorder would have been worse than the original
+  and why stage 3 deletes refs before the dir; it sits beside the code and cannot
+  drift from it, so this entry does not restate the argument.
+  Two decisions worth having outside the code: the "account already exists" guard was
+  deliberately left strict, because a half-written rename target is indistinguishable
+  from a genuinely taken name, and the manual recovery is documented instead
+  ([CLI.md](CLI.md) § `kae account`). The doctor check the reorder needed,
+  `secret_missing`, shipped with it.
 
-- **`kae rollback` restores an active pointer without checking its snapshot is still
-  there** (recorded 2026-07-31, **not fixed** — the sibling of the entry above). The
-  rollback's state mutation writes `st.Active[tool] = meta.ActiveBefore[tool]`
-  unconditionally (`internal/cmd/backup.go`), and a backup taken before an
-  `account rm`/`rename` keeps the name it had at capture time — so rolling back to it
-  names a snapshot that is gone and the next `kae use` fails with `account
-  <tool>/<name> is not captured yet` (`loadPlansWithSnapshots`, `internal/cmd/ops.go`).
-  `reapplyHint` (same file) already guards that same value
-  with an `account.Load` existence check, but only to shape a hint string; the live
-  pointer gets no guard. The fix is that guard at the write: record the name when its
-  snapshot loads, otherwise `delete` the entry so nothing claims an account that does
-  not exist. It is a **behaviour change to `kae rollback`** — one that would stop
-  restoring a stale pointer at all — which is why v0.15.3 documents and detects the
-  state (`active_orphan`) rather than changing rollback in a release about something
-  else. Decide at the same time whether `account rm`/`rename` should rewrite
-  `active_before` in existing backups, which is the other end of the same gap
+- ~~**`kae rollback` restores an active pointer without checking its snapshot is
+  still there**~~ (recorded 2026-07-31, **fixed** — the sibling of the entry above;
+  see [RELEASE.md](RELEASE.md) v0.16.0). The rollback's state mutation wrote
+  `st.Active[tool] = meta.ActiveBefore[tool]` unconditionally, so a backup taken
+  before an `account rm`/`rename` named a snapshot that was gone and the next
+  `kae use` failed with `account <tool>/<name> is not captured yet`
+  (`loadPlansWithSnapshots`). The predicate `reapplyHint` had always applied to that
+  same value — for a hint string only — is now the shared
+  `restorableActiveAccount`, and the live pointer goes through it: recorded when its
+  snapshot loads, `delete`d otherwise, with a stderr warning naming what it could
+  not restore.
+  The other end of the same gap was decided the other way: `account rm`/`rename`
+  still do **not** rewrite `active_before` in existing backups. A backup is the
+  record of what was true when it was taken, and rewriting every stored `Meta` on an
+  account edit would put a whole-directory mutation (and its own half-finished
+  state) into two commands, to save a value the restore can re-check for free
   ([DATA-MODEL.md](DATA-MODEL.md) § Backups).
+
+- **Link retraction only covers a name the real home still has** (recorded
+  2026-07-31, **not fixed**). v0.16.0 made `prepareBond` remove a symlink for a
+  denied entry, but the removal lives inside the loop over `os.ReadDir(realHome)`,
+  so it never sees a link whose name is no longer a real-home entry. Concrete
+  residual: bond a directory with `CLAUDE_CONFIG_DIR` set, then unset it, and
+  `<bondDir>/.claude.json -> <oldConfigDir>/.claude.json` stays forever — declined
+  by `identityTargetEscapes` on every pin, with a warning each time and no
+  documented remedy beyond removing the link by hand. The mirror gap is in the
+  isolated bind: `isolated_shared_items` has no retraction at all, so *removing* an
+  entry leaves its link in place. Both want the same shape — reconcile the directory
+  against the intended set rather than only walking the source — which is why they
+  are one entry: fixing one and not the other is how they drift.
+
+- **`kae account rename` / `kae account rm` delete a recorded `SecretRef`
+  verbatim** (recorded 2026-07-31, **deliberately not fixed**). Both delete the ref
+  the snapshot's metadata names, without checking it is the ref this account would
+  produce (`account.SecretRef(tool, name, artifact)`). A snapshot dir whose metadata
+  names *another* account's ref — reachable by hand-copying an account directory,
+  which is a plausible way to try to duplicate an account — therefore has that other
+  account's payload deleted by a command that was not asked to touch it. Not a
+  regression from the v0.16.0 restaging (the single pass did the same, and
+  `account rm` shares the flaw), and it needs someone to have edited kae's data dir
+  by hand, which is why it is recorded rather than fixed inside a release about
+  something else. The fix is a comparison at both delete sites, and it belongs with
+  whatever else next audits "does this snapshot describe itself".
 
 - **`applySnapshot`'s refusals could be raised one step earlier, in
   `loadPlansWithSnapshots`** (recorded 2026-07-31, deliberately not done). Both
@@ -235,21 +242,30 @@ alternative exists (`secret-tool`).
   and `security`-read coalescing (a per-command keychain cache). Spans every
   OAuth/JWT tool, not just claude. The codex keyring driver (§E) is **split to
   v0.8.2** — see below.
-- **Identity cache in isolation modes**: `kae use` / `kae add` switch claude's
-  `/oauthAccount` identity cache, but the per-directory materializers
-  (`writeDirCredential`, and its callers `prepareBond`, `preparePinConfig`,
-  `prepareGlobalIsolatedHome`) write only the credential. Since
-  `CLAUDE_CONFIG_DIR` moves the cache to `<dir>/.claude.json` and
-  `prepareBond` only links the entries *of* `~/.claude`, a bonded or isolated
-  directory keeps whatever account first ran there, and `kae pin <tool>
-  <account>` does not correct it. Auth is unaffected (the token wins) — it is an
-  attribution gap: the UI can name the wrong account inside a pinned directory.
-  The fix is now one identity step alongside `writeDirCredential`, which all four
-  already route through; the design
-  question is bond mode, where writing the cache is visible to the real home
-  (docs/SCOPE-MODEL.md §6). Until then `doctor`'s `identity_drift` check skips a
-  kae-owned isolated home for the same reason: kae applied no identity there, so
-  there is nothing of its own to compare the live value against.
+- **Identity cache in isolation modes** *(v0.16.0 — see [RELEASE.md](RELEASE.md))*:
+  `kae use` / `kae add` switched claude's `/oauthAccount` identity cache while the
+  per-directory materializers wrote only the credential, so a bonded or isolated
+  directory kept whatever account first ran there and `kae pin <tool> <account>` did
+  not correct it. Auth was unaffected (the token wins) — it was an attribution gap,
+  and the UI naming the wrong account inside a pinned directory is what a user sees.
+  Now one identity step (`writeDirIdentity`) sits alongside `writeDirCredential`,
+  which all four materializers already route through. Shared (bond) mode was the open
+  design question, and the answer is that the mixed-state file is **private** in a
+  bound directory (denylisted): a directory cannot both name its own account and
+  live-share the file that records which account it is. Whether it was shared there
+  at all had depended on where claude puts it — inside `CLAUDE_CONFIG_DIR` when the
+  user sets one, at `$HOME` otherwise — so the sharing was an accident of file
+  placement, and denying it makes both configurations behave alike. A guard
+  (`identityTargetEscapes`) still declines any per-directory identity write resolving
+  outside the store, kept as defence in depth for the routes the denylist does not
+  cover.
+  **What is left**: `doctor`'s `identity_drift` still skips a kae-owned isolated
+  home, but for the remaining half of the old reason — `state.Active` names the
+  *global* account while the live cache is the *bound* directory's, so the two sides
+  are different frames. There is now something of kae's own to compare against
+  there; doing it means reading the directory's binding and comparing against that
+  snapshot, which belongs next to `pinCredentialChecks` (it already resolves each
+  bound directory's fragment and store for credential health).
 - **A directory-scoped keychain item keeps a stale account attribute**: `ApplyLive`
   reuses an existing item's account attribute so a re-login that changed it is
   honored, which is right for the single global item but not for a per-directory
@@ -298,13 +314,18 @@ alternative exists (`secret-tool`).
   that migrates its own credential. Note the reconciliation would not fully
   disappear even then: "an absent record must never delete the store the tool moved
   to" and the whole-document-vs-pointer refusal are properties of the payload.
-- **`account.toml`'s `keychain_account` is write-only.** It is recorded at capture
-  and read nowhere, with a doc that tells apply to ignore it (rightly: it is the
-  answer for the environment the snapshot was captured in). Either drop the field or
-  give it the reader it is evidence for — a doctor check comparing it against
-  today's derived account, which is exactly "this snapshot was captured under a
-  different `CODEX_HOME`", a natural neighbour of `identity_drift`. A persisted
-  field whose only rule is "never read me" is a tripwire.
+- ~~**`account.toml`'s `keychain_account` is write-only.**~~ **Dropped** in v0.16.0
+  (see [RELEASE.md](RELEASE.md)). It was recorded at capture and read nowhere, with
+  a doc that told apply to ignore it — rightly, since it is the answer for the
+  environment the snapshot was captured in, and apply resolves the item for the
+  environment it is writing. The alternative considered was to give it the reader it
+  would be evidence for (a doctor check comparing it against today's derived
+  account: "this snapshot was captured under a different `CODEX_HOME`"). Rejected:
+  applying a snapshot captured under a different home is *correct* behaviour, so the
+  check would warn about kae working as designed. Removing it also removes a second
+  record of a fact only the adapter owns ([DATA-MODEL.md](DATA-MODEL.md)). Note the
+  asymmetry that stays: `backup.ArtifactRecord` keeps its account, because a restore
+  must address the item it captured.
 - **claude's OAuth build suffix: the environment half is refused, the build half is
   undetectable.** The suffix sits in both store names — keychain service
   `Claude Code<suffix>-credentials[-<sha8>]` and identity file

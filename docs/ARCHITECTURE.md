@@ -90,8 +90,9 @@ type Adapter interface {
 `Artifacts` returns the credential **first**, and `Detect` reads `specs[0]` as
 that credential — the only positional dependency. Nothing else infers the
 credential from order: the per-directory materializer (`writeDirCredential`)
-resolves it by name through `credentialArtifactName`, so an adapter that grows a
-spec must not assume anything follows position. A spec may set `IdentityOnly` to mark an artifact that records *who*
+resolves it by name through `credentialArtifactName`, and the identity step beside
+it (`writeDirIdentity`) filters on `IdentityOnly`, so an adapter that grows a spec
+must not assume anything follows position. A spec may set `IdentityOnly` to mark an artifact that records *who*
 is logged in without being part of what authenticates (claude's
 `/oauthAccount`). Everything that follows from it is a consequence of not being a
 credential: its live presence alone is not a login, a change to it is not an auth

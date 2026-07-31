@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -180,6 +179,55 @@ func TestCaptureSwitchRollbackClaude(t *testing.T) {
 	creds = readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"))
 	if !strings.Contains(creds, mainToken) {
 		t.Fatalf("rollback of rollback did not restore main state: %s", creds)
+	}
+}
+
+// A backup's active_before keeps the name it had at capture time, so a rollback
+// across a `kae account rm` used to record an account that is gone: state named a
+// snapshot nothing could load (doctor's active_orphan) and the next `kae use
+// claude` failed with "is not captured yet". The pointer is dropped instead — and
+// the credential rollback, which is the part that was never broken, still happens.
+func TestRollbackDropsActivePointerWhoseSnapshotIsGone(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, sideToken, "side-uuid")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+	seedClaude(t, app, mainToken, "main-uuid")
+	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	// Make side active, then switch away: the backup that switch takes is the one
+	// recording side as the account to restore.
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	if _, err := buildAccountRm(ctx, app, opts, "claude", "side", false); err != nil {
+		t.Fatalf("account rm side: %v", err)
+	}
+
+	code, stderr := captureStderr(t, func() int {
+		code, _ := captureStdout(t, func() int { return runRollback(ctx, app, opts, "") })
+		return code
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+	if !strings.Contains(stderr, "side") || !strings.Contains(stderr, "no active account") {
+		t.Fatalf("rollback must say which pointer it dropped and that it dropped it: %q", stderr)
+	}
+
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name, ok := st.Active["claude"]; ok {
+		t.Fatalf("state kept an active account whose snapshot is gone: %q", name)
+	}
+	if creds := readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json")); !strings.Contains(creds, sideToken) {
+		t.Fatalf("rollback did not restore the credential: %s", creds)
 	}
 }
 
@@ -726,9 +774,12 @@ func TestCodexKeyringRoundTrip(t *testing.T) {
 		if strings.Contains(meta, "main-access") {
 			t.Fatalf("keyring token leaked into account.toml: %s", meta)
 		}
-		recorded := keychainAccountOf(t, meta)
-		if !strings.HasPrefix(recorded, "cli|") {
-			t.Fatalf("account.toml records no derived keychain account: %s", meta)
+		// The account the apply must use is the one the adapter derives for *this*
+		// codex home, resolved the same way production resolves it (the derivation
+		// itself is pinned in the codex package's golden test).
+		derived := codexItemAccount(t, ctx, app)
+		if !strings.HasPrefix(derived, "cli|") {
+			t.Fatalf("adapter derived no keychain account: %q", derived)
 		}
 		// A re-login as side rewrote the item's payload. Its account did not change:
 		// one codex home has one item, whatever account is logged in.
@@ -749,8 +800,8 @@ func TestCodexKeyringRoundTrip(t *testing.T) {
 		if len(sim.ops) != 1 || sim.ops[0] != "add" {
 			t.Fatalf("expected a single add on apply, got %v", sim.ops)
 		}
-		if sim.account != recorded {
-			t.Fatalf("item account = %q, want the derived %q", sim.account, recorded)
+		if sim.account != derived {
+			t.Fatalf("item account = %q, want the derived %q", sim.account, derived)
 		}
 		if !strings.Contains(sim.payload, "main-access") || strings.Contains(sim.payload, "side-access") {
 			t.Fatalf("item payload not restored to main verbatim: %s", sim.payload)
@@ -758,14 +809,26 @@ func TestCodexKeyringRoundTrip(t *testing.T) {
 	})
 }
 
-// keychainAccountOf extracts account.toml's recorded keychain_account.
-func keychainAccountOf(t *testing.T, meta string) string {
+// codexItemAccount returns the account attribute codex's adapter derives for the
+// codex home app's environment names — the value an apply must address the
+// `Codex Auth` item by.
+func codexItemAccount(t *testing.T, ctx context.Context, app *App) string {
 	t.Helper()
-	m := regexp.MustCompile(`keychain_account = "([^"]*)"`).FindStringSubmatch(meta)
-	if m == nil {
-		return ""
+	adp, err := adapter.ForTool(constants.ToolCodex)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return m[1]
+	specs, err := adp.Artifacts(ctx, app.Env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sp := range specs {
+		if sp.Kind == constants.KindKeychain {
+			return sp.KeychainAccount
+		}
+	}
+	t.Fatal("codex declared no keychain artifact")
+	return ""
 }
 
 // A `Codex Auth` item belonging to *another* CODEX_HOME is not this home's

@@ -141,7 +141,12 @@ alternative exists (`secret-tool`).
   `account.Save` the new dir; only then delete the old refs and remove the old dir;
   flip `state.Active` between the two, once the new snapshot is complete. Every
   crash window is then either "old is intact and active" or "both exist and active
-  is valid" — benign and re-runnable. The existing comment defends "logical update
+  is valid" — benign in every case, though not uniformly re-runnable: a crash after
+  the new dir is saved but before the flip leaves both dirs present, so re-running
+  the same command hits the existing "account already exists" guard rather than
+  completing. That is a clear error rather than silent damage, but the implementer
+  should decide whether to make the guard tolerate a half-finished rename (its own
+  new dir, same tool) or to document the manual step. The existing comment defends "logical update
   first" on the grounds that the reverse "could strand config/state on a name whose
   dir is gone", but that only applies to an ordering that removes the old dir early;
   the two-pass shape above strands nothing.

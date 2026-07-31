@@ -862,7 +862,10 @@ claims decoder is `internal/jwt`).
    the adapter against, and add that tool's behaviour assumptions to the table in
    [VALIDATION.md](VALIDATION.md) "Upstream Behaviour Assumptions". This one is a
    method of `adapter.Adapter`, not an optional interface — see "Verified Upstream
-   Versions" below.
+   Versions" below. Then measure that tool's literals into
+   [VALIDATION.md](VALIDATION.md) "Upstream Literal Fingerprints" — or, if the tool
+   has no readable artifact, record why in `fingerprintExclusions`. This is enforced:
+   `TestUpstreamLiteralFingerprints` fails for a tool that has neither.
 7. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
    guard-refusal paths.
 

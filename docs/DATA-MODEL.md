@@ -246,8 +246,9 @@ copilot's `/lastLoggedInUser` and agy's encrypted blob carry no datable token
 
 A refresh token has its own expiry, and for claude that expiry is the **login's**
 deadline rather than the token's own rolling window — the access token moves forward
-on every refresh, this one is fixed when `/login` runs, and upstream warns three days
-ahead of it (see the claude row in [VALIDATION.md](VALIDATION.md)). So "a refresh
+on every refresh, this one is fixed when `/login` runs, and upstream warns ahead of it
+(the threshold is version-dependent; see the claude row in
+[VALIDATION.md](VALIDATION.md)). So "a refresh
 token is present" is not "recoverable". Where the payload publishes a refresh expiry,
 kae uses it; where it does not (codex, opencode), presence is all there is. claude also **tombstones** a credential whose
 refresh failed (blank `accessToken`/`refreshToken`, `expiresAt: 0`): the adapter

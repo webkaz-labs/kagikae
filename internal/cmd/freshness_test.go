@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -448,6 +447,12 @@ func TestCredentialStateAtBands(t *testing.T) {
 		{"refresh-backed, deadline hours away", freshness.Info{
 			Known: true, ExpiresAt: now.Add(-time.Hour), HasRefresh: true, RefreshExpiresAt: now.Add(6 * time.Hour),
 		}, constants.CredentialExpiring},
+		// The refresh token's own deadline already past — the login is over. Covered
+		// here rather than by a second capture-and-doctor cycle in the integration
+		// test below, which is what it used to cost.
+		{"refresh-backed, deadline already passed", freshness.Info{
+			Known: true, ExpiresAt: now.Add(-time.Hour), HasRefresh: true, RefreshExpiresAt: now.Add(-time.Hour),
+		}, constants.CredentialStale},
 		// A refresh token with no published expiry: unknowable, so no state. Reading
 		// the zero as "far future" or as "expired" would both be inventions.
 		{"refresh with no published expiry, access soon", freshness.Info{
@@ -540,7 +545,7 @@ func TestSwitchToExpiringSnapshotWarnsWithLeadTime(t *testing.T) {
 // and I removed it in v0.15.1, reading `refreshTokenExpiresAt` as a rolling shelf life
 // after misreading `relogin_by − captured_at` (the time *left* at capture) as the
 // window's full length. It is the login's absolute expiry: upstream itself warns
-// "Your login expires in N days · run /login to renew" three days ahead of it, and
+// "Your login expires in N days · run /login to renew" shortly ahead of it, and
 // that warning appears only near the end, not constantly. So a refresh-backed
 // credential with hours left is exactly what this notice is for.
 func TestRefreshBackedLoginDeadlineInTheBandWarns(t *testing.T) {
@@ -549,10 +554,7 @@ func TestRefreshBackedLoginDeadlineInTheBandWarns(t *testing.T) {
 	opts := commonOpts{Format: formatText}
 
 	// Access token long expired (normal — it rolls forward), login deadline in 9h.
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
-		app.Now().Add(9*time.Hour).UnixMilli(),
-	))
+	seedClaudeOAuth(t, app, refreshBackedClaudeCred(app.Now(), 9*time.Hour))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "closing") })
 	seedClaude(t, app, sideToken, "side-uuid")
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "current") })
@@ -575,13 +577,6 @@ func TestRefreshBackedLoginDeadlineInTheBandWarns(t *testing.T) {
 			t.Errorf("the inventory must agree with doctor, got %q", a.Credential)
 		}
 	}
-	// And once the deadline is past, it is stale rather than expiring.
-	seedClaudeOAuth(t, app,
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}`)
-	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "spent") })
-	if _, ok := findCheck(buildDoctor(ctx, app, "claude", false), constants.CheckCredentialStale); !ok {
-		t.Error("a passed deadline must be reported stale")
-	}
 }
 
 // The band has an outer edge: a credential with a month left must stay silent, or
@@ -591,10 +586,7 @@ func TestSwitchToHealthySnapshotHasNoLeadTimeNotice(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	refreshExp := app.Now().Add(30 * 24 * time.Hour).UnixMilli()
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`, refreshExp,
-	))
+	seedClaudeOAuth(t, app, refreshBackedClaudeCred(app.Now(), 30*24*time.Hour))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "healthy") })
 	seedClaude(t, app, sideToken, "side-uuid")
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "current") })

@@ -807,14 +807,15 @@ Credential-health checks (warn-level):
   `refreshTokenExpiresAt`. That is a fixed point set when `/login` runs, not a rolling
   window: `expiresAt` (the access token, ~8h) moves forward on every refresh, while
   this one stays put, which is why Claude Code can warn `Your login expires in N days
-  · run /login to renew` three days ahead of it and why that warning shows up only
-  near the end. A snapshot reporting two days left has two days left. For a credential
+  · run /login to renew` ahead of it and why that warning shows up only near the end.
+  (Upstream's own threshold is version-dependent and has changed once; docs/VALIDATION.md
+  carries the current value.) A snapshot reporting two days left has two days left. For a credential
   with no refresh token at all (cursor's access-token JWT) the access expiry *is* that
   deadline, and it is treated the same way.
 
-  Seven days is a judgement, not a measurement: Claude Code's own three-day warning is
-  enough for the account you are *using* (you see that tool daily), while a kae account
-  that is not active is only shown to you when you run kae. It is deliberately not
+  Seven days is a judgement, not a measurement: upstream's own warning is enough for
+  the account you are *using* (you see that tool daily), while a kae account that is
+  not active is only shown to you when you run kae. It is deliberately not
   longer — against a login lifetime of roughly a month, seven days keeps the check
   silent for most of a credential's life, so it still reads as "act now" rather than as
   wallpaper. Both failure directions have been shipped once and are pinned by tests:

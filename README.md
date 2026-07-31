@@ -351,7 +351,8 @@ exit code — see [docs/CLI.md](docs/CLI.md).
   It also warns **seven days before the login itself expires**, so a re-login is a
   choice rather than an interruption, and names `kae add --restore <tool> <account>`:
   the one command that logs that account in and puts your currently-live login back
-  afterwards. Claude Code warns you three days out about the account you are *using*;
+  afterwards. Claude Code warns you shortly before expiry about the account you are
+  *using*;
   kae's job is the accounts you are not, which nothing else shows you. `kae ls`, `kae accounts` and `kae status` carry the same state in a
   `Credential` column (`ok`, `3 day(s) left`, `re-login now`, or `-` when the
   deadline is not knowable), so the inventory itself shows what needs attention

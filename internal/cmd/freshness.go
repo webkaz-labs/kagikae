@@ -83,23 +83,23 @@ func (app *App) accountFreshness(ctx context.Context, be secret.Backend, acc acc
 // switch-time notice).
 //
 // What the deadline is, because getting this wrong cost a release in both
-// directions: for claude it is `refreshTokenExpiresAt`, and that is the **login's
-// absolute expiry**, not a rolling window. The access token (`expiresAt`, ~8h) rolls
-// forward on every refresh; this one is set when `/login` runs and stays put, which
-// is why Claude Code can warn "Your login expires in N days · run /login to renew"
-// three days ahead of it and why that warning appears only near the end rather than
-// constantly (upstream docs § Renew an expiring login; operator-confirmed
-// 2026-07-31). A credential showing two days left really has two days left.
+// directions: for claude it is `refreshTokenExpiresAt`, the **login's absolute
+// expiry** rather than a rolling window — the access token (`expiresAt`) rolls forward
+// on every refresh, this one is set when `/login` runs and stays put, so a credential
+// showing two days left really has two days left. The measured lifetime, upstream's
+// own warning threshold (which has already changed once, so it is version-qualified),
+// and how to re-measure any of it live in one place: the claude row of
+// docs/VALIDATION.md § Upstream Behaviour Assumptions.
 //
 // Seven days, and the number is a judgement rather than a constant kae measured.
-// Claude Code warns at three, which is enough for the account you are *using* — you
-// look at that tool every day, so three days is three chances to act. A kae account
-// that is not the active one is different: nothing shows it to you until you run kae
-// or switch to it, which may be twice a week, so three days can pass unseen. One
-// week is the shortest horizon that still contains a working day for anyone who does
-// not run kae daily, and against a login lifetime of roughly a month it stays silent
-// for most of a credential's life — a window covering most of it would make the
-// notice wallpaper.
+// Upstream's own warning window is shorter, and short is right for the account you
+// are *using* — you look at that tool every day, so a few days is a few chances to
+// act. A kae account that is not the active one is different: nothing shows it to you
+// until you run kae or switch to it, which may be twice a week, so a few days can pass
+// unseen. One week is the shortest horizon that still contains a working day for
+// anyone who does not run kae daily, and against a login lifetime of roughly a month
+// it stays silent for most of a credential's life — a window covering most of it would
+// make the notice wallpaper.
 const reloginLeadTime = 7 * 24 * time.Hour
 
 // snapshotFreshnessWarning returns the switch-time warning acc's snapshot

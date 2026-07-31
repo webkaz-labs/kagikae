@@ -183,10 +183,7 @@ func TestDoctorIgnoresHealthySnapshot(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	refreshExp := app.Now().Add(30 * 24 * time.Hour).UnixMilli()
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`, refreshExp,
-	))
+	seedClaudeOAuth(t, app, refreshBackedClaudeCred(app.Now(), 30*24*time.Hour))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "healthy") })
 
 	if _, ok := findCheck(buildDoctor(ctx, app, "claude", false), constants.CheckCredentialExpiring); ok {

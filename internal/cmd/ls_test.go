@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -115,15 +114,11 @@ func TestInventoryCommandsReportCredentialFreshness(t *testing.T) {
 
 	// Three bands against the login deadline: dying (past it), soon (3 days out, no
 	// refresh token so the access expiry is that deadline), healthy (a month out).
-	seedClaudeOAuth(t, app,
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}`)
+	seedClaudeOAuth(t, app, refreshBackedClaudeCred(app.Now(), -time.Hour))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "dying") })
 	seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), 3*24*time.Hour, "a"))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "soon") })
-	seedClaudeOAuth(t, app, fmt.Sprintf(
-		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
-		app.Now().Add(30*24*time.Hour).UnixMilli(),
-	))
+	seedClaudeOAuth(t, app, refreshBackedClaudeCred(app.Now(), 30*24*time.Hour))
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "healthy") })
 
 	code, out := captureStdout(t, func() int { return runLs(ctx, app, commonOpts{Format: formatJSON}) })

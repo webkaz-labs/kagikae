@@ -1064,10 +1064,12 @@ The release acceptance run below is how these rows get re-verified: it already
 launches fresh tool processes against real accounts, which is what every row
 needs.
 
-## Does a spent refresh token force a login? — **ANSWERED by upstream docs (2026-07-31)**
+## Real-machine gate — does `refreshTokenExpiresAt` predict the login's death? (**open**)
 
-This was opened as a real-machine gate on the premise `credential_stale` rests on.
-It did not need a machine: Anthropic documents it.
+Opened 2026-07-31, then briefly closed on a documentation citation and reopened the
+same day. The reason it was reopened is the useful part.
+
+**What the vendor documents, and it is worth having:**
 
 > "Claude Code tried to renew your saved claude.ai or Claude Console login and the
 > OAuth service rejected the stored refresh token, so Claude Code cleared the saved
@@ -1075,31 +1077,36 @@ It did not need a machine: Anthropic documents it.
 > because **only `/login` can create new credentials**."
 > — [Login expired](https://code.claude.com/docs/en/errors#login-expired)
 
-So: a rejected refresh token ends in an interactive login, with no documented
-automatic recovery, and the failed refresh **clears the credential** — which is the
-same behaviour kae models as the tombstone (`Revoked`). `credential_stale`'s premise
-and its remedy (name the tool's login flow first, re-capture second) are confirmed.
+That settles the **consequence** half: a rejected refresh token ends in an interactive
+login, with no automatic recovery, and the failed refresh clears the credential —
+which is the behaviour kae already models as the tombstone (`Revoked`). So
+`credential_stale`'s *remedy* (name the tool's login flow first, re-capture second) is
+corroborated.
 
-Two further checks that came from the same source and need no measurement:
+**What it does not settle, and what this gate is actually for:** that kae's locally
+cached `refreshTokenExpiresAt` accurately predicts *when* that rejection happens. That
+timing claim is what `credential_stale` and `credential_expiring` both rest on, and no
+vendor page states it. A documentation citation is also a weaker instrument than every
+sibling gate in this file, each of which is closed only by a dated run — and
+[AGENTS.md](../AGENTS.md) is explicit that kae depends on undocumented upstream
+*behaviour*, and that where docs and the binary disagree the binary wins. Closing this
+one on a citation would have set a precedent the rest of the file does not follow.
 
-- **Storage layout matches.** "On macOS, credentials are stored in the encrypted
-  macOS Keychain… On Linux, credentials are stored in `~/.claude/.credentials.json`
-  with file mode `0600`… If you've set the `CLAUDE_CONFIG_DIR` environment variable
-  **on Linux or Windows**, the `.credentials.json` file lives under that directory
-  instead." Note what that last sentence omits: macOS. It is consistent with kae's
-  model that on darwin `CLAUDE_CONFIG_DIR` namespaces the *keychain service* rather
-  than moving a file ([ADAPTERS.md](ADAPTERS.md)).
-- **The authentication precedence list is published**, six entries, and every
-  credential that outranks the subscription login is one kae already warns about in
-  `envConflicts` (`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, `apiKeyHelper`,
-  `CLAUDE_CODE_OAUTH_TOKEN`, plus the cloud-provider switches). No gap found.
-  Source: [Authentication](https://code.claude.com/docs/en/authentication).
+**Procedure** (needs a real machine and a real login; no second account):
+1. `kae add --no-login claude <acct>` immediately after a completed `/login`, and note
+   both `captured_at` and `relogin_by` from `kae ls --json`. Record the login date —
+   without it the measurement cannot be interpreted, which is the mistake that
+   produced the retracted "≈2 days" figure.
+2. Leave that account untouched past `relogin_by`, using a *different* account
+   meanwhile so the switch-away recapture does not refresh the snapshot.
+3. `kae doctor --json` — assert `credential_stale` for it, and note how close the
+   report is to the moment upstream itself starts refusing.
+4. `kae use claude <acct>`, then start claude in a **fresh process**: does it serve a
+   session, or ask for a login?
 
-**Still not documented anywhere official**, so still assumptions kae carries: the
-login/refresh-token lifetime in days, whether the refresh token rotates on each
-refresh, and the `.credentials.json` field layout (`claudeAiOauth`, `expiresAt`,
-`refreshTokenExpiresAt`) — that last one is an implementation detail kae reads at its
-own risk, which is what the `upstream_version` / `VerifiedOn` machinery is for.
+**Either outcome is a result.** Serving a session means `refreshTokenExpiresAt` is
+pessimistic and kae over-warns; asking for a login at approximately that timestamp is
+the confirmation. Record the outcome, the version, and the login-to-deadline interval.
 
 ## Real-Machine Acceptance (release only)
 

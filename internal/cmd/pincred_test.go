@@ -21,6 +21,19 @@ import (
 // drift into meaning something else.
 const deadClaudeCred = `{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}`
 
+// refreshBackedClaudeCred is the oauth object of the realistic claude shape: a refresh
+// token present, so the deadline kae judges is the login's own (`refreshTokenExpiresAt`)
+// while the access token is long past, which is the normal state of a stored snapshot.
+// in is measured from now to that login deadline; a negative value makes a spent one.
+// Four tests built this by hand with the same template, for the reason deadClaudeCred
+// already exists one line up.
+func refreshBackedClaudeCred(now time.Time, in time.Duration) string {
+	return fmt.Sprintf(
+		`{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":%d}`,
+		now.Add(in).UnixMilli(),
+	)
+}
+
 // endOfLifeClaudeCred is the oauth object of a claude credential with **no refresh
 // token**, so its access-token expiry is the whole deadline — cursor's shape, and the
 // simplest fixture for exercising the lead-time band without a second timestamp in

@@ -121,16 +121,23 @@ themselves.
   existing symlink was never removed, so `tools.<tool>.shared_denylist_extra` gaining
   a name had no effect on directories already bound.
 
-  **To carry those keys over instead of starting fresh**, copy the file into the bond
-  dir *before* the first re-pin: `cp "$CLAUDE_CONFIG_DIR/.claude.json"
-  ~/.local/share/kagikae/isolation/<pin-id>/claude/shared/.claude.json` (`kae pin
-  --json` reports the pin id). A **real file** there is a private override and
-  survives retraction, and the identity step then rewrites only `/oauthAccount` in
-  it, so the directory gets the real home's projects and MCP servers as a starting
-  point with its own account name. Retraction deliberately deletes rather than
-  copies: it fires for every denied entry, including credentials — copying the real
-  home's `.credentials.json` into a bound directory is the opposite of what the
-  denylist is for.
+  **To carry those keys over instead of starting fresh**, replace the bond dir's link
+  with a real copy of the file *before* the first re-pin. A real file there is a
+  private override, so retraction leaves it and the identity step then rewrites only
+  `/oauthAccount` in it — the directory starts from the real home's projects and MCP
+  servers under its own account name. Inside the still-pinned directory mise exports
+  `CLAUDE_CONFIG_DIR` pointing at the bond dir, so:
+
+  ```bash
+  link="$CLAUDE_CONFIG_DIR/.claude.json"
+  real="$(readlink "$link")" && rm "$link" && cp "$real" "$link"
+  ```
+
+  Removing the link first is the part that matters: `cp` onto a symlink writes
+  *through* it, into the real home. For the same reason retraction deletes rather
+  than copies — it fires for every denied entry, credentials included, and copying
+  the real home's `.credentials.json` into a bound directory is the opposite of what
+  the denylist is for.
 
   Refused alongside it: `tools.claude.isolated_shared_items = [".claude.json"]`,
   which used to load. `isolated_shared_items` was governed by a rule about

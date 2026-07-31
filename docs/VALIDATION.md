@@ -1180,6 +1180,12 @@ to `/usr/local/bin` with no per-version directory, so its row cannot name a vers
 from the path — `agy --version` is the only source, which is why its
 `VerifiedVersion()` is the value recorded above.
 
+A row does not have to be a string kae's Go source contains. `partially-authenticated`
+and `exchange_user_api_key` appear nowhere in kae — they anchor cursor assumptions in
+the table above (a switch that leaves a mixed pair, and the only path that mints a new
+access token), and they are what would move if either changed. Do not delete a row for
+not matching a Go literal.
+
 | Tool | Literal | Count |
 |---|---|---|
 | claude | `-credentials` | 24 |

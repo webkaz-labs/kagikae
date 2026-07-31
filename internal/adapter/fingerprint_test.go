@@ -134,6 +134,12 @@ func TestUpstreamLiteralFingerprints(t *testing.T) {
 
 	versions := map[string]string{}
 	for _, m := range artifactRow.FindAllStringSubmatch(string(data), -1) {
+		// Same duplicate guard as the literal table above: a map write would resolve
+		// two rows for one tool to whichever comes last in the file, so a stale row
+		// left by a re-measure would silently decide which artifact gets read.
+		if _, ok := versions[m[1]]; ok {
+			t.Errorf("the artifact table has two rows for %s; one of them is unmaintained", m[1])
+		}
 		versions[m[1]] = m[2]
 	}
 	if len(versions) != len(documented) {
@@ -229,10 +235,18 @@ func countInFile(path string, literal []byte) (int, error) {
 }
 
 // countReader streams so a 266 MB bundle costs one buffer rather than its own size in
-// memory. The window keeps len(literal)-1 bytes of the previous read, so an
-// occurrence split across two reads is found — and counted once, because no whole
-// occurrence fits in a carry that short. chunk is a parameter only so a test can
-// shrink it below a literal's length; production always passes 1 MiB.
+// memory, and counts what a single non-overlapping pass would — the same thing
+// `grep -Foa … | wc -l` reports, which is what the table was measured with.
+//
+// Matching them takes more than carrying len(literal)-1 bytes between reads. The
+// carry has to start **after the last match already counted**, because a literal with
+// a border (`abab`, whose prefix `ab` is also its suffix) would otherwise re-form
+// across the boundary out of bytes a counted match already consumed: `abab` over
+// `ababab` counted 2 that way, where one pass counts 1. Hence the explicit scan
+// rather than bytes.Count, and `max(pos, …)` rather than always keeping the tail.
+//
+// chunk is a parameter only so a test can shrink it below a literal's length;
+// production always passes 1 MiB.
 func countReader(r io.Reader, literal []byte, chunk int) (int, error) {
 	if len(literal) == 0 {
 		return 0, fmt.Errorf("empty literal")
@@ -244,9 +258,18 @@ func countReader(r io.Reader, literal []byte, chunk int) (int, error) {
 		n, err := r.Read(buf[held:])
 		if n > 0 {
 			window := buf[:held+n]
-			total += bytes.Count(window, literal)
-			held = min(carry, len(window))
-			copy(buf, window[len(window)-held:])
+			pos := 0
+			for {
+				i := bytes.Index(window[pos:], literal)
+				if i < 0 {
+					break
+				}
+				total++
+				pos += i + len(literal)
+			}
+			tail := max(pos, len(window)-carry)
+			held = len(window) - tail
+			copy(buf, window[tail:])
 		}
 		if err == io.EOF {
 			return total, nil
@@ -289,6 +312,38 @@ func TestFingerprintCountingSpansReadBoundaries(t *testing.T) {
 			}
 		})
 	}
+
+	// A literal with a border is the case the carry gets wrong if it keeps the tail
+	// unconditionally: the boundary re-forms a match out of bytes a counted one already
+	// consumed. No literal in the table has a border today, which is exactly why this
+	// has to be a test rather than a comment.
+	t.Run("self-overlapping literal", func(t *testing.T) {
+		for _, tc := range []struct {
+			literal, data string
+			want          int
+		}{
+			{"abab", "ababab", 1},
+			{"abab", "abababab", 2},
+			{"aa", "aaa", 1},
+			{"aa", "aaaa", 2},
+			{"aaa", "aaaaa", 1},
+		} {
+			for chunk := 1; chunk <= len(tc.data)+1; chunk++ {
+				got, err := countReader(strings.NewReader(tc.data), []byte(tc.literal), chunk)
+				if err != nil {
+					t.Fatalf("%q in %q chunk %d: %v", tc.literal, tc.data, chunk, err)
+				}
+				if want := strings.Count(tc.data, tc.literal); want != tc.want {
+					t.Fatalf("the case itself is wrong: strings.Count says %d, the case says %d",
+						want, tc.want)
+				}
+				if got != tc.want {
+					t.Errorf("%q in %q chunk %d: counted %d, want %d (one non-overlapping pass)",
+						tc.literal, tc.data, chunk, got, tc.want)
+				}
+			}
+		}
+	})
 	if _, err := countReader(strings.NewReader("x"), nil, 8); err == nil {
 		t.Error("an empty literal must be an error, not a count of every position")
 	}

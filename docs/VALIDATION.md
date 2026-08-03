@@ -1048,7 +1048,19 @@ mkdir -p "$HOME/norepo"; cd "$HOME/norepo" && /tmp/kae pin main
 #   assert: the report says `Wrote …; your mise.toml is untouched.` with NO
 #           `ignored via`, and no .gitignore exists here
 
-# --- E. kae ls --pins, from outside every bound directory ---
+# --- E. an unrecordable rule warns; it must not fail the bind ---
+# The *file* has to be unwritable, not its directory: `chmod a-w .git` only stops
+# entries being created in .git, and info/exclude already exists by now — measured
+# 2026-08-04, that pin succeeded and recorded its rule as usual.
+chmod a-w "$W/main/.git/info/exclude"
+mkdir -p "$W/main/locked" && cd "$W/main/locked" && /tmp/kae pin main; echo "exit=$?"
+#   assert: exit 0, a stderr warning `could not tell git to ignore …` saying the
+#           binding is in place, and NO `ignored via` in the report. Reachable in
+#           practice because the exclude file is *outside* the pinned directory: a
+#           worktree can be writable while the main checkout's .git is not
+chmod u+w "$W/main/.git/info/exclude"
+
+# --- F. kae ls --pins, from outside every bound directory ---
 cd "$HOME" && /tmp/kae ls --pins
 #   assert: four rows (norepo, work/main, work/main/nested, work/wt1), sorted by
 #           directory, Current blank for all of them
@@ -1060,7 +1072,7 @@ cd "$W/wt1" && /tmp/kae ls --pins
 #           store is not a binding
 ```
 
-**PASSED 2026-08-04** on the pre-release binary: A–E as asserted.
+**PASSED 2026-08-04** on the pre-release binary: A–F as asserted.
 
 The one that looks like success when it is wrong is **C**. `info/exclude` is
 anchored at the repository root while a `.gitignore` entry is anchored at its own
@@ -1163,6 +1175,7 @@ would notice changing:
 |---|---|
 | A linked worktree's own `$GIT_DIR/info/exclude` (`<main>/.git/worktrees/<name>/info/exclude`) is **not consulted**, while `$GIT_COMMON_DIR/info/exclude` is honoured by the main checkout **and** by every linked worktree — so one entry covers the whole repository | 2026-08-04, git 2.55.0 on darwin 24.6.0 |
 | `git rev-parse --git-common-dir` is **relative to the current directory** in an ordinary checkout (`.git`, `../.git`) and absolute in a linked worktree; an entry in `info/exclude` is anchored at the **repository root**, so it needs `--show-prefix` in front of it (unlike a `.gitignore` entry, which is anchored at its own directory) | 2026-08-04, same |
+| An entry is a **wildmatch pattern**, not a path: a directory component containing `[`, `]`, `*`, `?` or `\` must be backslash-escaped or the rule matches nothing. Measured: `/[wip]-feature/.config/mise/conf.d/kagikae.toml` left the fragment untracked; `/\[wip\]-feature/…` ignored it, and the same held for a `*` component | 2026-08-04, same |
 
 Unlike the AI-tool rows above, these are **guarded by a test rather than by a
 release run**: `TestEnsureGitExcludedLeavesEveryWorktreeClean` (`internal/cmd`)

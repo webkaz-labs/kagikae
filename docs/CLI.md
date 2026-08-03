@@ -292,6 +292,12 @@ tools' stores behind, so listing stores would name directories that are not boun
 and re-binds that land where nothing reads. A directory that was deleted or moved
 is likewise absent here — its orphaned store is `kae doctor`'s `pin_stale`.
 
+An **unreadable** fragment is a different case from an absent one and is not
+silently dropped: the directory is left out of the listing with a stderr warning
+naming it and the error, and the exit code stays `0`. It reads no config either,
+so a malformed `config.toml` — which makes plain `kae ls` exit `2` — does not stop
+`kae ls --pins` answering which account each directory is running.
+
 ## kae account Semantics
 
 `kae account rm <tool> <account>` deletes a captured account: its snapshot
@@ -379,6 +385,21 @@ kae did up to v0.16.0. Two consequences worth knowing:
   and says so by omission** — the report names the exclude file it used, and
   simply does not mention ignoring when there was none to record. Nothing is
   watching the fragment there, so this is not an error.
+- **Failing to record the rule never fails `kae pin`.** It is the last step, so
+  by then the stores are materialized, the credential is written and the fragment
+  is in place — the directory *is* bound. An error there would skip the
+  superseded-credential sweep below and swallow the export fallback a non-mise
+  shell needs, on every re-run, since the cause does not go away. So kae warns on
+  stderr (naming the reason, and that the fragment still needs ignoring some other
+  way), leaves the exit code at `0`, and omits the `ignored via` clause. This is
+  reachable: the exclude file lives **outside** the directory being pinned, so
+  binding a linked worktree writes into the *main checkout's* `.git`, which can be
+  unwritable while the worktree is fine.
+
+A directory name is interpolated into a *pattern*, not a path, so kae escapes the
+wildmatch metacharacters (`\ * ? [ ]`) in it. Without that, pinning a
+subdirectory called `[wip]-feature` writes a rule git reads as a character class,
+which matches nothing — while `kae pin` reports the fragment as ignored.
 
 `kae unpin` leaves the exclude entry in place, symmetrically with the store it
 keeps for a re-pin. A `./.gitignore` line written by an older kae is also left

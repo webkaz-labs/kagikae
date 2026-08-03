@@ -54,6 +54,23 @@ Baseline: v0.16.0. `schema_version` stays `1`. One **behaviour change** to
   `--show-prefix`. Reusing the old entry string would have written a rule matching
   nothing while `kae pin` still reported success.
 
+  **Recording the rule can never fail the pin.** It is the last step, so by then the
+  stores are materialized, the credential is written and the fragment is in place —
+  the directory *is* bound. An error there would skip `pruneDirCredentials` (leaving
+  the superseded per-directory keychain item holding a credential nothing points at,
+  the exact state that sweep exists to prevent) and swallow the export fallback a
+  non-mise shell needs, on every re-run, since the cause does not go away. So kae
+  warns on stderr, keeps the exit code at `0`, and omits the `ignored via` clause.
+  This matters more than it did for `./.gitignore`, which lived *inside* the pinned
+  directory: the exclude file is outside it, so binding a linked worktree writes into
+  the **main checkout's** `.git`, which can be unwritable while the worktree is fine.
+
+  A directory name reaches the file as part of a **pattern**, so its wildmatch
+  metacharacters are escaped. Measured: a subdirectory named `[wip]-feature`
+  produced `/[wip]-feature/…`, which git read as a character class and did not
+  ignore — the same silent failure as a missing `--show-prefix`, triggered by the
+  directory's name instead.
+
   Migration: **none required, and none performed.** A `./.gitignore` line written by
   an older kae is left alone — a duplicate ignore rule is harmless, and removing a
   line from a tracked file is a change kae was not asked to make. Outside a
@@ -77,7 +94,11 @@ Baseline: v0.16.0. `schema_version` stays `1`. One **behaviour change** to
   a single-tool re-bind leaves the previously bound tools' stores behind, so a
   directory appears only while it still has a fragment to read. Listing stores would
   name directories that are not bound and remedies that land where nothing reads —
-  the same distinction the v0.16.0 doctor credential sweep had to make.
+  the same distinction the v0.16.0 doctor credential sweep had to make. An
+  *unreadable* fragment is not folded into that skip: the directory is left out with
+  a stderr warning naming it, the way `pinChecks` already separates the two. And it
+  reads no config, so a malformed `config.toml` (which makes plain `kae ls` exit `2`)
+  does not stop it answering.
 
 - **Tool tiers are written down** (documentation). claude and codex are **tier 1**
   (every mode); agy, opencode, cursor and copilot are **tier 2** (global credential

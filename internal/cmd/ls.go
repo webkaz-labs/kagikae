@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"sort"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
@@ -110,7 +111,17 @@ func (app *App) buildLsPins() (*pinsReport, error) {
 	dirs := []boundDir{}
 	for _, pin := range pins {
 		info, exists, ferr := readFragmentAt(pin.Dir)
-		if ferr != nil || !exists {
+		// An unreadable fragment is not an unbound directory, and the two must not
+		// collapse into the same silent skip — pinChecks splits them for the same
+		// reason. A live, genuinely bound directory vanishing from the one command
+		// that says which account it runs is worse than a noisy row, so say why on
+		// stderr and keep going (a warning never changes the exit code).
+		if ferr != nil {
+			fmt.Fprintf(os.Stderr, "kae: warning: %s is bound but its fragment could not be read (%v), so it is not listed\n",
+				pin.Dir, ferr)
+			continue
+		}
+		if !exists {
 			continue
 		}
 		dirs = append(dirs, boundDir{

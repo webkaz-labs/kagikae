@@ -81,13 +81,14 @@ func writeMiseFragment(path, content string) error {
 // writeDirFragment writes the kae-owned mise fragment in the current directory
 // (creating .config/mise/conf.d/ as needed) and tells git to ignore it. The
 // fragment holds machine-specific absolute paths and account names, so it must
-// never be committed. It reports the exclude file it recorded the rule in, empty
-// when there was no repository to tell.
+// never be committed. It reports the exclude file the rule was recorded in, empty
+// when none was — which is never an error, so only the fragment write can fail
+// here (see ensureGitExcluded for why an ignore rule must not).
 func writeDirFragment(ctx context.Context, content string) (string, error) {
 	if err := writeMiseFragment(fragmentRelPath, content); err != nil {
 		return "", err
 	}
-	return ensureGitExcluded(ctx, fragmentRelPath)
+	return ensureGitExcluded(ctx, fragmentRelPath), nil
 }
 
 // removeDirFragment deletes the kae-owned mise fragment in the current
@@ -106,9 +107,24 @@ func removeDirFragment() (ok bool, err error) {
 
 // ensureGitExcluded records an ignore rule for path (relative to the current
 // directory) in the repository's shared exclude file, so the kae-owned fragment
-// does not sit in `git status` as untracked. It returns the file it wrote, or ""
-// when there was no repository to tell — which is not an error, since then
-// nothing is watching the fragment. Idempotent on the entry line.
+// does not sit in `git status` as untracked. It returns the file it recorded the
+// rule in, or "" when it recorded none. Idempotent on the entry line.
+//
+// **It never fails.** An ignore rule is cosmetic, and it is the last step of
+// `kae pin`: by the time it runs the stores are materialized, the credential is
+// written and the fragment is in place, so the directory *is* bound. Returning an
+// error there would skip `pruneDirCredentials` — leaving the superseded
+// per-directory keychain item holding a credential nothing points at, the exact
+// state that sweep exists to prevent — and would swallow the export fallback a
+// non-mise shell needs, on every re-run, since the cause does not go away. So a
+// problem here is a warning on stderr and an empty return, which the caller
+// reports by simply not claiming the fragment was ignored.
+//
+// This matters more than it did for `./.gitignore`, which lived *inside* the
+// directory being pinned. The exclude file is outside it: pinning a linked
+// worktree writes into the **main checkout's** `.git`, which can be unwritable
+// while the worktree is perfectly writable (a repository cloned by another user,
+// `.git` on a read-only mount, a locked-down `info/exclude`).
 //
 // It writes $GIT_COMMON_DIR/info/exclude rather than a tracked ./.gitignore
 // because kae binds *directories*, and a git worktree is one more directory:
@@ -128,38 +144,40 @@ func removeDirFragment() (ok bool, err error) {
 //     the directory being bound, which may be any depth below the root, so the
 //     entry needs --show-prefix in front of it. Without that, pinning a
 //     subdirectory writes a rule that matches nothing.
-func ensureGitExcluded(ctx context.Context, path string) (string, error) {
+func ensureGitExcluded(ctx context.Context, path string) string {
 	// One call for both values; the prefix keeps its trailing slash, and is
 	// empty at the repository root.
 	out, _, code := runner.Run(ctx, "git", "rev-parse", "--git-common-dir", "--show-prefix")
 	if code != 0 {
-		return "", nil // no repository here, or no git to ask
+		return "" // no repository here, or no git to ask: nothing to tell
 	}
+	// Trim only the line ending. A leading space is a legal first character of a
+	// path component, on both lines, and TrimSpace would silently eat it.
 	lines := strings.Split(out, "\n")
-	if len(lines) < 2 || strings.TrimSpace(lines[0]) == "" {
-		// git answered but not in the shape measured above. Skip rather than fail:
-		// the cost is a fragment visible in `git status`, which the user can see
-		// and re-running fixes, and failing `kae pin` over an ignore rule would
-		// break the binding for a cosmetic reason.
-		return "", nil
+	if len(lines) < 2 || strings.TrimRight(lines[0], "\r") == "" {
+		// git answered, but not in the shape measured in docs/VALIDATION.md.
+		warnGitExclude(fmt.Errorf("git rev-parse returned %q", out))
+		return ""
 	}
-	commonDir, err := filepath.Abs(strings.TrimSpace(lines[0]))
+	commonDir, err := filepath.Abs(strings.TrimRight(lines[0], "\r"))
 	if err != nil {
-		return "", fmt.Errorf("resolve git common dir %q: %w", lines[0], err)
+		warnGitExclude(fmt.Errorf("resolve git common dir %q: %w", lines[0], err))
+		return ""
 	}
 	// ponytail: a bare repository answers this too (common dir ".", empty
 	// prefix), so the rule lands in its info/exclude with no worktree to apply
 	// to. Harmless — it is that repository's real exclude file — and reaching it
 	// means having pinned a bare repo, so it is not guarded.
 	excludeFile := filepath.Join(commonDir, "info", "exclude")
-	entry := "/" + strings.TrimSpace(lines[1]) + filepath.ToSlash(path)
+	entry := "/" + escapeGitPattern(strings.TrimRight(lines[1], "\r")) + filepath.ToSlash(path)
 	data, err := os.ReadFile(excludeFile)
 	if err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("read %s: %w", excludeFile, err)
+		warnGitExclude(err) // *PathError already names the operation and the file
+		return ""
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.TrimSpace(line) == entry {
-			return excludeFile, nil // already ignored
+			return excludeFile // already ignored
 		}
 	}
 	// Append rather than rewrite. This file is the one thing kae writes that is
@@ -177,20 +195,52 @@ func ensureGitExcluded(ctx context.Context, path string) (string, error) {
 	fmt.Fprintln(&b, "# kagikae per-directory mise fragment (machine-specific; do not commit)")
 	fmt.Fprintln(&b, entry)
 	if err := os.MkdirAll(filepath.Dir(excludeFile), 0o755); err != nil {
-		return "", fmt.Errorf("create %s: %w", filepath.Dir(excludeFile), err)
+		warnGitExclude(err)
+		return ""
 	}
 	f, err := os.OpenFile(excludeFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return "", fmt.Errorf("open %s: %w", excludeFile, err)
+		warnGitExclude(err)
+		return ""
 	}
 	if _, err := f.WriteString(b.String()); err != nil {
 		f.Close()
-		return "", fmt.Errorf("write %s: %w", excludeFile, err)
+		warnGitExclude(err)
+		return ""
 	}
 	if err := f.Close(); err != nil {
-		return "", fmt.Errorf("close %s: %w", excludeFile, err)
+		warnGitExclude(err)
+		return ""
 	}
-	return excludeFile, nil
+	return excludeFile
+}
+
+// warnGitExclude reports why kae could not record the ignore rule, on stderr and
+// without changing the exit code (AGENTS.md). It names the remedy because the
+// fragment is machine-specific and must not be committed: the user has to ignore
+// it some other way, and kae will not silently leave that unsaid.
+func warnGitExclude(err error) {
+	fmt.Fprintf(os.Stderr, "kae: warning: could not tell git to ignore %s: %v\n", fragmentRelPath, err)
+	fmt.Fprintf(os.Stderr, "kae: the binding is in place; ignore %s yourself (it is machine-specific and must not be committed)\n", fragmentRelPath)
+}
+
+// escapeGitPattern backslash-escapes the wildmatch metacharacters in a literal
+// path component so it matches itself in a gitignore/exclude *pattern*. The
+// directory kae was run in is a user path, and an unescaped one is a rule that
+// matches nothing while `kae pin` reports the fragment as ignored: measured
+// 2026-08-04, a repository subdirectory named `[wip]-feature` produced
+// `/[wip]-feature/…`, which git read as a character class and did not ignore.
+// `#` and `!` need no escaping here — the entry always starts with `/`, so they
+// are never the first character of a line.
+func escapeGitPattern(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if strings.ContainsRune(`\*?[]`, r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // miseActivated reports whether mise's shell activation is in effect: `mise

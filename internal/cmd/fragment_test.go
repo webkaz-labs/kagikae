@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -111,6 +112,25 @@ func TestEnsureGitExcludedDerivesTargetAndEntry(t *testing.T) {
 			wantCommon: func(cwd string) string { return filepath.Join(cwd, "elsewhere", "main", ".git") },
 			wantEntry:  "/" + frag,
 		},
+		{
+			// An entry is a *pattern*, so a directory name carrying wildmatch
+			// metacharacters has to be escaped or the rule matches nothing while
+			// `kae pin` reports the fragment as ignored.
+			name:       "prefix with glob metacharacters",
+			commonDir:  func(string) string { return "../.git" },
+			prefix:     "[wip]-a*b/",
+			wantCommon: func(cwd string) string { return filepath.Join(filepath.Dir(cwd), ".git") },
+			wantEntry:  `/\[wip\]-a\*b/` + frag,
+		},
+		{
+			// A leading space is a legal first character of a path component, so
+			// the line ending is all that may be trimmed.
+			name:       "prefix whose component starts with a space",
+			commonDir:  func(string) string { return "../.git" },
+			prefix:     " spaced/",
+			wantCommon: func(cwd string) string { return filepath.Join(filepath.Dir(cwd), ".git") },
+			wantEntry:  "/ spaced/" + frag,
+		},
 		{name: "no repository, or no git to ask", commonDir: func(string) string { return "" }, code: 128},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -125,10 +145,14 @@ func TestEnsureGitExcludedDerivesTargetAndEntry(t *testing.T) {
 			}
 			var got string
 			runner.With(fake, func() {
-				got, err = ensureGitExcluded(context.Background(), fragmentRelPath)
+				got = ensureGitExcluded(context.Background(), fragmentRelPath)
 			})
-			if err != nil {
-				t.Fatalf("ensureGitExcluded: %v", err)
+			// Assert the invocation, not only the reply. Every case here fabricates
+			// git's output, so without this the whole table keeps passing if
+			// --show-prefix is dropped from the command — and the anchoring it
+			// supplies is the half that fails while reporting success.
+			if want := []string{"rev-parse", "--git-common-dir", "--show-prefix"}; !slices.Equal(fake.Args, want) {
+				t.Fatalf("git args = %v, want %v", fake.Args, want)
 			}
 			if tc.code != 0 {
 				if got != "" {
@@ -143,6 +167,41 @@ func TestEnsureGitExcludedDerivesTargetAndEntry(t *testing.T) {
 				t.Fatalf("exclude file missing entry %q:\n%s", tc.wantEntry, readFile(t, got))
 			}
 		})
+	}
+}
+
+// An ignore rule is cosmetic and runs after the directory is already bound, so a
+// failure to record it must not fail `kae pin` — that would skip the credential
+// sweep and the export fallback, on every re-run, for a problem that does not go
+// away. Reproduced the way it actually happens: the exclude file's parent
+// unwritable, which is reachable by pinning a linked worktree whose main
+// checkout's .git is not writable.
+func TestEnsureGitExcludedNeverFailsThePin(t *testing.T) {
+	chdirTemp(t)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitDir := filepath.Join(cwd, ".git")
+	if err := os.MkdirAll(gitDir, 0o500); err != nil { // no write bit
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(gitDir, 0o700) })
+
+	fake := &runnertest.Fake{Stdout: ".git\n\n"}
+	var got string
+	_, stderr := captureStderr(t, func() int {
+		runner.With(fake, func() { got = ensureGitExcluded(context.Background(), fragmentRelPath) })
+		return constants.ExitOK
+	})
+	if got != "" {
+		t.Fatalf("a failure must report no exclude file, got %q", got)
+	}
+	if !strings.Contains(stderr, "could not tell git to ignore") {
+		t.Fatalf("the failure must be a stderr warning, not silence:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "the binding is in place") {
+		t.Fatalf("the warning must say the bind succeeded and the fragment needs ignoring:\n%s", stderr)
 	}
 }
 
@@ -171,10 +230,7 @@ func TestEnsureGitExcludedAppendsWithoutDisturbingTheFile(t *testing.T) {
 	var file string
 	runner.With(fake, func() {
 		for range 3 {
-			file, err = ensureGitExcluded(context.Background(), fragmentRelPath)
-			if err != nil {
-				t.Fatalf("ensureGitExcluded: %v", err)
-			}
+			file = ensureGitExcluded(context.Background(), fragmentRelPath)
 		}
 	})
 	if file != excludeFile {
@@ -241,6 +297,12 @@ func TestEnsureGitExcludedLeavesEveryWorktreeClean(t *testing.T) {
 	for _, dir := range []string{main, linked} {
 		writeFile(t, filepath.Join(dir, fragmentRelPath), "# fragment\n")
 	}
+	// Plus one in a subdirectory, recorded from *there*, so the anchoring half is
+	// measured against real git and not only against a prefix the test invented.
+	// At the repository root the prefix is empty, so a root-only check passes just
+	// as happily with --show-prefix dropped.
+	nested := filepath.Join(main, "nested")
+	writeFile(t, filepath.Join(nested, fragmentRelPath), "# fragment\n")
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -249,16 +311,35 @@ func TestEnsureGitExcludedLeavesEveryWorktreeClean(t *testing.T) {
 	if err := os.Chdir(main); err != nil {
 		t.Fatal(err)
 	}
-	file, err := ensureGitExcluded(context.Background(), fragmentRelPath)
-	if err != nil {
-		t.Fatalf("ensureGitExcluded: %v", err)
-	}
+	file := ensureGitExcluded(context.Background(), fragmentRelPath)
 	if file == "" {
 		t.Fatal("ensureGitExcluded reported no exclude file inside a real repository")
 	}
+	// That one entry has to have covered the linked worktree's fragment as well as
+	// the main checkout's — the whole point — but it cannot cover the nested one,
+	// whose rule is anchored a directory deeper.
+	if status := git(linked, "status", "--porcelain"); status != "" {
+		t.Fatalf("one entry from the main checkout must cover the worktree too:\n%s", status)
+	}
+	if status := git(main, "status", "--porcelain"); !strings.Contains(status, "nested") {
+		t.Fatalf("the nested fragment should still be untracked at this point, got %q", status)
+	}
+	if err := os.Chdir(nested); err != nil {
+		t.Fatal(err)
+	}
+	if got := ensureGitExcluded(context.Background(), fragmentRelPath); got != file {
+		t.Fatalf("a subdirectory must record into the same common exclude file: got %q want %q", got, file)
+	}
+	// Against real git: the entry is anchored at the repository root, so it must
+	// carry the prefix. Dropping --show-prefix writes "/.config/…" here, which is
+	// already present from the root pin — so only this assertion, and the status
+	// check below it, would notice.
+	if want := "/nested/" + filepath.ToSlash(fragmentRelPath); !strings.Contains(readFile(t, file), want+"\n") {
+		t.Fatalf("exclude file missing the root-anchored nested entry %q:\n%s", want, readFile(t, file))
+	}
 	for _, dir := range []string{main, linked} {
 		if status := git(dir, "status", "--porcelain"); status != "" {
-			t.Fatalf("%s is not clean after one exclude entry:\n%s", dir, status)
+			t.Fatalf("%s is not clean after the exclude entries:\n%s", dir, status)
 		}
 	}
 	// The rule must live outside every working tree, or ignoring the fragment

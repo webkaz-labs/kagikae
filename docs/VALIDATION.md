@@ -1048,19 +1048,7 @@ mkdir -p "$HOME/norepo"; cd "$HOME/norepo" && /tmp/kae pin main
 #   assert: the report says `Wrote …; your mise.toml is untouched.` with NO
 #           `ignored via`, and no .gitignore exists here
 
-# --- E. an unrecordable rule warns; it must not fail the bind ---
-# The *file* has to be unwritable, not its directory: `chmod a-w .git` only stops
-# entries being created in .git, and info/exclude already exists by now — measured
-# 2026-08-04, that pin succeeded and recorded its rule as usual.
-chmod a-w "$W/main/.git/info/exclude"
-mkdir -p "$W/main/locked" && cd "$W/main/locked" && /tmp/kae pin main; echo "exit=$?"
-#   assert: exit 0, a stderr warning `could not tell git to ignore …` saying the
-#           binding is in place, and NO `ignored via` in the report. Reachable in
-#           practice because the exclude file is *outside* the pinned directory: a
-#           worktree can be writable while the main checkout's .git is not
-chmod u+w "$W/main/.git/info/exclude"
-
-# --- F. kae ls --pins, from outside every bound directory ---
+# --- E. kae ls --pins, from outside every bound directory ---
 cd "$HOME" && /tmp/kae ls --pins
 #   assert: four rows (norepo, work/main, work/main/nested, work/wt1), sorted by
 #           directory, Current blank for all of them
@@ -1070,9 +1058,33 @@ cd "$W/wt1" && /tmp/kae ls --pins
 /tmp/kae unpin && /tmp/kae ls --pins
 #   assert: work/wt1 is GONE from the list — unpin keeps the store on purpose, and a
 #           store is not a binding
+
+# --- F. an unrecordable rule warns; it must not fail the bind ---
+# Deliberately last: this case leaves a binding whose fragment is NOT ignored, so
+# it dirties $W/main and adds a row — put it earlier and it silently changes E's
+# row count, which is how the first draft of this block came to claim assertions
+# that no longer held.
+# The *file* has to be unwritable, not its directory: `chmod a-w .git` only stops
+# entries being created in .git, and info/exclude already exists by now — measured
+# 2026-08-04, that pin succeeded and recorded its rule as usual, so that draft
+# proved nothing.
+chmod a-w "$W/main/.git/info/exclude"
+mkdir -p "$W/main/locked" && cd "$W/main/locked" && /tmp/kae pin main; echo "exit=$?"
+#   assert: exit 0, a stderr warning `could not tell git to ignore …` saying the
+#           binding is in place, and NO `ignored via` in the report. Reachable in
+#           practice because the exclude file is *outside* the pinned directory: a
+#           worktree can be writable while the main checkout's .git is not
+#   assert: `git -C "$W/main" status --porcelain` now shows `?? locked/` — the
+#           fragment really is unignored, which is what the warning told the user
+chmod u+w "$W/main/.git/info/exclude"
 ```
 
-**PASSED 2026-08-04** on the pre-release binary: A–F as asserted.
+**PASSED 2026-08-04** on the pre-release binary: A–F, each assertion checked
+individually **at its own point in the block** rather than from the end state. That
+distinction is not pedantry — two earlier runs of this block completed without
+erroring while assertions inside it were false (a row count changed by a case
+inserted above it, and a `chmod` that did not make anything unwritable). "The block
+ran" is not evidence; "this assertion held here" is.
 
 The one that looks like success when it is wrong is **C**. `info/exclude` is
 anchored at the repository root while a `.gitignore` entry is anchored at its own

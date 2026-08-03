@@ -73,7 +73,11 @@ Baseline: v0.16.0. `schema_version` stays `1`. One **behaviour change** to
 
   Migration: **none required, and none performed.** A `./.gitignore` line written by
   an older kae is left alone — a duplicate ignore rule is harmless, and removing a
-  line from a tracked file is a change kae was not asked to make. Outside a
+  line from a tracked file is a change kae was not asked to make. The same goes for
+  an exclude line: if one is already there in an unescaped form (only reachable from
+  an unreleased build of this branch, or by hand), the first pin appends the escaped
+  form beside it and every later pin matches that and returns early — one leftover
+  line, not one per pin, verified by pinning four times. Outside a
   repository (or with no `git` on `PATH`) kae writes no rule and the success report
   omits the `ignored via …` clause rather than claiming one; the tracked
   `.gitignore` an older kae would have created in a non-repository is no longer

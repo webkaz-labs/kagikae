@@ -184,6 +184,42 @@ func TestLsPinsListsOnlyLiveBindings(t *testing.T) {
 	}
 }
 
+// An unreadable fragment is not an unbound directory. Collapsing the two into one
+// silent skip makes a live, genuinely bound directory vanish from the only command
+// that says which account it runs — so the row goes, but a warning names it and the
+// exit code does not move. Without this test nothing fails if the two branches are
+// merged back together, which is the whole point of the fix.
+//
+// The fragment path is made a *directory* rather than chmod'd: ReadFile gets EISDIR
+// deterministically, including as root.
+func TestLsPinsWarnsOnAnUnreadableFragment(t *testing.T) {
+	app := overlayTestApp(t)
+	broken := filepath.Join(t.TempDir(), "broken")
+	if err := os.MkdirAll(filepath.Join(broken, fragmentRelPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.recordPinnedDir(paths.PinID(broken), broken); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stderr := captureStderr(t, func() int { return runLsPins(app, commonOpts{Format: formatJSON}) })
+	mustExit(t, constants.ExitOK, code, stderr)
+	if !strings.Contains(stderr, "is bound but its fragment could not be read") {
+		t.Fatalf("an unreadable fragment must be reported, not silently dropped:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, broken) {
+		t.Fatalf("the warning must name the directory:\n%s", stderr)
+	}
+	_, out := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatJSON}) })
+	var report pinsReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("invalid ls --pins JSON: %v: %s", err, out)
+	}
+	if len(report.BoundDirectories) != 0 {
+		t.Fatalf("a directory kae could not read must not be reported as bound: %s", out)
+	}
+}
+
 // No bindings lists nothing without error and keeps the [] JSON array.
 func TestLsPinsEmpty(t *testing.T) {
 	app := testApp(t, nil)

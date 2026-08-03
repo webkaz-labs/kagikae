@@ -82,6 +82,9 @@ func TestEnsureGitExcludedDerivesTargetAndEntry(t *testing.T) {
 		wantCommon func(cwd string) string
 		wantEntry  string
 		code       int
+		// refused marks an answer kae must decline rather than interpret: it
+		// records nothing and warns, exactly as a non-zero exit does.
+		refused bool
 	}{
 		{
 			name:       "repository root",
@@ -132,6 +135,15 @@ func TestEnsureGitExcludedDerivesTargetAndEntry(t *testing.T) {
 			wantEntry:  "/ spaced/" + frag,
 		},
 		{name: "no repository, or no git to ask", commonDir: func(string) string { return "" }, code: 128},
+		{
+			// A newline is legal in a path component and rev-parse quotes nothing,
+			// so a third value means the answer cannot be split into the two it
+			// looks like. Following it would create an exclude file somewhere
+			// unrelated — outside the repository — and still claim success.
+			name:      "a value containing a newline is refused, not truncated",
+			commonDir: func(cwd string) string { return filepath.Join(cwd, "we\nird", ".git") },
+			refused:   true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			chdirTemp(t)
@@ -154,9 +166,9 @@ func TestEnsureGitExcludedDerivesTargetAndEntry(t *testing.T) {
 			if want := []string{"rev-parse", "--git-common-dir", "--show-prefix"}; !slices.Equal(fake.Args, want) {
 				t.Fatalf("git args = %v, want %v", fake.Args, want)
 			}
-			if tc.code != 0 {
+			if tc.code != 0 || tc.refused {
 				if got != "" {
-					t.Fatalf("no repository must yield no exclude file, got %q", got)
+					t.Fatalf("an unusable answer must yield no exclude file, got %q", got)
 				}
 				return
 			}
@@ -173,10 +185,20 @@ func TestEnsureGitExcludedDerivesTargetAndEntry(t *testing.T) {
 // An ignore rule is cosmetic and runs after the directory is already bound, so a
 // failure to record it must not fail `kae pin` — that would skip the credential
 // sweep and the export fallback, on every re-run, for a problem that does not go
-// away. Reproduced the way it actually happens: the exclude file's parent
-// unwritable, which is reachable by pinning a linked worktree whose main
-// checkout's .git is not writable.
+// away. Reproduced the way it actually happens: the exclude file unreachable,
+// which pinning a linked worktree makes possible because the file lives in the
+// *main checkout's* .git.
+//
+// Which branch this hits is worth naming, because the two are easy to confuse:
+// with .git unwritable and info/ absent, ReadFile gets ENOENT (skipped) and it is
+// os.MkdirAll that fails. The OpenFile-on-an-unwritable-existing-file branch needs
+// the file to exist already, and is covered by case E of the § per-worktree smoke
+// block in docs/VALIDATION.md — where the first draft chmod'd the *directory* and
+// so proved nothing, since that does not stop a write to a file already in it.
 func TestEnsureGitExcludedNeverFailsThePin(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the mode bits this test relies on")
+	}
 	chdirTemp(t)
 	cwd, err := os.Getwd()
 	if err != nil {

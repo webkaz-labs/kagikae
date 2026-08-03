@@ -140,6 +140,16 @@ block in docs/VALIDATION.md, next to two correct ones.
   `git rev-parse --show-prefix` in front of it or it silently matches nothing while
   `kae pin` reports success. Ask git for both halves (`ensureGitExcluded`, via
   `internal/runner`); never assume a `.git` layout.
+- **A test that fabricates a subprocess's output must assert the invocation too, or
+  it guards one step short of the thing that breaks.** The stubbed
+  `ensureGitExcluded` tests build git's reply themselves, so deleting
+  `--show-prefix` from the command left every one of them green — and the real-git
+  test could not catch it either, because it ran at the repository *root*, where the
+  prefix is empty and the entry is byte-identical either way. Two rules come out of
+  it, and they generalize past this one function: check `runnertest.Fake.Args`
+  whenever the argv is part of the contract, and place the real-tool case where the
+  value under test is **non-empty** (here: a nested subdirectory). Verified the only
+  way that counts — by removing the flag and watching the suite go red.
 - **A keychain item's identity is service + account, and per-tool.** codex derives
   the account of its single-service `Codex Auth` item from `CODEX_HOME`
   (`cli|` + 16 hex of sha256 over the **canonicalized** path — symlinks resolved),

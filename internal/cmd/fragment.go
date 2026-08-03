@@ -154,8 +154,13 @@ func ensureGitExcluded(ctx context.Context, path string) string {
 	// Trim only the line ending. A leading space is a legal first character of a
 	// path component, on both lines, and TrimSpace would silently eat it.
 	lines := strings.Split(out, "\n")
-	if len(lines) < 2 || strings.TrimRight(lines[0], "\r") == "" {
-		// git answered, but not in the shape measured in docs/VALIDATION.md.
+	// Exactly the measured shape: two values and the trailing newline's empty
+	// tail. Not "at least two" — `git rev-parse` prints both values raw, with no
+	// quoting and no -z, and a newline is a legal byte in a path component. A
+	// repository at `…/we<LF>ird/repo` reached through a linked worktree would
+	// otherwise leave lines[0] truncated to `…/we`, and kae would create
+	// `…/we/info/exclude` somewhere unrelated while reporting the fragment ignored.
+	if len(lines) != 3 || strings.TrimRight(lines[0], "\r") == "" {
 		warnGitExclude(fmt.Errorf("git rev-parse returned %q", out))
 		return ""
 	}

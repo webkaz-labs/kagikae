@@ -146,22 +146,57 @@ func TestEnsureGitExcludedDerivesTargetAndEntry(t *testing.T) {
 	}
 }
 
-func TestEnsureGitExcludedIsIdempotent(t *testing.T) {
+// The exclude file is the user's (and git's), not kae's: kae appends one entry to
+// it and must leave everything else — the existing rules, the final-newline state,
+// and the file's mode — exactly as found. The mode matters because this file is
+// written by append for a reason (see ensureGitExcluded): a temp-file-and-rename
+// would silently reset it, and it is shared by every worktree's binding.
+func TestEnsureGitExcludedAppendsWithoutDisturbingTheFile(t *testing.T) {
 	chdirTemp(t)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	excludeFile := filepath.Join(cwd, ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(excludeFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// No trailing newline, so a careless append would join onto the last rule.
+	const existing = "# the user's own rules\n*.log\nbuild/"
+	if err := os.WriteFile(excludeFile, []byte(existing), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	fake := &runnertest.Fake{Stdout: ".git\n\n"}
 	var file string
 	runner.With(fake, func() {
 		for range 3 {
-			var err error
 			file, err = ensureGitExcluded(context.Background(), fragmentRelPath)
 			if err != nil {
 				t.Fatalf("ensureGitExcluded: %v", err)
 			}
 		}
 	})
+	if file != excludeFile {
+		t.Fatalf("exclude file: got %q want %q", file, excludeFile)
+	}
+	got := readFile(t, file)
 	entry := "/" + filepath.ToSlash(fragmentRelPath)
-	if n := strings.Count(readFile(t, file), entry); n != 1 {
-		t.Fatalf("entry written %d times, want 1:\n%s", n, readFile(t, file))
+	if n := strings.Count(got, entry); n != 1 {
+		t.Fatalf("entry written %d times, want 1:\n%s", n, got)
+	}
+	if !strings.HasPrefix(got, existing+"\n") {
+		t.Fatalf("existing rules must survive verbatim, with the missing newline supplied:\n%q", got)
+	}
+	if !strings.Contains(got, "\nbuild/\n") {
+		t.Fatalf("the last existing rule must not be joined onto kae's comment:\n%q", got)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode changed to %v; kae must not widen the user's exclude file", info.Mode().Perm())
 	}
 }
 

@@ -137,11 +137,15 @@ func ensureGitExcluded(ctx context.Context, path string) (string, error) {
 	}
 	lines := strings.Split(out, "\n")
 	if len(lines) < 2 || strings.TrimSpace(lines[0]) == "" {
+		// git answered but not in the shape measured above. Skip rather than fail:
+		// the cost is a fragment visible in `git status`, which the user can see
+		// and re-running fixes, and failing `kae pin` over an ignore rule would
+		// break the binding for a cosmetic reason.
 		return "", nil
 	}
 	commonDir, err := filepath.Abs(strings.TrimSpace(lines[0]))
 	if err != nil {
-		return "", nil
+		return "", fmt.Errorf("resolve git common dir %q: %w", lines[0], err)
 	}
 	// ponytail: a bare repository answers this too (common dir ".", empty
 	// prefix), so the rule lands in its info/exclude with no worktree to apply
@@ -158,8 +162,15 @@ func ensureGitExcluded(ctx context.Context, path string) (string, error) {
 			return excludeFile, nil // already ignored
 		}
 	}
+	// Append rather than rewrite. This file is the one thing kae writes that is
+	// shared by *sibling bindings* — every worktree of the repository records its
+	// rule here — and the pin lock is per directory, so two `kae pin` runs in two
+	// worktrees are deliberately not serialized against each other. A
+	// read-modify-write would let the second rename discard the first one's entry;
+	// an O_APPEND write cannot, and at worst a lost idempotency race duplicates a
+	// line, which git does not mind. It also leaves the file's existing mode and
+	// ownership alone, which a temp-file-and-rename would not.
 	var b strings.Builder
-	b.Write(data)
 	if len(data) > 0 && !strings.HasSuffix(string(data), "\n") {
 		b.WriteByte('\n')
 	}
@@ -168,8 +179,16 @@ func ensureGitExcluded(ctx context.Context, path string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(excludeFile), 0o755); err != nil {
 		return "", fmt.Errorf("create %s: %w", filepath.Dir(excludeFile), err)
 	}
-	if err := patch.WriteFileAtomic(excludeFile, []byte(b.String()), 0o644); err != nil {
-		return "", err
+	f, err := os.OpenFile(excludeFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return "", fmt.Errorf("open %s: %w", excludeFile, err)
+	}
+	if _, err := f.WriteString(b.String()); err != nil {
+		f.Close()
+		return "", fmt.Errorf("write %s: %w", excludeFile, err)
+	}
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("close %s: %w", excludeFile, err)
 	}
 	return excludeFile, nil
 }

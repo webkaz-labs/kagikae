@@ -94,6 +94,11 @@ func runLsPins(app *App, opts commonOpts) int {
 // directory is listed only when it still has a fragment to read (AGENTS.md; the
 // leftovers are pinChecks' business). A directory that is gone is skipped for the
 // same reason, and `kae doctor` is where its orphaned store is reported.
+//
+// It reads no config, and so deliberately skips requireConfig: the bindings live
+// in the data dir and the fragments live in the directories, so a malformed
+// config.toml is not a reason to refuse the one command that says which accounts
+// the directories are currently running.
 func (app *App) buildLsPins() (*pinsReport, error) {
 	pins, err := app.pinnedDirs()
 	if err != nil {

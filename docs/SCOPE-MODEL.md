@@ -282,6 +282,15 @@ to make their credential private without redirecting their home. For a `-i`
 *profile* that also maps such a tool, it is skipped with a warning (claude/codex
 stay isolated); a single explicit unsupported tool exits `5`.
 
+That split is now a stated scope decision rather than only a consequence of what
+has been measured: claude and codex are **tier 1** and the other four are **tier 2**,
+defined normatively in [DESIGN.md](DESIGN.md) § Tool Tiers. Read it before treating
+a tier-2 tool's missing isolation as a gap to close — the mechanism in §5 would
+work for any tool with a verified isolation env var, and copilot has one, but
+building it is demand-gated. What the tier does *not* change is any refusal: an
+unmeasured store still gets a warning rather than a guessed artifact, at either
+tier.
+
 ## 8. Migration / breaking changes
 
 > Historical record; the current migration notes live in

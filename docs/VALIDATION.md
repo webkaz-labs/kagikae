@@ -1001,6 +1001,73 @@ companion add main gh GH_TOKEN` (records `expected_login` from `gh api user`),
 then in the pinned dir `mise exec -- kae doctor --yes` reports a match, and
 `kae doctor --yes` outside the pin reports the inactive-pin warn.
 
+## per-worktree surfaces — the exclude file and `kae ls --pins`
+
+Two changes, both read-only outside the fragment write: `kae pin` records its
+ignore rule in the repository's shared exclude file instead of a tracked
+`./.gitignore`, and `kae ls --pins` lists every bound directory. Temp HOME, file
+driver, file backend — no real `$HOME`, no real keychain. The repositories are
+built **inside the temp HOME**, so nothing here can dirty a real checkout.
+
+```bash
+. scripts/smoke-env.sh
+export KAE_CLAUDE_DRIVER=file
+mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
+printf 'version = 1\n[security]\nsecret_backend = "file"\n' > "$XDG_CONFIG_HOME/kagikae/config.toml"
+printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":99999999999999}}' \
+  > "$HOME/.claude/.credentials.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+/tmp/kae profile set main claude main
+
+W="$HOME/work"; mkdir -p "$W/main"; cd "$W/main"
+git init -q && git -c user.email=you@example.com -c user.name=t commit -q --allow-empty -m init
+git worktree add -q "$W/wt1" -b side
+mkdir -p "$W/main/nested"
+
+# --- A. the main checkout: no tracked file touched, nothing dirty ---
+cd "$W/main" && /tmp/kae pin main
+#   assert: the report reads `Wrote … (ignored via …/main/.git/info/exclude)`
+git status --porcelain                 # assert: empty
+git -C "$W/wt1" status --porcelain     # assert: empty — one entry already covers it
+test ! -e "$W/main/.gitignore"         # assert: no tracked .gitignore was created
+
+# --- B. the linked worktree binds independently and stays clean ---
+cd "$W/wt1" && /tmp/kae pin main
+#   assert: the exclude file named is the *main* checkout's .git/info/exclude
+git -C "$W/main" status --porcelain; git status --porcelain   # assert: both empty
+
+# --- C. a nested directory: the entry is anchored at the repository root ---
+cd "$W/main/nested" && /tmp/kae pin main
+grep nested "$W/main/.git/info/exclude"
+#   assert: `/nested/.config/mise/conf.d/kagikae.toml` — without --show-prefix this
+#           would read `/.config/…` and ignore nothing
+git -C "$W/main" status --porcelain    # assert: empty
+
+# --- D. outside any repository: no rule, and no claim of one ---
+mkdir -p "$HOME/norepo"; cd "$HOME/norepo" && /tmp/kae pin main
+#   assert: the report says `Wrote …; your mise.toml is untouched.` with NO
+#           `ignored via`, and no .gitignore exists here
+
+# --- E. kae ls --pins, from outside every bound directory ---
+cd "$HOME" && /tmp/kae ls --pins
+#   assert: four rows (norepo, work/main, work/main/nested, work/wt1), sorted by
+#           directory, Current blank for all of them
+cd "$W/wt1" && /tmp/kae ls --pins
+#   assert: `*` in Current on work/wt1 only
+/tmp/kae ls --pins --json              # assert: schema_version 1, bound_directories[]
+/tmp/kae unpin && /tmp/kae ls --pins
+#   assert: work/wt1 is GONE from the list — unpin keeps the store on purpose, and a
+#           store is not a binding
+```
+
+**PASSED 2026-08-04** on the pre-release binary: A–E as asserted.
+
+The one that looks like success when it is wrong is **C**. `info/exclude` is
+anchored at the repository root while a `.gitignore` entry is anchored at its own
+directory, so carrying the old entry string over would write a rule that matches
+nothing — and `kae pin` would still report success, with the fragment sitting in
+`git status` for the user to find.
+
 ## Upstream Behaviour Assumptions
 
 kae drives undocumented upstream state, so it depends on two different kinds of
@@ -1085,6 +1152,39 @@ commit**. Verifying an assumption always means launching a **fresh** tool proces
 The release acceptance run below is how these rows get re-verified: it already
 launches fresh tool processes against real accounts, which is what every row
 needs.
+
+### git behaviour kae depends on
+
+`kae pin` keeps its fragment out of `git status` by writing the repository's
+shared exclude file, which rests on two facts about git that no layout check
+would notice changing:
+
+| Assumption | Measured |
+|---|---|
+| A linked worktree's own `$GIT_DIR/info/exclude` (`<main>/.git/worktrees/<name>/info/exclude`) is **not consulted**, while `$GIT_COMMON_DIR/info/exclude` is honoured by the main checkout **and** by every linked worktree — so one entry covers the whole repository | 2026-08-04, git 2.55.0 on darwin 24.6.0 |
+| `git rev-parse --git-common-dir` is **relative to the current directory** in an ordinary checkout (`.git`, `../.git`) and absolute in a linked worktree; an entry in `info/exclude` is anchored at the **repository root**, so it needs `--show-prefix` in front of it (unlike a `.gitignore` entry, which is anchored at its own directory) | 2026-08-04, same |
+
+Unlike the AI-tool rows above, these are **guarded by a test rather than by a
+release run**: `TestEnsureGitExcludedLeavesEveryWorktreeClean` (`internal/cmd`)
+builds a real repository with a linked worktree, records one entry from the main
+checkout, and fails if either checkout is dirty afterwards — so `mise run check`
+re-measures them on every commit. It skips when `git` is not installed, which is
+the one way it can go quiet. To reproduce by hand:
+
+```bash
+T=$(mktemp -d) && git init -q "$T/main" &&
+  git -C "$T/main" -c user.email=you@example.com -c user.name=t commit -q --allow-empty -m init &&
+  git -C "$T/main" worktree add -q "$T/wt1" -b side
+mkdir -p "$T/wt1/.config/mise/conf.d" && : > "$T/wt1/.config/mise/conf.d/kagikae.toml"
+# The worktree's own exclude file does nothing:
+mkdir -p "$T/main/.git/worktrees/wt1/info"
+echo '/.config/mise/conf.d/kagikae.toml' > "$T/main/.git/worktrees/wt1/info/exclude"
+git -C "$T/wt1" status --porcelain          # still shows ?? .config/
+# The common one covers it:
+rm "$T/main/.git/worktrees/wt1/info/exclude"
+echo '/.config/mise/conf.d/kagikae.toml' >> "$T/main/.git/info/exclude"
+git -C "$T/wt1" status --porcelain          # empty
+```
 
 ## Upstream Literal Fingerprints (`mise run audit`)
 

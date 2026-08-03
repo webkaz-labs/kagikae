@@ -226,7 +226,12 @@ alternative exists (`secret-tool`).
   and say so. Note that codex parity is **not** a reason to hurry — `codex.storeKey`
   already resolves symlinks itself, so kae's keyring account matches whatever shape
   `PinID` takes. `doctor`'s `pin_stale` now makes an orphaned store visible, which
-  was the part that used to be silent.
+  was the part that used to be silent. **Worktrees add nothing to this** (checked
+  2026-08-04): a linked worktree is an ordinary directory with its own real path, so
+  it gets its own pin-id by the same rule as any other directory, and the only way a
+  worktree meets this entry is the way any directory does — by being reached through
+  a path alias. Deleting a worktree is the "bound directory is gone" case, which the
+  breadcrumb plus `pin_stale` already report.
 
 - **Surface vocabulary unification (`run` / `apply` / `mise init`)** *(shipped
   in v0.8.0 — see [RELEASE.md](RELEASE.md))*: folded `apply` into `use`,
@@ -407,7 +412,8 @@ alternative exists (`secret-tool`).
   stays for Linux/WSL. Identity auto-detection stays deferred (no whoami; the
   token is opaque). See [ADAPTERS.md](ADAPTERS.md); the two-account real-keychain
   gate is the open acceptance item ([VALIDATION.md](VALIDATION.md)).
-- **cursor off macOS is now unblocked but unimplemented**: the adapter refuses
+- **cursor off macOS is unblocked but unimplemented** (tier 2 — see § Tier-2
+  tools; this is the platform gap, not a missing mode): the adapter refuses
   non-darwin because the storage was undocumented. It no longer is — cursor-agent
   picks its store by platform alone (keychain on darwin, a file everywhere else,
   with no fallback either way) and writes one JSON object
@@ -501,15 +507,29 @@ plain-CLI layer; the TUI sits on top of them.
 
 - **Windows**: `%APPDATA%` layout, Credential Manager secret backend, lock
   implementation, `%USERPROFILE%\.claude` file-patch driver.
-- **agy home isolation**: revisit once upstream exposes a stable
-  home/config env var; until then `home` / `overlay` modes refuse it (the
-  same applies to the v0.6.0 adapters until their env vars are verified).
-- **copilot isolation** (newly possible, not built): `COPILOT_HOME` is now a
-  verified home variable (2026-07-31), so copilot could join claude and codex in
-  `isolationEnvVar` and become `use -i` / `pin -i`-capable. Not done with the
-  read-the-variable fix: the per-account keychain items coexist and are never
-  switched, so what a second home changes (and whether copilot's own
-  `--config-dir` precedence can defeat it) has to be established first.
+
+## Tier-2 tools — described, not queued
+
+Everything in this section concerns agy, opencode, cursor or copilot, which are
+**tier 2** ([DESIGN.md](DESIGN.md) § Tool Tiers): kae commits to global credential
+switching for them and to nothing more. These entries are therefore *descriptions
+of those tools*, kept so a future session recognizes a symptom rather than
+rediscovering it — not work queued against kae. Each says what would make it
+matter, and none of them relaxes a guard in the meantime: an unmeasured store gets
+a warning, never a guessed artifact.
+
+Promotion out of tier 2 needs all three of: a measured home-isolation env var, the
+tool's full credential set enumerated, and a real-machine round trip. Only copilot
+is anywhere near that, and only by demand.
+
+- **copilot isolation** (possible, deliberately not built): `COPILOT_HOME` is a
+  verified config-dir variable (2026-07-31), so copilot could join claude and
+  codex in `isolationEnvVar` and become `use -i` / `pin -i`-capable. Reading the
+  variable was not enough on its own: the per-account keychain items coexist and
+  are never switched, so what a second home actually changes — and whether
+  copilot's own hidden `--config-dir` can defeat it, which nothing in the
+  environment reveals — has to be established first. **Demand-gated**: build it
+  when someone needs a per-directory copilot account, not for parity.
 - **agy's file store on macOS** (recorded gap, 2026-07-31): agy skips the
   keychain under ssh/wsl/container detection, on a 1s keyring timeout, and on any
   keyring failure, so the file store is reachable on macOS too — but the fallback
@@ -517,13 +537,21 @@ plain-CLI layer; the TUI sits on top of them.
   switching it ([ADAPTERS.md](ADAPTERS.md), [VALIDATION.md](VALIDATION.md)).
   Blocked on a way to make agy write a token without a real login: it has no
   kae-drivable login, so the `security` PATH shim (which does apply to agy) has
-  nothing to intercept yet.
+  nothing to intercept yet. agy is the tier floor and this is the reason.
+- **agy home isolation**: no stable home/config env var is known, so the isolation
+  modes refuse it. Revisit only if upstream ships one *and* the file-store gap
+  above is closed — a redirected home whose fallback store kae cannot find would
+  isolate nothing while reporting success.
 - **opencode's DB credential store** (recorded gap, 2026-07-31): `auth.json` is
   still the live store through 1.18.5, and the `credential` table in
   `opencode.db` is a dormant one-shot import. When a release makes that table
   authoritative, kae's pointer patch becomes a silent no-op — and on 1.17.4 the
   imported row is frozen at whichever account auth.json held on first run. The
   `upstream_version` doctor warning is the trigger to re-run the VALIDATION row.
+  This one *does* need acting on if it fires: it would break the switching kae
+  does commit to at tier 2.
+- **cursor off macOS** is unblocked but unimplemented; see the entry under
+  Hardening backlog for the Linux layout.
 
 ## Exploratory
 

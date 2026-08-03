@@ -9,7 +9,7 @@ Standalone public repository. Follow the bundled Go CLI standard in
 | Document | When To Read |
 |----------|--------------|
 | [README.md](README.md) | user-facing command or setup changes |
-| [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, terminology, boundary changes |
+| [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, terminology, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**: claude/codex are tier 1, the other four are tier 2, and a tier decides which *modes* a tool gets and never which guards apply |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | anything that touches what companion-auth lockstep (git/gh/cloud CLIs) switches or preserves |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, adapter interface, transaction, lock changes |
@@ -126,8 +126,20 @@ block in docs/VALIDATION.md, next to two correct ones.
   (`readFragmentAt` → `boundStoreDir`, which derives the store from its mode and
   account). The two functions look interchangeable and are not; `pinChecks` has
   skipped an unpinned directory since it shipped, and the doctor credential sweep
-  still shipped its first draft without that gate. Note also that
-  `fragmentInfo.Accounts` covers **every** bound tool, shared mode included.
+  still shipped its first draft without that gate. Every command that reports on
+  bindings needs the same gate — `kae ls --pins` (`buildLsPins`) is a third
+  consumer, not the last one. Note also that `fragmentInfo.Accounts` covers
+  **every** bound tool, shared mode included.
+- **A `git worktree` is just another bound directory, and that is the whole
+  design** — its own real path, its own pin-id, its own store, its own fragment.
+  The one place worktrees are not incidental is telling git to ignore the fragment:
+  a linked worktree's `$GIT_DIR/info/exclude` is **not consulted**, so the rule goes
+  in `$GIT_COMMON_DIR/info/exclude` (one entry covers the main checkout and every
+  worktree), and an entry there is anchored at the **repository root** rather than at
+  its own directory the way a `.gitignore` entry is — so it needs
+  `git rev-parse --show-prefix` in front of it or it silently matches nothing while
+  `kae pin` reports success. Ask git for both halves (`ensureGitExcluded`, via
+  `internal/runner`); never assume a `.git` layout.
 - **A keychain item's identity is service + account, and per-tool.** codex derives
   the account of its single-service `Codex Auth` item from `CODEX_HOME`
   (`cli|` + 16 hex of sha256 over the **canonicalized** path — symlinks resolved),

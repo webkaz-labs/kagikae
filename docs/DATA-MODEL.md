@@ -14,6 +14,7 @@ vocabulary for `kae`.
 | env profiles (metadata) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/env/<tool>/<account>/env.toml` |
 | companion generated files | `${XDG_DATA_HOME:-~/.local/share}/kagikae/companion/<profile>/<id>/config` (git-config kind only; token and config-dir kinds generate no file) |
 | bound-directory record | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/dir` (the absolute path `<pin-id>` hashes, written by `kae pin`) |
+| per-dir fragment ignore rule | `$GIT_COMMON_DIR/info/exclude` of the bound directory's repository — an entry anchored at the repository root naming `.config/mise/conf.d/kagikae.toml`. Both halves come from `git rev-parse`, never from an assumed layout, and nothing is written outside a repository. **Not** a tracked `./.gitignore` (that was kae up to v0.16.0): one entry here covers the main checkout and every linked worktree, and leaves no working tree dirty. See [CLI.md](CLI.md) § kae pin |
 | per-dir shared (`pin -s`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/shared/` |
 | per-dir isolated (`pin -i`) config dirs | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/isolated/<account>/config/` |
 | global-isolated (`use -i` / `run -i`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/global/<tool>/<account>/` (a kae-owned mise fragment points `CLAUDE_CONFIG_DIR` / `CODEX_HOME` here; the real `~/.<tool>` is never touched) |

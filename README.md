@@ -169,8 +169,11 @@ mise trust                     # mise refuses untrusted configs; its error
 
 Inside the pinned directory (with [mise](https://mise.jdx.dev) activated) claude
 and codex run as the `side` accounts. `kae pin` writes a kae-owned mise
-fragment (`.config/mise/conf.d/kagikae.toml`, git-ignored); your `mise.toml` is
-never touched. Variants:
+fragment (`.config/mise/conf.d/kagikae.toml`); your `mise.toml` is never touched.
+The fragment is machine-specific, so kae keeps it out of `git status` through the
+repository's own exclude file (`$GIT_COMMON_DIR/info/exclude`) rather than through
+a tracked `.gitignore` — nothing to commit, and one entry covers the main checkout
+and every linked worktree. Variants:
 
 ```bash
 kae pin -i side                # isolated: nothing shared with the real home
@@ -181,6 +184,24 @@ kae use -i main                # global isolated: point every mise-activated
                                # terminal at a per-account private home;
                                # `kae use -s main` tears it down
 ```
+
+### One account per worktree
+
+A binding belongs to a *directory*, and a `git worktree` is one more directory —
+so each worktree of a repository can run a different account, which is what you
+want when several agents work the same repository at once:
+
+```bash
+git worktree add ../main-app-review -b review
+cd ../main-app-review && kae pin side   # this worktree only
+kae ls --pins                           # every bound directory, from anywhere
+```
+
+`kae status` answers for the directory you are standing in; `kae ls --pins` is the
+view across all of them (directory, profile, mode, bound account per tool, and a
+`*` on the current one). It lists what is bound **now**: a directory you unpinned
+keeps its store so a re-pin restores its sessions, but it is not a binding and is
+not listed.
 
 ## Beyond Switching
 
@@ -292,14 +313,28 @@ binary-scoped shell completion.
 The per-tool switched/preserved allowlist is the normative contract in
 [docs/ADAPTERS.md](docs/ADAPTERS.md).
 
-| Tool | Switches | Login identity for `kae add` |
-|------|----------|------------------------------|
-| Claude Code (`claude`) | `/claudeAiOauth` (macOS Keychain item / Linux `.credentials.json`) and `/oauthAccount` in `~/.claude.json` (identity only, pointer patch) | `~/.claude.json` `oauthAccount.emailAddress` |
-| Codex CLI (`codex`) | `CODEX_HOME/auth.json`, or this codex home's `Codex Auth` keychain item (`cli_auth_credentials_store = "keyring"`, or `"auto"` once the item exists) | `id_token` email / `account_id` |
-| Antigravity CLI (`agy`) | macOS `gemini`/`antigravity` Keychain item (verbatim token); Linux file driver | active Google account in `~/.gemini/google_accounts.json` |
-| OpenCode (`opencode`) | the `/openai` entry of `auth.json` (other providers preserved) | access-token email, else `accountId` |
-| Cursor CLI (`cursor-agent`) | the access-token, refresh-token and api-key Keychain items (macOS), which cursor-agent writes as one unit | `cursor-agent status` email |
-| GitHub Copilot (`copilot`) | `/lastLoggedInUser` in `$COPILOT_HOME/config.json`, default `~/.copilot/config.json` (all platforms) | `lastLoggedInUser.login` |
+Two tiers, and the tier is a deliberate scope decision rather than a to-do list
+([docs/DESIGN.md](docs/DESIGN.md) § Tool Tiers):
+
+- **Tier 1 — claude and codex.** Every mode: global switching, global isolated
+  homes, both per-directory binds, identity switching and drift detection.
+- **Tier 2 — agy, opencode, cursor, copilot.** Global switching (`kae use`),
+  `kae run --env`, backup/rollback, `kae doctor`, identity detection where the tool
+  exposes one. No `kae pin` and no `-i`: those redirect the tool's home, which needs
+  an isolation variable verified end to end for that tool.
+
+A tier never relaxes a safety rule. At both tiers kae refuses to write to a store
+it has not measured, never falls back to a secondary store when the authoritative
+write fails, and warns before the write rather than after.
+
+| Tool | Tier | Switches | Login identity for `kae add` |
+|------|------|----------|------------------------------|
+| Claude Code (`claude`) | 1 | `/claudeAiOauth` (macOS Keychain item / Linux `.credentials.json`) and `/oauthAccount` in `~/.claude.json` (identity only, pointer patch) | `~/.claude.json` `oauthAccount.emailAddress` |
+| Codex CLI (`codex`) | 1 | `CODEX_HOME/auth.json`, or this codex home's `Codex Auth` keychain item (`cli_auth_credentials_store = "keyring"`, or `"auto"` once the item exists) | `id_token` email / `account_id` |
+| Antigravity CLI (`agy`) | 2 | macOS `gemini`/`antigravity` Keychain item (verbatim token); Linux file driver | active Google account in `~/.gemini/google_accounts.json` |
+| OpenCode (`opencode`) | 2 | the `/openai` entry of `auth.json` (other providers preserved) | access-token email, else `accountId` |
+| Cursor CLI (`cursor-agent`) | 2 | the access-token, refresh-token and api-key Keychain items (macOS), which cursor-agent writes as one unit | `cursor-agent status` email |
+| GitHub Copilot (`copilot`) | 2 | `/lastLoggedInUser` in `$COPILOT_HOME/config.json`, default `~/.copilot/config.json` (all platforms) | `lastLoggedInUser.login` |
 
 One account per tool at a time globally: a shared switch (`kae use`) changes the
 live credential store, so running different accounts of the same tool at once
@@ -317,6 +352,7 @@ globally.
 | `kae run <tool> <account> [-- <cmd>]` (`kae r`) | Run one process under an account (`-s`/`-i`/`--env`). |
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
 | `kae ls` | List accounts and profiles in one view, with each snapshot's credential freshness. |
+| `kae ls --pins` | List every directory bound with `kae pin` — one row per bound directory or worktree. |
 | `kae account rm\|rename` | Delete or rename a captured account. |
 | `kae profile save\|set\|unset\|rm\|default` | Manage profiles without editing TOML. |
 | `kae env set\|...` | Manage API-key env profiles for `run --env`. |

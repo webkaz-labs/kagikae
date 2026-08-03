@@ -43,6 +43,7 @@ kae mise init [-P <profile>] [--auto] [--write]    # auth-mode tasks + opt-in ho
                                                    # (bind directories with kae pin instead)
 kae accounts [--json]                # registered accounts, active markers
 kae ls [--json]                      # accounts and profiles in one view
+kae ls --pins [--json]               # every directory bound with kae pin
 kae account rm <tool> <account> [--force]      # delete a captured account
 kae account rename <tool> <old> <new>          # rename a captured account
 kae account set-identity <tool> <account> <value>  # set/replace a captured account's identity
@@ -276,6 +277,21 @@ takes no locks and writes nothing. `--json` keeps `schema_version: 1` and `[]`
 arrays, reusing the `kae accounts` account rows and the `kae status` profile
 rows.
 
+`kae ls --pins` swaps that view for every directory bound with `kae pin`, from
+anywhere: directory, a `*` for the current one, profile (`(ad-hoc)` when the
+account set matches no named profile), mode, and the bound account per tool. It
+is the answer `kae status` cannot give — `status` reports the directory it is run
+in, which is the wrong question once a repository has one worktree per agent and
+each binds a different account. Read-only, no locks, and `--json` publishes
+`bound_directories` (`[]` when empty).
+
+**A store is not a binding.** A directory is listed only while it still has a
+fragment to read: `kae unpin` deliberately keeps the store so a re-pin restores
+the directory's sessions, and a single-tool re-bind leaves the previously bound
+tools' stores behind, so listing stores would name directories that are not bound
+and re-binds that land where nothing reads. A directory that was deleted or moved
+is likewise absent here — its orphaned store is `kae doctor`'s `pin_stale`.
+
 ## kae account Semantics
 
 `kae account rm <tool> <account>` deletes a captured account: its snapshot
@@ -347,8 +363,27 @@ the comment-preserving writer under the config lock and supports `--dry-run`:
 ## kae pin and mise init Semantics
 
 `kae pin [-s|-i] [<profile>]` binds the current directory to a profile by
-writing a kae-owned mise fragment `./.config/mise/conf.d/kagikae.toml` (added to
-`.gitignore`); the user's `mise.toml` is **never** touched. The profile defaults
+writing a kae-owned mise fragment `./.config/mise/conf.d/kagikae.toml`; the
+user's `mise.toml` is **never** touched.
+
+The fragment is kept out of `git status` by an entry in the repository's shared
+exclude file — `$GIT_COMMON_DIR/info/exclude`, resolved by asking git rather than
+by assuming a layout — **not** by editing a tracked `./.gitignore`, which is what
+kae did up to v0.16.0. Two consequences worth knowing:
+
+- **One entry covers the main checkout and every linked worktree.** A worktree's
+  own `$GIT_DIR/info/exclude` is not consulted at all, while the common one is
+  honoured everywhere, so binding a repository plus three worktrees no longer
+  leaves four working trees dirty waiting for a commit about one machine.
+- **Outside a repository (or with no `git` on `PATH`) kae writes no ignore rule
+  and says so by omission** — the report names the exclude file it used, and
+  simply does not mention ignoring when there was none to record. Nothing is
+  watching the fragment there, so this is not an error.
+
+`kae unpin` leaves the exclude entry in place, symmetrically with the store it
+keeps for a re-pin. A `./.gitignore` line written by an older kae is also left
+alone: a duplicate ignore rule is harmless, and removing a line from a tracked
+file is a change kae was not asked to make. The profile defaults
 to `default_profile`. `kae pin [-s|-i] <tool> <account>` re-binds **one** tool in
 the directory, leaving the others and the sharing set intact (the v0.7.1
 `kae as`). It recomputes `KAE_PROFILE` from the new account set and re-applies
@@ -780,6 +815,24 @@ one, and `-` for one kae could not judge.
 `accounts` reuses the `kae accounts` row shape (same ordering); `profiles`
 reuses the `kae status` profile row shape (name ascending). Both are `[]` when
 empty.
+
+### `kae ls --pins --json`
+
+```json
+{
+  "schema_version": 1,
+  "bound_directories": [
+    {"directory": "/Users/you/code/main-app", "profile": "main",
+     "mode": "shared", "accounts": {"claude": "main"}, "current": true},
+    {"directory": "/Users/you/code/main-app-wt1", "profile": "side",
+     "mode": "isolated", "accounts": {"claude": "side"}, "current": false}
+  ]
+}
+```
+
+`bound_directories` is ordered by `directory` ascending (so sibling worktrees sort
+together) and is `[]` when nothing is bound. `profile` is empty for an ad-hoc
+account set; `accounts` covers every tool the directory binds, in either mode.
 
 ### `kae doctor --json`
 

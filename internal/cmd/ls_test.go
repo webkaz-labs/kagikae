@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -86,6 +89,112 @@ func TestLsListsAccountsAndProfiles(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("ls text missing %q: %s", want, out)
 		}
+	}
+}
+
+// `kae ls --pins` answers "what is bound right now", from anywhere — the question
+// `kae status` cannot answer when every worktree is a separate binding. The two
+// negative cases are the whole risk: pinnedDirs deliberately keeps a store that
+// nothing points at any more, so listing a store as a bound directory would name
+// a directory that is not bound and a re-bind that lands where nothing reads.
+func TestLsPinsListsOnlyLiveBindings(t *testing.T) {
+	app := overlayTestApp(t)
+	root := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(cwd) })
+
+	bound := filepath.Join(root, "bound")
+	unpinned := filepath.Join(root, "unpinned") // store kept by `kae unpin`; no fragment
+	gone := filepath.Join(root, "gone")         // deleted or moved after being bound
+	if err := os.MkdirAll(bound, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(unpinned, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(bound); err != nil {
+		t.Fatal(err)
+	}
+	boundAbs, err := cwdAbs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, out := captureStdout(t, func() int {
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated)
+	}); code != constants.ExitOK {
+		t.Fatalf("runPin: %s", out)
+	}
+	for _, dir := range []string{unpinned, gone} {
+		if err := app.recordPinnedDir(paths.PinID(dir), dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	code, out := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatJSON}) })
+	mustExit(t, constants.ExitOK, code, out)
+	var report pinsReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("invalid ls --pins JSON: %v: %s", err, out)
+	}
+	if report.SchemaVersion != constants.SchemaVersion {
+		t.Fatalf("schema_version = %d, want %d", report.SchemaVersion, constants.SchemaVersion)
+	}
+	if len(report.BoundDirectories) != 1 {
+		t.Fatalf("expected only the live binding, got %d: %s", len(report.BoundDirectories), out)
+	}
+	got := report.BoundDirectories[0]
+	if got.Directory != boundAbs {
+		t.Fatalf("directory = %q, want %q", got.Directory, boundAbs)
+	}
+	if got.Profile != "main" || got.Mode != constants.ModeIsolated {
+		t.Fatalf("profile/mode = %q/%q, want main/%s", got.Profile, got.Mode, constants.ModeIsolated)
+	}
+	if got.Accounts[constants.ToolClaude] != "main" {
+		t.Fatalf("accounts = %v, want claude:main", got.Accounts)
+	}
+	if !got.Current {
+		t.Fatalf("the cwd's own binding must be marked current: %s", out)
+	}
+
+	// Text view, and the current marker from outside every bound directory.
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	code, text := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatText}) })
+	mustExit(t, constants.ExitOK, code, text)
+	for _, want := range []string{"Bound directories:", "Directory", "claude:main", constants.ModeIsolated} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("ls --pins text missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, unpinned) || strings.Contains(text, gone) {
+		t.Fatalf("a store without a live binding must not be listed:\n%s", text)
+	}
+	code, outside := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatJSON}) })
+	mustExit(t, constants.ExitOK, code, outside)
+	var elsewhere pinsReport
+	if err := json.Unmarshal([]byte(outside), &elsewhere); err != nil {
+		t.Fatal(err)
+	}
+	if elsewhere.BoundDirectories[0].Current {
+		t.Fatalf("nothing is current outside every bound directory: %s", outside)
+	}
+}
+
+// No bindings lists nothing without error and keeps the [] JSON array.
+func TestLsPinsEmpty(t *testing.T) {
+	app := testApp(t, nil)
+	code, out := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatJSON}) })
+	mustExit(t, constants.ExitOK, code, out)
+	var report pinsReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("invalid ls --pins JSON: %v: %s", err, out)
+	}
+	if report.BoundDirectories == nil {
+		t.Fatalf("bound_directories must be [] not null: %s", out)
 	}
 }
 

@@ -40,6 +40,20 @@ func paint(status, s string, color bool) string {
 	return "\x1b[" + code + "m" + s + "\x1b[0m"
 }
 
+// toolAccountList renders a tool→account map as "claude:main codex:side" for
+// human output, in constants.Tools order so the same mapping always reads the
+// same way regardless of map iteration. Shared by the profile lines of `kae ls`
+// and `kae status` and by the bound-directory rows of `kae ls --pins`.
+func toolAccountList(accounts map[string]string) string {
+	mapping := make([]string, 0, len(accounts))
+	for _, tool := range constants.Tools {
+		if accountName, ok := accounts[tool]; ok {
+			mapping = append(mapping, tool+":"+accountName)
+		}
+	}
+	return strings.Join(mapping, " ")
+}
+
 // printTable renders rows with left-aligned, space-padded columns.
 func printTable(header []string, rows [][]string) {
 	widths := make([]int, len(header))

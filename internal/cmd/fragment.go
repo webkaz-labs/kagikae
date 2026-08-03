@@ -232,7 +232,7 @@ func ensureGitExcluded(ctx context.Context, path string) string {
 // it some other way, and kae will not silently leave that unsaid.
 //
 // It returns the empty string so every caller is one line — ensureGitExcluded has
-// six ways to give up and none of them may return an error.
+// many ways to give up and none of them may return an error.
 func warnGitExclude(err error) string {
 	fmt.Fprintf(os.Stderr, "kae: warning: could not tell git to ignore %s: %v\n", fragmentRelPath, err)
 	fmt.Fprintf(os.Stderr, "kae: the binding is in place; ignore %s yourself (it is machine-specific and must not be committed)\n", fragmentRelPath)
@@ -250,7 +250,13 @@ func warnGitExclude(err error) string {
 func escapeGitPattern(s string) string { return gitPatternEscaper.Replace(s) }
 
 // Replace scans left to right without reprocessing its own output, so the pair
-// order cannot double-escape, and every target is a single ASCII byte.
+// order cannot double-escape, and every target is a single ASCII byte. That last
+// property is also why this is a Replacer and not a `range`-over-runes loop:
+// ranging decodes, so an invalid UTF-8 byte — legal in a Unix path, e.g. a
+// Latin-1-named directory — became U+FFFD and the rule matched nothing while
+// `kae pin` reported success. Measured 2026-08-04: `latin1-\xe9-dir/` survives
+// byte-for-byte here and did not through the loop; every valid-UTF-8 input is
+// identical either way.
 var gitPatternEscaper = strings.NewReplacer(
 	`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`, `]`, `\]`,
 )

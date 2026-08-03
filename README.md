@@ -313,9 +313,10 @@ binary-scoped shell completion.
 The per-tool switched/preserved allowlist is the normative contract in
 [docs/ADAPTERS.md](docs/ADAPTERS.md).
 
-The `Tier` column below is a deliberate scope decision, not a to-do list — the
-rationale and the promotion criteria are in
-[docs/DESIGN.md](docs/DESIGN.md) § Tool Tiers:
+Two tiers, a deliberate scope decision rather than a to-do list. **Which tool is
+in which tier — and the rationale and promotion criteria — is stated once, in
+[docs/DESIGN.md](docs/DESIGN.md) § Tool Tiers**, so a promotion is a one-file
+edit:
 
 - **Tier 1** gets every mode: global switching, global isolated homes, both
   per-directory binds, identity switching and drift detection.
@@ -328,14 +329,14 @@ A tier never relaxes a safety rule. At both tiers kae refuses to write to a stor
 it has not measured, never falls back to a secondary store when the authoritative
 write fails, and warns before the write rather than after.
 
-| Tool | Tier | Switches | Login identity for `kae add` |
-|------|------|----------|------------------------------|
-| Claude Code (`claude`) | 1 | `/claudeAiOauth` (macOS Keychain item / Linux `.credentials.json`) and `/oauthAccount` in `~/.claude.json` (identity only, pointer patch) | `~/.claude.json` `oauthAccount.emailAddress` |
-| Codex CLI (`codex`) | 1 | `CODEX_HOME/auth.json`, or this codex home's `Codex Auth` keychain item (`cli_auth_credentials_store = "keyring"`, or `"auto"` once the item exists) | `id_token` email / `account_id` |
-| Antigravity CLI (`agy`) | 2 | macOS `gemini`/`antigravity` Keychain item (verbatim token); Linux file driver | active Google account in `~/.gemini/google_accounts.json` |
-| OpenCode (`opencode`) | 2 | the `/openai` entry of `auth.json` (other providers preserved) | access-token email, else `accountId` |
-| Cursor CLI (`cursor-agent`) | 2 | the access-token, refresh-token and api-key Keychain items (macOS), which cursor-agent writes as one unit | `cursor-agent status` email |
-| GitHub Copilot (`copilot`) | 2 | `/lastLoggedInUser` in `$COPILOT_HOME/config.json`, default `~/.copilot/config.json` (all platforms) | `lastLoggedInUser.login` |
+| Tool | Switches | Login identity for `kae add` |
+|------|----------|------------------------------|
+| Claude Code (`claude`) | `/claudeAiOauth` (macOS Keychain item / Linux `.credentials.json`) and `/oauthAccount` in `~/.claude.json` (identity only, pointer patch) | `~/.claude.json` `oauthAccount.emailAddress` |
+| Codex CLI (`codex`) | `CODEX_HOME/auth.json`, or this codex home's `Codex Auth` keychain item (`cli_auth_credentials_store = "keyring"`, or `"auto"` once the item exists) | `id_token` email / `account_id` |
+| Antigravity CLI (`agy`) | macOS `gemini`/`antigravity` Keychain item (verbatim token); Linux file driver | active Google account in `~/.gemini/google_accounts.json` |
+| OpenCode (`opencode`) | the `/openai` entry of `auth.json` (other providers preserved) | access-token email, else `accountId` |
+| Cursor CLI (`cursor-agent`) | the access-token, refresh-token and api-key Keychain items (macOS), which cursor-agent writes as one unit | `cursor-agent status` email |
+| GitHub Copilot (`copilot`) | `/lastLoggedInUser` in `$COPILOT_HOME/config.json`, default `~/.copilot/config.json` (all platforms) | `lastLoggedInUser.login` |
 
 One account per tool at a time globally: a shared switch (`kae use`) changes the
 live credential store, so running different accounts of the same tool at once

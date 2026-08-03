@@ -1,6 +1,6 @@
-// Package runnertest provides the shared runner.Runner test double used by
-// packages that stub subprocess output (secret, keychain). Tests needing
-// stateful command simulation define their own fakes instead.
+// Package runnertest provides the shared runner.Runner test double used by every
+// package that stubs subprocess output (cmd, adapter, keychain, secret). Tests
+// needing stateful command simulation define their own fakes instead.
 package runnertest
 
 import "context"

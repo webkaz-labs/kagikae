@@ -92,6 +92,16 @@ func TestLsListsAccountsAndProfiles(t *testing.T) {
 	}
 }
 
+// mustCwdAbs is cwdAbs with the error turned into a test failure.
+func mustCwdAbs(t *testing.T) string {
+	t.Helper()
+	dir, err := cwdAbs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 // `kae ls --pins` answers "what is bound right now", from anywhere — the question
 // `kae status` cannot answer when every worktree is a separate binding. The two
 // negative cases are the whole risk: pinnedDirs deliberately keeps a store that
@@ -106,10 +116,14 @@ func TestLsPinsListsOnlyLiveBindings(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chdir(cwd) })
 
-	// Two live bindings, named so that pin-id order (a path hash) cannot coincide
-	// with path order: the documented contract is "ordered by directory ascending,
-	// so sibling worktrees sort together", and with a single binding the sort is
-	// unreachable — dropping or reversing it passed every assertion here.
+	// Two live bindings. The documented contract is "ordered by directory
+	// ascending, so sibling worktrees sort together", and with a single binding the
+	// sort is unreachable — dropping or reversing it passed every assertion here.
+	// pinnedDirs yields pin-id (path-hash) order, which is arbitrary and differs
+	// per run because each path contains a fresh t.TempDir() component; that is
+	// precisely why the published *path* order has to be asserted rather than
+	// assumed, and why this guard is worth having even though a single run has
+	// even odds of passing by luck.
 	bound := filepath.Join(root, "bbb-bound")
 	second := filepath.Join(root, "aaa-second")
 	unpinned := filepath.Join(root, "unpinned") // store kept by `kae unpin`; no fragment
@@ -161,9 +175,8 @@ func TestLsPinsListsOnlyLiveBindings(t *testing.T) {
 	if len(report.BoundDirectories) != 2 {
 		t.Fatalf("expected the two live bindings, got %d: %s", len(report.BoundDirectories), out)
 	}
-	// Ascending by directory, which is the published ordering — "aaa-second" was
-	// bound first, so insertion order would put it first too; it is second by hash
-	// and first by path, and only the path order is a contract.
+	// Ascending by directory, which is the published ordering. Only the path order
+	// is a contract; neither bind order nor hash order is.
 	if report.BoundDirectories[0].Directory != secondAbs || report.BoundDirectories[1].Directory != boundAbs {
 		t.Fatalf("bound_directories must be sorted by directory ascending, got %s then %s",
 			report.BoundDirectories[0].Directory, report.BoundDirectories[1].Directory)
@@ -267,6 +280,13 @@ func TestLsPinsNeverCarriesACredential(t *testing.T) {
 		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated)
 	}); code != constants.ExitOK {
 		t.Fatalf("runPin: %s", out)
+	}
+	// Prove the canary is actually inside the tree this row names, or the test
+	// passes for the wrong reason the day captureClaude stops writing it.
+	pinID := paths.PinID(mustCwdAbs(t))
+	stored := filepath.Join(app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main"), ".credentials.json")
+	if !strings.Contains(readFile(t, stored), canary) {
+		t.Fatalf("fixture does not place the canary in the bound store (%s); this test would pass vacuously", stored)
 	}
 	for _, format := range []string{formatText, formatJSON} {
 		code, stdout, stderr := captureBoth(t, func() int {

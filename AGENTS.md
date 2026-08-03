@@ -9,7 +9,7 @@ Standalone public repository. Follow the bundled Go CLI standard in
 | Document | When To Read |
 |----------|--------------|
 | [README.md](README.md) | user-facing command or setup changes |
-| [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, terminology, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**: claude/codex are tier 1, the other four are tier 2, and a tier decides which *modes* a tool gets and never which guards apply |
+| [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, terminology, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | anything that touches what companion-auth lockstep (git/gh/cloud CLIs) switches or preserves |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, adapter interface, transaction, lock changes |

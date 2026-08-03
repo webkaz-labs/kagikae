@@ -262,21 +262,18 @@ A fourth, `pin-<pin-id>`, serializes the commands that bind one directory
 the companion files and the fragment as separate steps, so two at once in the
 same directory could interleave into a fragment pointing at a store the other
 re-keyed. It is per directory, so binding two directories at once is unaffected.
-
-**One thing a per-directory lock cannot cover, and does not have to.** `kae pin`
-also records an ignore rule for its fragment in the repository's shared exclude
-file (`$GIT_COMMON_DIR/info/exclude` — [CLI.md](CLI.md) § kae pin), and *every
-worktree of one repository writes the same file*. Two `kae pin` runs in two
-worktrees hold different locks by design, so a read-modify-write there could drop
-one of the two entries — leaving that worktree's fragment visible in `git status`
-with nothing reporting it. It is an `O_APPEND` write instead of a lock: appends
-cannot lose an entry, the worst a lost idempotency race can do is duplicate a
-line, and git does not mind. A lock would also be the wrong shape — it would
-serialize two independent bindings for a cosmetic rule that is allowed to fail
-outright.
 There is deliberately no backup of the previous per-directory credential: it is a
 copy of the account snapshot, so re-running `kae pin <tool> <account>` reproduces
 it exactly.
+
+**One file `kae pin` writes falls outside every per-directory lock**, and is meant
+to: the ignore rule for the fragment goes in the repository's shared exclude file
+(`$GIT_COMMON_DIR/info/exclude` — [CLI.md](CLI.md) § kae pin), which *every
+worktree of one repository writes*, while their locks are keyed per directory. It
+is therefore an append rather than a locked read-modify-write; the reasoning and
+the guarantee are on `ensureGitExcluded`. A lock would be the wrong shape anyway —
+it would serialize two independent bindings for a rule that is allowed to fail
+outright.
 
 A third lock (name `state`) guards `state.json`, and it is what makes that file
 safe to share: the per-tool locks deliberately let `kae use claude <a>` and

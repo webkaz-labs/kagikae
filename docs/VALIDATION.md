@@ -1188,13 +1188,18 @@ would notice changing:
 | A linked worktree's own `$GIT_DIR/info/exclude` (`<main>/.git/worktrees/<name>/info/exclude`) is **not consulted**, while `$GIT_COMMON_DIR/info/exclude` is honoured by the main checkout **and** by every linked worktree — so one entry covers the whole repository | 2026-08-04, git 2.55.0 on darwin 24.6.0 |
 | `git rev-parse --git-common-dir` is **relative to the current directory** in an ordinary checkout (`.git`, `../.git`) and absolute in a linked worktree; an entry in `info/exclude` is anchored at the **repository root**, so it needs `--show-prefix` in front of it (unlike a `.gitignore` entry, which is anchored at its own directory) | 2026-08-04, same |
 | An entry is a **wildmatch pattern**, not a path: a directory component containing `[`, `]`, `*`, `?` or `\` must be backslash-escaped or the rule matches nothing. Measured: `/[wip]-feature/.config/mise/conf.d/kagikae.toml` left the fragment untracked; `/\[wip\]-feature/…` ignored it, and the same held for a `*` component | 2026-08-04, same |
+| `git rev-parse --git-common-dir --show-prefix` emits **exactly two newline-terminated lines** — so three elements after splitting on `\n`, the last empty — in every shape measured: bare repository (`.` + empty prefix, exit 0), checkout root, subdirectory, linked worktree, worktree subdirectory, and even a cwd inside `.git` or `.git/info`. kae requires that exact shape rather than "at least two lines", because rev-parse quotes nothing and a newline is legal in a path component: a longer answer means the two values cannot be told apart, and following it would write an exclude file outside the repository | 2026-08-04, same |
 
 Unlike the AI-tool rows above, these are **guarded by a test rather than by a
 release run**: `TestEnsureGitExcludedLeavesEveryWorktreeClean` (`internal/cmd`)
 builds a real repository with a linked worktree, records one entry from the main
 checkout, and fails if either checkout is dirty afterwards — so `mise run check`
-re-measures them on every commit. It skips when `git` is not installed, which is
-the one way it can go quiet. To reproduce by hand:
+re-measures them on every commit. It then records a second entry from a **nested
+subdirectory** and asserts that one reads `/nested/…`, which is what re-measures
+the anchoring row specifically: at the repository root the prefix is empty, so a
+root-only check cannot tell whether `--show-prefix` is being used at all. It skips
+when `git` is not installed, which is the one way it can go quiet. To reproduce by
+hand:
 
 ```bash
 T=$(mktemp -d) && git init -q "$T/main" &&

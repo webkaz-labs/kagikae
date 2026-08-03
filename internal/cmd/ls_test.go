@@ -106,14 +106,30 @@ func TestLsPinsListsOnlyLiveBindings(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chdir(cwd) })
 
-	bound := filepath.Join(root, "bound")
+	// Two live bindings, named so that pin-id order (a path hash) cannot coincide
+	// with path order: the documented contract is "ordered by directory ascending,
+	// so sibling worktrees sort together", and with a single binding the sort is
+	// unreachable — dropping or reversing it passed every assertion here.
+	bound := filepath.Join(root, "bbb-bound")
+	second := filepath.Join(root, "aaa-second")
 	unpinned := filepath.Join(root, "unpinned") // store kept by `kae unpin`; no fragment
 	gone := filepath.Join(root, "gone")         // deleted or moved after being bound
-	if err := os.MkdirAll(bound, 0o755); err != nil {
+	for _, dir := range []string{bound, second, unpinned} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chdir(second); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(unpinned, 0o755); err != nil {
+	secondAbs, err := cwdAbs()
+	if err != nil {
 		t.Fatal(err)
+	}
+	if code, out := captureStdout(t, func() int {
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated)
+	}); code != constants.ExitOK {
+		t.Fatalf("runPin second: %s", out)
 	}
 	if err := os.Chdir(bound); err != nil {
 		t.Fatal(err)
@@ -142,10 +158,17 @@ func TestLsPinsListsOnlyLiveBindings(t *testing.T) {
 	if report.SchemaVersion != constants.SchemaVersion {
 		t.Fatalf("schema_version = %d, want %d", report.SchemaVersion, constants.SchemaVersion)
 	}
-	if len(report.BoundDirectories) != 1 {
-		t.Fatalf("expected only the live binding, got %d: %s", len(report.BoundDirectories), out)
+	if len(report.BoundDirectories) != 2 {
+		t.Fatalf("expected the two live bindings, got %d: %s", len(report.BoundDirectories), out)
 	}
-	got := report.BoundDirectories[0]
+	// Ascending by directory, which is the published ordering — "aaa-second" was
+	// bound first, so insertion order would put it first too; it is second by hash
+	// and first by path, and only the path order is a contract.
+	if report.BoundDirectories[0].Directory != secondAbs || report.BoundDirectories[1].Directory != boundAbs {
+		t.Fatalf("bound_directories must be sorted by directory ascending, got %s then %s",
+			report.BoundDirectories[0].Directory, report.BoundDirectories[1].Directory)
+	}
+	got := report.BoundDirectories[1]
 	if got.Directory != boundAbs {
 		t.Fatalf("directory = %q, want %q", got.Directory, boundAbs)
 	}

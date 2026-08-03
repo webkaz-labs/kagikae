@@ -87,8 +87,10 @@ func warnIfLegacyPinBlock() {
 // runPin binds the current directory by writing the kae-owned mise fragment
 // (./.config/mise/conf.d/kagikae.toml): it prepares the isolation dirs first
 // (so the fragment never points at a missing dir), renders the fragment with
-// the kae: records `kae status` reads back, writes it, adds it to .gitignore,
-// and prints the export fallback when mise activation is not detected.
+// the kae: records `kae status` reads back, writes it, records an ignore rule for
+// it in the repository's shared exclude file (never a tracked ./.gitignore — see
+// ensureGitExcluded), and prints the export fallback when mise activation is not
+// detected.
 func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode string) int {
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)

@@ -169,6 +169,19 @@ func ensureGitExcluded(ctx context.Context, path string) string {
 		warnGitExclude(fmt.Errorf("resolve git common dir %q: %w", lines[0], err))
 		return ""
 	}
+	// The answer must name a directory that already exists. git just reported this
+	// as its own common dir, so it does — and requiring it keeps kae from acting on
+	// an answer it could not verify: a `git` on PATH that exits 0 with a shape-valid
+	// but wrong first value (a wrapper, a stub, a shell function) otherwise had kae
+	// MkdirAll that path and report `ignored via`, creating a tree inside the
+	// working tree that nothing reads. Measured 2026-08-04 with a stub printing
+	// "junk\n\n": `<repo>/junk/info/exclude` created and `?? junk/` left in
+	// `git status`. Never declare an artifact for a location you could not measure
+	// (AGENTS.md); failing closed here lands in the warning path above.
+	if info, serr := os.Stat(commonDir); serr != nil || !info.IsDir() {
+		warnGitExclude(fmt.Errorf("git named %q as its common dir, but that is not an existing directory", commonDir))
+		return ""
+	}
 	// ponytail: a bare repository answers this too (common dir ".", empty
 	// prefix), so the rule lands in its info/exclude with no worktree to apply
 	// to. Harmless — it is that repository's real exclude file — and reaching it

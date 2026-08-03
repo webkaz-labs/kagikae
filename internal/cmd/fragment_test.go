@@ -70,91 +70,141 @@ func TestRunPinSharedWritesFragment(t *testing.T) {
 // that matches nothing: the common dir is cwd-relative in an ordinary checkout
 // and absolute in a linked worktree, and the entry is anchored at the repository
 // root rather than at the current directory.
+//
+// Every case is self-contained inside its own t.TempDir(): the repository root is
+// that temp dir, `.git` is created under it, and the cwd sits depth directories
+// below it. An earlier version fabricated relative common dirs like "../../.git"
+// from the temp cwd, which resolved *outside* the case's own directory and left
+// `$TMPDIR/.git/info/exclude` on the operator's machine — a test escaping its
+// sandbox is the same defect class as a smoke check escaping HOME.
 func TestEnsureGitExcludedDerivesTargetAndEntry(t *testing.T) {
 	frag := filepath.ToSlash(fragmentRelPath)
-	// commonDir is what git prints for --git-common-dir, built from the temp cwd
-	// so the absolute (linked-worktree) case has a directory it may create.
-	// wantCommon is where the rule must land.
 	for _, tc := range []struct {
-		name       string
-		commonDir  func(cwd string) string
-		prefix     string
-		wantCommon func(cwd string) string
-		wantEntry  string
-		code       int
-		// refused marks an answer kae must decline rather than interpret: it
-		// records nothing and warns, exactly as a non-zero exit does.
+		name string
+		// depth is how many directories below the repository root the cwd sits, and
+		// prefix is what git reports for --show-prefix there.
+		depth  int
+		prefix string
+		// elsewhere reports the common dir absolutely, in a directory nowhere near
+		// the cwd, the way a linked worktree does.
+		elsewhere bool
+		// commonDir overrides what git prints entirely, for answers kae must refuse.
+		commonDir func(root string) string
+		wantEntry string
+		code      int
+		// refused marks an answer kae must decline rather than interpret: it records
+		// nothing and warns, exactly as a non-zero exit does.
 		refused bool
 	}{
+		{name: "repository root", wantEntry: "/" + frag},
 		{
-			name:       "repository root",
-			commonDir:  func(string) string { return ".git" },
-			wantCommon: func(cwd string) string { return filepath.Join(cwd, ".git") },
-			wantEntry:  "/" + frag,
+			name:      "subdirectory of an ordinary checkout",
+			depth:     1,
+			prefix:    "sub/",
+			wantEntry: "/sub/" + frag,
 		},
 		{
-			name:       "subdirectory of an ordinary checkout",
-			commonDir:  func(string) string { return "../.git" },
-			prefix:     "sub/",
-			wantCommon: func(cwd string) string { return filepath.Join(filepath.Dir(cwd), ".git") },
-			wantEntry:  "/sub/" + frag,
+			name:      "subdirectory two deep",
+			depth:     2,
+			prefix:    "a/b/",
+			wantEntry: "/a/b/" + frag,
 		},
 		{
-			name:       "subdirectory two deep",
-			commonDir:  func(string) string { return "../../.git" },
-			prefix:     "a/b/",
-			wantCommon: func(cwd string) string { return filepath.Join(filepath.Dir(filepath.Dir(cwd)), ".git") },
-			wantEntry:  "/a/b/" + frag,
-		},
-		{
-			// The worktree's own $GIT_DIR is never consulted, so the rule has to
-			// land in the absolute common dir shared with the main checkout —
-			// which is nowhere near the cwd.
-			name:       "linked worktree reports an absolute common dir",
-			commonDir:  func(cwd string) string { return filepath.Join(cwd, "elsewhere", "main", ".git") },
-			wantCommon: func(cwd string) string { return filepath.Join(cwd, "elsewhere", "main", ".git") },
-			wantEntry:  "/" + frag,
+			// The worktree's own $GIT_DIR is never consulted, so the rule has to land
+			// in the absolute common dir shared with the main checkout.
+			name:      "linked worktree reports an absolute common dir",
+			elsewhere: true,
+			wantEntry: "/" + frag,
 		},
 		{
 			// An entry is a *pattern*, so a directory name carrying wildmatch
 			// metacharacters has to be escaped or the rule matches nothing while
 			// `kae pin` reports the fragment as ignored.
-			name:       "prefix with glob metacharacters",
-			commonDir:  func(string) string { return "../.git" },
-			prefix:     "[wip]-a*b/",
-			wantCommon: func(cwd string) string { return filepath.Join(filepath.Dir(cwd), ".git") },
-			wantEntry:  `/\[wip\]-a\*b/` + frag,
+			name:      "prefix with glob metacharacters",
+			depth:     1,
+			prefix:    "[wip]-a*b/",
+			wantEntry: `/\[wip\]-a\*b/` + frag,
 		},
 		{
-			// A leading space is a legal first character of a path component, so
-			// the line ending is all that may be trimmed.
-			name:       "prefix whose component starts with a space",
-			commonDir:  func(string) string { return "../.git" },
-			prefix:     " spaced/",
-			wantCommon: func(cwd string) string { return filepath.Join(filepath.Dir(cwd), ".git") },
-			wantEntry:  "/ spaced/" + frag,
+			// A leading space is a legal first character of a path component, so the
+			// line ending is all that may be trimmed.
+			name:      "prefix whose component starts with a space",
+			depth:     1,
+			prefix:    " spaced/",
+			wantEntry: "/ spaced/" + frag,
 		},
-		{name: "no repository, or no git to ask", commonDir: func(string) string { return "" }, code: 128},
+		{name: "no repository, or no git to ask", code: 128},
 		{
-			// A newline is legal in a path component and rev-parse quotes nothing,
-			// so a third value means the answer cannot be split into the two it
-			// looks like. Following it would create an exclude file somewhere
-			// unrelated — outside the repository — and still claim success.
+			// A newline is legal in a path component and rev-parse quotes nothing, so
+			// a third value means the two cannot be told apart. Following it would
+			// create an exclude file somewhere unrelated and still claim success.
 			name:      "a value containing a newline is refused, not truncated",
-			commonDir: func(cwd string) string { return filepath.Join(cwd, "we\nird", ".git") },
+			commonDir: func(root string) string { return filepath.Join(root, "we\nird", ".git") },
+			refused:   true,
+		},
+		{
+			// A `git` that exits 0 naming somewhere that does not exist must be
+			// refused, not acted on: kae would otherwise MkdirAll it and report the
+			// fragment ignored, creating a tree nothing reads.
+			name:      "a common dir that does not exist is refused",
+			commonDir: func(root string) string { return filepath.Join(root, "junk") },
+			refused:   true,
+		},
+		{
+			name:      "a common dir that is a file is refused",
+			commonDir: func(root string) string { return filepath.Join(root, "notadir") },
 			refused:   true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			chdirTemp(t)
-			cwd, err := os.Getwd()
+			root := t.TempDir()
+			// os.Getwd (and so filepath.Abs) reports the symlink-resolved path on
+			// darwin, where $TMPDIR sits under /var -> /private/var. Resolve once so
+			// the expectations are the same shape as the answer.
+			if resolved, err := filepath.EvalSymlinks(root); err == nil {
+				root = resolved
+			}
+			gitDir := filepath.Join(root, ".git")
+			if err := os.MkdirAll(gitDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(root, "notadir"), "not a directory\n")
+			cwd := root
+			for range tc.depth {
+				cwd = filepath.Join(cwd, "d")
+			}
+			if err := os.MkdirAll(cwd, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			restore, err := os.Getwd()
 			if err != nil {
 				t.Fatal(err)
 			}
-			fake := &runnertest.Fake{
-				Stdout: tc.commonDir(cwd) + "\n" + tc.prefix + "\n",
-				Code:   tc.code,
+			t.Cleanup(func() { os.Chdir(restore) })
+			if err := os.Chdir(cwd); err != nil {
+				t.Fatal(err)
 			}
+
+			// What git prints, and where the rule must land.
+			reported, wantCommon := strings.Repeat("../", tc.depth)+".git", gitDir
+			if tc.elsewhere {
+				other := filepath.Join(t.TempDir(), "main", ".git")
+				if err := os.MkdirAll(other, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if resolved, err := filepath.EvalSymlinks(other); err == nil {
+					other = resolved
+				}
+				reported, wantCommon = other, other
+			}
+			if tc.commonDir != nil {
+				reported = tc.commonDir(root)
+			}
+			if tc.code != 0 {
+				reported = ""
+			}
+
+			fake := &runnertest.Fake{Stdout: reported + "\n" + tc.prefix + "\n", Code: tc.code}
 			var got string
 			runner.With(fake, func() {
 				got = ensureGitExcluded(context.Background(), fragmentRelPath)
@@ -170,9 +220,19 @@ func TestEnsureGitExcludedDerivesTargetAndEntry(t *testing.T) {
 				if got != "" {
 					t.Fatalf("an unusable answer must yield no exclude file, got %q", got)
 				}
+				// And it must not have created anything for that answer.
+				entries, rerr := os.ReadDir(root)
+				if rerr != nil {
+					t.Fatal(rerr)
+				}
+				for _, e := range entries {
+					if e.Name() != ".git" && e.Name() != "notadir" && e.Name() != "d" {
+						t.Fatalf("a refused answer must create nothing, found %q", e.Name())
+					}
+				}
 				return
 			}
-			if want := filepath.Join(tc.wantCommon(cwd), "info", "exclude"); got != want {
+			if want := filepath.Join(wantCommon, "info", "exclude"); got != want {
 				t.Fatalf("exclude file: got %q want %q", got, want)
 			}
 			if !strings.Contains(readFile(t, got), tc.wantEntry+"\n") {

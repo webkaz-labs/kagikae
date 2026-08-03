@@ -314,9 +314,9 @@ The per-tool switched/preserved allowlist is the normative contract in
 [docs/ADAPTERS.md](docs/ADAPTERS.md).
 
 Two tiers, a deliberate scope decision rather than a to-do list. **Which tool is
-in which tier — and the rationale and promotion criteria — is stated once, in
-[docs/DESIGN.md](docs/DESIGN.md) § Tool Tiers**, so a promotion is a one-file
-edit:
+in which tier — with the rationale and the promotion criteria — is normative in
+[docs/DESIGN.md](docs/DESIGN.md) § Tool Tiers**; this file deliberately does not
+repeat the mapping:
 
 - **Tier 1** gets every mode: global switching, global isolated homes, both
   per-directory binds, identity switching and drift detection.

@@ -12,11 +12,13 @@ execution environments for AI coding CLIs:
 - Cursor CLI (`cursor-agent`)
 - GitHub Copilot CLI (`copilot`)
 
-How much surface each one gets is a tier, and **§ Tool Tiers below is the only
-place that says which tool is which** — tier 1 gets every mode, tier 2 gets
-credential switching, and both get the same refusals. Do not restate the mapping
-elsewhere: a promotion would then need a synchronized edit in several files with
-nothing to catch a missed one.
+How much surface each one gets is a tier: tier 1 gets every mode, tier 2 gets
+credential switching, and both get the same refusals. **§ Tool Tiers below is the
+normative statement of which tool is in which tier** — prefer a pointer to it over
+a fresh copy, and if a document does state the mapping (today `SCOPE-MODEL.md` §7
+and `ROADMAP.md` § Tier-2 tools, where it is what the passage is *about*), that
+copy moves in the same commit as this table. Nothing enforces that, which is the
+reason to keep the copies few and named here.
 
 The primary daily use case is switching subscription accounts:
 

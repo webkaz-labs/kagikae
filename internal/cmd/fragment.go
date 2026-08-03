@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
+	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
 // fragmentRelPath is the kae-owned mise fragment written by `kae pin`, relative
@@ -77,14 +79,15 @@ func writeMiseFragment(path, content string) error {
 }
 
 // writeDirFragment writes the kae-owned mise fragment in the current directory
-// (creating .config/mise/conf.d/ as needed) and adds it to .gitignore. The
+// (creating .config/mise/conf.d/ as needed) and tells git to ignore it. The
 // fragment holds machine-specific absolute paths and account names, so it must
-// never be committed.
-func writeDirFragment(content string) error {
+// never be committed. It reports the exclude file it recorded the rule in, empty
+// when there was no repository to tell.
+func writeDirFragment(ctx context.Context, content string) (string, error) {
 	if err := writeMiseFragment(fragmentRelPath, content); err != nil {
-		return err
+		return "", err
 	}
-	return ensureGitignored(fragmentRelPath)
+	return ensureGitExcluded(ctx, fragmentRelPath)
 }
 
 // removeDirFragment deletes the kae-owned mise fragment in the current
@@ -101,18 +104,58 @@ func removeDirFragment() (ok bool, err error) {
 	return true, nil
 }
 
-// ensureGitignored appends fragmentRelPath to ./.gitignore unless it is already
-// listed, creating .gitignore when absent. Idempotent on the entry line.
-func ensureGitignored(path string) error {
-	const giPath = ".gitignore"
-	entry := "/" + filepath.ToSlash(path)
-	data, err := os.ReadFile(giPath)
+// ensureGitExcluded records an ignore rule for path (relative to the current
+// directory) in the repository's shared exclude file, so the kae-owned fragment
+// does not sit in `git status` as untracked. It returns the file it wrote, or ""
+// when there was no repository to tell — which is not an error, since then
+// nothing is watching the fragment. Idempotent on the entry line.
+//
+// It writes $GIT_COMMON_DIR/info/exclude rather than a tracked ./.gitignore
+// because kae binds *directories*, and a git worktree is one more directory:
+// pinning main plus three worktrees used to leave four dirty working trees, each
+// waiting for the user to commit a line about their own machine. The exclude file
+// is untracked, and one entry there covers the whole repository — the two facts
+// that make this work are measured in docs/VALIDATION.md: a linked worktree's own
+// $GIT_DIR/info/exclude is *not* consulted, while the common one is honoured by
+// the main checkout and by every worktree.
+//
+// Both halves of the answer come from git, and neither is guessable:
+//   - --git-common-dir is relative to the current directory in an ordinary
+//     checkout (".git", "../.git") and absolute in a linked worktree, so it is
+//     resolved against the cwd either way.
+//   - an entry in info/exclude is anchored at the *repository root*, unlike a
+//     .gitignore entry, which is anchored at its own directory. kae is run from
+//     the directory being bound, which may be any depth below the root, so the
+//     entry needs --show-prefix in front of it. Without that, pinning a
+//     subdirectory writes a rule that matches nothing.
+func ensureGitExcluded(ctx context.Context, path string) (string, error) {
+	// One call for both values; the prefix keeps its trailing slash, and is
+	// empty at the repository root.
+	out, _, code := runner.Run(ctx, "git", "rev-parse", "--git-common-dir", "--show-prefix")
+	if code != 0 {
+		return "", nil // no repository here, or no git to ask
+	}
+	lines := strings.Split(out, "\n")
+	if len(lines) < 2 || strings.TrimSpace(lines[0]) == "" {
+		return "", nil
+	}
+	commonDir, err := filepath.Abs(strings.TrimSpace(lines[0]))
+	if err != nil {
+		return "", nil
+	}
+	// ponytail: a bare repository answers this too (common dir ".", empty
+	// prefix), so the rule lands in its info/exclude with no worktree to apply
+	// to. Harmless — it is that repository's real exclude file — and reaching it
+	// means having pinned a bare repo, so it is not guarded.
+	excludeFile := filepath.Join(commonDir, "info", "exclude")
+	entry := "/" + strings.TrimSpace(lines[1]) + filepath.ToSlash(path)
+	data, err := os.ReadFile(excludeFile)
 	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("read .gitignore: %w", err)
+		return "", fmt.Errorf("read %s: %w", excludeFile, err)
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.TrimSpace(line) == entry {
-			return nil // already ignored
+			return excludeFile, nil // already ignored
 		}
 	}
 	var b strings.Builder
@@ -122,7 +165,13 @@ func ensureGitignored(path string) error {
 	}
 	fmt.Fprintln(&b, "# kagikae per-directory mise fragment (machine-specific; do not commit)")
 	fmt.Fprintln(&b, entry)
-	return patch.WriteFileAtomic(giPath, []byte(b.String()), 0o644)
+	if err := os.MkdirAll(filepath.Dir(excludeFile), 0o755); err != nil {
+		return "", fmt.Errorf("create %s: %w", filepath.Dir(excludeFile), err)
+	}
+	if err := patch.WriteFileAtomic(excludeFile, []byte(b.String()), 0o644); err != nil {
+		return "", err
+	}
+	return excludeFile, nil
 }
 
 // miseActivated reports whether mise's shell activation is in effect: `mise

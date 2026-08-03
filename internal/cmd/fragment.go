@@ -161,13 +161,11 @@ func ensureGitExcluded(ctx context.Context, path string) string {
 	// otherwise leave lines[0] truncated to `…/we`, and kae would create
 	// `…/we/info/exclude` somewhere unrelated while reporting the fragment ignored.
 	if len(lines) != 3 || strings.TrimRight(lines[0], "\r") == "" {
-		warnGitExclude(fmt.Errorf("git rev-parse returned %q", out))
-		return ""
+		return warnGitExclude(fmt.Errorf("git rev-parse returned %q", out))
 	}
 	commonDir, err := filepath.Abs(strings.TrimRight(lines[0], "\r"))
 	if err != nil {
-		warnGitExclude(fmt.Errorf("resolve git common dir %q: %w", lines[0], err))
-		return ""
+		return warnGitExclude(fmt.Errorf("resolve git common dir %q: %w", lines[0], err))
 	}
 	// The answer must name a directory that already exists. git just reported this
 	// as its own common dir, so it does — and requiring it keeps kae from acting on
@@ -179,8 +177,7 @@ func ensureGitExcluded(ctx context.Context, path string) string {
 	// `git status`. Never declare an artifact for a location you could not measure
 	// (AGENTS.md); failing closed here lands in the warning path above.
 	if info, serr := os.Stat(commonDir); serr != nil || !info.IsDir() {
-		warnGitExclude(fmt.Errorf("git named %q as its common dir, but that is not an existing directory", commonDir))
-		return ""
+		return warnGitExclude(fmt.Errorf("git named %q as its common dir, but that is not an existing directory", commonDir))
 	}
 	// ponytail: a bare repository answers this too (common dir ".", empty
 	// prefix), so the rule lands in its info/exclude with no worktree to apply
@@ -190,8 +187,8 @@ func ensureGitExcluded(ctx context.Context, path string) string {
 	entry := "/" + escapeGitPattern(strings.TrimRight(lines[1], "\r")) + filepath.ToSlash(path)
 	data, err := os.ReadFile(excludeFile)
 	if err != nil && !os.IsNotExist(err) {
-		warnGitExclude(err) // *PathError already names the operation and the file
-		return ""
+		// *PathError already names the operation and the file.
+		return warnGitExclude(err)
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.TrimSpace(line) == entry {
@@ -213,22 +210,18 @@ func ensureGitExcluded(ctx context.Context, path string) string {
 	fmt.Fprintln(&b, "# kagikae per-directory mise fragment (machine-specific; do not commit)")
 	fmt.Fprintln(&b, entry)
 	if err := os.MkdirAll(filepath.Dir(excludeFile), 0o755); err != nil {
-		warnGitExclude(err)
-		return ""
+		return warnGitExclude(err)
 	}
 	f, err := os.OpenFile(excludeFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		warnGitExclude(err)
-		return ""
+		return warnGitExclude(err)
 	}
 	if _, err := f.WriteString(b.String()); err != nil {
 		f.Close()
-		warnGitExclude(err)
-		return ""
+		return warnGitExclude(err)
 	}
 	if err := f.Close(); err != nil {
-		warnGitExclude(err)
-		return ""
+		return warnGitExclude(err)
 	}
 	return excludeFile
 }
@@ -237,9 +230,13 @@ func ensureGitExcluded(ctx context.Context, path string) string {
 // without changing the exit code (AGENTS.md). It names the remedy because the
 // fragment is machine-specific and must not be committed: the user has to ignore
 // it some other way, and kae will not silently leave that unsaid.
-func warnGitExclude(err error) {
+//
+// It returns the empty string so every caller is one line — ensureGitExcluded has
+// six ways to give up and none of them may return an error.
+func warnGitExclude(err error) string {
 	fmt.Fprintf(os.Stderr, "kae: warning: could not tell git to ignore %s: %v\n", fragmentRelPath, err)
 	fmt.Fprintf(os.Stderr, "kae: the binding is in place; ignore %s yourself (it is machine-specific and must not be committed)\n", fragmentRelPath)
+	return ""
 }
 
 // escapeGitPattern backslash-escapes the wildmatch metacharacters in a literal
@@ -250,16 +247,13 @@ func warnGitExclude(err error) {
 // `/[wip]-feature/…`, which git read as a character class and did not ignore.
 // `#` and `!` need no escaping here — the entry always starts with `/`, so they
 // are never the first character of a line.
-func escapeGitPattern(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if strings.ContainsRune(`\*?[]`, r) {
-			b.WriteByte('\\')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
+func escapeGitPattern(s string) string { return gitPatternEscaper.Replace(s) }
+
+// Replace scans left to right without reprocessing its own output, so the pair
+// order cannot double-escape, and every target is a single ASCII byte.
+var gitPatternEscaper = strings.NewReplacer(
+	`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`, `]`, `\]`,
+)
 
 // miseActivated reports whether mise's shell activation is in effect: `mise
 // activate` sets MISE_SHELL. When false, a freshly written fragment will not

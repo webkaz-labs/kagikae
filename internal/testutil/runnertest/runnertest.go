@@ -6,6 +6,16 @@ package runnertest
 import "context"
 
 // Fake is a canned-response runner.Runner. It records the last invocation.
+//
+// **When the argv is part of the contract, assert Args — not only the reply.** A
+// test that fabricates a subprocess's output is, by construction, blind to what
+// was asked: it will keep passing after a flag is dropped from the command,
+// because the fake answers the same either way. This shipped: removing
+// `--show-prefix` from `ensureGitExcluded`'s `git rev-parse` left every stubbed
+// case green (internal/cmd/fragment_test.go). Two habits follow — check Args
+// whenever a flag or subcommand carries meaning, and put any accompanying
+// real-tool case where the value under test is **non-empty**, since a case that
+// exercises the empty value cannot tell a missing flag from a present one.
 type Fake struct {
 	Stdout string
 	Stderr string

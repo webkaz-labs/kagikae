@@ -243,6 +243,45 @@ func TestLsPinsWarnsOnAnUnreadableFragment(t *testing.T) {
 	}
 }
 
+// `kae ls --pins` is a new output path, and AGENTS.md requires one redaction test
+// per output path — a secret must never reach stdout, stderr or JSON. It reads a
+// bound directory's mise fragment, which is a file that also carries the
+// companion [env] block, so "it only parses kae: comment records" is exactly the
+// kind of claim that needs a canary rather than an argument.
+func TestLsPinsNeverCarriesACredential(t *testing.T) {
+	const canary = "sk-ant-oat01-PINS-CANARY-cccc"
+	app := overlayTestApp(t)
+	root := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(cwd) })
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	// A real captured credential, so the bound directory's store holds the canary
+	// and the fixture cannot pass vacuously.
+	captureClaude(t, app, "main", canary)
+	if code, out := captureStdout(t, func() int {
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated)
+	}); code != constants.ExitOK {
+		t.Fatalf("runPin: %s", out)
+	}
+	for _, format := range []string{formatText, formatJSON} {
+		code, stdout, stderr := captureBoth(t, func() int {
+			return runLsPins(app, commonOpts{Format: format})
+		})
+		mustExit(t, constants.ExitOK, code, stdout+stderr)
+		if !strings.Contains(stdout, "main") {
+			t.Fatalf("%s: the binding must actually be reported, or this canary proves nothing:\n%s", format, stdout)
+		}
+		if strings.Contains(stdout+stderr, canary) {
+			t.Fatalf("ls --pins (%s) leaked a credential value:\n%s\n%s", format, stdout, stderr)
+		}
+	}
+}
+
 // No bindings lists nothing without error and keeps the [] JSON array.
 func TestLsPinsEmpty(t *testing.T) {
 	app := testApp(t, nil)

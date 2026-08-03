@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -54,16 +55,14 @@ func paint(status, s string, color bool) string {
 // what tells the user why to re-pin.
 func toolAccountList(accounts map[string]string) string {
 	mapping := make([]string, 0, len(accounts))
-	known := map[string]bool{}
 	for _, tool := range constants.Tools {
-		known[tool] = true
 		if accountName, ok := accounts[tool]; ok {
 			mapping = append(mapping, tool+":"+accountName)
 		}
 	}
 	unknown := []string{}
 	for tool, accountName := range accounts {
-		if !known[tool] {
+		if !slices.Contains(constants.Tools, tool) {
 			unknown = append(unknown, tool+":"+accountName)
 		}
 	}

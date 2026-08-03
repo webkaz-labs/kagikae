@@ -9,9 +9,9 @@ guard on the expected structure (`kae doctor <tool>` reports what was
 detected) and refuse to write when the live layout is unrecognized
 (exit code 10, `unsafe operation refused`).
 
-**How much surface a tool gets is a tier decision** — claude and codex are tier 1,
-agy / opencode / cursor / copilot are tier 2, defined in
-[DESIGN.md](DESIGN.md) § Tool Tiers. The tier decides which *modes* apply
+**How much surface a tool gets is a tier decision**, and which tool is which is
+stated only in [DESIGN.md](DESIGN.md) § Tool Tiers — read it there rather than
+inferring it from this document. The tier decides which *modes* apply
 (§ Isolation below), never which guards apply: every allowlist, refusal and
 structure guard in this document holds identically for all six tools. A gap
 recorded against a tier-2 tool here is a description of that tool, not a task.
@@ -685,14 +685,14 @@ cell means kae declares none, and the reason column says whether that is because
 none is known or because one is known and deliberately not wired up — the two look
 identical from the outside and are not the same fact:
 
-| Tool | Tier | Isolation env var kae uses | Why |
-|------|------|----------------------------|-----|
-| claude | 1 | `CLAUDE_CONFIG_DIR` | verified, including how the keychain service name derives from it (§ Credential storage resolution) |
-| codex | 1 | `CODEX_HOME` | verified, including the canonicalized-path rule behind the keyring account |
-| agy | 2 | — | none known; agy's store choice depends on detectors kae cannot observe, and its file-store path is not derivable |
-| opencode | 2 | — | none known for the *home*; `XDG_DATA_HOME` moves the store but is read verbatim by opencode, so kae warns rather than following it |
-| cursor | 2 | — | none known; the keychain service names come from a build-time constant, not the environment |
-| copilot | 2 | — | **one exists and is verified** (`COPILOT_HOME`, the config dir itself, honored by kae for *reads*), but the isolation modes are not built for it. Demand-gated, not blocked — see [ROADMAP.md](ROADMAP.md) |
+| Tool | Isolation env var kae uses | Why |
+|------|----------------------------|-----|
+| claude | `CLAUDE_CONFIG_DIR` | verified, including how the keychain service name derives from it (§ Credential storage resolution) |
+| codex | `CODEX_HOME` | verified, including the canonicalized-path rule behind the keyring account |
+| agy | — | none known; agy's store choice depends on detectors kae cannot observe, and its file-store path is not derivable |
+| opencode | — | none known for the *home*; `XDG_DATA_HOME` moves the store but is read verbatim by opencode, so kae warns rather than following it |
+| cursor | — | none known; the keychain service names come from a build-time constant, not the environment |
+| copilot | — | **one exists and is verified** (`COPILOT_HOME`, the config dir itself, honored by kae for *reads*), but the isolation modes are not built for it. Demand-gated, not blocked — see [ROADMAP.md](ROADMAP.md) |
 
 A tool with no isolation env var declared is skipped with an inline warning
 comment in `kae pin` (it keeps the real home). For `kae use -i` / `kae run -i`

@@ -313,15 +313,16 @@ binary-scoped shell completion.
 The per-tool switched/preserved allowlist is the normative contract in
 [docs/ADAPTERS.md](docs/ADAPTERS.md).
 
-Two tiers, and the tier is a deliberate scope decision rather than a to-do list
-([docs/DESIGN.md](docs/DESIGN.md) § Tool Tiers):
+The `Tier` column below is a deliberate scope decision, not a to-do list — the
+rationale and the promotion criteria are in
+[docs/DESIGN.md](docs/DESIGN.md) § Tool Tiers:
 
-- **Tier 1 — claude and codex.** Every mode: global switching, global isolated
-  homes, both per-directory binds, identity switching and drift detection.
-- **Tier 2 — agy, opencode, cursor, copilot.** Global switching (`kae use`),
-  `kae run --env`, backup/rollback, `kae doctor`, identity detection where the tool
-  exposes one. No `kae pin` and no `-i`: those redirect the tool's home, which needs
-  an isolation variable verified end to end for that tool.
+- **Tier 1** gets every mode: global switching, global isolated homes, both
+  per-directory binds, identity switching and drift detection.
+- **Tier 2** gets global switching (`kae use`), `kae run --env`, backup/rollback,
+  `kae doctor`, and identity detection where the tool exposes one. No `kae pin` and
+  no `-i`: those redirect the tool's home, which needs an isolation variable
+  verified end to end for that tool.
 
 A tier never relaxes a safety rule. At both tiers kae refuses to write to a store
 it has not measured, never falls back to a secondary store when the authoritative

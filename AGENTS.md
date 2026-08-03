@@ -132,24 +132,21 @@ block in docs/VALIDATION.md, next to two correct ones.
   **every** bound tool, shared mode included.
 - **A `git worktree` is just another bound directory, and that is the whole
   design** — its own real path, its own pin-id, its own store, its own fragment.
-  The one place worktrees are not incidental is telling git to ignore the fragment:
-  a linked worktree's `$GIT_DIR/info/exclude` is **not consulted**, so the rule goes
-  in `$GIT_COMMON_DIR/info/exclude` (one entry covers the main checkout and every
-  worktree), and an entry there is anchored at the **repository root** rather than at
-  its own directory the way a `.gitignore` entry is — so it needs
-  `git rev-parse --show-prefix` in front of it or it silently matches nothing while
-  `kae pin` reports success. Ask git for both halves (`ensureGitExcluded`, via
-  `internal/runner`); never assume a `.git` layout.
-- **A test that fabricates a subprocess's output must assert the invocation too, or
-  it guards one step short of the thing that breaks.** The stubbed
-  `ensureGitExcluded` tests build git's reply themselves, so deleting
-  `--show-prefix` from the command left every one of them green — and the real-git
-  test could not catch it either, because it ran at the repository *root*, where the
-  prefix is empty and the entry is byte-identical either way. Two rules come out of
-  it, and they generalize past this one function: check `runnertest.Fake.Args`
-  whenever the argv is part of the contract, and place the real-tool case where the
-  value under test is **non-empty** (here: a nested subdirectory). Verified the only
-  way that counts — by removing the flag and watching the suite go red.
+  Worktrees stop being incidental in exactly one place, telling git to ignore the
+  fragment, where two measured facts drive the code (`ensureGitExcluded`, which
+  carries the detail; contract in `docs/CLI.md` § kae pin): a linked worktree's own
+  `$GIT_DIR/info/exclude` is **not consulted**, so the rule goes in
+  `$GIT_COMMON_DIR/info/exclude`; and an entry there is anchored at the
+  **repository root**, not at its own directory the way a `.gitignore` entry is, so
+  it needs `git rev-parse --show-prefix` in front of it or it silently matches
+  nothing while `kae pin` reports success. Ask git for both halves through
+  `internal/runner`; never assume a `.git` layout, and never act on an answer you
+  did not verify (that path must exist).
+- **Stubbing a subprocess hides the argv.** A test that fabricates a command's
+  output keeps passing when a flag is dropped from the command — it shipped that
+  way here. The rule and the reproduction live on `runnertest.Fake`, which is the
+  shared fake every package uses; read it before writing a test that stubs
+  `internal/runner`.
 - **A keychain item's identity is service + account, and per-tool.** codex derives
   the account of its single-service `Codex Auth` item from `CODEX_HOME`
   (`cli|` + 16 hex of sha256 over the **canonicalized** path — symlinks resolved),

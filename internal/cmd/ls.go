@@ -77,7 +77,7 @@ func runLs(ctx context.Context, app *App, opts commonOpts) int {
 }
 
 func runLsPins(app *App, opts commonOpts) int {
-	report, err := app.buildLsPins()
+	report, err := buildLsPins(app)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -100,7 +100,7 @@ func runLsPins(app *App, opts commonOpts) int {
 // in the data dir and the fragments live in the directories, so a malformed
 // config.toml is not a reason to refuse the one command that says which accounts
 // the directories are currently running.
-func (app *App) buildLsPins() (*pinsReport, error) {
+func buildLsPins(app *App) (*pinsReport, error) {
 	pins, err := app.pinnedDirs()
 	if err != nil {
 		return nil, err

@@ -5,15 +5,18 @@
 `kagikae` (command: `kae`) safely switches accounts, authentication state, and
 execution environments for AI coding CLIs:
 
-- Claude Code (`claude`) — tier 1
-- Codex CLI (`codex`) — tier 1
-- Antigravity CLI (`agy`) — tier 2
-- OpenCode (`opencode`) — tier 2
-- Cursor CLI (`cursor-agent`) — tier 2
-- GitHub Copilot CLI (`copilot`) — tier 2
+- Claude Code (`claude`)
+- Codex CLI (`codex`)
+- Antigravity CLI (`agy`)
+- OpenCode (`opencode`)
+- Cursor CLI (`cursor-agent`)
+- GitHub Copilot CLI (`copilot`)
 
-The tiers are what kae commits to per tool, defined in § Tool Tiers below: tier 1
-gets every mode, tier 2 gets credential switching. Both get the same refusals.
+How much surface each one gets is a tier, and **§ Tool Tiers below is the only
+place that says which tool is which** — tier 1 gets every mode, tier 2 gets
+credential switching, and both get the same refusals. Do not restate the mapping
+elsewhere: a promotion would then need a synchronized edit in several files with
+nothing to catch a missed one.
 
 The primary daily use case is switching subscription accounts:
 

@@ -211,6 +211,195 @@ func TestPrepareBondRetractsLinkForDeniedEntry(t *testing.T) {
 	}
 }
 
+// The retraction used to live *inside* the loop over the real home's entries, so
+// it could only ever see a link whose name the real home still had. This is the
+// residual that made permanent: an older kae bonded the directory while
+// CLAUDE_CONFIG_DIR was set, so claude's mixed-state file was an entry of the real
+// home and got linked; with the variable unset the real home is ~/.claude, which
+// does not hold that file, so the loop never visited the name again and the link
+// kept pointing into the old config dir. identityTargetEscapes then declined the
+// per-directory identity write on every pin, warning each time, with no remedy but
+// deleting the link by hand.
+func TestPrepareBondRetractsLinkNoLongerInRealHome(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	setupBondHome(t, app)
+	pinID := paths.PinID(t.TempDir())
+	bondDir := app.Paths.SharedDir(pinID, constants.ToolClaude)
+	if err := os.MkdirAll(bondDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// The old config dir the previous bond linked into. Its name is deliberately
+	// *not* an entry of the real home (~/.claude), which is what put it out of the
+	// old retraction's reach.
+	oldConfigDir := filepath.Join(app.Env.Home, "old-claude-config")
+	staleTarget := filepath.Join(oldConfigDir, ".claude.json")
+	writeFile(t, staleTarget, `{"oauthAccount":{"accountUuid":"side-uuid"}}`)
+	if err := os.Symlink(staleTarget, filepath.Join(bondDir, ".claude.json")); err != nil {
+		t.Fatal(err)
+	}
+	// A second stale link whose name is not denied either — the general case, not
+	// just the mixed-state file: an entry that has simply left the real home.
+	goneTarget := filepath.Join(app.Env.Home, ".claude", "output-styles")
+	writeFile(t, filepath.Join(goneTarget, "x.json"), "{}")
+	if err := os.Symlink(goneTarget, filepath.Join(bondDir, "output-styles")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(goneTarget); err != nil { // it is gone from the real home now
+		t.Fatal(err)
+	}
+	// A real file must survive the reconcile: it is a private override.
+	writeFile(t, filepath.Join(bondDir, "private-note.md"), "keep me\n")
+
+	if _, err := app.prepareBond(context.Background(), testBackend(t, app),
+		constants.ToolClaude, "main", pinID); err != nil {
+		t.Fatalf("prepareBond: %v", err)
+	}
+
+	// The denied mixed-state file is kae's own private copy now, not a link out.
+	info, err := os.Lstat(filepath.Join(bondDir, ".claude.json"))
+	if err != nil {
+		t.Fatalf("identity file missing after retraction: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("the link into the old config dir was not retracted")
+	}
+	if got := readFile(t, staleTarget); !strings.Contains(got, "side-uuid") {
+		t.Fatalf("the old config dir was written through the stale link: %s", got)
+	}
+	// The entry that left the real home keeps no link behind.
+	if _, err := os.Lstat(filepath.Join(bondDir, "output-styles")); !os.IsNotExist(err) {
+		t.Fatalf("a link whose name left the real home must be retracted, got %v", err)
+	}
+	// Private overrides and still-shared entries are untouched.
+	if got := readFile(t, filepath.Join(bondDir, "private-note.md")); got != "keep me\n" {
+		t.Fatalf("a real file must never be retracted: %q", got)
+	}
+	if info, err := os.Lstat(filepath.Join(bondDir, "settings.json")); err != nil ||
+		info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("a still-shared entry must stay linked: %v", err)
+	}
+}
+
+// Failing to read the real home is not a statement that nothing should be shared.
+// The reconcile takes its intent from that listing, so an unreadable one leaves the
+// intent unknown rather than empty — and retracting everything would be worse than
+// leaving a stale link: the tool goes on running in this directory and writes its
+// settings here as real files, which every later bind treats as private overrides,
+// so a directory that is absent for one `kae pin` would stop sharing forever.
+// Reached by an unmounted HOME, a re-installed tool, a CLAUDE_CONFIG_DIR naming a
+// directory that does not exist, and by a future tool missing from realToolHome's
+// switch (it returns "", which reads as absent).
+func TestPrepareBondKeepsLinksWhenRealHomeIsUnreadable(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	setupBondHome(t, app)
+	be := testBackend(t, app)
+	pinID := paths.PinID(t.TempDir())
+
+	bondDir, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID)
+	if err != nil {
+		t.Fatalf("first prepareBond: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(bondDir, "settings.json")); err != nil {
+		t.Fatalf("precondition: the entry must be linked first: %v", err)
+	}
+	if err := os.RemoveAll(filepath.Join(app.Env.Home, ".claude")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID); err != nil {
+		t.Fatalf("second prepareBond: %v", err)
+	}
+
+	for _, item := range []string{"settings.json", "CLAUDE.md"} {
+		if _, err := os.Lstat(filepath.Join(bondDir, item)); err != nil {
+			t.Fatalf("%s was retracted on an intent kae could not read: %v", item, err)
+		}
+	}
+}
+
+// A real home that reads fine and lists nothing shareable is indistinguishable
+// from "share nothing", so it is not an intent either — an existing but empty
+// CLAUDE_CONFIG_DIR reaches this, and retracting there would permanently unshare
+// the directory the same way an unreadable home would. kae says so on stderr and
+// changes nothing, because a kept link is repairable on the next pin and a wrongly
+// retracted one is not.
+func TestPrepareBondKeepsLinksWhenRealHomeListsNothing(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	setupBondHome(t, app)
+	be := testBackend(t, app)
+	pinID := paths.PinID(t.TempDir())
+
+	bondDir, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID)
+	if err != nil {
+		t.Fatalf("first prepareBond: %v", err)
+	}
+	// The user points the tool at a config dir that exists and is empty.
+	empty := filepath.Join(app.Env.Home, "empty-claude-config")
+	if err := os.MkdirAll(empty, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	app.Env.Getenv = func(key string) string {
+		if key == "CLAUDE_CONFIG_DIR" {
+			return empty
+		}
+		return ""
+	}
+
+	_, stderr := captureStderr(t, func() int {
+		if _, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID); err != nil {
+			t.Errorf("second prepareBond: %v", err)
+			return 1
+		}
+		return 0
+	})
+
+	for _, item := range []string{"settings.json", "CLAUDE.md"} {
+		if _, err := os.Lstat(filepath.Join(bondDir, item)); err != nil {
+			t.Fatalf("%s was retracted against an intent kae could not establish: %v", item, err)
+		}
+	}
+	if !strings.Contains(stderr, "lists nothing to share") {
+		t.Fatalf("the skipped retraction must be reported on stderr, got %q", stderr)
+	}
+}
+
+// The type in a directory listing is a snapshot of the whole directory, so a name
+// can stop being a symlink before the removal reaches it — the bound tool writing
+// that file, or an editor's write-to-temp-then-rename. Removing it on the stale
+// type would delete a real file, which is the one thing the reconcile promises
+// never to do, so retractLinks re-checks each name immediately before unlinking it.
+func TestRetractLinksRechecksTypeBeforeRemoving(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	writeFile(t, target, "x")
+
+	// A name the walk classified as a symlink, which is a real file by now.
+	became := filepath.Join(dir, "became-real")
+	writeFile(t, became, "private override\n")
+	// A name that is still a symlink, so the removal half is exercised too.
+	link := filepath.Join(dir, "still-a-link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := retractLinks(dir, []string{"became-real", "still-a-link", "already-gone"}); err != nil {
+		t.Fatalf("retractLinks: %v", err)
+	}
+
+	if got := readFile(t, became); got != "private override\n" {
+		t.Fatalf("a name that is a real file at removal time must survive: %q", got)
+	}
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("a name that is still a symlink must be retracted, got %v", err)
+	}
+	if _, err := os.Lstat(target); err != nil {
+		t.Fatalf("the link's target must never be touched: %v", err)
+	}
+}
+
 // TestPrepareBondCredentialComesFromSnapshotNotLiveHome pins the second defect
 // fixed alongside the macOS pin gap: the materializers copied the *live* store,
 // so binding an account that was not currently active seeded the directory with

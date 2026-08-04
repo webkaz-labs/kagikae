@@ -812,11 +812,35 @@ To add extra items to the denylist:
 above are refused at config load to avoid confusion).
 
 A real file already present in the shared directory is treated as a private
-override and is never replaced or linked over. A **symlink** by the name of a
-denied entry is retracted instead — otherwise the denylist would govern only new
-bond dirs, and a directory bound before an entry was denied (by an upgrade, or by
-`shared_denylist_extra` gaining a name) would go on sharing what it was told to
-stop sharing.
+override and is never replaced or linked over. Every **symlink** whose name is not
+in the intended share set is retracted instead, so a re-bind converges on that set
+rather than only adding to it. Known ways a name leaves that set — not a closed
+list: it becomes **denied** (otherwise the denylist would govern only new bond dirs,
+and a directory bound before an entry was denied — by an upgrade, or by
+`shared_denylist_extra` gaining a name — would go on sharing what it was told to
+stop sharing), and the real home **no longer has it at all**.
+
+In shared mode the real home's own listing is what states the intent, so an entry
+that has left it is no longer intended. That second case used to be out of reach
+because the retraction walked the real home's entries: bond a directory with
+`CLAUDE_CONFIG_DIR` set and then unset it, and `<bondDir>/.claude.json` kept
+pointing into the old config dir forever, declined by the identity-write guard on
+every pin with no remedy but deleting the link by hand.
+
+**A real home kae cannot enumerate, or one that lists nothing shareable, is not an
+intent.** Both leave the intended set empty without meaning "share nothing" — an
+absent home, an unmounted `$HOME`, an isolation variable naming a directory that does
+not exist, a tool kae has no real-home rule for, or a config dir that exists and is
+empty. kae warns on stderr, naming the home and how many links it left alone, and
+retracts nothing.
+
+That way round because the two mistakes are not symmetric. A link kae **keeps** by
+mistake is repaired by the next pin. A link kae **retracts** by mistake is not: the
+fragment still points the tool at this directory, so the tool re-creates that file
+here as a **real file**, and a real file is a private override every later bind
+leaves alone — one momentarily unreadable home would silently make a shared bind stop
+sharing, permanently. The isolated bind has no equivalent case, because there an
+empty list is the configured default and states full isolation positively.
 
 ### Per-directory isolated bind (`kae pin -i`)
 
@@ -837,9 +861,22 @@ account it was logged in as.
 
 `isolated_shared_items` is the opt-in share list: default is empty (full
 isolation). Re-running `kae pin` refreshes opt-in shared-item links and the
-credential copy. It does **not** retract a link for an entry you *remove* from the
-list, and neither does the shared bind for a stale link whose name is no longer an
-entry of the real home ([ROADMAP.md](ROADMAP.md)).
+credential copy, and retracts the link of an entry you have *removed* from the
+list — the same reconcile the shared bind does, against a different statement of
+intent. **Here the intent is the configured list, not the real home's contents**: an
+item still on the list keeps its link even when its source is currently missing,
+because a missing source is already treated as transient (only what exists is
+linked) and retracting it would just re-create it on the next pin.
+
+Two consequences worth stating rather than discovering. A **symlink an operator
+placed in this directory by hand is not an override** and is retracted like any
+other unintended one — only a *real file* is a private override, because the stale
+links this removes are exactly the ones pointing somewhere kae would not point
+today, so kae cannot tell one from the other by its target. And an **empty
+`isolated_shared_items` still reconciles**, since empty is this field's default and
+states full isolation positively — the opposite of the shared bind, where a real
+home listing nothing shareable means kae could not establish the intent at all and
+says so on stderr instead of retracting.
 
 Re-bind one tool to another account with `kae pin <tool> <account>`:
 

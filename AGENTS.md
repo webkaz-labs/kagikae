@@ -110,11 +110,18 @@ block in docs/VALIDATION.md, next to two correct ones.
   the store directory, which `kae unpin` and a mode toggle keep on purpose, while an
   item lives under a per-directory service name that appears nowhere in kae's data
   dir and cannot be enumerated on darwin, so nothing could ever find it again.
-  Two things must move in lockstep with it: a **third** per-directory mechanism
-  (today `shared` and `isolated`) has to be added to `dirCredentialStores`, or its
-  stores are silently never swept; and the sweep must run **after** the new binding
-  is written, or a mid-sequence failure leaves the live binding pointing at a store
-  whose credential is already gone.
+  Things that must move in lockstep with it — not a closed list: a **third**
+  per-directory mechanism (today `shared` and `isolated`) has to be added to
+  `dirCredentialStores`, or its stores are silently never swept; and the sweep must
+  run **after** the new binding is written, or a mid-sequence failure leaves the live
+  binding pointing at a store whose credential is already gone.
+- **A new per-directory mechanism also owes the link reconcile a statement of
+  intent.** `unintendedLinks` retracts every symlink a bind does not intend to share,
+  and there is no default to fall back on: the two existing modes take that intent
+  from deliberately different places, and one of them cannot always establish it at
+  all. `docs/ADAPTERS.md` (§ per-directory shared bind, § per-directory isolated bind)
+  is normative for which source each mode uses and what happens when the intent is
+  unknown; do not restate the rule here or in a code comment.
 - **A bound directory's store tree is history; its mise fragment is the binding.**
   `dirCredentialStores` walks `isolation/<pinID>` and *deliberately* returns stores
   nothing points at any more: `kae unpin` keeps a store so a re-pin restores its

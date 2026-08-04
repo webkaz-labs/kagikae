@@ -128,6 +128,26 @@ Baseline: v0.16.0. `schema_version` stays `1`. One **behaviour change** to
   deliberately not wired up", because those look identical from the outside and are
   not the same fact.
 
+- **A per-directory bind retracts a link it no longer intends to share** (bug fix).
+  v0.16.0 removed a symlink for a *denied* entry, but from inside the loop over the
+  real home's entries — so it could only ever see a link whose name the real home
+  still had, and the isolated bind had no retraction at all. Two residues followed.
+  Bond a directory while `CLAUDE_CONFIG_DIR` is set and then unset it, and
+  `<bondDir>/.claude.json` kept pointing into the old config dir **forever**: the
+  per-directory identity write was declined by `identityTargetEscapes` on every
+  later pin, warning each time, with no remedy but deleting the link by hand.
+  Separately, dropping an entry from `isolated_shared_items` left its link in place,
+  so a directory went on sharing what the config no longer said to share.
+
+  Both are now one reconcile against the intended set, so a re-bind converges instead
+  of only growing. Real files stay untouched in both, the rule that keeps a private
+  override and kae's own per-directory credential and identity copies alive.
+  **Which source states the intent differs per mode, deliberately, and the shared
+  bind cannot always establish it — a real home it cannot enumerate, or one listing
+  nothing shareable, warns on stderr and retracts nothing.** That asymmetry is the
+  design decision in this fix; [ADAPTERS.md](ADAPTERS.md) carries it (§ per-directory
+  shared bind, § per-directory isolated bind) rather than being re-derived here.
+
 ---
 
 # kae v0.16.0 (shipped 2026-07-31)

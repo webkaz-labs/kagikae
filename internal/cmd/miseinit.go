@@ -292,27 +292,19 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 	if err != nil && !os.IsNotExist(err) {
 		return "", fmt.Errorf("read real %s home: %w", tool, err)
 	}
+	// The names this loop treats as shareable, which the reconcile below then keeps.
+	// Built here, from the loop's own denied check, so the intent set and the linking
+	// cannot disagree about which names are shareable. It is not "everything the loop
+	// linked": the loop also skips a name whose destination is already a real file (a
+	// private override), and that name stays intended — the reconcile leaves real
+	// files alone regardless, so the two rules agree on the outcome.
+	intended := make(map[string]bool, len(des))
 	for _, de := range des {
 		name := de.Name()
 		if denied[name] {
-			// Retract a link this directory made before the item was denied, or the
-			// denylist only governs new bond dirs: an existing one keeps sharing what
-			// it was told to stop sharing, and nothing here would ever notice. Reached
-			// by `tools.<tool>.shared_denylist_extra` gaining an entry as much as by
-			// the hard-coded list growing one, so it was already a gap before
-			// `.claude.json` joined the list.
-			//
-			// Symlinks only. A real file by that name is a private override — the same
-			// rule the sharing loop below follows — and for a denied auth artifact it
-			// is usually kae's own per-directory copy, which must survive.
-			dst := filepath.Join(bondDir, name)
-			if info, lerr := os.Lstat(dst); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
-				if err := os.Remove(dst); err != nil {
-					return "", fmt.Errorf("retract shared link %s: %w", dst, err)
-				}
-			}
 			continue
 		}
+		intended[name] = true
 		src := filepath.Join(realHome, name)
 		dst := filepath.Join(bondDir, name)
 		info, statErr := os.Lstat(dst)
@@ -336,12 +328,113 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 		}
 	}
 
+	// In bond mode the real home's own listing is the statement of intent — share
+	// everything it has that is not denied — so an entry that has left it is no
+	// longer intended and its link goes with it.
+	//
+	// Only when that listing was actually read. A real home kae could not enumerate
+	// (absent, an unmounted HOME, a CLAUDE_CONFIG_DIR naming a directory that does
+	// not exist, or a future tool missing from realToolHome's switch, which returns
+	// "" and so reads as absent) leaves the intent *unknown* rather than empty, and so
+	// does one that reads fine and lists nothing shareable. Both land here as
+	// len(intended) == 0, and both then warn instead of retracting.
+	//
+	// docs/ADAPTERS.md § "Per-directory shared bind" is normative for why that way
+	// round — the two failures are not symmetric — so it is not re-argued here.
+	stale, err := unintendedLinks(bondDir, intended)
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case len(intended) > 0:
+		if err := retractLinks(bondDir, stale); err != nil {
+			return "", err
+		}
+	case len(stale) > 0:
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: the real %s home (%s) lists nothing to share, so kae cannot tell "+
+				"whether %d shared link(s) in %s are still wanted; leaving them alone. "+
+				"If that home is right, remove the links by hand; if it is not, unset %s (or "+
+				"fix it) and run kae pin again\n",
+			tool, realHome, len(stale), bondDir, isolationEnvVar(tool))
+	}
+
 	// Materialize the bound account's credential where the tool will read it.
 	if err := app.writeDirCredential(ctx, be, tool, account, bondDir); err != nil {
 		return "", err
 	}
 
 	return bondDir, nil
+}
+
+// unintendedLinks lists the symlinks in dir whose name is not in the intended set.
+// Finding is separate from removing so a caller with no established intent can
+// report what it would have retracted instead of retracting it (prepareBond).
+//
+// Together they are what makes a per-directory bind *converge* on its intended
+// shape instead of only growing: both linking loops walk their source — the real
+// home's entries, or the configured opt-in list — so neither can see a link whose
+// name has since left that source. What each mode counts as intended, and the
+// residue that made this necessary, are in docs/ADAPTERS.md (§ per-directory shared
+// bind, § per-directory isolated bind).
+//
+// Symlinks only, the same rule both linking loops follow: a real file is a private
+// override, and for an auth artifact it is usually kae's own per-directory copy,
+// which must survive. os.ReadDir reports the entry's own type without following it,
+// so a link to a directory is still seen as a link.
+//
+// Every name comes from ReadDir, so it is a single path component and `intended` can
+// only ever *prevent* a removal — this cannot reach outside dir even if a caller's
+// intended set carries a separator. dir must exist; both callers MkdirAll it first,
+// and a third one has to do the same rather than rely on a tolerated ENOENT.
+//
+// ponytail: byte-compares names. If a store's filesystem normalizes them (HFS+
+// turning NFC into NFD) while the real home hands back the other form, a
+// just-created link would be retracted on every bind. Needs a non-ASCII top-level
+// entry *and* a store on a different filesystem from the home, so it is recorded
+// rather than handled; the fix is to compare NFC-normalized names, the same
+// normalization claude's keychain service name needs.
+func unintendedLinks(dir string, intended map[string]bool) ([]string, error) {
+	des, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read bind dir %s: %w", dir, err)
+	}
+	names := []string{}
+	for _, de := range des {
+		if name := de.Name(); !intended[name] && de.Type()&os.ModeSymlink != 0 {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
+// retractLinks unlinks the named entries of dir, each re-checked immediately
+// before the removal.
+//
+// The re-check is the point, and dropping it is a regression this function was
+// written to avoid: a `DirEntry.Type()` from a directory listing is a **snapshot**
+// of the whole directory, so between the listing and this removal a name can stop
+// being a symlink — the bound tool writing that file, an editor's write-to-temp
+// then rename, a dotfile manager — and removing it on the stale type deletes a real
+// file, the one thing the reconcile promises never to do. The code this replaced
+// did its Lstat immediately before its Remove; splitting the walk from the removal
+// is what opened the window.
+//
+// A name that has already gone is not an error for the same reason: something else
+// removing a doomed link is the outcome this wanted anyway, and failing the bind
+// over it would be a `kae pin` that fails for having less work to do.
+func retractLinks(dir string, names []string) error {
+	for _, name := range names {
+		path := filepath.Join(dir, name)
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("retract shared link %s: %w", path, err)
+		}
+	}
+	return nil
 }
 
 // pinIsolationEntries resolves the per-tool env entries for pin mode.
@@ -373,8 +466,16 @@ func (app *App) preparePinConfig(ctx context.Context, be secret.Backend, tool, a
 			tool, isolationEnvVar(tool))
 	}
 
-	// Symlink opt-in shared items from the real home.
-	for _, item := range app.Config.IsolatedSharedItems(tool) {
+	// Symlink opt-in shared items from the real home. The *configured list* is this
+	// mode's statement of intent, not the real home's contents (docs/ADAPTERS.md
+	// § "Per-directory isolated bind" is normative, including what that means for an
+	// item whose source is missing and for a symlink placed here by hand).
+	items := app.Config.IsolatedSharedItems(tool)
+	intended := make(map[string]bool, len(items))
+	for _, item := range items {
+		intended[item] = true
+	}
+	for _, item := range items {
 		src := filepath.Join(realHome, item)
 		if _, err := os.Stat(src); err != nil {
 			continue // only link what exists
@@ -398,6 +499,17 @@ func (app *App) preparePinConfig(ctx context.Context, be secret.Backend, tool, a
 		if err := os.Symlink(src, dst); err != nil {
 			return "", fmt.Errorf("link pin item %s: %w", dst, err)
 		}
+	}
+
+	// Unconditional, unlike the shared bind's reconcile: an empty list is this field's
+	// default and states full isolation positively, so there is no "kae could not
+	// tell" case to warn about.
+	stale, err := unintendedLinks(configDir, intended)
+	if err != nil {
+		return "", err
+	}
+	if err := retractLinks(configDir, stale); err != nil {
+		return "", err
 	}
 
 	// Materialize the bound account's credential where the tool will read it.

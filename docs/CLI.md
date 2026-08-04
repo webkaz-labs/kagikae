@@ -436,9 +436,14 @@ from the account snapshots.
   per-directory shared home (`isolation/<pin-id>/<tool>/shared/`): every
   real-home file except the hard-coded denylist (`.credentials.json` and
   `.claude.json` for claude, `auth.json` for codex) is symlinked in; the account's
-  credential and identity are written privately (same rule as `-i` below). A
-  symlink left by an earlier bind for an entry that is now denied is retracted, so
-  the denylist governs existing bound directories and not only new ones.
+  credential and identity are written privately (same rule as `-i` below). Every
+  symlink whose name is not in the intended share set is retracted, so the bind
+  converges on that set instead of only growing: that covers an entry which is now
+  **denied** (the denylist governs existing bound directories, not only new ones)
+  and one the real home **no longer has**, whose link used to survive forever. When
+  that real home cannot be enumerated, or lists nothing shareable at all, kae has no
+  intent to converge on: it warns on stderr and retracts nothing (docs/ADAPTERS.md
+  § Per-directory shared bind for why that way round).
   Settings, sessions, and memory are shared with the real home while who the
   directory is logged in as is private to it. The bound account is recorded in
   the fragment so `kae status` and the profile match survive re-entry. See
@@ -449,7 +454,9 @@ from the account snapshots.
   sessions, memory, settings) is private to the account. Items listed in
   `tools.<tool>.isolated_shared_items` are symlinked from the real home; the
   account's credential is written privately. Re-running refreshes the opt-in
-  links and the credential.
+  links and the credential, and retracts the link of an item removed from the
+  list. The configured list is the statement of intent here, so an item still on
+  it keeps its link even when its source is missing.
 
   The credential always comes from **the account's own snapshot**, so binding an
   account that is not currently active is exact. It is written where the tool

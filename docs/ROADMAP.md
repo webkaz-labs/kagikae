@@ -212,18 +212,17 @@ alternative exists (`secret-tool`).
   silent for a healthy login or it becomes wallpaper (the mistake v0.15.0/v0.15.1
   made in both directions).
 
-- **Link retraction only covers a name the real home still has** (recorded
-  2026-07-31, **not fixed**). v0.16.0 made `prepareBond` remove a symlink for a
-  denied entry, but the removal lives inside the loop over `os.ReadDir(realHome)`,
-  so it never sees a link whose name is no longer a real-home entry. Concrete
-  residual: bond a directory with `CLAUDE_CONFIG_DIR` set, then unset it, and
-  `<bondDir>/.claude.json -> <oldConfigDir>/.claude.json` stays forever — declined
-  by `identityTargetEscapes` on every pin, with a warning each time and no
-  documented remedy beyond removing the link by hand. The mirror gap is in the
-  isolated bind: `isolated_shared_items` has no retraction at all, so *removing* an
-  entry leaves its link in place. Both want the same shape — reconcile the directory
-  against the intended set rather than only walking the source — which is why they
-  are one entry: fixing one and not the other is how they drift.
+- ~~**Link retraction only covers a name the real home still has**~~ (recorded
+  2026-07-31, **fixed** — see [RELEASE.md](RELEASE.md) v0.17.0). v0.16.0 made
+  `prepareBond` remove a symlink for a denied entry, but the removal lived inside
+  the loop over `os.ReadDir(realHome)`, so it never saw a link whose name was no
+  longer a real-home entry, and the isolated bind had no retraction at all.
+  Both are now one shared reconcile (`unintendedLinks` + `retractLinks`): every
+  symlink whose name is not in the intended set is removed, so a re-bind converges on
+  that set instead of only growing. **Which source states that intent differs per
+  mode, and one mode cannot always establish it** — [ADAPTERS.md](ADAPTERS.md)
+  (§ per-directory shared bind, § per-directory isolated bind) is normative for both,
+  and a third per-directory mechanism owes the same answer (AGENTS.md).
 
 - **`kae account rename` / `kae account rm` delete a recorded `SecretRef`
   verbatim** (recorded 2026-07-31, **deliberately not fixed**). Both delete the ref

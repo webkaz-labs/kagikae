@@ -104,6 +104,55 @@ func TestPreparePinConfigSharesOptInItems(t *testing.T) {
 	}
 }
 
+// The isolated bind had no retraction at all: removing an item from
+// isolated_shared_items left its link in place, so a directory kept sharing what
+// the config no longer said to share. Here the configured list is the statement of
+// intent, so dropping an entry from it is what retracts the link — while an entry
+// still in the list keeps its link even when the source is missing, because the
+// linking loop already treats a missing source as transient.
+func TestPreparePinConfigRetractsLinkDroppedFromConfig(t *testing.T) {
+	app := testApp(t, nil)
+	app.Config.Tools[constants.ToolClaude] = config.Tool{
+		IsolatedSharedItems: []string{"output-styles", "agents"},
+	}
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", "output-styles", "x.json"), "{}")
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", "agents", "y.json"), "{}")
+	pinID := "abcdef0123456789"
+	captureClaude(t, app, "main", mainToken)
+	be := testBackend(t, app)
+
+	configDir, err := app.preparePinConfig(context.Background(), be, constants.ToolClaude, "main", pinID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []string{"output-styles", "agents"} {
+		if _, err := os.Readlink(filepath.Join(configDir, item)); err != nil {
+			t.Fatalf("opt-in item %s not linked: %v", item, err)
+		}
+	}
+	// A private override, which the reconcile must never remove.
+	writeFile(t, filepath.Join(configDir, "settings.json"), `{"theme":"dark"}`)
+
+	// The user drops one item and the source of the other disappears.
+	app.Config.Tools[constants.ToolClaude] = config.Tool{IsolatedSharedItems: []string{"agents"}}
+	if err := os.RemoveAll(filepath.Join(app.Env.Home, ".claude", "agents")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.preparePinConfig(context.Background(), be, constants.ToolClaude, "main", pinID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Lstat(filepath.Join(configDir, "output-styles")); !os.IsNotExist(err) {
+		t.Fatalf("an item dropped from the config must be retracted, got %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(configDir, "agents")); err != nil {
+		t.Fatalf("an item still configured keeps its link even with the source gone: %v", err)
+	}
+	if got := readFile(t, filepath.Join(configDir, "settings.json")); got != `{"theme":"dark"}` {
+		t.Fatalf("a real file must never be retracted: %q", got)
+	}
+}
+
 func TestPinAndUnpinUsage(t *testing.T) {
 	// Two positionals = re-bind <tool> <account>; an unknown tool is a usage
 	// error, validated before any environment access. ("zz" matches no tool

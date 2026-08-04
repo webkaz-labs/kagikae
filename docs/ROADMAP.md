@@ -157,6 +157,56 @@ alternative exists (`secret-tool`).
   state) into two commands, to save a value the restore can re-check for free
   ([DATA-MODEL.md](DATA-MODEL.md) § Backups).
 
+- **Re-login UX: the bound-directory path is the one a human has to think about**
+  (measured 2026-08-04, **not fixed**). The three expiry paths are not equally
+  finished, and the worst one is the per-directory/per-worktree case this release
+  makes prominent:
+  - *Global account, still-working credential* — already one command and no `cd`:
+    `kae add --restore <tool> <account>` drives the tool's own login flow, captures,
+    and puts the previous login back (`expiringCredentialDetail`). Nothing to fix.
+  - *Global account, dead credential* — **two steps**, the tool's login then
+    `kae add --no-login` (`staleCredentialDetail`, which deliberately does not name
+    `--restore` because there is no live login worth preserving). Forgetting the
+    second step leaves the dead credential in the snapshot, so the next `kae use`
+    re-applies it. Worth checking whether plain `kae add <tool> <account>` (login
+    flow **and** capture, already one command) can be named here instead.
+  - *Bound directory* — `cd <dir> && <tool login>` (`pinLoginRemedy`), and it
+    carries two hazards neither the message nor the docs mention. **(1)** It does not
+    say the pin has to be active in that shell. With mise activation absent or the
+    config untrusted, the isolation variable is unset, so the login lands in the
+    **real home**: the wrong account is refreshed and the bound one is still stale.
+    kae already words exactly this caveat for companions
+    (`companion_token_drift`: "the pin is not active in this shell (run `mise env`,
+    or `mise trust` if untrusted)") and has the predicate (`miseActivated`), so this
+    is an inconsistency, not a missing capability. **(2)** Nothing captures the
+    in-directory login back, while `kae pin` writes the bound credential from the
+    **account snapshot** on every run (`writeDirCredential`, from both
+    materializers). So a later `kae pin` — which the user is told to run for
+    re-binding, a mode toggle, or repairing links — silently regresses the fresh
+    login to the older snapshot.
+
+  **On doing it without typing a command.** There is no `kae doctor --fix` and no
+  path that offers to run a remedy; every remedy is a string the human retypes. The
+  pieces for a driven flow already exist, though: `loginCommand(tool)`,
+  `runner.RunInteractive`, and `kae add --restore` already spawn a tool's login
+  interactively. So a `kae relogin`-shaped command (resolve the current directory's
+  binding, refuse with the mise remedy when the pin is not active, log in *into the
+  bound store*, then capture back) is wiring, not new capability. **Decide the
+  surface before building**: a new verb, versus `--fix` on `doctor`, versus
+  `kae add --restore` learning about bindings.
+
+  **And the detection hook is already in the right place but blind.** The mise
+  `[hooks.enter]` runs bare `kae use --quiet` on every directory change — the exact
+  moment a human arrives in the worktree — and `--quiet` suppresses success reports
+  but never warnings. Today that path does not look at the bound credential's
+  freshness at all; inside a pinned directory it instead warns about *itself*
+  (`pinnedGlobalScope`: "you are changing GLOBAL state, which this directory will
+  not see"). Surfacing an expiring bound credential there would tell the user at the
+  only moment they do not have to remember anything — but it runs on every `cd`, so
+  it needs a rate limit or a state-recorded last-warned stamp, and it must stay
+  silent for a healthy login or it becomes wallpaper (the mistake v0.15.0/v0.15.1
+  made in both directions).
+
 - **Link retraction only covers a name the real home still has** (recorded
   2026-07-31, **not fixed**). v0.16.0 made `prepareBond` remove a symlink for a
   denied entry, but the removal lives inside the loop over `os.ReadDir(realHome)`,

@@ -247,12 +247,28 @@ denied in one place and permitted in another; a guard test pins that wiring.
 **A per-directory keychain item is removed once nothing points at it.** A `-s` ↔
 `-i` toggle or an isolated re-bind supersedes a store, and its item would otherwise
 keep a credential that cannot be found again: it lives under a per-directory
-service name, so it appears nowhere in kae's data dir, and the darwin keychain
-cannot be enumerated, so `secret_orphan` cannot report it either. The sweep is
+service name, so it appears nowhere in kae's data dir, and no kae check reports one
+(`secret_orphan` covers kae's own secret store, not the per-directory items; a doctor
+check that attributes them is queued in [ROADMAP.md](ROADMAP.md)). The sweep is
 scoped by the item identity the adapter resolves for that directory, so it can only
 reach the directory's own item and never a global login; store directories, with
 their sessions and settings, are left intact. `kae unpin` keeps the current
 credentials (a re-pin restores the directory); `kae unpin --purge` removes them.
+
+**Removing one is preceded by a harvest, and refused when that is not possible.**
+The item can hold the only copy of an account's credential that still refreshes
+(claude's refresh token rotates single-use), so the sweep copies a newer usable one
+into the account snapshot first and **keeps** an item it could not preserve — a
+leftover secret being the smaller fault. One exception, and it is opt-in: `kae unpin
+--purge` deletes a usable copy whose account no longer exists (`kae account rm`, or a
+`rename`), because there is nowhere to preserve it and a purge is the command that
+asked for the credential to go. The sweep a *bind* runs keeps that same copy. Two consequences worth stating here. A
+`--purge` therefore needs kae's secret store, and warns and keeps everything rather
+than deleting logins it cannot preserve when that store cannot be opened. And a
+copy kae cannot attribute to an account is never *adopted* into some other account's
+snapshot to make it deletable: the hash-derived service name does not say whose
+credential it holds, and a mislabelled token is undetectable afterwards
+([ADAPTERS.md](ADAPTERS.md) § Per-directory credential store).
 
 ## Env Profiles And kae run
 

@@ -8,8 +8,10 @@ import (
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
 // CmdPin binds the current directory to a profile, by scope and environment:
@@ -121,6 +123,16 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err != nil {
 		return finish(opts, err)
 	}
+	// The harvest reads a per-directory store twice in one command — the pin-level pass
+	// classifies it, then the materializer's chokepoint reads it again before writing —
+	// and reads that account's snapshot payload twice with it. Both are the exact shape
+	// the switch path already coalesces, so opt in rather than restructure signatures to
+	// save a `security` call (docs/RELEASE.md §A/§C). Safe here for the same reason it is
+	// safe there: nothing between the two reads writes that store (the harvest writes
+	// only the account snapshot, and a write invalidates its own cache entry), and no
+	// child process runs during a bind — which is the one case both caches warn against.
+	ctx = keychain.WithReadCache(secret.WithReadCache(ctx))
+	be = secret.Cached(be)
 	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets, paths.PinID(absDir))
 	if err != nil {
 		return finish(opts, err)
@@ -129,6 +141,17 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err != nil {
 		return finish(opts, err)
 	}
+	// Read before anything replaces it: the binding being replaced is the only thing
+	// that can name the account a *shared* store's credential belongs to
+	// (storeAccount), which both harvests below need. An unreadable one degrades to
+	// "unattributable", which the sweep reports and acts on by keeping the credential.
+	prevBinding, _, _ := readDirFragment()
+	// Before the stores are written, not after: a mode toggle or an isolated re-bind
+	// builds a *different* store from the account snapshot, so the copy the tool
+	// refreshed in the old one has to be harvested first or the directory ends up
+	// bound to a credential rotation has already invalidated. Deleting still happens
+	// last (pruneDirCredentials).
+	app.harvestSupersededDirCredentials(ctx, be, paths.PinID(absDir), absDir, "", prevBinding)
 	if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
 		return finish(opts, err)
 	}
@@ -145,7 +168,10 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// use now is unreachable: a mode toggle moves every tool to the other
 	// mechanism's dir, and an isolated re-pin to another account re-keys it. Their
 	// keychain items would otherwise hold a credential nothing points at.
-	reportPruned(app.pruneDirCredentials(ctx, paths.PinID(absDir), "", boundDirs(entries)))
+	// purging=false: this sweep is housekeeping after a re-bind, so a store whose
+	// account no longer exists keeps its credential rather than having it deleted by a
+	// command the user ran to *bind* something (harvestBeforeDelete).
+	reportPruned(app.pruneDirCredentials(ctx, be, paths.PinID(absDir), "", boundDirs(entries), prevBinding, false))
 	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, mode)
 	// The exclude file is named because it is not a place a user would look, and
 	// it is outside the working tree; when there was no repository to tell, say
@@ -176,10 +202,12 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 // --purge additionally deletes the per-directory **keychain** credentials this
 // directory's tools used. That is opt-in because it is the one part of the store a
 // re-pin cannot restore from the directory tree (it is restored from the account
-// snapshot instead), and because leaving it is otherwise invisible: an item under a
-// per-directory service name appears nowhere in kae's data dir, and the darwin
-// keychain cannot be enumerated, so doctor cannot report it either. Sessions,
-// settings and the isolation directories survive --purge; only the credential goes.
+// snapshot instead), and because leaving it is otherwise easy to miss: an item under
+// a per-directory service name appears nowhere in kae's data dir, and no kae check
+// reports one yet (docs/ROADMAP.md). Sessions, settings and the isolation
+// directories survive --purge; only the credential goes — and each one is harvested
+// into its account snapshot first, so a purge cannot be what destroys a login
+// (harvestBeforeDelete).
 func CmdUnpin(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
 	var purge bool
@@ -216,6 +244,10 @@ func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: could not resolve this directory (%v); removing the fragment without the pin lock\n", absErr)
 	}
+	// The binding names the account behind a shared store's credential, so --purge
+	// has to read it before removing it (storeAccount). Not fatal: without it the
+	// sweep keeps a credential it cannot attribute.
+	prevBinding, _, _ := readDirFragment()
 	removedFragment, err := removeDirFragment()
 	if err != nil {
 		return finish(opts, err)
@@ -238,8 +270,24 @@ func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
 	// After the fragment is gone: nothing points at any of this directory's stores
 	// now, so the sweep keeps none of them. Before it, a failure would leave a live
 	// binding whose credential kae had already deleted.
+	//
+	// The sweep harvests each credential into its account snapshot before deleting
+	// it, so it needs the secret store; a purge that cannot open it would be
+	// destroying logins it has no way to preserve, which is worse than leaving the
+	// items for a later run.
 	if purge {
-		reportPruned(app.pruneDirCredentials(ctx, paths.PinID(absDir), "", nil))
+		be, err := app.secretBackend()
+		if err != nil {
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: could not open the secret store (%v); this directory's per-directory "+
+					"credentials are left in place rather than deleted without being harvested\n", err)
+			return constants.ExitOK
+		}
+		// Same coalescing as a bind: the sweep reads each store to classify it and again
+		// inside the harvest, and no child process runs here either.
+		ctx = keychain.WithReadCache(secret.WithReadCache(ctx))
+		be = secret.Cached(be)
+		reportPruned(app.pruneDirCredentials(ctx, be, paths.PinID(absDir), "", nil, prevBinding, true))
 	}
 	return constants.ExitOK
 }

@@ -28,8 +28,9 @@ const (
 //
 // -s (default) runs against the real home (backup → apply → run → recapture →
 // restore, lock held the whole run); -i runs in the per-account global isolated
-// home shared with kae use -i (no lock, no live mutation); --env injects the
-// env-profile vars only. On success the child's exit code is returned verbatim;
+// home shared with kae use -i (no lock, and no mutation of the live store — it can
+// still write the account snapshot, when materializing that home harvests a newer
+// credential out of it); --env injects the env-profile vars only. On success the child's exit code is returned verbatim;
 // kae's own exit codes apply only to failures before the child starts (and to a
 // failed restore afterwards). The child owns stdio, so --json affects only kae's
 // error reports.
@@ -192,8 +193,9 @@ func (app *App) runEnvChild(ctx context.Context, opts commonOpts, targets []runT
 
 // runIsolatedChild runs the child with each target pointed at its global
 // isolated home (isolation/global/<tool>/<account>/, shared with kae use -i):
-// no lock and no live mutation, so a concurrent kae use in another shell is
-// never blocked and never seen by the isolated process. A tool with no
+// no lock and no mutation of the live store, so a concurrent kae use in another
+// shell is never blocked and never seen by the isolated process (the harvest inside
+// writeDirCredential does write the account snapshot, which is not the live store). A tool with no
 // home-isolation env var is skipped with a warning when it came from a profile
 // (claude/codex stay isolated), or exits 5 for a single explicit tool.
 func (app *App) runIsolatedChild(ctx context.Context, opts commonOpts, targets []runTarget, fromProfile bool, childCmd []string) int {

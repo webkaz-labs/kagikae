@@ -153,8 +153,9 @@ matches.
   several tools closes with one roll-up line naming those that need a re-login. The
   exit code stays `0` — the switch itself succeeded. The same warnings also ride in
   each result's `warnings` array for `--json`. Only `kae use` / bare `use`
-  recapture; `use -i` / `pin` / `run -i` write kae-owned isolation dirs and never
-  the real store.
+  recapture *the real store*; `use -i` / `pin` / `run -i` write kae-owned isolation
+  dirs and never touch it — but they do write the account snapshot when they harvest
+  a newer credential out of a directory's own store (§ kae pin).
 - `--isolated` / `-i`: point every terminal at a per-account private home
   **without touching `~/.claude`**. kae prepares
   `isolation/global/<tool>/<account>/` (docs/DATA-MODEL.md) and writes a
@@ -195,9 +196,11 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   `auth` mode.)
 - `-i`: runs the child with the per-account global isolated home
   (`isolation/global/<tool>/<account>/`) injected via the tool's home-isolation
-  env var. This home is **shared with `kae use -i`** for the same account; no
-  lock and no live mutation, so a concurrent `kae use` in another terminal is
-  never blocked and never sees the isolated process. `run -i` prints the exact
+  env var. This home is **shared with `kae use -i`** for the same account; no lock
+  and no mutation of the *live* store, so a concurrent `kae use` in another terminal
+  is never blocked and never sees the isolated process. (It can write the account
+  snapshot, when materializing that home harvests a newer credential out of it —
+  § kae pin.) `run -i` prints the exact
   home and that it is shared with `kae use -i`, so the shared state is never
   invisible. claude and codex only; a profile including an unsupported tool
   skips it with a warning, an explicit unsupported tool exits `5`. (This is the
@@ -419,16 +422,42 @@ Both commands sweep a **superseded per-directory keychain credential**: a `-s` �
 `-i` toggle moves every tool to the other mechanism's store and an isolated
 re-bind re-keys the store by account, so the store the directory used before is
 unreachable, and its keychain item would otherwise hold a credential nothing
-points at — invisible, since it lives under a per-directory service name and the
-darwin keychain cannot be enumerated. Only the item goes: the store directory, its
-sessions and its settings stay, and a file-backed per-directory credential is left
-alone because it lives *inside* that directory. The sweep runs after the new
-binding is in place, reports each removal, and never changes the exit code.
+points at — easy to miss, since it lives under a per-directory service name that
+appears nowhere in kae's data dir and no kae check reports one yet. Only the item
+goes: the store directory, its sessions and its settings stay, and a file-backed
+per-directory credential is left alone because it lives *inside* that directory.
+The sweep runs after the new binding is in place, reports each removal, and never
+changes the exit code.
+
+**A deletion here is final, so the sweep harvests too**, by the same rule and with
+the same refusals as a bind (above): the item can hold the copy that refreshed
+last, and nothing rebuilds a credential that was never in an account snapshot. An
+item holding a usable copy kae cannot preserve is therefore **kept, not deleted**,
+with the reason on stderr — a leftover secret is a smaller fault than a cleanup that
+destroys a login. Known ways to reach that, and **not a closed list**: kae could not
+**read** the item, or its payload is not a shape kae recognizes (which may still be a
+working login, and is what an upstream format change looks like); kae cannot
+**attribute** the store to an account — an isolated store names its account in its own
+path, while a shared store's comes from the binding being replaced, so one left over
+from an older binding may have no name kae can read; no account of that name exists any
+more; the account's snapshot exists but could not be read, so a later run may still
+manage it; or the harvest itself declined, for one of the reasons above.
+
+One usable copy *is* deleted, and only by `kae unpin --purge`: one belonging to an
+account that no longer exists (`kae account rm`, or a `rename` that moved it). There
+is nowhere to preserve it now or ever, and a purge is where the user asked for these
+credentials to go, so keeping it would strand a live token no kae command can address.
+The sweep a **bind** runs makes the opposite call on the same state and keeps it: that
+command was asked to bind something, and `kae account rename` reaches it through kae's
+own re-bind remedy — deleting there destroyed the newest copy of the renamed account's
+credential. kae names the account in both cases.
 
 `kae unpin --purge` extends that to the directory's *current* stores, which plain
 `unpin` deliberately keeps so a re-pin restores the directory. Sessions and
 settings survive `--purge` too; only the credentials go, and a re-pin restores them
-from the account snapshots.
+from the account snapshots. Because the sweep harvests first, `--purge` needs kae's
+secret store: if it cannot be opened, kae warns and leaves the credentials in place
+rather than deleting logins it has no way to preserve.
 
 `kae pin` defaults to **shared** (`-s`); pass `-i` for isolated:
 
@@ -458,12 +487,36 @@ from the account snapshots.
   list. The configured list is the statement of intent here, so an item still on
   it keeps its link even when its source is missing.
 
-  The credential always comes from **the account's own snapshot**, so binding an
-  account that is not currently active is exact. It is written where the tool
-  bound to that directory actually reads it: a private file at `0600`, or — on a
-  platform where the tool namespaces a keychain item by the config dir (claude on
-  macOS) — that directory's keychain item, with any superseded plaintext copy
-  removed. See docs/ADAPTERS.md "Per-directory credential store".
+  The credential comes from **the account's own snapshot**, so binding an account
+  that is not currently active is exact. It is written where the tool bound to that
+  directory actually reads it: a private file at `0600`, or — on a platform where
+  the tool namespaces a keychain item by the config dir (claude on macOS) — that
+  directory's keychain item, with any superseded plaintext copy removed. See
+  docs/ADAPTERS.md "Per-directory credential store".
+
+  **Except where a store already holds a newer copy, which kae harvests into the
+  snapshot first.** The tool refreshes the credential inside the directory, in
+  place, and claude's refresh token is single-use: the copy that refreshed last is
+  then the only one that can refresh again. Overwriting it with an older snapshot
+  therefore logs the directory out rather than merely dating it back, and nothing
+  offline says so until the tool fails mid-session (docs/VALIDATION.md). So kae reads
+  the copy that is there, compares `expiresAt`, copies the newer one into the account
+  snapshot — reporting `kae: harvested …` on stderr — and then writes that.
+
+  It covers **every store the bound directory has, not only the one being written** —
+  which is what a `-s` ↔ `-i` toggle and an isolated re-key need, since those bind the
+  directory to a *different* store — and it **refuses rather than guesses**: an
+  unusable copy is never harvested, and neither is one kae cannot attribute to the
+  account it would be filed under. [ADAPTERS.md](ADAPTERS.md) § Per-directory
+  credential store is normative for the mechanism and the full list of refusals; what
+  is visible from the command line is that kae reports `kae: harvested …` when it
+  moves a copy, says so and names a login remedy when it declines one it may have
+  needed, and says only the fact when the copy demonstrably belongs to another account
+  (logging that account in again would be the wrong advice). **One store that was not
+  harvested produces exactly one message**, whichever of the two harvests reached it
+  first — the store a bind overwrites is looked at twice, and one refusal read as two
+  problems. The bind proceeds either way. claude only, because no other tool's rotation has been measured
+  ([ROADMAP.md](ROADMAP.md) § Rotation is measured for claude only).
 
   The account's **identity cache** is written with it, after it, so the tool names
   the account the directory is authenticated as rather than whichever one first ran

@@ -93,7 +93,11 @@ parameters:
 2. **Symlink the sharing set** into the alternate dir — from the real home
    (`bond`) or from a per-directory store (`pin`).
 3. **Materialise the credential and mixed-state files privately** (never
-   symlinked — see §6).
+   symlinked — see §6), **reading each store before writing over it**: a private
+   copy is not a free copy, because the tool refreshes the one inside the directory
+   and for claude that makes every older copy invalid, so a newer copy is harvested
+   into the account snapshot first ([CLI.md](CLI.md) § kae pin). A new mechanism
+   inherits that only by routing through the same materializer (AGENTS.md).
 
 The only differences between modes are the **sharing source** (real home vs
 per-directory store) and the **default sharing set**:

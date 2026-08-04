@@ -725,13 +725,44 @@ thing that writes it — plus the identity cache that names it — for all four:
 - the location comes from the adapter, resolved against an env whose isolation
   variable already points at the bound directory — never recomputed;
 - on a keychain platform the per-directory **item** is written and the plaintext
-  copy in the directory is removed, because nothing reads it once the item exists
-  and the tool only deletes it itself when it finds no item;
+  copy in the directory is removed, because **while the tool keeps preferring the
+  item** nothing reads that file and it cannot hold anything newer than what was just
+  written — claude's first refresh promotes a file store to an item and deletes the
+  file, so a file beside a live item is not a state upstream produces. Stated as the
+  condition rather than as an absolute, because if it ever stops holding, this removal
+  is a harvest kae skips: the harvest reads the credential artifact the adapter
+  resolves, which is the item, never this file;
 - a failed keychain write is an error. It is never downgraded to a file write:
   that would report success while leaving the directory reading something else;
-- the payload comes from the **account's snapshot**, never the live store — the
-  live store holds whichever account is globally active, which is the account
-  being bound only by coincidence;
+- the payload comes from the **account's snapshot**, never the *global* live store
+  — that one holds whichever account is globally active, which is the account being
+  bound only by coincidence;
+- but **a store is read before it is written over, and a newer copy in it is
+  harvested into the account snapshot first**, for a tool whose refresh token is
+  measured to rotate single-use (claude only — see "Credential storage resolution"
+  and docs/VALIDATION.md). The tool refreshes that copy in place, so an older
+  snapshot written over it does not date the directory back, it logs it out. Newer
+  means the larger `expiresAt`, which a refresh always moves forward.
+  It happens in **two places, because one cannot see what the other can**. Here, for
+  the store being written — the only harvest on the paths that have no bound
+  directory at all (`kae use -i`, `kae run -i`). And once per bound directory before
+  any store is materialized, over *every* store that directory has, which is what
+  covers a binding that moves to a **different** store: a `-s` ↔ `-i` toggle, an
+  isolated re-bind, and the shared-mode re-bind whose one store holds the *previous*
+  account's credential. The superseded-credential sweep harvests as well, where a
+  delete is final (docs/CLI.md § kae pin, docs/DATA-MODEL.md);
+- and it **refuses rather than guesses**, in every one of these places. An unusable
+  copy is not harvested — the tombstone a failed refresh leaves behind is a
+  fully-formed payload, so presence proves nothing. A copy kae cannot *attribute* is
+  not harvested: the identity cache beside the credential must be readable, inside
+  that store, and name the account being harvested into, and **absence is not
+  agreement** — no recorded identity, no live cache, an unreadable one, a path kae
+  could not resolve, or a target that resolves outside the store (a pre-v0.16.0 bind
+  linked it to the real home, so it labels *that*) all refuse. This matters most for a `-s` store, which is shared
+  by every account the directory ever bound: its credential can legitimately belong
+  to another account, and filing that under this one's name is undetectable
+  afterwards — the token is opaque, so live, snapshot and doctor would all agree on a
+  label that is simply wrong;
 - the snapshot's payload **shape** must match the artifact being written.
   `KindFile` and `KindKeychain` hold a whole document, `KindJSONPointer` holds only
   the value under its pointer, and the two are not interchangeable: applying a

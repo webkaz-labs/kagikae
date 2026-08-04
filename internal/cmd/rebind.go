@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/paths"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
 // runRebind re-binds one tool's credential inside a pinned directory to a
@@ -61,6 +63,16 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	if err != nil {
 		return finish(opts, err)
 	}
+	// The harvest reads a per-directory store twice in one command — the pin-level pass
+	// classifies it, then the materializer's chokepoint reads it again before writing —
+	// and reads that account's snapshot payload twice with it. Both are the exact shape
+	// the switch path already coalesces, so opt in rather than restructure signatures to
+	// save a `security` call (docs/RELEASE.md §A/§C). Safe here for the same reason it is
+	// safe there: nothing between the two reads writes that store (the harvest writes
+	// only the account snapshot, and a write invalidates its own cache entry), and no
+	// child process runs during a bind — which is the one case both caches warn against.
+	ctx = keychain.WithReadCache(secret.WithReadCache(ctx))
+	be = secret.Cached(be)
 
 	// KAE_PROFILE follows the directory's effective per-tool accounts: the
 	// global state overlaid with the fragment's isolated bindings and this
@@ -79,6 +91,20 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	}
 	effective[tool] = accountName
 	profile := app.Config.MatchProfile(effective)
+
+	// The mode is validated before anything is written, including the harvest below: a
+	// command that is going to refuse an unrecognized fragment must not leave an
+	// account snapshot rewritten behind it.
+	if info.Mode != paths.SharedSegment && info.Mode != paths.IsolatedSegment {
+		return finish(opts, errf(constants.ExitError,
+			"fragment %s has an unrecognized mode %q", fragmentRelPath, info.Mode))
+	}
+	// Before either branch writes a store: in isolated mode the binding moves to a
+	// store keyed by the new account, and in shared mode it stays in one store whose
+	// credential still belongs to the *previous* account — and `info` is the only
+	// thing that names it. Harvesting here is what keeps a re-bind from destroying the
+	// login it is re-binding away from (docs/ROADMAP.md).
+	app.harvestSupersededDirCredentials(ctx, be, pinID, absDir, tool, info)
 
 	var envDir string   // fragment env entry to repoint (isolated only)
 	var boundDir string // the store this tool reads after the re-bind
@@ -103,6 +129,8 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 		envDir = newDir
 		boundDir = newDir
 	default:
+		// Unreachable: the same check runs above, before the harvest, so a refused mode
+		// costs nothing. Kept so the switch stays total if that check ever moves.
 		return finish(opts, errf(constants.ExitError,
 			"fragment %s has an unrecognized mode %q", fragmentRelPath, info.Mode))
 	}
@@ -124,7 +152,10 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// is now unreachable and its keychain item would keep that credential with
 	// nothing pointing at it. Scoped to this tool: a sibling tool's store is still
 	// bound by the same fragment. (Shared mode re-uses one dir, so nothing is stale.)
-	reportPruned(app.pruneDirCredentials(ctx, pinID, tool, map[string]bool{boundDir: true}))
+	// `info` is the binding this re-bind replaced, which is what names the account a
+	// shared store's credential belongs to (storeAccount) — read before
+	// rebindFragment rewrote it.
+	reportPruned(app.pruneDirCredentials(ctx, be, pinID, tool, map[string]bool{boundDir: true}, info, false))
 	fmt.Printf("Re-bound %s to account %s (%s; sessions/settings unchanged)\n", tool, accountName, info.Mode)
 	return constants.ExitOK
 }

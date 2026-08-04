@@ -125,6 +125,48 @@ block in docs/VALIDATION.md, next to two correct ones.
   `dirCredentialStores`, or its stores are silently never swept; and the sweep must
   run **after** the new binding is written, or a mid-sequence failure leaves the live
   binding pointing at a store whose credential is already gone.
+- **The copy in a per-directory store can be newer than the snapshot, so every
+  write and delete of one harvests first.** claude's refresh token rotates
+  single-use, which turns "kae overwrote the directory's credential with an older
+  one" from a regression into a logout — reported as success, green in `kae doctor`,
+  failing up to 8h later inside the tool (`docs/VALIDATION.md` owns the measurement,
+  `docs/ROADMAP.md` the design). Order two copies by `expiresAt` and nothing else,
+  guarded `Known && !Revoked && !ExpiresAt.IsZero()` — a tombstone is a fully-formed
+  payload, so presence proves nothing — and keep it **claude-only** until another
+  tool's rotation is measured. Adding a tool needs a
+  measurement **and** an identity-only artifact for attribution to read; `docs/ROADMAP.md`
+  § Rotation is measured for claude only owns that rule.
+- **A chokepoint is not the same as complete coverage.** `writeDirCredential` is where
+  the harvest belongs for the store it writes — put it in a separate "repair" step and
+  the overwrite paths stay unconditional, which ships a release that fixes a login and
+  then destroys it. But it cannot see a **sibling** store of the same bound directory,
+  which is what a `-s` ↔ `-i` toggle and an isolated re-key move the binding to, so
+  `kae pin` and `kae pin <tool> <account>` also run a pin-level pass **before**
+  materializing while the delete sweep still runs **after** the new binding
+  (`docs/ADAPTERS.md` § Per-directory credential store is normative for all of it).
+  Two traps that outlive the specific code. Harvesting is not deleting — they belong on
+  opposite sides of the write, so do not "simplify" them into one pass. And a
+  suppression that keeps two speakers from repeating each other must be keyed on **what
+  was actually reported**, not on which store *kind* a pass would have looked at: the
+  second version silenced precisely the cases where the pass had nothing to say, which
+  are the destructive ones. Both were found by review after a version that looked
+  complete and passed its tests.
+- **Never harvest a copy you cannot attribute.** A `-s` store is account-agnostic, so
+  a re-bind finds the previous account's (usually newer) credential there, and filing
+  it under this account's name is undetectable afterwards — the token is opaque, so
+  live, snapshot and doctor all agree on a label that is simply wrong. The evidence is
+  the identity cache beside the credential, and **absence is not agreement**
+  (no recorded identity, no live cache, unreadable, or a target that resolves outside
+  the store, which labels the real home instead). Where a store's own path does not
+  name its account, only the fragment being *replaced* does — read it before
+  overwriting or removing it, and only trust it for the mechanism it describes. For a
+  delete, an account kae cannot name at all is a reason to keep the item; so is a
+  payload kae cannot read, which may be a working login in a shape kae has not been
+  taught. One exception, and it turns on **what the user asked for**, not on the state:
+  a usable copy whose account no longer exists is deleted by `kae unpin --purge`
+  (refusing would strand a live token nothing can address) and **kept** by the sweep a
+  bind runs — `kae account rename` reaches that sweep through kae's own re-bind remedy,
+  where deleting destroyed the newest copy of the renamed account's credential.
 - **A new per-directory mechanism also owes the link reconcile a statement of
   intent.** `unintendedLinks` retracts every symlink a bind does not intend to share,
   and there is no default to fall back on: the two existing modes take that intent

@@ -187,8 +187,14 @@ alternative exists (`secret-tool`).
     in-directory login back, while `kae pin` writes the bound credential from the
     **account snapshot** on every run (`writeDirCredential`, from both
     materializers). So a later `kae pin` — which the user is told to run for
-    re-binding, a mode toggle, or repairing links — silently regresses the fresh
-    login to the older snapshot.
+    re-binding, a mode toggle, or repairing links — overwrites the fresh login with
+    the older snapshot. **Recorded here as "regresses to the older snapshot", which
+    the 2026-08-04 rotation measurement upgrades to *destroys*:** the refresh token
+    is single-use, so the older copy is not merely older, it is rejected. The
+    directory is then logged out, and because `refreshTokenExpiresAt` is untouched by
+    invalidation, nothing offline says so until the tool fails. See the
+    credential-copy entry below; the two cannot be fixed separately, because a
+    `kae relogin` that captures back without that fix just re-arms the same overwrite.
 
   **On doing it without typing a command.** There is no `kae doctor --fix` and no
   path that offers to run a remedy; every remedy is a string the human retypes. The
@@ -211,6 +217,85 @@ alternative exists (`secret-tool`).
   it needs a rate limit or a state-recorded last-warned stamp, and it must stay
   silent for a healthy login or it becomes wallpaper (the mistake v0.15.0/v0.15.1
   made in both directions).
+
+- **Every credential copy kae keeps can be killed by another copy refreshing, and
+  four kae commands do the killing** (measured 2026-08-04, **not fixed** — this is the
+  next thing to build). claude's refresh token rotates single-use
+  ([VALIDATION.md](VALIDATION.md) owns the measurement), so of all the copies of one
+  account's credential, only the one that refreshed last can still refresh. kae's
+  architecture is copies with lazy sync: the account snapshot, each bound directory's
+  store, the global isolated home, and every backup. The global loop closes itself
+  (`recaptureActiveBeforeSwitch` harvests the live store before switching away, and
+  that mechanism is now load-bearing rather than an optimisation), but nothing
+  harvests across mechanisms.
+  What the user sees, worst first. **kae destroys a live login**: `kae pin` re-run,
+  `kae use -i` / `kae run -i` re-materialized, and `kae unpin --purge` all write or
+  delete without harvesting, and `kae pin` is what kae's own remedies tell the user to
+  run. It reports success, `kae doctor` stays green, and the directory fails up to an
+  access token's ~8h later, mid-session. **Two copies are a time bomb**: the first
+  refresh silently kills the others, so "I used claude in the other worktree and this
+  one logged out hours later" has no visible cause. **`kae rollback` reports success
+  restoring a rejected token** whenever anything refreshed after the backup, and
+  `kae run -s <tool> <the active account>` writes the pre-child backup back over a
+  credential the child refreshed. **And every freshness surface misreports**: doctor,
+  `kae ls`, `kae status` and the switch-time warning all judge by
+  `refreshTokenExpiresAt`, which invalidation does not move.
+  The shape of the fix, decided but not built. **The repair belongs inside
+  `writeDirCredential`**, which is the single chokepoint all four materializers pass
+  through (`prepareBond`, `preparePinConfig`, `prepareGlobalIsolatedHome`, and
+  `rebind` via the first): read the live copy, harvest it into the snapshot when it is
+  newer, then write the newest. Putting it anywhere else — a separate "repair before
+  use" step — leaves the overwrite paths unconditional, which ships a release that
+  fixes a login and then destroys it. `pruneDirCredentials` needs the same harvest
+  before deleting. The selection rule is **largest `expiresAt`**, which is sound
+  within one login's token chain because a successful refresh always moves it forward
+  and a failed one tombstones the copy to zero; guard it with
+  `Known && !Revoked && !ExpiresAt.IsZero()` and keep it **claude-only** until another
+  tool's rotation is measured, since "newest" is otherwise a guess.
+  What it does **not** fix: two sessions live at once on one account in two stores.
+  The refresh happens inside the tool with kae absent, so there is no moment to
+  intervene; only one copy of the credential can. That is the entry below, and any
+  message about this must not imply otherwise.
+
+- **One account, one credential copy — the only thing that supports simultaneous
+  sessions** (designed 2026-08-04, **not started**). The entry above can keep a
+  *sequence* of directories working; it cannot make two worktrees bound to the same
+  account run at the same time, because each store holds its own copy and the first
+  refresh invalidates the rest. The fix is for the directories bound to one account to
+  share one store, which is the configuration upstream explicitly repaired (its
+  changelog fix was many sessions sharing **one** credential store).
+  On macOS the credential cannot be shared without sharing the store: claude derives
+  the keychain service name from `CLAUDE_CONFIG_DIR` and codex the item's account from
+  `CODEX_HOME`, and a shared *file* does not survive either, because the first refresh
+  promotes it to a per-directory keychain item and deletes the file (measured). So
+  "share the credential, split the sessions" is not available, and the question is
+  what else becomes shared.
+  **That answer differs enough per mode to decide them separately, and the shared bind
+  is nearly free.** In shared mode the only per-directory-private things are the
+  denylisted ones — the credential and `.claude.json` — while settings, sessions and
+  memory are already shared through the real home. Both of those are properties of the
+  *account*, not the directory, so keying them by account is arguably more correct
+  than today; the one real consequence is that `.claude.json` is mixed state, so
+  `mcpServers` becomes shared across a account's directories while `projects` stays
+  keyed by path and does not collide. In isolated mode everything is private by
+  design, so sharing a store shares sessions, settings and memory too — a much larger
+  change to what `-i` promises. **A shared-mode-only version is therefore worth
+  costing first**: it would solve simultaneous sessions for the mode where the sharing
+  scope barely moves, and leave `-i` as it is.
+  Either way it re-keys existing stores, which needs the migration the `PinID` entry
+  below describes for the same reason — moving sessions and stranding keychain items
+  named by the old path — plus a third `dirCredentialStores` / `boundStoreDir` /
+  intent-source answer (AGENTS.md).
+
+- **Rotation is measured for claude only** (recorded 2026-08-04). codex, cursor,
+  copilot, opencode and agy have not been measured, so none of the copy-safety work
+  above may be ported to them: "the newest copy" is unknowable without it, and
+  declaring a rule kae cannot measure is the defect the refusals elsewhere exist to
+  prevent. codex's *file* store is the first one worth measuring, because unlike its
+  keyring store it is already copied into bound directories and isolated homes today.
+  Also unmeasured, and cheap to fold in: whether a fresh login revokes the previous
+  login's chain, which is what decides whether `expiresAt` can order copies **across**
+  logins rather than only within one.
 
 - ~~**Link retraction only covers a name the real home still has**~~ (recorded
   2026-07-31, **fixed** — see [RELEASE.md](RELEASE.md) v0.17.0). v0.16.0 made

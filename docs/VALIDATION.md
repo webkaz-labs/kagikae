@@ -1538,6 +1538,31 @@ never appears in `kae companion list` text/JSON).
 
 ## Release Acceptance Log
 
+### v0.17.0 (2026-08-04, macOS darwin 24.6.0, git 2.55.0)
+
+Per-worktree exclude file, `kae ls --pins`, and the tool tiers. Every gate run and
+recorded by exit code, never through a pipe:
+
+- `mise run check` **0**, `git diff --check` clean, `mise run goreleaser-check`
+  **0**, `mise run audit` **0** — govulncheck reachable **0**, and the upstream
+  literal fingerprints unchanged for all five measurable tools (no drift signal).
+- **Real-machine `kae doctor --json`, read-only, built from the release tree: 21
+  checks, non-ok 0.** The first run had one — `upstream_version` for codex,
+  installed 0.146.0 against a recorded 0.145.0 — which is *why* this step exists:
+  no offline gate and no temp-HOME smoke could have raised it. Closed by a
+  tag-to-tag source re-verification (§ Verified Upstream Versions), not by
+  suppressing it.
+- **§ per-worktree surfaces A–F**, run verbatim against the built binary on a temp
+  HOME with every XDG root isolated (`. scripts/smoke-env.sh`), the repositories
+  and worktrees created *inside* that HOME. Each assertion checked at its own point
+  in the block rather than from the end state: **12 of 12**.
+- Deliberately **not** run, and recorded as such: no real-machine `kae pin`, and
+  the operator's installed binary was not replaced. The per-worktree behaviour is
+  covered by real `git` in a temp HOME plus a test that builds a repository and a
+  linked worktree on every `mise run check`; a real-machine pin would have left a
+  binding, a store and a breadcrumb in the live data dir to clean up, which is not
+  worth it for a mechanism that is already measured against real git.
+
 ### v0.9.0 (2026-06-19, macOS darwin 24.6.0)
 
 Installable binaries (GoReleaser + install.sh + CI) and README OSS-parity

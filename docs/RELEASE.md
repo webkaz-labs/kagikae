@@ -25,7 +25,7 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
-# kae v0.17.0 (unreleased)
+# kae v0.17.0 (shipped 2026-08-04)
 
 **One account per worktree, and a stated scope for the other four tools.** A
 binding has always belonged to a *directory*, which makes a `git worktree` a

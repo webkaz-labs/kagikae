@@ -3,7 +3,9 @@ package cmd
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -18,7 +20,7 @@ import (
 // with a real ~/.claude. agy has no isolation env var, so it exercises the
 // warning path while claude exercises the env-entry path.
 
-func TestRunPinSharedWritesFragmentAndGitignore(t *testing.T) {
+func TestRunPinSharedWritesFragment(t *testing.T) {
 	app := overlayTestApp(t)
 	chdirTemp(t)
 	cwd, err := os.Getwd()
@@ -51,17 +53,387 @@ func TestRunPinSharedWritesFragmentAndGitignore(t *testing.T) {
 		t.Fatalf("agy must not get an account record:\n%s", frag)
 	}
 
-	gi := readFile(t, ".gitignore")
-	if !strings.Contains(gi, "/"+filepath.ToSlash(fragmentRelPath)) {
-		t.Fatalf(".gitignore missing fragment entry:\n%s", gi)
+	// Binding a directory outside a repository must not invent an ignore file —
+	// and must not claim one either. The tracked ./.gitignore kae used to write
+	// is gone for good; ignoring now happens in the repository's exclude file
+	// (ensureGitExcluded).
+	if _, err := os.Stat(".gitignore"); !os.IsNotExist(err) {
+		t.Fatalf("pin must not write a tracked .gitignore (stat err: %v)", err)
 	}
-	// Re-running must not duplicate the .gitignore entry.
-	if code := runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared); code != constants.ExitOK {
-		t.Fatalf("re-pin exit %d", code)
+	if strings.Contains(out, "ignored via") {
+		t.Fatalf("no repository here, so the report must not claim an ignore rule:\n%s", out)
 	}
-	gi = readFile(t, ".gitignore")
-	if strings.Count(gi, "/"+filepath.ToSlash(fragmentRelPath)) != 1 {
-		t.Fatalf(".gitignore entry duplicated on re-pin:\n%s", gi)
+}
+
+// TestEnsureGitExcludedDerivesTargetAndEntry pins down both halves of the answer
+// git gives, because neither is guessable and getting either wrong writes a rule
+// that matches nothing: the common dir is cwd-relative in an ordinary checkout
+// and absolute in a linked worktree, and the entry is anchored at the repository
+// root rather than at the current directory.
+//
+// Every case is self-contained inside its own t.TempDir(): the repository root is
+// that temp dir, `.git` is created under it, and the cwd sits depth directories
+// below it. An earlier version fabricated relative common dirs like "../../.git"
+// from the temp cwd, which resolved *outside* the case's own directory and left
+// `$TMPDIR/.git/info/exclude` on the operator's machine — a test escaping its
+// sandbox is the same defect class as a smoke check escaping HOME.
+func TestEnsureGitExcludedDerivesTargetAndEntry(t *testing.T) {
+	frag := filepath.ToSlash(fragmentRelPath)
+	for _, tc := range []struct {
+		name string
+		// depth is how many directories below the repository root the cwd sits, and
+		// prefix is what git reports for --show-prefix there.
+		depth  int
+		prefix string
+		// elsewhere reports the common dir absolutely, in a directory nowhere near
+		// the cwd, the way a linked worktree does.
+		elsewhere bool
+		// commonDir overrides what git prints entirely, for answers kae must refuse.
+		commonDir func(root string) string
+		wantEntry string
+		code      int
+		// refused marks an answer kae must decline rather than interpret: it records
+		// nothing and warns, exactly as a non-zero exit does.
+		refused bool
+	}{
+		{name: "repository root", wantEntry: "/" + frag},
+		{
+			name:      "subdirectory of an ordinary checkout",
+			depth:     1,
+			prefix:    "sub/",
+			wantEntry: "/sub/" + frag,
+		},
+		{
+			name:      "subdirectory two deep",
+			depth:     2,
+			prefix:    "a/b/",
+			wantEntry: "/a/b/" + frag,
+		},
+		{
+			// The worktree's own $GIT_DIR is never consulted, so the rule has to land
+			// in the absolute common dir shared with the main checkout.
+			name:      "linked worktree reports an absolute common dir",
+			elsewhere: true,
+			wantEntry: "/" + frag,
+		},
+		{
+			// An entry is a *pattern*, so a directory name carrying wildmatch
+			// metacharacters has to be escaped or the rule matches nothing while
+			// `kae pin` reports the fragment as ignored.
+			name:      "prefix with glob metacharacters",
+			depth:     1,
+			prefix:    "[wip]-a*b/",
+			wantEntry: `/\[wip\]-a\*b/` + frag,
+		},
+		{
+			// A leading space is a legal first character of a path component, so the
+			// line ending is all that may be trimmed.
+			name:      "prefix whose component starts with a space",
+			depth:     1,
+			prefix:    " spaced/",
+			wantEntry: "/ spaced/" + frag,
+		},
+		{name: "no repository, or no git to ask", code: 128},
+		{
+			// A newline is legal in a path component and rev-parse quotes nothing, so
+			// a third value means the two cannot be told apart. Following it would
+			// create an exclude file somewhere unrelated and still claim success.
+			name:      "a value containing a newline is refused, not truncated",
+			commonDir: func(root string) string { return filepath.Join(root, "we\nird", ".git") },
+			refused:   true,
+		},
+		{
+			// A `git` that exits 0 naming somewhere that does not exist must be
+			// refused, not acted on: kae would otherwise MkdirAll it and report the
+			// fragment ignored, creating a tree nothing reads.
+			name:      "a common dir that does not exist is refused",
+			commonDir: func(root string) string { return filepath.Join(root, "junk") },
+			refused:   true,
+		},
+		{
+			name:      "a common dir that is a file is refused",
+			commonDir: func(root string) string { return filepath.Join(root, "notadir") },
+			refused:   true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			// os.Getwd (and so filepath.Abs) reports the symlink-resolved path on
+			// darwin, where $TMPDIR sits under /var -> /private/var. Resolve once so
+			// the expectations are the same shape as the answer.
+			if resolved, err := filepath.EvalSymlinks(root); err == nil {
+				root = resolved
+			}
+			gitDir := filepath.Join(root, ".git")
+			if err := os.MkdirAll(gitDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(root, "notadir"), "not a directory\n")
+			cwd := root
+			for range tc.depth {
+				cwd = filepath.Join(cwd, "d")
+			}
+			if err := os.MkdirAll(cwd, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			restore, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.Chdir(restore) })
+			if err := os.Chdir(cwd); err != nil {
+				t.Fatal(err)
+			}
+
+			// What git prints, and where the rule must land.
+			reported, wantCommon := strings.Repeat("../", tc.depth)+".git", gitDir
+			if tc.elsewhere {
+				other := filepath.Join(t.TempDir(), "main", ".git")
+				if err := os.MkdirAll(other, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if resolved, err := filepath.EvalSymlinks(other); err == nil {
+					other = resolved
+				}
+				reported, wantCommon = other, other
+			}
+			if tc.commonDir != nil {
+				reported = tc.commonDir(root)
+			}
+			if tc.code != 0 {
+				reported = ""
+			}
+
+			fake := &runnertest.Fake{Stdout: reported + "\n" + tc.prefix + "\n", Code: tc.code}
+			var got string
+			runner.With(fake, func() {
+				got = ensureGitExcluded(context.Background(), fragmentRelPath)
+			})
+			// Assert the invocation, not only the reply. Every case here fabricates
+			// git's output, so without this the whole table keeps passing if
+			// --show-prefix is dropped from the command — and the anchoring it
+			// supplies is the half that fails while reporting success.
+			if want := []string{"rev-parse", "--git-common-dir", "--show-prefix"}; !slices.Equal(fake.Args, want) {
+				t.Fatalf("git args = %v, want %v", fake.Args, want)
+			}
+			if tc.code != 0 || tc.refused {
+				if got != "" {
+					t.Fatalf("an unusable answer must yield no exclude file, got %q", got)
+				}
+				// And it must not have created anything for that answer.
+				entries, rerr := os.ReadDir(root)
+				if rerr != nil {
+					t.Fatal(rerr)
+				}
+				for _, e := range entries {
+					if e.Name() != ".git" && e.Name() != "notadir" && e.Name() != "d" {
+						t.Fatalf("a refused answer must create nothing, found %q", e.Name())
+					}
+				}
+				return
+			}
+			if want := filepath.Join(wantCommon, "info", "exclude"); got != want {
+				t.Fatalf("exclude file: got %q want %q", got, want)
+			}
+			if !strings.Contains(readFile(t, got), tc.wantEntry+"\n") {
+				t.Fatalf("exclude file missing entry %q:\n%s", tc.wantEntry, readFile(t, got))
+			}
+		})
+	}
+}
+
+// An ignore rule is cosmetic and runs after the directory is already bound, so a
+// failure to record it must not fail `kae pin` — that would skip the credential
+// sweep and the export fallback, on every re-run, for a problem that does not go
+// away. Reproduced the way it actually happens: the exclude file unreachable,
+// which pinning a linked worktree makes possible because the file lives in the
+// *main checkout's* .git.
+//
+// Which branch this hits is worth naming, because the two are easy to confuse:
+// with .git unwritable and info/ absent, ReadFile gets ENOENT (skipped) and it is
+// os.MkdirAll that fails. The OpenFile-on-an-unwritable-existing-file branch needs
+// the file to exist already, and is covered by case E of the § per-worktree smoke
+// block in docs/VALIDATION.md — where the first draft chmod'd the *directory* and
+// so proved nothing, since that does not stop a write to a file already in it.
+func TestEnsureGitExcludedNeverFailsThePin(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the mode bits this test relies on")
+	}
+	chdirTemp(t)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitDir := filepath.Join(cwd, ".git")
+	if err := os.MkdirAll(gitDir, 0o500); err != nil { // no write bit
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(gitDir, 0o700) })
+
+	fake := &runnertest.Fake{Stdout: ".git\n\n"}
+	var got string
+	_, stderr := captureStderr(t, func() int {
+		runner.With(fake, func() { got = ensureGitExcluded(context.Background(), fragmentRelPath) })
+		return constants.ExitOK
+	})
+	if got != "" {
+		t.Fatalf("a failure must report no exclude file, got %q", got)
+	}
+	if !strings.Contains(stderr, "could not tell git to ignore") {
+		t.Fatalf("the failure must be a stderr warning, not silence:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "the binding is in place") {
+		t.Fatalf("the warning must say the bind succeeded and the fragment needs ignoring:\n%s", stderr)
+	}
+}
+
+// The exclude file is the user's (and git's), not kae's: kae appends one entry to
+// it and must leave everything else — the existing rules, the final-newline state,
+// and the file's mode — exactly as found. The mode matters because this file is
+// written by append for a reason (see ensureGitExcluded): a temp-file-and-rename
+// would silently reset it, and it is shared by every worktree's binding.
+func TestEnsureGitExcludedAppendsWithoutDisturbingTheFile(t *testing.T) {
+	chdirTemp(t)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	excludeFile := filepath.Join(cwd, ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(excludeFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// No trailing newline, so a careless append would join onto the last rule.
+	const existing = "# the user's own rules\n*.log\nbuild/"
+	if err := os.WriteFile(excludeFile, []byte(existing), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	fake := &runnertest.Fake{Stdout: ".git\n\n"}
+	var file string
+	runner.With(fake, func() {
+		for range 3 {
+			file = ensureGitExcluded(context.Background(), fragmentRelPath)
+		}
+	})
+	if file != excludeFile {
+		t.Fatalf("exclude file: got %q want %q", file, excludeFile)
+	}
+	got := readFile(t, file)
+	entry := "/" + filepath.ToSlash(fragmentRelPath)
+	if n := strings.Count(got, entry); n != 1 {
+		t.Fatalf("entry written %d times, want 1:\n%s", n, got)
+	}
+	if !strings.HasPrefix(got, existing+"\n") {
+		t.Fatalf("existing rules must survive verbatim, with the missing newline supplied:\n%q", got)
+	}
+	if !strings.Contains(got, "\nbuild/\n") {
+		t.Fatalf("the last existing rule must not be joined onto kae's comment:\n%q", got)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode changed to %v; kae must not widen the user's exclude file", info.Mode().Perm())
+	}
+}
+
+// TestEnsureGitExcludedLeavesEveryWorktreeClean is the claim the whole change
+// exists for, checked against real git rather than a stub: one entry, recorded
+// once from the main checkout, keeps the fragment out of `git status` in the main
+// checkout *and* in a linked worktree. The stubbed tests above cannot prove this
+// — they encode what git said when it was measured, and this is what re-measures
+// it (docs/VALIDATION.md § Upstream Behaviour Assumptions).
+func TestEnsureGitExcludedLeavesEveryWorktreeClean(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	root := t.TempDir()
+	main := filepath.Join(root, "main")
+	linked := filepath.Join(root, "wt1")
+	// -c keeps the identity out of the operator's own config; no hooks, no
+	// signing, so a host gitconfig cannot make the commit fail.
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		full := append([]string{
+			"-C", dir,
+			"-c", "user.email=you@example.com", "-c", "user.name=kae test",
+			"-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+		}, args...)
+		out, err := exec.Command("git", full...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	if err := os.MkdirAll(main, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(main, "init", "-q")
+	writeFile(t, filepath.Join(main, "tracked"), "content\n")
+	git(main, "add", "-A")
+	git(main, "commit", "-qm", "init")
+	git(main, "worktree", "add", "-q", linked, "-b", "side")
+
+	// A fragment in both checkouts, and the rule recorded from the main one only.
+	for _, dir := range []string{main, linked} {
+		writeFile(t, filepath.Join(dir, fragmentRelPath), "# fragment\n")
+	}
+	// Plus one in a subdirectory, recorded from *there*, so the anchoring half is
+	// measured against real git and not only against a prefix the test invented.
+	// At the repository root the prefix is empty, so a root-only check passes just
+	// as happily with --show-prefix dropped.
+	nested := filepath.Join(main, "nested")
+	writeFile(t, filepath.Join(nested, fragmentRelPath), "# fragment\n")
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(cwd) })
+	if err := os.Chdir(main); err != nil {
+		t.Fatal(err)
+	}
+	file := ensureGitExcluded(context.Background(), fragmentRelPath)
+	if file == "" {
+		t.Fatal("ensureGitExcluded reported no exclude file inside a real repository")
+	}
+	// That one entry has to have covered the linked worktree's fragment as well as
+	// the main checkout's — the whole point — but it cannot cover the nested one,
+	// whose rule is anchored a directory deeper.
+	if status := git(linked, "status", "--porcelain"); status != "" {
+		t.Fatalf("one entry from the main checkout must cover the worktree too:\n%s", status)
+	}
+	if status := git(main, "status", "--porcelain"); !strings.Contains(status, "nested") {
+		t.Fatalf("the nested fragment should still be untracked at this point, got %q", status)
+	}
+	if err := os.Chdir(nested); err != nil {
+		t.Fatal(err)
+	}
+	if got := ensureGitExcluded(context.Background(), fragmentRelPath); got != file {
+		t.Fatalf("a subdirectory must record into the same common exclude file: got %q want %q", got, file)
+	}
+	// Against real git: the entry is anchored at the repository root, so it must
+	// carry the prefix. Dropping --show-prefix writes "/.config/…" here, which is
+	// already present from the root pin — so only this assertion, and the status
+	// check below it, would notice.
+	if want := "/nested/" + filepath.ToSlash(fragmentRelPath); !strings.Contains(readFile(t, file), want+"\n") {
+		t.Fatalf("exclude file missing the root-anchored nested entry %q:\n%s", want, readFile(t, file))
+	}
+	for _, dir := range []string{main, linked} {
+		if status := git(dir, "status", "--porcelain"); status != "" {
+			t.Fatalf("%s is not clean after the exclude entries:\n%s", dir, status)
+		}
+	}
+	// The rule must live outside every working tree, or ignoring the fragment
+	// would itself be a change to commit.
+	for _, dir := range []string{main, linked} {
+		if strings.HasPrefix(file, filepath.Join(dir)+string(filepath.Separator)+"info") {
+			t.Fatalf("exclude file %s is inside working tree %s", file, dir)
+		}
+	}
+	if status := git(main, "status", "--porcelain", "--ignored=matching",
+		"--", fragmentRelPath); !strings.HasPrefix(status, "!!") {
+		t.Fatalf("fragment is not reported as ignored, got %q", status)
 	}
 }
 

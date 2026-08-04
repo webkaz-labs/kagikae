@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -86,6 +89,230 @@ func TestLsListsAccountsAndProfiles(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("ls text missing %q: %s", want, out)
 		}
+	}
+}
+
+// mustCwdAbs is cwdAbs with the error turned into a test failure.
+func mustCwdAbs(t *testing.T) string {
+	t.Helper()
+	dir, err := cwdAbs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// `kae ls --pins` answers "what is bound right now", from anywhere — the question
+// `kae status` cannot answer when every worktree is a separate binding. The two
+// negative cases are the whole risk: pinnedDirs deliberately keeps a store that
+// nothing points at any more, so listing a store as a bound directory would name
+// a directory that is not bound and a re-bind that lands where nothing reads.
+func TestLsPinsListsOnlyLiveBindings(t *testing.T) {
+	app := overlayTestApp(t)
+	root := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(cwd) })
+
+	// Two live bindings. The documented contract is "ordered by directory
+	// ascending, so sibling worktrees sort together", and with a single binding the
+	// sort is unreachable — dropping or reversing it passed every assertion here.
+	// pinnedDirs yields pin-id (path-hash) order, which is arbitrary and differs
+	// per run because each path contains a fresh t.TempDir() component; that is
+	// precisely why the published *path* order has to be asserted rather than
+	// assumed, and why this guard is worth having even though a single run has
+	// even odds of passing by luck.
+	bound := filepath.Join(root, "bbb-bound")
+	second := filepath.Join(root, "aaa-second")
+	unpinned := filepath.Join(root, "unpinned") // store kept by `kae unpin`; no fragment
+	gone := filepath.Join(root, "gone")         // deleted or moved after being bound
+	for _, dir := range []string{bound, second, unpinned} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chdir(second); err != nil {
+		t.Fatal(err)
+	}
+	secondAbs, err := cwdAbs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, out := captureStdout(t, func() int {
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated)
+	}); code != constants.ExitOK {
+		t.Fatalf("runPin second: %s", out)
+	}
+	if err := os.Chdir(bound); err != nil {
+		t.Fatal(err)
+	}
+	boundAbs, err := cwdAbs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, out := captureStdout(t, func() int {
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated)
+	}); code != constants.ExitOK {
+		t.Fatalf("runPin: %s", out)
+	}
+	for _, dir := range []string{unpinned, gone} {
+		if err := app.recordPinnedDir(paths.PinID(dir), dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	code, out := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatJSON}) })
+	mustExit(t, constants.ExitOK, code, out)
+	var report pinsReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("invalid ls --pins JSON: %v: %s", err, out)
+	}
+	if report.SchemaVersion != constants.SchemaVersion {
+		t.Fatalf("schema_version = %d, want %d", report.SchemaVersion, constants.SchemaVersion)
+	}
+	if len(report.BoundDirectories) != 2 {
+		t.Fatalf("expected the two live bindings, got %d: %s", len(report.BoundDirectories), out)
+	}
+	// Ascending by directory, which is the published ordering. Only the path order
+	// is a contract; neither bind order nor hash order is.
+	if report.BoundDirectories[0].Directory != secondAbs || report.BoundDirectories[1].Directory != boundAbs {
+		t.Fatalf("bound_directories must be sorted by directory ascending, got %s then %s",
+			report.BoundDirectories[0].Directory, report.BoundDirectories[1].Directory)
+	}
+	got := report.BoundDirectories[1]
+	if got.Directory != boundAbs {
+		t.Fatalf("directory = %q, want %q", got.Directory, boundAbs)
+	}
+	if got.Profile != "main" || got.Mode != constants.ModeIsolated {
+		t.Fatalf("profile/mode = %q/%q, want main/%s", got.Profile, got.Mode, constants.ModeIsolated)
+	}
+	if got.Accounts[constants.ToolClaude] != "main" {
+		t.Fatalf("accounts = %v, want claude:main", got.Accounts)
+	}
+	if !got.Current {
+		t.Fatalf("the cwd's own binding must be marked current: %s", out)
+	}
+
+	// Text view, and the current marker from outside every bound directory.
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	code, text := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatText}) })
+	mustExit(t, constants.ExitOK, code, text)
+	for _, want := range []string{"Bound directories:", "Directory", "claude:main", constants.ModeIsolated} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("ls --pins text missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, unpinned) || strings.Contains(text, gone) {
+		t.Fatalf("a store without a live binding must not be listed:\n%s", text)
+	}
+	code, outside := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatJSON}) })
+	mustExit(t, constants.ExitOK, code, outside)
+	var elsewhere pinsReport
+	if err := json.Unmarshal([]byte(outside), &elsewhere); err != nil {
+		t.Fatal(err)
+	}
+	if elsewhere.BoundDirectories[0].Current {
+		t.Fatalf("nothing is current outside every bound directory: %s", outside)
+	}
+}
+
+// An unreadable fragment is not an unbound directory. Collapsing the two into one
+// silent skip makes a live, genuinely bound directory vanish from the only command
+// that says which account it runs — so the row goes, but a warning names it and the
+// exit code does not move. Without this test nothing fails if the two branches are
+// merged back together, which is the whole point of the fix.
+//
+// The fragment path is made a *directory* rather than chmod'd: ReadFile gets EISDIR
+// deterministically, including as root.
+func TestLsPinsWarnsOnAnUnreadableFragment(t *testing.T) {
+	app := overlayTestApp(t)
+	broken := filepath.Join(t.TempDir(), "broken")
+	if err := os.MkdirAll(filepath.Join(broken, fragmentRelPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.recordPinnedDir(paths.PinID(broken), broken); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stderr := captureStderr(t, func() int { return runLsPins(app, commonOpts{Format: formatJSON}) })
+	mustExit(t, constants.ExitOK, code, stderr)
+	if !strings.Contains(stderr, "is bound but its fragment could not be read") {
+		t.Fatalf("an unreadable fragment must be reported, not silently dropped:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, broken) {
+		t.Fatalf("the warning must name the directory:\n%s", stderr)
+	}
+	_, out := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatJSON}) })
+	var report pinsReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("invalid ls --pins JSON: %v: %s", err, out)
+	}
+	if len(report.BoundDirectories) != 0 {
+		t.Fatalf("a directory kae could not read must not be reported as bound: %s", out)
+	}
+}
+
+// `kae ls --pins` is a new output path, and AGENTS.md requires one redaction test
+// per output path — a secret must never reach stdout, stderr or JSON. It reads a
+// bound directory's mise fragment, which is a file that also carries the
+// companion [env] block, so "it only parses kae: comment records" is exactly the
+// kind of claim that needs a canary rather than an argument.
+func TestLsPinsNeverCarriesACredential(t *testing.T) {
+	const canary = "sk-ant-oat01-PINS-CANARY-cccc"
+	app := overlayTestApp(t)
+	root := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(cwd) })
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	// A real captured credential, so the bound directory's store holds the canary
+	// and the fixture cannot pass vacuously.
+	captureClaude(t, app, "main", canary)
+	if code, out := captureStdout(t, func() int {
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated)
+	}); code != constants.ExitOK {
+		t.Fatalf("runPin: %s", out)
+	}
+	// Prove the canary is actually inside the tree this row names, or the test
+	// passes for the wrong reason the day captureClaude stops writing it.
+	pinID := paths.PinID(mustCwdAbs(t))
+	stored := filepath.Join(app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main"), ".credentials.json")
+	if !strings.Contains(readFile(t, stored), canary) {
+		t.Fatalf("fixture does not place the canary in the bound store (%s); this test would pass vacuously", stored)
+	}
+	for _, format := range []string{formatText, formatJSON} {
+		code, stdout, stderr := captureBoth(t, func() int {
+			return runLsPins(app, commonOpts{Format: format})
+		})
+		mustExit(t, constants.ExitOK, code, stdout+stderr)
+		if !strings.Contains(stdout, "main") {
+			t.Fatalf("%s: the binding must actually be reported, or this canary proves nothing:\n%s", format, stdout)
+		}
+		if strings.Contains(stdout+stderr, canary) {
+			t.Fatalf("ls --pins (%s) leaked a credential value:\n%s\n%s", format, stdout, stderr)
+		}
+	}
+}
+
+// No bindings lists nothing without error and keeps the [] JSON array.
+func TestLsPinsEmpty(t *testing.T) {
+	app := testApp(t, nil)
+	code, out := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatJSON}) })
+	mustExit(t, constants.ExitOK, code, out)
+	var report pinsReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("invalid ls --pins JSON: %v: %s", err, out)
+	}
+	if report.BoundDirectories == nil {
+		t.Fatalf("bound_directories must be [] not null: %s", out)
 	}
 }
 

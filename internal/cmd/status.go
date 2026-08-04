@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -376,17 +375,11 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 	}
 	fmt.Println("\nProfiles:")
 	for _, profile := range report.Profiles {
-		mapping := []string{}
-		for _, tool := range constants.Tools {
-			if accountName, ok := profile.Accounts[tool]; ok {
-				mapping = append(mapping, tool+":"+accountName)
-			}
-		}
 		marker := ""
 		if profile.Active {
 			marker = "  (active)"
 		}
-		fmt.Printf("  %-14s %s%s\n", profile.Name, strings.Join(mapping, " "), marker)
+		fmt.Printf("  %-14s %s%s\n", profile.Name, toolAccountList(profile.Accounts), marker)
 	}
 }
 

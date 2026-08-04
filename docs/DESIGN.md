@@ -12,6 +12,14 @@ execution environments for AI coding CLIs:
 - Cursor CLI (`cursor-agent`)
 - GitHub Copilot CLI (`copilot`)
 
+How much surface each one gets is a tier: tier 1 gets every mode, tier 2 gets
+credential switching, and both get the same refusals. **§ Tool Tiers below is the
+normative statement of which tool is in which tier** — prefer a pointer to it over
+a fresh copy, and if a document does state the mapping (today `SCOPE-MODEL.md` §7
+and `ROADMAP.md` § Tier-2 tools, where it is what the passage is *about*), that
+copy moves in the same commit as this table. Nothing enforces that, which is the
+reason to keep the copies few and named here.
+
 The primary daily use case is switching subscription accounts:
 
 ```text
@@ -99,6 +107,68 @@ kae-owned mise fragments — kae never edits the user's `mise.toml`. See
 [ADAPTERS.md](ADAPTERS.md) for the per-tool switched/preserved contract and
 [ROADMAP.md](ROADMAP.md) for ordering.
 
+## Tool Tiers
+
+Six tools, two tiers. A tier says **how much surface kae pursues** for a tool. It
+is a scope decision, and it is written down because without it the difference
+between the tools reads as a backlog that someone will eventually feel obliged to
+close.
+
+| Tier | Tools | Surface kae commits to |
+|------|-------|------------------------|
+| **1 — full surface** | claude, codex | every mode: global shared (`use`), global isolated (`use -i` / `run -i`), both per-directory binds (`pin -s` / `pin -i`), identity switching and drift detection, per-directory credential stores. Gaps here are debt with a plan (see [ROADMAP.md](ROADMAP.md)) |
+| **2 — credential switching** | agy, opencode, cursor, copilot | global shared (`kae use`), `kae run --env`, capture / apply / backup / `kae rollback`, `kae doctor`, and identity detection as far as the tool exposes one. Nothing else, and that is the specification — not a backlog |
+
+What Tier 2 does **not** get, deliberately: `kae pin` in either mode, and
+`kae use -i` / `kae run -i`. All of those redirect the tool's home, which requires
+an isolation env var kae has verified end to end for that tool; a profile-wide
+`-i` skips such a tool with a warning and a single-tool `kae use -i agy <acct>`
+exits `5` (§ Switching Surface, [SCOPE-MODEL.md](SCOPE-MODEL.md) §7).
+
+**Why these two.** Both failures that actually cost a user a wrong-account session
+were kae's own modelling errors in the Tier-1 tools — the per-directory claude
+keychain item modelled as a constant, and a codex switch deleting another
+`CODEX_HOME`'s login — not upstream changes in the Tier-2 ones. Detection is the
+least valuable of the four ways kae learns about upstream drift
+([.claude/skills/upstream-auth-drift/](../.claude/skills/upstream-auth-drift/SKILL.md));
+a human noticed both. Surface spent on a tool nobody switches daily is surface not
+spent on the two that carry the daily use case.
+
+**A tier never relaxes a refusal.** Every safety rule applies identically at both
+tiers, because the cost of getting one wrong does not scale with how popular the
+tool is:
+
+- never declare an artifact for a location kae could not measure — an unmeasured
+  store gets a warning, never a guessed path (agy's fallback file, opencode's DB
+  table);
+- never fall back to a secondary store when the authoritative write fails;
+- never derive a keychain item's account from the live item or a foreign snapshot;
+- refuse, rather than approximate, an upstream config value that selects a store
+  kae cannot switch;
+- emit warnings before the write they warn about, and never let one change the
+  exit code.
+
+A Tier-2 tool gets the same guarantees about what kae will *not* do. It gets less
+of what kae *will* do.
+
+**Two Tier-2 tools worth naming, for opposite reasons.** copilot is the one where
+isolation is *possible* today — `COPILOT_HOME` is a verified config-dir variable
+that kae already reads — and it is still not built: demand-gated, not blocked.
+agy is the floor and is unlikely to move: it has no scriptable login flow to drive,
+its identity comes only from a file upstream appears to have left behind
+(`google_accounts.json` occurs **0** times in the agy 1.0.10 binary even though kae
+reads it — see § Upstream Literal Fingerprints in
+[VALIDATION.md](VALIDATION.md)), its keychain use is conditional on
+detectors kae cannot observe, and its file-store path is not derivable from the
+environment. agy's open items are recorded facts about the tool, not work queued
+against kae.
+
+**Promoting a tool** takes three things, in this order: a home-isolation env var
+whose resolution rule is measured (not assumed), the tool's full credential set
+enumerated — every store one login writes — and a real-machine round trip proving a
+bound directory authenticates as the bound account in a fresh process. Until all
+three exist, the tool stays at Tier 2 and kae writes nothing it cannot verify.
+
 ## Subscription-First Authentication Model
 
 `kae` assumes login/subscription accounts as the primary target, not API keys:
@@ -175,24 +245,29 @@ can:
 
 ## Current State
 
-`kae` v0.8.0 is released: the unified two-verb × two-flag switching surface
-(`use` / `pin` with `-s` / `-i`); bare `kae use` for idempotent hook-driven
-profile application (`--quiet`); `kae run` with `-s` / `-i` / `--env` (the
-`--mode` flag and `auth|env|home|overlay|bond|pin` values are removed);
-per-directory binding via `kae pin -s` (shared) and `kae pin -i` (isolated);
-global isolated home (`kae use -i`, `kae run -i`) via a kae-owned global mise
-fragment; `kae env` profiles; account lifecycle (`add`, `account rm` /
-`rename`); `kae profile`; `kae completion <shell>`; tool-name prefix aliases;
-and adapters for claude, codex, agy, opencode, cursor, and copilot. Keychain
-items are captured and restored verbatim; a file-driver override keeps macOS
-smoke checks off the real login keychain. `kae use -i` / `kae run -i` isolate
-claude and codex only; every other tool is skipped with a warning when addressed
-through a profile, and a single-tool `kae use -i agy <account>` exits `5`. For agy,
-opencode and cursor that is because no redirectable home is known; **copilot is a
-different case** — `COPILOT_HOME` is a verified config-dir variable (2026-07-31)
-that kae reads, so isolation is *possible* there and simply not built
-([ROADMAP.md](ROADMAP.md) carries what has to be settled first). agy credential switching works
-on macOS via the `gemini`/`antigravity` Keychain item (v0.8.6) and on Linux/WSL
-via the file driver. Windows and home isolation for agy/opencode/cursor/copilot
-remain roadmap items (v0.6.0 removed the gemini adapter after upstream retired
-Gemini CLI for Antigravity on 2026-05-19).
+The whole switching surface described above is implemented: the two-verb ×
+two-flag matrix (`use` / `pin` with `-s` / `-i`), bare `kae use` for idempotent
+hook-driven application (`--quiet`), `kae run` with `-s` / `-i` / `--env`, `kae env`
+profiles, companion-auth lockstep, account and profile lifecycle, shell completion,
+`kae doctor`, `kae backup` / `kae rollback`, and adapters for all six tools.
+Keychain items are captured and restored verbatim; a file-driver override keeps
+macOS smoke checks off the real login keychain.
+
+Where the tools differ is § Tool Tiers, which is the normative statement: claude
+and codex get every mode, the other four get global shared switching and
+`kae run --env`. The one tier-1 capability still open is codex's **per-directory
+keyring** bind — the code is in place and the store's account rule is measured, but
+the real-machine round trip has not been run, so kae warns and writes nothing there
+rather than assuming ([VALIDATION.md](VALIDATION.md), [ROADMAP.md](ROADMAP.md)).
+
+A binding belongs to a directory, so a `git worktree` is a first-class unit: each
+worktree of a repository can bind a different account, `kae pin` keeps its fragment
+out of every worktree's `git status` through the repository's shared exclude file,
+and `kae ls --pins` lists every bound directory from anywhere
+([CLI.md](CLI.md)).
+
+Windows remains unimplemented and is tracked in [ROADMAP.md](ROADMAP.md) (v0.6.0
+removed the gemini adapter after upstream retired Gemini CLI for Antigravity on
+2026-05-19). The per-release
+record of what shipped when is [RELEASE.md](RELEASE.md); `git log` is the
+per-commit source of truth.

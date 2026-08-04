@@ -87,8 +87,10 @@ func warnIfLegacyPinBlock() {
 // runPin binds the current directory by writing the kae-owned mise fragment
 // (./.config/mise/conf.d/kagikae.toml): it prepares the isolation dirs first
 // (so the fragment never points at a missing dir), renders the fragment with
-// the kae: records `kae status` reads back, writes it, adds it to .gitignore,
-// and prints the export fallback when mise activation is not detected.
+// the kae: records `kae status` reads back, writes it, records an ignore rule for
+// it in the repository's shared exclude file (never a tracked ./.gitignore — see
+// ensureGitExcluded), and prints the export fallback when mise activation is not
+// detected.
 func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode string) int {
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
@@ -135,7 +137,8 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	}
 	// mode is already the user-facing scope label (shared/isolated).
 	companionLines := companionFragmentLines(companionEntries)
-	if err := writeDirFragment(renderDirFragment(profileName, mode, entries, companionLines, redactions)); err != nil {
+	excludeFile, err := writeDirFragment(ctx, renderDirFragment(profileName, mode, entries, companionLines, redactions))
+	if err != nil {
 		return finish(opts, err)
 	}
 	// The binding is in place, so any store this directory used before and does not
@@ -144,7 +147,15 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// keychain items would otherwise hold a credential nothing points at.
 	reportPruned(app.pruneDirCredentials(ctx, paths.PinID(absDir), "", boundDirs(entries)))
 	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, mode)
-	fmt.Printf("Wrote %s (added to .gitignore); your mise.toml is untouched.\n", fragmentRelPath)
+	// The exclude file is named because it is not a place a user would look, and
+	// it is outside the working tree; when there was no repository to tell, say
+	// nothing about ignoring rather than claiming it.
+	if excludeFile != "" {
+		fmt.Printf("Wrote %s (ignored via %s); your mise.toml is untouched.\n",
+			fragmentRelPath, app.displayPath(excludeFile))
+	} else {
+		fmt.Printf("Wrote %s; your mise.toml is untouched.\n", fragmentRelPath)
+	}
 	if app.miseActivated() {
 		fmt.Println("mise applies it on the next prompt (or run `mise env`).")
 	} else {

@@ -266,6 +266,15 @@ There is deliberately no backup of the previous per-directory credential: it is 
 copy of the account snapshot, so re-running `kae pin <tool> <account>` reproduces
 it exactly.
 
+**One file `kae pin` writes falls outside every per-directory lock**, and is meant
+to: the ignore rule for the fragment goes in the repository's shared exclude file
+(`$GIT_COMMON_DIR/info/exclude` — [CLI.md](CLI.md) § kae pin), which *every
+worktree of one repository writes*, while their locks are keyed per directory. It
+is therefore an append rather than a locked read-modify-write; the reasoning and
+the guarantee are on `ensureGitExcluded`. A lock would be the wrong shape anyway —
+it would serialize two independent bindings for a rule that is allowed to fail
+outright.
+
 A third lock (name `state`) guards `state.json`, and it is what makes that file
 safe to share: the per-tool locks deliberately let `kae use claude <a>` and
 `kae use codex <b>` run at the same time, so each held a copy of the whole

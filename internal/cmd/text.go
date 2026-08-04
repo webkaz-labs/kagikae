@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -38,6 +40,34 @@ func paint(status, s string, color bool) string {
 		return s
 	}
 	return "\x1b[" + code + "m" + s + "\x1b[0m"
+}
+
+// toolAccountList renders a tool→account map as "claude:main codex:side" for
+// human output, in constants.Tools order so the same mapping always reads the
+// same way regardless of map iteration. Shared by the profile lines of `kae ls`
+// and `kae status` and by the bound-directory rows of `kae ls --pins`.
+//
+// constants.Tools is a closed set and the input is not: `kae ls --pins` reads its
+// map out of a directory's mise fragment, which an older kae may have written for
+// a tool since retired (gemini, dropped in v0.6.0). Anything unrecognized is
+// appended, sorted, rather than dropped — a silently shorter cell would make the
+// text view disagree with the same map in `--json`, and the stale name is exactly
+// what tells the user why to re-pin.
+func toolAccountList(accounts map[string]string) string {
+	mapping := make([]string, 0, len(accounts))
+	for _, tool := range constants.Tools {
+		if accountName, ok := accounts[tool]; ok {
+			mapping = append(mapping, tool+":"+accountName)
+		}
+	}
+	unknown := []string{}
+	for tool, accountName := range accounts {
+		if !slices.Contains(constants.Tools, tool) {
+			unknown = append(unknown, tool+":"+accountName)
+		}
+	}
+	sort.Strings(unknown)
+	return strings.Join(append(mapping, unknown...), " ")
 }
 
 // printTable renders rows with left-aligned, space-padded columns.

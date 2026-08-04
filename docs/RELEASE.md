@@ -25,6 +25,111 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
+# kae v0.17.0 (unreleased)
+
+**One account per worktree, and a stated scope for the other four tools.** A
+binding has always belonged to a *directory*, which makes a `git worktree` a
+first-class unit — but the way kae marked its fragment as ignored fought that, and
+nothing could show more than one binding at a time.
+
+Baseline: v0.16.0. `schema_version` stays `1`. One **behaviour change** to
+`kae pin` (where the ignore rule is written) and one contract-additive view
+(`kae ls --pins`); the rest is documentation.
+
+- **`kae pin` records its ignore rule in the repository's exclude file, not in a
+  tracked `./.gitignore`** (behaviour change). Up to v0.16.0 every `kae pin` appended
+  a line to `./.gitignore`, so binding a repository plus three worktrees left four
+  dirty working trees, each waiting for the user to commit a line about their own
+  machine. The rule now goes to `$GIT_COMMON_DIR/info/exclude`, where **one entry
+  covers the main checkout and every linked worktree** — a worktree's own
+  `$GIT_DIR/info/exclude` is not consulted at all, which is measured rather than
+  assumed (docs/VALIDATION.md § git behaviour kae depends on, and a test that builds
+  a real worktree so `mise run check` re-measures it).
+
+  Both halves of the destination come from `git rev-parse` through
+  `internal/runner`, and the second is the one that looks like success when it is
+  wrong: an `info/exclude` entry is anchored at the **repository root**, while a
+  `.gitignore` entry is anchored at its own directory. kae is run from the directory
+  being bound, which may be any depth below the root, so the entry carries
+  `--show-prefix`. Reusing the old entry string would have written a rule matching
+  nothing while `kae pin` still reported success.
+
+  **Recording the rule can never fail the pin.** It is the last step, so by then the
+  stores are materialized, the credential is written and the fragment is in place —
+  the directory *is* bound. An error there would skip `pruneDirCredentials` (leaving
+  the superseded per-directory keychain item holding a credential nothing points at,
+  the exact state that sweep exists to prevent) and swallow the export fallback a
+  non-mise shell needs, on every re-run, since the cause does not go away. So kae
+  warns on stderr, keeps the exit code at `0`, and omits the `ignored via` clause.
+  This matters more than it did for `./.gitignore`, which lived *inside* the pinned
+  directory: the exclude file is outside it, so binding a linked worktree writes into
+  the **main checkout's** `.git`, which can be unwritable while the worktree is fine.
+
+  A directory name reaches the file as part of a **pattern**, so its wildmatch
+  metacharacters are escaped. Measured: a subdirectory named `[wip]-feature`
+  produced `/[wip]-feature/…`, which git read as a character class and did not
+  ignore — the same silent failure as a missing `--show-prefix`, triggered by the
+  directory's name instead.
+
+  Migration: **none required, and none performed.** A `./.gitignore` line written by
+  an older kae is left alone — a duplicate ignore rule is harmless, and removing a
+  line from a tracked file is a change kae was not asked to make. The same goes for
+  an exclude line: if one is already there in an unescaped form (only reachable from
+  an unreleased build of this branch, or by hand), the first pin appends the escaped
+  form beside it and every later pin matches that and returns early — one leftover
+  line, not one per pin, verified by pinning four times. Outside a
+  repository (or with no `git` on `PATH`) kae writes no rule and the success report
+  omits the `ignored via …` clause rather than claiming one; the tracked
+  `.gitignore` an older kae would have created in a non-repository is no longer
+  created at all. `kae unpin` leaves the exclude entry in place, symmetrically with
+  the store it keeps for a re-pin.
+
+- **`kae ls --pins` lists every bound directory, from anywhere** (contract-additive:
+  a new view of an existing command, `bound_directories` in `--json`; nothing
+  existing changed shape). `kae status` answers for the directory it is run in,
+  which is the wrong question once a repository has one worktree per agent and each
+  binds a different account. Rows carry the directory, a `*` for the current one,
+  the profile (`(ad-hoc)` when the account set matches no named profile), the mode,
+  and the bound account per tool, ordered by directory so sibling worktrees sort
+  together.
+
+  It lists what is bound **now**, which is deliberately not what the store tree
+  says: `kae unpin` keeps a store so a re-pin restores the directory's sessions, and
+  a single-tool re-bind leaves the previously bound tools' stores behind, so a
+  directory appears only while it still has a fragment to read. Listing stores would
+  name directories that are not bound and remedies that land where nothing reads —
+  the same distinction the v0.16.0 doctor credential sweep had to make. An
+  *unreadable* fragment is not folded into that skip: the directory is left out with
+  a stderr warning naming it, the way `pinChecks` already separates the two. And it
+  reads no config, so a malformed `config.toml` (which makes plain `kae ls` exit `2`)
+  does not stop it answering.
+
+- **Tool tiers are written down** (documentation). claude and codex are **tier 1**
+  (every mode); agy, opencode, cursor and copilot are **tier 2** (global credential
+  switching, `kae run --env`, backup/rollback, doctor, identity detection where the
+  tool exposes one). The normative definition is [DESIGN.md](DESIGN.md) § Tool
+  Tiers, with the mechanical form in [ADAPTERS.md](ADAPTERS.md) § Isolation env vars
+  and the tier-2 items collected under a ROADMAP section that says they are
+  descriptions of those tools rather than queued work.
+
+  **No guard was relaxed to do this**, and that is the point of stating the tier
+  rather than quietly deprioritizing: every refusal — never declare an artifact for
+  an unmeasured location, never fall back to a secondary store after an
+  authoritative write fails, never derive a keychain account from a live item,
+  refuse rather than approximate a store-selecting config value — applies
+  identically at both tiers. What the tier changes is which *modes* a tool gets. The
+  reason for the split is where the damage has actually come from: both failures
+  that cost a user a wrong-account session were kae's own modelling errors in the
+  tier-1 tools, not upstream changes in the tier-2 ones.
+
+  One accuracy fix came out of writing it down: the isolation env var table said
+  "none stable" for copilot, which was false — `COPILOT_HOME` was verified on
+  2026-07-31. The table now distinguishes "none known" from "one exists and is
+  deliberately not wired up", because those look identical from the outside and are
+  not the same fact.
+
+---
+
 # kae v0.16.0 (shipped 2026-07-31)
 
 **The bookkeeping, and who a bound directory says it is.** Four write sequences

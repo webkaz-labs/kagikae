@@ -183,18 +183,18 @@ alternative exists (`secret-tool`).
     kae already words exactly this caveat for companions
     (`companion_token_drift`: "the pin is not active in this shell (run `mise env`,
     or `mise trust` if untrusted)") and has the predicate (`miseActivated`), so this
-    is an inconsistency, not a missing capability. **(2)** Nothing captures the
-    in-directory login back, while `kae pin` writes the bound credential from the
-    **account snapshot** on every run (`writeDirCredential`, from both
-    materializers). So a later `kae pin` — which the user is told to run for
-    re-binding, a mode toggle, or repairing links — overwrites the fresh login with
-    the older snapshot. **Recorded here as "regresses to the older snapshot", which
-    the 2026-08-04 rotation measurement upgrades to *destroys*:** the refresh token
-    is single-use, so the older copy is not merely older, it is rejected. The
-    directory is then logged out, and because `refreshTokenExpiresAt` is untouched by
-    invalidation, nothing offline says so until the tool fails. See the
-    credential-copy entry below; the two cannot be fixed separately, because a
-    `kae relogin` that captures back without that fix just re-arms the same overwrite.
+    is an inconsistency, not a missing capability. ~~**(2)** Nothing captures the
+    in-directory login back, so a later `kae pin` overwrites the fresh login with the
+    older snapshot~~ — **fixed in v0.17.0** (the credential-copy entry below): a bind
+    now harvests the copy in the store into the account snapshot before writing, so
+    the in-directory login *is* captured back, and the 2026-08-04 measurement that
+    upgraded this hazard from "regresses" to "destroys" no longer applies to it. What
+    remains of hazard (2) is only that nothing captures it back **proactively**: the
+    harvest happens when a bind or a sweep next runs, so between the login and that
+    moment the snapshot still holds the older copy — which matters for `kae use`
+    applying that account globally, not for the bound directory. That is the part a
+    `kae relogin` would close, and it is now safe to build in either order, since the
+    overwrite it used to re-arm is gone.
 
   **On doing it without typing a command.** There is no `kae doctor --fix` and no
   path that offers to run a remedy; every remedy is a string the human retypes. The
@@ -219,43 +219,55 @@ alternative exists (`secret-tool`).
   made in both directions).
 
 - **Every credential copy kae keeps can be killed by another copy refreshing, and
-  four kae commands do the killing** (measured 2026-08-04, **not fixed** — this is the
-  next thing to build). claude's refresh token rotates single-use
+  four kae commands do the killing** (measured 2026-08-04; the two write paths are
+  **fixed** in v0.17.0, the rest is **not**). claude's refresh token rotates single-use
   ([VALIDATION.md](VALIDATION.md) owns the measurement), so of all the copies of one
   account's credential, only the one that refreshed last can still refresh. kae's
   architecture is copies with lazy sync: the account snapshot, each bound directory's
   store, the global isolated home, and every backup. The global loop closes itself
   (`recaptureActiveBeforeSwitch` harvests the live store before switching away, and
-  that mechanism is now load-bearing rather than an optimisation), but nothing
-  harvests across mechanisms.
-  What the user sees, worst first. **kae destroys a live login**: `kae pin` re-run,
+  that mechanism is now load-bearing rather than an optimisation). Nothing harvested
+  *across* mechanisms until v0.17.0, and the exceptions that remain are named below
+  rather than covered by that sentence.
+  What the user sees, worst first. ~~**kae destroys a live login**: `kae pin` re-run,
   `kae use -i` / `kae run -i` re-materialized, and `kae unpin --purge` all write or
-  delete without harvesting, and `kae pin` is what kae's own remedies tell the user to
-  run. It reports success, `kae doctor` stays green, and the directory fails up to an
-  access token's ~8h later, mid-session. **Two copies are a time bomb**: the first
-  refresh silently kills the others, so "I used claude in the other worktree and this
-  one logged out hours later" has no visible cause. **`kae rollback` reports success
-  restoring a rejected token** whenever anything refreshed after the backup, and
-  `kae run -s <tool> <the active account>` writes the pre-child backup back over a
-  credential the child refreshed. **And every freshness surface misreports**: doctor,
-  `kae ls`, `kae status` and the switch-time warning all judge by
-  `refreshTokenExpiresAt`, which invalidation does not move.
-  The shape of the fix, decided but not built. **The repair belongs inside
-  `writeDirCredential`**, which is the single chokepoint all four materializers pass
-  through (`prepareBond`, `preparePinConfig`, `prepareGlobalIsolatedHome`, and
-  `rebind` via the first): read the live copy, harvest it into the snapshot when it is
-  newer, then write the newest. Putting it anywhere else — a separate "repair before
-  use" step — leaves the overwrite paths unconditional, which ships a release that
-  fixes a login and then destroys it. `pruneDirCredentials` needs the same harvest
-  before deleting. The selection rule is **largest `expiresAt`**, which is sound
-  within one login's token chain because a successful refresh always moves it forward
-  and a failed one tombstones the copy to zero; guard it with
-  `Known && !Revoked && !ExpiresAt.IsZero()` and keep it **claude-only** until another
-  tool's rotation is measured, since "newest" is otherwise a guess.
-  What it does **not** fix: two sessions live at once on one account in two stores.
-  The refresh happens inside the tool with kae absent, so there is no moment to
-  intervene; only one copy of the credential can. That is the entry below, and any
-  message about this must not imply otherwise.
+  delete without harvesting~~ — **fixed in v0.17.0**, see below. **Two copies are a
+  time bomb**: the first refresh silently kills the others, so "I used claude in the
+  other worktree and this one logged out hours later" has no visible cause.
+  **`kae rollback` reports success restoring a rejected token** whenever anything
+  refreshed after the backup, and `kae run -s <tool> <the active account>` writes the
+  pre-child backup back over a credential the child refreshed. **And every freshness
+  surface misreports**: doctor, `kae ls`, `kae status` and the switch-time warning all
+  judge by `refreshTokenExpiresAt`, which invalidation does not move.
+  **Built in v0.17.0**, as a two-pass harvest plus a harvest in the delete sweep;
+  [ADAPTERS.md](ADAPTERS.md) § Per-directory credential store is normative for the
+  mechanism and the refusals, and [AGENTS.md](../AGENTS.md) carries the traps. Two
+  things the plan above did not name, recorded because both were found by review
+  *after* a version that looked complete and passed its tests: **attribution** (a
+  shared store is account-agnostic, so a re-bind finds the previous account's copy
+  there and filing it under the new name would be undetectable afterwards), and that
+  **a chokepoint is not coverage** (the write path cannot see the store a mode toggle
+  or an isolated re-key is moving *off*, which is why there is a pin-level pass at
+  all).
+  **Still open after it**, smallest first: the freshness surfaces still judge by
+  `refreshTokenExpiresAt` (no offline fix exists — this is a wording and
+  expectation-setting problem, not a detection one); `kae rollback` and `run -s`
+  restore over a possibly-newer credential with no harvest and no warning; **a
+  superseded *global* isolated home is never harvested** — `kae use -i <a>` then
+  `kae use -i <b>` leaves `isolation/global/<tool>/<a>/` holding a's newest copy, and
+  because there is no pin, neither the pin-level pass nor any sweep ever looks at it
+  (the write-path harvest only covers the home being materialized); and the harvest
+  writes an account snapshot under a per-directory lock that no tool lock covers, so a
+  concurrent `kae add` or switch-away recapture of the same account can leave the
+  snapshot holding the copy that **cannot** refresh — not merely the older of two good
+  ones, since rotation makes at most one refreshable
+  ([ARCHITECTURE.md](ARCHITECTURE.md) § Locking states why that is recorded rather than
+  locked, and that it self-heals on the next bind of the directory that still holds the
+  live copy).
+  What it does **not** fix, by construction: two sessions live at once on one account
+  in two stores. The refresh happens inside the tool with kae absent, so there is no
+  moment to intervene; only one copy of the credential can. That is the entry below,
+  and any message about this must not imply otherwise.
 
 - **One credential per account, sessions still per directory — via
   `CLAUDE_SECURESTORAGE_CONFIG_DIR`** (designed and gated 2026-08-04, **not
@@ -338,7 +350,11 @@ alternative exists (`secret-tool`).
   copilot, opencode and agy have not been measured, so none of the copy-safety work
   above may be ported to them: "the newest copy" is unknowable without it, and
   declaring a rule kae cannot measure is the defect the refusals elsewhere exist to
-  prevent. codex's *file* store is the first one worth measuring, because unlike its
+  prevent. **A measurement is necessary and not sufficient**: the harvest attributes a
+  copy through an identity-only artifact, so a tool that declares none (codex today)
+  would carry a harvest that can never fire — adding one to `rotatesSingleUse` means
+  measuring its rotation *and* giving it an identity artifact, which
+  `TestHarvestIsDeclaredForMeasuredToolsOnly` refuses to let drift apart. codex's *file* store is the first one worth measuring, because unlike its
   keyring store it is already copied into bound directories and isolated homes today.
   Also unmeasured, and cheap to fold in: whether a fresh login revokes the previous
   login's chain, which is what decides whether `expiresAt` can order copies **across**
@@ -355,6 +371,20 @@ alternative exists (`secret-tool`).
   mode, and one mode cannot always establish it** — [ADAPTERS.md](ADAPTERS.md)
   (§ per-directory shared bind, § per-directory isolated bind) is normative for both,
   and a third per-directory mechanism owes the same answer (AGENTS.md).
+
+- **`kae account rename` leaves a bound directory's store under the old name**
+  (observed 2026-08-04, **not fixed**). Renaming moves the snapshot and warns about the
+  pinned directories, but it does not touch `isolation/<pin-id>/<tool>/isolated/<old>/`
+  — so an isolated bound directory's live copy sits under a name no account has any
+  more. Everything downstream follows from that: the harvest cannot attribute it (the
+  fragment still says the old name, and `storeAccount` answers with a name that resolves
+  to nothing), the re-bind kae itself recommends builds the *new* account's store from
+  its older snapshot, and only `kae unpin --purge` reaches the old store at all — which
+  deletes that copy rather than keeping it, on purpose (docs/CLI.md § kae pin). The
+  harvest's messages now name the condition and say a re-bind would harvest it, which is
+  false for this shape until the rename moves the store or the fragment. Fixing it means
+  deciding whether `rename` rewrites bound fragments, which is a write into directories
+  the command was not asked to touch — the reason it only warns today.
 
 - **`kae account rename` / `kae account rm` delete a recorded `SecretRef`
   verbatim** (recorded 2026-07-31, **deliberately not fixed**). Both delete the ref

@@ -1092,6 +1092,140 @@ directory, so carrying the old entry string over would write a rule that matches
 nothing — and `kae pin` would still report success, with the fragment sitting in
 `git status` for the user to find.
 
+## v0.17.0 surface — the credential harvest
+
+Every path that overwrites a bound directory's credential store reads it first and
+copies a newer copy into the account snapshot, because claude's refresh token
+rotates single-use (§ Upstream Behaviour Assumptions) — so the older copy is not
+merely older, it is rejected. Temp HOME, **file** driver, file backend: no real
+`$HOME`, no real keychain, and no login, since every credential here is a fixture
+whose `expiresAt` is the only thing that orders two copies.
+
+Three things this block cannot show, so they are not claimed. The sweep's half (a
+`--purge` harvesting before it deletes) applies only to a **keychain** item — a
+file-backed per-directory credential lives inside the store directory and is never
+deleted — so it is covered by unit tests and by the keychain gates above. The file
+backend stores payloads **base64-encoded**, so a snapshot assertion has to decode
+before matching: `grep` on the raw file finds nothing and reads as a *passing*
+assertion. And each case below re-captures the account it uses, because a harvest
+makes the snapshot fresh — running D before E without that reset made E's harvest a
+no-op and E "passed" while proving nothing (measured while writing this block).
+
+```bash
+. scripts/smoke-env.sh
+export KAE_CLAUDE_DRIVER=file
+OLD=1767225600000; NEW=1798761600000; LATER=1814400000000   # expiresAt: 2026-01-01, 2027-01-01, 2027-07-01
+cred() { printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"rt-%s","expiresAt":%s,"refreshTokenExpiresAt":1830384000000}}' "$1" "$1" "$2"; }
+ident() { printf '{"oauthAccount":{"accountUuid":"u-%s","emailAddress":"%s@example.com"}}' "$1" "$1"; }
+snap() { base64 -d < "$XDG_DATA_HOME/kagikae/secrets/claude/$1/claude_ai_oauth.secret"; }
+store() { sed -n 's/.*CLAUDE_CONFIG_DIR *= *"\(.*\)"/\1/p' .config/mise/conf.d/kagikae.toml; }
+
+mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
+printf 'version = 1\n[security]\nsecret_backend = "file"\n' > "$XDG_CONFIG_HOME/kagikae/config.toml"
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+cred SIDE-OLD $OLD > "$HOME/.claude/.credentials.json"; ident side > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity other@example.com claude side
+/tmp/kae profile set main claude main
+/tmp/kae profile set side claude side
+
+# --- A. the tool refreshed the copy inside the directory; a re-pin must keep it ---
+P="$HOME/proj"; mkdir -p "$P"; cd "$P"
+/tmp/kae pin main
+cred MAIN-NEW $NEW > "$(store)/.credentials.json"
+/tmp/kae pin main
+#   assert: stderr carries `kae: harvested the newer claude credential from … into
+#           snapshot claude/main`
+snap main | grep MAIN-NEW              # assert: harvested, so `kae use claude main`
+                                       #         applies it too
+grep MAIN-NEW "$(store)/.credentials.json"   # assert: the re-pin did NOT write the
+                                       #         older snapshot back over it
+
+# --- B. a copy kae cannot attribute is not adopted, and the cost is stated ---
+ident other > "$(store)/.claude.json"
+# LATER, not NEW: after A the snapshot already holds a NEW-dated copy, and a copy that
+# is merely *equal* is never harvested — so reusing NEW here made this case pass
+# without ever reaching the attribution guard (measured while writing this block).
+cred FOREIGN $LATER > "$(store)/.credentials.json"
+/tmp/kae pin main
+#   assert: exactly ONE stderr line — `belongs to an account other than claude/main`
+#           — and it does not tell you to log in. One store, one refusal, one message:
+#           the store being written is looked at by both the pin-level pass and the
+#           write path, and the write path stays quiet where the pass has already
+#           spoken. **No remedy on purpose**: the copy is demonstrably somebody else's,
+#           this account's credential is being written correctly, and a login here
+#           would mint a chain invalidating what kae harvested elsewhere. A
+#           missing-evidence refusal (no identity recorded, none in the directory,
+#           unreadable, or one shared with the real home) *does* carry the remedy, with
+#           the bound directory rather than the store in it. Exit code still 0
+snap main | grep MAIN-NEW               # assert: A's harvested copy is still there.
+                                        #         This positive line is what makes the
+                                        #         negative one below mean anything: a
+                                        #         broken snap() (wrong secrets path, or
+                                        #         BSD `base64 -D`) makes `grep -c` print
+                                        #         0, which reads as a pass
+snap main | grep -c FOREIGN             # assert: 0 — a token filed under the wrong
+                                        #         account is undetectable afterwards
+grep u-main "$(store)/.claude.json"     # assert: the bind still relabelled the dir
+
+# --- C. a tombstone is not a login: blank tokens with a future deadline ---
+ident main > "$(store)/.claude.json"
+# $LATER, not $NEW: at an expiresAt equal to the snapshot's the timestamp comparison
+# refuses the harvest on its own, so a healthy copy and a tombstone behave identically
+# and this case would pass whether or not the tombstone guard works (measured).
+printf '{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%s,"refreshTokenExpiresAt":1830384000000}}' $LATER \
+  > "$(store)/.credentials.json"
+/tmp/kae pin main
+#   assert: NO `harvested` line — presence is not usability
+snap main | grep MAIN-NEW               # assert: unchanged
+
+# --- D. the binding moves to a DIFFERENT store: the mode toggle ---
+# Reset the snapshot first, or A's harvest makes this a no-op.
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+T="$HOME/toggle"; mkdir -p "$T"; cd "$T"
+/tmp/kae pin main                       # shared
+cred MAIN-NEW $NEW > "$(store)/.credentials.json"
+/tmp/kae pin -i main                    # isolated: a different store, built from the snapshot
+#   assert: one `harvested` line
+grep MAIN-NEW "$(store)/.credentials.json"   # assert: the store the user is NOW bound
+                                        #         to holds the copy that can refresh.
+                                        #         Before this pass it held MAIN-OLD,
+                                        #         with every offline check green
+snap main | grep MAIN-NEW               # assert: harvested from the superseded store
+
+# --- E. shared re-bind to another account: the copy belongs to the OLD one ---
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+R="$HOME/rebind"; mkdir -p "$R"; cd "$R"
+/tmp/kae pin main
+cred MAIN-NEW $NEW > "$(store)/.credentials.json"
+/tmp/kae pin claude side
+#   assert: `harvested … into snapshot claude/main` — main, not side. The write path
+#           then notes that the copy in the store is not side's; that is the fact,
+#           without a remedy, because the pass above already preserved it
+snap main | grep MAIN-NEW               # assert: main's login survived the re-bind
+snap side | grep -c MAIN-NEW            # assert: 0 — it was not filed under side
+grep SIDE-OLD "$(store)/.credentials.json"   # assert: the store now runs side
+```
+
+Two lines here exit non-zero **on purpose** (`grep -c` printing `0` is the assertion),
+so paste the block as-is rather than under `set -e`, or add `|| true` to those two.
+
+**PASSED 2026-08-04** on the pre-release binary, each assertion checked at its own
+point. D and E are the two cases a *chokepoint-only* harvest got wrong, so they are
+the ones worth re-running after any change to `kae pin`'s ordering: both depend on the
+pin-level pass running **before** the stores are materialized, and E additionally on
+the replaced fragment being read before it is rewritten.
+
+Three of these assertions were **corrected after first passing**, which is the argument
+for reading a block adversarially rather than trusting a green run: B reused A's
+`expiresAt` and so never reached the attribution guard; C did the same and so proved
+nothing about the tombstone guard (a healthy copy behaves identically at an equal
+deadline); and B's only snapshot check was a `grep -c` for absence, which prints `0`
+— a pass — when `snap()` itself is broken. Each is now dated ahead of the snapshot, or
+paired with a positive assertion.
+
 ## Upstream Behaviour Assumptions
 
 kae drives undocumented upstream state, so it depends on two different kinds of
@@ -1544,11 +1678,13 @@ never appears in `kae companion list` text/JSON).
 
 ⚠️ **This is not a completed acceptance run.** It covers the tree at `40fa804`
 (per-worktree exclude file, `kae ls --pins`, the tool tiers). v0.17.0 was then
-widened to also carry two bound-directory items (`identity_drift` for bound
-directories, and link retraction), so **every line below has to be re-run on the
-final tree** before the tag — a green run on a smaller tree proves nothing about
-the larger one. Kept because the measurements are real and the codex
-re-verification below is not affected by later commits.
+widened twice — link retraction, and then the **credential harvest**, which is a
+behaviour change to `kae pin` / `kae pin <tool> <account>` / `kae unpin --purge` and
+now the release's headline — so **every line below has to be re-run on the final
+tree** before the tag, and § "v0.17.0 surface — the credential harvest" has to be run
+alongside § per-worktree surfaces. A green run on a smaller tree proves nothing about
+the larger one. Kept because the measurements are real and the codex re-verification
+below is not affected by later commits.
 
 Every gate run and recorded by exit code, never through a pipe:
 
@@ -1565,6 +1701,12 @@ Every gate run and recorded by exit code, never through a pipe:
   HOME with every XDG root isolated (`. scripts/smoke-env.sh`), the repositories
   and worktrees created *inside* that HOME. Each assertion checked at its own point
   in the block rather than from the end state: **12 of 12**.
+- **Not in this run: § "v0.17.0 surface — the credential harvest"** (A–E). It was
+  written and run later, against a pre-release binary on its own temp HOME, and every
+  assertion held — but on a tree earlier than the final one, so it is part of what has
+  to be repeated. Two of its assertions had been passing for the wrong reason before
+  that run corrected them, which is the argument for re-running rather than trusting
+  the record.
 - Deliberately **not** run, and recorded as such: no real-machine `kae pin`, and
   the operator's installed binary was not replaced. The per-worktree behaviour is
   covered by real `git` in a temp HOME plus a test that builds a repository and a

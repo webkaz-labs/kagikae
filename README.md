@@ -203,6 +203,19 @@ view across all of them (directory, profile, mode, bound account per tool, and a
 keeps its store so a re-pin restores its sessions, but it is not a binding and is
 not listed.
 
+**One caveat, and it is a "not yet" rather than a "no":** two worktrees bound to
+the *same* account cannot run at the **same time** in this release. Each bound
+directory keeps its own copy of that account's credential, and claude's refresh
+token is single-use — so whichever session refreshes first invalidates the other
+copy, which then fails up to eight hours later, mid-session. Using those
+directories one after another is fine: kae harvests the newest copy before it
+overwrites one, so re-binding never costs you a login. Running them **concurrently**
+needs one credential copy per account instead of one per directory, which is
+designed and measured and is the next thing being built — claude has a second
+variable that moves the credential alone, so sessions and settings stay per
+directory ([docs/ROADMAP.md](docs/ROADMAP.md)). Different accounts per worktree are
+unaffected either way.
+
 ## Beyond Switching
 
 ```bash
@@ -341,7 +354,8 @@ write fails, and warns before the write rather than after.
 One account per tool at a time globally: a shared switch (`kae use`) changes the
 live credential store, so running different accounts of the same tool at once
 needs an isolated environment — `kae pin` per directory, or `kae use -i`
-globally.
+globally. Two directories bound to the *same* account is a different case that
+isolation alone does not yet solve — see "One account per worktree".
 
 ## Common Commands
 
@@ -350,7 +364,7 @@ globally.
 | `kae` / `kae status` (`kae s`) | Show what is active per tool. |
 | `kae use <profile\|tool account>` (`kae u`) | Switch globally (`-i` isolated, `--quiet` for hooks). |
 | `kae pin [<profile>]` (`kae p`) | Bind the current directory (`-i` isolated). |
-| `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials (sessions and settings are kept). |
+| `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials, harvesting each into its account snapshot first and keeping any it could not (sessions and settings are kept). |
 | `kae run <tool> <account> [-- <cmd>]` (`kae r`) | Run one process under an account (`-s`/`-i`/`--env`). |
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
 | `kae ls` | List accounts and profiles in one view, with each snapshot's credential freshness. |
@@ -382,7 +396,11 @@ exit code — see [docs/CLI.md](docs/CLI.md).
 - **Credential freshness.** `kae use` recaptures the account it switches away
   from when its live token changed (so a switch back applies a live token) — but
   never overwrites a usable snapshot with a live credential that has stopped
-  working. It warns on stderr, before applying, when the account you are switching
+  working. A bound directory gets the same treatment in the other direction: the
+  tool refreshes the credential *inside* that directory, and for claude the older
+  copy is then rejected rather than merely older — so re-binding, re-materializing
+  or purging a directory harvests the newer copy into the account snapshot first,
+  instead of logging the directory out hours later. It warns on stderr, before applying, when the account you are switching
   to needs a re-login (expired with no usable refresh token, or emptied by the tool
   after a failed refresh) and names the tool's login command; `kae doctor` flags
   the same snapshots and orphaned secret items.

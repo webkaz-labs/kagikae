@@ -109,7 +109,17 @@ block in docs/VALIDATION.md, next to two correct ones.
   The asymmetry with a file store is deliberate — a file credential lives *inside*
   the store directory, which `kae unpin` and a mode toggle keep on purpose, while an
   item lives under a per-directory service name that appears nowhere in kae's data
-  dir and cannot be enumerated on darwin, so nothing could ever find it again.
+  dir, so kae cannot *address* one without already knowing the string it hashes from.
+  This used to say such an item "cannot be enumerated on darwin"; that is too strong
+  and was corrected on 2026-08-04 — `security dump-keychain` lists item attributes
+  (service, account, dates) with no prompt, which is how five stale per-directory
+  items were found on a real machine. **The sweep's design does not change**: an
+  enumeration tells you an item exists, never whether another directory still reads
+  it, and only a fragment says that (see the next entry). Two rules come out of the
+  correction. Never pass `-d` — it prompts per item and prints the secret. And an
+  empty enumeration is not proof of nothing: it reads only file-based keychains, so a
+  future move to the Data Protection keychain would make this silently return zero,
+  the same trap as comparing two empty greps.
   Things that must move in lockstep with it — not a closed list: a **third**
   per-directory mechanism (today `shared` and `isolated`) has to be added to
   `dirCredentialStores`, or its stores are silently never swept; and the sweep must

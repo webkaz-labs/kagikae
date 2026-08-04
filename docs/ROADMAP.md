@@ -257,35 +257,82 @@ alternative exists (`secret-tool`).
   intervene; only one copy of the credential can. That is the entry below, and any
   message about this must not imply otherwise.
 
-- **One account, one credential copy — the only thing that supports simultaneous
-  sessions** (designed 2026-08-04, **not started**). The entry above can keep a
-  *sequence* of directories working; it cannot make two worktrees bound to the same
-  account run at the same time, because each store holds its own copy and the first
-  refresh invalidates the rest. The fix is for the directories bound to one account to
-  share one store, which is the configuration upstream explicitly repaired (its
-  changelog fix was many sessions sharing **one** credential store).
-  On macOS the credential cannot be shared without sharing the store: claude derives
-  the keychain service name from `CLAUDE_CONFIG_DIR` and codex the item's account from
-  `CODEX_HOME`, and a shared *file* does not survive either, because the first refresh
-  promotes it to a per-directory keychain item and deletes the file (measured). So
-  "share the credential, split the sessions" is not available, and the question is
-  what else becomes shared.
-  **That answer differs enough per mode to decide them separately, and the shared bind
-  is nearly free.** In shared mode the only per-directory-private things are the
-  denylisted ones — the credential and `.claude.json` — while settings, sessions and
-  memory are already shared through the real home. Both of those are properties of the
-  *account*, not the directory, so keying them by account is arguably more correct
-  than today; the one real consequence is that `.claude.json` is mixed state, so
-  `mcpServers` becomes shared across a account's directories while `projects` stays
-  keyed by path and does not collide. In isolated mode everything is private by
-  design, so sharing a store shares sessions, settings and memory too — a much larger
-  change to what `-i` promises. **A shared-mode-only version is therefore worth
-  costing first**: it would solve simultaneous sessions for the mode where the sharing
-  scope barely moves, and leave `-i` as it is.
-  Either way it re-keys existing stores, which needs the migration the `PinID` entry
-  below describes for the same reason — moving sessions and stranding keychain items
-  named by the old path — plus a third `dirCredentialStores` / `boundStoreDir` /
-  intent-source answer (AGENTS.md).
+- **One credential per account, sessions still per directory — via
+  `CLAUDE_SECURESTORAGE_CONFIG_DIR`** (designed and gated 2026-08-04, **not
+  started**; build it *after* the entry above). The entry above keeps a *sequence* of
+  directories working; it cannot make two worktrees bound to one account run at the
+  same time, because each store holds its own copy and the first refresh invalidates
+  the rest. Only one copy fixes that.
+  The obvious form — every directory of an account sharing one store — trades away
+  what the store holds besides the credential. It does not have to: claude has a
+  **second** variable that moves the credential alone. `CLAUDE_SECURESTORAGE_CONFIG_DIR`
+  displaces `CLAUDE_CONFIG_DIR` as the keychain service name's hash input *and* as the
+  `.credentials.json` directory, while sessions, settings and the `.claude.json`
+  identity keep following `CLAUDE_CONFIG_DIR`. So a bind can export a per-directory
+  config dir and a per-account credential dir, and nothing that is private today
+  becomes shared. Both halves are run-confirmed ([VALIDATION.md](VALIDATION.md)).
+  **The premise was the gate, and it is green**: two processes with *different* config
+  dirs sharing one credential store both authenticate and the shared item rotates
+  once, with no tombstone — measured against a negative control (separate stores, same
+  credential) that fails 1/2 in the same session, so the result discriminates. That
+  was the specific fear worth measuring: a loser tombstoning the *shared* item would
+  log out every directory at once.
+  What makes the bet acceptable is that the failure is **observable offline**. The
+  variable is undocumented, so upstream could stop honoring it — but then the
+  credential lands at `sha8(CLAUDE_CONFIG_DIR)` instead of `sha8(SSCD)`, two
+  separately addressable places, and kae already computes both hashes. An item
+  appearing at the config-dir name *is* the signal; the write path deletes that name
+  after harvesting it, so in steady state its presence means something wrote there
+  since the last bind. Note what the detector actually reports — divergence to the
+  config-dir side — because the common cause is not an upstream regression but a shell
+  where only `CLAUDE_CONFIG_DIR` was exported. Note too that the regression's shape is
+  a **loud logout, not a silent wrong account**: the config dir still points at kae's
+  own store, so no other account's credential is ever reached.
+  Sequencing, all measured or read rather than assumed: the write path must harvest
+  before it overwrites (the entry above) *first*, or the migration's re-pin destroys
+  the login it is migrating. In the same release as the split: the adapter honoring
+  SSCD; the refusal in `driver()` becoming a carve-out that compares the value against
+  the binding the fragment describes — **a prefix test is not enough**, since a
+  mismatch that passes is the silent-wrong-account class this repo has bled on; a
+  second env entry per tool (`isolationEntry` is singular today, and `rebindFragment`
+  currently leaves shared-mode env lines alone, which stops being true when the
+  account selects the credential dir); `dirSpecs` and `applyGlobalScope` handling two
+  variables; and a **refcount** before deleting a shared item, or one directory's
+  `unpin --purge` logs out its siblings. Migration is "re-run `kae pin`", with the
+  doctor check naming directories whose fragment has no SSCD line yet.
+  Deliberately **not** built: `SSCD=""`. It collapses a bound directory onto the
+  global item, so `kae use <other>` would silently change what that directory runs
+  while its fragment and identity still claim the bound account — kae breaking its own
+  binding invariant. Record it as a trap, do not measure it further.
+  This is claude-only by construction. codex has no equivalent variable; its item
+  account comes from the **canonicalized** `CODEX_HOME`, so symlinking two homes onto
+  one directory does share the item — but it shares the whole home with it (history,
+  sessions, logs), which is the thing this design exists to avoid. A per-account store
+  is the option there, if codex's rotation is ever measured.
+
+- **Per-directory keychain items outlive everything that could name them, and now
+  they can be found** (measured on a real machine 2026-08-04, **not fixed**). Five
+  `Claude Code-credentials-<sha8>` items were on the operator's machine. Hashing every
+  path kae knows attributed four: one to a global isolated home (live), one to a
+  pre-v0.8.0 `bond` store and one to a `overlays` store — both from mechanisms whose
+  vocabulary was renamed away, so current kae cannot reach them at all — and the last
+  two to nothing kae owns. Of those two, one had been **modified three weeks earlier**
+  (so something still uses it) and one predates kae entirely. The two legacy-kae items
+  were deleted by hand; the unattributable ones were deliberately left.
+  That is the whole design constraint in one observation. Enumeration is now available
+  (AGENTS.md carries the correction and its two caveats), so a doctor check can list
+  these items, attribute each by hashing the strings kae wrote into fragments, and
+  report what is left over. But **attribution failure must never authorize deletion**:
+  the hash is one-way, a candidate could be the operator's own `CLAUDE_CONFIG_DIR` or
+  an item synced from another machine, and deleting it destroys a login kae has no
+  snapshot of. Nor may an unattributable payload be adopted into a snapshot — same
+  silent-adoption defect kae already retired elsewhere. Report and name the manual
+  command; that is the whole feature.
+  Two prerequisites it exposes: stores in the pre-rename vocabulary are invisible to
+  every current sweep, so a migration (or an explicit "these are not mine any more"
+  report) is needed for them; and the attribution table should be built from the
+  strings recorded in fragments rather than paths re-derived from the tree, since the
+  hash is over the string kae actually exported.
 
 - **Rotation is measured for claude only** (recorded 2026-08-04). codex, cursor,
   copilot, opencode and agy have not been measured, so none of the copy-safety work

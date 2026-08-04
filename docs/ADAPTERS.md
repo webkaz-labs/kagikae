@@ -954,7 +954,7 @@ half-done. Do not reformat the rows without updating that test.
 
 | Tool | `VerifiedVersion()` | `VerifiedOn()` | `--version` output shape |
 |------|---------------------|----------------|--------------------------|
-| claude | `2.1.220` | `2026-07-31` | `2.1.220 (Claude Code)` |
+| claude | `2.1.220` | `2026-08-04` | `2.1.220 (Claude Code)` |
 | codex | `0.146.0` | `2026-08-04` | `codex-cli 0.146.0` |
 | agy | `1.0.10` | `2026-07-31` | `1.0.10` |
 | opencode | `1.17.4` | `2026-07-31` | `1.17.4` |

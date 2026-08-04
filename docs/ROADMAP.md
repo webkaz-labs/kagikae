@@ -117,10 +117,15 @@ alternative exists (`secret-tool`).
   territory — several accounts through one store, and `kae run` can have more than one
   session live at once — and it is the strongest published evidence that the refresh
   token is **single-use/rotating** (one session's refresh invalidating the others is
-  what that failure mode means). Worth a row in
-  [VALIDATION.md](VALIDATION.md)'s claude assumptions once someone measures it, and
-  worth re-checking whether kae's `keychain.WithReadCache` / per-tool locks are enough
-  when a switch overlaps a live session's own refresh.
+  what that failure mode means). **Measured directly on 2026-08-04** and no longer an
+  inference: the refresh token rotates and the superseded one is rejected, so the row
+  this entry asked for is now in [VALIDATION.md](VALIDATION.md)'s claude assumptions,
+  which owns the facts and the procedure. Note the direction the changelog points —
+  upstream *fixed* many sessions sharing **one** store, so that configuration is the
+  supported one, while kae's per-directory binds keep a **copy per store**, which is
+  the configuration nothing upstream is defending.
+  Still open from this entry: whether `keychain.WithReadCache` / the per-tool locks
+  are enough when a switch overlaps a live session's own refresh.
 
 - ~~**`kae account rename` can strand the active pointer**~~ (recorded 2026-07-31,
   **fixed** — see [RELEASE.md](RELEASE.md) v0.16.0). `buildAccountRename` used to

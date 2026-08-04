@@ -131,10 +131,12 @@ child could rotate the live credential unseen — a cached value would be stale.
   length-capped) before it reaches doctor output, so a hostile repo-local
   `.git/config` cannot inject terminal escapes.
 - The `identity_drift` doctor check compares the stored identity payload against
-  the live one. It is **offline** — a byte comparison of state already on the
+  the live one. It is **offline** — a comparison of state already on the
   machine, no probe and no network call — so nothing about the login is
   transmitted. Neither value reaches the output: an identity is PII (an email
-  address), so a finding names only the tool, account, and artifact.
+  address), so a finding names only the tool, the account, and the artifact or the
+  bound directory it is about. The check has two frames and both obey that rule:
+  the active account's live state, and a bound directory's own store.
 - The `upstream_version` doctor check runs `<binary> --version` through
   `internal/runner` (argv array, no shell) and reads only the version string.
   **Offline**, no credential in the environment, nothing to redact.

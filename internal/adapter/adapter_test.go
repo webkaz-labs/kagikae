@@ -1181,6 +1181,53 @@ func TestKeychainSpecsAreAccountScoped(t *testing.T) {
 	}
 }
 
+// No identity-only artifact may be a keychain item, because the per-directory
+// identity paths have no gate for one and would read a **global** login as a bound
+// directory's.
+//
+// The credential paths all pass `unbindableDirKeychain` first — a keychain item is
+// only a bound directory's when the adapter declares that it moves with the isolation
+// variable — and the identity paths (`writeDirIdentity`, `dirIdentityConfirms`, and
+// through it `doctor`'s bound-directory `identity_drift`) deliberately do not,
+// because today the only identity artifact anywhere is claude's `KindJSONPointer`
+// `/oauthAccount`. A tool that gained a keychain identity item would silently make
+// those three read the global item and label a bound directory from it — the same
+// defect class the write gate exists for. So the assumption is asserted here rather
+// than left in a comment: if this fails, add the gate, do not relax the guard.
+func TestNoIdentityArtifactIsAKeychainItem(t *testing.T) {
+	seen := 0
+	for _, tool := range constants.Tools {
+		ad, err := adapter.ForTool(tool)
+		if err != nil {
+			t.Fatalf("adapter for %s: %v", tool, err)
+		}
+		for _, goos := range []string{"linux", "darwin"} {
+			specs, err := ad.Artifacts(context.Background(), testEnv(t, goos, nil))
+			if err != nil {
+				continue // unsupported platform: nothing to check
+			}
+			for _, sp := range specs {
+				if !sp.IdentityOnly {
+					continue
+				}
+				seen++
+				if sp.Kind == constants.KindKeychain {
+					t.Errorf("%s/%s artifact %q is IdentityOnly and a keychain item; the "+
+						"per-directory identity paths have no KeychainDirBindable gate, so they "+
+						"would read the global item as a bound directory's identity",
+						tool, goos, sp.Name)
+				}
+			}
+		}
+	}
+	// A guard that reached no artifact checks nothing, which is how the sibling
+	// keychain guard came to skip codex entirely.
+	if seen == 0 {
+		t.Error("this guard saw no IdentityOnly artifact at all; either one stopped being " +
+			"declared or the test environment no longer resolves it")
+	}
+}
+
 // TestRelativeConfigVariablesWarnPerTool covers 1.7: the divergence copilot and
 // opencode already warn about reaches claude and codex too, and it is *not* the
 // same divergence, which is why each tool measures its own before warning.

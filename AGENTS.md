@@ -186,9 +186,24 @@ block in docs/VALIDATION.md, next to two correct ones.
   account). The two functions look interchangeable and are not; `pinChecks` has
   skipped an unpinned directory since it shipped, and the doctor credential sweep
   still shipped its first draft without that gate. Every command that reports on
-  bindings needs the same gate — `kae ls --pins` (`buildLsPins`) is a third
-  consumer, not the last one. Note also that `fragmentInfo.Accounts` covers
-  **every** bound tool, shared mode included.
+  bindings needs the same gate, so the doctor consumers now share one walk of it
+  (`boundDirStores`) — **use it rather than re-deriving the walk**; `kae ls --pins`
+  (`buildLsPins`) keeps its own display-shaped one and is not the last consumer.
+  Note also that `fragmentInfo.Accounts` covers **every** bound tool, shared mode
+  included.
+  Which of that walk's guards a test can actually kill was measured (2026-08-04/05),
+  because three of them read like they must be load-bearing and are not — write the
+  reason in a comment rather than a test that cannot fail. In `boundDirStores` the
+  `!exists` arm, the unreadable-fragment arm and the `dirExists(<bound dir>)` gate all
+  **converge**: a missing or gone directory parses to an empty account map, which
+  `boundStoreDir` already answers "not bound" from, and all three arms `continue`
+  anyway. They are a statement of intent there; the place the same distinction has
+  consequences is `pinChecks`, which reports a *different* finding for each. Two
+  guards in the same walk **are** killable and must stay tested: the choice of source
+  (walking the tree instead of the fragment), and `dirExists(<store dir>)` — that last
+  one only bites on darwin, where a per-directory keychain **item** outlives its
+  deleted store directory, so a linux-only unit test sees both consumers decline for
+  an unrelated reason. Assert it on the walk's own output.
 - **A `git worktree` is just another bound directory, and that is the whole
   design** — its own real path, its own pin-id, its own store, its own fragment.
   Worktrees stop being incidental in exactly one place, telling git to ignore the

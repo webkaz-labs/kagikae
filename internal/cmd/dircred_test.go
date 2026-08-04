@@ -299,6 +299,75 @@ func snapshotPayload(t *testing.T, app *App, be secret.Backend, tool, accountNam
 	return string(data)
 }
 
+// Two identity payloads that are byte-identical and neither an account record agree
+// about **nothing**, so they are not evidence that the store holds this account's
+// credential. The reachable shape is `/oauthAccount` being `null`: capture records it,
+// and `writeDirIdentity` then copies it into every bound store of that account — after
+// which a shared store re-bound between two accounts that both recorded one would let
+// the previous account's token be filed under the new name, undetectably, because the
+// token is opaque.
+//
+// This is the case the decodability gate had to move **above** `identityDiffers` to
+// reach: with the gate inside that branch, a byte-identical pair returned
+// `identityDiffers == false` and fell through to the confirming path, so the harvest
+// ran. Asserted on the harvest rather than on `doctor`, because `Conflicting` is false
+// either way and the doctor half cannot tell the two implementations apart.
+//
+// The cost is stated where it is paid (docs/RELEASE.md): the bind then overwrites a
+// newer copy it declined to preserve, which is a destroyed login — loud, named, with
+// the login that fixes it, and the same trade every refusal in this mechanism makes.
+func TestWriteDirCredentialRefusesTwoIdentitiesThatAreNotAccountRecords(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	now := app.Now()
+	const nonRecord = `{"oauthAccount":null,"projects":{"/repo":{}}}`
+
+	// Captured by hand rather than through captureClaudeAt, which seeds a well-formed
+	// identity of its own: the whole point here is what the snapshot records when the
+	// live cache is *not* an account record.
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+		claudeOAuthPayload(mainToken, now.Add(time.Hour)))
+	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"), nonRecord)
+	code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "main")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	credDir := t.TempDir()
+	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-dddd"
+	writeFile(t, filepath.Join(credDir, ".credentials.json"), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	writeFile(t, filepath.Join(credDir, ".claude.json"), nonRecord)
+
+	be := testBackend(t, app)
+	// Positive first: the snapshot really does hold the non-record, or the refusal below
+	// would be the "no identity is recorded" one and this test would prove nothing.
+	acc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
+	if err != nil || !found || !acc.Artifacts["oauth_account"].Present {
+		t.Fatalf("this test needs a recorded non-record identity: found=%v err=%v art=%+v",
+			found, err, acc.Artifacts["oauth_account"])
+	}
+
+	_, stderr := captureStderr(t, func() int {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir); err != nil {
+			t.Fatalf("writeDirCredential: %v", err)
+		}
+		return 0
+	})
+
+	if strings.Contains(stderr, "harvested") {
+		t.Fatalf("two payloads that name no account must not confirm a harvest: %q", stderr)
+	}
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, refreshed) {
+		t.Fatalf("the newer copy was harvested on the strength of agreeing about nothing: %s", got)
+	}
+	if !strings.Contains(stderr, "kae cannot read the identity records it would compare") {
+		t.Fatalf("the refusal must name its own reason: %q", stderr)
+	}
+	if strings.Contains(stderr, refreshed) {
+		t.Fatalf("a credential must never reach a message: %q", stderr)
+	}
+}
+
 // The defect this whole harvest exists for: the tool refreshes the copy *inside* a
 // bound directory, in place, and claude's refresh token is single-use — so writing
 // the account snapshot over that copy does not regress the directory to an older
@@ -1526,6 +1595,74 @@ func TestPruneDirCredentialsHarvestsBeforeDeleting(t *testing.T) {
 		}
 		if len(lines) != 1 || !strings.Contains(lines[0], stale) {
 			t.Fatalf("the removal must be reported: %v", lines)
+		}
+	})
+}
+
+// The delete half of the decodability gate, which is the outcome that matters most:
+// an item that would previously have been harvested and swept is now **kept**.
+//
+// Two identity payloads that are byte-identical and neither an account record used to
+// confirm the store (identityDiffers returned false, so nothing refused), which let the
+// sweep harvest and then delete. They agree about nothing, so the attribution is not
+// there, and an item kae cannot attribute is left in place — a leftover secret rather
+// than a login destroyed by a cleanup, the rule this whole sweep is built on.
+//
+// Written because the review round that would have measured this seam did not finish:
+// the write path's version of the same change is
+// TestWriteDirCredentialRefusesTwoIdentitiesThatAreNotAccountRecords, and "an item that
+// used to be deleted is now kept" is the other half, in the direction that cannot be
+// undone.
+func TestPruneDirCredentialsKeepsAnItemItCannotAttributeToARecord(t *testing.T) {
+	sim := &keychainSim{}
+	runner.With(sim, func() {
+		app := testApp(t, map[string]string{"USER": "me"})
+		app.Env.GOOS = "darwin"
+		ctx := context.Background()
+		now := app.Now()
+		const nonRecord = `{"oauthAccount":null,"projects":{"/repo":{}}}`
+		// Captured with a live identity cache that is well-formed JSON and not an account
+		// record, so that is what the snapshot records. Written after the seed inside
+		// captureClaudeFromKeychain would overwrite it, so the capture is done by hand.
+		seedClaude(t, app, mainToken, "main-uuid")
+		writeFile(t, filepath.Join(app.Env.Home, ".claude.json"), nonRecord)
+		sim.present, sim.account = true, ""
+		sim.payload = claudeOAuthPayload(mainToken, now.Add(time.Hour))
+		code, out := captureStdout(t, func() int {
+			return runCapture(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "main")
+		})
+		mustExit(t, constants.ExitOK, code, out)
+
+		pinID := paths.PinID(t.TempDir())
+		stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+		mkdirs(t, stale)
+		writeFile(t, filepath.Join(stale, ".claude.json"), nonRecord)
+		// Newer than the snapshot, so the sweep reaches attribution at all.
+		const refreshed = "sk-ant-oat01-MAIN-REFRESHED-eeee"
+		sim.payload = claudeOAuthPayload(refreshed, now.Add(8*time.Hour))
+		sim.ops = nil
+
+		be := testBackend(t, app)
+		var lines []string
+		_, stderr := captureStderr(t, func() int {
+			lines = app.pruneDirCredentials(ctx, be, pinID, "", nil, fragmentInfo{}, false)
+			return 0
+		})
+
+		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
+			t.Fatalf("an item kae cannot attribute must not be deleted: %v", sim.ops)
+		}
+		if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, refreshed) {
+			t.Fatalf("it must not be harvested either, on two sides agreeing about nothing: %s", got)
+		}
+		if len(lines) != 0 {
+			t.Fatalf("nothing was removed, so nothing may be reported: %v", lines)
+		}
+		if !strings.Contains(stderr, "kae cannot read the identity records it would compare") {
+			t.Fatalf("keeping it must name the reason: %q", stderr)
+		}
+		if strings.Contains(stderr, refreshed) {
+			t.Fatalf("a credential must never reach a message: %q", stderr)
 		}
 	})
 }

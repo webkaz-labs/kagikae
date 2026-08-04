@@ -436,6 +436,13 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 // not evidence of a match, and insisting is cheap: a copy worth harvesting is one
 // the tool refreshed in that directory, and a tool that ran there wrote its
 // identity there.
+//
+// `doctor` is the second consumer (pinIdentityChecks), and it reads only the
+// Conflicting refusal: the same asymmetry that decides what the harvest may say is
+// what decides what doctor may report — a conflict is proof that a store disagrees
+// with the account named for it, while every other refusal is missing evidence and
+// warning on those would fire on healthy bound directories. So the two stay one
+// predicate; a change here changes both, on purpose.
 func dirIdentityConfirms(ctx context.Context, be secret.Backend, specs []artifact.Spec,
 	acc account.Account, credDir string,
 ) harvestRefusal {
@@ -451,6 +458,15 @@ func dirIdentityConfirms(ctx context.Context, be secret.Backend, specs []artifac
 		// A target that leaves the store labels the *real* home, not this directory
 		// (a pre-v0.16.0 bind linked it there), so it says nothing about whose
 		// credential this store holds.
+		//
+		// Both of these stay **non**-Conflicting, and since doctor started reading that flag
+		// (pinIdentityChecks) the distinction decides whether every pre-v0.16.0 shared bind on
+		// a machine gets a false `identity_drift`: the payload read through such a link is the
+		// real home's, so it disagrees with the bound account whenever the global account
+		// differs — which is the ordinary case. Pinned by
+		// TestBoundDirectoryIdentitySharedWithTheRealHomeIsSilent; before it, flipping this to
+		// Conflicting survived the whole suite (measured 2026-08-05), because the harvest tests
+		// assert only *that* it refuses.
 		switch outside, err := identityTargetEscapes(sp.Target, credDir); {
 		case err != nil:
 			return harvestRefusal{Why: "kae could not resolve where its identity cache is"}
@@ -464,6 +480,22 @@ func dirIdentityConfirms(ctx context.Context, be secret.Backend, specs []artifac
 		stored, found, err := be.Get(ctx, art.SecretRef)
 		if err != nil || !found {
 			return harvestRefusal{Why: "that account's recorded identity cannot be read"}
+		}
+		// Evidence either way has to be a comparison of two account **records**. A payload
+		// that is well-formed JSON but not an object names no account, so it can neither
+		// prove a conflict nor confirm a match, and it belongs with the missing evidence
+		// above. identityDiffers falls back to a byte comparison for exactly those — right
+		// for the drift check, which must not call two payloads it cannot read equal, and
+		// wrong for attribution in **both** directions. Measured 2026-08-05: a store whose
+		// `/oauthAccount` was `null`, a string, a number or an array was reported by `doctor`
+		// as naming *another account* when it names none; and two identical such payloads
+		// took the confirming path below, letting the harvest attribute a copy on the
+		// strength of two sides agreeing about nothing. The gate is above the comparison so
+		// one branch of this function cannot be stricter than the other.
+		_, storedIsRecord := freshness.DecodeObject(stored)
+		_, liveIsRecord := freshness.DecodeObject(live.Data)
+		if !storedIsRecord || !liveIsRecord {
+			return harvestRefusal{Why: "kae cannot read the identity records it would compare"}
 		}
 		if identityDiffers(sp, stored, live.Data) {
 			// The one reason that is **positive** evidence rather than missing evidence: the
@@ -1141,6 +1173,9 @@ func dirItemExists(ctx context.Context, sp artifact.Spec) (bool, error) {
 // directory's login can die while every account snapshot kae has looks fine, and
 // nothing said so until the tool refused to start in that directory.
 //
+// What counts as bound comes from boundDirStores, which owns that gate for every
+// report of this shape.
+//
 // It reads live, unlike the snapshot half: up to one store read per bound
 // directory per tool that has a credential kae materializes (claude and codex
 // only, so the fan-out is small). On darwin a claude store read is one
@@ -1155,65 +1190,182 @@ func dirItemExists(ctx context.Context, sp artifact.Spec) (bool, error) {
 // and harvesting belongs where a copy is about to be destroyed, which is the write
 // path. Telling the user is this function's job.
 func (app *App) pinCredentialChecks(ctx context.Context) []adapter.Check {
+	checks := []adapter.Check{}
+	now := app.Now()
+	for _, bound := range app.boundDirStores() {
+		info, ok := app.dirCredentialFreshness(ctx, dirStore{Tool: bound.Tool, Dir: bound.StoreDir})
+		if !ok {
+			continue
+		}
+		switch cred := credentialStateAt(info, now); cred.State {
+		case constants.CredentialStale:
+			checks = append(checks, adapter.Check{
+				Tool: bound.Tool, Code: constants.CheckCredentialStale,
+				Status: constants.StatusWarn,
+				Message: fmt.Sprintf("the %s credential bound to %s is stale: %s; %s",
+					bound.Tool, bound.Dir, staleCredentialReason(info, bound.Tool),
+					pinLoginRemedy(bound.Tool, bound.Dir)),
+			})
+		case constants.CredentialExpiring:
+			checks = append(checks, adapter.Check{
+				Tool: bound.Tool, Code: constants.CheckCredentialExpiring,
+				Status: constants.StatusWarn,
+				Message: fmt.Sprintf("the %s credential bound to %s needs an interactive re-login in %s (%s); %s",
+					bound.Tool, bound.Dir, roundDays(cred.ReloginBy.Sub(now)), utcStamp(cred.ReloginBy),
+					pinLoginRemedy(bound.Tool, bound.Dir)),
+			})
+		}
+	}
+	return checks
+}
+
+// pinIdentityChecks reports a bound directory whose own store names an account
+// other than the one the directory binds — the bound-directory frame of
+// `identity_drift`, which the global check cannot see. That one compares the live
+// state of *this shell* against `state.Active`, and inside a kae-owned isolated
+// home those are different frames: the live identity is the bound directory's while
+// `state.Active` names the global selection, so it skips such a shell entirely
+// (identityDriftChecks). This one reads each bound directory's store by its own
+// path, so it needs no particular cwd and answers about every binding at once.
+//
+// It reports **only what it can prove**: both sides readable and their identifying
+// keys disagreeing, which is exactly dirIdentityConfirms' Conflicting. Every other
+// outcome of that predicate is missing evidence — no identity recorded for the
+// account, no cache in the store, a cache shared with the real tool home, an
+// unreadable snapshot — and staying silent for those is deliberate. A bound
+// directory legitimately has no identity cache until its tool runs there, and one
+// bound before v0.16.0 never had one written; warning on that would fire on healthy
+// directories, which is how the v0.15.0/v0.15.1 freshness warnings became
+// wallpaper. The untracked-snapshot case is not reported here either: it is a
+// property of the account, which the global check already states once at `ok`
+// level, and repeating it per bound directory says nothing new.
+//
+// Needs the secret backend to read the account's recorded identity, so unlike
+// pinCredentialChecks it does not run when the backend is unavailable.
+func (app *App) pinIdentityChecks(ctx context.Context, be secret.Backend) []adapter.Check {
+	checks := []adapter.Check{}
+	for _, bound := range app.boundDirStores() {
+		// The snapshot first, because it is the cheap half: a binding to an account that
+		// is gone is pinChecks' finding, and comparing against a snapshot kae cannot read
+		// proves nothing either way — so neither is worth an adapter resolution.
+		acc, found, err := account.Load(app.Paths.AccountDir(bound.Tool, bound.Account))
+		if err != nil || !found {
+			continue
+		}
+		// ponytail: this is the *second* resolution of the same (tool, store) pair in one
+		// `kae doctor` — pinCredentialChecks already made one through dirCredentialFreshness.
+		// Measured 2026-08-05: on darwin a bound directory that binds codex under
+		// `cli_auth_credentials_store = "auto"` therefore pays two `security` probes per run
+		// instead of one, to rediscover that codex declares no identity artifact. Left as is
+		// because a `doctor` run already makes many, and hoisting the specs into
+		// boundDirStores would make two precise tests of dirCredentialFreshness's own
+		// resolution ("the refusal happens before the keychain is touched", "it reads the
+		// dir-scoped item") assert something weaker. Upgrade path if a run ever feels slow:
+		// resolve once in the walk and hand the specs to both halves.
+		specs, err := app.dirSpecs(ctx, bound.Tool, bound.StoreDir)
+		if err != nil {
+			continue // an unresolvable store is the bind's finding, and pinChecks reports the binding
+		}
+		if refused := dirIdentityConfirms(ctx, be, specs, acc, bound.StoreDir); !refused.Conflicting {
+			continue
+		}
+		checks = append(checks, adapter.Check{
+			Tool: bound.Tool, Code: constants.CheckIdentityDrift, Status: constants.StatusWarn,
+			Message: pinIdentityDriftMessage(bound),
+		})
+	}
+	return checks
+}
+
+// pinIdentityDriftMessage frames a bound directory whose store disagrees with its
+// binding. Two causes produce it and kae cannot tell them apart offline, because
+// the token is opaque: something logged in there as another account (so the
+// credential in that store is that account's too, and the directory is running an
+// account its binding does not name), or kae could not apply the identity when it
+// bound the directory (so the credential is the bound account's and only the label
+// is wrong). Both are stated, because the remedies point in opposite directions and
+// only the user knows which account they meant that directory to run.
+//
+// Neither the live nor the stored identity value appears: an identity is PII, and
+// the tool, account and directory are enough to act on.
+func pinIdentityDriftMessage(bound boundDirStore) string {
+	return fmt.Sprintf(
+		"the %s identity cache in %s names an account other than %s/%s, which that directory binds: "+
+			"either something logged in there as another account — in which case that directory is running "+
+			"an account its binding does not name — or kae could not apply the identity when it bound the "+
+			"directory, and %s displays the wrong account while running the bound one (kae cannot tell "+
+			"those apart offline). To make the binding true again: cd %s && kae pin %s %s, which replaces "+
+			"what is in that store; to keep what is there instead, bind the directory to that account",
+		bound.Tool, bound.Dir, bound.Tool, bound.Account,
+		bound.Tool, bound.Dir, bound.Tool, bound.Account,
+	)
+}
+
+// boundDirStore is one per-directory credential store a bound directory points at
+// **now**: the account its mise fragment binds for one tool, resolved to the store
+// directory that tool reads there.
+type boundDirStore struct {
+	Dir      string // the bound directory itself, which is what a finding names
+	Tool     string
+	Account  string
+	StoreDir string
+}
+
+// boundDirStores lists every live binding a report may speak about, one entry per
+// bound directory × tool. It is the gate every command that says "bound to <dir>"
+// needs, in one place because each consumer that re-derived it has got a piece of it
+// wrong: `pinChecks` has skipped an unpinned directory since it shipped, and the
+// doctor credential sweep shipped its first draft without that gate (AGENTS.md,
+// which also names `kae ls --pins` as a third consumer — deliberately left on its
+// own display-shaped walk rather than folded in here for a listing it already gets
+// right).
+//
+// Silent skips, each for a reason a caller must not second-guess:
+//   - a directory that is **gone**: `pinChecks` reports its orphaned store, and
+//     naming it here too would report one problem as two.
+//   - a fragment that cannot be read: `pinChecks` reports that as well.
+//   - a directory that was `kae unpin`-ed. Its store is kept on purpose so a re-pin
+//     restores the sessions, but nothing there points at it any more, so a finding
+//     would say "bound to" about a directory that is not bound and name a remedy that
+//     lands where nothing reads.
+//   - a tool the fragment does not bind, a mode kae does not recognize
+//     (boundStoreDir), or a store that has never been materialized.
+//
+// The first three **converge** here and are written separately as intent, not because
+// a test can tell them apart: a gone or unpinned directory both end at an empty
+// account map that boundStoreDir answers "not bound" from, and all three arms
+// `continue`. `pinChecks` is where the distinction has consequences — it reports a
+// different finding for each — and AGENTS.md records which guards of this walk are
+// killable, so nobody writes a test that cannot fail. The last one is killable, and
+// only on darwin: a per-directory keychain item outlives its deleted store directory.
+//
+// Tools are walked in canonical order, so a JSON report cannot reorder with a map
+// iteration.
+func (app *App) boundDirStores() []boundDirStore {
 	pins, err := app.pinnedDirs()
 	if err != nil {
 		return nil // pinChecks already reports an unreadable store root; not twice
 	}
-	checks := []adapter.Check{}
-	now := app.Now()
+	stores := []boundDirStore{}
 	for _, pin := range pins {
-		// A directory that is gone is pinChecks' finding (its whole store is
-		// orphaned); the freshness of a credential nothing can reach is moot, and
-		// reporting both would name the same directory twice for one problem.
-		// Decided by the directory, never by a failed read of the fragment inside it
-		// — the same rule pinChecks states, for the same reason.
 		if !dirExists(pin.Dir) {
 			continue
 		}
 		fragment, exists, ferr := readFragmentAt(pin.Dir)
-		switch {
-		case ferr != nil:
-			continue // pinChecks reports an unreadable fragment; not twice
-		case !exists:
-			// Unpinned. `kae unpin` keeps the store on purpose so a re-pin restores
-			// its sessions, but nothing in that directory points at it any more: a
-			// finding here would say "bound to" about a directory that is not, and
-			// name a login that would land somewhere else. pinChecks skips it too.
+		if ferr != nil || !exists {
 			continue
 		}
-		// Canonical tool order, so the report is deterministic — a JSON contract
-		// must not reorder with a map iteration.
 		for _, tool := range constants.Tools {
 			credDir, bound := app.boundStoreDir(pin.PinID, tool, fragment)
 			if !bound || !dirExists(credDir) {
 				continue
 			}
-			store := dirStore{Tool: tool, Dir: credDir}
-			info, ok := app.dirCredentialFreshness(ctx, store)
-			if !ok {
-				continue
-			}
-			switch cred := credentialStateAt(info, now); cred.State {
-			case constants.CredentialStale:
-				checks = append(checks, adapter.Check{
-					Tool: store.Tool, Code: constants.CheckCredentialStale,
-					Status: constants.StatusWarn,
-					Message: fmt.Sprintf("the %s credential bound to %s is stale: %s; %s",
-						store.Tool, pin.Dir, staleCredentialReason(info, store.Tool),
-						pinLoginRemedy(store.Tool, pin.Dir)),
-				})
-			case constants.CredentialExpiring:
-				checks = append(checks, adapter.Check{
-					Tool: store.Tool, Code: constants.CheckCredentialExpiring,
-					Status: constants.StatusWarn,
-					Message: fmt.Sprintf("the %s credential bound to %s needs an interactive re-login in %s (%s); %s",
-						store.Tool, pin.Dir, roundDays(cred.ReloginBy.Sub(now)), utcStamp(cred.ReloginBy),
-						pinLoginRemedy(store.Tool, pin.Dir)),
-				})
-			}
+			stores = append(stores, boundDirStore{
+				Dir: pin.Dir, Tool: tool, Account: fragment.Accounts[tool], StoreDir: credDir,
+			})
 		}
 	}
-	return checks
+	return stores
 }
 
 // boundStoreDir returns the store directory tool's credential lives in under the

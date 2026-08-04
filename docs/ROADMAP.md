@@ -372,6 +372,26 @@ alternative exists (`secret-tool`).
   (§ per-directory shared bind, § per-directory isolated bind) is normative for both,
   and a third per-directory mechanism owes the same answer (AGENTS.md).
 
+- **A recorded identity that is not an account record silently disables attribution
+  for that account** (measured 2026-08-05 while reviewing the bound-directory
+  `identity_drift`, **not fixed**). An identity payload that is well-formed JSON but not
+  an object — `/oauthAccount` being `null` is the reachable shape — names no account, so
+  it is refused as missing evidence in both directions ([ADAPTERS.md](ADAPTERS.md)
+  § Per-directory credential store, which is normative). That refusal is right; what is
+  wrong is that nothing tells the user their *recorded* label is unusable, and one bad
+  capture propagates: `writeDirIdentity` applies whatever the snapshot holds, so every
+  bound store of that account gets the non-record too, and each of them is then
+  permanently silent on identity and unharvestable.
+  It is not completely unreported today — the **global** `identity_drift` frame fires for
+  it, because a non-object recorded side against a readable live one falls to the byte
+  comparison and differs — but only while that account is the globally active one. For a
+  non-active account nothing in any frame says so. The fix is a check of kae's own
+  recorded payload rather than of a comparison: `secret_missing` is the nearest existing
+  shape (a snapshot declaring a payload the backend lacks), and this is the same class
+  one step further in — a payload that is there and cannot serve its purpose. Note the
+  refusals must not be relaxed to close it: silence about the *store* is correct when
+  kae's label is broken, so the reporting belongs on the label, not on the comparison.
+
 - **`kae account rename` leaves a bound directory's store under the old name**
   (observed 2026-08-04, **not fixed**). Renaming moves the snapshot and warns about the
   pinned directories, but it does not touch `isolation/<pin-id>/<tool>/isolated/<old>/`
@@ -480,13 +500,23 @@ alternative exists (`secret-tool`).
   (`identityTargetEscapes`) still declines any per-directory identity write resolving
   outside the store, kept as defence in depth for the routes the denylist does not
   cover.
-  **What is left**: `doctor`'s `identity_drift` still skips a kae-owned isolated
-  home, but for the remaining half of the old reason — `state.Active` names the
-  *global* account while the live cache is the *bound* directory's, so the two sides
-  are different frames. There is now something of kae's own to compare against
-  there; doing it means reading the directory's binding and comparing against that
-  snapshot, which belongs next to `pinCredentialChecks` (it already resolves each
-  bound directory's fragment and store for credential health).
+  ~~**What is left**: `doctor`'s `identity_drift` still skips a kae-owned isolated
+  home~~ — **done in v0.17.0** (`pinIdentityChecks`; see [RELEASE.md](RELEASE.md)).
+  The global check still skips such a shell, and keeps doing so for the remaining
+  half of the old reason: `state.Active` names the *global* account while the live
+  cache is the *bound* directory's, so those two sides are different frames. The
+  bound frame is now its own pass, reading each directory's binding and comparing
+  against **that** snapshot, beside `pinCredentialChecks` as this entry said it
+  should — both now share one walk of the live bindings (`boundDirStores`).
+  What the pass reports is narrower than "they differ", and deliberately: only a
+  divergence it can **prove** (both sides readable, `IdentityKeys` disagreeing —
+  `dirIdentityConfirms`' `Conflicting`). Every missing-evidence outcome stays
+  silent, because a bound directory legitimately has no identity cache until its
+  tool runs there and one bound before v0.16.0 never had one written, so warning on
+  those would fire on healthy directories — the mistake v0.15.0/v0.15.1 made in both
+  directions. The two causes it cannot separate offline (a login made inside the
+  directory versus an identity kae failed to apply) are both stated in the message,
+  since their remedies point opposite ways; [CLI.md](CLI.md) § doctor is normative.
 - **A directory-scoped keychain item keeps a stale account attribute**: `ApplyLive`
   reuses an existing item's account attribute so a re-login that changed it is
   honored, which is right for the single global item but not for a per-directory

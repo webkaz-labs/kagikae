@@ -1207,16 +1207,46 @@ cred MAIN-NEW $NEW > "$(store)/.credentials.json"
 snap main | grep MAIN-NEW               # assert: main's login survived the re-bind
 snap side | grep -c MAIN-NEW            # assert: 0 — it was not filed under side
 grep SIDE-OLD "$(store)/.credentials.json"   # assert: the store now runs side
+
+# --- F. doctor reports a store that names an account other than the binding ---
+# Independent of A–E; it needs only a captured account with a recorded identity.
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+G="$HOME/drift"; mkdir -p "$G"; cd "$G"
+/tmp/kae pin main
+grep u-main "$(store)/.claude.json"     # assert: the bind labelled the store with main.
+                                        #         Positive first, and it is what makes the
+                                        #         two `grep -c` lines below mean anything:
+                                        #         with no cache there the check is silent
+                                        #         for *missing evidence*, so a broken
+                                        #         comparison would read as a pass
+/tmp/kae doctor --json | grep -c identity_drift   # assert: 0 — a store that agrees with
+                                        #         its binding says nothing
+ident other > "$(store)/.claude.json"   # a login inside the directory as another account
+/tmp/kae doctor --json | grep identity_drift      # assert: one warn, naming this
+                                        #         directory and claude/main, with both
+                                        #         causes and the re-bind remedy
+/tmp/kae doctor --json | grep -c 'u-other\|other@example.com'   # assert: 0 — an identity
+                                        #         is PII and never reaches the report
+rm "$(store)/.claude.json"
+/tmp/kae doctor --json | grep -c identity_drift   # assert: 0 — no cache in the store is
+                                        #         missing evidence, not drift (the
+                                        #         ordinary state until the tool runs
+                                        #         there, and permanent for a directory
+                                        #         bound before v0.16.0)
 ```
 
-Two lines here exit non-zero **on purpose** (`grep -c` printing `0` is the assertion),
-so paste the block as-is rather than under `set -e`, or add `|| true` to those two.
+Several lines here exit non-zero **on purpose** (`grep -c` printing `0` is the
+assertion), so paste the block as-is rather than under `set -e`, or add `|| true` to
+those.
 
-**PASSED 2026-08-04** on the pre-release binary, each assertion checked at its own
+**A–E PASSED 2026-08-04** on the pre-release binary, each assertion checked at its own
 point. D and E are the two cases a *chokepoint-only* harvest got wrong, so they are
 the ones worth re-running after any change to `kae pin`'s ordering: both depend on the
 pin-level pass running **before** the stores are materialized, and E additionally on
 the replaced fragment being read before it is rewritten.
+**F PASSED 2026-08-04** (darwin, file driver, temp HOME, pre-release binary), run as
+written, all four assertions checked at their own points.
 
 Three of these assertions were **corrected after first passing**, which is the argument
 for reading a block adversarially rather than trusting a green run: B reused A's
@@ -1254,7 +1284,9 @@ firing as a new upstream change.
 Two offline `doctor` checks watch the table between releases:
 
 - `identity_drift` — a tool's identity-only artifact no longer matches what kae
-  applied for the active account. Catches an assumption that has *already* broken.
+  applied: for the active account, and (since v0.17.0) for a bound directory's own
+  store against the account its fragment binds. Catches an assumption that has
+  *already* broken.
 - `upstream_version` — the installed tool is a newer major/minor than the
   `VerifiedVersion()` its adapter declares. Flags the release where one *could*
   have broken, before it costs a wrong-account session. Patch bumps stay silent,
@@ -1701,12 +1733,14 @@ Every gate run and recorded by exit code, never through a pipe:
   HOME with every XDG root isolated (`. scripts/smoke-env.sh`), the repositories
   and worktrees created *inside* that HOME. Each assertion checked at its own point
   in the block rather than from the end state: **12 of 12**.
-- **Not in this run: § "v0.17.0 surface — the credential harvest"** (A–E). It was
+- **Not in this run: § "v0.17.0 surface — the credential harvest"** (A–F). A–E were
   written and run later, against a pre-release binary on its own temp HOME, and every
   assertion held — but on a tree earlier than the final one, so it is part of what has
   to be repeated. Two of its assertions had been passing for the wrong reason before
   that run corrected them, which is the argument for re-running rather than trusting
-  the record.
+  the record. **F** (the bound-directory `identity_drift`) was added and run later
+  still, on the tree that introduced the check — so it too is on a tree earlier than
+  the final one.
 - Deliberately **not** run, and recorded as such: no real-machine `kae pin`, and
   the operator's installed binary was not replaced. The per-worktree behaviour is
   covered by real `git` in a temp HOME plus a test that builds a repository and a

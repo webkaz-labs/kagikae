@@ -756,13 +756,23 @@ thing that writes it — plus the identity cache that names it — for all four:
   fully-formed payload, so presence proves nothing. A copy kae cannot *attribute* is
   not harvested: the identity cache beside the credential must be readable, inside
   that store, and name the account being harvested into, and **absence is not
-  agreement** — no recorded identity, no live cache, an unreadable one, a path kae
+  agreement** — no recorded identity, no live cache, an unreadable one, one that is
+  well-formed JSON but not an account record (`null`, a string, a number, an array:
+  it names no account, so neither a difference from it nor a match with it is
+  evidence, and the rule applies to the **recorded** side as much as the live one), a
+  path kae
   could not resolve, or a target that resolves outside the store (a pre-v0.16.0 bind
   linked it to the real home, so it labels *that*) all refuse. This matters most for a `-s` store, which is shared
   by every account the directory ever bound: its credential can legitimately belong
   to another account, and filing that under this one's name is undetectable
   afterwards — the token is opaque, so live, snapshot and doctor would all agree on a
-  label that is simply wrong;
+  label that is simply wrong. That attribution answer has a **second reader**:
+  `kae doctor` reports the one refusal that is *positive* evidence — the store's
+  identity naming a different account — as `identity_drift` for that bound directory
+  (docs/CLI.md § doctor). It is one predicate, so what the harvest may act on and what
+  doctor may report cannot drift apart; and doctor reports **only** that branch,
+  because every other refusal above is missing evidence and would fire on healthy
+  directories;
 - the snapshot's payload **shape** must match the artifact being written.
   `KindFile` and `KindKeychain` hold a whole document, `KindJSONPointer` holds only
   the value under its pointer, and the two are not interchangeable: applying a

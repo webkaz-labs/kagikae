@@ -262,8 +262,10 @@ directories they just invalidated instead of leaving them dangling, and
 `kae doctor` reports a bound directory that has been deleted or that binds an
 account you no longer have — and, since a bound directory keeps its own copy of
 the credential which the tool refreshes in place, one whose login has expired or is
-about to, telling you to log in inside that directory. `kae doctor` reports binding
-health and,
+about to, telling you to log in inside that directory. It also reports a bound
+directory whose store names a *different* account than the one it binds, which
+usually means something logged in inside that directory. `kae doctor` reports
+binding health and,
 inside a pinned directory, flags when the identity git would actually commit
 with has drifted from the binding — a stray `git config --local` or an inactive
 pin — the silent wrong-author commit this exists to prevent. With `--yes` (or

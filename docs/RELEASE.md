@@ -37,8 +37,9 @@ because claude's refresh token turns out to rotate single-use.
 Baseline: v0.16.0. `schema_version` stays `1`. **Behaviour changes**: where
 `kae pin` writes its ignore rule; a bind or a superseded-credential sweep now
 harvests a newer credential from the store it is about to overwrite or delete, and
-declines to delete one it could not preserve. Plus one contract-additive view
-(`kae ls --pins`); the rest is documentation.
+declines to delete one it could not preserve. Plus two contract-additive surfaces —
+the `kae ls --pins` view, and `doctor`'s existing `identity_drift` code reported for
+a bound directory's own store; the rest is documentation.
 
 - **`kae pin` records its ignore rule in the repository's exclude file, not in a
   tracked `./.gitignore`** (behaviour change). Up to v0.16.0 every `kae pin` appended
@@ -192,6 +193,63 @@ declines to delete one it could not preserve. Plus one contract-additive view
   of the credential can fix that ([ROADMAP.md](ROADMAP.md)). Nor do the freshness
   surfaces improve: `refreshTokenExpiresAt` does not move when a copy is
   invalidated, and no offline check can see that it was.
+
+- **`kae doctor` reports a bound directory that is running an account its binding
+  does not name** (contract-additive: an existing check code, `identity_drift`, in a
+  frame it never covered). The check has always compared a tool's live identity
+  against what kae applied — and always skipped a kae-owned isolated home, because
+  `state.Active` names the *global* account while the live cache there is the *bound
+  directory's*, so the two sides are different frames. Since v0.16.0 a bind writes
+  the identity into the store, so there is something of kae's own to compare against
+  in that frame; nothing was.
+
+  The new pass reads each bound directory's store **by its own path**, so one
+  `kae doctor` answers for every binding rather than only the shell you are standing
+  in. It reuses the harvest's attribution predicate rather than a second copy of it,
+  and takes only that predicate's *proof* branch: both sides readable **as account
+  records** and their `IdentityKeys` disagreeing. Every missing-evidence outcome stays
+  silent — no identity recorded for the bound account, no cache in the store yet, a
+  cache shared with the real tool home, an unreadable snapshot, and a payload that is
+  valid JSON but not an object, which review caught reaching the proof branch: the
+  keyed comparison falls back to bytes when it cannot read either side, and a payload
+  naming no account is not evidence of another one.
+
+  That last one applies to the **recorded** side as much as the live one, and in both
+  directions, which also changes the harvest sharing the predicate: two such payloads
+  used to *confirm* a store on the strength of agreeing about nothing, and a shared
+  store re-bound between two accounts that both recorded one would have had the
+  previous account's token filed under the new name — the undetectable misattribution
+  the attribution guard exists to prevent. Refusing costs the opposite way, and
+  loudly: the bind then overwrites a newer copy it declined to preserve, naming the
+  reason and the login that fixes it, while the superseded-credential sweep **keeps** an
+  item it would previously have harvested and swept — a leftover secret rather than a
+  login destroyed by a cleanup. A destroyed login the user is told about is the lesser
+  of the two, which is the same trade every refusal in this mechanism makes.
+  What nothing yet reports is the state underneath it — a recorded identity kae cannot
+  read at all ([ROADMAP.md](ROADMAP.md)).
+
+  The restraint is the point elsewhere too: a
+  bound directory legitimately has no identity cache until its tool runs there, and
+  one bound before v0.16.0 never had one written, so an unconditional warning would
+  fire on healthy directories and become wallpaper — which is the mistake
+  v0.15.0/v0.15.1 made in both directions.
+
+  What the message says is shaped by what kae **cannot** know offline. The token is
+  opaque, so a store whose identity disagrees with its binding is either a login made
+  inside the directory (in which case the credential there is that other account's
+  too, and the directory is genuinely running an account its binding does not name)
+  or an identity kae failed to apply when it bound the directory (in which case only
+  the label is wrong). Both are stated, because the remedies point opposite ways and
+  only the user knows which account that directory was meant to run. Neither
+  identity value appears: an identity is PII.
+
+  One gate differs from the rest of the bound-directory family, and deliberately.
+  `pin_stale` and the bound credential checks need no secret backend and run even
+  when it is unavailable — which is exactly when someone is diagnosing. This one has
+  to read the account's *recorded* identity, so it is skipped there instead of
+  reporting a comparison it could not make. The walk that decides what is bound is
+  now shared with the credential checks (the fragment, never the store tree), so a
+  future consumer inherits the gate rather than re-deriving it.
 
 ---
 

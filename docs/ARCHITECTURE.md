@@ -106,8 +106,10 @@ Such a spec also declares `IdentityKeys`: the payload keys that actually name th
 account. An identity payload carries volatile bookkeeping the tool rewrites on its
 own schedule (claude renews `/oauthAccount.profileFetchedAt` on every profile
 refetch), so "is the live identity still the one kae applied?" is answered on
-those keys alone — `identityDiffers` in `internal/cmd`, used by both
-`doctor identity_drift` and the switch-away recapture. Comparing whole payloads
+those keys alone — `identityDiffers` in `internal/cmd`. Known readers, **not a closed
+set**: `doctor identity_drift` (both frames — the active account's live state, and a
+bound directory's own store), the switch-away recapture, and the per-directory
+harvest's attribution guard. Comparing whole payloads
 made a correct switch look like drift a day later. Credentials keep the strict
 byte comparison (`snapshotArtifactDiffers`): one differing bit there is a
 different credential.

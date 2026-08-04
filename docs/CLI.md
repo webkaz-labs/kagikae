@@ -949,6 +949,12 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`,
 `active_orphan`.
 
+A `(tool, code)` pair is **not** unique in one report: a code is emitted per subject,
+and several subjects can share a tool. `credential_stale` is reported once per account
+snapshot and once per bound directory, and `identity_drift` once for the active
+account's live state and once per bound directory whose store disagrees with its
+binding. Consumers must read the list, not index it by code.
+
 Credential-health checks (warn-level):
 - `credential_stale`: a captured snapshot cannot open a session again without an
   interactive re-login — its access token expired and no **usable** refresh token
@@ -1084,6 +1090,10 @@ first signal was the tool refusing to start in that directory.
   non-arbitrary rule says which of them the single global snapshot should take —
   and a directory not visited in weeks would overwrite a newer global one. See
   docs/ROADMAP.md.
+- The identity half of the same binding is reported under **`identity_drift`**, not
+  here — a store whose identity names an account other than the one the directory
+  binds. It shares the gate above (the fragment decides what is bound) but not the
+  backend one: see `identity_drift` below.
 
 Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
 <tool>`):
@@ -1101,8 +1111,33 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   it drifts again. The identity value itself is never printed (it is PII);
   the message names only the tool, account, and artifact. Skipped when the tool
   has no active account, and inside a kae-owned isolated home (`kae pin`,
-  `kae use -i`) — the per-directory materializers never apply an identity there,
-  so there is nothing kae wrote to compare against (docs/ROADMAP.md).
+  `kae use -i`) — there the live identity is the **bound directory's** while
+  `state.Active` names the **global** account, so the two sides are different
+  frames and comparing them would warn on every pinned directory whose binding is
+  not also the global selection, which is the normal case. (Not because kae writes
+  no identity there: it has since v0.16.0. That frame is a separate check, below.)
+
+  **The bound-directory frame** of the same code, reported unfiltered with the rest
+  of the bound-directory checks: a bound directory whose *own store* holds an
+  identity naming an account other than the one its fragment binds. Read by store
+  path rather than from the current shell, so one run answers for every binding. It
+  reports **only what it can prove** — both sides readable *as account records* and
+  their `IdentityKeys` disagreeing. Everything else is missing evidence and stays
+  silent: no identity recorded for the bound account, no cache in the store yet
+  (ordinary until the tool runs there, and permanent for a directory bound before
+  v0.16.0), a cache shared with the real tool home, an unreadable snapshot, or a
+  payload that is well-formed JSON but not an object (`null`, a string, a number, an
+  array) — that one names no account at all, so a difference from it is not evidence
+  of another account. Warning on any of those would fire on healthy directories. The message states both causes, because kae cannot tell them
+  apart offline — the token is opaque — and they point opposite ways: something
+  logged in there as another account (so that directory is *running* an account its
+  binding does not name), or kae could not apply the identity when it bound the
+  directory (so only the label is wrong). Remedy `cd <dir> && kae pin <tool>
+  <account>` makes the binding true again and replaces what is in the store; keeping
+  what is there means binding the directory to that account instead. Unlike the
+  other bound-directory checks this one **needs the secret backend**, to read the
+  account's recorded identity, so an unavailable backend skips it while the bound
+  credential checks still run.
 
   When the active account's snapshot has **no** identity recorded yet (captured
   before kae switched it), the same code reports it at **`ok`** level instead: not

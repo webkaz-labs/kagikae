@@ -1538,10 +1538,17 @@ never appears in `kae companion list` text/JSON).
 
 ## Release Acceptance Log
 
-### v0.17.0 (2026-08-04, macOS darwin 24.6.0, git 2.55.0)
+### v0.17.0 — partial run, **must be repeated before the tag** (2026-08-04, macOS darwin 24.6.0, git 2.55.0)
 
-Per-worktree exclude file, `kae ls --pins`, and the tool tiers. Every gate run and
-recorded by exit code, never through a pipe:
+⚠️ **This is not a completed acceptance run.** It covers the tree at `40fa804`
+(per-worktree exclude file, `kae ls --pins`, the tool tiers). v0.17.0 was then
+widened to also carry two bound-directory items (`identity_drift` for bound
+directories, and link retraction), so **every line below has to be re-run on the
+final tree** before the tag — a green run on a smaller tree proves nothing about
+the larger one. Kept because the measurements are real and the codex
+re-verification below is not affected by later commits.
+
+Every gate run and recorded by exit code, never through a pipe:
 
 - `mise run check` **0**, `git diff --check` clean, `mise run goreleaser-check`
   **0**, `mise run audit` **0** — govulncheck reachable **0**, and the upstream

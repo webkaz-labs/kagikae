@@ -36,11 +36,16 @@ func backupRecord(meta backup.Meta, tool, name string) (backup.ArtifactRecord, b
 	return backup.ArtifactRecord{}, false
 }
 
-// recordedCredential is what a backup holds for one tool's credential, in the three
-// states the restore paths have to tell apart. Two booleans rather than one, because
-// the two callers want **opposite** things from a payload that is there but dead, and
-// collapsing them into a single "usable" gate silenced the worse of the two cases
-// (review finding, 2026-08-05).
+// recordedCredential is what a backup holds for one tool's credential, in the states
+// the two restore paths have to tell apart — because they want **opposite** things from
+// a payload that is there but dead, and one shared "usable" gate silenced the worse of
+// the two cases (review finding, 2026-08-05).
+//
+// Orderable is a method rather than a second field on purpose. As a field, the fourth
+// combination — not present yet orderable — was unrepresentable only because the one
+// constructor below happened to be careful, which is the shape that rots: a second
+// constructor, or one more branch in this one, could set it without Present and nothing
+// would notice. Derived, "orderable implies present" is a property of the type.
 type recordedCredential struct {
 	Info freshness.Info
 	// Present is false when the backup has no readable credential record for this tool:
@@ -49,19 +54,20 @@ type recordedCredential struct {
 	// `run -s` restores the absence and `kae rollback` removes the credential, both of
 	// which are what the backup says.
 	Present bool
-	// Orderable is false when the payload is there but cannot take part in an ordering
-	// (see orderable). `run -s` must not skip the restore on one of these: a copy with
-	// no comparable deadline is "superseded" by any live login, which would leave the
-	// account it applied temporarily in the real home forever. `kae rollback` still has
-	// something to say, but not in the same words — a dead copy is not *older* than the
-	// live one, it never worked, and the remedy pointer is the part that matters.
-	Orderable bool
 }
 
+// Orderable reports whether the recorded copy can take part in an ordering at all.
+//
+// `run -s` must not skip its restore on a copy that cannot: one with no comparable
+// deadline is "superseded" by any live login, which would leave the account it applied
+// temporarily in the real home forever. `kae rollback` still has something to say about
+// one, but not in the same words — a dead copy is not *older* than the live one, it
+// never worked, and only the remedy pointer carries over.
+func (r recordedCredential) Orderable() bool { return r.Present && orderable(r.Info) }
+
 // readRecordedCredential reads what meta recorded for tool's credential. Known ways to
-// come back not-Present or not-Orderable are listed on those fields and are **not a
-// closed set**, which is why each is a property of the payload rather than a list of
-// causes.
+// come back not-Present or not-Orderable are on those two, and are **not a closed
+// set** — each is a property of the payload rather than a list of causes.
 //
 // The `err != nil` arm converges with `!found` and cannot be killed on its own: every
 // backend that fails a read reports the payload as absent, so no fixture can reach the
@@ -76,8 +82,7 @@ func readRecordedCredential(ctx context.Context, be secret.Backend, meta backup.
 	if err != nil || !found {
 		return recordedCredential{}
 	}
-	info := freshnessOf(tool, data)
-	return recordedCredential{Info: info, Present: true, Orderable: orderable(info)}
+	return recordedCredential{Info: freshnessOf(tool, data), Present: true}
 }
 
 // liveLoginMatchesBackup reports whether the identity live now is the same account
@@ -176,7 +181,7 @@ func (app *App) restoreWouldKillNewerLogin(ctx context.Context, be secret.Backen
 	// any live login, and skipping on that would leave the account this run applied
 	// temporarily in the real home for good.
 	recorded := readRecordedCredential(ctx, be, meta, plan.Tool)
-	if !recorded.Orderable {
+	if !recorded.Orderable() {
 		return false
 	}
 	sp, ok := specByName(plan.Specs, credentialArtifactName(plan.Tool))
@@ -258,7 +263,7 @@ func (app *App) warnRestoringSupersededCredential(ctx context.Context, be secret
 		// a message about the wrong tool detectable.
 		cause := fmt.Sprintf("recorded an older %s credential for %s/%s than the one in %s",
 			tool, tool, accountName, where)
-		if !recorded.Orderable {
+		if !recorded.Orderable() {
 			cause = fmt.Sprintf("recorded a %s credential for %s/%s that cannot log in, while %s holds a usable one",
 				tool, tool, accountName, where)
 		}

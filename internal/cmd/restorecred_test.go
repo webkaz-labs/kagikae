@@ -628,10 +628,10 @@ func TestReadRecordedCredentialRefusesAnErroringBackend(t *testing.T) {
 
 	// Positive first: through a working backend the same backup reads as both present and
 	// orderable, so a false below cannot come from the fixture being wrong.
-	if rec := readRecordedCredential(ctx, testBackend(t, app), meta, constants.ToolClaude); !rec.Present || !rec.Orderable {
+	if rec := readRecordedCredential(ctx, testBackend(t, app), meta, constants.ToolClaude); !rec.Present || !rec.Orderable() {
 		t.Fatalf("the backup must record an orderable credential for this test to mean anything: %+v", rec)
 	}
-	if rec := readRecordedCredential(ctx, erroringBackend{}, meta, constants.ToolClaude); rec.Present || rec.Orderable {
+	if rec := readRecordedCredential(ctx, erroringBackend{}, meta, constants.ToolClaude); rec.Present || rec.Orderable() {
 		t.Fatalf("a payload kae could not read is not a credential worth comparing: %+v", rec)
 	}
 }

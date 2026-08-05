@@ -570,6 +570,13 @@ func supersedes(a, b freshness.Info) bool {
 // and parses a non-numeric one to the zero time, so a payload whose `expiresAt` changed
 // type upstream — the shape an upstream format change actually takes — is `Known`,
 // un-`Revoked` and undated at once.
+//
+// What it does **not** and cannot check is that the deadline is *meaningful*. The zero
+// value is the only implausible one it can name; a small positive number — what the same
+// field would hold if upstream moved from an absolute epoch to a relative duration —
+// passes here and orders arbitrarily. That is a unit assumption, not a predicate, so it
+// lives where assumptions are re-measured (docs/VALIDATION.md § Upstream Behaviour
+// Assumptions, the claude row on `expiresAt`) rather than as a guessed floor here.
 func orderable(info freshness.Info) bool {
 	return info.Known && !info.Revoked && !info.ExpiresAt.IsZero()
 }

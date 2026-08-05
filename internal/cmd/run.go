@@ -411,13 +411,37 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 		}
 	}
 
-	if err := app.applyBackup(ctx, be, meta, nil, false); err != nil {
+	// The restore below puts the pre-child copy of each tool's credential back. When
+	// the target was already the active account that copy is the *same* login the
+	// child just refreshed, and for a tool whose refresh token rotates single-use
+	// writing it back is a logout, not a regression (restoreWouldKillNewerLogin).
+	// Leave those tools alone: the live store already holds this account's newest
+	// copy, which is what "restore the previous state" means here. Warned before the
+	// write it replaces, as every warning on this path is.
+	//
+	// meta was created from these same plans, so restoring all of them is the same
+	// thing the previous nil argument meant.
+	restore := make(map[string]bool, len(plans))
+	for _, plan := range plans {
+		if app.restoreWouldKillNewerLogin(ctx, be, meta, plan) {
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: %s refreshed its credential during the run and %s/%s was already the active "+
+					"account, so restoring backup %s would put back a copy %s can no longer refresh; leaving "+
+					"the live %s credential as the child left it\n",
+				plan.Tool, plan.Tool, plan.Account, meta.ID, plan.Tool, plan.Tool)
+			continue
+		}
+		restore[plan.Tool] = true
+	}
+	if err := app.applyBackup(ctx, be, meta, restore, false); err != nil {
 		return 0, errf(exitOf(err),
 			"child finished but restoring the previous auth state failed: %v; run: kae rollback --to %s",
 			err, meta.ID)
 	}
 	app.pruneBackups(ctx, be)
-	fmt.Fprintf(os.Stderr, "kae: previous auth state restored (backup %s)\n", meta.ID)
+	if len(restore) > 0 {
+		fmt.Fprintf(os.Stderr, "kae: previous auth state restored (backup %s)\n", meta.ID)
+	}
 
 	if runErr != nil && !errors.Is(runErr, context.Canceled) {
 		return childCode, fmt.Errorf("run %s: %w", childCmd[0], runErr)

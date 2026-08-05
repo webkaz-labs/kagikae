@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -298,12 +297,12 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 	}
 	// A snapshot kae cannot read, or one that is itself a tombstone, loses to any
 	// usable live copy: it has no deadline worth comparing, and writing it over a
-	// working credential is the destruction this function exists to stop.
-	cutoff := time.Time{}
-	if stored := freshnessOf(tool, snapshot); stored.Known && !stored.Revoked {
-		cutoff = stored.ExpiresAt
-	}
-	if !liveInfo.ExpiresAt.After(cutoff) {
+	// working credential is the destruction this function exists to stop. The
+	// live-side guard supersedes applies is redundant *here* — readLiveCredential
+	// already refused a payload that is unknown, revoked or undated — and it lives
+	// there rather than being split between the two, so a caller whose live read is
+	// not that one (the backup-restore paths) cannot get it wrong.
+	if !supersedes(liveInfo, freshnessOf(tool, snapshot)) {
 		return snapshot, true, harvestRefusal{}
 	}
 	if refused := dirIdentityConfirms(ctx, be, specs, acc, credDir); refused.Why != "" {

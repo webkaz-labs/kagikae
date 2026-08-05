@@ -44,7 +44,6 @@ func TestRunAuthTransaction(t *testing.T) {
 	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
 	mustExit(t, constants.ExitOK, code, out)
 
-	const refreshedToken = "sk-ant-oat01-REFRESHED-cccc"
 	ranChild := false
 	withInteractive(t, func(_ context.Context, extraEnv []string, name string, args ...string) (int, error) {
 		ranChild = true

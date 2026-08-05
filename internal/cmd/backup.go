@@ -207,6 +207,13 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		return nil, err
 	}
 
+	// Said before the write, and never fatal: going back is what the user asked for,
+	// and what kae can add is that the credential it is about to put back may already
+	// be dead — claude's refresh token rotates single-use, so anything that refreshed
+	// that account after this backup was taken left the recorded copy unable to
+	// refresh. Placed after preMeta because one of the two remedies is preMeta itself.
+	app.warnRestoringSupersededCredential(ctx, be, meta, preMeta.ID, current)
+
 	// rollbackTo is one transaction (see its doc comment), so state.json below is
 	// updated only after it returns success. The recovery path restores preMeta
 	// with current=nil: it is a backup created moments ago from today's specs, so

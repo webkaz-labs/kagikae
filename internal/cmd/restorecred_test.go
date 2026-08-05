@@ -10,8 +10,11 @@ import (
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
+	"github.com/webkaz-labs/kagikae/internal/backup"
+	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 const (
@@ -24,6 +27,23 @@ const (
 // copies given one value compare equal, which stops before the ordering guard the
 // test means to exercise — the false pass measured on 2026-08-04.
 func expiryIn(app *App, d time.Duration) time.Time { return app.Now().Add(d) }
+
+// codexAuthAt renders a codex auth.json whose access token carries a known expiry.
+// codex dates a credential from its JWT `exp`, not from a JSON field, which is why
+// this cannot reuse claudeOAuthPayload's shape — the two derivations are per-tool and
+// must never be ported across.
+func codexAuthAt(app *App, d time.Duration) string {
+	return `{"tokens":{"access_token":"` + jwtWithExp(expiryIn(app, d)) +
+		`","refresh_token":"codex-rt"}}`
+}
+
+// codexDeadAuthAt is the same with **no** refresh token, which is what makes a past
+// deadline mean "needs a re-login": with a refresh token and no published refresh
+// expiry, needsRelogin has nothing to judge and answers false however old the access
+// token is. Tests that need to get past that early return must use this one.
+func codexDeadAuthAt(app *App, d time.Duration) string {
+	return `{"tokens":{"access_token":"` + jwtWithExp(expiryIn(app, d)) + `","refresh_token":""}}`
+}
 
 // writeSnapshotPayload replaces what an account's snapshot holds for its credential,
 // which is what a bound-directory harvest or a switch-away recapture leaves there.
@@ -66,8 +86,13 @@ func TestSupersedesOrdersByExpiryAlone(t *testing.T) {
 		{"unreadable b loses", usable(early), freshness.Info{}, true},
 		{"tombstoned b loses", usable(early), freshness.Info{Known: true, Revoked: true, ExpiresAt: late}, true},
 		{"undated b loses", usable(early), freshness.Info{Known: true}, true},
-		// The a-side guard, in all three forms it can degrade in. A tombstone is a
-		// fully-formed payload, so presence proves nothing.
+		// The a-side guard. Only the `Revoked` row is killable, and that is a property
+		// of the arithmetic rather than a gap: the cutoff floor *is* the zero time, so a
+		// zero `ExpiresAt` is never `After` it and the `Known`/`IsZero` rows answer false
+		// with or without their guards (measured 2026-08-05, the same reason the `IsZero`
+		// half is documented as unobservable on readLiveCredential). They are kept as a
+		// statement of the contract, not as assertions that can fail. A tombstone is a
+		// fully-formed payload, so presence proves nothing — that row does the work.
 		{"unreadable a never wins", freshness.Info{}, freshness.Info{}, false},
 		{"tombstoned a never wins", freshness.Info{Known: true, Revoked: true, ExpiresAt: late}, usable(early), false},
 		{"undated a never wins", freshness.Info{Known: true}, freshness.Info{}, false},
@@ -219,40 +244,6 @@ func TestRunSharedRestoresWhenNothingWasRefreshed(t *testing.T) {
 	}
 }
 
-// A backup that recorded a logged-out store is restored as logged out, even though
-// the child's login is strictly "newer": the restore's job there is to take the
-// credential away again, and keeping it would leave run -s having applied an account
-// permanently.
-func TestRunSharedRestoresALoggedOutStore(t *testing.T) {
-	app := testApp(t, nil)
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText}
-	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
-
-	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 2*time.Hour))
-	// main stays the recorded active account while its live credential is gone —
-	// deleted by hand, or by the tool logging out.
-	if err := os.Remove(credsPath); err != nil {
-		t.Fatal(err)
-	}
-	withInteractive(t, func(_ context.Context, _ []string, _ string, _ ...string) (int, error) {
-		writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
-		return 0, nil
-	})
-	code, _, stderr := captureBoth(t, func() int {
-		return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
-	})
-	if code != 0 {
-		t.Fatalf("run failed: %d (%s)", code, stderr)
-	}
-	// The credential is a JSON pointer, so restoring it as absent removes the key and
-	// leaves the file — which is why this asserts on the key rather than the file.
-	live := readFile(t, credsPath)
-	if strings.Contains(live, "claudeAiOauth") || strings.Contains(live, refreshedToken) {
-		t.Fatalf("the logged-out state was not restored: %s", live)
-	}
-}
-
 // The laundering path: `kae rollback` deliberately puts an *older* copy in the live
 // store, and the switch-away recapture used to file it over the snapshot — which by
 // then held the only copy that could still refresh. recaptureWouldDowngrade's
@@ -295,7 +286,11 @@ func TestRollbackWarnsWhenTheSnapshotHoldsALaterCopy(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	captureClaudeAt(t, app, "side", sideToken, expiryIn(app, 2*time.Hour))
+	// side is deliberately *later* than what the backup will record for main. Giving the
+	// two the same deadline made the live candidate lose on a tie, so this test proved
+	// nothing about attribution and the snapshot branch would have been chosen either way
+	// (review finding, measured 2026-08-05).
+	captureClaudeAt(t, app, "side", sideToken, expiryIn(app, 4*time.Hour))
 	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 2*time.Hour))
 	// Backs up the live main login and switches away, so active_before names main.
 	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
@@ -510,6 +505,353 @@ func TestSwitchAwayKeepsAUsableSnapshotOverATombstone(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "needs a re-login while snapshot claude/main still holds a usable one") {
 		t.Fatalf("the refusal must be reported: %q", stderr)
+	}
+}
+
+// A backup that recorded no *usable* credential is restored verbatim, whatever shape
+// the uselessness takes. The restore's job there is to put the real home back the way
+// it was, and keeping the child's login instead would leave run -s having applied an
+// account permanently — the outcome an earlier version produced for two of these three
+// shapes, because a copy with no comparable deadline is "superseded" by any live login
+// (review finding, measured 2026-08-05).
+//
+// All three shapes, not the one that reads worst: the guard is a property of the
+// payload, and measuring only the absent case is what let the other two through.
+// A fresh app per shape, because run -s recaptures whatever the child left into the
+// snapshot and a second command would start from that instead of this setup.
+func TestRunSharedRestoresAStoreWithNoUsableCredential(t *testing.T) {
+	shapes := []struct {
+		name string
+		// live returns the pre-child payload, or "" to delete the credential outright.
+		live func(app *App) string
+	}{
+		{"absent", func(*App) string { return "" }},
+		// Blank tokens: a fully-formed payload with nothing left to authenticate with,
+		// which is what a failed refresh leaves in place.
+		{"tombstone", func(app *App) string {
+			now := app.Now()
+			return fmt.Sprintf(
+				`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%d,"refreshTokenExpiresAt":%d}}`,
+				now.Add(-2*time.Hour).UnixMilli(), now.Add(-time.Hour).UnixMilli(),
+			)
+		}},
+		// A shape the parser does not recognize, which is what an upstream format change
+		// looks like. It carries no deadline, so it must not read as "older than live".
+		{"unparseable", func(*App) string { return `{"claudeAiOauth":{"unrecognized":true}}` }},
+	}
+	for _, shape := range shapes {
+		t.Run(shape.name, func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			opts := commonOpts{Format: formatText}
+			credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+
+			captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 2*time.Hour))
+			// main stays the recorded active account while its live credential is useless.
+			if payload := shape.live(app); payload != "" {
+				writeFile(t, credsPath, payload)
+			} else if err := os.Remove(credsPath); err != nil {
+				t.Fatal(err)
+			}
+			withInteractive(t, func(_ context.Context, _ []string, _ string, _ ...string) (int, error) {
+				writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
+				return 0, nil
+			})
+			code, _, stderr := captureBoth(t, func() int {
+				return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
+			})
+			if code != 0 {
+				t.Fatalf("run failed: %d (%s)", code, stderr)
+			}
+			if !strings.Contains(stderr, "previous auth state restored") {
+				t.Fatalf("the restore must be reported: %q", stderr)
+			}
+			// Positive assertion first would need a shape-specific expectation; what every
+			// shape shares is that the child's token must be gone. The credential is a JSON
+			// pointer, so restoring it as absent removes the key and leaves the file.
+			live := readFile(t, credsPath)
+			if strings.Contains(live, refreshedToken) {
+				t.Fatalf("the child's login was left applied permanently: %s", live)
+			}
+			if shape.name == "absent" && strings.Contains(live, "claudeAiOauth") {
+				t.Fatalf("the logged-out state was not restored: %s", live)
+			}
+		})
+	}
+}
+
+// The backend-read arm of the same guard, which no command-level test can reach: a
+// backend that errors rather than reporting the payload absent. Left unguarded, an
+// errored read would hand the comparison a zero cutoff and skip the restore.
+func TestBackupCredentialFreshnessRefusesAnErroringBackend(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 2*time.Hour))
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	meta, found, err := backup.Latest(app.Paths.BackupsDir())
+	if err != nil || !found {
+		t.Fatalf("no backup was taken: found=%v err=%v", found, err)
+	}
+
+	// Positive first: through a working backend the same backup reads as usable, so a
+	// false below cannot come from the fixture being wrong.
+	if _, usable := backupCredentialFreshness(ctx, testBackend(t, app), meta, constants.ToolClaude); !usable {
+		t.Fatal("the backup must record a usable credential for this test to mean anything")
+	}
+	if _, usable := backupCredentialFreshness(ctx, erroringBackend{}, meta, constants.ToolClaude); usable {
+		t.Fatal("a payload kae could not read is not a credential worth comparing")
+	}
+}
+
+// The skip is per tool, and every other test drives `restore` with a single entry —
+// so nothing pinned that a skipped claude leaves codex's own restore alone. Measured:
+// turning the loop's `continue` into a `break` survived the whole suite without this.
+func TestRunSharedSkipsOnlyTheToolWhoseCredentialWasSuperseded(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	claudeCreds := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+	codexAuth := filepath.Join(app.Env.Home, ".codex", "auth.json")
+	app.Config.Profiles["main"] = config.Profile{Accounts: map[string]string{"claude": "main", "codex": "main"}}
+
+	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 2*time.Hour))
+	seedCodex(t, app, "codex-main-token")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	// Both tools are now captured under `main`; codex was captured last, so re-assert
+	// claude as active too — the profile switch below is what makes both active.
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "all", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	// codex's pre-child state, which the restore must put back untouched.
+	writeFile(t, codexAuth, `{"tokens":{"access_token":"codex-main-token"}}`)
+
+	withInteractive(t, func(_ context.Context, _ []string, _ string, _ ...string) (int, error) {
+		// Only claude refreshes. codex is left as the child found it.
+		writeFile(t, claudeCreds, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
+		writeFile(t, codexAuth, `{"tokens":{"access_token":"codex-CHILD-token"}}`)
+		return 0, nil
+	})
+	code, _, stderr := captureBoth(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "all", "main", []string{"claude"})
+	})
+	if code != 0 {
+		t.Fatalf("run failed: %d (%s)", code, stderr)
+	}
+	if live := readFile(t, claudeCreds); !strings.Contains(live, refreshedToken) {
+		t.Fatalf("claude's refreshed copy was not kept: %s", live)
+	}
+	if got := readFile(t, codexAuth); !strings.Contains(got, "codex-main-token") {
+		t.Fatalf("codex was not restored while claude was skipped: %s", got)
+	}
+	// Something *was* restored, so the line is earned — and it must not be suppressed
+	// just because another tool was skipped.
+	if !strings.Contains(stderr, "previous auth state restored") {
+		t.Fatalf("codex's restore must be reported: %q", stderr)
+	}
+}
+
+// The rollback warning's live branch needs attribution just as much as run -s's skip:
+// a *later* copy in the live store may be a different account's, and naming it as
+// "newer than what this backup recorded for claude/main" would point the user at
+// somebody else's token. Measured: dropping the attribution call survived the suite.
+func TestRollbackIgnoresANewerCopyOfAnotherAccount(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 1*time.Hour))
+	// side is strictly later than what the backup will record for main, so only
+	// attribution — not the ordering — can disqualify it.
+	captureClaudeAt(t, app, "side", sideToken, expiryIn(app, 3*time.Hour))
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	// Now switch away so the backup being rolled back names main while side is live.
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	code, _, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, "") })
+	if code != constants.ExitOK {
+		t.Fatalf("rollback failed: %d (%s)", code, stderr)
+	}
+	if strings.Contains(stderr, "than the one in the live store") {
+		t.Fatalf("another account's copy is not evidence about this one: %q", stderr)
+	}
+}
+
+// The remedy names the *pre-rollback* backup, and only that one: the id of the backup
+// being restored would tell the user to re-run the rollback that just overwrote the
+// copy. Measured: swapping the two ids survived every assertion in the suite.
+func TestRollbackRemedyNamesThePreRollbackBackup(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+
+	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 2*time.Hour))
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	restored, found, err := backup.Latest(app.Paths.BackupsDir())
+	if err != nil || !found {
+		t.Fatalf("no backup to roll back to: found=%v err=%v", found, err)
+	}
+	writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
+
+	code, _, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, restored.ID) })
+	if code != constants.ExitOK {
+		t.Fatalf("rollback failed: %d (%s)", code, stderr)
+	}
+	// The rollback took its own backup of the live state; that is where the newer copy
+	// now is, and its id is the one the remedy has to carry.
+	pre, found, err := backup.Latest(app.Paths.BackupsDir())
+	if err != nil || !found || pre.ID == restored.ID {
+		t.Fatalf("no pre-rollback backup was taken: %+v (restored %s)", pre, restored.ID)
+	}
+	// Matched with the closing paren, because a backup id is a *prefix* of the
+	// collision-suffixed ids minted in the same second: without the delimiter the
+	// negative assertion below matches `…Z-2` while looking for `…Z` and fails a
+	// correct message.
+	if !strings.Contains(stderr, "kae rollback --to "+pre.ID+")") {
+		t.Fatalf("the remedy must name the pre-rollback backup %s: %q", pre.ID, stderr)
+	}
+	if strings.Contains(stderr, "kae rollback --to "+restored.ID+")") {
+		t.Fatalf("naming %s would tell the user to re-run this rollback: %q", restored.ID, stderr)
+	}
+}
+
+// Both halves of the live branch carry weight. The mirror half (live later than the
+// snapshot) is pinned by the two "prefers" tests; this pins the other, where the
+// backup's own copy is the newest of the three and there is nothing to warn about.
+// Reachable by rolling back to an old backup and then to a newer one.
+func TestRollbackIsQuietWhenTheBackupHoldsTheNewestCopy(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+
+	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 3*time.Hour))
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	// recorded (3h) is later than both the live store (2h) and the snapshot (1h).
+	writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 2*time.Hour)))
+	writeSnapshotPayload(t, app, constants.ToolClaude, "main",
+		claudeOAuthPayload(rolledBackToken, expiryIn(app, 1*time.Hour)))
+
+	code, _, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, "") })
+	if code != constants.ExitOK {
+		t.Fatalf("rollback failed: %d (%s)", code, stderr)
+	}
+	if strings.Contains(stderr, "refresh token rotates single-use") {
+		t.Fatalf("the backup holds the newest copy; there is nothing to warn about: %q", stderr)
+	}
+}
+
+// The claim "<tool>'s refresh token rotates single-use" is a measurement, and only
+// claude's has been made. Both restore surfaces are gated on rotatesSingleUse, and the
+// rollback warning's snapshot branch needs no attribution — so without that gate a
+// codex rollback would state an unmeasured fact about codex. Measured: dropping it
+// survived the suite.
+func TestRollbackNeverClaimsRotationForAnUnmeasuredTool(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedCodex(t, app, "codex-main-token")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "codex", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	// A codex credential whose expiry is later than the one the backup recorded. codex
+	// is datable, so the comparison itself would succeed; only the tool gate stops it.
+	writeSnapshotPayload(t, app, constants.ToolCodex, "main", codexAuthAt(app, 3*time.Hour))
+
+	code, _, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, "") })
+	if code != constants.ExitOK {
+		t.Fatalf("rollback failed: %d (%s)", code, stderr)
+	}
+	if strings.Contains(stderr, "rotates single-use") {
+		t.Fatalf("codex's rotation has not been measured; kae must not claim it: %q", stderr)
+	}
+}
+
+// The same rule on the recapture side, and reaching its ordering gate takes more than
+// two stale copies. That gate sits behind an early return taken whenever the live copy
+// does **not** need a re-login, and a codex payload that still carries a refresh token
+// never does, however old its access token is (needsRelogin has no published refresh
+// expiry to judge it by). The first version of this test seeded exactly that and so
+// asserted an absence it could never have observed — measured, the mutation survived it.
+// Both copies must therefore have **no refresh token** and a past deadline.
+func TestSwitchAwayNeverClaimsRotationForAnUnmeasuredTool(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	codexAuth := filepath.Join(app.Env.Home, ".codex", "auth.json")
+
+	seedCodex(t, app, "codex-side-token")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+	seedCodex(t, app, "codex-main-token")
+	code, out = captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	// The snapshot's deadline is later than the live store's, both already past, neither
+	// refreshable — so the usability refusal cannot fire and only the ordering separates
+	// the two, which is the state the tool gate has to answer for.
+	writeSnapshotPayload(t, app, constants.ToolCodex, "main", codexDeadAuthAt(app, -1*time.Hour))
+	writeFile(t, codexAuth, codexDeadAuthAt(app, -3*time.Hour))
+
+	code, _, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "codex", "side") })
+	if code != constants.ExitOK {
+		t.Fatalf("switch failed: %d (%s)", code, stderr)
+	}
+	// Positive: the recapture ran to completion for codex, which is what proves the
+	// ordering refusal was *reached and declined* rather than never visited. With the
+	// tool gate dropped it refuses here instead, leaving the snapshot untouched.
+	snap := snapshotPayload(t, app, testBackend(t, app), constants.ToolCodex, "main")
+	if snap != codexDeadAuthAt(app, -3*time.Hour) {
+		t.Fatalf("codex's snapshot was not recaptured from the live store: %s", snap)
+	}
+	if strings.Contains(stderr, "rotates single-use") {
+		t.Fatalf("codex's rotation has not been measured; kae must not claim it: %q", stderr)
+	}
+}
+
+// A backup taken while nothing was active records a credential but no account to
+// attribute it to, and then there is no chain to compare against: `active_before` is
+// what names it. Without the guard the warning would read "for claude/" and the
+// snapshot lookup would be asked for an account named "". Reachable through the login
+// flow on a fresh state, which backs the live store up before anything is captured;
+// built here with createBackup directly, because that is the fact under test.
+func TestRollbackSaysNothingAboutABackupWithNoActiveAccount(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+
+	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 1*time.Hour))
+	plan, err := app.planTool(ctx, constants.ToolClaude, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The state a login flow on a fresh install backs up against: a live credential, and
+	// nothing recorded as active.
+	meta, err := app.createBackup(ctx, testBackend(t, app), []toolPlan{plan}, state.New(), "login")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.ActiveBefore[constants.ToolClaude] != "" {
+		t.Fatalf("this test needs a backup with no active account: %+v", meta.ActiveBefore)
+	}
+	// A live copy strictly later than the recorded one, so only the missing account name
+	// keeps the comparison from having a sound side.
+	writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
+
+	code, _, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, meta.ID) })
+	if code != constants.ExitOK {
+		t.Fatalf("rollback failed: %d (%s)", code, stderr)
+	}
+	if strings.Contains(stderr, "rotates single-use") {
+		t.Fatalf("nothing names the chain being restored, so nothing may be claimed: %q", stderr)
 	}
 }
 

@@ -171,9 +171,10 @@ block in docs/VALIDATION.md, next to two correct ones.
   backup is not unconditional.** `supersedes` is the only comparator — `expiresAt`,
   guarded `Known && !Revoked && !ExpiresAt.IsZero()` on the side claiming to be newer,
   with the other side degrading to a zero cutoff. A fourth hand-written copy of that
-  cutoff is the drift this file exists for; the three consumers (the harvest, `run -s`,
-  `kae rollback`) share it, and so does the switch-away recapture, which without it
-  launders a rolled-back copy over the snapshot that still worked. What the comparison
+  cutoff is the drift this file exists for. Every consumer shares the one comparator —
+  today the harvest, `run -s`, `kae rollback` and the switch-away recapture, which
+  without it launders a rolled-back copy over the snapshot that still worked; a new one
+  calls `supersedes` rather than re-deriving the cutoff. What the comparison
   never establishes is *whose* login the two copies are, so every consumer owes an
   attribution guard, and **which record it compares against is not interchangeable**:
   `run -s` reads the **backup**, never the account snapshot, because its own recapture

@@ -37,11 +37,28 @@ func backupRecord(meta backup.Meta, tool, name string) (backup.ArtifactRecord, b
 }
 
 // backupCredentialFreshness reads the freshness of the credential meta recorded for
-// tool. found is false when the backup has no credential record for the tool,
-// recorded it as absent, or its payload can no longer be read — three states every
-// caller here treats alike, because none of them is a credential a restore could be
-// handing back to the tool.
-func backupCredentialFreshness(ctx context.Context, be secret.Backend, meta backup.Meta, tool string) (freshness.Info, bool) {
+// tool. usable is false unless the recorded payload is a login this backup could
+// still be handing back — known to the tool's parser, not a tombstone, and readable
+// now. Known ways to get a false: no credential record for the tool, one recorded as
+// absent, a payload gone from or unreadable in the secret store, a shape the parser
+// does not recognize, and a tombstone. **Not a closed set**, which is why the check is
+// a property of the payload rather than a list of causes.
+//
+// The strictness is what keeps the two callers honest, and it was a review finding
+// rather than the first draft. Returning a *readable but dead* copy hands `supersedes`
+// a zero cutoff, so any live login supersedes it — and `run -s` would then skip the
+// restore, leaving the account it applied temporarily in the real home forever. That
+// is the same outcome the absent case exists to prevent (a backup recording no
+// credential is always restored as absent), so "present but dead" must not take the
+// other branch. For `kae rollback` the strictness costs nothing worth having: a
+// tombstone is unambiguously dead however it compares, and framing it as "older than
+// the copy in X" would be a claim about ordering that a tombstone does not support.
+//
+// The `err != nil` arm converges with `!found` and cannot be killed on its own: every
+// backend that fails a read reports the payload as absent, so no fixture can reach the
+// arm alone (measured 2026-08-05). It stays as the statement that an unreadable payload
+// is not a credential, and the behaviour it guards is pinned through the pair.
+func backupCredentialFreshness(ctx context.Context, be secret.Backend, meta backup.Meta, tool string) (info freshness.Info, usable bool) {
 	rec, ok := backupRecord(meta, tool, credentialArtifactName(tool))
 	if !ok || !rec.Present {
 		return freshness.Info{}, false
@@ -50,7 +67,11 @@ func backupCredentialFreshness(ctx context.Context, be secret.Backend, meta back
 	if err != nil || !found {
 		return freshness.Info{}, false
 	}
-	return freshnessOf(tool, data), true
+	recorded := freshnessOf(tool, data)
+	if !recorded.Known || recorded.Revoked {
+		return freshness.Info{}, false
+	}
+	return recorded, true
 }
 
 // liveLoginMatchesBackup reports whether the identity live now is the same account
@@ -145,8 +166,8 @@ func (app *App) restoreWouldKillNewerLogin(ctx context.Context, be secret.Backen
 	if !rotatesSingleUse(plan.Tool) || meta.ActiveBefore[plan.Tool] != plan.Account {
 		return false
 	}
-	recorded, found := backupCredentialFreshness(ctx, be, meta, plan.Tool)
-	if !found {
+	recorded, usable := backupCredentialFreshness(ctx, be, meta, plan.Tool)
+	if !usable {
 		return false
 	}
 	sp, ok := specByName(plan.Specs, credentialArtifactName(plan.Tool))
@@ -204,8 +225,8 @@ func (app *App) warnRestoringSupersededCredential(ctx context.Context, be secret
 		if accountName == "" {
 			continue
 		}
-		recorded, found := backupCredentialFreshness(ctx, be, meta, tool)
-		if !found {
+		recorded, usable := backupCredentialFreshness(ctx, be, meta, tool)
+		if !usable {
 			continue
 		}
 		snap := app.snapshotCredentialFreshness(ctx, be, tool, accountName)

@@ -1268,6 +1268,24 @@ cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.cla
 grep MAIN-OLD "$HOME/.claude/.credentials.json"   # assert: restored. Keeping FOREIGN
                                         #         would leave the real home running one
                                         #         account while kae records another
+snap main | grep FOREIGN                 # assert: FOREIGN — **this is the open defect**,
+                                        #         asserted so the case cannot go green
+                                        #         over it. run -s's own recapture calls
+                                        #         captureSnapshot directly and so applies
+                                        #         neither keepSnapshotIdentity nor the
+                                        #         downgrade refusal, and files whatever
+                                        #         the child left under the target's name
+                                        #         (docs/ROADMAP.md, "run -s's own
+                                        #         recapture goes through neither guard").
+                                        #         Measured 2026-08-05: `kae doctor` does
+                                        #         flag identity_drift for claude/main
+                                        #         afterwards, but its remedy is
+                                        #         `kae use claude main`, which then puts
+                                        #         FOREIGN into the real home. The restore
+                                        #         skip is gated on attribution read from
+                                        #         the **backup** so it does not compound
+                                        #         this; when the recapture is fixed, this
+                                        #         line becomes `grep -c FOREIGN` = 0
 
 # --- I. rollback says the credential it restores is already dead, and restores it ---
 cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
@@ -1275,15 +1293,19 @@ cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.cla
 /tmp/kae use claude main                 # a backup whose active_before is main
 cred MAIN-NEW $NEW > "$HOME/.claude/.credentials.json"   # the tool refreshed in place,
                                         #         with no kae command running
-/tmp/kae rollback
+/tmp/kae rollback; echo "exit=$?"
+#   assert: exit=0 — a warning never moves the exit code. Take it from `kae` itself:
+#           `echo $?` after one of the `grep` assertions below reports *grep's* status
+#           and can never fail, which is how this line was wrong when first written
 #   assert: stderr carries `older claude credential for claude/main than the one in the
 #           live store`, and names `kae rollback --to <the pre-rollback id>` — the live
 #           copy is the one being overwritten, so that backup is the only place left
-#           holding it. NOT `kae use claude main`: the snapshot holds the older copy
+#           holding it. NOT `kae use claude main`: the snapshot holds the older copy.
+#           The id must be the one this rollback just created, not the one it restored;
+#           compare it against `/tmp/kae backup list`
 grep MAIN-OLD "$HOME/.claude/.credentials.json"   # assert: the rollback still happened.
                                         #         Going back is what was asked for; the
                                         #         warning is what kae adds
-echo $?                                 # assert: 0 — a warning never moves the exit code
 
 # --- J. the switch-away recapture declines a live copy the snapshot supersedes ---
 # This is what stops I's rolled-back copy from being laundered over a newer snapshot on
@@ -1309,8 +1331,16 @@ pin-level pass running **before** the stores are materialized, and E additionall
 the replaced fragment being read before it is rewritten.
 **F PASSED 2026-08-04** (darwin, file driver, temp HOME, pre-release binary), run as
 written, all four assertions checked at their own points.
-**G–J NOT YET RUN** (added 2026-08-05 with the two restore paths) — they must be run
-before the tag. G and H are the pair worth re-running after any change to `run -s`'s
+**G–J PASSED 2026-08-05** (darwin, file driver, temp HOME, pre-release binary), every
+documented assertion checked at its own point, and **discriminated against a control**:
+the same G block run against a binary with the skip forced off leaves `MAIN-OLD` live and
+prints "previous auth state restored", so G is not a tautology. Two defects in the block
+itself were found by that run and are fixed above — an `echo $?` that reported *grep's*
+status and so could never fail, and case H going green over a snapshot the run poisons
+(the `snap main | grep FOREIGN` line now states it). **Re-run G–J before the tag**, since
+the block changed after that run.
+
+G and H are the pair worth re-running after any change to `run -s`'s
 post-child sequence, and J after any change to the switch-away recapture. One remedy is
 **not** covered here and is therefore not claimed: the rollback warning's other branch,
 where the newer copy is in the account snapshot and the remedy is `kae use <tool>
@@ -1319,13 +1349,18 @@ not do on the real binary; it is pinned by unit tests instead
 (`TestRollbackWarnsWhenTheSnapshotHoldsALaterCopy`, and the two "prefers" tests that
 pin which of the two candidates wins).
 
-Three of these assertions were **corrected after first passing**, which is the argument
+Five of these assertions were **corrected after first passing**, which is the argument
 for reading a block adversarially rather than trusting a green run: B reused A's
 `expiresAt` and so never reached the attribution guard; C did the same and so proved
 nothing about the tombstone guard (a healthy copy behaves identically at an equal
 deadline); and B's only snapshot check was a `grep -c` for absence, which prints `0`
 — a pass — when `snap()` itself is broken. Each is now dated ahead of the snapshot, or
-paired with a positive assertion.
+paired with a positive assertion. The two from 2026-08-05 are a different shape and
+worth knowing separately: I's exit-code line read `$?` from the **preceding grep**
+rather than from `kae`, so it reported the assertion above it and could not fail; and
+H asserted only the live store, which let it pass over a *snapshot* the same command
+had filed another account's credential into. A block asserts what it names, and the
+thing it does not name is where the defect sits.
 
 ## Upstream Behaviour Assumptions
 

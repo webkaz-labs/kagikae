@@ -393,6 +393,13 @@ const (
 )
 
 // readLiveCredential reads the credential live at sp and classifies it.
+//
+// `liveUsable` is exactly `orderable` (measured 2026-08-05), and the arms below are that
+// predicate split three ways rather than a fourth hand-written copy of it — which is why
+// it does not simply call it. The delete path needs "nothing left to lose" told apart
+// from "kae cannot tell", and collapsing the two into one refusal is killed by the
+// harvest and prune tests. So this is the one place the triple appears in another shape;
+// a caller that only needs the yes/no must use `orderable`.
 func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]byte, freshness.Info, liveCredentialState) {
 	live, err := artifact.ReadLive(ctx, sp)
 	switch {

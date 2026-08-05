@@ -178,7 +178,13 @@ block in docs/VALIDATION.md, next to two correct ones.
   un-`Revoked` and undated at once. That is also why `run -s` restores a dead or undated
   recorded copy instead of skipping — otherwise the account it applied for one child stays
   in the real home for good — while `kae rollback` still reports one, in different words,
-  because a dead copy is not *older* than the live one and only the remedy carries over. A fourth hand-written copy of that
+  because a dead copy is not *older* than the live one and only the remedy carries over.
+  **And "not orderable" is not "dead"** — a third distinction a message must not flatten:
+  a tombstone provably cannot log in, while a payload kae cannot parse may be a working
+  login in a shape kae has not been taught (`liveUnreadable` says exactly that), so the
+  strongest honest claim about one is that kae cannot *compare* it. Flattening the two
+  told a user to undo a rollback that had just restored a credential which was probably
+  fine. A fourth hand-written copy of that
   cutoff is the drift this file exists for. Every consumer shares the one comparator —
   today the harvest, `run -s`, `kae rollback` and the switch-away recapture, which
   without it launders a rolled-back copy over the snapshot that still worked; a new one

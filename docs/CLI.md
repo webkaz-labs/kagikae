@@ -1321,11 +1321,16 @@ and the warning names where the newer copy is, because that decides the remedy: 
 account **snapshot** it survives the rollback untouched, so `kae use <tool> <account>`
 applies it; in the **live store** the rollback overwrites it, so only the pre-rollback
 backup still holds it (`kae rollback --to <that id>`). When both hold a later copy the
-live store wins the message, since that is the one being overwritten. A recorded
-credential kae cannot *order* at all — a tombstone, or one whose `expiresAt` no longer
-parses — is reported in different words ("cannot log in, while … holds a usable one"),
-because it is not older than the live copy, it never worked; the remedy is the same. A
-backup that recorded **no** credential is silent: removing the credential is what that
+live store wins the message, since that is the one being overwritten.
+
+A recorded credential kae cannot *order* at all is reported in different words, and which
+words depends on **why** — the same distinction kae draws for a bound directory's store. A
+**tombstone** provably cannot log in, so kae says so ("cannot log in, while … holds a
+usable one"). A payload kae cannot **parse** — one whose `expiresAt` no longer decodes,
+say — may still be a working login in a shape kae has not been taught, so kae claims only
+that it "cannot compare" the two and that it cannot tell which can still refresh. The
+remedy is the same in every case, because where the other copy is, is what a user acts on.
+A backup that recorded **no** credential is silent: removing the credential is what that
 backup says, and nothing is being handed back. Warning only —
 stderr, no change to the exit code or the JSON report — and claude only, because it is
 the only tool whose rotation has been measured ([ROADMAP.md](ROADMAP.md) § Every

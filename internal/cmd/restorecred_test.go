@@ -717,8 +717,85 @@ func TestRollbackWarnsWhenTheRecordedCredentialCannotLogIn(t *testing.T) {
 	if strings.Contains(stderr, "recorded an older") {
 		t.Fatalf("a tombstone does not support an ordering claim: %q", stderr)
 	}
+	// Nor the cannot-compare wording: a tombstone is provably dead, so kae says so.
+	if strings.Contains(stderr, "cannot compare") {
+		t.Fatalf("a tombstone is not merely unreadable: %q", stderr)
+	}
 	if !strings.Contains(stderr, "the newer copy is left only in backup") {
 		t.Fatalf("the remedy must name the pre-rollback backup: %q", stderr)
+	}
+}
+
+// The other reason a recorded copy cannot be ordered, and it licenses a **weaker**
+// statement: a payload kae cannot parse may well be a working login in a shape kae has
+// not been taught (the same thing liveUnreadable means, and what AGENTS.md says about it).
+// Claiming it "cannot log in" told the user to undo a rollback that had just restored a
+// credential which was probably fine — a review finding, measured 2026-08-05.
+func TestRollbackSaysItCannotCompareAnUnparseableRecordedCredential(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+
+	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 1*time.Hour))
+	// A live access token whose deadline no longer parses: not a tombstone — there is
+	// something to authenticate with — but nothing kae can order it by.
+	writeFile(t, credsPath, `{"claudeAiOauth":{"accessToken":"`+mainToken+
+		`","refreshToken":"rt-x","expiresAt":"1798761600000"}}`)
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
+
+	code, _, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, "") })
+	if code != constants.ExitOK {
+		t.Fatalf("rollback must still happen: %d (%s)", code, stderr)
+	}
+	if !strings.Contains(stderr, "that kae cannot compare with the one in the live store") {
+		t.Fatalf("an unorderable-but-maybe-live copy must be reported as incomparable: %q", stderr)
+	}
+	if !strings.Contains(stderr, "so kae cannot tell which of the two claude can still refresh") {
+		t.Fatalf("the consequence must not be stated as a certainty: %q", stderr)
+	}
+	// kae must not claim the recorded copy is dead, nor that it is older.
+	if strings.Contains(stderr, "cannot log in") || strings.Contains(stderr, "recorded an older") {
+		t.Fatalf("kae cannot parse this copy, so it knows neither of those: %q", stderr)
+	}
+}
+
+// A backup that recorded no credential at all is silent, which docs/CLI.md states
+// outright. Without the guard the message claims something about a credential that does
+// not exist and points the remedy the wrong way; measured 2026-08-05, dropping it
+// survived the whole suite, so the documented silence was unpinned.
+func TestRollbackIsSilentWhenTheBackupRecordedNoCredential(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+
+	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 1*time.Hour))
+	// main stays the recorded active account while its live credential is gone, so the
+	// backup taken by the switch records the artifact as absent.
+	if err := os.Remove(credsPath); err != nil {
+		t.Fatal(err)
+	}
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	// Then a login, in place, with nothing harvesting it — the state that makes every
+	// other branch of this warning fire.
+	writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
+
+	code, _, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, "") })
+	if code != constants.ExitOK {
+		t.Fatalf("rollback failed: %d (%s)", code, stderr)
+	}
+	// Positive control: the rollback ran and took the credential away, which is what the
+	// backup says. So the silence below is a decision, not a function that never ran.
+	live := readFile(t, credsPath)
+	if strings.Contains(live, "claudeAiOauth") {
+		t.Fatalf("the rollback did not remove the credential, so its silence proves nothing: %s", live)
+	}
+	if strings.Contains(stderr, "rotates single-use") {
+		t.Fatalf("nothing was handed back, so nothing may be claimed about it: %q", stderr)
 	}
 }
 

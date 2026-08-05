@@ -256,27 +256,49 @@ func (app *App) warnRestoringSupersededCredential(ctx context.Context, be secret
 		default:
 			continue
 		}
-		// Two wordings for one finding, because a copy that cannot be ordered is not
-		// *older* than the live one — it never worked. Saying "older" there would be a
-		// claim about ordering the payload does not support, and the remedy is the half
-		// that matters either way. Both name `for <tool>/<account>`, which is what makes
-		// a message about the wrong tool detectable.
-		cause := fmt.Sprintf("recorded an older %s credential for %s/%s than the one in %s",
-			tool, tool, accountName, where)
-		if !recorded.Orderable() {
+		// Three wordings, because `Orderable()` is false for two reasons that license
+		// very different statements — the same split readLiveCredential draws between
+		// liveNothing and liveUnreadable, and flattening it here was a review finding.
+		//
+		// A **tombstone** provably cannot log in. A payload kae cannot **parse** is the
+		// one docs/AGENTS.md and liveUnreadable both call a possible working login in a
+		// shape kae has not been taught — so all kae knows is that it cannot *compare*
+		// the two, and claiming otherwise sent the user to undo a rollback that had just
+		// restored a credential which was probably fine. The remedy still holds in every
+		// case: it names where the other copy is, which is what a user acts on. Each
+		// wording names `for <tool>/<account>`, so a message about the wrong tool is
+		// detectable.
+		var cause, consequence string
+		switch {
+		case recorded.Orderable():
+			cause = fmt.Sprintf("recorded an older %s credential for %s/%s than the one in %s",
+				tool, tool, accountName, where)
+			consequence = fmt.Sprintf("so this rollback leaves %s without the copy that can still refresh", tool)
+		case recorded.Info.Revoked:
 			cause = fmt.Sprintf("recorded a %s credential for %s/%s that cannot log in, while %s holds a usable one",
 				tool, tool, accountName, where)
+			consequence = fmt.Sprintf("so this rollback leaves %s without the copy that can still refresh", tool)
+		default:
+			cause = fmt.Sprintf("recorded a %s credential for %s/%s that kae cannot compare with the one in %s",
+				tool, tool, accountName, where)
+			consequence = fmt.Sprintf("so kae cannot tell which of the two %s can still refresh", tool)
 		}
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: backup %s %s, and %s's refresh token rotates single-use, so this rollback "+
-				"leaves %s without the copy that can still refresh; %s\n",
-			meta.ID, cause, tool, tool, remedy)
+			"kae: warning: backup %s %s, and %s's refresh token rotates single-use, %s; %s\n",
+			meta.ID, cause, tool, consequence, remedy)
 	}
 }
 
 // snapshotCredentialFreshness reads the freshness of accountName's snapshotted
 // credential. An account that cannot be loaded or read reads as the zero Info, which
 // supersedes treats as having no deadline worth comparing.
+//
+// A snapshot that reads *successfully* but cannot be ordered — a tombstone, or one whose
+// deadline no longer parses — comes back **as it is**, not zeroed. That is safe only
+// because every consumer routes it through `supersedes`, which gates its own newer side
+// on `orderable` and degrades the other side to a zero cutoff either way. A consumer that
+// compared this reading directly (`needsRelogin`, or a "the snapshot is newer" bool of
+// its own) would be the next instance of the subset bug `orderable` exists to prevent.
 func (app *App) snapshotCredentialFreshness(ctx context.Context, be secret.Backend,
 	tool, accountName string,
 ) freshness.Info {

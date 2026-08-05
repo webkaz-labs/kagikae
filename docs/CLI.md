@@ -1121,14 +1121,14 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   of the bound-directory checks: a bound directory whose *own store* holds an
   identity naming an account other than the one its fragment binds. Read by store
   path rather than from the current shell, so one run answers for every binding. It
-  reports **only what it can prove** — both sides readable *as account records* and
-  their `IdentityKeys` disagreeing. Everything else is missing evidence and stays
-  silent: no identity recorded for the bound account, no cache in the store yet
-  (ordinary until the tool runs there, and permanent for a directory bound before
-  v0.16.0), a cache shared with the real tool home, an unreadable snapshot, or a
-  payload that is well-formed JSON but not an object (`null`, a string, a number, an
-  array) — that one names no account at all, so a difference from it is not evidence
-  of another account. Warning on any of those would fire on healthy directories. The message states both causes, because kae cannot tell them
+  reports **only what it can prove**: it reads the same attribution predicate the
+  per-directory harvest uses, and reports only that predicate's positive-evidence
+  answer — both sides readable as account records and their `IdentityKeys`
+  disagreeing. Every other answer is missing evidence and stays silent; docs/ADAPTERS.md
+  § Per-directory credential store is normative for that taxonomy and is not restated
+  here. Restraint is the point rather than a detail: the ordinary states are in that
+  list (a store whose tool has not run there yet, a directory bound before v0.16.0),
+  so warning on them would fire on healthy directories. The message states both causes, because kae cannot tell them
   apart offline — the token is opaque — and they point opposite ways: something
   logged in there as another account (so that directory is *running* an account its
   binding does not name), or kae could not apply the identity when it bound the

@@ -213,18 +213,14 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// does not use a snapshot. It reads the per-directory stores live and needs no
 	// secret backend, so it runs even when the backend is unavailable.
 	if toolFilter == "" {
+		// Walked once for both halves: it is a read of the pin index plus a fragment per
+		// bound directory, and the two must agree on what is bound anyway.
+		stores := app.boundDirStores()
 		report.Checks = append(report.Checks, app.pinChecks()...)
-		report.Checks = append(report.Checks, app.pinCredentialChecks(ctx)...)
-	}
-
-	// ...and the identity half of a live binding: a bound directory whose store names
-	// an account other than the one it binds. Unfiltered with the rest of the pin
-	// family — a binding is a property of the directory, and splitting the family
-	// would report a bound directory's identity under `kae doctor <tool>` while
-	// hiding its credential. Unlike them it needs the backend, to read the account's
-	// recorded identity.
-	if err == nil && toolFilter == "" {
-		report.Checks = append(report.Checks, app.pinIdentityChecks(ctx, be)...)
+		report.Checks = append(report.Checks, app.pinCredentialChecks(ctx, stores)...)
+		if err == nil {
+			report.Checks = append(report.Checks, app.pinIdentityChecks(ctx, be, stores)...)
+		}
 	}
 
 	// companion binding health (config-level). Companions are not tools, so

@@ -1189,10 +1189,10 @@ func dirItemExists(ctx context.Context, sp artifact.Spec) (bool, error) {
 // so the objection was wrong. What remains is that doctor is a read-only report
 // and harvesting belongs where a copy is about to be destroyed, which is the write
 // path. Telling the user is this function's job.
-func (app *App) pinCredentialChecks(ctx context.Context) []adapter.Check {
+func (app *App) pinCredentialChecks(ctx context.Context, stores []boundDirStore) []adapter.Check {
 	checks := []adapter.Check{}
 	now := app.Now()
-	for _, bound := range app.boundDirStores() {
+	for _, bound := range stores {
 		info, ok := app.dirCredentialFreshness(ctx, dirStore{Tool: bound.Tool, Dir: bound.StoreDir})
 		if !ok {
 			continue
@@ -1242,9 +1242,18 @@ func (app *App) pinCredentialChecks(ctx context.Context) []adapter.Check {
 //
 // Needs the secret backend to read the account's recorded identity, so unlike
 // pinCredentialChecks it does not run when the backend is unavailable.
-func (app *App) pinIdentityChecks(ctx context.Context, be secret.Backend) []adapter.Check {
+func (app *App) pinIdentityChecks(ctx context.Context, be secret.Backend, stores []boundDirStore) []adapter.Check {
+	// Several directories can bind one account, and the payload compared against is that
+	// **account's** recorded identity — the same ref for every one of them, so without a
+	// coalescing view of the backend this reads it once per bound directory instead of
+	// once per account (measured: two reads for one account at two directories). This is
+	// the shape credentialHealthChecks already wraps for the same reason. Safe to wrap
+	// here, unlike orphanChecks: this path only ever calls Get, and the capability
+	// secret.Cached does not forward is Enumerator.
+	ctx = secret.WithReadCache(ctx)
+	be = secret.Cached(be)
 	checks := []adapter.Check{}
-	for _, bound := range app.boundDirStores() {
+	for _, bound := range stores {
 		// The snapshot first, because it is the cheap half: a binding to an account that
 		// is gone is pinChecks' finding, and comparing against a snapshot kae cannot read
 		// proves nothing either way — so neither is worth an adapter resolution.

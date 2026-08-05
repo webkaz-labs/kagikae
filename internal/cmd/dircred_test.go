@@ -259,14 +259,18 @@ func claudeOAuthPayload(token string, expiresAt time.Time) string {
 	)
 }
 
-// claudeIdentityFile renders the identity cache claude keeps beside a credential.
-// Its keys match seedClaude's, so a store seeded with the same uuid attributes its
-// credential to that account and a different uuid does not.
+// claudeIdentityFile renders the identity cache claude keeps beside a credential,
+// with the email derived from the uuid — which is what most callers want, because
+// they only need "this account" versus "a different account". Its keys match
+// seedClaude's, so a store seeded with the same uuid attributes its credential to
+// that account and a different uuid does not.
+//
+// One template for the payload, in boundIdentity: two fixtures for one shape drift,
+// and this one had already lost `organizationUuid` — one of the three keys the
+// comparison actually reads (claude's IdentityKeys) — so every test using it was
+// comparing two payloads that agreed by omission on a third of the evidence.
 func claudeIdentityFile(uuid string) string {
-	return fmt.Sprintf(
-		`{"oauthAccount":{"accountUuid":%q,"emailAddress":"%s@example.com"},"projects":{"/repo":{}}}`,
-		uuid, uuid,
-	)
+	return boundIdentity(uuid, uuid+"@example.com")
 }
 
 // captureClaudeAt captures an account whose credential carries a known expiry, so

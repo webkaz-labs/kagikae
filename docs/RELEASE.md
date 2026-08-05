@@ -206,50 +206,38 @@ a bound directory's own store; the rest is documentation.
   The new pass reads each bound directory's store **by its own path**, so one
   `kae doctor` answers for every binding rather than only the shell you are standing
   in. It reuses the harvest's attribution predicate rather than a second copy of it,
-  and takes only that predicate's *proof* branch: both sides readable **as account
-  records** and their `IdentityKeys` disagreeing. Every missing-evidence outcome stays
-  silent — no identity recorded for the bound account, no cache in the store yet, a
-  cache shared with the real tool home, an unreadable snapshot, and a payload that is
-  valid JSON but not an object, which review caught reaching the proof branch: the
-  keyed comparison falls back to bytes when it cannot read either side, and a payload
-  naming no account is not evidence of another one.
+  and reports only that predicate's positive-evidence answer — everything else is
+  missing evidence and stays silent, which is the point rather than a detail: the
+  ordinary states (a store whose tool has not run there yet, a directory bound before
+  v0.16.0) are in that list, so an unconditional warning would fire on healthy
+  directories and become wallpaper, the mistake v0.15.0/v0.15.1 made in both
+  directions. [ADAPTERS.md](ADAPTERS.md) § Per-directory credential store is normative
+  for the predicate and its refusals; [CLI.md](CLI.md) § doctor for the check's
+  contract, message and remedy.
 
-  That last one applies to the **recorded** side as much as the live one, and in both
-  directions, which also changes the harvest sharing the predicate: two such payloads
-  used to *confirm* a store on the strength of agreeing about nothing, and a shared
-  store re-bound between two accounts that both recorded one would have had the
-  previous account's token filed under the new name — the undetectable misattribution
-  the attribution guard exists to prevent. Refusing costs the opposite way, and
-  loudly: the bind then overwrites a newer copy it declined to preserve, naming the
-  reason and the login that fixes it, while the superseded-credential sweep **keeps** an
-  item it would previously have harvested and swept — a leftover secret rather than a
-  login destroyed by a cleanup. A destroyed login the user is told about is the lesser
-  of the two, which is the same trade every refusal in this mechanism makes.
-  What nothing yet reports is the state underneath it — a recorded identity kae cannot
-  read at all ([ROADMAP.md](ROADMAP.md)).
-
-  The restraint is the point elsewhere too: a
-  bound directory legitimately has no identity cache until its tool runs there, and
-  one bound before v0.16.0 never had one written, so an unconditional warning would
-  fire on healthy directories and become wallpaper — which is the mistake
-  v0.15.0/v0.15.1 made in both directions.
-
-  What the message says is shaped by what kae **cannot** know offline. The token is
-  opaque, so a store whose identity disagrees with its binding is either a login made
-  inside the directory (in which case the credential there is that other account's
-  too, and the directory is genuinely running an account its binding does not name)
-  or an identity kae failed to apply when it bound the directory (in which case only
-  the label is wrong). Both are stated, because the remedies point opposite ways and
-  only the user knows which account that directory was meant to run. Neither
-  identity value appears: an identity is PII.
+  **Review changed the predicate, and with it the harvest.** A payload that is valid
+  JSON but not an object was reaching the proof branch: the keyed comparison falls back
+  to bytes when it cannot read either side, so a store naming *no* account was reported
+  as naming another one. The rule now applies to the **recorded** side as much as the
+  live one, and in both directions — which matters most where nobody was looking. Two
+  such payloads used to *confirm* a store on the strength of agreeing about nothing, so
+  a shared store re-bound between two accounts that both recorded one would have had
+  the previous account's token filed under the new name: the undetectable
+  misattribution this guard exists to prevent. Refusing costs the opposite way and
+  loudly — the bind overwrites a newer copy it declined to preserve, naming the reason
+  and the login that fixes it, while the superseded-credential sweep now **keeps** an
+  item it would previously have harvested and swept. A destroyed login the user is told
+  about is the lesser of the two, which is the trade every refusal in this mechanism
+  makes. What nothing yet reports is the state underneath it — a recorded identity kae
+  cannot read at all ([ROADMAP.md](ROADMAP.md)).
 
   One gate differs from the rest of the bound-directory family, and deliberately.
   `pin_stale` and the bound credential checks need no secret backend and run even
   when it is unavailable — which is exactly when someone is diagnosing. This one has
   to read the account's *recorded* identity, so it is skipped there instead of
   reporting a comparison it could not make. The walk that decides what is bound is
-  now shared with the credential checks (the fragment, never the store tree), so a
-  future consumer inherits the gate rather than re-deriving it.
+  now shared with the credential checks — one walk per run, the fragment and never the
+  store tree — so a future consumer inherits the gate rather than re-deriving it.
 
 ---
 

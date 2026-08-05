@@ -152,7 +152,7 @@ func TestHealthyBoundDirectoryCredentialIsSilent(t *testing.T) {
 	ctx := context.Background()
 	pinWithCapturedClaude(t, app, modeShared)
 
-	if checks := app.pinCredentialChecks(ctx); len(checks) != 0 {
+	if checks := app.pinCredentialChecks(ctx, app.boundDirStores()); len(checks) != 0 {
 		t.Fatalf("a healthy bound credential must be silent, got %+v", checks)
 	}
 }
@@ -182,7 +182,7 @@ func TestUnpinnedDirectoryCredentialIsNotReported(t *testing.T) {
 	writeFile(t, credFile,
 		deadClaudeCred)
 
-	if checks := app.pinCredentialChecks(ctx); len(checks) != 0 {
+	if checks := app.pinCredentialChecks(ctx, app.boundDirStores()); len(checks) != 0 {
 		t.Fatalf("an unpinned directory's kept store must stay silent even when stale, got %+v", checks)
 	}
 }
@@ -216,7 +216,7 @@ func TestUnboundToolsStoreInABoundDirectoryIsNotReported(t *testing.T) {
 	writeFile(t, credFile,
 		deadClaudeCred)
 
-	for _, c := range app.pinCredentialChecks(ctx) {
+	for _, c := range app.pinCredentialChecks(ctx, app.boundDirStores()) {
 		if c.Tool == constants.ToolClaude {
 			t.Fatalf("%s no longer binds claude; its leftover store must not be reported: %q", dir, c.Message)
 		}
@@ -237,7 +237,7 @@ func TestDeletedBoundDirectoryCredentialIsNotReportedTwice(t *testing.T) {
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
-	if checks := app.pinCredentialChecks(ctx); len(checks) != 0 {
+	if checks := app.pinCredentialChecks(ctx, app.boundDirStores()); len(checks) != 0 {
 		t.Fatalf("a deleted directory is pinChecks' finding only, got %+v", checks)
 	}
 	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckPinStale); !ok {
@@ -292,14 +292,25 @@ func TestBoundDirectoryCredentialMessageNeverCarriesTheToken(t *testing.T) {
 	}
 }
 
-// boundIdentity is claude's /oauthAccount payload with all three identifying keys
-// present, which is what the keyed comparison (IdentityKeys) needs on both sides.
-// A payload missing them would compare equal for the wrong reason.
+// claudeOAuthAccount is the /oauthAccount object every claude identity fixture in this
+// package is built from: the live cache seedClaude writes, the store-side
+// claudeIdentityFile, and boundIdentity below.
+//
+// One template, because these fixtures are compared **against each other** and the
+// comparison is keyed on claude's IdentityKeys (accountUuid, emailAddress,
+// organizationUuid). Two templates that both omitted `organizationUuid` agreed on it by
+// omission and looked fine; the moment one of them gained the key the pair began
+// reporting a conflict, which is how the coupling was found. A key added upstream now
+// has one place to be added here.
+func claudeOAuthAccount(uuid, email string) string {
+	return fmt.Sprintf(`{"accountUuid":%q,"emailAddress":%q,"organizationUuid":"org-1"}`, uuid, email)
+}
+
+// boundIdentity is the identity cache file a bound directory's store holds, with an
+// email independent of the uuid — which the store-versus-snapshot comparisons need,
+// since they turn on naming a *different* account.
 func boundIdentity(uuid, email string) string {
-	return fmt.Sprintf(
-		`{"oauthAccount":{"accountUuid":%q,"emailAddress":%q,"organizationUuid":"org-1"},"projects":{}}`,
-		uuid, email,
-	)
+	return `{"oauthAccount":` + claudeOAuthAccount(uuid, email) + `,"projects":{}}`
 }
 
 // pinIdentityApp captures claude/main from a login that has an /oauthAccount
@@ -324,7 +335,7 @@ func pinIdentityApp(t *testing.T, mode string) (app *App, dir, identityFile stri
 	if got := readFile(t, identityFile); !strings.Contains(got, "main-uuid") {
 		t.Fatalf("the bind must write the bound account's identity into %s, got %q", identityFile, got)
 	}
-	if checks := app.pinIdentityChecks(context.Background(), testBackend(t, app)); len(checks) != 0 {
+	if checks := app.pinIdentityChecks(context.Background(), testBackend(t, app), app.boundDirStores()); len(checks) != 0 {
 		t.Fatalf("a store whose identity matches its binding must be silent, got %+v", checks)
 	}
 	return app, dir, identityFile
@@ -395,7 +406,7 @@ func TestDoctorReportsEveryDriftedBoundDirectory(t *testing.T) {
 	writeFile(t, firstIdentity, drifted)
 	writeFile(t, secondIdentity, drifted)
 
-	checks := app.pinIdentityChecks(ctx, testBackend(t, app))
+	checks := app.pinIdentityChecks(ctx, testBackend(t, app), app.boundDirStores())
 	named := map[string]bool{}
 	for _, c := range checks {
 		for _, dir := range []string{first, second} {
@@ -428,7 +439,7 @@ func TestIsolatedBoundDirectoryIdentityDriftIsReported(t *testing.T) {
 
 	writeFile(t, identityFile, boundIdentity("side-uuid", "side@example.com"))
 
-	checks := app.pinIdentityChecks(ctx, testBackend(t, app))
+	checks := app.pinIdentityChecks(ctx, testBackend(t, app), app.boundDirStores())
 	if len(checks) != 1 || !strings.Contains(checks[0].Message, dir) {
 		t.Fatalf("an isolated bound directory's drift must be reported too, got %+v", checks)
 	}
@@ -478,7 +489,7 @@ func TestBoundDirectoryIdentityNamesTheAccountTheFragmentBinds(t *testing.T) {
 	// Now the store names main while the fragment binds side.
 	writeFile(t, identityFile, boundIdentity("main-uuid", "you@example.com"))
 
-	checks := app.pinIdentityChecks(ctx, testBackend(t, app))
+	checks := app.pinIdentityChecks(ctx, testBackend(t, app), app.boundDirStores())
 	if len(checks) != 1 {
 		t.Fatalf("expected one finding for the side-bound directory, got %+v", checks)
 	}
@@ -512,7 +523,7 @@ func TestBoundDirectoryIdentityKaeCannotReadIsSilent(t *testing.T) {
 		`{"oauthAccount":["main-uuid"]}`,
 	} {
 		writeFile(t, identityFile, payload)
-		if checks := app.pinIdentityChecks(ctx, testBackend(t, app)); len(checks) != 0 {
+		if checks := app.pinIdentityChecks(ctx, testBackend(t, app), app.boundDirStores()); len(checks) != 0 {
 			t.Errorf("%s: a payload naming no account must not be reported as naming another: %+v",
 				payload, checks)
 		}
@@ -545,7 +556,7 @@ func TestSnapshotIdentityThatIsNotARecordIsMissingEvidence(t *testing.T) {
 	writeFile(t, credFile,
 		`{"claudeAiOauth":{"accessToken":"NEWER","refreshToken":"r","expiresAt":4100000000000,"refreshTokenExpiresAt":4100000000000}}`)
 
-	if checks := app.pinIdentityChecks(ctx, testBackend(t, app)); len(checks) != 0 {
+	if checks := app.pinIdentityChecks(ctx, testBackend(t, app), app.boundDirStores()); len(checks) != 0 {
 		t.Fatalf("an unreadable recorded identity proves nothing, got %+v", checks)
 	}
 
@@ -584,7 +595,7 @@ func TestBoundDirectoryIdentitySharedWithTheRealHomeIsSilent(t *testing.T) {
 		t.Fatalf("the link must resolve to the real home's payload, got %q", got)
 	}
 
-	if checks := app.pinIdentityChecks(ctx, testBackend(t, app)); len(checks) != 0 {
+	if checks := app.pinIdentityChecks(ctx, testBackend(t, app), app.boundDirStores()); len(checks) != 0 {
 		t.Fatalf("an identity shared with the real home proves nothing, got %+v", checks)
 	}
 }
@@ -619,7 +630,7 @@ func TestBoundDirectoryWithNoIdentityCacheIsSilent(t *testing.T) {
 	if err := os.Remove(identityFile); err != nil {
 		t.Fatal(err)
 	}
-	if checks := app.pinIdentityChecks(context.Background(), testBackend(t, app)); len(checks) != 0 {
+	if checks := app.pinIdentityChecks(context.Background(), testBackend(t, app), app.boundDirStores()); len(checks) != 0 {
 		t.Fatalf("a store with no identity cache proves nothing and must stay silent, got %+v", checks)
 	}
 }
@@ -644,7 +655,7 @@ func TestUnpinnedDirectoryIdentityIsNotReported(t *testing.T) {
 	mustExit(t, constants.ExitOK, code, out)
 	writeFile(t, identityFile, boundIdentity("side-uuid", "side@example.com"))
 
-	if checks := app.pinIdentityChecks(ctx, testBackend(t, app)); len(checks) != 0 {
+	if checks := app.pinIdentityChecks(ctx, testBackend(t, app), app.boundDirStores()); len(checks) != 0 {
 		t.Fatalf("an unpinned directory's kept store must stay silent, got %+v", checks)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/freshness"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -321,7 +322,16 @@ func TestIdentityFixtureCarriesEveryIdentityKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture := claudeOAuthAccount("main-uuid", "you@example.com")
+	// Decoded through the same helper the production comparison uses, so this guard sees
+	// the payload exactly as identityDiffers does. A substring search on the key name is
+	// not enough: `"organizationUuid":null` or `""` keeps the name and still contributes
+	// nothing, because identityDiffers compares the raw values a map lookup returns and
+	// a present-but-empty key agrees as trivially on both sides as an absent one.
+	obj, ok := freshness.DecodeObject([]byte(claudeOAuthAccount("main-uuid", "you@example.com")))
+	if !ok {
+		t.Fatalf("the fixture must decode as an account record: %s",
+			claudeOAuthAccount("main-uuid", "you@example.com"))
+	}
 	seen := 0
 	for _, sp := range specs {
 		if !sp.IdentityOnly {
@@ -329,9 +339,18 @@ func TestIdentityFixtureCarriesEveryIdentityKey(t *testing.T) {
 		}
 		seen++
 		for _, key := range sp.IdentityKeys {
-			if !strings.Contains(fixture, `"`+key+`"`) {
-				t.Errorf("claudeOAuthAccount omits %q, one of claude's IdentityKeys: every fixture "+
-					"built from it then agrees on that key by omission — %s", key, fixture)
+			// Every identity key claude declares is a string today. A non-string one would
+			// fail here rather than pass silently, which is the right direction: it needs a
+			// deliberate look at what "carries evidence" means for that type.
+			//
+			// Known limit, if this is ever touched again: a whitespace-only placeholder
+			// (`" "`) passes, and two fixtures sharing one would agree for free exactly as
+			// `null` and `""` did. Left because it is not a shape a dropped field produces,
+			// which is the mechanism this guard is about, and the only caller passes literals.
+			if !freshness.NonEmptyString(obj[key]) {
+				t.Errorf("claudeOAuthAccount does not carry a value for %q, one of claude's "+
+					"IdentityKeys: every fixture built from it then agrees on that key for free — %s",
+					key, claudeOAuthAccount("main-uuid", "you@example.com"))
 			}
 		}
 	}

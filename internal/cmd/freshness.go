@@ -543,13 +543,11 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 // dirIdentityConfirms, a backup restore's is liveLoginMatchesBackup, and the
 // switch-away recapture's is keepSnapshotIdentity, applied by its caller).
 //
-// The a-side guard is the one docs/ADAPTERS.md prescribes — `Known && !Revoked &&
-// !ExpiresAt.IsZero()` — because a tombstone is a fully-formed payload, so presence
-// proves nothing. b degrading to the zero cutoff is deliberate and *not* the same
-// test: a copy kae cannot read, or one that is itself a tombstone, has no deadline
-// worth comparing and loses to any usable copy.
+// The a-side guard is `orderable`, the one docs/ADAPTERS.md prescribes. b degrading to
+// the zero cutoff is deliberate and *not* the same test: a copy kae cannot order has no
+// deadline worth comparing and loses to any copy that has one.
 func supersedes(a, b freshness.Info) bool {
-	if !a.Known || a.Revoked || a.ExpiresAt.IsZero() {
+	if !orderable(a) {
 		return false
 	}
 	cutoff := time.Time{}
@@ -557,6 +555,23 @@ func supersedes(a, b freshness.Info) bool {
 		cutoff = b.ExpiresAt
 	}
 	return a.ExpiresAt.After(cutoff)
+}
+
+// orderable reports whether a freshness reading can take part in an ordering at all:
+// known to the tool's parser, not a tombstone, and carrying an actual deadline. It is
+// docs/ADAPTERS.md's `Known && !Revoked && !ExpiresAt.IsZero()`, named because
+// `supersedes` is not the only place that needs it — a caller asking "is the copy I am
+// about to write older than the live one" must apply the same test to *its* side, and
+// getting that subset wrong is how a copy with no deadline came to read as superseded
+// by anything (review finding, 2026-08-05).
+//
+// All three conditions are load-bearing together and none is redundant, which is easy
+// to misjudge from one tool: claude sets `Known` on the mere *presence* of `expiresAt`
+// and parses a non-numeric one to the zero time, so a payload whose `expiresAt` changed
+// type upstream — the shape an upstream format change actually takes — is `Known`,
+// un-`Revoked` and undated at once.
+func orderable(info freshness.Info) bool {
+	return info.Known && !info.Revoked && !info.ExpiresAt.IsZero()
 }
 
 // liveValuesFreshness reads the credential freshness out of freshly-read live

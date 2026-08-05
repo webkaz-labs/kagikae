@@ -168,9 +168,17 @@ block in docs/VALIDATION.md, next to two correct ones.
   bind runs — `kae account rename` reaches that sweep through kae's own re-bind remedy,
   where deleting destroyed the newest copy of the renamed account's credential.
 - **Two copies of one credential are ordered in exactly one place, and restoring a
-  backup is not unconditional.** `supersedes` is the only comparator — `expiresAt`,
-  guarded `Known && !Revoked && !ExpiresAt.IsZero()` on the side claiming to be newer,
-  with the other side degrading to a zero cutoff. A fourth hand-written copy of that
+  backup is not unconditional.** `supersedes` is the only comparator — `expiresAt`, with
+  the side claiming to be newer gated by `orderable` (`Known && !Revoked &&
+  !ExpiresAt.IsZero()`) and the other side degrading to a zero cutoff. **A caller
+  comparing against its own copy owes that copy the same `orderable` test**, and taking
+  a subset of it is how a copy with no deadline came to read as superseded by anything:
+  claude sets `Known` on the mere *presence* of `expiresAt` and parses a non-numeric one
+  to the zero time, so an upstream type change yields a payload that is `Known`,
+  un-`Revoked` and undated at once. That is also why `run -s` restores a dead or undated
+  recorded copy instead of skipping — otherwise the account it applied for one child stays
+  in the real home for good — while `kae rollback` still reports one, in different words,
+  because a dead copy is not *older* than the live one and only the remedy carries over. A fourth hand-written copy of that
   cutoff is the drift this file exists for. Every consumer shares the one comparator —
   today the harvest, `run -s`, `kae rollback` and the switch-away recapture, which
   without it launders a rolled-back copy over the snapshot that still worked; a new one

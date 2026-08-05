@@ -36,42 +36,48 @@ func backupRecord(meta backup.Meta, tool, name string) (backup.ArtifactRecord, b
 	return backup.ArtifactRecord{}, false
 }
 
-// backupCredentialFreshness reads the freshness of the credential meta recorded for
-// tool. usable is false unless the recorded payload is a login this backup could
-// still be handing back — known to the tool's parser, not a tombstone, and readable
-// now. Known ways to get a false: no credential record for the tool, one recorded as
-// absent, a payload gone from or unreadable in the secret store, a shape the parser
-// does not recognize, and a tombstone. **Not a closed set**, which is why the check is
-// a property of the payload rather than a list of causes.
-//
-// The strictness is what keeps the two callers honest, and it was a review finding
-// rather than the first draft. Returning a *readable but dead* copy hands `supersedes`
-// a zero cutoff, so any live login supersedes it — and `run -s` would then skip the
-// restore, leaving the account it applied temporarily in the real home forever. That
-// is the same outcome the absent case exists to prevent (a backup recording no
-// credential is always restored as absent), so "present but dead" must not take the
-// other branch. For `kae rollback` the strictness costs nothing worth having: a
-// tombstone is unambiguously dead however it compares, and framing it as "older than
-// the copy in X" would be a claim about ordering that a tombstone does not support.
+// recordedCredential is what a backup holds for one tool's credential, in the three
+// states the restore paths have to tell apart. Two booleans rather than one, because
+// the two callers want **opposite** things from a payload that is there but dead, and
+// collapsing them into a single "usable" gate silenced the worse of the two cases
+// (review finding, 2026-08-05).
+type recordedCredential struct {
+	Info freshness.Info
+	// Present is false when the backup has no readable credential record for this tool:
+	// no record, one recorded as absent, or a payload gone from the secret store.
+	// Nothing is being handed back, so neither path has anything to say about it —
+	// `run -s` restores the absence and `kae rollback` removes the credential, both of
+	// which are what the backup says.
+	Present bool
+	// Orderable is false when the payload is there but cannot take part in an ordering
+	// (see orderable). `run -s` must not skip the restore on one of these: a copy with
+	// no comparable deadline is "superseded" by any live login, which would leave the
+	// account it applied temporarily in the real home forever. `kae rollback` still has
+	// something to say, but not in the same words — a dead copy is not *older* than the
+	// live one, it never worked, and the remedy pointer is the part that matters.
+	Orderable bool
+}
+
+// readRecordedCredential reads what meta recorded for tool's credential. Known ways to
+// come back not-Present or not-Orderable are listed on those fields and are **not a
+// closed set**, which is why each is a property of the payload rather than a list of
+// causes.
 //
 // The `err != nil` arm converges with `!found` and cannot be killed on its own: every
 // backend that fails a read reports the payload as absent, so no fixture can reach the
 // arm alone (measured 2026-08-05). It stays as the statement that an unreadable payload
 // is not a credential, and the behaviour it guards is pinned through the pair.
-func backupCredentialFreshness(ctx context.Context, be secret.Backend, meta backup.Meta, tool string) (info freshness.Info, usable bool) {
+func readRecordedCredential(ctx context.Context, be secret.Backend, meta backup.Meta, tool string) recordedCredential {
 	rec, ok := backupRecord(meta, tool, credentialArtifactName(tool))
 	if !ok || !rec.Present {
-		return freshness.Info{}, false
+		return recordedCredential{}
 	}
 	data, found, err := be.Get(ctx, rec.SecretRef)
 	if err != nil || !found {
-		return freshness.Info{}, false
+		return recordedCredential{}
 	}
-	recorded := freshnessOf(tool, data)
-	if !recorded.Known || recorded.Revoked {
-		return freshness.Info{}, false
-	}
-	return recorded, true
+	info := freshnessOf(tool, data)
+	return recordedCredential{Info: info, Present: true, Orderable: orderable(info)}
 }
 
 // liveLoginMatchesBackup reports whether the identity live now is the same account
@@ -166,8 +172,11 @@ func (app *App) restoreWouldKillNewerLogin(ctx context.Context, be secret.Backen
 	if !rotatesSingleUse(plan.Tool) || meta.ActiveBefore[plan.Tool] != plan.Account {
 		return false
 	}
-	recorded, usable := backupCredentialFreshness(ctx, be, meta, plan.Tool)
-	if !usable {
+	// Orderable, not merely Present: a recorded copy kae cannot order is "superseded" by
+	// any live login, and skipping on that would leave the account this run applied
+	// temporarily in the real home for good.
+	recorded := readRecordedCredential(ctx, be, meta, plan.Tool)
+	if !recorded.Orderable {
 		return false
 	}
 	sp, ok := specByName(plan.Specs, credentialArtifactName(plan.Tool))
@@ -180,7 +189,7 @@ func (app *App) restoreWouldKillNewerLogin(ctx context.Context, be secret.Backen
 	// everything that is not a usable login — so it states the precondition rather
 	// than filtering, and mutating it away survives the suite by construction.
 	_, live, liveState := readLiveCredential(ctx, plan.Tool, sp)
-	if liveState != liveUsable || !supersedes(live, recorded) {
+	if liveState != liveUsable || !supersedes(live, recorded.Info) {
 		return false
 	}
 	return liveLoginMatchesBackup(ctx, be, meta, plan.Tool, plan.Specs)
@@ -225,28 +234,38 @@ func (app *App) warnRestoringSupersededCredential(ctx context.Context, be secret
 		if accountName == "" {
 			continue
 		}
-		recorded, usable := backupCredentialFreshness(ctx, be, meta, tool)
-		if !usable {
+		recorded := readRecordedCredential(ctx, be, meta, tool)
+		if !recorded.Present {
 			continue
 		}
 		snap := app.snapshotCredentialFreshness(ctx, be, tool, accountName)
 		live := app.attributedLiveFreshness(ctx, be, meta, tool, current[tool])
 		where, remedy := "", ""
 		switch {
-		case supersedes(live, recorded) && supersedes(live, snap):
+		case supersedes(live, recorded.Info) && supersedes(live, snap):
 			where = "the live store"
 			remedy = fmt.Sprintf("the newer copy is left only in backup %s (kae rollback --to %s)", preID, preID)
-		case supersedes(snap, recorded):
+		case supersedes(snap, recorded.Info):
 			where = fmt.Sprintf("snapshot %s/%s", tool, accountName)
 			remedy = fmt.Sprintf("apply the newer copy afterwards with: kae use %s %s", tool, accountName)
 		default:
 			continue
 		}
+		// Two wordings for one finding, because a copy that cannot be ordered is not
+		// *older* than the live one — it never worked. Saying "older" there would be a
+		// claim about ordering the payload does not support, and the remedy is the half
+		// that matters either way. Both name `for <tool>/<account>`, which is what makes
+		// a message about the wrong tool detectable.
+		cause := fmt.Sprintf("recorded an older %s credential for %s/%s than the one in %s",
+			tool, tool, accountName, where)
+		if !recorded.Orderable {
+			cause = fmt.Sprintf("recorded a %s credential for %s/%s that cannot log in, while %s holds a usable one",
+				tool, tool, accountName, where)
+		}
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: backup %s recorded an older %s credential for %s/%s than the one in %s, and "+
-				"%s's refresh token rotates single-use, so this rollback hands %s a token it can no longer "+
-				"refresh; %s\n",
-			meta.ID, tool, tool, accountName, where, tool, tool, remedy)
+			"kae: warning: backup %s %s, and %s's refresh token rotates single-use, so this rollback "+
+				"leaves %s without the copy that can still refresh; %s\n",
+			meta.ID, cause, tool, tool, remedy)
 	}
 }
 

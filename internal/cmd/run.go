@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
+	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/envprofile"
 	"github.com/webkaz-labs/kagikae/internal/runner"
@@ -292,6 +293,44 @@ func (app *App) prepareGlobalIsolatedHome(ctx context.Context, be secret.Backend
 	return home, err
 }
 
+// toolsToRestore decides, per tool, whether run -s's post-child restore should put the
+// pre-child copy of its credential back, and warns about each tool it leaves alone.
+//
+// The restore normally puts back exactly what was live before the child. When the target
+// was already the active account, though, that copy is the *same* login the child just
+// refreshed, and for a tool whose refresh token rotates single-use writing it back is a
+// logout rather than a regression (restoreWouldKillNewerLogin). Those tools are left as
+// the child left them: the live store already holds this account's newest copy, which is
+// what "restore the previous state" means there.
+//
+// The result covers every tool that should be restored, which for an untouched run is all
+// of them — meta was created from these same plans, so that is the same thing passing nil
+// to applyBackup used to mean.
+//
+// Extracted from the caller so a test can assert the decision for a **set** of tools
+// without depending on the order `constants.Tools` happens to put them in. Measured
+// 2026-08-05: at the call site, a `continue` mistakenly written as `break` is only
+// observable while the skipped tool precedes a restored one, so the command-level test
+// pinned it by accident of ordering and a reorder would have reopened it silently.
+func (app *App) toolsToRestore(ctx context.Context, be secret.Backend,
+	meta backup.Meta, plans []toolPlan,
+) map[string]bool {
+	restore := make(map[string]bool, len(plans))
+	for _, plan := range plans {
+		if app.restoreWouldKillNewerLogin(ctx, be, meta, plan) {
+			// Warned before the write it replaces, as every warning on this path is.
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: %s refreshed its credential during the run and %s/%s was already the active "+
+					"account, so restoring backup %s would put back a copy %s can no longer refresh; leaving "+
+					"the live %s credential as the child left it\n",
+				plan.Tool, plan.Tool, plan.Account, meta.ID, plan.Tool, plan.Tool)
+			continue
+		}
+		restore[plan.Tool] = true
+	}
+	return restore
+}
+
 // runTarget is one tool/account pair resolved from CLI arguments.
 type runTarget struct {
 	Tool    string
@@ -411,28 +450,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 		}
 	}
 
-	// The restore below puts the pre-child copy of each tool's credential back. When
-	// the target was already the active account that copy is the *same* login the
-	// child just refreshed, and for a tool whose refresh token rotates single-use
-	// writing it back is a logout, not a regression (restoreWouldKillNewerLogin).
-	// Leave those tools alone: the live store already holds this account's newest
-	// copy, which is what "restore the previous state" means here. Warned before the
-	// write it replaces, as every warning on this path is.
-	//
-	// meta was created from these same plans, so restoring all of them is the same
-	// thing the previous nil argument meant.
-	restore := make(map[string]bool, len(plans))
-	for _, plan := range plans {
-		if app.restoreWouldKillNewerLogin(ctx, be, meta, plan) {
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: %s refreshed its credential during the run and %s/%s was already the active "+
-					"account, so restoring backup %s would put back a copy %s can no longer refresh; leaving "+
-					"the live %s credential as the child left it\n",
-				plan.Tool, plan.Tool, plan.Account, meta.ID, plan.Tool, plan.Tool)
-			continue
-		}
-		restore[plan.Tool] = true
-	}
+	restore := app.toolsToRestore(ctx, be, meta, plans)
 	if err := app.applyBackup(ctx, be, meta, restore, false); err != nil {
 		return 0, errf(exitOf(err),
 			"child finished but restoring the previous auth state failed: %v; run: kae rollback --to %s",

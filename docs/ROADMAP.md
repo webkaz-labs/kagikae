@@ -265,6 +265,13 @@ alternative exists (`secret-tool`).
   invalidation `recaptureWouldDowngrade`'s usability test cannot see; and the two
   candidates for "newest" have to be compared **against each other**, or the remedy
   names a copy that is not the newest.
+  One thing deliberately left where it is: the "cannot log in" half of the rollback
+  warning is claude-only like the rest, although the fact it reports — a rollback writing
+  a dead recorded copy over a working login destroys that login — holds for **every**
+  tool and needs no rotation measurement. Widening it would add a warning to five tier-2
+  tools in a release about claude's rotation, so it waits; the gate to move is the
+  `rotatesSingleUse` check at the top of `warnRestoringSupersededCredential`, and only
+  the not-`Orderable` branch may move, never the ordering one.
   **Still open after it**, smallest first: the freshness surfaces still judge by
   `refreshTokenExpiresAt` (no offline fix exists — this is a wording and
   expectation-setting problem, not a detection one); **`run -s`'s own recapture goes
@@ -272,10 +279,16 @@ alternative exists (`secret-tool`).
   `captureSnapshot` directly, so it neither keeps the snapshot's identity
   (`keepSnapshotIdentity`) nor refuses a downgrade (`recaptureWouldDowngrade`): a child
   that logs in as another account files that credential *and* that identity under the
-  target account's name, and a child that logs out files the tombstone. The restore
-  skip above is gated on attribution so it does not compound this, and it reads the
-  **backup** rather than the snapshot precisely because the snapshot may already be
-  wrong by then; **a
+  target account's name, and a child that logs out files the tombstone. The fix routes
+  that recapture through **those two and no third** — they are named here so nobody
+  invents one — and `docs/VALIDATION.md` case H asserts the defect's present-day shape,
+  so the smoke run turns from green to red the moment it is fixed and has to be updated
+  in the same commit. Measured 2026-08-05: `kae doctor` does then report `identity_drift`
+  for the account, but its remedy is `kae use <tool> <account>`, which puts the foreign
+  credential into the real home — so the reporting surface makes it worse, not better.
+  The restore skip above is gated on attribution so it does not compound this, and it
+  reads the **backup** rather than the snapshot precisely because the snapshot may
+  already be wrong by then; **a
   superseded *global* isolated home is never harvested** — `kae use -i <a>` then
   `kae use -i <b>` leaves `isolation/global/<tool>/<a>/` holding a's newest copy, and
   because there is no pin, neither the pin-level pass nor any sweep ever looks at it

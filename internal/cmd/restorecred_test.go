@@ -65,6 +65,19 @@ func writeSnapshotPayload(t *testing.T, app *App, tool, accountName, payload str
 	}
 }
 
+// assertRolledBack is the positive control the quiet-rollback tests need. Each of them
+// asserts only the *absence* of a warning, and measured 2026-08-05 all four still passed
+// with warnRestoringSupersededCredential replaced by an immediate return — they were
+// leaning on other tests in the file to prove it runs at all. This makes each one
+// self-sufficient: the rollback demonstrably happened, so the silence is a decision.
+func assertRolledBack(t *testing.T, app *App, wantToken string) {
+	t.Helper()
+	live := readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"))
+	if !strings.Contains(live, wantToken) {
+		t.Fatalf("the rollback did not restore %s, so its silence proves nothing: %s", wantToken, live)
+	}
+}
+
 func TestSupersedesOrdersByExpiryAlone(t *testing.T) {
 	early := time.Date(2026, 6, 11, 0, 0, 0, 0, time.UTC)
 	late := early.Add(time.Hour)
@@ -598,10 +611,10 @@ func TestRunSharedRestoresAStoreWithNoUsableCredential(t *testing.T) {
 	}
 }
 
-// The backend-read arm of the same guard, which no command-level test can reach: a
-// backend that errors rather than reporting the payload absent. Left unguarded, an
-// errored read would hand the comparison a zero cutoff and skip the restore.
-func TestBackupCredentialFreshnessRefusesAnErroringBackend(t *testing.T) {
+// The backend-read arm, which no command-level test can reach: a backend that errors
+// rather than reporting the payload absent. Left unguarded, an errored read would hand
+// the comparison a zero cutoff and skip the restore.
+func TestReadRecordedCredentialRefusesAnErroringBackend(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
@@ -613,13 +626,99 @@ func TestBackupCredentialFreshnessRefusesAnErroringBackend(t *testing.T) {
 		t.Fatalf("no backup was taken: found=%v err=%v", found, err)
 	}
 
-	// Positive first: through a working backend the same backup reads as usable, so a
-	// false below cannot come from the fixture being wrong.
-	if _, usable := backupCredentialFreshness(ctx, testBackend(t, app), meta, constants.ToolClaude); !usable {
-		t.Fatal("the backup must record a usable credential for this test to mean anything")
+	// Positive first: through a working backend the same backup reads as both present and
+	// orderable, so a false below cannot come from the fixture being wrong.
+	if rec := readRecordedCredential(ctx, testBackend(t, app), meta, constants.ToolClaude); !rec.Present || !rec.Orderable {
+		t.Fatalf("the backup must record an orderable credential for this test to mean anything: %+v", rec)
 	}
-	if _, usable := backupCredentialFreshness(ctx, erroringBackend{}, meta, constants.ToolClaude); usable {
-		t.Fatal("a payload kae could not read is not a credential worth comparing")
+	if rec := readRecordedCredential(ctx, erroringBackend{}, meta, constants.ToolClaude); rec.Present || rec.Orderable {
+		t.Fatalf("a payload kae could not read is not a credential worth comparing: %+v", rec)
+	}
+}
+
+// The condition that `Known && !Revoked` was missing: claude sets Known on the mere
+// presence of `expiresAt` and parses a non-numeric one to the zero time, so an upstream
+// type change yields a payload that is Known, un-Revoked and undated at once. Such a
+// copy cannot be ordered, so treating it as orderable made every live login "supersede"
+// it — and `run -s` skipped the restore, leaving its temporary account applied for good
+// (review finding, measured 2026-08-05).
+func TestRunSharedRestoresAnUndatedRecordedCredential(t *testing.T) {
+	for _, expires := range []string{`0`, `"1798761600000"`} {
+		t.Run(expires, func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			opts := commonOpts{Format: formatText}
+			credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+
+			captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 2*time.Hour))
+			// A live access token — so this is not the tombstone case — with a deadline the
+			// parser reads as no deadline at all.
+			undated := `{"claudeAiOauth":{"accessToken":"` + mainToken +
+				`","refreshToken":"rt-x","expiresAt":` + expires + `}}`
+			writeFile(t, credsPath, undated)
+			// Positive control on the fixture itself: it must reach Known && !Revoked, or the
+			// test would be exercising the tombstone guard instead of the undated one.
+			info := freshnessOf(constants.ToolClaude, []byte(undated))
+			if !info.Known || info.Revoked || !info.ExpiresAt.IsZero() {
+				t.Fatalf("fixture must be Known, un-Revoked and undated: %+v", info)
+			}
+
+			withInteractive(t, func(_ context.Context, _ []string, _ string, _ ...string) (int, error) {
+				writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
+				return 0, nil
+			})
+			code, _, stderr := captureBoth(t, func() int {
+				return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
+			})
+			if code != 0 {
+				t.Fatalf("run failed: %d (%s)", code, stderr)
+			}
+			if !strings.Contains(stderr, "previous auth state restored") {
+				t.Fatalf("the restore must be reported: %q", stderr)
+			}
+			if live := readFile(t, credsPath); strings.Contains(live, refreshedToken) {
+				t.Fatalf("the child's login was left applied permanently: %s", live)
+			}
+		})
+	}
+}
+
+// The rollback half of the same fact, and the case a single shared "usable" gate went
+// silent on — which is the *worse* direction: a tombstoned recorded copy written over a
+// working login of the same account destroys it for certain, not merely probably, and
+// afterwards only the pre-rollback backup holds it. The wording differs from the
+// superseded case because a dead copy is not older, it never worked.
+func TestRollbackWarnsWhenTheRecordedCredentialCannotLogIn(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+	now := app.Now()
+
+	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 1*time.Hour))
+	// The backup records a tombstone: blank tokens, so nothing to authenticate with.
+	writeFile(t, credsPath, fmt.Sprintf(
+		`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%d,"refreshTokenExpiresAt":%d}}`,
+		now.Add(-2*time.Hour).UnixMilli(), now.Add(-time.Hour).UnixMilli(),
+	))
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	// Then the user logs in again, in place, with nothing harvesting it.
+	writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
+
+	code, _, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, "") })
+	if code != constants.ExitOK {
+		t.Fatalf("rollback must still happen: %d (%s)", code, stderr)
+	}
+	if !strings.Contains(stderr, "that cannot log in, while the live store holds a usable one") {
+		t.Fatalf("a dead recorded copy over a working login must be reported: %q", stderr)
+	}
+	// Not the ordering wording: the recorded copy is not "older", it never worked.
+	if strings.Contains(stderr, "recorded an older") {
+		t.Fatalf("a tombstone does not support an ordering claim: %q", stderr)
+	}
+	if !strings.Contains(stderr, "the newer copy is left only in backup") {
+		t.Fatalf("the remedy must name the pre-rollback backup: %q", stderr)
 	}
 }
 
@@ -670,6 +769,69 @@ func TestRunSharedSkipsOnlyTheToolWhoseCredentialWasSuperseded(t *testing.T) {
 	}
 }
 
+// The decision as a **set**, asserted for both orderings of the same two tools. The
+// command-level test above can only ever present them in the order constants.Tools puts
+// them in, and a `continue` mistakenly written as `break` is invisible whenever the
+// skipped tool happens to come last — so that test pinned the loop by accident of
+// ordering, and a reorder would have reopened it silently (measured 2026-08-05).
+func TestToolsToRestoreSkipsTheSupersededToolInEitherOrder(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+
+	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 2*time.Hour))
+	seedCodex(t, app, "codex-main-token")
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+
+	be := testBackend(t, app)
+	claudePlan, err := app.planTool(ctx, constants.ToolClaude, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	codexPlan, err := app.planTool(ctx, constants.ToolCodex, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Active[constants.ToolClaude] = "main"
+	st.Active[constants.ToolCodex] = "main"
+	meta, err := app.createBackup(ctx, be, []toolPlan{claudePlan, codexPlan}, st, "run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only claude's live copy moves past what the backup recorded, so only claude may be
+	// skipped — whichever position it holds in the slice.
+	writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
+
+	for _, order := range [][]toolPlan{
+		{claudePlan, codexPlan},
+		{codexPlan, claudePlan},
+	} {
+		name := order[0].Tool + "-first"
+		t.Run(name, func(t *testing.T) {
+			var restore map[string]bool
+			_, stderr := captureStderr(t, func() int {
+				restore = app.toolsToRestore(ctx, be, meta, order)
+				return 0
+			})
+			if restore[constants.ToolClaude] {
+				t.Fatalf("claude's superseded restore must be skipped: %v (%s)", restore, stderr)
+			}
+			if !restore[constants.ToolCodex] {
+				t.Fatalf("codex must still be restored: %v (%s)", restore, stderr)
+			}
+			if len(restore) != 1 {
+				t.Fatalf("exactly one tool should be restored: %v", restore)
+			}
+		})
+	}
+}
+
 // The rollback warning's live branch needs attribution just as much as run -s's skip:
 // a *later* copy in the live store may be a different account's, and naming it as
 // "newer than what this backup recorded for claude/main" would point the user at
@@ -693,6 +855,7 @@ func TestRollbackIgnoresANewerCopyOfAnotherAccount(t *testing.T) {
 	if code != constants.ExitOK {
 		t.Fatalf("rollback failed: %d (%s)", code, stderr)
 	}
+	assertRolledBack(t, app, mainToken)
 	if strings.Contains(stderr, "than the one in the live store") {
 		t.Fatalf("another account's copy is not evidence about this one: %q", stderr)
 	}
@@ -760,6 +923,7 @@ func TestRollbackIsQuietWhenTheBackupHoldsTheNewestCopy(t *testing.T) {
 	if code != constants.ExitOK {
 		t.Fatalf("rollback failed: %d (%s)", code, stderr)
 	}
+	assertRolledBack(t, app, mainToken)
 	if strings.Contains(stderr, "refresh token rotates single-use") {
 		t.Fatalf("the backup holds the newest copy; there is nothing to warn about: %q", stderr)
 	}
@@ -775,7 +939,14 @@ func TestRollbackNeverClaimsRotationForAnUnmeasuredTool(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
+	codexAuth := filepath.Join(app.Env.Home, ".codex", "auth.json")
 	seedCodex(t, app, "codex-main-token")
+	// A JWT deadline on the copy the backup will record, so the recorded copy is
+	// *orderable*: seedCodex's plain token dates to nothing, and a non-orderable recorded
+	// copy is declined before the tool gate is ever consulted — which would leave this
+	// test passing for a reason that has nothing to do with what it names.
+	recorded := codexAuthAt(app, 1*time.Hour)
+	writeFile(t, codexAuth, recorded)
 	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "main") })
 	mustExit(t, constants.ExitOK, code, out)
 	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "codex", "main") })
@@ -783,10 +954,18 @@ func TestRollbackNeverClaimsRotationForAnUnmeasuredTool(t *testing.T) {
 	// A codex credential whose expiry is later than the one the backup recorded. codex
 	// is datable, so the comparison itself would succeed; only the tool gate stops it.
 	writeSnapshotPayload(t, app, constants.ToolCodex, "main", codexAuthAt(app, 3*time.Hour))
+	// Distinct from the recorded copy, or the positive control below cannot tell a
+	// restore that happened from one that did not.
+	writeFile(t, codexAuth, codexAuthAt(app, 2*time.Hour))
 
 	code, _, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, "") })
 	if code != constants.ExitOK {
 		t.Fatalf("rollback failed: %d (%s)", code, stderr)
+	}
+	// Positive control: the rollback ran and put codex's recorded credential back, so the
+	// silence below is a decision rather than a function that never executed.
+	if got := readFile(t, codexAuth); got != recorded {
+		t.Fatalf("the rollback did not restore codex, so its silence proves nothing: %s", got)
 	}
 	if strings.Contains(stderr, "rotates single-use") {
 		t.Fatalf("codex's rotation has not been measured; kae must not claim it: %q", stderr)
@@ -868,6 +1047,7 @@ func TestRollbackSaysNothingAboutABackupWithNoActiveAccount(t *testing.T) {
 	if code != constants.ExitOK {
 		t.Fatalf("rollback failed: %d (%s)", code, stderr)
 	}
+	assertRolledBack(t, app, mainToken)
 	if strings.Contains(stderr, "rotates single-use") {
 		t.Fatalf("nothing names the chain being restored, so nothing may be claimed: %q", stderr)
 	}
@@ -890,6 +1070,7 @@ func TestRollbackIsQuietWhenNothingSupersededTheBackup(t *testing.T) {
 	if code != constants.ExitOK {
 		t.Fatalf("rollback failed: %d (%s)", code, stderr)
 	}
+	assertRolledBack(t, app, sideToken)
 	if strings.Contains(stderr, "refresh token rotates single-use") {
 		t.Fatalf("a rollback with nothing newer anywhere must be quiet: %q", stderr)
 	}

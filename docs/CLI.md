@@ -202,8 +202,12 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   `previous auth state restored` only when something was restored. It is not enough
   for the live copy to be *newer*: the identity cache beside it must still name the
   account the backup recorded, so a child that logged in as somebody else is restored
-  over rather than kept. A backup that recorded **no** credential is always restored
-  as absent, so `run -s` never leaves an account applied permanently. claude only
+  over rather than kept. And the recorded copy must be one kae can **order** — present,
+  parseable, not a tombstone, carrying a deadline — because a copy with no deadline
+  compares as older than anything, and skipping on that would leave the account this run
+  applied temporarily in the real home for good. So a backup that recorded no credential,
+  a dead one, or one whose `expiresAt` no longer parses is always restored as recorded,
+  and `run -s` never leaves an account applied permanently. claude only
   ([ROADMAP.md](ROADMAP.md) § Every credential copy).
 - `-i`: runs the child with the per-account global isolated home
   (`isolation/global/<tool>/<account>/`) injected via the tool's home-isolation
@@ -1312,12 +1316,17 @@ anyway. Going back is what the user asked for; what kae adds is that claude's re
 token rotates single-use, so once anything refreshed that account after the backup was
 taken, the recorded copy is no longer the one that can refresh and "Rolled back to"
 would otherwise be a success report for a rejected token. kae warns only when it can
-*prove* the order — an unconditional version of this would fire on every rollback —
+*prove* the finding — an unconditional version of this would fire on every rollback —
 and the warning names where the newer copy is, because that decides the remedy: in the
 account **snapshot** it survives the rollback untouched, so `kae use <tool> <account>`
 applies it; in the **live store** the rollback overwrites it, so only the pre-rollback
 backup still holds it (`kae rollback --to <that id>`). When both hold a later copy the
-live store wins the message, since that is the one being overwritten. Warning only —
+live store wins the message, since that is the one being overwritten. A recorded
+credential kae cannot *order* at all — a tombstone, or one whose `expiresAt` no longer
+parses — is reported in different words ("cannot log in, while … holds a usable one"),
+because it is not older than the live copy, it never worked; the remedy is the same. A
+backup that recorded **no** credential is silent: removing the credential is what that
+backup says, and nothing is being handed back. Warning only —
 stderr, no change to the exit code or the JSON report — and claude only, because it is
 the only tool whose rotation has been measured ([ROADMAP.md](ROADMAP.md) § Every
 credential copy). The counterpart on the other side of the same fact: a `kae use` that

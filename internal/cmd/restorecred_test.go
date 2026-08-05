@@ -524,8 +524,14 @@ func TestRunSharedRestoresAStoreWithNoUsableCredential(t *testing.T) {
 		name string
 		// live returns the pre-child payload, or "" to delete the credential outright.
 		live func(app *App) string
+		// want is a distinctive fragment of what must be live again afterwards. Empty
+		// means the credential must be absent, which for a JSON-pointer artifact is the
+		// key being gone rather than the file. Every shape carries one: asserting only
+		// that the child's token is gone would also pass if the restore wrote garbage,
+		// and for two of these shapes that was the whole assertion (review finding).
+		want string
 	}{
-		{"absent", func(*App) string { return "" }},
+		{"absent", func(*App) string { return "" }, ""},
 		// Blank tokens: a fully-formed payload with nothing left to authenticate with,
 		// which is what a failed refresh leaves in place.
 		{"tombstone", func(app *App) string {
@@ -534,10 +540,13 @@ func TestRunSharedRestoresAStoreWithNoUsableCredential(t *testing.T) {
 				`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%d,"refreshTokenExpiresAt":%d}}`,
 				now.Add(-2*time.Hour).UnixMilli(), now.Add(-time.Hour).UnixMilli(),
 			)
-		}},
+		}, `"accessToken":""`},
 		// A shape the parser does not recognize, which is what an upstream format change
 		// looks like. It carries no deadline, so it must not read as "older than live".
-		{"unparseable", func(*App) string { return `{"claudeAiOauth":{"unrecognized":true}}` }},
+		{
+			"unparseable", func(*App) string { return `{"claudeAiOauth":{"unrecognized":true}}` },
+			`"unrecognized":true`,
+		},
 	}
 	for _, shape := range shapes {
 		t.Run(shape.name, func(t *testing.T) {
@@ -566,15 +575,24 @@ func TestRunSharedRestoresAStoreWithNoUsableCredential(t *testing.T) {
 			if !strings.Contains(stderr, "previous auth state restored") {
 				t.Fatalf("the restore must be reported: %q", stderr)
 			}
-			// Positive assertion first would need a shape-specific expectation; what every
-			// shape shares is that the child's token must be gone. The credential is a JSON
-			// pointer, so restoring it as absent removes the key and leaves the file.
+			// Positive first: the recorded payload is back, with a fragment distinctive to
+			// this shape. Then the negative, which on its own would also pass if the restore
+			// had written anything else at all.
+			//
+			// Whitespace is stripped because a pointer restore rewrites the *document*: the
+			// value goes back unchanged but the file comes out re-indented, so a literal
+			// `"key":value` never matches. None of these fragments contains a space of its
+			// own, so collapsing them cannot create a false match.
 			live := readFile(t, credsPath)
+			dense := strings.Join(strings.Fields(live), "")
+			switch {
+			case shape.want == "" && strings.Contains(dense, "claudeAiOauth"):
+				t.Fatalf("the logged-out state was not restored: %s", live)
+			case shape.want != "" && !strings.Contains(dense, shape.want):
+				t.Fatalf("the recorded payload was not restored (want %s): %s", shape.want, live)
+			}
 			if strings.Contains(live, refreshedToken) {
 				t.Fatalf("the child's login was left applied permanently: %s", live)
-			}
-			if shape.name == "absent" && strings.Contains(live, "claudeAiOauth") {
-				t.Fatalf("the logged-out state was not restored: %s", live)
 			}
 		})
 	}

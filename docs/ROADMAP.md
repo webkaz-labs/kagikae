@@ -234,9 +234,10 @@ alternative exists (`secret-tool`).
   delete without harvesting~~ — **fixed in v0.17.0**, see below. **Two copies are a
   time bomb**: the first refresh silently kills the others, so "I used claude in the
   other worktree and this one logged out hours later" has no visible cause.
-  **`kae rollback` reports success restoring a rejected token** whenever anything
+  ~~**`kae rollback` reports success restoring a rejected token** whenever anything
   refreshed after the backup, and `kae run -s <tool> <the active account>` writes the
-  pre-child backup back over a credential the child refreshed. **And every freshness
+  pre-child backup back over a credential the child refreshed~~ — **fixed in v0.17.0**,
+  see below. **And every freshness
   surface misreports**: doctor, `kae ls`, `kae status` and the switch-time warning all
   judge by `refreshTokenExpiresAt`, which invalidation does not move.
   **Built in v0.17.0**, as a two-pass harvest plus a harvest in the delete sweep;
@@ -249,10 +250,32 @@ alternative exists (`secret-tool`).
   **a chokepoint is not coverage** (the write path cannot see the store a mode toggle
   or an isolated re-key is moving *off*, which is why there is a pin-level pass at
   all).
+  **The two restore paths landed next, also in v0.17.0**, and they answer differently
+  because what the user asked for differs. `run -s` **skips** the restore of a tool
+  whose live credential the backup's copy would supersede — it put that account there
+  itself, so the restore is a no-op apart from destroying the newest copy. `rollback`
+  **warns and restores anyway**, naming where the newer copy is, because that decides
+  the remedy (in the snapshot it survives; in the live store only the pre-rollback
+  backup keeps it). [CLI.md](CLI.md) § kae run Semantics and § `kae rollback --json`
+  are the contracts. Three things this cost, all found while building it rather than
+  planned: the *ordering* comparison had to be extracted and shared (`supersedes`),
+  since a third hand-written copy of the `expiresAt` cutoff is the drift this repo
+  bleeds on; the switch-away recapture needed the **same** comparison, or the very next
+  `kae use` launders a rolled-back copy over the snapshot that still worked — an
+  invalidation `recaptureWouldDowngrade`'s usability test cannot see; and the two
+  candidates for "newest" have to be compared **against each other**, or the remedy
+  names a copy that is not the newest.
   **Still open after it**, smallest first: the freshness surfaces still judge by
   `refreshTokenExpiresAt` (no offline fix exists — this is a wording and
-  expectation-setting problem, not a detection one); `kae rollback` and `run -s`
-  restore over a possibly-newer credential with no harvest and no warning; **a
+  expectation-setting problem, not a detection one); **`run -s`'s own recapture goes
+  through neither guard the switch-away recapture applies** — it calls
+  `captureSnapshot` directly, so it neither keeps the snapshot's identity
+  (`keepSnapshotIdentity`) nor refuses a downgrade (`recaptureWouldDowngrade`): a child
+  that logs in as another account files that credential *and* that identity under the
+  target account's name, and a child that logs out files the tombstone. The restore
+  skip above is gated on attribution so it does not compound this, and it reads the
+  **backup** rather than the snapshot precisely because the snapshot may already be
+  wrong by then; **a
   superseded *global* isolated home is never harvested** — `kae use -i <a>` then
   `kae use -i <b>` leaves `isolation/global/<tool>/<a>/` holding a's newest copy, and
   because there is no pin, neither the pin-level pass nor any sweep ever looks at it
@@ -619,9 +642,12 @@ alternative exists (`secret-tool`).
   Several directories can bind the same account, each with its own
   independently-refreshed token, so nothing says which of them the single global
   snapshot should take; and a directory not opened in weeks holds an *older* token
-  than the global one, so writing it back is a downgrade that
-  `recaptureWouldDowngrade`'s "is it usable" test cannot catch — both tokens are
-  usable, they are just different. Two directions if it is ever wanted: pick the
+  than the global one, so writing it back is a downgrade. That last half is no longer
+  undetectable — `supersedes` orders two copies by `expiresAt` and the switch-away
+  recapture now refuses one the snapshot already supersedes — but ordering only makes
+  the *downgrade* refusable, not the choice: with several directories bound to one
+  account, "the latest of the stores" is still an arbitrary answer, which is what keeps
+  this open. Two directions if it is ever wanted: pick the
   store with the latest deadline (needs every store read on every switch, and is
   still wrong when two are equally fresh), or make it explicit —
   `kae add --no-login <tool> <account> --from-dir <dir>` — so the user names the

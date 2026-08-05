@@ -167,6 +167,27 @@ block in docs/VALIDATION.md, next to two correct ones.
   (refusing would strand a live token nothing can address) and **kept** by the sweep a
   bind runs — `kae account rename` reaches that sweep through kae's own re-bind remedy,
   where deleting destroyed the newest copy of the renamed account's credential.
+- **Two copies of one credential are ordered in exactly one place, and restoring a
+  backup is not unconditional.** `supersedes` is the only comparator — `expiresAt`,
+  guarded `Known && !Revoked && !ExpiresAt.IsZero()` on the side claiming to be newer,
+  with the other side degrading to a zero cutoff. A fourth hand-written copy of that
+  cutoff is the drift this file exists for; the three consumers (the harvest, `run -s`,
+  `kae rollback`) share it, and so does the switch-away recapture, which without it
+  launders a rolled-back copy over the snapshot that still worked. What the comparison
+  never establishes is *whose* login the two copies are, so every consumer owes an
+  attribution guard, and **which record it compares against is not interchangeable**:
+  `run -s` reads the **backup**, never the account snapshot, because its own recapture
+  has already rewritten that snapshot with whatever the child left live. Two deliberate
+  asymmetries to leave alone. `run -s` also requires the target to be the account that
+  was already active even though attribution is the stronger evidence — on that path
+  the live identity cache is not an independent reading, since `run -s` applied the
+  target snapshot's identity into it moments earlier, so a snapshot with a wrong
+  recorded identity would otherwise confirm itself. `kae rollback` deliberately does
+  *not* require the label to agree, because there both identities are genuine reads and
+  demanding the label would silence exactly the case where it is wrong. And when two
+  places both hold a later copy, compare them **against each other**: the remedy
+  differs (a snapshot copy survives the rollback, a live one does not), so picking by
+  branch order names a copy that is not the newest.
 - **A new per-directory mechanism also owes the link reconcile a statement of
   intent.** `unintendedLinks` retracts every symlink a bind does not intend to share,
   and there is no default to fall back on: the two existing modes take that intent

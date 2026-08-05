@@ -1234,6 +1234,68 @@ rm "$(store)/.claude.json"
                                         #         ordinary state until the tool runs
                                         #         there, and permanent for a directory
                                         #         bound before v0.16.0)
+
+# --- the two restore paths. One child script for G and H, differing only in the uuid
+#     it leaves behind, because that difference is the whole attribution question ---
+cat > "$HOME/child.sh" <<EOF
+#!/bin/sh
+# \$1 access token, \$2 expiresAt, \$3 the account the identity cache ends up naming
+printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"rt-%s","expiresAt":%s,"refreshTokenExpiresAt":1830384000000}}' "\$1" "\$1" "\$2" > "$HOME/.claude/.credentials.json"
+printf '{"oauthAccount":{"accountUuid":"u-%s","emailAddress":"%s@example.com"}}' "\$3" "\$3" > "$HOME/.claude.json"
+EOF
+chmod +x "$HOME/child.sh"
+cd "$HOME"
+
+# --- G. run -s on the account that is ALREADY active keeps the child's refresh ---
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+/tmp/kae run -s claude main -- "$HOME/child.sh" MAIN-NEW $NEW main
+#   assert: stderr carries `main was already the active account` and does NOT carry
+#           `previous auth state restored` — nothing was restored, so it is not claimed
+grep MAIN-NEW "$HOME/.claude/.credentials.json"   # assert: the real home still runs the
+                                        #         copy that can refresh. Before this it
+                                        #         held MAIN-OLD — a logged-out session
+                                        #         reported as a successful restore
+snap main | grep MAIN-NEW                # assert: the post-child recapture has it too,
+                                        #         so `kae use claude main` applies it
+
+# --- H. the same run, except the child logged in as somebody else ---
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+/tmp/kae run -s claude main -- "$HOME/child.sh" FOREIGN $LATER other
+#   assert: stderr carries `previous auth state restored` and NOT `already the active
+#           account` — a later deadline is not evidence of whose login it is
+grep MAIN-OLD "$HOME/.claude/.credentials.json"   # assert: restored. Keeping FOREIGN
+                                        #         would leave the real home running one
+                                        #         account while kae records another
+
+# --- I. rollback says the credential it restores is already dead, and restores it ---
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+/tmp/kae use claude main                 # a backup whose active_before is main
+cred MAIN-NEW $NEW > "$HOME/.claude/.credentials.json"   # the tool refreshed in place,
+                                        #         with no kae command running
+/tmp/kae rollback
+#   assert: stderr carries `older claude credential for claude/main than the one in the
+#           live store`, and names `kae rollback --to <the pre-rollback id>` — the live
+#           copy is the one being overwritten, so that backup is the only place left
+#           holding it. NOT `kae use claude main`: the snapshot holds the older copy
+grep MAIN-OLD "$HOME/.claude/.credentials.json"   # assert: the rollback still happened.
+                                        #         Going back is what was asked for; the
+                                        #         warning is what kae adds
+echo $?                                 # assert: 0 — a warning never moves the exit code
+
+# --- J. the switch-away recapture declines a live copy the snapshot supersedes ---
+# This is what stops I's rolled-back copy from being laundered over a newer snapshot on
+# the next switch. Both copies are usable here, so the usability refusal cannot see it.
+cred MAIN-NEW $NEW > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"   # what a rollback leaves behind
+/tmp/kae use claude side
+#   assert: stderr carries `snapshot claude/main holds a later claude credential than the
+#           live store` and `snapshot left unchanged`
+snap main | grep MAIN-NEW                # assert: the only copy that can refresh survived
+snap main | grep -c MAIN-OLD             # assert: 0 — paired with the positive line above
 ```
 
 Several lines here exit non-zero **on purpose** (`grep -c` printing `0` is the
@@ -1247,6 +1309,15 @@ pin-level pass running **before** the stores are materialized, and E additionall
 the replaced fragment being read before it is rewritten.
 **F PASSED 2026-08-04** (darwin, file driver, temp HOME, pre-release binary), run as
 written, all four assertions checked at their own points.
+**G–J NOT YET RUN** (added 2026-08-05 with the two restore paths) — they must be run
+before the tag. G and H are the pair worth re-running after any change to `run -s`'s
+post-child sequence, and J after any change to the switch-away recapture. One remedy is
+**not** covered here and is therefore not claimed: the rollback warning's other branch,
+where the newer copy is in the account snapshot and the remedy is `kae use <tool>
+<account>`, needs the snapshot moved ahead of the backup by something these fixtures do
+not do on the real binary; it is pinned by unit tests instead
+(`TestRollbackWarnsWhenTheSnapshotHoldsALaterCopy`, and the two "prefers" tests that
+pin which of the two candidates wins).
 
 Three of these assertions were **corrected after first passing**, which is the argument
 for reading a block adversarially rather than trusting a green run: B reused A's

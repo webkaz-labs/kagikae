@@ -227,7 +227,9 @@ account (§ Backups): a restore addresses the item it captured, by identity.
 
 A snapshot is rewritten by `kae add`, `run -s`'s post-child recapture, (new in
 v0.8.1) `kae use`/bare `use`'s switch-away recapture of the currently-active
-account when its live credential diverges from the snapshot, and (new in v0.17.0)
+account when its live credential diverges from the snapshot — which since v0.17.0
+declines a live credential the snapshot itself supersedes, so a copy an earlier
+rollback put back cannot be laundered over the newer one — and (new in v0.17.0)
 the **harvest** performed before overwriting or deleting a store that holds a *newer*
 copy of that account's credential — by every per-directory materializer, by the
 superseded-credential sweep, and by the pin-level pass `kae pin` / `kae pin <tool>
@@ -446,6 +448,17 @@ backup capture one codex home's item while the rollback deleted another's.
 A legacy `keychain_replace` record with **no** recorded account is refused
 outright: without the account it cannot name its own item, and widening the delete
 to the whole service is what destroyed another codex home's login.
+
+A restore is therefore not automatically the *right* thing to write. A backup's
+credential is a copy of one that was live at some earlier moment, and for a tool
+whose refresh token rotates single-use only the copy that refreshed last can still
+refresh — so a backup can hold a payload that is well-formed, unexpired and dead.
+`run -s` leaves such a tool's credential as the child left it and `kae rollback`
+warns and restores anyway ([CLI.md](CLI.md) § kae run Semantics, § `kae rollback
+--json`). Two records of the backup carry that decision: the credential record's
+payload, which is the copy being compared, and `active_before`, which names the
+account the comparison is about — a backup with no `active_before` for a tool cannot
+say whose chain its credential belongs to, and nothing is claimed about it.
 
 **`account rm`/`rename` do not rewrite existing backups**, deliberately: a backup
 is the record of what was true when it was taken, and rewriting every stored

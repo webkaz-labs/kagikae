@@ -212,8 +212,18 @@ process:
 lock (held for the entire child run) -> backup (reason "run") -> apply
 -> child runs with inherited stdio -> re-resolve each tool's specs
 -> recapture refreshed credentials into the account snapshots
--> restore the backup -> prune -> unlock
+-> restore the backup, except for a tool whose live credential the restore
+   would supersede -> prune -> unlock
 ```
+
+The restore is **per tool, not unconditional**. `kae run -s <tool> <the account
+that was already active>` backs up that account's own credential and the child then
+refreshes it, so for a tool whose refresh token rotates single-use the pre-child copy
+in the backup can no longer refresh: writing it back logs the real home out while
+reporting success. Such a tool is left as the child left it, with the reason on
+stderr, and "previous auth state restored" is printed only when something was
+actually restored ([CLI.md](CLI.md) § kae run Semantics is the contract;
+[ROADMAP.md](ROADMAP.md) § Every credential copy owns the design).
 
 The re-resolution step is not bookkeeping: a child can move the credential to the
 tool's *other* store (codex under `cli_auth_credentials_store = "auto"` creates its

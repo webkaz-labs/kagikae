@@ -154,7 +154,10 @@ kae rollback                   # undo the last switch
 ```
 
 `kae use` backs up the live state before every write and `kae rollback`
-restores it. `--dry-run` previews exactly what would be patched.
+restores it. `--dry-run` previews exactly what would be patched. A rollback goes back
+even when the credential it restores has since been superseded — claude invalidates
+older copies of a login when it refreshes — but it says so first, and names where the
+newer copy still is ([docs/CLI.md](docs/CLI.md) § `kae rollback --json`).
 
 ## Pin a Directory
 

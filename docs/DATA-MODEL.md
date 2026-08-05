@@ -225,9 +225,20 @@ account (§ Backups): a restore addresses the item it captured, by identity.
 | `file` | read whole file | atomic replace, mode `0600` |
 | `keychain` | read whole item payload verbatim (pointer guards the shape; an empty pointer marks an opaque non-JSON payload, e.g. a raw token, guarded as non-empty **and single-line**) | write captured bytes back verbatim via `security -U`; absent value deletes the item. An item identified by service **and** account (`KeychainMatchAccount`) scopes read/write/delete to that account (`-a`) so a sibling item is never touched — used where the service holds more than one legitimate item: shared with another tool (agy's `gemini`/`antigravity`) or one item per tool home (codex's `Codex Auth`, account derived from `CODEX_HOME`). No path deletes by service name alone before writing; that is what destroyed another codex home's login |
 
-A snapshot is rewritten by `kae add`, `run -s`'s post-child recapture, and (new
-in v0.8.1) `kae use`/bare `use`'s switch-away recapture of the currently-active
-account when its live credential diverges from the snapshot. The snapshot's
+A snapshot is rewritten by `kae add`, `run -s`'s post-child recapture, (new in
+v0.8.1) `kae use`/bare `use`'s switch-away recapture of the currently-active
+account when its live credential diverges from the snapshot, and (new in v0.17.0)
+the **harvest** performed before overwriting or deleting a store that holds a *newer*
+copy of that account's credential — by every per-directory materializer, by the
+superseded-credential sweep, and by the pin-level pass `kae pin` / `kae pin <tool>
+<account>` run over *every* store of the directory first. That last one has a
+property worth knowing before reading `kae ls`: it can rewrite the snapshot of an
+account the **command did not name**, because the store it harvests belongs to
+whichever account the binding being replaced bound there. The harvest rewrites the credential payload and
+`captured_at` and nothing else — the identity it recorded is deliberately kept, the
+same rule the switch-away recapture follows — and it is claude-only, because
+ordering two copies requires a measured rotation (docs/CLI.md § kae pin,
+docs/ROADMAP.md). The snapshot's
 credential expiry, refresh-token state, and explicit invalidation are read (never
 stored separately) for the switch-time warnings, the `doctor` `credential_stale`
 and `credential_expiring` checks, and the freshness column of `kae ls` /

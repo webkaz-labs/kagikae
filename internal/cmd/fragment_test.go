@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -738,7 +739,9 @@ func TestRunPinModeToggleRemovesTheOldModesItem(t *testing.T) {
 	pinID := paths.PinID(cwd)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
-	payload := `{"claudeAiOauth":{"accessToken":"` + mainToken + `"}}`
+	// A payload with a real expiresAt: without one kae cannot judge what the item
+	// holds, and a store it cannot read is deliberately kept rather than deleted.
+	payload := claudeOAuthPayload(mainToken, time.Date(2026, 6, 11, 9, 0, 0, 0, time.UTC))
 	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
 		captureClaude(t, app, "main", mainToken)
 	})
@@ -767,6 +770,41 @@ func TestRunPinModeToggleRemovesTheOldModesItem(t *testing.T) {
 	}
 }
 
+// `kae unpin --purge` is the one caller that may delete a usable copy whose account no
+// longer exists — it was asked to remove these credentials, and keeping it would strand a
+// live token no kae command can address. That is the *promise* direction of the same
+// argument the bind sweeps make in reverse, and nothing pinned this call site: flipping it
+// to the bind sweeps' answer made `--purge` a silent no-op here and survived the whole
+// suite (execution-type review, round 3).
+func TestUnpinPurgeDeletesALostAccountsCredential(t *testing.T) {
+	sim := &keychainSim{}
+	runner.With(sim, func() {
+		app := overlayTestApp(t)
+		app.Env.GOOS = "darwin"
+		chdirTemp(t)
+		ctx := context.Background()
+		opts := commonOpts{Format: formatText}
+		captureClaudeFromKeychain(t, app, sim, "main", mainToken, app.Now().Add(time.Hour))
+		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+			t.Fatalf("pin --isolated exit %d", code)
+		}
+		if err := os.RemoveAll(app.Paths.AccountDir(constants.ToolClaude, "main")); err != nil {
+			t.Fatal(err)
+		}
+		sim.payload = claudeOAuthPayload("sk-ant-oat01-MAIN-REFRESHED-cccc", app.Now().Add(8*time.Hour))
+		sim.ops = nil
+
+		_, stderr := captureStderr(t, func() int { return runUnpin(ctx, app, opts, true) })
+
+		if !strings.Contains(strings.Join(sim.ops, ","), "delete") {
+			t.Fatalf("--purge must remove a copy nothing can harvest: %v", sim.ops)
+		}
+		if !strings.Contains(stderr, "deleted without being kept anywhere") {
+			t.Fatalf("deleting it must say so: %q", stderr)
+		}
+	})
+}
+
 // unpin leaves everything by default — the promise that makes re-pinning restore a
 // directory — and --purge is the opt-in for the one part that is invisible.
 func TestUnpinPurgeRemovesTheItemAndPlainUnpinDoesNot(t *testing.T) {
@@ -781,7 +819,9 @@ func TestUnpinPurgeRemovesTheItemAndPlainUnpinDoesNot(t *testing.T) {
 			}
 			pinID := paths.PinID(cwd)
 			ctx := context.Background()
-			payload := `{"claudeAiOauth":{"accessToken":"` + mainToken + `"}}`
+			// A payload with a real expiresAt: without one kae cannot judge what the item
+			// holds, and a store it cannot read is deliberately kept rather than deleted.
+			payload := claudeOAuthPayload(mainToken, time.Date(2026, 6, 11, 9, 0, 0, 0, time.UTC))
 			runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
 				captureClaude(t, app, "main", mainToken)
 				if code := runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared); code != constants.ExitOK {
@@ -790,13 +830,17 @@ func TestUnpinPurgeRemovesTheItemAndPlainUnpinDoesNot(t *testing.T) {
 			})
 			sharedDir := app.Paths.SharedDir(pinID, constants.ToolClaude)
 
-			fake := &runnertest.Fake{Code: 0}
+			fake := &runnertest.Fake{Stdout: payload, Code: 0}
 			runner.With(fake, func() {
 				if code, out := captureStdout(t, func() int { return runUnpin(ctx, app, commonOpts{Format: formatText}, purge) }); code != constants.ExitOK {
 					t.Fatalf("unpin exit %d: %s", code, out)
 				}
 			})
-			deleted := strings.Contains(strings.Join(fake.Args, " "), sha8Of(sharedDir))
+			// The delete, not any call naming the item: the sweep *reads* the store before
+			// deciding, and that read carries the same service name — so matching on the
+			// name alone reported a deletion that had not happened.
+			args := strings.Join(fake.Args, " ")
+			deleted := strings.Contains(args, "delete-generic-password") && strings.Contains(args, sha8Of(sharedDir))
 			if deleted != purge {
 				t.Fatalf("purge=%v: item deleted=%v (ran %q %v)", purge, deleted, fake.Name, fake.Args)
 			}
@@ -818,7 +862,9 @@ func TestPinRebindIsolatedRemovesThePreviousAccountsItem(t *testing.T) {
 	pinID := paths.PinID(cwd)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
-	payload := `{"claudeAiOauth":{"accessToken":"` + mainToken + `"}}`
+	// A payload with a real expiresAt: without one kae cannot judge what the item
+	// holds, and a store it cannot read is deliberately kept rather than deleted.
+	payload := claudeOAuthPayload(mainToken, time.Date(2026, 6, 11, 9, 0, 0, 0, time.UTC))
 
 	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
 		captureClaude(t, app, "main", mainToken)

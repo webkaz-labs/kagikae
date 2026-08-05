@@ -725,13 +725,54 @@ thing that writes it — plus the identity cache that names it — for all four:
 - the location comes from the adapter, resolved against an env whose isolation
   variable already points at the bound directory — never recomputed;
 - on a keychain platform the per-directory **item** is written and the plaintext
-  copy in the directory is removed, because nothing reads it once the item exists
-  and the tool only deletes it itself when it finds no item;
+  copy in the directory is removed, because **while the tool keeps preferring the
+  item** nothing reads that file and it cannot hold anything newer than what was just
+  written — claude's first refresh promotes a file store to an item and deletes the
+  file, so a file beside a live item is not a state upstream produces. Stated as the
+  condition rather than as an absolute, because if it ever stops holding, this removal
+  is a harvest kae skips: the harvest reads the credential artifact the adapter
+  resolves, which is the item, never this file;
 - a failed keychain write is an error. It is never downgraded to a file write:
   that would report success while leaving the directory reading something else;
-- the payload comes from the **account's snapshot**, never the live store — the
-  live store holds whichever account is globally active, which is the account
-  being bound only by coincidence;
+- the payload comes from the **account's snapshot**, never the *global* live store
+  — that one holds whichever account is globally active, which is the account being
+  bound only by coincidence;
+- but **a store is read before it is written over, and a newer copy in it is
+  harvested into the account snapshot first**, for a tool whose refresh token is
+  measured to rotate single-use (claude only — see "Credential storage resolution"
+  and docs/VALIDATION.md). The tool refreshes that copy in place, so an older
+  snapshot written over it does not date the directory back, it logs it out. Newer
+  means the larger `expiresAt`, which a refresh always moves forward.
+  It happens in **two places, because one cannot see what the other can**. Here, for
+  the store being written — the only harvest on the paths that have no bound
+  directory at all (`kae use -i`, `kae run -i`). And once per bound directory before
+  any store is materialized, over *every* store that directory has, which is what
+  covers a binding that moves to a **different** store: a `-s` ↔ `-i` toggle, an
+  isolated re-bind, and the shared-mode re-bind whose one store holds the *previous*
+  account's credential. The superseded-credential sweep harvests as well, where a
+  delete is final (docs/CLI.md § kae pin, docs/DATA-MODEL.md);
+- and it **refuses rather than guesses**, in every one of these places. An unusable
+  copy is not harvested — the tombstone a failed refresh leaves behind is a
+  fully-formed payload, so presence proves nothing. A copy kae cannot *attribute* is
+  not harvested: the identity cache beside the credential must be readable, inside
+  that store, and name the account being harvested into, and **absence is not
+  agreement** — no recorded identity, no live cache, an unreadable one, one that is
+  well-formed JSON but not an account record (`null`, a string, a number, an array:
+  it names no account, so neither a difference from it nor a match with it is
+  evidence, and the rule applies to the **recorded** side as much as the live one), a
+  path kae
+  could not resolve, or a target that resolves outside the store (a pre-v0.16.0 bind
+  linked it to the real home, so it labels *that*) all refuse. This matters most for a `-s` store, which is shared
+  by every account the directory ever bound: its credential can legitimately belong
+  to another account, and filing that under this one's name is undetectable
+  afterwards — the token is opaque, so live, snapshot and doctor would all agree on a
+  label that is simply wrong. That attribution answer has a **second reader**:
+  `kae doctor` reports the one refusal that is *positive* evidence — the store's
+  identity naming a different account — as `identity_drift` for that bound directory
+  (docs/CLI.md § doctor). It is one predicate, so what the harvest may act on and what
+  doctor may report cannot drift apart; and doctor reports **only** that branch,
+  because every other refusal above is missing evidence and would fire on healthy
+  directories;
 - the snapshot's payload **shape** must match the artifact being written.
   `KindFile` and `KindKeychain` hold a whole document, `KindJSONPointer` holds only
   the value under its pointer, and the two are not interchangeable: applying a
@@ -812,11 +853,35 @@ To add extra items to the denylist:
 above are refused at config load to avoid confusion).
 
 A real file already present in the shared directory is treated as a private
-override and is never replaced or linked over. A **symlink** by the name of a
-denied entry is retracted instead — otherwise the denylist would govern only new
-bond dirs, and a directory bound before an entry was denied (by an upgrade, or by
-`shared_denylist_extra` gaining a name) would go on sharing what it was told to
-stop sharing.
+override and is never replaced or linked over. Every **symlink** whose name is not
+in the intended share set is retracted instead, so a re-bind converges on that set
+rather than only adding to it. Known ways a name leaves that set — not a closed
+list: it becomes **denied** (otherwise the denylist would govern only new bond dirs,
+and a directory bound before an entry was denied — by an upgrade, or by
+`shared_denylist_extra` gaining a name — would go on sharing what it was told to
+stop sharing), and the real home **no longer has it at all**.
+
+In shared mode the real home's own listing is what states the intent, so an entry
+that has left it is no longer intended. That second case used to be out of reach
+because the retraction walked the real home's entries: bond a directory with
+`CLAUDE_CONFIG_DIR` set and then unset it, and `<bondDir>/.claude.json` kept
+pointing into the old config dir forever, declined by the identity-write guard on
+every pin with no remedy but deleting the link by hand.
+
+**A real home kae cannot enumerate, or one that lists nothing shareable, is not an
+intent.** Both leave the intended set empty without meaning "share nothing" — an
+absent home, an unmounted `$HOME`, an isolation variable naming a directory that does
+not exist, a tool kae has no real-home rule for, or a config dir that exists and is
+empty. kae warns on stderr, naming the home and how many links it left alone, and
+retracts nothing.
+
+That way round because the two mistakes are not symmetric. A link kae **keeps** by
+mistake is repaired by the next pin. A link kae **retracts** by mistake is not: the
+fragment still points the tool at this directory, so the tool re-creates that file
+here as a **real file**, and a real file is a private override every later bind
+leaves alone — one momentarily unreadable home would silently make a shared bind stop
+sharing, permanently. The isolated bind has no equivalent case, because there an
+empty list is the configured default and states full isolation positively.
 
 ### Per-directory isolated bind (`kae pin -i`)
 
@@ -837,9 +902,22 @@ account it was logged in as.
 
 `isolated_shared_items` is the opt-in share list: default is empty (full
 isolation). Re-running `kae pin` refreshes opt-in shared-item links and the
-credential copy. It does **not** retract a link for an entry you *remove* from the
-list, and neither does the shared bind for a stale link whose name is no longer an
-entry of the real home ([ROADMAP.md](ROADMAP.md)).
+credential copy, and retracts the link of an entry you have *removed* from the
+list — the same reconcile the shared bind does, against a different statement of
+intent. **Here the intent is the configured list, not the real home's contents**: an
+item still on the list keeps its link even when its source is currently missing,
+because a missing source is already treated as transient (only what exists is
+linked) and retracting it would just re-create it on the next pin.
+
+Two consequences worth stating rather than discovering. A **symlink an operator
+placed in this directory by hand is not an override** and is retracted like any
+other unintended one — only a *real file* is a private override, because the stale
+links this removes are exactly the ones pointing somewhere kae would not point
+today, so kae cannot tell one from the other by its target. And an **empty
+`isolated_shared_items` still reconciles**, since empty is this field's default and
+states full isolation positively — the opposite of the shared bind, where a real
+home listing nothing shareable means kae could not establish the intent at all and
+says so on stderr instead of retracting.
 
 Re-bind one tool to another account with `kae pin <tool> <account>`:
 
@@ -954,7 +1032,7 @@ half-done. Do not reformat the rows without updating that test.
 
 | Tool | `VerifiedVersion()` | `VerifiedOn()` | `--version` output shape |
 |------|---------------------|----------------|--------------------------|
-| claude | `2.1.220` | `2026-07-31` | `2.1.220 (Claude Code)` |
+| claude | `2.1.220` | `2026-08-04` | `2.1.220 (Claude Code)` |
 | codex | `0.146.0` | `2026-08-04` | `codex-cli 0.146.0` |
 | agy | `1.0.10` | `2026-07-31` | `1.0.10` |
 | opencode | `1.17.4` | `2026-07-31` | `1.17.4` |

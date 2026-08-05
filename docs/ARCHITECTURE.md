@@ -106,8 +106,10 @@ Such a spec also declares `IdentityKeys`: the payload keys that actually name th
 account. An identity payload carries volatile bookkeeping the tool rewrites on its
 own schedule (claude renews `/oauthAccount.profileFetchedAt` on every profile
 refetch), so "is the live identity still the one kae applied?" is answered on
-those keys alone — `identityDiffers` in `internal/cmd`, used by both
-`doctor identity_drift` and the switch-away recapture. Comparing whole payloads
+those keys alone — `identityDiffers` in `internal/cmd`. Known readers, **not a closed
+set**: `doctor identity_drift` (both frames — the active account's live state, and a
+bound directory's own store), the switch-away recapture, and the per-directory
+harvest's attribution guard. Comparing whole payloads
 made a correct switch look like drift a day later. Credentials keep the strict
 byte comparison (`snapshotArtifactDiffers`): one differing bit there is a
 different credential.
@@ -262,9 +264,40 @@ A fourth, `pin-<pin-id>`, serializes the commands that bind one directory
 the companion files and the fragment as separate steps, so two at once in the
 same directory could interleave into a fragment pointing at a store the other
 re-keyed. It is per directory, so binding two directories at once is unaffected.
-There is deliberately no backup of the previous per-directory credential: it is a
-copy of the account snapshot, so re-running `kae pin <tool> <account>` reproduces
-it exactly.
+There is deliberately no backup of the previous per-directory credential, and what
+makes that safe is the **harvest**: the copy in the store can be newer than the
+snapshot (the tool refreshes it in place), so before overwriting or deleting one kae
+copies a newer usable copy into the account snapshot — which is what keeps
+"re-running `kae pin <tool> <account>` reproduces it" true rather than a claim that
+was falsified the moment claude's rotation was measured (docs/CLI.md § kae pin).
+
+**The harvest writes an account snapshot from inside a per-directory lock, which no
+tool lock covers.** A concurrent `kae add --no-login <tool> <account>` or a
+switch-away recapture of the same account writes the same two files, so the pair can
+interleave and the last writer wins. **Do not describe that as losing one of two
+equally good payloads** — under single-use rotation at most one copy is refreshable,
+so the writer that loses may be the one that had the live credential, leaving the
+snapshot holding a copy that cannot refresh while every offline check stays green. The
+pin-level pass widens the window rather than narrowing it: one snapshot write per
+store per pin, in any bound directory.
+It is still recorded rather than locked, for two reasons that are about cost, not
+about the loss being small: the state self-heals the next time the directory holding
+the live copy is bound (the harvest picks the larger `expiresAt` again), and taking a
+tool lock under the pin lock would invert the ordering every other command uses
+(tool → config → state), which needs the deadlock analysis that inversion implies
+(docs/ROADMAP.md).
+
+What is **not** left to that argument is the shape of the write. The harvest stores
+the payload, then re-reads `account.toml` before stamping `captured_at`, rather than
+saving the copy it loaded earlier — the same seam rule `App.mutateState` states for
+`state.json`, and for the same reason: writing back an older copy would silently
+revert artifact records a concurrent `kae add` had just rewritten. The re-read's
+*missing* case is the one that mattered in review: `account.Save` starts with
+`MkdirAll`, so saving a stale copy after a concurrent `kae account rm` would
+**resurrect** an `account.toml` whose payloads are already being deleted — metadata
+naming secrets that are not there, which is exactly the class of half-state
+`active_orphan` and `secret_missing` exist to report. A snapshot that has gone away
+is therefore left gone.
 
 **One file `kae pin` writes falls outside every per-directory lock**, and is meant
 to: the ignore rule for the fragment goes in the repository's shared exclude file

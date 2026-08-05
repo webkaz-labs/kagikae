@@ -40,6 +40,12 @@ type App struct {
 	// test seam (App is constructed directly in tests; see app.go newApp doc);
 	// nil in production, so secretBackend resolves from config as usual.
 	backendForTest secret.Backend
+	// refusalReported holds the per-directory stores whose un-harvested credential the
+	// pin-level pass has already reported, so writeDirCredential's backstop does not say
+	// it twice (markRefusalReported; docs/CLI.md § kae pin). Scoped to **one bind**: the
+	// pass clears it when it starts, because an App outliving two binds would otherwise
+	// carry a mark that silences the second one.
+	refusalReported map[string]bool
 }
 
 // newApp resolves the live environment and loads config. A config problem is

@@ -55,8 +55,12 @@ func seedClaude(t *testing.T, app *App, token, accountUUID string) {
 	t.Helper()
 	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
 		`{"claudeAiOauth":{"accessToken":"`+token+`","subscriptionType":"max"}}`)
+	// The /oauthAccount object comes from claudeOAuthAccount, so this live cache and
+	// every fixture a test compares it against carry the same keys. The rest of the
+	// file is deliberately richer than the artifact kae patches — the point of the
+	// mixed-state file is that a pointer write leaves it alone.
 	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"),
-		`{"oauthAccount":{"accountUuid":"`+accountUUID+`","emailAddress":"`+accountUUID+`@example.com"},`+
+		`{"oauthAccount":`+claudeOAuthAccount(accountUUID, accountUUID+"@example.com")+`,`+
 			`"projects":{"/repo":{"allowedTools":["Bash"]}},"firstStartTime":"2024-01-01T00:00:00Z"}`)
 	writeFile(t, filepath.Join(app.Env.Home, ".claude", "settings.json"), `{"theme":"dark"}`)
 }
@@ -434,9 +438,13 @@ func TestRecaptureKeepsSnapshotIdentity(t *testing.T) {
 	const rotated = "sk-ant-oat01-SIDE-ROTATED-eeee"
 	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
 		`{"claudeAiOauth":{"accessToken":"`+rotated+`","subscriptionType":"max"}}`)
+	// The identifying keys come from the same template the snapshot's did, or this is
+	// the outside-login *skip* path instead of the keep path this test is about; only
+	// the volatile field claude renews on its own is added.
+	liveIdentity := strings.TrimSuffix(claudeOAuthAccount("side-uuid", "side-uuid@example.com"), "}") +
+		`,"profileFetchedAt":9999}`
 	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"),
-		`{"oauthAccount":{"accountUuid":"side-uuid","emailAddress":"side-uuid@example.com",`+
-			`"profileFetchedAt":9999},"projects":{}}`)
+		`{"oauthAccount":`+liveIdentity+`,"projects":{}}`)
 
 	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
 	mustExit(t, constants.ExitOK, code, out)

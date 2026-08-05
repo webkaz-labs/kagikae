@@ -109,12 +109,71 @@ block in docs/VALIDATION.md, next to two correct ones.
   The asymmetry with a file store is deliberate — a file credential lives *inside*
   the store directory, which `kae unpin` and a mode toggle keep on purpose, while an
   item lives under a per-directory service name that appears nowhere in kae's data
-  dir and cannot be enumerated on darwin, so nothing could ever find it again.
-  Two things must move in lockstep with it: a **third** per-directory mechanism
-  (today `shared` and `isolated`) has to be added to `dirCredentialStores`, or its
-  stores are silently never swept; and the sweep must run **after** the new binding
-  is written, or a mid-sequence failure leaves the live binding pointing at a store
-  whose credential is already gone.
+  dir, so kae cannot *address* one without already knowing the string it hashes from.
+  This used to say such an item "cannot be enumerated on darwin"; that is too strong
+  and was corrected on 2026-08-04 — `security dump-keychain` lists item attributes
+  (service, account, dates) with no prompt, which is how five stale per-directory
+  items were found on a real machine. **The sweep's design does not change**: an
+  enumeration tells you an item exists, never whether another directory still reads
+  it, and only a fragment says that (see the next entry). Two rules come out of the
+  correction. Never pass `-d` — it prompts per item and prints the secret. And an
+  empty enumeration is not proof of nothing: it reads only file-based keychains, so a
+  future move to the Data Protection keychain would make this silently return zero,
+  the same trap as comparing two empty greps.
+  Things that must move in lockstep with it — not a closed list: a **third**
+  per-directory mechanism (today `shared` and `isolated`) has to be added to
+  `dirCredentialStores`, or its stores are silently never swept; and the sweep must
+  run **after** the new binding is written, or a mid-sequence failure leaves the live
+  binding pointing at a store whose credential is already gone.
+- **The copy in a per-directory store can be newer than the snapshot, so every
+  write and delete of one harvests first.** claude's refresh token rotates
+  single-use, which turns "kae overwrote the directory's credential with an older
+  one" from a regression into a logout — reported as success, green in `kae doctor`,
+  failing up to 8h later inside the tool (`docs/VALIDATION.md` owns the measurement,
+  `docs/ROADMAP.md` the design). Order two copies by `expiresAt` and nothing else,
+  guarded `Known && !Revoked && !ExpiresAt.IsZero()` — a tombstone is a fully-formed
+  payload, so presence proves nothing — and keep it **claude-only** until another
+  tool's rotation is measured. Adding a tool needs a
+  measurement **and** an identity-only artifact for attribution to read; `docs/ROADMAP.md`
+  § Rotation is measured for claude only owns that rule.
+- **A chokepoint is not the same as complete coverage.** `writeDirCredential` is where
+  the harvest belongs for the store it writes — put it in a separate "repair" step and
+  the overwrite paths stay unconditional, which ships a release that fixes a login and
+  then destroys it. But it cannot see a **sibling** store of the same bound directory,
+  which is what a `-s` ↔ `-i` toggle and an isolated re-key move the binding to, so
+  `kae pin` and `kae pin <tool> <account>` also run a pin-level pass **before**
+  materializing while the delete sweep still runs **after** the new binding
+  (`docs/ADAPTERS.md` § Per-directory credential store is normative for all of it).
+  Two traps that outlive the specific code. Harvesting is not deleting — they belong on
+  opposite sides of the write, so do not "simplify" them into one pass. And a
+  suppression that keeps two speakers from repeating each other must be keyed on **what
+  was actually reported**, not on which store *kind* a pass would have looked at: the
+  second version silenced precisely the cases where the pass had nothing to say, which
+  are the destructive ones. Both were found by review after a version that looked
+  complete and passed its tests.
+- **Never harvest a copy you cannot attribute.** A `-s` store is account-agnostic, so
+  a re-bind finds the previous account's (usually newer) credential there, and filing
+  it under this account's name is undetectable afterwards — the token is opaque, so
+  live, snapshot and doctor all agree on a label that is simply wrong. The evidence is
+  the identity cache beside the credential, and **absence is not agreement**
+  (no recorded identity, no live cache, unreadable, or a target that resolves outside
+  the store, which labels the real home instead). Where a store's own path does not
+  name its account, only the fragment being *replaced* does — read it before
+  overwriting or removing it, and only trust it for the mechanism it describes. For a
+  delete, an account kae cannot name at all is a reason to keep the item; so is a
+  payload kae cannot read, which may be a working login in a shape kae has not been
+  taught. One exception, and it turns on **what the user asked for**, not on the state:
+  a usable copy whose account no longer exists is deleted by `kae unpin --purge`
+  (refusing would strand a live token nothing can address) and **kept** by the sweep a
+  bind runs — `kae account rename` reaches that sweep through kae's own re-bind remedy,
+  where deleting destroyed the newest copy of the renamed account's credential.
+- **A new per-directory mechanism also owes the link reconcile a statement of
+  intent.** `unintendedLinks` retracts every symlink a bind does not intend to share,
+  and there is no default to fall back on: the two existing modes take that intent
+  from deliberately different places, and one of them cannot always establish it at
+  all. `docs/ADAPTERS.md` (§ per-directory shared bind, § per-directory isolated bind)
+  is normative for which source each mode uses and what happens when the intent is
+  unknown; do not restate the rule here or in a code comment.
 - **A bound directory's store tree is history; its mise fragment is the binding.**
   `dirCredentialStores` walks `isolation/<pinID>` and *deliberately* returns stores
   nothing points at any more: `kae unpin` keeps a store so a re-pin restores its
@@ -127,9 +186,24 @@ block in docs/VALIDATION.md, next to two correct ones.
   account). The two functions look interchangeable and are not; `pinChecks` has
   skipped an unpinned directory since it shipped, and the doctor credential sweep
   still shipped its first draft without that gate. Every command that reports on
-  bindings needs the same gate — `kae ls --pins` (`buildLsPins`) is a third
-  consumer, not the last one. Note also that `fragmentInfo.Accounts` covers
-  **every** bound tool, shared mode included.
+  bindings needs the same gate, so the doctor consumers now share one walk of it
+  (`boundDirStores`) — **use it rather than re-deriving the walk**; `kae ls --pins`
+  (`buildLsPins`) keeps its own display-shaped one and is not the last consumer.
+  Note also that `fragmentInfo.Accounts` covers **every** bound tool, shared mode
+  included.
+  Which of that walk's guards a test can actually kill was measured (2026-08-04/05),
+  because three of them read like they must be load-bearing and are not — write the
+  reason in a comment rather than a test that cannot fail. In `boundDirStores` the
+  `!exists` arm, the unreadable-fragment arm and the `dirExists(<bound dir>)` gate all
+  **converge**: a missing or gone directory parses to an empty account map, which
+  `boundStoreDir` already answers "not bound" from, and all three arms `continue`
+  anyway. They are a statement of intent there; the place the same distinction has
+  consequences is `pinChecks`, which reports a *different* finding for each. Two
+  guards in the same walk **are** killable and must stay tested: the choice of source
+  (walking the tree instead of the fragment), and `dirExists(<store dir>)` — that last
+  one only bites on darwin, where a per-directory keychain **item** outlives its
+  deleted store directory, so a linux-only unit test sees both consumers decline for
+  an unrelated reason. Assert it on the walk's own output.
 - **A `git worktree` is just another bound directory, and that is the whole
   design** — its own real path, its own pin-id, its own store, its own fragment.
   Worktrees stop being incidental in exactly one place, telling git to ignore the

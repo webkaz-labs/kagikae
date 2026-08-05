@@ -27,14 +27,19 @@ afterward for curated highlights when useful. Windows is not built
 
 # kae v0.17.0 (unreleased)
 
-**One account per worktree, and a stated scope for the other four tools.** A
-binding has always belonged to a *directory*, which makes a `git worktree` a
-first-class unit — but the way kae marked its fragment as ignored fought that, and
-nothing could show more than one binding at a time.
+**One account per worktree — and kae no longer kills the login in it.** A binding
+has always belonged to a *directory*, which makes a `git worktree` a first-class
+unit: the way kae marked its fragment as ignored fought that, nothing could show
+more than one binding at a time, and — measured while making worktrees prominent —
+re-binding a directory destroyed the credential the tool had refreshed inside it,
+because claude's refresh token turns out to rotate single-use.
 
-Baseline: v0.16.0. `schema_version` stays `1`. One **behaviour change** to
-`kae pin` (where the ignore rule is written) and one contract-additive view
-(`kae ls --pins`); the rest is documentation.
+Baseline: v0.16.0. `schema_version` stays `1`. **Behaviour changes**: where
+`kae pin` writes its ignore rule; a bind or a superseded-credential sweep now
+harvests a newer credential from the store it is about to overwrite or delete, and
+declines to delete one it could not preserve. Plus two contract-additive surfaces —
+the `kae ls --pins` view, and `doctor`'s existing `identity_drift` code reported for
+a bound directory's own store; the rest is documentation.
 
 - **`kae pin` records its ignore rule in the repository's exclude file, not in a
   tracked `./.gitignore`** (behaviour change). Up to v0.16.0 every `kae pin` appended
@@ -127,6 +132,112 @@ Baseline: v0.16.0. `schema_version` stays `1`. One **behaviour change** to
   2026-07-31. The table now distinguishes "none known" from "one exists and is
   deliberately not wired up", because those look identical from the outside and are
   not the same fact.
+
+- **A per-directory bind retracts a link it no longer intends to share** (bug fix).
+  v0.16.0 removed a symlink for a *denied* entry, but from inside the loop over the
+  real home's entries — so it could only ever see a link whose name the real home
+  still had, and the isolated bind had no retraction at all. Two residues followed.
+  Bond a directory while `CLAUDE_CONFIG_DIR` is set and then unset it, and
+  `<bondDir>/.claude.json` kept pointing into the old config dir **forever**: the
+  per-directory identity write was declined by `identityTargetEscapes` on every
+  later pin, warning each time, with no remedy but deleting the link by hand.
+  Separately, dropping an entry from `isolated_shared_items` left its link in place,
+  so a directory went on sharing what the config no longer said to share.
+
+  Both are now one reconcile against the intended set, so a re-bind converges instead
+  of only growing. Real files stay untouched in both, the rule that keeps a private
+  override and kae's own per-directory credential and identity copies alive.
+  **Which source states the intent differs per mode, deliberately, and the shared
+  bind cannot always establish it — a real home it cannot enumerate, or one listing
+  nothing shareable, warns on stderr and retracts nothing.** That asymmetry is the
+  design decision in this fix; [ADAPTERS.md](ADAPTERS.md) carries it (§ per-directory
+  shared bind, § per-directory isolated bind) rather than being re-derived here.
+
+- **A bind no longer destroys the login in the directory it is binding** (bug fix,
+  and the reason this release exists). claude's refresh token was measured on
+  2026-08-04 to **rotate single-use** (docs/VALIDATION.md owns the measurement): of
+  all the copies of one account's credential, only the one that refreshed last can
+  refresh again. kae's per-directory stores are copies, and the tool refreshes the
+  copy *inside* the bound directory, in place, at a moment no kae command is running
+  — so `kae pin` re-run, `kae use -i` / `kae run -i` re-materialized, and
+  `kae unpin --purge` all wrote or deleted over the only copy that still worked. It
+  reported success, `kae doctor` stayed green, and the directory failed up to an
+  access token's ~8h later, mid-session. `kae pin` is what kae's own remedy for a
+  stale bound credential tells the user to run.
+
+  Every path now **harvests before it overwrites or deletes**: it reads the copy that
+  is there, and when that copy is the newer one it goes into the account snapshot
+  first. Newer means the larger `expiresAt`, the guards are refusals rather than
+  guesses, and the whole mechanism is claude-only —
+  [ADAPTERS.md](ADAPTERS.md) § Per-directory credential store is normative for all of
+  it. What a user sees: `kae: harvested …` when a copy is moved, a reason plus a login
+  remedy when kae declines one, and — from `kae unpin --purge` only — a deleted copy
+  whose account no longer exists, since that command was asked to remove these
+  credentials and the sweep a *bind* runs was not.
+
+  **Two things the plan did not name, both found by review on a version that looked
+  complete and passed its own tests.** *Attribution*: a shared store is
+  account-agnostic, so re-binding it to another account finds the previous account's
+  copy there — usually the newer one, because it is the one in daily use — and
+  harvesting that would file one account's token under another's name, which nothing
+  offline can detect afterwards because the token is opaque. And *a chokepoint is not
+  coverage*: the write path cannot see the store a mode toggle or an isolated re-key is
+  moving off, so the directory the user had just bound held the credential rotation had
+  already killed, with every offline check green. Hence a pin-level pass over every
+  store of the directory before any of them is written, with the delete sweep still
+  after the new binding.
+
+  What this does **not** fix is stated because a message implying otherwise would be
+  worse than silence: two directories bound to one account still cannot run at the
+  same time. The refresh happens inside the tool with kae absent, so only one *copy*
+  of the credential can fix that ([ROADMAP.md](ROADMAP.md)). Nor do the freshness
+  surfaces improve: `refreshTokenExpiresAt` does not move when a copy is
+  invalidated, and no offline check can see that it was.
+
+- **`kae doctor` reports a bound directory that is running an account its binding
+  does not name** (contract-additive: an existing check code, `identity_drift`, in a
+  frame it never covered). The check has always compared a tool's live identity
+  against what kae applied — and always skipped a kae-owned isolated home, because
+  `state.Active` names the *global* account while the live cache there is the *bound
+  directory's*, so the two sides are different frames. Since v0.16.0 a bind writes
+  the identity into the store, so there is something of kae's own to compare against
+  in that frame; nothing was.
+
+  The new pass reads each bound directory's store **by its own path**, so one
+  `kae doctor` answers for every binding rather than only the shell you are standing
+  in. It reuses the harvest's attribution predicate rather than a second copy of it,
+  and reports only that predicate's positive-evidence answer — everything else is
+  missing evidence and stays silent, which is the point rather than a detail: the
+  ordinary states (a store whose tool has not run there yet, a directory bound before
+  v0.16.0) are in that list, so an unconditional warning would fire on healthy
+  directories and become wallpaper, the mistake v0.15.0/v0.15.1 made in both
+  directions. [ADAPTERS.md](ADAPTERS.md) § Per-directory credential store is normative
+  for the predicate and its refusals; [CLI.md](CLI.md) § doctor for the check's
+  contract, message and remedy.
+
+  **Review changed the predicate, and with it the harvest.** A payload that is valid
+  JSON but not an object was reaching the proof branch: the keyed comparison falls back
+  to bytes when it cannot read either side, so a store naming *no* account was reported
+  as naming another one. The rule now applies to the **recorded** side as much as the
+  live one, and in both directions — which matters most where nobody was looking. Two
+  such payloads used to *confirm* a store on the strength of agreeing about nothing, so
+  a shared store re-bound between two accounts that both recorded one would have had
+  the previous account's token filed under the new name: the undetectable
+  misattribution this guard exists to prevent. Refusing costs the opposite way and
+  loudly — the bind overwrites a newer copy it declined to preserve, naming the reason
+  and the login that fixes it, while the superseded-credential sweep now **keeps** an
+  item it would previously have harvested and swept. A destroyed login the user is told
+  about is the lesser of the two, which is the trade every refusal in this mechanism
+  makes. What nothing yet reports is the state underneath it — a recorded identity kae
+  cannot read at all ([ROADMAP.md](ROADMAP.md)).
+
+  One gate differs from the rest of the bound-directory family, and deliberately.
+  `pin_stale` and the bound credential checks need no secret backend and run even
+  when it is unavailable — which is exactly when someone is diagnosing. This one has
+  to read the account's *recorded* identity, so it is skipped there instead of
+  reporting a comparison it could not make. The walk that decides what is bound is
+  now shared with the credential checks — one walk per run, the fragment and never the
+  store tree — so a future consumer inherits the gate rather than re-deriving it.
 
 ---
 

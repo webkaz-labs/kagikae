@@ -145,6 +145,8 @@ tool is:
 - never derive a keychain item's account from the live item or a foreign snapshot;
 - refuse, rather than approximate, an upstream config value that selects a store
   kae cannot switch;
+- never adopt a credential copy kae cannot attribute to an account — a copy filed
+  under the wrong name is undetectable afterwards, because the token is opaque;
 - emit warnings before the write they warn about, and never let one change the
   exit code.
 
@@ -189,6 +191,23 @@ store shared by every terminal, so two different accounts of the same tool
 cannot run concurrently this way. `kae` holds a per-tool lock during the switch
 and documents that concurrent multi-account work needs an isolated environment
 — `kae pin` per directory, or `kae use -i` for a global per-account home.
+
+**A second limit was measured on 2026-08-04, and it is a current one rather than a
+boundary**: two directories bound to the *same* account cannot run at the same time
+yet. Each bound directory holds its own **copy** of that account's credential, and
+claude's refresh token rotates single-use — so whichever session refreshes first
+invalidates the other's copy, which then fails up to an access token's lifetime
+later, mid-session, with nothing offline able to say why
+([VALIDATION.md](VALIDATION.md) owns the measurement). Two things follow, and they
+are deliberately different: kae keeps a *sequence* of such directories working by
+harvesting the newest copy before it overwrites one ([CLI.md](CLI.md) § kae pin,
+shipped), while running them **concurrently** requires one credential copy per
+account rather than one per store — designed, premise measured green, and the next
+thing queued ([ROADMAP.md](ROADMAP.md); claude's `CLAUDE_SECURESTORAGE_CONFIG_DIR`
+moves the credential without moving sessions or settings, which is what makes it
+possible without giving up per-directory isolation). This section states what holds
+today; it is not a non-goal. Different accounts in different directories are
+unaffected either way — that is what per-directory binding is for.
 
 ```text
 OK:  kae use main && claude

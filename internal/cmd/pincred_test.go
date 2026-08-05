@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -304,6 +305,76 @@ func TestBoundDirectoryCredentialMessageNeverCarriesTheToken(t *testing.T) {
 // has one place to be added here.
 func claudeOAuthAccount(uuid, email string) string {
 	return fmt.Sprintf(`{"accountUuid":%q,"emailAddress":%q,"organizationUuid":"org-1"}`, uuid, email)
+}
+
+// The template has to carry every key the comparison reads, and that is asserted
+// rather than assumed — because the defect one template was introduced to prevent was
+// not two fixtures *diverging*, it was two fixtures **agreeing by omission**. Both had
+// lost `organizationUuid`, so fourteen tests compared two thirds of the evidence and
+// looked fine. Consolidating makes divergence impossible (a test catches it — measured)
+// but makes the omission reachable in one edit instead of two, with nothing failing.
+// This is the check for that: the fixture is resolved against the adapter's own
+// IdentityKeys, so a key added upstream cannot be added to the spec and forgotten here.
+func TestIdentityFixtureCarriesEveryIdentityKey(t *testing.T) {
+	app := testApp(t, nil)
+	specs, err := app.dirSpecs(context.Background(), constants.ToolClaude, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := claudeOAuthAccount("main-uuid", "you@example.com")
+	seen := 0
+	for _, sp := range specs {
+		if !sp.IdentityOnly {
+			continue
+		}
+		seen++
+		for _, key := range sp.IdentityKeys {
+			if !strings.Contains(fixture, `"`+key+`"`) {
+				t.Errorf("claudeOAuthAccount omits %q, one of claude's IdentityKeys: every fixture "+
+					"built from it then agrees on that key by omission — %s", key, fixture)
+			}
+		}
+	}
+	// A guard that reached no spec checks nothing, which is how this package's sibling
+	// keychain guard came to skip codex entirely.
+	if seen == 0 {
+		t.Fatal("this guard saw no IdentityOnly spec, so it would pass vacuously")
+	}
+}
+
+// Several directories can bind one account, and the payload the identity check compares
+// against is that **account's** recorded identity — one ref, however many directories.
+// Reading it per directory is one `security` subprocess each on darwin. Same assertion,
+// for the same reason, as TestSwitchReadsTargetSnapshotOnce on the switch path.
+//
+// The positive half is not decoration: without it a version that found nothing at all
+// would satisfy the count.
+func TestBoundDirectoryIdentityReadsOneAccountSnapshotOnce(t *testing.T) {
+	app, _, firstIdentity := pinIdentityApp(t, modeShared)
+	ctx := context.Background()
+
+	second := pinHere(t, app, modeShared)
+	secondIdentity := filepath.Join(
+		app.Paths.SharedDir(paths.PinID(second), constants.ToolClaude), ".claude.json",
+	)
+	drifted := boundIdentity("side-uuid", "side@example.com")
+	writeFile(t, firstIdentity, drifted)
+	writeFile(t, secondIdentity, drifted)
+
+	fileBE, err := secret.Resolve(secret.BackendFile, app.Env.GOOS, app.Paths.SecretsDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counter := &countingBackend{Backend: fileBE, gets: map[string]int{}}
+	checks := app.pinIdentityChecks(ctx, counter, app.boundDirStores())
+	if len(checks) != 2 {
+		t.Fatalf("both bound directories must be reported, or the count below means nothing: %+v", checks)
+	}
+	ref := account.SecretRef(constants.ToolClaude, "main", "oauth_account")
+	if got := counter.gets[ref]; got != 1 {
+		t.Fatalf("one account's recorded identity must be read once, not once per bound directory: %s read %d times",
+			ref, got)
+	}
 }
 
 // boundIdentity is the identity cache file a bound directory's store holds, with an

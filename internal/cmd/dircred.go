@@ -1250,6 +1250,14 @@ func (app *App) pinIdentityChecks(ctx context.Context, be secret.Backend, stores
 	// the shape credentialHealthChecks already wraps for the same reason. Safe to wrap
 	// here, unlike orphanChecks: this path only ever calls Get, and the capability
 	// secret.Cached does not forward is Enumerator.
+	//
+	// ponytail: per check, not per run. Measured 2026-08-05: a whole `kae doctor` reads
+	// one account's identity ref three times, because this check, credentialHealthChecks
+	// and identityDriftChecks each open their own cache (it was four before this became
+	// one of them). Hoisting `secret.WithReadCache` into buildDoctor and keeping only the
+	// per-check `Cached(be)` would make it one — safe, since doctor never writes — but it
+	// edits a second check's wrapping for a read-only warn path, so it is recorded rather
+	// than taken here.
 	ctx = secret.WithReadCache(ctx)
 	be = secret.Cached(be)
 	checks := []adapter.Check{}

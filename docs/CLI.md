@@ -1108,8 +1108,10 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   divergence in those keys means it was rewritten outside kae — a manual login, or
   upstream changing how it maintains the field. Names `kae use <tool> <account>` to
   re-apply, and points at docs/VALIDATION.md "Upstream Behaviour Assumptions" if
-  it drifts again. The identity value itself is never printed (it is PII);
-  the message names only the tool, account, and artifact. Skipped when the tool
+  it drifts again. The identity value itself is never printed (it is PII), in either
+  frame of this check: a message names what is enough to act on — the tool, the
+  account, and the artifact or the bound directory the finding is about — and never a
+  value from either side of the comparison. Skipped when the tool
   has no active account, and inside a kae-owned isolated home (`kae pin`,
   `kae use -i`) — there the live identity is the **bound directory's** while
   `state.Active` names the **global** account, so the two sides are different

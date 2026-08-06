@@ -64,6 +64,8 @@ func Root(args []string) int {
 		return CmdPin(ctx, args[1:])
 	case "unpin":
 		return CmdUnpin(ctx, args[1:])
+	case "relogin":
+		return CmdRelogin(ctx, args[1:])
 	case "apply":
 		return CmdApply(ctx, args[1:])
 	case "run", "r":
@@ -237,6 +239,9 @@ Usage:
                                        home (credential private), -i isolates
   kae pin <tool> <account>             re-bind one tool inside a pinned dir
   kae unpin                            remove the binding from .mise.toml
+  kae relogin [<tool>]                 run the tool's login flow into this
+                                       directory's bound store, then capture the
+                                       result back into that account's snapshot
   kae run [-s|-i|--env] <t|all> <n> -- C
                                        run C with an account applied (alias: kae r);
                                        -s (default) uses the real home and restores

@@ -1,0 +1,308 @@
+package cmd
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/webkaz-labs/kagikae/internal/artifact"
+	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/paths"
+	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/secret"
+)
+
+// CmdRelogin drives a tool's own login flow into the store the current
+// directory is bound to, then harvests the result back into that account's
+// snapshot:
+//
+//	kae relogin [<tool>]
+//
+// It exists because the remedy it replaces is two facts a message could only
+// ask the user to remember. `cd <dir> && claude /login` lands in the bound
+// store **only** while the pin is active in that shell; with mise activation
+// absent or the config untrusted the isolation variable is unset and the login
+// refreshes the *real* home instead — the wrong account moves and the bound one
+// is still stale. kae exports the variable itself here, so that hazard cannot
+// happen rather than being warned about (docs/ROADMAP.md § Re-login UX). And a
+// login inside a bound directory is only captured back the next time a bind or a
+// sweep runs, so until then `kae use <tool> <account>` applies the older copy
+// globally; this captures it back at the moment it is newest.
+//
+// The account is never an argument: which account a bound directory holds is the
+// binding's answer, and a name typed here that disagreed with it would either be
+// ignored or file one account's login under another's.
+func CmdRelogin(ctx context.Context, args []string) int {
+	flags, positionals := splitArgs(args)
+	opts, ok := parseCommon("relogin", flags, false, nil)
+	if !ok {
+		return constants.ExitUsage
+	}
+	if len(positionals) > 1 {
+		return usageError("usage: %s relogin [<tool>]", toolName)
+	}
+	explicitTool := ""
+	if len(positionals) == 1 {
+		tool, err := resolveToolArg(positionals[0])
+		if err != nil {
+			return finish(opts, err)
+		}
+		if err := validateTool(tool); err != nil {
+			return finish(opts, err)
+		}
+		explicitTool = tool
+	}
+	return runRelogin(ctx, newApp(opts.ConfigPath), opts, explicitTool)
+}
+
+// runRelogin is CmdRelogin with the App injected, the split CmdPin/runPin use so
+// tests drive it against a temp HOME.
+func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool string) int {
+	if err := app.requireConfig(); err != nil {
+		return finish(opts, err)
+	}
+	// Unlike unpin, every step here needs the absolute path: the pin id names the
+	// store, and the lock is taken on it. A cwd kae cannot resolve is fatal rather
+	// than a warning, because guessing would log in somewhere else.
+	absDir, err := cwdAbs()
+	if err != nil {
+		return finish(opts, fmt.Errorf("resolve the current directory: %w", err))
+	}
+	fragment, exists, err := readDirFragment()
+	if err != nil {
+		return finish(opts, err)
+	}
+	if !exists {
+		return finish(opts, errf(constants.ExitNotFound,
+			"this directory is not pinned, so there is no bound store to log in to; "+
+				"to refresh a global account run: %s add --restore <tool> <account>", toolName))
+	}
+	tool, err := reloginTool(app, paths.PinID(absDir), fragment, explicitTool)
+	if err != nil {
+		return finish(opts, err)
+	}
+	// bound is true by construction (reloginTool resolved this tool through the same
+	// call), and the value is what the fragment exports for it.
+	storeDir, _ := app.boundStoreDir(paths.PinID(absDir), tool, fragment)
+	accountName := fragment.Accounts[tool]
+	command := loginCommand(tool)
+
+	be, err := app.secretBackend()
+	if err != nil {
+		return finish(opts, err)
+	}
+	// The pin lock, and not the tool lock: what must not happen underneath an
+	// interactive login is a re-bind of *this* directory overwriting the store the
+	// login is writing to. The account snapshot the harvest writes afterwards is
+	// covered no more tightly than every other harvest site, which docs/ROADMAP.md
+	// records as accepted (it self-heals on the next bind of the directory that
+	// still holds the live copy). Held across the flow, as `kae add` holds the tool
+	// lock across the same kind of wait.
+	pinLock, err := app.acquirePinLock(absDir)
+	if err != nil {
+		return finish(opts, err)
+	}
+	defer pinLock.Release()
+
+	// Resolved before the flow, because the credential in the store has to be read
+	// on both sides of it. A store kae cannot resolve is not fatal: the login is
+	// still the useful half, and everything that needs the spec degrades to saying
+	// so (reloginCredentialSpec).
+	specs, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, storeDir)
+	before, comparable := storeCredential(ctx, sp, haveSpec)
+
+	fmt.Fprintf(os.Stderr,
+		"kae: complete the %s login flow; kae is running it against this directory's own store (%s=%s), "+
+			"so it refreshes %s/%s and not the real home\n",
+		tool, isolationEnvVar(tool), app.displayPath(storeDir), tool, accountName)
+	code, err := runner.RunInteractive(ctx,
+		[]string{isolationEnvVar(tool) + "=" + storeDir}, command[0], command[1:]...)
+	if err != nil {
+		return finish(opts, fmt.Errorf("launch %s login: %w", tool, err))
+	}
+	if code != 0 {
+		// Same reading as `kae add`: a non-zero exit does not prove nothing was
+		// written, so go on and let what is in the store decide.
+		fmt.Fprintf(os.Stderr, "kae: %s exited with %d; kae is checking what is in the store now\n", command[0], code)
+	}
+	// A flow the user aborted, or one that failed, leaves the store exactly as it
+	// was — and reporting a login that did not happen is the claim this command must
+	// never make, because the whole point of running it is that the directory was
+	// already stale. `kae add` refuses the same case with the same exit code.
+	//
+	// Both reads have to have succeeded for the comparison to mean anything: two
+	// failed reads are also "equal", and that is kae not knowing rather than nothing
+	// having changed. Where kae cannot compare it says nothing and lets the harvest's
+	// own guards speak.
+	if after, ok := storeCredential(ctx, sp, haveSpec); comparable && ok && bytes.Equal(before, after) {
+		return finish(opts, errf(constants.ExitAuthUnchanged,
+			"the %s login flow left this directory's credential unchanged, so there is nothing to capture back",
+			tool))
+	}
+	app.captureBackAfterRelogin(ctx, be, specs, tool, accountName, storeDir)
+	fmt.Printf("Logged %s in for %s/%s in this directory\n", tool, tool, accountName)
+	return constants.ExitOK
+}
+
+// reloginCredentialSpec resolves the store's artifact specs and the credential one
+// among them. It reports haveSpec=false — rather than failing — for a tool kae
+// materializes no per-directory credential for, and for a store it cannot resolve:
+// the login is worth running either way, and the two things that need the spec (the
+// did-anything-change comparison and the capture back) each say what their absence
+// costs instead of blocking it.
+func (app *App) reloginCredentialSpec(ctx context.Context, tool, storeDir string) ([]artifact.Spec, artifact.Spec, bool) {
+	artName := credentialArtifactName(tool)
+	if artName == "" {
+		return nil, artifact.Spec{}, false
+	}
+	specs, err := app.dirSpecs(ctx, tool, storeDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: kae could not resolve where %s keeps this directory's credential (%v), "+
+				"so it cannot capture the login back into the account snapshot\n", tool, err)
+		return nil, artifact.Spec{}, false
+	}
+	sp, ok := specByName(specs, artName)
+	return specs, sp, ok
+}
+
+// storeCredential reads the raw credential in a bound store, for the one question a
+// before/after pair answers: did the flow change anything at all. ok is false where
+// kae could not read it, which is not the same as there being nothing there.
+//
+// Deliberately artifact.ReadLive and not readLiveCredential: that one classifies for
+// an *ordering* and returns nil for everything it declines to order, which would
+// make two different payloads kae cannot judge compare equal.
+func storeCredential(ctx context.Context, sp artifact.Spec, haveSpec bool) ([]byte, bool) {
+	if !haveSpec {
+		return nil, false
+	}
+	live, err := artifact.ReadLive(ctx, sp)
+	if err != nil {
+		return nil, false
+	}
+	if !live.Present {
+		return nil, true // nothing there is a state, and a login changes it
+	}
+	return live.Data, true
+}
+
+// reloginTool picks the tool to log in: the one named, or the directory's single
+// candidate. A candidate is a tool the fragment binds *and* kae can drive a login
+// for; a bound tool with no login command in the table is not one, because kae
+// would have nothing to run.
+//
+// With several candidates and no argument this refuses rather than picking. Two
+// interactive logins from one word is not a thing to do by default, and the
+// alternative — taking the first — would silently log in the tool the user did
+// not mean.
+func reloginTool(app *App, pinID string, fragment fragmentInfo, explicitTool string) (string, error) {
+	candidates := []string{}
+	for _, tool := range constants.Tools {
+		if _, bound := app.boundStoreDir(pinID, tool, fragment); !bound {
+			continue
+		}
+		if loginCommand(tool) == nil {
+			continue
+		}
+		candidates = append(candidates, tool)
+	}
+	if explicitTool != "" {
+		for _, tool := range candidates {
+			if tool == explicitTool {
+				return tool, nil
+			}
+		}
+		if _, bound := app.boundStoreDir(pinID, explicitTool, fragment); bound {
+			// **Unobservable today**, written down so nobody removes it as dead or writes a
+			// test that cannot fail: every tool `kae pin` can bind is tier 1, and both tier-1
+			// tools have a login command. It stops being unobservable the moment a tool
+			// without one becomes bindable — and without it that tool would get "this
+			// directory does not bind X" about a directory that does.
+			return "", errf(constants.ExitUnsupported,
+				"kae has no login command for %s, so it cannot log this directory in (see docs/ADAPTERS.md)", explicitTool)
+		}
+		return "", errf(constants.ExitNotFound,
+			"this directory does not bind %s; it binds %s", explicitTool, boundToolList(fragment))
+	}
+	switch len(candidates) {
+	case 0:
+		return "", errf(constants.ExitNotFound,
+			"this directory binds no tool kae can drive a login for (it binds %s)", boundToolList(fragment))
+	case 1:
+		return candidates[0], nil
+	default:
+		return "", errf(constants.ExitUsage, "this directory binds %s; name the one to log in: %s relogin <tool>",
+			strings.Join(candidates, ", "), toolName)
+	}
+}
+
+// boundToolList names what a fragment binds, for a refusal that has to say what
+// the directory *does* hold. Canonical order, so the message cannot reorder with
+// a map iteration.
+func boundToolList(fragment fragmentInfo) string {
+	bound := []string{}
+	for _, tool := range constants.Tools {
+		if _, ok := fragment.Accounts[tool]; ok {
+			bound = append(bound, tool)
+		}
+	}
+	if len(bound) == 0 {
+		return "no tools"
+	}
+	return strings.Join(bound, ", ")
+}
+
+// captureBackAfterRelogin harvests the copy the login just wrote into the
+// account's snapshot, so the account's own record is the one that can still
+// refresh. Every guard is harvestDirCredential's, unchanged: it declines a copy
+// that does not supersede the snapshot, and one it cannot attribute to this
+// account.
+//
+// Nothing here is fatal. The login is already in the store and the directory
+// works either way; what a failure costs is that `kae use <tool> <account>` would
+// apply the older copy globally, which is what the warnings say.
+func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
+	specs []artifact.Spec, tool, accountName, storeDir string,
+) {
+	// Claude-only today, through the one predicate that owns the question. A tool
+	// whose rotation is not measured has nothing to harvest *from* — its older
+	// copies stay usable — so saying anything here would describe a problem it does
+	// not have (docs/ROADMAP.md § Rotation is measured for claude only).
+	artName := credentialArtifactName(tool)
+	if !rotatesSingleUse(tool) || artName == "" || specs == nil {
+		return
+	}
+	acc, snapshot, _, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: logged in, but kae could not read snapshot %s/%s to capture it back (%v)\n",
+			tool, accountName, err)
+		return
+	}
+	_, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, storeDir, snapshot)
+	switch {
+	case refused.Why == "":
+		// Either harvested — harvestDirCredential says so itself — or the snapshot
+		// already holds a copy at least as new, which is the ordinary outcome of
+		// re-running this command and is not worth a line.
+	case refused.Conflicting:
+		// Positive evidence that the login is somebody else's: the store now names an
+		// account other than the one this directory binds. Filing it under this name is
+		// the one thing that would be undetectable afterwards, so kae did not — and the
+		// remedy is to fix the binding, never to log in again (that would mint a fresh
+		// chain and invalidate the copy just left in place).
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: the %s login now in this directory belongs to an account other than %s/%s (%s), "+
+				"so kae did not capture it into that snapshot; re-bind with: %s pin %s <account>\n",
+			tool, tool, accountName, refused.Why, toolName, tool)
+	default:
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: kae cannot attribute the %s login now in this directory to %s/%s (%s), "+
+				"so it did not capture it back and that snapshot still holds the older copy; "+
+				"%s use %s %s would apply that older one\n",
+			tool, tool, accountName, refused.Why, toolName, tool, accountName)
+	}
+}

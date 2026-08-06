@@ -563,7 +563,7 @@ func supersedes(a, b freshness.Info) bool {
 // `supersedes` is not the only place that needs it — a caller asking "is the copy I am
 // about to write older than the live one" must apply the same test to *its* side, and
 // getting that subset wrong is how a copy with no deadline came to read as superseded
-// by anything (review finding, 2026-08-05).
+// by anything, and it shipped that way once.
 //
 // All three conditions are load-bearing together and none is redundant, which is easy
 // to misjudge from one tool: claude sets `Known` on the mere *presence* of `expiresAt`

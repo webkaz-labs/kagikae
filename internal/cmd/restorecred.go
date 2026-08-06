@@ -36,33 +36,26 @@ func backupRecord(meta backup.Meta, tool, name string) (backup.ArtifactRecord, b
 	return backup.ArtifactRecord{}, false
 }
 
-// recordedCredential is what a backup holds for one tool's credential, in the states
-// the two restore paths have to tell apart — because they want **opposite** things from
-// a payload that is there but dead, and one shared "usable" gate silenced the worse of
-// the two cases (review finding, 2026-08-05).
+// recordedCredential is what a backup holds for one tool's credential. It carries two
+// questions rather than one verdict, because the restore paths want **opposite** things
+// from a payload that is there but dead: `run -s` must restore it, `kae rollback` must
+// report it. One shared "usable" gate silenced the second, which is the worse of the two.
 //
-// Orderable is a method rather than a second field on purpose. As a field, the fourth
-// combination — not present yet orderable — was unrepresentable only because the one
-// constructor below happened to be careful, which is the shape that rots: a second
-// constructor, or one more branch in this one, could set it without Present and nothing
-// would notice. Derived, "orderable implies present" is a property of the type.
+// Orderable is derived rather than a second field, so the fourth combination — not
+// present yet orderable — is unrepresentable by the type instead of by one careful
+// constructor, which is the shape that rots.
 type recordedCredential struct {
 	Info freshness.Info
 	// Present is false when the backup has no readable credential record for this tool:
-	// no record, one recorded as absent, or a payload gone from the secret store.
-	// Nothing is being handed back, so neither path has anything to say about it —
-	// `run -s` restores the absence and `kae rollback` removes the credential, both of
-	// which are what the backup says.
+	// no record, one recorded as absent, or a payload gone from the secret store. Nothing
+	// is being handed back, so neither path says anything about it — `run -s` restores the
+	// absence and `kae rollback` removes the credential, which is what the backup says.
 	Present bool
 }
 
-// Orderable reports whether the recorded copy can take part in an ordering at all.
-//
-// `run -s` must not skip its restore on a copy that cannot: one with no comparable
-// deadline is "superseded" by any live login, which would leave the account it applied
-// temporarily in the real home forever. `kae rollback` still has something to say about
-// one, but not in the same words — a dead copy is not *older* than the live one, it
-// never worked, and only the remedy pointer carries over.
+// Orderable reports whether the recorded copy can take part in an ordering at all. A copy
+// with no comparable deadline is "superseded" by any live login, so `run -s` skipping on
+// one would leave the account it applied for a single child in the real home for good.
 func (r recordedCredential) Orderable() bool { return r.Present && orderable(r.Info) }
 
 // readRecordedCredential reads what meta recorded for tool's credential. Known ways to
@@ -257,27 +250,30 @@ func (app *App) warnRestoringSupersededCredential(ctx context.Context, be secret
 			continue
 		}
 		// Three wordings, because `Orderable()` is false for two reasons that license
-		// very different statements — the same split readLiveCredential draws between
-		// liveNothing and liveUnreadable, and flattening it here was a review finding.
+		// different statements — the same split readLiveCredential draws between
+		// liveNothing and liveUnreadable, and flattening it told a user to undo a rollback
+		// that had just restored a credential which was probably fine.
 		//
-		// A **tombstone** provably cannot log in. A payload kae cannot **parse** is the
-		// one docs/AGENTS.md and liveUnreadable both call a possible working login in a
-		// shape kae has not been taught — so all kae knows is that it cannot *compare*
-		// the two, and claiming otherwise sent the user to undo a rollback that had just
-		// restored a credential which was probably fine. The remedy still holds in every
-		// case: it names where the other copy is, which is what a user acts on. Each
-		// wording names `for <tool>/<account>`, so a message about the wrong tool is
-		// detectable.
-		var cause, consequence string
+		// Each says what kae **observed**, never what the tool can do, because the two come
+		// apart. `Revoked` is the adapter reading that the payload carries no usable token,
+		// and it is derived from the token fields being empty *or absent* — so a login whose
+		// token keys were renamed upstream lands here while working perfectly
+		// (docs/VALIDATION.md, the claude row on what `Revoked` can and cannot distinguish).
+		// "carries no usable token" survives both readings; "cannot log in" did not. A
+		// payload kae cannot parse at all gets less again: only that the two are not
+		// comparable.
+		//
+		// The remedy is the same in every case — where the other copy is, is what a user
+		// acts on — and each names `for <tool>/<account>`, so a message about the wrong tool
+		// is detectable. The ordering pair is the default so neither string is written twice.
+		cause := fmt.Sprintf("recorded an older %s credential for %s/%s than the one in %s",
+			tool, tool, accountName, where)
+		consequence := fmt.Sprintf("so this rollback leaves %s without the copy that can still refresh", tool)
 		switch {
 		case recorded.Orderable():
-			cause = fmt.Sprintf("recorded an older %s credential for %s/%s than the one in %s",
-				tool, tool, accountName, where)
-			consequence = fmt.Sprintf("so this rollback leaves %s without the copy that can still refresh", tool)
 		case recorded.Info.Revoked:
-			cause = fmt.Sprintf("recorded a %s credential for %s/%s that cannot log in, while %s holds a usable one",
+			cause = fmt.Sprintf("recorded a %s credential for %s/%s that carries no usable token, while %s holds one",
 				tool, tool, accountName, where)
-			consequence = fmt.Sprintf("so this rollback leaves %s without the copy that can still refresh", tool)
 		default:
 			cause = fmt.Sprintf("recorded a %s credential for %s/%s that kae cannot compare with the one in %s",
 				tool, tool, accountName, where)

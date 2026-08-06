@@ -710,7 +710,7 @@ func TestRollbackWarnsWhenTheRecordedCredentialCannotLogIn(t *testing.T) {
 	if code != constants.ExitOK {
 		t.Fatalf("rollback must still happen: %d (%s)", code, stderr)
 	}
-	if !strings.Contains(stderr, "that cannot log in, while the live store holds a usable one") {
+	if !strings.Contains(stderr, "that carries no usable token, while the live store holds one") {
 		t.Fatalf("a dead recorded copy over a working login must be reported: %q", stderr)
 	}
 	// Not the ordering wording: the recorded copy is not "older", it never worked.
@@ -730,35 +730,54 @@ func TestRollbackWarnsWhenTheRecordedCredentialCannotLogIn(t *testing.T) {
 // statement: a payload kae cannot parse may well be a working login in a shape kae has
 // not been taught (the same thing liveUnreadable means, and what AGENTS.md says about it).
 // Claiming it "cannot log in" told the user to undo a rollback that had just restored a
-// credential which was probably fine — a review finding, measured 2026-08-05.
-func TestRollbackSaysItCannotCompareAnUnparseableRecordedCredential(t *testing.T) {
-	app := testApp(t, nil)
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText}
-	credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
+// credential which was probably fine — a review finding.
+//
+// Both sub-shapes of that branch, because they arrive by different arms of the parser and
+// only one of them was covered: a deadline that no longer decodes leaves the reading
+// Known-but-undated, while a missing `expiresAt` key leaves it not Known at all. Widening
+// the strong wording to `|| !Known` survived the suite while only the first was tested.
+func TestRollbackSaysItCannotCompareARecordedCredentialItCannotOrder(t *testing.T) {
+	shapes := []struct{ name, payload string }{
+		// A live access token whose deadline no longer decodes: not a tombstone — there is
+		// something to authenticate with — but nothing kae can order it by.
+		{"undated", `{"claudeAiOauth":{"accessToken":"` + mainToken + `","refreshToken":"rt-x","expiresAt":"1798761600000"}}`},
+		// No deadline field at all, which is what claude's parser refuses outright.
+		{"unknown", `{"claudeAiOauth":{"accessToken":"` + mainToken + `","refreshToken":"rt-x"}}`},
+	}
+	for _, shape := range shapes {
+		t.Run(shape.name, func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			opts := commonOpts{Format: formatText}
+			credsPath := filepath.Join(app.Env.Home, ".claude", ".credentials.json")
 
-	captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 1*time.Hour))
-	// A live access token whose deadline no longer parses: not a tombstone — there is
-	// something to authenticate with — but nothing kae can order it by.
-	writeFile(t, credsPath, `{"claudeAiOauth":{"accessToken":"`+mainToken+
-		`","refreshToken":"rt-x","expiresAt":"1798761600000"}}`)
-	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
-	mustExit(t, constants.ExitOK, code, out)
-	writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
+			captureClaudeAt(t, app, "main", mainToken, expiryIn(app, 1*time.Hour))
+			writeFile(t, credsPath, shape.payload)
+			// Positive control on the fixture: it must be un-orderable without being a
+			// tombstone, or the test would be exercising the branch next door.
+			info := freshnessOf(constants.ToolClaude, []byte(shape.payload))
+			if info.Revoked || orderable(info) {
+				t.Fatalf("fixture must be un-orderable and not revoked: %+v", info)
+			}
+			code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+			mustExit(t, constants.ExitOK, code, out)
+			writeFile(t, credsPath, claudeOAuthPayload(refreshedToken, expiryIn(app, 3*time.Hour)))
 
-	code, _, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, "") })
-	if code != constants.ExitOK {
-		t.Fatalf("rollback must still happen: %d (%s)", code, stderr)
-	}
-	if !strings.Contains(stderr, "that kae cannot compare with the one in the live store") {
-		t.Fatalf("an unorderable-but-maybe-live copy must be reported as incomparable: %q", stderr)
-	}
-	if !strings.Contains(stderr, "so kae cannot tell which of the two claude can still refresh") {
-		t.Fatalf("the consequence must not be stated as a certainty: %q", stderr)
-	}
-	// kae must not claim the recorded copy is dead, nor that it is older.
-	if strings.Contains(stderr, "cannot log in") || strings.Contains(stderr, "recorded an older") {
-		t.Fatalf("kae cannot parse this copy, so it knows neither of those: %q", stderr)
+			code, _, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, "") })
+			if code != constants.ExitOK {
+				t.Fatalf("rollback must still happen: %d (%s)", code, stderr)
+			}
+			if !strings.Contains(stderr, "that kae cannot compare with the one in the live store") {
+				t.Fatalf("an un-orderable copy must be reported as incomparable: %q", stderr)
+			}
+			if !strings.Contains(stderr, "so kae cannot tell which of the two claude can still refresh") {
+				t.Fatalf("the consequence must not be stated as a certainty: %q", stderr)
+			}
+			// kae must claim neither that the copy is dead nor that it is older.
+			if strings.Contains(stderr, "carries no usable token") || strings.Contains(stderr, "recorded an older") {
+				t.Fatalf("kae cannot order this copy, so it knows neither of those: %q", stderr)
+			}
+		})
 	}
 }
 

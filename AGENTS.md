@@ -349,14 +349,22 @@ block in docs/VALIDATION.md, next to two correct ones.
 - Adding or changing a command or subcommand requires updating shell completion
   in lockstep: the `case` in all three scripts in `internal/cmd/completion.go`,
   any new `kae __complete` kind in `internal/cmd/complete.go`, and the parity
-  guard `subcommandVerbs` + `TestSubcommandCompletionParity`. `kae <cmd> <TAB>`
-  must never be a dead end (a new subcommand group shipped without completion in
-  v0.10.0). **The parity guard only reaches what the table names**, so a *verb*
-  with no sub-verbs (`kae relogin`) has nothing to key on and needs its own test
-  next to it, and a subcommand group missing from **both** the table and the
-  scripts is invisible to it — which is how `kae env` and `kae backup` still have
-  no completion case (`docs/ROADMAP.md`). Also update `completionCommands` and
-  `printHelp`, neither of which any guard checks against the router. Completion is dynamic, so candidate changes resolve live; only a
+  guard `subcommandVerbs` + `TestSubcommandCompletionParity`, and the
+  classification `positionalCommands` + `TestEveryPositionalCommandCompletes`.
+  `kae <cmd> <TAB>` must never be a dead end (a new subcommand group shipped
+  without completion in v0.10.0). **A guard reaches only what its table names**,
+  and the two tables are named differently on purpose: `subcommandVerbs` is
+  opt-in, so a group missing from **both** it and the scripts was invisible to it
+  — which is how `kae env` and `kae backup` shipped with no case at all until
+  v0.17.0. `positionalCommands` is keyed by `completionCommands` instead, so a
+  command cannot be left unclassified, and every command classified as taking a
+  positional must have a branch in all three scripts. Neither reaches a *verb*
+  dropped from both tables, so one with no sub-verbs (`kae relogin`) still needs
+  its own test naming it. Also update `completionCommands` and `printHelp`,
+  neither of which any guard checks against the router — and note why that gap is
+  not closed by dispatching each command from a test (several reach `newApp`, and
+  with it the real environment, before a bad flag stops them; the reasoning lives
+  on `positionalCommands`). Completion is dynamic, so candidate changes resolve live; only a
   *structural* script change (a new case/kind) alters the registered script.
   That refresh is automatic: `mise run install` and `scripts/install.sh` run
   `kae completion --refresh` (rewrites already-registered files; never creates

@@ -768,21 +768,27 @@ Daily-use ergonomics, designed together as mise-style verbs so the surface
 stays coherent rather than accreting ad hoc. Account delete/rename graduates
 to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
 
-- **`kae env` and `kae backup` have no completion case** (found 2026-08-06 while
-  wiring `kae relogin`'s, **not fixed**). Both are subcommand groups —
-  `env set|unset|list`, `backup list` — and neither appears in `subcommandVerbs` nor
+- ~~**`kae env` and `kae backup` have no completion case**~~ (found 2026-08-06 while
+  wiring `kae relogin`'s, **fixed in v0.17.0**). Both are subcommand groups —
+  `env set|unset|list`, `backup list` — and neither appeared in `subcommandVerbs` nor
   in the `case` blocks of the three generated scripts, so `kae env <TAB>` and
-  `kae backup <TAB>` offer nothing at the first positional. That is the same defect
-  class the v0.10.0 companion gap was, and the parity guard exists precisely to catch
-  it; it does not, because the guard iterates the table rather than the router, so a
-  group missing from *both* is invisible to it. The fix is two entries in
-  `subcommandVerbs` plus a case in bash/zsh/fish, after which
-  `TestSubcommandCompletionParity` holds them. Left out of the v0.17.0
-  `kae relogin` change deliberately: it is unrelated surface, and shipping it inside
-  a credential-safety change would put two unrelated diffs in one review. Worth
-  considering at the same time whether the guard should iterate `completionCommands`
-  and require a case for every command that takes a positional, which would have
-  caught both without a table entry.
+  `kae backup <TAB>` offered nothing at the first positional: the same defect class
+  the v0.10.0 companion gap was, past the guard that exists precisely to catch it,
+  because that guard iterates its own table rather than the router and a group
+  missing from *both* is invisible to it.
+  Both now have a case in all three scripts and an entry in `subcommandVerbs`, and
+  the second half of the fix is the guard the entry asked for: `positionalCommands`
+  classifies **every** command in `completionCommands` as taking a positional or not,
+  and `TestEveryPositionalCommandCompletes` requires a branch for each one that does
+  (and, from the other side, no branch for one that does not, so a stale
+  classification is loud rather than quietly weakening the first half). Being keyed
+  by `completionCommands` is what makes it a guard rather than a second opt-in table.
+  What it still does not see, because nothing machine-checks either list against
+  `Root()`: a command dropped from `completionCommands` and the classification
+  together. Closing *that* by dispatching each command from a test is not safe —
+  several commands reach `newApp`, and with it the real environment, before a bad
+  flag stops them — so a verb with no sub-verbs keeps its own test naming it
+  literally (`TestCompletionScriptsCompleteRelogin`).
 - **`kae profile save <name>`**: snapshot the current active set into a
   named profile, instead of hand-editing config via `kae edit`.
 - **Account rm/rename** *(v0.7.1 — see [RELEASE.md](RELEASE.md))*: `kae

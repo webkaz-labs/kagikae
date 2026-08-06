@@ -176,13 +176,11 @@ block in docs/VALIDATION.md, next to two correct ones.
   `readLiveCredential` is the one deliberate variant, splitting the same predicate three
   ways because a delete must tell "nothing to lose" from "kae cannot tell". **A caller
   comparing against its own copy owes that copy the same `orderable` test.** And the
-  asymmetry runs both ways: a caller whose question is "may I *tell the user* this copy
-  is dead" owes `orderable` to the **losing** side too, which `supersedes` deliberately
-  does not require of it (`pinSupersededChecks`). There the b side degrades to a zero
-  cutoff because the question is "may I overwrite it", where a copy with no comparable
-  deadline is nothing to lose; reusing that subset for a *report* accuses every undated
-  or unparseable store of being superseded by anything. Neither direction is the safe
-  default — read which question the caller is asking. Taking a
+  asymmetry runs both ways: a caller may owe `orderable` to the **losing** side too,
+  which `supersedes` deliberately does not require of it. Neither direction is the safe
+  default — read which question the caller is asking ("may I overwrite this copy" and
+  "may I tell the user it is dead" take opposite answers), and `pinSupersededChecks`
+  carries the worked example. Taking a
   subset of it is how a copy with no deadline came to read as superseded by anything:
   claude sets `Known` on the mere *presence* of `expiresAt` and parses a non-numeric one
   to the zero time, so an upstream type change yields a payload that is `Known`,

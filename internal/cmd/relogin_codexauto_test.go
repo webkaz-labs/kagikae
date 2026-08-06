@@ -89,12 +89,8 @@ func TestReloginResolvesTheStoreAgainAfterTheFlow(t *testing.T) {
 			fake.payload = `{"tokens":{"access_token":"codex-relogged"}}`
 			return 0, nil
 		})
-		code, stderr = captureStderr(t, func() int {
-			var inner int
-			inner, _ = captureStdout(t, func() int {
-				return runRelogin(ctx, app, commonOpts{Format: formatText}, constants.ToolCodex)
-			})
-			return inner
+		code, _, stderr = captureBoth(t, func() int {
+			return runRelogin(ctx, app, commonOpts{Format: formatText}, constants.ToolCodex)
 		})
 	})
 	if code == constants.ExitAuthUnchanged {

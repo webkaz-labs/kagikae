@@ -62,13 +62,8 @@ func TestReloginLogsIntoTheBoundStoreAndCapturesItBack(t *testing.T) {
 	seen := []string{}
 	withInteractive(t, loginInto(t, constants.ToolClaude, refreshed, "main-uuid", now.Add(8*time.Hour), &seen))
 
-	var out string
-	code, stderr := captureStderr(t, func() int {
-		var inner int
-		inner, out = captureStdout(t, func() int {
-			return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
-		})
-		return inner
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
 	})
 	mustExit(t, constants.ExitOK, code, stderr)
 
@@ -117,13 +112,8 @@ func TestReloginDoesNotFileAnotherAccountsLoginUnderThisAccount(t *testing.T) {
 	seen := []string{}
 	withInteractive(t, loginInto(t, constants.ToolClaude, foreign, "side-uuid", now.Add(8*time.Hour), &seen))
 
-	var out string
-	code, stderr := captureStderr(t, func() int {
-		var inner int
-		inner, out = captureStdout(t, func() int {
-			return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
-		})
-		return inner
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
 	})
 	mustExit(t, constants.ExitOK, code, stderr)
 
@@ -352,13 +342,8 @@ func TestReloginSaysSoWhenItCannotTellWhetherAnythingChanged(t *testing.T) {
 		ran = true
 		return 0, nil
 	})
-	var out string
-	code, stderr := captureStderr(t, func() int {
-		var inner int
-		inner, out = captureStdout(t, func() int {
-			return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
-		})
-		return inner
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
 	})
 	if !ran {
 		t.Fatal("the login flow must still be launched")
@@ -457,13 +442,8 @@ func TestReloginDoesNotCallAnEmptiedStoreALogin(t *testing.T) {
 				return 1, nil
 			})
 
-			var out string
-			code, stderr := captureStderr(t, func() int {
-				var inner int
-				inner, out = captureStdout(t, func() int {
-					return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
-				})
-				return inner
+			code, out, stderr := captureBoth(t, func() int {
+				return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
 			})
 			mustExit(t, constants.ExitOK, code, stderr)
 
@@ -542,13 +522,8 @@ func TestReloginDoesNotClaimAnAccountItNeverAttributed(t *testing.T) {
 		}
 		return 0, nil
 	})
-	var stdout string
-	code, stderr := captureStderr(t, func() int {
-		var inner int
-		inner, stdout = captureStdout(t, func() int {
-			return runRelogin(ctx, app, commonOpts{Format: formatText}, constants.ToolCodex)
-		})
-		return inner
+	code, stdout, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, constants.ToolCodex)
 	})
 	mustExit(t, constants.ExitOK, code, stderr)
 
@@ -560,7 +535,7 @@ func TestReloginDoesNotClaimAnAccountItNeverAttributed(t *testing.T) {
 	}
 	// Positive control for the fixture: the login really did land in the bound store,
 	// so the weak wording above is the attribution rule and not a flow that never ran.
-	storeDir, bound := app.boundStoreDir(paths.PinID(mustCwd(t)), constants.ToolCodex, mustFragment(t))
+	storeDir, bound := app.boundStoreDir(paths.PinID(mustCwdAbs(t)), constants.ToolCodex, mustFragment(t))
 	if !bound {
 		t.Fatal("the directory must bind codex for this test to mean anything")
 	}
@@ -569,17 +544,9 @@ func TestReloginDoesNotClaimAnAccountItNeverAttributed(t *testing.T) {
 	}
 }
 
-// mustCwd / mustFragment are the two reads the assertion above needs to name the
-// store the way runRelogin does, rather than rebuilding the path by hand.
-func mustCwd(t *testing.T) string {
-	t.Helper()
-	dir, err := cwdAbs()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return dir
-}
-
+// mustFragment is the read the assertion above needs to name the store the way
+// runRelogin does, rather than rebuilding the path by hand. Its sibling is
+// mustCwdAbs (ls_test.go).
 func mustFragment(t *testing.T) fragmentInfo {
 	t.Helper()
 	info, exists, err := readDirFragment()
@@ -625,13 +592,8 @@ func TestReloginWillNotClaimALoginItCouldNotCompareAgainst(t *testing.T) {
 		return 0, nil
 	})
 
-	var out string
-	code, stderr := captureStderr(t, func() int {
-		var inner int
-		inner, out = captureStdout(t, func() int {
-			return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
-		})
-		return inner
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
 	})
 	mustExit(t, constants.ExitOK, code, stderr)
 

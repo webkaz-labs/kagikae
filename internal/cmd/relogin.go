@@ -205,7 +205,10 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	}
 	// "A login happened, for this account" is three separate observations, and the
 	// strong wording may only be printed when kae made all three. They fail
-	// independently, which is why one gate cannot stand for the others:
+	// independently, which is why one gate cannot stand for the others. The wording and
+	// the rule that picks between the two lines are a user-visible contract, and
+	// docs/CLI.md § kae relogin Semantics is normative for them; what is here is why
+	// each gate exists, which is the half a contract does not carry:
 	//
 	//   - **changed**: kae read the store on both sides and the bytes differ. Without
 	//     it a flow kae could not compare at all still printed a login (the warning
@@ -365,15 +368,12 @@ func reloginTool(app *App, pinID string, fragment fragmentInfo, explicitTool str
 }
 
 // boundToolList names what a fragment binds, for a refusal that has to say what
-// the directory *does* hold. Canonical order, so the message cannot reorder with
-// a map iteration.
+// the directory *does* hold. The order comes from boundTools, which is also what
+// `kae ls --pins` renders through — canonical order first, then any tool kae has
+// retired since the fragment was written, rather than dropping it. A dropped name
+// is the one that would have explained why the directory needs re-pinning.
 func boundToolList(fragment fragmentInfo) string {
-	bound := []string{}
-	for _, tool := range constants.Tools {
-		if _, ok := fragment.Accounts[tool]; ok {
-			bound = append(bound, tool)
-		}
-	}
+	bound := boundTools(fragment.Accounts)
 	if len(bound) == 0 {
 		return "no tools"
 	}

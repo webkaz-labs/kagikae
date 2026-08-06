@@ -1269,6 +1269,18 @@ func (app *App) pinCredentialChecks(ctx context.Context, stores []boundDirStore)
 // because it edits a check that is answering correctly, for a few `security` calls
 // on a machine with a handful of bound directories.
 func (app *App) pinSupersededChecks(ctx context.Context, be secret.Backend, stores []boundDirStore) []adapter.Check {
+	// Every store in one group compares against the **same** account's recorded
+	// identity, so attribution reads one key once per losing store and again for the
+	// winner on each of those iterations. Measured on three directories bound to one
+	// account: four reads of one ref, which on darwin is four `security` calls. The
+	// wrap is the one pinIdentityChecks already applies, and safe for the same reason
+	// it states there — this path only ever calls Get, and the capability secret.Cached
+	// does not forward is Enumerator, which nothing here uses.
+	//
+	// A healthy machine still pays nothing: the reads happen only behind an ordering
+	// finding. This is the cost on exactly the path the check exists to diagnose.
+	ctx = secret.WithReadCache(ctx)
+	be = secret.Cached(be)
 	checks := []adapter.Check{}
 	for _, group := range groupBoundStoresByAccount(stores) {
 		checks = append(checks, app.supersededChecksFor(ctx, be, group)...)
@@ -1341,11 +1353,8 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 	// keep the earlier candidate because supersedes is a strict comparison, so a bind
 	// that just copied the snapshot into a store reports nothing.
 	newest := freshnessOf(group.Tool, snapshot)
-	newestAt := ""
 	newestIdx := -1 // the snapshot; an index into group.Stores once a store wins
-	if orderable(newest) {
-		newestAt = fmt.Sprintf("snapshot %s/%s", group.Tool, group.Account)
-	} else {
+	if !orderable(newest) {
 		newest = freshness.Info{}
 	}
 	live := make([]freshness.Info, len(group.Stores))
@@ -1356,11 +1365,18 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 		}
 		live[i] = info
 		if supersedes(info, newest) {
-			newest, newestIdx, newestAt = info, i, "the store bound to "+store.Dir
+			newest, newestIdx = info, i
 		}
 	}
 	if !orderable(newest) {
 		return nil
+	}
+	// Derived once from the winner rather than carried alongside it: where the newest
+	// copy is says nothing the index does not, and a third value updated at each
+	// assignment site is a third chance to update two of them.
+	newestAt := fmt.Sprintf("snapshot %s/%s", group.Tool, group.Account)
+	if newestIdx >= 0 {
+		newestAt = "the store bound to " + group.Stores[newestIdx].Dir
 	}
 	checks := []adapter.Check{}
 	for i, store := range group.Stores {

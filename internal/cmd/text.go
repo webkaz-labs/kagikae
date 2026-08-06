@@ -55,19 +55,32 @@ func paint(status, s string, color bool) string {
 // what tells the user why to re-pin.
 func toolAccountList(accounts map[string]string) string {
 	mapping := make([]string, 0, len(accounts))
+	for _, tool := range boundTools(accounts) {
+		mapping = append(mapping, tool+":"+accounts[tool])
+	}
+	return strings.Join(mapping, " ")
+}
+
+// boundTools is the ordering half of the rule above, shared because a second caller
+// re-derived it and got the retired-tool half wrong: `kae relogin`'s refusal names
+// what the directory *does* bind, and a list that silently dropped a name would
+// answer "it binds claude" about a fragment that also binds something kae has since
+// retired — the one name that explains why the directory needs re-pinning.
+func boundTools(accounts map[string]string) []string {
+	ordered := make([]string, 0, len(accounts))
 	for _, tool := range constants.Tools {
-		if accountName, ok := accounts[tool]; ok {
-			mapping = append(mapping, tool+":"+accountName)
+		if _, ok := accounts[tool]; ok {
+			ordered = append(ordered, tool)
 		}
 	}
 	unknown := []string{}
-	for tool, accountName := range accounts {
+	for tool := range accounts {
 		if !slices.Contains(constants.Tools, tool) {
-			unknown = append(unknown, tool+":"+accountName)
+			unknown = append(unknown, tool)
 		}
 	}
 	sort.Strings(unknown)
-	return strings.Join(append(mapping, unknown...), " ")
+	return append(ordered, unknown...)
 }
 
 // printTable renders rows with left-aligned, space-padded columns.

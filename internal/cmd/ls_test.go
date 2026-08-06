@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -481,5 +482,37 @@ func TestInventoryFreshnessNeverCarriesTheToken(t *testing.T) {
 				t.Fatalf("%s (%s) leaked a credential value:\n%s\n%s", name, format, stdout, stderr)
 			}
 		}
+	}
+}
+
+// constants.Tools is a closed set and a fragment's account map is not: an older kae
+// could have bound a tool since retired (gemini, dropped in v0.6.0), and that name is
+// the one thing telling the user why the directory needs re-pinning. Both consumers
+// render this walk — `kae ls --pins` through toolAccountList, and `kae relogin`'s
+// refusal through boundToolList — and the unknowns half has now been got wrong once
+// in each, which is why the ordering is shared and why this test sits on the shared
+// function rather than on either caller.
+func TestBoundToolsKeepsRetiredToolsAfterTheCanonicalOnes(t *testing.T) {
+	// Insertion order is deliberately not the expected order: canonical names out of
+	// sequence, and the two unrecognized ones reversed, so a dropped sort fails here
+	// rather than passing by luck.
+	accounts := map[string]string{"zeta-tool": "a", "codex": "b", "gemini": "c", "claude": "d"}
+	want := []string{"claude", "codex", "gemini", "zeta-tool"}
+	if got := boundTools(accounts); !slices.Equal(got, want) {
+		t.Fatalf("boundTools = %v, want %v", got, want)
+	}
+	// And the two renderings built on it, so the join and the separators are covered
+	// at the same time as the walk.
+	if got, want := toolAccountList(accounts), "claude:d codex:b gemini:c zeta-tool:a"; got != want {
+		t.Errorf("toolAccountList = %q, want %q", got, want)
+	}
+	if got, want := boundToolList(fragmentInfo{Accounts: accounts}),
+		"claude, codex, gemini, zeta-tool"; got != want {
+		t.Errorf("boundToolList = %q, want %q", got, want)
+	}
+	// The empty case is boundToolList's own, and it is what a caller prints when a
+	// fragment binds nothing kae recognizes at all.
+	if got := boundToolList(fragmentInfo{Accounts: map[string]string{}}); got != "no tools" {
+		t.Errorf("boundToolList(empty) = %q, want %q", got, "no tools")
 	}
 }

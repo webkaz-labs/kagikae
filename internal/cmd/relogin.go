@@ -153,15 +153,19 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// before, empty after — and calls a successful login "unchanged". `kae add` re-plans
 	// after its login flow for the same reason (refreshPlan).
 	//
-	// **Not test-covered, and the reason is worth having**: reverting this to reuse the
-	// pre-flow `sp` survives the suite (measured 2026-08-06). The only spec *kind* that
-	// moves with a store's contents is codex's keyring probe, and reaching it needs a
-	// darwin keychain-backed per-directory codex store — the capability
-	// `KeychainDirBindable` deliberately does not declare and whose real-machine gate is
-	// still open (docs/ROADMAP.md). A test would have to fake exactly the configuration
-	// kae refuses to claim it supports. For claude both resolutions are identical (its
-	// kind follows an env var, not the store), so this is one extra `dirSpecs` per
-	// relogin today and the guard for the day codex's gate is met.
+	// Covered by TestReloginResolvesTheStoreAgainAfterTheFlow, which is worth naming
+	// here because this was first written down as untestable and that was wrong:
+	// `KeychainDirBindable` — the reason the argument went "reaching codex's probe needs
+	// a capability kae does not declare" — gates `dirCredentialSpec`, not this path.
+	// Relogin reaches the spec through `dirSpecs` → `Codex.Artifacts` → `usesKeyring`
+	// and reads it with `artifact.ReadLive`, neither of which asks. And the probe is a
+	// `security` subprocess through `internal/runner`, so it needs no real keychain.
+	// For claude both resolutions are identical (its kind follows an env var, not the
+	// store), so this is one extra `dirSpecs` per relogin there.
+	//
+	// Never wrap this function's context in `keychain.WithReadCache` the way `kae pin`
+	// and `kae use` do: a cached pre-login probe served to the post-login read reopens
+	// this defect with every test still green.
 	specs, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, storeDir, speak)
 	after, comparedAfter := storeCredential(ctx, sp, haveSpec)
 	switch {
@@ -179,12 +183,21 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// would claim a login on the strength of a comparison that never happened.
 	//
 	// Of the pair, only the **before** half is observable through the wording, measured
-	// 2026-08-06 rather than argued: a failed *after* read makes the harvest refuse on
-	// its own evidence (it reads the same spec through the same call), so `attributed`
-	// is already false and the strong line cannot print either way. Dropping
-	// `comparedAfter` from the gate below therefore survives every fixture, including
-	// the readable-before/unreadable-after one written to kill it. Keep both halves —
-	// the equivalence is between two functions that a change to either could separate.
+	// rather than argued: dropping `comparedAfter` from the gate below survives every
+	// fixture, including the readable-before/unreadable-after one written to kill it.
+	// Keep both halves anyway — what makes the after-half redundant is an invariant in
+	// two other packages, and it is the kind that breaks quietly.
+	//
+	// `comparedAfter == false` has two routes and they close differently. A failed
+	// `ReadLive` maps to `liveUnreadable` in the harvest, which reads the same spec
+	// through the same call, so it refuses and `attributed` is false. But `!haveSpec`
+	// does **not** go that way: harvestDirCredential would return an empty refusal from
+	// its own `!ok` arm, i.e. `attributed` true. What actually closes that route is that
+	// every adapter with a `credentialArtifactName` returns a spec under that name
+	// whenever `Artifacts` succeeds, so `!haveSpec` implies `specs == nil` and
+	// captureBackAfterRelogin refuses at its own gate. Nothing guarded that until
+	// TestCredentialArtifactNameMatchesEveryAdapter; an adapter that grows a spec set
+	// without its credential, or a name that drifts from the adapter's, reopens this.
 	case !comparable || !comparedAfter:
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae could not read this directory's %s credential, so it cannot tell whether the "+

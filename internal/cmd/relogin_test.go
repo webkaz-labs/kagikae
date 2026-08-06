@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -650,4 +651,57 @@ func TestReloginWillNotClaimALoginItCouldNotCompareAgainst(t *testing.T) {
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, "AFTERONLY-mmmm") {
 		t.Fatalf("the new login must reach the snapshot even when kae cannot compare: %s", got)
 	}
+}
+
+// The invariant `kae relogin`'s reasoning rests on and nothing guarded: for every
+// tool kae materializes a per-directory credential for, a successful `Artifacts`
+// returns a spec under exactly the name `credentialArtifactName` gives.
+//
+// Two places lean on it. `captureBackAfterRelogin` refuses when `specs == nil`, which
+// is only equivalent to "kae has no credential spec here" while this holds — otherwise
+// a spec set without its credential reaches `harvestDirCredential`, whose `!ok` arm
+// returns an empty refusal and so reports the login as attributed. And
+// `reloginCredentialSpec` reports `haveSpec=false` for a resolution that *succeeded*,
+// which would then be a silent no-comparison rather than the impossible state it is
+// meant to be.
+//
+// A real guard rather than a test that cannot fail: it fails the day an adapter grows
+// a spec set without its credential, or a name here drifts from the adapter's own
+// `Spec.Name`.
+func TestCredentialArtifactNameMatchesEveryAdapter(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	checked := []string{}
+	for _, tool := range constants.Tools {
+		artName := credentialArtifactName(tool)
+		if artName == "" {
+			continue // kae materializes no per-directory credential for this tool
+		}
+		adp, err := adapter.ForTool(tool)
+		if err != nil {
+			t.Fatalf("%s: %v", tool, err)
+		}
+		specs, err := adp.Artifacts(ctx, app.Env)
+		if err != nil {
+			// A refusal is a legitimate answer (an unsupported store mode, a platform kae
+			// cannot read); it is a spec set *without* the credential that breaks the
+			// invariant, not the absence of one.
+			continue
+		}
+		checked = append(checked, tool)
+		if _, ok := specByName(specs, artName); !ok {
+			names := []string{}
+			for _, sp := range specs {
+				names = append(names, sp.Name)
+			}
+			t.Errorf("%s: credentialArtifactName is %q but Artifacts returned %v", tool, artName, names)
+		}
+	}
+	// The guard on the guard: both `continue`s above are legitimate answers, and
+	// together they can empty the loop — at which point this passes while asserting
+	// nothing. Name the tools it actually reached.
+	if len(checked) == 0 {
+		t.Fatal("no tool reached the assertion; this guard would pass vacuously")
+	}
+	t.Logf("checked: %v", checked)
 }

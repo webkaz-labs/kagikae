@@ -1432,6 +1432,12 @@ cd "$B"
 #           unset, so a green run *is* the proof that kae exported it
 #   assert: stderr carries `harvested the newer claude credential from <B's store>
 #           into snapshot claude/main` — the capture-back half
+#   assert: stdout is `Logged claude in for claude/main in this directory` — the
+#           strong wording, which kae prints only when it observed all three of:
+#           the store changed, what is there now is not a tombstone, and the
+#           harvest confirmed the account. Any other case prints `Ran the claude
+#           login flow in this directory` instead, so this line is the assertion
+#           that the three gates all passed
 grep B-RELOGGED "$SB/.credentials.json"  # assert: the login landed in B's own store
 snap main | grep B-RELOGGED              # assert: and reached the account snapshot
 /tmp/kae doctor | grep "is older than"   # assert: the finding has *moved* — it now
@@ -1459,8 +1465,10 @@ rather than under `set -e`.
 
 **K–M PASSED 2026-08-06** (darwin, file driver, temp HOME, pre-release binary built
 from this branch), each assertion checked at its own point, and **re-run verbatim
-after the round-1 review changes** (the hedged wording, the split remedy, the
-store-must-exist refusal). The `credential_stale = 0`
+after each review round's changes** — round 1 (the hedged wording, the split remedy,
+the store-must-exist refusal) and round 2 (the three-gate success wording). A block
+whose expected output moved and was not re-run is a block that documents the previous
+release. The `credential_stale = 0`
 line in K is the one worth keeping in view: it is what distinguishes this check from
 the one beside it, and if the two ever merge it is the assertion that says so.
 

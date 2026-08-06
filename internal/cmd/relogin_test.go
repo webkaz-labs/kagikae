@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/paths"
 )
 
 // loginInto returns a RunInteractive stand-in that behaves like the real login
@@ -58,8 +60,13 @@ func TestReloginLogsIntoTheBoundStoreAndCapturesItBack(t *testing.T) {
 	seen := []string{}
 	withInteractive(t, loginInto(t, constants.ToolClaude, refreshed, "main-uuid", now.Add(8*time.Hour), &seen))
 
+	var out string
 	code, stderr := captureStderr(t, func() int {
-		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+		var inner int
+		inner, out = captureStdout(t, func() int {
+			return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+		})
+		return inner
 	})
 	mustExit(t, constants.ExitOK, code, stderr)
 
@@ -80,6 +87,13 @@ func TestReloginLogsIntoTheBoundStoreAndCapturesItBack(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "harvested") {
 		t.Errorf("the capture back must be reported: %q", stderr)
+	}
+	// The strong wording, which kae may print only where it observed all three of: the
+	// store changed, what is there now is not a tombstone, and the harvest attributed
+	// it to this account. Without this assertion every gate below could be inverted
+	// into always printing the weak line and nothing would fail.
+	if !strings.Contains(out, "Logged claude in for claude/main in this directory") {
+		t.Errorf("a login kae observed end to end must be reported as one: %q", out)
 	}
 	if strings.Contains(stderr, refreshed) {
 		t.Fatalf("a credential must never reach a message: %q", stderr)
@@ -353,6 +367,12 @@ func TestReloginSaysSoWhenItCannotTellWhetherAnythingChanged(t *testing.T) {
 	if !strings.Contains(stderr, "cannot tell whether the login flow changed anything") {
 		t.Errorf("kae must say it could not compare: %q / %q", stderr, out)
 	}
+	// And the stdout line must not contradict the warning two lines above it. The
+	// warning alone is not the fix: it was added first and the success line still
+	// claimed a login underneath it.
+	if strings.Contains(out, "Logged claude in") {
+		t.Errorf("no login may be claimed on a comparison that never happened: %q", out)
+	}
 }
 
 // The store path is recomputed from a hash of this directory's current path, while
@@ -383,4 +403,132 @@ func TestReloginRefusesWhenTheBoundStoreIsNotThere(t *testing.T) {
 	if !strings.Contains(stderr, "kae pin claude main") {
 		t.Errorf("the remedy is a re-bind at the current path: %q", stderr)
 	}
+}
+
+// The state a stale bound directory actually reaches, and the one this command must
+// not misreport: claude starts, tries to refresh, gets invalid_grant, and blanks the
+// tokens **in place** (docs/VALIDATION.md) — then the user aborts the login. The
+// store did change, and it changed to nothing usable, so the comparison alone says
+// "something happened" and the harvest says nothing at all (a tombstone is not a
+// copy worth taking, so it refuses with no reason to report).
+func TestReloginDoesNotCallATombstoneALogin(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	boundStoreForClaudeMain(t, app)
+
+	tombstone := fmt.Sprintf(
+		`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,"refreshTokenExpiresAt":%d}}`,
+		now.Add(27*24*time.Hour).UnixMilli(),
+	)
+	withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
+		for _, entry := range extraEnv {
+			if dir, ok := strings.CutPrefix(entry, isolationEnvVar(constants.ToolClaude)+"="); ok {
+				writeFile(t, filepath.Join(dir, ".credentials.json"), tombstone)
+			}
+		}
+		return 1, nil
+	})
+
+	var out string
+	code, stderr := captureStderr(t, func() int {
+		var inner int
+		inner, out = captureStdout(t, func() int {
+			return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+		})
+		return inner
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	// The bytes differ, so this is not the auth_unchanged path — which is exactly why
+	// the tombstone needs a gate of its own.
+	if code == constants.ExitAuthUnchanged {
+		t.Fatalf("the store did change; this is a different failure: %s", stderr)
+	}
+	if strings.Contains(out, "Logged claude in") {
+		t.Errorf("a store holding no usable token is not a login: %q", out)
+	}
+	if !strings.Contains(stderr, "no usable token") {
+		t.Errorf("kae must say what it read in the store: %q", stderr)
+	}
+	// And the tombstone must not have been filed as the account's credential.
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
+		t.Fatalf("a tombstone must never be harvested: %s", got)
+	}
+}
+
+// A tool whose rotation is unmeasured harvests nothing, so nothing checked whose
+// login landed in the store either — and "Logged codex in for codex/main" would be
+// asserting an attribution kae never made. Absence of a refusal is not confirmation,
+// which is the same rule dirIdentityConfirms follows one level down.
+func TestReloginDoesNotClaimAnAccountItNeverAttributed(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	app.Config.Profiles["main"] = config.Profile{Accounts: map[string]string{
+		constants.ToolClaude: "main", constants.ToolCodex: "main",
+	}}
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	seedCodex(t, app, "codex-token")
+	code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, commonOpts{Format: formatText}, constants.ToolCodex, "main")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	boundStoreForClaudeMain(t, app)
+
+	withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
+		for _, entry := range extraEnv {
+			if dir, ok := strings.CutPrefix(entry, isolationEnvVar(constants.ToolCodex)+"="); ok {
+				writeFile(t, filepath.Join(dir, "auth.json"),
+					`{"tokens":{"access_token":"codex-relogged"}}`)
+			}
+		}
+		return 0, nil
+	})
+	var stdout string
+	code, stderr := captureStderr(t, func() int {
+		var inner int
+		inner, stdout = captureStdout(t, func() int {
+			return runRelogin(ctx, app, commonOpts{Format: formatText}, constants.ToolCodex)
+		})
+		return inner
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	if strings.Contains(stdout, "codex/main") {
+		t.Errorf("kae never attributed this login, so it may not name the account: %q", stdout)
+	}
+	if !strings.Contains(stdout, "Ran the codex login flow") {
+		t.Errorf("kae must still say what it did: %q", stdout)
+	}
+	// Positive control for the fixture: the login really did land in the bound store,
+	// so the weak wording above is the attribution rule and not a flow that never ran.
+	storeDir, bound := app.boundStoreDir(paths.PinID(mustCwd(t)), constants.ToolCodex, mustFragment(t))
+	if !bound {
+		t.Fatal("the directory must bind codex for this test to mean anything")
+	}
+	if got := readFile(t, filepath.Join(storeDir, "auth.json")); !strings.Contains(got, "codex-relogged") {
+		t.Fatalf("the login did not land in the bound codex store: %q", got)
+	}
+}
+
+// mustCwd / mustFragment are the two reads the assertion above needs to name the
+// store the way runRelogin does, rather than rebuilding the path by hand.
+func mustCwd(t *testing.T) string {
+	t.Helper()
+	dir, err := cwdAbs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func mustFragment(t *testing.T) fragmentInfo {
+	t.Helper()
+	info, exists, err := readDirFragment()
+	if err != nil || !exists {
+		t.Fatalf("read fragment: exists=%v err=%v", exists, err)
+	}
+	return info
 }

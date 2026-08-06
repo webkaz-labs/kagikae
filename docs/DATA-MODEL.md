@@ -244,7 +244,11 @@ docs/ROADMAP.md). The snapshot's
 credential expiry, refresh-token state, and explicit invalidation are read (never
 stored separately) for the switch-time warnings, the `doctor` `credential_stale`
 and `credential_expiring` checks, and the freshness column of `kae ls` /
-`kae accounts` / `kae status`.
+`kae accounts` / `kae status`. `credential_superseded` reads the same bytes for a
+different question — it *orders* this snapshot against the copies in bound
+directories rather than measuring it against a deadline — which is why the two
+cannot be one check: the field that answers "is it expired" is not the field that
+moves when a copy is invalidated.
 
 **"Never stored separately" is a rule, not an accident.** The obvious way to give
 the listing commands a freshness column with no IO is to record the expiry in

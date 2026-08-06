@@ -125,8 +125,10 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// Resolved before the flow, because the credential in the store has to be read
 	// on both sides of it. A store kae cannot resolve is not fatal: the login is
 	// still the useful half, and everything that needs the spec degrades to saying
-	// so (reloginCredentialSpec).
-	_, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, storeDir)
+	// so (reloginCredentialSpec). Quiet here — the post-flow resolution is the one
+	// that decides whether the capture back can happen, so warning now would both
+	// repeat itself and claim something about a step that has not run.
+	_, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, storeDir, quiet)
 	before, comparable := storeCredential(ctx, sp, haveSpec)
 
 	fmt.Fprintf(os.Stderr,
@@ -150,7 +152,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// state through the pre-login spec then reads the store the tool abandoned — empty
 	// before, empty after — and calls a successful login "unchanged". `kae add` re-plans
 	// after its login flow for the same reason (refreshPlan).
-	specs, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, storeDir)
+	specs, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, storeDir, speak)
 	after, comparedAfter := storeCredential(ctx, sp, haveSpec)
 	switch {
 	// A flow the user aborted, or one that failed, leaves the store exactly as it
@@ -170,11 +172,39 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 			"kae: warning: kae could not read this directory's %s credential, so it cannot tell whether the "+
 				"login flow changed anything\n", tool)
 	}
-	// The account is named only where the harvest confirmed the login is that
-	// account's. A login as somebody else leaves a store that is legitimately theirs,
-	// and printing "Logged claude in for claude/main" over the warning that says
-	// otherwise hands the reader the wrong one of two contradicting lines.
-	if app.captureBackAfterRelogin(ctx, be, specs, tool, accountName, storeDir) {
+	// "A login happened, for this account" is three separate observations, and the
+	// strong wording may only be printed when kae made all three. They fail
+	// independently, which is why one gate cannot stand for the others:
+	//
+	//   - **changed**: kae read the store on both sides and the bytes differ. Without
+	//     it a flow kae could not compare at all still printed a login (the warning
+	//     above says the opposite two lines earlier).
+	//   - **not tombstoned**: the payload now in the store is not a death certificate.
+	//     This is the state a stale directory actually reaches — claude tries to
+	//     refresh on startup, gets `invalid_grant`, blanks the tokens in place
+	//     (docs/VALIDATION.md), and the user then aborts the login. The store *did*
+	//     change, and it changed to nothing usable. Only a payload kae positively read
+	//     as revoked demotes the wording: one it cannot parse may still be a login in a
+	//     shape kae has not been taught, and the harvest refuses that separately.
+	//   - **attributed**: the harvest confirmed the login is this account's. A login as
+	//     somebody else leaves a store that is legitimately theirs, and printing
+	//     "Logged claude in for claude/main" over the warning that says otherwise hands
+	//     the reader the wrong one of two contradicting lines.
+	changed := comparable && comparedAfter && !bytes.Equal(before, after)
+	if comparedAfter && freshnessOf(tool, after).Revoked {
+		// Worth its own line: the flow left the directory with no usable token, which is
+		// a different thing from "nothing happened" and from "kae could not tell".
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: this directory's %s store now holds no usable token — the login flow did not "+
+				"complete, or it ended in a failed refresh; run %s relogin %s again to finish it\n",
+			tool, toolName, tool)
+		changed = false
+	}
+	// Called unconditionally, and *before* the wording is decided: a flow kae could not
+	// compare may still have left a copy worth harvesting, and the harvest's own guards
+	// are the ones that decide that. Only the wording depends on both answers.
+	attributed := app.captureBackAfterRelogin(ctx, be, specs, tool, accountName, storeDir)
+	if changed && attributed {
 		fmt.Printf("Logged %s in for %s/%s in this directory\n", tool, tool, accountName)
 	} else {
 		fmt.Printf("Ran the %s login flow in this directory\n", tool)
@@ -188,16 +218,26 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 // the login is worth running either way, and the two things that need the spec (the
 // did-anything-change comparison and the capture back) each say what their absence
 // costs instead of blocking it.
-func (app *App) reloginCredentialSpec(ctx context.Context, tool, storeDir string) ([]artifact.Spec, artifact.Spec, bool) {
+//
+// report exists because runRelogin resolves twice, before and after the flow, and a
+// failure that does not clear would otherwise print the identical line at both.
+const (
+	quiet = false
+	speak = true
+)
+
+func (app *App) reloginCredentialSpec(ctx context.Context, tool, storeDir string, report bool) ([]artifact.Spec, artifact.Spec, bool) {
 	artName := credentialArtifactName(tool)
 	if artName == "" {
 		return nil, artifact.Spec{}, false
 	}
 	specs, err := app.dirSpecs(ctx, tool, storeDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae could not resolve where %s keeps this directory's credential (%v), "+
-				"so it cannot capture the login back into the account snapshot\n", tool, err)
+		if report {
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: kae could not resolve where %s keeps this directory's credential (%v), "+
+					"so it cannot capture the login back into the account snapshot\n", tool, err)
+		}
 		return nil, artifact.Spec{}, false
 	}
 	sp, ok := specByName(specs, artName)
@@ -301,11 +341,12 @@ func boundToolList(fragment fragmentInfo) string {
 // works either way; what a failure costs is that `kae use <tool> <account>` would
 // apply the older copy globally, which is what the warnings say.
 //
-// It returns whether the caller may name the account in its success line. False is
-// exactly the case where kae has said something that contradicts it — a login that
-// is demonstrably another account's, or one it could not tie to this one — because
-// two lines disagreeing hands the reader the wrong one, and the stdout line is the
-// one a skimming user keeps.
+// It returns whether the harvest **confirmed** the login is that account's, which is
+// the account half of what the caller's success line claims. Every path where kae did
+// not establish that answers false, including the ones where it never asked: a tool
+// whose rotation is unmeasured harvests nothing, so nothing checked the identity
+// there either. Absence of a refusal is not confirmation — the same rule
+// dirIdentityConfirms itself follows one level down.
 func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 	specs []artifact.Spec, tool, accountName, storeDir string,
 ) bool {
@@ -315,14 +356,14 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 	// not have (docs/ROADMAP.md § Rotation is measured for claude only).
 	artName := credentialArtifactName(tool)
 	if !rotatesSingleUse(tool) || artName == "" || specs == nil {
-		return true
+		return false
 	}
 	acc, snapshot, _, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: logged in, but kae could not read snapshot %s/%s to capture it back (%v)\n",
 			tool, accountName, err)
-		return true
+		return false
 	}
 	_, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, storeDir, snapshot)
 	switch {

@@ -140,11 +140,16 @@ child could rotate the live credential unseen — a cached value would be stale.
 - The `upstream_version` doctor check runs `<binary> --version` through
   `internal/runner` (argv array, no shell) and reads only the version string.
   **Offline**, no credential in the environment, nothing to redact.
-- The `credential_stale` / `credential_expiring` doctor checks parse a credential
-  payload to read its expiry. **Offline**, no network. Their messages carry only
-  timestamps, a tool name, an account name or a directory path, and a suggested
-  command — never a token, and a redaction test pins each of the two message
-  builders plus the switch-time warning against exactly that.
+- The `credential_stale` / `credential_expiring` / `credential_superseded` doctor
+  checks parse a credential payload to read its expiry. **Offline**, no network.
+  Their messages carry only timestamps, a tool name, an account name or a directory
+  path, and a suggested command — never a token, and a redaction test pins each of
+  the three message builders plus the switch-time warning against exactly that.
+  `credential_superseded` reads more payloads than the other two — the account
+  snapshot **and** every bound store of that account, since it compares copies rather
+  than reading one deadline — so it is the widest of the three, and its canary is a
+  sibling test rather than a case in the other's table (it needs a bound directory
+  and two copies before it has anything to say).
 
   Two payload sources, and one of them reads live. The account-snapshot half reads
   kae's own secret store; the **bound-directory** half reads the per-directory

@@ -149,6 +149,13 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   deadline at all — so no state, never `ok`; treating it as "never expires" is the
   failure that keeps being rediscovered.
 
+  `doctor`'s `credential_superseded` is deliberately **not** a sixth consumer of this
+  classifier, and nobody should fold it in. It asks a different question of a
+  different field: `expiresAt` *between copies* (`orderable` / `supersedes`), not the
+  relogin deadline. That is the whole reason it can see an invalidation the five
+  above cannot — `refreshTokenExpiresAt` is exactly what an invalidation does not
+  move.
+
 `VerifiedVersion() string` is **not** one of them: it is a method of `Adapter`
 itself, because kae relies on undocumented *behaviour* of every tool and a
 behaviour-only upstream change passes every structure guard, so every adapter owes

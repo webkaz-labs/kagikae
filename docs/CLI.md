@@ -630,17 +630,41 @@ Contract:
   path. A tool this directory does not bind → exit `7`. An unpinned directory whose
   store tree survives (`kae unpin` keeps it on purpose) is **not** pinned for this
   purpose: what is bound comes from the mise fragment.
+- The bound store not being there → exit `7`, naming `kae pin <tool> <account>`.
+  kae recomputes the store path from a hash of the directory's *current* path, while
+  what the tool reads there is the literal value the fragment exports; a directory
+  that moved keeps its fragment and gets a different hash, so logging in would create
+  a store nothing reads. `kae pin` always materializes the store, so its absence is
+  the signal the two have diverged. This refusal comes before the secret backend is
+  opened and before the pin lock is taken.
 - The flow leaving the store's credential byte-identical → exit `11`
   (`auth_unchanged`), the same code `kae add` uses. An aborted or failed login must
   not be reported as a login, because the reason to run this is that the directory
-  was already stale. Where kae could not read the store on both sides it says
-  nothing rather than guessing.
+  was already stale.
+- **The success line claims only what kae observed**, and there are two of them:
+  - `Logged <tool> in for <tool>/<account> in this directory` — printed only when
+    all three of: kae read the store on both sides and the bytes differ; what is
+    there now is not a payload it read as revoked; and the capture back *confirmed*
+    the login is that account's.
+  - `Ran the <tool> login flow in this directory` — every other case, each with its
+    own stderr line saying which. kae could not read the store on one side or both
+    (so it cannot tell whether anything changed). The store now holds a tombstone —
+    the state a stale directory actually reaches, since the tool tries to refresh on
+    startup, gets `invalid_grant` and blanks the tokens in place before the user
+    even reaches the prompt. Or the harvest did not confirm the account, which
+    includes every tool whose rotation is unmeasured: nothing harvests there, so
+    nothing checked the identity either, and absence of a refusal is not
+    confirmation.
+
+  Exit stays `0` in all of them: the login flow ran, and only `auth_unchanged` above
+  is a refusal.
 - The capture back is `harvestDirCredential` with every guard it already has: it
   declines a copy that does not supersede the snapshot, and one it cannot attribute
-  to this account. A login as **another** account is left in the store (it is that
-  account's, and it is where it belongs) and reported, with `kae pin <tool>
-  <account>` as the remedy — never another login, which would mint a fresh chain and
-  invalidate the copy just left in place.
+  to this account. It runs whatever the comparison said — a flow kae could not
+  compare may still have left a copy worth harvesting. A login as **another** account
+  is left in the store (it is that account's, and it is where it belongs) and
+  reported, with `kae pin <tool> <account>` as the remedy — never another login,
+  which would mint a fresh chain and invalidate the copy just left in place.
 - The capture back is claude-only, like every other harvest
   (docs/ROADMAP.md § Rotation is measured for claude only). For any other bound tool
   the login still runs into the right store; nothing is harvested because nothing

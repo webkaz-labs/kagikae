@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -284,5 +285,80 @@ func TestDoctorComparesOnlyCopiesOfTheSameAccountAndOnlyAttributedOnes(t *testin
 	}
 	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
 		t.Fatalf("an unattributable winner proves nothing about the loser: %v", msgs)
+	}
+}
+
+// Two bound copies are still copies of each other when the account's own snapshot
+// payload is gone (the `secret_missing` shape: `account.toml` and its identity
+// artifact intact, the credential payload not in the backend). The comparison must
+// survive that — and it only does because the fallback keeps the account **record**,
+// which is what attribution compares each store's identity cache against. Zeroing
+// the whole account there made every candidate refuse, so the branch reported
+// nothing at all while its comment claimed the stores were still being compared.
+func TestDoctorComparesBoundCopiesWhenTheSnapshotPayloadIsGone(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	behindDir, behindCred := boundStoreForClaudeMain(t, app)
+	aheadDir, aheadCred := boundStoreForClaudeMain(t, app)
+	writeFile(t, behindCred, claudeOAuthPayload("sk-ant-oat01-BEHIND-hhhh", now.Add(4*time.Hour)))
+	writeFile(t, aheadCred, claudeOAuthPayload("sk-ant-oat01-AHEAD-iiii", now.Add(8*time.Hour)))
+
+	acc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
+	if err != nil || !found {
+		t.Fatalf("captured snapshot missing: found=%v err=%v", found, err)
+	}
+	be := testBackend(t, app)
+	if err := be.Delete(ctx, acc.Artifacts[credentialArtifactName(constants.ToolClaude)].SecretRef); err != nil {
+		t.Fatal(err)
+	}
+
+	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	if len(msgs) != 1 {
+		t.Fatalf("the two stores are still comparable, got %d: %v", len(msgs), msgs)
+	}
+	if !strings.Contains(msgs[0], "bound to "+behindDir) ||
+		!strings.Contains(msgs[0], "the store bound to "+aheadDir) {
+		t.Errorf("both directories must be named the right way round: %q", msgs[0])
+	}
+}
+
+// credential_superseded is a third message built from a parsed credential, so it is
+// a third path for a token to reach stdout, --json and stderr. AGENTS.md requires a
+// redaction test for every new output path; the last one found a real leak. The
+// sibling for the two snapshot-side builders is
+// TestCredentialFreshnessMessagesNeverCarryTheToken — separate rather than a case in
+// its table, because this one needs a bound directory and two copies to have
+// anything to say.
+func TestSupersededMessageNeverCarriesTheToken(t *testing.T) {
+	const secretToken = "sk-ant-oat01-SUPERSEDED-CANARY-jjjj"
+	const secretRefresh = "rt-" + secretToken
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, behindCred := boundStoreForClaudeMain(t, app)
+	_, aheadCred := boundStoreForClaudeMain(t, app)
+	// The canary goes in the copy that gets *reported*; claudeOAuthPayload derives the
+	// refresh token from the access token, so both halves are in the payload the
+	// message is built from.
+	writeFile(t, behindCred, claudeOAuthPayload(secretToken, now.Add(4*time.Hour)))
+	writeFile(t, aheadCred, claudeOAuthPayload("sk-ant-oat01-AHEAD-kkkk", now.Add(8*time.Hour)))
+
+	// The fixture must actually reach the state this test is named for, or the
+	// assertions below prove nothing about that path.
+	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); !ok {
+		t.Fatal("fixture no longer produces credential_superseded; this canary would pass vacuously")
+	}
+	for _, format := range []string{formatText, formatJSON} {
+		_, stdout, stderr := captureBoth(t, func() int {
+			return runDoctor(ctx, app, commonOpts{Format: format}, "")
+		})
+		for stream, out := range map[string]string{"stdout": stdout, "stderr": stderr} {
+			if strings.Contains(out, secretToken) || strings.Contains(out, secretRefresh) {
+				t.Fatalf("%s (%s) leaked a credential value: %q", stream, format, out)
+			}
+		}
 	}
 }

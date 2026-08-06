@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -185,10 +186,15 @@ func TestCompletionScriptsCompleteCompanion(t *testing.T) {
 // cannot be added to the router's completion set without being classified here,
 // because TestEveryPositionalCommandCompletes checks the two sets match exactly.
 //
-// What it still cannot see: a command dropped from completionCommands *and* from
-// this map, since nothing machine-checks either against Root(). Adding that check
-// by dispatching each command is not safe in a unit test — several commands reach
-// newApp before a bad flag stops them, which would read the real environment.
+// What it still cannot see, and neither can subcommandVerbs: a command dropped
+// from completionCommands *and* from this map, since nothing machine-checks
+// either against Root(). Adding that check by dispatching each command is not
+// safe in a unit test — several commands reach newApp before a bad flag stops
+// them, which would read the real environment.
+//
+// What it deliberately does not claim: that a branch routes correctly. It proves
+// the branch exists and emits candidates; whether the slots and array indices in
+// it are right is TestCompletionPositionalRouting's question, per command.
 var positionalCommands = map[string]bool{
 	"init":       false, // init [--json]
 	"edit":       false, // edit
@@ -238,10 +244,14 @@ func TestEveryPositionalCommandCompletes(t *testing.T) {
 		}
 		blocks := completionCaseBlocks(t, shell, script)
 		for cmd, takesPositional := range positionalCommands {
-			_, hasCase := blocks[cmd]
+			body, hasCase := blocks[cmd]
 			switch {
 			case takesPositional && !hasCase:
 				t.Errorf("%s completion has no case for %q, so `kae %s <TAB>` is a dead end:\n%s", shell, cmd, cmd, script)
+			case takesPositional && !emitsCandidates(shell, body):
+				// "Has a branch" is not "offers something": a branch that emits
+				// nothing is the same dead end with a case label in front of it.
+				t.Errorf("%s completion's %q branch emits no candidates:\n%s", shell, cmd, body)
 			case !takesPositional && hasCase:
 				t.Errorf("%s completion has a case for %q, which positionalCommands says takes no positional — one of the two is wrong", shell, cmd)
 			}
@@ -249,10 +259,31 @@ func TestEveryPositionalCommandCompletes(t *testing.T) {
 	}
 }
 
+// emitsCandidates says whether a branch body actually offers something, in the
+// terms each shell uses to do it.
+func emitsCandidates(shell, body string) bool {
+	for _, token := range map[string][]string{
+		"bash": {"compgen -W"},
+		"zsh":  {"compadd"},
+		"fish": {"kae __complete", `printf '%s\n'`},
+	}[shell] {
+		if strings.Contains(body, token) {
+			return true
+		}
+	}
+	return false
+}
+
 // caseLabelPattern matches a bash/zsh case label alone on its line, including an
-// alternation (`use|u|pin|p|run|r)`). Anchoring both ends is what keeps the inner
-// `-*)` / `*) pos+=…` labels of the positional-collection loop out.
-var caseLabelPattern = regexp.MustCompile(`^[a-z][a-z|]*\)$`)
+// alternation (`use|u|pin|p|run|r)`). The character class is wider than any
+// command kae routes today so that a hyphenated or numbered one does not go
+// quietly unmatched; `-*)` and `*)` stay out because neither starts with a letter.
+//
+// The anchors are defence rather than a property under test — measured: dropping
+// them leaves every guard here green, because what they additionally exclude is a
+// match *inside* a line (the `tools)` of `compadd -- ${(f)"$(kae __complete
+// tools)"}`), and no caller looks up a block under that name.
+var caseLabelPattern = regexp.MustCompile(`^[a-z][a-z0-9|_-]*\)$`)
 
 // completionCaseBlocks splits a generated script's command dispatch into
 // label -> branch body. bash and zsh label a branch on its own line and close it
@@ -308,12 +339,19 @@ func completionCaseBlocks(t *testing.T, shell, script string) map[string]string 
 // a verb), add it here and TestSubcommandCompletionParity forces the matching
 // case into bash, zsh, and fish. Keep in lockstep with each command's dispatcher
 // (e.g. CmdCompanion) and the script case blocks in completion.go.
+//
+// Being opt-in cuts the other way too, and no guard covers it: deleting an entry
+// takes that group's sub-verb run out of the assertions with it, silently.
+// positionalCommands still requires the branch to exist and to emit something,
+// and TestCompletionPositionalRouting still checks the slots of the groups it
+// names — but what the sub-verbs *are* is asserted here and nowhere else.
 var subcommandVerbs = map[string][]string{
 	"account":   {"rm", "rename", "set-identity"},
 	"profile":   {"save", "set", "unset", "rm", "default"},
 	"companion": {"add", "rm", "list"},
 	"env":       {"set", "unset", "list"},
 	"backup":    {"list"},
+	"mise":      {"init"},
 }
 
 // TestCompletionRefreshRewritesRegisteredFile: `completion --refresh` rewrites an
@@ -625,35 +663,102 @@ func TestCompletionInstallPrintOnly(t *testing.T) {
 	}
 }
 
-// TestCompletionAccountTokenIndex guards the per-shell positional routing in the
-// static completion scripts: account completion must pass the tool word from the
-// flag-filtered positional list at the right index for that shell's array
-// convention. `kae use <tool> <TAB>` reads the first positional after `use`;
-// `kae account rm <tool> <TAB>` reads the second (past the rm/rename subcommand).
+// TestCompletionPositionalRouting guards the per-shell positional routing in the
+// generated scripts: each branch must read the argument it needs from the
+// flag-filtered positional list, at the slot and array index that shell uses.
+// `kae use <tool> <TAB>` reads the first positional after `use`; `kae account rm
+// <tool> <TAB>` and `kae env set <tool> <TAB>` read the second, past the sub-verb.
 // The positionals exclude flags, so `kae add --no-login <TAB>` still completes
-// tools (the flag is skipped, not counted as the tool). An off-by-one or a
-// missing flag-skip silently yields no/ wrong candidates (it once did for fish).
-func TestCompletionAccountTokenIndex(t *testing.T) {
+// tools. An off-by-one or a missing flag-skip silently yields no candidates or the
+// wrong ones (it once did for fish).
+//
+// Every literal is asserted inside the command's own branch, because these
+// constructs repeat across branches: `accounts "${pos[1]}"` appears in `account`
+// as well as `env`, so a whole-script check passes on a branch that was never
+// written — which is exactly how `env`'s tool and account slots could be deleted
+// outright with all three shells still green.
+func TestCompletionPositionalRouting(t *testing.T) {
 	for _, tc := range []struct {
-		shell          string
-		useToolRef     string // tool word in `kae use <tool> <TAB>`
-		accountToolRef string // tool word in `kae account rm <tool> <TAB>`
-		flagSkip       string // the construct that drops flag tokens from positionals
+		shell    string
+		flagSkip string              // the construct that drops flag tokens from positionals
+		want     map[string][]string // case label -> literals its branch must contain
 	}{
-		{"bash", `accounts "${pos[0]}"`, `accounts "${pos[1]}"`, `-*) ;;`},
-		{"zsh", `accounts ${pos[1]}`, `accounts ${pos[2]}`, `== -* ]] || pos`},
-		{"fish", `accounts $pos[1]`, `accounts $pos[2]`, `string match -q -- '-*'`},
+		{"bash", `-*) ;;`, map[string][]string{
+			"use":     {`accounts "${pos[0]}"`},
+			"account": {`"$np" -eq 1`, `__complete tools`, `"$np" -eq 2`, `accounts "${pos[1]}"`},
+			"env":     {`"${pos[0]}" != "list"`, `"$np" -eq 1`, `__complete tools`, `"$np" -eq 2`, `accounts "${pos[1]}"`},
+			"backup":  {`"$np" -eq 0`, `compgen -W "list"`},
+		}},
+		{"zsh", `== -* ]] || pos`, map[string][]string{
+			"use":     {`accounts ${pos[1]}`},
+			"account": {`np == 1`, `__complete tools`, `np == 2`, `accounts ${pos[2]}`},
+			"env":     {`"${pos[1]}" != list`, `np == 1`, `__complete tools`, `np == 2`, `accounts ${pos[2]}`},
+			"backup":  {`np == 0`, `compadd -- list`},
+		}},
+		{"fish", `string match -q -- '-*'`, map[string][]string{
+			"use":     {`accounts $pos[1]`},
+			"account": {`$np -eq 1`, `__complete tools`, `$np -eq 2`, `accounts $pos[2]`},
+			"env":     {`"$pos[1]" != list`, `$np -eq 1`, `__complete tools`, `$np -eq 2`, `accounts $pos[2]`},
+			"backup":  {`$np -eq 0`, `printf '%s\n' list`},
+		}},
 	} {
-		script, _ := completionScript(tc.shell)
-		if !strings.Contains(script, tc.useToolRef) {
-			t.Fatalf("%s: missing `use` tool ref %q", tc.shell, tc.useToolRef)
+		script, ok := completionScript(tc.shell)
+		if !ok {
+			t.Fatalf("no completion script for %s", tc.shell)
 		}
-		if !strings.Contains(script, tc.accountToolRef) {
-			t.Fatalf("%s: missing `account` tool ref %q", tc.shell, tc.accountToolRef)
+		blocks := completionCaseBlocks(t, tc.shell, script)
+		for cmd, wants := range tc.want {
+			body, hasCase := blocks[cmd]
+			if !hasCase {
+				t.Errorf("%s: no case block for %q", tc.shell, cmd)
+				continue
+			}
+			for _, want := range wants {
+				if !strings.Contains(body, want) {
+					t.Errorf("%s: the %q branch is missing %q:\n%s", tc.shell, cmd, want, body)
+				}
+			}
 		}
 		if !strings.Contains(script, tc.flagSkip) {
-			t.Fatalf("%s: missing the flag-skip construct %q (flags must not shift positionals)", tc.shell, tc.flagSkip)
+			t.Errorf("%s: missing the flag-skip construct %q (flags must not shift positionals)", tc.shell, tc.flagSkip)
 		}
+	}
+}
+
+// TestCompletionScriptsAreSyntacticallyValid parses each generated script with the
+// shell it targets. Nothing else does: the scripts are Go string constants, so the
+// shellcheck task (which walks scripts/*.sh) never sees them, and one that fails to
+// parse breaks completion for every user of that shell.
+//
+// A shell that is not installed is skipped rather than faked, so the assertion is
+// only ever as strong as the machine — but bash is required to have run, or an
+// image without any of the three would let this pass while checking nothing.
+func TestCompletionScriptsAreSyntacticallyValid(t *testing.T) {
+	var checked []string
+	for _, tc := range []struct {
+		shell, bin, parseOnly string
+	}{
+		{"bash", "bash", "-n"},
+		{"zsh", "zsh", "-n"},
+		{"fish", "fish", "--no-execute"},
+	} {
+		bin, err := exec.LookPath(tc.bin)
+		if err != nil {
+			t.Logf("%s is not installed here; its syntax went unchecked", tc.shell)
+			continue
+		}
+		script, _ := completionScript(tc.shell)
+		path := filepath.Join(t.TempDir(), "completion."+tc.shell)
+		if wErr := os.WriteFile(path, []byte(script), 0o600); wErr != nil {
+			t.Fatal(wErr)
+		}
+		if out, rErr := exec.Command(bin, tc.parseOnly, path).CombinedOutput(); rErr != nil {
+			t.Errorf("%s rejects the generated script: %v\n%s", tc.shell, rErr, out)
+		}
+		checked = append(checked, tc.shell)
+	}
+	if !slices.Contains(checked, "bash") {
+		t.Errorf("no bash to parse the generated script with, so this checked %v and proves nothing", checked)
 	}
 }
 

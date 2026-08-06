@@ -90,7 +90,7 @@ already matches. `--quiet` suppresses the success report; `--json` keeps the
 
 | Flag | Environment | Behavior |
 |------|-------------|----------|
-| `-s` (default) | real home | backup → apply → run → recapture refreshed creds → restore; per-tool lock held for the child run |
+| `-s` (default) | real home | backup → apply → run → recapture refreshed creds → restore, per tool and only where that would not put back a credential the child has superseded ([CLI.md](CLI.md) § kae run Semantics); per-tool lock held for the child run |
 | `-i` | global isolated home | reuses `isolation/global/<tool>/<account>/` shared with `kae use -i`; no lock, no live mutation — the right choice for concurrent interactive sessions |
 | `--env` | env vars only | injects the profile's env vars; no home redirect, no lock |
 
@@ -234,7 +234,12 @@ NG:  two terminals both relying on a global shared switch for different accounts
   rather than shared ([SCOPE-MODEL.md](SCOPE-MODEL.md) §6).
 - Secrets are stored in the OS credential store by default; a plaintext file
   backend exists only as an explicit opt-in.
-- Every mutation is preceded by a backup and is reversible via `kae rollback`.
+- Every mutation is preceded by a backup, and `kae rollback` puts the recorded bytes
+  back. What that does **not** promise is that a restored credential still works:
+  claude invalidates the older copies of a login when it refreshes, so a backup can
+  hold a payload that is well-formed, unexpired and dead. kae rolls back anyway and
+  says so when it can prove it ([CLI.md](CLI.md) § `kae rollback --json`) — reversible
+  is a property of kae's records, not of an upstream token.
 - Companion-auth lockstep is **opt-in and auth-only**: kae drives the env/config
   the companion CLIs already read (a kae-owned `GIT_CONFIG_GLOBAL` that includes
   the user's own `~/.gitconfig`, an env token resolved at mise eval time, or a

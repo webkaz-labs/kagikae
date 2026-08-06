@@ -1234,6 +1234,90 @@ rm "$(store)/.claude.json"
                                         #         ordinary state until the tool runs
                                         #         there, and permanent for a directory
                                         #         bound before v0.16.0)
+
+# --- the two restore paths. One child script for G and H, differing only in the uuid
+#     it leaves behind, because that difference is the whole attribution question ---
+cat > "$HOME/child.sh" <<EOF
+#!/bin/sh
+# \$1 access token, \$2 expiresAt, \$3 the account the identity cache ends up naming
+printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"rt-%s","expiresAt":%s,"refreshTokenExpiresAt":1830384000000}}' "\$1" "\$1" "\$2" > "$HOME/.claude/.credentials.json"
+printf '{"oauthAccount":{"accountUuid":"u-%s","emailAddress":"%s@example.com"}}' "\$3" "\$3" > "$HOME/.claude.json"
+EOF
+chmod +x "$HOME/child.sh"
+cd "$HOME"
+
+# --- G. run -s on the account that is ALREADY active keeps the child's refresh ---
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+/tmp/kae run -s claude main -- "$HOME/child.sh" MAIN-NEW $NEW main
+#   assert: stderr carries `main was already the active account` and does NOT carry
+#           `previous auth state restored` — nothing was restored, so it is not claimed
+grep MAIN-NEW "$HOME/.claude/.credentials.json"   # assert: the real home still runs the
+                                        #         copy that can refresh. Before this it
+                                        #         held MAIN-OLD — a logged-out session
+                                        #         reported as a successful restore
+snap main | grep MAIN-NEW                # assert: the post-child recapture has it too,
+                                        #         so `kae use claude main` applies it
+
+# --- H. the same run, except the child logged in as somebody else ---
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+/tmp/kae run -s claude main -- "$HOME/child.sh" FOREIGN $LATER other
+#   assert: stderr carries `previous auth state restored` and NOT `already the active
+#           account` — a later deadline is not evidence of whose login it is
+grep MAIN-OLD "$HOME/.claude/.credentials.json"   # assert: restored. Keeping FOREIGN
+                                        #         would leave the real home running one
+                                        #         account while kae records another
+snap main | grep FOREIGN                 # assert: FOREIGN — **this is the open defect**,
+                                        #         asserted so the case cannot go green
+                                        #         over it. run -s's own recapture calls
+                                        #         captureSnapshot directly and so applies
+                                        #         neither keepSnapshotIdentity nor the
+                                        #         downgrade refusal, and files whatever
+                                        #         the child left under the target's name
+                                        #         (docs/ROADMAP.md, "run -s's own
+                                        #         recapture goes through neither guard").
+                                        #         Measured 2026-08-05: `kae doctor` does
+                                        #         flag identity_drift for claude/main
+                                        #         afterwards, but its remedy is
+                                        #         `kae use claude main`, which then puts
+                                        #         FOREIGN into the real home. The restore
+                                        #         skip is gated on attribution read from
+                                        #         the **backup** so it does not compound
+                                        #         this; when the recapture is fixed, this
+                                        #         line becomes `grep -c FOREIGN` = 0
+
+# --- I. rollback says the credential it restores is already dead, and restores it ---
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+/tmp/kae use claude main                 # a backup whose active_before is main
+cred MAIN-NEW $NEW > "$HOME/.claude/.credentials.json"   # the tool refreshed in place,
+                                        #         with no kae command running
+/tmp/kae rollback; echo "exit=$?"
+#   assert: exit=0 — a warning never moves the exit code. Take it from `kae` itself:
+#           `echo $?` after one of the `grep` assertions below reports *grep's* status
+#           and can never fail, which is how this line was wrong when first written
+#   assert: stderr carries `older claude credential for claude/main than the one in the
+#           live store`, and names `kae rollback --to <the pre-rollback id>` — the live
+#           copy is the one being overwritten, so that backup is the only place left
+#           holding it. NOT `kae use claude main`: the snapshot holds the older copy.
+#           The id must be the one this rollback just created, not the one it restored;
+#           compare it against `/tmp/kae backup list`
+grep MAIN-OLD "$HOME/.claude/.credentials.json"   # assert: the rollback still happened.
+                                        #         Going back is what was asked for; the
+                                        #         warning is what kae adds
+
+# --- J. the switch-away recapture declines a live copy the snapshot supersedes ---
+# This is what stops I's rolled-back copy from being laundered over a newer snapshot on
+# the next switch. Both copies are usable here, so the usability refusal cannot see it.
+cred MAIN-NEW $NEW > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"   # what a rollback leaves behind
+/tmp/kae use claude side
+#   assert: stderr carries `snapshot claude/main holds a later claude credential than the
+#           live store` and `snapshot left unchanged`
+snap main | grep MAIN-NEW                # assert: the only copy that can refresh survived
+snap main | grep -c MAIN-OLD             # assert: 0 — paired with the positive line above
 ```
 
 Several lines here exit non-zero **on purpose** (`grep -c` printing `0` is the
@@ -1247,14 +1331,47 @@ pin-level pass running **before** the stores are materialized, and E additionall
 the replaced fragment being read before it is rewritten.
 **F PASSED 2026-08-04** (darwin, file driver, temp HOME, pre-release binary), run as
 written, all four assertions checked at their own points.
+**G–J PASSED 2026-08-05, re-run at every later revision of the branch and last measured
+14/14 on 2026-08-06** (darwin, file driver, temp HOME, pre-release binary), every
+documented assertion checked at its own point, and **discriminated against a control**:
+the same G block run against a binary with the skip forced off leaves `MAIN-OLD` live and
+prints "previous auth state restored", so G is not a tautology. Two defects in the block
+itself were found by the first run and are fixed above — an `echo $?` that reported
+*grep's* status and so could never fail, and case H going green over a snapshot the run
+poisons (the `snap main | grep FOREIGN` line now states it). **Re-run before the tag** on
+the final tree, as § Smoke Checks requires of every block.
 
-Three of these assertions were **corrected after first passing**, which is the argument
+**What G–J does not cover, stated because a green run reads as if it did.** The block
+exports `KAE_CLAUDE_DRIVER=file`, so claude's credential is a JSON-pointer file and its
+identity a pointer in `~/.claude.json` — **neither touches `internal/keychain`**. So it
+exercises the per-command keychain read cache *not at all*: no read is cached, no
+`invalidate` runs, and a stale-read bug would pass all fourteen assertions. The cache the
+restore paths now open (`run -s` after its child, `kae rollback` for its mutation) is
+covered by unit tests over the darwin sim — including a sibling-account invalidation test
+— and, on a real machine, only by running `kae run -s` and `kae rollback` on darwin
+against the real keychain, which this branch has not done.
+
+G and H are the pair worth re-running after any change to `run -s`'s
+post-child sequence, and J after any change to the switch-away recapture. One remedy is
+**not** covered here and is therefore not claimed: the rollback warning's other branch,
+where the newer copy is in the account snapshot and the remedy is `kae use <tool>
+<account>`, needs the snapshot moved ahead of the backup by something these fixtures do
+not do on the real binary; it is pinned by unit tests instead
+(`TestRollbackWarnsWhenTheSnapshotHoldsALaterCopy`, and the two "prefers" tests that
+pin which of the two candidates wins).
+
+Five of these assertions were **corrected after first passing**, which is the argument
 for reading a block adversarially rather than trusting a green run: B reused A's
 `expiresAt` and so never reached the attribution guard; C did the same and so proved
 nothing about the tombstone guard (a healthy copy behaves identically at an equal
 deadline); and B's only snapshot check was a `grep -c` for absence, which prints `0`
 — a pass — when `snap()` itself is broken. Each is now dated ahead of the snapshot, or
-paired with a positive assertion.
+paired with a positive assertion. The two from 2026-08-05 are a different shape and
+worth knowing separately: I's exit-code line read `$?` from the **preceding grep**
+rather than from `kae`, so it reported the assertion above it and could not fail; and
+H asserted only the live store, which let it pass over a *snapshot* the same command
+had filed another account's credential into. A block asserts what it names, and the
+thing it does not name is where the defect sits.
 
 ## Upstream Behaviour Assumptions
 
@@ -1323,9 +1440,11 @@ grep-versus-grep comparison of two empty results reports "identical". Verifying 
 | `/oauthAccount`'s self-heal is **TTL-gated**: claude refetches the profile and rewrites `emailAddress` only when the cached object is incomplete or its `profileFetchedAt` is over **24h** old, and a token refresh renews that timestamp without rewriting `emailAddress` / `accountUuid` | `kae use claude <other>` with a snapshot captured **within** 24h, launch claude, diff `~/.claude.json`: `oauthAccount.emailAddress` is the value kae wrote and does **not** revert. Then age it (`profileFetchedAt` older than 24h) and launch claude again: it now refetches and rewrites `emailAddress` + `profileFetchedAt` on its own. If the TTL ever stops applying, kae's identity switch becomes redundant (not harmful) — record that here rather than dropping the artifact silently |
 | `claude /login` rewrites `accountUuid` / `emailAddress` / `organizationUuid` unconditionally (no TTL), and a token **refresh** rewrites none of them | Log in to another account with `claude /login`, diff `~/.claude.json`: those three keys change. Let a session run long enough to refresh the token and diff again: `profileFetchedAt` and the plan fields change, those three do not. kae's `IdentityKeys` (the keyed identity comparison) is exactly this set — if a refresh starts rewriting them, `identity_drift` will warn on correct switches again |
 | `refreshTokenExpiresAt` is the **login's absolute expiry**, not a rolling window: `expiresAt` (the access token, ~8h) moves forward on every refresh, this one is set when `/login` runs and stays put. Claude Code warns `Your login expires in N days · run /login to renew` **three days** ahead of it (v2.1.203+; five days before v2.1.217) | Two independent confirmations, no login needed for either. **Upstream documents the warning and its threshold** ([Renew an expiring login](https://code.claude.com/docs/en/authentication)), and it states the warning is informational and that authentication keeps working "until the login actually expires". **The operator confirms (2026-07-31) that the warning appears only near the end, not at every startup**, and that their own re-login cadence is roughly a month — both of which are impossible if the field were a short rolling window. ⚠️ **A 2026-07-31 measurement recorded here as "≈2 days on 2.1.220, from a fresh login's credential" is retracted**: a two-day login would force a re-login every two days, which contradicts both the observed cadence and upstream's own warning behaviour. It was most likely read from a credential that was already old, since `relogin_by − captured_at` measures the time *left* at capture, not the lifetime. Re-measure only from a credential captured immediately after a completed `/login`, and record the login date alongside it. **Re-measured 2026-08-04 on 2.1.220 exactly that way** — a credential read straight after a completed `/login` carried `refreshTokenExpiresAt` **27 days** out (login 2026-08-04, deadline 2026-08-31) — which matches the observed monthly cadence and leaves `credential_expiring`'s seven-day lead time comfortable. The retracted two-day figure is dead; use 27 days as the measured lifetime and re-measure the same way if it ever matters again. kae depends on this in two places: the "recoverable without a re-login" predicate needs the field to exist at all (if it disappears kae falls back to presence alone and under-warns), and `credential_expiring`'s seven-day lead time needs the lifetime to be comfortably longer than seven days — a month satisfies that, two days would not |
+| **`Revoked` cannot tell an emptied token from a missing one**, and kae's reading of "this payload carries no usable token" is `accessToken` and `refreshToken` both being absent-or-empty. The measured tombstone (row below) has them **present and empty**, so the two agree today — but a payload that simply does not carry those key *names*, which is what an upstream field rename looks like, reads as revoked while being a working login | Decide it in one read: a renamed-token payload still has a plausible future `expiresAt` and a token value under some other key, a tombstone has neither. kae deliberately keeps the wider reading rather than requiring the keys to exist, because the failure directions are not symmetric: over-reading revoked makes the harvest and both restore paths *decline* to touch the copy (safe), while under-reading it would let a logged-out payload be adopted as a live login. What the wider reading may **not** do is license a claim about the tool — hence the rollback warning says "carries no usable token", never "cannot log in" (docs/CLI.md § `kae rollback --json`). Flagged by review 2026-08-05; the same shape as the `expiresAt`-unit row above |
 | A refresh that fails with `invalid_grant` makes claude **tombstone** the credential in place: `accessToken: ""`, `refreshToken: ""`, `expiresAt: 0` — while **`refreshTokenExpiresAt` is retained**. So the tombstone is what kae can see, and it appears only *after* the tool has tried and failed: before that attempt an already-invalidated credential carries an untouched deadline and reads as healthy | Run-confirmed 2026-08-04 on 2.1.220 by the rotation procedure in the row below, whose store C held a genuinely rejected refresh token: afterwards its payload had an empty refresh token (the sha256 of the empty string is the giveaway) and `expiresAt: 0`, with `refreshTokenExpiresAt` unchanged. kae reads the blanked form as invalid, not as "no expiry recorded"; if upstream instead deletes the item, the logged-out guards cover it. The retained deadline is the load-bearing half — it is why `credential_stale` cannot report an invalidated copy until something has already failed |
 | A refresh **rotates** the refresh token, and the superseded one is **single-use**: the server rejects it. `expiresAt` moves forward on every refresh, so it orders two copies by which refreshed last; `refreshTokenExpiresAt` does not move (row above) and therefore cannot. **The consequence is the load-bearing part: two stores holding copies of one account's credential invalidate each other.** The first to refresh keeps working; the other runs on its still-valid access token for up to its ~8h remaining life and then fails mid-session with `Failed to authenticate: OAuth session expired and could not be refreshed`. Until that attempt the doomed copy is **indistinguishable from a healthy one offline** — its deadline is untouched and the tombstone (row above) is only written afterwards | Measured 2026-08-04 on 2.1.220 **without touching any real account**: `claude /login` into a throwaway `CLAUDE_CONFIG_DIR` (call it A), then two *file* copies of A's credential with `expiresAt` moved into the past, then `claude -p "…" --model haiku` against each with `CLAUDE_CONFIG_DIR` pointed at it. A store with no keychain item yet reads the file, so seeding needs **no keychain write** — which is what keeps this procedure safe to re-run. B refreshed and its refresh token changed value; C, still holding A's original token, was rejected with that message. Compare **sha256 prefixes only**, never token values. Delete both per-directory items afterwards (`security delete-generic-password -a "$USER" -s "Claude Code-credentials-<sha8>"`) or they linger where nothing can enumerate them. Do this with a throwaway login, never an account in use: a server doing reuse detection could revoke the whole chain. Every kae mechanism that keeps a credential **copy** rests on this row — the per-directory materializers, the global isolated home, backups, and `kae use` applying a capture-time snapshot |
 | **One shared credential store survives two simultaneous refreshes, including from two *different* config dirs.** Two processes whose `CLAUDE_CONFIG_DIR` differ but whose `CLAUDE_SECURESTORAGE_CONFIG_DIR` is the same both authenticate, and the shared item rotates once — the losing process does **not** tombstone it. Same for two processes in one identical config dir. This is the premise any "one credential copy per account" design rests on, and it is the *opposite* of the copies case in the row above, so the two must never be conflated | Measured 2026-08-04 on 2.1.220, throwaway login, four consecutive rounds. Seed the shared store, move its `expiresAt` into the past, and start both `claude -p … --model haiku` probes from one thread pool; read the shared payload's refresh-token sha256 prefix before and after. **Run the negative control in the same session or the result is worthless**: give each process its own store holding a *copy* of the same credential and it comes back 1/2, the loser reporting `OAuth session expired and could not be refreshed` and tombstoning its own store. Shared → 2/2 and no tombstone, copies → 1/2 and a tombstone, is the discrimination that makes this row mean something. ⚠️ Two confounds bit this measurement: seeding a store as a **file** makes the first refresh promote it to a keychain item and delete the file, so the *other* process reports `Not logged in · Please run /login` for a reason that has nothing to do with rotation — always re-run once the credential is keychain-resident, and read the message, since "not logged in" (nothing found) and "session expired" (found and refused) are different findings. Nothing here observes that the two refreshes truly overlapped, so this shows a shared store *can* take concurrent use, not that contention was exercised in every round |
+| `expiresAt` is an **absolute** epoch (milliseconds since 1970), not a duration. This is the unit every ordering of two copies rests on: `supersedes` compares the two values and nothing else, so a change to relative seconds under the same field name — the `expires_in` / `expires_at` confusion common in OAuth payloads — would leave every copy carrying a small positive number that still parses, still passes `orderable`, and orders **arbitrarily**. kae's only defense against a meaningless deadline is the zero value (`EpochToTime` maps `n <= 0` to the zero time and `orderable` rejects that), which catches a value that is absent or non-numeric and cannot catch one that is merely in the wrong unit | Read one live payload: `expiresAt` is ~13 digits and decodes to a timestamp a few hours ahead (`python3 -c 'import sys,datetime;print(datetime.datetime.fromtimestamp(int(sys.argv[1])/1000))' <value>`), while `refreshTokenExpiresAt` decodes weeks ahead. A 10-digit value would be seconds and a 4-digit one a duration; either means every `supersedes` comparison in kae is meaningless and the harvest and both restore paths must be re-derived, not patched. Flagged by review 2026-08-05 as the next instance of the defect that shipped in this release — the assumption was load-bearing and unwritten |
 | The keychain payload must round-trip **verbatim**; a re-serialized payload makes Claude Code reject the credential | Capture → apply → fresh-process auth check on macOS with the real keychain driver. A byte-compare of the stored payload does not cover it: an equivalent-but-re-encoded payload is exactly this failure |
 | `~/.claude.json` is mixed state whose other keys must survive a pointer patch | `git`-diff `~/.claude.json` across a switch: only `/oauthAccount` changes; `projects`, `mcpServers`, onboarding and cache keys stay byte-identical |
 | **Where the credential resolves to** is a rule, not a constant. The keychain service is `Claude Code` + the build's OAuth suffix + `-credentials` + a per-config-dir suffix. That last suffix is empty only while `CLAUDE_CONFIG_DIR` is unset or empty; otherwise it is `-<first 8 hex of sha256(value)>` over the env string **NFC-normalized** — no `resolve`, no cleaning, so a trailing `/` hashes to a different item, and a decomposed non-ASCII component hashes as its composed form. Reads try keychain first and fall back to `<configDir>/.credentials.json`; a write goes to keychain and **deletes that file** when the item was previously absent. `CLAUDE_SECURESTORAGE_CONFIG_DIR`, when set, replaces `CLAUDE_CONFIG_DIR` as both the hash input and the file's directory — and set to the *empty string* it drops the suffix entirely, collapsing every config dir onto one shared item. **Both of those halves are run-confirmed** (2026-08-04, 2.1.220, shim below): with the two variables set to different directories the logged service carries `sha8` of the **securestorage** one, and with it empty the service is the unsuffixed name. Consequently the credential's location is separable from the config dir's — sessions and the identity file follow `CLAUDE_CONFIG_DIR` while the credential follows this variable, which is the mechanism a per-account credential with per-directory sessions would use. Also visible in the same log: claude probes a **second service family**, `Claude Code[-<sha8>]` without `-credentials`, tracking the same suffix rule. No item of that family exists on the measured machine, so nothing is known to write it — but kae models only the `-credentials` one, and "every service one login writes" is the enumeration this table exists to keep honest | Shim `security` rather than logging in. Put an executable ahead of `/usr/bin` on `PATH` that appends `"$*"` to a log and exits 44 (item-not-found), then run `env -i HOME=<temp> PATH=<shim>:/usr/bin:/bin USER="$USER" CLAUDE_CONFIG_DIR=<dir> claude -p hi </dev/null`. The logged `-s <service>` is the name claude actually resolves; check the suffix against `python3 -c 'import hashlib,sys,unicodedata;print(hashlib.sha256(unicodedata.normalize("NFC",sys.argv[1]).encode()).hexdigest()[:8])' <dir>` — the NFC step is not optional, and a `<dir>` with a decomposed non-ASCII component is the case that needs it. Re-run with a trailing slash, with `CLAUDE_SECURESTORAGE_CONFIG_DIR=`, and with it set to another dir to cover all four branches. **No login and no real-keychain access**, so this row is re-verifiable in seconds on any macOS machine — prefer it to the old seed-and-wait-for-refresh procedure. The delete-on-write half is the exception: it is read from the composed store's `update()` in the bundle (`if the keychain read returned absent, delete the plaintext file`) and reproducing it at runtime needs a live refresh token, so treat that half as **source-confirmed, not run-confirmed**. kae reproduces the rule in `claude.keychainService`, so every mechanism that sets `CLAUDE_CONFIG_DIR` writes into the item that config dir resolves to. Recording *storage resolution* as a verifiable rule is the lesson: kae had verified "the credential is at X" and never "how the tool decides where X is", and modelling the name as a constant is exactly what let a pinned directory run the previous account with every offline guard green |

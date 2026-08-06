@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -298,12 +297,12 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 	}
 	// A snapshot kae cannot read, or one that is itself a tombstone, loses to any
 	// usable live copy: it has no deadline worth comparing, and writing it over a
-	// working credential is the destruction this function exists to stop.
-	cutoff := time.Time{}
-	if stored := freshnessOf(tool, snapshot); stored.Known && !stored.Revoked {
-		cutoff = stored.ExpiresAt
-	}
-	if !liveInfo.ExpiresAt.After(cutoff) {
+	// working credential is the destruction this function exists to stop. The
+	// live-side guard supersedes applies is redundant *here* — readLiveCredential
+	// already refused a payload that is unknown, revoked or undated — and it lives
+	// there rather than being split between the two, so a caller whose live read is
+	// not that one (the backup-restore paths) cannot get it wrong.
+	if !supersedes(liveInfo, freshnessOf(tool, snapshot)) {
 		return snapshot, true, harvestRefusal{}
 	}
 	if refused := dirIdentityConfirms(ctx, be, specs, acc, credDir); refused.Why != "" {
@@ -394,6 +393,12 @@ const (
 )
 
 // readLiveCredential reads the credential live at sp and classifies it.
+//
+// `liveUsable` is exactly `orderable`, and the yes/no half below is *taken from* it
+// rather than restated. What this adds is a reason: the delete path needs "nothing left
+// to lose" told apart from "kae cannot tell", and collapsing those two into one refusal
+// is killed by the harvest and prune tests. So a caller that only needs the yes/no calls
+// `orderable`; this is the one place that also needs to know why.
 func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]byte, freshness.Info, liveCredentialState) {
 	live, err := artifact.ReadLive(ctx, sp)
 	switch {
@@ -403,10 +408,13 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 		return nil, freshness.Info{}, liveNothing
 	}
 	info := freshnessOf(tool, live.Data)
-	switch {
-	case !info.Known:
-		return nil, freshness.Info{}, liveUnreadable
-	case info.Revoked || info.ExpiresAt.IsZero():
+	if !orderable(info) {
+		// Derived from `orderable` rather than restated, so the equivalence below cannot
+		// drift by omission: a condition added there — docs/VALIDATION.md already flags a
+		// candidate in the `expiresAt`-unit row — reaches this classification too.
+		if !info.Known {
+			return nil, freshness.Info{}, liveUnreadable
+		}
 		return nil, freshness.Info{}, liveNothing
 	}
 	// Note on the `IsZero` half: it is the guard docs/ROADMAP.md prescribes, and it is
@@ -492,9 +500,7 @@ func dirIdentityConfirms(ctx context.Context, be secret.Backend, specs []artifac
 		// took the confirming path below, letting the harvest attribute a copy on the
 		// strength of two sides agreeing about nothing. The gate is above the comparison so
 		// one branch of this function cannot be stricter than the other.
-		_, storedIsRecord := freshness.DecodeObject(stored)
-		_, liveIsRecord := freshness.DecodeObject(live.Data)
-		if !storedIsRecord || !liveIsRecord {
+		if !identityComparable(stored, live.Data) {
 			return harvestRefusal{Why: "kae cannot read the identity records it would compare"}
 		}
 		if identityDiffers(sp, stored, live.Data) {

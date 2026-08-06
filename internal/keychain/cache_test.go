@@ -64,6 +64,44 @@ func TestReadCacheWriteInvalidates(t *testing.T) {
 	})
 }
 
+// The account-scoped half of the same rule, and the reason a service-keyed invalidate
+// is enough for a cache keyed on service **and** account: `invalidate` drops every
+// `service\x00account` entry by prefix, not just the bare service key. It
+// over-invalidates across sibling accounts of one service, which is the safe direction.
+//
+// This is what every account-scoped item relies on — claude's per-config-dir
+// credentials, codex's per-`CODEX_HOME` `Codex Auth`, agy's shared `gemini` service —
+// and it was unpinned: removing `invalidate` entirely survived the whole `internal/cmd`
+// suite, and the test above only covers the service-only key. A later "make invalidate
+// precise" cleanup is exactly what this catches.
+func TestReadCacheWriteInvalidatesASiblingAccount(t *testing.T) {
+	cr := &countingRunner{payload: `{"claudeAiOauth":{"a":1}}`}
+	runner.With(cr, func() {
+		ctx := WithReadCache(context.Background())
+		if _, _, err := ReadItemForAccount(ctx, "svc", "me"); err != nil {
+			t.Fatal(err)
+		}
+		// Coalesced, so the write below is the only thing that can force a re-read.
+		if _, _, err := ReadItemForAccount(ctx, "svc", "me"); err != nil {
+			t.Fatal(err)
+		}
+		if got := cr.calls["find-generic-password"]; got != 1 {
+			t.Fatalf("expected the second read to be coalesced, got %d", got)
+		}
+		// A write under a *different* account of the same service must still drop it:
+		// the service is what changed, and the cache cannot know the two items apart.
+		if err := WriteItem(ctx, "svc", "other", []byte(`{"claudeAiOauth":{"a":2}}`)); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := ReadItemForAccount(ctx, "svc", "me"); err != nil {
+			t.Fatal(err)
+		}
+		if got := cr.calls["find-generic-password"]; got != 2 {
+			t.Fatalf("a write under a sibling account left this account's entry cached: %d reads", got)
+		}
+	})
+}
+
 func TestReadCacheAbsentWithoutOptIn(t *testing.T) {
 	cr := &countingRunner{payload: `{"claudeAiOauth":{"a":1}}`}
 	runner.With(cr, func() {

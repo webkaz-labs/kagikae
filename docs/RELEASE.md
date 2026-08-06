@@ -37,7 +37,10 @@ because claude's refresh token turns out to rotate single-use.
 Baseline: v0.16.0. `schema_version` stays `1`. **Behaviour changes**: where
 `kae pin` writes its ignore rule; a bind or a superseded-credential sweep now
 harvests a newer credential from the store it is about to overwrite or delete, and
-declines to delete one it could not preserve. Plus two contract-additive surfaces —
+declines to delete one it could not preserve; `kae run -s` skips a restore that would
+put back a credential its child has superseded, `kae rollback` says when the copy it
+restores can no longer refresh, and `kae use`'s switch-away recapture declines a live
+copy its own snapshot supersedes. Plus two contract-additive surfaces —
 the `kae ls --pins` view, and `doctor`'s existing `identity_drift` code reported for
 a bound directory's own store; the rest is documentation.
 
@@ -238,6 +241,39 @@ a bound directory's own store; the rest is documentation.
   reporting a comparison it could not make. The walk that decides what is bound is
   now shared with the credential checks — one walk per run, the fragment and never the
   store tree — so a future consumer inherits the gate rather than re-deriving it.
+
+- **Restoring a backup no longer hands a tool a token that cannot refresh** (behaviour
+  change, to `kae run -s`, `kae rollback` and `kae use`'s switch-away recapture). The
+  same measurement that drove the harvest applies to every copy kae keeps, and a
+  *backup* is a copy: `kae run -s <tool> <the account that was already active>` backed
+  up that account's credential, let the child refresh it, and then wrote the pre-child
+  copy back — logging the real home out while printing "previous auth state restored".
+  `kae rollback` printed "Rolled back to" for a credential anything might have
+  superseded since. Both were reported as success with every offline check green.
+
+  The two answer differently, because what the user asked for differs. `run -s`
+  **skips** the restore for such a tool: it applied that account itself, so restoring is
+  a no-op apart from destroying the newest copy, and `previous auth state restored` is
+  now printed only when something was. `kae rollback` **warns and restores anyway** —
+  going back is the request — and the warning names *where* the newer copy is, because
+  that decides the remedy: in the account snapshot it survives, so `kae use <tool>
+  <account>` applies it; in the live store the rollback overwrites it and only the
+  pre-rollback backup still holds it. Exit codes and both JSON reports are unchanged.
+
+  Three things this cost that the plan did not name. The ordering test had to become a
+  **single shared comparator** (`supersedes`), because a third hand-written copy of the
+  `expiresAt` cutoff is the drift this repo keeps bleeding on. The **switch-away
+  recapture needed the same comparator**, or the very next `kae use` files a
+  rolled-back copy over the snapshot that still worked — an invalidation the existing
+  "is it usable" refusal cannot see, since both copies are usable and differ only in
+  order. And the two candidates for "newest" have to be compared **against each other**:
+  choosing by branch order names a copy that is not the newest, which is the remedy
+  misdirection this project has shipped before. `run -s`'s skip additionally requires
+  the identity beside the credential to still name the account the backup recorded, so a
+  child that logged in as somebody else is restored over rather than kept — and it reads
+  that from the **backup**, not the account snapshot, because `run -s`'s own recapture
+  has already rewritten the snapshot with whatever the child left behind. claude only,
+  like the harvest, because ordering two copies needs a measured rotation.
 
 ---
 

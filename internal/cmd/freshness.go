@@ -439,10 +439,8 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 				plan.Tool)
 			continue
 		}
-		if app.recaptureWouldDowngrade(ctx, be, plan.Tool, acc, values) {
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: the live %s credential needs a re-login while snapshot %s/%s still holds a usable one; "+
-					"snapshot left unchanged\n", plan.Tool, plan.Tool, active)
+		if why := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); why != "" {
+			fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot left unchanged\n", why)
 			continue
 		}
 		if !valuesDiverge(ctx, be, plan.Specs, acc, values) {
@@ -532,36 +530,131 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 	return outsideLogin
 }
 
-// recaptureWouldDowngrade reports whether writing the live values into acc's
-// snapshot would replace a credential that still works with one that does not.
+// supersedes reports whether copy a of one account's credential is provably the
+// later of the two — which, for a tool whose refresh token rotates single-use
+// (rotatesSingleUse), means b can no longer refresh at all, so writing b over a is
+// a logout rather than a regression.
 //
+// `expiresAt` and nothing else orders them: a successful refresh always moves it
+// forward, a failed one tombstones the copy, and a fresh login sorts ahead of an
+// older chain because it sets the field to now plus the access token's life. What
+// the field cannot do is compare two *different* accounts, so every caller owes an
+// attribution guard of its own before acting on the answer (the harvest's is
+// dirIdentityConfirms, a backup restore's is liveLoginMatchesBackup, and the
+// switch-away recapture's is keepSnapshotIdentity, applied by its caller).
+//
+// The a-side guard is `orderable`, the one docs/ADAPTERS.md prescribes. b degrading to
+// the zero cutoff is deliberate and *not* the same test: a copy kae cannot order has no
+// deadline worth comparing and loses to any copy that has one.
+func supersedes(a, b freshness.Info) bool {
+	if !orderable(a) {
+		return false
+	}
+	cutoff := time.Time{}
+	if b.Known && !b.Revoked {
+		cutoff = b.ExpiresAt
+	}
+	return a.ExpiresAt.After(cutoff)
+}
+
+// orderable reports whether a freshness reading can take part in an ordering at all:
+// known to the tool's parser, not a tombstone, and carrying an actual deadline. It is
+// docs/ADAPTERS.md's `Known && !Revoked && !ExpiresAt.IsZero()`, named because
+// `supersedes` is not the only place that needs it — a caller asking "is the copy I am
+// about to write older than the live one" must apply the same test to *its* side, and
+// getting that subset wrong is how a copy with no deadline came to read as superseded
+// by anything, and it shipped that way once.
+//
+// All three conditions are load-bearing together and none is redundant, which is easy
+// to misjudge from one tool: claude sets `Known` on the mere *presence* of `expiresAt`
+// and parses a non-numeric one to the zero time, so a payload whose `expiresAt` changed
+// type upstream — the shape an upstream format change actually takes — is `Known`,
+// un-`Revoked` and undated at once.
+//
+// What it does **not** and cannot check is that the deadline is *meaningful*. The zero
+// value is the only implausible one it can name; a small positive number — what the same
+// field would hold if upstream moved from an absolute epoch to a relative duration —
+// passes here and orders arbitrarily. That is a unit assumption, not a predicate, so it
+// lives where assumptions are re-measured (docs/VALIDATION.md § Upstream Behaviour
+// Assumptions, the claude row on `expiresAt`) rather than as a guessed floor here.
+func orderable(info freshness.Info) bool {
+	return info.Known && !info.Revoked && !info.ExpiresAt.IsZero()
+}
+
+// liveValuesFreshness reads the credential freshness out of freshly-read live
+// values: the first artifact whose payload parses as tool's credential format,
+// which is the rule accountFreshness applies to the snapshot side.
+func liveValuesFreshness(tool string, values []artifact.Value) freshness.Info {
+	for _, v := range values {
+		if !v.Present {
+			continue
+		}
+		if info := freshnessOf(tool, v.Data); info.Known {
+			return info
+		}
+	}
+	return freshness.Info{}
+}
+
+// recaptureWouldDowngrade reports why writing the live values into acc's snapshot
+// would leave that account worse off than leaving it alone, or "" when the write
+// may proceed. The caller frames the reason into its warning.
+//
+// Two refusals, decided together because they compare the same two readings — and
+// on darwin the snapshot side is a `security` subprocess, so asking twice is the
+// cost the switch's read coalescing exists to avoid (docs/RELEASE.md §A/§C).
+//
+// (1) **The live copy needs a re-login and the snapshot's does not.**
 // readLiveValues proves only that the artifact *exists*: claude's tombstone (the
 // blanked payload a failed refresh leaves behind) is a fully-formed one, so it
 // passes the logged-out guard and would otherwise overwrite a snapshot that was
 // still good — irrecoverably, since the backup taken for this switch reads the
 // same dead live store.
 //
-// One-directional on purpose: it never prefers the newer value, it only refuses
-// to destroy a working one. "The live store is authoritative" (docs/RELEASE.md
-// §A) still holds for every credential that is actually usable; what is dropped
-// is the unstated assumption that a credential which exists is usable.
-func (app *App) recaptureWouldDowngrade(ctx context.Context, be secret.Backend, tool string, acc account.Account, values []artifact.Value) bool {
+// (2) **The snapshot already holds a later copy of this account's credential.**
+// Both copies are usable there, so (1) cannot see it: they differ only in order,
+// and for a tool whose refresh token rotates single-use the later one is the only
+// one that can still refresh (supersedes). A live copy *older* than the snapshot is
+// not something normal operation produces — kae applies the snapshot and the tool
+// refreshes forward from it — it is what `kae rollback` leaves behind by design, so
+// without this guard the next `kae use` of that account launders the rolled-back
+// copy into the snapshot and destroys the last one that works.
+//
+// One-directional like (1): it never prefers the live copy, it only refuses to
+// overwrite a later one. "The live store is authoritative" (docs/RELEASE.md §A)
+// still holds for every credential that is actually the newest; what is dropped is
+// the unstated assumption that whatever is live is the newest.
+// accountName names the account in the reason rather than acc.Name: account.toml's
+// recorded name and the name the caller resolved the snapshot under are not
+// guaranteed to agree, and it is the caller's name the user typed.
+func (app *App) recaptureWouldDowngrade(ctx context.Context, be secret.Backend,
+	tool, accountName string, acc account.Account, values []artifact.Value,
+) string {
 	now := app.Now()
-	live := freshness.Info{}
-	for _, v := range values {
-		if !v.Present {
-			continue
-		}
-		if info := freshnessOf(tool, v.Data); info.Known {
-			live = info
-			break
-		}
-	}
-	if !needsRelogin(live, now) {
-		return false
+	live := liveValuesFreshness(tool, values)
+	liveNeedsRelogin := needsRelogin(live, now)
+	ordered := rotatesSingleUse(tool)
+	if !liveNeedsRelogin && !ordered {
+		return ""
 	}
 	stored, err := app.accountFreshness(ctx, be, acc)
-	return err == nil && stored.Known && !needsRelogin(stored, now)
+	if err != nil || !stored.Known {
+		return ""
+	}
+	if liveNeedsRelogin && !needsRelogin(stored, now) {
+		return fmt.Sprintf(
+			"the live %s credential needs a re-login while snapshot %s/%s still holds a usable one",
+			tool, tool, accountName,
+		)
+	}
+	if ordered && supersedes(stored, live) {
+		return fmt.Sprintf(
+			"snapshot %s/%s holds a later %s credential than the live store, and %s's refresh token "+
+				"rotates single-use, so the live copy can no longer refresh",
+			tool, accountName, tool, tool,
+		)
+	}
+	return ""
 }
 
 // valuesDiverge reports whether freshly-read live values differ from acc's

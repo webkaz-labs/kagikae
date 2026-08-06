@@ -212,7 +212,10 @@ from refreshing tokens concurrently. Therefore:
   path for parallel sessions);
 - `kae run -s` recaptures refreshed credentials into the account snapshot
   before restoring the previous state, so token refreshes during the child
-  run are never lost.
+  run are never lost. The restore itself is skipped for a tool where putting the
+  pre-child copy back would overwrite a credential the child superseded — for claude
+  that is a logout rather than a regression, because its refresh token rotates
+  single-use ([CLI.md](CLI.md) § kae run Semantics).
 - `kae use -s` / bare `use` recapture the currently-active account before
   switching away when its live credential diverges from the snapshot, so a
   token rotated in-tool is not silently lost on the next switch back. This is

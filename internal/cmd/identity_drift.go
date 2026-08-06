@@ -174,6 +174,27 @@ func identityDiffers(sp artifact.Spec, stored, live []byte) bool {
 	return false
 }
 
+// identityComparable reports whether two identity payloads are both account **records**,
+// which is what has to hold before identityDiffers may be trusted for *attribution*.
+//
+// The gate exists because identityDiffers falls back to a byte comparison for anything it
+// cannot key on — right for the drift check, which must not call two unreadable payloads
+// equal, and wrong in both directions for attribution: a payload that is well-formed JSON
+// but not an object (`/oauthAccount: null` is the reachable shape) names no account, so it
+// can neither prove a conflict nor confirm a match, and two identical such payloads agree
+// about nothing. Measured 2026-08-05 on the per-directory path, where both mistakes were
+// live.
+//
+// It lives here, beside the comparison it qualifies, because every attribution guard needs
+// it and each frames its own refusal around it (dirIdentityConfirms names a reason,
+// liveLoginMatchesBackup answers a bool). Two hand-kept copies is how one of them would
+// later be the site that is missing it.
+func identityComparable(stored, live []byte) bool {
+	_, storedIsRecord := freshness.DecodeObject(stored)
+	_, liveIsRecord := freshness.DecodeObject(live)
+	return storedIsRecord && liveIsRecord
+}
+
 // identityUntrackedMessage frames an account whose snapshot has no identity yet:
 // captured before kae switched identities. Deliberately not a warning — the
 // display still ends up right, because a switch clears the stale cache and the

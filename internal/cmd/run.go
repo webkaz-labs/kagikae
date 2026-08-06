@@ -431,11 +431,19 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 
 	// Coalesce the live reads that follow — the recapture, the restore decision and its
 	// attribution all read the same credential and identity, which on darwin is a
-	// `security` subprocess each. Opened **after** the child and never around it: the
-	// whole reason no cache spans a child run is that the child rotates tokens under kae
-	// (docs/ARCHITECTURE.md § Caching). By this line it has exited and the per-tool locks
-	// are still held, so nothing can change the store while these reads agree; the writes
-	// below invalidate their own entries.
+	// `security` subprocess each (measured: three post-child reads collapse to one).
+	// Opened **after** the child and never around it: the whole reason no cache spans a
+	// child run is that the child rotates tokens under kae (docs/ARCHITECTURE.md
+	// § Caching). By this line it has exited and the per-tool locks are still held, so
+	// nothing can change the store while these reads agree; the writes below invalidate
+	// their own entries.
+	//
+	// Moving this line above the child is **unobservable today**, which is worth knowing
+	// before someone "tidies" it there: applySnapshot writes the credential immediately
+	// before the child, and that write invalidates the service, so no entry survives into
+	// the child window and there is no read in between. The placement is the invariant,
+	// not a filter — it starts mattering the moment anything reads between the apply and
+	// the child (a verification read, a second tool's probe). Measured 2026-08-06.
 	ctx = keychain.WithReadCache(ctx)
 
 	// The child may have moved the credential to the tool's other store (codex

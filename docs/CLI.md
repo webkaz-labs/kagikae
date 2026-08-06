@@ -1475,8 +1475,16 @@ live store wins the message, since that is the one being overwritten.
 
 A recorded credential kae cannot *order* at all is reported in different words, and which
 words depends on **why** — the same distinction kae draws for a bound directory's store. A
-**tombstone** provably cannot log in, so kae says so ("cannot log in, while … holds a
-usable one"). A payload kae cannot **parse** — one whose `expiresAt` no longer decodes,
+**tombstone** is reported as what kae read and no more — "carries no usable token, while
+… holds one" — and **never** "cannot log in". `Revoked` is derived from the token fields
+being empty *or absent*, so a login whose token keys were renamed upstream reads
+identically to a tombstone while working perfectly, and the stronger wording would tell
+that user to undo a rollback that was fine. This paragraph claimed the opposite until
+2026-08-06, and quoted a string the binary has not contained since the wording was
+changed during the item-5 review: `docs/VALIDATION.md` § Upstream Behaviour Assumptions
+and `AGENTS.md` both stated the rule correctly and cited **this** section as their
+authority, which is how a normative doc comes to license undoing the fix it documents.
+A payload kae cannot **parse** — one whose `expiresAt` no longer decodes,
 say — may still be a working login in a shape kae has not been taught, so kae claims only
 that it "cannot compare" the two and that it cannot tell which can still refresh. The
 remedy is the same in every case, because where the other copy is, is what a user acts on.

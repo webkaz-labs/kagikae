@@ -204,7 +204,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae found no %s credential where it resolves this directory's store, so it is not "+
 				"reporting a login — the flow may have left nothing there, or it may have moved the credential "+
-				"to a store kae resolved differently before it ran\n", tool)
+				"to a store kae does not resolve for this directory\n", tool)
 		changed = false
 	case comparedAfter && freshnessOf(tool, after).Revoked:
 		fmt.Fprintf(os.Stderr,

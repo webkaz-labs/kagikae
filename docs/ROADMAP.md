@@ -278,8 +278,11 @@ alternative exists (`secret-tool`).
   invalidation `recaptureWouldDowngrade`'s usability test cannot see; and the two
   candidates for "newest" have to be compared **against each other**, or the remedy
   names a copy that is not the newest.
-  One thing deliberately left where it is: the "cannot log in" half of the rollback
-  warning is claude-only like the rest, although the fact it reports — a rollback writing
+  One thing deliberately left where it is: the "carries no usable token" half of the
+  rollback warning (this entry named it after a wording the code has not used since the
+  item-5 review; `docs/CLI.md` § `kae rollback --json` is normative and was itself wrong
+  about it until 2026-08-06)
+  is claude-only like the rest, although the fact it reports — a rollback writing
   a dead recorded copy over a working login destroys that login — holds for **every**
   tool and needs no rotation measurement. Widening it would add a warning to five tier-2
   tools in a release about claude's rotation, so it waits; the gate to move is the

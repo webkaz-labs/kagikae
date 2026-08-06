@@ -485,6 +485,13 @@ func TestReloginDoesNotCallAnEmptiedStoreALogin(t *testing.T) {
 			// Scoped to the warning lines and matched on word boundaries: the pre-login
 			// banner contains "against", and a bare substring test for "again" fails on it
 			// — the same shape as asserting a path prefix and matching a sibling.
+			//
+			// The list below is **illustrative, not a fence**. It pins the three phrasings
+			// that were actually wrong once; a reworded regression ("re-run the flow to
+			// finish it") matches none of them. The real property — no imperative, and no
+			// claim about what the tool can do — is not mechanically testable, so a green
+			// run here is not the property holding. The line filter has the same character:
+			// a warning that ever wrapped would hide its continuation from it.
 			warnings := ""
 			for _, line := range strings.Split(stderr, "\n") {
 				if strings.HasPrefix(line, "kae: warning:") {

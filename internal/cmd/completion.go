@@ -119,8 +119,9 @@ _kae() {
     return
   fi
   # Positional args after the command, excluding flags, up to the cursor — so a
-  # flag like --no-login / -i / -P before the positionals does not shift the
-  # completion (np is the positional slot the cursor is at).
+  # boolean flag like --no-login / -i before the positionals does not shift the
+  # completion (np is the positional slot the cursor is at). A flag that takes a
+  # value still does: its value is not a flag word (docs/ROADMAP.md).
   local -a pos=()
   for (( i=2; i<COMP_CWORD; i++ )); do
     case "${COMP_WORDS[i]}" in
@@ -224,7 +225,8 @@ _kae() {
     return
   fi
   # Positional args after the command, excluding flags, up to the cursor, so a
-  # flag (--no-login / -i / -P) before the positionals does not shift completion.
+  # boolean flag (--no-login / -i) before the positionals does not shift
+  # completion. A flag that takes a value still does (docs/ROADMAP.md).
   for (( i=3; i<CURRENT; i++ )); do
     [[ "${words[i]}" == -* ]] || pos+=("${words[i]}")
   done
@@ -322,8 +324,9 @@ function __kae_complete
         kae __complete flags $cmd
         return
     end
-    # Positional args after the command, excluding flags, so a flag
-    # (--no-login / -i / -P) before the positionals does not shift completion.
+    # Positional args after the command, excluding flags, so a boolean flag
+    # (--no-login / -i) before the positionals does not shift completion. A flag
+    # that takes a value still does (docs/ROADMAP.md).
     set -l pos
     for i in (seq 3 $n)
         if not string match -q -- '-*' $tokens[$i]

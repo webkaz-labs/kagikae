@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -352,6 +353,10 @@ var subcommandVerbs = map[string][]string{
 	"env":       {"set", "unset", "list"},
 	"backup":    {"list"},
 	"mise":      {"init"},
+	// Not sub-verbs but the same thing structurally: a fixed run inlined at the
+	// np==0 slot, which nothing else asserts. Left out, `kae completion <TAB>`
+	// could offer anything at all with every test green.
+	"completion": {"bash", "zsh", "fish"},
 }
 
 // TestCompletionRefreshRewritesRegisteredFile: `completion --refresh` rewrites an
@@ -672,11 +677,12 @@ func TestCompletionInstallPrintOnly(t *testing.T) {
 // tools. An off-by-one or a missing flag-skip silently yields no candidates or the
 // wrong ones (it once did for fish).
 //
-// Every literal is asserted inside the command's own branch, because these
-// constructs repeat across branches: `accounts "${pos[1]}"` appears in `account`
-// as well as `env`, so a whole-script check passes on a branch that was never
-// written — which is exactly how `env`'s tool and account slots could be deleted
-// outright with all three shells still green.
+// Every literal is asserted inside the command's own branch, and in order,
+// because these constructs repeat: `accounts "${pos[1]}"` appears in `account` as
+// well as `env`, so a whole-script check passes on a branch that was never written
+// — which is exactly how `env`'s tool and account slots could be deleted outright
+// with all three shells still green — and both arms of one branch hold all the
+// same literals, so an unordered check passes on arms that were swapped.
 func TestCompletionPositionalRouting(t *testing.T) {
 	for _, tc := range []struct {
 		shell    string
@@ -713,10 +719,19 @@ func TestCompletionPositionalRouting(t *testing.T) {
 				t.Errorf("%s: no case block for %q", tc.shell, cmd)
 				continue
 			}
+			// In order, not merely present: swapping two arms' bodies leaves every
+			// literal in the branch and completes the wrong thing at both slots —
+			// `kae env set <TAB>` then offers nothing (and says `pos[1]: unbound
+			// variable` under `set -u`), while `kae env set claude <TAB>` offers
+			// tools. Measured: the unordered form passed that.
+			rest := body
 			for _, want := range wants {
-				if !strings.Contains(body, want) {
-					t.Errorf("%s: the %q branch is missing %q:\n%s", tc.shell, cmd, want, body)
+				at := strings.Index(rest, want)
+				if at < 0 {
+					t.Errorf("%s: the %q branch is missing %q, or has it ahead of the literal that should precede it:\n%s", tc.shell, cmd, want, body)
+					break
 				}
+				rest = rest[at+len(want):]
 			}
 		}
 		if !strings.Contains(script, tc.flagSkip) {
@@ -733,27 +748,51 @@ func TestCompletionPositionalRouting(t *testing.T) {
 // A shell that is not installed is skipped rather than faked, so the assertion is
 // only ever as strong as the machine — but bash is required to have run, or an
 // image without any of the three would let this pass while checking nothing.
+//
+// Two ways this could check nothing while passing, both closed here because both
+// were reachable: a shell name the script table does not know yields the empty
+// string, and every shell accepts an empty file; and a parse flag that does not
+// parse (zsh `--version`) accepts a broken one. So the name is taken with its ok,
+// and each shell is first shown a deliberately unterminated `if` and must reject
+// it before its verdict on the real script is worth anything.
 func TestCompletionScriptsAreSyntacticallyValid(t *testing.T) {
+	// Unterminated in all three: bash and zsh want `fi`, fish wants `end`.
+	const mustNotParse = "if true\n"
 	var checked []string
 	for _, tc := range []struct {
-		shell, bin, parseOnly string
+		shell, bin string
+		parseOnly  []string // rc files are skipped so a failure can only be the script
 	}{
-		{"bash", "bash", "-n"},
-		{"zsh", "zsh", "-n"},
-		{"fish", "fish", "--no-execute"},
+		{"bash", "bash", []string{"--noprofile", "--norc", "-n"}},
+		{"zsh", "zsh", []string{"-f", "-n"}},
+		{"fish", "fish", []string{"--no-execute"}},
 	} {
 		bin, err := exec.LookPath(tc.bin)
 		if err != nil {
 			t.Logf("%s is not installed here; its syntax went unchecked", tc.shell)
 			continue
 		}
-		script, _ := completionScript(tc.shell)
-		path := filepath.Join(t.TempDir(), "completion."+tc.shell)
-		if wErr := os.WriteFile(path, []byte(script), 0o600); wErr != nil {
-			t.Fatal(wErr)
+		script, ok := completionScript(tc.shell)
+		if !ok {
+			t.Fatalf("no completion script for %s", tc.shell)
 		}
-		if out, rErr := exec.Command(bin, tc.parseOnly, path).CombinedOutput(); rErr != nil {
-			t.Errorf("%s rejects the generated script: %v\n%s", tc.shell, rErr, out)
+		parse := func(name, content string) error {
+			path := filepath.Join(t.TempDir(), name+"."+tc.shell)
+			if wErr := os.WriteFile(path, []byte(content), 0o600); wErr != nil {
+				t.Fatal(wErr)
+			}
+			out, rErr := exec.Command(bin, append(append([]string{}, tc.parseOnly...), path)...).CombinedOutput()
+			if rErr != nil {
+				return fmt.Errorf("%w\n%s", rErr, out)
+			}
+			return nil
+		}
+		if parse("control", mustNotParse) == nil {
+			t.Errorf("%s %v accepted an unterminated `if`, so it is not parsing and its verdict below means nothing", tc.shell, tc.parseOnly)
+			continue
+		}
+		if pErr := parse("completion", script); pErr != nil {
+			t.Errorf("%s rejects the generated script: %v", tc.shell, pErr)
 		}
 		checked = append(checked, tc.shell)
 	}

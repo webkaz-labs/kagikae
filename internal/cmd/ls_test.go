@@ -498,16 +498,25 @@ func TestBoundToolsKeepsRetiredToolsAfterTheCanonicalOnes(t *testing.T) {
 	// agy first. Without that, replacing the whole walk with a sort over every key
 	// passes.
 	//
-	// The unknowns tail is the weaker half and the strength is worth stating rather
-	// than implying, the way the sibling at the top of this file states its own. The
-	// input is a map, so the literal's order buys nothing: Go randomizes the range, and
-	// whether a dropped `sort.Strings` is caught depends on which of the two unknowns
-	// comes out first. Measured on this tree, dropping it failed **12 of 12 runs** —
-	// stronger than the coin flip the shape suggests, because the randomization is a
-	// start offset over a fixed bucket layout rather than a reshuffle, so two given
-	// keys can hold their relative order across runs of one build. Do not read that as
-	// a guarantee: it is a property of this map and this build, not of the language.
-	// The tail's other failure — dropping it entirely — is caught deterministically.
+	// The unknowns tail is the weaker half, and the strength is worth measuring rather
+	// than implying — the way the sibling at the top of this file states its own odds.
+	// The input is a map, so the literal's order buys nothing: Go randomizes the range,
+	// and whether a dropped `sort.Strings` is caught depends on which of the two
+	// unknowns comes out first. Measured on this tree, over 200k draws of this exact
+	// map: `zeta-tool` first 75.1% (unsorted, so the mutation is caught), `gemini`
+	// first 24.9% (already sorted, so it survives that draw). The 75/25 rather than
+	// 50/50 is the iteration mechanism — a randomized start offset over a fixed slot
+	// layout, not a reshuffle, so a rotation only reverses the pair when the start
+	// lands in the gap between them. What it does **not** mean is that the two keys
+	// hold their order within a build; they do not.
+	//
+	// This test renders the map three times, and fails if any draw comes out unsorted,
+	// so the combined rate is 1 − 0.25³ ≈ 98%. That is why the whole test kills the
+	// mutation on every run measured (24/24) while one rendering alone would not — the
+	// run count is the three renderings, not stability. None of it is a language
+	// guarantee. The test itself is **not** flaky: the product code sorts, so it passes
+	// deterministically; only this kill-rate is probabilistic. The tail's other
+	// failure — dropping it entirely — is caught on every draw.
 	accounts := map[string]string{"zeta-tool": "a", "codex": "b", "gemini": "c", "agy": "d"}
 	want := []string{"codex", "agy", "gemini", "zeta-tool"}
 	if got := boundTools(accounts); !slices.Equal(got, want) {

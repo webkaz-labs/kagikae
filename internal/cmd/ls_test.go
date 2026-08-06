@@ -517,6 +517,10 @@ func TestBoundToolsKeepsRetiredToolsAfterTheCanonicalOnes(t *testing.T) {
 	// guarantee. The test itself is **not** flaky: the product code sorts, so it passes
 	// deterministically; only this kill-rate is probabilistic. The tail's other
 	// failure — dropping it entirely — is caught on every draw.
+	//
+	// The single-rendering figure above is an instrument reading, not a case to add:
+	// a test asserting only `boundTools` would fail about one run in four by
+	// construction. Do not put it in the tree "for completeness".
 	accounts := map[string]string{"zeta-tool": "a", "codex": "b", "gemini": "c", "agy": "d"}
 	want := []string{"codex", "agy", "gemini", "zeta-tool"}
 	if got := boundTools(accounts); !slices.Equal(got, want) {

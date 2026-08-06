@@ -1081,15 +1081,29 @@ Credential-health checks (warn-level):
   The same lead-time notice is emitted at switch time next to the stale one
   (stderr, before the write, surviving `--quiet`), but it is **not** counted in
   the "N tools need a re-login before use" roll-up: that switch works today.
-- `credential_superseded`: another copy of one account's credential refreshed
-  **later** than the copy in a bound directory. For a tool whose refresh token
-  rotates single-use (claude — docs/VALIDATION.md owns the measurement) that means
-  the copy in the directory can no longer refresh at all, so the session there ends
-  when its access token expires and cannot be renewed. Names where the newer copy is
-  (`snapshot <tool>/<account>`, or the store bound to another directory), because
-  that is the cause the user cannot otherwise see — "I used claude in the other
-  worktree and this one logged out hours later" — and the remedy runs in the
-  overtaken directory: `cd <dir> && kae relogin <tool>`.
+- `credential_superseded`: another copy of one account's credential carries a
+  **later** `expiresAt` than the copy in a bound directory. For a tool whose refresh
+  token rotates single-use (claude — docs/VALIDATION.md owns the measurement), if the
+  two are copies of **one** login then only the newer one can still refresh, so the
+  session in that directory cannot be renewed past its access-token expiry. The
+  message states it that way, conditionally, and the condition is the honest part:
+  `expiresAt` orders two payloads, it does not say whether they are one chain or two
+  independent logins of the same account. Copies of one login is the ordinary case —
+  a bind writes the snapshot into every store — and this release adds a way to make
+  the other one (`kae relogin` in one directory mints a fresh chain there), which is
+  measured as open in docs/VALIDATION.md rather than asserted either way.
+
+  Names where the newer copy is (`snapshot <tool>/<account>`, or the store bound to
+  another directory), because that is the cause the user cannot otherwise see — "I
+  used claude in the other worktree and this one logged out hours later" — and
+  because it decides the remedy, the same way `kae rollback`'s warning branches on it:
+  - newer copy in the **snapshot** → `cd <dir> && kae pin <tool> <account>`. A re-bind
+    materializes it into the store with no browser round-trip. This is the one case
+    the "deliberately not `kae pin`" reasoning below does not cover — its objection is
+    that the snapshot may be just as expired, and here kae has proved otherwise.
+  - newer copy in **another directory's store** → `cd <dir> && kae relogin <tool>`.
+    The snapshot is not known to be newer, so a re-bind could write something older
+    still; a login is the only answer that certainly produces a usable credential.
 
   Its own code, and not a band of `credential_stale`, for two reasons. The
   consumer-filtering one that separates `credential_expiring` from it, and a

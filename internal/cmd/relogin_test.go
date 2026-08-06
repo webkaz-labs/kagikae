@@ -101,10 +101,25 @@ func TestReloginDoesNotFileAnotherAccountsLoginUnderThisAccount(t *testing.T) {
 	seen := []string{}
 	withInteractive(t, loginInto(t, constants.ToolClaude, foreign, "side-uuid", now.Add(8*time.Hour), &seen))
 
+	var out string
 	code, stderr := captureStderr(t, func() int {
-		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+		var inner int
+		inner, out = captureStdout(t, func() int {
+			return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+		})
+		return inner
 	})
 	mustExit(t, constants.ExitOK, code, stderr)
+
+	// The stdout line is the one a skimming reader keeps, so it must not name the
+	// account the warning has just said this login is *not*. Two lines disagreeing is
+	// worse than one weak line.
+	if strings.Contains(out, "claude/main") {
+		t.Errorf("the success line must not name an account kae could not attribute: %q", out)
+	}
+	if !strings.Contains(out, "Ran the claude login flow") {
+		t.Errorf("the success line must still say what kae did: %q", out)
+	}
 
 	if got := readFile(t, credFile); !strings.Contains(got, foreign) {
 		t.Fatalf("the login still belongs in the store it was made in: %s", got)
@@ -283,9 +298,6 @@ func TestReloginRefusesWhenTheFlowChangedNothing(t *testing.T) {
 	if !strings.Contains(stderr, "left this directory's credential unchanged") {
 		t.Errorf("the refusal must say the flow changed nothing: %q", stderr)
 	}
-	if strings.Contains(stderr, "Logged claude in") {
-		t.Errorf("no login may be claimed: %q", stderr)
-	}
 	if readFile(t, credFile) != unchanged {
 		t.Fatal("nothing may have touched the store")
 	}
@@ -298,4 +310,77 @@ func TestReloginRefusesWhenTheFlowChangedNothing(t *testing.T) {
 		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
 	})
 	mustExit(t, constants.ExitOK, code, out)
+}
+
+// H1's shape: kae could not read the store, so it cannot tell whether the flow
+// changed anything — and the one thing it must not do then is fall through to a
+// line claiming a login. Reporting a login that did not happen sends the user away
+// believing a stale directory is fixed, which is the whole reason they ran this.
+func TestReloginSaysSoWhenItCannotTellWhetherAnythingChanged(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	_, credFile := boundStoreForClaudeMain(t, app)
+	// A credential path that is a *directory* reads as an error rather than as absent,
+	// which is the distinction the comparison turns on: absent-then-present is a
+	// change, unreadable-then-unreadable is kae not knowing.
+	if err := os.Remove(credFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(credFile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	ran := false
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		ran = true
+		return 0, nil
+	})
+	var out string
+	code, stderr := captureStderr(t, func() int {
+		var inner int
+		inner, out = captureStdout(t, func() int {
+			return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+		})
+		return inner
+	})
+	if !ran {
+		t.Fatal("the login flow must still be launched")
+	}
+	if code == constants.ExitAuthUnchanged {
+		t.Fatalf("two failed reads are not proof that nothing changed: %s", stderr)
+	}
+	if !strings.Contains(stderr, "cannot tell whether the login flow changed anything") {
+		t.Errorf("kae must say it could not compare: %q / %q", stderr, out)
+	}
+}
+
+// The store path is recomputed from a hash of this directory's current path, while
+// what the tool reads there is the literal value in the fragment mise exports. A
+// directory that moved keeps its fragment and gets a different pin id, so logging in
+// would create a store nothing reads — and report success. `kae pin` always
+// materializes the store, so its absence is the signal that the two have diverged.
+func TestReloginRefusesWhenTheBoundStoreIsNotThere(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	_, credFile := boundStoreForClaudeMain(t, app)
+	if err := os.RemoveAll(filepath.Dir(credFile)); err != nil {
+		t.Fatal(err)
+	}
+
+	ran := false
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		ran = true
+		return 0, nil
+	})
+	code, stderr := captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	if code != constants.ExitNotFound || ran {
+		t.Fatalf("a store that is not there must refuse before launching: exit=%d ran=%v %s", code, ran, stderr)
+	}
+	if !strings.Contains(stderr, "kae pin claude main") {
+		t.Errorf("the remedy is a re-bind at the current path: %q", stderr)
+	}
 }

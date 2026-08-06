@@ -238,8 +238,8 @@ alternative exists (`secret-tool`).
   other worktree and this one logged out hours later" has no visible cause~~ — the
   *cause* became visible in v0.17.0: `kae doctor` reports `credential_superseded` for
   a bound directory whose copy another copy of the same account provably overtook,
-  names where the newer one is, and points at `kae relogin` ([CLI.md](CLI.md)
-  § doctor). The bomb itself is unchanged — only one copy can refresh, and the entry
+  names where the newer one is, and points at the remedy that where decides
+  ([CLI.md](CLI.md) § doctor). The bomb itself is unchanged — only one copy can refresh, and the entry
   that makes that stop being true is the SSCD split below. Nor does the check see an
   invalidation kae has no second copy of: a refresh in a directory kae does not know
   about, or in the real home under an account it is not tracking, leaves nothing to

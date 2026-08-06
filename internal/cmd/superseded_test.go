@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 )
@@ -124,6 +125,15 @@ func TestDoctorIsSilentWhileTheBoundCopyIsTheNewest(t *testing.T) {
 	if !strings.Contains(msgs[0], "snapshot claude/main") {
 		t.Errorf("the message must say the newer copy is in the snapshot: %q", msgs[0])
 	}
+	// And the remedy differs from the other branch's, because where the newer copy is
+	// decides what fixes it: a re-bind materializes the snapshot into the store with
+	// no browser round-trip, which is only true when the snapshot is the newer one.
+	if !strings.Contains(msgs[0], "cd "+dir+" && kae pin claude main") {
+		t.Errorf("a snapshot-side winner is fixed by a re-bind, not a login: %q", msgs[0])
+	}
+	if strings.Contains(msgs[0], "relogin") {
+		t.Errorf("no login is needed when the snapshot already holds the newer copy: %q", msgs[0])
+	}
 }
 
 // Ordering never establishes *whose* login two copies are. A shared store is bound
@@ -216,5 +226,63 @@ func TestDoctorDoesNotReportAnEqualDeadlineAsOvertaken(t *testing.T) {
 	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 || !strings.Contains(msgs[0], "bound to "+dir) {
 		t.Fatalf("a copy one second behind the snapshot is overtaken: %v", msgs)
+	}
+}
+
+// Two guards this check cannot do without, and neither is reachable with fewer than
+// three bound directories — which is why both survived every mutation until now.
+//
+//   - the **winner-side** attribution. Ordering says which copy is later, never whose
+//     login it is, so a store kae cannot tie to this account must not be reported as
+//     having overtaken one that it can. Without it kae names one account's copy as the
+//     thing that killed another's.
+//   - the **grouping by account**. Without it every claude store is compared against
+//     every other, so an unrelated account's fresher copy becomes the reason a
+//     directory is reported.
+func TestDoctorComparesOnlyCopiesOfTheSameAccountAndOnlyAttributedOnes(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	// Four distinct deadlines. side is deliberately the freshest thing on the machine:
+	// if the grouping is dropped it becomes the "newer copy" for main's directories.
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+	app.Config.Profiles["side"] = config.Profile{Accounts: map[string]string{constants.ToolClaude: "side"}}
+	behindDir, behindCred := boundStoreForClaudeMain(t, app)
+	aheadDir, aheadCred := boundStoreForClaudeMain(t, app)
+	sideDir := pinHere(t, app, modeShared)
+	sideCred := filepath.Join(app.Paths.SharedDir(paths.PinID(sideDir), constants.ToolClaude), ".credentials.json")
+	// Re-bind that third directory to the other account, so one tool has two accounts
+	// bound across three directories.
+	code, out := captureStdout(t, func() int {
+		return runRebind(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "side")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	writeFile(t, behindCred, claudeOAuthPayload("sk-ant-oat01-BEHIND-aaaa", now.Add(4*time.Hour)))
+	writeFile(t, aheadCred, claudeOAuthPayload("sk-ant-oat01-AHEAD-bbbb", now.Add(8*time.Hour)))
+	writeFile(t, sideCred, claudeOAuthPayload("sk-ant-oat01-SIDE-cccc", now.Add(24*time.Hour)))
+
+	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	if len(msgs) != 1 {
+		t.Fatalf("only main's overtaken directory is reported, got %d: %v", len(msgs), msgs)
+	}
+	if !strings.Contains(msgs[0], "bound to "+behindDir) {
+		t.Errorf("the overtaken directory must be named: %q", msgs[0])
+	}
+	if !strings.Contains(msgs[0], "the store bound to "+aheadDir) {
+		t.Errorf("the newer copy is main's other directory, not side's: %q", msgs[0])
+	}
+	if strings.Contains(msgs[0], sideDir) {
+		t.Fatalf("a different account's copy must not be named as the newer one: %q", msgs[0])
+	}
+
+	// Now break the *winner's* attribution. It is still the later copy, but kae can no
+	// longer say it is this account's — so it proves nothing about the other one.
+	if err := os.Remove(filepath.Join(filepath.Dir(aheadCred), ".claude.json")); err != nil {
+		t.Fatal(err)
+	}
+	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
+		t.Fatalf("an unattributable winner proves nothing about the loser: %v", msgs)
 	}
 }

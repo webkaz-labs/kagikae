@@ -1406,7 +1406,7 @@ cred B-OLD $NEW   > "$SB/.credentials.json"   # B has been sitting since before 
                                         #   directory lost. Not `grep -c` alone: the
                                         #   line below names which, so a broken
                                         #   extraction cannot pass as a quiet 0
-/tmp/kae doctor | grep overtaken        # assert: names `bound to $B`, `(the store
+/tmp/kae doctor | grep "is older than"  # assert: names `bound to $B`, `(the store
                                         #   bound to $A)` as where the newer copy is,
                                         #   and `cd $B && kae relogin claude`
 /tmp/kae doctor --json | grep -c credential_stale   # assert: 0 — a superseded copy is
@@ -1434,13 +1434,17 @@ cd "$B"
 #           into snapshot claude/main` — the capture-back half
 grep B-RELOGGED "$SB/.credentials.json"  # assert: the login landed in B's own store
 snap main | grep B-RELOGGED              # assert: and reached the account snapshot
-/tmp/kae doctor | grep overtaken         # assert: the finding has *moved* — it now
+/tmp/kae doctor | grep "is older than"   # assert: the finding has *moved* — it now
                                         #   names `bound to $A`, because B is the copy
                                         #   that refreshed last. Where the newer copy
                                         #   is reads `snapshot claude/main`, not B's
                                         #   store: the harvest made the two equal and
                                         #   equal deadlines keep the earlier candidate,
-                                        #   which is the snapshot. Same remedy either way
+                                        #   which is the snapshot. So the remedy is
+                                        #   `cd $A && kae pin claude main` here and NOT
+                                        #   a relogin — a re-bind from the newer
+                                        #   snapshot needs no browser. Assert the
+                                        #   absence of `relogin` on this line too
 
 # --- M. outside a binding nothing is launched ---
 C=$(mktemp -d); cd "$C"
@@ -1454,9 +1458,25 @@ C=$(mktemp -d); cd "$C"
 rather than under `set -e`.
 
 **K–M PASSED 2026-08-06** (darwin, file driver, temp HOME, pre-release binary built
-from this branch), each assertion checked at its own point. The `credential_stale = 0`
+from this branch), each assertion checked at its own point, and **re-run verbatim
+after the round-1 review changes** (the hedged wording, the split remedy, the
+store-must-exist refusal). The `credential_stale = 0`
 line in K is the one worth keeping in view: it is what distinguishes this check from
 the one beside it, and if the two ever merge it is the assertion that says so.
+
+**An open measurement this check's wording depends on.** `expiresAt` orders two
+payloads; it does not say whether they are copies of **one** login or two independent
+logins of the same account. Single-use rotation is measured for the first shape (one
+credential, refreshed) and is what makes "only the newest can refresh" a fact there.
+The second shape is *not* measured: does a fresh `claude /login` invalidate a chain
+another directory is still holding? Until it is, `credential_superseded` states the
+consequence conditionally ("if the two are copies of one login"), because this
+release is what makes the second shape reachable — `kae relogin` in one worktree
+mints a fresh chain there, after which the check reports the other worktree's
+independent login as behind it. To measure: log in twice for one account into two
+bound directories (two real `/login` runs, no bind in between), then use the tool in
+the older one and see whether it refreshes. Requires real logins, so it belongs in
+the real-machine gate.
 
 **What this block does not cover.** It never touches `internal/keychain` (the file
 driver again), so `kae relogin` against a real per-directory keychain **item** is

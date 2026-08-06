@@ -61,7 +61,11 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   `kae use <tool> <account>` applied the older copy globally. A flow that changed
   nothing exits `11` rather than reporting a login that did not happen; every
   bound-credential message in `doctor` now names this command
-  (docs/CLI.md § kae relogin Semantics).
+  (docs/CLI.md § kae relogin Semantics). It refuses rather than guessing when the
+  store the binding points at is not there — the path is recomputed from a hash of
+  the directory's current path while the tool reads the literal value mise exports,
+  so a directory that moved would otherwise have kae create a store nothing reads and
+  call it a login.
 
 - **`doctor` reports the copy that lost the race** (`credential_superseded`,
   contract-additive). When two copies of one account's credential exist and one
@@ -76,7 +80,12 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   It requires the *losing* side to be orderable too, which is stricter than the
   shared comparator asks — there the question is "may I overwrite this", where a copy
   with no comparable deadline is nothing to lose; here it is "may I tell the user
-  this is dead", where it is a copy kae cannot judge.
+  this is dead", where it is a copy kae cannot judge. The consequence is stated
+  **conditionally** ("if the two are copies of one login"), because `expiresAt` orders
+  two payloads without saying whether they are one chain or two independent logins of
+  the same account — and this release is what makes the second shape reachable. The
+  remedy branches on where the newer copy is: a re-bind when it is in the snapshot
+  (no browser needed), a `kae relogin` when it is another directory's store.
 
 - **`kae pin` records its ignore rule in the repository's exclude file, not in a
   tracked `./.gitignore`** (behaviour change). Up to v0.16.0 every `kae pin` appended

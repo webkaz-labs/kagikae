@@ -632,15 +632,16 @@ func (app *App) recaptureWouldDowngrade(ctx context.Context, be secret.Backend,
 ) string {
 	now := app.Now()
 	live := liveValuesFreshness(tool, values)
+	liveNeedsRelogin := needsRelogin(live, now)
 	ordered := rotatesSingleUse(tool)
-	if !needsRelogin(live, now) && !ordered {
+	if !liveNeedsRelogin && !ordered {
 		return ""
 	}
 	stored, err := app.accountFreshness(ctx, be, acc)
 	if err != nil || !stored.Known {
 		return ""
 	}
-	if needsRelogin(live, now) && !needsRelogin(stored, now) {
+	if liveNeedsRelogin && !needsRelogin(stored, now) {
 		return fmt.Sprintf(
 			"the live %s credential needs a re-login while snapshot %s/%s still holds a usable one",
 			tool, tool, accountName,

@@ -9,6 +9,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -175,6 +176,13 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	if opts.DryRun {
 		return report, nil
 	}
+
+	// The pre-rollback backup and the superseded-credential warning read the same live
+	// credential and identity, which on darwin is a `security` subprocess each. No child
+	// process runs during a rollback, so the cache cannot observe a store something else
+	// moved, and the restore's own writes invalidate the entries they touch — the same
+	// idiom as the switch (docs/ARCHITECTURE.md § Caching).
+	ctx = keychain.WithReadCache(ctx)
 
 	be, err := app.secretBackend()
 	if err != nil {

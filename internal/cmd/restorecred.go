@@ -125,9 +125,7 @@ func liveLoginMatchesBackup(ctx context.Context, be secret.Backend, meta backup.
 		if err != nil || !live.Present {
 			return false
 		}
-		_, storedIsRecord := freshness.DecodeObject(stored)
-		_, liveIsRecord := freshness.DecodeObject(live.Data)
-		if !storedIsRecord || !liveIsRecord {
+		if !identityComparable(stored, live.Data) {
 			return false
 		}
 		if identityDiffers(sp, stored, live.Data) {
@@ -136,6 +134,25 @@ func liveLoginMatchesBackup(ctx context.Context, be secret.Backend, meta backup.
 		confirmed = true
 	}
 	return confirmed
+}
+
+// liveCredentialFreshness reads tool's credential through specs and reports it only when
+// it is a copy `supersedes` could order. ok is false for a missing spec and for every
+// state readLiveCredential declines, which is the same set `orderable` rejects — stated
+// here so the two callers below share one reading of "is there a live copy worth
+// comparing" instead of each remembering the three steps.
+//
+// A caller that ignored ok would still behave correctly, because readLiveCredential
+// zeroes the Info for exactly those states and `supersedes` rejects a zero newer side —
+// so mutating the check away survives the suite by construction (measured 2026-08-05).
+// It is the precondition stated, not a filter carrying its own weight.
+func liveCredentialFreshness(ctx context.Context, tool string, specs []artifact.Spec) (freshness.Info, bool) {
+	sp, ok := specByName(specs, credentialArtifactName(tool))
+	if !ok {
+		return freshness.Info{}, false
+	}
+	_, live, state := readLiveCredential(ctx, tool, sp)
+	return live, state == liveUsable
 }
 
 // restoreWouldKillNewerLogin reports whether restoring meta's credential for plan's
@@ -177,17 +194,10 @@ func (app *App) restoreWouldKillNewerLogin(ctx context.Context, be secret.Backen
 	if !recorded.Orderable() {
 		return false
 	}
-	sp, ok := specByName(plan.Specs, credentialArtifactName(plan.Tool))
-	if !ok {
-		return false
-	}
-	// plan was re-resolved after the child (refreshPlan), so this reads the store the
-	// tool writes now rather than the one it wrote before. The state check converges
-	// with supersedes' own live-side guard — readLiveCredential zeroes the Info for
-	// everything that is not a usable login — so it states the precondition rather
-	// than filtering, and mutating it away survives the suite by construction.
-	_, live, liveState := readLiveCredential(ctx, plan.Tool, sp)
-	if liveState != liveUsable || !supersedes(live, recorded.Info) {
+	// plan was re-resolved after the child (refreshPlan), so this reads the store the tool
+	// writes now rather than the one it wrote before.
+	live, ok := liveCredentialFreshness(ctx, plan.Tool, plan.Specs)
+	if !ok || !supersedes(live, recorded.Info) {
 		return false
 	}
 	return liveLoginMatchesBackup(ctx, be, meta, plan.Tool, plan.Specs)
@@ -317,12 +327,8 @@ func (app *App) snapshotCredentialFreshness(ctx context.Context, be secret.Backe
 func (app *App) attributedLiveFreshness(ctx context.Context, be secret.Backend, meta backup.Meta,
 	tool string, specs []artifact.Spec,
 ) freshness.Info {
-	sp, ok := specByName(specs, credentialArtifactName(tool))
-	if !ok {
-		return freshness.Info{}
-	}
-	_, live, liveState := readLiveCredential(ctx, tool, sp)
-	if liveState != liveUsable || !liveLoginMatchesBackup(ctx, be, meta, tool, specs) {
+	live, ok := liveCredentialFreshness(ctx, tool, specs)
+	if !ok || !liveLoginMatchesBackup(ctx, be, meta, tool, specs) {
 		return freshness.Info{}
 	}
 	return live

@@ -288,7 +288,16 @@ alternative exists (`secret-tool`).
   credential into the real home — so the reporting surface makes it worse, not better.
   The restore skip above is gated on attribution so it does not compound this, and it
   reads the **backup** rather than the snapshot precisely because the snapshot may
-  already be wrong by then; **a
+  already be wrong by then; **the switch-away recapture's attribution
+  guard has no decodability gate** — `keepSnapshotIdentity` calls `identityDiffers`
+  directly, so two identity payloads that are both non-records *and* byte-identical
+  (`/oauthAccount: null` on each side, the reachable shape) read as "same account" and
+  let the recapture proceed on evidence that names nobody. The two sibling guards
+  (`dirIdentityConfirms`, `liveLoginMatchesBackup`) share `identityComparable` for
+  exactly this; the third was found by a quality lens after them and is left alone here
+  because closing it adds a refusal to `kae use`, which is a behaviour change this
+  release did not scope. The fix is one call: route that comparison through
+  `identityComparable` too; **a
   superseded *global* isolated home is never harvested** — `kae use -i <a>` then
   `kae use -i <b>` leaves `isolation/global/<tool>/<a>/` holding a's newest copy, and
   because there is no pin, neither the pin-level pass nor any sweep ever looks at it

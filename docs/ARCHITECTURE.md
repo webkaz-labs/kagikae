@@ -190,8 +190,7 @@ in step 6 invalidate the cache. The cache key is service+account, matching the
 specs: every keychain artifact kae ships is identified by both, so a service
 holding more than one legitimate item — agy's `gemini`/`antigravity`, codex's
 per-`CODEX_HOME` `Codex Auth` — is never conflated. No child runs
-during a switch, so the cache never serves a stale live credential (`run -s`
-does not use it).
+during a switch, so the cache never serves a stale live credential.
 
 `--dry-run` runs steps 1–3 and prints the plan from the artifact specs; it also
 annotates a stale switch target (snapshot past `expiresAt` with no refresh
@@ -349,8 +348,13 @@ exceptions, both carried in the context and absent unless opted in:
   does not forward `Enumerator`, so `doctor` orphan detection uses the raw
   backend.)
 
-Neither cache is used across a child run (`run -s`), where the child can rotate
-the live credential behind kae's back and a cached value would be stale.
+Neither cache is ever open **across** a child run (`run -s`, `kae add`'s login
+flow), where the child can rotate the live credential behind kae's back and a cached
+value would be stale. `run -s` opens the keychain cache once the child has **exited**
+and while it still holds the per-tool locks, so its re-resolution, recapture, restore
+decision and attribution read one credential and one identity once rather than four
+times; `kae rollback` opens one for the whole mutation, where no child runs at all. The
+distinction is the child, not the command.
 
 `status` runs each enabled tool's `Detect` concurrently (one goroutine per
 tool, reassembled in canonical `constants.Tools` order, output unchanged), so

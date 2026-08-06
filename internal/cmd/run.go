@@ -12,6 +12,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/envprofile"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -427,6 +428,15 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	}
 
 	childCode, runErr := runner.RunInteractive(ctx, nil, childCmd[0], childCmd[1:]...)
+
+	// Coalesce the live reads that follow — the recapture, the restore decision and its
+	// attribution all read the same credential and identity, which on darwin is a
+	// `security` subprocess each. Opened **after** the child and never around it: the
+	// whole reason no cache spans a child run is that the child rotates tokens under kae
+	// (docs/ARCHITECTURE.md § Caching). By this line it has exited and the per-tool locks
+	// are still held, so nothing can change the store while these reads agree; the writes
+	// below invalidate their own entries.
+	ctx = keychain.WithReadCache(ctx)
 
 	// The child may have moved the credential to the tool's other store (codex
 	// under `auto` writes its keychain item and deletes auth.json on its first

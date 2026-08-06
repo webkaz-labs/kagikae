@@ -1466,9 +1466,9 @@ rather than under `set -e`.
 **K–M PASSED 2026-08-06** (darwin, file driver, temp HOME, pre-release binary built
 from this branch), each assertion checked at its own point, and **re-run verbatim
 after each review round's changes** — round 1 (the hedged wording, the split remedy,
-the store-must-exist refusal) and round 2 (the three-gate success wording). A block
-whose expected output moved and was not re-run is a block that documents the previous
-release. The `credential_stale = 0`
+the store-must-exist refusal) round 2 (the three-gate success wording) and round 3
+(the emptied-store arm and the reworded warnings). A block whose expected output
+moved and was not re-run is a block that documents the previous release. The `credential_stale = 0`
 line in K is the one worth keeping in view: it is what distinguishes this check from
 the one beside it, and if the two ever merge it is the assertion that says so.
 

@@ -49,6 +49,7 @@ Two verbs by scope, two flags by environment (the v0.7.2 unification):
 | `kae pin -i <profile \| tool account>` | per-directory | isolated | bind a directory; nothing shared by default, opt-in shares |
 | `kae use` (bare, no positional) | global | shared | idempotent re-apply for the enter hook (resolves the profile; the folded `apply`) |
 | `kae run [-s\|-i\|--env] … -- <cmd>` | per-process | shared / isolated / env | child process only; `-s` restores afterwards, except for a tool whose live credential the restore would supersede ([CLI.md](CLI.md) § kae run Semantics), `-i` uses the global isolated home, `--env` injects env-profile vars |
+| `kae relogin [<tool>]` | per-directory | (the binding's) | child process only, and it switches nothing: it runs the tool's own login flow with this directory's isolation variable exported, so the login lands in the store the binding points at rather than in the real home, then captures it back into the account snapshot ([CLI.md](CLI.md) § kae relogin Semantics) |
 
 Both `use` and `pin` default to `-s`/`--shared`; `-i`/`-s` are short for
 `--isolated`/`--shared`, and `u`/`p` for `use`/`pin`. Re-binding one tool in a

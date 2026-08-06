@@ -179,25 +179,38 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	//   - **changed**: kae read the store on both sides and the bytes differ. Without
 	//     it a flow kae could not compare at all still printed a login (the warning
 	//     above says the opposite two lines earlier).
-	//   - **not tombstoned**: the payload now in the store is not a death certificate.
-	//     This is the state a stale directory actually reaches — claude tries to
-	//     refresh on startup, gets `invalid_grant`, blanks the tokens in place
-	//     (docs/VALIDATION.md), and the user then aborts the login. The store *did*
-	//     change, and it changed to nothing usable. Only a payload kae positively read
-	//     as revoked demotes the wording: one it cannot parse may still be a login in a
-	//     shape kae has not been taught, and the harvest refuses that separately.
+	//   - **nothing usable there**: what the store holds now is not something kae read
+	//     as a login. Two states, and they are the same state to the classifier that
+	//     already owns this question (readLiveCredential's liveNothing is documented as
+	//     "absent, **or** present with nothing left to authenticate or refresh with"),
+	//     so splitting them here is how the first version of this gate caught the
+	//     blanked credential and missed the removed one. A payload kae simply cannot
+	//     parse is *not* in this set: it may be a login in a shape kae has not been
+	//     taught, and the harvest refuses that on its own evidence.
 	//   - **attributed**: the harvest confirmed the login is this account's. A login as
 	//     somebody else leaves a store that is legitimately theirs, and printing
 	//     "Logged claude in for claude/main" over the warning that says otherwise hands
 	//     the reader the wrong one of two contradicting lines.
 	changed := comparable && comparedAfter && !bytes.Equal(before, after)
-	if comparedAfter && freshnessOf(tool, after).Revoked {
-		// Worth its own line: the flow left the directory with no usable token, which is
-		// a different thing from "nothing happened" and from "kae could not tell".
+	// Each arm says what kae **read**, names causes without picking one, and issues no
+	// instruction. `Revoked` means "no usable token in this payload", derived from
+	// fields that are empty *or absent* — so an upstream rename of the token keys
+	// reads identically to a tombstone (AGENTS.md; docs/VALIDATION.md). The demotion
+	// is the right weak consequence for that; "the login failed, run it again" is not,
+	// and it would loop forever against a working login on the day kae's parser is the
+	// stale thing.
+	switch {
+	case comparedAfter && len(after) == 0:
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: this directory's %s store now holds no usable token — the login flow did not "+
-				"complete, or it ended in a failed refresh; run %s relogin %s again to finish it\n",
-			tool, toolName, tool)
+			"kae: warning: kae found no %s credential where it resolves this directory's store, so it is not "+
+				"reporting a login — the flow may have left nothing there, or it may have moved the credential "+
+				"to a store kae resolved differently before it ran\n", tool)
+		changed = false
+	case comparedAfter && freshnessOf(tool, after).Revoked:
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: kae read no usable %s token in the payload now in this directory's store, so it is "+
+				"not reporting a login — blank tokens are what a failed refresh leaves behind, and a payload "+
+				"whose token keys changed upstream reads the same way\n", tool)
 		changed = false
 	}
 	// Called unconditionally, and *before* the wording is decided: a flow kae could not

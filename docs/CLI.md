@@ -644,17 +644,30 @@ Contract:
 - **The success line claims only what kae observed**, and there are two of them:
   - `Logged <tool> in for <tool>/<account> in this directory` — printed only when
     all three of: kae read the store on both sides and the bytes differ; what is
-    there now is not a payload it read as revoked; and the capture back *confirmed*
+    there now is something kae read as a login; and the capture back *confirmed*
     the login is that account's.
   - `Ran the <tool> login flow in this directory` — every other case, each with its
-    own stderr line saying which. kae could not read the store on one side or both
-    (so it cannot tell whether anything changed). The store now holds a tombstone —
-    the state a stale directory actually reaches, since the tool tries to refresh on
-    startup, gets `invalid_grant` and blanks the tokens in place before the user
-    even reaches the prompt. Or the harvest did not confirm the account, which
-    includes every tool whose rotation is unmeasured: nothing harvests there, so
-    nothing checked the identity either, and absence of a refusal is not
-    confirmation.
+    own stderr line saying which:
+    - kae could not read the store on one side or both, so it cannot tell whether
+      anything changed;
+    - the store now holds **nothing usable** — either blank tokens, which is what a
+      failed refresh leaves behind and is the state a stale directory reaches before
+      the user even sees a prompt, or no credential at all where kae resolves one.
+      Those are one state to kae, deliberately: they license the same conclusion, and
+      splitting them is how a first version of this caught the blanked payload and
+      missed the removed one. Note the second is reachable with **no** failure —
+      under the file driver a successful login writes the keychain item and deletes
+      the plaintext file kae was reading;
+    - or the harvest did not confirm the account, which includes every tool whose
+      rotation is unmeasured: nothing harvests there, so nothing checked the identity
+      either, and absence of a refusal is not confirmation.
+
+    None of these stderr lines says the login failed or tells you to run it again.
+    "No usable token" is what kae **read**, and it is derived from token fields being
+    empty *or absent* — so a payload whose keys changed upstream reads the same as a
+    tombstone, and an instruction to retry would loop against a login that is fine on
+    the day kae's parser is the stale thing (§ `kae rollback --json` is normative for
+    this family of wordings).
 
   Exit stays `0` in all of them: the login flow ran, and only `auth_unchanged` above
   is a refusal.

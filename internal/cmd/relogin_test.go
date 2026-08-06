@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -405,57 +406,104 @@ func TestReloginRefusesWhenTheBoundStoreIsNotThere(t *testing.T) {
 	}
 }
 
-// The state a stale bound directory actually reaches, and the one this command must
-// not misreport: claude starts, tries to refresh, gets invalid_grant, and blanks the
-// tokens **in place** (docs/VALIDATION.md) — then the user aborts the login. The
-// store did change, and it changed to nothing usable, so the comparison alone says
-// "something happened" and the harvest says nothing at all (a tombstone is not a
-// copy worth taking, so it refuses with no reason to report).
-func TestReloginDoesNotCallATombstoneALogin(t *testing.T) {
-	app := overlayTestApp(t)
-	ctx := context.Background()
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	boundStoreForClaudeMain(t, app)
+// The state a stale bound directory actually reaches, in both of its shapes — and
+// they are one state to the classifier that already owns the question
+// (readLiveCredential's liveNothing is "absent, **or** present with nothing left to
+// authenticate or refresh with"). The first version of this gate tested `Revoked`
+// alone, which is false for an absent payload, so an emptied store printed a login
+// with no warning at all.
+func TestReloginDoesNotCallAnEmptiedStoreALogin(t *testing.T) {
+	tombstone := func(now time.Time) string {
+		return fmt.Sprintf(
+			`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,"refreshTokenExpiresAt":%d}}`,
+			now.Add(27*24*time.Hour).UnixMilli(),
+		)
+	}
+	for _, tc := range []struct {
+		name, wantSaid string
+		leave          func(t *testing.T, now time.Time, credFile string)
+	}{
+		// Blanked in place: claude tries to refresh on startup, gets invalid_grant and
+		// overwrites the credential with empty tokens, before the user reaches a prompt.
+		{
+			"tombstone", "read no usable claude token",
+			func(t *testing.T, now time.Time, credFile string) { writeFile(t, credFile, tombstone(now)) },
+		},
+		// Removed. Reachable with no failure at all: under the file driver a successful
+		// `claude /login` writes the keychain item and deletes the plaintext file kae is
+		// reading, so kae's own spec resolves to something that is now absent.
+		{
+			"absent", "found no claude credential",
+			func(t *testing.T, _ time.Time, credFile string) {
+				if err := os.Remove(credFile); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := overlayTestApp(t)
+			ctx := context.Background()
+			captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+			boundStoreForClaudeMain(t, app)
 
-	tombstone := fmt.Sprintf(
-		`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,"refreshTokenExpiresAt":%d}}`,
-		now.Add(27*24*time.Hour).UnixMilli(),
-	)
-	withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
-		for _, entry := range extraEnv {
-			if dir, ok := strings.CutPrefix(entry, isolationEnvVar(constants.ToolClaude)+"="); ok {
-				writeFile(t, filepath.Join(dir, ".credentials.json"), tombstone)
+			withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
+				for _, entry := range extraEnv {
+					if dir, ok := strings.CutPrefix(entry, isolationEnvVar(constants.ToolClaude)+"="); ok {
+						tc.leave(t, app.Now(), filepath.Join(dir, ".credentials.json"))
+					}
+				}
+				return 1, nil
+			})
+
+			var out string
+			code, stderr := captureStderr(t, func() int {
+				var inner int
+				inner, out = captureStdout(t, func() int {
+					return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+				})
+				return inner
+			})
+			mustExit(t, constants.ExitOK, code, stderr)
+
+			// The bytes differ, so this is not the auth_unchanged path — which is exactly
+			// why this needs a gate of its own.
+			if code == constants.ExitAuthUnchanged {
+				t.Fatalf("the store did change; this is a different failure: %s", stderr)
 			}
-		}
-		return 1, nil
-	})
-
-	var out string
-	code, stderr := captureStderr(t, func() int {
-		var inner int
-		inner, out = captureStdout(t, func() int {
-			return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+			if strings.Contains(out, "Logged claude in") {
+				t.Errorf("a store with nothing usable in it is not a login: %q", out)
+			}
+			if !strings.Contains(stderr, tc.wantSaid) {
+				t.Errorf("kae must say what it read in the store: %q", stderr)
+			}
+			// And it may not claim more than it read. `Revoked` is derived from fields that
+			// are empty *or absent*, so an upstream rename of the token keys reads the same
+			// as a tombstone — "the login failed, run it again" would loop forever against a
+			// login that is fine, on the day kae's parser is the stale thing.
+			//
+			// Scoped to the warning lines and matched on word boundaries: the pre-login
+			// banner contains "against", and a bare substring test for "again" fails on it
+			// — the same shape as asserting a path prefix and matching a sibling.
+			warnings := ""
+			for _, line := range strings.Split(stderr, "\n") {
+				if strings.HasPrefix(line, "kae: warning:") {
+					warnings += line + "\n"
+				}
+			}
+			if warnings == "" {
+				t.Fatalf("no warning line to check: %q", stderr)
+			}
+			for _, forbidden := range []string{`\bagain\b`, `did not complete`, `cannot log in`} {
+				if regexp.MustCompile(forbidden).MatchString(warnings) {
+					t.Errorf("the warning may not claim more than kae read (%s): %q", forbidden, warnings)
+				}
+			}
+			be := testBackend(t, app)
+			if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
+				t.Fatalf("an unusable payload must never be harvested: %s", got)
+			}
 		})
-		return inner
-	})
-	mustExit(t, constants.ExitOK, code, stderr)
-
-	// The bytes differ, so this is not the auth_unchanged path — which is exactly why
-	// the tombstone needs a gate of its own.
-	if code == constants.ExitAuthUnchanged {
-		t.Fatalf("the store did change; this is a different failure: %s", stderr)
-	}
-	if strings.Contains(out, "Logged claude in") {
-		t.Errorf("a store holding no usable token is not a login: %q", out)
-	}
-	if !strings.Contains(stderr, "no usable token") {
-		t.Errorf("kae must say what it read in the store: %q", stderr)
-	}
-	// And the tombstone must not have been filed as the account's credential.
-	be := testBackend(t, app)
-	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
-		t.Fatalf("a tombstone must never be harvested: %s", got)
 	}
 }
 

@@ -40,9 +40,43 @@ harvests a newer credential from the store it is about to overwrite or delete, a
 declines to delete one it could not preserve; `kae run -s` skips a restore that would
 put back a credential its child has superseded, `kae rollback` says when the copy it
 restores can no longer refresh, and `kae use`'s switch-away recapture declines a live
-copy its own snapshot supersedes. Plus two contract-additive surfaces —
-the `kae ls --pins` view, and `doctor`'s existing `identity_drift` code reported for
-a bound directory's own store; the rest is documentation.
+copy its own snapshot supersedes; and the remedy every bound-credential finding names
+changed from the tool's own login command to **`kae relogin`**. Plus three
+contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
+`identity_drift` code reported for a bound directory's own store, and a new
+`credential_superseded` code; the rest is documentation.
+
+- **`kae relogin` — the login that lands where the binding points** (new verb).
+  The remedy for a bound directory's expired credential was `cd <dir> && claude
+  /login`, and it was correct only in a shell where the pin was active: the isolation
+  variable is what makes a login land in the store kae bound, so with mise activation
+  absent or the config untrusted the same command refreshed the **real home** — the
+  wrong account moved and the bound one was still stale. `kae relogin [<tool>]`
+  exports the variable itself, so the login cannot land anywhere else, and then
+  captures the result back into the account snapshot (`harvestDirCredential`, with
+  every guard it already had: it declines a copy that does not supersede the
+  snapshot, and one it cannot attribute to this account). That capture-back closes
+  the last piece of a gap the harvest left: a login made inside a bound directory
+  only reached the snapshot when a bind or a sweep next ran, so until then
+  `kae use <tool> <account>` applied the older copy globally. A flow that changed
+  nothing exits `11` rather than reporting a login that did not happen; every
+  bound-credential message in `doctor` now names this command
+  (docs/CLI.md § kae relogin Semantics).
+
+- **`doctor` reports the copy that lost the race** (`credential_superseded`,
+  contract-additive). When two copies of one account's credential exist and one
+  refreshes, single-use rotation means the other cannot any more — and no freshness
+  surface could see it, because they all judge by `refreshTokenExpiresAt`, which an
+  invalidation does not move. "I used claude in the other worktree and this one
+  logged out hours later" had no visible cause. The check compares each bound
+  directory's copy against the account's snapshot and the other bound copies, and
+  reports **only what it can prove**: both sides orderable, both attributed to the
+  account by the store's own identity cache, and a strict ordering, so a directory
+  pinned moments ago (whose store holds exactly what the snapshot does) says nothing.
+  It requires the *losing* side to be orderable too, which is stricter than the
+  shared comparator asks — there the question is "may I overwrite this", where a copy
+  with no comparable deadline is nothing to lose; here it is "may I tell the user
+  this is dead", where it is a copy kae cannot judge.
 
 - **`kae pin` records its ignore rule in the repository's exclude file, not in a
   tracked `./.gitignore`** (behaviour change). Up to v0.16.0 every `kae pin` appended

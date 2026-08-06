@@ -273,6 +273,13 @@ A fourth, `pin-<pin-id>`, serializes the commands that bind one directory
 the companion files and the fragment as separate steps, so two at once in the
 same directory could interleave into a fragment pointing at a store the other
 re-keyed. It is per directory, so binding two directories at once is unaffected.
+`kae relogin` takes the same lock, and holds it across the interactive login it
+drives: what must not happen underneath that flow is a re-bind of this directory
+overwriting the store the login is writing into. It is the tool's own lock that it
+deliberately does **not** take — the store it touches is this directory's, and
+blocking every `kae use <tool>` for the length of a human login would be the cost
+of covering only the snapshot write its harvest ends with (the same window the
+next paragraph describes).
 There is deliberately no backup of the previous per-directory credential, and what
 makes that safe is the **harvest**: the copy in the store can be newer than the
 snapshot (the tool refreshes it in place), so before overwriting or deleting one kae

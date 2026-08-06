@@ -493,21 +493,33 @@ func TestInventoryFreshnessNeverCarriesTheToken(t *testing.T) {
 // in each, which is why the ordering is shared and why this test sits on the shared
 // function rather than on either caller.
 func TestBoundToolsKeepsRetiredToolsAfterTheCanonicalOnes(t *testing.T) {
-	// Insertion order is deliberately not the expected order: canonical names out of
-	// sequence, and the two unrecognized ones reversed, so a dropped sort fails here
-	// rather than passing by luck.
-	accounts := map[string]string{"zeta-tool": "a", "codex": "b", "gemini": "c", "claude": "d"}
-	want := []string{"claude", "codex", "gemini", "zeta-tool"}
+	// The known pair is codex + agy, not codex + claude, so **canonical order is not
+	// alphabetical order** here: constants.Tools puts codex before agy, sorting puts
+	// agy first. Without that, replacing the whole walk with a sort over every key
+	// passes.
+	//
+	// The unknowns tail is the weaker half and the strength is worth stating rather
+	// than implying, the way the sibling at the top of this file states its own. The
+	// input is a map, so the literal's order buys nothing: Go randomizes the range, and
+	// whether a dropped `sort.Strings` is caught depends on which of the two unknowns
+	// comes out first. Measured on this tree, dropping it failed **12 of 12 runs** —
+	// stronger than the coin flip the shape suggests, because the randomization is a
+	// start offset over a fixed bucket layout rather than a reshuffle, so two given
+	// keys can hold their relative order across runs of one build. Do not read that as
+	// a guarantee: it is a property of this map and this build, not of the language.
+	// The tail's other failure — dropping it entirely — is caught deterministically.
+	accounts := map[string]string{"zeta-tool": "a", "codex": "b", "gemini": "c", "agy": "d"}
+	want := []string{"codex", "agy", "gemini", "zeta-tool"}
 	if got := boundTools(accounts); !slices.Equal(got, want) {
 		t.Fatalf("boundTools = %v, want %v", got, want)
 	}
 	// And the two renderings built on it, so the join and the separators are covered
 	// at the same time as the walk.
-	if got, want := toolAccountList(accounts), "claude:d codex:b gemini:c zeta-tool:a"; got != want {
+	if got, want := toolAccountList(accounts), "codex:b agy:d gemini:c zeta-tool:a"; got != want {
 		t.Errorf("toolAccountList = %q, want %q", got, want)
 	}
 	if got, want := boundToolList(fragmentInfo{Accounts: accounts}),
-		"claude, codex, gemini, zeta-tool"; got != want {
+		"codex, agy, gemini, zeta-tool"; got != want {
 		t.Errorf("boundToolList = %q, want %q", got, want)
 	}
 	// The empty case is boundToolList's own, and it is what a caller prints when a

@@ -764,8 +764,11 @@ metadata (asserted by `TestAgyKeychainRoundTrip`).
 
 **fish completion is no longer a gated target.** fish was dropped from the
 officially-verified shells (2026-06-18); `kae completion fish` stays available
-as a best-effort generator (unit-tested and `fish -n`-valid) but is **not** a
-supported/release-gated surface. bash and zsh are the verified shells.
+as a best-effort generator — unit-tested, and parsed by `fish --no-execute` on any
+machine that has fish, which is not guaranteed to be the one that cuts the release
+(`TestCompletionScriptsAreSyntacticallyValid` skips a shell it cannot find and says
+so) — but is **not** a supported/release-gated surface. bash and zsh are the
+verified shells.
 
 Record release results in the Release Acceptance Log below.
 
@@ -809,7 +812,7 @@ unit/temp-HOME covered; the shell `<TAB>` behavior needs the real-machine smoke
 - **flag-aware + flag-name completion** — `internal/cmd`
   `TestCompleteBackendKinds` (the `flags <command>` kind: add→`--no-login`/
   `--restore`, run→`-s`/`-i`/`--env`/`-P`, unknown→common only),
-  `TestCompletionAccountTokenIndex` (positionals are flag-filtered; the
+  `TestCompletionPositionalRouting` (positionals are flag-filtered; the
   flag-skip construct is present per shell), `TestCompletionScriptsCompleteFlags`
   (each script calls `kae __complete flags`), and `TestFlagSpecWiring` (flagSetFor
   reaches each command's real registrar, so the list cannot drift).
@@ -1507,6 +1510,43 @@ be a `security` call there. It also drives a *fake* login: the real `claude /log
 interactive and its exact post-login file writes are what the assertions above assume.
 Both belong in the real-machine gate rather than here.
 
+## v0.17.0 surface — `kae env` and `kae backup` completion
+
+Both subcommand groups gained a case in all three generated scripts, so this is a
+**structural** script change: an already-registered completion file has to be
+rewritten before the smoke means anything (`kae completion --refresh`, which
+`mise run install` and `scripts/install.sh` run for you).
+
+Unit-covered, in `internal/cmd`:
+
+- `TestCompletionPositionalRouting` — each branch's slots and array indices,
+  asserted **inside that branch** rather than anywhere in the script, per shell.
+- `TestEveryPositionalCommandCompletes` — every command in `completionCommands` is
+  classified as taking a positional or not, and each one that does has a branch
+  that emits candidates in bash, zsh, and fish.
+- `TestSubcommandCompletionParity` — each group's sub-verb run, also branch-scoped.
+- `TestCompletionScriptsAreSyntacticallyValid` — the generated scripts are parsed
+  by the shell they target (`bash -n`, `zsh -n`, `fish --no-execute`). Nothing else
+  reaches them: they are Go string constants, so the shellcheck task, which walks
+  `scripts/*.sh`, never sees them. A shell that is not installed is skipped and
+  said so in the test log; bash is required, or the check would pass having
+  checked nothing.
+
+### v0.17.0 completion real-machine smoke (required before release)
+
+bash and zsh (fish is best-effort, not gated — v0.8.6). In a fresh shell with
+completion registered **and refreshed**:
+
+- [ ] `kae env <TAB>` offers `set` / `unset` / `list`; `kae backup <TAB>` offers
+      `list`.
+- [ ] `kae env set <TAB>` offers tools; `kae env set claude <TAB>` offers claude's
+      accounts.
+- [ ] `kae env list <TAB>` offers **nothing** — `env list` takes no arguments, and
+      the branch is gated on the sub-verb to avoid suggesting a word the command
+      rejects.
+
+Record the result in the Release Acceptance Log below.
+
 ## Upstream Behaviour Assumptions
 
 kae drives undocumented upstream state, so it depends on two different kinds of
@@ -2106,7 +2146,7 @@ interactive `--install`, §C mise task-argument completion, §D docs.
 - **fish real-machine smoke: superseded** — fish was dropped from the verified
   shells (2026-06-18; see the v0.8.6 gate), so this is no longer an open
   acceptance item. `kae completion fish` stays a best-effort generator
-  (`TestCompletionAccountTokenIndex` + `fish -n`), not a release-gated surface.
+  (`TestCompletionPositionalRouting` + `fish -n`), not a release-gated surface.
 - mise task-argument completion (`mise run ai-switch <TAB>`) is rendered by
   `kae mise init` and unit-tested (`TestMiseInitRendersCompletionTasks`, TOML
   parse); the live `mise run <task> <TAB>` resolution rides the same backend.

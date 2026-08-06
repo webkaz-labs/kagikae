@@ -327,8 +327,12 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   this iterates its own opt-in table, so a group missing from *both* the table and
   the scripts was invisible to it; the guard added alongside is keyed by the command
   list instead, and every command is now classified as taking a positional — and then
-  required to have a branch in all three shells — or as taking none
-  ([ROADMAP.md](ROADMAP.md) § Command-system expansion). A **structural** script
+  required to have a branch in all three shells, and that branch must offer
+  candidates and read its arguments from the slots that shell numbers them by — or
+  as taking none ([ROADMAP.md](ROADMAP.md) § Command-system expansion). The
+  generated scripts are also parsed by the shells they target now, which nothing
+  did before: they are Go string constants, so the shellcheck task never saw them.
+  A **structural** script
   change like this one is the kind that needs an installed completion file rewritten:
   `mise run install` and `scripts/install.sh` do that, or run
   `kae completion --refresh`.

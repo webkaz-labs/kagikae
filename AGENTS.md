@@ -353,14 +353,20 @@ block in docs/VALIDATION.md, next to two correct ones.
   classification `positionalCommands` + `TestEveryPositionalCommandCompletes`.
   `kae <cmd> <TAB>` must never be a dead end (a new subcommand group shipped
   without completion in v0.10.0). **A guard reaches only what its table names**,
-  and the two tables are named differently on purpose: `subcommandVerbs` is
+  and the two tables are keyed differently on purpose: `subcommandVerbs` is
   opt-in, so a group missing from **both** it and the scripts was invisible to it
   — which is how `kae env` and `kae backup` shipped with no case at all until
   v0.17.0. `positionalCommands` is keyed by `completionCommands` instead, so a
   command cannot be left unclassified, and every command classified as taking a
-  positional must have a branch in all three scripts. Neither reaches a *verb*
-  dropped from both tables, so one with no sub-verbs (`kae relogin`) still needs
-  its own test naming it. Also update `completionCommands` and `printHelp`,
+  positional must have a branch in all three scripts, and that branch must emit
+  candidates. Neither reaches a *verb* dropped from both tables, so one with no
+  sub-verbs (`kae relogin`) still needs its own test naming it — and neither
+  reaches an entry deleted from `subcommandVerbs` itself, which silently takes
+  that group's sub-verb run out of the assertions with it. What a branch's slots
+  and array indices are is a third question, per command and per shell
+  (`TestCompletionPositionalRouting`); the scripts are Go string constants, so
+  `mise run check`'s shellcheck never parses them and
+  `TestCompletionScriptsAreSyntacticallyValid` is what does. Also update `completionCommands` and `printHelp`,
   neither of which any guard checks against the router — and note why that gap is
   not closed by dispatching each command from a test (several reach `newApp`, and
   with it the real environment, before a bad flag stops them; the reasoning lives

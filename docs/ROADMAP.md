@@ -780,15 +780,38 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   the second half of the fix is the guard the entry asked for: `positionalCommands`
   classifies **every** command in `completionCommands` as taking a positional or not,
   and `TestEveryPositionalCommandCompletes` requires a branch for each one that does
-  (and, from the other side, no branch for one that does not, so a stale
-  classification is loud rather than quietly weakening the first half). Being keyed
-  by `completionCommands` is what makes it a guard rather than a second opt-in table.
+  — a branch that emits candidates, since a case label in front of an empty body is
+  the same dead end — and, from the other side, no branch for one that does not, so
+  a stale classification is loud rather than quietly weakening the first half. Being
+  keyed by `completionCommands` is what makes it a guard rather than a second opt-in
+  table. Review of the fix turned up two more holes of the same family and closed
+  them: `kae mise` had a case but no `subcommandVerbs` entry, so its sub-verb was
+  asserted nowhere; and the whole of `env`'s new routing could be deleted with every
+  test green, because the constructs it uses (`accounts "${pos[1]}"` and friends)
+  recur in other branches and were matched against the whole script —
+  `TestCompletionPositionalRouting` now asserts each one inside the branch that owns
+  it.
   What it still does not see, because nothing machine-checks either list against
   `Root()`: a command dropped from `completionCommands` and the classification
   together. Closing *that* by dispatching each command from a test is not safe —
   several commands reach `newApp`, and with it the real environment, before a bad
   flag stops them — so a verb with no sub-verbs keeps its own test naming it
   literally (`TestCompletionScriptsCompleteRelogin`).
+
+- **A flag that takes a *value* shifts every completion slot** (found 2026-08-07 by
+  review of the entry above, **not fixed**). The generated scripts build their
+  positional list by dropping words that start with `-`, which is enough for a
+  boolean flag and wrong for a valued one: in `kae env --config /p set <TAB>` the
+  path `/p` survives the filter and becomes the first positional, so the tool slot
+  is asked to complete accounts of `set`, and `kae env --config /p list <TAB>`
+  walks past the `list` gate the same way. `kae use --config /p claude <TAB>`
+  simply goes quiet. Go's `splitArgs` knows which flags consume the next word and
+  the shell does not, and the two are hand-kept in step. Not urgent — the cost is
+  wrong or missing candidates, never a wrong action — but the fix is one place: a
+  `kae __complete valued-flags <command>` kind fed from the same registrars
+  `flagSetFor` uses, with each script consuming it in its positional loop. Doing
+  it per script without that backend would re-create the drift the dynamic backend
+  exists to prevent.
 - **`kae profile save <name>`**: snapshot the current active set into a
   named profile, instead of hand-editing config via `kae edit`.
 - **Account rm/rename** *(v0.7.1 — see [RELEASE.md](RELEASE.md))*: `kae

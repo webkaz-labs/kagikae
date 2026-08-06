@@ -1520,17 +1520,24 @@ rewritten before the smoke means anything (`kae completion --refresh`, which
 Unit-covered, in `internal/cmd`:
 
 - `TestCompletionPositionalRouting` — each branch's slots and array indices,
-  asserted **inside that branch** rather than anywhere in the script, per shell.
+  asserted **inside that branch and in order** rather than anywhere in the script,
+  per shell. Both are load-bearing: the constructs recur across branches, and one
+  branch's two arms hold the same ones, so a whole-script or unordered check passes
+  on a branch that was never written or whose arms were swapped.
 - `TestEveryPositionalCommandCompletes` — every command in `completionCommands` is
   classified as taking a positional or not, and each one that does has a branch
   that emits candidates in bash, zsh, and fish.
 - `TestSubcommandCompletionParity` — each group's sub-verb run, also branch-scoped.
 - `TestCompletionScriptsAreSyntacticallyValid` — the generated scripts are parsed
-  by the shell they target (`bash -n`, `zsh -n`, `fish --no-execute`). Nothing else
-  reaches them: they are Go string constants, so the shellcheck task, which walks
-  `scripts/*.sh`, never sees them. A shell that is not installed is skipped and
-  said so in the test log; bash is required, or the check would pass having
-  checked nothing.
+  by the shell they target (`bash --noprofile --norc -n`, `zsh -f -n`, `fish
+  --no-execute`; the rc files are skipped so a failure can only be the script).
+  Nothing else reaches them: they are Go string constants, so the shellcheck task,
+  which walks `scripts/*.sh`, never sees them. A shell that is not installed is
+  skipped and said so in the test log; bash is required, or the check would pass
+  having checked nothing. Each shell must first **reject** an unterminated `if`,
+  because two ways of checking nothing while passing are reachable here — every
+  shell accepts an empty file, which is what an unknown script name yields, and a
+  flag that does not parse (`zsh --version`) accepts a broken one.
 
 ### v0.17.0 completion real-machine smoke (required before release)
 
@@ -2146,7 +2153,8 @@ interactive `--install`, §C mise task-argument completion, §D docs.
 - **fish real-machine smoke: superseded** — fish was dropped from the verified
   shells (2026-06-18; see the v0.8.6 gate), so this is no longer an open
   acceptance item. `kae completion fish` stays a best-effort generator
-  (`TestCompletionPositionalRouting` + `fish -n`), not a release-gated surface.
+  (`TestCompletionAccountTokenIndex`, since renamed `TestCompletionPositionalRouting`,
+  + `fish -n`), not a release-gated surface.
 - mise task-argument completion (`mise run ai-switch <TAB>`) is rendered by
   `kae mise init` and unit-tested (`TestMiseInitRendersCompletionTasks`, TOML
   parse); the live `mise run <task> <TAB>` resolution rides the same backend.

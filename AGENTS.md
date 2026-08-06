@@ -364,9 +364,11 @@ block in docs/VALIDATION.md, next to two correct ones.
   reaches an entry deleted from `subcommandVerbs` itself, which silently takes
   that group's sub-verb run out of the assertions with it. What a branch's slots
   and array indices are is a third question, per command and per shell
-  (`TestCompletionPositionalRouting`); the scripts are Go string constants, so
-  `mise run check`'s shellcheck never parses them and
-  `TestCompletionScriptsAreSyntacticallyValid` is what does. Also update `completionCommands` and `printHelp`,
+  (`TestCompletionPositionalRouting`, which asserts a branch's literals **in
+  order** — both arms hold the same ones, so an unordered check passes on arms
+  that were swapped); the scripts are Go string constants, so `mise run check`'s
+  shellcheck never parses them and `TestCompletionScriptsAreSyntacticallyValid`
+  is what does — for the shells the machine actually has, requiring bash. Also update `completionCommands` and `printHelp`,
   neither of which any guard checks against the router — and note why that gap is
   not closed by dispatching each command from a test (several reach `newApp`, and
   with it the real environment, before a bad flag stops them; the reasoning lives

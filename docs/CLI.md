@@ -732,9 +732,12 @@ and that companion's knob names (`kae companion add main git <TAB>` →
 `kae env <TAB>` → `set`/`unset`/`list`, then — after `set` or `unset` only — a
 tool and that tool's accounts, since `env list` takes no arguments and offering
 one would suggest a word the command rejects. `kae backup <TAB>` → `list`.
-Positions are computed from the **flag-filtered** argument list, so a flag
-before the positionals does not shift completion (`kae add --no-login <TAB>`
-still completes tools; `kae use -i claude <TAB>` completes claude's accounts).
+Positions are computed from the **flag-filtered** argument list, so a **boolean**
+flag before the positionals does not shift completion (`kae add --no-login
+<TAB>` still completes tools; `kae use -i claude <TAB>` completes claude's
+accounts). A flag that takes a *value* still shifts them — the scripts drop words
+beginning with `-`, and a value is not one ([ROADMAP.md](ROADMAP.md) §
+Command-system expansion; it costs candidates, never an action).
 When the current word starts with `-`, the command's **flag names** are
 completed (`kae add --<TAB>` → `--no-login` / `--restore`; `kae run -<TAB>` →
 `-s` / `-i` / `--env` / `-P`).

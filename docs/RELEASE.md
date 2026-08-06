@@ -330,8 +330,9 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   required to have a branch in all three shells, and that branch must offer
   candidates and read its arguments from the slots that shell numbers them by — or
   as taking none ([ROADMAP.md](ROADMAP.md) § Command-system expansion). The
-  generated scripts are also parsed by the shells they target now, which nothing
-  did before: they are Go string constants, so the shellcheck task never saw them.
+  generated scripts are also parsed now by whichever of the three shells the
+  machine has (bash required), which nothing did before: they are Go string
+  constants, so the shellcheck task never saw them.
   A **structural** script
   change like this one is the kind that needs an installed completion file rewritten:
   `mise run install` and `scripts/install.sh` do that, or run

@@ -175,7 +175,12 @@ block in docs/VALIDATION.md, next to two correct ones.
   that still worked); a new one calls it rather than re-deriving the cutoff, and
   `readLiveCredential` is the one deliberate variant, splitting the same predicate three
   ways because a delete must tell "nothing to lose" from "kae cannot tell". **A caller
-  comparing against its own copy owes that copy the same `orderable` test.** Taking a
+  comparing against its own copy owes that copy the same `orderable` test.** And the
+  asymmetry runs both ways: a caller may owe `orderable` to the **losing** side too,
+  which `supersedes` deliberately does not require of it. Neither direction is the safe
+  default — read which question the caller is asking ("may I overwrite this copy" and
+  "may I tell the user it is dead" take opposite answers), and `pinSupersededChecks`
+  carries the worked example. Taking a
   subset of it is how a copy with no deadline came to read as superseded by anything:
   claude sets `Known` on the mere *presence* of `expiresAt` and parses a non-numeric one
   to the zero time, so an upstream type change yields a payload that is `Known`,
@@ -346,7 +351,12 @@ block in docs/VALIDATION.md, next to two correct ones.
   any new `kae __complete` kind in `internal/cmd/complete.go`, and the parity
   guard `subcommandVerbs` + `TestSubcommandCompletionParity`. `kae <cmd> <TAB>`
   must never be a dead end (a new subcommand group shipped without completion in
-  v0.10.0). Completion is dynamic, so candidate changes resolve live; only a
+  v0.10.0). **The parity guard only reaches what the table names**, so a *verb*
+  with no sub-verbs (`kae relogin`) has nothing to key on and needs its own test
+  next to it, and a subcommand group missing from **both** the table and the
+  scripts is invisible to it — which is how `kae env` and `kae backup` still have
+  no completion case (`docs/ROADMAP.md`). Also update `completionCommands` and
+  `printHelp`, neither of which any guard checks against the router. Completion is dynamic, so candidate changes resolve live; only a
   *structural* script change (a new case/kind) alters the registered script.
   That refresh is automatic: `mise run install` and `scripts/install.sh` run
   `kae completion --refresh` (rewrites already-registered files; never creates

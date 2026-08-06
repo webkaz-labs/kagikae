@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -481,5 +482,62 @@ func TestInventoryFreshnessNeverCarriesTheToken(t *testing.T) {
 				t.Fatalf("%s (%s) leaked a credential value:\n%s\n%s", name, format, stdout, stderr)
 			}
 		}
+	}
+}
+
+// constants.Tools is a closed set and a fragment's account map is not: an older kae
+// could have bound a tool since retired (gemini, dropped in v0.6.0), and that name is
+// the one thing telling the user why the directory needs re-pinning. Both consumers
+// render this walk — `kae ls --pins` through toolAccountList, and `kae relogin`'s
+// refusal through boundToolList — and the unknowns half has now been got wrong once
+// in each, which is why the ordering is shared and why this test sits on the shared
+// function rather than on either caller.
+func TestBoundToolsKeepsRetiredToolsAfterTheCanonicalOnes(t *testing.T) {
+	// The known pair is codex + agy, not codex + claude, so **canonical order is not
+	// alphabetical order** here: constants.Tools puts codex before agy, sorting puts
+	// agy first. Without that, replacing the whole walk with a sort over every key
+	// passes.
+	//
+	// The unknowns tail is the weaker half, and the strength is worth measuring rather
+	// than implying — the way the sibling at the top of this file states its own odds.
+	// The input is a map, so the literal's order buys nothing: Go randomizes the range,
+	// and whether a dropped `sort.Strings` is caught depends on which of the two
+	// unknowns comes out first. Measured on this tree, over 200k draws of this exact
+	// map: `zeta-tool` first 75.1% (unsorted, so the mutation is caught), `gemini`
+	// first 24.9% (already sorted, so it survives that draw). The 75/25 rather than
+	// 50/50 is the iteration mechanism — a randomized start offset over a fixed slot
+	// layout, not a reshuffle, so a rotation only reverses the pair when the start
+	// lands in the gap between them. What it does **not** mean is that the two keys
+	// hold their order within a build; they do not.
+	//
+	// This test renders the map three times, and fails if any draw comes out unsorted,
+	// so the combined rate is 1 − 0.25³ ≈ 98%. That is why the whole test kills the
+	// mutation on every run measured (24/24) while one rendering alone would not — the
+	// run count is the three renderings, not stability. None of it is a language
+	// guarantee. The test itself is **not** flaky: the product code sorts, so it passes
+	// deterministically; only this kill-rate is probabilistic. The tail's other
+	// failure — dropping it entirely — is caught on every draw.
+	//
+	// The single-rendering figure above is an instrument reading, not a case to add:
+	// a test asserting only `boundTools` would fail about one run in four by
+	// construction. Do not put it in the tree "for completeness".
+	accounts := map[string]string{"zeta-tool": "a", "codex": "b", "gemini": "c", "agy": "d"}
+	want := []string{"codex", "agy", "gemini", "zeta-tool"}
+	if got := boundTools(accounts); !slices.Equal(got, want) {
+		t.Fatalf("boundTools = %v, want %v", got, want)
+	}
+	// And the two renderings built on it, so the join and the separators are covered
+	// at the same time as the walk.
+	if got, want := toolAccountList(accounts), "codex:b agy:d gemini:c zeta-tool:a"; got != want {
+		t.Errorf("toolAccountList = %q, want %q", got, want)
+	}
+	if got, want := boundToolList(fragmentInfo{Accounts: accounts}),
+		"codex, agy, gemini, zeta-tool"; got != want {
+		t.Errorf("boundToolList = %q, want %q", got, want)
+	}
+	// The empty case is boundToolList's own, and it is what a caller prints when a
+	// fragment binds nothing kae recognizes at all.
+	if got := boundToolList(fragmentInfo{Accounts: map[string]string{}}); got != "no tools" {
+		t.Errorf("boundToolList(empty) = %q, want %q", got, "no tools")
 	}
 }

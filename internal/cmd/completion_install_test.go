@@ -552,3 +552,42 @@ func TestMiseInitRendersCompletionTasks(t *testing.T) {
 		t.Fatalf("rendered mise block does not parse: %v\n%s", err, block)
 	}
 }
+
+// TestCompletionScriptsCompleteRelogin: `kae relogin <TAB>` offers the tools, and
+// only at the first positional — the account is the binding's answer, never a word
+// typed here, so a second slot would offer something the parser rejects.
+//
+// Per-command like TestCompletionScriptsCompleteCompanion rather than table-driven:
+// subcommandVerbs covers the groups, and a new *verb* has no sub-verbs to key on.
+// A generic "every command with a positional has a case" guard is not written here
+// because two commands would fail it today for a reason this change did not
+// introduce (docs/ROADMAP.md § kae env and kae backup have no completion case).
+func TestCompletionScriptsCompleteRelogin(t *testing.T) {
+	if !slices.Contains(completionCommands, "relogin") {
+		t.Fatal("relogin must be in completionCommands, or `kae <TAB>` never offers it")
+	}
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		script, _ := completionScript(shell)
+		caseExists := strings.Contains(script, "relogin)") || strings.Contains(script, "case relogin")
+		if !caseExists {
+			t.Errorf("%s completion has no case for relogin:\n%s", shell, script)
+		}
+	}
+}
+
+// And the router actually dispatches it: a command that completes but does not run
+// is the same dead end from the other side.
+//
+// The unparseable flag is deliberate, and it is what keeps this test off the real
+// environment: CmdRelogin calls parseCommon first and returns on its failure, so
+// this path exits before newApp reads any config or state. A routed command answers
+// with the flag error; an unrouted one falls to Root's default arm.
+func TestRootDispatchesRelogin(t *testing.T) {
+	_, out := captureStderr(t, func() int { return Root([]string{"relogin", "--not-a-flag-kae-defines"}) })
+	if strings.Contains(out, "unknown command") {
+		t.Fatalf("Root does not route relogin: %q", out)
+	}
+	if !strings.Contains(out, "not-a-flag-kae-defines") {
+		t.Fatalf("expected the flag parser to answer, so nothing further ran: %q", out)
+	}
+}

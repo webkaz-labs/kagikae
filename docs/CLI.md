@@ -29,6 +29,8 @@ kae pin [-s|-i] <tool> <account>     # re-bind one tool in this directory
 kae unpin [--purge]                  # delete the kae-owned mise fragment
                                      # --purge: also delete this directory's
                                      # per-directory keychain credentials
+kae relogin [<tool>]                 # run the tool's login flow into this directory's
+                                     # bound store, then capture it back into the snapshot
 kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>
                                      # run cmd with an account applied (alias: kae r)
 kae env set <tool> <account> KEY=VALUE...          # store env-mode variables
@@ -592,6 +594,97 @@ one release). Directories pinned before v0.7.2 carry a kagikae marker block
 inside their `mise.toml`; run `kae unpin && kae pin` once to migrate to the
 fragment.
 
+## kae relogin Semantics
+
+`kae relogin [<tool>]` runs the tool's own login flow **into the store the current
+directory is bound to**, then captures the result back into that account's
+snapshot. It is the bound-directory counterpart of `kae add`, and it is the remedy
+every bound-credential finding names.
+
+It exists because the string it replaced asked the user to remember two things a
+message cannot enforce.
+
+- **The login has to land in the bound store.** `cd <dir> && claude /login` does
+  that only while the pin is active in that shell; with mise activation absent or
+  the config untrusted the isolation variable is unset and the same command
+  refreshes the **real home** — the wrong account moves and the bound one is still
+  stale. kae exports the variable itself (`CLAUDE_CONFIG_DIR=<the bound store>`,
+  appended to the child's environment so it wins over whatever the shell has), so
+  this hazard cannot happen rather than needing a caveat. mise activation is
+  therefore **not** required, and not checked.
+- **Something has to capture it back.** A login made inside a bound directory only
+  reaches the account snapshot when a bind or a sweep next runs, so until then
+  `kae use <tool> <account>` applies the older copy globally. This captures it at
+  the moment it is the newest copy.
+
+Contract:
+
+- The account is **never an argument**. Which account a directory holds is the
+  binding's answer; a name typed here could only be ignored or file one account's
+  login under another's.
+- Without `<tool>`, the directory's single candidate is used — a tool it binds and
+  kae has a login command for. Several candidates is a usage error (exit `64`)
+  naming them: two interactive login flows from one word is not a default, and
+  taking the first would log in the tool you did not mean.
+- Not pinned → exit `7`, naming `kae add --restore <tool> <account>` for the global
+  path. A tool this directory does not bind → exit `7`. An unpinned directory whose
+  store tree survives (`kae unpin` keeps it on purpose) is **not** pinned for this
+  purpose: what is bound comes from the mise fragment.
+- The bound store not being there → exit `7`, naming `kae pin <tool> <account>`.
+  kae recomputes the store path from a hash of the directory's *current* path, while
+  what the tool reads there is the literal value the fragment exports; a directory
+  that moved keeps its fragment and gets a different hash, so logging in would create
+  a store nothing reads. `kae pin` always materializes the store, so its absence is
+  the signal the two have diverged. This refusal comes before the secret backend is
+  opened and before the pin lock is taken.
+- The flow leaving the store's credential byte-identical → exit `11`
+  (`auth_unchanged`), the same code `kae add` uses. An aborted or failed login must
+  not be reported as a login, because the reason to run this is that the directory
+  was already stale.
+- **The success line claims only what kae observed**, and there are two of them:
+  - `Logged <tool> in for <tool>/<account> in this directory` — printed only when
+    all three of: kae read the store on both sides and the bytes differ; what is
+    there now is something kae read as a login; and the capture back *confirmed*
+    the login is that account's.
+  - `Ran the <tool> login flow in this directory` — every other case, each with its
+    own stderr line saying which:
+    - kae could not read the store on one side or both, so it cannot tell whether
+      anything changed;
+    - the store now holds **nothing usable** — either blank tokens, which is what a
+      failed refresh leaves behind and is the state a stale directory reaches before
+      the user even sees a prompt, or no credential at all where kae resolves one.
+      Those are one state to kae, deliberately: they license the same conclusion, and
+      splitting them is how a first version of this caught the blanked payload and
+      missed the removed one. Note the second is reachable with **no** failure —
+      under the file driver a successful login writes the keychain item and deletes
+      the plaintext file kae was reading;
+    - or the harvest did not confirm the account, which includes every tool whose
+      rotation is unmeasured: nothing harvests there, so nothing checked the identity
+      either, and absence of a refusal is not confirmation.
+
+    None of these stderr lines says the login failed or tells you to run it again.
+    "No usable token" is what kae **read**, and it is derived from token fields being
+    empty *or absent* — so a payload whose keys changed upstream reads the same as a
+    tombstone, and an instruction to retry would loop against a login that is fine on
+    the day kae's parser is the stale thing (§ `kae rollback --json` is normative for
+    this family of wordings).
+
+  Exit stays `0` in all of them: the login flow ran, and only `auth_unchanged` above
+  is a refusal.
+- The capture back is `harvestDirCredential` with every guard it already has: it
+  declines a copy that does not supersede the snapshot, and one it cannot attribute
+  to this account. It runs whatever the comparison said — a flow kae could not
+  compare may still have left a copy worth harvesting. A login as **another** account
+  is left in the store (it is that account's, and it is where it belongs) and
+  reported, with `kae pin <tool> <account>` as the remedy — never another login,
+  which would mint a fresh chain and invalidate the copy just left in place.
+- The capture back is claude-only, like every other harvest
+  (docs/ROADMAP.md § Rotation is measured for claude only). For any other bound tool
+  the login still runs into the right store; nothing is harvested because nothing
+  older is invalidated by it.
+- Holds the **pin** lock across the flow, so a re-bind of this directory cannot
+  overwrite the store mid-login.
+
 ## kae companion Semantics
 
 `kae companion` binds companion-tool auth (git/gh/cloud CLIs) to a profile so an
@@ -959,16 +1052,17 @@ Check `status` vocabulary: `ok`, `warn`, `error`, `skipped`.
 Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `env_conflict`, `credential_store`, `secret_backend`, `config_valid`,
 `unsupported`, `file_mode`, `credential_stale`, `credential_expiring`,
-`secret_orphan`, `secret_missing`,
+`credential_superseded`, `secret_orphan`, `secret_missing`,
 `companion_missing`, `companion_binary`, `companion_drift`,
 `companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`,
 `active_orphan`.
 
 A `(tool, code)` pair is **not** unique in one report: a code is emitted per subject,
 and several subjects can share a tool. `credential_stale` is reported once per account
-snapshot and once per bound directory, and `identity_drift` once for the active
+snapshot and once per bound directory, `identity_drift` once for the active
 account's live state and once per bound directory whose store disagrees with its
-binding. Consumers must read the list, not index it by code.
+binding, and `credential_superseded` once per bound directory that a newer copy
+overtook. Consumers must read the list, not index it by code.
 
 Credential-health checks (warn-level):
 - `credential_stale`: a captured snapshot cannot open a session again without an
@@ -1024,6 +1118,57 @@ Credential-health checks (warn-level):
   The same lead-time notice is emitted at switch time next to the stale one
   (stderr, before the write, surviving `--quiet`), but it is **not** counted in
   the "N tools need a re-login before use" roll-up: that switch works today.
+- `credential_superseded`: another copy of one account's credential carries a
+  **later** `expiresAt` than the copy in a bound directory. For a tool whose refresh
+  token rotates single-use (claude — docs/VALIDATION.md owns the measurement), if the
+  two are copies of **one** login then only the newer one can still refresh, so the
+  session in that directory cannot be renewed past its access-token expiry. The
+  message states it that way, conditionally, and the condition is the honest part:
+  `expiresAt` orders two payloads, it does not say whether they are one chain or two
+  independent logins of the same account. Copies of one login is the ordinary case —
+  a bind writes the snapshot into every store — and this release adds a way to make
+  the other one (`kae relogin` in one directory mints a fresh chain there), which is
+  measured as open in docs/VALIDATION.md rather than asserted either way.
+
+  Names where the newer copy is (`snapshot <tool>/<account>`, or the store bound to
+  another directory), because that is the cause the user cannot otherwise see — "I
+  used claude in the other worktree and this one logged out hours later" — and
+  because it decides the remedy, the same way `kae rollback`'s warning branches on it:
+  - newer copy in the **snapshot** → `cd <dir> && kae pin <tool> <account>`. A re-bind
+    materializes it into the store with no browser round-trip. This is the one case
+    the "deliberately not `kae pin`" reasoning below does not cover — its objection is
+    that the snapshot may be just as expired, and here kae has proved otherwise.
+  - newer copy in **another directory's store** → `cd <dir> && kae relogin <tool>`.
+    The snapshot is not known to be newer, so a re-bind could write something older
+    still; a login is the only answer that certainly produces a usable credential.
+
+  Its own code, and not a band of `credential_stale`, for two reasons. The
+  consumer-filtering one that separates `credential_expiring` from it, and a
+  stronger one: the two read **different fields**. A superseded copy reports `ok` on
+  every freshness surface, because the deadline they judge by
+  (`refreshTokenExpiresAt`) is precisely what an invalidation does not move.
+
+  **Reported only where kae can prove it**, which is narrower than it may look, and
+  deliberately so — a warning that fires on a healthy binding is worth less than
+  none (v0.15.0/v0.15.1 shipped that mistake in both directions).
+  - Both copies must be *orderable*: parsed, not a tombstone, and carrying a real
+    `expiresAt`. In particular a bound copy kae cannot order is not reported —
+    that is kae unable to judge it, not evidence it is dead — even though the
+    ordering comparator elsewhere lets such a copy lose to anything (there the
+    question is "may I overwrite it", where a copy with no comparable deadline is
+    nothing to lose).
+  - Both must be *attributed* to the account by the store's own identity cache.
+    Ordering never establishes whose login two copies are, and a shared store
+    legitimately holds a previous account's credential.
+  - Equal deadlines are not overtaken, so a directory pinned moments ago — whose
+    store holds exactly what the snapshot does — reports nothing.
+  - A tombstoned or unreadable bound copy is left to `credential_stale`, which
+    already names it.
+
+  Unfiltered like the other bound-directory checks, and it needs the secret backend
+  (for the snapshot it compares against and for attribution), so it is skipped when
+  that is unavailable — unlike the `credential_stale` half, which is deliberately
+  outside that gate.
 - `active_orphan`: `state.json` records an account as active for a tool, but no
   snapshot by that name exists — so kae cannot say which account is live, and
   `kae status` would display a name that is not there. Offline and backend-free.
@@ -1075,9 +1220,12 @@ of the credential and the tool refreshes *that copy* in place, so it can die whi
 every account snapshot kae has still looks fine. Nothing reported this before — the
 first signal was the tool refusing to start in that directory.
 
-- The remedy is a login **inside** that directory (`cd <dir> && claude /login`).
-  The isolation variable the directory exports is what makes the login land in the
-  store kae bound, so no kae step follows. Deliberately **not** `kae pin`: that
+- The remedy is a login **inside** that directory: `cd <dir> && kae relogin <tool>`
+  (§ kae relogin Semantics). It named the tool's own login command until v0.17.0,
+  and that was right only in a shell where the pin was active — the isolation
+  variable is what makes a login land in the bound store, so anywhere else the same
+  command refreshed the real home instead. `kae relogin` exports the variable
+  itself, and captures the new login back. Deliberately **not** `kae pin`: that
   re-copies the account snapshot, which may be just as expired, and would report
   success while changing nothing.
 - Reads live, unlike the snapshot half: up to one store read per bound directory
@@ -1100,11 +1248,13 @@ first signal was the tool refusing to start in that directory.
   its orphaned store; naming it twice would be one problem reported as two), for one
   that was `kae unpin`-ed, for a tool the directory **no longer binds**, and for a
   store whose tool has never been started in it (no credential there yet).
-- There is deliberately **no** recapture back into the account snapshot. Several
-  directories can bind one account, each refreshing its own token, so no
-  non-arbitrary rule says which of them the single global snapshot should take —
-  and a directory not visited in weeks would overwrite a newer global one. See
-  docs/ROADMAP.md.
+- These checks do not recapture — they report. That is a property of *doctor*, not
+  an open question about which copy to take: the reason this bullet used to give
+  ("no non-arbitrary rule says which of several directories the snapshot should
+  take") was answered in v0.17.0 by ordering on `expiresAt`, and the harvest does
+  exactly that wherever a copy is about to be destroyed. Recapturing belongs on a
+  write path; doctor is read-only. `kae relogin` is the command that both logs in
+  and captures back.
 - The identity half of the same binding is reported under **`identity_drift`**, not
   here — a store whose identity names an account other than the one the directory
   binds. It shares the gate above (the fragment decides what is bound) but not the
@@ -1325,8 +1475,16 @@ live store wins the message, since that is the one being overwritten.
 
 A recorded credential kae cannot *order* at all is reported in different words, and which
 words depends on **why** — the same distinction kae draws for a bound directory's store. A
-**tombstone** provably cannot log in, so kae says so ("cannot log in, while … holds a
-usable one"). A payload kae cannot **parse** — one whose `expiresAt` no longer decodes,
+**tombstone** is reported as what kae read and no more — "carries no usable token, while
+… holds one" — and **never** "cannot log in". `Revoked` is derived from the token fields
+being empty *or absent*, so a login whose token keys were renamed upstream reads
+identically to a tombstone while working perfectly, and the stronger wording would tell
+that user to undo a rollback that was fine. This paragraph claimed the opposite until
+2026-08-06, and quoted a string the binary has not contained since the wording was
+changed during the item-5 review: `docs/VALIDATION.md` § Upstream Behaviour Assumptions
+and `AGENTS.md` both stated the rule correctly and cited **this** section as their
+authority, which is how a normative doc comes to license undoing the fix it documents.
+A payload kae cannot **parse** — one whose `expiresAt` no longer decodes,
 say — may still be a working login in a shape kae has not been taught, so kae claims only
 that it "cannot compare" the two and that it cannot tell which can still refresh. The
 remedy is the same in every case, because where the other copy is, is what a user acts on.

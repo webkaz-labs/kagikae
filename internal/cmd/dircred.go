@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -1225,6 +1224,229 @@ func (app *App) pinCredentialChecks(ctx context.Context, stores []boundDirStore)
 	return checks
 }
 
+// pinSupersededChecks reports a bound directory whose credential another copy of
+// the *same* account has provably overtaken.
+//
+// It is the one failure in this design with no other signal at all. kae keeps
+// copies with lazy sync while claude's refresh token rotates single-use, so of all
+// the copies of one account's credential only the one that refreshed last can
+// still refresh — and the freshness surfaces cannot see that, because they judge by
+// `refreshTokenExpiresAt`, the one field an invalidation does not move. A bound
+// directory whose copy was overtaken hours ago reports `ok` everywhere and then
+// fails inside the tool, which is why "I used claude in the other worktree and this
+// one logged out later" had no visible cause (docs/ROADMAP.md § Every credential
+// copy).
+//
+// **Only what it can prove.** It compares copies kae can order and attribute, and
+// says nothing about the rest — this is the area v0.15.0/v0.15.1 got wrong in both
+// directions, and a warning that fires on a healthy binding is worth less than no
+// warning at all. What that means concretely:
+//
+//   - The loser must be `orderable`, which is **stricter than what supersedes asks
+//     of its b side**, and deliberately so. supersedes lets an un-orderable b lose to
+//     anything because its caller is asking "may I overwrite this?", where a copy with
+//     no comparable deadline is nothing to lose. The question here is the opposite —
+//     "may I tell the user this copy is dead?" — and a copy kae cannot order is one it
+//     cannot judge. Do not fold the two: taking supersedes' subset here would report
+//     every undated or unparseable store as superseded by anything.
+//   - Both sides must be attributed to the account (dirIdentityConfirms). Ordering
+//     never establishes *whose* login two copies are, and a `-s` store legitimately
+//     holds a previous account's credential — so without this the check reports one
+//     account's copy as having overtaken another's.
+//   - A tombstoned or unreadable store is left to `credential_stale`, which already
+//     names it; reporting one problem as two is the thing pin_stale's silence rules
+//     exist to avoid.
+//
+// Cost is paid in that order: the live reads first (one per bound store, the same
+// call pinCredentialChecks makes), the snapshot once per account, and the adapter
+// resolution plus identity reads **only** for a finding that is otherwise ready. A
+// healthy machine pays no attribution at all.
+//
+// ponytail: reads each bound store's credential a second time — pinCredentialChecks
+// read the same bytes for a different question moments earlier. Hoisting one read
+// per store into buildDoctor and passing it to both is the fix, and it is the same
+// move that already put boundDirStores there; it is recorded rather than taken
+// because it edits a check that is answering correctly, for a few `security` calls
+// on a machine with a handful of bound directories.
+func (app *App) pinSupersededChecks(ctx context.Context, be secret.Backend, stores []boundDirStore) []adapter.Check {
+	// Every store in one group compares against the **same** account's recorded
+	// identity, so attribution reads one key once per losing store and again for the
+	// winner on each of those iterations. Measured on three directories bound to one
+	// account: four reads of one ref, which on darwin is four `security` calls. The
+	// wrap is the one pinIdentityChecks already applies, and safe for the same reason
+	// it states there — this path only ever calls Get, and the capability secret.Cached
+	// does not forward is Enumerator, which nothing here uses.
+	//
+	// A healthy machine still pays nothing: the reads happen only behind an ordering
+	// finding. This is the cost on exactly the path the check exists to diagnose.
+	ctx = secret.WithReadCache(ctx)
+	be = secret.Cached(be)
+	checks := []adapter.Check{}
+	for _, group := range groupBoundStoresByAccount(stores) {
+		checks = append(checks, app.supersededChecksFor(ctx, be, group)...)
+	}
+	return checks
+}
+
+// accountStores is every bound store of one (tool, account) pair — the set whose
+// copies are copies *of each other*, which is what makes ordering them meaningful.
+type accountStores struct {
+	Tool    string
+	Account string
+	Stores  []boundDirStore
+}
+
+// groupBoundStoresByAccount groups a boundDirStores walk by the account each store
+// holds, preserving that walk's order so a JSON report cannot reorder with a map
+// iteration.
+func groupBoundStoresByAccount(stores []boundDirStore) []accountStores {
+	groups := []accountStores{}
+	index := map[string]int{}
+	for _, store := range stores {
+		key := store.Tool + "/" + store.Account
+		if at, ok := index[key]; ok {
+			groups[at].Stores = append(groups[at].Stores, store)
+			continue
+		}
+		index[key] = len(groups)
+		groups = append(groups, accountStores{Tool: store.Tool, Account: store.Account, Stores: []boundDirStore{store}})
+	}
+	return groups
+}
+
+// supersededChecksFor answers the question for one account: which of its copies
+// refreshed last, and which bound directories that leaves behind.
+func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, group accountStores) []adapter.Check {
+	// The pure gates first, the same order harvestSupersededDirCredentials uses:
+	// resolving specs is not free, so a group this check can never speak about must
+	// cost nothing. rotatesSingleUse is the whole premise — where older copies stay
+	// usable, being overtaken is not a problem to report.
+	//
+	// **That gate is load-bearing only by coincidence today, which is why it must not be
+	// removed as dead.** Measured 2026-08-06: with two codex-bound directories holding
+	// orderable copies seven hours apart, dropping rotatesSingleUse still reports
+	// nothing — but not because of this line. It is silenced by the loser-side
+	// attribution, which fails because **claude is the only adapter that declares an
+	// IdentityOnly artifact**, so storeHoldsAccount can never confirm a codex store. The
+	// day a second tool declares one, this gate is the only thing between codex and a
+	// finding whose message would read "codex's refresh token rotates single-use".
+	artName := credentialArtifactName(group.Tool)
+	if !rotatesSingleUse(group.Tool) || artName == "" {
+		return nil
+	}
+	// The account record and its payload are separate needs, and separate failures.
+	// The payload is one candidate in the ordering; the record is what *attribution*
+	// compares a store's identity cache against, and without it dirIdentityConfirms
+	// refuses everything — so taking snapshotCredential's zeroed account on error made
+	// the whole store-vs-store comparison unreachable, which its comment then claimed
+	// was still happening.
+	acc, snapshot, _, err := app.snapshotCredential(ctx, be, group.Tool, group.Account, artName)
+	if err != nil {
+		snapshot = nil
+		if loaded, found, lerr := account.Load(app.Paths.AccountDir(group.Tool, group.Account)); lerr == nil && found {
+			acc = loaded
+		} else {
+			acc = account.Account{}
+		}
+	}
+	// The newest copy kae can order, starting from the account's own snapshot. Ties
+	// keep the earlier candidate because supersedes is a strict comparison, so a bind
+	// that just copied the snapshot into a store reports nothing.
+	newest := freshnessOf(group.Tool, snapshot)
+	newestIdx := -1 // the snapshot; an index into group.Stores once a store wins
+	if !orderable(newest) {
+		newest = freshness.Info{}
+	}
+	live := make([]freshness.Info, len(group.Stores))
+	for i, store := range group.Stores {
+		info, ok := app.dirCredentialFreshness(ctx, dirStore{Tool: store.Tool, Dir: store.StoreDir})
+		if !ok || !orderable(info) {
+			continue // nothing kae can place in the ordering; see the doc comment
+		}
+		live[i] = info
+		if supersedes(info, newest) {
+			newest, newestIdx = info, i
+		}
+	}
+	if !orderable(newest) {
+		return nil
+	}
+	// Derived once from the winner rather than carried alongside it: where the newest
+	// copy is says nothing the index does not, and a third value updated at each
+	// assignment site is a third chance to update two of them.
+	newestAt := fmt.Sprintf("snapshot %s/%s", group.Tool, group.Account)
+	if newestIdx >= 0 {
+		newestAt = "the store bound to " + group.Stores[newestIdx].Dir
+	}
+	checks := []adapter.Check{}
+	for i, store := range group.Stores {
+		// The index, not a comparison of Dir strings: the winner *is* this element when
+		// it is one, and matching on a field relies on an invariant two files away
+		// (one breadcrumb per pin-id) to keep two entries from sharing a directory.
+		if i == newestIdx {
+			continue
+		}
+		if !orderable(live[i]) || !supersedes(newest, live[i]) {
+			continue
+		}
+		// Attribution last, and on both sides: a copy kae cannot tie to this account
+		// says nothing about this account's other copies, in either direction.
+		if !app.storeHoldsAccount(ctx, be, acc, store) {
+			continue
+		}
+		if newestIdx >= 0 && !app.storeHoldsAccount(ctx, be, acc, group.Stores[newestIdx]) {
+			continue
+		}
+		checks = append(checks, adapter.Check{
+			Tool: store.Tool, Code: constants.CheckCredentialSuperseded,
+			Status: constants.StatusWarn,
+			Message: fmt.Sprintf(
+				"the %s credential bound to %s is older than another copy of %s/%s (%s); %s's refresh token rotates "+
+					"single-use, so if the two are copies of one login only the newer one can still refresh and the "+
+					"session in that directory cannot be renewed past %s; %s",
+				store.Tool, store.Dir, store.Tool, store.Account, newestAt, store.Tool,
+				utcStamp(live[i].ExpiresAt), supersededRemedy(store.Tool, store.Account, store.Dir, newestIdx < 0),
+			),
+		})
+	}
+	return checks
+}
+
+// supersededRemedy names the fix for a bound copy another copy has overtaken, and it
+// depends on **where** the newer copy is — the same reason `kae rollback`'s warning
+// branches on that (docs/CLI.md § `kae rollback --json`).
+//
+// When the newer copy is the account's own snapshot, a re-bind materializes it into
+// the store and no browser is involved. That is the one case pinLoginRemedy's
+// "deliberately not `kae pin`" reasoning does not cover: its objection is that the
+// snapshot may be just as expired as the copy in the store, and here kae has just
+// proved the opposite.
+//
+// When the newer copy is another directory's store, the snapshot is *not* known to
+// be newer, so a re-bind could write something older still; a login is the only
+// answer that certainly produces a usable credential.
+func supersededRemedy(tool, accountName, dir string, newerIsSnapshot bool) string {
+	if newerIsSnapshot {
+		return fmt.Sprintf("re-bind that directory from the newer snapshot, no login needed: cd %s && %s pin %s %s",
+			dir, toolName, tool, accountName)
+	}
+	return pinLoginRemedy(tool, dir)
+}
+
+// storeHoldsAccount reports whether a bound store's own identity cache confirms it
+// holds acc's login. It is dirIdentityConfirms' positive answer and nothing else:
+// every refusal, conflicting or not, means this check must stay silent about that
+// store — a conflict says the copy is somebody else's, and missing evidence says kae
+// does not know. (pinIdentityChecks is the consumer that reports the conflict; here
+// it is only a reason to say nothing.)
+func (app *App) storeHoldsAccount(ctx context.Context, be secret.Backend, acc account.Account, store boundDirStore) bool {
+	specs, err := app.dirSpecs(ctx, store.Tool, store.StoreDir)
+	if err != nil {
+		return false
+	}
+	return dirIdentityConfirms(ctx, be, specs, acc, store.StoreDir).Why == ""
+}
+
 // pinIdentityChecks reports a bound directory whose own store names an account
 // other than the one the directory binds — the bound-directory frame of
 // `identity_drift`, which the global check cannot see. That one compares the live
@@ -1415,16 +1637,27 @@ func (app *App) boundStoreDir(pinID, tool string, fragment fragmentInfo) (dir st
 }
 
 // pinLoginRemedy names the fix for a bound directory's credential: log in *inside*
-// that directory. The isolation variable the directory exports is what makes the
-// tool write to the store kae bound, so the login lands in the right place with no
-// kae step afterwards.
+// that directory, through `kae relogin`.
+//
+// It named the tool's own login command directly until v0.17.0, and that remedy was
+// correct only in a shell where the pin was active: the isolation variable is what
+// sends the login to the store kae bound, so with mise activation absent or the
+// config untrusted the same command refreshes the **real home** instead — the wrong
+// account moves and this one is still stale. `kae relogin` exports the variable
+// itself, so the hazard cannot happen rather than needing a caveat in every message
+// that carries this string; it also captures the new login back into the account
+// snapshot, which nothing did proactively.
 //
 // Deliberately not `kae pin` (which would re-copy the account snapshot): that
 // snapshot may be just as expired as this copy, in which case re-binding would
 // report success and change nothing.
+//
+// The fallback is for a tool kae has no login command for. That is the same gate
+// `kae relogin` selects candidates on (reloginTool), so this never names a command
+// that would refuse.
 func pinLoginRemedy(tool, dir string) string {
-	if login := loginCommand(tool); login != nil {
-		return fmt.Sprintf("log in inside that directory: cd %s && %s", dir, strings.Join(login, " "))
+	if loginCommand(tool) != nil {
+		return fmt.Sprintf("log in inside that directory: cd %s && %s relogin %s", dir, toolName, tool)
 	}
 	return fmt.Sprintf("log in again in %s from inside that directory (cd %s)", tool, dir)
 }

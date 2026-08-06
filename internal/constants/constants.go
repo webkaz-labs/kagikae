@@ -201,7 +201,15 @@ const (
 	// session", and a consumer filtering on it to find broken accounts must not
 	// start matching accounts that are fine for another five days.
 	CheckCredentialExpiring = "credential_expiring"
-	CheckSecretOrphan       = "secret_orphan"
+	// CheckCredentialSuperseded: another copy of one account's credential refreshed
+	// later than the copy in a bound directory, and for a tool whose refresh token
+	// rotates single-use that means the one in the directory can no longer refresh.
+	// Its own code and not a band of credential_stale for the reason above and one
+	// more: the two read *different* fields, so a superseded copy reports `ok` on
+	// every freshness surface — the deadline they judge by (refreshTokenExpiresAt)
+	// is exactly what invalidation does not move.
+	CheckCredentialSuperseded = "credential_superseded"
+	CheckSecretOrphan         = "secret_orphan"
 	// CheckSecretMissing: the mirror of secret_orphan — a snapshot declares a
 	// stored payload the secret backend does not have, so applying that account
 	// cannot restore the artifact. Its own code because it needs no enumeration:

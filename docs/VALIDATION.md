@@ -1373,6 +1373,140 @@ H asserted only the live store, which let it pass over a *snapshot* the same com
 had filed another account's credential into. A block asserts what it names, and the
 thing it does not name is where the defect sits.
 
+## v0.17.0 surface — `kae relogin` and `credential_superseded`
+
+The other half of the same fact: when two copies of one account's credential exist
+and one refreshes, the other cannot any more — so `kae doctor` names the directory
+that lost, and `kae relogin` is the one command that fixes it. Same isolation as the
+harvest block above (temp HOME, **file** driver, file backend, no real keychain and
+no real login), and it **continues from that block's preamble** — the `cred`,
+`ident`, `snap` and `store` helpers and the config file are the ones defined there.
+
+One thing this block does that no other does: it puts a **fake `claude` on `PATH`**.
+That is the only way to prove the real binary exports the isolation variable, which
+is `kae relogin`'s whole reason to exist — a fake that wrote to a path the script
+chose would pass just as happily if kae exported nothing. The fake refuses (exit 8)
+when `CLAUDE_CONFIG_DIR` is unset rather than writing somewhere, so a regression
+fails loudly instead of quietly writing to the temp `$HOME`.
+
+```bash
+# (continues from the harvest block above, in the SAME shell: its `. scripts/smoke-env.sh`,
+#  its KAE_CLAUDE_DRIVER=file, its helpers and config, its claude/main, and its
+#  `kae profile set main claude main`. Do NOT re-source smoke-env.sh here — that mints a
+#  fresh HOME and throws the account away, leaving `kae pin` below with nothing to bind.
+#  Running the harvest block's cases first is fine; they leave claude/main captured.)
+
+# --- K. doctor names the overtaken directory, and only that one ---
+A=$(mktemp -d); B=$(mktemp -d)
+cd "$A" && /tmp/kae pin main && SA=$(store)
+cd "$B" && /tmp/kae pin main && SB=$(store)
+cred A-NEW $LATER > "$SA/.credentials.json"   # the tool refreshed in A, in place
+cred B-OLD $NEW   > "$SB/.credentials.json"   # B has been sitting since before that
+/tmp/kae doctor --json | grep -c credential_superseded   # assert: 1 — exactly one
+                                        #   directory lost. Not `grep -c` alone: the
+                                        #   line below names which, so a broken
+                                        #   extraction cannot pass as a quiet 0
+/tmp/kae doctor | grep "is older than"  # assert: names `bound to $B`, `(the store
+                                        #   bound to $A)` as where the newer copy is,
+                                        #   and `cd $B && kae relogin claude`
+/tmp/kae doctor --json | grep -c credential_stale   # assert: 0 — a superseded copy is
+                                        #   NOT stale. Both deadlines here are years
+                                        #   out; the whole point is that the field the
+                                        #   stale check reads does not move on
+                                        #   invalidation
+
+# --- L. relogin logs in *into the bound store* and captures it back ---
+FAKEBIN=$(mktemp -d)
+cat > "$FAKEBIN/claude" <<'EOF'
+#!/bin/sh
+[ "$1" = "/login" ] || { echo "unexpected argv: $*" >&2; exit 9; }
+[ -n "$CLAUDE_CONFIG_DIR" ] || { echo "no CLAUDE_CONFIG_DIR" >&2; exit 8; }
+printf '{"claudeAiOauth":{"accessToken":"B-RELOGGED","refreshToken":"rt-B-RELOGGED","expiresAt":1830384000000,"refreshTokenExpiresAt":1861920000000}}' > "$CLAUDE_CONFIG_DIR/.credentials.json"
+printf '{"oauthAccount":{"accountUuid":"u-main","emailAddress":"main@example.com"}}' > "$CLAUDE_CONFIG_DIR/.claude.json"
+EOF
+chmod +x "$FAKEBIN/claude"; PATH="$FAKEBIN:$PATH"; export PATH
+cd "$B"
+/tmp/kae relogin; echo "exit=$?"
+#   assert: exit=0, and stderr says kae is running it against this directory's own
+#           store, naming CLAUDE_CONFIG_DIR=<B's store>. The fake exits 8 if it is
+#           unset, so a green run *is* the proof that kae exported it
+#   assert: stderr carries `harvested the newer claude credential from <B's store>
+#           into snapshot claude/main` — the capture-back half
+#   assert: stdout is `Logged claude in for claude/main in this directory` — the
+#           strong wording, which kae prints only when it observed all three of:
+#           the store changed, what is there now is not a tombstone, and the
+#           harvest confirmed the account. Any other case prints `Ran the claude
+#           login flow in this directory` instead, so this line is the assertion
+#           that the three gates all passed
+grep B-RELOGGED "$SB/.credentials.json"  # assert: the login landed in B's own store
+snap main | grep B-RELOGGED              # assert: and reached the account snapshot
+/tmp/kae doctor | grep "is older than"   # assert: the finding has *moved* — it now
+                                        #   names `bound to $A`, because B is the copy
+                                        #   that refreshed last. Where the newer copy
+                                        #   is reads `snapshot claude/main`, not B's
+                                        #   store: the harvest made the two equal and
+                                        #   equal deadlines keep the earlier candidate,
+                                        #   which is the snapshot. So the remedy is
+                                        #   `cd $A && kae pin claude main` here and NOT
+                                        #   a relogin — a re-bind from the newer
+                                        #   snapshot needs no browser. Assert the
+                                        #   absence of `relogin` on this line too
+
+# --- M. outside a binding nothing is launched ---
+C=$(mktemp -d); cd "$C"
+/tmp/kae relogin; echo "exit=$?"
+#   assert: exit=7 and `this directory is not pinned`, naming `kae add --restore`
+grep SIDE-OLD "$HOME/.claude/.credentials.json"   # assert: the temp real home still holds
+                                        #   what the preamble left there last (the preamble
+                                        #   writes MAIN-OLD, captures, then overwrites with
+                                        #   SIDE-OLD to capture the second account — so
+                                        #   SIDE-OLD is the resting value, and asserting
+                                        #   MAIN-OLD here silently matched nothing)
+grep -c B-RELOGGED "$HOME/.claude/.credentials.json"   # assert: 0 — paired with the positive
+                                        #   line above, because a `grep -c` for absence prints
+                                        #   0 when the file is missing too.
+#   Together they assert the flow was never launched: the fake `claude` is still first
+#   on PATH and writes into whatever CLAUDE_CONFIG_DIR names, so with none set it would
+#   land here. The exit code alone does not say that. This was prose until 2026-08-06,
+#   and prose asserts nothing
+```
+
+`grep -c` printing `0` is an assertion on two lines here, so paste the block as-is
+rather than under `set -e`.
+
+**K–M PASSED 2026-08-06** (darwin, file driver, temp HOME, pre-release binary built
+from this branch), each assertion checked at its own point, and **re-run verbatim
+after each review round's changes** — round 1 (the hedged wording, the split remedy,
+the store-must-exist refusal) round 2 (the three-gate success wording), round 3
+(the emptied-store arm and the reworded warnings) and round 5 (the real-home
+assertion below, which was prose until an execution-type review pointed out that
+nothing checked it — and whose first written form asserted the wrong literal and so
+matched nothing, caught by running it). A block whose expected output
+moved and was not re-run is a block that documents the previous release. The `credential_stale = 0`
+line in K is the one worth keeping in view: it is what distinguishes this check from
+the one beside it, and if the two ever merge it is the assertion that says so.
+
+**An open measurement this check's wording depends on.** `expiresAt` orders two
+payloads; it does not say whether they are copies of **one** login or two independent
+logins of the same account. Single-use rotation is measured for the first shape (one
+credential, refreshed) and is what makes "only the newest can refresh" a fact there.
+The second shape is *not* measured: does a fresh `claude /login` invalidate a chain
+another directory is still holding? Until it is, `credential_superseded` states the
+consequence conditionally ("if the two are copies of one login"), because this
+release is what makes the second shape reachable — `kae relogin` in one worktree
+mints a fresh chain there, after which the check reports the other worktree's
+independent login as behind it. To measure: log in twice for one account into two
+bound directories (two real `/login` runs, no bind in between), then use the tool in
+the older one and see whether it refreshes. Requires real logins, so it belongs in
+the real-machine gate.
+
+**What this block does not cover.** It never touches `internal/keychain` (the file
+driver again), so `kae relogin` against a real per-directory keychain **item** is
+unrun — the store read on both sides of the login and the harvest's write would each
+be a `security` call there. It also drives a *fake* login: the real `claude /login` is
+interactive and its exact post-login file writes are what the assertions above assume.
+Both belong in the real-machine gate rather than here.
+
 ## Upstream Behaviour Assumptions
 
 kae drives undocumented upstream state, so it depends on two different kinds of

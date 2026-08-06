@@ -183,6 +183,8 @@ kae pin -i side                # isolated: nothing shared with the real home
                                # (opt in via isolated_shared_items)
 kae pin claude main            # re-bind one tool in this dir (sessions/settings kept)
 kae unpin                      # remove the binding (deletes the kae-owned fragment)
+kae relogin                    # log this directory's account in again, into its own
+                               # store, and capture the result back
 kae use -i main                # global isolated: point every mise-activated
                                # terminal at a per-account private home;
                                # `kae use -s main` tears it down
@@ -265,7 +267,11 @@ directories they just invalidated instead of leaving them dangling, and
 `kae doctor` reports a bound directory that has been deleted or that binds an
 account you no longer have — and, since a bound directory keeps its own copy of
 the credential which the tool refreshes in place, one whose login has expired or is
-about to, telling you to log in inside that directory. It also reports a bound
+about to — and one whose copy a *newer* copy of the same account has overtaken,
+which for claude means it can no longer refresh at all even though every expiry
+still reads fine. That last one is the "I used claude in the other worktree and this
+one logged out hours later" case, and it had no visible cause before. All three name
+`kae relogin` in that directory. It also reports a bound
 directory whose store names a *different* account than the one it binds, which
 usually means something logged in inside that directory. `kae doctor` reports
 binding health and,
@@ -370,6 +376,7 @@ isolation alone does not yet solve — see "One account per worktree".
 | `kae use <profile\|tool account>` (`kae u`) | Switch globally (`-i` isolated, `--quiet` for hooks). |
 | `kae pin [<profile>]` (`kae p`) | Bind the current directory (`-i` isolated). |
 | `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials, harvesting each into its account snapshot first and keeping any it could not (sessions and settings are kept). |
+| `kae relogin [<tool>]` | Run the tool's login flow into *this directory's* bound store — kae exports the isolation variable itself, so it lands there whether or not the pin is active in this shell — then capture the new login back into the account snapshot. |
 | `kae run <tool> <account> [-- <cmd>]` (`kae r`) | Run one process under an account (`-s`/`-i`/`--env`). |
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
 | `kae ls` | List accounts and profiles in one view, with each snapshot's credential freshness. |

@@ -163,9 +163,10 @@ alternative exists (`secret-tool`).
   ([DATA-MODEL.md](DATA-MODEL.md) § Backups).
 
 - **Re-login UX: the bound-directory path is the one a human has to think about**
-  (measured 2026-08-04, **not fixed**). The three expiry paths are not equally
-  finished, and the worst one is the per-directory/per-worktree case this release
-  makes prominent:
+  (measured 2026-08-04; the bound-directory path **fixed in v0.17.0** by
+  `kae relogin`, the two global paths still as described). The three expiry paths
+  are not equally finished, and the worst one was the per-directory/per-worktree
+  case this release makes prominent:
   - *Global account, still-working credential* — already one command and no `cd`:
     `kae add --restore <tool> <account>` drives the tool's own login flow, captures,
     and puts the previous login back (`expiringCredentialDetail`). Nothing to fix.
@@ -175,36 +176,37 @@ alternative exists (`secret-tool`).
     second step leaves the dead credential in the snapshot, so the next `kae use`
     re-applies it. Worth checking whether plain `kae add <tool> <account>` (login
     flow **and** capture, already one command) can be named here instead.
-  - *Bound directory* — `cd <dir> && <tool login>` (`pinLoginRemedy`), and it
-    carries two hazards neither the message nor the docs mention. **(1)** It does not
-    say the pin has to be active in that shell. With mise activation absent or the
-    config untrusted, the isolation variable is unset, so the login lands in the
-    **real home**: the wrong account is refreshed and the bound one is still stale.
-    kae already words exactly this caveat for companions
-    (`companion_token_drift`: "the pin is not active in this shell (run `mise env`,
-    or `mise trust` if untrusted)") and has the predicate (`miseActivated`), so this
-    is an inconsistency, not a missing capability. ~~**(2)** Nothing captures the
-    in-directory login back, so a later `kae pin` overwrites the fresh login with the
-    older snapshot~~ — **fixed in v0.17.0** (the credential-copy entry below): a bind
-    now harvests the copy in the store into the account snapshot before writing, so
-    the in-directory login *is* captured back, and the 2026-08-04 measurement that
-    upgraded this hazard from "regresses" to "destroys" no longer applies to it. What
-    remains of hazard (2) is only that nothing captures it back **proactively**: the
-    harvest happens when a bind or a sweep next runs, so between the login and that
-    moment the snapshot still holds the older copy — which matters for `kae use`
-    applying that account globally, not for the bound directory. That is the part a
-    `kae relogin` would close, and it is now safe to build in either order, since the
-    overwrite it used to re-arm is gone.
+  - *Bound directory* — was `cd <dir> && <tool login>` (`pinLoginRemedy`), and it
+    carried two hazards neither the message nor the docs mentioned. Both are closed;
+    the remedy is now `cd <dir> && kae relogin <tool>` ([CLI.md](CLI.md) § kae
+    relogin Semantics). ~~**(1)** It does not say the pin has to be active in that
+    shell. With mise activation absent or the config untrusted, the isolation
+    variable is unset, so the login lands in the **real home**: the wrong account is
+    refreshed and the bound one is still stale.~~ — **fixed in v0.17.0**, and note
+    *how*, because the plan below said something else. The plan was to refuse with
+    the mise remedy, matching `companion_token_drift`'s wording and reusing
+    `miseActivated`. What shipped instead **exports the isolation variable itself**,
+    appended to the login child's environment, so the login lands in the bound store
+    whether or not mise is active — the hazard cannot occur rather than being warned
+    about, and the command works in exactly the shell where the old remedy failed.
+    `miseActivated` is not consulted by `kae relogin` at all. ~~**(2)** Nothing
+    captures the in-directory login back, so a later `kae pin` overwrites the fresh
+    login with the older snapshot~~ — **fixed in v0.17.0** (the credential-copy entry
+    below): a bind now harvests the copy in the store into the account snapshot
+    before writing, so the in-directory login *is* captured back, and the 2026-08-04
+    measurement that upgraded this hazard from "regresses" to "destroys" no longer
+    applies to it. The remainder of (2) — that nothing captured it back
+    **proactively**, so between the login and the next bind or sweep the snapshot
+    still held the older copy and `kae use <tool> <account>` would apply it — is
+    closed by the same command, which harvests as its last step.
 
-  **On doing it without typing a command.** There is no `kae doctor --fix` and no
-  path that offers to run a remedy; every remedy is a string the human retypes. The
-  pieces for a driven flow already exist, though: `loginCommand(tool)`,
-  `runner.RunInteractive`, and `kae add --restore` already spawn a tool's login
-  interactively. So a `kae relogin`-shaped command (resolve the current directory's
-  binding, refuse with the mise remedy when the pin is not active, log in *into the
-  bound store*, then capture back) is wiring, not new capability. **Decide the
-  surface before building**: a new verb, versus `--fix` on `doctor`, versus
-  `kae add --restore` learning about bindings.
+  **On doing it without typing a command.** There is still no `kae doctor --fix` and
+  no path that offers to run a remedy; every remedy is a string the human retypes.
+  `kae relogin` is a verb they retype it into, not an offer. The surface question
+  ("a new verb, versus `--fix` on `doctor`, versus `kae add --restore` learning about
+  bindings") was decided for the new verb: `--fix` would have to decide which of
+  several findings to act on, and `kae add --restore` is about the *global* store,
+  where its backup-and-restore is the whole point and means nothing per directory.
 
   **And the detection hook is already in the right place but blind.** The mise
   `[hooks.enter]` runs bare `kae use --quiet` on every directory change — the exact
@@ -232,14 +234,25 @@ alternative exists (`secret-tool`).
   What the user sees, worst first. ~~**kae destroys a live login**: `kae pin` re-run,
   `kae use -i` / `kae run -i` re-materialized, and `kae unpin --purge` all write or
   delete without harvesting~~ — **fixed in v0.17.0**, see below. **Two copies are a
-  time bomb**: the first refresh silently kills the others, so "I used claude in the
-  other worktree and this one logged out hours later" has no visible cause.
+  time bomb**: the first refresh silently kills the others. ~~so "I used claude in the
+  other worktree and this one logged out hours later" has no visible cause~~ — the
+  *cause* became visible in v0.17.0: `kae doctor` reports `credential_superseded` for
+  a bound directory whose copy another copy of the same account provably overtook,
+  names where the newer one is, and points at the remedy that where decides
+  ([CLI.md](CLI.md) § doctor). The bomb itself is unchanged — only one copy can refresh, and the entry
+  that makes that stop being true is the SSCD split below. Nor does the check see an
+  invalidation kae has no second copy of: a refresh in a directory kae does not know
+  about, or in the real home under an account it is not tracking, leaves nothing to
+  compare.
   ~~**`kae rollback` reports success restoring a rejected token** whenever anything
   refreshed after the backup, and `kae run -s <tool> <the active account>` writes the
   pre-child backup back over a credential the child refreshed~~ — **fixed in v0.17.0**,
   see below. **And every freshness
-  surface misreports**: doctor, `kae ls`, `kae status` and the switch-time warning all
-  judge by `refreshTokenExpiresAt`, which invalidation does not move.
+  surface misreports**: doctor's `credential_stale` / `credential_expiring`, `kae ls`,
+  `kae status` and the switch-time warning all judge by `refreshTokenExpiresAt`, which
+  invalidation does not move. That is still true of all of them; what v0.17.0 added is
+  a *different* code beside them (`credential_superseded`) that reads `expiresAt`
+  across copies instead, which is why it is not a band of the stale one.
   **Built in v0.17.0**, as a two-pass harvest plus a harvest in the delete sweep;
   [ADAPTERS.md](ADAPTERS.md) § Per-directory credential store is normative for the
   mechanism and the refusals, and [AGENTS.md](../AGENTS.md) carries the traps. Two
@@ -265,16 +278,21 @@ alternative exists (`secret-tool`).
   invalidation `recaptureWouldDowngrade`'s usability test cannot see; and the two
   candidates for "newest" have to be compared **against each other**, or the remedy
   names a copy that is not the newest.
-  One thing deliberately left where it is: the "cannot log in" half of the rollback
-  warning is claude-only like the rest, although the fact it reports — a rollback writing
+  One thing deliberately left where it is: the "carries no usable token" half of the
+  rollback warning (this entry named it after a wording the code has not used since the
+  item-5 review; `docs/CLI.md` § `kae rollback --json` is normative and was itself wrong
+  about it until 2026-08-06)
+  is claude-only like the rest, although the fact it reports — a rollback writing
   a dead recorded copy over a working login destroys that login — holds for **every**
   tool and needs no rotation measurement. Widening it would add a warning to five tier-2
   tools in a release about claude's rotation, so it waits; the gate to move is the
   `rotatesSingleUse` check at the top of `warnRestoringSupersededCredential`, and only
   the not-`Orderable` branch may move, never the ordering one.
   **Still open after it**, smallest first: the freshness surfaces still judge by
-  `refreshTokenExpiresAt` (no offline fix exists — this is a wording and
-  expectation-setting problem, not a detection one); **`run -s`'s own recapture goes
+  `refreshTokenExpiresAt` (no offline fix exists for *them* — this is a wording and
+  expectation-setting problem, not a detection one; the detectable subset, where kae
+  holds a second copy to compare against, is `credential_superseded`);
+  **`run -s`'s own recapture goes
   through neither guard the switch-away recapture applies** — it calls
   `captureSnapshot` directly, so it neither keeps the snapshot's identity
   (`keepSnapshotIdentity`) nor refuses a downgrade (`recaptureWouldDowngrade`): a child
@@ -655,26 +673,26 @@ alternative exists (`secret-tool`).
   recapture is deliberately still open)*: a bound directory's tool refreshes its own
   token in place, so kae's snapshot for that account ages and the directory's own
   copy ages independently of it.
-  `kae doctor` now **reports** a bound directory whose credential is stale or within
-  the lead time (`credential_stale` / `credential_expiring`, message `bound to
-  <dir>`; see [CLI.md](CLI.md) "Bound-directory credentials"), which is the half
-  with one right answer: the remedy is a login inside that directory.
-  **Recapturing a pin store's token back into the account snapshot is still not
-  done, and not merely unimplemented — it has no non-arbitrary definition yet.**
-  Several directories can bind the same account, each with its own
-  independently-refreshed token, so nothing says which of them the single global
-  snapshot should take; and a directory not opened in weeks holds an *older* token
-  than the global one, so writing it back is a downgrade. That last half is no longer
-  undetectable — `supersedes` orders two copies by `expiresAt` and the switch-away
-  recapture now refuses one the snapshot already supersedes — but ordering only makes
-  the *downgrade* refusable, not the choice: with several directories bound to one
-  account, "the latest of the stores" is still an arbitrary answer, which is what keeps
-  this open. Two directions if it is ever wanted: pick the
-  store with the latest deadline (needs every store read on every switch, and is
-  still wrong when two are equally fresh), or make it explicit —
-  `kae add --no-login <tool> <account> --from-dir <dir>` — so the user names the
-  authoritative one. The explicit form is the only one that is honest about the
-  ambiguity.
+  `kae doctor` **reports** a bound directory whose credential is stale or within the
+  lead time (`credential_stale` / `credential_expiring`, message `bound to <dir>`),
+  and since v0.17.0 one that a newer copy of the same account overtook
+  (`credential_superseded`); see [CLI.md](CLI.md) "Bound-directory credentials".
+  The remedy for all three is `cd <dir> && kae relogin <tool>`.
+  **What is closed and what is not.** The premise this entry rested on — that
+  recapture "has no non-arbitrary definition" because nothing says which of several
+  bound stores the single snapshot should take — was answered in v0.17.0 by ordering
+  on `expiresAt` (`supersedes`, guarded by `orderable` and by attribution): of all
+  copies of one account's credential under single-use rotation, at most one can still
+  refresh, so "the newest" is the answer rather than a preference. The harvest applies
+  it wherever a copy is about to be destroyed, and `kae relogin` applies it for the
+  directory the user is standing in, which is the case with a person present to say
+  which store is authoritative.
+  What stays open is an **unprompted** recapture: nothing walks every bound store on a
+  switch to pull the newest in. It would need every store read on every `kae use`
+  (a `security` call per bound directory), and it would still be a write kae performs
+  on evidence nobody asked it to gather. `kae add --no-login <tool> <account>
+  --from-dir <dir>` — the user naming the authoritative store — remains the explicit
+  form if it is ever wanted.
 - **TUI**: an interactive mode (profiles/accounts browser, pin status,
   config maintenance) on top of the stable JSON surface, so daily
   switching does not require remembering flags. Candidate once the
@@ -750,6 +768,21 @@ Daily-use ergonomics, designed together as mise-style verbs so the surface
 stays coherent rather than accreting ad hoc. Account delete/rename graduates
 to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
 
+- **`kae env` and `kae backup` have no completion case** (found 2026-08-06 while
+  wiring `kae relogin`'s, **not fixed**). Both are subcommand groups —
+  `env set|unset|list`, `backup list` — and neither appears in `subcommandVerbs` nor
+  in the `case` blocks of the three generated scripts, so `kae env <TAB>` and
+  `kae backup <TAB>` offer nothing at the first positional. That is the same defect
+  class the v0.10.0 companion gap was, and the parity guard exists precisely to catch
+  it; it does not, because the guard iterates the table rather than the router, so a
+  group missing from *both* is invisible to it. The fix is two entries in
+  `subcommandVerbs` plus a case in bash/zsh/fish, after which
+  `TestSubcommandCompletionParity` holds them. Left out of the v0.17.0
+  `kae relogin` change deliberately: it is unrelated surface, and shipping it inside
+  a credential-safety change would put two unrelated diffs in one review. Worth
+  considering at the same time whether the guard should iterate `completionCommands`
+  and require a case for every command that takes a positional, which would have
+  caught both without a table entry.
 - **`kae profile save <name>`**: snapshot the current active set into a
   named profile, instead of hand-editing config via `kae edit`.
 - **Account rm/rename** *(v0.7.1 — see [RELEASE.md](RELEASE.md))*: `kae

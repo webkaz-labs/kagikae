@@ -13,7 +13,7 @@ import (
 // omitted to keep the list tidy). Surfaced through `kae __complete commands`.
 // Keep in lockstep with Root().
 var completionCommands = []string{
-	"init", "edit", "doctor", "add", "use", "pin", "unpin", "run", "env",
+	"init", "edit", "doctor", "add", "use", "pin", "unpin", "relogin", "run", "env",
 	"companion", "mise", "accounts", "ls", "account", "profile", "status",
 	"backup", "rollback", "completion", "version", "help",
 }
@@ -144,6 +144,12 @@ _kae() {
         COMPREPLY=( $(compgen -W "$(kae __complete accounts "${pos[0]}")" -- "$cur") )
       fi
       ;;
+    relogin)
+      # Only a tool: the account comes from the binding, never from a word here.
+      if [ "$np" -eq 0 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
+      fi
+      ;;
     account)
       if [ "$np" -eq 0 ]; then
         COMPREPLY=( $(compgen -W "rm rename set-identity" -- "$cur") )
@@ -219,6 +225,12 @@ _kae() {
         compadd -- ${(f)"$(kae __complete tools)"}
       elif (( np == 1 )); then
         compadd -- ${(f)"$(kae __complete accounts ${pos[1]})"}
+      fi
+      ;;
+    relogin)
+      # Only a tool: the account comes from the binding, never from a word here.
+      if (( np == 0 )); then
+        compadd -- ${(f)"$(kae __complete tools)"}
       fi
       ;;
     account)
@@ -298,6 +310,11 @@ function __kae_complete
                 kae __complete tools
             else if test $np -eq 1
                 kae __complete accounts $pos[1]
+            end
+        case relogin
+            # Only a tool: the account comes from the binding, never from a word here.
+            if test $np -eq 0
+                kae __complete tools
             end
         case account
             if test $np -eq 0

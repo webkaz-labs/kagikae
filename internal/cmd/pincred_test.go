@@ -100,7 +100,10 @@ func TestDoctorReportsStaleBoundDirectoryCredential(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected a credential_stale check for the bound directory, got %+v", report.Checks)
 	}
-	for _, want := range []string{"bound to " + dir, "refresh token expired", "cd " + dir, "claude /login"} {
+	// The remedy is `kae relogin` and not the tool's own login command: that one is
+	// right only in a shell where the pin is active, and in any other it refreshes
+	// the real home instead (pinLoginRemedy).
+	for _, want := range []string{"bound to " + dir, "refresh token expired", "cd " + dir, "kae relogin claude"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message missing %q: %q", want, msg)
 		}

@@ -116,7 +116,7 @@ close.
 
 | Tier | Tools | Surface kae commits to |
 |------|-------|------------------------|
-| **1 — full surface** | claude, codex | every mode: global shared (`use`), global isolated (`use -i` / `run -i`), both per-directory binds (`pin -s` / `pin -i`), identity switching and drift detection, per-directory credential stores. Gaps here are debt with a plan (see [ROADMAP.md](ROADMAP.md)) |
+| **1 — full surface** | claude, codex | every mode: global shared (`use`), global isolated (`use -i` / `run -i`), both per-directory binds (`pin -s` / `pin -i`), identity switching and drift detection, per-directory credential stores, and the per-directory login flow (`kae relogin`). Gaps here are debt with a plan (see [ROADMAP.md](ROADMAP.md)) |
 | **2 — credential switching** | agy, opencode, cursor, copilot | global shared (`kae use`), `kae run --env`, capture / apply / backup / `kae rollback`, `kae doctor`, and identity detection as far as the tool exposes one. Nothing else, and that is the specification — not a backlog |
 
 What Tier 2 does **not** get, deliberately: `kae pin` in either mode, and

@@ -697,11 +697,25 @@ func TestCredentialArtifactNameMatchesEveryAdapter(t *testing.T) {
 			t.Errorf("%s: credentialArtifactName is %q but Artifacts returned %v", tool, artName, names)
 		}
 	}
-	// The guard on the guard: both `continue`s above are legitimate answers, and
-	// together they can empty the loop — at which point this passes while asserting
-	// nothing. Name the tools it actually reached.
-	if len(checked) == 0 {
-		t.Fatal("no tool reached the assertion; this guard would pass vacuously")
+	// The guard on the guard, and it has to be the **exact set**, not a non-empty one.
+	// Both `continue`s above are per tool, so an emptiness test passes with coverage
+	// silently halved when one adapter refuses — and a real drift on the refusing side
+	// goes with it (measured: claude's Artifacts made to refuse *and* its name drifted
+	// leaves this green). The realistic trigger is not exotic — claude's Artifacts
+	// opens with `driver(env)`, so any environment where the driver refuses drops it.
+	//
+	// A refusal is a legitimate answer for an adapter, but not for this test's
+	// environment: testApp hands both tools a temp HOME with nothing to refuse over.
+	// If a platform-conditional adapter ever does refuse here, this assertion is meant
+	// to be the alarm and to be updated deliberately.
+	want := []string{}
+	for _, tool := range constants.Tools {
+		if credentialArtifactName(tool) != "" {
+			want = append(want, tool)
+		}
 	}
-	t.Logf("checked: %v", checked)
+	if !slices.Equal(checked, want) {
+		t.Fatalf("only %v of %v reached the assertion; a tool whose Artifacts refuses is silently uncovered",
+			checked, want)
+	}
 }

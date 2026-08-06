@@ -182,6 +182,8 @@ var subcommandVerbs = map[string][]string{
 	"account":   {"rm", "rename", "set-identity"},
 	"profile":   {"save", "set", "unset", "rm", "default"},
 	"companion": {"add", "rm", "list"},
+	"env":       {"set", "unset", "list"},
+	"backup":    {"list"},
 }
 
 // TestCompletionRefreshRewritesRegisteredFile: `completion --refresh` rewrites an

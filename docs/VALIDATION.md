@@ -1331,14 +1331,25 @@ pin-level pass running **before** the stores are materialized, and E additionall
 the replaced fragment being read before it is rewritten.
 **F PASSED 2026-08-04** (darwin, file driver, temp HOME, pre-release binary), run as
 written, all four assertions checked at their own points.
-**G–J PASSED 2026-08-05** (darwin, file driver, temp HOME, pre-release binary), every
+**G–J PASSED 2026-08-05, re-run at every later revision of the branch and last measured
+14/14 on 2026-08-06** (darwin, file driver, temp HOME, pre-release binary), every
 documented assertion checked at its own point, and **discriminated against a control**:
 the same G block run against a binary with the skip forced off leaves `MAIN-OLD` live and
 prints "previous auth state restored", so G is not a tautology. Two defects in the block
-itself were found by that run and are fixed above — an `echo $?` that reported *grep's*
-status and so could never fail, and case H going green over a snapshot the run poisons
-(the `snap main | grep FOREIGN` line now states it). **Re-run G–J before the tag**, since
-the block changed after that run.
+itself were found by the first run and are fixed above — an `echo $?` that reported
+*grep's* status and so could never fail, and case H going green over a snapshot the run
+poisons (the `snap main | grep FOREIGN` line now states it). **Re-run before the tag** on
+the final tree, as § Smoke Checks requires of every block.
+
+**What G–J does not cover, stated because a green run reads as if it did.** The block
+exports `KAE_CLAUDE_DRIVER=file`, so claude's credential is a JSON-pointer file and its
+identity a pointer in `~/.claude.json` — **neither touches `internal/keychain`**. So it
+exercises the per-command keychain read cache *not at all*: no read is cached, no
+`invalidate` runs, and a stale-read bug would pass all fourteen assertions. The cache the
+restore paths now open (`run -s` after its child, `kae rollback` for its mutation) is
+covered by unit tests over the darwin sim — including a sibling-account invalidation test
+— and, on a real machine, only by running `kae run -s` and `kae rollback` on darwin
+against the real keychain, which this branch has not done.
 
 G and H are the pair worth re-running after any change to `run -s`'s
 post-child sequence, and J after any change to the switch-away recapture. One remedy is

@@ -368,7 +368,11 @@ block in docs/VALIDATION.md, next to two correct ones.
   order** — both arms hold the same ones, so an unordered check passes on arms
   that were swapped); the scripts are Go string constants, so `mise run check`'s
   shellcheck never parses them and `TestCompletionScriptsAreSyntacticallyValid`
-  is what does — for the shells the machine actually has, requiring bash. Also update `completionCommands` and `printHelp`,
+  is what does — for the shells the machine actually has, requiring bash.
+  Adding a **shell** is its own lockstep: `completionScript`, the usage line and
+  the `supported: …` error in `CmdCompletion` (neither of which any guard reads),
+  the `bash zsh fish` run inlined in all three scripts, and
+  `subcommandVerbs["completion"]`. Also update `completionCommands` and `printHelp`,
   neither of which any guard checks against the router — and note why that gap is
   not closed by dispatching each command from a test (several reach `newApp`, and
   with it the real environment, before a bad flag stops them; the reasoning lives

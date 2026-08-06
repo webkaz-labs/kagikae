@@ -64,7 +64,10 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   kind lists a command's flags from the same per-command registrars the parser
   uses (`cmd/flagspec.go`, also called by `parseCommon`), so flag completion
   tracks the real flag set. The shell scripts route by the flag-filtered
-  positional index (flags before positionals do not shift completion). Read-only,
+  positional index (a **boolean** flag before the positionals does not shift
+  completion; one that takes a value does, since the scripts drop words beginning
+  with `-` and a value is not one — [ROADMAP.md](ROADMAP.md) § Command-system
+  expansion). Read-only,
   no locks; its line-oriented output is an internal contract, not the JSON contract.
 - **Did-you-mean hints** (`cmd/suggest.go`): the unknown-command, unknown-tool,
   and unknown-profile usage errors append a single hand-rolled Levenshtein

@@ -683,6 +683,11 @@ func TestCompletionInstallPrintOnly(t *testing.T) {
 // — which is exactly how `env`'s tool and account slots could be deleted outright
 // with all three shells still green — and both arms of one branch hold all the
 // same literals, so an unordered check passes on arms that were swapped.
+//
+// Order is as far as matching text goes: it does not prove which arm a literal
+// sits *in*, so flattening a branch into unconditional lines keeps every literal
+// in sequence and passes here while completing wrongly. That is the real-machine
+// smoke's question (docs/VALIDATION.md § v0.17.0 completion real-machine smoke).
 func TestCompletionPositionalRouting(t *testing.T) {
 	for _, tc := range []struct {
 		shell    string

@@ -1309,6 +1309,15 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 	// resolving specs is not free, so a group this check can never speak about must
 	// cost nothing. rotatesSingleUse is the whole premise — where older copies stay
 	// usable, being overtaken is not a problem to report.
+	//
+	// **That gate is load-bearing only by coincidence today, which is why it must not be
+	// removed as dead.** Measured 2026-08-06: with two codex-bound directories holding
+	// orderable copies seven hours apart, dropping rotatesSingleUse still reports
+	// nothing — but not because of this line. It is silenced by the loser-side
+	// attribution, which fails because **claude is the only adapter that declares an
+	// IdentityOnly artifact**, so storeHoldsAccount can never confirm a codex store. The
+	// day a second tool declares one, this gate is the only thing between codex and a
+	// finding whose message would read "codex's refresh token rotates single-use".
 	artName := credentialArtifactName(group.Tool)
 	if !rotatesSingleUse(group.Tool) || artName == "" {
 		return nil

@@ -152,6 +152,16 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// state through the pre-login spec then reads the store the tool abandoned — empty
 	// before, empty after — and calls a successful login "unchanged". `kae add` re-plans
 	// after its login flow for the same reason (refreshPlan).
+	//
+	// **Not test-covered, and the reason is worth having**: reverting this to reuse the
+	// pre-flow `sp` survives the suite (measured 2026-08-06). The only spec *kind* that
+	// moves with a store's contents is codex's keyring probe, and reaching it needs a
+	// darwin keychain-backed per-directory codex store — the capability
+	// `KeychainDirBindable` deliberately does not declare and whose real-machine gate is
+	// still open (docs/ROADMAP.md). A test would have to fake exactly the configuration
+	// kae refuses to claim it supports. For claude both resolutions are identical (its
+	// kind follows an env var, not the store), so this is one extra `dirSpecs` per
+	// relogin today and the guard for the day codex's gate is met.
 	specs, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, storeDir, speak)
 	after, comparedAfter := storeCredential(ctx, sp, haveSpec)
 	switch {
@@ -167,6 +177,14 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// failed reads are also "equal", and that is kae not knowing rather than nothing
 	// having changed. Saying so is not optional — falling through to the success line
 	// would claim a login on the strength of a comparison that never happened.
+	//
+	// Of the pair, only the **before** half is observable through the wording, measured
+	// 2026-08-06 rather than argued: a failed *after* read makes the harvest refuse on
+	// its own evidence (it reads the same spec through the same call), so `attributed`
+	// is already false and the strong line cannot print either way. Dropping
+	// `comparedAfter` from the gate below therefore survives every fixture, including
+	// the readable-before/unreadable-after one written to kill it. Keep both halves —
+	// the equivalence is between two functions that a change to either could separate.
 	case !comparable || !comparedAfter:
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae could not read this directory's %s credential, so it cannot tell whether the "+
@@ -294,6 +312,11 @@ func reloginTool(app *App, pinID string, fragment fragmentInfo, explicitTool str
 			continue
 		}
 		if loginCommand(tool) == nil {
+			// **Unobservable today**, like the refusal below it and for the same reason:
+			// every tool `kae pin` can bind is tier 1, and both tier-1 tools have a login
+			// command. Dropping this filter survives the suite. It is the gate that keeps
+			// a bound tool kae cannot drive out of the candidate set, so the multi-candidate
+			// refusal counts only tools it could actually log in.
 			continue
 		}
 		candidates = append(candidates, tool)
@@ -358,8 +381,17 @@ func boundToolList(fragment fragmentInfo) string {
 // the account half of what the caller's success line claims. Every path where kae did
 // not establish that answers false, including the ones where it never asked: a tool
 // whose rotation is unmeasured harvests nothing, so nothing checked the identity
-// there either. Absence of a refusal is not confirmation — the same rule
-// dirIdentityConfirms itself follows one level down.
+// there either.
+//
+// One route is the exception, and the comment used to deny it: harvestDirCredential
+// short-circuits on `!supersedes(live, snapshot)` **before** dirIdentityConfirms, so a
+// post-flow copy that does not order ahead of the snapshot returns an empty refusal
+// with no identity comparison made, and this answers true. Unreachable in practice
+// while claude's access token is ~8h — a real login sets `expiresAt` to now+8h, which
+// no snapshot captured within that token's life can beat — and it stops being
+// unreachable the moment a tool with a short-lived token is measured. Recorded rather
+// than closed because closing it means the harvest distinguishing "not newer" from
+// "confirmed", which its three other callers do not need.
 func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 	specs []artifact.Spec, tool, accountName, storeDir string,
 ) bool {

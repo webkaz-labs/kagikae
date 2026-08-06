@@ -587,3 +587,67 @@ func mustFragment(t *testing.T) fragmentInfo {
 	}
 	return info
 }
+
+// The two reads are separate observations and each can fail alone, which the
+// existing un-comparable test cannot show: it makes the credential path a directory,
+// so *both* reads fail and either flag alone still evaluates false. An asymmetric
+// fixture is what distinguishes them — and the harm the pair prevents is the
+// contradicting-lines defect: stderr saying kae cannot tell, stdout claiming a login.
+func TestReloginWillNotClaimALoginItCouldNotCompareAgainst(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	_, credFile := boundStoreForClaudeMain(t, app)
+	// Unreadable *before*: a path that is a directory errors rather than reading as
+	// absent, so kae has no pre-flow bytes to compare against.
+	if err := os.Remove(credFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(credFile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// …and a perfectly good login after it. Everything except the comparison succeeds:
+	// the harvest reads the new copy, orders it ahead of the snapshot and attributes
+	// it, so `attributed` is true and only the missing before-read holds the wording
+	// back. Drop `comparable` from that gate and this prints "Logged claude in".
+	withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
+		for _, entry := range extraEnv {
+			if dir, ok := strings.CutPrefix(entry, isolationEnvVar(constants.ToolClaude)+"="); ok {
+				cred := filepath.Join(dir, ".credentials.json")
+				if err := os.RemoveAll(cred); err != nil {
+					t.Fatal(err)
+				}
+				writeFile(t, cred, claudeOAuthPayload("sk-ant-oat01-AFTERONLY-mmmm", app.Now().Add(8*time.Hour)))
+				writeFile(t, filepath.Join(dir, ".claude.json"), claudeIdentityFile("main-uuid"))
+			}
+		}
+		return 0, nil
+	})
+
+	var out string
+	code, stderr := captureStderr(t, func() int {
+		var inner int
+		inner, out = captureStdout(t, func() int {
+			return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+		})
+		return inner
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	if strings.Contains(out, "Logged claude in") {
+		t.Errorf("kae never read the store before the flow, so it cannot say the flow changed it: %q", out)
+	}
+	if !strings.Contains(stderr, "cannot tell whether the login flow changed anything") {
+		t.Errorf("kae must say which observation it is missing: %q", stderr)
+	}
+	// The positive control that keeps this from passing for the wrong reason: the
+	// login itself worked and *was* harvested, so the weak wording is the missing
+	// before-read and not a flow that failed.
+	if !strings.Contains(stderr, "harvested") {
+		t.Fatalf("the capture back must still have happened: %q", stderr)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, "AFTERONLY-mmmm") {
+		t.Fatalf("the new login must reach the snapshot even when kae cannot compare: %s", got)
+	}
+}

@@ -1455,9 +1455,20 @@ snap main | grep B-RELOGGED              # assert: and reached the account snaps
 # --- M. outside a binding nothing is launched ---
 C=$(mktemp -d); cd "$C"
 /tmp/kae relogin; echo "exit=$?"
-#   assert: exit=7 and `this directory is not pinned`, naming `kae add --restore`.
-#           The fake `claude` is still first on PATH and would have written into the
-#           temp $HOME had kae run it, so this asserts more than the exit code
+#   assert: exit=7 and `this directory is not pinned`, naming `kae add --restore`
+grep SIDE-OLD "$HOME/.claude/.credentials.json"   # assert: the temp real home still holds
+                                        #   what the preamble left there last (the preamble
+                                        #   writes MAIN-OLD, captures, then overwrites with
+                                        #   SIDE-OLD to capture the second account — so
+                                        #   SIDE-OLD is the resting value, and asserting
+                                        #   MAIN-OLD here silently matched nothing)
+grep -c B-RELOGGED "$HOME/.claude/.credentials.json"   # assert: 0 — paired with the positive
+                                        #   line above, because a `grep -c` for absence prints
+                                        #   0 when the file is missing too.
+#   Together they assert the flow was never launched: the fake `claude` is still first
+#   on PATH and writes into whatever CLAUDE_CONFIG_DIR names, so with none set it would
+#   land here. The exit code alone does not say that. This was prose until 2026-08-06,
+#   and prose asserts nothing
 ```
 
 `grep -c` printing `0` is an assertion on two lines here, so paste the block as-is
@@ -1466,8 +1477,11 @@ rather than under `set -e`.
 **K–M PASSED 2026-08-06** (darwin, file driver, temp HOME, pre-release binary built
 from this branch), each assertion checked at its own point, and **re-run verbatim
 after each review round's changes** — round 1 (the hedged wording, the split remedy,
-the store-must-exist refusal) round 2 (the three-gate success wording) and round 3
-(the emptied-store arm and the reworded warnings). A block whose expected output
+the store-must-exist refusal) round 2 (the three-gate success wording), round 3
+(the emptied-store arm and the reworded warnings) and round 5 (the real-home
+assertion below, which was prose until an execution-type review pointed out that
+nothing checked it — and whose first written form asserted the wrong literal and so
+matched nothing, caught by running it). A block whose expected output
 moved and was not re-run is a block that documents the previous release. The `credential_stale = 0`
 line in K is the one worth keeping in view: it is what distinguishes this check from
 the one beside it, and if the two ever merge it is the assertion that says so.

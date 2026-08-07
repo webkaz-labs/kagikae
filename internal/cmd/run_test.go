@@ -523,6 +523,11 @@ func TestRunSharedRefusesToRecaptureAForeignLogin(t *testing.T) {
 	if !strings.Contains(stderr, "kae add --no-login claude") {
 		t.Errorf("the refusal must say how to keep that live login: %q", stderr)
 	}
+	// The scope clause is per-caller: on this path the backup covers only the declined
+	// tools, so claiming it reverts a whole switch would be wrong in both halves.
+	if !strings.Contains(stderr, "which covers only the tools whose recapture kae declined") {
+		t.Errorf("the remedy must state what else the rollback reverts: %q", stderr)
+	}
 	for _, pii := range []string{foreign, "stranger", "@example.com"} {
 		if strings.Contains(stderr, pii) {
 			t.Errorf("identity/credential value %q must not reach stderr: %q", pii, stderr)
@@ -564,6 +569,21 @@ func TestRunSharedRefusesToRecaptureATombstone(t *testing.T) {
 	mustExit(t, constants.ExitOK, code, out)
 	if !strings.Contains(stderr, "needs a re-login") {
 		t.Errorf("expected a warning that the live credential is dead: %q", stderr)
+	}
+	// A refusal that *can* say the copy is finished must not also preserve it: the pair
+	// would offer a two-step to resurrect what the previous sentence declared dead, and
+	// spend a backup doing it.
+	if strings.Contains(stderr, "preserved only in backup") {
+		t.Errorf("nothing worth keeping here, so no backup may be claimed: %q", stderr)
+	}
+	metas, err := backup.List(app.Paths.BackupsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, meta := range metas {
+		if meta.Reason == constants.BackupReasonRunUnattributable {
+			t.Errorf("a provably-dead copy must not get a preserved-copy backup: %+v", meta)
+		}
 	}
 	be := testBackend(t, app)
 	if got := snapshotPayload(t, app, be, "claude", "main"); !strings.Contains(got, "main-live") {
@@ -771,6 +791,21 @@ func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
 // The fixture's `expiresAt` is a **string**: Known to claude's parser, not a tombstone,
 // and undated — the shape an upstream type change produces.
 func TestRunSharedPreservesACopyItCannotOrder(t *testing.T) {
+	const refreshedToken = "MAIN-T1-REFRESHED"
+	// Both shapes reach the same arm, which is why the second row exists: liveValuesFreshness
+	// returns the **zero** Info for a payload no artifact parses, and supersedes' zero cutoff
+	// then declares it superseded exactly as an undated-but-parsed one is. A table with only
+	// the first row leaves the message free to claim kae read a payload and found no deadline.
+	for _, tc := range []struct{ name, live string }{
+		{"a deadline of the wrong type", `{"accessToken":"` + refreshedToken + `","refreshToken":"r1","expiresAt":"1814400000000"}`},
+		{"a payload kae cannot parse at all", `{"unrecognized":true,"note":"` + refreshedToken + `"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) { runPreservesUnorderableCase(t, tc.live, refreshedToken) })
+	}
+}
+
+func runPreservesUnorderableCase(t *testing.T, liveBody, refreshedToken string) {
+	t.Helper()
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
@@ -781,10 +816,8 @@ func TestRunSharedPreservesACopyItCannotOrder(t *testing.T) {
 		`{"oauthAccount":`+claudeOAuthAccount("main", "main@example.com")+`}`)
 	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
 
-	const refreshed = "MAIN-T1-REFRESHED"
 	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
-		seedClaudeOAuth(t, app,
-			`{"accessToken":"`+refreshed+`","refreshToken":"r1","expiresAt":"1814400000000"}`)
+		seedClaudeOAuth(t, app, liveBody)
 		return 0, nil
 	})
 	code, out, stderr := captureBoth(t, func() int {
@@ -812,7 +845,7 @@ func TestRunSharedPreservesACopyItCannotOrder(t *testing.T) {
 			held = string(data)
 		}
 	}
-	if !strings.Contains(held, refreshed) {
+	if !strings.Contains(held, refreshedToken) {
 		t.Fatalf("the copy kae could not order was not preserved: %s", held)
 	}
 	// The snapshot keeps its own dated copy: kae declined to overwrite it, which is the
@@ -862,4 +895,106 @@ func TestRunSharedBacksUpOnlyTheDeclinedTools(t *testing.T) {
 	if got := snapshotPayload(t, app, be, "codex", "main"); !strings.Contains(got, "codex-CHILD-token") {
 		t.Fatalf("codex's recapture must have happened: %s", got)
 	}
+}
+
+// When the only backup left is a preserved copy, the bare-rollback default has nothing it
+// may target — and the refusal must name that state rather than claim no backup exists,
+// which `kae backup list` would immediately falsify.
+//
+// The state is **constructed** rather than produced: a declining run used to reach it at
+// backup_keep = 1, because the preserved copy is written last and sorts newest, so the
+// prune evicted the undo target instead. That is fixed (backup_keep counts undo targets
+// only), which leaves this branch as defence for a backups dir something else has thinned
+// — so the test removes the run backup by hand rather than relying on a prune that no
+// longer misbehaves. Asserted anyway: the branch makes a claim about a credential, and an
+// unreachable-today claim is exactly the kind that rots.
+func TestBareRollbackWithOnlyAPreservedBackupSaysWhy(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		seedClaude(t, app, "sk-ant-oat01-FOREIGN", "stranger")
+		return 0, nil
+	})
+	captureBoth(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
+	})
+
+	metas, err := backup.List(app.Paths.BackupsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The run wrote both kinds and the prune kept both — which is the F10(a) fix, asserted
+	// here because it is the premise of the construction below.
+	if len(metas) != 2 {
+		t.Fatalf("a declining run must leave the undo target beside the preserved copy; got %+v", metas)
+	}
+	for _, meta := range metas {
+		if meta.Reason == constants.BackupReasonRunUnattributable {
+			continue
+		}
+		if err := os.Remove(filepath.Join(app.Paths.BackupsDir(), meta.ID+".json")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	metas, err = backup.List(app.Paths.BackupsDir())
+	if err != nil || len(metas) != 1 || metas[0].Reason != constants.BackupReasonRunUnattributable {
+		t.Fatalf("construction failed: %+v (err=%v)", metas, err)
+	}
+
+	// The refusal is an error, so it lands on stderr.
+	code, out, stderr := captureBoth(t, func() int { return runRollback(ctx, app, opts, "") })
+	if code != constants.ExitNotFound {
+		t.Fatalf("bare rollback must refuse when nothing is restorable: %d (%s)", code, out)
+	}
+	if strings.Contains(stderr, "no backups exist yet") {
+		t.Errorf("a backup does exist; the message must not deny it: %q", stderr)
+	}
+	for _, want := range []string{constants.BackupReasonRunUnattributable, "kae backup list", "kae rollback --to"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the refusal must name %q: %q", want, stderr)
+		}
+	}
+}
+
+// backup_keep counts undo targets. A declining run writes two backups and the preserved
+// copy sorts newest — it is created last — so counting them alike let it evict the run's
+// own backup, leaving the command with nothing a bare rollback could target. At the
+// default keep count nothing is pruned at all, which is why this fixture sets it to 1.
+func TestDecliningRunKeepsItsUndoTargetAtKeepOne(t *testing.T) {
+	app := testApp(t, nil)
+	app.Config.Security.BackupKeep = 1
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		seedClaude(t, app, "sk-ant-oat01-FOREIGN", "stranger")
+		return 0, nil
+	})
+	captureBoth(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
+	})
+
+	metas, err := backup.List(app.Paths.BackupsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reasons := map[string]bool{}
+	for _, meta := range metas {
+		reasons[meta.Reason] = true
+	}
+	if !reasons[constants.BackupReasonRun] {
+		t.Fatalf("the run's own backup was evicted by the preserved copy: %+v", metas)
+	}
+	if !reasons[constants.BackupReasonRunUnattributable] {
+		t.Fatalf("the preserved copy must survive too: %+v", metas)
+	}
+	// And a bare rollback finds the undo target rather than refusing.
+	code, out := captureStdout(t, func() int { return runRollback(ctx, app, opts, "") })
+	mustExit(t, constants.ExitOK, code, out)
 }

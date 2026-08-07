@@ -60,7 +60,7 @@ func registerProfileDefaultFlags(fs *flag.FlagSet, clear *bool) {
 }
 
 func registerRollbackFlags(fs *flag.FlagSet, to *string) {
-	fs.StringVar(to, "to", "", "backup id to restore (default: most recent)")
+	fs.StringVar(to, "to", "", "backup id to restore (default: most recent restorable)")
 }
 
 // registerUnpinFlags is the `kae unpin` extra-flag registrar, shared with the

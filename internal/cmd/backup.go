@@ -143,7 +143,9 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 			return nil, err
 		}
 		if !found {
-			return nil, errf(constants.ExitNotFound, "no backups exist yet")
+			return nil, errf(constants.ExitNotFound,
+				"no backup kae can roll back to (a %s backup is a preserved copy, not an undo target; "+
+					"see kae backup list, then kae rollback --to <id>)", constants.BackupReasonRunUnattributable)
 		}
 		meta = latest
 	} else {

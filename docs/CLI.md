@@ -145,11 +145,16 @@ matches.
   account (someone ran the tool's own login outside kae), a live identity that
   **differs** from the recorded one where kae cannot read either as an account record
   (so it cannot tell whose login is live — worded weaker than the previous case,
-  because kae has observed a change and not an account), or a live credential that
-  needs a re-login while the snapshot still holds a usable one.
-  `keepSnapshotIdentity` and `recaptureWouldDowngrade` are normative for the set; the
-  freshness guard is one-directional, so kae never prefers the older value, it only
-  refuses to overwrite a working credential with a dead one.
+  because kae has observed a change and not an account), a live credential that
+  needs a re-login while the snapshot still holds a usable one, a live credential the
+  snapshot **provably supersedes** (for a tool whose refresh token rotates single-use the
+  older copy cannot refresh at all), or one kae cannot **order** against the snapshot
+  because it carries no deadline kae can use.
+  `keepSnapshotIdentity` and `recaptureWouldDowngrade` are normative for the set — read
+  them rather than this list, which was wrong for a release. The freshness guard is
+  one-directional: kae never prefers the older value. What it refuses is wider than "a
+  dead credential over a working one" — a usable but *older* copy is refused too, and so
+  is one kae cannot judge, which is reported as exactly that rather than as dead.
 
   **What a refusal costs, and where the copy goes.** Declining to recapture means the
   live copy is not preserved in the snapshot, and the switch then overwrites the live
@@ -232,12 +237,19 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   lets an undated copy lose to anything, which is right for deciding an overwrite and
   wrong for telling the user the copy is finished, so that refusal says only that kae
   cannot tell which of the two can still refresh.
-  Two consequences of that second backup, both stated because nothing else would say
-  them. It covers **only** the tools whose recapture was declined, unlike the switch's
-  backup, and the warning says so — restoring it does not revert the rest of the run.
-  And such a run writes **two** backups, so it consumes two of `backup_keep`'s slots;
-  with `backup_keep = 1` the pre-child backup that the closing `previous auth state
-  restored (backup <id>)` line names has already been pruned by the time it is printed.
+  Three things about that second backup, stated because nothing else would say them. It
+  covers **only** the tools whose recapture was declined, unlike the switch's backup, and
+  the warning says so — restoring it does not revert the rest of the run. A bare
+  `kae rollback` will not target it (§ kae rollback): it records a state kae *declined*,
+  not one it changed, so `--to <id>` is the way in. And `backup_keep` counts undo targets
+  only, so a preserved copy sits beside the run's own backup rather than evicting it —
+  but it is still pruned once `backup_keep` newer undo targets exist, which makes
+  "preserved only in backup `<id>`" true and **time-limited**. That matters most in the
+  one case that produces it repeatedly: after an upstream `expiresAt` format change every
+  live copy is undated, so every run declines, and the only live copies accumulate in
+  these backups while the snapshot keeps its last datable one. Adopt one deliberately
+  (`kae rollback --to <id>`, then `kae add --no-login`) rather than leaving them to age
+  out.
   The restore is **per tool**: `kae run -s <tool> <the account that was already
   active>` backs up that account's own credential, and claude's refresh token rotates
   single-use, so once the child has refreshed it the copy in the backup can no longer

@@ -760,8 +760,8 @@ func (app *App) recaptureWouldDowngrade(ctx context.Context, be secret.Backend,
 	if ordered && supersedes(stored, live) {
 		if !orderable(live) {
 			return fmt.Sprintf(
-				"kae cannot order the live %s credential against snapshot %s/%s — it carries no deadline "+
-					"kae can read — so it cannot tell which of the two can still refresh",
+				"kae cannot order the live %s credential against snapshot %s/%s, so it cannot tell which "+
+					"of the two can still refresh",
 				tool, tool, accountName,
 			), true
 		}

@@ -484,6 +484,21 @@ alternative exists (`secret-tool`).
   the fix belongs with whatever next audits "which keys can kae account for" — the same
   question the per-directory keychain-item entry above asks about items.
 
+- **An upstream `expiresAt` format change would make every recapture decline, forever**
+  (recorded 2026-08-07, **deliberately not fixed**). `orderable` requires a deadline kae can
+  read, and every consumer that cannot order two copies now declines rather than guessing —
+  which is right, and self-limiting only as long as the undated shape is rare. If upstream
+  changed the field's type or units, *every* live copy would be undated: each `kae use` and
+  `kae run -s` would refuse its recapture, the account snapshot would keep the last datable
+  copy (dead after one in-tool refresh), and the live copies would accumulate in
+  `run-unattributable` backups that `backup_keep` ages out. The offline signals exist — the
+  refusals name the condition, and `doctor` has `upstream_version` — but nothing aggregates
+  them into "kae can no longer date this tool's credentials at all", which is the finding a
+  user would need. Not fixed because the trigger is a specific upstream change that has not
+  happened, and a detector for it is a guess about the shape it would take; the assumption
+  and how to re-measure it live in docs/VALIDATION.md's claude `expiresAt` row, which is the
+  thing to check when a version bump makes this concrete.
+
 - **Rotation is measured for claude only** (recorded 2026-08-04). codex, cursor,
   copilot, opencode and agy have not been measured, so none of the copy-safety work
   above may be ported to them: "the newest copy" is unknowable without it, and

@@ -221,10 +221,21 @@ block in docs/VALIDATION.md, next to two correct ones.
   backup predates the child) and creates a second one, reason `run-unattributable`, whose
   id every such refusal names. Three consequences that outlive the code: a message may not
   imply a copy survives when kae could not back it up; a *new* refusal on either recapture
-  owes the same backup, or it is a logout reported as success; and that backup is a
-  preserved artifact rather than an undo target, so a bare `kae rollback` must not target
-  it (`latestRestorable`). Ported without re-asking the question, this shipped the logout
-  twice in one branch — once on attribution, once on ordering.
+  owes the same backup — **and so does widening an existing one**, which is what the
+  second instance actually was, so a rule keyed on "new" would have read as not applying
+  (it did); and that backup is a preserved artifact rather than an undo target, so a bare
+  `kae rollback` must not target it (`latestRestorable`). Ported without re-asking the
+  question, this shipped the logout twice in one branch — once on attribution, once on
+  ordering.
+  **Which side to keep is forced, not chosen**, and the fact that forces it is worth
+  knowing before re-deriving it: **nothing backs up an account snapshot.** `createBackup`
+  records live artifacts only (`artifact.ReadLive`), and no command archives a snapshot,
+  so "keep the snapshot and back up the live copy" is the only pairing where neither copy
+  is destroyed. Overwriting the snapshot with a payload kae cannot judge destroys the one
+  durable record of that account with nothing to recover it from — and the two causes of
+  that state (an upstream `expiresAt` type change, where the live copy really is newest;
+  a truncated payload, where it is worthless) want opposite answers and are
+  indistinguishable offline.
 - **What kae observed is not what the tool can do, and a message may only claim the
   first.** `Revoked` means "no usable token in this payload", derived from fields that are
   empty *or absent* — so a login whose token keys were renamed upstream reads the same as

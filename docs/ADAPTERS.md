@@ -772,14 +772,17 @@ say "the store", read it as whichever of the two that tool resolves:
   and docs/VALIDATION.md). The tool refreshes that copy in place, so an older
   snapshot written over it does not date the directory back, it logs it out. Newer
   means the larger `expiresAt`, which a refresh always moves forward.
-  It happens in **two places, because one cannot see what the other can**. Here, for
-  the store being written — the only harvest on the paths that have no bound
-  directory at all (`kae use -i`, `kae run -i`). And once per bound directory before
-  any store is materialized, over *every* store that directory has, which is what
-  covers a binding that moves to a **different** store: a `-s` ↔ `-i` toggle, an
-  isolated re-bind, and the shared-mode re-bind whose one store holds the *previous*
-  account's credential. The superseded-credential sweep harvests as well, where a
-  delete is final (docs/CLI.md § kae pin, docs/DATA-MODEL.md);
+  It happens in several places, because none of them can see what the others can —
+  **not a closed set**, and each is named where it lives rather than counted here.
+  Here, for the store being written. Once per bound directory before any store is
+  materialized, over *every* store that directory has, which is what covers a binding
+  that moves to a **different** store: a `-s` ↔ `-i` toggle, an isolated re-bind, and
+  the shared-mode re-bind whose one store holds the *previous* account's credential.
+  Once more for a **globally isolated home** that predates the per-account credential
+  store, which has no bound directory and therefore no pass of its own
+  (`migratePreSplitHome`; see § Per-account credential store for why its migration is
+  silent where a bound directory's is prompted). And in the superseded-credential
+  sweep, where a delete is final (docs/CLI.md § kae pin, docs/DATA-MODEL.md);
 - and it **refuses rather than guesses**, in every one of these places. An unusable
   copy is not harvested — the tombstone a failed refresh leaves behind is a
   fully-formed payload, so presence proves nothing. A copy kae cannot *attribute* is
@@ -895,7 +898,13 @@ What follows from that, and what a change here must keep:
 - **migration is to re-run `kae pin`** in the directory. `kae doctor` names every
   directory that still needs it (`credential_unsplit`, docs/CLI.md § doctor), because
   nothing else can see the state: such a copy is healthy right up to the moment
-  another binding of that account refreshes;
+  another binding of that account refreshes.
+  A **globally isolated home** migrates on its own instead, silently, the next time
+  `kae use -i` or `kae run -i` prepares it, and the asymmetry is deliberate: that
+  path re-materializes the home on every invocation, so there is a moment to do it
+  in and nothing for a user to act on, while a bound directory is only re-materialized
+  when the user asks. It follows that `credential_unsplit` reports bound directories
+  only — a globally isolated home is never in that state for longer than one command;
 - **`CLAUDE_SECURESTORAGE_CONFIG_DIR=""` is deliberately not built.** It collapses
   every config dir onto claude's one global item, so `kae use <other>` would silently
   change what a bound directory runs while its fragment and identity still name the

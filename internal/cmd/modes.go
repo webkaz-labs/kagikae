@@ -242,6 +242,13 @@ func (app *App) applyGlobalScope() {
 	}
 	// masked reports whether this key holds a value kae itself set, which is the one
 	// thing a global command must not see.
+	//
+	// This wraps the same two seams `dirSpecs` wraps, and the two are deliberately not
+	// one helper: they answer opposite questions. `dirSpecs` *asserts* a value, so its
+	// LookupEnv forces `ok=true` for an overridden key; this one *hides* one, so it
+	// must force `ok=false` — an absent key, not an empty one, because empty is a value
+	// claude refuses. A shared wrapper would take that difference as a parameter and
+	// bury the reason for it.
 	inner, innerLookup := app.Env.Getenv, app.Env.LookupEnv
 	masked := func(key, value string) bool {
 		return (isolated[key] && app.isKaeManagedHome(value)) ||

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -367,7 +368,7 @@ func TestReloginExportsThePreSplitBindingsStore(t *testing.T) {
 		}
 	}
 	// Positive control for the fixture: the flow really ran against this store.
-	if !slicesContains(seen, isolationEnvVar(constants.ToolClaude)+"="+storeDir) {
+	if !slices.Contains(seen, isolationEnvVar(constants.ToolClaude)+"="+storeDir) {
 		t.Fatalf("the login must be driven into the bound store: %v", seen)
 	}
 }
@@ -482,78 +483,57 @@ func TestTheSweepDoesNotFileAnotherAccountsCopyUnderThisAccount(t *testing.T) {
 	}
 }
 
-// The count has to fail closed. An unreadable fragment is not "no reference": kae
-// cannot tell, and the difference between those two answers is one logged-out
-// sibling. Reached with a fragment path that is a directory, which errors on read
-// rather than reading as absent.
+// The count has to fail closed, and it has two independent sources. "No reference
+// found" and "kae could not look" differ by exactly one logged-out sibling, so each
+// source gets a case rather than one standing in for the other — the fragment walk,
+// and the pin index that names the directories to walk.
+//
+// Both are reached by turning the sibling's file into a **directory** after it was
+// written, so the index still names it and the walk still reaches it: an unreadable
+// source, not a missing one.
 func TestUnpinPurgeKeepsACredentialItCannotCountReferencesFor(t *testing.T) {
-	sim := &keychainSim{}
-	runner.With(sim, func() {
-		app := overlayTestApp(t)
-		app.Env.GOOS = "darwin"
-		ctx := context.Background()
-		opts := commonOpts{Format: formatText}
-		captureClaudeFromKeychain(t, app, sim, "main", mainToken, app.Now().Add(time.Hour))
-		other := pinHere(t, app, modeShared)
-		pinHere(t, app, modeShared)
+	for _, tc := range []struct {
+		name string
+		path func(app *App, other string) string // the file to clobber
+	}{
+		{"unreadable fragment", func(_ *App, other string) string {
+			return filepath.Join(other, fragmentRelPath)
+		}},
+		{"unreadable pin record", func(app *App, other string) string {
+			return app.Paths.PinRecordFile(paths.PinID(other))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sim := &keychainSim{}
+			runner.With(sim, func() {
+				app := overlayTestApp(t)
+				app.Env.GOOS = "darwin"
+				ctx := context.Background()
+				opts := commonOpts{Format: formatText}
+				captureClaudeFromKeychain(t, app, sim, "main", mainToken, app.Now().Add(time.Hour))
+				other := pinHere(t, app, modeShared)
+				pinHere(t, app, modeShared)
 
-		// The sibling's fragment becomes unreadable *after* it was written, so the pin
-		// index still names it and the walk still reaches it.
-		fragment := filepath.Join(other, fragmentRelPath)
-		if err := os.Remove(fragment); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(fragment, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		sim.ops = nil
+				clobber := tc.path(app, other)
+				if err := os.Remove(clobber); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.MkdirAll(clobber, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				sim.ops = nil
 
-		_, stderr := captureStderr(t, func() int { return runUnpin(ctx, app, opts, true) })
+				_, stderr := captureStderr(t, func() int { return runUnpin(ctx, app, opts, true) })
 
-		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
-			t.Fatalf("a count kae could not complete must keep the credential: %v", sim.ops)
-		}
-		if !strings.Contains(stderr, "could not tell whether another binding still uses") {
-			t.Fatalf("keeping it for that reason must say so: %q", stderr)
-		}
-	})
-}
-
-// The other half of the refcount's fail-closed rule: a store whose **breadcrumb**
-// cannot be read names a directory kae cannot reach, and that directory may be one
-// that reads this credential. The fragment half has its own test; this one covers
-// the pin index, which is a separate source and was entirely unmeasured.
-func TestUnpinPurgeKeepsACredentialWhenThePinIndexIsIncomplete(t *testing.T) {
-	sim := &keychainSim{}
-	runner.With(sim, func() {
-		app := overlayTestApp(t)
-		app.Env.GOOS = "darwin"
-		ctx := context.Background()
-		opts := commonOpts{Format: formatText}
-		captureClaudeFromKeychain(t, app, sim, "main", mainToken, app.Now().Add(time.Hour))
-		other := pinHere(t, app, modeShared)
-		pinHere(t, app, modeShared)
-
-		// The sibling's breadcrumb becomes unreadable, so the walk cannot name that
-		// directory at all — "kae could not look", not "nothing is there".
-		record := app.Paths.PinRecordFile(paths.PinID(other))
-		if err := os.Remove(record); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(record, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		sim.ops = nil
-
-		_, stderr := captureStderr(t, func() int { return runUnpin(ctx, app, opts, true) })
-
-		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
-			t.Fatalf("an incomplete pin index must keep the credential: %v", sim.ops)
-		}
-		if !strings.Contains(stderr, "could not tell whether another binding still uses") {
-			t.Fatalf("keeping it for that reason must say so: %q", stderr)
-		}
-	})
+				if strings.Contains(strings.Join(sim.ops, ","), "delete") {
+					t.Fatalf("a count kae could not complete must keep the credential: %v", sim.ops)
+				}
+				if !strings.Contains(stderr, "could not tell whether another binding still uses") {
+					t.Fatalf("keeping it for that reason must say so: %q", stderr)
+				}
+			})
+		})
+	}
 }
 
 // The negative control `migratePreSplitHome` owed: it deletes only what it could
@@ -795,18 +775,9 @@ func TestReloginExportsTheCredentialVariable(t *testing.T) {
 	}
 
 	want := credentialEnvVar(constants.ToolClaude) + "=" + app.credStoreDir(constants.ToolClaude, "main")
-	if !slicesContains(seen, want) {
+	if !slices.Contains(seen, want) {
 		t.Fatalf("the login flow must be handed %q, got %v", want, seen)
 	}
-}
-
-func slicesContains(haystack []string, want string) bool {
-	for _, s := range haystack {
-		if s == want {
-			return true
-		}
-	}
-	return false
 }
 
 // A credential written for one account must not be reachable under another's name.

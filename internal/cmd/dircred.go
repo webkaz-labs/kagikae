@@ -235,34 +235,21 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 // Every refusal the harvest and the delete already have applies: an unattributable,
 // unreadable or unpreservable copy is left where it is.
 func (app *App) migratePreSplitHome(ctx context.Context, be secret.Backend, tool, accountName, home string) {
-	artName := credentialArtifactName(tool)
-	credDir := app.credStoreDir(tool, accountName)
-	if artName == "" || credDir == "" || credDir == home {
-		return // nothing to migrate: this tool keeps its credential in its home
-	}
-	specs, err := app.dirSpecs(ctx, tool, bindDirs{Config: home})
-	if err != nil {
-		return // the bind reports an unresolvable home
-	}
-	sp, ok := specByName(specs, artName)
-	if !ok || unbindableDirKeychain(sp) {
+	// The only question this function answers by itself: is there anywhere to migrate
+	// *to*. A tool that keeps its credential in its home has nothing to move, and a
+	// home that already is the credential store is not pre-split.
+	if credDir := app.credStoreDir(tool, accountName); credDir == "" || credDir == home {
 		return
 	}
-	// Probe first as a **cost** guard, not a correctness one: harvestBeforeDelete's
-	// "nothing there" arm already makes the delete a no-op, and this path prints
-	// nothing on success, so what the probe saves is a subprocess on every `use -i`
-	// against an already-migrated home (measured: removing it changes no behaviour).
-	// And one harvest, not two:
-	// harvestBeforeDelete performs it and answers whether the copy may go, which is
-	// the same pair the delete sweep uses — neither `kae use -i` nor `kae run -i`
-	// wraps a read cache, so a second pass here is a second subprocess.
-	if existed, err := dirCredentialExists(ctx, sp); err != nil || !existed {
-		return
-	}
-	if !app.harvestBeforeDelete(ctx, be, specs, tool, accountName, bindDirs{Config: home}, false) {
-		return
-	}
-	if err := artifact.ApplyLive(ctx, sp, artifact.Value{Present: false}); err != nil {
+	// Everything after that is the sweep, so it *is* the sweep. `migrating: true` is
+	// what says this copy is no longer the one that home reads, which is the same
+	// statement the kept-store exception makes for a bound directory; `purging: false`
+	// keeps the account-gone copy the same way a bind does. Written as a call rather
+	// than a second body because the two used to be one, and removeDirCredential's own
+	// comment said the pair "must not disagree about one state" — which is a hazard
+	// recorded rather than removed. Two quality lenses found it independently.
+	store := dirStore{Tool: tool, Dir: home, Account: accountName}
+	if _, err := app.removeDirCredential(ctx, be, store, accountName, false, true); err != nil {
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: could not remove the pre-split %s credential in %s (%v); it is a copy nothing "+
 				"reads any more, and a refresh of it elsewhere would invalidate this account's\n",
@@ -507,7 +494,7 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 }
 
 // dirIdentityConfirms reports whether the identity cache sitting beside the live
-// credential in credDir names the account whose snapshot a harvest would write to,
+// credential in configDir names the account whose snapshot a harvest would write to,
 // and says why not when it does not.
 //
 // This is the guard that makes the harvest safe, because a store can legitimately
@@ -532,7 +519,7 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 // warning on those would fire on healthy bound directories. So the two stay one
 // predicate; a change here changes both, on purpose.
 func dirIdentityConfirms(ctx context.Context, be secret.Backend, specs []artifact.Spec,
-	acc account.Account, credDir string,
+	acc account.Account, configDir string,
 ) harvestRefusal {
 	confirmed := false
 	for _, sp := range specs {
@@ -555,7 +542,7 @@ func dirIdentityConfirms(ctx context.Context, be secret.Backend, specs []artifac
 		// TestBoundDirectoryIdentitySharedWithTheRealHomeIsSilent; before it, flipping this to
 		// Conflicting survived the whole suite (measured 2026-08-05), because the harvest tests
 		// assert only *that* it refuses.
-		switch outside, err := identityTargetEscapes(sp.Target, credDir); {
+		switch outside, err := identityTargetEscapes(sp.Target, configDir); {
 		case err != nil:
 			return harvestRefusal{Why: "kae could not resolve where its identity cache is"}
 		case outside:
@@ -618,7 +605,7 @@ func specByName(specs []artifact.Spec, name string) (artifact.Spec, bool) {
 }
 
 // writeDirIdentity applies the bound account's identity-only artifacts inside
-// credDir, so the tool *names* the account whose credential is now there.
+// configDir, so the tool *names* the account whose credential is now there.
 //
 // Auth never depended on this — the token decides who you are — which is why the
 // gap survived so long: a bonded or isolated directory kept whatever account first
@@ -637,12 +624,12 @@ func specByName(specs []artifact.Spec, name string) (artifact.Spec, bool) {
 // for codex. The order is not interchangeable: a directory labelled with an account
 // whose credential kae could not put there is worse than an unlabelled one, since
 // the label is the only thing a user checks.
-func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.Spec, acc account.Account, credDir string) error {
+func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.Spec, acc account.Account, configDir string) error {
 	for _, sp := range specs {
 		if !sp.IdentityOnly {
 			continue
 		}
-		if outside, err := identityTargetEscapes(sp.Target, credDir); err != nil {
+		if outside, err := identityTargetEscapes(sp.Target, configDir); err != nil {
 			return err
 		} else if outside {
 			// Bond mode links every entry of the real tool home into the store, so this
@@ -677,7 +664,7 @@ func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.S
 	return nil
 }
 
-// identityTargetEscapes reports whether target resolves outside credDir, i.e.
+// identityTargetEscapes reports whether target resolves outside configDir, i.e.
 // whether writing it would leave the store this bind owns.
 //
 // Both sides are resolved before comparing, because the store path itself can run
@@ -685,10 +672,10 @@ func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.S
 // target against an unresolved root would call every write an escape. A target
 // that does not exist yet is resolved through its parent — the file kae is about
 // to create is inside whatever directory the parent names.
-func identityTargetEscapes(target, credDir string) (bool, error) {
-	root, err := filepath.EvalSymlinks(credDir)
+func identityTargetEscapes(target, configDir string) (bool, error) {
+	root, err := filepath.EvalSymlinks(configDir)
 	if err != nil {
-		return false, fmt.Errorf("resolve store dir %s: %w", credDir, err)
+		return false, fmt.Errorf("resolve store dir %s: %w", configDir, err)
 	}
 	resolved, err := filepath.EvalSymlinks(target)
 	if err != nil {
@@ -1425,8 +1412,11 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 // binding is written (AGENTS.md): harvesting is not deleting, and it is only useful
 // before. Stores this pin still keeps are included on purpose — one of them is the
 // shared store above — so a plain re-pin reads its own store twice, once here and
-// once in writeDirCredential. That is one extra `security` call per bound tool, in
-// exchange for the case where the two are not the same store.
+// once in writeDirCredential. Both callers wrap a keychain read cache, so that second
+// read costs a `security` call only when the two resolve **different** stores — the
+// migration of a pre-split binding, which happens once per directory
+// (TestRunPinCoalescesTheHarvestKeychainReads measures the steady state at one read).
+// The duplication buys the case where the two are not the same store.
 func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.Backend,
 	pinID, dir, onlyTool string, prev fragmentInfo,
 ) {
@@ -1749,9 +1739,27 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 	if !orderable(newest) {
 		newest = freshness.Info{}
 	}
+	// One read per **credential**, not per binding: since the split every member of a
+	// group shares one store, so N worktrees on one account asked the keychain for the
+	// same item N times — the case this whole feature exists for. pinCredentialChecks
+	// already dedupes the same way (`reported`); this loop did not.
+	//
+	// Deliberately a memo over the *read* only, leaving the ordering below untouched:
+	// a dedup that also skipped the comparison would be a control-flow change in a
+	// cleanup pass, which is how this repo has twice put a correctness defect into one.
 	live := make([]freshness.Info, len(group.Stores))
-	for i, store := range group.Stores {
+	seen, known := map[string]freshness.Info{}, map[string]bool{}
+	freshnessOf := func(store boundDirStore) (freshness.Info, bool) {
+		where := store.dirs().credDirOrConfig()
+		if info, cached := seen[where]; cached {
+			return info, known[where]
+		}
 		info, ok := app.dirCredentialFreshness(ctx, store.store())
+		seen[where], known[where] = info, ok
+		return info, ok
+	}
+	for i, store := range group.Stores {
+		info, ok := freshnessOf(store)
 		if !ok || !orderable(info) {
 			continue // nothing kae can place in the ordering; see the doc comment
 		}
@@ -1770,6 +1778,16 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 	if newestIdx >= 0 {
 		newestAt = "the store bound to " + group.Stores[newestIdx].Dir
 	}
+	// Hoisted: the winner is fixed for the whole loop, so re-resolving its specs and
+	// re-reading its identity once per losing store repeats work whose answer cannot
+	// change. Evaluated lazily-by-position rather than before the loop only if that
+	// mattered — it does not, since reaching this point already means an ordering
+	// exists, which is the state the doc comment says is the rare one.
+	// Phrased as the refusal, not as its complement: `newestIdx < 0` means the winner
+	// is the **snapshot**, which this check does not attribute at all, so the guard
+	// must not fire there. Written the other way round it read as "no store confirmed
+	// the win" and silenced every snapshot-side finding — caught by four tests.
+	winnerUnattributable := newestIdx >= 0 && !app.storeHoldsAccount(ctx, be, acc, group.Stores[newestIdx])
 	checks := []adapter.Check{}
 	for i, store := range group.Stores {
 		// The index, not a comparison of Dir strings: the winner *is* this element when
@@ -1786,7 +1804,7 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 		if !app.storeHoldsAccount(ctx, be, acc, store) {
 			continue
 		}
-		if newestIdx >= 0 && !app.storeHoldsAccount(ctx, be, acc, group.Stores[newestIdx]) {
+		if winnerUnattributable {
 			continue
 		}
 		checks = append(checks, adapter.Check{

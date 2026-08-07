@@ -1387,7 +1387,7 @@ Several lines here exit non-zero **on purpose** (`grep -c` printing `0` is the
 assertion), so paste the block as-is rather than under `set -e`, or add `|| true` to
 those.
 
-**A–J PASSED 2026-08-08 on the release tree, 52/52** (darwin 24.6.0, file driver, file
+**A–J PASSED 2026-08-08 on the release tree** (darwin 24.6.0, file driver, file
 backend, temp HOME, `/tmp/kae` = v0.17.0), each assertion checked at its own point rather
 than from the end state. A–E and F were first run 2026-08-04 and G–J from 2026-08-05; that
 record is superseded because the tree moved under it twice — see the entry in § Release
@@ -2192,13 +2192,18 @@ block rather than from the end state.
 - **§ per-worktree surfaces A–F: 31 of 31.** Run against the built binary on a temp HOME
   with every XDG root isolated (`. scripts/smoke-env.sh`), the repositories and worktrees
   created *inside* that HOME. This block needed no correction.
-- **§ v0.17.0 surface — the credential harvest, A–J: 52 of 52** — but **only after fixing
-  the block**, and that is the finding of this run: every credential fixture still targeted
+- **§ v0.17.0 surface — the credential harvest, A–J: every documented assertion** — but
+  **only after fixing the block**, and that is the finding of this run: every credential
+  fixture still targeted
   `CLAUDE_CONFIG_DIR` after this release moved the credential to
   `CLAUDE_SECURESTORAGE_CONFIG_DIR`, so cases stopped exercising the harvest while their
   negative assertions went green *because* nothing happened. kae was correct throughout —
   the block was measuring a directory kae no longer reads a credential from. That section
-  above records what was corrected and what each case now proves.
+  above records what was corrected and what each case now proves. A count is deliberately
+  not given: 52 assertions were measured, and correcting case C then split it into two
+  arms whose separate measurements (the tombstone silent, the future-dated blank warning)
+  are what that case now asserts — so a number here would name a set the block no longer
+  has.
 - **§ v0.17.0 surface — `kae relogin` and `credential_superseded`, K–M: 20 of 20**, also
   after fixing the block: two ordinary bindings of one account now share one credential
   store, so K's two-copies state needs one directory left in the pre-split shape. Running

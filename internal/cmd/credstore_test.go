@@ -407,6 +407,80 @@ func TestExportFallbackCarriesTheCredentialVariable(t *testing.T) {
 	}
 }
 
+// The migration sweep runs **after** `writeDirIdentity` has stamped the store with
+// this account's identity, so the evidence it would attribute a copy by is evidence
+// kae wrote itself three steps earlier in the same command. Two consequences, and
+// the second is the one this repo has bled on.
+//
+// Here: the pin-level pass refuses a copy it cannot attribute (no identity cache) —
+// and then the sweep finds the identity the bind just wrote, agrees with itself, and
+// harvests and deletes the copy the pass declined to touch.
+func TestTheSweepDoesNotHarvestOnEvidenceTheBindJustWrote(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	dir := pinHere(t, app, modeShared)
+	storeDir := app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
+	makePreSplit(t, app, constants.ToolClaude, "main", dir, storeDir)
+
+	const refreshed = "sk-ant-oat01-UNATTRIBUTABLE-cccc"
+	writeFile(t, filepath.Join(storeDir, ".credentials.json"), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	// Nothing names the account this copy belongs to.
+	if err := os.Remove(filepath.Join(storeDir, ".claude.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+
+	// The pass says it could not preserve it. The sweep must not then say it did.
+	if !strings.Contains(stderr, "could not preserve") {
+		t.Fatalf("the fixture must reach the pass's refusal: %q", stderr)
+	}
+	if strings.Contains(stderr, "harvested the newer claude credential") {
+		t.Fatalf("a copy the pass refused must not be harvested by the sweep:\n%s", stderr)
+	}
+	if got := readFile(t, filepath.Join(storeDir, ".credentials.json")); !strings.Contains(got, refreshed) {
+		t.Fatalf("a copy kae could not preserve must be kept, not deleted: %q", got)
+	}
+}
+
+// …and the shape that files one account's token under another's name. A directory
+// bound to main whose store holds **side's** copy and side's identity is reachable
+// with no hostile input: it is what the pre-`kae relogin` remedy (`cd <dir> &&
+// claude /login`) produced, and it is the state `identity_drift` exists to report.
+//
+// The pass refuses it on genuine evidence — the store's identity names another
+// account. The sweep then runs after the bind has overwritten that identity with
+// main's, compares main against main, and files side's token under main. The token
+// is opaque, so live, snapshot and doctor would all agree on a label that is wrong.
+func TestTheSweepDoesNotFileAnotherAccountsCopyUnderThisAccount(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	dir := pinHere(t, app, modeShared)
+	storeDir := app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
+	makePreSplit(t, app, constants.ToolClaude, "main", dir, storeDir)
+
+	const sideRefreshed = "sk-ant-oat01-SIDE-REFRESHED-zzzz"
+	writeFile(t, filepath.Join(storeDir, ".credentials.json"),
+		claudeOAuthPayload(sideRefreshed, now.Add(8*time.Hour)))
+	writeFile(t, filepath.Join(storeDir, ".claude.json"), claudeIdentityFile("side-uuid"))
+
+	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+
+	if !strings.Contains(stderr, "belongs to an account other than") {
+		t.Fatalf("the fixture must reach the pass's conflicting refusal: %q", stderr)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, sideRefreshed) {
+		t.Fatalf("another account's token was filed under claude/main: %s", got)
+	}
+}
+
 // The count has to fail closed. An unreadable fragment is not "no reference": kae
 // cannot tell, and the difference between those two answers is one logged-out
 // sibling. Reached with a fragment path that is a directory, which errors on read
@@ -442,6 +516,75 @@ func TestUnpinPurgeKeepsACredentialItCannotCountReferencesFor(t *testing.T) {
 			t.Fatalf("keeping it for that reason must say so: %q", stderr)
 		}
 	})
+}
+
+// The other half of the refcount's fail-closed rule: a store whose **breadcrumb**
+// cannot be read names a directory kae cannot reach, and that directory may be one
+// that reads this credential. The fragment half has its own test; this one covers
+// the pin index, which is a separate source and was entirely unmeasured.
+func TestUnpinPurgeKeepsACredentialWhenThePinIndexIsIncomplete(t *testing.T) {
+	sim := &keychainSim{}
+	runner.With(sim, func() {
+		app := overlayTestApp(t)
+		app.Env.GOOS = "darwin"
+		ctx := context.Background()
+		opts := commonOpts{Format: formatText}
+		captureClaudeFromKeychain(t, app, sim, "main", mainToken, app.Now().Add(time.Hour))
+		other := pinHere(t, app, modeShared)
+		pinHere(t, app, modeShared)
+
+		// The sibling's breadcrumb becomes unreadable, so the walk cannot name that
+		// directory at all — "kae could not look", not "nothing is there".
+		record := app.Paths.PinRecordFile(paths.PinID(other))
+		if err := os.Remove(record); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(record, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		sim.ops = nil
+
+		_, stderr := captureStderr(t, func() int { return runUnpin(ctx, app, opts, true) })
+
+		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
+			t.Fatalf("an incomplete pin index must keep the credential: %v", sim.ops)
+		}
+		if !strings.Contains(stderr, "could not tell whether another binding still uses") {
+			t.Fatalf("keeping it for that reason must say so: %q", stderr)
+		}
+	})
+}
+
+// The negative control `migratePreSplitHome` owed: it deletes only what it could
+// preserve. Without this, dropping its guard entirely — delete unconditionally —
+// leaves every test green, and the doc comment's promise ("an unattributable,
+// unreadable or unpreservable copy is left where it is") is unbacked.
+func TestUseIsolatedKeepsAPreSplitHomeCopyItCannotAttribute(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+
+	home := app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")
+	mkdirs(t, home)
+	const refreshed = "sk-ant-oat01-HOME-UNATTRIBUTABLE-cccc"
+	writeFile(t, filepath.Join(home, ".credentials.json"), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	// No identity cache beside it, so nothing names the account this copy belongs to.
+
+	if code, out := captureStdout(t, func() int {
+		return runUseIsolated(ctx, app, opts, constants.ToolClaude, "main")
+	}); code != constants.ExitOK {
+		t.Fatalf("use -i exit %d: %s", code, out)
+	}
+
+	if got := readFile(t, filepath.Join(home, ".credentials.json")); !strings.Contains(got, refreshed) {
+		t.Fatalf("a copy kae could not attribute must be kept: %q", got)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, refreshed) {
+		t.Fatalf("and must not be filed under this account: %s", got)
+	}
 }
 
 // dirSpecs overrides the credential variable **always**, with the config dir itself

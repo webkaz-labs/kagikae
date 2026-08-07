@@ -1027,9 +1027,27 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// poisons the offline regression detector, which reads an item at the config
 		// dir's name as "something wrote there since the last bind".
 		//
-		// Safe to delete here because the pin-level pass has already harvested it: it
-		// ran before materialization with this same `prev`, which is what makes the
-		// store read as pre-split there too.
+		// **And only when the pin-level pass did not refuse it.** This sweep runs
+		// *after* the materializer, which ends by stamping that same store with this
+		// account's identity (writeDirIdentity) — so the evidence the harvest inside
+		// it would attribute the copy by is evidence kae wrote itself, three steps
+		// earlier in this command. Without the check, a copy the pass declined as
+		// unattributable is harvested and deleted anyway, and a store holding *another
+		// account's* login (the state identity_drift exists to report) has that login
+		// filed under this account's name — undetectable afterwards, since the token is
+		// opaque and every surface then agrees on a label that is simply wrong. Both
+		// measured 2026-08-07, and both are regressions of this exception rather than
+		// of the harvest.
+		//
+		// `refusalReported` is exactly the right set: the pass marks a store only when
+		// it refused *and* the store is one the binding is moving off, which is the same
+		// set this exception accepts. Where the pass succeeded there is nothing left to
+		// mis-attribute — the snapshot already holds that copy, so the harvest below
+		// finds nothing newer and the delete carries no judgement at all.
+		//
+		// The contrast worth keeping: migratePreSplitHome does this job correctly by
+		// running *before* the write. This one cannot — a delete has to follow the new
+		// binding — so it defers to the pass's verdict instead of re-deciding.
 		// Two uses, and the name fits one of them. For a bind it is what lets a store
 		// the binding still points at be swept at all. For `kae unpin --purge` nothing
 		// migrated — the fragment was removed — and `keep` is nil, so the branch below
@@ -1037,7 +1055,7 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// the copy it reads any more", which is the answer removeDirCredential needs to
 		// take a pre-split file credential the purge was asked to remove.
 		migrating := app.credentialMovedOutOf(store, pinID, prev)
-		if keep[store.Dir] && !migrating {
+		if keep[store.Dir] && (!migrating || app.refusalReported[store.Dir]) {
 			continue
 		}
 		removed, err := app.removeDirCredential(ctx, be, store, storeAccount(store, prev), purging, migrating)
@@ -1066,8 +1084,10 @@ func (app *App) credentialMovedOutOf(store dirStore, pinID string, prev fragment
 	if store.CredDir != "" || prev.CredDirs[store.Tool] != "" {
 		return false // already split, or never was
 	}
-	// The store the **previous** binding pointed at, and only that one. Two weaker
-	// rules were wrong for the same reason — they answer "yes" from the absence of a
+	// The store the **previous** binding pointed at, and only that one — the single
+	// load-bearing condition here (measured 2026-08-07; the three above it are each
+	// masked downstream by removeDirCredential's own gates and cannot be killed).
+	// Two weaker rules were wrong for the same reason — they answer "yes" from the absence of a
 	// credential entry, which every store of a pre-split binding shares:
 	//
 	//   - "prev records no entry" alone fires on a zero `prev` too (no binding could
@@ -1226,6 +1246,13 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 		return 0, false
 	}
 	for _, pin := range pins {
+		// Equivalent to the !exists branch below rather than merely stricter, and worth
+		// saying so: readFragmentAt on a missing directory returns exists=false with no
+		// error, so both arms continue identically (measured 2026-08-07). The one case
+		// they differ on is a path that exists and is not a directory, where dropping
+		// this gate yields ENOTDIR — which os.IsNotExist does not match, so it degrades
+		// to known=false. Deleting it on the grounds that it "cannot fail" would change
+		// that case silently.
 		if !dirExists(pin.Dir) {
 			continue
 		}
@@ -1481,6 +1508,8 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 // of a store that never held one — the delete primitive treats absence as success.
 func dirCredentialExists(ctx context.Context, sp artifact.Spec) (bool, error) {
 	if sp.Kind != constants.KindKeychain {
+		// Present, not "the read succeeded": a store that never held a credential must
+		// answer no, or `--purge` announces having removed one from it.
 		value, err := artifact.ReadLive(ctx, sp)
 		if err != nil {
 			return false, err
@@ -1547,6 +1576,9 @@ func (app *App) pinCredentialChecks(ctx context.Context, stores []boundDirStore)
 		if !ok {
 			continue
 		}
+		// Marked **after** the probe, never before: a store whose freshness kae cannot
+		// resolve has said nothing about that credential, and marking it there would
+		// suppress the finding for every sibling that reads the same one.
 		reported[where] = true
 		switch cred := credentialStateAt(info, now); cred.State {
 		case constants.CredentialStale:

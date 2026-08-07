@@ -262,6 +262,10 @@ func (app *App) applyGlobalScope() {
 	// inside a bound directory would report the tool unsupported, including the mise
 	// enter hook. dirSpecs overrides both seams for the same reason.
 	app.Env.LookupEnv = func(key string) (string, bool) {
+		// Dead in both production (app.go injects os.LookupEnv) and the test fixture,
+		// and kept as the degraded answer rather than a panic for an App built by hand
+		// — a mutation of it cannot be killed (measured 2026-08-07), so this comment is
+		// the guard instead of a test that would assert nothing.
 		if innerLookup == nil {
 			value := inner(key)
 			return value, value != "" && !masked(key, value)

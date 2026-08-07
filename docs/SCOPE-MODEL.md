@@ -87,8 +87,11 @@ All per-directory and global-isolated modes are one mechanism with different
 parameters:
 
 1. **Point the tool at an alternate config dir via its isolation env var**
-   (claude `CLAUDE_CONFIG_DIR`, codex `CODEX_HOME`). For per-directory modes
-   this is a mise `[env]` entry, so the scope is the directory automatically
+   (claude `CLAUDE_CONFIG_DIR`, codex `CODEX_HOME`) — and, for a tool that can
+   address its credential separately, at the account's credential store via a
+   second variable (claude `CLAUDE_SECURESTORAGE_CONFIG_DIR`), so the sessions are
+   the directory's and the credential is the account's. For per-directory modes
+   these are mise `[env]` entries, so the scope is the directory automatically
    (set on enter, unset on leave; never touches global live state). For `sync`
    it is a global pointer (see §10).
 2. **Symlink the sharing set** into the alternate dir — from the real home
@@ -373,7 +376,8 @@ and restored; each step a fresh-process `claude -p … --model haiku` auth check
 Outcome: `/oauthAccount` is not an auth artifact (1 and 2 are permanent), and its
 self-heal is too late to rely on, so §6 resolves to "the token is claude's sole
 auth artifact; `/oauthAccount` is switched alongside it as an identity-only
-pointer patch in auth mode, and isolation modes keep their own copy". copy+patch is
+pointer patch in auth mode, and isolation modes keep a copy of their own — one per
+account since v0.17.0, shared by every directory bound to it". copy+patch is
 not needed for claude.
 
 ## 12. Implementation status

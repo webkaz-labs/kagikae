@@ -1283,9 +1283,11 @@ binding is a property of the directory, not of one tool):
   a re-pin restores its sessions and settings.
 
 **Bound-directory credentials** (reported under `credential_stale` /
-`credential_expiring`, also unfiltered): a bound directory holds its **own copy**
-of the credential and the tool refreshes *that copy* in place, so it can die while
-every account snapshot kae has still looks fine. Nothing reported this before — the
+`credential_expiring`, also unfiltered): a bound directory reads a **live copy** of
+the credential — the account's own store, shared with every directory bound to it —
+and the tool refreshes *that copy* in place, so it can die while every account
+snapshot kae has still looks fine. Sharing does not weaken the reason for the check;
+it is why one finding now covers all of those directories. Nothing reported this before — the
 first signal was the tool refusing to start in that directory.
 
 - The remedy is a login **inside** that directory: `cd <dir> && kae relogin <tool>`

@@ -726,8 +726,12 @@ that points inside kae's own isolation data dirs is ignored (that is kae's own
 redirection — e.g. exported by a pinned directory's mise fragment). Honoring
 it would create self-referential symlinks (ELOOP); re-running `kae pin` repairs
 any such stale links. A global command run inside a bound directory (`kae use`
-/ `kae add`) resolves the real home automatically — it ignores the directory's
-isolation env vars — and `kae use` warns that the change is global.
+/ `kae add`) resolves the real home automatically — it ignores **every** variable
+the binding set, the credential one included, through both the `Getenv` and the
+`LookupEnv` seams. Masking one of the pair and not the other is worse than masking
+neither: a bound directory then reads as a credential variable *set to empty*,
+which is the one value claude refuses, so every global command there would report
+the tool unsupported. `kae use` warns that the change is global.
 
 ### Per-directory credential store
 

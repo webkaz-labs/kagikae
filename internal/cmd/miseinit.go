@@ -240,10 +240,10 @@ func (app *App) isolationEntryFor(tgt runTarget, dir string) isolationEntry {
 	return entry
 }
 
-// writeEnvEntries renders the shared [env] block — KAE_PROFILE plus each tool's
-// isolation env entry, or a warning comment for a tool that keeps the real home
-// — for the kae pin fragment (renderDirFragment). One place to change env-line
-// formatting.
+// writeEnvEntries renders the shared [env] block — KAE_PROFILE plus each bound
+// tool's env entries (its isolation entry, and its credential entry where the tool
+// has one), or a warning comment for a tool that keeps the real home — for the
+// kae pin fragment (renderDirFragment). One place to change env-line formatting.
 func writeEnvEntries(b *strings.Builder, profileName string, entries []isolationEntry, companionLines []string) {
 	fmt.Fprintln(b, "[env]")
 	fmt.Fprintf(b, "%s = %q\n", constants.EnvKaeProfile, profileName)

@@ -16,9 +16,13 @@ import (
 //	kae pin <tool> <account>
 //
 // Valid only inside a directory bound with `kae pin` (it reads the kae-owned
-// fragment). For the shared mechanism the dir is account-agnostic so the
-// credential is overwritten in place; for the isolated mechanism the config dir
-// is re-keyed to the new account and the fragment's env entry is repointed. The
+// fragment). Two env entries move on different rules, and this comment used to
+// state the pre-split one: the **config** entry is repointed only in isolated
+// mode, where the dir is re-keyed to the new account, because a shared dir is
+// account-agnostic; the **credential** entry moves in **both**, because the
+// account is what selects that store. rebindFragment owns that asymmetry and says
+// why — do not restate it here, which is how these two came to say opposite
+// things about one behaviour. The
 // fragment's account record and KAE_PROFILE are recomputed (the latter goes
 // empty when the new account set matches no named profile). Sessions and
 // settings are never disturbed.

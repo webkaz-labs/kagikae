@@ -50,7 +50,9 @@ func (app *App) iterSynced(synced map[string]string) []syncedEntry {
 
 // renderGlobalFragment renders the kae-owned global mise fragment for global
 // isolated mode (kae use -i): an [env] block pointing each globally isolated
-// tool's home-isolation env var at its private home. Unlike the per-directory
+// tool's home-isolation env var at its private home, plus — for a tool that can
+// address its credential separately — the credential variable at the *account's*
+// store, which is not private to the home (credentialEntry). Unlike the per-directory
 // fragment it carries no KAE_PROFILE and no kae: metadata records — state.json
 // `synced` is the source of truth, so the fragment is purely derived. Tools are
 // emitted in canonical order for stable, diffable output.

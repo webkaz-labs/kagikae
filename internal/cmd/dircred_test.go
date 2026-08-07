@@ -1210,31 +1210,44 @@ func TestHarvestIsDeclaredForMeasuredToolsOnly(t *testing.T) {
 // A payload that parses but carries no deadline cannot be ordered against anything,
 // so it is never harvested — the guard the selection rule rests on. A mutation that
 // dropped the zero check survived the whole suite (execution-type review).
+//
+// Two shapes, and they reach the classifier by different routes, which is why the second
+// row exists: with `expiresAt` **absent** claude never sets `Known`, while a **non-numeric**
+// one sets `Known` and parses to the zero time. The second used to be classified
+// "nothing to lose" — see TestPruneDirCredentialsKeepsACopyItCannotDate for what that
+// licensed — so an older comment here claiming the delete path "protected this state from
+// the start" was true only of the first row.
 func TestWriteDirCredentialDoesNotHarvestUndatedCredential(t *testing.T) {
-	app := testApp(t, nil)
-	ctx := context.Background()
-	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
-	credDir := t.TempDir()
-	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
-		`{"claudeAiOauth":{"accessToken":"sk-ant-oat01-UNDATED-ffff","refreshToken":"r"}}`)
-	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
+	for _, tc := range []struct{ name, oauth string }{
+		{"no expiresAt at all", `{"accessToken":"sk-ant-oat01-UNDATED-ffff","refreshToken":"r"}`},
+		{"an expiresAt of the wrong type", `{"accessToken":"sk-ant-oat01-UNDATED-ffff","refreshToken":"r","expiresAt":"1814400000000"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+			credDir := t.TempDir()
+			writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
+				`{"claudeAiOauth":`+tc.oauth+`}`)
+			writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 
-	be := testBackend(t, app)
-	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir); err != nil {
-			t.Fatalf("writeDirCredential: %v", err)
-		}
-		return 0
-	})
-	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
-		t.Fatalf("an undated credential must not be harvested: %s", got)
-	}
-	// And the overwrite is not silent. A payload kae cannot judge may still be a login,
-	// and on this path it is the only early signal of an upstream format change —
-	// `upstream_version` skips a version string it cannot parse. The delete path
-	// protected this state from the start while the write path did not, until review.
-	if !strings.Contains(stderr, "cannot read the copy already there") {
-		t.Fatalf("overwriting a copy kae cannot read must be reported: %q", stderr)
+			be := testBackend(t, app)
+			_, stderr := captureStderr(t, func() int {
+				if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir); err != nil {
+					t.Fatalf("writeDirCredential: %v", err)
+				}
+				return 0
+			})
+			if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
+				t.Fatalf("an undated credential must not be harvested: %s", got)
+			}
+			// And the overwrite is not silent. A payload kae cannot judge may still be a
+			// login, and on this path it is the only early signal of an upstream format
+			// change — `upstream_version` skips a version string it cannot parse.
+			if !strings.Contains(stderr, "cannot read or date the copy already there") {
+				t.Fatalf("overwriting a copy kae cannot judge must be reported: %q", stderr)
+			}
+		})
 	}
 }
 
@@ -1644,6 +1657,59 @@ func TestPruneDirCredentialsHarvestsBeforeDeleting(t *testing.T) {
 		}
 		if len(lines) != 1 || !strings.Contains(lines[0], stale) {
 			t.Fatalf("the removal must be reported: %v", lines)
+		}
+	})
+}
+
+// A live copy kae cannot **date** is not one it has nothing to lose by deleting. This is
+// the fourth consumer of the same predicate the recapture guards split on, and the only
+// one where folding "nothing to lose" together with "kae cannot tell" licenses a
+// **delete**: readLiveCredential classified `Known && !Revoked &&` undated as
+// `liveNothing`, so harvestBeforeDelete removed the item without harvesting it and
+// without a word, reporting it as a *superseded* credential.
+//
+// The fixture is TestPruneDirCredentialsHarvestsBeforeDeleting's, with one difference: the
+// payload's `expiresAt` is a string. That is what an upstream type change produces, and
+// what a comment here used to call unobservable.
+func TestPruneDirCredentialsKeepsACopyItCannotDate(t *testing.T) {
+	sim := &keychainSim{}
+	runner.With(sim, func() {
+		app := testApp(t, map[string]string{"USER": "me"})
+		app.Env.GOOS = "darwin"
+		ctx := context.Background()
+		now := app.Now()
+		captureClaudeFromKeychain(t, app, sim, "main", mainToken, now.Add(time.Hour))
+
+		pinID := paths.PinID(t.TempDir())
+		stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+		mkdirs(t, stale)
+		writeFile(t, filepath.Join(stale, ".claude.json"), claudeIdentityFile("main-uuid"))
+		const live = "sk-ant-oat01-MAIN-UNDATED-dddd"
+		sim.payload = `{"claudeAiOauth":{"accessToken":"` + live +
+			`","refreshToken":"r","expiresAt":"1814400000000"}}`
+
+		be := testBackend(t, app)
+		var lines []string
+		_, stderr := captureStderr(t, func() int {
+			lines = app.pruneDirCredentials(ctx, be, pinID, "", nil, fragmentInfo{}, false)
+			return 0
+		})
+
+		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
+			t.Fatalf("a live copy kae cannot date must be kept, not deleted: %v", sim.ops)
+		}
+		if len(lines) != 0 {
+			t.Fatalf("nothing was removed, so nothing may be reported as removed: %v", lines)
+		}
+		// Kept for a reason the user can act on — this is the only offline signal of an
+		// upstream format change on this path.
+		if !strings.Contains(stderr, "cannot read or date the claude credential") {
+			t.Fatalf("keeping it must say why: %q", stderr)
+		}
+		// And the snapshot is untouched: kae could not order the two, so it may not adopt
+		// the copy either.
+		if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
+			t.Fatalf("a copy kae cannot date must not be adopted either: %s", got)
 		}
 	})
 }

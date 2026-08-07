@@ -363,7 +363,7 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 		// answer. Written as the state it is rather than folded away, so the next reader
 		// does not remove it as dead.
 		return snapshot, false, harvestRefusal{
-			Why: "kae cannot read the copy already there, and a payload kae does not recognize may still be a login",
+			Why: "kae cannot read or date the copy already there, and a payload kae cannot judge may still be a login",
 		}
 	}
 	// A snapshot kae cannot read, or one that is itself a tombstone, loses to any
@@ -480,20 +480,24 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 	}
 	info := freshnessOf(tool, live.Data)
 	if !orderable(info) {
-		// Derived from `orderable` rather than restated, so the equivalence below cannot
-		// drift by omission: a condition added there — docs/VALIDATION.md already flags a
-		// candidate in the `expiresAt`-unit row — reaches this classification too.
-		if !info.Known {
-			return nil, freshness.Info{}, liveUnreadable
+		// **Only a tombstone is "nothing to lose".** Derived from `orderable` rather than
+		// restated, so a condition added there reaches this classification too — but the
+		// three conditions do not collapse to two answers, and folding them was a silent
+		// delete of a live login. `liveNothing` licenses a delete
+		// (harvestBeforeDelete removes the item without harvesting or warning);
+		// `liveUnreadable` forbids one. A payload that is `Known`, un-`Revoked` and
+		// **undated** is neither empty nor judgeable: claude sets `Known` on the mere
+		// presence of `expiresAt` and parses a non-numeric one to the zero time, so an
+		// upstream type change puts a working login in exactly that shape — measured, and
+		// the same shape recaptureWouldDowngrade splits on. It belongs with "kae cannot
+		// tell". The previous version of this comment claimed the zero case was
+		// unobservable and that claude's only measured zero was the tombstone; both were
+		// wrong, and a comment saying a guard cannot be tested is a licence to remove it.
+		if info.Known && info.Revoked {
+			return nil, freshness.Info{}, liveNothing
 		}
-		return nil, freshness.Info{}, liveNothing
+		return nil, freshness.Info{}, liveUnreadable
 	}
-	// Note on the `IsZero` half: it is the guard docs/ROADMAP.md prescribes, and it is
-	// also **unobservable**, which is worth writing down so nobody removes it as dead
-	// code or adds a test that cannot fail. A zero `expiresAt` parses to the zero time,
-	// which is never `After` any cutoff, so such a copy could not be harvested even
-	// without this line — and claude's only measured zero is the tombstone, which
-	// `Revoked` already catches. Mutating it away survives the suite by construction.
 	return live.Data, info, liveUsable
 }
 
@@ -1076,8 +1080,11 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// a "per-directory" credential at store.Dir named neither the thing removed nor
 		// where it lived, and understated the scope of the one removal that affects
 		// every other binding of the account. Found by running the smoke procedure in
-		// docs/VALIDATION.md § v0.17.0 per-account credential, which no test pinned:
-		// the two assertions on this string are both negative.
+		// docs/VALIDATION.md § v0.17.0 per-account credential. What no test pinned was the
+		// **account-wide** sentence — the two assertions on this literal are both negative;
+		// the per-directory arm below is pinned positively, but on `lines[0]` containing the
+		// store dir rather than on the wording (TestPruneDirCredentialsRemovesSupersededItem),
+		// so do not read that assertion as dead weight.
 		case removed && store.CredDir != "":
 			removals = append(removals, fmt.Sprintf(
 				"Removed the %s credential this account's bindings shared; nothing points at it any more (%s)",
@@ -1346,8 +1353,8 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 		return true
 	case liveUnreadable:
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae cannot read the %s credential in %s, so it is left in place instead of deleted "+
-				"(a payload kae does not recognize may still be a working login)\n", tool, credDir)
+			"kae: warning: kae cannot read or date the %s credential in %s, so it is left in place "+
+				"instead of deleted (a payload kae cannot judge may still be a working login)\n", tool, credDir)
 		return false
 	}
 	if accountName == "" {

@@ -248,11 +248,15 @@ func (app *App) migratePreSplitHome(ctx context.Context, be secret.Backend, tool
 	// than a second body because the two used to be one, and removeDirCredential's own
 	// comment said the pair "must not disagree about one state" — which is a hazard
 	// recorded rather than removed. Two quality lenses found it independently.
-	store := dirStore{Tool: tool, Dir: home, Account: accountName}
+	// No Account on the store: removeDirCredential reads Tool, dirs() and CredDir and
+	// never that field, and setting it would suggest to the next reader that it is
+	// consulted here the way storeAccount consults it for the sweep's own walk.
+	store := dirStore{Tool: tool, Dir: home}
 	if _, err := app.removeDirCredential(ctx, be, store, accountName, false, true); err != nil {
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: could not remove the pre-split %s credential in %s (%v); it is a copy nothing "+
-				"reads any more, and a refresh of it elsewhere would invalidate this account's\n",
+			"kae: warning: could not migrate the pre-split %s credential in %s (%v); any copy still "+
+				"there is one nothing reads, and a refresh of it elsewhere would invalidate this "+
+				"account's\n",
 			tool, app.displayPath(home), err)
 	}
 }
@@ -1748,19 +1752,27 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 	// a dedup that also skipped the comparison would be a control-flow change in a
 	// cleanup pass, which is how this repo has twice put a correctness defect into one.
 	live := make([]freshness.Info, len(group.Stores))
-	seen, known := map[string]freshness.Info{}, map[string]bool{}
-	freshnessOf := func(store boundDirStore) (freshness.Info, bool) {
+	// One entry per credential. No second map for "the read failed": that answer is
+	// already in the value, because dirCredentialFreshness returns the zero Info on
+	// every failure and !orderable(zero) is the same `continue`.
+	//
+	// The **key** is deliberately unkillable, and that is the property rather than a
+	// gap: changing its granularity (to store.Dir, say) changes only how many reads
+	// happen, never what any of them returns — measured 2026-08-07, and it is what
+	// makes this a memo rather than a dedup with an opinion.
+	seen := map[string]freshness.Info{}
+	freshnessOf := func(store boundDirStore) freshness.Info {
 		where := store.dirs().credDirOrConfig()
 		if info, cached := seen[where]; cached {
-			return info, known[where]
+			return info
 		}
-		info, ok := app.dirCredentialFreshness(ctx, store.store())
-		seen[where], known[where] = info, ok
-		return info, ok
+		info, _ := app.dirCredentialFreshness(ctx, store.store())
+		seen[where] = info
+		return info
 	}
 	for i, store := range group.Stores {
-		info, ok := freshnessOf(store)
-		if !ok || !orderable(info) {
+		info := freshnessOf(store)
+		if !orderable(info) {
 			continue // nothing kae can place in the ordering; see the doc comment
 		}
 		live[i] = info

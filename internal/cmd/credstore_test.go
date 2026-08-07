@@ -647,6 +647,55 @@ func TestUnpinPurgeReportsNothingForAStoreWithNoCredential(t *testing.T) {
 	}
 }
 
+// The migration's top guard is the **only** thing between a destructive call and a
+// tool that has nowhere to migrate to, and that is a consequence of folding the body
+// into removeDirCredential: `migrating: true` is what bypasses the file-store gate
+// there, and harvestBeforeDelete returns true immediately for a tool whose rotation
+// is not measured. Three conditions used to stand in the way; one does now, and
+// `prepareGlobalIsolatedHome` calls this per tool with no other filter.
+//
+// So: codex's global isolated home must come through `kae use -i` untouched, and
+// claude's pre-split copy must still be migrated — the pair, because a guard that
+// refuses everything would satisfy either case alone.
+func TestMigratePreSplitHomeOnlyTouchesAToolThatCanSplit(t *testing.T) {
+	for _, tc := range []struct {
+		tool, file, payload string
+		wantKept            bool
+	}{
+		{constants.ToolCodex, "auth.json", `{"tokens":{"access_token":"codex-live-token"}}`, true},
+		{constants.ToolClaude, ".credentials.json", "", false},
+	} {
+		t.Run(tc.tool, func(t *testing.T) {
+			app := overlayTestApp(t)
+			ctx := context.Background()
+			now := app.Now()
+			payload := tc.payload
+			if payload == "" {
+				payload = claudeOAuthPayload("sk-ant-oat01-PRESPLIT-cccc", now.Add(8*time.Hour))
+			}
+			captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+
+			home := app.Paths.GlobalIsolatedHomeDir(tc.tool, "main")
+			mkdirs(t, home)
+			writeFile(t, filepath.Join(home, tc.file), payload)
+			writeFile(t, filepath.Join(home, ".claude.json"), claudeIdentityFile("main-uuid"))
+
+			app.migratePreSplitHome(ctx, testBackend(t, app), tc.tool, "main", home)
+
+			got := ""
+			if data, err := os.ReadFile(filepath.Join(home, tc.file)); err == nil {
+				got = string(data)
+			}
+			switch {
+			case tc.wantKept && !strings.Contains(got, "codex-live-token"):
+				t.Fatalf("%s has nowhere to migrate to; its home credential must be untouched: %q", tc.tool, got)
+			case !tc.wantKept && strings.Contains(got, "PRESPLIT"):
+				t.Fatalf("%s's pre-split copy must be migrated out of the home: %q", tc.tool, got)
+			}
+		})
+	}
+}
+
 // dirSpecs overrides the credential variable **always**, with the config dir itself
 // when the pair is not split — never leaving whatever the surrounding shell exports
 // to answer. kae runs inside the bound shell that exported one, so resolving a

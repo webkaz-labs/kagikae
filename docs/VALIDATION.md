@@ -1108,17 +1108,16 @@ merely older, it is rejected. Temp HOME, **file** driver, file backend: no real
 whose `expiresAt` is the only thing that orders two copies.
 
 **The credential is not in the config dir any more, and a fixture written there
-tests nothing.** The per-account credential store shipped in this same release, so a
-bound directory names two directories: `CLAUDE_CONFIG_DIR` (sessions, and the identity
-cache attribution reads) and `CLAUDE_SECURESTORAGE_CONFIG_DIR`
-(`credstore/<tool>/<account>/`, the credential). Every credential fixture below goes to
-the second one, every identity fixture to the first. This block wrote both to the first
+tests nothing.** Every credential fixture below goes to
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` (`cstore`), every identity fixture to
+`CLAUDE_CONFIG_DIR` (`store`) — [ADAPTERS.md](ADAPTERS.md) § Per-account credential store
+is normative for which holds what. This block sent **both** to the config dir
 until 2026-08-08, and the failure was not a red run: A, D and E stopped exercising the
 harvest at all, while C ("no `harvested` line") and every `grep -c … = 0` line went
 green *because* nothing had happened — the block reported the release's headline
 mechanism as covered while measuring a directory kae no longer reads a credential from.
-The same file's § Upstream Behaviour Assumptions had the rule right the whole time, so
-one file contradicted itself; § ADAPTERS.md Per-account credential store is normative.
+This file's own § Upstream Behaviour Assumptions had the rule right the whole time, so
+one file contradicted itself.
 
 Three things this block cannot show, so they are not claimed. The sweep's half (a
 `--purge` harvesting before it deletes) is unit-covered here rather than smoke-covered
@@ -1478,14 +1477,12 @@ fails loudly instead of quietly writing to the temp `$HOME`.
 #  `kae profile set main claude main`. Do NOT re-source smoke-env.sh here — that mints a
 #  fresh HOME and throws the account away, leaving `kae pin` below with nothing to bind.
 #  Run it after the PREAMBLE ONLY — **not** after the harvest block's cases, which this
-#  said was fine until 2026-08-08 and is not: they leave four more directories bound to
-#  claude/main, all sharing its one credential store, so K's "newest copy" is a tie among
-#  stores holding the same bytes and the winner falls out of walk order. One tied store
-#  that kae cannot attribute silences the whole account group — case F removes an identity
-#  cache, which is enough — and K measured 0 findings instead of 1. Confirmed by a
-#  reversible control on a third bound directory: 1 finding, remove its identity cache 0,
-#  restore it 1. The direction is conservative, so this is a reporting gap and not a
-#  destructive one; docs/ROADMAP.md carries it.
+#  said was fine until 2026-08-08 and is not: their bindings of the same account make K's
+#  "newest copy" a tie that an unattributable store can win, which silences the whole
+#  group. K measured 0 findings instead of 1. docs/ROADMAP.md
+#  § credential_superseded owns the mechanism and the control that pinned it.
+#  If A–J has ALREADY run in this shell, K–M needs a fresh session: open a new shell,
+#  `. scripts/smoke-env.sh`, run the preamble above and nothing else, then this block.
 #  On the paths: use canonical directories. `mktemp -d` returns /var/... on macOS while
 #  kae resolves /private/var/..., so an uncanonical $A makes every assertion that greps
 #  it match nothing while the block still runs green on the `grep -c` lines.)
@@ -2196,24 +2193,17 @@ block rather than from the end state.
   with every XDG root isolated (`. scripts/smoke-env.sh`), the repositories and worktrees
   created *inside* that HOME. This block needed no correction.
 - **§ v0.17.0 surface — the credential harvest, A–J: 52 of 52** — but **only after fixing
-  the block**, and that is the finding of this run. Every credential fixture was still
-  written to `CLAUDE_CONFIG_DIR` after the per-account credential store moved the
-  credential to `CLAUDE_SECURESTORAGE_CONFIG_DIR` in this same release, so A, D and E had
-  stopped exercising the harvest at all while C and four `grep -c … = 0` lines went green
-  *because* nothing happened. Two more sentences in it had gone false the same way (D's
-  "a different store" — measured, D now harvests the same store as A — and E's claim that
-  the write path notes a foreign copy). kae was correct throughout; the acceptance block
-  was measuring a directory kae no longer reads a credential from, and the same file's
-  § Upstream Behaviour Assumptions had the rule right all along.
+  the block**, and that is the finding of this run: every credential fixture still targeted
+  `CLAUDE_CONFIG_DIR` after this release moved the credential to
+  `CLAUDE_SECURESTORAGE_CONFIG_DIR`, so cases stopped exercising the harvest while their
+  negative assertions went green *because* nothing happened. kae was correct throughout —
+  the block was measuring a directory kae no longer reads a credential from. That section
+  above records what was corrected and what each case now proves.
 - **§ v0.17.0 surface — `kae relogin` and `credential_superseded`, K–M: 20 of 20**, also
-  after fixing the block. Two ordinary bindings of one account now share one credential
-  store, so K's "two directories, two copies" state is no longer constructible that way;
-  it is now built with one directory left in the pre-split shape. The block's note that
-  the harvest cases could be run first was also false — measured 0 findings instead of 1,
-  because the harvest cases leave four more directories bound to the same account, whose
-  tied "newest" copy is chosen by walk order and whose unattributable member silences the
-  group. Confirmed by a reversible control (1 finding → remove one identity cache → 0 →
-  restore → 1) and filed in docs/ROADMAP.md.
+  after fixing the block: two ordinary bindings of one account now share one credential
+  store, so K's two-copies state needs one directory left in the pre-split shape. Running
+  it straight after the harvest cases also turned out to be unsafe — that section, and
+  docs/ROADMAP.md § `credential_superseded`, own both corrections.
 - **§ v0.17.0 per-account credential real-machine smoke: 6 of 6** (26 assertions),
   including that `kae unpin --purge` keeps the credential while another binding uses it
   and, in the last one, names it as **the account's** at `credstore/claude/<account>`.

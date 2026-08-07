@@ -103,11 +103,21 @@ the keychain service name**, which claude namespaces as
 "Credential storage resolution" below). `auth` mode never sets or changes
 `CLAUDE_CONFIG_DIR` itself.
 
-`CLAUDE_SECURESTORAGE_CONFIG_DIR` displaces `CLAUDE_CONFIG_DIR` for both stores
-at once, and set to the empty string it removes the namespacing entirely. kae
-cannot keep a per-directory binding honest under either, so the adapter reports
-the tool as unsupported (exit `5`) while that variable is present, rather than
-writing a credential nothing reads.
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` displaces `CLAUDE_CONFIG_DIR` for both
+credential stores at once — the keychain service name's hash input and the
+`.credentials.json` directory — while sessions, settings and the `.claude.json`
+identity keep following `CLAUDE_CONFIG_DIR`. A **non-empty** value is modelled
+(`claude.credentialBaseDir`), the same way a user-set `CLAUDE_CONFIG_DIR` is:
+that separation is what lets one account's credential be shared by every
+directory bound to it while everything else stays private per directory
+(§ "Per-account credential store").
+
+Set to the **empty string** it is a different mechanism, not a smaller one: it
+removes the namespacing entirely, collapsing every config dir onto claude's one
+global item. A bound directory under it runs whatever `kae use` last made
+globally active while its fragment and identity still name the bound account, so
+the adapter reports the tool as unsupported (exit `5`) for that value alone. kae
+never writes it.
 
 `CLAUDE_CODE_CUSTOM_OAUTH_URL` renames both stores a second way: with a non-empty
 value the build's OAuth suffix becomes `-custom-oauth`, which goes into the
@@ -132,10 +142,16 @@ and which no environment variable exposes ([ROADMAP.md](ROADMAP.md)).
 Where claude's credential lives is a **rule**, not a constant, and kae's own
 isolation modes are what make the difference visible:
 
-| `CLAUDE_CONFIG_DIR` | Keychain service | Plaintext fallback |
+| Credential base dir | Keychain service | Plaintext fallback |
 |---|---|---|
-| unset | `Claude Code-credentials` | `~/.claude/.credentials.json` |
-| set to `<dir>` | `Claude Code-credentials-<sha8>` | `<dir>/.credentials.json` |
+| neither variable set | `Claude Code-credentials` | `~/.claude/.credentials.json` |
+| `<dir>` | `Claude Code-credentials-<sha8>` | `<dir>/.credentials.json` |
+
+The **credential base dir** is `CLAUDE_SECURESTORAGE_CONFIG_DIR` when that holds
+a non-empty value, otherwise `CLAUDE_CONFIG_DIR` — one rule, one place
+(`claude.credentialBaseDir`). It decides the credential and nothing else; the
+identity file and everything the tool keeps beside it follow `CLAUDE_CONFIG_DIR`
+whatever this says.
 
 `<sha8>` is the first 8 hex characters of `sha256` over the value of the
 variable, **NFC-normalized** — no path resolution and no cleaning, so `/x/y` and

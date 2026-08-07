@@ -407,22 +407,80 @@ func TestClaudeKeychainAccountMirrorsUpstream(t *testing.T) {
 	}
 }
 
-// TestClaudeRefusesSecureStorageConfigDir covers the variable that moves both of
-// claude's stores at once. The empty-value case is the dangerous one — it removes
-// the per-directory suffix entirely, so every pin would collapse onto one shared
-// item — and it is only visible through LookupEnv, which is why Env carries one.
-func TestClaudeRefusesSecureStorageConfigDir(t *testing.T) {
-	for _, value := range []string{"", "/somewhere/else"} {
-		t.Run("value="+value, func(t *testing.T) {
-			env := testEnv(t, "darwin", map[string]string{
-				"USER":                     "alice",
-				claude.EnvSecureStorageDir: value,
-			})
-			if _, err := claudeAdapter.Artifacts(context.Background(), env); !errors.Is(err, adapter.ErrUnsupported) {
-				t.Fatalf("expected unsupported, got %v", err)
-			}
-		})
+// TestClaudeRefusesEmptySecureStorageConfigDir pins the one value of that
+// variable kae still refuses. An empty value removes the per-config-dir suffix
+// entirely, so every bound directory collapses onto claude's one global item and
+// `kae use` silently changes what a pinned directory runs. It is visible only
+// through LookupEnv, which is why Env carries one — a non-empty value is a
+// different mechanism and is honored (the test below).
+func TestClaudeRefusesEmptySecureStorageConfigDir(t *testing.T) {
+	env := testEnv(t, "darwin", map[string]string{
+		"USER":                     "alice",
+		claude.EnvSecureStorageDir: "",
+	})
+	if _, err := claudeAdapter.Artifacts(context.Background(), env); !errors.Is(err, adapter.ErrUnsupported) {
+		t.Fatalf("expected unsupported, got %v", err)
 	}
+}
+
+// TestClaudeSecureStorageConfigDirSplitsTheStores is the mechanism the
+// per-account credential store rests on: with both variables set, the credential
+// follows CLAUDE_SECURESTORAGE_CONFIG_DIR and everything else follows
+// CLAUDE_CONFIG_DIR. Asserting the two *differ* is the point — a single-variable
+// model passes every "the item is namespaced" check while writing the item claude
+// does not read.
+//
+// The expected suffix is computed outside kae (python3 hashlib over the NFC form,
+// as in TestClaudeKeychainServiceNormalizesToNFC), and the config dir's own hash
+// is asserted absent so a fallback to it cannot pass.
+func TestClaudeSecureStorageConfigDirSplitsTheStores(t *testing.T) {
+	const (
+		credDir      = "/data/credstore/claude/main"
+		configDir    = "/data/pin/claude/config"
+		wantService  = claude.KeychainService + "-1b3c6671" // sha8(credDir)
+		configSuffix = "7ab99601"                           // sha8(configDir), must not appear
+	)
+	envVars := map[string]string{
+		"USER":                     "alice",
+		"CLAUDE_CONFIG_DIR":        configDir,
+		claude.EnvSecureStorageDir: credDir,
+	}
+
+	t.Run("darwin keychain item follows the credential dir", func(t *testing.T) {
+		specs, err := claudeAdapter.Artifacts(context.Background(), testEnv(t, "darwin", envVars))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if specs[0].Target != wantService {
+			t.Fatalf("keychain target = %q, want %q", specs[0].Target, wantService)
+		}
+		if strings.Contains(specs[0].Target, configSuffix) {
+			t.Fatalf("keychain target %q is namespaced by the config dir, not the credential dir", specs[0].Target)
+		}
+		if !specs[0].KeychainDirBindable {
+			t.Fatal("a namespaced item must stay bindable, or no bound directory may write it")
+		}
+	})
+
+	t.Run("linux credential file follows the credential dir", func(t *testing.T) {
+		specs, err := claudeAdapter.Artifacts(context.Background(), testEnv(t, "linux", envVars))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join(credDir, ".credentials.json"); specs[0].Target != want {
+			t.Fatalf("credential target = %q, want %q", specs[0].Target, want)
+		}
+	})
+
+	t.Run("the identity cache stays with the config dir", func(t *testing.T) {
+		specs, err := claudeAdapter.Artifacts(context.Background(), testEnv(t, "darwin", envVars))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join(configDir, ".claude.json"); specs[1].Target != want {
+			t.Fatalf("identity target = %q, want %q", specs[1].Target, want)
+		}
+	})
 }
 
 // The refusal must not fire on an absent variable — that is every normal run.

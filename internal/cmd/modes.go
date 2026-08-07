@@ -235,16 +235,37 @@ func (app *App) applyGlobalScope() {
 			credential[envVar] = true
 		}
 	}
-	inner := app.Env.Getenv
+	// masked reports whether this key holds a value kae itself set, which is the one
+	// thing a global command must not see.
+	inner, innerLookup := app.Env.Getenv, app.Env.LookupEnv
+	masked := func(key, value string) bool {
+		return (isolated[key] && app.isKaeManagedHome(value)) ||
+			(credential[key] && app.isKaeManagedCredStore(value))
+	}
 	app.Env.Getenv = func(key string) string {
-		value := inner(key)
-		switch {
-		case isolated[key] && app.isKaeManagedHome(value):
-			return ""
-		case credential[key] && app.isKaeManagedCredStore(value):
-			return ""
+		if value := inner(key); !masked(key, value) {
+			return value
 		}
-		return value
+		return ""
+	}
+	// **Both** seams, because an adapter that asks `Env.IsSet` reads this one and not
+	// the one above. That used to be safe on the stated grounds that every variable
+	// reached through IsSet is user-set by definition — which stopped being true the
+	// moment kae started setting a credential variable itself. Masking only Getenv
+	// leaves `IsSet(SSCD) && Getenv(SSCD) == ""` true for every bound directory, which
+	// is claude's refusal for the one value kae never writes: every global command run
+	// inside a bound directory would report the tool unsupported, including the mise
+	// enter hook. dirSpecs overrides both seams for the same reason.
+	app.Env.LookupEnv = func(key string) (string, bool) {
+		if innerLookup == nil {
+			value := inner(key)
+			return value, value != "" && !masked(key, value)
+		}
+		value, ok := innerLookup(key)
+		if ok && masked(key, value) {
+			return "", false
+		}
+		return value, ok
 	}
 }
 

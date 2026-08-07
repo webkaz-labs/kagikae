@@ -424,14 +424,14 @@ func rebindFragment(tool, account, dir, credDir, profile string, companionLines,
 			out = append(out, fmt.Sprintf("%s = %q", constants.EnvKaeProfile, profile))
 		case dir != "" && envVar != "" && strings.HasPrefix(line, envVar+" = "):
 			out = append(out, fmt.Sprintf("%s = %q", envVar, dir))
-			// A fragment written before the split has the home line and no credential
-			// line; the new one belongs directly after it, where a bind would have put
-			// it. Reached only in isolated mode, where the home line is rewritten —
-			// shared mode has its own arm below.
-			if !credWritten {
-				out = append(out, fmt.Sprintf("%s = %q", credVar, credDir))
-				credWritten = true
-			}
+			// Deliberately **no** credential line inserted here. It is the obvious place
+			// — a bind writes the credential line directly after the home line — and it
+			// is wrong, because this arm also fires for a fragment that already has one:
+			// the insert would run first, the existing line would then miss the arm below
+			// and be carried through verbatim, and the fragment would end with two. mise
+			// rejects a duplicate key in one table, so the directory loses its whole
+			// binding; kae's own parser takes the last, which is the previous account's
+			// store. The pre-split case is handled once, after the loop, for both modes.
 		case !credWritten && strings.HasPrefix(line, credVar+" = "):
 			// The account selects the credential store, so this line moves on **every**
 			// re-bind — including a shared-mode one, where the home line deliberately

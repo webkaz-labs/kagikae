@@ -481,6 +481,12 @@ from the account snapshots. Because the sweep harvests first, `--purge` needs ka
 secret store: if it cannot be opened, kae warns and leaves the credentials in place
 rather than deleting logins it has no way to preserve.
 
+Under the file driver the account's credential store holds a plaintext credential
+and nothing else, so `--purge` removes that credential too — the artifact, which for
+claude is a pointer inside `.credentials.json`, so the document is left behind
+without it. A per-directory store's file is the opposite case and is kept whole: it
+sits beside the sessions and settings that survive an unpin.
+
 An account's **shared** credential store is a separate case with its own rule
 ([ADAPTERS.md](ADAPTERS.md) § Per-account credential store). It is not one
 directory's to delete, so a bind's sweep never touches it, and `--purge` takes it
@@ -1096,7 +1102,9 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 
 A `(tool, code)` pair is **not** unique in one report: a code is emitted per subject,
 and several subjects can share a tool. `credential_stale` is reported once per account
-snapshot and once per bound directory, `identity_drift` once for the active
+snapshot and once per bound **credential** — which is one finding for every
+directory bound to an account, since they read one store, and a second one for a
+directory still holding its own pre-v0.17.0 copy — `identity_drift` once for the active
 account's live state and once per bound directory whose store disagrees with its
 binding, and `credential_superseded` once per bound directory that a newer copy
 overtook. Consumers must read the list, not index it by code.

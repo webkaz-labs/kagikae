@@ -46,10 +46,12 @@ type Env struct {
 // adapter that refuses on IsSet stays correct in the common case and merely
 // under-refuses in a test env that did not inject one.
 //
-// Not subject to the global-scope masking that wraps Getenv (cmd.applyGlobalScope
-// hides kae-managed isolation values): that masking covers only variables kae
-// itself sets, and every variable reached through IsSet is user-set by
-// definition.
+// Subject to the same global-scope masking as Getenv (cmd.applyGlobalScope hides
+// kae-managed isolation and credential values), and it has to be: kae sets a
+// credential variable itself now, so "every variable reached through IsSet is
+// user-set by definition" — the grounds on which this seam was left unmasked — is
+// no longer true. A masked key reads as **absent** rather than empty, because empty
+// is a meaningful value for at least one of them (claude refuses it).
 func (e Env) IsSet(key string) bool {
 	if e.LookupEnv != nil {
 		_, ok := e.LookupEnv(key)

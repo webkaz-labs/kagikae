@@ -42,10 +42,16 @@ func testApp(t *testing.T, envVars map[string]string) *App {
 		Config:     cfg,
 		ConfigPath: p.ConfigFile(),
 		Env: adapter.Env{
-			GOOS:     "linux",
-			Home:     home,
-			Getenv:   getenv,
-			LookPath: func(string) (string, error) { return "", errors.New("not found") },
+			GOOS:   "linux",
+			Home:   home,
+			Getenv: getenv,
+			// Injected because production does (internal/cmd/app.go), and because
+			// leaving it nil makes `Env.IsSet` degrade to a non-empty test on Getenv —
+			// which silently hides every defect that lives in the difference between
+			// "absent" and "set to empty". One shipped that way: the global-scope
+			// masking covered Getenv only, and no fixture here could reach it.
+			LookupEnv: func(key string) (string, bool) { value, ok := envVars[key]; return value, ok },
+			LookPath:  func(string) (string, error) { return "", errors.New("not found") },
 		},
 		Now: func() time.Time { return time.Date(2026, 6, 11, 1, 23, 45, 0, time.UTC) },
 	}

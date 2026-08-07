@@ -111,16 +111,24 @@ type toolPlan struct {
 	Account string
 	Driver  string
 	// Identity is the raw detected login identity to persist in the snapshot
-	// (§D). Set by the capture/login paths from resolveAccount; the run paths leave it
-	// empty, so **both** recaptures carry Meta.Identity into it rather than letting
-	// persistSnapshot blank the field — which is what `run -s` did until v0.17.0.
-	// Empty when undetectable.
+	// (§D). Set by the capture/login paths from resolveAccount, and empty when
+	// undetectable. The run paths leave it empty, so a recapture has to fill it or
+	// persistSnapshot blanks the field — which is what `run -s` did until v0.17.0.
+	//
+	// **Each recapture fills it from the snapshot it is rewriting, and those are not the
+	// same object.** On `run -s` that is this plan's own account, so `plan.Meta.Identity`.
+	// On the switch-away path it is the *previously active* account, which
+	// recaptureActiveBeforeSwitch loads for itself — `plan.Meta` there is the switch
+	// **target**, and carrying its identity would file one account's identity under
+	// another's name, the mislabel every guard on that path exists to prevent.
 	Identity string
 	Specs    []artifact.Spec
-	// Meta is the snapshot as it stood before this command touched anything, populated by
-	// loadPlansWithSnapshots for switch **and** run. Load-bearing on both: it is the
-	// baseline both recapture guards compare against (keepSnapshotIdentity,
-	// recaptureWouldDowngrade), and the source of the identity above.
+	// Meta is a captured snapshot, populated by loadPlansWithSnapshots for switch and run —
+	// but it means different things to the two, and the difference is load-bearing. On the
+	// run paths it is the account being run as, so it is the pre-child baseline both
+	// recapture guards compare against. On a switch it is the **target**: the guards there
+	// are handed the separately loaded active account instead, and Meta feeds only the
+	// switch-time freshness warning.
 	Meta     account.Account
 	Warnings []string
 }

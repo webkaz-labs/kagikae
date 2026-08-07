@@ -319,7 +319,11 @@ alternative exists (`secret-tool`).
   superseded *global* isolated home is never harvested** — `kae use -i <a>` then
   `kae use -i <b>` leaves `isolation/global/<tool>/<a>/` holding a's newest copy, and
   because there is no pin, neither the pin-level pass nor any sweep ever looks at it
-  (the write-path harvest only covers the home being materialized); and the harvest
+  (the write-path harvest only covers the home being materialized). **Resolved for
+  claude by the credential split**: a's credential is now a's own store, which the
+  home switch does not touch and any later bind of a reads directly, so there is no
+  second copy left to strand. It stands for a tool that cannot separate its
+  credential from its home, which today is every other one; and the harvest
   writes an account snapshot under a per-directory lock that no tool lock covers, so a
   concurrent `kae add` or switch-away recapture of the same account can leave the
   snapshot holding the copy that **cannot** refresh — not merely the older of two good
@@ -332,9 +336,13 @@ alternative exists (`secret-tool`).
   moment to intervene; only one copy of the credential can. That is the entry below,
   and any message about this must not imply otherwise.
 
-- **One credential per account, sessions still per directory — via
-  `CLAUDE_SECURESTORAGE_CONFIG_DIR`** (designed and gated 2026-08-04, **not
-  started**; build it *after* the entry above). The entry above keeps a *sequence* of
+- ~~**One credential per account, sessions still per directory — via
+  `CLAUDE_SECURESTORAGE_CONFIG_DIR`**~~ (designed and gated 2026-08-04, **built**
+  in v0.17.0 — see [RELEASE.md](RELEASE.md) and
+  [ADAPTERS.md](ADAPTERS.md) § Per-account credential store, which is normative for
+  the mechanism. The design below is kept because it records *why*, and because the
+  premise it rests on is an upstream measurement that has to be re-checked, not a
+  decision that can be re-read from the code). The entry above keeps a *sequence* of
   directories working; it cannot make two worktrees bound to one account run at the
   same time, because each store holds its own copy and the first refresh invalidates
   the rest. Only one copy fixes that.
@@ -384,6 +392,32 @@ alternative exists (`secret-tool`).
   one directory does share the item — but it shares the whole home with it (history,
   sessions, logs), which is the thing this design exists to avoid. A per-account store
   is the option there, if codex's rotation is ever measured.
+  Two things the build settled that the plan above left open, recorded because the
+  reasoning is not visible in the result. Globally isolated homes (`kae use -i`,
+  `kae run -i`) read the account's store too — their home is already per-account, so
+  leaving them out was tempting, and it would have made them the one copy the design
+  forgot; that also closes the "superseded global isolated home is never harvested"
+  entry below for claude, since there is no second copy left to harvest. And a bind's
+  sweep no longer deletes the credential of a store it moves off: the credential is
+  the account's, so only `kae unpin --purge` may take it, refcounted. What is still
+  swept unchanged is the per-directory item a **pre-split** binding left behind,
+  which is what makes re-running `kae pin` a migration rather than a leak.
+
+- **A store bound before the credential split, unbound, then re-bound after it keeps
+  its pre-split item** (recorded 2026-08-07, **not fixed** — deliberately). The
+  migration sweep is scoped to the store the *previous binding* pointed at
+  (`credentialMovedOutOf`), and after an unpin there is no previous binding to name
+  it, so a three-step history leaves the item behind. Nothing is lost: the pin-level
+  pass still harvests that copy into the account snapshot, so it is a leftover secret
+  rather than a lost login.
+  It is deliberately not fixed by widening the sweep a third time. Two weaker rules
+  were already wrong the same way — every store of a pre-split binding shares the
+  "no recorded credential entry" shape, so acting on it means deleting without
+  evidence that no binding reads it, and a per-directory item is precisely the thing
+  that cannot be counted. The right home is the entry below: **this leftover is
+  attributable**, unlike the four found on a real machine, because its hash input is
+  `store.Dir` and the pin index still names that directory. So it lands in the
+  reportable half of that feature, not the leave-it-alone half.
 
 - **Per-directory keychain items outlive everything that could name them, and now
   they can be found** (measured on a real machine 2026-08-04, **not fixed**). Five
@@ -611,10 +645,11 @@ alternative exists (`secret-tool`).
   3. ~~**Own the item's lifecycle.**~~ **Done** (2026-07-30). A `pin -s` ↔ `pin -i`
      toggle and an isolated re-bind now sweep the keychain item of the store they
      supersede, and `kae unpin --purge` sweeps the current ones (plain `unpin` still
-     keeps everything, so a re-pin restores the directory). The sweep mirrors the
-     write gate — keychain items only, only where the adapter declares them bindable
-     — so it starts covering codex the moment the capability is declared, with no
-     further work. It also closed the same gap for claude, which had been creating
+     keeps everything, so a re-pin restores the directory). The sweep covers a keychain
+     item where the adapter declares it bindable — so it starts covering codex the
+     moment the capability is declared, with no further work — and, since v0.17.0, a
+     file credential that is no longer the copy its own store reads
+     (`removeDirCredential` is normative). It also closed the same gap for claude, which had been creating
      per-directory items since v0.12.0 with nothing removing them.
   Then declare the capability (drop codex from `bindableNotYetDeclared`) and add the
   pin round-trip to the real-machine gate. Until step 3 lands, a pinned directory has
@@ -660,8 +695,9 @@ alternative exists (`secret-tool`).
   bound directory, so walking `isolation/<pinID>` — computed from its own cwd —
   finds the stores, and anything the new binding does not point at is stale by
   definition. The store directory still stays (it holds sessions and settings a
-  re-pin restores); only the invisible half, the keychain item, is removed
-  ([CLI.md](CLI.md) § pin). What an index would still add is the *other* direction —
+  re-pin restores); what is removed is the credential, which for a keychain store is
+  the invisible half and since v0.17.0 can also be a file the store no longer reads
+  ([CLI.md](CLI.md) § pin, `removeDirCredential` for the rule). What an index would still add is the *other* direction —
   reaching a bound directory from outside it — which **landed on 2026-07-31** as a
   breadcrumb inside each store (`isolation/<pin-id>/dir`), so `kae account rm` /
   `rename` / `kae profile rm` now name the directories they invalidate and

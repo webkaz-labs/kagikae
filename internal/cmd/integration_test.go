@@ -42,12 +42,74 @@ func testApp(t *testing.T, envVars map[string]string) *App {
 		Config:     cfg,
 		ConfigPath: p.ConfigFile(),
 		Env: adapter.Env{
-			GOOS:     "linux",
-			Home:     home,
-			Getenv:   getenv,
-			LookPath: func(string) (string, error) { return "", errors.New("not found") },
+			GOOS:   "linux",
+			Home:   home,
+			Getenv: getenv,
+			// Injected because production does (internal/cmd/app.go), and because
+			// leaving it nil makes `Env.IsSet` degrade to a non-empty test on Getenv —
+			// which silently hides every defect that lives in the difference between
+			// "absent" and "set to empty". One shipped that way: the global-scope
+			// masking covered Getenv only, and no fixture here could reach it.
+			LookupEnv: func(key string) (string, bool) { value, ok := envVars[key]; return value, ok },
+			LookPath:  func(string) (string, error) { return "", errors.New("not found") },
 		},
 		Now: func() time.Time { return time.Date(2026, 6, 11, 1, 23, 45, 0, time.UTC) },
+	}
+}
+
+// dirCredFile is where a per-directory bind puts a tool's credential file:
+// the account's own credential store for a tool that can separate the two
+// (claude), the store directory itself otherwise.
+//
+// Tests go through it rather than joining a path, so the layout lives in one
+// place — and so a test cannot keep asserting a location production has stopped
+// writing to. It applies production's own rule (credStoreDir), which is what
+// makes it safe to seed *and* assert through: seeding somewhere the tool does not
+// read is exactly the mistake this file's fixtures are prone to.
+func dirCredFile(app *App, tool, account, storeDir string) string {
+	if dir := app.credStoreDir(tool, account); dir != "" {
+		return filepath.Join(dir, ".credentials.json")
+	}
+	return filepath.Join(storeDir, ".credentials.json")
+}
+
+// makePreSplit rewrites an existing binding into the shape a kae from before the
+// credential split left behind: no credential entry in the fragment, and the
+// credential inside the store directory. It moves the file rather than copying it,
+// so nothing is left in the new location to make an assertion pass by accident.
+//
+// It exists because this state cannot be produced by running kae any more, and it
+// is the state every migration path has to keep working against — a directory bound
+// by an older release keeps its per-directory credential until it is re-pinned, and
+// the sweeps must still find *that* one rather than the account's shared store.
+func makePreSplit(t *testing.T, app *App, tool, account, boundDir, storeDir string) {
+	t.Helper()
+	fragment := filepath.Join(boundDir, fragmentRelPath)
+	data, err := os.ReadFile(fragment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := []string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, credentialEnvVar(tool)+" = ") {
+			kept = append(kept, line)
+		}
+	}
+	if len(kept) == len(strings.Split(string(data), "\n")) {
+		t.Fatalf("fragment already has no %s entry; this fixture would assert nothing", credentialEnvVar(tool))
+	}
+	if err := os.WriteFile(fragment, []byte(strings.Join(kept, "\n")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	from := dirCredFile(app, tool, account, storeDir)
+	if from == filepath.Join(storeDir, ".credentials.json") {
+		return // this tool never split them
+	}
+	if payload, err := os.ReadFile(from); err == nil {
+		writeFile(t, filepath.Join(storeDir, ".credentials.json"), string(payload))
+		if err := os.Remove(from); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

@@ -125,7 +125,10 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	}
 	// The harvest reads a per-directory store twice in one command — the pin-level pass
 	// classifies it, then the materializer's chokepoint reads it again before writing —
-	// and reads that account's snapshot payload twice with it. Both are the exact shape
+	// and reads that account's snapshot payload twice with it. With the cache below the
+	// second read is a hit whenever both resolve the same store, which since the
+	// credential split is every re-pin that is not migrating one
+	// (TestRunPinCoalescesTheHarvestKeychainReads measures exactly that: one read). Both are the exact shape
 	// the switch path already coalesces, so opt in rather than restructure signatures to
 	// save a `security` call (docs/RELEASE.md §A/§C). Safe here for the same reason it is
 	// safe there: nothing between the two reads writes that store (the harvest writes

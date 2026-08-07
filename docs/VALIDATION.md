@@ -1105,9 +1105,15 @@ merely older, it is rejected. Temp HOME, **file** driver, file backend: no real
 whose `expiresAt` is the only thing that orders two copies.
 
 Three things this block cannot show, so they are not claimed. The sweep's half (a
-`--purge` harvesting before it deletes) applies only to a **keychain** item — a
-file-backed per-directory credential lives inside the store directory and is never
-deleted — so it is covered by unit tests and by the keychain gates above. The file
+`--purge` harvesting before it deletes) is unit-covered here rather than smoke-covered
+— `TestUnpinPurgeRemovesAFileCredentialFromTheAccountStore` and
+`TestRePinMigrationRemovesThePreSplitFile` are the file-driver halves, and the
+keychain gates above are the other. This block deliberately does not run it: it would
+add a purge to a scenario whose subject is the ordering of two copies. Note what
+changed and why the older wording here was worse than a gap — it said a file-backed
+per-directory credential "is never deleted", which stopped being true when a
+credential could move out of the store it sits in, so this section was excusing the
+one configuration that could have caught it. The file
 backend stores payloads **base64-encoded**, so a snapshot assertion has to decode
 before matching: `grep` on the raw file finds nothing and reads as a *passing*
 assertion. And each case below re-captures the account it uses, because a harvest
@@ -1551,6 +1557,63 @@ completion registered **and refreshed**:
 - [ ] `kae env list <TAB>` offers **nothing** — `env list` takes no arguments, and
       the branch is gated on the sub-verb to avoid suggesting a word the command
       rejects.
+
+Record the result in the Release Acceptance Log below.
+
+## v0.17.0 surface — the per-account credential store
+
+The credential moved out of the bound directory's store and into
+`credstore/<tool>/<account>/`, which the binding names through a second env entry
+([ADAPTERS.md](ADAPTERS.md) § Per-account credential store). The upstream fact it
+rests on — that one shared store survives two simultaneous refreshes while two
+copies do not — is measured in the table below, with its negative control; it is
+the row this whole surface stands on, so re-verify it on a claude upgrade rather
+than trusting this section.
+
+Unit-covered, in `internal/cmd` (`credstore_test.go` unless noted):
+
+- `TestTwoDirectoriesOfOneAccountShareOneCredential` — the property itself, read
+  from both fragments: one credential entry, two different config dirs.
+- `TestUnpinPurgeKeepsACredentialASiblingStillBinds`,
+  `…AGloballyIsolatedHomeUses`, and `TestUnpinPurgeRemovesACredentialNothingElseBinds`
+  — the refcount in all three directions. The third is the one that keeps the guard
+  from being "never delete", which every other assertion here would accept.
+- `TestALeftoverStoreIsNotGivenAnotherAccountsCredentialDir` and
+  `TestAPreSplitStoreKeepsItsOwnCredentialDir` — attribution of a store's credential
+  location, which is where a mislabelled harvest would come from.
+- `TestRebindMovesTheCredentialEntryInSharedMode` and
+  `…AddsTheCredentialEntryToAPreSplitFragment` — the entry follows the **account**,
+  including in shared mode, where the config entry deliberately does not move.
+- `TestDoctorNamesADirectoryBoundBeforeTheCredentialSplit` — the migration prompt,
+  with its own negative case (a directory bound by this kae reports nothing).
+- `TestReloginExportsTheCredentialVariable` — the login flow gets both halves.
+- `TestGlobalScopeHidesBothHalvesOfABinding` — including that a user-set value
+  survives, since kae masks what it wrote and not the variable.
+- `TestClaudeSecureStorageConfigDirSplitsTheStores` (`internal/adapter`) — with both
+  variables set, the item is namespaced by the credential dir and **not** by the
+  config dir, and the identity file stays with the config dir. The negative half is
+  the point: a single-variable model passes every "the item is namespaced" check
+  while writing the item claude does not read.
+
+### v0.17.0 per-account credential real-machine smoke (required before release)
+
+Run with `. scripts/smoke-env.sh` sourced, in a temp HOME. Two bound directories on
+one captured account:
+
+- [ ] `kae pin <profile>` in each of two directories; each fragment carries
+      `CLAUDE_SECURESTORAGE_CONFIG_DIR` pointing at the **same**
+      `credstore/claude/<account>` and `CLAUDE_CONFIG_DIR` pointing at **different**
+      stores.
+- [ ] `kae doctor --json` reports no `credential_unsplit` for either.
+- [ ] Remove the credential line from one fragment by hand (this is the pre-v0.17.0
+      shape); `kae doctor --json` now reports `credential_unsplit` naming that
+      directory, and its remedy is `cd <dir> && kae pin`.
+- [ ] Re-run `kae pin` there; the finding goes away and the entry is back.
+- [ ] `kae unpin --purge` in one of the two: kae keeps the credential and says how
+      many bindings still use it. Repeat in the last one: it is removed.
+- [ ] `kae pin claude <other-account>` in a shared-mode directory rewrites the
+      credential entry to the other account's store while leaving `CLAUDE_CONFIG_DIR`
+      unchanged.
 
 Record the result in the Release Acceptance Log below.
 

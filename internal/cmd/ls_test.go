@@ -285,7 +285,8 @@ func TestLsPinsNeverCarriesACredential(t *testing.T) {
 	// Prove the canary is actually inside the tree this row names, or the test
 	// passes for the wrong reason the day captureClaude stops writing it.
 	pinID := paths.PinID(mustCwdAbs(t))
-	stored := filepath.Join(app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main"), ".credentials.json")
+	stored := dirCredFile(app, constants.ToolClaude, "main",
+		app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main"))
 	if !strings.Contains(readFile(t, stored), canary) {
 		t.Fatalf("fixture does not place the canary in the bound store (%s); this test would pass vacuously", stored)
 	}

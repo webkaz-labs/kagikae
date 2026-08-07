@@ -183,15 +183,19 @@ child could rotate the live credential unseen — a cached value would be stale.
 - Isolated homes (`isolation/global/<tool>/<account>/`) are created `0700`
   and treated as credential-bearing. Credential files within them (e.g.
   `.credentials.json`, `auth.json`) are written `0600`. The real
-  `~/.claude`/`~/.codex` and the *globally shared* keychain item are never
-  touched by isolation.
-- Where the tool namespaces its keychain item by the isolation env var (claude on
-  macOS), a bound directory's credential is written to **that directory's own
-  keychain item** rather than to a file, and any superseded plaintext copy in the
-  directory is removed. So on macOS an isolation directory normally holds no
-  credential on disk at all — the reason is correctness (a plaintext file there is
-  a credential the tool stops reading), and one less plaintext secret is the
-  side benefit. See docs/ADAPTERS.md "Per-directory credential store".
+  `~/.claude`/`~/.codex` and the tool's *unsuffixed, globally shared* keychain item
+  are never touched by isolation. That global item is a different thing from the
+  account's own item below, and the two are easy to read as one.
+- Where the tool namespaces its keychain item at all (claude on macOS), a bound
+  directory's credential is written to an **item rather than to a file**, and any
+  superseded plaintext copy is removed. So on macOS an isolation directory normally
+  holds no credential on disk at all — the reason is correctness (a plaintext file
+  there is a credential the tool stops reading), and one less plaintext secret is the
+  side benefit. **Which** item is not this document's to state: what namespaces it is
+  a rule the adapter owns, and since v0.17.0 the answer for claude is the account's
+  credential store rather than the directory's. docs/ADAPTERS.md § "Credential
+  storage resolution" states it once; § "Per-account credential store" says what
+  follows for a bound directory.
 
 ## Environment Conflicts
 
@@ -237,11 +241,19 @@ with no lock and no live mutation. It is safe to run concurrently with
 
 Three isolation scopes exist; their credential boundaries are:
 
-| Scope | Command | Credential store | Live home touched? |
-|-------|---------|------------------|--------------------|
-| Global isolated | `use -i` / `run -i` | `isolation/global/<tool>/<account>/` | No |
-| Per-directory shared | `pin -s` | `isolation/<pin-id>/<tool>/shared/` (symlinks to the real home; the credential is private — a per-directory keychain item where the tool uses one) | No (symlink source only) |
-| Per-directory isolated | `pin -i` | `isolation/<pin-id>/<tool>/isolated/<account>/config/` | No |
+| Scope | Command | Config store (sessions, settings, identity) | Credential store | Live home touched? |
+|-------|---------|------|------------------|--------------------|
+| Global isolated | `use -i` / `run -i` | `isolation/global/<tool>/<account>/` | claude: `credstore/<tool>/<account>/`; other tools: the config store | No |
+| Per-directory shared | `pin -s` | `isolation/<pin-id>/<tool>/shared/` (symlinks to the real home) | same | No (symlink source only) |
+| Per-directory isolated | `pin -i` | `isolation/<pin-id>/<tool>/isolated/<account>/config/` | same | No |
+
+**The credential column is deliberately not private per directory**, and reading it
+as private is the mistake this table exists to prevent. For a tool that can address
+its credential separately from its home (claude), every scope bound to one account
+reads **one** credential, because copies of it invalidate each other — a directory's
+sessions, settings and identity stay its own. A directory bound before v0.17.0 still
+has its own copy until it is re-pinned. docs/ADAPTERS.md § "Per-account credential
+store" is normative for the boundary and for why it is drawn there.
 
 One hard-coded set governs both config keys (`shared_denylist_extra` and
 `isolated_shared_items`, enforced at config load), and it covers two kinds of file
@@ -254,7 +266,14 @@ is logged in as. Both keys read one table (`constants.PrivateBindItems`), which 
 also what the shared bind builds its symlink denylist from, so a name cannot be
 denied in one place and permitted in another; a guard test pins that wiring.
 
-**A per-directory keychain item is removed once nothing points at it.** A `-s` ↔
+**A per-directory credential is removed once nothing points at it.** Two kinds,
+two rules, stated once in `removeDirCredential` and summarized here because this
+section owns what kae deletes: a **keychain item** where the adapter declares it
+bindable, and a **file** credential only where it is no longer the copy its own store
+reads — the account's own credential store, which holds nothing else, and a store a
+migration has just moved the credential out of. A file that is still the one its
+store reads is kept, with the sessions and settings beside it. The rest of this
+section describes the item, which is the case that most needs the sweep. A `-s` ↔
 `-i` toggle or an isolated re-bind supersedes a store, and its item would otherwise
 keep a credential that cannot be found again: it lives under a per-directory
 service name, so it appears nowhere in kae's data dir, and no kae check reports one

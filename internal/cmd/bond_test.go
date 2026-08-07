@@ -189,7 +189,8 @@ func TestPrepareBondRetractsLinkForDeniedEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A real file for another denied entry must survive: it is a private override.
-	writeFile(t, filepath.Join(bondDir, ".credentials.json"), `{"claudeAiOauth":{"accessToken":"private"}}`)
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", bondDir),
+		`{"claudeAiOauth":{"accessToken":"private"}}`)
 
 	if _, err := app.prepareBond(context.Background(), testBackend(t, app),
 		constants.ToolClaude, "main", pinID); err != nil {
@@ -206,8 +207,8 @@ func TestPrepareBondRetractsLinkForDeniedEntry(t *testing.T) {
 	if got := readFile(t, realIdentity); !strings.Contains(got, "side-uuid") {
 		t.Fatalf("real home written through the stale link: %s", got)
 	}
-	if got := readFile(t, filepath.Join(bondDir, ".credentials.json")); !strings.Contains(got, mainToken) {
-		t.Fatalf("kae's own per-directory credential must be refreshed, not retracted: %s", got)
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", bondDir)); !strings.Contains(got, mainToken) {
+		t.Fatalf("kae's own credential must be refreshed, not retracted: %s", got)
 	}
 }
 
@@ -419,7 +420,7 @@ func TestPrepareBondCredentialComesFromSnapshotNotLiveHome(t *testing.T) {
 		t.Fatalf("prepareBond: %v", err)
 	}
 
-	dst := filepath.Join(bondDir, ".credentials.json")
+	dst := dirCredFile(app, constants.ToolClaude, "main", bondDir)
 	info, err := os.Lstat(dst)
 	if err != nil {
 		t.Fatalf(".credentials.json missing in bond dir: %v", err)
@@ -502,7 +503,8 @@ func TestPrepareBondDarwinWritesPerDirKeychainItem(t *testing.T) {
 	bondDir := app.Paths.SharedDir(pinID, constants.ToolClaude)
 	// A plaintext copy left behind by an earlier kae version must not survive:
 	// nothing reads it once the keychain item exists, and claude only deletes it
-	// itself when it finds no item.
+	// itself when it finds no item. In the store dir, which is where a kae from
+	// before the credential split put it — the sweep has to reach that one too.
 	writeFile(t, filepath.Join(bondDir, ".credentials.json"), payload)
 
 	fake := &runnertest.Fake{Code: 0}
@@ -513,7 +515,7 @@ func TestPrepareBondDarwinWritesPerDirKeychainItem(t *testing.T) {
 		}
 	})
 
-	wantService := claude.KeychainService + "-" + sha8Of(bondDir)
+	wantService := claude.KeychainService + "-" + sha8Of(app.credStoreDir(constants.ToolClaude, "main"))
 	if fake.Name != "security" {
 		t.Fatalf("keychain write did not go through the security CLI: %q", fake.Name)
 	}

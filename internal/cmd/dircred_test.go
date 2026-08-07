@@ -72,7 +72,7 @@ func TestWriteDirCredentialWritesDirScopedKeychainStore(t *testing.T) {
 	// A stale plaintext copy the tool left in the directory: the keychain branch
 	// removes it, and the identity must still be applied after that removal — the
 	// restructure that made the identity unconditional runs it past this sweep.
-	writeFile(t, filepath.Join(credDir, ".credentials.json"), `{"claudeAiOauth":{"accessToken":"stale"}}`)
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir), `{"claudeAiOauth":{"accessToken":"stale"}}`)
 
 	fake := &runnertest.Fake{Code: 0}
 	runner.With(fake, func() {
@@ -81,10 +81,18 @@ func TestWriteDirCredentialWritesDirScopedKeychainStore(t *testing.T) {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 	})
-	if !strings.Contains(strings.Join(fake.Args, " "), sha8Of(credDir)) {
-		t.Fatalf("credential not written to the per-directory item: %v", fake.Args)
+	// Namespaced by the **credential** store, not by the config dir kae pointed the
+	// tool's home at. Both are asserted: the item claude reads is the one named after
+	// the credential variable, and writing to the config dir's name instead would put
+	// the credential where nothing looks for it.
+	args := strings.Join(fake.Args, " ")
+	if !strings.Contains(args, sha8Of(app.credStoreDir(constants.ToolClaude, "main"))) {
+		t.Fatalf("credential not written to the account's credential item: %v", fake.Args)
 	}
-	if _, err := os.Stat(filepath.Join(credDir, ".credentials.json")); !os.IsNotExist(err) {
+	if strings.Contains(args, sha8Of(credDir)) {
+		t.Fatalf("credential written to the config dir's item instead: %v", fake.Args)
+	}
+	if _, err := os.Stat(dirCredFile(app, constants.ToolClaude, "main", credDir)); !os.IsNotExist(err) {
 		t.Fatalf("superseded plaintext copy not removed: %v", err)
 	}
 	if got := readFile(t, filepath.Join(credDir, ".claude.json")); !strings.Contains(got, "main-uuid") {
@@ -149,7 +157,7 @@ func TestWriteDirCredentialDeclinesIdentityThroughSharedLink(t *testing.T) {
 		t.Fatalf("the real home's identity cache was relabelled: %s", got)
 	}
 	// The credential half is unaffected: that store is private to the directory.
-	if got := readFile(t, filepath.Join(credDir, ".credentials.json")); !strings.Contains(got, mainToken) {
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, mainToken) {
 		t.Fatalf("credential not materialized for the bind: %s", got)
 	}
 }
@@ -212,7 +220,7 @@ func TestWriteDirCredentialDeclinesIdentityThroughDanglingLink(t *testing.T) {
 	if !strings.Contains(stderr, "identity cache") {
 		t.Fatalf("the decline must be warned about: %q", stderr)
 	}
-	if got := readFile(t, filepath.Join(credDir, ".credentials.json")); !strings.Contains(got, mainToken) {
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, mainToken) {
 		t.Fatalf("credential not materialized for the bind: %s", got)
 	}
 }
@@ -242,7 +250,7 @@ func TestWriteDirCredentialIdentityFailureWarnsWithoutLeaking(t *testing.T) {
 	if strings.Contains(stderr, "main-uuid") || strings.Contains(stderr, "@example.com") {
 		t.Fatalf("the identity payload must never reach a warning: %q", stderr)
 	}
-	if got := readFile(t, filepath.Join(credDir, ".credentials.json")); !strings.Contains(got, mainToken) {
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, mainToken) {
 		t.Fatalf("credential not materialized for the bind: %s", got)
 	}
 }
@@ -339,7 +347,7 @@ func TestWriteDirCredentialRefusesTwoIdentitiesThatAreNotAccountRecords(t *testi
 
 	credDir := t.TempDir()
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-dddd"
-	writeFile(t, filepath.Join(credDir, ".credentials.json"), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 	writeFile(t, filepath.Join(credDir, ".claude.json"), nonRecord)
 
 	be := testBackend(t, app)
@@ -385,7 +393,7 @@ func TestWriteDirCredentialHarvestsNewerLiveCredential(t *testing.T) {
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	credDir := t.TempDir()
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
-	writeFile(t, filepath.Join(credDir, ".credentials.json"), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 	// A capture time that has moved on, so the recorded one is proof this snapshot
 	// was rewritten rather than merely unchanged.
@@ -400,7 +408,7 @@ func TestWriteDirCredentialHarvestsNewerLiveCredential(t *testing.T) {
 		return 0
 	})
 
-	if got := readFile(t, filepath.Join(credDir, ".credentials.json")); !strings.Contains(got, refreshed) {
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, refreshed) {
 		t.Fatalf("the bind overwrote the newer live credential: %s", got)
 	}
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
@@ -428,7 +436,7 @@ func TestWriteDirCredentialKeepsSnapshotWhenLiveIsOlder(t *testing.T) {
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(8*time.Hour))
 	credDir := t.TempDir()
-	writeFile(t, filepath.Join(credDir, ".credentials.json"),
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
 		claudeOAuthPayload("sk-ant-oat01-MAIN-OLD-dddd", now.Add(time.Hour)))
 	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 
@@ -440,7 +448,7 @@ func TestWriteDirCredentialKeepsSnapshotWhenLiveIsOlder(t *testing.T) {
 		return 0
 	})
 
-	if got := readFile(t, filepath.Join(credDir, ".credentials.json")); !strings.Contains(got, mainToken) {
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, mainToken) {
 		t.Fatalf("the snapshot must be applied when it is the newer copy: %s", got)
 	}
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
@@ -462,7 +470,7 @@ func TestWriteDirCredentialRefusesToHarvestAnotherAccountsCredential(t *testing.
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	credDir := t.TempDir()
-	writeFile(t, filepath.Join(credDir, ".credentials.json"), claudeOAuthPayload(sideToken, now.Add(8*time.Hour)))
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir), claudeOAuthPayload(sideToken, now.Add(8*time.Hour)))
 	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("side-uuid"))
 
 	be := testBackend(t, app)
@@ -480,7 +488,7 @@ func TestWriteDirCredentialRefusesToHarvestAnotherAccountsCredential(t *testing.
 		t.Fatalf("declining to harvest must be said out loud: %q", stderr)
 	}
 	// The bind still does its job: the directory ends up on the account it names.
-	if got := readFile(t, filepath.Join(credDir, ".credentials.json")); !strings.Contains(got, mainToken) {
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, mainToken) {
 		t.Fatalf("the bind must still apply the bound account: %s", got)
 	}
 }
@@ -497,7 +505,7 @@ func TestWriteDirCredentialDoesNotHarvestTombstone(t *testing.T) {
 	credDir := t.TempDir()
 	// Blank tokens with a deadline still in the future: only Revoked separates this
 	// from a healthy copy.
-	writeFile(t, filepath.Join(credDir, ".credentials.json"), fmt.Sprintf(
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir), fmt.Sprintf(
 		`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%d,"refreshTokenExpiresAt":%d}}`,
 		now.Add(8*time.Hour).UnixMilli(), now.Add(27*24*time.Hour).UnixMilli(),
 	))
@@ -571,7 +579,7 @@ func TestRunPinModeToggleHarvestsTheSupersededStoreFirst(t *testing.T) {
 	shared := app.Paths.SharedDir(pinID, constants.ToolClaude)
 	// The tool refreshed the credential in the shared store, in place.
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
-	writeFile(t, filepath.Join(shared, ".credentials.json"), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", shared), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 
 	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
 		t.Fatalf("pin --isolated exit %d", code)
@@ -582,7 +590,7 @@ func TestRunPinModeToggleHarvestsTheSupersededStoreFirst(t *testing.T) {
 		t.Fatalf("the superseded store's newer credential was not harvested: %s", got)
 	}
 	isolated := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
-	if got := readFile(t, filepath.Join(isolated, ".credentials.json")); !strings.Contains(got, refreshed) {
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", isolated)); !strings.Contains(got, refreshed) {
 		t.Fatalf("the newly bound store holds a credential that can no longer refresh: %s", got)
 	}
 }
@@ -635,7 +643,7 @@ func TestRunPinReportsOneRefusalPerStoreWithTheRightRemedy(t *testing.T) {
 		claudeOAuthPayload("sk-ant-oat01-LEFTOVER-eeee", now.Add(9*time.Hour)))
 
 	// Missing evidence: the store holds a newer copy and no identity cache to compare.
-	writeFile(t, filepath.Join(shared, ".credentials.json"),
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", shared),
 		claudeOAuthPayload("sk-ant-oat01-MAIN-REFRESHED-cccc", now.Add(8*time.Hour)))
 	if err := os.Remove(filepath.Join(shared, ".claude.json")); err != nil {
 		t.Fatal(err)
@@ -657,7 +665,7 @@ func TestRunPinReportsOneRefusalPerStoreWithTheRightRemedy(t *testing.T) {
 	// Positive evidence: the copy belongs to another account. Same store, so still one
 	// message — and no remedy, because this account's own credential is fine.
 	writeFile(t, filepath.Join(shared, ".claude.json"), claudeIdentityFile("side-uuid"))
-	writeFile(t, filepath.Join(shared, ".credentials.json"),
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", shared),
 		claudeOAuthPayload(sideToken, now.Add(10*time.Hour)))
 	_, stderr = captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
 
@@ -724,7 +732,7 @@ func TestRunPinReportsARefusalThePinLevelPassCannotAttribute(t *testing.T) {
 	// before the one under test. That record is scoped to one bind and cleared when the
 	// next pass starts; left to live as long as the App it silences the report below,
 	// which is how it made a two-phase test pass for the wrong reason.
-	writeFile(t, filepath.Join(shared, ".credentials.json"),
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", shared),
 		claudeOAuthPayload("sk-ant-oat01-NO-IDENTITY-ffff", now.Add(6*time.Hour)))
 	if err := os.Remove(filepath.Join(shared, ".claude.json")); err != nil {
 		t.Fatal(err)
@@ -735,7 +743,7 @@ func TestRunPinReportsARefusalThePinLevelPassCannotAttribute(t *testing.T) {
 
 	// Someone else's newer copy in the store, and no binding left to attribute it from.
 	writeFile(t, filepath.Join(shared, ".claude.json"), claudeIdentityFile("side-uuid"))
-	writeFile(t, filepath.Join(shared, ".credentials.json"),
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", shared),
 		claudeOAuthPayload(sideToken, now.Add(8*time.Hour)))
 	if code := runUnpin(ctx, app, opts, false); code != constants.ExitOK {
 		t.Fatalf("unpin exit %d", code)
@@ -777,7 +785,7 @@ func TestRunPinReportsARefusalForAnIsolatedStoreThePassSkips(t *testing.T) {
 	}
 	store := app.Paths.IsolatedConfigDir(paths.PinID(cwd), constants.ToolClaude, "main")
 	writeFile(t, filepath.Join(store, ".claude.json"), claudeIdentityFile("side-uuid"))
-	writeFile(t, filepath.Join(store, ".credentials.json"),
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", store),
 		claudeOAuthPayload(sideToken, now.Add(8*time.Hour)))
 	// After unpin there is no binding to replace, so the pass skips this store rather
 	// than reporting it — which is exactly when the write path has to speak.
@@ -816,7 +824,7 @@ func TestRunRebindIsolatedReportsTheStoreItLeaves(t *testing.T) {
 	leaving := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
 	// A newer copy with nothing to attribute it by, so the harvest refuses and the pass
 	// has something to report about the store the re-bind moves off.
-	writeFile(t, filepath.Join(leaving, ".credentials.json"),
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", leaving),
 		claudeOAuthPayload("sk-ant-oat01-MAIN-REFRESHED-cccc", now.Add(8*time.Hour)))
 	if err := os.Remove(filepath.Join(leaving, ".claude.json")); err != nil {
 		t.Fatal(err)
@@ -866,7 +874,7 @@ func TestWriteDirCredentialPrefersAUsableCopyOverATombstonedSnapshot(t *testing.
 
 	credDir := t.TempDir()
 	const alive = "sk-ant-oat01-MAIN-ALIVE-cccc"
-	writeFile(t, filepath.Join(credDir, ".credentials.json"), claudeOAuthPayload(alive, now.Add(2*time.Hour)))
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir), claudeOAuthPayload(alive, now.Add(2*time.Hour)))
 	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 
 	be := testBackend(t, app)
@@ -876,7 +884,7 @@ func TestWriteDirCredentialPrefersAUsableCopyOverATombstonedSnapshot(t *testing.
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, alive) {
 		t.Fatalf("a usable copy must beat a tombstoned snapshot whatever the dates say: %s", got)
 	}
-	if got := readFile(t, filepath.Join(credDir, ".credentials.json")); !strings.Contains(got, alive) {
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, alive) {
 		t.Fatalf("the tombstone must not be written over a working login: %s", got)
 	}
 }
@@ -892,7 +900,7 @@ func TestWriteDirCredentialDoesNotHarvestAnEqualDeadline(t *testing.T) {
 	captureClaudeAt(t, app, "main", mainToken, deadline)
 	credDir := t.TempDir()
 	const other = "sk-ant-oat01-SAME-DEADLINE-dddd"
-	writeFile(t, filepath.Join(credDir, ".credentials.json"), claudeOAuthPayload(other, deadline))
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir), claudeOAuthPayload(other, deadline))
 	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 
 	be := testBackend(t, app)
@@ -921,6 +929,16 @@ func TestRunRebindSweepKeepsALostAccountsCredential(t *testing.T) {
 		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
 			t.Fatalf("pin --isolated exit %d", code)
 		}
+		// Pre-split: since the credential became the account's rather than the
+		// directory's, a bind sweep does not consider it at all — it is kept the way an
+		// account snapshot is kept, with nothing to say. The branch under test is the
+		// one that still runs, for the per-directory item an older kae left behind.
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		makePreSplit(t, app, constants.ToolClaude, "main", cwd,
+			app.Paths.IsolatedConfigDir(paths.PinID(cwd), constants.ToolClaude, "main"))
 		if err := os.RemoveAll(app.Paths.AccountDir(constants.ToolClaude, "main")); err != nil {
 			t.Fatal(err)
 		}
@@ -960,7 +978,7 @@ func TestRunRebindRefusesAnUnknownModeWithoutHarvesting(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := app.Paths.IsolatedConfigDir(paths.PinID(cwd), constants.ToolClaude, "main")
-	writeFile(t, filepath.Join(store, ".credentials.json"),
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", store),
 		claudeOAuthPayload("sk-ant-oat01-MAIN-REFRESHED-cccc", now.Add(8*time.Hour)))
 	// A mode kae does not recognize, with everything else intact.
 	fragment := readFile(t, fragmentRelPath)
@@ -994,6 +1012,15 @@ func TestRunPinSweepKeepsALostAccountsCredential(t *testing.T) {
 		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
 			t.Fatalf("pin --isolated exit %d", code)
 		}
+		// Pre-split, for the reason the sibling test above gives: a bind leaves an
+		// account's own credential store alone, so only the per-directory item an older
+		// kae left behind still reaches this branch.
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		makePreSplit(t, app, constants.ToolClaude, "main", cwd,
+			app.Paths.IsolatedConfigDir(paths.PinID(cwd), constants.ToolClaude, "main"))
 		// The account goes away (`kae account rm`, or a rename that moved it) while its
 		// store still holds the copy the tool refreshed there.
 		if err := os.RemoveAll(app.Paths.AccountDir(constants.ToolClaude, "main")); err != nil {
@@ -1043,7 +1070,7 @@ func TestRunRebindIsolatedHarvestsThePreviousAccount(t *testing.T) {
 	}
 	old := app.Paths.IsolatedConfigDir(paths.PinID(cwd), constants.ToolClaude, "main")
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
-	writeFile(t, filepath.Join(old, ".credentials.json"), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", old), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 
 	if code := runRebind(ctx, app, opts, constants.ToolClaude, "side"); code != constants.ExitOK {
 		t.Fatalf("re-bind exit %d", code)
@@ -1082,7 +1109,7 @@ func TestRunRebindSharedHarvestsThePreviousAccount(t *testing.T) {
 	}
 	shared := app.Paths.SharedDir(paths.PinID(cwd), constants.ToolClaude)
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
-	writeFile(t, filepath.Join(shared, ".credentials.json"), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", shared), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 
 	if code := runRebind(ctx, app, opts, constants.ToolClaude, "side"); code != constants.ExitOK {
 		t.Fatalf("re-bind exit %d", code)
@@ -1095,7 +1122,7 @@ func TestRunRebindSharedHarvestsThePreviousAccount(t *testing.T) {
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "side"); strings.Contains(got, refreshed) {
 		t.Fatalf("main's credential was filed under side: %s", got)
 	}
-	if got := readFile(t, filepath.Join(shared, ".credentials.json")); !strings.Contains(got, sideToken) {
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "side", shared)); !strings.Contains(got, sideToken) {
 		t.Fatalf("the re-bind must leave the store on the new account: %s", got)
 	}
 }
@@ -1170,7 +1197,7 @@ func TestWriteDirCredentialDoesNotHarvestUndatedCredential(t *testing.T) {
 	ctx := context.Background()
 	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
 	credDir := t.TempDir()
-	writeFile(t, filepath.Join(credDir, ".credentials.json"),
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
 		`{"claudeAiOauth":{"accessToken":"sk-ant-oat01-UNDATED-ffff","refreshToken":"r"}}`)
 	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 
@@ -1204,7 +1231,7 @@ func TestWriteDirCredentialDoesNotHarvestThroughSharedIdentity(t *testing.T) {
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	credDir := t.TempDir()
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
-	writeFile(t, filepath.Join(credDir, ".credentials.json"), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 	// The real home's cache, linked into the store, naming the account being bound.
 	if err := os.Symlink(filepath.Join(app.Env.Home, ".claude.json"),
 		filepath.Join(credDir, ".claude.json")); err != nil {

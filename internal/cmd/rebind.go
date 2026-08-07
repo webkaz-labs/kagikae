@@ -16,9 +16,13 @@ import (
 //	kae pin <tool> <account>
 //
 // Valid only inside a directory bound with `kae pin` (it reads the kae-owned
-// fragment). For the shared mechanism the dir is account-agnostic so the
-// credential is overwritten in place; for the isolated mechanism the config dir
-// is re-keyed to the new account and the fragment's env entry is repointed. The
+// fragment). Two env entries move on different rules, and this comment used to
+// state the pre-split one: the **config** entry is repointed only in isolated
+// mode, where the dir is re-keyed to the new account, because a shared dir is
+// account-agnostic; the **credential** entry moves in **both**, because the
+// account is what selects that store. rebindFragment owns that asymmetry and says
+// why — do not restate it here, which is how these two came to say opposite
+// things about one behaviour. The
 // fragment's account record and KAE_PROFILE are recomputed (the latter goes
 // empty when the new account set matches no named profile). Sessions and
 // settings are never disturbed.
@@ -108,6 +112,10 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 
 	var envDir string   // fragment env entry to repoint (isolated only)
 	var boundDir string // the store this tool reads after the re-bind
+	// The credential entry moves in **both** modes, because the account selects the
+	// store: a shared-mode re-bind keeps one config dir and still has to point the
+	// credential at the new account's own store.
+	credDir := app.credStoreDir(tool, accountName)
 	switch info.Mode {
 	case paths.SharedSegment:
 		// prepareBond, not writeDirCredential alone: the bond dir also holds the
@@ -145,7 +153,7 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 		return finish(opts, err)
 	}
 	companionLines := companionFragmentLines(companionEntries)
-	if err := rebindFragment(tool, accountName, envDir, profile, companionLines, redactions); err != nil {
+	if err := rebindFragment(tool, accountName, envDir, credDir, profile, companionLines, redactions); err != nil {
 		return finish(opts, fmt.Errorf("update %s: %w", fragmentRelPath, err))
 	}
 	// In isolated mode the store is keyed by account, so the previous account's dir

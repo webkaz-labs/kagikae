@@ -34,8 +34,10 @@ more than one binding at a time, and — measured while making worktrees promine
 re-binding a directory destroyed the credential the tool had refreshed inside it,
 because claude's refresh token turns out to rotate single-use.
 
-Baseline: v0.16.0. `schema_version` stays `1`. **Behaviour changes**: where
-`kae pin` writes its ignore rule; a bind or a superseded-credential sweep now
+Baseline: v0.16.0. `schema_version` stays `1`. **Behaviour changes**: an account's
+credential now lives in one store shared by every directory bound to it, so a bind
+writes a second env entry and a bind's sweep no longer deletes that credential;
+where `kae pin` writes its ignore rule; a bind or a superseded-credential sweep now
 harvests a newer credential from the store it is about to overwrite or delete, and
 declines to delete one it could not preserve; `kae run -s` skips a restore that would
 put back a credential its child has superseded, `kae rollback` says when the copy it
@@ -46,6 +48,48 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
 `identity_drift` code reported for a bound directory's own store, and a new
 `credential_superseded` code — plus completion cases for `kae env` and
 `kae backup`, which changes the generated script; the rest is documentation.
+
+- **One credential per account, sessions still per directory.** Two worktrees bound
+  to one account each held their own copy of that account's credential, and claude's
+  refresh token rotates single-use — so the first refresh in either one logged the
+  other out, up to eight hours later, inside the tool, with every offline check here
+  green. The harvest below keeps a *sequence* of directories working; it cannot make
+  two of them work at once, because the refresh happens with kae absent.
+
+  claude has a second variable that moves the credential **alone**
+  (`CLAUDE_SECURESTORAGE_CONFIG_DIR`): the keychain service name's hash input and the
+  `.credentials.json` directory follow it, while sessions, settings and the identity
+  file keep following `CLAUDE_CONFIG_DIR`. So a bind now exports a per-directory
+  config dir *and* a per-account credential store (`credstore/<tool>/<account>/`), and
+  nothing that was private becomes shared. `kae use -i` and `kae run -i` read the same
+  store — their home is already per-account, and leaving them out would have made that
+  home the one copy the design forgot.
+
+  The premise was measured before any of it was built, against a negative control in
+  the same session: two processes with *different* config dirs sharing one credential
+  store both authenticate and the shared item rotates once with no tombstone, while
+  the same pair given separate stores holding copies fails 1/2 and tombstones
+  (docs/VALIDATION.md). The specific fear worth measuring was a loser tombstoning the
+  shared item, which would log out every directory at once.
+
+  Two rules invert with it, and both are in docs/ADAPTERS.md § Per-account credential
+  store. Deleting: a per-account store is not one directory's to remove, so a bind's
+  sweep leaves it and only `kae unpin --purge` may take it — once no fragment and no
+  globally isolated home still points at it, keeping it whenever kae could not read
+  one of those to tell. And attribution: where a store's credential lives is read
+  from the recorded binding, never derived from the account, because the store walk
+  returns stores of older bindings forever and a leftover one would otherwise be
+  handed another account's credential to harvest from.
+
+  **Migration is to re-run `kae pin`** in each bound directory; until then it keeps
+  the layout it was bound with, and `kae doctor` names it (`credential_unsplit`). If
+  upstream ever stops honoring the variable the failure is offline-observable and
+  loud rather than silent: the credential lands at the config dir's name instead —
+  a different item kae also computes — and the config dir still points at kae's own
+  store, so it is a logout and never another account's session. `SSCD=""` is
+  deliberately not built and is refused: it collapses every config dir onto claude's
+  one global item, which would let `kae use <other>` silently change what a bound
+  directory runs.
 
 - **`kae relogin` — the login that lands where the binding points** (new verb).
   The remedy for a bound directory's expired credential was `cd <dir> && claude

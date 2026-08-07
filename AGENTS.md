@@ -103,13 +103,36 @@ block in docs/VALIDATION.md, next to two correct ones.
   shape: **never declare an artifact for a location you could not measure** — a
   guessed path is a write nothing reads, which is the defect this whole section
   exists for.
-- **A per-directory keychain item has to be removed when nothing points at it any
-  more**, and the sweep (`pruneDirCredentials`) mirrors the write gate exactly:
-  keychain items only, only where the adapter declares them `KeychainDirBindable`.
-  The asymmetry with a file store is deliberate — a file credential lives *inside*
-  the store directory, which `kae unpin` and a mode toggle keep on purpose, while an
-  item lives under a per-directory service name that appears nowhere in kae's data
-  dir, so kae cannot *address* one without already knowing the string it hashes from.
+- **A credential can belong to an account rather than to a directory, and then the
+  rules invert.** claude's `CLAUDE_SECURESTORAGE_CONFIG_DIR` moves the credential
+  without moving the sessions, so a bind exports **two** variables and every
+  per-directory resolution takes a pair (`bindDirs`) — the config dir and the
+  credential store. `docs/ADAPTERS.md` § Per-account credential store is normative;
+  three traps that outlive the code. The pair is swappable at a call site and getting
+  it backwards is silent: attribution reads the identity cache, which stays in the
+  **config** dir, so handing it the credential store makes every identity look like
+  one that escapes its store and the harvest refuses every time — overwriting the
+  copy it came to preserve. A store's credential location is read from the recorded
+  binding and **never derived from the account**: the store walk returns stores of
+  older bindings forever, so a leftover store bound to one account would otherwise be
+  handed another account's credential to harvest, and a matching identity cache files
+  one account's token under the other's name. And deleting inverts: a per-account
+  store is not one directory's to remove, so a bind's sweep leaves it and only
+  `unpin --purge` may take it, after counting every fragment **and** `state.synced` —
+  where a source kae could not read has to mean keep, since "no reference found" and
+  "kae could not look" differ by one logged-out sibling.
+- **A per-directory credential has to be removed when nothing points at it any
+  more.** `removeDirCredential` is normative for *which* ones, and the rule is two
+  rules over two kinds, not one: a **keychain item** where the adapter declares it
+  `KeychainDirBindable`, and a **file** credential only where it is no longer the
+  copy its own store reads (the account's own store, or a store a migration just
+  moved the credential out of). Do not restate that anywhere; link to it. It read
+  "keychain items only" here for a release, which is a licence to restore a gate that
+  leaves a full plaintext copy of a live account behind.
+  The item is still the case that most needs the sweep, and that is the part worth
+  remembering: it lives under a per-directory service name that appears nowhere in
+  kae's data dir, so kae cannot *address* one without already knowing the string it
+  hashes from.
   This used to say such an item "cannot be enumerated on darwin"; that is too strong
   and was corrected on 2026-08-04 — `security dump-keychain` lists item attributes
   (service, account, dates) with no prompt, which is how five stale per-directory

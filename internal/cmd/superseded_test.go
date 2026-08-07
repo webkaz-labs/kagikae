@@ -23,11 +23,11 @@ import (
 //
 // The caller captures claude/main first (captureClaudeAt), because the deadline the
 // snapshot carries is one of the three copies in play.
-func boundStoreForClaudeMain(t *testing.T, app *App) (dir, credFile string) {
+func boundStoreForClaudeMain(t *testing.T, app *App) (dir, storeDir, credFile string) {
 	t.Helper()
 	dir = pinHere(t, app, modeShared)
-	storeDir := app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
-	credFile = filepath.Join(storeDir, ".credentials.json")
+	storeDir = app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
+	credFile = dirCredFile(app, constants.ToolClaude, "main", storeDir)
 	if readFile(t, credFile) == "" {
 		t.Fatalf("pin did not materialize a credential at %s", credFile)
 	}
@@ -38,8 +38,35 @@ func boundStoreForClaudeMain(t *testing.T, app *App) (dir, credFile string) {
 	if got := readFile(t, filepath.Join(storeDir, ".claude.json")); !strings.Contains(got, "main-uuid") {
 		t.Fatalf("the bind must leave an identity cache naming the account: %q", got)
 	}
-	return dir, credFile
+	return dir, storeDir, credFile
 }
+
+// twoBoundCopiesOfClaudeMain binds two directories to claude/main and leaves them
+// holding *different* copies of that account's credential, which is the state this
+// whole check is about.
+//
+// Since the credential split, that state has exactly one cause: one of the two
+// directories predates the split and still keeps its credential in its own store,
+// while the other reads the account's shared one. Two directories bound by a current
+// kae share a single copy, so nothing can overtake anything — which is the feature,
+// and the reason this fixture has to build the mixed state deliberately instead of
+// pinning twice.
+//
+// It returns each directory with the file that copy lives in; the caller writes the
+// payloads, because the deadlines are what each test is arranging.
+func twoBoundCopiesOfClaudeMain(t *testing.T, app *App) (behind, ahead boundCopy) {
+	t.Helper()
+	behind.Dir, behind.StoreDir, _ = boundStoreForClaudeMain(t, app)
+	makePreSplit(t, app, constants.ToolClaude, "main", behind.Dir, behind.StoreDir)
+	behind.CredFile = filepath.Join(behind.StoreDir, ".credentials.json")
+	ahead.Dir, ahead.StoreDir, ahead.CredFile = boundStoreForClaudeMain(t, app)
+	return behind, ahead
+}
+
+// boundCopy is one bound directory and the two locations that stopped being the
+// same one: the store, which holds the sessions and the identity cache, and the
+// file the credential is actually in.
+type boundCopy struct{ Dir, StoreDir, CredFile string }
 
 // findChecks is findCheck for a code that is legitimately emitted more than once —
 // one per bound directory here — so a test can assert *which* subjects it named.
@@ -67,10 +94,9 @@ func TestDoctorReportsABoundCopyOvertakenByAnotherDirectory(t *testing.T) {
 	// Three distinct deadlines, never two equal ones: an ordering test whose sides
 	// can tie is a test that can pass without the comparison ever running.
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	behindDir, behindCred := boundStoreForClaudeMain(t, app)
-	aheadDir, aheadCred := boundStoreForClaudeMain(t, app)
-	writeFile(t, behindCred, claudeOAuthPayload("sk-ant-oat01-BEHIND-aaaa", now.Add(4*time.Hour)))
-	writeFile(t, aheadCred, claudeOAuthPayload("sk-ant-oat01-AHEAD-bbbb", now.Add(8*time.Hour)))
+	behind, ahead := twoBoundCopiesOfClaudeMain(t, app)
+	writeFile(t, behind.CredFile, claudeOAuthPayload("sk-ant-oat01-BEHIND-aaaa", now.Add(4*time.Hour)))
+	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-AHEAD-bbbb", now.Add(8*time.Hour)))
 
 	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 {
@@ -79,15 +105,15 @@ func TestDoctorReportsABoundCopyOvertakenByAnotherDirectory(t *testing.T) {
 	// "bound to <dir>" with the separator, not a bare path: the two temp directories
 	// are siblings, and a substring match on a path is how a prefix passes for a
 	// match somewhere else.
-	if !strings.Contains(msgs[0], "bound to "+behindDir) {
+	if !strings.Contains(msgs[0], "bound to "+behind.Dir) {
 		t.Errorf("the overtaken directory must be named: %q", msgs[0])
 	}
 	// Where the newer copy is, because that is the cause the user cannot otherwise
 	// see, and the remedy has to be run in the *other* directory.
-	if !strings.Contains(msgs[0], "the store bound to "+aheadDir) {
+	if !strings.Contains(msgs[0], "the store bound to "+ahead.Dir) {
 		t.Errorf("the message must say where the newer copy is: %q", msgs[0])
 	}
-	if !strings.Contains(msgs[0], "cd "+behindDir+" && kae relogin claude") {
+	if !strings.Contains(msgs[0], "cd "+behind.Dir+" && kae relogin claude") {
 		t.Errorf("the remedy is a relogin in the overtaken directory: %q", msgs[0])
 	}
 	for _, secret := range []string{"BEHIND-aaaa", "AHEAD-bbbb"} {
@@ -109,7 +135,7 @@ func TestDoctorIsSilentWhileTheBoundCopyIsTheNewest(t *testing.T) {
 	ctx := context.Background()
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	dir, credFile := boundStoreForClaudeMain(t, app)
+	dir, _, credFile := boundStoreForClaudeMain(t, app)
 	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-FRESH-cccc", now.Add(8*time.Hour)))
 
 	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
@@ -146,9 +172,9 @@ func TestDoctorSaysNothingAboutAStoreItCannotAttribute(t *testing.T) {
 	ctx := context.Background()
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(8*time.Hour))
-	dir, credFile := boundStoreForClaudeMain(t, app)
+	dir, storeDir, credFile := boundStoreForClaudeMain(t, app)
 	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-BEHIND-eeee", now.Add(time.Hour)))
-	identity := filepath.Join(filepath.Dir(credFile), ".claude.json")
+	identity := filepath.Join(storeDir, ".claude.json")
 	if err := os.Remove(identity); err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +207,7 @@ func TestDoctorSaysNothingAboutAnUndatedBoundCopy(t *testing.T) {
 	ctx := context.Background()
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(8*time.Hour))
-	dir, credFile := boundStoreForClaudeMain(t, app)
+	dir, _, credFile := boundStoreForClaudeMain(t, app)
 	undated := fmt.Sprintf(
 		`{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":"not-a-number",`+
 			`"refreshTokenExpiresAt":%d}}`, now.Add(27*24*time.Hour).UnixMilli(),
@@ -215,7 +241,7 @@ func TestDoctorDoesNotReportAnEqualDeadlineAsOvertaken(t *testing.T) {
 	ctx := context.Background()
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(4*time.Hour))
-	dir, credFile := boundStoreForClaudeMain(t, app)
+	dir, _, credFile := boundStoreForClaudeMain(t, app)
 
 	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
 		t.Fatalf("a directory pinned moments ago must report nothing: %v", msgs)
@@ -249,10 +275,10 @@ func TestDoctorComparesOnlyCopiesOfTheSameAccountAndOnlyAttributedOnes(t *testin
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 	app.Config.Profiles["side"] = config.Profile{Accounts: map[string]string{constants.ToolClaude: "side"}}
-	behindDir, behindCred := boundStoreForClaudeMain(t, app)
-	aheadDir, aheadCred := boundStoreForClaudeMain(t, app)
+	behind, ahead := twoBoundCopiesOfClaudeMain(t, app)
 	sideDir := pinHere(t, app, modeShared)
-	sideCred := filepath.Join(app.Paths.SharedDir(paths.PinID(sideDir), constants.ToolClaude), ".credentials.json")
+	sideCred := dirCredFile(app, constants.ToolClaude, "side",
+		app.Paths.SharedDir(paths.PinID(sideDir), constants.ToolClaude))
 	// Re-bind that third directory to the other account, so one tool has two accounts
 	// bound across three directories.
 	code, out := captureStdout(t, func() int {
@@ -260,18 +286,18 @@ func TestDoctorComparesOnlyCopiesOfTheSameAccountAndOnlyAttributedOnes(t *testin
 	})
 	mustExit(t, constants.ExitOK, code, out)
 
-	writeFile(t, behindCred, claudeOAuthPayload("sk-ant-oat01-BEHIND-aaaa", now.Add(4*time.Hour)))
-	writeFile(t, aheadCred, claudeOAuthPayload("sk-ant-oat01-AHEAD-bbbb", now.Add(8*time.Hour)))
+	writeFile(t, behind.CredFile, claudeOAuthPayload("sk-ant-oat01-BEHIND-aaaa", now.Add(4*time.Hour)))
+	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-AHEAD-bbbb", now.Add(8*time.Hour)))
 	writeFile(t, sideCred, claudeOAuthPayload("sk-ant-oat01-SIDE-cccc", now.Add(24*time.Hour)))
 
 	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 {
 		t.Fatalf("only main's overtaken directory is reported, got %d: %v", len(msgs), msgs)
 	}
-	if !strings.Contains(msgs[0], "bound to "+behindDir) {
+	if !strings.Contains(msgs[0], "bound to "+behind.Dir) {
 		t.Errorf("the overtaken directory must be named: %q", msgs[0])
 	}
-	if !strings.Contains(msgs[0], "the store bound to "+aheadDir) {
+	if !strings.Contains(msgs[0], "the store bound to "+ahead.Dir) {
 		t.Errorf("the newer copy is main's other directory, not side's: %q", msgs[0])
 	}
 	if strings.Contains(msgs[0], sideDir) {
@@ -280,7 +306,7 @@ func TestDoctorComparesOnlyCopiesOfTheSameAccountAndOnlyAttributedOnes(t *testin
 
 	// Now break the *winner's* attribution. It is still the later copy, but kae can no
 	// longer say it is this account's — so it proves nothing about the other one.
-	if err := os.Remove(filepath.Join(filepath.Dir(aheadCred), ".claude.json")); err != nil {
+	if err := os.Remove(filepath.Join(ahead.StoreDir, ".claude.json")); err != nil {
 		t.Fatal(err)
 	}
 	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
@@ -300,10 +326,9 @@ func TestDoctorComparesBoundCopiesWhenTheSnapshotPayloadIsGone(t *testing.T) {
 	ctx := context.Background()
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	behindDir, behindCred := boundStoreForClaudeMain(t, app)
-	aheadDir, aheadCred := boundStoreForClaudeMain(t, app)
-	writeFile(t, behindCred, claudeOAuthPayload("sk-ant-oat01-BEHIND-hhhh", now.Add(4*time.Hour)))
-	writeFile(t, aheadCred, claudeOAuthPayload("sk-ant-oat01-AHEAD-iiii", now.Add(8*time.Hour)))
+	behind, ahead := twoBoundCopiesOfClaudeMain(t, app)
+	writeFile(t, behind.CredFile, claudeOAuthPayload("sk-ant-oat01-BEHIND-hhhh", now.Add(4*time.Hour)))
+	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-AHEAD-iiii", now.Add(8*time.Hour)))
 
 	acc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
 	if err != nil || !found {
@@ -318,8 +343,8 @@ func TestDoctorComparesBoundCopiesWhenTheSnapshotPayloadIsGone(t *testing.T) {
 	if len(msgs) != 1 {
 		t.Fatalf("the two stores are still comparable, got %d: %v", len(msgs), msgs)
 	}
-	if !strings.Contains(msgs[0], "bound to "+behindDir) ||
-		!strings.Contains(msgs[0], "the store bound to "+aheadDir) {
+	if !strings.Contains(msgs[0], "bound to "+behind.Dir) ||
+		!strings.Contains(msgs[0], "the store bound to "+ahead.Dir) {
 		t.Errorf("both directories must be named the right way round: %q", msgs[0])
 	}
 }
@@ -338,13 +363,12 @@ func TestSupersededMessageNeverCarriesTheToken(t *testing.T) {
 	ctx := context.Background()
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	_, behindCred := boundStoreForClaudeMain(t, app)
-	_, aheadCred := boundStoreForClaudeMain(t, app)
+	behind, ahead := twoBoundCopiesOfClaudeMain(t, app)
 	// The canary goes in the copy that gets *reported*; claudeOAuthPayload derives the
 	// refresh token from the access token, so both halves are in the payload the
 	// message is built from.
-	writeFile(t, behindCred, claudeOAuthPayload(secretToken, now.Add(4*time.Hour)))
-	writeFile(t, aheadCred, claudeOAuthPayload("sk-ant-oat01-AHEAD-kkkk", now.Add(8*time.Hour)))
+	writeFile(t, behind.CredFile, claudeOAuthPayload(secretToken, now.Add(4*time.Hour)))
+	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-AHEAD-kkkk", now.Add(8*time.Hour)))
 
 	// The fixture must actually reach the state this test is named for, or the
 	// assertions below prove nothing about that path.

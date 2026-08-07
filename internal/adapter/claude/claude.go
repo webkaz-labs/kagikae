@@ -37,15 +37,25 @@ import (
 )
 
 // KeychainService is the base of Claude Code's macOS Keychain item service
-// name — and the whole name only while CLAUDE_CONFIG_DIR is unset. Anything
-// that needs the name for a specific environment must go through
-// keychainService, never this constant.
+// name — and the whole name only while the credential base dir is empty, i.e.
+// neither CLAUDE_SECURESTORAGE_CONFIG_DIR nor CLAUDE_CONFIG_DIR is set. Anything
+// that needs the name for a specific environment must go through keychainService,
+// never this constant.
 const KeychainService = "Claude Code-credentials"
 
 // EnvSecureStorageDir replaces CLAUDE_CONFIG_DIR as the input to *both* the
 // keychain service name and the plaintext credential's directory whenever it is
-// present in the environment. kae cannot model a credential location it does not
-// control, so driver() refuses instead of guessing — see its doc comment.
+// present in the environment, while sessions, settings and the identity file keep
+// following CLAUDE_CONFIG_DIR. That separation is the mechanism kae's
+// per-account credential store is built on: one credential shared by every
+// directory bound to an account, with everything else still private per
+// directory (docs/ADAPTERS.md § Per-account credential store).
+//
+// Set to the *empty string* it does something else entirely — it drops the
+// per-config-dir suffix, collapsing every config dir onto one shared item — which
+// would make `kae use <other>` silently change what a bound directory runs while
+// its fragment still claims the bound account. driver() refuses that value and
+// only that value; kae never writes it.
 const EnvSecureStorageDir = "CLAUDE_SECURESTORAGE_CONFIG_DIR"
 
 // EnvCustomOAuthURL points claude at a non-production OAuth endpoint, and a
@@ -93,11 +103,23 @@ const relativeConfigDirWarning = "CLAUDE_CONFIG_DIR is relative: claude resolves
 	" credential) where claude does not read it — set an absolute path. The keychain item is" +
 	" unaffected: its service name hashes the variable's raw value, not a resolved path."
 
+// The same hazard for the variable that displaces it for the credential alone
+// (credentialBaseDir). Only the file half diverges here, and it is the whole file
+// half: with this variable set, the credential no longer follows CLAUDE_CONFIG_DIR
+// at all, so the warning above is not saying this one.
+const relativeSecureStorageDirWarning = EnvSecureStorageDir + " is relative: claude resolves it against" +
+	" its own working directory, so under the file driver kae writes the credential where claude" +
+	" does not read it — set an absolute path. The keychain item is unaffected: its service name" +
+	" hashes the variable's raw value, not a resolved path."
+
 // relativeConfigDirWarnings is the Detect/Doctor payload for a relative
-// CLAUDE_CONFIG_DIR: one warning, or none. Both surfaces read it so neither
-// can drift.
+// CLAUDE_CONFIG_DIR or a relative CLAUDE_SECURESTORAGE_CONFIG_DIR: one warning
+// per variable that is set and relative. Both surfaces read it so neither can
+// drift.
 func relativeConfigDirWarnings(env adapter.Env) []string {
-	return adapter.RelativeEnvWarning(env, "CLAUDE_CONFIG_DIR", relativeConfigDirWarning)
+	warnings := adapter.RelativeEnvWarning(env, "CLAUDE_CONFIG_DIR", relativeConfigDirWarning)
+	return append(warnings,
+		adapter.RelativeEnvWarning(env, EnvSecureStorageDir, relativeSecureStorageDirWarning)...)
 }
 
 // keychainAccountPattern is the validation Claude Code applies to the account
@@ -108,8 +130,13 @@ var keychainAccountPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 // this environment. The name is a rule, not a constant, and kae's own isolation
 // modes are what trigger the interesting branch:
 //
-//	CLAUDE_CONFIG_DIR unset  ->  "Claude Code-credentials"
-//	CLAUDE_CONFIG_DIR set    ->  "Claude Code-credentials-<sha8>"
+//	credential base dir empty  ->  "Claude Code-credentials"
+//	credential base dir set    ->  "Claude Code-credentials-<sha8>"
+//
+// The base dir is CLAUDE_SECURESTORAGE_CONFIG_DIR when set, else
+// CLAUDE_CONFIG_DIR (credentialBaseDir) — the same displacement claude applies,
+// and the reason a bound directory can hold one account's shared credential
+// while its sessions stay private.
 //
 // where <sha8> is the first 8 hex characters of sha256 over the env string,
 // NFC-normalized. There is no path resolution or cleaning in that hash, so a
@@ -135,10 +162,12 @@ var keychainAccountPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 // Deliberately not modelled: the build's OAuth suffix, which sits between
 // "Claude Code" and "-credentials" and is empty only for the production build
 // (docs/ROADMAP.md).
-// dirScoped reports whether the returned name is namespaced by the config dir,
-// which is what makes the item safe to write for one bound directory.
+// dirScoped reports whether the returned name is namespaced at all — by the
+// credential base dir, which is the credential variable when set and the config dir
+// otherwise. It is what makes the item safe to write for one binding rather than for
+// every process on the machine; it does not say *which* of the two named it.
 func keychainService(env adapter.Env) (name string, dirScoped bool) {
-	dir := env.Getenv("CLAUDE_CONFIG_DIR")
+	dir := credentialBaseDir(env)
 	if dir == "" {
 		return KeychainService, false
 	}
@@ -226,24 +255,56 @@ func claudeJSONPath(env adapter.Env) string {
 	return filepath.Join(env.Home, ".claude.json")
 }
 
+// credentialBaseDir is the **env string** claude resolves its credential
+// against: CLAUDE_SECURESTORAGE_CONFIG_DIR when that is set to a non-empty
+// value, otherwise CLAUDE_CONFIG_DIR. It feeds both stores — the keychain
+// service name's hash input and the plaintext file's directory — and nothing
+// else: sessions, settings and the identity file go through configDir.
+//
+// It returns the variable's value, not a resolved path, because the keychain
+// suffix hashes that string and its emptiness is what makes the name unsuffixed
+// (keychainService). A caller that needs a filesystem path applies claude's own
+// default itself, exactly as configDir does.
+//
+// The explicitly-empty value never reaches here; driver() refuses it
+// (EnvSecureStorageDir).
+func credentialBaseDir(env adapter.Env) string {
+	if dir := env.Getenv(EnvSecureStorageDir); dir != "" {
+		return dir
+	}
+	return env.Getenv("CLAUDE_CONFIG_DIR")
+}
+
 func credentialsPath(env adapter.Env) string {
-	return filepath.Join(configDir(env), ".credentials.json")
+	dir := credentialBaseDir(env)
+	if dir == "" {
+		// Neither variable set: claude's own default, which configDir already owns.
+		dir = configDir(env)
+	}
+	return filepath.Join(dir, ".credentials.json")
 }
 
 func driver(env adapter.Env) (string, error) {
-	// CLAUDE_SECURESTORAGE_CONFIG_DIR moves *both* stores at once: it becomes the
-	// hash input for the keychain service name and the directory holding
-	// .credentials.json, displacing CLAUDE_CONFIG_DIR for both. Set to the empty
-	// string it goes further and removes the per-directory suffix entirely,
-	// collapsing every config dir onto one shared item — which would silently
-	// destroy the isolation `kae pin` exists to provide. kae has no way to keep
-	// per-directory bindings honest under any of those, so refuse the tool rather
-	// than write a credential nothing reads. Checked before the driver override
+	// CLAUDE_SECURESTORAGE_CONFIG_DIR moves *both* credential stores at once — the
+	// keychain service name's hash input and the directory holding
+	// .credentials.json — displacing CLAUDE_CONFIG_DIR for both while sessions and
+	// the identity file stay behind. A non-empty value is now modelled rather than
+	// refused (credentialBaseDir): it is how one account's credential is shared by
+	// every directory bound to it, and honoring a user-set one is the same policy
+	// this adapter already applies to a user-set CLAUDE_CONFIG_DIR.
+	//
+	// The **empty** value is the one that stays refused, and it is a different
+	// mechanism, not a smaller one: it removes the per-config-dir suffix entirely,
+	// so every config dir collapses onto the one global item. A bound directory
+	// under it runs whatever `kae use` last made globally active while its fragment
+	// and identity still name the bound account — kae breaking its own binding
+	// invariant, silently. kae never writes this value; refusing it is what keeps a
+	// hand-set one from being read as isolation. Checked before the driver override
 	// because it invalidates the file location too, not just the keychain one.
-	if env.IsSet(EnvSecureStorageDir) {
+	if env.IsSet(EnvSecureStorageDir) && env.Getenv(EnvSecureStorageDir) == "" {
 		return "", fmt.Errorf(
-			"%w: %s is set, which moves claude's credential store outside what kae can model"+
-				" (unset it to let kae manage claude)",
+			"%w: %s is set to an empty value, which collapses every config dir onto claude's one"+
+				" global credential item (unset it to let kae manage claude)",
 			adapter.ErrUnsupported, EnvSecureStorageDir,
 		)
 	}

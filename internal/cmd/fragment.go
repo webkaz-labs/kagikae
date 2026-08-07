@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/companion"
@@ -279,6 +280,9 @@ func exportFallback(profileName string, entries []isolationEntry, companionExpor
 			continue
 		}
 		fmt.Fprintf(&b, "export %s=%s\n", e.EnvVar, shellSingleQuote(e.Dir))
+		if e.CredEnvVar != "" {
+			fmt.Fprintf(&b, "export %s=%s\n", e.CredEnvVar, shellSingleQuote(e.CredDir))
+		}
 	}
 	for _, line := range companionExports {
 		fmt.Fprintln(&b, line)
@@ -307,6 +311,18 @@ type fragmentInfo struct {
 	// "isolated tools only" for several releases while every consumer relied on the
 	// opposite, and it sent a reviewer looking for a bug that was not there.
 	Accounts map[string]string
+	// CredDirs maps a tool to the credential store its env entry points at, for
+	// the tools that can separate a credential from a home (credentialEnvVar).
+	// **Absent means the credential lives inside the config dir** — the layout
+	// every directory bound before v0.17.0 still has — which is a different
+	// statement from "this tool is not bound" and must not be answered by
+	// re-deriving the per-account path (storeDirs).
+	//
+	// Read from the `[env]` line rather than from a `# kae:` record because it is
+	// the line the tool's environment actually gets: a fragment whose record and
+	// env entry disagreed would otherwise be read as bound to a store no process
+	// ever sees.
+	CredDirs map[string]string
 }
 
 // readDirFragment reads and parses the kae-owned fragment in the current
@@ -321,7 +337,7 @@ func readDirFragment() (info fragmentInfo, exists bool, err error) {
 func readFragmentAt(dir string) (info fragmentInfo, exists bool, err error) {
 	data, err := os.ReadFile(filepath.Join(dir, fragmentRelPath))
 	if os.IsNotExist(err) {
-		return fragmentInfo{Accounts: map[string]string{}}, false, nil
+		return fragmentInfo{Accounts: map[string]string{}, CredDirs: map[string]string{}}, false, nil
 	}
 	if err != nil {
 		return fragmentInfo{}, false, err
@@ -332,7 +348,15 @@ func readFragmentAt(dir string) (info fragmentInfo, exists bool, err error) {
 // parseDirFragment extracts the kae: comment records from a fragment. The [env]
 // block is mise's; kae's own metadata lives in the # kae: header lines.
 func parseDirFragment(content string) fragmentInfo {
-	info := fragmentInfo{Accounts: map[string]string{}}
+	info := fragmentInfo{Accounts: map[string]string{}, CredDirs: map[string]string{}}
+	// The credential half is the one thing kae reads back out of mise's own [env]
+	// block, keyed by the variable name each tool's credential follows.
+	credVars := map[string]string{}
+	for _, tool := range constants.Tools {
+		if envVar := credentialEnvVar(tool); envVar != "" {
+			credVars[envVar] = tool
+		}
+	}
 	for _, line := range strings.Split(content, "\n") {
 		switch {
 		case strings.HasPrefix(line, fragProfilePrefix):
@@ -342,6 +366,17 @@ func parseDirFragment(content string) fragmentInfo {
 		case strings.HasPrefix(line, fragAccountPrefix):
 			if tool, account, ok := strings.Cut(strings.TrimPrefix(line, fragAccountPrefix), "="); ok {
 				info.Accounts[tool] = account
+			}
+		default:
+			if key, value, ok := strings.Cut(line, " = "); ok {
+				if tool, isCred := credVars[key]; isCred {
+					// Unquoted the same way it was written (writeEnvEntries uses %q). A
+					// value that does not unquote is left out rather than stored raw: a
+					// half-parsed path would send a sweep at a directory nobody exported.
+					if dir, err := strconv.Unquote(value); err == nil {
+						info.CredDirs[tool] = dir
+					}
+				}
 			}
 		}
 	}
@@ -361,12 +396,18 @@ func parseDirFragment(content string) fragmentInfo {
 // and when dir != "" it has a non-empty isolationEnvVar. runRebind enforces
 // both before calling, so a tool that keeps the real home never reaches here
 // and cannot leave an account record without a matching env entry.
-func rebindFragment(tool, account, dir, profile string, companionLines, redactions []string) error {
+func rebindFragment(tool, account, dir, credDir, profile string, companionLines, redactions []string) error {
 	data, err := os.ReadFile(fragmentRelPath)
 	if err != nil {
 		return err
 	}
-	envVar := isolationEnvVar(tool)
+	envVar, credVar := isolationEnvVar(tool), credentialEnvVar(tool)
+	// Whether this fragment already carries the credential line decides between
+	// rewriting it and adding one. A directory bound before the split has none, and
+	// leaving it that way after a re-bind is the state that logs the directory out:
+	// kae would write the new account's credential into the account's own store
+	// while the tool went on reading the one named after the config dir.
+	credWritten := credVar == "" || credDir == ""
 	companionVars := make(map[string]bool)
 	for _, v := range companion.EnvVars() {
 		companionVars[v] = true
@@ -383,6 +424,21 @@ func rebindFragment(tool, account, dir, profile string, companionLines, redactio
 			out = append(out, fmt.Sprintf("%s = %q", constants.EnvKaeProfile, profile))
 		case dir != "" && envVar != "" && strings.HasPrefix(line, envVar+" = "):
 			out = append(out, fmt.Sprintf("%s = %q", envVar, dir))
+			// Deliberately **no** credential line inserted here. It is the obvious place
+			// — a bind writes the credential line directly after the home line — and it
+			// is wrong, because this arm also fires for a fragment that already has one:
+			// the insert would run first, the existing line would then miss the arm below
+			// and be carried through verbatim, and the fragment would end with two. mise
+			// rejects a duplicate key in one table, so the directory loses its whole
+			// binding; kae's own parser takes the last, which is the previous account's
+			// store. The pre-split case is handled once, after the loop, for both modes.
+		case !credWritten && strings.HasPrefix(line, credVar+" = "):
+			// The account selects the credential store, so this line moves on **every**
+			// re-bind — including a shared-mode one, where the home line deliberately
+			// does not (one account-agnostic store per pin×tool). That asymmetry is why
+			// this arm is keyed on the variable rather than on dir.
+			out = append(out, fmt.Sprintf("%s = %q", credVar, credDir))
+			credWritten = true
 		case strings.HasPrefix(line, "redactions = ["):
 			// Drop: re-inserted before [env] from the new profile's plan.
 		case isCompanionEnvLine(line, companionVars):
@@ -390,6 +446,12 @@ func rebindFragment(tool, account, dir, profile string, companionLines, redactio
 		default:
 			out = append(out, line)
 		}
+	}
+	if !credWritten {
+		// Shared mode on a pre-split fragment: neither arm above fired, because the
+		// home line is left alone and there is no credential line to rewrite. Put it
+		// after this tool's home line, which the precondition guarantees exists.
+		out = insertAfterPrefix(out, envVar+" = ", fmt.Sprintf("%s = %q", credVar, credDir))
 	}
 	rebuilt, err := applyCompanionSection(out, companionLines, redactions)
 	if err != nil {
@@ -445,4 +507,25 @@ func applyCompanionSection(lines, companionLines, redactions []string) ([]string
 	rebuilt = append(rebuilt, lines[envIdx:]...)
 	rebuilt = append(rebuilt, companionLines...)
 	return append(rebuilt, ""), nil
+}
+
+// insertAfterPrefix puts line directly after the first line starting with prefix,
+// or appends it when there is none. The fallback cannot produce a valid [env]
+// entry outside the block, so callers must only use it where the anchor is a
+// precondition; it exists so a hand-edited fragment loses the setting rather than
+// silently dropping it into another table.
+// The append fallback is unobservable today — `[env]` is the last table a fragment
+// has, so appending lands inside it either way — and it is written as the intent it
+// is: a hand-edited fragment with a table after `[env]` would otherwise take the
+// setting into that table (measured 2026-08-07).
+func insertAfterPrefix(lines []string, prefix, line string) []string {
+	for i, existing := range lines {
+		if strings.HasPrefix(existing, prefix) {
+			out := make([]string, 0, len(lines)+1)
+			out = append(out, lines[:i+1]...)
+			out = append(out, line)
+			return append(out, lines[i+1:]...)
+		}
+	}
+	return append(lines, line)
 }

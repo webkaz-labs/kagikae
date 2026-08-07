@@ -237,6 +237,12 @@ const (
 	// active — no snapshot by that name, one whose metadata will not parse, or a
 	// state file it cannot read at all.
 	CheckActiveOrphan = "active_orphan"
+	// CheckCredentialUnsplit: a bound directory still keeps its own copy of an
+	// account's credential, because it was bound before kae gave each account one
+	// shared credential store. Every such copy is invalidated the moment any other
+	// binding of that account refreshes, so this is the migration prompt: re-run
+	// `kae pin` in that directory.
+	CheckCredentialUnsplit = "credential_unsplit"
 )
 
 // Credential freshness states, the `credential` field of a `kae ls` /

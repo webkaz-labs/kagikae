@@ -16,6 +16,18 @@ type syncedEntry struct {
 	dir    string
 }
 
+// credentialEntry is the second env pair a globally isolated tool needs: its
+// credential store, which is keyed by account rather than by home so every
+// binding of that account reads one copy. Empty envVar means the tool has none.
+func (app *App) credentialEntry(tool, account string) (syncedEntry, bool) {
+	envVar := credentialEnvVar(tool)
+	credDir := app.credStoreDir(tool, account)
+	if envVar == "" || credDir == "" {
+		return syncedEntry{}, false
+	}
+	return syncedEntry{envVar, credDir}, true
+}
+
 // iterSynced resolves the synced map into (envVar, dir) pairs in canonical
 // tool order, skipping tools that have no entry in synced and tools with no
 // stable home-isolation env var (e.g. agy/cursor).
@@ -28,6 +40,9 @@ func (app *App) iterSynced(synced map[string]string) []syncedEntry {
 		}
 		if envVar := isolationEnvVar(tool); envVar != "" {
 			out = append(out, syncedEntry{envVar, app.Paths.GlobalIsolatedHomeDir(tool, account)})
+			if entry, ok := app.credentialEntry(tool, account); ok {
+				out = append(out, entry)
+			}
 		}
 	}
 	return out
@@ -35,7 +50,9 @@ func (app *App) iterSynced(synced map[string]string) []syncedEntry {
 
 // renderGlobalFragment renders the kae-owned global mise fragment for global
 // isolated mode (kae use -i): an [env] block pointing each globally isolated
-// tool's home-isolation env var at its private home. Unlike the per-directory
+// tool's home-isolation env var at its private home, plus — for a tool that can
+// address its credential separately — the credential variable at the *account's*
+// store, which is not private to the home (credentialEntry). Unlike the per-directory
 // fragment it carries no KAE_PROFILE and no kae: metadata records — state.json
 // `synced` is the source of truth, so the fragment is purely derived. Tools are
 // emitted in canonical order for stable, diffable output.

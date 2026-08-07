@@ -251,11 +251,15 @@ func TestRunIsolated(t *testing.T) {
 	held.Release()
 	mustExit(t, constants.ExitOK, code, out)
 	wantHome := app.Paths.GlobalIsolatedHomeDir("claude", "main")
-	if len(gotEnv) != 1 || gotEnv[0] != "CLAUDE_CONFIG_DIR="+wantHome {
-		t.Fatalf("isolated env: %v", gotEnv)
+	wantCred := app.Paths.CredStoreDir("claude", "main")
+	// Both variables, or the child finds no credential where it looks: the home
+	// carries the sessions and the credential is the account's one shared copy.
+	want := []string{"CLAUDE_CONFIG_DIR=" + wantHome, "CLAUDE_SECURESTORAGE_CONFIG_DIR=" + wantCred}
+	if len(gotEnv) != len(want) || gotEnv[0] != want[0] || gotEnv[1] != want[1] {
+		t.Fatalf("isolated env: %v, want %v", gotEnv, want)
 	}
-	if got := readFile(t, filepath.Join(wantHome, ".credentials.json")); !strings.Contains(got, mainToken) {
-		t.Fatalf("isolated home credential not materialized: %s", got)
+	if got := readFile(t, filepath.Join(wantCred, ".credentials.json")); !strings.Contains(got, mainToken) {
+		t.Fatalf("isolated credential not materialized: %s", got)
 	}
 	if live := readFile(t, credsPath); live != beforeLive {
 		t.Fatalf("run -i must not touch the live credential: %s", live)

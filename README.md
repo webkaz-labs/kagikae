@@ -208,18 +208,17 @@ view across all of them (directory, profile, mode, bound account per tool, and a
 keeps its store so a re-pin restores its sessions, but it is not a binding and is
 not listed.
 
-**One caveat, and it is a "not yet" rather than a "no":** two worktrees bound to
-the *same* account cannot run at the **same time** in this release. Each bound
-directory keeps its own copy of that account's credential, and claude's refresh
-token is single-use — so whichever session refreshes first invalidates the other
-copy, which then fails up to eight hours later, mid-session. Using those
-directories one after another is fine: kae harvests the newest copy before it
-overwrites one, so re-binding never costs you a login. Running them **concurrently**
-needs one credential copy per account instead of one per directory, which is
-designed and measured and is the next thing being built — claude has a second
-variable that moves the credential alone, so sessions and settings stay per
-directory ([docs/ROADMAP.md](docs/ROADMAP.md)). Different accounts per worktree are
-unaffected either way.
+**Two worktrees can run the same account at the same time**, which needed one
+credential copy per account rather than one per directory: claude's refresh token is
+single-use, so whichever session refreshed first used to invalidate the other
+directory's copy, and that one then failed up to eight hours later, mid-session. The
+credential is now the account's — one store every directory bound to it reads —
+while sessions, settings and memory stay per directory, because claude has a second
+variable that moves the credential alone
+([docs/ADAPTERS.md](docs/ADAPTERS.md) § Per-account credential store).
+
+A directory bound by an earlier version keeps its own copy until you re-run
+`kae pin` there; `kae doctor` names the ones that still need it.
 
 ## Beyond Switching
 

@@ -30,16 +30,28 @@ func loginInto(t *testing.T, tool, token, uuid string, expiresAt time.Time, seen
 	t.Helper()
 	return func(_ context.Context, extraEnv []string, name string, args ...string) (int, error) {
 		*seen = append(append([]string{name}, args...), extraEnv...)
-		dir := ""
+		dir, credDir := "", ""
 		for _, entry := range extraEnv {
 			if rest, ok := strings.CutPrefix(entry, isolationEnvVar(tool)+"="); ok {
 				dir = rest
+			}
+			if credVar := credentialEnvVar(tool); credVar != "" {
+				if rest, ok := strings.CutPrefix(entry, credVar+"="); ok {
+					credDir = rest
+				}
 			}
 		}
 		if dir == "" {
 			return 1, nil // no isolation variable: the login would hit the real home
 		}
-		writeFile(t, filepath.Join(dir, ".credentials.json"), claudeOAuthPayload(token, expiresAt))
+		// The two halves land where the tool puts them, which is the split this fake
+		// has to reproduce: the credential follows the credential variable and the
+		// identity follows the home. A fake that wrote both into the home would report
+		// success for a kae that exported only one of the two.
+		if credDir == "" {
+			credDir = dir
+		}
+		writeFile(t, filepath.Join(credDir, ".credentials.json"), claudeOAuthPayload(token, expiresAt))
 		writeFile(t, filepath.Join(dir, ".claude.json"), claudeIdentityFile(uuid))
 		return 0, nil
 	}
@@ -55,8 +67,7 @@ func TestReloginLogsIntoTheBoundStoreAndCapturesItBack(t *testing.T) {
 	ctx := context.Background()
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	_, credFile := boundStoreForClaudeMain(t, app)
-	storeDir := filepath.Dir(credFile)
+	_, storeDir, credFile := boundStoreForClaudeMain(t, app)
 
 	const refreshed = "sk-ant-oat01-RELOGGED-aaaa"
 	seen := []string{}
@@ -106,7 +117,7 @@ func TestReloginDoesNotFileAnotherAccountsLoginUnderThisAccount(t *testing.T) {
 	ctx := context.Background()
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	_, credFile := boundStoreForClaudeMain(t, app)
+	_, _, credFile := boundStoreForClaudeMain(t, app)
 
 	const foreign = "sk-ant-oat01-SIDE-bbbb"
 	seen := []string{}
@@ -209,7 +220,7 @@ func TestReloginRefusesAfterUnpin(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
 	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
-	_, credFile := boundStoreForClaudeMain(t, app)
+	_, _, credFile := boundStoreForClaudeMain(t, app)
 	code, out := captureStdout(t, func() int {
 		return runUnpin(ctx, app, commonOpts{Format: formatText}, false)
 	})
@@ -284,7 +295,7 @@ func TestReloginRefusesWhenTheFlowChangedNothing(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
 	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
-	_, credFile := boundStoreForClaudeMain(t, app)
+	_, _, credFile := boundStoreForClaudeMain(t, app)
 	unchanged := readFile(t, credFile)
 
 	ran := false
@@ -326,7 +337,7 @@ func TestReloginSaysSoWhenItCannotTellWhetherAnythingChanged(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
 	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
-	_, credFile := boundStoreForClaudeMain(t, app)
+	_, _, credFile := boundStoreForClaudeMain(t, app)
 	// A credential path that is a *directory* reads as an error rather than as absent,
 	// which is the distinction the comparison turns on: absent-then-present is a
 	// change, unreadable-then-unreadable is kae not knowing.
@@ -371,8 +382,8 @@ func TestReloginRefusesWhenTheBoundStoreIsNotThere(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
 	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
-	_, credFile := boundStoreForClaudeMain(t, app)
-	if err := os.RemoveAll(filepath.Dir(credFile)); err != nil {
+	_, storeDir, _ := boundStoreForClaudeMain(t, app)
+	if err := os.RemoveAll(storeDir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -434,8 +445,12 @@ func TestReloginDoesNotCallAnEmptiedStoreALogin(t *testing.T) {
 			boundStoreForClaudeMain(t, app)
 
 			withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
+				// Keyed on the *credential* variable: that is where the login flow writes,
+				// so it is the copy an aborted or emptied flow leaves behind. Reading the
+				// home variable here would leave a file nothing looks at and let this
+				// assert about a store kae never read.
 				for _, entry := range extraEnv {
-					if dir, ok := strings.CutPrefix(entry, isolationEnvVar(constants.ToolClaude)+"="); ok {
+					if dir, ok := strings.CutPrefix(entry, credentialEnvVar(constants.ToolClaude)+"="); ok {
 						tc.leave(t, app.Now(), filepath.Join(dir, ".credentials.json"))
 					}
 				}
@@ -565,7 +580,7 @@ func TestReloginWillNotClaimALoginItCouldNotCompareAgainst(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
 	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
-	_, credFile := boundStoreForClaudeMain(t, app)
+	_, _, credFile := boundStoreForClaudeMain(t, app)
 	// Unreadable *before*: a path that is a directory errors rather than reading as
 	// absent, so kae has no pre-flow bytes to compare against.
 	if err := os.Remove(credFile); err != nil {
@@ -580,7 +595,7 @@ func TestReloginWillNotClaimALoginItCouldNotCompareAgainst(t *testing.T) {
 	// back. Drop `comparable` from that gate and this prints "Logged claude in".
 	withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
 		for _, entry := range extraEnv {
-			if dir, ok := strings.CutPrefix(entry, isolationEnvVar(constants.ToolClaude)+"="); ok {
+			if dir, ok := strings.CutPrefix(entry, credentialEnvVar(constants.ToolClaude)+"="); ok {
 				cred := filepath.Join(dir, ".credentials.json")
 				if err := os.RemoveAll(cred); err != nil {
 					t.Fatal(err)

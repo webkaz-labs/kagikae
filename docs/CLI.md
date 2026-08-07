@@ -162,7 +162,12 @@ matches.
   **without touching `~/.claude`**. kae prepares
   `isolation/global/<tool>/<account>/` (docs/DATA-MODEL.md) and writes a
   kae-owned global mise fragment `~/.config/mise/conf.d/kagikae.toml` exporting
-  `CLAUDE_CONFIG_DIR` / `CODEX_HOME`, regenerated from `state.json synced`.
+  `CLAUDE_CONFIG_DIR` / `CODEX_HOME`, regenerated from `state.json synced`. For a
+  tool whose credential can move on its own (claude) the fragment exports that
+  variable too, pointed at the **account's** credential store — the same one every
+  bound directory of that account reads, so a globally isolated home is not a second
+  copy of a credential that only refreshes once ([ADAPTERS.md](ADAPTERS.md)
+  § Per-account credential store). `kae run -i` adds the same pair to its child.
   claude and codex only; a profile that also maps a tool with no home-isolation
   env var (agy, opencode, cursor, copilot) skips it with a warning and isolates
   claude/codex only — a single explicit unsupported tool exits `5`. Requires
@@ -435,16 +440,18 @@ also strips a pre-v0.7.2 kagikae marker block from `mise.toml` (so `kae unpin &&
 kae pin` migrates cleanly), leaving the user's own `mise.toml` content and any
 isolation directories (with their login state) intact.
 
-Both commands sweep a **superseded per-directory keychain credential**: a `-s` ↔
-`-i` toggle moves every tool to the other mechanism's store and an isolated
-re-bind re-keys the store by account, so the store the directory used before is
-unreachable, and its keychain item would otherwise hold a credential nothing
-points at — easy to miss, since it lives under a per-directory service name that
-appears nowhere in kae's data dir and no kae check reports one yet. Only the item
-goes: the store directory, its sessions and its settings stay, and a file-backed
-per-directory credential is left alone because it lives *inside* that directory.
-The sweep runs after the new binding is in place, reports each removal, and never
-changes the exit code.
+Both commands sweep a **superseded per-directory credential**: a `-s` ↔ `-i`
+toggle moves every tool to the other mechanism's store and an isolated re-bind
+re-keys the store by account, so the store the directory used before is
+unreachable, and its credential would otherwise be one nothing points at. A
+keychain item is the case that is easiest to miss, and the common one: it lives
+under a per-directory service name that appears nowhere in kae's data dir, and no
+kae check reports the item itself — `credential_unsplit` names the *directory* whose
+re-bind would remove it, which is the closest thing there is. Only the credential goes — the store directory, its
+sessions and its settings stay. **Which store kinds a file credential is taken
+from is stated once, below**, with the migration case that made it more than the
+item; do not read the keychain wording here as the rule. The sweep runs after the
+new binding is in place, reports each removal, and never changes the exit code.
 
 **A deletion here is final, so the sweep harvests too**, by the same rule and with
 the same refusals as a bind (above): the item can hold the copy that refreshed
@@ -469,12 +476,41 @@ command was asked to bind something, and `kae account rename` reaches it through
 own re-bind remedy — deleting there destroyed the newest copy of the renamed account's
 credential. kae names the account in both cases.
 
+One store the binding **does** still point at is swept as well, and only in this
+shape: a directory bound before v0.17.0, whose credential has just moved into the
+account's own store. Its per-directory copy is then addressed by a name nothing
+resolves any more, so leaving it is a full copy of a live account that no reader can
+see — and one a shell exporting only `CLAUDE_CONFIG_DIR` would find and refresh,
+invalidating the copy every other directory now shares. That is the whole migration:
+re-running `kae pin` moves the credential and takes the old copy with it.
+
 `kae unpin --purge` extends that to the directory's *current* stores, which plain
 `unpin` deliberately keeps so a re-pin restores the directory. Sessions and
 settings survive `--purge` too; only the credentials go, and a re-pin restores them
 from the account snapshots. Because the sweep harvests first, `--purge` needs kae's
 secret store: if it cannot be opened, kae warns and leaves the credentials in place
 rather than deleting logins it has no way to preserve.
+
+A **file** credential is deleted in exactly the two cases where it is not the copy
+its own store still reads: the account's credential store, which holds the credential
+and nothing else, and a store the migration above just moved the credential out of.
+What is kept is a per-directory store's file that is still the one that store reads —
+it sits beside the sessions and settings that survive an unpin. The unit is the
+artifact, which for claude is a pointer inside `.credentials.json`, so the document
+is left behind without it.
+
+An account's **shared** credential store is a separate case with its own rule
+([ADAPTERS.md](ADAPTERS.md) § Per-account credential store). It is not one
+directory's to delete, so a bind's sweep never touches it, and `--purge` takes it
+only once nothing points at it any more: every bound directory's fragment and
+`state.synced`, counted after this directory's own binding is gone. A count kae
+could not complete keeps the credential and says so, because "no reference found"
+and "kae could not look" differ by exactly one logged-out sibling. Known sources —
+**not a closed set**: an unreadable fragment, an unreadable state file, and a store
+whose breadcrumb cannot be read (one bound by a kae older than that record). The last
+does not clear itself, so a single legacy store leaves `--purge` permanently unable
+to remove a per-account credential; `kae doctor`'s `pin_stale` is what names it. When
+kae keeps a credential because bindings still use it, it prints how many.
 
 `kae pin` defaults to **shared** (`-s`); pass `-i` for isolated:
 
@@ -505,11 +541,16 @@ rather than deleting logins it has no way to preserve.
   it keeps its link even when its source is missing.
 
   The credential comes from **the account's own snapshot**, so binding an account
-  that is not currently active is exact. It is written where the tool bound to that
-  directory actually reads it: a private file at `0600`, or — on a platform where
-  the tool namespaces a keychain item by the config dir (claude on macOS) — that
-  directory's keychain item, with any superseded plaintext copy removed. See
-  docs/ADAPTERS.md "Per-directory credential store".
+  that is not currently active is exact. Since v0.17.0 it is written to the
+  *account's* credential store rather than the directory's, and the fragment carries
+  a second env entry pointing at it, so every directory bound to one account reads
+  one credential while keeping its own sessions ([ADAPTERS.md](ADAPTERS.md)
+  § Per-account credential store). A directory bound by an earlier release keeps its
+  own copy until it is re-pinned; `kae doctor` names it (`credential_unsplit`). It is
+  written where the tool bound to that directory actually reads it — a file at
+  `0600`, or the keychain item that binding resolves, with any superseded plaintext
+  copy removed. What decides which item is the adapter's rule, stated once in
+  docs/ADAPTERS.md § "Credential storage resolution".
 
   **Except where a store already holds a newer copy, which kae harvests into the
   snapshot first.** The tool refreshes the credential inside the directory, in
@@ -608,10 +649,16 @@ message cannot enforce.
   that only while the pin is active in that shell; with mise activation absent or
   the config untrusted the isolation variable is unset and the same command
   refreshes the **real home** — the wrong account moves and the bound one is still
-  stale. kae exports the variable itself (`CLAUDE_CONFIG_DIR=<the bound store>`,
-  appended to the child's environment so it wins over whatever the shell has), so
-  this hazard cannot happen rather than needing a caveat. mise activation is
-  therefore **not** required, and not checked.
+  stale. kae exports the variables itself (`CLAUDE_CONFIG_DIR=<the bound store>`
+  **and the binding's credential variable**, appended to the child's environment so
+  they win over whatever the shell has), so this hazard cannot happen rather than
+  needing a caveat. Both, because the login writes the credential where the
+  credential variable points: exporting one half sends the new token somewhere kae
+  does not read it back from, and the command then reports a login that changed
+  nothing while the directory is still stale. A directory bound before v0.17.0 has
+  no credential entry, and kae exports what that binding actually says rather than
+  what a current bind would say. mise activation is therefore **not** required, and
+  not checked.
 - **Something has to capture it back.** A login made inside a bound directory only
   reaches the account snapshot when a bind or a sweep next runs, so until then
   `kae use <tool> <account>` applies the older copy globally. This captures it at
@@ -1066,11 +1113,13 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `credential_superseded`, `secret_orphan`, `secret_missing`,
 `companion_missing`, `companion_binary`, `companion_drift`,
 `companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`,
-`active_orphan`.
+`active_orphan`, `credential_unsplit`.
 
 A `(tool, code)` pair is **not** unique in one report: a code is emitted per subject,
 and several subjects can share a tool. `credential_stale` is reported once per account
-snapshot and once per bound directory, `identity_drift` once for the active
+snapshot and once per bound **credential** — so one finding for *all* the
+directories bound to an account, since they read one store, plus a separate one for
+any directory still holding its own pre-v0.17.0 copy — `identity_drift` once for the active
 account's live state and once per bound directory whose store disagrees with its
 binding, and `credential_superseded` once per bound directory that a newer copy
 overtook. Consumers must read the list, not index it by code.
@@ -1129,6 +1178,14 @@ Credential-health checks (warn-level):
   The same lead-time notice is emitted at switch time next to the stale one
   (stderr, before the write, surviving `--quiet`), but it is **not** counted in
   the "N tools need a re-login before use" roll-up: that switch works today.
+- `credential_unsplit`: a bound directory still keeps its own copy of an account's
+  credential, because it was bound before kae gave each account one shared
+  credential store ([ADAPTERS.md](ADAPTERS.md) § Per-account credential store). Every
+  such copy is invalidated the moment any other binding of that account refreshes,
+  and nothing else can see the state — the copy is healthy until it is not, so this
+  reports the *shape* of the binding rather than the health of the credential.
+  Reported once per bound directory and tool; the remedy is to re-run `kae pin`
+  there. Offline and backend-free.
 - `credential_superseded`: another copy of one account's credential carries a
   **later** `expiresAt` than the copy in a bound directory. For a tool whose refresh
   token rotates single-use (claude — docs/VALIDATION.md owns the measurement), if the
@@ -1226,9 +1283,11 @@ binding is a property of the directory, not of one tool):
   a re-pin restores its sessions and settings.
 
 **Bound-directory credentials** (reported under `credential_stale` /
-`credential_expiring`, also unfiltered): a bound directory holds its **own copy**
-of the credential and the tool refreshes *that copy* in place, so it can die while
-every account snapshot kae has still looks fine. Nothing reported this before — the
+`credential_expiring`, also unfiltered): a bound directory reads a **live copy** of
+the credential — the account's own store, shared with every directory bound to it —
+and the tool refreshes *that copy* in place, so it can die while every account
+snapshot kae has still looks fine. Sharing does not weaken the reason for the check;
+it is why one finding now covers all of those directories. Nothing reported this before — the
 first signal was the tool refusing to start in that directory.
 
 - The remedy is a login **inside** that directory: `cd <dir> && kae relogin <tool>`

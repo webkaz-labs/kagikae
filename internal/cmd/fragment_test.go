@@ -752,6 +752,12 @@ func TestRunPinModeToggleRemovesTheOldModesItem(t *testing.T) {
 			t.Fatalf("pin --isolated exit %d", code)
 		}
 	})
+	// Aged into the pre-split layout, because that is the only arrangement where a
+	// mode toggle strands a credential at all: since the split both modes read the
+	// account's own store, so the toggle moves the sessions and leaves the credential
+	// exactly where it was. What still has to be swept is the per-directory item a
+	// binding from before the split left in the store it is moving off.
+	makePreSplit(t, app, constants.ToolClaude, "main", cwd, isolatedDir)
 
 	fake := &runnertest.Fake{Stdout: payload, Code: 0}
 	var out string
@@ -813,11 +819,6 @@ func TestUnpinPurgeRemovesTheItemAndPlainUnpinDoesNot(t *testing.T) {
 			app := overlayTestApp(t)
 			app.Env.GOOS = "darwin"
 			chdirTemp(t)
-			cwd, err := os.Getwd()
-			if err != nil {
-				t.Fatal(err)
-			}
-			pinID := paths.PinID(cwd)
 			ctx := context.Background()
 			// A payload with a real expiresAt: without one kae cannot judge what the item
 			// holds, and a store it cannot read is deliberately kept rather than deleted.
@@ -828,7 +829,9 @@ func TestUnpinPurgeRemovesTheItemAndPlainUnpinDoesNot(t *testing.T) {
 					t.Fatal("pin failed")
 				}
 			})
-			sharedDir := app.Paths.SharedDir(pinID, constants.ToolClaude)
+			// The item a purge takes is the account's credential store, which is where the
+			// credential lives now — the shared store holds the sessions.
+			sweptDir := app.credStoreDir(constants.ToolClaude, "main")
 
 			fake := &runnertest.Fake{Stdout: payload, Code: 0}
 			runner.With(fake, func() {
@@ -840,7 +843,7 @@ func TestUnpinPurgeRemovesTheItemAndPlainUnpinDoesNot(t *testing.T) {
 			// deciding, and that read carries the same service name — so matching on the
 			// name alone reported a deletion that had not happened.
 			args := strings.Join(fake.Args, " ")
-			deleted := strings.Contains(args, "delete-generic-password") && strings.Contains(args, sha8Of(sharedDir))
+			deleted := strings.Contains(args, "delete-generic-password") && strings.Contains(args, sha8Of(sweptDir))
 			if deleted != purge {
 				t.Fatalf("purge=%v: item deleted=%v (ran %q %v)", purge, deleted, fake.Name, fake.Args)
 			}
@@ -875,6 +878,12 @@ func TestPinRebindIsolatedRemovesThePreviousAccountsItem(t *testing.T) {
 	})
 	oldDir := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
 	newDir := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "beta")
+	// Pre-split, for the same reason the mode toggle above is: since the split the
+	// previous account's credential is that account's own store, which a re-bind must
+	// **not** delete — another worktree may still be bound to it. The item that is
+	// still this directory's alone, and still has to go, is the one an older kae left
+	// in the store keyed by config dir.
+	makePreSplit(t, app, constants.ToolClaude, "main", cwd, oldDir)
 
 	fake := &runnertest.Fake{Stdout: payload, Code: 0}
 	var out string

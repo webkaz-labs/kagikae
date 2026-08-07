@@ -34,6 +34,55 @@ func isolationEnvVar(tool string) string {
 	}
 }
 
+// credentialEnvVar returns the env var that points a tool at an alternate
+// *credential* store without moving its home, or "" when the tool has no way to
+// separate the two. Only claude has one; docs/ADAPTERS.md § "Credential storage
+// resolution" is the normative description of what it displaces — update
+// together, and keep the literal in step with the adapter's own constant
+// (claude.EnvSecureStorageDir), which this deliberately does not import for the
+// same reason isolationEnvVar spells CLAUDE_CONFIG_DIR out above.
+//
+// A tool with no such variable keeps its credential inside the config dir, which
+// is what an empty answer means to every caller: one directory, both roles.
+func credentialEnvVar(tool string) string {
+	switch tool {
+	case constants.ToolClaude:
+		return "CLAUDE_SECURESTORAGE_CONFIG_DIR"
+	default:
+		return ""
+	}
+}
+
+// credStoreDir is the per-account credential store a bound directory points
+// tool's credential variable at, or "" for a tool that cannot separate its
+// credential from its home.
+//
+// Per *account*, not per directory: that is the whole point of the split. Two
+// directories bound to one account share this one copy, so the tool's refresh
+// rotates a single credential instead of invalidating the copies in every other
+// bound directory (docs/ROADMAP.md § One credential per account).
+func (app *App) credStoreDir(tool, account string) string {
+	// The `account == ""` half is a statement of intent, not a live guard: every
+	// caller resolves the account from a binding or a plan first, so a mutation that
+	// removes it cannot be killed (measured 2026-08-07). It stays because composing a
+	// store path from an empty account would put every unattributed store at one
+	// shared path — write the reason rather than a test that cannot fail.
+	if credentialEnvVar(tool) == "" || account == "" {
+		return ""
+	}
+	return app.Paths.CredStoreDir(tool, account)
+}
+
+// isKaeManagedCredStore reports whether dir lies inside kae's per-account
+// credential store root. The sibling of isKaeManagedHome, for the second
+// variable: applyGlobalScope has to hide a kae-set credential dir exactly as it
+// hides a kae-set config dir, or a global command run inside a bound directory
+// resolves the *directory's* credential and switches the account there instead
+// of in the real home.
+func (app *App) isKaeManagedCredStore(dir string) bool {
+	return dir != "" && pathWithin(dir, app.Paths.CredStoreRoot())
+}
+
 // realToolHome resolves the tool's live home directory for per-directory shared
 // linking. An isolation env var pointing into kae's own isolation data dirs is
 // ignored: that is kae's own redirection (e.g. exported by a pinned directory's
@@ -175,18 +224,64 @@ func (app *App) applyGlobalScope() {
 	}
 	app.globalScope = true
 	isolated := map[string]bool{}
+	credential := map[string]bool{}
 	for _, tool := range constants.Tools {
 		if envVar := isolationEnvVar(tool); envVar != "" {
 			isolated[envVar] = true
 		}
-	}
-	inner := app.Env.Getenv
-	app.Env.Getenv = func(key string) string {
-		value := inner(key)
-		if isolated[key] && app.isKaeManagedHome(value) {
-			return ""
+		// The second variable needs its own masking and its own test for what
+		// counts as kae-managed: its value points into the per-account credential
+		// store, which is not a tool home and so is not what isKaeManagedHome
+		// recognizes. Masking one of the pair and not the other is worse than
+		// masking neither — a global `kae use` would then write claude's credential
+		// into the bound directory's shared store while reading and reporting the
+		// real home.
+		if envVar := credentialEnvVar(tool); envVar != "" {
+			credential[envVar] = true
 		}
-		return value
+	}
+	// masked reports whether this key holds a value kae itself set, which is the one
+	// thing a global command must not see.
+	//
+	// This wraps the same two seams `dirSpecs` wraps, and the two are deliberately not
+	// one helper: they answer opposite questions. `dirSpecs` *asserts* a value, so its
+	// LookupEnv forces `ok=true` for an overridden key; this one *hides* one, so it
+	// must force `ok=false` — an absent key, not an empty one, because empty is a value
+	// claude refuses. A shared wrapper would take that difference as a parameter and
+	// bury the reason for it.
+	inner, innerLookup := app.Env.Getenv, app.Env.LookupEnv
+	masked := func(key, value string) bool {
+		return (isolated[key] && app.isKaeManagedHome(value)) ||
+			(credential[key] && app.isKaeManagedCredStore(value))
+	}
+	app.Env.Getenv = func(key string) string {
+		if value := inner(key); !masked(key, value) {
+			return value
+		}
+		return ""
+	}
+	// **Both** seams, because an adapter that asks `Env.IsSet` reads this one and not
+	// the one above. That used to be safe on the stated grounds that every variable
+	// reached through IsSet is user-set by definition — which stopped being true the
+	// moment kae started setting a credential variable itself. Masking only Getenv
+	// leaves `IsSet(SSCD) && Getenv(SSCD) == ""` true for every bound directory, which
+	// is claude's refusal for the one value kae never writes: every global command run
+	// inside a bound directory would report the tool unsupported, including the mise
+	// enter hook. dirSpecs overrides both seams for the same reason.
+	app.Env.LookupEnv = func(key string) (string, bool) {
+		// Dead in both production (app.go injects os.LookupEnv) and the test fixture,
+		// and kept as the degraded answer rather than a panic for an App built by hand
+		// — a mutation of it cannot be killed (measured 2026-08-07), so this comment is
+		// the guard instead of a test that would assert nothing.
+		if innerLookup == nil {
+			value := inner(key)
+			return value, value != "" && !masked(key, value)
+		}
+		value, ok := innerLookup(key)
+		if ok && masked(key, value) {
+			return "", false
+		}
+		return value, ok
 	}
 }
 

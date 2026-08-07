@@ -57,7 +57,7 @@ func endOfLifeClaudeCred(now time.Time, in time.Duration, token string) string {
 // The store path differs per mode — one directory per pin×tool for shared, a
 // per-account one for isolated — which is the branch boundStoreDir picks, so the
 // mode is a parameter rather than a second copy of this fixture.
-func pinWithCapturedClaude(t *testing.T, app *App, mode string) (dir, credFile string) {
+func pinWithCapturedClaude(t *testing.T, app *App, mode string) (dir, storeDir, credFile string) {
 	t.Helper()
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
@@ -68,15 +68,15 @@ func pinWithCapturedClaude(t *testing.T, app *App, mode string) (dir, credFile s
 		t.Fatalf("capture claude/main: %s", out)
 	}
 	dir = pinHere(t, app, mode)
-	storeDir := app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
+	storeDir = app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
 	if mode == modeIsolated {
 		storeDir = app.Paths.IsolatedConfigDir(paths.PinID(dir), constants.ToolClaude, "main")
 	}
-	credFile = filepath.Join(storeDir, ".credentials.json")
+	credFile = dirCredFile(app, constants.ToolClaude, "main", storeDir)
 	if readFile(t, credFile) == "" {
 		t.Fatalf("pin (%s) did not materialize a credential at %s", mode, credFile)
 	}
-	return dir, credFile
+	return dir, storeDir, credFile
 }
 
 // A bound directory holds its own copy of the credential and the tool refreshes
@@ -86,7 +86,7 @@ func pinWithCapturedClaude(t *testing.T, app *App, mode string) (dir, credFile s
 func TestDoctorReportsStaleBoundDirectoryCredential(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
-	dir, credFile := pinWithCapturedClaude(t, app, modeShared)
+	dir, _, credFile := pinWithCapturedClaude(t, app, modeShared)
 
 	// The directory's copy died; the account snapshot is untouched and healthy.
 	writeFile(t, credFile,
@@ -132,7 +132,7 @@ func TestDoctorReportsStaleBoundDirectoryCredential(t *testing.T) {
 func TestDoctorReportsExpiringBoundDirectoryCredential(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
-	dir, credFile := pinWithCapturedClaude(t, app, modeShared)
+	dir, _, credFile := pinWithCapturedClaude(t, app, modeShared)
 
 	writeFile(t, credFile, `{"claudeAiOauth":`+endOfLifeClaudeCred(app.Now(), 5*24*time.Hour, "a")+`}`)
 
@@ -180,7 +180,7 @@ func TestHealthyBoundDirectoryCredentialIsSilent(t *testing.T) {
 func TestUnpinnedDirectoryCredentialIsNotReported(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
-	_, credFile := pinWithCapturedClaude(t, app, modeShared)
+	_, _, credFile := pinWithCapturedClaude(t, app, modeShared)
 
 	code, out := captureStdout(t, func() int { return runUnpin(ctx, app, commonOpts{Format: formatText}, false) })
 	mustExit(t, constants.ExitOK, code, out)
@@ -199,7 +199,7 @@ func TestUnpinnedDirectoryCredentialIsNotReported(t *testing.T) {
 func TestUnboundToolsStoreInABoundDirectoryIsNotReported(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
-	dir, credFile := pinWithCapturedClaude(t, app, modeShared)
+	dir, _, credFile := pinWithCapturedClaude(t, app, modeShared)
 
 	// Re-bind this directory to codex alone; claude's store stays on disk.
 	seedCodex(t, app, "codex-main")
@@ -234,7 +234,7 @@ func TestUnboundToolsStoreInABoundDirectoryIsNotReported(t *testing.T) {
 func TestDeletedBoundDirectoryCredentialIsNotReportedTwice(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
-	dir, credFile := pinWithCapturedClaude(t, app, modeShared)
+	dir, _, credFile := pinWithCapturedClaude(t, app, modeShared)
 	writeFile(t, credFile,
 		deadClaudeCred)
 
@@ -255,7 +255,7 @@ func TestDeletedBoundDirectoryCredentialIsNotReportedTwice(t *testing.T) {
 func TestFilteredDoctorSkipsBoundDirectoryCredentials(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
-	_, credFile := pinWithCapturedClaude(t, app, modeShared)
+	_, _, credFile := pinWithCapturedClaude(t, app, modeShared)
 	writeFile(t, credFile,
 		deadClaudeCred)
 
@@ -273,7 +273,7 @@ func TestBoundDirectoryCredentialMessageNeverCarriesTheToken(t *testing.T) {
 	const canary = "sk-ant-oat01-PIN-CANARY-iiii"
 	app := overlayTestApp(t)
 	ctx := context.Background()
-	_, credFile := pinWithCapturedClaude(t, app, modeShared)
+	_, _, credFile := pinWithCapturedClaude(t, app, modeShared)
 
 	for _, payload := range []string{
 		// stale, expiring, and the tombstone, which is the branch that names no dates
@@ -321,7 +321,7 @@ func claudeOAuthAccount(uuid, email string) string {
 // IdentityKeys, so a key added upstream cannot be added to the spec and forgotten here.
 func TestIdentityFixtureCarriesEveryIdentityKey(t *testing.T) {
 	app := testApp(t, nil)
-	specs, err := app.dirSpecs(context.Background(), constants.ToolClaude, t.TempDir())
+	specs, err := app.dirSpecs(context.Background(), constants.ToolClaude, bindDirs{Config: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,11 +420,12 @@ func pinIdentityApp(t *testing.T, mode string) (app *App, dir, identityFile stri
 	app = overlayTestApp(t)
 	// Written before the capture: the snapshot records whatever identity was live then.
 	claudeJSON(t, app, boundIdentity("main-uuid", "you@example.com"))
-	dir, credFile := pinWithCapturedClaude(t, app, mode)
-	// Both stores of a bound directory sit in the same store dir, whichever mode put
-	// it there, so the identity is the credential's neighbour rather than a second
-	// per-mode path to keep in step.
-	identityFile = filepath.Join(filepath.Dir(credFile), ".claude.json")
+	dir, storeDir, _ := pinWithCapturedClaude(t, app, mode)
+	// The identity stays in the store dir in either mode. It is asked for separately
+	// rather than derived from the credential's path: the credential moved to the
+	// account's own store, so "the credential's neighbour" now names a different
+	// directory in the mode where it used to be the same one.
+	identityFile = filepath.Join(storeDir, ".claude.json")
 	if got := readFile(t, identityFile); !strings.Contains(got, "main-uuid") {
 		t.Fatalf("the bind must write the bound account's identity into %s, got %q", identityFile, got)
 	}
@@ -640,8 +641,8 @@ func TestSnapshotIdentityThatIsNotARecordIsMissingEvidence(t *testing.T) {
 	// Reachable with no hostile input: capture while the live cache holds a payload that
 	// is well-formed JSON but not an account record.
 	claudeJSON(t, app, `{"oauthAccount":null,"projects":{}}`)
-	_, credFile := pinWithCapturedClaude(t, app, modeShared)
-	identityFile := filepath.Join(filepath.Dir(credFile), ".claude.json")
+	_, storeDir, credFile := pinWithCapturedClaude(t, app, modeShared)
+	identityFile := filepath.Join(storeDir, ".claude.json")
 
 	writeFile(t, identityFile, boundIdentity("side-uuid", "side@example.com"))
 	// Newer than the snapshot, so the harvest gets past the expiresAt comparison and
@@ -800,8 +801,8 @@ func TestBoundDirectoryCredentialSurvivesAnUnavailableBackendButIdentityIsSkippe
 	app, dir, identityFile := pinIdentityApp(t, modeShared)
 	ctx := context.Background()
 	writeFile(t, identityFile, boundIdentity("side-uuid", "side@example.com"))
-	writeFile(t, filepath.Join(app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude), ".credentials.json"),
-		deadClaudeCred)
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main",
+		app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)), deadClaudeCred)
 
 	// The keychain backend is unavailable on linux, which is how doctor's other
 	// backend-free checks are pinned (TestActiveOrphan...).
@@ -827,7 +828,7 @@ func TestBoundDirectoryCredentialSurvivesAnUnavailableBackendButIdentityIsSkippe
 func TestDoctorReportsStaleCredentialInAnIsolatedBoundDirectory(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
-	dir, credFile := pinWithCapturedClaude(t, app, modeIsolated)
+	dir, _, credFile := pinWithCapturedClaude(t, app, modeIsolated)
 
 	writeFile(t, credFile,
 		deadClaudeCred)

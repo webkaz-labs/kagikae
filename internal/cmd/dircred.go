@@ -59,7 +59,7 @@ func warnUnisolatableCredential(err error, tool, account string) bool {
 }
 
 // writeDirCredential materializes one captured account's credential for a
-// per-directory bind, at the location the tool bound to credDir will actually
+// per-directory bind, at the location the tool bound to configDir will actually
 // read it — and then the identity cache that names it (writeDirIdentity).
 //
 // The name stays "credential" because every sibling in this file means the same
@@ -78,7 +78,7 @@ func warnUnisolatableCredential(err error, tool, account string) bool {
 // item by the config dir.
 //
 // The location comes from the adapter, never from this function: resolving the
-// specs against an env whose isolation variable already points at credDir yields
+// specs against an env whose isolation variable already points at configDir yields
 // the per-directory keychain service name and the per-directory file path alike.
 // Recomputing either here is what let kae's model of the credential's location
 // drift away from the tool's in the first place.
@@ -86,16 +86,27 @@ func warnUnisolatableCredential(err error, tool, account string) bool {
 // A keychain write that fails is returned, never downgraded to a plaintext
 // write. The fallback would look like success and reproduce the original defect:
 // a credential file in a directory whose tool reads the keychain first.
-func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool, accountName, credDir string) error {
+func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool, accountName, configDir string) error {
 	artName := credentialArtifactName(tool)
 	if artName == "" {
 		return nil // the tool has no credential kae materializes per directory
+	}
+	// Where this account's credential goes, which for a tool that can separate the
+	// two is *not* configDir: one store per account, shared by every directory bound
+	// to it. Created here because the file driver writes into it and because the
+	// sweeps walk the tree to find what exists; the keychain driver needs no
+	// directory, and making one anyway keeps the two drivers' layouts comparable.
+	dirs := bindDirs{Config: configDir, Cred: app.credStoreDir(tool, accountName)}
+	if dirs.Cred != "" {
+		if err := os.MkdirAll(dirs.Cred, 0o700); err != nil {
+			return fmt.Errorf("create per-account credential store: %w", err)
+		}
 	}
 	// Resolved once for both halves. Asking the adapter twice is not free: codex
 	// under `cli_auth_credentials_store = "auto"` probes the keychain to decide which
 	// store it is on, so a second resolution is a second `security` subprocess per
 	// bind (and a second read of its config.toml).
-	specs, err := app.dirSpecs(ctx, tool, credDir)
+	specs, err := app.dirSpecs(ctx, tool, dirs)
 	if err != nil {
 		return err
 	}
@@ -135,8 +146,8 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// binding away from. That is the pin-level pass
 	// (harvestSupersededDirCredentials), and both are needed: this one is the only
 	// harvest on the paths that have no pin at all (`kae use -i`, `kae run -i`).
-	data, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, credDir, data)
-	if refused.Why != "" && !app.refusalReported[credDir] {
+	data, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, data)
+	if refused.Why != "" && !app.refusalReported[configDir] {
 		// The backstop, not the primary voice. A bound directory's pin-level pass says this
 		// better — it knows the account and the bound directory, so it can name a login
 		// remedy — and it records what it said, so this site fires only for a store nobody
@@ -148,10 +159,13 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		// No remedy here: this function has a *store* path, not the bound directory a login
 		// would have to happen in — pinLoginRemedy on a kae-owned store dir names a place
 		// logging in would not even work.
+		// Named by where the credential actually is, which is the account's own store
+		// once the two are split — naming the config dir would send the reader to a
+		// directory that holds no credential at all.
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: the %s credential already in %s is newer than snapshot %s/%s and kae is not "+
 				"harvesting it because %s, so this write replaces it\n",
-			tool, credDir, tool, accountName, refused.Why)
+			tool, dirs.credDirOrConfig(), tool, accountName, refused.Why)
 	}
 	if err := artifact.ApplyLive(ctx, sp, artifact.Value{Data: data, Present: true}); err != nil {
 		return fmt.Errorf("write %s credential for account %s: %w", tool, accountName, err)
@@ -169,10 +183,18 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		// beside a live item is not a state upstream produces. If that ever changes,
 		// this removal is a harvest kae skips: the harvest above reads the credential
 		// artifact the adapter resolves, which is the item, and never this file.
-		for _, name := range app.pinCredItems(tool) {
-			stale := filepath.Join(credDir, name)
-			if err := os.Remove(stale); err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("remove superseded credential copy %s: %w", stale, err)
+		// Both directories, because the split moved where the tool would write that
+		// file: the account's credential store is where it lands now, and the config
+		// dir is where a directory bound before the split left one. Removing only the
+		// first would leave that older copy readable forever — and it is a copy of a
+		// *different* login by then, since the item this write just made is the one the
+		// tool reads.
+		for _, dir := range []string{dirs.credDirOrConfig(), configDir} {
+			for _, name := range app.pinCredItems(tool) {
+				stale := filepath.Join(dir, name)
+				if err := os.Remove(stale); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("remove superseded credential copy %s: %w", stale, err)
+				}
 			}
 		}
 	}
@@ -188,13 +210,55 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// would be left with a fresh private credential and no binding pointing at it.
 	// A malformed `.claude.json` the tool left behind, or a momentarily unreadable
 	// secret store, is not a reason for that.
-	if err := writeDirIdentity(ctx, be, specs, acc, credDir); err != nil {
+	if err := writeDirIdentity(ctx, be, specs, acc, configDir); err != nil {
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: could not apply %s's identity cache for account %s in this directory (%v); "+
 				"%s may display another account until you log in inside it\n",
 			tool, accountName, err, tool)
 	}
 	return nil
+}
+
+// migratePreSplitHome harvests and then removes the credential a **global isolated
+// home** still holds at its own name, from before kae gave each account one
+// credential store. Call it before materializing that home.
+//
+// It is the global-isolated counterpart of harvestSupersededDirCredentials, and it
+// exists for the same reason that pass does: the write path can only see the store
+// it is writing, which since the split is the account's, so a copy left at the
+// home's own name is invisible to it. A bound directory gets this from the pin-level
+// pass and the sweep that follows it; `kae use -i` and `kae run -i` have neither, so
+// without this their pre-split homes silently revert to an older snapshot copy —
+// which under single-use rotation is a logout, with no finding anywhere
+// (`credential_unsplit` walks bound directories only).
+//
+// Every refusal the harvest and the delete already have applies: an unattributable,
+// unreadable or unpreservable copy is left where it is.
+func (app *App) migratePreSplitHome(ctx context.Context, be secret.Backend, tool, accountName, home string) {
+	// The only question this function answers by itself: is there anywhere to migrate
+	// *to*. A tool that keeps its credential in its home has nothing to move, and a
+	// home that already is the credential store is not pre-split.
+	if credDir := app.credStoreDir(tool, accountName); credDir == "" || credDir == home {
+		return
+	}
+	// Everything after that is the sweep, so it *is* the sweep. `migrating: true` is
+	// what says this copy is no longer the one that home reads, which is the same
+	// statement the kept-store exception makes for a bound directory; `purging: false`
+	// keeps the account-gone copy the same way a bind does. Written as a call rather
+	// than a second body because the two used to be one, and removeDirCredential's own
+	// comment said the pair "must not disagree about one state" — which is a hazard
+	// recorded rather than removed. Two quality lenses found it independently.
+	// No Account on the store: removeDirCredential reads Tool, dirs() and CredDir and
+	// never that field, and setting it would suggest to the next reader that it is
+	// consulted here the way storeAccount consults it for the sweep's own walk.
+	store := dirStore{Tool: tool, Dir: home}
+	if _, err := app.removeDirCredential(ctx, be, store, accountName, false, true); err != nil {
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: could not migrate the pre-split %s credential in %s (%v); any copy still "+
+				"there is one nothing reads, and a refresh of it elsewhere would invalidate this "+
+				"account's\n",
+			tool, app.displayPath(home), err)
+	}
 }
 
 // rotatesSingleUse reports whether tool's refresh token is measured to rotate
@@ -252,8 +316,16 @@ type harvestRefusal struct {
 }
 
 func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, specs []artifact.Spec,
-	tool, accountName string, acc account.Account, credDir string, snapshot []byte,
+	tool, accountName string, acc account.Account, dirs bindDirs, snapshot []byte,
 ) (newest []byte, preserved bool, refused harvestRefusal) {
+	// The two halves of dirs are not interchangeable here, and swapping them is
+	// silent. Attribution reads the identity cache, which lives in the **config**
+	// dir whatever the credential does; handing it the credential store instead
+	// makes every identity target look like one that escapes its store, so the
+	// harvest refuses every time and each bind overwrites the copy it came to
+	// preserve. The messages name the credential's own location, because that is
+	// where a reader would go looking for it.
+	credDir := dirs.credDirOrConfig()
 	artName := credentialArtifactName(tool)
 	sp, ok := specByName(specs, artName)
 	if !rotatesSingleUse(tool) || !ok {
@@ -304,7 +376,7 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 	if !supersedes(liveInfo, freshnessOf(tool, snapshot)) {
 		return snapshot, true, harvestRefusal{}
 	}
-	if refused := dirIdentityConfirms(ctx, be, specs, acc, credDir); refused.Why != "" {
+	if refused := dirIdentityConfirms(ctx, be, specs, acc, dirs.Config); refused.Why != "" {
 		// Reported by the caller, not here. Two harvests can look at one store in a
 		// single command (the pin-level pass and this chokepoint), so printing at the
 		// point of detection said the same thing twice — measured, 2026-08-04 — and only
@@ -426,7 +498,7 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 }
 
 // dirIdentityConfirms reports whether the identity cache sitting beside the live
-// credential in credDir names the account whose snapshot a harvest would write to,
+// credential in configDir names the account whose snapshot a harvest would write to,
 // and says why not when it does not.
 //
 // This is the guard that makes the harvest safe, because a store can legitimately
@@ -451,7 +523,7 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 // warning on those would fire on healthy bound directories. So the two stay one
 // predicate; a change here changes both, on purpose.
 func dirIdentityConfirms(ctx context.Context, be secret.Backend, specs []artifact.Spec,
-	acc account.Account, credDir string,
+	acc account.Account, configDir string,
 ) harvestRefusal {
 	confirmed := false
 	for _, sp := range specs {
@@ -474,7 +546,7 @@ func dirIdentityConfirms(ctx context.Context, be secret.Backend, specs []artifac
 		// TestBoundDirectoryIdentitySharedWithTheRealHomeIsSilent; before it, flipping this to
 		// Conflicting survived the whole suite (measured 2026-08-05), because the harvest tests
 		// assert only *that* it refuses.
-		switch outside, err := identityTargetEscapes(sp.Target, credDir); {
+		switch outside, err := identityTargetEscapes(sp.Target, configDir); {
 		case err != nil:
 			return harvestRefusal{Why: "kae could not resolve where its identity cache is"}
 		case outside:
@@ -537,7 +609,7 @@ func specByName(specs []artifact.Spec, name string) (artifact.Spec, bool) {
 }
 
 // writeDirIdentity applies the bound account's identity-only artifacts inside
-// credDir, so the tool *names* the account whose credential is now there.
+// configDir, so the tool *names* the account whose credential is now there.
 //
 // Auth never depended on this — the token decides who you are — which is why the
 // gap survived so long: a bonded or isolated directory kept whatever account first
@@ -556,12 +628,12 @@ func specByName(specs []artifact.Spec, name string) (artifact.Spec, bool) {
 // for codex. The order is not interchangeable: a directory labelled with an account
 // whose credential kae could not put there is worse than an unlabelled one, since
 // the label is the only thing a user checks.
-func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.Spec, acc account.Account, credDir string) error {
+func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.Spec, acc account.Account, configDir string) error {
 	for _, sp := range specs {
 		if !sp.IdentityOnly {
 			continue
 		}
-		if outside, err := identityTargetEscapes(sp.Target, credDir); err != nil {
+		if outside, err := identityTargetEscapes(sp.Target, configDir); err != nil {
 			return err
 		} else if outside {
 			// Bond mode links every entry of the real tool home into the store, so this
@@ -596,7 +668,7 @@ func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.S
 	return nil
 }
 
-// identityTargetEscapes reports whether target resolves outside credDir, i.e.
+// identityTargetEscapes reports whether target resolves outside configDir, i.e.
 // whether writing it would leave the store this bind owns.
 //
 // Both sides are resolved before comparing, because the store path itself can run
@@ -604,10 +676,10 @@ func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.S
 // target against an unresolved root would call every write an escape. A target
 // that does not exist yet is resolved through its parent — the file kae is about
 // to create is inside whatever directory the parent names.
-func identityTargetEscapes(target, credDir string) (bool, error) {
-	root, err := filepath.EvalSymlinks(credDir)
+func identityTargetEscapes(target, configDir string) (bool, error) {
+	root, err := filepath.EvalSymlinks(configDir)
 	if err != nil {
-		return false, fmt.Errorf("resolve store dir %s: %w", credDir, err)
+		return false, fmt.Errorf("resolve store dir %s: %w", configDir, err)
 	}
 	resolved, err := filepath.EvalSymlinks(target)
 	if err != nil {
@@ -640,8 +712,8 @@ func identityTargetEscapes(target, credDir string) (bool, error) {
 // credDir. ok is false when this platform has no artifact by that name. For a
 // caller that needs a second spec of the same tool and directory, resolve once with
 // dirSpecs and pick with specByName instead — each resolution can cost a subprocess.
-func (app *App) dirCredentialSpec(ctx context.Context, tool, artName, credDir string) (artifact.Spec, bool, error) {
-	specs, err := app.dirSpecs(ctx, tool, credDir)
+func (app *App) dirCredentialSpec(ctx context.Context, tool, artName string, dirs bindDirs) (artifact.Spec, bool, error) {
+	specs, err := app.dirSpecs(ctx, tool, dirs)
 	if err != nil {
 		return artifact.Spec{}, false, err
 	}
@@ -649,14 +721,49 @@ func (app *App) dirCredentialSpec(ctx context.Context, tool, artName, credDir st
 	return sp, ok, nil
 }
 
-// dirSpecs resolves every artifact spec of tool as it applies *inside* credDir, by
-// asking the adapter with an env whose isolation variable points there.
-func (app *App) dirSpecs(ctx context.Context, tool, credDir string) ([]artifact.Spec, error) {
+// bindDirs names the two directories a per-directory bind resolves a tool's
+// artifacts against. Config is the tool's home — sessions, settings, the identity
+// cache — and Cred is where its credential resolves.
+//
+// They are separate fields rather than two string arguments on purpose: the pair
+// is swappable at a call site and getting it backwards is silent. kae would write
+// the credential under the config dir's name, the tool would read it under the
+// credential dir's, and every offline check would stay green while the directory
+// ran the previous account.
+//
+// An empty Cred means "wherever Config puts it", which is the answer for every
+// tool that cannot separate the two (credentialEnvVar) and for a directory bound
+// before the split existed. It is not the same as leaving the variable alone —
+// see dirSpecs.
+type bindDirs struct {
+	Config string
+	Cred   string
+}
+
+// credDirOrConfig is the directory the credential actually resolves against.
+func (d bindDirs) credDirOrConfig() string {
+	if d.Cred != "" {
+		return d.Cred
+	}
+	return d.Config
+}
+
+// dirSpecs resolves every artifact spec of tool as it applies *inside* dirs, by
+// asking the adapter with an env whose isolation variable points at the config
+// dir and whose credential variable points at the credential store.
+//
+// The credential variable is always overridden, never left alone — with the
+// config dir itself when the pair is not split. An ambient value would otherwise
+// win: kae runs inside the bound shell that exported one, so resolving a *legacy*
+// store while a split binding is active would read the account-wide item and call
+// it that store's, which is what a harvest is then free to overwrite.
+func (app *App) dirSpecs(ctx context.Context, tool string, dirs bindDirs) ([]artifact.Spec, error) {
 	envVar := isolationEnvVar(tool)
 	if envVar == "" {
 		return nil, errf(constants.ExitUnsupported,
 			"%s has no per-directory isolation mechanism", tool)
 	}
+	credVar, credDir := credentialEnvVar(tool), dirs.credDirOrConfig()
 	adp, err := adapter.ForTool(tool)
 	if err != nil {
 		return nil, err
@@ -670,17 +777,21 @@ func (app *App) dirSpecs(ctx context.Context, tool, credDir string) ([]artifact.
 	// mean an adapter that later reads it through Env.IsSet silently escapes the
 	// per-directory override — the exact class of "kae's view differs from the
 	// tool's" this file exists to close.
+	override := map[string]string{envVar: dirs.Config}
+	if credVar != "" {
+		override[credVar] = credDir
+	}
 	env := app.Env
 	innerGetenv, innerLookup := app.Env.Getenv, app.Env.LookupEnv
 	env.Getenv = func(key string) string {
-		if key == envVar {
-			return credDir
+		if value, ok := override[key]; ok {
+			return value
 		}
 		return innerGetenv(key)
 	}
 	env.LookupEnv = func(key string) (string, bool) {
-		if key == envVar {
-			return credDir, true
+		if value, ok := override[key]; ok {
+			return value, true
 		}
 		if innerLookup == nil {
 			value := innerGetenv(key)
@@ -690,7 +801,7 @@ func (app *App) dirSpecs(ctx context.Context, tool, credDir string) ([]artifact.
 	}
 	specs, err := adp.Artifacts(ctx, env)
 	if err != nil {
-		return nil, fmt.Errorf("resolve %s artifacts for %s: %w", tool, credDir, err)
+		return nil, fmt.Errorf("resolve %s artifacts for %s: %w", tool, dirs.Config, err)
 	}
 	return specs, nil
 }
@@ -745,7 +856,19 @@ type dirStore struct {
 	Tool    string
 	Dir     string
 	Account string
+	// CredDir is where this store's credential resolves, empty when it resolves
+	// inside Dir. It comes from the recorded binding and never from the account,
+	// and that difference is the whole migration: a directory bound before the
+	// credential split keeps its credential in the store itself, so deriving the
+	// per-account path here would send every sweep at a place nothing ever wrote —
+	// the harvest would find nothing to preserve and the delete would remove an
+	// item that is not the one in use. Reading the string kae actually exported is
+	// the same rule attribution follows (docs/ROADMAP.md).
+	CredDir string
 }
+
+// dirs is the pair dirSpecs resolves this store's artifacts against.
+func (s dirStore) dirs() bindDirs { return bindDirs{Config: s.Dir, Cred: s.CredDir} }
 
 // dirCredentialStores lists the per-directory stores that exist on disk for one
 // bound directory, across both mechanisms and every account of the isolated one.
@@ -766,7 +889,10 @@ type dirStore struct {
 // attributes-only `security` call per such account per pin. Fine at single-digit
 // account counts; record swept stores (or cache the probe) if `kae pin` latency
 // ever shows up.
-func (app *App) dirCredentialStores(pinID string) ([]dirStore, error) {
+// prev is the binding whose recorded credential entries say where each tool's
+// credential lives; pass the zero value where no binding was read, which reads
+// every store as pre-split (its credential inside itself).
+func (app *App) dirCredentialStores(pinID string, prev fragmentInfo) ([]dirStore, error) {
 	pinDir := app.Paths.PinDir(pinID)
 	tools, err := os.ReadDir(pinDir)
 	if os.IsNotExist(err) {
@@ -782,7 +908,9 @@ func (app *App) dirCredentialStores(pinID string) ([]dirStore, error) {
 		}
 		tool := toolEntry.Name()
 		if shared := app.Paths.SharedDir(pinID, tool); dirExists(shared) {
-			stores = append(stores, dirStore{Tool: tool, Dir: shared})
+			store := dirStore{Tool: tool, Dir: shared}
+			store.CredDir = app.attributedCredDir(store, prev)
+			stores = append(stores, store)
 		}
 		accounts, err := os.ReadDir(filepath.Join(pinDir, tool, paths.IsolatedSegment))
 		if err != nil {
@@ -796,11 +924,41 @@ func (app *App) dirCredentialStores(pinID string) ([]dirStore, error) {
 				// The account is the directory's own name (kae composes the path from it),
 				// which is what lets the sweep harvest an isolated store it is about to
 				// delete without consulting any binding.
-				stores = append(stores, dirStore{Tool: tool, Dir: dir, Account: acct.Name()})
+				store := dirStore{Tool: tool, Dir: dir, Account: acct.Name()}
+				store.CredDir = app.attributedCredDir(store, prev)
+				stores = append(stores, store)
 			}
 		}
 	}
 	return stores, nil
+}
+
+// attributedCredDir says where one store's credential lives, and refuses to guess.
+// Empty means "inside the store", which is both the pre-split layout and the safe
+// answer for a store kae cannot attribute.
+//
+// The recorded entry alone is not enough, and that is the whole point of this
+// function. The walk returns stores of *older* bindings too — kae keeps a store so a
+// re-pin restores its sessions — so taking the replaced fragment's credential entry
+// verbatim would hand a leftover store bound to one account the credential store of
+// another. The harvest would then read that copy, compare it against the leftover's
+// own identity cache, and on a match file one account's token under the other's name:
+// the silent mislabelling every attribution guard here exists to prevent.
+//
+// So the entry counts only when it names *this store's own* account. Anything else
+// falls back to the store directory, where a pre-split credential is — and where a
+// post-split store simply has none, so the pass and the sweep find nothing and do
+// nothing. Failing towards "does nothing" is the direction that cannot destroy or
+// mislabel a login.
+func (app *App) attributedCredDir(store dirStore, prev fragmentInfo) string {
+	recorded := prev.CredDirs[store.Tool]
+	if recorded == "" {
+		return ""
+	}
+	if own := app.credStoreDir(store.Tool, storeAccount(store, prev)); own != "" && own == recorded {
+		return recorded
+	}
+	return ""
 }
 
 func dirExists(path string) bool {
@@ -828,12 +986,13 @@ func dirExists(path string) bool {
 // zero value only where no such binding was read; the sweep then keeps a store
 // whose newer credential it cannot attribute, rather than deleting it.
 //
-// Only a keychain item is removed, and only where the adapter declares the item
-// bindable — exactly the class writeDirCredential creates. A file store's
-// credential lives *inside* the store directory, which a mode toggle and
-// `kae unpin` deliberately leave intact along with its sessions and settings; an
-// item, by contrast, is invisible from the directory tree and would otherwise
-// hold a credential nothing can find.
+// A keychain item is removed where the adapter declares it bindable — exactly the
+// class writeDirCredential creates, and the case that most needs sweeping, since an
+// item is invisible from the directory tree and would otherwise hold a credential
+// nothing can find. A **file** credential is removed only where it is no longer the
+// copy its own store reads; removeDirCredential states that rule once, and this
+// comment deliberately does not restate it. What is never removed is the store
+// directory itself, with its sessions and settings.
 //
 // Deleting one is unrecoverable, so it harvests first: the item can hold the only
 // copy of the account's credential that still refreshes (harvestDirCredential),
@@ -842,17 +1001,69 @@ func dirExists(path string) bool {
 func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinID, onlyTool string,
 	keep map[string]bool, prev fragmentInfo, purging bool,
 ) []string {
-	stores, err := app.dirCredentialStores(pinID)
+	stores, err := app.dirCredentialStores(pinID, prev)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", err)
 		return nil
 	}
 	removals := []string{}
 	for _, store := range stores {
-		if keep[store.Dir] || (onlyTool != "" && store.Tool != onlyTool) {
+		if onlyTool != "" && store.Tool != onlyTool {
 			continue
 		}
-		removed, err := app.removeDirCredential(ctx, be, store, storeAccount(store, prev), purging)
+		// A kept store is normally left alone — it is the one this binding points at.
+		// The exception is the migration: the store is kept for its sessions while its
+		// *credential* has just moved out of it, into the account's own store. Its
+		// pre-split keychain item would otherwise survive under a service name nothing
+		// resolves any more, holding a full copy of the credential — the state
+		// docs/ROADMAP.md § "Per-directory keychain items outlive everything that could
+		// name them" records having found five of on a real machine, and the one that
+		// poisons the offline regression detector, which reads an item at the config
+		// dir's name as "something wrote there since the last bind".
+		//
+		// **And only when the pin-level pass did not refuse it.** This sweep runs
+		// *after* the materializer, which ends by stamping that same store with this
+		// account's identity (writeDirIdentity) — so the evidence the harvest inside
+		// it would attribute the copy by is evidence kae wrote itself, three steps
+		// earlier in this command. Without the check, a copy the pass declined as
+		// unattributable is harvested and deleted anyway, and a store holding *another
+		// account's* login (the state identity_drift exists to report) has that login
+		// filed under this account's name — undetectable afterwards, since the token is
+		// opaque and every surface then agrees on a label that is simply wrong. Both
+		// measured 2026-08-07, and both are regressions of this exception rather than
+		// of the harvest.
+		//
+		// `refusalReported` covers every store the pass **judged**: it marks one only
+		// when it refused *and* the binding is moving off it, which is the set this
+		// exception accepts. Where the pass succeeded there is nothing left to
+		// mis-attribute — the snapshot already holds that copy, so the harvest below
+		// finds nothing newer and the delete carries no judgement at all.
+		//
+		// The stores the pass skipped *before* judging arrive here unmarked, and they
+		// are caught by `harvestBeforeDelete` instead — which is why that second gate is
+		// not redundant with this one. One such path is live today: the account the
+		// previous binding named is gone, so the pass returns at `snapshotCredential`
+		// and the sweep keeps the copy on the account-gone arm (measured 2026-08-07).
+		// The one that would open silently is a tool with a credential variable whose
+		// rotation has never been measured — the pass returns at `rotatesSingleUse` and
+		// `harvestBeforeDelete` lets such a tool through unconditionally, so its kept
+		// store would be deleted with neither harvest nor attribution.
+		// TestNoSplittingToolSkipsBothNets refuses that combination.
+		//
+		// The contrast worth keeping: migratePreSplitHome does this job correctly by
+		// running *before* the write. This one cannot — a delete has to follow the new
+		// binding — so it defers to the pass's verdict instead of re-deciding.
+		// Two uses, and the name fits one of them. For a bind it is what lets a store
+		// the binding still points at be swept at all. For `kae unpin --purge` nothing
+		// migrated — the fragment was removed — and `keep` is nil, so the branch below
+		// is irrelevant; what the flag still carries there is "this store's file is not
+		// the copy it reads any more", which is the answer removeDirCredential needs to
+		// take a pre-split file credential the purge was asked to remove.
+		migrating := app.credentialMovedOutOf(store, pinID, prev)
+		if keep[store.Dir] && (!migrating || app.refusalReported[store.Dir]) {
+			continue
+		}
+		removed, err := app.removeDirCredential(ctx, be, store, storeAccount(store, prev), purging, migrating)
 		switch {
 		case err != nil:
 			fmt.Fprintf(os.Stderr,
@@ -865,6 +1076,37 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		}
 	}
 	return removals
+}
+
+// credentialMovedOutOf reports whether this store's credential has just been
+// relocated to the account's own store — i.e. the binding being replaced kept it
+// inside the store (no recorded entry) and the tool now has somewhere else to put
+// it. It is the one reason a *kept* store still has something to sweep.
+//
+// It answers false for a tool that cannot split the two, so a store that simply
+// holds its credential is never swept while it is still bound.
+func (app *App) credentialMovedOutOf(store dirStore, pinID string, prev fragmentInfo) bool {
+	if store.CredDir != "" || prev.CredDirs[store.Tool] != "" {
+		return false // already split, or never was
+	}
+	// The store the **previous** binding pointed at, and only that one — the single
+	// load-bearing condition here (measured 2026-08-07; the three above it are each
+	// masked downstream by removeDirCredential's own gates and cannot be killed).
+	// Two weaker rules were wrong for the same reason — they answer "yes" from the absence of a
+	// credential entry, which every store of a pre-split binding shares:
+	//
+	//   - "prev records no entry" alone fires on a zero `prev` too (no binding could
+	//     be read, or a caller that has none), sweeping the item of a store the
+	//     current binding still points at on no evidence at all;
+	//   - "…and prev bound this tool" still fires on the store the re-bind is moving
+	//     *to*, whose credential never lived in it.
+	//
+	// What has actually migrated is the one store that held the credential before.
+	previous, bound := app.boundStoreDir(pinID, store.Tool, prev)
+	if !bound || previous != store.Dir {
+		return false
+	}
+	return app.credStoreDir(store.Tool, storeAccount(store, prev)) != ""
 }
 
 // storeAccount names the account whose credential store holds, for the sweep that
@@ -898,16 +1140,16 @@ func storeAccount(store dirStore, prev fragmentInfo) string {
 // snapshot first; a copy kae could not preserve — including one it could not
 // attribute — leaves the item in place.
 func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, store dirStore,
-	accountName string, purging bool,
+	accountName string, purging, migrating bool,
 ) (bool, error) {
-	tool, credDir := store.Tool, store.Dir
+	tool := store.Tool
 	artName := credentialArtifactName(tool)
 	if artName == "" {
 		return false, nil
 	}
 	// Resolved once for the delete and the harvest's identity comparison; a second
 	// resolution costs a `security` subprocess for codex (writeDirCredential says why).
-	specs, err := app.dirSpecs(ctx, tool, credDir)
+	specs, err := app.dirSpecs(ctx, tool, store.dirs())
 	if err != nil {
 		return false, err
 	}
@@ -915,8 +1157,54 @@ func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, stor
 	if !ok {
 		return false, nil
 	}
-	if sp.Kind != constants.KindKeychain || !sp.KeychainDirBindable {
+	// A keychain item always; a credential **file** only where it is not the copy that
+	// store still reads. The asymmetry this used to state — a file credential lives
+	// *inside* the store directory, which `kae unpin` deliberately keeps along with its
+	// sessions and settings — holds for exactly one case now, and both others are the
+	// ones that would otherwise leave a full plaintext copy of a live account behind:
+	//
+	//   - a per-account store (CredDir set) holds the credential and nothing else, so
+	//     `--purge` leaving its file behind keeps a secret in a directory kept for no
+	//     other reason;
+	//   - a store whose credential has just moved out of it (migrating) keeps a file
+	//     nothing resolves any more — until a shell that exports only the config
+	//     variable finds it, refreshes it, and invalidates the copy every directory
+	//     bound to that account now shares.
+	//
+	// Getting this wrong is invisible: every reader resolves through the new location,
+	// so `doctor` sees nothing. The global-isolated migration has always deleted the
+	// file (migratePreSplitHome), and the two paths must not disagree about one state.
+	if sp.Kind != constants.KindKeychain && store.CredDir == "" && !migrating {
 		return false, nil
+	}
+	if sp.Kind == constants.KindKeychain && !sp.KeychainDirBindable {
+		return false, nil
+	}
+	// A per-account credential store is not this directory's to delete. It belongs to
+	// the account the way its snapshot does, and other directories — and a globally
+	// isolated home — read the same copy, so the asymmetry that licenses this sweep
+	// (an item under a per-directory service name is addressable from nowhere) simply
+	// does not hold for it: credstore/<tool>/<account> is a path kae can name.
+	//
+	// So ordinary housekeeping leaves it, and only an explicit `--purge` may take it,
+	// and only once nothing points at it. Without the count, one directory's
+	// `kae unpin --purge` logs out every sibling worktree bound to the same account.
+	if store.CredDir != "" {
+		if !purging {
+			return false, nil
+		}
+		switch refs, known := app.credStoreRefs(store.CredDir); {
+		case !known:
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: kae could not tell whether another binding still uses the %s credential for "+
+					"%s, so it is left in place rather than deleted\n", tool, accountName)
+			return false, nil
+		case refs > 0:
+			fmt.Fprintf(os.Stderr,
+				"kae: note: %d other binding(s) still use the %s credential for %s, so it is kept\n",
+				refs, tool, accountName)
+			return false, nil
+		}
 	}
 	// Probe before deleting, attributes only, so the caller can report what it
 	// actually removed: the delete primitive treats "no such item" as success, so
@@ -924,7 +1212,7 @@ func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, stor
 	// probe is scoped the way the delete is — account-scoped only for a service that
 	// holds more than one legitimate item, since asking with an account a service
 	// does not scope by would answer "absent" for an item the delete still removes.
-	existed, err := dirItemExists(ctx, sp)
+	existed, err := dirCredentialExists(ctx, sp)
 	if err != nil || !existed {
 		return false, err
 	}
@@ -932,13 +1220,70 @@ func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, stor
 	// writeDirCredential, nothing can be reconstructed afterwards: a re-pin
 	// re-materializes a store's credential from the account snapshot, so a copy that
 	// was never harvested into one is simply gone.
-	if !app.harvestBeforeDelete(ctx, be, specs, tool, accountName, credDir, purging) {
+	if !app.harvestBeforeDelete(ctx, be, specs, tool, accountName, store.dirs(), purging) {
 		return false, nil
 	}
 	if err := artifact.ApplyLive(ctx, sp, artifact.Value{Present: false}); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// credStoreRefs counts what still reads a per-account credential store, and says
+// whether that count can be trusted. known is false when any source could not be
+// read — the caller must then keep the credential, because "kae found no reference"
+// and "kae could not look" are the same answer only if you are willing to log
+// somebody out on a read error.
+//
+// Two sources, and both are needed: every bound directory's fragment (the string it
+// exports, not a path re-derived from the account, so a hand-edited or pre-split
+// fragment counts as what it actually says), and `state.synced`, which is how a
+// globally isolated home reads the same store without any fragment naming it.
+//
+// A pin whose directory is gone is not a reference: nothing can run there, and
+// `pinChecks` already reports the orphaned store. A fragment that exists and cannot
+// be parsed is the unknown case, not the zero case.
+func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
+	pins, complete, err := app.pinnedDirsComplete()
+	if err != nil || !complete {
+		// A store whose breadcrumb could not be read names a directory kae cannot
+		// reach — and that directory may be one that reads this credential.
+		return 0, false
+	}
+	for _, pin := range pins {
+		// Equivalent to the !exists branch below rather than merely stricter, and worth
+		// saying so: readFragmentAt on a missing directory returns exists=false with no
+		// error, so both arms continue identically (measured 2026-08-07). The one case
+		// they differ on is a path that exists and is not a directory, where dropping
+		// this gate yields ENOTDIR — which os.IsNotExist does not match, so it degrades
+		// to known=false. Deleting it on the grounds that it "cannot fail" would change
+		// that case silently.
+		if !dirExists(pin.Dir) {
+			continue
+		}
+		fragment, exists, ferr := readFragmentAt(pin.Dir)
+		if ferr != nil {
+			return 0, false
+		}
+		if !exists {
+			continue // unpinned: the store is kept, but nothing reads it
+		}
+		for _, dir := range fragment.CredDirs {
+			if dir == credDir {
+				refs++
+			}
+		}
+	}
+	st, err := app.loadState()
+	if err != nil {
+		return 0, false
+	}
+	for tool, account := range st.Synced {
+		if app.credStoreDir(tool, account) == credDir {
+			refs++
+		}
+	}
+	return refs, true
 }
 
 // harvestBeforeDelete reports whether the credential in credDir may be deleted:
@@ -971,8 +1316,12 @@ func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, stor
 // kae declines to clean is a leftover secret rather than a broken bind, and a
 // warning must never change an exit code.
 func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, specs []artifact.Spec,
-	tool, accountName, credDir string, purging bool,
+	tool, accountName string, dirs bindDirs, purging bool,
 ) (mayDelete bool) {
+	// Same pairing rule as harvestDirCredential, which this hands dirs to whole:
+	// attribution reads the identity in the config dir, the messages name where the
+	// credential is.
+	credDir := dirs.credDirOrConfig()
 	artName := credentialArtifactName(tool)
 	sp, ok := specByName(specs, artName)
 	if !rotatesSingleUse(tool) || !ok {
@@ -1030,7 +1379,7 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 				"is left in place instead of deleted (%v)\n", tool, accountName, tool, credDir, err)
 		return false
 	default:
-		_, preserved, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, credDir, snapshot)
+		_, preserved, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot)
 		if !preserved {
 			why := refused.Why
 			if why == "" {
@@ -1067,8 +1416,11 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 // binding is written (AGENTS.md): harvesting is not deleting, and it is only useful
 // before. Stores this pin still keeps are included on purpose — one of them is the
 // shared store above — so a plain re-pin reads its own store twice, once here and
-// once in writeDirCredential. That is one extra `security` call per bound tool, in
-// exchange for the case where the two are not the same store.
+// once in writeDirCredential. Both callers wrap a keychain read cache, so that second
+// read costs a `security` call only when the two resolve **different** stores — the
+// migration of a pre-split binding, which happens once per directory
+// (TestRunPinCoalescesTheHarvestKeychainReads measures the steady state at one read).
+// The duplication buys the case where the two are not the same store.
 func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.Backend,
 	pinID, dir, onlyTool string, prev fragmentInfo,
 ) {
@@ -1078,7 +1430,7 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 	// this never showed, and it made a test pass for the wrong reason — its second bind
 	// was silenced by the first one's mark (measured, 2026-08-04).
 	app.refusalReported = nil
-	stores, err := app.dirCredentialStores(pinID)
+	stores, err := app.dirCredentialStores(pinID, prev)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", err)
 		return
@@ -1117,7 +1469,7 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 		if !rotatesSingleUse(store.Tool) || artName == "" {
 			continue
 		}
-		specs, err := app.dirSpecs(ctx, store.Tool, store.Dir)
+		specs, err := app.dirSpecs(ctx, store.Tool, store.dirs())
 		if err != nil {
 			continue // an unresolvable store is the bind's problem, and it reports it
 		}
@@ -1125,7 +1477,7 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 		if err != nil {
 			continue // no snapshot to harvest into; the bind or the sweep reports it
 		}
-		_, _, refused := app.harvestDirCredential(ctx, be, specs, store.Tool, accountName, acc, store.Dir, snapshot)
+		_, _, refused := app.harvestDirCredential(ctx, be, specs, store.Tool, accountName, acc, store.dirs(), snapshot)
 		switch {
 		case refused.Why == "" || !replaced[store.Dir]:
 			// Nothing to report, or a store from a binding older than the one being replaced
@@ -1157,6 +1509,22 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 				store.Tool, store.Tool, accountName, refused.Why, pinLoginRemedy(store.Tool, dir))
 		}
 	}
+}
+
+// dirCredentialExists answers "is there anything to delete" for either store kind,
+// so the caller can report what it actually removed rather than announcing a cleanup
+// of a store that never held one — the delete primitive treats absence as success.
+func dirCredentialExists(ctx context.Context, sp artifact.Spec) (bool, error) {
+	if sp.Kind != constants.KindKeychain {
+		// Present, not "the read succeeded": a store that never held a credential must
+		// answer no, or `--purge` announces having removed one from it.
+		value, err := artifact.ReadLive(ctx, sp)
+		if err != nil {
+			return false, err
+		}
+		return value.Present, nil
+	}
+	return dirItemExists(ctx, sp)
 }
 
 // dirItemExists answers "is there an item to delete" for a keychain spec, scoped
@@ -1197,11 +1565,29 @@ func dirItemExists(ctx context.Context, sp artifact.Spec) (bool, error) {
 func (app *App) pinCredentialChecks(ctx context.Context, stores []boundDirStore) []adapter.Check {
 	checks := []adapter.Check{}
 	now := app.Now()
+	// One finding per credential, not per binding. Since an account's credential is
+	// one store that every directory bound to it reads, N worktrees on one account
+	// used to produce N identical findings — and each said "the credential bound to
+	// <dir>", which reads as N copies with N separate problems. The first bound
+	// directory carries the remedy, and it is the right one for all of them: a
+	// `kae relogin` there refreshes the copy the others read.
+	//
+	// Keyed on the location rather than on the account, so a directory still holding
+	// its own pre-split copy is reported on its own — it is a different credential.
+	reported := map[string]bool{}
 	for _, bound := range stores {
-		info, ok := app.dirCredentialFreshness(ctx, dirStore{Tool: bound.Tool, Dir: bound.StoreDir})
+		where := bound.Tool + "\x00" + bound.dirs().credDirOrConfig()
+		if reported[where] {
+			continue
+		}
+		info, ok := app.dirCredentialFreshness(ctx, bound.store())
 		if !ok {
 			continue
 		}
+		// Marked **after** the probe, never before: a store whose freshness kae cannot
+		// resolve has said nothing about that credential, and marking it there would
+		// suppress the finding for every sibling that reads the same one.
+		reported[where] = true
 		switch cred := credentialStateAt(info, now); cred.State {
 		case constants.CredentialStale:
 			checks = append(checks, adapter.Check{
@@ -1357,10 +1743,36 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 	if !orderable(newest) {
 		newest = freshness.Info{}
 	}
+	// One read per **credential**, not per binding: since the split every member of a
+	// group shares one store, so N worktrees on one account asked the keychain for the
+	// same item N times — the case this whole feature exists for. pinCredentialChecks
+	// already dedupes the same way (`reported`); this loop did not.
+	//
+	// Deliberately a memo over the *read* only, leaving the ordering below untouched:
+	// a dedup that also skipped the comparison would be a control-flow change in a
+	// cleanup pass, which is how this repo has twice put a correctness defect into one.
 	live := make([]freshness.Info, len(group.Stores))
+	// One entry per credential. No second map for "the read failed": that answer is
+	// already in the value, because dirCredentialFreshness returns the zero Info on
+	// every failure and !orderable(zero) is the same `continue`.
+	//
+	// The **key** is deliberately unkillable, and that is the property rather than a
+	// gap: changing its granularity (to store.Dir, say) changes only how many reads
+	// happen, never what any of them returns — measured 2026-08-07, and it is what
+	// makes this a memo rather than a dedup with an opinion.
+	seen := map[string]freshness.Info{}
+	freshnessOf := func(store boundDirStore) freshness.Info {
+		where := store.dirs().credDirOrConfig()
+		if info, cached := seen[where]; cached {
+			return info
+		}
+		info, _ := app.dirCredentialFreshness(ctx, store.store())
+		seen[where] = info
+		return info
+	}
 	for i, store := range group.Stores {
-		info, ok := app.dirCredentialFreshness(ctx, dirStore{Tool: store.Tool, Dir: store.StoreDir})
-		if !ok || !orderable(info) {
+		info := freshnessOf(store)
+		if !orderable(info) {
 			continue // nothing kae can place in the ordering; see the doc comment
 		}
 		live[i] = info
@@ -1378,6 +1790,16 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 	if newestIdx >= 0 {
 		newestAt = "the store bound to " + group.Stores[newestIdx].Dir
 	}
+	// Hoisted: the winner is fixed for the whole loop, so re-resolving its specs and
+	// re-reading its identity once per losing store repeats work whose answer cannot
+	// change. Evaluated lazily-by-position rather than before the loop only if that
+	// mattered — it does not, since reaching this point already means an ordering
+	// exists, which is the state the doc comment says is the rare one.
+	// Phrased as the refusal, not as its complement: `newestIdx < 0` means the winner
+	// is the **snapshot**, which this check does not attribute at all, so the guard
+	// must not fire there. Written the other way round it read as "no store confirmed
+	// the win" and silenced every snapshot-side finding — caught by four tests.
+	winnerUnattributable := newestIdx >= 0 && !app.storeHoldsAccount(ctx, be, acc, group.Stores[newestIdx])
 	checks := []adapter.Check{}
 	for i, store := range group.Stores {
 		// The index, not a comparison of Dir strings: the winner *is* this element when
@@ -1394,7 +1816,7 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 		if !app.storeHoldsAccount(ctx, be, acc, store) {
 			continue
 		}
-		if newestIdx >= 0 && !app.storeHoldsAccount(ctx, be, acc, group.Stores[newestIdx]) {
+		if winnerUnattributable {
 			continue
 		}
 		checks = append(checks, adapter.Check{
@@ -1440,11 +1862,44 @@ func supersededRemedy(tool, accountName, dir string, newerIsSnapshot bool) strin
 // does not know. (pinIdentityChecks is the consumer that reports the conflict; here
 // it is only a reason to say nothing.)
 func (app *App) storeHoldsAccount(ctx context.Context, be secret.Backend, acc account.Account, store boundDirStore) bool {
-	specs, err := app.dirSpecs(ctx, store.Tool, store.StoreDir)
+	specs, err := app.dirSpecs(ctx, store.Tool, store.dirs())
 	if err != nil {
 		return false
 	}
 	return dirIdentityConfirms(ctx, be, specs, acc, store.StoreDir).Why == ""
+}
+
+// pinUnsplitChecks reports a bound directory that still keeps its own copy of an
+// account's credential, which is what a directory bound before v0.17.0 has.
+//
+// It is the migration prompt, and the state it names is not cosmetic: such a copy
+// is invalidated the moment any other binding of that account refreshes, because
+// claude's refresh token rotates single-use. Nothing else says so — the copy is
+// perfectly healthy until the moment it is not, which is why `credential_stale`
+// cannot see this and `credential_superseded` only sees it once the damage has a
+// second copy to compare against.
+//
+// Offline, backend-free, and derived entirely from the walk: a binding is unsplit
+// when it has a store for a tool that *can* split (credentialEnvVar) and no
+// credential entry recorded for it. A tool with no such variable is not reported,
+// because there is nothing for it to migrate to.
+func pinUnsplitChecks(stores []boundDirStore) []adapter.Check {
+	checks := []adapter.Check{}
+	for _, bound := range stores {
+		if credentialEnvVar(bound.Tool) == "" || bound.CredDir != "" {
+			continue
+		}
+		checks = append(checks, adapter.Check{
+			Tool: bound.Tool, Code: constants.CheckCredentialUnsplit, Status: constants.StatusWarn,
+			Message: fmt.Sprintf(
+				"the directory bound to %s/%s (%s) keeps its own copy of that account's credential; "+
+					"another directory or `%s use -i` on the same account will invalidate it — "+
+					"re-bind it: cd %s && %s pin",
+				bound.Tool, bound.Account, bound.Dir, toolName, bound.Dir, toolName,
+			),
+		})
+	}
+	return checks
 }
 
 // pinIdentityChecks reports a bound directory whose own store names an account
@@ -1508,7 +1963,7 @@ func (app *App) pinIdentityChecks(ctx context.Context, be secret.Backend, stores
 		// resolution ("the refusal happens before the keychain is touched", "it reads the
 		// dir-scoped item") assert something weaker. Upgrade path if a run ever feels slow:
 		// resolve once in the walk and hand the specs to both halves.
-		specs, err := app.dirSpecs(ctx, bound.Tool, bound.StoreDir)
+		specs, err := app.dirSpecs(ctx, bound.Tool, bound.dirs())
 		if err != nil {
 			continue // an unresolvable store is the bind's finding, and pinChecks reports the binding
 		}
@@ -1555,6 +2010,21 @@ type boundDirStore struct {
 	Tool     string
 	Account  string
 	StoreDir string
+	// CredDir is where that binding puts the tool's credential, empty when it
+	// stays inside StoreDir — the layout of every directory bound before the
+	// credential split, and the state `credential_unsplit` reports.
+	CredDir string
+}
+
+// dirs is the pair dirSpecs resolves this binding's artifacts against.
+func (s boundDirStore) dirs() bindDirs { return bindDirs{Config: s.StoreDir, Cred: s.CredDir} }
+
+// store is this binding as the store the credential readers take. The account is
+// deliberately left off: a dirStore's Account is the one a *path* names, which is
+// what storeAccount fills in for a shared store, and nothing this conversion feeds
+// reads it.
+func (s boundDirStore) store() dirStore {
+	return dirStore{Tool: s.Tool, Dir: s.StoreDir, CredDir: s.CredDir}
 }
 
 // boundDirStores lists every live binding a report may speak about, one entry per
@@ -1608,6 +2078,7 @@ func (app *App) boundDirStores() []boundDirStore {
 			}
 			stores = append(stores, boundDirStore{
 				Dir: pin.Dir, Tool: tool, Account: fragment.Accounts[tool], StoreDir: credDir,
+				CredDir: fragment.CredDirs[tool],
 			})
 		}
 	}
@@ -1681,7 +2152,7 @@ func (app *App) dirCredentialFreshness(ctx context.Context, store dirStore) (fre
 	if artName == "" {
 		return freshness.Info{}, false // no credential kae materializes per directory
 	}
-	sp, ok, err := app.dirCredentialSpec(ctx, store.Tool, artName, store.Dir)
+	sp, ok, err := app.dirCredentialSpec(ctx, store.Tool, artName, store.dirs())
 	if err != nil || !ok {
 		return freshness.Info{}, false
 	}

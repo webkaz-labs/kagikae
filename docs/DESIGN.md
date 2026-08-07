@@ -116,7 +116,7 @@ close.
 
 | Tier | Tools | Surface kae commits to |
 |------|-------|------------------------|
-| **1 — full surface** | claude, codex | every mode: global shared (`use`), global isolated (`use -i` / `run -i`), both per-directory binds (`pin -s` / `pin -i`), identity switching and drift detection, per-directory credential stores, and the per-directory login flow (`kae relogin`). Gaps here are debt with a plan (see [ROADMAP.md](ROADMAP.md)) |
+| **1 — full surface** | claude, codex | every mode: global shared (`use`), global isolated (`use -i` / `run -i`), both per-directory binds (`pin -s` / `pin -i`), identity switching and drift detection, per-directory credential stores, and the per-directory login flow (`kae relogin`). Where the tool can address its credential separately from its home, a **per-account** credential store as well, so two directories on one account run at once (claude only — [ADAPTERS.md](ADAPTERS.md) § Per-account credential store). Gaps here are debt with a plan (see [ROADMAP.md](ROADMAP.md)) |
 | **2 — credential switching** | agy, opencode, cursor, copilot | global shared (`kae use`), `kae run --env`, capture / apply / backup / `kae rollback`, `kae doctor`, and identity detection as far as the tool exposes one. Nothing else, and that is the specification — not a backlog |
 
 What Tier 2 does **not** get, deliberately: `kae pin` in either mode, and
@@ -192,22 +192,27 @@ cannot run concurrently this way. `kae` holds a per-tool lock during the switch
 and documents that concurrent multi-account work needs an isolated environment
 — `kae pin` per directory, or `kae use -i` for a global per-account home.
 
-**A second limit was measured on 2026-08-04, and it is a current one rather than a
-boundary**: two directories bound to the *same* account cannot run at the same time
-yet. Each bound directory holds its own **copy** of that account's credential, and
-claude's refresh token rotates single-use — so whichever session refreshes first
-invalidates the other's copy, which then fails up to an access token's lifetime
-later, mid-session, with nothing offline able to say why
-([VALIDATION.md](VALIDATION.md) owns the measurement). Two things follow, and they
-are deliberately different: kae keeps a *sequence* of such directories working by
-harvesting the newest copy before it overwrites one ([CLI.md](CLI.md) § kae pin,
-shipped), while running them **concurrently** requires one credential copy per
-account rather than one per store — designed, premise measured green, and the next
-thing queued ([ROADMAP.md](ROADMAP.md); claude's `CLAUDE_SECURESTORAGE_CONFIG_DIR`
-moves the credential without moving sessions or settings, which is what makes it
-possible without giving up per-directory isolation). This section states what holds
-today; it is not a non-goal. Different accounts in different directories are
-unaffected either way — that is what per-directory binding is for.
+**A second limit was measured on 2026-08-04 and is now lifted for claude**: two
+directories bound to the *same* account could not run at the same time, because each
+held its own **copy** of that account's credential and claude's refresh token rotates
+single-use — so whichever session refreshed first invalidated the other's copy, which
+then failed up to an access token's lifetime later, mid-session, with nothing offline
+able to say why ([VALIDATION.md](VALIDATION.md) owns both that measurement and the
+one the fix rests on). Two answers, deliberately different, and both are shipped:
+kae keeps a *sequence* of such directories working by harvesting the newest copy
+before it overwrites one ([CLI.md](CLI.md) § kae pin), and it makes them work
+**concurrently** by giving each account one credential store that every directory
+bound to it reads, while sessions, settings and memory stay per directory
+([ADAPTERS.md](ADAPTERS.md) § Per-account credential store — claude's
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` moves the credential without moving anything else,
+which is what makes that possible without giving up per-directory isolation).
+
+The limit still stands for any tool with no such variable, and that is the honest
+shape of it: it was never a boundary of the design, it is a property of what each
+tool lets kae address separately. Directories bound before v0.17.0 also still have
+the old layout until they are re-pinned, which `kae doctor` names. Different accounts
+in different directories are unaffected either way — that is what per-directory
+binding is for.
 
 ```text
 OK:  kae use main && claude

@@ -473,13 +473,46 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 
 	// Recapture: the child may have refreshed OAuth tokens; persist them into
 	// the account snapshots so the next switch applies fresh credentials.
+	//
+	// Through the **same two guards** the switch-away recapture applies and no third
+	// (docs/ROADMAP.md names them, because a third invented here is how the two paths
+	// stop agreeing about what a recapture may overwrite). This used to call
+	// captureSnapshot directly, so a child that logged in as another account filed that
+	// credential *and* that identity under the target account's name, and a child whose
+	// refresh failed filed the tombstone over a snapshot that still worked. Both
+	// measured; so was a third the plan did not name — captureSnapshot builds the
+	// snapshot from plan.Identity, which the run paths never set, so every `run -s`
+	// blanked the recorded login identity of the account it ran as.
+	//
+	// plan.Meta is the pre-run snapshot (loadPlansWithSnapshots read it, refreshPlan
+	// carries it through), which is the right baseline: it is what kae applied before
+	// the child, so a live identity that changed since is the child's doing. The
+	// restore below reads the **backup** rather than this snapshot for its own
+	// attribution, and must keep doing so — by then this recapture has rewritten it.
 	for _, plan := range plans {
-		if err := app.captureSnapshot(ctx, be, plan); err != nil {
-			if exitOf(err) == constants.ExitAuthMissing {
-				fmt.Fprintf(os.Stderr, "kae: warning: %s logged out during the run; snapshot %s/%s left unchanged\n",
-					plan.Tool, plan.Tool, plan.Account)
-				continue
-			}
+		values, anyPresent, err := readLiveValues(ctx, plan.Specs)
+		switch {
+		case err != nil:
+			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, plan.Account, err)
+			continue
+		case !anyPresent:
+			fmt.Fprintf(os.Stderr, "kae: warning: %s logged out during the run; snapshot %s/%s left unchanged\n",
+				plan.Tool, plan.Tool, plan.Account)
+			continue
+		}
+		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); why != "" {
+			warnRecaptureIdentityUnconfirmed(plan.Tool, why)
+			continue
+		}
+		if why := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); why != "" {
+			fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot left unchanged\n", why)
+			continue
+		}
+		// Carry the snapshot's own recorded identity: the run paths leave plan.Identity
+		// empty, and persistSnapshot writes whatever it is given.
+		snapPlan := plan
+		snapPlan.Identity = plan.Meta.Identity
+		if err := app.persistSnapshot(ctx, be, snapPlan, values); err != nil {
 			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, plan.Account, err)
 		}
 	}

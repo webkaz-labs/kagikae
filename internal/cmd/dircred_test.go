@@ -299,16 +299,34 @@ func captureClaudeAt(t *testing.T, app *App, accountName, token string, expiresA
 // credential — the side a harvest writes to.
 func snapshotPayload(t *testing.T, app *App, be secret.Backend, tool, accountName string) string {
 	t.Helper()
+	return snapshotArtifact(t, app, be, tool, accountName, credentialArtifactName(tool))
+}
+
+// snapshotArtifact reads any one named artifact of a snapshot — the identity-only one
+// beside the credential is the half a mis-attributed recapture relabels.
+func snapshotArtifact(t *testing.T, app *App, be secret.Backend, tool, accountName, artifactName string) string {
+	t.Helper()
 	acc, found, err := account.Load(app.Paths.AccountDir(tool, accountName))
 	if err != nil || !found {
 		t.Fatalf("load snapshot %s/%s: found=%v err=%v", tool, accountName, found, err)
 	}
-	art := acc.Artifacts[credentialArtifactName(tool)]
+	art := acc.Artifacts[artifactName]
 	data, found, err := be.Get(context.Background(), art.SecretRef)
 	if err != nil || !found {
 		t.Fatalf("read snapshot payload %s: found=%v err=%v", art.SecretRef, found, err)
 	}
 	return string(data)
+}
+
+// recordedIdentity is account.toml's own Identity field — a different thing from the
+// identity *artifact* above, and the one persistSnapshot builds from plan.Identity.
+func recordedIdentity(t *testing.T, app *App, tool, accountName string) string {
+	t.Helper()
+	acc, found, err := account.Load(app.Paths.AccountDir(tool, accountName))
+	if err != nil || !found {
+		t.Fatalf("load snapshot %s/%s: found=%v err=%v", tool, accountName, found, err)
+	}
+	return acc.Identity
 }
 
 // Two identity payloads that are byte-identical and neither an account record agree

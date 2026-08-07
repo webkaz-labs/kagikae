@@ -455,3 +455,114 @@ func TestMiseInitPrintAndWrite(t *testing.T) {
 		t.Fatal("unmarked file must not be modified")
 	}
 }
+
+// `run -s`'s own recapture goes through the two guards the switch-away recapture
+// applies, and no third (docs/ROADMAP.md names them). Before v0.17.0 it called
+// captureSnapshot directly, so all three tests below described the shipped
+// behaviour rather than refusing it.
+//
+// The healthy case is first on purpose: it is the positive control that makes the
+// two refusals mean something. Without it, a recapture that simply never ran would
+// satisfy every "the snapshot was not poisoned" assertion below.
+func TestRunSharedRecapturesAndKeepsTheRecordedIdentity(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+
+	const rotated = "sk-ant-oat01-ROTATED-IN-CHILD"
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		seedClaude(t, app, rotated, "main") // an ordinary in-tool refresh
+		return 0, nil
+	})
+	code, out := captureStdout(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, "claude", "main"); !strings.Contains(got, rotated) {
+		t.Fatalf("the child's refreshed credential was not recaptured: %s", got)
+	}
+	// persistSnapshot writes plan.Identity, which the run paths never set — so this is
+	// the assertion that fails if the recapture stops carrying the snapshot's own.
+	if id := recordedIdentity(t, app, "claude", "main"); id != "main@example.com" {
+		t.Fatalf("the recapture blanked the recorded identity: %q", id)
+	}
+}
+
+// The child ran the tool's own login flow and landed on somebody else's account.
+// Filing that credential under the target's name is undetectable afterwards — the
+// token is opaque, so live, snapshot and doctor would all agree on a wrong label.
+func TestRunSharedRefusesToRecaptureAForeignLogin(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+
+	const foreign = "sk-ant-oat01-FOREIGN-LOGIN"
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		seedClaude(t, app, foreign, "stranger")
+		return 0, nil
+	})
+	code, out, stderr := captureBoth(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(stderr, "outside kae") {
+		t.Errorf("expected a warning that the live login is not the one kae applied: %q", stderr)
+	}
+	if !strings.Contains(stderr, "kae add --no-login claude") {
+		t.Errorf("the refusal must say how to keep that live login: %q", stderr)
+	}
+	for _, pii := range []string{foreign, "stranger", "@example.com"} {
+		if strings.Contains(stderr, pii) {
+			t.Errorf("identity/credential value %q must not reach stderr: %q", pii, stderr)
+		}
+	}
+
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, "claude", "main"); strings.Contains(got, foreign) {
+		t.Fatalf("the stranger's credential was filed under claude/main: %s", got)
+	}
+	if got := snapshotArtifact(t, app, be, "claude", "main", "oauth_account"); strings.Contains(got, "stranger") {
+		t.Fatalf("the stranger's identity was filed under claude/main: %s", got)
+	}
+	if id := recordedIdentity(t, app, "claude", "main"); id != "main@example.com" {
+		t.Fatalf("recorded identity changed: %q", id)
+	}
+}
+
+// A refresh failed inside the child, so claude left a fully-formed blank payload.
+// readLiveValues proves only that the artifact exists, so without the downgrade
+// refusal the tombstone overwrites a snapshot that still works — irrecoverably,
+// since the backup this run took reads the same dead store.
+func TestRunSharedRefusesToRecaptureATombstone(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	const good = `{"accessToken":"main-live","refreshToken":"r","expiresAt":1800000000000}`
+	seedClaudeOAuth(t, app, good)
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		seedClaudeOAuth(t, app, `{"accessToken":"","refreshToken":"","expiresAt":0}`)
+		return 0, nil
+	})
+	code, out, stderr := captureBoth(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(stderr, "needs a re-login") {
+		t.Errorf("expected a warning that the live credential is dead: %q", stderr)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, "claude", "main"); !strings.Contains(got, "main-live") {
+		t.Fatalf("the tombstone overwrote a usable snapshot: %s", got)
+	}
+}

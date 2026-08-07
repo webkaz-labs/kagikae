@@ -450,7 +450,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 				warnRecaptureDeclined(plan.Tool, why, backupID, "which reverts this whole switch")
 				continue
 			}
-			fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot left unchanged\n", why)
+			warnRecaptureSkipped(why)
 			continue
 		}
 		if !valuesDiverge(ctx, be, plan.Specs, acc, values) {
@@ -464,12 +464,39 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 		activePlan.Account = active
 		activePlan.Identity = acc.Identity
 		if err := app.persistSnapshot(ctx, be, activePlan, values); err != nil {
-			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, active, err)
+			warnRecaptureFailed(plan.Tool, active, err)
 			continue
 		}
 		fmt.Fprintf(os.Stderr, "kae: refreshed %s/%s snapshot from the live store before switching away\n",
 			plan.Tool, active)
 	}
+}
+
+// warningsDetail renders an adapter's Detect warnings as a parenthesised suffix, or "" when
+// there are none. Two messages carry them — captureSnapshot's auth_missing error and the
+// logged-out-during-a-run warning — and they are the same sentence-shape, so a change to the
+// separator or the wrapping has one place to happen.
+func warningsDetail(warnings []string) string {
+	if len(warnings) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(warnings, "; ") + ")"
+}
+
+// warnRecaptureSkipped reports a recapture declined where the copy it declines is not worth
+// keeping — a tombstone, or one provably older. The sibling of warnRecaptureDeclined, which
+// handles the case that *is* worth keeping; both recapture paths use both, and splitting the
+// pair across two hand-written literals is how one of them would later gain a clause the
+// other lacks.
+func warnRecaptureSkipped(why string) {
+	fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot left unchanged\n", why)
+}
+
+// warnRecaptureFailed reports a recapture that could not be completed, as opposed to one kae
+// declined: a live read that errored, or a snapshot write that did. Both are honestly the
+// same sentence — the cause is in the error — and it is emitted from three places.
+func warnRecaptureFailed(tool, accountName string, err error) {
+	fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", tool, accountName, err)
 }
 
 // warnRecaptureDeclined reports a recapture kae declined while the copy it declined is

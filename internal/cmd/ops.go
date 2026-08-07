@@ -111,11 +111,17 @@ type toolPlan struct {
 	Account string
 	Driver  string
 	// Identity is the raw detected login identity to persist in the snapshot
-	// (§D). Set by the capture/login paths from resolveAccount; preserved (not
-	// re-detected) by switch-away recapture. Empty when undetectable.
+	// (§D). Set by the capture/login paths from resolveAccount; the run paths leave it
+	// empty, so **both** recaptures carry Meta.Identity into it rather than letting
+	// persistSnapshot blank the field — which is what `run -s` did until v0.17.0.
+	// Empty when undetectable.
 	Identity string
 	Specs    []artifact.Spec
-	Meta     account.Account // populated for switch (captured snapshot)
+	// Meta is the snapshot as it stood before this command touched anything, populated by
+	// loadPlansWithSnapshots for switch **and** run. Load-bearing on both: it is the
+	// baseline both recapture guards compare against (keepSnapshotIdentity,
+	// recaptureWouldDowngrade), and the source of the identity above.
+	Meta     account.Account
 	Warnings []string
 }
 

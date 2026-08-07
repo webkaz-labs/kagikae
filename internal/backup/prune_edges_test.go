@@ -31,7 +31,13 @@ func ids(metas []Meta) []string {
 	return out
 }
 
-func countsUndoTargets(m Meta) bool { return m.Reason != "run-unattributable" }
+// The reason here is deliberately **not** kae's own token. Prune takes a predicate
+// precisely so this package does not know that vocabulary, and spelling the real reason
+// in here would be a third hand-written copy of a rule whose two copies review already
+// flagged. An arbitrary string proves the seam rather than the caller's policy.
+const uncounted = "not-an-undo-target"
+
+func countsUndoTargets(m Meta) bool { return m.Reason != uncounted }
 
 // Rejected entries interleaved with accepted ones: the cutoff must be the keep-th
 // *accepted* backup, and rejects newer than it survive without consuming a slot.
@@ -39,11 +45,11 @@ func TestR4PruneInterleaved(t *testing.T) {
 	dir := t.TempDir()
 	// newest last in this list; List sorts descending so the newest id is 20260611T012400Z
 	seed(t, dir, [][2]string{
-		{"20260611T012340Z", "run"},                // oldest, expect pruned
-		{"20260611T012350Z", "run-unattributable"}, // older than cutoff -> pruned
-		{"20260611T012355Z", "run"},                // 2nd accepted -> cutoff
-		{"20260611T012358Z", "run-unattributable"}, // newer than cutoff -> kept, no slot
-		{"20260611T012400Z", "switch"},             // 1st accepted
+		{"20260611T012340Z", "run"},     // oldest, expect pruned
+		{"20260611T012350Z", uncounted}, // older than cutoff -> pruned
+		{"20260611T012355Z", "run"},     // 2nd accepted -> cutoff
+		{"20260611T012358Z", uncounted}, // newer than cutoff -> kept, no slot
+		{"20260611T012400Z", "switch"},  // 1st accepted
 	})
 	be := secrettest.NewMem()
 	removed, err := Prune(context.Background(), be, dir, 2, countsUndoTargets)
@@ -78,7 +84,7 @@ func TestR4PruneFewerThanKeepCountable(t *testing.T) {
 		pairs = append(pairs, [2]string{
 			// all newer than the single countable one
 			time.Date(2026, 6, 11, 1, 24, i, 0, time.UTC).Format("20060102T150405Z"),
-			"run-unattributable",
+			uncounted,
 		})
 	}
 	seed(t, dir, pairs)

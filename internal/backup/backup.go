@@ -192,31 +192,25 @@ func Prune(ctx context.Context, be secret.Backend, dir string, keep int, counts 
 		return nil, err
 	}
 	removed := []string{}
-	counted, cutoff := 0, ""
-	for _, meta := range metas { // newest first
-		if counts != nil && !counts(meta) {
-			continue
-		}
-		counted++
-		if counted == keep {
-			cutoff = meta.ID
-			break
-		}
-	}
-	if counted < keep {
-		// A statement of intent, not a filter: with fewer than `keep` countable backups the
-		// cutoff stays "" and the loop below deletes nothing either, since every id is `>= ""`.
-		// Said here so nobody adds a test that cannot fail, or reports the line as uncovered.
-		//
-		// It is also where the retention of *uncountable* backups is bounded, and the bound is
-		// external: every declining `kae run -s` writes one countable backup beside its
-		// preserved copy, so an uncountable one always has a countable sibling to age against.
-		// A future path emitting a preserved copy with no countable sibling would make this
-		// return retain them forever.
-		return nil, nil
-	}
+	counted, pruning := 0, false
+	// One pass, by **position**: List already ordered these newest-first, so the keep-th
+	// countable entry and everything before it stay, and everything after it goes. An
+	// earlier version re-derived that ordering by comparing ids as strings against a
+	// cutoff, which is the comparison NewID's zero-padding exists to keep honest — not
+	// re-deriving it means one less place that depends on the id's shape.
+	//
+	// The fewer-than-`keep` case needs no branch of its own: `pruning` never flips, so
+	// nothing is deleted. That is also where the retention of *uncountable* backups is
+	// bounded, and the bound is **external** rather than enforced here: every declining
+	// `kae run -s` writes one countable backup beside its preserved copy, so an uncountable
+	// one always has a countable sibling to age against. A future path emitting a preserved
+	// copy with no countable sibling would retain them forever.
 	for _, meta := range metas {
-		if meta.ID >= cutoff { // ids sort as strings, newest first (see NewID)
+		if !pruning {
+			if counts == nil || counts(meta) {
+				counted++
+				pruning = counted == keep
+			}
 			continue
 		}
 		if err := Delete(ctx, be, dir, meta); err != nil {

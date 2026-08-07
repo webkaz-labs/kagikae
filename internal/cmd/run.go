@@ -461,6 +461,16 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// not a filter — it starts mattering the moment anything reads between the apply and
 	// the child (a verification read, a second tool's probe). Measured 2026-08-06.
 	ctx = keychain.WithReadCache(ctx)
+	// And kae's own secret store, the pair switch.go opens for the identical two guards
+	// (switch.go, before recaptureActiveBeforeSwitch). Without it this path reads two
+	// different snapshot refs — the identity one in keepSnapshotIdentity, the credential one
+	// in accountFreshness — and they happen not to collide only because claude's artifact
+	// names sort with the credential first, so accountFreshness returns before reaching the
+	// identity key. That is an accident of naming, not a property; a second rotating tool
+	// named the other way round would silently double the reads. Writes invalidate their own
+	// keys, so the backup, the recapture and the restore below all see what they wrote.
+	be = secret.Cached(be)
+	ctx = secret.WithReadCache(ctx)
 
 	// The child may have moved the credential to the tool's other store (codex
 	// under `auto` writes its keychain item and deletes auth.json on its first
@@ -505,29 +515,37 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// check reads the same credential either way. And the `err != nil` arm below differs
 	// from `!anyPresent` in wording alone, with no fixture that can make a live read
 	// fail while the artifacts stay resolvable.
-	var declined []toolPlan
-	reasons := map[string]string{}
+	// Paired rather than a slice plus a map keyed on the tool: the pair is only ever walked
+	// in order, and keying by tool would rely on "at most one plan per tool" without saying
+	// so anywhere.
+	//
+	// The pairing itself is **unobservable today** and that is worth recording rather than
+	// faking a test for: both refusals are claude-only by construction — keepSnapshotIdentity
+	// needs an IdentityOnly artifact and only claude declares one, and the preserve arm of
+	// recaptureWouldDowngrade needs rotatesSingleUse, which is claude alone — so at most one
+	// plan per run can be declined, and a mutation handing every warning the first reason
+	// cannot be killed. It becomes observable the day a second tool declares either.
+	type declinedRecapture struct {
+		plan toolPlan
+		why  string
+	}
+	var declined []declinedRecapture
 	for _, plan := range plans {
 		values, anyPresent, err := readLiveValues(ctx, plan.Specs)
-		switch {
-		case err != nil:
-			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, plan.Account, err)
+		if err != nil {
+			warnRecaptureFailed(plan.Tool, plan.Account, err)
 			continue
-		case !anyPresent:
+		}
+		if !anyPresent {
 			// The adapter's own warnings ride along: captureSnapshot used to append them
 			// to its auth_missing error, and `run -s` prints them nowhere else, so an
 			// env_conflict is otherwise invisible in exactly the case it may explain.
-			detail := ""
-			if len(plan.Warnings) > 0 {
-				detail = " (" + strings.Join(plan.Warnings, "; ") + ")"
-			}
 			fmt.Fprintf(os.Stderr, "kae: warning: %s logged out during the run; snapshot %s/%s left unchanged%s\n",
-				plan.Tool, plan.Tool, plan.Account, detail)
+				plan.Tool, plan.Tool, plan.Account, warningsDetail(plan.Warnings))
 			continue
 		}
 		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); why != "" {
-			declined = append(declined, plan)
-			reasons[plan.Tool] = why
+			declined = append(declined, declinedRecapture{plan, why})
 			continue
 		}
 		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); why != "" {
@@ -535,13 +553,12 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 				// kae cannot order the two copies, so it may neither say the live one is
 				// finished nor let the restore below take it. Same treatment as an
 				// unattributable copy: back it up and name it.
-				declined = append(declined, plan)
-				reasons[plan.Tool] = why
+				declined = append(declined, declinedRecapture{plan, why})
 				continue
 			}
 			// No backup for this one: what it declines is a tombstone or a provably older
 			// credential, so there is nothing to keep.
-			fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot left unchanged\n", why)
+			warnRecaptureSkipped(why)
 			continue
 		}
 		// Carry the snapshot's own recorded identity: the run paths leave plan.Identity
@@ -549,18 +566,22 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 		snapPlan := plan
 		snapPlan.Identity = plan.Meta.Identity
 		if err := app.persistSnapshot(ctx, be, snapPlan, values); err != nil {
-			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, plan.Account, err)
+			warnRecaptureFailed(plan.Tool, plan.Account, err)
 		}
 	}
 	if len(declined) > 0 {
 		preID := ""
-		if preMeta, err := app.createBackup(ctx, be, declined, st, constants.BackupReasonRunUnattributable); err != nil {
+		declinedPlans := make([]toolPlan, len(declined))
+		for i, d := range declined {
+			declinedPlans[i] = d.plan
+		}
+		if preMeta, err := app.createBackup(ctx, be, declinedPlans, st, constants.BackupReasonRunUnattributable); err != nil {
 			fmt.Fprintf(os.Stderr, "kae: warning: could not back up the live state kae declined to adopt: %v\n", err)
 		} else {
 			preID = preMeta.ID
 		}
-		for _, plan := range declined {
-			warnRecaptureDeclined(plan.Tool, reasons[plan.Tool], preID,
+		for _, d := range declined {
+			warnRecaptureDeclined(d.plan.Tool, d.why, preID,
 				"which covers only the tools whose recapture kae declined")
 		}
 	}

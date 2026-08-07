@@ -56,7 +56,7 @@ kae profile rm <name> [--force]      # delete a profile
 kae profile default [<name>|--clear] # show or set default_profile
 kae status [--json]                  # full status report (alias: kae s)
 kae backup list [--json]             # list switch backups
-kae rollback [--to <backup-id>]      # restore the most recent (or given) backup
+kae rollback [--to <backup-id>]      # restore the most recent restorable (or given) backup
 kae completion <bash|zsh|fish> [--install]     # print (or register) a dynamic completion script
 kae version | --version | -v
 kae help | --help | -h
@@ -105,7 +105,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--profile <name>` / `-P <name>` | bare `use`, `run`, `mise init` | resolve a named profile instead of the default; `-P` is the short form |
 | `--restore` / `--no-login` | `add` | restore the previous login after capturing (login flow only); snapshot without a login flow |
 | `--auto` / `--write` | `mise init` | add the enter hook (`kae use --quiet`); write/update `.mise.toml` |
-| `--to <backup-id>` | `rollback` | backup to restore (default: most recent) |
+| `--to <backup-id>` | `rollback` | backup to restore (default: the most recent **restorable** one — the newest that records a state kae was about to change. A `run-unattributable` backup is skipped by the default because it records a state kae *declined to adopt*, not one it changed; `--to` still reaches it, which is what the refusal that created it tells you to type) |
 
 ## kae use Semantics
 
@@ -227,7 +227,17 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   recapture is refused for unattributability, kae takes a second backup — reason
   `run-unattributable` — of the post-child state and names it in the warning, with the
   `kae rollback --to <id>` then `kae add --no-login` pair that turns it into an account.
-  A tombstone or an older copy gets no such backup: there is nothing there to keep.
+  A tombstone or a **provably** older copy gets no such backup: there is nothing there to
+  keep. A copy kae cannot *order* is a third case and takes the backup — `supersedes`
+  lets an undated copy lose to anything, which is right for deciding an overwrite and
+  wrong for telling the user the copy is finished, so that refusal says only that kae
+  cannot tell which of the two can still refresh.
+  Two consequences of that second backup, both stated because nothing else would say
+  them. It covers **only** the tools whose recapture was declined, unlike the switch's
+  backup, and the warning says so — restoring it does not revert the rest of the run.
+  And such a run writes **two** backups, so it consumes two of `backup_keep`'s slots;
+  with `backup_keep = 1` the pre-child backup that the closing `previous auth state
+  restored (backup <id>)` line names has already been pruned by the time it is printed.
   The restore is **per tool**: `kae run -s <tool> <the account that was already
   active>` backs up that account's own credential, and claude's refresh token rotates
   single-use, so once the child has refreshed it the copy in the backup can no longer

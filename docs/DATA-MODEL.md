@@ -358,9 +358,15 @@ state between `use -i` and `run -i` is always visible.
 ## Backups
 
 Before any live mutation, `switch`, `rollback`, `run -s` (real-home mode), and
-`login` capture the current live artifacts into a backup (`reason` is
-`"switch"`, `"rollback"`, `"run"`, or `"login"`), so every mutation is
-reversible:
+`login` capture the current live artifacts into a backup, so every mutation is
+reversible. The `reason` field's vocabulary is
+`internal/constants` (the `BackupReason*` block) — read it there rather than from a
+list here, which went stale the first time a reason was added. One of them is **not**
+a pre-mutation record and a consumer must not treat it as an undo target:
+`run-unattributable` is the post-child state `kae run -s` declined to adopt, kept so
+that a refusal is not a deletion ([CLI.md](CLI.md) § kae run Semantics). A bare
+`kae rollback` therefore skips it (`latestRestorable`) even though it is the newest;
+`kae backup list` still shows it:
 
 - metadata: `backups/<id>.json` (id format `YYYYMMDDTHHMMSSZ`, suffixed
   `-2`, `-3`, ... on collision)
@@ -497,7 +503,7 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
   global-isolated mechanism behind `kae use -i` / `kae run -i`, delivered as a
   kae-owned mise fragment)
 - status `pinned.mode` (user-facing environment): `shared`, `isolated`, `auth`
-- backup reasons: `switch`, `rollback`, `run`, `login`
+- backup reasons: the `BackupReason*` block in `internal/constants` (five today, and one of them records a state kae *declined*, not one it is about to change — see § Backups)
 
 ## Env Profiles
 

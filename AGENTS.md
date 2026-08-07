@@ -202,12 +202,29 @@ block in docs/VALIDATION.md, next to two correct ones.
   asymmetry runs both ways: a caller may owe `orderable` to the **losing** side too,
   which `supersedes` deliberately does not require of it. Neither direction is the safe
   default — read which question the caller is asking ("may I overwrite this copy" and
-  "may I tell the user it is dead" take opposite answers), and `pinSupersededChecks`
-  carries the worked example. Taking a
+  "may I tell the user it is dead" take opposite answers), and `pinSupersededChecks` and
+  `recaptureWouldDowngrade`'s `preserve` carry the worked examples — the second one added
+  after the rule was written and broken anyway, so treat a **new** consumer as owing the
+  question rather than as covered by the rule. Taking a
   subset of it is how a copy with no deadline came to read as superseded by anything:
   claude sets `Known` on the mere *presence* of `expiresAt` and parses a non-numeric one
   to the zero time, so an upstream type change yields a payload that is `Known`,
   un-`Revoked` and undated at once.
+- **A refusal is conservative only where something else holds the copy; a recapture's is
+  not.** The attribution and ordering guards read the same predicates on both sides of a
+  seam whose consequences invert. `dirIdentityConfirms` and `liveLoginMatchesBackup`
+  decline to *overwrite* or *delete*, so refusing keeps what exists. The two recaptures
+  (`keepSnapshotIdentity` and `recaptureWouldDowngrade`, via `kae use`'s switch-away and
+  `kae run -s`'s post-child pass) decline to *preserve*, and their caller then overwrites
+  the live store — so refusing **destroys** the copy unless a backup holds it. `kae use`
+  gets that for free (`createBackup` runs before its recapture); `kae run -s` does not (its
+  backup predates the child) and creates a second one, reason `run-unattributable`, whose
+  id every such refusal names. Three consequences that outlive the code: a message may not
+  imply a copy survives when kae could not back it up; a *new* refusal on either recapture
+  owes the same backup, or it is a logout reported as success; and that backup is a
+  preserved artifact rather than an undo target, so a bare `kae rollback` must not target
+  it (`latestRestorable`). Ported without re-asking the question, this shipped the logout
+  twice in one branch — once on attribution, once on ordering.
 - **What kae observed is not what the tool can do, and a message may only claim the
   first.** `Revoked` means "no usable token in this payload", derived from fields that are
   empty *or absent* — so a login whose token keys were renamed upstream reads the same as

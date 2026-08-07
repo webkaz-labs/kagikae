@@ -470,6 +470,20 @@ alternative exists (`secret-tool`).
   strings recorded in fragments rather than paths re-derived from the tree, since the
   hash is over the string kae actually exported.
 
+- **A `run -s` backup that fails half-way now leaves payloads nothing points at**
+  (recorded 2026-08-07, **not fixed**). `createBackup` writes the secret payloads first
+  and the metadata last, and every other call site aborts its command when it errors. The
+  refusal backup added in v0.17.0 deliberately does not — a warning and a continue, because
+  failing the whole run would be worse than losing the preserved copy — so a failure
+  between the first payload write and `backup.Save` leaves `backup/<id>/…` entries in the
+  secret store with no metadata naming them. Nothing sweeps or reports those: `Prune` and
+  `Delete` walk metadata, and `doctor`'s `secret_orphan` skips every key that is not an
+  account key by construction (a backup key has no snapshot dir behind it, so it cannot be
+  judged the way an account key can). Recorded rather than fixed because the leftover is a
+  secret nobody reads, which is smaller than the logout the backup prevents, and because
+  the fix belongs with whatever next audits "which keys can kae account for" — the same
+  question the per-directory keychain-item entry above asks about items.
+
 - **Rotation is measured for claude only** (recorded 2026-08-04). codex, cursor,
   copilot, opencode and agy have not been measured, so none of the copy-safety work
   above may be ported to them: "the newest copy" is unknowable without it, and

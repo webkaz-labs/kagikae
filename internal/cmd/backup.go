@@ -138,7 +138,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	app.applyGlobalScope()
 	var meta backup.Meta
 	if toID == "" {
-		latest, found, err := backup.Latest(app.Paths.BackupsDir())
+		latest, found, err := latestRestorable(app.Paths.BackupsDir())
 		if err != nil {
 			return nil, err
 		}
@@ -210,7 +210,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	}
 	// rollback is itself a live mutation: back up the current state first so
 	// it stays reversible.
-	preMeta, err := app.createBackup(ctx, be, plansFromBackupMeta(meta, current), st, "rollback")
+	preMeta, err := app.createBackup(ctx, be, plansFromBackupMeta(meta, current), st, constants.BackupReasonRollback)
 	if err != nil {
 		return nil, err
 	}
@@ -287,4 +287,31 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	}
 	app.pruneBackups(ctx, be)
 	return report, nil
+}
+
+// latestRestorable is the newest backup a bare `kae rollback` may target: the newest one
+// that records a state kae was **about to change**. Four reasons do; one does not.
+//
+// A `run-unattributable` backup records the post-child state `kae run -s` *declined to
+// adopt*, kept only so that a refusal is not a deletion — a preserved artifact rather
+// than an undo target. It is also the newest backup in existence at exactly the moment a
+// user is most likely to type `kae rollback` meaning "undo that run", and targeting it
+// installs a login kae explicitly refused to name into the real home while `state.json`
+// names another account: the state `identity_drift` exists to report, reached through the
+// command meant to reverse things. `--to <id>` still gets there, which is what the
+// refusal's own message tells the user to type.
+//
+// Filtering here rather than inside backup.Latest keeps that package free of kae's reason
+// vocabulary, and `kae backup list` deliberately still shows every backup.
+func latestRestorable(dir string) (backup.Meta, bool, error) {
+	metas, err := backup.List(dir)
+	if err != nil {
+		return backup.Meta{}, false, err
+	}
+	for _, meta := range metas { // List is newest-first
+		if meta.Reason != constants.BackupReasonRunUnattributable {
+			return meta, true, nil
+		}
+	}
+	return backup.Meta{}, false, nil
 }

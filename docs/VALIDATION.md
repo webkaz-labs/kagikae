@@ -1237,6 +1237,12 @@ printf '{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,"refr
 #   assert: and NO warning at all. This is the one arm that is silent, so it is the
 #           assertion that separates the two; without it C passes on either
 snap main | grep MAIN-NEW               # assert: unchanged
+grep MAIN-NEW "$(cstore)/.credentials.json"   # assert: and the snapshot really was written
+                                        #         over it. C1's other three assertions are
+                                        #         all negative, so a fixture that landed
+                                        #         where kae does not read satisfies them —
+                                        #         which is the defect this block was
+                                        #         corrected for. This is the positive half
 # C2 — blank tokens, future deadline: kae will not judge it, so it says so.
 # $LATER, not $NEW: at an expiresAt equal to the snapshot's the timestamp comparison
 # refuses the harvest on its own, so a healthy copy and a blank one behave identically
@@ -1250,6 +1256,10 @@ printf '{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%s,"ref
 #           `cd <this dir> && kae relogin claude`. The weak claim takes the weak
 #           consequence: kae replaces the copy but does not call it dead
 snap main | grep MAIN-NEW               # assert: unchanged
+grep MAIN-NEW "$(cstore)/.credentials.json"   # assert: replaced, which is what separates
+                                        #         this arm from the attribution refusal in
+                                        #         A2 — that one is *kept*
+                                        #         (docs/ROADMAP.md owns why they differ)
 
 # --- D. the mode toggle rebuilds the bound stores; the newer copy must survive it ---
 # Reset the snapshot first, or A's harvest makes this a no-op.
@@ -1503,8 +1513,9 @@ fails loudly instead of quietly writing to the temp `$HOME`.
 #  fresh HOME and throws the account away, leaving `kae pin` below with nothing to bind.
 #  Run it after the PREAMBLE ONLY — **not** after the harvest block's cases, which this
 #  said was fine until 2026-08-08 and is not: their bindings of the same account make K's
-#  "newest copy" a tie that an unattributable store can win, which silences the whole
-#  group. K measured 0 findings instead of 1. docs/ROADMAP.md
+#  "newest copy" a tie, and the store that happens to win the walk order can be one kae
+#  cannot attribute — which silences the whole group. A tied store that does *not* win
+#  changes nothing; it is already skipped for not being superseded. K measured 0 findings instead of 1. docs/ROADMAP.md
 #  § credential_superseded owns the mechanism and the control that pinned it.
 #  If A–J has ALREADY run in this shell, K–M needs a fresh session: open a new shell,
 #  `. scripts/smoke-env.sh`, run the preamble above and nothing else, then this block.
@@ -1721,8 +1732,13 @@ Unit-covered, in `internal/cmd` (`credstore_test.go` unless noted):
 
 ### v0.17.0 per-account credential real-machine smoke (required before release)
 
-Run with `. scripts/smoke-env.sh` sourced, in a temp HOME. Two bound directories on
-one captured account:
+Run with `. scripts/smoke-env.sh` sourced, in a temp HOME, and — on macOS — with
+`KAE_CLAUDE_DRIVER=file` **and** `[security] secret_backend = "file"`, exactly as
+§ Smoke Checks requires of any claude round-trip: without both, a capture or a bind here
+reads and writes the real login keychain and leaves per-directory items behind. The
+recorded result below is a file-driver observation, so the overrides are not optional
+decoration — they are what it was measured under. Two bound directories on one captured
+account:
 
 - [x] `kae pin <profile>` in each of two directories; each fragment carries
       `CLAUDE_SECURESTORAGE_CONFIG_DIR` pointing at the **same**
@@ -2264,8 +2280,9 @@ block rather than from the end state.
   fixtures are `ghp_smoke` / `ghp_secret` / `sk-ant-oat01-<label>` placeholders and
   `@example.com` addresses. Checked with the file backend's **base64** in mind — a raw
   `grep` over a stored payload finds nothing and reads as a pass.
-- Deliberately **not** run, and recorded as such: no real-machine `kae pin`, and the
-  operator's installed binary was not replaced. The credential blocks run under
+- Deliberately **not** run, and recorded as such: no `kae pin` against the real `$HOME`
+  (every bind above ran in a temp HOME with every XDG root isolated), and the operator's
+  installed binary was not replaced. The credential blocks run under
   `KAE_CLAUDE_DRIVER=file`, so **nothing here touches `internal/keychain`** — the
   per-command read cache, and `kae relogin` against a real per-directory keychain item,
   stay covered by unit tests over the darwin sim only. Unchanged from the earlier runs and

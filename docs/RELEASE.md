@@ -279,11 +279,14 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   copy there — usually the newer one, because it is the one in daily use — and
   harvesting that would file one account's token under another's name, which nothing
   offline can detect afterwards because the token is opaque. And *a chokepoint is not
-  coverage*: the write path cannot see the store a mode toggle or an isolated re-key is
+  coverage*: the write path cannot see the store a re-bind to another **account** is
   moving off, so the directory the user had just bound held the credential rotation had
   already killed, with every offline check green. Hence a pin-level pass over every
   store of the directory before any of them is written, with the delete sweep still
-  after the new binding.
+  after the new binding. (This named a `-s` ↔ `-i` toggle as one of those cases until
+  2026-08-08. Since the per-account store both modes read the account's own credential,
+  so a toggle moves the sessions and leaves the credential where it is; what a toggle
+  still moves off is the config store a **pre-split** binding kept its credential in.)
 
   What this does **not** fix is stated because a message implying otherwise would be
   worse than silence: two directories bound to one account still cannot run at the

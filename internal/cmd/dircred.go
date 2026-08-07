@@ -1558,12 +1558,17 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 // nothing. Call it *before* the new stores are materialized.
 //
 // It exists because the harvest inside writeDirCredential can only see the store it
-// is writing, and the two operations that hurt most move the binding to a
-// *different* store: a `-s` ↔ `-i` toggle, and an isolated re-bind that re-keys the
-// store by account. There the new store is built from the account snapshot while the
-// copy the tool actually refreshed sits in the old store — so without this pass the
-// directory the user just bound holds the copy rotation has already invalidated,
-// with every offline check green (measured by review, 2026-08-04).
+// is writing, and the operation that hurts most moves the binding's **credential** to a
+// *different* store: a re-bind to another account. There the new store is built from the
+// account snapshot while the copy the tool actually refreshed sits in the old store — so
+// without this pass the directory the user just bound holds the copy rotation has already
+// invalidated, with every offline check green (measured by review, 2026-08-04).
+// A `-s` ↔ `-i` toggle is *not* that case since the per-account store landed — both modes
+// name the account's own credential store, so a toggle moves the sessions and leaves the
+// credential where it is; this comment said otherwise until 2026-08-08 while the same file
+// had it right at the chokepoint. The pass still has to walk a toggle, for the credential a
+// **pre-split** binding left in the config store being moved off, and for the identity cache
+// that makes the chokepoint's attribution possible at all.
 //
 // It also covers the case the delete sweep gets right and the write path cannot: a
 // shared-mode re-bind to *another* account. That store is account-agnostic, so its

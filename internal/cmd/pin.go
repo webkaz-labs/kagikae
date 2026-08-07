@@ -170,8 +170,10 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	}
 	// The binding is in place, so any store this directory used before and does not
 	// use now is unreachable: a mode toggle moves every tool to the other
-	// mechanism's dir, and an isolated re-pin to another account re-keys it. Their
-	// keychain items would otherwise hold a credential nothing points at.
+	// mechanism's config dir, and a re-pin to another account re-keys the credential
+	// store. Their keychain items would otherwise hold a credential nothing points at —
+	// which after the per-account split means a **pre-split** binding's item for the
+	// toggle, and the previous account's for the re-key.
 	// purging=false: this sweep is housekeeping after a re-bind, so a store whose
 	// account no longer exists keeps its credential rather than having it deleted by a
 	// command the user ran to *bind* something (harvestBeforeDelete).

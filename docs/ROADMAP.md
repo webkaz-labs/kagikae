@@ -460,7 +460,8 @@ alternative exists (`secret-tool`).
   keep forever.
 
 - **`credential_superseded` reports at all only if the tie for "newest" is won by an
-  attributable store, and after the split the tie is the normal case** (measured
+  attributable **store** — a snapshot winner is not attributed at all, and must not be —
+  and after the split the tie is the normal case** (measured
   2026-08-08 during the v0.17.0 acceptance run, **not fixed**). Every directory bound to
   one account now names the *same* credential store, so the stores in an account's group
   usually hold the identical bytes, the ordering is a tie, and which element becomes

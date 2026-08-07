@@ -692,9 +692,10 @@ func TestWriteDirCredentialDoesNotHarvestUnmeasuredTool(t *testing.T) {
 	}
 }
 
-// The harvest inside writeDirCredential can only see the store it is writing, and
-// the operations that hurt most bind the directory to a **different** store: a
-// `-s` ↔ `-i` toggle and an isolated re-bind. Without a pin-level pass, the new
+// The harvest inside writeDirCredential can only see the store it is writing, and the
+// operation that hurts most binds the directory's **credential** to a different store: a
+// re-bind to another account. (A `-s` ↔ `-i` toggle moves only the config store since the
+// per-account split — the credential stays put.) Without a pin-level pass, the new
 // store is built from the account snapshot while the copy the tool refreshed sits in
 // the old one — so the directory the user just bound holds the credential rotation
 // has already invalidated, with every offline check green and no message. Found by

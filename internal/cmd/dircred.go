@@ -992,12 +992,13 @@ func dirExists(path string) bool {
 // zero value only where no such binding was read; the sweep then keeps a store
 // whose newer credential it cannot attribute, rather than deleting it.
 //
-// Only a keychain item is removed, and only where the adapter declares the item
-// bindable — exactly the class writeDirCredential creates. A file store's
-// credential lives *inside* the store directory, which a mode toggle and
-// `kae unpin` deliberately leave intact along with its sessions and settings; an
-// item, by contrast, is invisible from the directory tree and would otherwise
-// hold a credential nothing can find.
+// A keychain item is removed where the adapter declares it bindable — exactly the
+// class writeDirCredential creates, and the case that most needs sweeping, since an
+// item is invisible from the directory tree and would otherwise hold a credential
+// nothing can find. A **file** credential is removed only where it is no longer the
+// copy its own store reads; removeDirCredential states that rule once, and this
+// comment deliberately does not restate it. What is never removed is the store
+// directory itself, with its sessions and settings.
 //
 // Deleting one is unrecoverable, so it harvests first: the item can hold the only
 // copy of the account's credential that still refreshes (harvestDirCredential),

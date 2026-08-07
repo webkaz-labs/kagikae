@@ -440,16 +440,17 @@ also strips a pre-v0.7.2 kagikae marker block from `mise.toml` (so `kae unpin &&
 kae pin` migrates cleanly), leaving the user's own `mise.toml` content and any
 isolation directories (with their login state) intact.
 
-Both commands sweep a **superseded per-directory keychain credential**: a `-s` ↔
-`-i` toggle moves every tool to the other mechanism's store and an isolated
-re-bind re-keys the store by account, so the store the directory used before is
-unreachable, and its keychain item would otherwise hold a credential nothing
-points at — easy to miss, since it lives under a per-directory service name that
-appears nowhere in kae's data dir and no kae check reports one yet. Only the item
-goes: the store directory, its sessions and its settings stay, and a file-backed
-per-directory credential is left alone because it lives *inside* that directory.
-The sweep runs after the new binding is in place, reports each removal, and never
-changes the exit code.
+Both commands sweep a **superseded per-directory credential**: a `-s` ↔ `-i`
+toggle moves every tool to the other mechanism's store and an isolated re-bind
+re-keys the store by account, so the store the directory used before is
+unreachable, and its credential would otherwise be one nothing points at. A
+keychain item is the case that is easiest to miss, and the common one: it lives
+under a per-directory service name that appears nowhere in kae's data dir and no
+kae check reports one yet. Only the credential goes — the store directory, its
+sessions and its settings stay. **Which store kinds a file credential is taken
+from is stated once, below**, with the migration case that made it more than the
+item; do not read the keychain wording here as the rule. The sweep runs after the
+new binding is in place, reports each removal, and never changes the exit code.
 
 **A deletion here is final, so the sweep harvests too**, by the same rule and with
 the same refusals as a bind (above): the item can hold the copy that refreshed

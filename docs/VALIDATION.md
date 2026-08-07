@@ -2231,10 +2231,15 @@ never appears in `kae companion list` text/JSON).
 
 ### v0.17.0 (2026-08-08, macOS darwin 24.6.0, git 2.55.0)
 
-Run on the release tree — `main` at merge `2882246`, tree
-`a49f3430bfbcde9661b314a1d4d27ba4a6cb5304`, binary `kae v0.17.0`. Every gate recorded by
-exit code, never through a pipe; every smoke assertion checked at its own point in its
-block rather than from the end state.
+Run in two passes, and the distinction matters because the tree moved between them.
+The gates and the first smoke sweep were measured on `main` at merge `2882246`, tree
+`a49f3430bfbcde9661b314a1d4d27ba4a6cb5304`. That sweep found a defect in this file's own
+blocks and then, through the corrected blocks, a **code** defect (below) — so the fix and
+every re-measurement live on `fix/validation-blocks-and-release-log`, whose tree is what a
+reader should compare against. Binary `kae v0.17.0` in both. Every gate recorded by exit
+code, never through a pipe; every smoke assertion checked at its own point in its block
+rather than from the end state. Where a line below says "re-run against the fixed binary",
+that is the branch tree and not the merge above it.
 
 - `mise run check` **0**, `git diff --check` clean, `mise run goreleaser-check` **0**,
   `mise run audit` **0** — govulncheck reachable **0**, and the upstream literal

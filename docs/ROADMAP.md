@@ -431,6 +431,32 @@ alternative exists (`secret-tool`).
   swept unchanged is the per-directory item a **pre-split** binding left behind,
   which is what makes re-running `kae pin` a migration rather than a leak.
 
+- **Attribution for a shared store reads per-directory evidence, and both failure
+  directions are reachable** (measured 2026-08-08 by an execution-type review, **not
+  fixed**; present in v0.17.0 as shipped-to-be, not introduced by the harvest work).
+  `dirIdentityConfirms` is handed the *directory's* identity cache as evidence about the
+  credential in the *account's* store. Before the split those were the same object. They
+  are not any more, and the two consequences are opposite:
+  - **It destroys.** In shared mode the config dir belongs to the pin-id, not to the
+    account, so it still carries the **previous** binding's label. Bind a directory to one
+    account, let the tool run, then `kae pin <other-account>` (or `kae pin claude <other>`)
+    and kae reads `Conflicting` about a store that label says nothing about — and
+    `Conflicting` is the arm that still overwrites. Measured: the other account's refreshed
+    credential is gone from every location, and a second directory still bound to it now
+    holds a copy that cannot refresh. Isolated mode is safe (a fresh config dir per account
+    degrades the refusal to `Unattributed`, which keeps), so this is the **default** mode.
+  - **It mis-files.** A cache that legitimately names this account confirms a copy some
+    *other* directory poisoned, so an ordinary re-pin harvests a foreign token into this
+    account's snapshot, after which `kae use` applies it. Measured through `kae pin` and
+    through `kae unpin --purge`. This is the entry below ("a label kae may have written
+    itself") in its non-benign form; that entry called it benign and was wrong.
+  The fix is not another arm on the same evidence: for a store shared by several
+  directories, attribution has to read the caches of the directories **currently bound to
+  that store** (`credStoreRefs` already walks them) and refuse on any disagreement — and
+  `Conflicting` may only be trusted where the directory was already bound to that same
+  account for that tool, which `runPin` can supply from `prevBinding`. Until that lands,
+  `docs/ADAPTERS.md`'s "never files / never destroys" pair is an intent, not a property.
+
 - **A payload kae can neither read nor date is still overwritten by a bind, and that is
   a decision rather than an oversight** (recorded 2026-08-08, **not fixed**). The bind now
   keeps a newer copy it could not *attribute* in the account's credential store, because

@@ -211,8 +211,8 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		switch {
 		case keepLiveCopy:
 			fmt.Fprintf(os.Stderr,
-				"kae: warning: %s — so kae kept it rather than replacing it: every "+
-					"directory bound to %s/%s reads this one copy\n", clause, tool, accountName)
+				"kae: warning: %s — so kae kept it rather than replacing it: that store holds "+
+					"%s/%s's credential for everything that reads it\n", clause, tool, accountName)
 		case refused.Why != "":
 			fmt.Fprintf(os.Stderr, "kae: warning: %s, so this write replaces it\n", clause)
 		}
@@ -388,17 +388,29 @@ func rotatesSingleUse(tool string) bool { return tool == constants.ToolClaude }
 // fine and telling the user to log in again would be wrong (and would mint a chain
 // that invalidates what kae just harvested), while missing evidence means the copy may
 // well be this account's and the directory may need a login.
+type harvestRefusal struct {
+	Why         string
+	Conflicting bool
+	// Unattributed marks the one refusal that says nothing about the payload itself:
+	// kae read a usable, newer copy and could not establish *whose* it is. Set
+	// positively rather than inferred from `!Conflicting`, because the other reasons
+	// are about the payload (unreadable, undatable) and take a different answer — the
+	// distinction is what keeps a caller from folding three states into two.
+	Unattributed bool
+}
+
 // keepsUnattributedCopy reports whether a refusal leaves the newer copy where it is
-// instead of overwriting it with the snapshot.
+// instead of overwriting it with the snapshot. Its one caller is writeDirCredential, which
+// performs the keep.
 //
-// One caller today (writeDirCredential, which performs the keep). It is a named predicate
-// rather than an inline condition because the shape it encodes is the one this area keeps
-// getting wrong: `refused.Unattributed` and `!refused.Conflicting` are not the same
-// question, and writing the second by hand at a call site is how the conflicting refusal —
-// which must still overwrite — ended up on the keep branch. The pin-level pass deliberately
-// does *not* consult it: it words its consequence as "leaving it where it is", which is
-// true whether the write keeps or writes to another store entirely, so it needs no
-// prediction of the write's answer for a location it is not always looking at.
+// A named predicate rather than an inline condition because the shape it encodes is the one
+// this area keeps getting wrong: `refused.Unattributed` and `!refused.Conflicting` are not
+// the same question, and writing the second by hand at a call site is how the conflicting
+// refusal — which must still overwrite — ended up on the keep branch.
+//
+// The pin-level pass reads the **flag**, not this predicate, and the difference is the
+// point: it has to say what happens to a store the write may not be touching at all, which
+// this predicate says nothing about.
 func keepsUnattributedCopy(refused harvestRefusal, dirs bindDirs) bool {
 	return refused.Unattributed && dirs.Cred != ""
 }
@@ -412,17 +424,6 @@ func dirCredentialNewerThanSnapshot(tool string, dirs bindDirs, accountName, why
 		"the %s credential already in %s is newer than snapshot %s/%s and kae is not harvesting it because %s",
 		tool, dirs.credDirOrConfig(), tool, accountName, why,
 	)
-}
-
-type harvestRefusal struct {
-	Why         string
-	Conflicting bool
-	// Unattributed marks the one refusal that says nothing about the payload itself:
-	// kae read a usable, newer copy and could not establish *whose* it is. Set
-	// positively rather than inferred from `!Conflicting`, because the other reasons
-	// are about the payload (unreadable, undatable) and take a different answer — the
-	// distinction is what keeps a caller from folding three states into two.
-	Unattributed bool
 }
 
 func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, specs []artifact.Spec,
@@ -1213,9 +1214,12 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// take a pre-split file credential the purge was asked to remove.
 		migrating := app.credentialMovedOutOf(store, pinID, prev)
 		// Keyed on the credential's own location, the same expression the pass marks and the
-		// write reads. The question here is "did the pass refuse to harvest *this copy*",
-		// and after the split several stores of one account name one copy — so a config-dir
-		// key would ask it about a store rather than about the thing being deleted.
+		// write reads, so the three cannot drift apart. The *granularity* here cannot be
+		// killed by a test, and this says so rather than inventing a reason: `migrating` is
+		// only ever true when `store.CredDir` is empty (credentialMovedOutOf returns false
+		// otherwise), and there `credDirOrConfig()` is `store.Dir` by definition — measured
+		// 2026-08-08, the config-dir variant survives every test. The term itself is live:
+		// forcing it either way kills tests.
 		if keep[store.Dir] && (!migrating || app.refusalReported[store.dirs().credDirOrConfig()]) {
 			continue
 		}
@@ -1705,18 +1709,22 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			// directory's call); a per-directory one is still replaced, which is what binds
 			// this directory to the account it names.
 			app.markRefusalReported(store.dirs().credDirOrConfig())
-			// "Leaving it where it is" rather than either "replaces it" or "kept it", because
-			// this one clause is true in every shape this arm reaches and the other two are
-			// not. A refusal also defers the delete, so the copy stays put; and where the
-			// binding is pre-split, the write goes to the account's store and does not touch
-			// this one at all. Choosing between the two stronger wordings needs the *write's*
-			// answer for a location this pass is not always looking at — measured: keyed on
-			// this store's own dirs, a pre-split store printed "this bind replaces it" about a
-			// copy nothing replaced.
+			// The consequence has to be the one the write applies, and neither wording is right
+			// on its own. The copy stays where it is when the write keeps it, and also when this
+			// store is not the one the write touches — a pre-split store, whose copy is left
+			// alone because the write goes to the account's store instead. Otherwise the write
+			// really does replace it, and saying anything softer would imply a copy survived
+			// that kae could not back up, which AGENTS.md forbids. One fixed string broke that
+			// in the unreadable arm; keying it on this store's own dirs broke the other
+			// direction, claiming a replacement of a copy nothing replaced. Both measured.
+			consequence := "and this bind replaces it"
+			if refused.Unattributed || store.dirs().credDirOrConfig() != app.credStoreDir(store.Tool, accountName) {
+				consequence = "so kae is leaving it where it is"
+			}
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: kae could not preserve the %s credential this directory held for %s/%s "+
-					"(%s), so kae is leaving it where it is; %s\n",
-				store.Tool, store.Tool, accountName, refused.Why, pinLoginRemedy(store.Tool, dir))
+					"(%s), %s; %s\n",
+				store.Tool, store.Tool, accountName, refused.Why, consequence, pinLoginRemedy(store.Tool, dir))
 		}
 	}
 }

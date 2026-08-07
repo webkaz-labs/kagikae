@@ -839,24 +839,33 @@ say "the store", read it as whichever of the two that tool resolves:
   credential is elsewhere and the bind must take effect; and a payload kae can neither read
   nor date keeps the older behaviour because keeping it would leave a corrupted store
   unrepairable by `kae pin`
-  ([ROADMAP.md](ROADMAP.md) owns that trade-off). Only the credential write and its
-  stale-file sweep are skipped — the identity label still lands, since a directory with no
-  label leaves `identity_drift` blind and can never be attributed by a later bind either.
-  Nothing of kae's is written for that artifact when the copy is kept — not the credential,
+  ([ROADMAP.md](ROADMAP.md) owns that trade-off). Nothing of kae's is written for that artifact when the copy is kept — not the credential,
   not the stale-file sweep, and **not the identity label**, which is the half that had to be
   measured: kae's own label is the evidence a later bind's attribution reads, so writing it
   let the next `kae pin` confirm against a cache kae had planted and harvest the very copy
   the first bind refused (measured 2026-08-08 — another account's token filed under this
   one's name). Absence is the honest record, and the next cache in that directory is the
-  tool's own. The pin-level pass therefore words its consequence as *leaving it where it
-  is*, which holds whether the write keeps or writes elsewhere, rather than predicting the
-  write's answer for a location it is not always looking at.
+  tool's own. The pin-level pass says *leaving it where it is* only where that is
+  true — when the write will keep, or when the store it is talking about is not the one the
+  write touches at all (a pre-split store, whose copy the write leaves alone because it
+  writes to the account's store instead). Where the write does replace, it still says so: a
+  message that implies a copy survived when kae could not back it up is the thing AGENTS.md
+  forbids, and one fixed string broke it in the unreadable arm.
   A kept copy is not stranded: once the tool has run there, attribution has honest evidence
   and the next bind harvests it, and the last binding's `kae unpin --purge` harvests before
   it deletes — measured 2026-08-08, end to end, keep → purge a sibling (kept, with the
   refcount named) → purge the last one (harvested into the snapshot, then removed);
-- the two are stated together because the pair is the rule: kae **never files a copy it
-  cannot attribute** under an account, and it **never destroys one either**;
+- the two are stated as the *intent* of the pair, not as a property kae currently has:
+  never file a copy it cannot attribute under an account, and never destroy one either.
+  **Both are still reachable**, measured 2026-08-08, and for one reason — attribution for
+  the account's shared store reads the *directory's* identity cache, which since the split
+  is evidence about a different object. In shared mode that cache carries the **previous**
+  binding's label, so a re-bind between two accounts of one directory can read
+  `Conflicting` about a store the label says nothing about and overwrite a live credential;
+  and a cache that legitimately names this account can confirm a copy another directory
+  poisoned. [ROADMAP.md](ROADMAP.md) § Attribution for a shared store reads per-directory
+  evidence is normative for the shape and the fix; until it lands, do not read this bullet
+  as a guarantee;
 - the snapshot's payload **shape** must match the artifact being written.
   `KindFile` and `KindKeychain` hold a whole document, `KindJSONPointer` holds only
   the value under its pointer, and the two are not interchangeable: applying a

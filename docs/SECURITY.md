@@ -188,8 +188,11 @@ child could rotate the live credential unseen — a cached value would be stale.
   account's own item below, and the two are easy to read as one.
 - Where the tool namespaces its keychain item at all (claude on macOS), a bound
   directory's credential is written to an **item rather than to a file**, and any
-  superseded plaintext copy is removed. So on macOS an isolation directory normally
-  holds no credential on disk at all — the reason is correctness (a plaintext file
+  superseded plaintext copy is removed. Both halves are conditional on the write actually
+  happening: a bind that **keeps** an unattributable newer copy writes no item, so it runs
+  no sweep either, and a plaintext copy a pre-split binding left in that config dir is
+  retained until something can attribute the store (docs/ADAPTERS.md). Otherwise, on macOS
+  an isolation directory normally holds no credential on disk at all — the reason is correctness (a plaintext file
   there is a credential the tool stops reading), and one less plaintext secret is the
   side benefit. **Which** item is not this document's to state: what namespaces it is
   a rule the adapter owns, and since v0.17.0 the answer for claude is the account's

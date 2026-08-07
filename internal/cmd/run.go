@@ -467,8 +467,14 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// in accountFreshness — and they happen not to collide only because claude's artifact
 	// names sort with the credential first, so accountFreshness returns before reaching the
 	// identity key. That is an accident of naming, not a property; a second rotating tool
-	// named the other way round would silently double the reads. Writes invalidate their own
-	// keys, so the backup, the recapture and the restore below all see what they wrote.
+	// named the other way round would silently double the reads.
+	//
+	// Nothing in this window reads a ref an earlier step wrote — the recapture writes
+	// snapshot refs and everything after it reads *backup* refs, which is what AGENTS.md
+	// requires of the restore anyway. So the safety here is **absence of a read-after-write**,
+	// not invalidation: removing invalidation-on-Set leaves every fixture on this path green
+	// (measured by review). Invalidation is real and pinned in internal/secret's own tests,
+	// and it is what a future edit adding a read after persistSnapshot would start relying on.
 	be = secret.Cached(be)
 	ctx = secret.WithReadCache(ctx)
 

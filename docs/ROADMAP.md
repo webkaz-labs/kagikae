@@ -431,6 +431,34 @@ alternative exists (`secret-tool`).
   swept unchanged is the per-directory item a **pre-split** binding left behind,
   which is what makes re-running `kae pin` a migration rather than a leak.
 
+- **A payload kae can neither read nor date is still overwritten by a bind, and that is
+  a decision rather than an oversight** (recorded 2026-08-08, **not fixed**). The bind now
+  keeps a newer copy it could not *attribute* in the account's credential store, because
+  refusing there would otherwise destroy it. The sibling refusal — a payload kae cannot
+  parse or date, which AGENTS.md is explicit may be a working login in a shape kae has not
+  been taught — deliberately kept the old behaviour: extending "keep" to it makes a
+  corrupted or upstream-changed account store **unrepairable by `kae pin`**, leaving manual
+  deletion of a path the warning names as the only way out. Both readings destroy
+  something, which is why this is recorded rather than decided in a release fix. What would
+  settle it is a way to repair without a destructive default — an explicit
+  `kae pin --replace-credential`, or letting `kae relogin` own that repair — at which point
+  "keep" becomes the safe default for this arm too. The warning is loud and precedes the
+  write, so nothing here is silent.
+
+- **Attribution on a bound directory reads a label kae may have written itself**
+  (recorded 2026-08-08, **not fixed**, and older than this release). `dirIdentityConfirms`
+  compares the account's recorded identity against the identity cache in the config dir —
+  and a successful bind writes exactly that recorded identity there. So the *second* bind
+  of a directory attributes against kae's own copy and confirms by construction, which is
+  the shape AGENTS.md records as a HIGH defect where the sweep once relied on it. It is
+  load-bearing in a benign direction today (it is what lets a later bind harvest a copy the
+  first bind kept), and the honest evidence is the *tool's* own cache, which appears the
+  first time the tool runs in the directory. Two candidate fixes, neither cheap: record
+  whether a cache was written by kae or observed from the tool, or attribute from a sibling
+  directory that currently binds the same credential store (`credStoreRefs` already walks
+  them). Do not "fix" it by removing the confirmation — that would make every first bind
+  keep forever.
+
 - **`credential_superseded` reports at all only if the tie for "newest" is won by an
   attributable store, and after the split the tie is the normal case** (measured
   2026-08-08 during the v0.17.0 acceptance run, **not fixed**). Every directory bound to

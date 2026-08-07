@@ -39,7 +39,9 @@ credential now lives in one store shared by every directory bound to it, so a bi
 writes a second env entry and a bind's sweep no longer deletes that credential;
 where `kae pin` writes its ignore rule; a bind or a superseded-credential sweep now
 harvests a newer credential from the store it is about to overwrite or delete, and
-declines to delete one it could not preserve; `kae run -s` skips a restore that would
+declines to delete one it could not preserve — and, in the account's own credential
+store, **declines to overwrite one it could not attribute**, since every directory bound
+to that account reads that single copy; `kae run -s` skips a restore that would
 put back a credential its child has superseded, `kae rollback` says when the copy it
 restores can no longer refresh, and `kae use`'s switch-away recapture declines a live
 copy its own snapshot supersedes; `kae run -s`'s own **recapture** now refuses the two

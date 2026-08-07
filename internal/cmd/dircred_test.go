@@ -511,6 +511,132 @@ func TestWriteDirCredentialRefusesToHarvestAnotherAccountsCredential(t *testing.
 	}
 }
 
+// **The first bind of a directory has no identity cache to attribute from, and the
+// store it would overwrite belongs to the account, not to the directory.** Every test
+// above seeds `.claude.json` first, which is why this went unnoticed: on a real first
+// bind the config dir was created moments earlier, a shared bind links no `.claude.json`
+// by design, and writeDirIdentity runs after the credential. So attribution refuses for
+// missing evidence — and refusing used to mean overwriting anyway, which under single-use
+// rotation logs out *every* directory bound to that account. Measured end to end
+// 2026-08-08 (use claude in one worktree, bind a second, both dead up to 8h later) and
+// silent afterwards: with the newer copy gone there is nothing left for doctor to compare.
+func TestWriteDirCredentialKeepsANewerCopyItCannotAttribute(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	credDir := t.TempDir() // a fresh config dir: deliberately NO .claude.json
+	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
+		claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+
+	be := testBackend(t, app)
+	_, stderr := captureStderr(t, func() int {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir); err != nil {
+			t.Fatalf("writeDirCredential: %v", err)
+		}
+		return 0
+	})
+
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, refreshed) {
+		t.Fatalf("the only copy that can still refresh was destroyed: %s", got)
+	}
+	// Kept is not harvested: the copy stays where it is and is *not* filed under this
+	// account, because the reason kae kept it is that it could not tell whose it is.
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, refreshed) {
+		t.Fatalf("an unattributable copy must not be filed under this account: %s", got)
+	}
+	if !strings.Contains(stderr, "kept it rather than replacing it") {
+		t.Fatalf("keeping the copy must be said out loud: %q", stderr)
+	}
+	if strings.Contains(stderr, "this write replaces it") {
+		t.Fatalf("the overwrite wording must not survive here: %q", stderr)
+	}
+	// No remedy at this site by design: it holds a store path, not the bound directory a
+	// login would have to happen in. The pin-level pass carries the remedy, and when it
+	// speaks this message is suppressed — asserted by the pin-level tests.
+	if strings.Contains(stderr, "kae relogin") || strings.Contains(stderr, "kae add --no-login") {
+		t.Fatalf("the chokepoint must not name a remedy for a store path: %q", stderr)
+	}
+	if strings.Contains(stderr, refreshed) {
+		t.Fatalf("a credential must never reach a message: %q", stderr)
+	}
+	// The bind is otherwise complete: only the credential write is skipped. The identity
+	// cache still lands, because it is a label the directory needs like any other binding
+	// — and because a version of this fix that skipped it left the directory permanently
+	// unattributable, with `identity_drift` blind and no later bind able to harvest.
+	if got := readFile(t, filepath.Join(credDir, ".claude.json")); !strings.Contains(got, "main-uuid") {
+		t.Fatalf("keeping the credential must not skip the identity label: %s", got)
+	}
+}
+
+// The other side of the same seam, and the reason the guard is keyed on *why* the
+// harvest refused rather than on the refusal alone: positive evidence that the copy is
+// somebody else's means this account's credential is elsewhere and fine, so the bind
+// must still take effect. Keeping here would silently leave the directory running an
+// account the user just bound away from.
+func TestWriteDirCredentialStillReplacesAConflictingCopy(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	credDir := t.TempDir()
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
+		claudeOAuthPayload(sideToken, now.Add(8*time.Hour)))
+	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("side-uuid"))
+
+	be := testBackend(t, app)
+	_, stderr := captureStderr(t, func() int {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir); err != nil {
+			t.Fatalf("writeDirCredential: %v", err)
+		}
+		return 0
+	})
+
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, mainToken) {
+		t.Fatalf("a conflicting copy must still be replaced by the bound account: %s", got)
+	}
+	if strings.Contains(stderr, "kept it rather than replacing it") {
+		t.Fatalf("positive evidence must not take the keep branch: %q", stderr)
+	}
+}
+
+// The third refusal is deliberately NOT on the keep branch, and this pins that choice so
+// nobody widens it by reading the comment as "kae keeps what it cannot judge". A payload
+// kae can neither read nor date may be a working login in a shape kae has not been
+// taught — but keeping it would make a corrupted account store unrepairable by `kae pin`,
+// and manual deletion the only escape. The trade-off is docs/ROADMAP.md's to settle; the
+// behaviour here is the one that shipped.
+func TestWriteDirCredentialStillReplacesAnUnreadableCopy(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	credDir := t.TempDir()
+	// Structurally valid for the artifact layer, but carrying no field kae can date.
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
+		`{"claudeAiOauth":{"accessTokenRenamedUpstream":"live-and-working"}}`)
+	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
+
+	be := testBackend(t, app)
+	_, stderr := captureStderr(t, func() int {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir); err != nil {
+			t.Fatalf("writeDirCredential: %v", err)
+		}
+		return 0
+	})
+
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, mainToken) {
+		t.Fatalf("the unreadable arm still applies the snapshot: %s", got)
+	}
+	if strings.Contains(stderr, "kept it rather than replacing it") {
+		t.Fatalf("only the attribution refusal keeps the copy: %q", stderr)
+	}
+	if !strings.Contains(stderr, "this write replaces it") {
+		t.Fatalf("replacing a copy kae cannot judge must be said out loud: %q", stderr)
+	}
+}
+
 // A tombstone — what claude writes after a refresh it could not complete — is a
 // fully-formed payload with both tokens blanked, so presence cannot stand in for
 // "there is a login here". Harvesting one would overwrite a working snapshot with a
@@ -678,6 +804,20 @@ func TestRunPinReportsOneRefusalPerStoreWithTheRightRemedy(t *testing.T) {
 	}
 	if strings.Contains(stderr, leftover) {
 		t.Fatalf("a store this command does not touch must not be reported:\n%s", stderr)
+	}
+	// The consequence this message states has to be the one the write applies. Both halves
+	// are asserted because each was unguarded and each failed on its own: the state, which
+	// is how a re-pin came to destroy the copy with every test green, and the wording,
+	// measured 2026-08-08 — leaving the old "and this bind replaces it" clause in place
+	// while the write kept the copy survived the entire suite.
+	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", shared)); !strings.Contains(got, "sk-ant-oat01-MAIN-REFRESHED-cccc") {
+		t.Fatalf("a copy kae could not attribute must be kept, not overwritten: %s", got)
+	}
+	if !strings.Contains(stderr, "kept it rather than replacing it") {
+		t.Fatalf("the primary voice must state the consequence the write applied:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "this bind replaces it") {
+		t.Fatalf("the replace wording must not survive where the copy was kept:\n%s", stderr)
 	}
 
 	// Positive evidence: the copy belongs to another account. Same store, so still one

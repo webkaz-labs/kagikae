@@ -174,8 +174,25 @@ block in docs/VALIDATION.md, next to two correct ones.
   says the same in its body). What a toggle can still strand is the per-directory
   credential a binding from **before** the split left in the store it moves off, which
   is what makes a re-pin a migration.
-  Two traps that outlive the specific code. Harvesting is not deleting — they belong on
-  opposite sides of the write, so do not "simplify" them into one pass. And a
+  **And the chokepoint's refusal is not free either: for the account's own credential
+  store it now skips the write rather than overwriting.** That store is read by every
+  directory bound to the account, so a bind is not entitled to spend it, and the
+  attribution refusal is reachable on *every first bind* (the config dir the attribution
+  reads is created moments earlier and a shared bind links no identity cache into it) —
+  which made "bind a second worktree to an account you are using" a logout of both,
+  measured 2026-08-08. `docs/ADAPTERS.md` § Per-directory credential store is normative
+  for the condition; three things about it are easy to get wrong. It is keyed on the
+  *attribution* refusal alone (`Unattributed`) — marking every refusal from
+  `dirIdentityConfirms` also caught the `Conflicting` one, which must still overwrite, so
+  a re-bind silently did not switch. Only the credential write and its stale-file sweep
+  are skipped: an earlier form returned early and lost the **identity label**, which left
+  the directory permanently unattributable, `identity_drift` blind, and three acceptance
+  cases stuck at "kept" forever. And the consequence appears in *two* messages — the
+  pin-level pass owns the remedy, the write owns the fact — so both read one predicate;
+  leaving the pass's old "and this bind replaces it" clause in place while the write kept
+  the copy survived the entire suite.
+  Two more traps that outlive the specific code. Harvesting is not deleting — they belong
+  on opposite sides of the write, so do not "simplify" them into one pass. And a
   suppression that keeps two speakers from repeating each other must be keyed on **what
   was actually reported**, not on which store *kind* a pass would have looked at: the
   second version silenced precisely the cases where the pass had nothing to say, which

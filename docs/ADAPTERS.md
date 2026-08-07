@@ -823,6 +823,27 @@ say "the store", read it as whichever of the two that tool resolves:
   doctor may report cannot drift apart; and doctor reports **only** that branch,
   because every other refusal above is missing evidence and would fire on healthy
   directories;
+- and **where refusing to harvest would otherwise mean destroying, the write is skipped
+  instead.** A refusal leaves the newer copy where it is — the write does not proceed
+  with the older snapshot — on exactly one condition: the refusal is the *attribution*
+  one (kae read a usable, newer copy and could not establish whose it is) **and** the
+  store being written is the account's own credential store. That store is read by every
+  directory bound to the account, so overwriting it is not the binding directory's call,
+  and under single-use rotation it ends the login everywhere. Reachable on **every first
+  bind**, because the config dir attribution reads is created moments earlier and a shared
+  bind links no identity cache into it; measured 2026-08-08, where binding a second
+  worktree to an account in daily use destroyed the only copy that could still refresh.
+  The other two refusals still overwrite, deliberately: a `Conflicting` copy is provably
+  another account's, so this account's credential is elsewhere and the bind must take
+  effect; and a payload kae can neither read nor date keeps the older behaviour because
+  keeping it would leave a corrupted store unrepairable by `kae pin`
+  ([ROADMAP.md](ROADMAP.md) owns that trade-off). Only the credential write and its
+  stale-file sweep are skipped — the identity label still lands, since a directory with no
+  label leaves `identity_drift` blind and can never be attributed by a later bind either.
+  Both speakers read one predicate (`keepsUnattributedCopy`), because the pin-level pass
+  states the consequence in the message it owns and the write is what applies it;
+- the two are stated together because the pair is the rule: kae **never files a copy it
+  cannot attribute** under an account, and it **never destroys one either**;
 - the snapshot's payload **shape** must match the artifact being written.
   `KindFile` and `KindKeychain` hold a whole document, `KindJSONPointer` holds only
   the value under its pointer, and the two are not interchangeable: applying a

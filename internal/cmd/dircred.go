@@ -149,7 +149,58 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// (harvestSupersededDirCredentials), and both are needed: this one is the only
 	// harvest on the paths that have no pin at all (`kae use -i`, `kae run -i`).
 	data, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, data)
-	if refused.Why != "" && !app.refusalReported[configDir] {
+	// **A refusal that cannot preserve is a deletion, and here the store is not this
+	// directory's to spend.** When the credential is the *account's* (dirs.Cred is set,
+	// so the store is `credstore/<tool>/<account>` and its path names the account), every
+	// directory bound to that account reads this one copy — so overwriting it with an
+	// older snapshot is not a local action, and under single-use rotation it logs the
+	// account out everywhere, up to 8h later, inside the tool.
+	//
+	// Reachable on any bind whose config dir holds no identity cache to attribute from,
+	// which is **every first bind**: the store is created moments earlier, a shared bind
+	// deliberately links no `.claude.json`, and writeDirIdentity runs after this. So
+	// "use claude in one worktree, then bind a second worktree to the same account"
+	// destroyed the only copy that could still refresh. Measured 2026-08-08; before the
+	// split this was unreachable, because a fresh directory's own store was empty and
+	// readLiveCredential answered liveNothing.
+	//
+	// Which side to keep is forced by which mistake is *detectable*. Keep, and a bind that
+	// should have switched the store may not have — visible, because the tool writes an
+	// identity cache there and `kae doctor` reports `identity_drift`, and repairable with
+	// one more command. Overwrite, and the copy is gone with nothing to compare against:
+	// doctor is silent afterwards, measured. So kae keeps it and says so.
+	//
+	// Scoped to the **attribution** refusal (`Unattributed`), and the other two refusals
+	// are deliberately left overwriting. `Conflicting` is positive evidence that the copy
+	// is somebody else's, so this account's credential is elsewhere and fine, and the
+	// user's bind has to take effect. A payload kae cannot read or date is the harder
+	// call — it may be a working login in a shape kae has not been taught — and it keeps
+	// the pre-existing behaviour on purpose: extending "keep" to it makes a corrupted
+	// account store unrepairable by `kae pin`, with manual deletion the only way out.
+	// That trade-off is recorded in docs/ROADMAP.md rather than decided here.
+	//
+	// The `dirs.Cred != ""` half is a statement of intent, not a live guard, and cannot
+	// be killed by a test: the harvest only refuses for a tool whose rotation is measured
+	// (claude), and that tool has a credential variable, so dirs.Cred is always set by
+	// the time this is reached. It stays because a tool whose per-directory store is
+	// account-agnostic must keep overwriting — there the store is one directory's to
+	// spend, and the bind is what the user asked for.
+	keepLiveCopy := keepsUnattributedCopy(refused, dirs)
+	if keepLiveCopy {
+		// The same backstop rule as the overwrite message below, and for the same reason:
+		// the pin-level pass says this better, because it knows the bound directory and can
+		// name the login remedy. No remedy here — this site has a *store* path, and naming
+		// a kae-owned store dir as somewhere to log in names a place logging in would not
+		// work.
+		if !app.refusalReported[configDir] {
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: the %s credential already in %s is newer than snapshot %s/%s and kae is not "+
+					"harvesting it because %s — so kae kept it rather than replacing it: every "+
+					"directory bound to %s/%s reads this one copy\n",
+				tool, dirs.credDirOrConfig(), tool, accountName, refused.Why, tool, accountName)
+		}
+	}
+	if refused.Why != "" && !keepLiveCopy && !app.refusalReported[configDir] {
 		// The backstop, not the primary voice. A bound directory's pin-level pass says this
 		// better — it knows the account and the bound directory, so it can name a login
 		// remedy — and it records what it said, so this site fires only for a store nobody
@@ -169,10 +220,21 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 				"harvesting it because %s, so this write replaces it\n",
 			tool, dirs.credDirOrConfig(), tool, accountName, refused.Why)
 	}
-	if err := artifact.ApplyLive(ctx, sp, artifact.Value{Data: data, Present: true}); err != nil {
-		return fmt.Errorf("write %s credential for account %s: %w", tool, accountName, err)
+	// Only the credential write and its stale-file sweep are skipped, and the boundary is
+	// deliberate. The sweep removes a plaintext copy *because an item was just written* —
+	// nothing was, so that copy may be the very credential being preserved. Everything
+	// after it still runs: the identity cache below is a label, the directory needs it as
+	// much as any other binding does, and an earlier version of this fix returned here
+	// instead — which left the directory with no label at all, so `identity_drift` had
+	// nothing to compare and the copy could never be attributed by a later bind either.
+	// Measured: it turned three cases of the acceptance block from "harvested" into
+	// "kept forever".
+	if !keepLiveCopy {
+		if err := artifact.ApplyLive(ctx, sp, artifact.Value{Data: data, Present: true}); err != nil {
+			return fmt.Errorf("write %s credential for account %s: %w", tool, accountName, err)
+		}
 	}
-	if sp.Kind == constants.KindKeychain {
+	if !keepLiveCopy && sp.Kind == constants.KindKeychain {
 		// The keychain item is what the tool reads (reads try it first and only fall
 		// back to the file), so once kae has written it a plaintext copy in the bound
 		// directory is a credential nothing reads, and kae removes it rather than
@@ -312,9 +374,25 @@ func rotatesSingleUse(tool string) bool { return tool == constants.ToolClaude }
 // fine and telling the user to log in again would be wrong (and would mint a chain
 // that invalidates what kae just harvested), while missing evidence means the copy may
 // well be this account's and the directory may need a login.
+// keepsUnattributedCopy reports whether a refusal leaves the newer copy where it is
+// instead of overwriting it with the snapshot. One predicate, because two speakers act
+// on it: writeDirCredential *performs* the keep, and the pin-level pass has to state the
+// same consequence in the message it owns. Written twice, they would disagree the first
+// time either side changed — and the visible symptom would be a message saying "this
+// bind replaces it" about a copy kae kept.
+func keepsUnattributedCopy(refused harvestRefusal, dirs bindDirs) bool {
+	return refused.Unattributed && dirs.Cred != ""
+}
+
 type harvestRefusal struct {
 	Why         string
 	Conflicting bool
+	// Unattributed marks the one refusal that says nothing about the payload itself:
+	// kae read a usable, newer copy and could not establish *whose* it is. Set
+	// positively rather than inferred from `!Conflicting`, because the other reasons
+	// are about the payload (unreadable, undatable) and take a different answer — the
+	// distinction is what keeps a caller from folding three states into two.
+	Unattributed bool
 }
 
 func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, specs []artifact.Spec,
@@ -383,6 +461,21 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 		// single command (the pin-level pass and this chokepoint), so printing at the
 		// point of detection said the same thing twice — measured, 2026-08-04 — and only
 		// the caller knows what its own next write or delete costs anyway.
+		//
+		// Marked as the attribution refusal on the way out: everything above this line
+		// refused on what the payload *is*, and this one refuses on what kae could not
+		// learn about a payload it read perfectly well. writeDirCredential keeps the copy
+		// for this reason and no other.
+		//
+		// `!Conflicting` is not decoration: dirIdentityConfirms answers *both* questions,
+		// and marking every one of its refusals unattributed put the conflicting case —
+		// the one that must still be overwritten, because the copy is provably somebody
+		// else's — on the keep branch, so a re-bind silently did not switch the store. Two
+		// tests caught it; it is the same "took a subset of the predicate" shape AGENTS.md
+		// records, one condition off, in the fix for that shape.
+		if !refused.Conflicting {
+			refused.Unattributed = true
+		}
 		return snapshot, false, refused
 	}
 	if err := be.Set(ctx, acc.Artifacts[artName].SecretRef, liveData); err != nil {
@@ -1565,14 +1658,22 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 					"kae is not harvesting it and this bind replaces it\n",
 				store.Tool, store.Dir, store.Tool, accountName, refused.Why)
 		default:
-			// Missing evidence rather than a conflict: the copy may well be this account's,
-			// so the directory may be left with an older credential — and here the remedy is
-			// right, because dir is the bound directory rather than the store.
+			// Missing evidence rather than a conflict: the copy may well be this account's.
+			// The remedy is right here, because dir is the bound directory rather than the
+			// store — and the *consequence* is whichever one the write will actually apply,
+			// read from the same predicate the write uses. A per-account store is kept (every
+			// directory bound to that account reads it, so overwriting it is not this
+			// directory's call); a per-directory one is still replaced, which is what binds
+			// this directory to the account it names.
 			app.markRefusalReported(store.Dir)
+			consequence := "and this bind replaces it"
+			if keepsUnattributedCopy(refused, store.dirs()) {
+				consequence = "so kae kept it rather than replacing it"
+			}
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: kae could not preserve the %s credential this directory held for %s/%s "+
-					"(%s), and this bind replaces it; %s\n",
-				store.Tool, store.Tool, accountName, refused.Why, pinLoginRemedy(store.Tool, dir))
+					"(%s), %s; %s\n",
+				store.Tool, store.Tool, accountName, refused.Why, consequence, pinLoginRemedy(store.Tool, dir))
 		}
 	}
 }

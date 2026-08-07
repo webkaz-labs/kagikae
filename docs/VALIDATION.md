@@ -1167,6 +1167,31 @@ snap main | grep MAIN-NEW              # assert: harvested, so `kae use claude m
 grep MAIN-NEW "$(cstore)/.credentials.json"  # assert: the re-pin did NOT write the
                                        #         older snapshot back over it
 
+# --- A2. a SECOND directory bound to the same account must not spend its credential ---
+# The case A cannot reach, because A re-pins a directory that already has an identity
+# cache. A brand-new directory has none — the config dir is created moments earlier and a
+# shared bind links no `.claude.json` — so attribution refuses for missing evidence, and
+# refusing used to mean overwriting anyway. That is the account's one credential store, so
+# the copy destroyed was the only one that could still refresh, for *every* directory bound
+# to it. Fixed 2026-08-08; this case is what keeps it fixed.
+cred MAIN-NEW2 $LATER > "$(cstore)/.credentials.json"   # the tool refreshed it again here
+P2="$HOME/proj2"; mkdir -p "$P2"; cd "$P2"
+/tmp/kae pin main
+#   assert: exit 0, and stderr says kae `kept it rather than replacing it`, naming the
+#           account's store — NOT `this write replaces it`
+grep MAIN-NEW2 "$(cstore)/.credentials.json"   # assert: the copy that can still refresh is
+                                        #         intact. This is the whole case: before
+                                        #         the fix it held the older snapshot and
+                                        #         every offline check was green
+snap main | grep -c MAIN-NEW2            # assert: 0 — kept is not harvested. kae could not
+                                        #         tell whose the copy is, so it neither
+                                        #         destroys it nor files it under this account
+grep u-main "$(store)/.claude.json"      # assert: the bind still labelled the directory —
+                                        #         only the credential write is skipped, and
+                                        #         a version of the fix that skipped this too
+                                        #         left the directory unattributable forever
+cd "$P"                                  # back to A's directory for the cases below
+
 # --- B. a copy kae cannot attribute is not adopted, and the cost is stated ---
 ident other > "$(store)/.claude.json"
 # LATER, not NEW: after A the snapshot already holds a NEW-dated copy, and a copy that
@@ -2192,9 +2217,21 @@ block rather than from the end state.
 - **§ per-worktree surfaces A–F: 31 of 31.** Run against the built binary on a temp HOME
   with every XDG root isolated (`. scripts/smoke-env.sh`), the repositories and worktrees
   created *inside* that HOME. This block needed no correction.
-- **§ v0.17.0 surface — the credential harvest, A–J: every documented assertion** — but
-  **only after fixing the block**, and that is the finding of this run: every credential
-  fixture still targeted
+- **A code defect the corrected block then exposed, found by review of it and fixed
+  before the tag.** A bind that could not *attribute* the copy in the account's credential
+  store overwrote it with the older snapshot — reachable on **every first bind**, because
+  the config dir attribution reads is created moments earlier and a shared bind links no
+  identity cache into it. Reproduced in the shape a user meets it (use claude in one
+  worktree, bind a second worktree to the same account) and it destroyed the only copy that
+  could still refresh, with `kae doctor` silent afterwards because nothing was left to
+  compare. The bind now keeps that copy and says so; `Conflicting` and unreadable copies are
+  still replaced, deliberately (docs/ADAPTERS.md is normative, docs/ROADMAP.md owns the
+  second one's trade-off). Case **A2** in the block above is the case that keeps it fixed —
+  it did not exist, and the run above walked the destructive path three times without
+  asserting anything about it. Every block was re-run against the fixed binary.
+- **§ v0.17.0 surface — the credential harvest, A–A2–J: every documented assertion** — but
+  **only after fixing the block**, and that is the other finding of this run: every
+  credential fixture still targeted
   `CLAUDE_CONFIG_DIR` after this release moved the credential to
   `CLAUDE_SECURESTORAGE_CONFIG_DIR`, so cases stopped exercising the harvest while their
   negative assertions went green *because* nothing happened. kae was correct throughout —

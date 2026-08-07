@@ -194,8 +194,8 @@ func TestCompletionScriptsCompleteCompanion(t *testing.T) {
 // from completionCommands *and* from this map, since nothing machine-checks
 // either against Root(). Adding that check by dispatching each command is not
 // safe in a unit test — several commands reach newApp before a bad flag stops
-// them, which would read the real environment. The remedy for the shape that
-// hits most often is a test naming the verb literally, the way
+// them, which would read the real environment. The remedy for the shape neither
+// table sees is a test naming the verb literally, the way
 // TestCompletionScriptsCompleteRelogin does for one with no sub-verbs to key on.
 //
 // What it deliberately does not claim: that a branch routes correctly. It proves

@@ -357,8 +357,8 @@ block in docs/VALIDATION.md, next to two correct ones.
   than trust a list of them: `grep -rn fish internal/`. Two kinds fail *silently*
   instead of loudly, which is why the grep is worth running: the installer's
   `--refresh` walk (`completion_install.go`), or the new shell's registered file
-  is never rewritten again; and the per-shell loops and table rows in
-  `completion_install_test.go`, which leave every guard below blind to it.
+  is never rewritten again; and the per-shell loops and table rows in the tests,
+  which leave every guard below blind to it.
   `kae <cmd> <TAB>` must never be a dead end — a new subcommand group shipped
   without completion in v0.10.0, and `kae env` / `kae backup` had no case at all
   until v0.17.0. **A guard reaches only what its table names**, which is why

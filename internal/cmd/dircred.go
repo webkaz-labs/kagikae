@@ -1070,6 +1070,19 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: could not remove the superseded %s credential for %s: %v\n",
 				store.Tool, store.Dir, err)
+		// Two removals share this loop and they are not the same event, so they do not
+		// share a sentence. removeDirCredential deletes at the location the store
+		// *reads*, which for a split store is the account's own — so reporting that as
+		// a "per-directory" credential at store.Dir named neither the thing removed nor
+		// where it lived, and understated the scope of the one removal that affects
+		// every other binding of the account. Found by running the smoke procedure in
+		// docs/VALIDATION.md § v0.17.0 per-account credential, which no test pinned:
+		// the two assertions on this string are both negative.
+		case removed && store.CredDir != "":
+			removals = append(removals, fmt.Sprintf(
+				"Removed the %s credential this account's bindings shared; nothing points at it any more (%s)",
+				store.Tool, store.CredDir,
+			))
 		case removed:
 			removals = append(removals, fmt.Sprintf(
 				"Removed the superseded per-directory %s credential (%s)", store.Tool, store.Dir,

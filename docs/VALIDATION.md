@@ -1615,7 +1615,12 @@ one captured account:
       directory, and its remedy is `cd <dir> && kae pin`.
 - [ ] Re-run `kae pin` there; the finding goes away and the entry is back.
 - [ ] `kae unpin --purge` in one of the two: kae keeps the credential and says how
-      many bindings still use it. Repeat in the last one: it is removed.
+      many bindings still use it. Repeat in the last one: it is removed, and the
+      message names it as **the account's** credential and points at
+      `credstore/claude/<account>` — not as a "per-directory" one at the config-dir
+      store, which is what it said until 2026-08-07. Read the message, not just the
+      state: the state assertion passed the whole time the message was wrong, and
+      both unit assertions on that string are negative ones that cannot see it.
 - [ ] `kae pin claude <other-account>` in a shared-mode directory rewrites the
       credential entry to the other account's store while leaving `CLAUDE_CONFIG_DIR`
       unchanged.

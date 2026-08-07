@@ -319,7 +319,11 @@ alternative exists (`secret-tool`).
   superseded *global* isolated home is never harvested** — `kae use -i <a>` then
   `kae use -i <b>` leaves `isolation/global/<tool>/<a>/` holding a's newest copy, and
   because there is no pin, neither the pin-level pass nor any sweep ever looks at it
-  (the write-path harvest only covers the home being materialized); and the harvest
+  (the write-path harvest only covers the home being materialized). **Resolved for
+  claude by the credential split**: a's credential is now a's own store, which the
+  home switch does not touch and any later bind of a reads directly, so there is no
+  second copy left to strand. It stands for a tool that cannot separate its
+  credential from its home, which today is every other one; and the harvest
   writes an account snapshot under a per-directory lock that no tool lock covers, so a
   concurrent `kae add` or switch-away recapture of the same account can leave the
   snapshot holding the copy that **cannot** refresh — not merely the older of two good
@@ -398,6 +402,22 @@ alternative exists (`secret-tool`).
   the account's, so only `kae unpin --purge` may take it, refcounted. What is still
   swept unchanged is the per-directory item a **pre-split** binding left behind,
   which is what makes re-running `kae pin` a migration rather than a leak.
+
+- **A store bound before the credential split, unbound, then re-bound after it keeps
+  its pre-split item** (recorded 2026-08-07, **not fixed** — deliberately). The
+  migration sweep is scoped to the store the *previous binding* pointed at
+  (`credentialMovedOutOf`), and after an unpin there is no previous binding to name
+  it, so a three-step history leaves the item behind. Nothing is lost: the pin-level
+  pass still harvests that copy into the account snapshot, so it is a leftover secret
+  rather than a lost login.
+  It is deliberately not fixed by widening the sweep a third time. Two weaker rules
+  were already wrong the same way — every store of a pre-split binding shares the
+  "no recorded credential entry" shape, so acting on it means deleting without
+  evidence that no binding reads it, and a per-directory item is precisely the thing
+  that cannot be counted. The right home is the entry below: **this leftover is
+  attributable**, unlike the four found on a real machine, because its hash input is
+  `store.Dir` and the pin index still names that directory. So it lands in the
+  reportable half of that feature, not the leave-it-alone half.
 
 - **Per-directory keychain items outlive everything that could name them, and now
   they can be found** (measured on a real machine 2026-08-04, **not fixed**). Five

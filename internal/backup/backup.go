@@ -83,6 +83,11 @@ func SecretRef(id, tool, name string) string {
 // that needs ten backups inside one clock second, which `kae run -s` halved the distance
 // to when a declined recapture made it emit two per command. Old ids cannot share a
 // second with new ones, so widening the field re-sorts nothing that exists.
+//
+// Two digits is a **bound, not a cure**: the hundredth backup in one second sorts below
+// the ninety-ninth. Each create does a collision `Stat` walk plus two atomic writes, so
+// that is not a count any command reaches; the width is chosen to sit far past what is,
+// not to make the class impossible.
 func NewID(dir string, now time.Time) string {
 	base := now.UTC().Format("20060102T150405Z")
 	id := base
@@ -199,7 +204,16 @@ func Prune(ctx context.Context, be secret.Backend, dir string, keep int, counts 
 		}
 	}
 	if counted < keep {
-		return nil, nil // not even `keep` countable backups yet: nothing is old enough to drop
+		// A statement of intent, not a filter: with fewer than `keep` countable backups the
+		// cutoff stays "" and the loop below deletes nothing either, since every id is `>= ""`.
+		// Said here so nobody adds a test that cannot fail, or reports the line as uncovered.
+		//
+		// It is also where the retention of *uncountable* backups is bounded, and the bound is
+		// external: every declining `kae run -s` writes one countable backup beside its
+		// preserved copy, so an uncountable one always has a countable sibling to age against.
+		// A future path emitting a preserved copy with no countable sibling would make this
+		// return retain them forever.
+		return nil, nil
 	}
 	for _, meta := range metas {
 		if meta.ID >= cutoff { // ids sort as strings, newest first (see NewID)

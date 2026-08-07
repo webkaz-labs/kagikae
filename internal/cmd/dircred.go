@@ -480,20 +480,41 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 	}
 	info := freshnessOf(tool, live.Data)
 	if !orderable(info) {
-		// **Only a tombstone is "nothing to lose".** Derived from `orderable` rather than
-		// restated, so a condition added there reaches this classification too — but the
-		// three conditions do not collapse to two answers, and folding them was a silent
-		// delete of a live login. `liveNothing` licenses a delete
-		// (harvestBeforeDelete removes the item without harvesting or warning);
-		// `liveUnreadable` forbids one. A payload that is `Known`, un-`Revoked` and
-		// **undated** is neither empty nor judgeable: claude sets `Known` on the mere
-		// presence of `expiresAt` and parses a non-numeric one to the zero time, so an
-		// upstream type change puts a working login in exactly that shape — measured, and
-		// the same shape recaptureWouldDowngrade splits on. It belongs with "kae cannot
-		// tell". The previous version of this comment claimed the zero case was
-		// unobservable and that claude's only measured zero was the tombstone; both were
-		// wrong, and a comment saying a guard cannot be tested is a licence to remove it.
-		if info.Known && info.Revoked {
+		// **Only the measured tombstone is "nothing to lose"; everything else kae cannot
+		// order, it cannot judge.** `liveNothing` licenses a delete (harvestBeforeDelete
+		// removes the item without harvesting or warning, and harvestDirCredential lets
+		// the overwrite pass unreported); `liveUnreadable` forbids one. `orderable` fails
+		// for three different reasons and they do **not** collapse to two answers — two
+		// separate folds of them each shipped a silent delete of a live login, one field
+		// apart, so this names the tombstone exactly rather than approximating it:
+		//
+		//   - `!Known`: no `expiresAt` key at all. Unreadable.
+		//   - `Known && !Revoked` and undated: claude sets `Known` on the key's mere
+		//     *presence* and parses a non-numeric value to the zero time, so an upstream
+		//     type change puts a working login here. Unreadable.
+		//   - `Known && Revoked` with a **live** deadline: `Revoked` is derived from token
+		//     fields that are empty *or absent*, so an upstream rename of the token keys
+		//     reads as revoked while being a working login — and docs/VALIDATION.md's own
+		//     row justifies that wide reading by saying it makes every path *decline* to
+		//     touch the copy, which is false for this consumer. Unreadable.
+		//   - `Known && Revoked && ExpiresAt.IsZero()`: the tombstone as **measured**
+		//     (blank tokens, `expiresAt: 0`, `refreshTokenExpiresAt` retained — the claude
+		//     row in docs/VALIDATION.md). Nothing to lose.
+		//
+		// So this depends on the tombstone continuing to zero `expiresAt`, which that row
+		// now records as a dependency: if upstream tombstones without zeroing it, kae stops
+		// sweeping tombstones and leaves a spent secret behind. That is the safe direction,
+		// and it is a recorded consequence rather than a surprise. `EpochToTime` maps every
+		// `n <= 0` to the zero time, so a negative deadline stays in this bucket — and by the
+		// same token a *non-number* is indistinguishable from a zero here, which is why a zero
+		// deadline with a token still in it is retained rather than swept (the claude adapter's
+		// Freshness comment and docs/ROADMAP.md carry that consequence).
+		//
+		// The `Known` conjunct is a statement of intent, not a filter: claude's is the only
+		// `Revoked` assignment in the tree and it always sits with `Known: true`, so a mutation
+		// dropping it cannot be killed today. It is kept so a second adapter cannot reach
+		// `liveNothing` without declaring the deadline field this arm reasons about.
+		if info.Known && info.Revoked && info.ExpiresAt.IsZero() {
 			return nil, freshness.Info{}, liveNothing
 		}
 		return nil, freshness.Info{}, liveUnreadable
@@ -1352,9 +1373,26 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 	case liveNothing:
 		return true
 	case liveUnreadable:
+		// The same asymmetry the account-gone branches below turn on, and for the same
+		// reason: it is what the caller was **asked** to do, not what the state is. During
+		// housekeeping a payload kae cannot judge is kept — it may be a working login in a
+		// shape kae has not been taught, and a bind was not asked to destroy anything. Under
+		// `--purge` keeping it strands a secret **nothing kae offers can remove**: the item
+		// is named by a per-directory service kae cannot address without the string it
+		// hashes from, and this was the only path to it. So the purge takes it and says
+		// exactly what it is destroying, which is the loudest kae can be about a copy it
+		// could not read.
+		if purging {
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: kae could not read or date the %s credential in %s, so it is deleted "+
+					"without being kept anywhere — if that was a working login in a shape kae does not "+
+					"recognize, it is gone\n", tool, credDir)
+			return true
+		}
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae cannot read or date the %s credential in %s, so it is left in place "+
-				"instead of deleted (a payload kae cannot judge may still be a working login)\n", tool, credDir)
+				"instead of deleted (a payload kae cannot judge may still be a working login); "+
+				"kae unpin --purge removes it\n", tool, credDir)
 		return false
 	}
 	if accountName == "" {

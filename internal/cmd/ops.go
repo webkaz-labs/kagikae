@@ -210,12 +210,12 @@ func (app *App) pruneBackups(ctx context.Context, be secret.Backend) {
 		return
 	}
 	defer l.Release()
-	// backup_keep counts undo targets. A preserved copy (run-unattributable) is retained
-	// beside them without consuming a slot, or a declined run would evict the backup that
-	// is the actual undo target — it is written last, so it sorts newest.
+	// backup_keep counts undo targets (isUndoTarget, shared with the bare-rollback default
+	// because the two rules are coupled). A preserved copy is retained beside them without
+	// consuming a slot, or a declined run would evict the backup that is the actual undo
+	// target — it is written last, so it sorts newest.
 	if _, err := backup.Prune(
-		ctx, be, app.Paths.BackupsDir(), app.Config.Security.BackupKeep,
-		func(meta backup.Meta) bool { return meta.Reason != constants.BackupReasonRunUnattributable },
+		ctx, be, app.Paths.BackupsDir(), app.Config.Security.BackupKeep, isUndoTarget,
 	); err != nil {
 		fmt.Fprintf(os.Stderr, "kae: warning: backup pruning failed: %v\n", err)
 	}

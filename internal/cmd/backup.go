@@ -311,9 +311,20 @@ func latestRestorable(dir string) (backup.Meta, bool, error) {
 		return backup.Meta{}, false, err
 	}
 	for _, meta := range metas { // List is newest-first
-		if meta.Reason != constants.BackupReasonRunUnattributable {
+		if isUndoTarget(meta) {
 			return meta, true, nil
 		}
 	}
 	return backup.Meta{}, false, nil
+}
+
+// isUndoTarget reports whether a backup records a state kae was **about to change**, as
+// opposed to one it declined to adopt. Two rules follow from it and they are coupled, so
+// they read it from here rather than each spelling the reason out: a bare `kae rollback`
+// targets only an undo target (latestRestorable), and `backup_keep` counts only undo
+// targets (pruneBackups). Written twice, a sixth reason added to one site reintroduces
+// whichever of those two the other site owns — the drift AGENTS.md describes for
+// `supersedes`, one predicate over.
+func isUndoTarget(meta backup.Meta) bool {
+	return meta.Reason != constants.BackupReasonRunUnattributable
 }

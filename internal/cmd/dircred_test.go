@@ -1355,16 +1355,20 @@ func mkdirs(t *testing.T, dirs ...string) {
 // longer binds, holding the tombstone a failed refresh leaves behind — nothing to
 // harvest, so the sweep is free to remove it, which keeps this test about the thing it
 // is named for: *which* item the sweep addresses.
+//
+// The payload is the tombstone **as measured**: blank tokens *and* `expiresAt: 0`
+// (docs/VALIDATION.md's claude row). It used to carry a future deadline, which is not a
+// shape claude has been observed to produce and which the sweep now keeps rather than
+// deletes — blank tokens with a live deadline are indistinguishable from an upstream
+// token-key rename, and that is a working login. So this fixture is now the positive
+// control for the one arm that licenses a delete, and the sibling below is its negative.
 func TestPruneDirCredentialsRemovesSupersededItem(t *testing.T) {
 	app, pinID := prunableApp(t)
 	stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
 	bound := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
 	mkdirs(t, stale, bound)
 
-	tombstone := fmt.Sprintf(
-		`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%d}}`,
-		app.Now().Add(time.Hour).UnixMilli(),
-	)
+	const tombstone = `{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0}}`
 	fake := &runnertest.Fake{Stdout: tombstone, Code: 0}
 	var lines []string
 	runner.With(fake, func() {
@@ -1380,6 +1384,47 @@ func TestPruneDirCredentialsRemovesSupersededItem(t *testing.T) {
 	}
 	if len(lines) != 1 || !strings.Contains(lines[0], stale) {
 		t.Fatalf("the removal must be reported: %v", lines)
+	}
+}
+
+// The negative control for the arm above, in the two shapes that are **not** the measured
+// tombstone. `Revoked` is derived from token fields that are empty *or absent*, so both of
+// these read as revoked while carrying a live deadline — and an upstream rename of the
+// token keys is exactly the second one. docs/VALIDATION.md justifies that wide reading by
+// saying it makes every path *decline* to touch the copy; for this consumer it would have
+// licensed the delete instead, which is the defect this pins.
+func TestPruneDirCredentialsKeepsARevokedLookingCopyWithALiveDeadline(t *testing.T) {
+	for _, tc := range []struct{ name, oauth string }{
+		{"blank tokens, live deadline", `{"accessToken":"","refreshToken":"","expiresAt":%d}`},
+		{"token keys renamed away", `{"tokenV2":"sk-ant-oat01-LIVE","expiresAt":%d}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, pinID := prunableApp(t)
+			oauth := fmt.Sprintf(tc.oauth, app.Now().Add(time.Hour).UnixMilli())
+			stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
+			bound := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+			mkdirs(t, stale, bound)
+
+			fake := &runnertest.Fake{Stdout: `{"claudeAiOauth":` + oauth + `}`, Code: 0}
+			var lines []string
+			var stderr string
+			runner.With(fake, func() {
+				_, stderr = captureStderr(t, func() int {
+					lines = app.pruneDirCredentials(context.Background(), testBackend(t, app), pinID, "",
+						map[string]bool{bound: true}, fragmentInfo{}, false)
+					return 0
+				})
+			})
+			if strings.Contains(strings.Join(fake.Args, " "), "delete-generic-password") {
+				t.Fatalf("a copy kae cannot judge must be kept, not deleted: %v", fake.Args)
+			}
+			if len(lines) != 0 {
+				t.Fatalf("nothing was removed, so nothing may be reported as removed: %v", lines)
+			}
+			if !strings.Contains(stderr, "cannot read or date the claude credential") {
+				t.Fatalf("keeping it must say why: %q", stderr)
+			}
+		})
 	}
 }
 
@@ -1964,5 +2009,54 @@ func TestDirCredentialFreshnessReadsTheDirScopedItem(t *testing.T) {
 	// And the payload it read is the one that decided the verdict.
 	if !needsRelogin(info, app.Now()) {
 		t.Fatalf("an expiry of 2020 with no refresh token must read as needing a re-login: %+v", info)
+	}
+}
+
+// `--purge` is the way out for a copy kae cannot judge, and a bind's sweep still is not.
+// Keeping it during housekeeping is right — it may be a working login in a shape kae has
+// not been taught — but keeping it under `--purge` stranded a secret **nothing kae offers
+// can remove**: a per-directory item is addressable only from the string kae hashes its
+// service name from, and this sweep is the only path to it. Both arms say what they do.
+func TestPurgeIsTheWayOutForACredentialKaeCannotJudge(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		purging     bool
+		wantDeleted bool
+		wantSays    string
+	}{
+		{"a bind's sweep keeps it and names the way out", false, false, "kae unpin --purge removes it"},
+		{"--purge takes it and says what it destroys", true, true, "it is gone"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, pinID := prunableApp(t)
+			stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
+			bound := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+			mkdirs(t, stale, bound)
+
+			// Unreadable at all: not JSON kae's parser recognizes as a credential.
+			fake := &runnertest.Fake{Stdout: `{"somethingElse":true}`, Code: 0}
+			var lines []string
+			var stderr string
+			runner.With(fake, func() {
+				_, stderr = captureStderr(t, func() int {
+					lines = app.pruneDirCredentials(context.Background(), testBackend(t, app), pinID, "",
+						map[string]bool{bound: true}, fragmentInfo{}, tc.purging)
+					return 0
+				})
+			})
+			deleted := strings.Contains(strings.Join(fake.Args, " "), "delete-generic-password")
+			if deleted != tc.wantDeleted {
+				t.Fatalf("deleted=%v want %v (args %v, stderr %q)", deleted, tc.wantDeleted, fake.Args, stderr)
+			}
+			if !strings.Contains(stderr, tc.wantSays) {
+				t.Errorf("want stderr to contain %q: %q", tc.wantSays, stderr)
+			}
+			if tc.wantDeleted && (len(lines) != 1 || !strings.Contains(lines[0], stale)) {
+				t.Errorf("a purge that removed it must report it: %v", lines)
+			}
+			if !tc.wantDeleted && len(lines) != 0 {
+				t.Errorf("nothing was removed, so nothing may be reported: %v", lines)
+			}
+		})
 	}
 }

@@ -467,9 +467,16 @@ func (Claude) Identity(_ context.Context, env adapter.Env) (string, error) {
 //
 // The tombstone is the other half. When a refresh fails with invalid_grant,
 // Claude Code overwrites the credential in place with blank tokens and
-// expiresAt 0 — an explicit death certificate. Read literally that is "no expiry
-// recorded", the most harmless state kae has, so it is translated here (the one
-// place that knows this payload) into Revoked.
+// expiresAt 0 — an explicit death certificate. `Revoked` catches it, but note **how**,
+// because this comment claimed the wrong mechanism for two releases and the line it
+// described is now load-bearing: the zero is *not* translated into `Revoked`, the blank
+// tokens are what set it. A zero deadline reaches kae as "no expiry recorded" and nothing
+// distinguishes it from a value kae could not parse, since EpochToTime maps both to the
+// zero time. So a payload with a zero deadline and a token still in it does **not** read
+// as revoked — and since the per-directory sweep now keeps everything it cannot judge
+// (readLiveCredential), such an item is retained rather than swept. Recorded in
+// docs/ROADMAP.md; closing it means teaching `freshness` to tell a JSON number from a
+// non-number, which is the only real work in it.
 func (Claude) Freshness(payload []byte) freshness.Info {
 	root, ok := freshness.DecodeObject(payload)
 	if !ok {

@@ -455,10 +455,22 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 				"so kae did not capture it into that snapshot; re-bind with: %s pin %s <account>\n",
 			tool, tool, accountName, refused.Why, toolName, tool)
 	default:
+		// The frame may claim no more than the reason it interpolates. It used to say kae
+		// "cannot attribute" the login and that the snapshot holds "the **older** copy" —
+		// an ordering claim, next to reasons that include "kae cannot read or date the copy
+		// already there", which is kae saying it cannot order them. Corrected 2026-08-07.
+		//
+		// **Unasserted, and honestly so**: no fixture reaches this arm. A live copy kae
+		// cannot judge does not produce a refusal here at all — harvestDirCredential finds
+		// the snapshot at least as new and returns an empty Why, which is the silent
+		// success case above. Whether any state reaches `default:` under the current
+		// classifier is an open question rather than a covered one; a review reported
+		// measuring it and this attempt could not reproduce that. Do not add an assertion
+		// on this string without first showing the arm runs.
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae cannot attribute the %s login now in this directory to %s/%s (%s), "+
-				"so it did not capture it back and that snapshot still holds the older copy; "+
-				"%s use %s %s would apply that older one\n",
+			"kae: warning: kae cannot confirm the %s login now in this directory is %s/%s's (%s), "+
+				"so it did not capture it back and that snapshot still holds its own copy; "+
+				"%s use %s %s would apply that one\n",
 			tool, tool, accountName, refused.Why, toolName, tool, accountName)
 	}
 	return false

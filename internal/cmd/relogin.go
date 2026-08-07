@@ -460,13 +460,15 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 		// an ordering claim, next to reasons that include "kae cannot read or date the copy
 		// already there", which is kae saying it cannot order them. Corrected 2026-08-07.
 		//
-		// **Unasserted, and honestly so**: no fixture reaches this arm. A live copy kae
-		// cannot judge does not produce a refusal here at all — harvestDirCredential finds
-		// the snapshot at least as new and returns an empty Why, which is the silent
-		// success case above. Whether any state reaches `default:` under the current
-		// classifier is an open question rather than a covered one; a review reported
-		// measuring it and this attempt could not reproduce that. Do not add an assertion
-		// on this string without first showing the arm runs.
+		// Two routes reach it, and the second is the one worth knowing: a live copy kae
+		// cannot read or date (harvestDirCredential returns that refusal *before* its
+		// "snapshot at least as new" arm, so it is not swallowed), and any missing-evidence
+		// refusal from dirIdentityConfirms — a bound store with no identity cache is the
+		// ordinary one. An earlier version of this comment claimed no fixture could reach
+		// the arm; that was wrong, and it was wrong for a reason worth repeating: the probe
+		// wrote its payload where relogin does not resolve the store, so the read came back
+		// absent and landed on the silent-success arm above. A read that finds nothing and
+		// a read that finds something unjudgeable are different findings.
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae cannot confirm the %s login now in this directory is %s/%s's (%s), "+
 				"so it did not capture it back and that snapshot still holds its own copy; "+

@@ -696,3 +696,47 @@ func TestCredentialArtifactNameMatchesEveryAdapter(t *testing.T) {
 			checked, want)
 	}
 }
+
+// The refusal's frame may claim no more than the reason it interpolates. It used to say
+// kae "cannot attribute" the login and that the snapshot holds "the **older** copy" — an
+// ordering claim, next to a reason that says kae could not read or date the payload at all.
+//
+// Reaching this arm needs the payload written where relogin actually resolves the store: a
+// first attempt wrote it elsewhere, read back absent, and landed on the silent-success arm,
+// which is what made the arm look unreachable.
+func TestReloginRefusalDoesNotClaimAnOrderingItCannotMake(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+
+	credDir := t.TempDir()
+	// Known to claude's parser (expiresAt present), not a tombstone, and undated.
+	writeFile(t, filepath.Join(credDir, ".credentials.json"),
+		fmt.Sprintf(`{"claudeAiOauth":{"accessToken":"sk-ant-oat01-LIVE","refreshToken":"r1","expiresAt":%q}}`,
+			fmt.Sprint(now.Add(8*time.Hour).UnixMilli())))
+	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
+
+	dirs := bindDirs{Config: credDir}
+	specs, err := app.dirSpecs(ctx, constants.ToolClaude, dirs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var captured bool
+	_, stderr := captureStderr(t, func() int {
+		captured = app.captureBackAfterRelogin(ctx, testBackend(t, app), specs,
+			constants.ToolClaude, "main", dirs)
+		return 0
+	})
+	if captured {
+		t.Fatalf("a copy kae cannot judge must not be captured back: %q", stderr)
+	}
+	if !strings.Contains(stderr, "cannot confirm the claude login") {
+		t.Errorf("the frame must claim only that kae cannot confirm whose login it is: %q", stderr)
+	}
+	for _, forbidden := range []string{"the older copy", "that older one"} {
+		if strings.Contains(stderr, forbidden) {
+			t.Errorf("kae could not order the two, so it must not call either the older: %q", stderr)
+		}
+	}
+}

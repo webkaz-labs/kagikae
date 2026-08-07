@@ -492,7 +492,8 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 		//   - `Known && !Revoked` and undated: claude sets `Known` on the key's mere
 		//     *presence* and parses a non-numeric value to the zero time, so an upstream
 		//     type change puts a working login here. Unreadable.
-		//   - `Known && Revoked` with a **live** deadline: `Revoked` is derived from token
+		//   - `Known && Revoked` with a **non-zero** deadline (future or past — a past one is
+		//     the shape the dependency below is about, not a fifth case): `Revoked` is derived from token
 		//     fields that are empty *or absent*, so an upstream rename of the token keys
 		//     reads as revoked while being a working login — and docs/VALIDATION.md's own
 		//     row justifies that wide reading by saying it makes every path *decline* to
@@ -1383,16 +1384,20 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 		// exactly what it is destroying, which is the loudest kae can be about a copy it
 		// could not read.
 		if purging {
+			// Said before the delete, and it names both limits: this arm runs *before* any
+			// attribution, so kae could not tell whose login it was either — the store path
+			// carries the account segment, which is all a user has to go on.
 			fmt.Fprintf(os.Stderr,
-				"kae: warning: kae could not read or date the %s credential in %s, so it is deleted "+
-					"without being kept anywhere — if that was a working login in a shape kae does not "+
-					"recognize, it is gone\n", tool, credDir)
+				"kae: warning: kae could not read or date the %s credential in %s — nor tell which "+
+					"account it belonged to — so it is deleted without being kept anywhere; if that was "+
+					"a working login in a shape kae does not recognize, it is gone\n", tool, credDir)
 			return true
 		}
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae cannot read or date the %s credential in %s, so it is left in place "+
 				"instead of deleted (a payload kae cannot judge may still be a working login); "+
-				"kae unpin --purge removes it\n", tool, credDir)
+				"if it is spent, kae unpin --purge in that directory removes it — that tears the "+
+				"binding down too, so re-pin afterwards\n", tool, credDir)
 		return false
 	}
 	if accountName == "" {

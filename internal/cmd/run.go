@@ -425,7 +425,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	if err != nil {
 		return 0, err
 	}
-	meta, err := app.createBackup(ctx, be, plans, st, "run")
+	meta, err := app.createBackup(ctx, be, plans, st, constants.BackupReasonRun)
 	if err != nil {
 		return 0, err
 	}
@@ -505,7 +505,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// check reads the same credential either way. And the `err != nil` arm below differs
 	// from `!anyPresent` in wording alone, with no fixture that can make a live read
 	// fail while the artifacts stay resolvable.
-	var unattributable []toolPlan
+	var declined []toolPlan
 	reasons := map[string]string{}
 	for _, plan := range plans {
 		values, anyPresent, err := readLiveValues(ctx, plan.Specs)
@@ -526,13 +526,21 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			continue
 		}
 		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); why != "" {
-			unattributable = append(unattributable, plan)
+			declined = append(declined, plan)
 			reasons[plan.Tool] = why
 			continue
 		}
-		if why := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); why != "" {
-			// No backup is taken for this one: the copy it declines is a tombstone or an
-			// older credential, so there is nothing worth preserving.
+		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); why != "" {
+			if preserve {
+				// kae cannot order the two copies, so it may neither say the live one is
+				// finished nor let the restore below take it. Same treatment as an
+				// unattributable copy: back it up and name it.
+				declined = append(declined, plan)
+				reasons[plan.Tool] = why
+				continue
+			}
+			// No backup for this one: what it declines is a tombstone or a provably older
+			// credential, so there is nothing to keep.
 			fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot left unchanged\n", why)
 			continue
 		}
@@ -544,15 +552,16 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, plan.Account, err)
 		}
 	}
-	if len(unattributable) > 0 {
+	if len(declined) > 0 {
 		preID := ""
-		if preMeta, err := app.createBackup(ctx, be, unattributable, st, "run-unattributable"); err != nil {
+		if preMeta, err := app.createBackup(ctx, be, declined, st, constants.BackupReasonRunUnattributable); err != nil {
 			fmt.Fprintf(os.Stderr, "kae: warning: could not back up the live state kae declined to adopt: %v\n", err)
 		} else {
 			preID = preMeta.ID
 		}
-		for _, plan := range unattributable {
-			warnRecaptureIdentityUnconfirmed(plan.Tool, reasons[plan.Tool], preID)
+		for _, plan := range declined {
+			warnRecaptureDeclined(plan.Tool, reasons[plan.Tool], preID,
+				"which covers only the tools whose recapture kae declined")
 		}
 	}
 

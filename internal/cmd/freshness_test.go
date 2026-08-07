@@ -706,3 +706,44 @@ func TestSwitchAwayIdentityRecordsThatCannotBeCompared(t *testing.T) {
 		})
 	}
 }
+
+// The switch-away recapture owes the same treatment as `run -s` when it cannot *order*
+// the two copies: a claim it can support, and a named place the declined copy survives.
+// Its backup already holds it (createBackup runs before the recapture), so the fix here
+// is the wording plus naming that backup — but both halves need pinning, or the path that
+// gets its safety for free is the one nobody checks.
+func TestSwitchAwayNamesABackupForACopyItCannotOrder(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	const dated = `{"accessToken":"MAIN-T0","refreshToken":"r0","expiresAt":1800000000000}`
+
+	seedClaudeOAuth(t, app, dated)
+	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"),
+		`{"oauthAccount":`+claudeOAuthAccount("main", "main@example.com")+`}`)
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
+	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+
+	// An in-tool refresh whose expiresAt changed type: Known, not a tombstone, undated.
+	seedClaudeOAuth(t, app, `{"accessToken":"MAIN-T1","refreshToken":"r1","expiresAt":"1814400000000"}`)
+
+	code, out, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(stderr, "cannot order the live claude credential") {
+		t.Errorf("expected the unorderable refusal: %q", stderr)
+	}
+	if strings.Contains(stderr, "can no longer refresh") {
+		t.Errorf("kae cannot order them, so it must not say the live copy is finished: %q", stderr)
+	}
+	if !strings.Contains(stderr, "preserved only in backup ") {
+		t.Errorf("the refusal must name where the declined copy survives: %q", stderr)
+	}
+	if !strings.Contains(stderr, "which reverts this whole switch") {
+		t.Errorf("on this path the backup covers every switched tool and must say so: %q", stderr)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, "claude", "main"); !strings.Contains(got, "MAIN-T0") {
+		t.Errorf("the snapshot's dated copy must survive: %s", got)
+	}
+}

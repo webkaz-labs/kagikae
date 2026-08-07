@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/backup"
+	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/runner"
@@ -622,6 +623,24 @@ func TestRunSharedPreservesALoginItDeclinesToAdopt(t *testing.T) {
 	if strings.Contains(stderr, "could not preserve") {
 		t.Errorf("the backup succeeded, so kae must not say it could not preserve it: %q", stderr)
 	}
+	// It covers only the tool whose recapture was declined, which is what the remedy's
+	// scope clause promises; backing up every plan would make a rollback to it revert
+	// tools that recaptured correctly.
+	if len(meta.Tools) != 1 || meta.Tools[0] != "claude" {
+		t.Errorf("the backup must cover only the declined tools, got %v", meta.Tools)
+	}
+	// And it is a preserved artifact, not an undo target: a bare `kae rollback` must not
+	// install the login kae refused to name, even though this is the newest backup.
+	code, out = captureStdout(t, func() int {
+		return runRollback(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if strings.Contains(out, id) {
+		t.Errorf("bare rollback must not target the declined-copy backup %s: %s", id, out)
+	}
+	if live := readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json")); strings.Contains(live, foreign) {
+		t.Errorf("bare rollback installed the login kae declined to adopt: %s", live)
+	}
 }
 
 // backupIDFromWarning extracts the id out of the refusal's second line, which is the
@@ -718,7 +737,7 @@ func TestRunSharedLoggedOutWarningCarriesAdapterWarnings(t *testing.T) {
 // credential being destroyed.
 func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
 	_, stderr := captureStderr(t, func() int {
-		warnRecaptureIdentityUnconfirmed("claude", "kae cannot tell", "")
+		warnRecaptureDeclined("claude", "kae cannot tell", "", "scope")
 		return 0
 	})
 	if !strings.Contains(stderr, "could not preserve") || !strings.Contains(stderr, "lost once") {
@@ -728,10 +747,119 @@ func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
 		t.Errorf("with no backup, kae must not claim the copy survives: %q", stderr)
 	}
 	_, withID := captureStderr(t, func() int {
-		warnRecaptureIdentityUnconfirmed("claude", "kae cannot tell", "20260101T000000Z")
+		warnRecaptureDeclined("claude", "kae cannot tell", "20260101T000000Z", "which reverts nothing else")
 		return 0
 	})
 	if strings.Contains(withID, "could not preserve") {
 		t.Errorf("with a backup, kae must not say it could not preserve it: %q", withID)
+	}
+	// What restoring that backup puts back besides this login differs per caller, so
+	// the remedy has to say; without it the sentence is over-precise on `kae use`,
+	// where the same rollback reverts every tool the switch touched.
+	if !strings.Contains(withID, "which reverts nothing else") {
+		t.Errorf("the remedy must state what else the rollback reverts: %q", withID)
+	}
+}
+
+// A live copy kae cannot **order** is not a copy it may declare dead, and on this path a
+// refusal is a deletion — so it is preserved rather than discarded. `supersedes` lets an
+// un-orderable losing side lose to anything, deliberately, because its usual caller asks
+// "may I overwrite this"; here the caller also tells the user the copy is finished, which
+// is the opposite question (AGENTS.md § supersedes; pinSupersededChecks is the worked
+// example). Taking that subset destroyed a refreshed token, measured 2026-08-07.
+//
+// The fixture's `expiresAt` is a **string**: Known to claude's parser, not a tombstone,
+// and undated — the shape an upstream type change produces.
+func TestRunSharedPreservesACopyItCannotOrder(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	const dated = `{"accessToken":"MAIN-T0","refreshToken":"r0","expiresAt":1800000000000}`
+	seedClaudeOAuth(t, app, dated)
+	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"),
+		`{"oauthAccount":`+claudeOAuthAccount("main", "main@example.com")+`}`)
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+
+	const refreshed = "MAIN-T1-REFRESHED"
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		seedClaudeOAuth(t, app,
+			`{"accessToken":"`+refreshed+`","refreshToken":"r1","expiresAt":"1814400000000"}`)
+		return 0, nil
+	})
+	code, out, stderr := captureBoth(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	if !strings.Contains(stderr, "cannot order the live claude credential") {
+		t.Errorf("expected a refusal that says kae cannot order the two copies: %q", stderr)
+	}
+	// The strong claim is the one kae cannot support here.
+	if strings.Contains(stderr, "can no longer refresh") {
+		t.Errorf("kae cannot order them, so it must not say the live copy is finished: %q", stderr)
+	}
+	id := backupIDFromWarning(t, stderr)
+	meta, found, err := backup.Latest(app.Paths.BackupsDir())
+	if err != nil || !found || meta.ID != id {
+		t.Fatalf("the refusal named %s but the newest backup is %+v (found=%v err=%v)", id, meta.ID, found, err)
+	}
+	be := testBackend(t, app)
+	held := ""
+	for _, rec := range meta.Artifacts {
+		if rec.Name == "claude_ai_oauth" {
+			data, _, _ := be.Get(ctx, rec.SecretRef)
+			held = string(data)
+		}
+	}
+	if !strings.Contains(held, refreshed) {
+		t.Fatalf("the copy kae could not order was not preserved: %s", held)
+	}
+	// The snapshot keeps its own dated copy: kae declined to overwrite it, which is the
+	// half of the refusal that was right all along.
+	if got := snapshotPayload(t, app, be, "claude", "main"); !strings.Contains(got, "MAIN-T0") {
+		t.Errorf("the snapshot's dated copy must survive: %s", got)
+	}
+}
+
+// The declined-copy backup covers **only** the tools whose recapture was declined, which
+// is what the remedy's scope clause promises. A single-tool fixture cannot see the
+// difference — there `plans` and the declined set are the same slice — so this one
+// declines claude and lets codex recapture normally.
+func TestRunSharedBacksUpOnlyTheDeclinedTools(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	app.Config.Profiles["main"] = config.Profile{Accounts: map[string]string{"claude": "main", "codex": "main"}}
+
+	seedClaude(t, app, mainToken, "main")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	seedCodex(t, app, "codex-main-token")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "main") })
+	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "all", "main") })
+
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		seedClaude(t, app, "sk-ant-oat01-FOREIGN", "stranger") // claude: declined
+		seedCodex(t, app, "codex-CHILD-token")                 // codex: recaptured
+		return 0, nil
+	})
+	code, out, stderr := captureBoth(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "all", "main", []string{"claude"})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	id := backupIDFromWarning(t, stderr)
+	meta, found, err := backup.Latest(app.Paths.BackupsDir())
+	if err != nil || !found || meta.ID != id {
+		t.Fatalf("the refusal named %s, newest is %q (found=%v err=%v)", id, meta.ID, found, err)
+	}
+	if len(meta.Tools) != 1 || meta.Tools[0] != constants.ToolClaude {
+		t.Errorf("the backup must cover only the declined tool, got %v", meta.Tools)
+	}
+	// The positive half: codex really did recapture, so this is not passing because
+	// nothing was recaptured at all.
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, "codex", "main"); !strings.Contains(got, "codex-CHILD-token") {
+		t.Fatalf("codex's recapture must have happened: %s", got)
 	}
 }

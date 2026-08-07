@@ -445,8 +445,9 @@ toggle moves every tool to the other mechanism's store and an isolated re-bind
 re-keys the store by account, so the store the directory used before is
 unreachable, and its credential would otherwise be one nothing points at. A
 keychain item is the case that is easiest to miss, and the common one: it lives
-under a per-directory service name that appears nowhere in kae's data dir and no
-kae check reports one yet. Only the credential goes — the store directory, its
+under a per-directory service name that appears nowhere in kae's data dir, and no
+kae check reports the item itself — `credential_unsplit` names the *directory* whose
+re-bind would remove it, which is the closest thing there is. Only the credential goes — the store directory, its
 sessions and its settings stay. **Which store kinds a file credential is taken
 from is stated once, below**, with the migration case that made it more than the
 item; do not read the keychain wording here as the rule. The sweep runs after the

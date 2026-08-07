@@ -1030,6 +1030,12 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// Safe to delete here because the pin-level pass has already harvested it: it
 		// ran before materialization with this same `prev`, which is what makes the
 		// store read as pre-split there too.
+		// Two uses, and the name fits one of them. For a bind it is what lets a store
+		// the binding still points at be swept at all. For `kae unpin --purge` nothing
+		// migrated — the fragment was removed — and `keep` is nil, so the branch below
+		// is irrelevant; what the flag still carries there is "this store's file is not
+		// the copy it reads any more", which is the answer removeDirCredential needs to
+		// take a pre-split file credential the purge was asked to remove.
 		migrating := app.credentialMovedOutOf(store, pinID, prev)
 		if keep[store.Dir] && !migrating {
 			continue

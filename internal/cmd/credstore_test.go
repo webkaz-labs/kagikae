@@ -233,6 +233,14 @@ func TestRePinMigrationRemovesThePreSplitFile(t *testing.T) {
 // …and the other side of that exception: an ordinary re-bind, with nothing migrating,
 // leaves the account's credential alone. Without this the guard above could be "sweep
 // every kept store" and the migration test would still pass.
+//
+// **Isolated** mode, and that is load-bearing rather than incidental. A shared re-bind
+// keeps one store dir, so the sweep skips it at the `keep` check and never reaches the
+// gate under test — measured: with shared mode this test survived a mutation that
+// removed the `!purging` return entirely. Isolated re-keys the store by account, so
+// the store being left is not kept, reaches removeDirCredential, and the gate is the
+// only thing standing between a re-bind and deleting the previous account's shared
+// credential.
 func TestAPlainRebindDoesNotDeleteTheAccountCredential(t *testing.T) {
 	app := overlayTestApp(t)
 	app.Env.GOOS = "darwin"
@@ -243,7 +251,7 @@ func TestAPlainRebindDoesNotDeleteTheAccountCredential(t *testing.T) {
 		captureClaude(t, app, "main", mainToken)
 		captureClaude(t, app, "side", sideToken)
 	})
-	pinHere(t, app, modeShared)
+	dir := pinHere(t, app, modeIsolated)
 
 	var out string
 	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
@@ -253,6 +261,13 @@ func TestAPlainRebindDoesNotDeleteTheAccountCredential(t *testing.T) {
 		})
 		mustExit(t, constants.ExitOK, code, out)
 	})
+
+	// The store being left must actually be reached by the sweep, or the assertion
+	// below holds for the reason the shared-mode version did: it was skipped.
+	left := app.Paths.IsolatedConfigDir(paths.PinID(dir), constants.ToolClaude, "main")
+	if !dirExists(left) {
+		t.Fatalf("the previous account's store must exist for this test to mean anything: %s", left)
+	}
 
 	// main's credential is that account's, and this directory binding something else
 	// says nothing about it — another worktree, or `kae use -i main`, may still read it.

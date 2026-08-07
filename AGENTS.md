@@ -121,13 +121,18 @@ block in docs/VALIDATION.md, next to two correct ones.
   `unpin --purge` may take it, after counting every fragment **and** `state.synced` —
   where a source kae could not read has to mean keep, since "no reference found" and
   "kae could not look" differ by one logged-out sibling.
-- **A per-directory keychain item has to be removed when nothing points at it any
-  more**, and the sweep (`pruneDirCredentials`) mirrors the write gate exactly:
-  keychain items only, only where the adapter declares them `KeychainDirBindable`.
-  The asymmetry with a file store is deliberate — a file credential lives *inside*
-  the store directory, which `kae unpin` and a mode toggle keep on purpose, while an
-  item lives under a per-directory service name that appears nowhere in kae's data
-  dir, so kae cannot *address* one without already knowing the string it hashes from.
+- **A per-directory credential has to be removed when nothing points at it any
+  more.** `removeDirCredential` is normative for *which* ones, and the rule is two
+  rules over two kinds, not one: a **keychain item** where the adapter declares it
+  `KeychainDirBindable`, and a **file** credential only where it is no longer the
+  copy its own store reads (the account's own store, or a store a migration just
+  moved the credential out of). Do not restate that anywhere; link to it. It read
+  "keychain items only" here for a release, which is a licence to restore a gate that
+  leaves a full plaintext copy of a live account behind.
+  The item is still the case that most needs the sweep, and that is the part worth
+  remembering: it lives under a per-directory service name that appears nowhere in
+  kae's data dir, so kae cannot *address* one without already knowing the string it
+  hashes from.
   This used to say such an item "cannot be enumerated on darwin"; that is too strong
   and was corrected on 2026-08-04 — `security dump-keychain` lists item attributes
   (service, account, dates) with no prompt, which is how five stale per-directory

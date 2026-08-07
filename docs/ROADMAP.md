@@ -625,10 +625,11 @@ alternative exists (`secret-tool`).
   3. ~~**Own the item's lifecycle.**~~ **Done** (2026-07-30). A `pin -s` ↔ `pin -i`
      toggle and an isolated re-bind now sweep the keychain item of the store they
      supersede, and `kae unpin --purge` sweeps the current ones (plain `unpin` still
-     keeps everything, so a re-pin restores the directory). The sweep mirrors the
-     write gate — keychain items only, only where the adapter declares them bindable
-     — so it starts covering codex the moment the capability is declared, with no
-     further work. It also closed the same gap for claude, which had been creating
+     keeps everything, so a re-pin restores the directory). The sweep covers a keychain
+     item where the adapter declares it bindable — so it starts covering codex the
+     moment the capability is declared, with no further work — and, since v0.17.0, a
+     file credential that is no longer the copy its own store reads
+     (`removeDirCredential` is normative). It also closed the same gap for claude, which had been creating
      per-directory items since v0.12.0 with nothing removing them.
   Then declare the capability (drop codex from `bindableNotYetDeclared`) and add the
   pin round-trip to the real-machine gate. Until step 3 lands, a pinned directory has
@@ -674,8 +675,9 @@ alternative exists (`secret-tool`).
   bound directory, so walking `isolation/<pinID>` — computed from its own cwd —
   finds the stores, and anything the new binding does not point at is stale by
   definition. The store directory still stays (it holds sessions and settings a
-  re-pin restores); only the invisible half, the keychain item, is removed
-  ([CLI.md](CLI.md) § pin). What an index would still add is the *other* direction —
+  re-pin restores); what is removed is the credential, which for a keychain store is
+  the invisible half and since v0.17.0 can also be a file the store no longer reads
+  ([CLI.md](CLI.md) § pin, `removeDirCredential` for the rule). What an index would still add is the *other* direction —
   reaching a bound directory from outside it — which **landed on 2026-07-31** as a
   breadcrumb inside each store (`isolation/<pin-id>/dir`), so `kae account rm` /
   `rename` / `kae profile rm` now name the directories they invalidate and

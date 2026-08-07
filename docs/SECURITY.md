@@ -254,7 +254,14 @@ is logged in as. Both keys read one table (`constants.PrivateBindItems`), which 
 also what the shared bind builds its symlink denylist from, so a name cannot be
 denied in one place and permitted in another; a guard test pins that wiring.
 
-**A per-directory keychain item is removed once nothing points at it.** A `-s` ↔
+**A per-directory credential is removed once nothing points at it.** Two kinds,
+two rules, stated once in `removeDirCredential` and summarized here because this
+section owns what kae deletes: a **keychain item** where the adapter declares it
+bindable, and a **file** credential only where it is no longer the copy its own store
+reads — the account's own credential store, which holds nothing else, and a store a
+migration has just moved the credential out of. A file that is still the one its
+store reads is kept, with the sessions and settings beside it. The rest of this
+section describes the item, which is the case that most needs the sweep. A `-s` ↔
 `-i` toggle or an isolated re-bind supersedes a store, and its item would otherwise
 keep a credential that cannot be found again: it lives under a per-directory
 service name, so it appears nowhere in kae's data dir, and no kae check reports one

@@ -1105,9 +1105,15 @@ merely older, it is rejected. Temp HOME, **file** driver, file backend: no real
 whose `expiresAt` is the only thing that orders two copies.
 
 Three things this block cannot show, so they are not claimed. The sweep's half (a
-`--purge` harvesting before it deletes) applies only to a **keychain** item — a
-file-backed per-directory credential lives inside the store directory and is never
-deleted — so it is covered by unit tests and by the keychain gates above. The file
+`--purge` harvesting before it deletes) is unit-covered here rather than smoke-covered
+— `TestUnpinPurgeRemovesAFileCredentialFromTheAccountStore` and
+`TestRePinMigrationRemovesThePreSplitFile` are the file-driver halves, and the
+keychain gates above are the other. This block deliberately does not run it: it would
+add a purge to a scenario whose subject is the ordering of two copies. Note what
+changed and why the older wording here was worse than a gap — it said a file-backed
+per-directory credential "is never deleted", which stopped being true when a
+credential could move out of the store it sits in, so this section was excusing the
+one configuration that could have caught it. The file
 backend stores payloads **base64-encoded**, so a snapshot assertion has to decode
 before matching: `grep` on the raw file finds nothing and reads as a *passing*
 assertion. And each case below re-captures the account it uses, because a harvest

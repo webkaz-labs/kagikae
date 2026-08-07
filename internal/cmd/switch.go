@@ -197,7 +197,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	// account's snapshot from the live store (only when they diverge), so a
 	// later switch back applies a live token. Must run before applySnapshot
 	// overwrites the live credential. Best-effort; never aborts the switch.
-	app.recaptureActiveBeforeSwitch(ctx, be, st, plans)
+	app.recaptureActiveBeforeSwitch(ctx, be, st, plans, meta.ID)
 
 	appliedTools := map[string]bool{}
 	for _, plan := range plans {

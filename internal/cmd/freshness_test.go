@@ -599,63 +599,110 @@ func TestSwitchToHealthySnapshotHasNoLeadTimeNotice(t *testing.T) {
 	}
 }
 
-// The switch-away recapture's attribution guard needs the same decodability gate its
-// two siblings apply (dirIdentityConfirms, liveLoginMatchesBackup): a payload that is
-// well-formed JSON but not an account record names nobody, and `/oauthAccount: null`
-// is the reachable shape. Without the gate the two sides fall to identityDiffers'
-// byte comparison, where two such payloads are *equal*, so the recapture proceeded on
-// evidence that named nobody — the third site, and the one that was missing it.
+// The decodability gate decides the **wording, not the decision**. Getting that
+// backwards shipped a logout, and these three rows are the measurement that says so:
+// the shape kae itself produces (both sides the recorded non-record, byte for byte)
+// must recapture, because refusing there throws away the only refreshable copy — and on
+// `run -s` nothing else holds it. What earns the weaker wording is a *difference* kae
+// cannot read, which is real and ordinary (claude clears its cache).
 //
-// TestSwitchAwayRecapturesRefreshedToken is the positive control for this: with a
-// readable identity on both sides, the very same rotation IS recaptured. Without that
-// pairing, a recapture that never ran would satisfy the assertion below.
-func TestSwitchAwayRefusesRecaptureWhenNeitherIdentityIsARecord(t *testing.T) {
-	app := testApp(t, nil)
-	ctx := context.Background()
-	opts := commonOpts{Format: formatText}
-	now := app.Now()
-	const nonRecord = `{"oauthAccount":null,"projects":{"/repo":{}}}`
+// The proceed row is the positive control, and it is the one a regression breaks first:
+// without it every "the snapshot was not overwritten" assertion below also passes for a
+// recapture that never runs at all.
+func TestSwitchAwayIdentityRecordsThatCannotBeCompared(t *testing.T) {
 	const original = "sk-ant-oat01-MAIN-ORIGINAL-eeee"
-
-	// Captured by hand: seedClaude would write a well-formed identity, and what this
-	// test needs recorded is one that is not an account record.
-	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
-		claudeOAuthPayload(original, now.Add(time.Hour)))
-	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"), nonRecord)
-	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
-	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
-	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
-
-	// This test proves nothing unless the snapshot really recorded the non-record —
-	// otherwise the refusal below would be the "no identity recorded" one.
-	acc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
-	if err != nil || !found || !acc.Artifacts["oauth_account"].Present {
-		t.Fatalf("this test needs a recorded non-record identity: found=%v err=%v art=%+v",
-			found, err, acc.Artifacts["oauth_account"])
-	}
-
-	// An in-tool refresh, so there is genuinely something to recapture: the guard runs
-	// before the divergence check, so a no-op switch would warn without proving a write
-	// was prevented.
 	const rotated = "sk-ant-oat01-MAIN-ROTATED-ffff"
-	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
-		claudeOAuthPayload(rotated, now.Add(8*time.Hour)))
+	const recorded = `{"oauthAccount":null,"projects":{"/repo":{}}}`
 
-	code, out, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
-	mustExit(t, constants.ExitOK, code, out)
-	// Naming the account is part of the assertion: this path recaptures the account
-	// being switched *away from*, so a refusal that named the switch target instead
-	// would point the user at the wrong snapshot.
-	if !strings.Contains(stderr, "cannot read the claude identity records it would compare for claude/main") {
-		t.Errorf("expected a refusal naming claude/main and saying kae cannot tell whose login is live: %q", stderr)
+	cases := []struct {
+		name                   string
+		recorded, liveIdentity string
+		wantRefusal            bool
+	}{
+		// applySnapshot wrote the recorded non-record into the live cache, so the two
+		// agree byte for byte. No login can produce this — `/login` rewrites
+		// accountUuid/emailAddress unconditionally — so it is evidence that nothing
+		// happened, and the refresh must be kept.
+		{"identical, so nothing happened: recapture", recorded, recorded, false},
+		// Two payloads kae cannot read that are not the same payload. Something rewrote
+		// the cache; it names nobody, so the refusal may not claim a foreign login.
+		{"different non-records: refused, weakly", recorded, `{"oauthAccount":123}`, true},
+		// The ordinary one, and the row that pins the gate *above* identityDiffers rather
+		// than after it: kae recorded a real account record and claude has since cleared
+		// its cache. With the order swapped the message claims a foreign login, which kae
+		// has not observed — only that one side names nobody.
+		{
+			"a record against null: refused, weakly",
+			`{"oauthAccount":` + claudeOAuthAccount("main", "main@example.com") + `}`,
+			`{"oauthAccount":null}`, true,
+		},
 	}
-	// Weak evidence takes a weak consequence: kae has not observed a *different*
-	// account, so it must not say one was logged in outside kae.
-	if strings.Contains(stderr, "outside kae") {
-		t.Errorf("kae observed only that it cannot compare; it must not claim a foreign login: %q", stderr)
-	}
-	be := testBackend(t, app)
-	if got := snapshotPayload(t, app, be, "claude", "main"); !strings.Contains(got, original) {
-		t.Fatalf("recaptured on evidence that names nobody: %s", got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			opts := commonOpts{Format: formatText}
+			now := app.Now()
+
+			// Captured by hand: seedClaude would write a well-formed identity, and what
+			// this test needs recorded is one that is not an account record.
+			writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+				claudeOAuthPayload(original, now.Add(time.Hour)))
+			writeFile(t, filepath.Join(app.Env.Home, ".claude.json"), tc.recorded)
+			captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+			captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
+			captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+
+			// This proves nothing unless the snapshot really recorded the non-record —
+			// otherwise the outcome below would be the "no identity recorded" path.
+			acc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
+			if err != nil || !found || !acc.Artifacts["oauth_account"].Present {
+				t.Fatalf("this test needs a recorded non-record identity: found=%v err=%v art=%+v",
+					found, err, acc.Artifacts["oauth_account"])
+			}
+
+			// An in-tool refresh, so there is genuinely something to recapture: the guard
+			// runs before the divergence check, so a no-op switch would decide without
+			// proving anything about a write.
+			writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+				claudeOAuthPayload(rotated, now.Add(8*time.Hour)))
+			writeFile(t, filepath.Join(app.Env.Home, ".claude.json"), tc.liveIdentity)
+
+			code, out, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
+			mustExit(t, constants.ExitOK, code, out)
+			be := testBackend(t, app)
+			got := snapshotPayload(t, app, be, "claude", "main")
+
+			if !tc.wantRefusal {
+				for _, unwanted := range []string{"cannot read", "outside kae"} {
+					if strings.Contains(stderr, unwanted) {
+						t.Errorf("kae's own applied payload is not evidence of anything, so no refusal is due; got %q: %q",
+							unwanted, stderr)
+					}
+				}
+				if !strings.Contains(got, rotated) {
+					t.Fatalf("the only refreshable copy was thrown away: %s", got)
+				}
+				return
+			}
+			// Naming the account is part of the assertion: this path recaptures the
+			// account being switched *away from*, so a refusal that named the switch
+			// target instead would point the user at the wrong snapshot.
+			if !strings.Contains(stderr, "cannot read the claude identity records it would compare for claude/main") {
+				t.Errorf("expected a refusal naming claude/main and saying kae cannot tell whose login is live: %q", stderr)
+			}
+			// Weak evidence takes a weak consequence: kae has not observed a *different*
+			// account, so it must not say one was logged in outside kae.
+			if strings.Contains(stderr, "outside kae") {
+				t.Errorf("kae observed only that it cannot compare; it must not claim a foreign login: %q", stderr)
+			}
+			// A refusal is only non-destructive because something else holds the copy.
+			if !strings.Contains(stderr, "preserved only in backup ") {
+				t.Errorf("a refusal must name where the declined copy survives: %q", stderr)
+			}
+			if !strings.Contains(got, original) {
+				t.Fatalf("refused, so the snapshot must be untouched: %s", got)
+			}
+		})
 	}
 }

@@ -403,7 +403,11 @@ func utcStamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 // unreadable active account is left untouched with a warning, never aborting
 // the switch. Only kae use / bare use reach here — use -i / pin / run -i write
 // kae-owned isolation dirs and never the real store.
-func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backend, st *state.State, plans []toolPlan) {
+// backupID names the backup this switch already took of the live state; it is what
+// makes a refusal non-destructive, so the caller must pass the real one.
+func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backend, st *state.State,
+	plans []toolPlan, backupID string,
+) {
 	for _, plan := range plans {
 		active := st.Active[plan.Tool]
 		if active == "" {
@@ -430,7 +434,12 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			// Recapturing here would file a credential kae cannot attribute under this
 			// account's name and identity, and after that no offline check can tell the
 			// two apart (see keepSnapshotIdentity).
-			warnRecaptureIdentityUnconfirmed(plan.Tool, why)
+			//
+			// backupID is this switch's own backup, and naming it is only honest because
+			// of where it sits: createBackup runs *before* this recapture and before
+			// applySnapshot, so it holds exactly the live copy being declined. `run -s`
+			// has to create one of its own for the same sentence to be true there.
+			warnRecaptureIdentityUnconfirmed(plan.Tool, why, backupID)
 			continue
 		}
 		if why := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); why != "" {
@@ -460,13 +469,30 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 // not establish whose login is live, for both paths that owe that guard: the
 // switch-away recapture and `run -s`'s own. One copy, because the two differ only in
 // the reason keepSnapshotIdentity built and would otherwise drift apart in the half
-// that matters — the hint, which is the only thing that tells a user how to keep a
-// live login kae is deliberately refusing to adopt.
-func warnRecaptureIdentityUnconfirmed(tool, why string) {
+// that matters — where the declined copy went.
+//
+// **Refusing here destroys the copy unless something else holds it**, which is the
+// asymmetry that makes this guard different from the two siblings it shares a
+// predicate with (dirIdentityConfirms, liveLoginMatchesBackup): for those, refusing
+// means declining to overwrite or delete, so refusal is the conservative answer. Here
+// the caller goes on to overwrite the live store from a backup, so a refusal that
+// names nowhere is a logout reported as success — measured on `run -s`, where the only
+// backup predated the child. So backupID is not decoration: it is the whole reason the
+// refusal is safe, and a caller that cannot name one must say so rather than imply the
+// copy survives. An earlier version told the user to "import it first", naming a
+// moment that does not exist inside a single non-interactive command.
+func warnRecaptureIdentityUnconfirmed(tool, why, backupID string) {
 	fmt.Fprintf(os.Stderr, "kae: warning: %s, so that snapshot is left unchanged\n", why)
+	if backupID == "" {
+		fmt.Fprintf(os.Stderr,
+			"kae: kae could not preserve the live %s login it declined to adopt; it is lost once the "+
+				"previous state is restored\n", tool)
+		return
+	}
 	fmt.Fprintf(os.Stderr,
-		"kae: if that live login is one you want to keep, import it first with: kae add --no-login %s <account>\n",
-		tool)
+		"kae: the live %s login kae declined to adopt is preserved only in backup %s — to keep it as "+
+			"its own account: kae rollback --to %s, then kae add --no-login %s <account>\n",
+		tool, backupID, backupID, tool)
 }
 
 // snapshotArtifactDiffers reports whether one live artifact value differs from
@@ -515,15 +541,22 @@ func snapshotArtifactDiffers(ctx context.Context, be secret.Backend, storedRef s
 // nothing offline can detect that afterwards — the access token is opaque, so live,
 // snapshot and doctor all agree on a label that is simply wrong.
 //
-// (2) **kae cannot read the two records it would compare** (identityComparable).
-// Without this, a payload that is well-formed JSON but not an object — `/oauthAccount`
-// being `null` is the reachable shape — falls to identityDiffers' byte comparison,
-// where two such payloads are "equal" and the recapture proceeds on evidence that
-// names nobody. It is the same gate its two sibling attribution guards already apply
-// (dirIdentityConfirms, liveLoginMatchesBackup); this was the third site and it was
-// missing it. The reason is worded weaker than (1) on purpose: kae has not observed a
-// different account, only that it cannot tell, and a weak reading may not take (1)'s
-// consequence.
+// (2) **The two differ and kae cannot read them as records** (identityComparable).
+// Same consequence as (1) — the caller declines — and only the claim is weaker, because
+// kae has observed a change and not an account. That is the whole of the difference:
+// do not read this as a safeguard that (1) has and (2) lacks. Its two sibling guards
+// (dirIdentityConfirms, liveLoginMatchesBackup) apply the same gate to the same
+// predicate, and the ordering matters here in the opposite direction from theirs — see
+// the comment at the switch, which is normative for why the gate may not decide.
+//
+// Only the **first** reason is kept, so a spec yielding (1) after one yielding (2) is
+// reported as (2). Under-claiming, and unobservable today: claude declares the only
+// IdentityOnly spec there is, and exactly one (measured — a mutation swapping first-wins
+// for last-wins cannot be killed).
+//
+// accountName is used rather than acc.Name deliberately (recaptureWouldDowngrade says
+// why), and that choice is **not** observable either: no fixture builds a snapshot whose
+// recorded name disagrees with the name it was resolved under.
 //
 // The loop finishes either way, so the value substitution above is complete for a
 // caller that reads values regardless of the reason. Today none does.
@@ -551,18 +584,30 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 		if !live.Present || reason != "" {
 			continue
 		}
-		switch {
-		case !identityComparable(data, live.Data):
+		// The gate decides the **wording**, never the decision. Getting that backwards
+		// shipped a logout: refusing on "kae cannot compare" also refused the shape kae
+		// itself produces — applySnapshot writes a recorded non-record into the live
+		// cache, so both sides are that same non-record, byte for byte — and on `run -s`
+		// the refusal then discarded the child's refreshed credential. No login can
+		// produce that shape, because `/login` rewrites accountUuid/emailAddress
+		// unconditionally (docs/VALIDATION.md, claude assumptions), so the pair kae
+		// cannot read *and* that are identical is evidence that nothing happened.
+		// docs/ROADMAP.md carries the measurement and why its own earlier prescription
+		// was withdrawn.
+		if !identityDiffers(sp, data, live.Data) {
+			continue
+		}
+		if !identityComparable(data, live.Data) {
 			reason = fmt.Sprintf(
 				"kae cannot read the %s identity records it would compare for %s/%s, so it cannot tell "+
 					"whose login is live", tool, tool, accountName,
 			)
-		case identityDiffers(sp, data, live.Data):
-			reason = fmt.Sprintf(
-				"the live %s identity is not the one kae applied for %s/%s; %s was probably logged in "+
-					"again outside kae", tool, tool, accountName, tool,
-			)
+			continue
 		}
+		reason = fmt.Sprintf(
+			"the live %s identity is not the one kae applied for %s/%s; %s was probably logged in "+
+				"again outside kae", tool, tool, accountName, tool,
+		)
 	}
 	return reason
 }

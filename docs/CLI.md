@@ -474,6 +474,14 @@ command was asked to bind something, and `kae account rename` reaches it through
 own re-bind remedy — deleting there destroyed the newest copy of the renamed account's
 credential. kae names the account in both cases.
 
+One store the binding **does** still point at is swept as well, and only in this
+shape: a directory bound before v0.17.0, whose credential has just moved into the
+account's own store. Its per-directory copy is then addressed by a name nothing
+resolves any more, so leaving it is a full copy of a live account that no reader can
+see — and one a shell exporting only `CLAUDE_CONFIG_DIR` would find and refresh,
+invalidating the copy every other directory now shares. That is the whole migration:
+re-running `kae pin` moves the credential and takes the old copy with it.
+
 `kae unpin --purge` extends that to the directory's *current* stores, which plain
 `unpin` deliberately keeps so a re-pin restores the directory. Sessions and
 settings survive `--purge` too; only the credentials go, and a re-pin restores them
@@ -481,21 +489,26 @@ from the account snapshots. Because the sweep harvests first, `--purge` needs ka
 secret store: if it cannot be opened, kae warns and leaves the credentials in place
 rather than deleting logins it has no way to preserve.
 
-Under the file driver the account's credential store holds a plaintext credential
-and nothing else, so `--purge` removes that credential too — the artifact, which for
-claude is a pointer inside `.credentials.json`, so the document is left behind
-without it. A per-directory store's file is the opposite case and is kept whole: it
-sits beside the sessions and settings that survive an unpin.
+A **file** credential is deleted in exactly the two cases where it is not the copy
+its own store still reads: the account's credential store, which holds the credential
+and nothing else, and a store the migration above just moved the credential out of.
+What is kept is a per-directory store's file that is still the one that store reads —
+it sits beside the sessions and settings that survive an unpin. The unit is the
+artifact, which for claude is a pointer inside `.credentials.json`, so the document
+is left behind without it.
 
 An account's **shared** credential store is a separate case with its own rule
 ([ADAPTERS.md](ADAPTERS.md) § Per-account credential store). It is not one
 directory's to delete, so a bind's sweep never touches it, and `--purge` takes it
 only once nothing points at it any more: every bound directory's fragment and
 `state.synced`, counted after this directory's own binding is gone. A count kae
-could not complete — an unreadable fragment, an unreadable state file — keeps the
-credential and says so, because "no reference found" and "kae could not look" differ
-by exactly one logged-out sibling. When kae keeps it for that reason it prints how
-many bindings still use it.
+could not complete keeps the credential and says so, because "no reference found"
+and "kae could not look" differ by exactly one logged-out sibling. Known sources —
+**not a closed set**: an unreadable fragment, an unreadable state file, and a store
+whose breadcrumb cannot be read (one bound by a kae older than that record). The last
+does not clear itself, so a single legacy store leaves `--purge` permanently unable
+to remove a per-account credential; `kae doctor`'s `pin_stale` is what names it. When
+kae keeps a credential because bindings still use it, it prints how many.
 
 `kae pin` defaults to **shared** (`-s`); pass `-i` for isolated:
 
@@ -1102,9 +1115,9 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 
 A `(tool, code)` pair is **not** unique in one report: a code is emitted per subject,
 and several subjects can share a tool. `credential_stale` is reported once per account
-snapshot and once per bound **credential** — which is one finding for every
-directory bound to an account, since they read one store, and a second one for a
-directory still holding its own pre-v0.17.0 copy — `identity_drift` once for the active
+snapshot and once per bound **credential** — so one finding for *all* the
+directories bound to an account, since they read one store, plus a separate one for
+any directory still holding its own pre-v0.17.0 copy — `identity_drift` once for the active
 account's live state and once per bound directory whose store disagrees with its
 binding, and `credential_superseded` once per bound directory that a newer copy
 overtook. Consumers must read the list, not index it by code.

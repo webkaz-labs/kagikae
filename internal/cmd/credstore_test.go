@@ -198,6 +198,38 @@ func TestRePinMigrationRemovesThePreSplitItem(t *testing.T) {
 	}
 }
 
+// The same migration under the **file** driver, which is a separate case and was a
+// real gap: the sweep's kind gate kept a file credential because it "lives inside the
+// store directory", and that reasoning stops holding the moment the credential has
+// moved out of it. Every reader now resolves through the new location, so a leftover
+// there is invisible — and a shell exporting only the config variable would find it,
+// refresh it, and invalidate the copy every directory bound to that account shares.
+func TestRePinMigrationRemovesThePreSplitFile(t *testing.T) {
+	app := overlayTestApp(t) // linux: the file driver
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	dir := pinHere(t, app, modeShared)
+	storeDir := app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
+	makePreSplit(t, app, constants.ToolClaude, "main", dir, storeDir)
+	preSplit := filepath.Join(storeDir, ".credentials.json")
+	if !strings.Contains(readFile(t, preSplit), mainToken) {
+		t.Fatal("the fixture must leave a pre-split copy for this test to mean anything")
+	}
+
+	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+		t.Fatalf("re-pin exit %d: %s", code, out)
+	}
+
+	if got := readFile(t, preSplit); strings.Contains(got, mainToken) {
+		t.Fatalf("the pre-split copy must go with the credential: %s", got)
+	}
+	credFile := filepath.Join(app.credStoreDir(constants.ToolClaude, "main"), ".credentials.json")
+	if got := readFile(t, credFile); !strings.Contains(got, mainToken) {
+		t.Fatalf("the account store must hold it now: %s", got)
+	}
+}
+
 // …and the other side of that exception: an ordinary re-bind, with nothing migrating,
 // leaves the account's credential alone. Without this the guard above could be "sweep
 // every kept store" and the migration test would still pass.

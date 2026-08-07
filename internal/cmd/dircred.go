@@ -248,15 +248,15 @@ func (app *App) migratePreSplitHome(ctx context.Context, be secret.Backend, tool
 	if !ok || unbindableDirKeychain(sp) {
 		return
 	}
-	acc, snapshot, _, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
-	if err != nil {
-		return // no snapshot to harvest into; the bind reports it
-	}
-	dirs := bindDirs{Config: home}
-	if _, preserved, _ := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot); !preserved {
+	// Probe first, so an already-migrated home costs one read rather than a delete
+	// whose "no such item" the primitive reports as success. And one harvest, not two:
+	// harvestBeforeDelete performs it and answers whether the copy may go, which is
+	// the same pair the delete sweep uses — neither `kae use -i` nor `kae run -i`
+	// wraps a read cache, so a second pass here is a second subprocess.
+	if existed, err := dirCredentialExists(ctx, sp); err != nil || !existed {
 		return
 	}
-	if !app.harvestBeforeDelete(ctx, be, specs, tool, accountName, dirs, false) {
+	if !app.harvestBeforeDelete(ctx, be, specs, tool, accountName, bindDirs{Config: home}, false) {
 		return
 	}
 	if err := artifact.ApplyLive(ctx, sp, artifact.Value{Present: false}); err != nil {
@@ -1029,10 +1029,11 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// Safe to delete here because the pin-level pass has already harvested it: it
 		// ran before materialization with this same `prev`, which is what makes the
 		// store read as pre-split there too.
-		if keep[store.Dir] && !app.credentialMovedOutOf(store, pinID, prev) {
+		migrating := app.credentialMovedOutOf(store, pinID, prev)
+		if keep[store.Dir] && !migrating {
 			continue
 		}
-		removed, err := app.removeDirCredential(ctx, be, store, storeAccount(store, prev), purging)
+		removed, err := app.removeDirCredential(ctx, be, store, storeAccount(store, prev), purging, migrating)
 		switch {
 		case err != nil:
 			fmt.Fprintf(os.Stderr,
@@ -1107,7 +1108,7 @@ func storeAccount(store dirStore, prev fragmentInfo) string {
 // snapshot first; a copy kae could not preserve — including one it could not
 // attribute — leaves the item in place.
 func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, store dirStore,
-	accountName string, purging bool,
+	accountName string, purging, migrating bool,
 ) (bool, error) {
 	tool := store.Tool
 	artName := credentialArtifactName(tool)
@@ -1124,13 +1125,24 @@ func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, stor
 	if !ok {
 		return false, nil
 	}
-	// A keychain item, or the credential file of a per-account store. The asymmetry
-	// this used to state — a file credential lives *inside* the store directory, which
-	// `kae unpin` deliberately keeps along with its sessions and settings — is exactly
-	// what stops holding for a per-account store: that directory holds the credential
-	// and nothing else, so leaving its file behind under `--purge` leaves a plaintext
-	// secret in a directory kept for no other reason.
-	if sp.Kind != constants.KindKeychain && store.CredDir == "" {
+	// A keychain item always; a credential **file** only where it is not the copy that
+	// store still reads. The asymmetry this used to state — a file credential lives
+	// *inside* the store directory, which `kae unpin` deliberately keeps along with its
+	// sessions and settings — holds for exactly one case now, and both others are the
+	// ones that would otherwise leave a full plaintext copy of a live account behind:
+	//
+	//   - a per-account store (CredDir set) holds the credential and nothing else, so
+	//     `--purge` leaving its file behind keeps a secret in a directory kept for no
+	//     other reason;
+	//   - a store whose credential has just moved out of it (migrating) keeps a file
+	//     nothing resolves any more — until a shell that exports only the config
+	//     variable finds it, refreshes it, and invalidates the copy every directory
+	//     bound to that account now shares.
+	//
+	// Getting this wrong is invisible: every reader resolves through the new location,
+	// so `doctor` sees nothing. The global-isolated migration has always deleted the
+	// file (migratePreSplitHome), and the two paths must not disagree about one state.
+	if sp.Kind != constants.KindKeychain && store.CredDir == "" && !migrating {
 		return false, nil
 	}
 	if sp.Kind == constants.KindKeychain && !sp.KeychainDirBindable {

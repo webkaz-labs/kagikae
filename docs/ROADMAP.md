@@ -430,6 +430,31 @@ alternative exists (`secret-tool`).
   swept unchanged is the per-directory item a **pre-split** binding left behind,
   which is what makes re-running `kae pin` a migration rather than a leak.
 
+- **`credential_superseded` reports at all only if the tie for "newest" is won by an
+  attributable store, and after the split the tie is the normal case** (measured
+  2026-08-08 during the v0.17.0 acceptance run, **not fixed**). Every directory bound to
+  one account now names the *same* credential store, so the stores in an account's group
+  usually hold the identical bytes, the ordering is a tie, and which element becomes
+  `newestIdx` falls out of walk order. `winnerUnattributable` then suppresses **every**
+  finding in the group — which is right when the winner is a genuinely different copy kae
+  cannot tie to the account, and is an accident when the winner is one of several handles
+  on the same file and merely happens to be the one with no identity cache beside it.
+  Measured with a reversible control on three bound directories: one finding, remove one
+  directory's identity cache, **zero**, restore it, one again.
+  The direction is conservative — silence, not a false alarm — which is why this is
+  recorded rather than rushed. Two things to settle before touching it, in this order.
+  First, whether the loop should group by *credential location* rather than by store, so
+  several handles on one file are one candidate and attribution is asked once per copy;
+  that is the shape the split implies, and `freshnessOf` already memoizes on exactly that
+  key. Second, that the check's designed-for shape (two worktrees, two copies) is now
+  reachable only from a **pre-split** binding or from a bound store versus the account
+  snapshot — so its remaining value is largely the migration window and the snapshot
+  comparison, which the acceptance block in
+  [VALIDATION.md](VALIDATION.md) § `kae relogin` and `credential_superseded` now states.
+  Do **not** fix it by dropping `winnerUnattributable`: it is the guard that keeps kae
+  from telling a user their login is dead on the strength of a copy it cannot attribute,
+  and the asymmetry there is deliberate ([AGENTS.md](../AGENTS.md)).
+
 - **A store bound before the credential split, unbound, then re-bound after it keeps
   its pre-split item** (recorded 2026-08-07, **not fixed** — deliberately). The
   migration sweep is scoped to the store the *previous binding* pointed at

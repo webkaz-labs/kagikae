@@ -108,6 +108,10 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 
 	var envDir string   // fragment env entry to repoint (isolated only)
 	var boundDir string // the store this tool reads after the re-bind
+	// The credential entry moves in **both** modes, because the account selects the
+	// store: a shared-mode re-bind keeps one config dir and still has to point the
+	// credential at the new account's own store.
+	credDir := app.credStoreDir(tool, accountName)
 	switch info.Mode {
 	case paths.SharedSegment:
 		// prepareBond, not writeDirCredential alone: the bond dir also holds the
@@ -145,7 +149,7 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 		return finish(opts, err)
 	}
 	companionLines := companionFragmentLines(companionEntries)
-	if err := rebindFragment(tool, accountName, envDir, profile, companionLines, redactions); err != nil {
+	if err := rebindFragment(tool, accountName, envDir, credDir, profile, companionLines, redactions); err != nil {
 		return finish(opts, fmt.Errorf("update %s: %w", fragmentRelPath, err))
 	}
 	// In isolated mode the store is keyed by account, so the previous account's dir

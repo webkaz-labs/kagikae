@@ -205,14 +205,27 @@ type isolationEntry struct {
 	Account string
 	EnvVar  string
 	Dir     string
-	Warning string // non-empty: rendered as a comment, no env entry
+	// The credential half, empty for a tool that cannot separate its credential
+	// from its home (credentialEnvVar). Both are written, so the tool reads this
+	// account's one shared credential while everything else stays in Dir.
+	CredEnvVar string
+	CredDir    string
+	Warning    string // non-empty: rendered as a comment, no env entry
 }
 
-// isolationEntryFor builds one bind entry for a tool: the env entry pointing at
-// dir when the tool has a home-isolation env var, or a warning entry (dir
-// ignored) when it does not. Shared by the shared (SharedDir) and isolated
-// (IsolatedConfigDir) bind planners, which differ only in how dir is computed.
-func isolationEntryFor(tgt runTarget, dir string) isolationEntry {
+// isolationEntryFor builds one bind entry for a tool: the env entries pointing at
+// dir and at the account's credential store when the tool has a home-isolation
+// env var, or a warning entry (dir ignored) when it does not. Shared by the
+// shared (SharedDir) and isolated (IsolatedConfigDir) bind planners, which differ
+// only in how dir is computed.
+//
+// The credential entry is written in **both** modes, and it is the account rather
+// than the directory that selects it. That is what the shared mode's own
+// account-agnostic store cannot express: two directories bound to one account
+// each hold a copy there, and claude's refresh token rotates single-use, so the
+// first refresh in either one logs the other out (docs/ROADMAP.md § One
+// credential per account).
+func (app *App) isolationEntryFor(tgt runTarget, dir string) isolationEntry {
 	entry := isolationEntry{Tool: tgt.Tool, Account: tgt.Account, EnvVar: isolationEnvVar(tgt.Tool)}
 	if entry.EnvVar == "" {
 		entry.Warning = fmt.Sprintf(
@@ -221,6 +234,9 @@ func isolationEntryFor(tgt runTarget, dir string) isolationEntry {
 		return entry
 	}
 	entry.Dir = dir
+	if credDir := app.credStoreDir(tgt.Tool, tgt.Account); credDir != "" {
+		entry.CredEnvVar, entry.CredDir = credentialEnvVar(tgt.Tool), credDir
+	}
 	return entry
 }
 
@@ -237,6 +253,9 @@ func writeEnvEntries(b *strings.Builder, profileName string, entries []isolation
 			continue
 		}
 		fmt.Fprintf(b, "%s = %q\n", entry.EnvVar, entry.Dir)
+		if entry.CredEnvVar != "" {
+			fmt.Fprintf(b, "%s = %q\n", entry.CredEnvVar, entry.CredDir)
+		}
 	}
 	for _, line := range companionLines {
 		fmt.Fprintln(b, line)
@@ -259,7 +278,7 @@ func (app *App) bondIsolationEntries(targets []runTarget, pinID string) []isolat
 	entries := make([]isolationEntry, 0, len(targets))
 	for _, tgt := range targets {
 		dir, _ := app.modeStoreDir(modeShared, pinID, tgt.Tool, tgt.Account)
-		entries = append(entries, isolationEntryFor(tgt, dir))
+		entries = append(entries, app.isolationEntryFor(tgt, dir))
 	}
 	return entries
 }
@@ -445,7 +464,7 @@ func (app *App) pinIsolationEntries(targets []runTarget, pinID string) []isolati
 	entries := make([]isolationEntry, 0, len(targets))
 	for _, tgt := range targets {
 		dir, _ := app.modeStoreDir(modeIsolated, pinID, tgt.Tool, tgt.Account)
-		entries = append(entries, isolationEntryFor(tgt, dir))
+		entries = append(entries, app.isolationEntryFor(tgt, dir))
 	}
 	return entries
 }

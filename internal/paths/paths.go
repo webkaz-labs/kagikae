@@ -180,6 +180,25 @@ func (p Paths) GlobalIsolatedHomeDir(tool, account string) string {
 	return filepath.Join(p.GlobalIsolationDir(), tool, account)
 }
 
+// CredStoreDir returns the per-account credential store directory,
+// credstore/<tool>/<account>. It is what a bound directory points a tool's
+// *credential* variable at (claude's CLAUDE_SECURESTORAGE_CONFIG_DIR), so every
+// directory bound to one account shares a single copy of that credential while
+// its sessions, settings and identity stay in its own per-directory store.
+//
+// Deliberately outside IsolationDir, and it is not a tool home. Everything under
+// isolation/ is a config dir some tool runs against, which is what
+// cmd.kaeManagedHomeKind classifies into shared/isolated/sync; this directory
+// holds one credential and is never a CLAUDE_CONFIG_DIR. Putting it there would
+// have that classifier answer "shared" for it by default.
+func (p Paths) CredStoreDir(tool, account string) string {
+	return filepath.Join(p.DataDir, "credstore", tool, account)
+}
+
+// CredStoreRoot returns the root of the per-account credential stores, for the
+// sweeps that walk them.
+func (p Paths) CredStoreRoot() string { return filepath.Join(p.DataDir, "credstore") }
+
 // MiseGlobalFragmentFile returns the kae-owned global mise fragment path
 // (~/.config/mise/conf.d/kagikae.toml), a sibling of kagikae's own config dir
 // under the XDG config home. mise loads and merges conf.d/*.toml, so it reaches

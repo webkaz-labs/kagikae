@@ -218,6 +218,16 @@ func (app *App) runIsolatedChild(ctx context.Context, opts commonOpts, targets [
 			return finish(opts, fmt.Errorf("prepare isolated home for %s/%s: %w", tgt.Tool, tgt.Account, err))
 		}
 		extraEnv = append(extraEnv, isolationEnvVar(tgt.Tool)+"="+home)
+		// The credential variable too, and pointed at the account's own store rather
+		// than at this home: the home is already per-account, but the *credential* has
+		// to be the same copy every other binding of that account reads, or the child's
+		// first refresh invalidates all of them. Without this line the child would look
+		// for a credential under the home's own name and find none.
+		if credVar := credentialEnvVar(tgt.Tool); credVar != "" {
+			if credDir := app.credStoreDir(tgt.Tool, tgt.Account); credDir != "" {
+				extraEnv = append(extraEnv, credVar+"="+credDir)
+			}
+		}
 		rows = append(rows, homeRow{tgt.Tool, tgt.Account, home})
 	}
 	// Confusion guard: name the shared home so it is never invisible that

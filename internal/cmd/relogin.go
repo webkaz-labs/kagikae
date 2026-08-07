@@ -87,6 +87,11 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// call), and the value is what the fragment exports for it.
 	storeDir, _ := app.boundStoreDir(paths.PinID(absDir), tool, fragment)
 	accountName := fragment.Accounts[tool]
+	// The credential half of the binding, read from the fragment rather than derived
+	// from the account: a directory bound before the credential split keeps its
+	// credential in the store, and exporting a per-account variable it was never
+	// bound with would send the login to a store the directory does not read.
+	dirs := bindDirs{Config: storeDir, Cred: fragment.CredDirs[tool]}
 	command := loginCommand(tool)
 	// The store path is **recomputed** from a hash of this directory's current path,
 	// while what the tool will actually read there is the literal value in the
@@ -128,15 +133,24 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// so (reloginCredentialSpec). Quiet here — the post-flow resolution is the one
 	// that decides whether the capture back can happen, so warning now would both
 	// repeat itself and claim something about a step that has not run.
-	_, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, storeDir, quiet)
+	_, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, dirs, quiet)
 	before, comparable := storeCredential(ctx, sp, haveSpec)
 
+	// Every variable the binding sets, not just the home one. The login writes the
+	// credential where the *credential* variable points, so exporting one half sends
+	// the new token to a store kae does not read back — reported as a login that
+	// changed nothing, with the directory still stale.
+	loginEnv := []string{isolationEnvVar(tool) + "=" + storeDir}
+	shown := []string{isolationEnvVar(tool) + "=" + app.displayPath(storeDir)}
+	if credVar := credentialEnvVar(tool); credVar != "" && dirs.Cred != "" {
+		loginEnv = append(loginEnv, credVar+"="+dirs.Cred)
+		shown = append(shown, credVar+"="+app.displayPath(dirs.Cred))
+	}
 	fmt.Fprintf(os.Stderr,
-		"kae: complete the %s login flow; kae is running it against this directory's own store (%s=%s), "+
+		"kae: complete the %s login flow; kae is running it against this directory's own store (%s), "+
 			"so it refreshes %s/%s and not the real home\n",
-		tool, isolationEnvVar(tool), app.displayPath(storeDir), tool, accountName)
-	code, err := runner.RunInteractive(ctx,
-		[]string{isolationEnvVar(tool) + "=" + storeDir}, command[0], command[1:]...)
+		tool, strings.Join(shown, " "), tool, accountName)
+	code, err := runner.RunInteractive(ctx, loginEnv, command[0], command[1:]...)
 	if err != nil {
 		return finish(opts, fmt.Errorf("launch %s login: %w", tool, err))
 	}
@@ -166,7 +180,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// Never wrap this function's context in `keychain.WithReadCache` the way `kae pin`
 	// and `kae use` do: a cached pre-login probe served to the post-login read reopens
 	// this defect with every test still green.
-	specs, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, storeDir, speak)
+	specs, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, dirs, speak)
 	after, comparedAfter := storeCredential(ctx, sp, haveSpec)
 	switch {
 	// A flow the user aborted, or one that failed, leaves the store exactly as it
@@ -250,7 +264,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// Called unconditionally, and *before* the wording is decided: a flow kae could not
 	// compare may still have left a copy worth harvesting, and the harvest's own guards
 	// are the ones that decide that. Only the wording depends on both answers.
-	attributed := app.captureBackAfterRelogin(ctx, be, specs, tool, accountName, storeDir)
+	attributed := app.captureBackAfterRelogin(ctx, be, specs, tool, accountName, dirs)
 	if changed && attributed {
 		fmt.Printf("Logged %s in for %s/%s in this directory\n", tool, tool, accountName)
 	} else {
@@ -273,12 +287,12 @@ const (
 	speak = true
 )
 
-func (app *App) reloginCredentialSpec(ctx context.Context, tool, storeDir string, report bool) ([]artifact.Spec, artifact.Spec, bool) {
+func (app *App) reloginCredentialSpec(ctx context.Context, tool string, dirs bindDirs, report bool) ([]artifact.Spec, artifact.Spec, bool) {
 	artName := credentialArtifactName(tool)
 	if artName == "" {
 		return nil, artifact.Spec{}, false
 	}
-	specs, err := app.dirSpecs(ctx, tool, storeDir)
+	specs, err := app.dirSpecs(ctx, tool, dirs)
 	if err != nil {
 		if report {
 			fmt.Fprintf(os.Stderr,
@@ -406,7 +420,7 @@ func boundToolList(fragment fragmentInfo) string {
 // than closed because closing it means the harvest distinguishing "not newer" from
 // "confirmed", which its three other callers do not need.
 func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
-	specs []artifact.Spec, tool, accountName, storeDir string,
+	specs []artifact.Spec, tool, accountName string, dirs bindDirs,
 ) bool {
 	// Claude-only today, through the one predicate that owns the question. A tool
 	// whose rotation is not measured has nothing to harvest *from* — its older
@@ -423,7 +437,7 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 			tool, accountName, err)
 		return false
 	}
-	_, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, storeDir, snapshot)
+	_, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot)
 	switch {
 	// Either harvested — harvestDirCredential says so itself — or the snapshot already
 	// holds a copy at least as new, which is the ordinary outcome of re-running this

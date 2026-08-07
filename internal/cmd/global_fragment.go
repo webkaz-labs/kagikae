@@ -16,6 +16,18 @@ type syncedEntry struct {
 	dir    string
 }
 
+// credentialEntry is the second env pair a globally isolated tool needs: its
+// credential store, which is keyed by account rather than by home so every
+// binding of that account reads one copy. Empty envVar means the tool has none.
+func (app *App) credentialEntry(tool, account string) (syncedEntry, bool) {
+	envVar := credentialEnvVar(tool)
+	credDir := app.credStoreDir(tool, account)
+	if envVar == "" || credDir == "" {
+		return syncedEntry{}, false
+	}
+	return syncedEntry{envVar, credDir}, true
+}
+
 // iterSynced resolves the synced map into (envVar, dir) pairs in canonical
 // tool order, skipping tools that have no entry in synced and tools with no
 // stable home-isolation env var (e.g. agy/cursor).
@@ -28,6 +40,9 @@ func (app *App) iterSynced(synced map[string]string) []syncedEntry {
 		}
 		if envVar := isolationEnvVar(tool); envVar != "" {
 			out = append(out, syncedEntry{envVar, app.Paths.GlobalIsolatedHomeDir(tool, account)})
+			if entry, ok := app.credentialEntry(tool, account); ok {
+				out = append(out, entry)
+			}
 		}
 	}
 	return out

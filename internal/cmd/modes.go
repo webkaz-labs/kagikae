@@ -34,6 +34,50 @@ func isolationEnvVar(tool string) string {
 	}
 }
 
+// credentialEnvVar returns the env var that points a tool at an alternate
+// *credential* store without moving its home, or "" when the tool has no way to
+// separate the two. Only claude has one; docs/ADAPTERS.md § "Credential storage
+// resolution" is the normative description of what it displaces — update
+// together, and keep the literal in step with the adapter's own constant
+// (claude.EnvSecureStorageDir), which this deliberately does not import for the
+// same reason isolationEnvVar spells CLAUDE_CONFIG_DIR out above.
+//
+// A tool with no such variable keeps its credential inside the config dir, which
+// is what an empty answer means to every caller: one directory, both roles.
+func credentialEnvVar(tool string) string {
+	switch tool {
+	case constants.ToolClaude:
+		return "CLAUDE_SECURESTORAGE_CONFIG_DIR"
+	default:
+		return ""
+	}
+}
+
+// credStoreDir is the per-account credential store a bound directory points
+// tool's credential variable at, or "" for a tool that cannot separate its
+// credential from its home.
+//
+// Per *account*, not per directory: that is the whole point of the split. Two
+// directories bound to one account share this one copy, so the tool's refresh
+// rotates a single credential instead of invalidating the copies in every other
+// bound directory (docs/ROADMAP.md § One credential per account).
+func (app *App) credStoreDir(tool, account string) string {
+	if credentialEnvVar(tool) == "" || account == "" {
+		return ""
+	}
+	return app.Paths.CredStoreDir(tool, account)
+}
+
+// isKaeManagedCredStore reports whether dir lies inside kae's per-account
+// credential store root. The sibling of isKaeManagedHome, for the second
+// variable: applyGlobalScope has to hide a kae-set credential dir exactly as it
+// hides a kae-set config dir, or a global command run inside a bound directory
+// resolves the *directory's* credential and switches the account there instead
+// of in the real home.
+func (app *App) isKaeManagedCredStore(dir string) bool {
+	return dir != "" && pathWithin(dir, app.Paths.CredStoreRoot())
+}
+
 // realToolHome resolves the tool's live home directory for per-directory shared
 // linking. An isolation env var pointing into kae's own isolation data dirs is
 // ignored: that is kae's own redirection (e.g. exported by a pinned directory's
@@ -175,15 +219,29 @@ func (app *App) applyGlobalScope() {
 	}
 	app.globalScope = true
 	isolated := map[string]bool{}
+	credential := map[string]bool{}
 	for _, tool := range constants.Tools {
 		if envVar := isolationEnvVar(tool); envVar != "" {
 			isolated[envVar] = true
+		}
+		// The second variable needs its own masking and its own test for what
+		// counts as kae-managed: its value points into the per-account credential
+		// store, which is not a tool home and so is not what isKaeManagedHome
+		// recognizes. Masking one of the pair and not the other is worse than
+		// masking neither — a global `kae use` would then write claude's credential
+		// into the bound directory's shared store while reading and reporting the
+		// real home.
+		if envVar := credentialEnvVar(tool); envVar != "" {
+			credential[envVar] = true
 		}
 	}
 	inner := app.Env.Getenv
 	app.Env.Getenv = func(key string) string {
 		value := inner(key)
-		if isolated[key] && app.isKaeManagedHome(value) {
+		switch {
+		case isolated[key] && app.isKaeManagedHome(value):
+			return ""
+		case credential[key] && app.isKaeManagedCredStore(value):
 			return ""
 		}
 		return value

@@ -27,15 +27,23 @@ func TestUseIsolatedWritesGlobalFragment(t *testing.T) {
 	code, out := captureStdout(t, func() int { return runUseIsolated(ctx, app, opts, "claude", "main") })
 	mustExit(t, constants.ExitOK, code, out)
 
-	// The global isolated home holds the main credential.
+	// The account's credential store holds the main credential — not the isolated
+	// home, which keeps the sessions. One copy per account is the point: a globally
+	// isolated home and a bound worktree on the same account must read the same one,
+	// or the first refresh in either logs the other out.
 	home := app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")
-	if creds := readFile(t, home+"/.credentials.json"); !strings.Contains(creds, mainToken) {
-		t.Fatalf("global isolated home must hold the main credential: %s", creds)
+	credStore := app.Paths.CredStoreDir(constants.ToolClaude, "main")
+	if creds := readFile(t, credStore+"/.credentials.json"); !strings.Contains(creds, mainToken) {
+		t.Fatalf("the account credential store must hold the main credential: %s", creds)
 	}
-	// The kae-owned global fragment points CLAUDE_CONFIG_DIR at that home.
+	// The kae-owned global fragment exports both halves; one without the other sends
+	// the tool looking for a credential nothing wrote.
 	frag := readFile(t, app.Paths.MiseGlobalFragmentFile())
 	if !strings.Contains(frag, `CLAUDE_CONFIG_DIR = "`+home+`"`) {
 		t.Fatalf("global fragment must export CLAUDE_CONFIG_DIR: %s", frag)
+	}
+	if !strings.Contains(frag, `CLAUDE_SECURESTORAGE_CONFIG_DIR = "`+credStore+`"`) {
+		t.Fatalf("global fragment must export the credential store too: %s", frag)
 	}
 	// state.synced records the binding.
 	st, err := state.Load(app.Paths.StateFile())

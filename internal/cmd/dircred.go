@@ -508,8 +508,9 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 // since it is the one in daily use. Harvesting that would file account B's token
 // under account A's name and identity, after which nothing offline can tell: the
 // token is opaque, so live, snapshot and doctor all agree on a label that is
-// simply wrong. The global recapture refuses on the same evidence
-// (keepSnapshotIdentity), through the same predicate (identityDiffers).
+// simply wrong. The two global recaptures refuse on the same evidence
+// (keepSnapshotIdentity), through the same pair of predicates — identityComparable
+// above identityDiffers, in that order, for the reason identityComparable states.
 //
 // Positive evidence is required — both sides readable, and agreeing. Absence is
 // not evidence of a match, and insisting is cheap: a copy worth harvesting is one

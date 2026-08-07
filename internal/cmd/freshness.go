@@ -426,17 +426,11 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 				plan.Tool, plan.Tool, active)
 			continue
 		}
-		if keepSnapshotIdentity(ctx, be, plan.Specs, acc, values) {
-			// The live login is someone else's: recapturing here would file that
-			// credential under this account's name and identity, and after that no
-			// offline check can tell the two apart (see keepSnapshotIdentity).
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: the live %s identity is not the one kae applied for %s/%s; "+
-					"%s was probably logged in again outside kae, so that snapshot is left unchanged\n",
-				plan.Tool, plan.Tool, active, plan.Tool)
-			fmt.Fprintf(os.Stderr,
-				"kae: if that live login is one you want to keep, import it first with: kae add --no-login %s <account>\n",
-				plan.Tool)
+		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, active, acc, values); why != "" {
+			// Recapturing here would file a credential kae cannot attribute under this
+			// account's name and identity, and after that no offline check can tell the
+			// two apart (see keepSnapshotIdentity).
+			warnRecaptureIdentityUnconfirmed(plan.Tool, why)
 			continue
 		}
 		if why := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); why != "" {
@@ -460,6 +454,19 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 		fmt.Fprintf(os.Stderr, "kae: refreshed %s/%s snapshot from the live store before switching away\n",
 			plan.Tool, active)
 	}
+}
+
+// warnRecaptureIdentityUnconfirmed reports a recapture declined because kae could
+// not establish whose login is live, for both paths that owe that guard: the
+// switch-away recapture and `run -s`'s own. One copy, because the two differ only in
+// the reason keepSnapshotIdentity built and would otherwise drift apart in the half
+// that matters — the hint, which is the only thing that tells a user how to keep a
+// live login kae is deliberately refusing to adopt.
+func warnRecaptureIdentityUnconfirmed(tool, why string) {
+	fmt.Fprintf(os.Stderr, "kae: warning: %s, so that snapshot is left unchanged\n", why)
+	fmt.Fprintf(os.Stderr,
+		"kae: if that live login is one you want to keep, import it first with: kae add --no-login %s <account>\n",
+		tool)
 }
 
 // snapshotArtifactDiffers reports whether one live artifact value differs from
@@ -495,17 +502,35 @@ func snapshotArtifactDiffers(ctx context.Context, be secret.Backend, storedRef s
 // unreadable stored payload degrades to absent, which a later switch treats as
 // "remove it and let claude refetch": stale-but-wrong is never kept.
 //
-// It returns outsideLogin when the live identity *names a different account* than
-// this snapshot. Keeping the snapshot's identity is right when the live cache is
-// merely stale, but a live identity that changed is the one case where it is
-// authoritative: `claude /login` rewrites accountUuid/emailAddress
-// unconditionally, so a changed one means the live credential belongs to someone
-// else. Overwriting this snapshot's credential with it would file account B's
-// token under account A's name *and* A's identity, and nothing offline can
-// detect that afterwards — the access token is opaque, so live, snapshot and
-// doctor all agree on a label that is simply wrong. The caller refuses to
-// recapture at all.
-func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifact.Spec, acc account.Account, values []artifact.Value) (outsideLogin bool) {
+// It returns a non-empty reason when the caller must not recapture at all, framed
+// around accountName rather than acc.Name for the reason recaptureWouldDowngrade
+// gives. Two shapes, and they are deliberately not one:
+//
+// (1) **The live identity names a different account.** Keeping the snapshot's
+// identity is right when the live cache is merely stale, but a live identity that
+// changed is the one case where it is authoritative: `claude /login` rewrites
+// accountUuid/emailAddress unconditionally, so a changed one means the live
+// credential belongs to someone else. Overwriting this snapshot's credential with
+// it would file account B's token under account A's name *and* A's identity, and
+// nothing offline can detect that afterwards — the access token is opaque, so live,
+// snapshot and doctor all agree on a label that is simply wrong.
+//
+// (2) **kae cannot read the two records it would compare** (identityComparable).
+// Without this, a payload that is well-formed JSON but not an object — `/oauthAccount`
+// being `null` is the reachable shape — falls to identityDiffers' byte comparison,
+// where two such payloads are "equal" and the recapture proceeds on evidence that
+// names nobody. It is the same gate its two sibling attribution guards already apply
+// (dirIdentityConfirms, liveLoginMatchesBackup); this was the third site and it was
+// missing it. The reason is worded weaker than (1) on purpose: kae has not observed a
+// different account, only that it cannot tell, and a weak reading may not take (1)'s
+// consequence.
+//
+// The loop finishes either way, so the value substitution above is complete for a
+// caller that reads values regardless of the reason. Today none does.
+func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifact.Spec,
+	tool, accountName string, acc account.Account, values []artifact.Value,
+) string {
+	reason := ""
 	for i, sp := range specs {
 		if !sp.IdentityOnly {
 			continue
@@ -522,12 +547,24 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 		}
 		values[i] = artifact.Value{Data: data, Present: true}
 		// An absent live identity says nothing (the tool may not have rebuilt it
-		// yet); only a present one that names another account is evidence.
-		if live.Present && identityDiffers(sp, data, live.Data) {
-			outsideLogin = true
+		// yet); only a present one is evidence of anything.
+		if !live.Present || reason != "" {
+			continue
+		}
+		switch {
+		case !identityComparable(data, live.Data):
+			reason = fmt.Sprintf(
+				"kae cannot read the %s identity records it would compare for %s/%s, so it cannot tell "+
+					"whose login is live", tool, tool, accountName,
+			)
+		case identityDiffers(sp, data, live.Data):
+			reason = fmt.Sprintf(
+				"the live %s identity is not the one kae applied for %s/%s; %s was probably logged in "+
+					"again outside kae", tool, tool, accountName, tool,
+			)
 		}
 	}
-	return outsideLogin
+	return reason
 }
 
 // supersedes reports whether copy a of one account's credential is provably the
@@ -541,7 +578,7 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 // the field cannot do is compare two *different* accounts, so every caller owes an
 // attribution guard of its own before acting on the answer (the harvest's is
 // dirIdentityConfirms, a backup restore's is liveLoginMatchesBackup, and the
-// switch-away recapture's is keepSnapshotIdentity, applied by its caller).
+// two recaptures' is keepSnapshotIdentity, applied by each caller).
 //
 // The a-side guard is `orderable`, the one docs/ADAPTERS.md prescribes. b degrading to
 // the zero cutoff is deliberate and *not* the same test: a copy kae cannot order has no

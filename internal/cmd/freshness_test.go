@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
@@ -595,5 +596,66 @@ func TestSwitchToHealthySnapshotHasNoLeadTimeNotice(t *testing.T) {
 	_, _, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "healthy") })
 	if strings.Contains(stderr, "re-login") {
 		t.Errorf("a credential with a month left must be silent: %q", stderr)
+	}
+}
+
+// The switch-away recapture's attribution guard needs the same decodability gate its
+// two siblings apply (dirIdentityConfirms, liveLoginMatchesBackup): a payload that is
+// well-formed JSON but not an account record names nobody, and `/oauthAccount: null`
+// is the reachable shape. Without the gate the two sides fall to identityDiffers'
+// byte comparison, where two such payloads are *equal*, so the recapture proceeded on
+// evidence that named nobody — the third site, and the one that was missing it.
+//
+// TestSwitchAwayRecapturesRefreshedToken is the positive control for this: with a
+// readable identity on both sides, the very same rotation IS recaptured. Without that
+// pairing, a recapture that never ran would satisfy the assertion below.
+func TestSwitchAwayRefusesRecaptureWhenNeitherIdentityIsARecord(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	const nonRecord = `{"oauthAccount":null,"projects":{"/repo":{}}}`
+	const original = "sk-ant-oat01-MAIN-ORIGINAL-eeee"
+
+	// Captured by hand: seedClaude would write a well-formed identity, and what this
+	// test needs recorded is one that is not an account record.
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+		claudeOAuthPayload(original, now.Add(time.Hour)))
+	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"), nonRecord)
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
+	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+
+	// This test proves nothing unless the snapshot really recorded the non-record —
+	// otherwise the refusal below would be the "no identity recorded" one.
+	acc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
+	if err != nil || !found || !acc.Artifacts["oauth_account"].Present {
+		t.Fatalf("this test needs a recorded non-record identity: found=%v err=%v art=%+v",
+			found, err, acc.Artifacts["oauth_account"])
+	}
+
+	// An in-tool refresh, so there is genuinely something to recapture: the guard runs
+	// before the divergence check, so a no-op switch would warn without proving a write
+	// was prevented.
+	const rotated = "sk-ant-oat01-MAIN-ROTATED-ffff"
+	writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+		claudeOAuthPayload(rotated, now.Add(8*time.Hour)))
+
+	code, out, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+	// Naming the account is part of the assertion: this path recaptures the account
+	// being switched *away from*, so a refusal that named the switch target instead
+	// would point the user at the wrong snapshot.
+	if !strings.Contains(stderr, "cannot read the claude identity records it would compare for claude/main") {
+		t.Errorf("expected a refusal naming claude/main and saying kae cannot tell whose login is live: %q", stderr)
+	}
+	// Weak evidence takes a weak consequence: kae has not observed a *different*
+	// account, so it must not say one was logged in outside kae.
+	if strings.Contains(stderr, "outside kae") {
+		t.Errorf("kae observed only that it cannot compare; it must not claim a foreign login: %q", stderr)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, "claude", "main"); !strings.Contains(got, original) {
+		t.Fatalf("recaptured on evidence that names nobody: %s", got)
 	}
 }

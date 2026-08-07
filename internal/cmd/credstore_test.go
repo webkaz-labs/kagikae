@@ -11,6 +11,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
+	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
@@ -584,6 +585,85 @@ func TestUseIsolatedKeepsAPreSplitHomeCopyItCannotAttribute(t *testing.T) {
 	be := testBackend(t, app)
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, refreshed) {
 		t.Fatalf("and must not be filed under this account: %s", got)
+	}
+}
+
+// Two nets guard the kept-store exception, and a tool can be added that falls
+// through both. The pass skips a tool whose rotation is not measured
+// (`rotatesSingleUse`) before it judges anything, so such a store arrives at the
+// sweep unmarked; `harvestBeforeDelete` then lets it through unconditionally for the
+// same reason. Today no tool is in that position — claude is the only one with a
+// credential variable and its rotation is measured — and this refuses the
+// combination rather than waiting for the day it is created.
+//
+// The sibling guard for the other direction is
+// TestHarvestIsDeclaredForMeasuredToolsOnly.
+func TestNoSplittingToolSkipsBothNets(t *testing.T) {
+	for _, tool := range constants.Tools {
+		if credentialEnvVar(tool) != "" && !rotatesSingleUse(tool) {
+			t.Errorf("%s can reach the kept-store exception, but the pin-level pass skips it "+
+				"at the rotatesSingleUse gate and harvestBeforeDelete lets it through — so its "+
+				"kept store would be swept with neither harvest nor attribution", tool)
+		}
+	}
+}
+
+// The shared-mode shape of "unmarked and unharvested reaches the exception": the
+// account the previous binding named is gone, so the pass returns before judging and
+// only harvestBeforeDelete stands between the sweep and a copy it cannot attribute.
+// The isolated-mode sibling (TestRunPinSweepKeepsALostAccountsCredential) does not
+// exercise the exception at all — there the store is outside `keep`, so it is swept
+// on the ordinary path.
+func TestAKeptStoreThePassSkippedIsStillKept(t *testing.T) {
+	sim := &keychainSim{}
+	runner.With(sim, func() {
+		app := overlayTestApp(t)
+		app.Env.GOOS = "darwin"
+		ctx := context.Background()
+		opts := commonOpts{Format: formatText}
+		captureClaudeFromKeychain(t, app, sim, "main", mainToken, app.Now().Add(time.Hour))
+		dir := pinHere(t, app, modeShared)
+		storeDir := app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
+		makePreSplit(t, app, constants.ToolClaude, "main", dir, storeDir)
+		// The account goes away, so the pass returns at snapshotCredential — before it
+		// judges the store, so it marks nothing.
+		if err := os.RemoveAll(app.Paths.AccountDir(constants.ToolClaude, "main")); err != nil {
+			t.Fatal(err)
+		}
+		captureClaudeFromKeychain(t, app, sim, "side", sideToken, app.Now().Add(time.Hour))
+		app.Config.Profiles["main"] = config.Profile{Accounts: map[string]string{constants.ToolClaude: "side"}}
+		sim.ops = nil
+
+		_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+
+		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
+			t.Fatalf("a store the pass never judged must not be deleted on the sweep's own reading: %v", sim.ops)
+		}
+		if !strings.Contains(stderr, "no account named claude/main exists any more") {
+			t.Fatalf("the second net must say which arm kept it: %q", stderr)
+		}
+	})
+}
+
+// `--purge` must not announce having removed a credential from a store that never
+// held one: the delete primitive treats absence as success, so the probe is what
+// makes the report true. The positive control is
+// TestUnpinPurgeRemovesAFileCredentialFromTheAccountStore.
+func TestUnpinPurgeReportsNothingForAStoreWithNoCredential(t *testing.T) {
+	app := overlayTestApp(t) // linux: the file driver
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	_, _, credFile := boundStoreForClaudeMain(t, app)
+	if err := os.Remove(credFile); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out := captureStdout(t, func() int { return runUnpin(ctx, app, opts, true) })
+	mustExit(t, constants.ExitOK, code, out)
+
+	if strings.Contains(out, "Removed the superseded per-directory") {
+		t.Fatalf("nothing was there to remove; kae must not announce one:\n%s", out)
 	}
 }
 

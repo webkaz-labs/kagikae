@@ -248,8 +248,11 @@ func (app *App) migratePreSplitHome(ctx context.Context, be secret.Backend, tool
 	if !ok || unbindableDirKeychain(sp) {
 		return
 	}
-	// Probe first, so an already-migrated home costs one read rather than a delete
-	// whose "no such item" the primitive reports as success. And one harvest, not two:
+	// Probe first as a **cost** guard, not a correctness one: harvestBeforeDelete's
+	// "nothing there" arm already makes the delete a no-op, and this path prints
+	// nothing on success, so what the probe saves is a subprocess on every `use -i`
+	// against an already-migrated home (measured: removing it changes no behaviour).
+	// And one harvest, not two:
 	// harvestBeforeDelete performs it and answers whether the copy may go, which is
 	// the same pair the delete sweep uses — neither `kae use -i` nor `kae run -i`
 	// wraps a read cache, so a second pass here is a second subprocess.
@@ -1039,11 +1042,22 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// measured 2026-08-07, and both are regressions of this exception rather than
 		// of the harvest.
 		//
-		// `refusalReported` is exactly the right set: the pass marks a store only when
-		// it refused *and* the store is one the binding is moving off, which is the same
-		// set this exception accepts. Where the pass succeeded there is nothing left to
+		// `refusalReported` covers every store the pass **judged**: it marks one only
+		// when it refused *and* the binding is moving off it, which is the set this
+		// exception accepts. Where the pass succeeded there is nothing left to
 		// mis-attribute — the snapshot already holds that copy, so the harvest below
 		// finds nothing newer and the delete carries no judgement at all.
+		//
+		// The stores the pass skipped *before* judging arrive here unmarked, and they
+		// are caught by `harvestBeforeDelete` instead — which is why that second gate is
+		// not redundant with this one. One such path is live today: the account the
+		// previous binding named is gone, so the pass returns at `snapshotCredential`
+		// and the sweep keeps the copy on the account-gone arm (measured 2026-08-07).
+		// The one that would open silently is a tool with a credential variable whose
+		// rotation has never been measured — the pass returns at `rotatesSingleUse` and
+		// `harvestBeforeDelete` lets such a tool through unconditionally, so its kept
+		// store would be deleted with neither harvest nor attribution.
+		// TestNoSplittingToolSkipsBothNets refuses that combination.
 		//
 		// The contrast worth keeping: migratePreSplitHome does this job correctly by
 		// running *before* the write. This one cannot — a delete has to follow the new

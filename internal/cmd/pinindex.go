@@ -114,6 +114,10 @@ func (app *App) pinnedDirsComplete() ([]pinnedDir, bool, error) {
 			complete = false // a store kae cannot name is not a store that is not there
 			continue
 		}
+		// Unreachable through recordPinnedDir, which writes atomically — it is here for
+		// a record truncated from outside, and it is strictly conservative when it does
+		// fire (incomplete → the refcount keeps the credential). Measured unkillable
+		// 2026-08-07; the comment is the guard rather than a test that cannot fail.
 		dir := strings.TrimSpace(string(data))
 		if dir == "" {
 			complete = false

@@ -37,9 +37,10 @@ import (
 )
 
 // KeychainService is the base of Claude Code's macOS Keychain item service
-// name — and the whole name only while CLAUDE_CONFIG_DIR is unset. Anything
-// that needs the name for a specific environment must go through
-// keychainService, never this constant.
+// name — and the whole name only while the credential base dir is empty, i.e.
+// neither CLAUDE_SECURESTORAGE_CONFIG_DIR nor CLAUDE_CONFIG_DIR is set. Anything
+// that needs the name for a specific environment must go through keychainService,
+// never this constant.
 const KeychainService = "Claude Code-credentials"
 
 // EnvSecureStorageDir replaces CLAUDE_CONFIG_DIR as the input to *both* the
@@ -161,8 +162,10 @@ var keychainAccountPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 // Deliberately not modelled: the build's OAuth suffix, which sits between
 // "Claude Code" and "-credentials" and is empty only for the production build
 // (docs/ROADMAP.md).
-// dirScoped reports whether the returned name is namespaced by the config dir,
-// which is what makes the item safe to write for one bound directory.
+// dirScoped reports whether the returned name is namespaced at all — by the
+// credential base dir, which is the credential variable when set and the config dir
+// otherwise. It is what makes the item safe to write for one binding rather than for
+// every process on the machine; it does not say *which* of the two named it.
 func keychainService(env adapter.Env) (name string, dirScoped bool) {
 	dir := credentialBaseDir(env)
 	if dir == "" {

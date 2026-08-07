@@ -281,7 +281,9 @@ func isolatableTargets(targets []runTarget, fromProfile bool, modeDesc, flagName
 //
 // The home becomes the tool's isolation env var (global_fragment.go), so it is
 // a bound directory in exactly the sense writeDirCredential means: on a keychain
-// platform the credential belongs in this home's own keychain item, not in a
+// platform the credential belongs in the item that home's environment resolves — which since v0.17.0 is the
+// account's, not the home's (migratePreSplitHome, and the credential variable this
+// function exports), not in a
 // file the tool stops reading.
 //
 // fromProfile carries the same profile-vs-explicit split isolatableTargets

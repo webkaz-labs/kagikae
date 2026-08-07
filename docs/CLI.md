@@ -546,11 +546,11 @@ kae keeps a credential because bindings still use it, it prints how many.
   a second env entry pointing at it, so every directory bound to one account reads
   one credential while keeping its own sessions ([ADAPTERS.md](ADAPTERS.md)
   § Per-account credential store). A directory bound by an earlier release keeps its
-  own copy until it is re-pinned; `kae doctor` names it (`credential_unsplit`). It is written where the tool bound to that
-  directory actually reads it: a private file at `0600`, or — on a platform where
-  the tool namespaces a keychain item by the config dir (claude on macOS) — that
-  directory's keychain item, with any superseded plaintext copy removed. See
-  docs/ADAPTERS.md "Per-directory credential store".
+  own copy until it is re-pinned; `kae doctor` names it (`credential_unsplit`). It is
+  written where the tool bound to that directory actually reads it — a file at
+  `0600`, or the keychain item that binding resolves, with any superseded plaintext
+  copy removed. What decides which item is the adapter's rule, stated once in
+  docs/ADAPTERS.md § "Credential storage resolution".
 
   **Except where a store already holds a newer copy, which kae harvests into the
   snapshot first.** The tool refreshes the credential inside the directory, in

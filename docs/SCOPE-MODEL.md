@@ -122,9 +122,13 @@ claude keychain / Linux `.credentials.json`): it is **private** (never
 symlinked), and its containing store has no shared content, so nothing is lost.
 
 "Private" is a property of the *store*, and whether the store can be private at
-all is the tool's decision, not kae's. claude namespaces its keychain item by
-`CLAUDE_CONFIG_DIR`, so a bound directory gets its own item and the credential is
-genuinely private there. codex scopes its `Codex Auth` item by an **account**
+all is the tool's decision, not kae's. claude namespaces its keychain item by a rule
+the adapter owns (docs/ADAPTERS.md § "Credential storage resolution"), and since
+v0.17.0 kae uses the second variable in that rule to make the credential the
+**account's** rather than the directory's — so a bound directory's sessions,
+settings and identity are private to it while its credential is shared with every
+other directory bound to the same account, on purpose: copies of one credential
+invalidate each other. codex scopes its `Codex Auth` item by an **account**
 derived from `CODEX_HOME` rather than by the service name — so the store *can* be
 private, but kae has not verified a bound directory end to end there and does not
 declare the capability: it warns and writes nothing rather than assuming

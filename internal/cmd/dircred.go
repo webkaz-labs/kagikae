@@ -1645,6 +1645,39 @@ func (app *App) storeHoldsAccount(ctx context.Context, be secret.Backend, acc ac
 	return dirIdentityConfirms(ctx, be, specs, acc, store.StoreDir).Why == ""
 }
 
+// pinUnsplitChecks reports a bound directory that still keeps its own copy of an
+// account's credential, which is what a directory bound before v0.17.0 has.
+//
+// It is the migration prompt, and the state it names is not cosmetic: such a copy
+// is invalidated the moment any other binding of that account refreshes, because
+// claude's refresh token rotates single-use. Nothing else says so — the copy is
+// perfectly healthy until the moment it is not, which is why `credential_stale`
+// cannot see this and `credential_superseded` only sees it once the damage has a
+// second copy to compare against.
+//
+// Offline, backend-free, and derived entirely from the walk: a binding is unsplit
+// when it has a store for a tool that *can* split (credentialEnvVar) and no
+// credential entry recorded for it. A tool with no such variable is not reported,
+// because there is nothing for it to migrate to.
+func pinUnsplitChecks(stores []boundDirStore) []adapter.Check {
+	checks := []adapter.Check{}
+	for _, bound := range stores {
+		if credentialEnvVar(bound.Tool) == "" || bound.CredDir != "" {
+			continue
+		}
+		checks = append(checks, adapter.Check{
+			Tool: bound.Tool, Code: constants.CheckCredentialUnsplit, Status: constants.StatusWarn,
+			Message: fmt.Sprintf(
+				"the directory bound to %s/%s (%s) keeps its own copy of that account's credential; "+
+					"another directory or `%s use -i` on the same account will invalidate it — "+
+					"re-bind it: cd %s && %s pin",
+				bound.Tool, bound.Account, bound.Dir, toolName, bound.Dir, toolName,
+			),
+		})
+	}
+	return checks
+}
+
 // pinIdentityChecks reports a bound directory whose own store names an account
 // other than the one the directory binds — the bound-directory frame of
 // `identity_drift`, which the global check cannot see. That one compares the live

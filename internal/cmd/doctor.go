@@ -218,6 +218,7 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 		stores := app.boundDirStores()
 		report.Checks = append(report.Checks, app.pinChecks()...)
 		report.Checks = append(report.Checks, app.pinCredentialChecks(ctx, stores)...)
+		report.Checks = append(report.Checks, pinUnsplitChecks(stores)...)
 		if err == nil {
 			report.Checks = append(report.Checks, app.pinIdentityChecks(ctx, be, stores)...)
 			// The third consumer of the same walk: whether one bound copy of an account

@@ -734,12 +734,21 @@ isolation env vars — and `kae use` warns that the change is global.
 Every isolation mechanism — `kae pin -s`, `kae pin -i`, `kae use -i`,
 `kae run -i` — works by pointing the tool's isolation env var at a kae-owned
 directory. For a tool whose credential store is namespaced by that variable
-(claude on macOS, see "Credential storage resolution"), the credential belongs in
-**that directory's own store**, and one helper (`writeDirCredential`) is the only
-thing that writes it — plus the identity cache that names it — for all four:
+(claude on macOS, see "Credential storage resolution"), one helper
+(`writeDirCredential`) is the only thing that writes the credential — plus the
+identity cache that names it — for all four.
+
+**Which store it writes it to depends on the tool.** For a tool that can move its
+credential without moving its home, that is the *account's* store and not the
+directory's (§ Per-account credential store); for every other tool it is the
+directory's own. Both are the same helper and the same rules below; where the rules
+say "the store", read it as whichever of the two that tool resolves:
 
 - the location comes from the adapter, resolved against an env whose isolation
-  variable already points at the bound directory — never recomputed;
+  variable points at the bound directory **and whose credential variable points at
+  the credential store** — never recomputed. The two are a pair (`bindDirs`) rather
+  than one value everywhere, because the attribution below reads the identity cache,
+  which stays with the config dir whatever the credential does;
 - on a keychain platform the per-directory **item** is written and the plaintext
   copy in the directory is removed, because **while the tool keeps preferring the
   item** nothing reads that file and it cannot hold anything newer than what was just
@@ -838,6 +847,63 @@ the tool's own settings and sessions are still isolated, and the directory works
 once the account is captured. An operation naming one tool and account
 (`kae pin <tool> <account>`, or `kae run -i <tool> <account>`) fails instead:
 there the unisolatable tool is the whole request, not one row of it.
+
+### Per-account credential store
+
+One account, one credential — shared by every directory bound to it, while each
+directory keeps its own sessions, settings and identity cache. The store is
+`credstore/<tool>/<account>/` under kae's data dir, and a bind points the tool's
+**credential** variable at it (claude's `CLAUDE_SECURESTORAGE_CONFIG_DIR`; no other
+tool has one, see § Credential storage resolution).
+
+It exists because copies of one credential cannot coexist. claude's refresh token
+rotates single-use, so of all the copies of one account's login only the one that
+refreshed last still works: two worktrees bound to one account each held their own
+copy, and the first refresh in either one logged the other out — up to eight hours
+later, inside the tool, with every offline check in kae green. The harvest
+([ROADMAP.md](ROADMAP.md)) keeps a *sequence* of directories working; only one copy
+makes them work at the same time.
+
+What follows from that, and what a change here must keep:
+
+- **the account selects the store, so both bind modes carry the entry.** A shared
+  (`-s`) bind's config dir is account-agnostic by design, and its credential entry
+  is not — which is why `kae pin <tool> <account>` rewrites that entry in shared
+  mode even though it leaves the config entry alone;
+- **a globally isolated home reads the same store.** `kae use -i` and `kae run -i`
+  export the pair as well. Their home is already per-account, so it would have been
+  easy to leave them out — and then that home would be the copy the design forgot;
+- **it is the account's, not the directory's, so a bind never deletes it.** The
+  sweep that removes a superseded per-directory item does not apply: that item is
+  addressable from nowhere once its binding is gone, while this store is a path kae
+  can name and re-use. Only `kae unpin --purge` may take it, and only once nothing
+  points at it — every bound directory's fragment plus `state.synced`. A source kae
+  could not read means it keeps the credential: "kae found no reference" and "kae
+  could not look" are the same answer only if logging a sibling out is acceptable;
+- **where a store's credential lives is read from the binding, never derived from
+  the account.** A directory bound before v0.17.0 keeps its credential inside its
+  store, and the store walk returns stores of older bindings forever — so a leftover
+  store bound to one account would otherwise be handed another account's credential
+  store to harvest from, and a matching identity cache would file one account's token
+  under the other's name. The recorded entry counts only when it names that store's
+  own account; anything else falls back to the store directory, where a pre-split
+  credential is and where a post-split store simply has none;
+- **migration is to re-run `kae pin`** in the directory. `kae doctor` names every
+  directory that still needs it (`credential_unsplit`, docs/CLI.md § doctor), because
+  nothing else can see the state: such a copy is healthy right up to the moment
+  another binding of that account refreshes;
+- **`CLAUDE_SECURESTORAGE_CONFIG_DIR=""` is deliberately not built.** It collapses
+  every config dir onto claude's one global item, so `kae use <other>` would silently
+  change what a bound directory runs while its fragment and identity still name the
+  bound account. The adapter refuses that value (§ Environment conflicts); kae never
+  writes it.
+
+The failure mode if upstream stops honoring the variable is **observable offline and
+loud**: the credential lands at `sha8(CLAUDE_CONFIG_DIR)` instead, which is a
+different item kae also knows how to compute, and the config dir still points at
+kae's own store — so it is a logout, never another account's session. The common
+cause of that divergence is not an upstream regression but a shell where only
+`CLAUDE_CONFIG_DIR` was exported.
 
 ### Per-directory shared bind (`kae pin -s`)
 

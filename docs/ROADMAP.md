@@ -332,9 +332,13 @@ alternative exists (`secret-tool`).
   moment to intervene; only one copy of the credential can. That is the entry below,
   and any message about this must not imply otherwise.
 
-- **One credential per account, sessions still per directory — via
-  `CLAUDE_SECURESTORAGE_CONFIG_DIR`** (designed and gated 2026-08-04, **not
-  started**; build it *after* the entry above). The entry above keeps a *sequence* of
+- ~~**One credential per account, sessions still per directory — via
+  `CLAUDE_SECURESTORAGE_CONFIG_DIR`**~~ (designed and gated 2026-08-04, **built**
+  in v0.17.0 — see [RELEASE.md](RELEASE.md) and
+  [ADAPTERS.md](ADAPTERS.md) § Per-account credential store, which is normative for
+  the mechanism. The design below is kept because it records *why*, and because the
+  premise it rests on is an upstream measurement that has to be re-checked, not a
+  decision that can be re-read from the code). The entry above keeps a *sequence* of
   directories working; it cannot make two worktrees bound to one account run at the
   same time, because each store holds its own copy and the first refresh invalidates
   the rest. Only one copy fixes that.
@@ -384,6 +388,16 @@ alternative exists (`secret-tool`).
   one directory does share the item — but it shares the whole home with it (history,
   sessions, logs), which is the thing this design exists to avoid. A per-account store
   is the option there, if codex's rotation is ever measured.
+  Two things the build settled that the plan above left open, recorded because the
+  reasoning is not visible in the result. Globally isolated homes (`kae use -i`,
+  `kae run -i`) read the account's store too — their home is already per-account, so
+  leaving them out was tempting, and it would have made them the one copy the design
+  forgot; that also closes the "superseded global isolated home is never harvested"
+  entry below for claude, since there is no second copy left to harvest. And a bind's
+  sweep no longer deletes the credential of a store it moves off: the credential is
+  the account's, so only `kae unpin --purge` may take it, refcounted. What is still
+  swept unchanged is the per-directory item a **pre-split** binding left behind,
+  which is what makes re-running `kae pin` a migration rather than a leak.
 
 - **Per-directory keychain items outlive everything that could name them, and now
   they can be found** (measured on a real machine 2026-08-04, **not fixed**). Five

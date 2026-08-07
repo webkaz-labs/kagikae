@@ -103,6 +103,24 @@ block in docs/VALIDATION.md, next to two correct ones.
   shape: **never declare an artifact for a location you could not measure** — a
   guessed path is a write nothing reads, which is the defect this whole section
   exists for.
+- **A credential can belong to an account rather than to a directory, and then the
+  rules invert.** claude's `CLAUDE_SECURESTORAGE_CONFIG_DIR` moves the credential
+  without moving the sessions, so a bind exports **two** variables and every
+  per-directory resolution takes a pair (`bindDirs`) — the config dir and the
+  credential store. `docs/ADAPTERS.md` § Per-account credential store is normative;
+  three traps that outlive the code. The pair is swappable at a call site and getting
+  it backwards is silent: attribution reads the identity cache, which stays in the
+  **config** dir, so handing it the credential store makes every identity look like
+  one that escapes its store and the harvest refuses every time — overwriting the
+  copy it came to preserve. A store's credential location is read from the recorded
+  binding and **never derived from the account**: the store walk returns stores of
+  older bindings forever, so a leftover store bound to one account would otherwise be
+  handed another account's credential to harvest, and a matching identity cache files
+  one account's token under the other's name. And deleting inverts: a per-account
+  store is not one directory's to remove, so a bind's sweep leaves it and only
+  `unpin --purge` may take it, after counting every fragment **and** `state.synced` —
+  where a source kae could not read has to mean keep, since "no reference found" and
+  "kae could not look" differ by one logged-out sibling.
 - **A per-directory keychain item has to be removed when nothing points at it any
   more**, and the sweep (`pruneDirCredentials`) mirrors the write gate exactly:
   keychain items only, only where the adapter declares them `KeychainDirBindable`.

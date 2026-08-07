@@ -118,7 +118,20 @@ different credential.
 
 `Env` carries the resolved home directory, OS, environment lookups, and the
 live base paths (honoring `CLAUDE_CONFIG_DIR` / `CODEX_HOME` when already
-set). Capture, apply, verify, backup, and rollback are generic operations in
+set, and `CLAUDE_SECURESTORAGE_CONFIG_DIR` for the credential alone).
+
+That last one is why every per-directory resolution takes a **pair** of
+directories rather than one (`cmd.bindDirs`: the config dir and the credential
+store). `cmd.dirSpecs` overrides both variables when it asks an adapter where a
+bound directory's artifacts are — the credential variable **always**, with the
+config dir itself when a tool cannot separate the two, because leaving it alone
+would let a value inherited from the surrounding bound shell answer for a store it
+has nothing to do with. The two halves are a struct and not two string arguments
+on purpose: they are swappable at a call site, and getting them backwards is
+silent — kae would write the credential under one name while the tool read the
+other, with every offline check green.
+
+Capture, apply, verify, backup, and rollback are generic operations in
 `internal/account` semantics implemented by `cmd` + `artifact` over the
 artifact specs, so every adapter gets locking, backups, dry-run, and
 redaction identically.

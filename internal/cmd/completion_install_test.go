@@ -177,8 +177,10 @@ func TestCompletionScriptsCompleteCompanion(t *testing.T) {
 
 // positionalCommands says, for every command in completionCommands, whether it
 // accepts a positional argument — true means `kae <cmd> <TAB>` must offer
-// something, false means the command takes flags only. The comment on each entry
-// is its usage line, so a drift shows up next to the claim.
+// something, false means the command takes flags only. Each entry's comment is
+// its positional shape and nothing else: the flags belong to `printHelp` and
+// docs/CLI.md, and copying a whole usage line here would make this the third
+// hand-maintained copy of it.
 //
 // Being keyed by completionCommands is the whole point, and the difference from
 // subcommandVerbs: that table is opt-in, so a command missing from *both* it and
@@ -197,28 +199,28 @@ func TestCompletionScriptsCompleteCompanion(t *testing.T) {
 // the branch exists and emits candidates; whether the slots and array indices in
 // it are right is TestCompletionPositionalRouting's question, per command.
 var positionalCommands = map[string]bool{
-	"init":       false, // init [--json]
-	"edit":       false, // edit
-	"doctor":     true,  // doctor [tool] [--json]
-	"add":        true,  // add [--no-login] <tool> [<account>] [--restore]
-	"use":        true,  // use [-s|-i] [<profile> | <tool> <account>]
-	"pin":        true,  // pin [-s|-i] [<profile> | <tool> <account>]
-	"unpin":      false, // unpin [--purge]
-	"relogin":    true,  // relogin [<tool>]
-	"run":        true,  // run [<profile> | <tool> <account>] -- <cmd>
-	"env":        true,  // env <set|unset|list> ...
-	"companion":  true,  // companion <add|rm|list> ...
-	"mise":       true,  // mise init
-	"accounts":   false, // accounts [--json]
-	"ls":         false, // ls [--pins] [--json]
-	"account":    true,  // account <rm|rename|set-identity> ...
-	"profile":    true,  // profile <save|set|unset|rm|default> ...
-	"status":     false, // status [--json]
-	"backup":     true,  // backup list [--json]
-	"rollback":   false, // rollback [--to <backup-id>] — the id is a flag value
-	"completion": true,  // completion <bash|zsh|fish> [--install]
-	"version":    false, // version [--format text|json]
-	"help":       false, // help
+	"init":       false,
+	"edit":       false,
+	"doctor":     true, // [<tool>]
+	"add":        true, // <tool> [<account>]
+	"use":        true, // [<profile> | <tool> <account>]
+	"pin":        true, // [<profile> | <tool> <account>]
+	"unpin":      false,
+	"relogin":    true, // [<tool>]
+	"run":        true, // [<profile> | <tool> <account>] -- <cmd>
+	"env":        true, // <set|unset|list> ...
+	"companion":  true, // <add|rm|list> ...
+	"mise":       true, // init
+	"accounts":   false,
+	"ls":         false,
+	"account":    true, // <rm|rename|set-identity> ...
+	"profile":    true, // <save|set|unset|rm|default> ...
+	"status":     false,
+	"backup":     true,  // list
+	"rollback":   false, // the backup id is --to's value, not a positional
+	"completion": true,  // <bash|zsh|fish>
+	"version":    false,
+	"help":       false,
 }
 
 // TestEveryPositionalCommandCompletes: every command that takes a positional has
@@ -327,8 +329,9 @@ func completionCaseBlocks(t *testing.T, shell, script string) map[string]string 
 				body = append(body, next)
 			}
 		}
+		joined := strings.Join(body, "\n")
 		for _, label := range labels {
-			blocks[label] = strings.Join(body, "\n")
+			blocks[label] = joined
 		}
 	}
 	return blocks

@@ -1514,8 +1514,8 @@ Both belong in the real-machine gate rather than here.
 
 Both subcommand groups gained a case in all three generated scripts, so this is a
 **structural** script change: an already-registered completion file has to be
-rewritten before the smoke means anything (`kae completion --refresh`, which
-`mise run install` and `scripts/install.sh` run for you).
+rewritten before the smoke means anything ([CLI.md](CLI.md) § Keeping completion
+current owns how).
 
 Unit-covered, in `internal/cmd`:
 

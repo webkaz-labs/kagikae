@@ -349,34 +349,21 @@ block in docs/VALIDATION.md, next to two correct ones.
 - Adding or changing a command or subcommand requires updating shell completion
   in lockstep: the `case` in all three scripts in `internal/cmd/completion.go`,
   any new `kae __complete` kind in `internal/cmd/complete.go`, and the parity
-  guard `subcommandVerbs` + `TestSubcommandCompletionParity`, and the
-  classification `positionalCommands` + `TestEveryPositionalCommandCompletes`.
-  `kae <cmd> <TAB>` must never be a dead end (a new subcommand group shipped
-  without completion in v0.10.0). **A guard reaches only what its table names**,
-  and the two tables are keyed differently on purpose: `subcommandVerbs` is
-  opt-in, so a group missing from **both** it and the scripts was invisible to it
-  — which is how `kae env` and `kae backup` shipped with no case at all until
-  v0.17.0. `positionalCommands` is keyed by `completionCommands` instead, so a
-  command cannot be left unclassified, and every command classified as taking a
-  positional must have a branch in all three scripts, and that branch must emit
-  candidates. Neither reaches a *verb* dropped from both tables, so one with no
-  sub-verbs (`kae relogin`) still needs its own test naming it — and neither
-  reaches an entry deleted from `subcommandVerbs` itself, which silently takes
-  that group's sub-verb run out of the assertions with it. What a branch's slots
-  and array indices are is a third question, per command and per shell
-  (`TestCompletionPositionalRouting`, which asserts a branch's literals **in
-  order** — both arms hold the same ones, so an unordered check passes on arms
-  that were swapped); the scripts are Go string constants, so `mise run check`'s
-  shellcheck never parses them and `TestCompletionScriptsAreSyntacticallyValid`
-  is what does — for the shells the machine actually has, requiring bash.
-  Adding a **shell** is its own lockstep: `completionScript`, the usage line and
-  the `supported: …` error in `CmdCompletion` (neither of which any guard reads),
-  the `bash zsh fish` run inlined in all three scripts, and
-  `subcommandVerbs["completion"]`. Also update `completionCommands` and `printHelp`,
-  neither of which any guard checks against the router — and note why that gap is
-  not closed by dispatching each command from a test (several reach `newApp`, and
-  with it the real environment, before a bad flag stops them; the reasoning lives
-  on `positionalCommands`). Completion is dynamic, so candidate changes resolve live; only a
+  guard `subcommandVerbs` (its sub-verbs) and the classification
+  `positionalCommands` (whether it takes a positional at all), plus
+  `completionCommands` and `printHelp`, neither of which any guard checks against
+  the router. Adding a **shell** is its own lockstep: `completionScript`, the
+  usage line and the `supported: …` error in `CmdCompletion` (no guard reads
+  either), the `bash zsh fish` run inlined in all three scripts, and
+  `subcommandVerbs["completion"]`.
+  `kae <cmd> <TAB>` must never be a dead end — a new subcommand group shipped
+  without completion in v0.10.0, and `kae env` / `kae backup` had no case at all
+  until v0.17.0. **A guard reaches only what its table names**, which is why
+  those two tables are keyed differently and why neither of them closes the
+  class on its own; `positionalCommands` in `internal/cmd/completion_install_test.go`
+  is normative for what each guard does and does not see, and for why the gap is
+  not closed by dispatching each command from a test. Read it before weakening
+  either. Completion is dynamic, so candidate changes resolve live; only a
   *structural* script change (a new case/kind) alters the registered script.
   That refresh is automatic: `mise run install` and `scripts/install.sh` run
   `kae completion --refresh` (rewrites already-registered files; never creates

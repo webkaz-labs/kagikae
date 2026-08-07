@@ -334,9 +334,8 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   machine has (bash required), which nothing did before: they are Go string
   constants, so the shellcheck task never saw them.
   A **structural** script
-  change like this one is the kind that needs an installed completion file rewritten:
-  `mise run install` and `scripts/install.sh` do that, or run
-  `kae completion --refresh`.
+  change like this one is the kind that needs an installed completion file
+  rewritten ([CLI.md](CLI.md) § Keeping completion current).
 
 ---
 

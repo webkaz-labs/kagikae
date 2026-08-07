@@ -798,6 +798,26 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   flag stops them — so a verb with no sub-verbs keeps its own test naming it
   literally (`TestCompletionScriptsCompleteRelogin`).
 
+- **The completion scripts are hand-written text, so the tests parse them back**
+  (raised 2026-08-07 by review of the entry above, **not started** — advisory, not
+  a defect). `completion.go` holds three hand-maintained scripts whose `case`
+  blocks encode the same routing three times in three array conventions, and the
+  guards therefore reconstruct label→branch from the generated text
+  (`completionCaseBlocks`). Holding the per-command spec as data and rendering
+  each shell from it would let the guards read the spec instead of re-parsing the
+  output, and would make a new command one entry rather than three edits. The
+  cost is why it has not been done: rewriting all three generators is an order of
+  magnitude more than the change that raised it, and their current output has
+  real-machine acceptance behind it. Worth doing when the next command lands or a
+  fourth shell is added — not on its own.
+- **`printHelp` and docs/CLI.md disagree about `kae add`** (found 2026-08-07 while
+  classifying commands for completion, **not fixed**). `printHelp` (`cmd.go`) says
+  `kae add <tool> <account>`; `CmdAdd` accepts one or two positionals, so the
+  account is optional and `docs/CLI.md`'s `kae add <tool> [<account>]` is the
+  correct one. Nothing checks either against the parser, which is the same gap
+  the entry above names for `completionCommands`. Left alone deliberately: it is
+  unrelated surface, and the completion change is not where an unrelated
+  usage-string fix belongs.
 - **A flag that takes a *value* shifts every completion slot** (found 2026-08-07 by
   review of the entry above, **not fixed**). The generated scripts build their
   positional list by dropping words that start with `-`, which is enough for a

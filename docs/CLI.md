@@ -735,9 +735,9 @@ one would suggest a word the command rejects. `kae backup <TAB>` → `list`.
 Positions are computed from the **flag-filtered** argument list, so a **boolean**
 flag before the positionals does not shift completion (`kae add --no-login
 <TAB>` still completes tools; `kae use -i claude <TAB>` completes claude's
-accounts). A flag that takes a *value* still shifts them — the scripts drop words
-beginning with `-`, and a value is not one ([ROADMAP.md](ROADMAP.md) §
-Command-system expansion; it costs candidates, never an action).
+accounts). A flag that takes a *value* still shifts them, which costs candidates
+and never an action ([ROADMAP.md](ROADMAP.md) § Command-system expansion owns
+why, and what the fix would be).
 When the current word starts with `-`, the command's **flag names** are
 completed (`kae add --<TAB>` → `--no-login` / `--restore`; `kae run -<TAB>` →
 `-s` / `-i` / `--env` / `-P`).

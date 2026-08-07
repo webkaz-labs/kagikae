@@ -90,7 +90,7 @@ already matches. `--quiet` suppresses the success report; `--json` keeps the
 
 | Flag | Environment | Behavior |
 |------|-------------|----------|
-| `-s` (default) | real home | backup → apply → run → recapture refreshed creds → restore, per tool and only where that would not put back a credential the child has superseded ([CLI.md](CLI.md) § kae run Semantics); per-tool lock held for the child run |
+| `-s` (default) | real home | backup → apply → run → recapture refreshed creds → restore. Both of the last two are conditional and per tool: the recapture is declined where kae cannot say whose the live copy is or cannot order it against the snapshot (and then the copy it declines is backed up rather than lost), and the restore is skipped where it would put back a credential the child has superseded ([CLI.md](CLI.md) § kae run Semantics is normative for all of it); per-tool lock held for the child run |
 | `-i` | global isolated home | reuses `isolation/global/<tool>/<account>/` shared with `kae use -i`; no lock, no live mutation — the right choice for concurrent interactive sessions |
 | `--env` | env vars only | injects the profile's env vars; no home redirect, no lock |
 
@@ -240,7 +240,11 @@ NG:  two terminals both relying on a global shared switch for different accounts
 - Secrets are stored in the OS credential store by default; a plaintext file
   backend exists only as an explicit opt-in.
 - Every mutation is preceded by a backup, and `kae rollback` puts the recorded bytes
-  back. What that does **not** promise is that a restored credential still works:
+  back. One backup is not that: a `run-unattributable` backup records a post-child copy
+  kae **declined to adopt**, kept so that a refusal is not a deletion, so a bare
+  `kae rollback` deliberately skips it and `--to <id>` is how you reach it
+  ([CLI.md](CLI.md) § kae rollback, § kae run Semantics). What a backup does **not**
+  promise either way is that a restored credential still works:
   claude invalidates the older copies of a login when it refreshes, so a backup can
   hold a payload that is well-formed, unexpired and dead. kae rolls back anyway and
   says so when it can prove it ([CLI.md](CLI.md) § `kae rollback --json`) — reversible

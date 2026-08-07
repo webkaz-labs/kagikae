@@ -184,12 +184,21 @@ block in docs/VALIDATION.md, next to two correct ones.
   name its account, only the fragment being *replaced* does — read it before
   overwriting or removing it, and only trust it for the mechanism it describes. For a
   delete, an account kae cannot name at all is a reason to keep the item; so is a
-  payload kae cannot read, which may be a working login in a shape kae has not been
-  taught. One exception, and it turns on **what the user asked for**, not on the state:
-  a usable copy whose account no longer exists is deleted by `kae unpin --purge`
+  payload kae cannot read **or date**, which may be a working login in a shape kae has not
+  been taught. Two exceptions today, and both turn on **what the user asked for**, not on
+  the state — a housekeeping sweep keeps, `kae unpin --purge` takes.
+  A usable copy whose account no longer exists is deleted by `kae unpin --purge`
   (refusing would strand a live token nothing can address) and **kept** by the sweep a
   bind runs — `kae account rename` reaches that sweep through kae's own re-bind remedy,
-  where deleting destroyed the newest copy of the renamed account's credential.
+  where deleting destroyed the newest copy of the renamed account's credential. And a
+  payload kae could not read or date is deleted by `--purge` too, for the first exception's
+  reason rather than as a rule of its own: keeping it strands a secret **nothing kae offers
+  can remove**, since a per-directory item is addressable only from the string kae hashes
+  its service name from and that sweep is the only path to it — so it reaches only what that
+  sweep reaches (`removeDirCredential`'s kinds), and a file still sitting in a store `unpin`
+  keeps needs no escape because the user can name its path. Both exceptions say what they
+  are destroying — and the second says kae could not tell **whose** it was, since it runs
+  before any attribution. Neither lets a housekeeping bind do it.
 - **Two copies of one credential are ordered in exactly one place.** `supersedes` is the
   only comparator — `expiresAt`, with the side claiming to be newer gated by `orderable`
   (`Known && !Revoked && !ExpiresAt.IsZero()`) and the other side degrading to a zero
@@ -202,12 +211,40 @@ block in docs/VALIDATION.md, next to two correct ones.
   asymmetry runs both ways: a caller may owe `orderable` to the **losing** side too,
   which `supersedes` deliberately does not require of it. Neither direction is the safe
   default — read which question the caller is asking ("may I overwrite this copy" and
-  "may I tell the user it is dead" take opposite answers), and `pinSupersededChecks`
-  carries the worked example. Taking a
+  "may I tell the user it is dead" take opposite answers), and `pinSupersededChecks` and
+  `recaptureWouldDowngrade`'s `preserve` carry the worked examples — the second one added
+  after the rule was written and broken anyway, so treat a **new** consumer as owing the
+  question rather than as covered by the rule. Taking a
   subset of it is how a copy with no deadline came to read as superseded by anything:
   claude sets `Known` on the mere *presence* of `expiresAt` and parses a non-numeric one
   to the zero time, so an upstream type change yields a payload that is `Known`,
   un-`Revoked` and undated at once.
+- **A refusal is conservative only where something else holds the copy; a recapture's is
+  not.** The attribution and ordering guards read the same predicates on both sides of a
+  seam whose consequences invert. `dirIdentityConfirms` and `liveLoginMatchesBackup`
+  decline to *overwrite* or *delete*, so refusing keeps what exists. The two recaptures
+  (`keepSnapshotIdentity` and `recaptureWouldDowngrade`, via `kae use`'s switch-away and
+  `kae run -s`'s post-child pass) decline to *preserve*, and their caller then overwrites
+  the live store — so refusing **destroys** the copy unless a backup holds it. `kae use`
+  gets that for free (`createBackup` runs before its recapture); `kae run -s` does not (its
+  backup predates the child) and creates a second one, reason `run-unattributable`, whose
+  id every such refusal names. Three consequences that outlive the code: a message may not
+  imply a copy survives when kae could not back it up; a *new* refusal on either recapture
+  owes the same backup — **and so does widening an existing one**, which is what the
+  second instance actually was, so a rule keyed on "new" would have read as not applying
+  (it did); and that backup is a preserved artifact rather than an undo target, so a bare
+  `kae rollback` must not target it (`latestRestorable`). Ported without re-asking the
+  question, this shipped the logout twice in one branch — once on attribution, once on
+  ordering.
+  **Which side to keep is forced, not chosen**, and the fact that forces it is worth
+  knowing before re-deriving it: **nothing backs up an account snapshot.** `createBackup`
+  records live artifacts only (`artifact.ReadLive`), and no command archives a snapshot,
+  so "keep the snapshot and back up the live copy" is the only pairing where neither copy
+  is destroyed. Overwriting the snapshot with a payload kae cannot judge destroys the one
+  durable record of that account with nothing to recover it from — and the two causes of
+  that state (an upstream `expiresAt` type change, where the live copy really is newest;
+  a truncated payload, where it is worthless) want opposite answers and are
+  indistinguishable offline.
 - **What kae observed is not what the tool can do, and a message may only claim the
   first.** `Revoked` means "no usable token in this payload", derived from fields that are
   empty *or absent* — so a login whose token keys were renamed upstream reads the same as
@@ -226,8 +263,12 @@ block in docs/VALIDATION.md, next to two correct ones.
   reports one and restores anyway. Ordering never establishes *whose* login two copies
   are, so every consumer owes an attribution guard, and **which record it compares against
   is not interchangeable**: `run -s` reads the **backup**, never the account snapshot,
-  because its own recapture has already rewritten that snapshot with whatever the child
-  left live. Two deliberate asymmetries to leave alone. `run -s` also requires the target
+  because its own recapture has already rewritten that snapshot with what the child left
+  live. That recapture is itself guarded now — the same two the switch-away recapture
+  applies and no third, so a foreign login or a tombstone is refused rather than filed —
+  which narrows what the snapshot can be wrong about without making it a record of the
+  pre-child state, so the backup stays the right side to read.
+  Two deliberate asymmetries to leave alone. `run -s` also requires the target
   to be the account that was already active even though attribution is the stronger
   evidence — on that path the live identity cache is not an independent reading, since
   `run -s` applied the target snapshot's identity into it moments earlier, so a snapshot

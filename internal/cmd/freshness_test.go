@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
@@ -595,5 +596,154 @@ func TestSwitchToHealthySnapshotHasNoLeadTimeNotice(t *testing.T) {
 	_, _, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "healthy") })
 	if strings.Contains(stderr, "re-login") {
 		t.Errorf("a credential with a month left must be silent: %q", stderr)
+	}
+}
+
+// The decodability gate decides the **wording, not the decision**. Getting that
+// backwards shipped a logout, and these three rows are the measurement that says so:
+// the shape kae itself produces (both sides the recorded non-record, byte for byte)
+// must recapture, because refusing there throws away the only refreshable copy — and on
+// `run -s` nothing else holds it. What earns the weaker wording is a *difference* kae
+// cannot read, which is real and ordinary (claude clears its cache).
+//
+// The proceed row is the positive control, and it is the one a regression breaks first:
+// without it every "the snapshot was not overwritten" assertion below also passes for a
+// recapture that never runs at all.
+func TestSwitchAwayIdentityRecordsThatCannotBeCompared(t *testing.T) {
+	const original = "sk-ant-oat01-MAIN-ORIGINAL-eeee"
+	const rotated = "sk-ant-oat01-MAIN-ROTATED-ffff"
+	const recorded = `{"oauthAccount":null,"projects":{"/repo":{}}}`
+
+	cases := []struct {
+		name                   string
+		recorded, liveIdentity string
+		wantRefusal            bool
+	}{
+		// applySnapshot wrote the recorded non-record into the live cache, so the two
+		// agree byte for byte. No login can produce this — `/login` rewrites
+		// accountUuid/emailAddress unconditionally — so it is evidence that nothing
+		// happened, and the refresh must be kept.
+		{"identical, so nothing happened: recapture", recorded, recorded, false},
+		// Two payloads kae cannot read that are not the same payload. Something rewrote
+		// the cache; it names nobody, so the refusal may not claim a foreign login.
+		{"different non-records: refused, weakly", recorded, `{"oauthAccount":123}`, true},
+		// The ordinary one, and the row that pins the gate *above* identityDiffers rather
+		// than after it: kae recorded a real account record and claude has since cleared
+		// its cache. With the order swapped the message claims a foreign login, which kae
+		// has not observed — only that one side names nobody.
+		{
+			"a record against null: refused, weakly",
+			`{"oauthAccount":` + claudeOAuthAccount("main", "main@example.com") + `}`,
+			`{"oauthAccount":null}`, true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			opts := commonOpts{Format: formatText}
+			now := app.Now()
+
+			// Captured by hand: seedClaude would write a well-formed identity, and what
+			// this test needs recorded is one that is not an account record.
+			writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+				claudeOAuthPayload(original, now.Add(time.Hour)))
+			writeFile(t, filepath.Join(app.Env.Home, ".claude.json"), tc.recorded)
+			captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+			captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
+			captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+
+			// This proves nothing unless the snapshot really recorded the non-record —
+			// otherwise the outcome below would be the "no identity recorded" path.
+			acc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
+			if err != nil || !found || !acc.Artifacts["oauth_account"].Present {
+				t.Fatalf("this test needs a recorded non-record identity: found=%v err=%v art=%+v",
+					found, err, acc.Artifacts["oauth_account"])
+			}
+
+			// An in-tool refresh, so there is genuinely something to recapture: the guard
+			// runs before the divergence check, so a no-op switch would decide without
+			// proving anything about a write.
+			writeFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"),
+				claudeOAuthPayload(rotated, now.Add(8*time.Hour)))
+			writeFile(t, filepath.Join(app.Env.Home, ".claude.json"), tc.liveIdentity)
+
+			code, out, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
+			mustExit(t, constants.ExitOK, code, out)
+			be := testBackend(t, app)
+			got := snapshotPayload(t, app, be, "claude", "main")
+
+			if !tc.wantRefusal {
+				for _, unwanted := range []string{"cannot read", "outside kae"} {
+					if strings.Contains(stderr, unwanted) {
+						t.Errorf("kae's own applied payload is not evidence of anything, so no refusal is due; got %q: %q",
+							unwanted, stderr)
+					}
+				}
+				if !strings.Contains(got, rotated) {
+					t.Fatalf("the only refreshable copy was thrown away: %s", got)
+				}
+				return
+			}
+			// Naming the account is part of the assertion: this path recaptures the
+			// account being switched *away from*, so a refusal that named the switch
+			// target instead would point the user at the wrong snapshot.
+			if !strings.Contains(stderr, "cannot read the claude identity records it would compare for claude/main") {
+				t.Errorf("expected a refusal naming claude/main and saying kae cannot tell whose login is live: %q", stderr)
+			}
+			// Weak evidence takes a weak consequence: kae has not observed a *different*
+			// account, so it must not say one was logged in outside kae.
+			if strings.Contains(stderr, "outside kae") {
+				t.Errorf("kae observed only that it cannot compare; it must not claim a foreign login: %q", stderr)
+			}
+			// A refusal is only non-destructive because something else holds the copy.
+			if !strings.Contains(stderr, "preserved only in backup ") {
+				t.Errorf("a refusal must name where the declined copy survives: %q", stderr)
+			}
+			if !strings.Contains(got, original) {
+				t.Fatalf("refused, so the snapshot must be untouched: %s", got)
+			}
+		})
+	}
+}
+
+// The switch-away recapture owes the same treatment as `run -s` when it cannot *order*
+// the two copies: a claim it can support, and a named place the declined copy survives.
+// Its backup already holds it (createBackup runs before the recapture), so the fix here
+// is the wording plus naming that backup — but both halves need pinning, or the path that
+// gets its safety for free is the one nobody checks.
+func TestSwitchAwayNamesABackupForACopyItCannotOrder(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	const dated = `{"accessToken":"MAIN-T0","refreshToken":"r0","expiresAt":1800000000000}`
+
+	seedClaudeOAuth(t, app, dated)
+	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"),
+		`{"oauthAccount":`+claudeOAuthAccount("main", "main@example.com")+`}`)
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") })
+	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+
+	// An in-tool refresh whose expiresAt changed type: Known, not a tombstone, undated.
+	seedClaudeOAuth(t, app, `{"accessToken":"MAIN-T1","refreshToken":"r1","expiresAt":"1814400000000"}`)
+
+	code, out, stderr := captureBoth(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") })
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(stderr, "cannot order the live claude credential") {
+		t.Errorf("expected the unorderable refusal: %q", stderr)
+	}
+	if strings.Contains(stderr, "can no longer refresh") {
+		t.Errorf("kae cannot order them, so it must not say the live copy is finished: %q", stderr)
+	}
+	if !strings.Contains(stderr, "preserved only in backup ") {
+		t.Errorf("the refusal must name where the declined copy survives: %q", stderr)
+	}
+	if !strings.Contains(stderr, "which reverts this whole switch") {
+		t.Errorf("on this path the backup covers every switched tool and must say so: %q", stderr)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, "claude", "main"); !strings.Contains(got, "MAIN-T0") {
+		t.Errorf("the snapshot's dated copy must survive: %s", got)
 	}
 }

@@ -138,12 +138,14 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	app.applyGlobalScope()
 	var meta backup.Meta
 	if toID == "" {
-		latest, found, err := backup.Latest(app.Paths.BackupsDir())
+		latest, found, err := latestRestorable(app.Paths.BackupsDir())
 		if err != nil {
 			return nil, err
 		}
 		if !found {
-			return nil, errf(constants.ExitNotFound, "no backups exist yet")
+			return nil, errf(constants.ExitNotFound,
+				"no backup kae can roll back to (a %s backup is a preserved copy, not an undo target; "+
+					"see kae backup list, then kae rollback --to <id>)", constants.BackupReasonRunUnattributable)
 		}
 		meta = latest
 	} else {
@@ -210,7 +212,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	}
 	// rollback is itself a live mutation: back up the current state first so
 	// it stays reversible.
-	preMeta, err := app.createBackup(ctx, be, plansFromBackupMeta(meta, current), st, "rollback")
+	preMeta, err := app.createBackup(ctx, be, plansFromBackupMeta(meta, current), st, constants.BackupReasonRollback)
 	if err != nil {
 		return nil, err
 	}
@@ -287,4 +289,42 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	}
 	app.pruneBackups(ctx, be)
 	return report, nil
+}
+
+// latestRestorable is the newest backup a bare `kae rollback` may target: the newest one
+// that records a state kae was **about to change**. Four reasons do; one does not.
+//
+// A `run-unattributable` backup records the post-child state `kae run -s` *declined to
+// adopt*, kept only so that a refusal is not a deletion — a preserved artifact rather
+// than an undo target. It is also the newest backup in existence at exactly the moment a
+// user is most likely to type `kae rollback` meaning "undo that run", and targeting it
+// installs a login kae explicitly refused to name into the real home while `state.json`
+// names another account: the state `identity_drift` exists to report, reached through the
+// command meant to reverse things. `--to <id>` still gets there, which is what the
+// refusal's own message tells the user to type.
+//
+// Filtering here rather than inside backup.Latest keeps that package free of kae's reason
+// vocabulary, and `kae backup list` deliberately still shows every backup.
+func latestRestorable(dir string) (backup.Meta, bool, error) {
+	metas, err := backup.List(dir)
+	if err != nil {
+		return backup.Meta{}, false, err
+	}
+	for _, meta := range metas { // List is newest-first
+		if isUndoTarget(meta) {
+			return meta, true, nil
+		}
+	}
+	return backup.Meta{}, false, nil
+}
+
+// isUndoTarget reports whether a backup records a state kae was **about to change**, as
+// opposed to one it declined to adopt. Two rules follow from it and they are coupled, so
+// they read it from here rather than each spelling the reason out: a bare `kae rollback`
+// targets only an undo target (latestRestorable), and `backup_keep` counts only undo
+// targets (pruneBackups). Written twice, a sixth reason added to one site reintroduces
+// whichever of those two the other site owns — the drift AGENTS.md describes for
+// `supersedes`, one predicate over.
+func isUndoTarget(meta backup.Meta) bool {
+	return meta.Reason != constants.BackupReasonRunUnattributable
 }

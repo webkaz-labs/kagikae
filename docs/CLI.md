@@ -56,7 +56,7 @@ kae profile rm <name> [--force]      # delete a profile
 kae profile default [<name>|--clear] # show or set default_profile
 kae status [--json]                  # full status report (alias: kae s)
 kae backup list [--json]             # list switch backups
-kae rollback [--to <backup-id>]      # restore the most recent (or given) backup
+kae rollback [--to <backup-id>]      # restore the most recent restorable (or given) backup
 kae completion <bash|zsh|fish> [--install]     # print (or register) a dynamic completion script
 kae version | --version | -v
 kae help | --help | -h
@@ -105,7 +105,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--profile <name>` / `-P <name>` | bare `use`, `run`, `mise init` | resolve a named profile instead of the default; `-P` is the short form |
 | `--restore` / `--no-login` | `add` | restore the previous login after capturing (login flow only); snapshot without a login flow |
 | `--auto` / `--write` | `mise init` | add the enter hook (`kae use --quiet`); write/update `.mise.toml` |
-| `--to <backup-id>` | `rollback` | backup to restore (default: most recent) |
+| `--to <backup-id>` | `rollback` | backup to restore (default: the most recent **restorable** one — the newest that records a state kae was about to change. A `run-unattributable` backup is skipped by the default because it records a state kae *declined to adopt*, not one it changed; `--to` still reaches it, which is what the refusal that created it tells you to type) |
 
 ## kae use Semantics
 
@@ -142,10 +142,27 @@ matches.
   write when they match) and best-effort: it never aborts the switch, and it is
   skipped with a warning when the live state cannot be trusted as that account's —
   a logged-out tool, a live identity whose identifying keys name a different
-  account (someone ran the tool's own login outside kae), or a live credential that
-  needs a re-login while the snapshot still holds a usable one. That last guard is
-  one-directional: kae never prefers the older value, it only refuses to overwrite
-  a working credential with a dead one.
+  account (someone ran the tool's own login outside kae), a live identity that
+  **differs** from the recorded one where kae cannot read either as an account record
+  (so it cannot tell whose login is live — worded weaker than the previous case,
+  because kae has observed a change and not an account), a live credential that
+  needs a re-login while the snapshot still holds a usable one, a live credential the
+  snapshot **provably supersedes** (for a tool whose refresh token rotates single-use the
+  older copy cannot refresh at all), or one kae cannot **order** against the snapshot
+  because it carries no deadline kae can use.
+  `keepSnapshotIdentity` and `recaptureWouldDowngrade` are normative for the set — read
+  them rather than this list, which was wrong for a release. The freshness guard is
+  one-directional: kae never prefers the older value. What it refuses is wider than "a
+  dead credential over a working one" — a usable but *older* copy is refused too, and so
+  is one kae cannot judge, which is reported as exactly that rather than as dead.
+
+  **What a refusal costs, and where the copy goes.** Declining to recapture means the
+  live copy is not preserved in the snapshot, and the switch then overwrites the live
+  store — so the refusal names the backup this switch already took, which holds that
+  copy, and the two-step that turns it into an account of its own. Only readable
+  identities that *agree* let the recapture proceed; two payloads kae cannot read that
+  are byte-identical are treated as agreement, deliberately, because a login always
+  rewrites the identity (see § kae run Semantics for what happens when it does not).
 
   If the account being switched **to** needs a re-login (expired with no usable
   refresh token, or emptied by the tool), kae warns and still proceeds; a snapshot
@@ -201,6 +218,38 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   `auth.json` on its first save); reading the pre-run store instead would report
   the tool as logged out and restore into a file nothing reads. (This is the former
   `auth` mode.)
+  That recapture applies **the same two guards a shared switch applies to its own**
+  (above), and no third: a child that logged in as another account, or one that changed
+  the identity cache to something kae cannot read as a record, leaves the snapshot alone
+  with a warning rather than filing a foreign credential and identity under the target's
+  name; and a child whose refresh failed leaves the tombstone live rather than over a
+  snapshot that still works. It also keeps the account's **recorded login identity**,
+  which is a separate field from the identity payload and was blanked on every `run -s`
+  before v0.17.0.
+  A refusal here would otherwise **destroy** what it declines, which is the one thing
+  this path does not inherit from the switch: its backup was taken before the child, so
+  the child's copy lives only in the store the restore is about to overwrite. So when a
+  recapture is refused for unattributability, kae takes a second backup — reason
+  `run-unattributable` — of the post-child state and names it in the warning, with the
+  `kae rollback --to <id>` then `kae add --no-login` pair that turns it into an account.
+  A tombstone or a **provably** older copy gets no such backup: there is nothing there to
+  keep. A copy kae cannot *order* is a third case and takes the backup — `supersedes`
+  lets an undated copy lose to anything, which is right for deciding an overwrite and
+  wrong for telling the user the copy is finished, so that refusal says only that kae
+  cannot tell which of the two can still refresh.
+  Three things about that second backup, stated because nothing else would say them. It
+  covers **only** the tools whose recapture was declined, unlike the switch's backup, and
+  the warning says so — restoring it does not revert the rest of the run. A bare
+  `kae rollback` will not target it (§ kae rollback): it records a state kae *declined*,
+  not one it changed, so `--to <id>` is the way in. And `backup_keep` counts undo targets
+  only, so a preserved copy sits beside the run's own backup rather than evicting it —
+  but it is still pruned once `backup_keep` newer undo targets exist, which makes
+  "preserved only in backup `<id>`" true and **time-limited**. That matters most in the
+  one case that produces it repeatedly: after an upstream `expiresAt` format change every
+  live copy is undated, so every run declines, and the only live copies accumulate in
+  these backups while the snapshot keeps its last datable one. Adopt one deliberately
+  (`kae rollback --to <id>`, then `kae add --no-login`) rather than leaving them to age
+  out.
   The restore is **per tool**: `kae run -s <tool> <the account that was already
   active>` backs up that account's own credential, and claude's refresh token rotates
   single-use, so once the child has refreshed it the copy in the backup can no longer
@@ -439,6 +488,21 @@ one-tool re-bind never leaves a stale git/token identity bound; see
 also strips a pre-v0.7.2 kagikae marker block from `mise.toml` (so `kae unpin &&
 kae pin` migrates cleanly), leaving the user's own `mise.toml` content and any
 isolation directories (with their login state) intact.
+
+A per-directory credential kae **cannot read or date** is the one case where the two
+commands differ on more than which stores they look at. A bind's sweep keeps it — it may be
+a working login in a shape kae has not been taught, and a bind was not asked to destroy
+anything — and says that `kae unpin --purge` removes it. `--purge` does, and says what it is
+destroying, because keeping it there strands a secret nothing else kae offers can address.
+Same asymmetry as an account that no longer exists, for the same reason: it turns on what
+was asked for, not on the state.
+
+**Scoped to the cases the sweep reaches at all**, which is where that "nothing else can
+address it" holds: a **keychain item** (reachable only from the string kae hashes its
+service name from), the credential of a per-account store, and a file a migration just
+moved out of its store. A file credential still sitting in a per-directory store that
+`unpin` keeps is not swept in either mode — see the two-case file rule below — and it needs
+no escape, because a path the user can name is one the user can delete.
 
 Both commands sweep a **superseded per-directory credential**: a `-s` ↔ `-i`
 toggle moves every tool to the other mechanism's store and an isolated re-bind

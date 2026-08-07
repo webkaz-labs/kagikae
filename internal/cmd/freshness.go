@@ -403,7 +403,11 @@ func utcStamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 // unreadable active account is left untouched with a warning, never aborting
 // the switch. Only kae use / bare use reach here — use -i / pin / run -i write
 // kae-owned isolation dirs and never the real store.
-func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backend, st *state.State, plans []toolPlan) {
+// backupID names the backup this switch already took of the live state; it is what
+// makes a refusal non-destructive, so the caller must pass the real one.
+func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backend, st *state.State,
+	plans []toolPlan, backupID string,
+) {
 	for _, plan := range plans {
 		active := st.Active[plan.Tool]
 		if active == "" {
@@ -426,21 +430,27 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 				plan.Tool, plan.Tool, active)
 			continue
 		}
-		if keepSnapshotIdentity(ctx, be, plan.Specs, acc, values) {
-			// The live login is someone else's: recapturing here would file that
-			// credential under this account's name and identity, and after that no
-			// offline check can tell the two apart (see keepSnapshotIdentity).
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: the live %s identity is not the one kae applied for %s/%s; "+
-					"%s was probably logged in again outside kae, so that snapshot is left unchanged\n",
-				plan.Tool, plan.Tool, active, plan.Tool)
-			fmt.Fprintf(os.Stderr,
-				"kae: if that live login is one you want to keep, import it first with: kae add --no-login %s <account>\n",
-				plan.Tool)
+		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, active, acc, values); why != "" {
+			// Recapturing here would file a credential kae cannot attribute under this
+			// account's name and identity, and after that no offline check can tell the
+			// two apart (see keepSnapshotIdentity).
+			//
+			// backupID is this switch's own backup, and naming it is only honest because
+			// of where it sits: createBackup runs *before* this recapture and before
+			// applySnapshot, so it holds exactly the live copy being declined. `run -s`
+			// has to create one of its own for the same sentence to be true there.
+			warnRecaptureDeclined(plan.Tool, why, backupID,
+				"which reverts this whole switch")
 			continue
 		}
-		if why := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); why != "" {
-			fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot left unchanged\n", why)
+		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); why != "" {
+			if preserve {
+				// kae cannot order the two, so it must not imply the live copy is finished
+				// *or* let it vanish: this switch is about to overwrite the live store.
+				warnRecaptureDeclined(plan.Tool, why, backupID, "which reverts this whole switch")
+				continue
+			}
+			warnRecaptureSkipped(why)
 			continue
 		}
 		if !valuesDiverge(ctx, be, plan.Specs, acc, values) {
@@ -454,12 +464,73 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 		activePlan.Account = active
 		activePlan.Identity = acc.Identity
 		if err := app.persistSnapshot(ctx, be, activePlan, values); err != nil {
-			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, active, err)
+			warnRecaptureFailed(plan.Tool, active, err)
 			continue
 		}
 		fmt.Fprintf(os.Stderr, "kae: refreshed %s/%s snapshot from the live store before switching away\n",
 			plan.Tool, active)
 	}
+}
+
+// warningsDetail renders an adapter's Detect warnings as a parenthesised suffix, or "" when
+// there are none. Two messages carry them — captureSnapshot's auth_missing error and the
+// logged-out-during-a-run warning — and they are the same sentence-shape, so a change to the
+// separator or the wrapping has one place to happen.
+func warningsDetail(warnings []string) string {
+	if len(warnings) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(warnings, "; ") + ")"
+}
+
+// warnRecaptureSkipped reports a recapture declined where the copy it declines is not worth
+// keeping — a tombstone, or one provably older. The sibling of warnRecaptureDeclined, which
+// handles the case that *is* worth keeping; both recapture paths use both, and splitting the
+// pair across two hand-written literals is how one of them would later gain a clause the
+// other lacks.
+func warnRecaptureSkipped(why string) {
+	fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot left unchanged\n", why)
+}
+
+// warnRecaptureFailed reports a recapture that could not be completed, as opposed to one kae
+// declined: a live read that errored, or a snapshot write that did. Both are honestly the
+// same sentence — the cause is in the error — and it is emitted from three places.
+func warnRecaptureFailed(tool, accountName string, err error) {
+	fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", tool, accountName, err)
+}
+
+// warnRecaptureDeclined reports a recapture kae declined while the copy it declined is
+// still worth keeping — it could not establish whose login is live
+// (keepSnapshotIdentity), or it could not order the two copies at all
+// (recaptureWouldDowngrade's `preserve`). Both paths that recapture route through it, so
+// the half that matters cannot drift apart: where the declined copy went.
+//
+// **Refusing here destroys the copy unless something else holds it**, which is the
+// asymmetry that makes this guard different from the two siblings it shares a
+// predicate with (dirIdentityConfirms, liveLoginMatchesBackup): for those, refusing
+// means declining to overwrite or delete, so refusal is the conservative answer. Here
+// the caller goes on to overwrite the live store from a backup, so a refusal that
+// names nowhere is a logout reported as success — measured on `run -s`, where the only
+// backup predated the child. So backupID is not decoration: it is the whole reason the
+// refusal is safe, and a caller that cannot name one must say so rather than imply the
+// copy survives. An earlier version told the user to "import it first", naming a
+// moment that does not exist inside a single non-interactive command.
+// scope says what restoring backupID puts back besides the login being named, because
+// that differs by caller and the remedy is otherwise over-precise: `kae run -s` backs up
+// only the tools whose recapture it declined, while `kae use`'s backup is the switch's
+// own and covers **every** tool it switched.
+func warnRecaptureDeclined(tool, why, backupID, scope string) {
+	fmt.Fprintf(os.Stderr, "kae: warning: %s, so that snapshot is left unchanged\n", why)
+	if backupID == "" {
+		fmt.Fprintf(os.Stderr,
+			"kae: kae could not preserve the live %s login it declined to adopt; it is lost once the "+
+				"previous state is restored\n", tool)
+		return
+	}
+	fmt.Fprintf(os.Stderr,
+		"kae: the live %s login kae declined to adopt is preserved only in backup %s — to keep it as "+
+			"its own account: kae rollback --to %s (%s), then kae add --no-login %s <account>\n",
+		tool, backupID, backupID, scope, tool)
 }
 
 // snapshotArtifactDiffers reports whether one live artifact value differs from
@@ -495,17 +566,42 @@ func snapshotArtifactDiffers(ctx context.Context, be secret.Backend, storedRef s
 // unreadable stored payload degrades to absent, which a later switch treats as
 // "remove it and let claude refetch": stale-but-wrong is never kept.
 //
-// It returns outsideLogin when the live identity *names a different account* than
-// this snapshot. Keeping the snapshot's identity is right when the live cache is
-// merely stale, but a live identity that changed is the one case where it is
-// authoritative: `claude /login` rewrites accountUuid/emailAddress
-// unconditionally, so a changed one means the live credential belongs to someone
-// else. Overwriting this snapshot's credential with it would file account B's
-// token under account A's name *and* A's identity, and nothing offline can
-// detect that afterwards — the access token is opaque, so live, snapshot and
-// doctor all agree on a label that is simply wrong. The caller refuses to
-// recapture at all.
-func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifact.Spec, acc account.Account, values []artifact.Value) (outsideLogin bool) {
+// It returns a non-empty reason when the caller must not recapture at all, framed
+// around accountName rather than acc.Name for the reason recaptureWouldDowngrade
+// gives. Two shapes, and they are deliberately not one:
+//
+// (1) **The live identity names a different account.** Keeping the snapshot's
+// identity is right when the live cache is merely stale, but a live identity that
+// changed is the one case where it is authoritative: `claude /login` rewrites
+// accountUuid/emailAddress unconditionally, so a changed one means the live
+// credential belongs to someone else. Overwriting this snapshot's credential with
+// it would file account B's token under account A's name *and* A's identity, and
+// nothing offline can detect that afterwards — the access token is opaque, so live,
+// snapshot and doctor all agree on a label that is simply wrong.
+//
+// (2) **The two differ and kae cannot read them as records** (identityComparable).
+// Same consequence as (1) — the caller declines — and only the claim is weaker, because
+// kae has observed a change and not an account. That is the whole of the difference:
+// do not read this as a safeguard that (1) has and (2) lacks. Its two sibling guards
+// (dirIdentityConfirms, liveLoginMatchesBackup) apply the same gate to the same
+// predicate, and the ordering matters here in the opposite direction from theirs — see
+// the comment at the switch, which is normative for why the gate may not decide.
+//
+// Only the **first** reason is kept, so a spec yielding (1) after one yielding (2) is
+// reported as (2). Under-claiming, and unobservable today: claude declares the only
+// IdentityOnly spec there is, and exactly one (measured — a mutation swapping first-wins
+// for last-wins cannot be killed).
+//
+// accountName is used rather than acc.Name deliberately (recaptureWouldDowngrade says
+// why), and that choice is **not** observable either: no fixture builds a snapshot whose
+// recorded name disagrees with the name it was resolved under.
+//
+// The loop finishes either way, so the value substitution above is complete for a
+// caller that reads values regardless of the reason. Today none does.
+func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifact.Spec,
+	tool, accountName string, acc account.Account, values []artifact.Value,
+) string {
+	reason := ""
 	for i, sp := range specs {
 		if !sp.IdentityOnly {
 			continue
@@ -522,12 +618,36 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 		}
 		values[i] = artifact.Value{Data: data, Present: true}
 		// An absent live identity says nothing (the tool may not have rebuilt it
-		// yet); only a present one that names another account is evidence.
-		if live.Present && identityDiffers(sp, data, live.Data) {
-			outsideLogin = true
+		// yet); only a present one is evidence of anything.
+		if !live.Present || reason != "" {
+			continue
 		}
+		// The gate decides the **wording**, never the decision. Getting that backwards
+		// shipped a logout: refusing on "kae cannot compare" also refused the shape kae
+		// itself produces — applySnapshot writes a recorded non-record into the live
+		// cache, so both sides are that same non-record, byte for byte — and on `run -s`
+		// the refusal then discarded the child's refreshed credential. No login can
+		// produce that shape, because `/login` rewrites accountUuid/emailAddress
+		// unconditionally (docs/VALIDATION.md, claude assumptions), so the pair kae
+		// cannot read *and* that are identical is evidence that nothing happened.
+		// docs/ROADMAP.md carries the measurement and why its own earlier prescription
+		// was withdrawn.
+		if !identityDiffers(sp, data, live.Data) {
+			continue
+		}
+		if !identityComparable(data, live.Data) {
+			reason = fmt.Sprintf(
+				"kae cannot read the %s identity records it would compare for %s/%s, so it cannot tell "+
+					"whose login is live", tool, tool, accountName,
+			)
+			continue
+		}
+		reason = fmt.Sprintf(
+			"the live %s identity is not the one kae applied for %s/%s; %s was probably logged in "+
+				"again outside kae", tool, tool, accountName, tool,
+		)
 	}
-	return outsideLogin
+	return reason
 }
 
 // supersedes reports whether copy a of one account's credential is provably the
@@ -541,7 +661,7 @@ func keepSnapshotIdentity(ctx context.Context, be secret.Backend, specs []artifa
 // the field cannot do is compare two *different* accounts, so every caller owes an
 // attribution guard of its own before acting on the answer (the harvest's is
 // dirIdentityConfirms, a backup restore's is liveLoginMatchesBackup, and the
-// switch-away recapture's is keepSnapshotIdentity, applied by its caller).
+// two recaptures' is keepSnapshotIdentity, applied by each caller).
 //
 // The a-side guard is `orderable`, the one docs/ADAPTERS.md prescribes. b degrading to
 // the zero cutoff is deliberate and *not* the same test: a copy kae cannot order has no
@@ -624,37 +744,61 @@ func liveValuesFreshness(tool string, values []artifact.Value) freshness.Info {
 // overwrite a later one. "The live store is authoritative" (docs/RELEASE.md §A)
 // still holds for every credential that is actually the newest; what is dropped is
 // the unstated assumption that whatever is live is the newest.
+//
+// **(2) splits, and the split is the whole point of `preserve`.** `supersedes` lets an
+// un-orderable b-side lose to anything, deliberately, because its usual caller asks "may
+// I overwrite this copy" — where a copy with no comparable deadline is nothing to lose.
+// The refusal here also *tells the user* the live copy is finished, which is the opposite
+// question, and a live payload that is `Known`, un-`Revoked` and **undated** (what an
+// upstream `expiresAt` type change produces) is one kae cannot judge at all. So the two
+// are separated: only an `orderable` live copy is declared superseded, and an
+// un-orderable one is reported as unorderable and marked `preserve`, because the caller
+// may be about to overwrite it. `pinSupersededChecks` in dircred.go is the worked example
+// of the same asymmetry; taking `supersedes`' subset here destroyed a refreshed token on
+// `run -s` (measured 2026-08-07), which is the same defect one guard over from the one
+// that commit was fixing.
+//
+// preserve says whether the copy being declined is worth keeping: false for a tombstone
+// or a provably older copy, true where kae simply cannot order them. A caller that
+// overwrites the live store owes the true case somewhere to survive.
 // accountName names the account in the reason rather than acc.Name: account.toml's
 // recorded name and the name the caller resolved the snapshot under are not
 // guaranteed to agree, and it is the caller's name the user typed.
 func (app *App) recaptureWouldDowngrade(ctx context.Context, be secret.Backend,
 	tool, accountName string, acc account.Account, values []artifact.Value,
-) string {
+) (reason string, preserve bool) {
 	now := app.Now()
 	live := liveValuesFreshness(tool, values)
 	liveNeedsRelogin := needsRelogin(live, now)
 	ordered := rotatesSingleUse(tool)
 	if !liveNeedsRelogin && !ordered {
-		return ""
+		return "", false
 	}
 	stored, err := app.accountFreshness(ctx, be, acc)
 	if err != nil || !stored.Known {
-		return ""
+		return "", false
 	}
 	if liveNeedsRelogin && !needsRelogin(stored, now) {
 		return fmt.Sprintf(
 			"the live %s credential needs a re-login while snapshot %s/%s still holds a usable one",
 			tool, tool, accountName,
-		)
+		), false
 	}
 	if ordered && supersedes(stored, live) {
+		if !orderable(live) {
+			return fmt.Sprintf(
+				"kae cannot order the live %s credential against snapshot %s/%s, so it cannot tell which "+
+					"of the two can still refresh",
+				tool, tool, accountName,
+			), true
+		}
 		return fmt.Sprintf(
 			"snapshot %s/%s holds a later %s credential than the live store, and %s's refresh token "+
 				"rotates single-use, so the live copy can no longer refresh",
 			tool, accountName, tool, tool,
-		)
+		), false
 	}
-	return ""
+	return "", false
 }
 
 // valuesDiverge reports whether freshly-read live values differ from acc's

@@ -18,7 +18,9 @@ import (
 // request-scoped with no process-global mutable state and is absent (behavior
 // unchanged) unless a caller opted in with WithReadCache. Do not reuse a cached
 // context across a child process run (kae run -s): the child may rotate a live
-// credential the cache cannot observe.
+// credential the cache cannot observe. `kae run -s` is a caller *and* obeys that —
+// it opens both of its caches after the child exits, never around it — so read this
+// as a rule about the window, not as naming a command that may not use the cache.
 //
 // The mutex guards against a future concurrent caller sharing one cached
 // context (today's only caller, the switch path, is single-goroutine).

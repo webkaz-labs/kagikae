@@ -455,10 +455,24 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 				"so kae did not capture it into that snapshot; re-bind with: %s pin %s <account>\n",
 			tool, tool, accountName, refused.Why, toolName, tool)
 	default:
+		// The frame may claim no more than the reason it interpolates. It used to say kae
+		// "cannot attribute" the login and that the snapshot holds "the **older** copy" —
+		// an ordering claim, next to reasons that include "kae cannot read or date the copy
+		// already there", which is kae saying it cannot order them. Corrected 2026-08-07.
+		//
+		// Two routes reach it, and the second is the one worth knowing: a live copy kae
+		// cannot read or date (harvestDirCredential returns that refusal *before* its
+		// "snapshot at least as new" arm, so it is not swallowed), and any missing-evidence
+		// refusal from dirIdentityConfirms — a bound store with no identity cache is the
+		// ordinary one. An earlier version of this comment claimed no fixture could reach
+		// the arm; that was wrong, and it was wrong for a reason worth repeating: the probe
+		// wrote its payload where relogin does not resolve the store, so the read came back
+		// absent and landed on the silent-success arm above. A read that finds nothing and
+		// a read that finds something unjudgeable are different findings.
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae cannot attribute the %s login now in this directory to %s/%s (%s), "+
-				"so it did not capture it back and that snapshot still holds the older copy; "+
-				"%s use %s %s would apply that older one\n",
+			"kae: warning: kae cannot confirm the %s login now in this directory is %s/%s's (%s), "+
+				"so it did not capture it back and that snapshot still holds its own copy; "+
+				"%s use %s %s would apply that one\n",
 			tool, tool, accountName, refused.Why, toolName, tool, accountName)
 	}
 	return false

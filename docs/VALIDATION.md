@@ -1277,24 +1277,29 @@ cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.cla
 grep MAIN-OLD "$HOME/.claude/.credentials.json"   # assert: restored. Keeping FOREIGN
                                         #         would leave the real home running one
                                         #         account while kae records another
-snap main | grep FOREIGN                 # assert: FOREIGN — **this is the open defect**,
-                                        #         asserted so the case cannot go green
-                                        #         over it. run -s's own recapture calls
-                                        #         captureSnapshot directly and so applies
-                                        #         neither keepSnapshotIdentity nor the
-                                        #         downgrade refusal, and files whatever
-                                        #         the child left under the target's name
-                                        #         (docs/ROADMAP.md, "run -s's own
-                                        #         recapture goes through neither guard").
-                                        #         Measured 2026-08-05: `kae doctor` does
-                                        #         flag identity_drift for claude/main
-                                        #         afterwards, but its remedy is
-                                        #         `kae use claude main`, which then puts
-                                        #         FOREIGN into the real home. The restore
-                                        #         skip is gated on attribution read from
-                                        #         the **backup** so it does not compound
-                                        #         this; when the recapture is fixed, this
-                                        #         line becomes `grep -c FOREIGN` = 0
+#   assert: stderr also carries `probably logged in again outside kae` and the
+#           `kae add --no-login claude <account>` hint — the recapture refused, and it
+#           says how to keep that login instead of discarding it silently
+snap main | grep -c FOREIGN               # assert: 0. run -s's own recapture now applies
+                                        #         the same two guards the switch-away one
+                                        #         does, so the stranger's credential is
+                                        #         not filed under the target's name. This
+                                        #         line asserted `FOREIGN` **present**
+                                        #         until 2026-08-07, when the defect it
+                                        #         described was fixed; the shape it
+                                        #         guarded against is now three unit tests
+                                        #         (TestRunSharedRefusesToRecaptureA…) and
+                                        #         one measured mutation each.
+snap main | grep MAIN-OLD                # assert: the snapshot still holds its own copy —
+                                        #         the positive half, without which a
+                                        #         `grep -c` of 0 also passes for a snap()
+                                        #         that reads the wrong path
+/tmp/kae ls --json | grep you@example.com # assert: the recorded login identity survived.
+                                        #         persistSnapshot builds it from
+                                        #         plan.Identity, which the run paths never
+                                        #         set, so every run -s used to blank it —
+                                        #         a third defect on the same line that
+                                        #         docs/ROADMAP.md did not name
 
 # --- I. rollback says the credential it restores is already dead, and restores it ---
 cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
@@ -1340,15 +1345,20 @@ pin-level pass running **before** the stores are materialized, and E additionall
 the replaced fragment being read before it is rewritten.
 **F PASSED 2026-08-04** (darwin, file driver, temp HOME, pre-release binary), run as
 written, all four assertions checked at their own points.
-**G–J PASSED 2026-08-05, re-run at every later revision of the branch and last measured
-14/14 on 2026-08-06** (darwin, file driver, temp HOME, pre-release binary), every
-documented assertion checked at its own point, and **discriminated against a control**:
-the same G block run against a binary with the skip forced off leaves `MAIN-OLD` live and
-prints "previous auth state restored", so G is not a tautology. Two defects in the block
-itself were found by the first run and are fixed above — an `echo $?` that reported
-*grep's* status and so could never fail, and case H going green over a snapshot the run
-poisons (the `snap main | grep FOREIGN` line now states it). **Re-run before the tag** on
-the final tree, as § Smoke Checks requires of every block.
+**G–J PASSED 2026-08-05, re-run at every later revision of the branch; G and H last
+measured 14/14 on 2026-08-07 against the recapture guards, I and J last on 2026-08-06**
+(darwin, file driver, temp HOME, pre-release binary), every documented assertion checked
+at its own point, and **discriminated against a control**: the same G block run against a
+binary with the skip forced off leaves `MAIN-OLD` live and prints "previous auth state
+restored", so G is not a tautology. Note the 2026-08-06 measurement of **H does not carry
+forward**: H asserted the *defect* that `run -s`'s recapture applied no guards, so fixing
+that inverted the assertion, and the earlier 14/14 was measured against a binary the block
+as written now refuses. The 2026-08-07 re-run is of the inverted block, and it added the
+recorded-identity assertion the older one had no reason to make. Three defects in the block
+itself were found by running it — an `echo $?` that reported *grep's* status and so could
+never fail; case H going green over a snapshot the run poisons; and, on 2026-08-07, no
+positive half beside `grep -c FOREIGN`, which a broken `snap()` would also satisfy. **Re-run
+before the tag** on the final tree, as § Smoke Checks requires of every block.
 
 **What G–J does not cover, stated because a green run reads as if it did.** The block
 exports `KAE_CLAUDE_DRIVER=file`, so claude's credential is a JSON-pointer file and its
@@ -1610,7 +1620,12 @@ one captured account:
       directory, and its remedy is `cd <dir> && kae pin`.
 - [ ] Re-run `kae pin` there; the finding goes away and the entry is back.
 - [ ] `kae unpin --purge` in one of the two: kae keeps the credential and says how
-      many bindings still use it. Repeat in the last one: it is removed.
+      many bindings still use it. Repeat in the last one: it is removed, and the
+      message names it as **the account's** credential and points at
+      `credstore/claude/<account>` — not as a "per-directory" one at the config-dir
+      store, which is what it said until 2026-08-07. Read the message, not just the
+      state: the state assertion passed the whole time the message was wrong, and
+      both unit assertions on that string are negative ones that cannot see it.
 - [ ] `kae pin claude <other-account>` in a shared-mode directory rewrites the
       credential entry to the other account's store while leaving `CLAUDE_CONFIG_DIR`
       unchanged.

@@ -292,30 +292,57 @@ alternative exists (`secret-tool`).
   `refreshTokenExpiresAt` (no offline fix exists for *them* — this is a wording and
   expectation-setting problem, not a detection one; the detectable subset, where kae
   holds a second copy to compare against, is `credential_superseded`);
-  **`run -s`'s own recapture goes
-  through neither guard the switch-away recapture applies** — it calls
-  `captureSnapshot` directly, so it neither keeps the snapshot's identity
-  (`keepSnapshotIdentity`) nor refuses a downgrade (`recaptureWouldDowngrade`): a child
-  that logs in as another account files that credential *and* that identity under the
-  target account's name, and a child that logs out files the tombstone. The fix routes
-  that recapture through **those two and no third** — they are named here so nobody
-  invents one — and `docs/VALIDATION.md` case H asserts the defect's present-day shape,
-  so the smoke run turns from green to red the moment it is fixed and has to be updated
-  in the same commit. Measured 2026-08-05: `kae doctor` does then report `identity_drift`
-  for the account, but its remedy is `kae use <tool> <account>`, which puts the foreign
-  credential into the real home — so the reporting surface makes it worse, not better.
-  The restore skip above is gated on attribution so it does not compound this, and it
+  ~~**`run -s`'s own recapture goes
+  through neither guard the switch-away recapture applies**~~ and ~~**the switch-away
+  recapture's attribution guard has no decodability gate**~~ — **both fixed 2026-08-07**,
+  and together, because the first newly depends on the second. `run -s` called
+  `captureSnapshot` directly, so a child that logged in as another account filed that
+  credential *and* that identity under the target account's name, and a child whose
+  refresh failed filed the tombstone; it now applies `keepSnapshotIdentity` and
+  `recaptureWouldDowngrade`, **those two and no third**.
+  **And the prescription this entry used to carry for the second half was wrong — it is
+  withdrawn, measured.** It said `keepSnapshotIdentity` should "route that comparison
+  through `identityComparable` too", adding a refusal to `kae use`. Built that way, the
+  only newly-refusing shape is two identity payloads that are both non-records **and
+  byte-identical** — and that is the shape *kae itself* produces, because applying a
+  snapshot writes its recorded identity into the live cache, so a recorded
+  `/oauthAccount: null` makes both sides that same non-record. No login can leave it,
+  since `/login` rewrites accountUuid/emailAddress unconditionally. So the refusal fired
+  exactly where nothing had happened, and on `run -s` it **destroyed the child's
+  refreshed credential** — a logout reported as success, reproduced against `bf77135`
+  where the unguarded recapture had kept it. Every other combination (a record against a
+  non-record, two different non-records) already refused through `identityDiffers`' byte
+  fallback and was unchanged.
+  What shipped instead: the gate decides the **wording, not the decision**. The refusal
+  set is exactly what it was — `identityDiffers`, byte fallback included — and
+  `identityComparable` only chooses between "somebody else is logged in" and "kae cannot
+  read the records it would compare", so a claim kae cannot support is no longer made
+  about the ordinary case where claude has cleared its cache. The general lesson is the
+  one AGENTS.md § `supersedes` already states and this entry did not apply: refusing is
+  the conservative answer for the two sibling guards, which decline to *overwrite* or
+  *delete*, and the destructive answer for a recapture, which declines to *preserve*.
+  Porting a predicate across that asymmetry needs the caller's question re-asked.
+  The reporting this leaves undone is the other entry below (a recorded identity that is
+  not an account record), whose prescription — report the broken **label**, not the
+  comparison — is the right home and is unaffected.
+  Separately, a refusal on `run -s` was destructive even where refusing is *correct* (a
+  child that really did log in as somebody else): its backup predates the child, so the
+  declined copy lived only in the store the restore overwrites. It now takes a second
+  backup (reason `run-unattributable`) of the post-child state and names it in the
+  warning. `kae use` needed nothing — `createBackup` already runs before its recapture,
+  which is the difference "the same two guards and no third" silently assumed.
+  Three things worth keeping. The plan named two defects and there were **three**:
+  `persistSnapshot` builds the snapshot from `plan.Identity`, which the run paths never
+  set, so every `run -s` blanked the account's *recorded* login identity — a different
+  field from the identity payload, found by measuring rather than by reading, and fixed by
+  carrying `plan.Meta.Identity`. `docs/VALIDATION.md` case H asserted the defect's shape,
+  so it flipped in the same commit as predicted. And the 2026-08-05 measurement still
+  stands as the reason this mattered: `kae doctor` did report `identity_drift` afterwards,
+  but its remedy was `kae use <tool> <account>`, which put the foreign credential into the
+  real home — the reporting surface made it worse, so detection was never the fix.
+  The restore skip above is gated on attribution so it did not compound this, and it
   reads the **backup** rather than the snapshot precisely because the snapshot may
-  already be wrong by then; **the switch-away recapture's attribution
-  guard has no decodability gate** — `keepSnapshotIdentity` calls `identityDiffers`
-  directly, so two identity payloads that are both non-records *and* byte-identical
-  (`/oauthAccount: null` on each side, the reachable shape) read as "same account" and
-  let the recapture proceed on evidence that names nobody. The two sibling guards
-  (`dirIdentityConfirms`, `liveLoginMatchesBackup`) share `identityComparable` for
-  exactly this; the third was found by a quality lens after them and is left alone here
-  because closing it adds a refusal to `kae use`, which is a behaviour change this
-  release did not scope. The fix is one call: route that comparison through
-  `identityComparable` too; **a
+  already be wrong by then. **A
   superseded *global* isolated home is never harvested** — `kae use -i <a>` then
   `kae use -i <b>` leaves `isolation/global/<tool>/<a>/` holding a's newest copy, and
   because there is no pin, neither the pin-level pass nor any sweep ever looks at it
@@ -442,6 +469,50 @@ alternative exists (`secret-tool`).
   report) is needed for them; and the attribution table should be built from the
   strings recorded in fragments rather than paths re-derived from the tree, since the
   hash is over the string kae actually exported.
+
+- **A `run -s` backup that fails half-way now leaves payloads nothing points at**
+  (recorded 2026-08-07, **not fixed**). `createBackup` writes the secret payloads first
+  and the metadata last, and every other call site aborts its command when it errors. The
+  refusal backup added in v0.17.0 deliberately does not — a warning and a continue, because
+  failing the whole run would be worse than losing the preserved copy — so a failure
+  between the first payload write and `backup.Save` leaves `backup/<id>/…` entries in the
+  secret store with no metadata naming them. Nothing sweeps or reports those: `Prune` and
+  `Delete` walk metadata, and `doctor`'s `secret_orphan` skips every key that is not an
+  account key by construction (a backup key has no snapshot dir behind it, so it cannot be
+  judged the way an account key can). Recorded rather than fixed because the leftover is a
+  secret nobody reads, which is smaller than the logout the backup prevents, and because
+  the fix belongs with whatever next audits "which keys can kae account for" — the same
+  question the per-directory keychain-item entry above asks about items.
+
+- **An upstream `expiresAt` format change would make every recapture decline, forever**
+  (recorded 2026-08-07, **deliberately not fixed**). `orderable` requires a deadline kae can
+  read, and every consumer that cannot order two copies now declines rather than guessing —
+  which is right, and self-limiting only as long as the undated shape is rare. If upstream
+  changed the field's type or units, *every* live copy would be undated: each `kae use` and
+  `kae run -s` would refuse its recapture, the account snapshot would keep the last datable
+  copy (dead after one in-tool refresh), and the live copies would accumulate in
+  `run-unattributable` backups that `backup_keep` ages out. The offline signals exist — the
+  refusals name the condition, and `doctor` has `upstream_version` — but nothing aggregates
+  them into "kae can no longer date this tool's credentials at all", which is the finding a
+  user would need. Not fixed because the trigger is a specific upstream change that has not
+  happened, and a detector for it is a guess about the shape it would take; the assumption
+  and how to re-measure it live in docs/VALIDATION.md's claude `expiresAt` row, which is the
+  thing to check when a version bump makes this concrete.
+
+- **A zero `expiresAt` is indistinguishable from one kae could not parse, and the adapter's
+  comment claimed otherwise** (recorded 2026-08-07, **not fixed**). `EpochToTime` maps both
+  `n <= 0` and a non-number to the zero time, so downstream nothing can tell claude's
+  measured death certificate (`expiresAt: 0`) from a value whose type changed upstream. That
+  cost nothing while both were swept; it started mattering when the per-directory sweep
+  learned to keep everything it cannot judge, because a payload with a zero deadline and a
+  token still in it is now retained rather than swept. The claude adapter's `Freshness`
+  comment asserted that the zero was "translated here into `Revoked`" — it is not; the blank
+  tokens are what set `Revoked` — and that comment is corrected, since the line it described
+  is now load-bearing. Closing it means teaching `internal/freshness` to distinguish a JSON
+  number from a non-number, which is the only real work in it, and then folding a numeric
+  `expiresAt <= 0` into `Revoked` so death certificates sweep again. Not done here because
+  the retained item is a spent secret rather than a lost login, `kae unpin --purge` now
+  removes it, and the change reaches every `Fresher` rather than one call site.
 
 - **Rotation is measured for claude only** (recorded 2026-08-04). codex, cursor,
   copilot, opencode and agy have not been measured, so none of the copy-safety work

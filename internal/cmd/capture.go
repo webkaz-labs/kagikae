@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
@@ -107,11 +106,8 @@ func (app *App) captureSnapshot(ctx context.Context, be secret.Backend, plan too
 		return err
 	}
 	if !anyPresent {
-		message := fmt.Sprintf("no live %s auth state found; log in with the official CLI first", plan.Tool)
-		if len(plan.Warnings) > 0 {
-			message += " (" + strings.Join(plan.Warnings, "; ") + ")"
-		}
-		return errf(constants.ExitAuthMissing, "%s", message)
+		return errf(constants.ExitAuthMissing, "no live %s auth state found; log in with the official CLI first%s",
+			plan.Tool, warningsDetail(plan.Warnings))
 	}
 	return app.persistSnapshot(ctx, be, plan, values)
 }

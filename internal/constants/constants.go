@@ -257,6 +257,26 @@ const (
 	CredentialStale    = "stale"
 )
 
+// Backup reasons, the `reason` field of a backup's metadata and of every
+// `kae backup list --json` row. They are a JSON contract vocabulary, so they live
+// here rather than as literals at the five createBackup call sites — where they
+// were, and where the hand-written enumeration in docs/DATA-MODEL.md went stale the
+// first time one was added (`BackupReasonRunUnattributable`). That doc now points
+// here instead of restating them; to see the whole set, read this block.
+//
+// Four of them record "the live state before kae changed it", which is what makes a
+// rollback a rollback. RunUnattributable does not: it records the post-child state
+// `kae run -s` **declined to adopt**, kept only so a refusal is not a deletion
+// (docs/CLI.md § kae run Semantics). A consumer that treats every backup as an undo
+// target has to reckon with that difference.
+const (
+	BackupReasonSwitch            = "switch"
+	BackupReasonRollback          = "rollback"
+	BackupReasonRun               = "run"
+	BackupReasonLogin             = "login"
+	BackupReasonRunUnattributable = "run-unattributable"
+)
+
 // Exit codes and their stable error-code tokens.
 const (
 	ExitOK            = 0

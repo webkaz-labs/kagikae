@@ -124,11 +124,25 @@ func TestUnpinPurgeRemovesACredentialNothingElseBinds(t *testing.T) {
 		pinHere(t, app, modeShared)
 		sim.ops = nil
 
-		if code, out := captureStdout(t, func() int { return runUnpin(ctx, app, opts, true) }); code != constants.ExitOK {
+		code, out := captureStdout(t, func() int { return runUnpin(ctx, app, opts, true) })
+		if code != constants.ExitOK {
 			t.Fatalf("unpin --purge exit %d: %s", code, out)
 		}
 		if !strings.Contains(strings.Join(sim.ops, ","), "delete") {
 			t.Fatalf("the last binding's purge must remove the credential: %v", sim.ops)
+		}
+		// What it removed is the account's own credential, not this directory's copy of
+		// one, and it lived in the credential store rather than the config-dir store.
+		// The two negative assertions elsewhere in this file cannot see a message that
+		// is merely *wrong*, which is how "per-directory … (<config dir>)" survived.
+		if !strings.Contains(out, "credential this account's bindings shared") {
+			t.Errorf("the purge must say it removed the account's shared credential: %q", out)
+		}
+		if !strings.Contains(out, app.Paths.CredStoreDir(constants.ToolClaude, "main")) {
+			t.Errorf("the purge must name where the credential lived: %q", out)
+		}
+		if strings.Contains(out, "per-directory") {
+			t.Errorf("an account-wide credential must not be reported as per-directory: %q", out)
 		}
 	})
 }

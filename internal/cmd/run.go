@@ -425,7 +425,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	if err != nil {
 		return 0, err
 	}
-	meta, err := app.createBackup(ctx, be, plans, st, "run")
+	meta, err := app.createBackup(ctx, be, plans, st, constants.BackupReasonRun)
 	if err != nil {
 		return 0, err
 	}
@@ -461,6 +461,22 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// not a filter — it starts mattering the moment anything reads between the apply and
 	// the child (a verification read, a second tool's probe). Measured 2026-08-06.
 	ctx = keychain.WithReadCache(ctx)
+	// And kae's own secret store, the pair switch.go opens for the identical two guards
+	// (switch.go, before recaptureActiveBeforeSwitch). Without it this path reads two
+	// different snapshot refs — the identity one in keepSnapshotIdentity, the credential one
+	// in accountFreshness — and they happen not to collide only because claude's artifact
+	// names sort with the credential first, so accountFreshness returns before reaching the
+	// identity key. That is an accident of naming, not a property; a second rotating tool
+	// named the other way round would silently double the reads.
+	//
+	// Nothing in this window reads a ref an earlier step wrote — the recapture writes
+	// snapshot refs and everything after it reads *backup* refs, which is what AGENTS.md
+	// requires of the restore anyway. So the safety here is **absence of a read-after-write**,
+	// not invalidation: removing invalidation-on-Set leaves every fixture on this path green
+	// (measured by review). Invalidation is real and pinned in internal/secret's own tests,
+	// and it is what a future edit adding a read after persistSnapshot would start relying on.
+	be = secret.Cached(be)
+	ctx = secret.WithReadCache(ctx)
 
 	// The child may have moved the credential to the tool's other store (codex
 	// under `auto` writes its keychain item and deletes auth.json on its first
@@ -473,14 +489,106 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 
 	// Recapture: the child may have refreshed OAuth tokens; persist them into
 	// the account snapshots so the next switch applies fresh credentials.
+	//
+	// Through the **same two guards** the switch-away recapture applies and no third
+	// (docs/ROADMAP.md names them, because a third invented here is how the two paths
+	// stop agreeing about what a recapture may overwrite). This used to call
+	// captureSnapshot directly, so a child that logged in as another account filed that
+	// credential *and* that identity under the target account's name, and a child whose
+	// refresh failed filed the tombstone over a snapshot that still worked. Both
+	// measured; so was a third the plan did not name — captureSnapshot builds the
+	// snapshot from plan.Identity, which the run paths never set, so every `run -s`
+	// blanked the recorded login identity of the account it ran as.
+	//
+	// plan.Meta is the pre-run snapshot (loadPlansWithSnapshots read it, refreshPlan
+	// carries it through), which is the right baseline: it is what kae applied before
+	// the child, so a live identity that changed since is the child's doing. The
+	// restore below reads the **backup** rather than this snapshot for its own
+	// attribution, and must keep doing so — by then this recapture has rewritten it.
+	//
+	// One thing this path does not inherit from the switch-away recapture, and the
+	// reason the guards alone were not enough. There, a refusal is safe because
+	// createBackup already holds the copy being declined; here `meta` predates the
+	// child, so the child's copy exists only in the live store the restore below is
+	// about to overwrite. Refusing therefore *destroyed* the credential — a logout
+	// reported as success, which is the class this release exists to close. So the
+	// warnings are deferred until a backup of the post-child state exists to name.
+	//
+	// Two things here are measured-unobservable rather than untested, written down so
+	// nobody adds a test that cannot fail (2026-08-07). Running the downgrade guard
+	// *before* the identity one changes no outcome: keepSnapshotIdentity rewrites only
+	// the identity artifact's value, and liveValuesFreshness skips it, so the downgrade
+	// check reads the same credential either way. And the `err != nil` arm below differs
+	// from `!anyPresent` in wording alone, with no fixture that can make a live read
+	// fail while the artifacts stay resolvable.
+	// Paired rather than a slice plus a map keyed on the tool: the pair is only ever walked
+	// in order, and keying by tool would rely on "at most one plan per tool" without saying
+	// so anywhere.
+	//
+	// The pairing itself is **unobservable today** and that is worth recording rather than
+	// faking a test for: both refusals are claude-only by construction — keepSnapshotIdentity
+	// needs an IdentityOnly artifact and only claude declares one, and the preserve arm of
+	// recaptureWouldDowngrade needs rotatesSingleUse, which is claude alone — so at most one
+	// plan per run can be declined, and a mutation handing every warning the first reason
+	// cannot be killed. It becomes observable the day a second tool declares either.
+	type declinedRecapture struct {
+		plan toolPlan
+		why  string
+	}
+	var declined []declinedRecapture
 	for _, plan := range plans {
-		if err := app.captureSnapshot(ctx, be, plan); err != nil {
-			if exitOf(err) == constants.ExitAuthMissing {
-				fmt.Fprintf(os.Stderr, "kae: warning: %s logged out during the run; snapshot %s/%s left unchanged\n",
-					plan.Tool, plan.Tool, plan.Account)
+		values, anyPresent, err := readLiveValues(ctx, plan.Specs)
+		if err != nil {
+			warnRecaptureFailed(plan.Tool, plan.Account, err)
+			continue
+		}
+		if !anyPresent {
+			// The adapter's own warnings ride along: captureSnapshot used to append them
+			// to its auth_missing error, and `run -s` prints them nowhere else, so an
+			// env_conflict is otherwise invisible in exactly the case it may explain.
+			fmt.Fprintf(os.Stderr, "kae: warning: %s logged out during the run; snapshot %s/%s left unchanged%s\n",
+				plan.Tool, plan.Tool, plan.Account, warningsDetail(plan.Warnings))
+			continue
+		}
+		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); why != "" {
+			declined = append(declined, declinedRecapture{plan, why})
+			continue
+		}
+		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); why != "" {
+			if preserve {
+				// kae cannot order the two copies, so it may neither say the live one is
+				// finished nor let the restore below take it. Same treatment as an
+				// unattributable copy: back it up and name it.
+				declined = append(declined, declinedRecapture{plan, why})
 				continue
 			}
-			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, plan.Account, err)
+			// No backup for this one: what it declines is a tombstone or a provably older
+			// credential, so there is nothing to keep.
+			warnRecaptureSkipped(why)
+			continue
+		}
+		// Carry the snapshot's own recorded identity: the run paths leave plan.Identity
+		// empty, and persistSnapshot writes whatever it is given.
+		snapPlan := plan
+		snapPlan.Identity = plan.Meta.Identity
+		if err := app.persistSnapshot(ctx, be, snapPlan, values); err != nil {
+			warnRecaptureFailed(plan.Tool, plan.Account, err)
+		}
+	}
+	if len(declined) > 0 {
+		preID := ""
+		declinedPlans := make([]toolPlan, len(declined))
+		for i, d := range declined {
+			declinedPlans[i] = d.plan
+		}
+		if preMeta, err := app.createBackup(ctx, be, declinedPlans, st, constants.BackupReasonRunUnattributable); err != nil {
+			fmt.Fprintf(os.Stderr, "kae: warning: could not back up the live state kae declined to adopt: %v\n", err)
+		} else {
+			preID = preMeta.ID
+		}
+		for _, d := range declined {
+			warnRecaptureDeclined(d.plan.Tool, d.why, preID,
+				"which covers only the tools whose recapture kae declined")
 		}
 	}
 

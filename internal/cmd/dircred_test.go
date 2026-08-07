@@ -299,16 +299,34 @@ func captureClaudeAt(t *testing.T, app *App, accountName, token string, expiresA
 // credential — the side a harvest writes to.
 func snapshotPayload(t *testing.T, app *App, be secret.Backend, tool, accountName string) string {
 	t.Helper()
+	return snapshotArtifact(t, app, be, tool, accountName, credentialArtifactName(tool))
+}
+
+// snapshotArtifact reads any one named artifact of a snapshot — the identity-only one
+// beside the credential is the half a mis-attributed recapture relabels.
+func snapshotArtifact(t *testing.T, app *App, be secret.Backend, tool, accountName, artifactName string) string {
+	t.Helper()
 	acc, found, err := account.Load(app.Paths.AccountDir(tool, accountName))
 	if err != nil || !found {
 		t.Fatalf("load snapshot %s/%s: found=%v err=%v", tool, accountName, found, err)
 	}
-	art := acc.Artifacts[credentialArtifactName(tool)]
+	art := acc.Artifacts[artifactName]
 	data, found, err := be.Get(context.Background(), art.SecretRef)
 	if err != nil || !found {
 		t.Fatalf("read snapshot payload %s: found=%v err=%v", art.SecretRef, found, err)
 	}
 	return string(data)
+}
+
+// recordedIdentity is account.toml's own Identity field — a different thing from the
+// identity *artifact* above, and the one persistSnapshot builds from plan.Identity.
+func recordedIdentity(t *testing.T, app *App, tool, accountName string) string {
+	t.Helper()
+	acc, found, err := account.Load(app.Paths.AccountDir(tool, accountName))
+	if err != nil || !found {
+		t.Fatalf("load snapshot %s/%s: found=%v err=%v", tool, accountName, found, err)
+	}
+	return acc.Identity
 }
 
 // Two identity payloads that are byte-identical and neither an account record agree
@@ -1192,31 +1210,44 @@ func TestHarvestIsDeclaredForMeasuredToolsOnly(t *testing.T) {
 // A payload that parses but carries no deadline cannot be ordered against anything,
 // so it is never harvested — the guard the selection rule rests on. A mutation that
 // dropped the zero check survived the whole suite (execution-type review).
+//
+// Two shapes, and they reach the classifier by different routes, which is why the second
+// row exists: with `expiresAt` **absent** claude never sets `Known`, while a **non-numeric**
+// one sets `Known` and parses to the zero time. The second used to be classified
+// "nothing to lose" — see TestPruneDirCredentialsKeepsACopyItCannotDate for what that
+// licensed — so an older comment here claiming the delete path "protected this state from
+// the start" was true only of the first row.
 func TestWriteDirCredentialDoesNotHarvestUndatedCredential(t *testing.T) {
-	app := testApp(t, nil)
-	ctx := context.Background()
-	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
-	credDir := t.TempDir()
-	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
-		`{"claudeAiOauth":{"accessToken":"sk-ant-oat01-UNDATED-ffff","refreshToken":"r"}}`)
-	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
+	for _, tc := range []struct{ name, oauth string }{
+		{"no expiresAt at all", `{"accessToken":"sk-ant-oat01-UNDATED-ffff","refreshToken":"r"}`},
+		{"an expiresAt of the wrong type", `{"accessToken":"sk-ant-oat01-UNDATED-ffff","refreshToken":"r","expiresAt":"1814400000000"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+			credDir := t.TempDir()
+			writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
+				`{"claudeAiOauth":`+tc.oauth+`}`)
+			writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 
-	be := testBackend(t, app)
-	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir); err != nil {
-			t.Fatalf("writeDirCredential: %v", err)
-		}
-		return 0
-	})
-	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
-		t.Fatalf("an undated credential must not be harvested: %s", got)
-	}
-	// And the overwrite is not silent. A payload kae cannot judge may still be a login,
-	// and on this path it is the only early signal of an upstream format change —
-	// `upstream_version` skips a version string it cannot parse. The delete path
-	// protected this state from the start while the write path did not, until review.
-	if !strings.Contains(stderr, "cannot read the copy already there") {
-		t.Fatalf("overwriting a copy kae cannot read must be reported: %q", stderr)
+			be := testBackend(t, app)
+			_, stderr := captureStderr(t, func() int {
+				if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir); err != nil {
+					t.Fatalf("writeDirCredential: %v", err)
+				}
+				return 0
+			})
+			if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
+				t.Fatalf("an undated credential must not be harvested: %s", got)
+			}
+			// And the overwrite is not silent. A payload kae cannot judge may still be a
+			// login, and on this path it is the only early signal of an upstream format
+			// change — `upstream_version` skips a version string it cannot parse.
+			if !strings.Contains(stderr, "cannot read or date the copy already there") {
+				t.Fatalf("overwriting a copy kae cannot judge must be reported: %q", stderr)
+			}
+		})
 	}
 }
 
@@ -1324,16 +1355,20 @@ func mkdirs(t *testing.T, dirs ...string) {
 // longer binds, holding the tombstone a failed refresh leaves behind — nothing to
 // harvest, so the sweep is free to remove it, which keeps this test about the thing it
 // is named for: *which* item the sweep addresses.
+//
+// The payload is the tombstone **as measured**: blank tokens *and* `expiresAt: 0`
+// (docs/VALIDATION.md's claude row). It used to carry a future deadline, which is not a
+// shape claude has been observed to produce and which the sweep now keeps rather than
+// deletes — blank tokens with a live deadline are indistinguishable from an upstream
+// token-key rename, and that is a working login. So this fixture is now the positive
+// control for the one arm that licenses a delete, and the sibling below is its negative.
 func TestPruneDirCredentialsRemovesSupersededItem(t *testing.T) {
 	app, pinID := prunableApp(t)
 	stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
 	bound := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
 	mkdirs(t, stale, bound)
 
-	tombstone := fmt.Sprintf(
-		`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%d}}`,
-		app.Now().Add(time.Hour).UnixMilli(),
-	)
+	const tombstone = `{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0}}`
 	fake := &runnertest.Fake{Stdout: tombstone, Code: 0}
 	var lines []string
 	runner.With(fake, func() {
@@ -1349,6 +1384,47 @@ func TestPruneDirCredentialsRemovesSupersededItem(t *testing.T) {
 	}
 	if len(lines) != 1 || !strings.Contains(lines[0], stale) {
 		t.Fatalf("the removal must be reported: %v", lines)
+	}
+}
+
+// The negative control for the arm above, in the two shapes that are **not** the measured
+// tombstone. `Revoked` is derived from token fields that are empty *or absent*, so both of
+// these read as revoked while carrying a live deadline — and an upstream rename of the
+// token keys is exactly the second one. docs/VALIDATION.md justifies that wide reading by
+// saying it makes every path *decline* to touch the copy; for this consumer it would have
+// licensed the delete instead, which is the defect this pins.
+func TestPruneDirCredentialsKeepsARevokedLookingCopyWithALiveDeadline(t *testing.T) {
+	for _, tc := range []struct{ name, oauth string }{
+		{"blank tokens, live deadline", `{"accessToken":"","refreshToken":"","expiresAt":%d}`},
+		{"token keys renamed away", `{"tokenV2":"sk-ant-oat01-LIVE","expiresAt":%d}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, pinID := prunableApp(t)
+			oauth := fmt.Sprintf(tc.oauth, app.Now().Add(time.Hour).UnixMilli())
+			stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
+			bound := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+			mkdirs(t, stale, bound)
+
+			fake := &runnertest.Fake{Stdout: `{"claudeAiOauth":` + oauth + `}`, Code: 0}
+			var lines []string
+			var stderr string
+			runner.With(fake, func() {
+				_, stderr = captureStderr(t, func() int {
+					lines = app.pruneDirCredentials(context.Background(), testBackend(t, app), pinID, "",
+						map[string]bool{bound: true}, fragmentInfo{}, false)
+					return 0
+				})
+			})
+			if strings.Contains(strings.Join(fake.Args, " "), "delete-generic-password") {
+				t.Fatalf("a copy kae cannot judge must be kept, not deleted: %v", fake.Args)
+			}
+			if len(lines) != 0 {
+				t.Fatalf("nothing was removed, so nothing may be reported as removed: %v", lines)
+			}
+			if !strings.Contains(stderr, "cannot read or date the claude credential") {
+				t.Fatalf("keeping it must say why: %q", stderr)
+			}
+		})
 	}
 }
 
@@ -1630,6 +1706,59 @@ func TestPruneDirCredentialsHarvestsBeforeDeleting(t *testing.T) {
 	})
 }
 
+// A live copy kae cannot **date** is not one it has nothing to lose by deleting. This is
+// the fourth consumer of the same predicate the recapture guards split on, and the only
+// one where folding "nothing to lose" together with "kae cannot tell" licenses a
+// **delete**: readLiveCredential classified `Known && !Revoked &&` undated as
+// `liveNothing`, so harvestBeforeDelete removed the item without harvesting it and
+// without a word, reporting it as a *superseded* credential.
+//
+// The fixture is TestPruneDirCredentialsHarvestsBeforeDeleting's, with one difference: the
+// payload's `expiresAt` is a string. That is what an upstream type change produces, and
+// what a comment here used to call unobservable.
+func TestPruneDirCredentialsKeepsACopyItCannotDate(t *testing.T) {
+	sim := &keychainSim{}
+	runner.With(sim, func() {
+		app := testApp(t, map[string]string{"USER": "me"})
+		app.Env.GOOS = "darwin"
+		ctx := context.Background()
+		now := app.Now()
+		captureClaudeFromKeychain(t, app, sim, "main", mainToken, now.Add(time.Hour))
+
+		pinID := paths.PinID(t.TempDir())
+		stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+		mkdirs(t, stale)
+		writeFile(t, filepath.Join(stale, ".claude.json"), claudeIdentityFile("main-uuid"))
+		const live = "sk-ant-oat01-MAIN-UNDATED-dddd"
+		sim.payload = `{"claudeAiOauth":{"accessToken":"` + live +
+			`","refreshToken":"r","expiresAt":"1814400000000"}}`
+
+		be := testBackend(t, app)
+		var lines []string
+		_, stderr := captureStderr(t, func() int {
+			lines = app.pruneDirCredentials(ctx, be, pinID, "", nil, fragmentInfo{}, false)
+			return 0
+		})
+
+		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
+			t.Fatalf("a live copy kae cannot date must be kept, not deleted: %v", sim.ops)
+		}
+		if len(lines) != 0 {
+			t.Fatalf("nothing was removed, so nothing may be reported as removed: %v", lines)
+		}
+		// Kept for a reason the user can act on — this is the only offline signal of an
+		// upstream format change on this path.
+		if !strings.Contains(stderr, "cannot read or date the claude credential") {
+			t.Fatalf("keeping it must say why: %q", stderr)
+		}
+		// And the snapshot is untouched: kae could not order the two, so it may not adopt
+		// the copy either.
+		if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
+			t.Fatalf("a copy kae cannot date must not be adopted either: %s", got)
+		}
+	})
+}
+
 // The delete half of the decodability gate, which is the outcome that matters most:
 // an item that would previously have been harvested and swept is now **kept**.
 //
@@ -1880,5 +2009,54 @@ func TestDirCredentialFreshnessReadsTheDirScopedItem(t *testing.T) {
 	// And the payload it read is the one that decided the verdict.
 	if !needsRelogin(info, app.Now()) {
 		t.Fatalf("an expiry of 2020 with no refresh token must read as needing a re-login: %+v", info)
+	}
+}
+
+// `--purge` is the way out for a copy kae cannot judge, and a bind's sweep still is not.
+// Keeping it during housekeeping is right — it may be a working login in a shape kae has
+// not been taught — but keeping it under `--purge` stranded a secret **nothing kae offers
+// can remove**: a per-directory item is addressable only from the string kae hashes its
+// service name from, and this sweep is the only path to it. Both arms say what they do.
+func TestPurgeIsTheWayOutForACredentialKaeCannotJudge(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		purging     bool
+		wantDeleted bool
+		wantSays    string
+	}{
+		{"a bind's sweep keeps it and names the way out", false, false, "kae unpin --purge in that directory removes it"},
+		{"--purge takes it and says what it destroys", true, true, "nor tell which account it belonged to"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, pinID := prunableApp(t)
+			stale := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "side")
+			bound := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+			mkdirs(t, stale, bound)
+
+			// Unreadable at all: not JSON kae's parser recognizes as a credential.
+			fake := &runnertest.Fake{Stdout: `{"somethingElse":true}`, Code: 0}
+			var lines []string
+			var stderr string
+			runner.With(fake, func() {
+				_, stderr = captureStderr(t, func() int {
+					lines = app.pruneDirCredentials(context.Background(), testBackend(t, app), pinID, "",
+						map[string]bool{bound: true}, fragmentInfo{}, tc.purging)
+					return 0
+				})
+			})
+			deleted := strings.Contains(strings.Join(fake.Args, " "), "delete-generic-password")
+			if deleted != tc.wantDeleted {
+				t.Fatalf("deleted=%v want %v (args %v, stderr %q)", deleted, tc.wantDeleted, fake.Args, stderr)
+			}
+			if !strings.Contains(stderr, tc.wantSays) {
+				t.Errorf("want stderr to contain %q: %q", tc.wantSays, stderr)
+			}
+			if tc.wantDeleted && (len(lines) != 1 || !strings.Contains(lines[0], stale)) {
+				t.Errorf("a purge that removed it must report it: %v", lines)
+			}
+			if !tc.wantDeleted && len(lines) != 0 {
+				t.Errorf("nothing was removed, so nothing may be reported: %v", lines)
+			}
+		})
 	}
 }

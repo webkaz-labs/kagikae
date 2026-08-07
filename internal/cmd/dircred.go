@@ -363,7 +363,7 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 		// answer. Written as the state it is rather than folded away, so the next reader
 		// does not remove it as dead.
 		return snapshot, false, harvestRefusal{
-			Why: "kae cannot read the copy already there, and a payload kae does not recognize may still be a login",
+			Why: "kae cannot read or date the copy already there, and a payload kae cannot judge may still be a login",
 		}
 	}
 	// A snapshot kae cannot read, or one that is itself a tombstone, loses to any
@@ -480,20 +480,46 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 	}
 	info := freshnessOf(tool, live.Data)
 	if !orderable(info) {
-		// Derived from `orderable` rather than restated, so the equivalence below cannot
-		// drift by omission: a condition added there — docs/VALIDATION.md already flags a
-		// candidate in the `expiresAt`-unit row — reaches this classification too.
-		if !info.Known {
-			return nil, freshness.Info{}, liveUnreadable
+		// **Only the measured tombstone is "nothing to lose"; everything else kae cannot
+		// order, it cannot judge.** `liveNothing` licenses a delete (harvestBeforeDelete
+		// removes the item without harvesting or warning, and harvestDirCredential lets
+		// the overwrite pass unreported); `liveUnreadable` forbids one. `orderable` fails
+		// for three different reasons and they do **not** collapse to two answers — two
+		// separate folds of them each shipped a silent delete of a live login, one field
+		// apart, so this names the tombstone exactly rather than approximating it:
+		//
+		//   - `!Known`: no `expiresAt` key at all. Unreadable.
+		//   - `Known && !Revoked` and undated: claude sets `Known` on the key's mere
+		//     *presence* and parses a non-numeric value to the zero time, so an upstream
+		//     type change puts a working login here. Unreadable.
+		//   - `Known && Revoked` with a **non-zero** deadline (future or past — a past one is
+		//     the shape the dependency below is about, not a fifth case): `Revoked` is derived from token
+		//     fields that are empty *or absent*, so an upstream rename of the token keys
+		//     reads as revoked while being a working login — and docs/VALIDATION.md's own
+		//     row justifies that wide reading by saying it makes every path *decline* to
+		//     touch the copy, which is false for this consumer. Unreadable.
+		//   - `Known && Revoked && ExpiresAt.IsZero()`: the tombstone as **measured**
+		//     (blank tokens, `expiresAt: 0`, `refreshTokenExpiresAt` retained — the claude
+		//     row in docs/VALIDATION.md). Nothing to lose.
+		//
+		// So this depends on the tombstone continuing to zero `expiresAt`, which that row
+		// now records as a dependency: if upstream tombstones without zeroing it, kae stops
+		// sweeping tombstones and leaves a spent secret behind. That is the safe direction,
+		// and it is a recorded consequence rather than a surprise. `EpochToTime` maps every
+		// `n <= 0` to the zero time, so a negative deadline stays in this bucket — and by the
+		// same token a *non-number* is indistinguishable from a zero here, which is why a zero
+		// deadline with a token still in it is retained rather than swept (the claude adapter's
+		// Freshness comment and docs/ROADMAP.md carry that consequence).
+		//
+		// The `Known` conjunct is a statement of intent, not a filter: claude's is the only
+		// `Revoked` assignment in the tree and it always sits with `Known: true`, so a mutation
+		// dropping it cannot be killed today. It is kept so a second adapter cannot reach
+		// `liveNothing` without declaring the deadline field this arm reasons about.
+		if info.Known && info.Revoked && info.ExpiresAt.IsZero() {
+			return nil, freshness.Info{}, liveNothing
 		}
-		return nil, freshness.Info{}, liveNothing
+		return nil, freshness.Info{}, liveUnreadable
 	}
-	// Note on the `IsZero` half: it is the guard docs/ROADMAP.md prescribes, and it is
-	// also **unobservable**, which is worth writing down so nobody removes it as dead
-	// code or adds a test that cannot fail. A zero `expiresAt` parses to the zero time,
-	// which is never `After` any cutoff, so such a copy could not be harvested even
-	// without this line — and claude's only measured zero is the tombstone, which
-	// `Revoked` already catches. Mutating it away survives the suite by construction.
 	return live.Data, info, liveUsable
 }
 
@@ -508,8 +534,9 @@ func readLiveCredential(ctx context.Context, tool string, sp artifact.Spec) ([]b
 // since it is the one in daily use. Harvesting that would file account B's token
 // under account A's name and identity, after which nothing offline can tell: the
 // token is opaque, so live, snapshot and doctor all agree on a label that is
-// simply wrong. The global recapture refuses on the same evidence
-// (keepSnapshotIdentity), through the same predicate (identityDiffers).
+// simply wrong. The two global recaptures refuse on the same evidence
+// (keepSnapshotIdentity), through the same pair of predicates — identityComparable
+// above identityDiffers, in that order, for the reason identityComparable states.
 //
 // Positive evidence is required — both sides readable, and agreeing. Absence is
 // not evidence of a match, and insisting is cheap: a copy worth harvesting is one
@@ -1069,6 +1096,22 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: could not remove the superseded %s credential for %s: %v\n",
 				store.Tool, store.Dir, err)
+		// Two removals share this loop and they are not the same event, so they do not
+		// share a sentence. removeDirCredential deletes at the location the store
+		// *reads*, which for a split store is the account's own — so reporting that as
+		// a "per-directory" credential at store.Dir named neither the thing removed nor
+		// where it lived, and understated the scope of the one removal that affects
+		// every other binding of the account. Found by running the smoke procedure in
+		// docs/VALIDATION.md § v0.17.0 per-account credential. What no test pinned was the
+		// **account-wide** sentence — the two assertions on this literal are both negative;
+		// the per-directory arm below is pinned positively, but on `lines[0]` containing the
+		// store dir rather than on the wording (TestPruneDirCredentialsRemovesSupersededItem),
+		// so do not read that assertion as dead weight.
+		case removed && store.CredDir != "":
+			removals = append(removals, fmt.Sprintf(
+				"Removed the %s credential this account's bindings shared; nothing points at it any more (%s)",
+				store.Tool, store.CredDir,
+			))
 		case removed:
 			removals = append(removals, fmt.Sprintf(
 				"Removed the superseded per-directory %s credential (%s)", store.Tool, store.Dir,
@@ -1331,9 +1374,30 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 	case liveNothing:
 		return true
 	case liveUnreadable:
+		// The same asymmetry the account-gone branches below turn on, and for the same
+		// reason: it is what the caller was **asked** to do, not what the state is. During
+		// housekeeping a payload kae cannot judge is kept — it may be a working login in a
+		// shape kae has not been taught, and a bind was not asked to destroy anything. Under
+		// `--purge` keeping it strands a secret **nothing kae offers can remove**: the item
+		// is named by a per-directory service kae cannot address without the string it
+		// hashes from, and this was the only path to it. So the purge takes it and says
+		// exactly what it is destroying, which is the loudest kae can be about a copy it
+		// could not read.
+		if purging {
+			// Said before the delete, and it names both limits: this arm runs *before* any
+			// attribution, so kae could not tell whose login it was either — the store path
+			// carries the account segment, which is all a user has to go on.
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: kae could not read or date the %s credential in %s — nor tell which "+
+					"account it belonged to — so it is deleted without being kept anywhere; if that was "+
+					"a working login in a shape kae does not recognize, it is gone\n", tool, credDir)
+			return true
+		}
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: kae cannot read the %s credential in %s, so it is left in place instead of deleted "+
-				"(a payload kae does not recognize may still be a working login)\n", tool, credDir)
+			"kae: warning: kae cannot read or date the %s credential in %s, so it is left in place "+
+				"instead of deleted (a payload kae cannot judge may still be a working login); "+
+				"if it is spent, kae unpin --purge in that directory removes it — that tears the "+
+				"binding down too, so re-pin afterwards\n", tool, credDir)
 		return false
 	}
 	if accountName == "" {

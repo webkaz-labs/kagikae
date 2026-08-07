@@ -75,7 +75,14 @@ func SecretRef(id, tool, name string) string {
 }
 
 // NewID returns a unique backup id under dir, e.g. 20260611T012345Z, with a
-// -2/-3 suffix on collision.
+// -02/-03 suffix on collision.
+//
+// The suffix is **zero-padded** because every consumer orders backups by comparing the
+// id as a string (List sorts descending), and an unpadded one sorts `-2` above `-10`:
+// the tenth backup in a single second would then read as older than the second. Reaching
+// that needs ten backups inside one clock second, which `kae run -s` halved the distance
+// to when a declined recapture made it emit two per command. Old ids cannot share a
+// second with new ones, so widening the field re-sorts nothing that exists.
 func NewID(dir string, now time.Time) string {
 	base := now.UTC().Format("20060102T150405Z")
 	id := base
@@ -83,7 +90,7 @@ func NewID(dir string, now time.Time) string {
 		if _, err := os.Stat(metaPath(dir, id)); os.IsNotExist(err) {
 			return id
 		}
-		id = fmt.Sprintf("%s-%d", base, n)
+		id = fmt.Sprintf("%s-%02d", base, n)
 	}
 }
 
@@ -163,13 +170,41 @@ func Delete(ctx context.Context, be secret.Backend, dir string, meta Meta) error
 }
 
 // Prune deletes the oldest backups beyond keep and returns the removed ids.
-func Prune(ctx context.Context, be secret.Backend, dir string, keep int) ([]string, error) {
+//
+// keep counts only the backups `counts` accepts; anything it rejects is retained without
+// consuming a slot, and is pruned once it is older than the oldest kept accepted one. A
+// nil counts accepts everything.
+//
+// The seam exists because not every backup is the same kind of thing and this package
+// deliberately does not know kae's reason vocabulary. One reason records a copy kae
+// *declined to adopt* rather than a state it was about to change, and a single command can
+// write one of each — so counting them alike let the preserved copy, which is created
+// last and therefore sorts newest, evict the very backup it was meant to sit beside. At
+// `backup_keep = 1` that left the run with no undo target at all.
+func Prune(ctx context.Context, be secret.Backend, dir string, keep int, counts func(Meta) bool) ([]string, error) {
 	metas, err := List(dir)
-	if err != nil || len(metas) <= keep {
+	if err != nil {
 		return nil, err
 	}
 	removed := []string{}
-	for _, meta := range metas[keep:] {
+	counted, cutoff := 0, ""
+	for _, meta := range metas { // newest first
+		if counts != nil && !counts(meta) {
+			continue
+		}
+		counted++
+		if counted == keep {
+			cutoff = meta.ID
+			break
+		}
+	}
+	if counted < keep {
+		return nil, nil // not even `keep` countable backups yet: nothing is old enough to drop
+	}
+	for _, meta := range metas {
+		if meta.ID >= cutoff { // ids sort as strings, newest first (see NewID)
+			continue
+		}
 		if err := Delete(ctx, be, dir, meta); err != nil {
 			return removed, err
 		}

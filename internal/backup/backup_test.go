@@ -34,7 +34,7 @@ func TestNewIDCollision(t *testing.T) {
 		t.Fatal(err)
 	}
 	id2 := NewID(dir, now)
-	if id2 != "20260611T012345Z-2" {
+	if id2 != "20260611T012345Z-02" {
 		t.Fatalf("unexpected collision id: %s", id2)
 	}
 }
@@ -84,7 +84,7 @@ func TestPruneDeletesPayloads(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	removed, err := Prune(ctx, be, dir, 2)
+	removed, err := Prune(ctx, be, dir, 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

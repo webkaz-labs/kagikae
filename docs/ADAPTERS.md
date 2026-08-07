@@ -833,15 +833,28 @@ say "the store", read it as whichever of the two that tool resolves:
   bind**, because the config dir attribution reads is created moments earlier and a shared
   bind links no identity cache into it; measured 2026-08-08, where binding a second
   worktree to an account in daily use destroyed the only copy that could still refresh.
-  The other two refusals still overwrite, deliberately: a `Conflicting` copy is provably
-  another account's, so this account's credential is elsewhere and the bind must take
-  effect; and a payload kae can neither read nor date keeps the older behaviour because
-  keeping it would leave a corrupted store unrepairable by `kae pin`
+  Every refusal other than the attribution one still overwrites, deliberately — stated as
+  the condition rather than as a count, since a new reason would otherwise become an
+  uncounted third: a `Conflicting` copy is provably another account's, so this account's
+  credential is elsewhere and the bind must take effect; and a payload kae can neither read
+  nor date keeps the older behaviour because keeping it would leave a corrupted store
+  unrepairable by `kae pin`
   ([ROADMAP.md](ROADMAP.md) owns that trade-off). Only the credential write and its
   stale-file sweep are skipped — the identity label still lands, since a directory with no
   label leaves `identity_drift` blind and can never be attributed by a later bind either.
-  Both speakers read one predicate (`keepsUnattributedCopy`), because the pin-level pass
-  states the consequence in the message it owns and the write is what applies it;
+  Nothing of kae's is written for that artifact when the copy is kept — not the credential,
+  not the stale-file sweep, and **not the identity label**, which is the half that had to be
+  measured: kae's own label is the evidence a later bind's attribution reads, so writing it
+  let the next `kae pin` confirm against a cache kae had planted and harvest the very copy
+  the first bind refused (measured 2026-08-08 — another account's token filed under this
+  one's name). Absence is the honest record, and the next cache in that directory is the
+  tool's own. The pin-level pass therefore words its consequence as *leaving it where it
+  is*, which holds whether the write keeps or writes elsewhere, rather than predicting the
+  write's answer for a location it is not always looking at.
+  A kept copy is not stranded: once the tool has run there, attribution has honest evidence
+  and the next bind harvests it, and the last binding's `kae unpin --purge` harvests before
+  it deletes — measured 2026-08-08, end to end, keep → purge a sibling (kept, with the
+  refcount named) → purge the last one (harvested into the snapshot, then removed);
 - the two are stated together because the pair is the rule: kae **never files a copy it
   cannot attribute** under an account, and it **never destroys one either**;
 - the snapshot's payload **shape** must match the artifact being written.

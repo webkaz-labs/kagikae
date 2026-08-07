@@ -1158,6 +1158,12 @@ cred SIDE-OLD $OLD > "$HOME/.claude/.credentials.json"; ident side > "$HOME/.cla
 # --- A. the tool refreshed the copy inside the directory; a re-pin must keep it ---
 P="$HOME/proj"; mkdir -p "$P"; cd "$P"
 /tmp/kae pin main
+# The identity cache the *tool* writes when it runs in a bound directory. Every case that
+# expects a harvest seeds it, because attribution must read the tool's evidence and not
+# kae's: kae no longer writes a label on the paths where it keeps a copy, precisely so a
+# later bind cannot confirm against something kae planted (§ ADAPTERS.md). A block that
+# leaned on kae's own label would be testing the shape that was removed.
+ident main > "$(store)/.claude.json"
 cred MAIN-NEW $NEW > "$(cstore)/.credentials.json"
 /tmp/kae pin main
 #   assert: stderr carries `kae: harvested the newer claude credential from … into
@@ -1186,10 +1192,15 @@ grep MAIN-NEW2 "$(cstore)/.credentials.json"   # assert: the copy that can still
 snap main | grep -c MAIN-NEW2            # assert: 0 — kept is not harvested. kae could not
                                         #         tell whose the copy is, so it neither
                                         #         destroys it nor files it under this account
-grep u-main "$(store)/.claude.json"      # assert: the bind still labelled the directory —
-                                        #         only the credential write is skipped, and
-                                        #         a version of the fix that skipped this too
-                                        #         left the directory unattributable forever
+test ! -e "$(store)/.claude.json"        # assert: and NO label was written. kae's own label
+                                        #         is what the next bind's attribution would
+                                        #         read, so writing it here let a second
+                                        #         `kae pin` confirm against a cache kae had
+                                        #         planted and harvest the copy this bind
+                                        #         refused — measured 2026-08-08, filing
+                                        #         another account's token under this name.
+                                        #         Absence is the honest record; the next
+                                        #         cache here is the tool's
 cd "$P"                                  # back to A's directory for the cases below
 
 # --- B. a copy kae cannot attribute is not adopted, and the cost is stated ---
@@ -1267,6 +1278,7 @@ cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.cla
 /tmp/kae add --no-login --identity you@example.com claude main
 T="$HOME/toggle"; mkdir -p "$T"; cd "$T"
 /tmp/kae pin main                       # shared
+ident main > "$(store)/.claude.json"    # the tool ran here (see A)
 cred MAIN-NEW $NEW > "$(cstore)/.credentials.json"
 /tmp/kae pin -i main                    # isolated: a different *config* store, rebuilt
                                         # from the snapshot
@@ -1288,6 +1300,7 @@ cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.cla
 /tmp/kae add --no-login --identity you@example.com claude main
 R="$HOME/rebind"; mkdir -p "$R"; cd "$R"
 /tmp/kae pin main
+ident main > "$(store)/.claude.json"    # the tool ran here (see A)
 cred MAIN-NEW $NEW > "$(cstore)/.credentials.json"
 /tmp/kae pin claude side
 #   assert: `harvested … into snapshot claude/main` — main, not side — and that it is the
@@ -1307,7 +1320,9 @@ cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.cla
 /tmp/kae add --no-login --identity you@example.com claude main
 G="$HOME/drift"; mkdir -p "$G"; cd "$G"
 /tmp/kae pin main
-grep u-main "$(store)/.claude.json"     # assert: the bind labelled the store with main.
+ident main > "$(store)/.claude.json"    # the tool ran here (see A)
+grep u-main "$(store)/.claude.json"     # assert: the cache doctor reads is where it expects
+                                        #         it and names main.
                                         #         Positive first, and it is what makes the
                                         #         two `grep -c` lines below mean anything:
                                         #         with no cache there the check is silent
@@ -2243,8 +2258,12 @@ block rather than from the end state.
   compare. The bind now keeps that copy and says so; `Conflicting` and unreadable copies are
   still replaced, deliberately (docs/ADAPTERS.md is normative, docs/ROADMAP.md owns the
   second one's trade-off). Case **A2** in the block above is the case that keeps it fixed —
-  it did not exist, and the run above walked the destructive path three times without
-  asserting anything about it. Every block was re-run against the fixed binary.
+  it did not exist, and the first run walked the destructive path three times without
+  asserting anything about it. **A2 and every other block were then run against the fixed
+  binary**, extracted from this file rather than from a script, so nothing below is dated
+  ahead of the tree it was measured on. The fix also moved what a bind writes when it keeps
+  (no credential, no stale-file sweep, no identity label), which is why the cases that
+  expect a harvest now seed the identity cache the *tool* would have written.
 - **§ v0.17.0 surface — the credential harvest, A–A2–J: every documented assertion** — but
   **only after fixing the block**, and that is the other finding of this run: every
   credential fixture still targeted

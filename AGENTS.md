@@ -184,13 +184,17 @@ block in docs/VALIDATION.md, next to two correct ones.
   for the condition; three things about it are easy to get wrong. It is keyed on the
   *attribution* refusal alone (`Unattributed`) — marking every refusal from
   `dirIdentityConfirms` also caught the `Conflicting` one, which must still overwrite, so
-  a re-bind silently did not switch. Only the credential write and its stale-file sweep
-  are skipped: an earlier form returned early and lost the **identity label**, which left
-  the directory permanently unattributable, `identity_drift` blind, and three acceptance
-  cases stuck at "kept" forever. And the consequence appears in *two* messages — the
-  pin-level pass owns the remedy, the write owns the fact — so both read one predicate;
-  leaving the pass's old "and this bind replaces it" clause in place while the write kept
-  the copy survived the entire suite.
+  a re-bind silently did not switch. **Nothing of kae's is written when the copy is kept**,
+  and the label is the half that matters: an intermediate version wrote it, and kae's own
+  label is exactly what a later bind's attribution reads — so `kae pin` again confirmed
+  against a cache kae had planted and harvested the copy the first bind refused, filing
+  another account's token under this one's name (measured). Skipping it restores the rule
+  the rest of that function states, that the identity follows a *successful* credential
+  write. What it costs is that the acceptance block must seed the cache the **tool** would
+  have written wherever it expects a harvest, which is the honest fixture anyway. And the
+  pass words its consequence as *leaving it where it is* rather than predicting the write:
+  keyed on its own store's dirs it said "this bind replaces it" about a copy nothing
+  replaced, and that wording survived the entire suite until an assertion existed.
   Two more traps that outlive the specific code. Harvesting is not deleting — they belong
   on opposite sides of the write, so do not "simplify" them into one pass. And a
   suppression that keeps two speakers from repeating each other must be keyed on **what

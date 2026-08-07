@@ -630,11 +630,15 @@ kae keeps a credential because bindings still use it, it prints how many.
   When it declines a copy it could not **attribute** in the account's own credential
   store, the bind leaves that copy in place instead of writing the snapshot over it, and
   says so — every directory bound to the account reads that one copy, so a bind is not
-  entitled to replace it on missing evidence. The binding is still written and the exit
-  code is still `0`; what the message adds is that the credential there is not the
-  snapshot's, and the remedy (`kae relogin <tool>` inside the directory) is the one that
-  makes the two agree. A copy that is provably another account's is still replaced, since
-  that account's credential is elsewhere and the bind has to take effect.
+  entitled to replace it on missing evidence. The binding is still written and the exit code
+  is still `0`; nothing else of kae's is, for that artifact: no credential, no superseded
+  plaintext copy removed, and no identity label (which is what a later bind would otherwise
+  attribute against). A remedy is named only where the pin-level pass reported that store,
+  because only it knows the bound directory a login would have to happen in — on a **first**
+  bind, which is the case this exists for, the directory has no earlier store for the pass
+  to report and the message is the fact alone. A copy that is provably another account's is
+  still replaced, since that account's credential is elsewhere and the bind has to take
+  effect.
 
   It covers **every store the bound directory has, not only the one being written** —
   which is what a re-bind to another account needs, since that binds the directory to a

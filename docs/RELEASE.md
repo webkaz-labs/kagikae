@@ -25,7 +25,7 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
-# kae v0.17.0 (2026-08-08)
+# kae v0.17.0 (prepared 2026-08-08, not yet shipped)
 
 **One account per worktree — and kae no longer kills the login in it.** A binding
 has always belonged to a *directory*, which makes a `git worktree` a first-class

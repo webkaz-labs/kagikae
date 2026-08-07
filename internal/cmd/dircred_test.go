@@ -511,15 +511,12 @@ func TestWriteDirCredentialRefusesToHarvestAnotherAccountsCredential(t *testing.
 	}
 }
 
-// **The first bind of a directory has no identity cache to attribute from, and the
-// store it would overwrite belongs to the account, not to the directory.** Every test
-// above seeds `.claude.json` first, which is why this went unnoticed: on a real first
-// bind the config dir was created moments earlier, a shared bind links no `.claude.json`
-// by design, and writeDirIdentity runs after the credential. So attribution refuses for
-// missing evidence — and refusing used to mean overwriting anyway, which under single-use
-// rotation logs out *every* directory bound to that account. Measured end to end
-// 2026-08-08 (use claude in one worktree, bind a second, both dead up to 8h later) and
-// silent afterwards: with the newer copy gone there is nothing left for doctor to compare.
+// **The first bind of a directory has no identity cache to attribute from, and the store
+// it would overwrite belongs to the account, not to the directory.** writeDirCredential's
+// comment carries why attribution refuses there; what this test adds is the reason it went
+// unnoticed — every test above seeds `.claude.json` first, so none of them is a first
+// bind. Measured end to end 2026-08-08: use claude in one worktree, bind a second, and
+// both are dead up to 8h later with nothing left for doctor to compare.
 func TestWriteDirCredentialKeepsANewerCopyItCannotAttribute(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
@@ -561,12 +558,13 @@ func TestWriteDirCredentialKeepsANewerCopyItCannotAttribute(t *testing.T) {
 	if strings.Contains(stderr, refreshed) {
 		t.Fatalf("a credential must never reach a message: %q", stderr)
 	}
-	// The bind is otherwise complete: only the credential write is skipped. The identity
-	// cache still lands, because it is a label the directory needs like any other binding
-	// — and because a version of this fix that skipped it left the directory permanently
-	// unattributable, with `identity_drift` blind and no later bind able to harvest.
-	if got := readFile(t, filepath.Join(credDir, ".claude.json")); !strings.Contains(got, "main-uuid") {
-		t.Fatalf("keeping the credential must not skip the identity label: %s", got)
+	// No label either, and this is the load-bearing half. kae's own label is exactly the
+	// evidence the next bind's attribution reads, so writing it here let `kae pin` again
+	// confirm against a cache kae had planted and harvest the copy this bind refused —
+	// measured 2026-08-08, filing another account's token under this one's name. Absence is
+	// the honest record; the next cache here is the tool's own.
+	if _, err := os.Stat(filepath.Join(credDir, ".claude.json")); !os.IsNotExist(err) {
+		t.Fatalf("kae must not plant the label it would later read as attribution (err %v)", err)
 	}
 }
 
@@ -814,11 +812,15 @@ func TestRunPinReportsOneRefusalPerStoreWithTheRightRemedy(t *testing.T) {
 	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", shared)); !strings.Contains(got, "sk-ant-oat01-MAIN-REFRESHED-cccc") {
 		t.Fatalf("a copy kae could not attribute must be kept, not overwritten: %s", got)
 	}
-	if !strings.Contains(stderr, "kept it rather than replacing it") {
-		t.Fatalf("the primary voice must state the consequence the write applied:\n%s", stderr)
+	// "Leaving it where it is" is the one clause true in every shape this arm reaches — a
+	// refusal defers the delete, and for a pre-split binding the write does not touch this
+	// store at all. The wording it replaced ("and this bind replaces it") was false about a
+	// copy kae kept, and survived the whole suite until this assertion existed.
+	if !strings.Contains(stderr, "so kae is leaving it where it is") {
+		t.Fatalf("the primary voice must state what actually happens to the copy:\n%s", stderr)
 	}
 	if strings.Contains(stderr, "this bind replaces it") {
-		t.Fatalf("the replace wording must not survive where the copy was kept:\n%s", stderr)
+		t.Fatalf("the replace wording must not survive where nothing replaced it:\n%s", stderr)
 	}
 
 	// Positive evidence: the copy belongs to another account. Same store, so still one

@@ -170,14 +170,13 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// one more command. Overwrite, and the copy is gone with nothing to compare against:
 	// doctor is silent afterwards, measured. So kae keeps it and says so.
 	//
-	// Scoped to the **attribution** refusal (`Unattributed`), and the other two refusals
-	// are deliberately left overwriting. `Conflicting` is positive evidence that the copy
-	// is somebody else's, so this account's credential is elsewhere and fine, and the
-	// user's bind has to take effect. A payload kae cannot read or date is the harder
-	// call — it may be a working login in a shape kae has not been taught — and it keeps
-	// the pre-existing behaviour on purpose: extending "keep" to it makes a corrupted
-	// account store unrepairable by `kae pin`, with manual deletion the only way out.
-	// That trade-off is recorded in docs/ROADMAP.md rather than decided here.
+	// Scoped to the **attribution** refusal (`Unattributed`); every other refusal is
+	// deliberately left overwriting — not "the other two", because nothing stops a future
+	// reason from landing in neither bucket and quietly becoming another one. `Conflicting`
+	// is positive evidence that the copy is somebody else's, so this account's credential
+	// is elsewhere and the bind has to take effect; the unreadable/undatable case keeps the
+	// older behaviour because docs/ROADMAP.md's trade-off is what keeps `kae pin` able to
+	// repair a corrupted store at all.
 	//
 	// The `dirs.Cred != ""` half is a statement of intent, not a live guard, and cannot
 	// be killed by a test: the harvest only refuses for a tool whose rotation is measured
@@ -186,81 +185,96 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// account-agnostic must keep overwriting — there the store is one directory's to
 	// spend, and the bind is what the user asked for.
 	keepLiveCopy := keepsUnattributedCopy(refused, dirs)
-	if keepLiveCopy {
-		// The same backstop rule as the overwrite message below, and for the same reason:
-		// the pin-level pass says this better, because it knows the bound directory and can
-		// name the login remedy. No remedy here — this site has a *store* path, and naming
-		// a kae-owned store dir as somewhere to log in names a place logging in would not
-		// work.
-		if !app.refusalReported[configDir] {
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: the %s credential already in %s is newer than snapshot %s/%s and kae is not "+
-					"harvesting it because %s — so kae kept it rather than replacing it: every "+
-					"directory bound to %s/%s reads this one copy\n",
-				tool, dirs.credDirOrConfig(), tool, accountName, refused.Why, tool, accountName)
-		}
-	}
-	if refused.Why != "" && !keepLiveCopy && !app.refusalReported[configDir] {
-		// The backstop, not the primary voice. A bound directory's pin-level pass says this
-		// better — it knows the account and the bound directory, so it can name a login
-		// remedy — and it records what it said, so this site fires only for a store nobody
-		// spoke about: a global isolated home (no pin, no pass), or a store the pass could
-		// not attribute, had no snapshot for, or never reached. Keying the suppression on
-		// the store's *kind* instead looked equivalent and was not: it silenced exactly
-		// those cases, which are the destructive ones (both shapes measured, 2026-08-04).
-		//
-		// No remedy here: this function has a *store* path, not the bound directory a login
-		// would have to happen in — pinLoginRemedy on a kae-owned store dir names a place
-		// logging in would not even work.
+	// The backstop, not the primary voice — for either wording. A bound directory's
+	// pin-level pass says this better, because it knows the account and the bound
+	// directory and so can name a login remedy, and it records what it said; this site
+	// fires only for a store nobody spoke about: a global isolated home (no pin, no pass),
+	// or a store the pass could not attribute, had no snapshot for, or never reached.
+	// Keying the suppression on the store's *kind* instead looked equivalent and was not:
+	// it silenced exactly those cases, which are the destructive ones (both shapes
+	// measured, 2026-08-04). The suppression is checked once, and the two wordings sit in
+	// one switch, because they are mutually exclusive by construction — keepLiveCopy is
+	// only ever true for a refusal.
+	//
+	// No remedy in either: this function has a *store* path, not the bound directory a
+	// login would have to happen in — pinLoginRemedy on a kae-owned store dir names a
+	// place logging in would not even work.
+	// Keyed on the credential's own location, which is what both speakers are talking
+	// about. Keyed on the config dir instead, a `-s` ↔ `-i` toggle of one account said
+	// the same thing twice: the two config dirs differ while the credential store is
+	// identical.
+	if !app.refusalReported[dirs.credDirOrConfig()] {
 		// Named by where the credential actually is, which is the account's own store
 		// once the two are split — naming the config dir would send the reader to a
 		// directory that holds no credential at all.
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: the %s credential already in %s is newer than snapshot %s/%s and kae is not "+
-				"harvesting it because %s, so this write replaces it\n",
-			tool, dirs.credDirOrConfig(), tool, accountName, refused.Why)
+		clause := dirCredentialNewerThanSnapshot(tool, dirs, accountName, refused.Why)
+		switch {
+		case keepLiveCopy:
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: %s — so kae kept it rather than replacing it: every "+
+					"directory bound to %s/%s reads this one copy\n", clause, tool, accountName)
+		case refused.Why != "":
+			fmt.Fprintf(os.Stderr, "kae: warning: %s, so this write replaces it\n", clause)
+		}
 	}
-	// Only the credential write and its stale-file sweep are skipped, and the boundary is
-	// deliberate. The sweep removes a plaintext copy *because an item was just written* —
-	// nothing was, so that copy may be the very credential being preserved. Everything
-	// after it still runs: the identity cache below is a label, the directory needs it as
-	// much as any other binding does, and an earlier version of this fix returned here
-	// instead — which left the directory with no label at all, so `identity_drift` had
-	// nothing to compare and the copy could never be attributed by a later bind either.
-	// Measured: it turned three cases of the acceptance block from "harvested" into
-	// "kept forever".
+	// Nothing is written for this artifact when the copy is kept — not the credential, not
+	// the stale-file sweep that follows a keychain write, and **not the identity label**.
+	// The sweep is obvious: it removes a plaintext copy because an item was just written,
+	// and none was. The label is the one that had to be measured, and an earlier version of
+	// this fix wrote it: kae's own label is exactly the evidence the next bind's attribution
+	// reads, so `kae pin` again in the same directory confirmed against a cache kae had
+	// planted and harvested the copy the first bind had refused. Measured 2026-08-08 — a
+	// login as another account inside a bound directory, then two ordinary binds elsewhere,
+	// and that account's token is filed under this one's name, which is the outcome nothing
+	// offline can detect afterwards because the token is opaque.
+	// So the rule the rest of this function already states holds here too: the identity
+	// follows a **successful credential write** (docs/ADAPTERS.md). Absence is then the
+	// honest record of "kae wrote nothing here", and the next cache in this directory is the
+	// tool's own — independent evidence, which is what attribution is supposed to read.
 	if !keepLiveCopy {
 		if err := artifact.ApplyLive(ctx, sp, artifact.Value{Data: data, Present: true}); err != nil {
 			return fmt.Errorf("write %s credential for account %s: %w", tool, accountName, err)
 		}
-	}
-	if !keepLiveCopy && sp.Kind == constants.KindKeychain {
-		// The keychain item is what the tool reads (reads try it first and only fall
-		// back to the file), so once kae has written it a plaintext copy in the bound
-		// directory is a credential nothing reads, and kae removes it rather than
-		// leaving a stale secret on disk forever.
-		//
-		// Stated as the condition it rests on, not as an absolute: **while the tool
-		// keeps preferring the item**, the file cannot come back and cannot hold
-		// anything newer than what was just written — claude's first refresh promotes a
-		// file store to an item and deletes the file (docs/VALIDATION.md), so a file
-		// beside a live item is not a state upstream produces. If that ever changes,
-		// this removal is a harvest kae skips: the harvest above reads the credential
-		// artifact the adapter resolves, which is the item, and never this file.
-		// Both directories, because the split moved where the tool would write that
-		// file: the account's credential store is where it lands now, and the config
-		// dir is where a directory bound before the split left one. Removing only the
-		// first would leave that older copy readable forever — and it is a copy of a
-		// *different* login by then, since the item this write just made is the one the
-		// tool reads.
-		for _, dir := range []string{dirs.credDirOrConfig(), configDir} {
-			for _, name := range app.pinCredItems(tool) {
-				stale := filepath.Join(dir, name)
-				if err := os.Remove(stale); err != nil && !os.IsNotExist(err) {
-					return fmt.Errorf("remove superseded credential copy %s: %w", stale, err)
+		if sp.Kind == constants.KindKeychain {
+			// The keychain item is what the tool reads (reads try it first and only fall
+			// back to the file), so once kae has written it a plaintext copy in the bound
+			// directory is a credential nothing reads, and kae removes it rather than
+			// leaving a stale secret on disk forever.
+			//
+			// Inside the keep guard because it follows the *write*, not because the file could
+			// be the copy being preserved — on this platform the harvest read the **item**, so
+			// the file was never what it judged. The reason it must not run without the write
+			// is the condition spelled out below: the file is only known-superseded once an
+			// item has just been written.
+			//
+			// Stated as the condition it rests on, not as an absolute: **while the tool
+			// keeps preferring the item**, the file cannot come back and cannot hold
+			// anything newer than what was just written — claude's first refresh promotes a
+			// file store to an item and deletes the file (docs/VALIDATION.md), so a file
+			// beside a live item is not a state upstream produces. If that ever changes,
+			// this removal is a harvest kae skips: the harvest above reads the credential
+			// artifact the adapter resolves, which is the item, and never this file.
+			// Both directories, because the split moved where the tool would write that
+			// file: the account's credential store is where it lands now, and the config
+			// dir is where a directory bound before the split left one. Removing only the
+			// first would leave that older copy readable forever — and it is a copy of a
+			// *different* login by then, since the item this write just made is the one the
+			// tool reads.
+			for _, dir := range []string{dirs.credDirOrConfig(), configDir} {
+				for _, name := range app.pinCredItems(tool) {
+					stale := filepath.Join(dir, name)
+					if err := os.Remove(stale); err != nil && !os.IsNotExist(err) {
+						return fmt.Errorf("remove superseded credential copy %s: %w", stale, err)
+					}
 				}
 			}
 		}
+	}
+	if keepLiveCopy {
+		// The directory is bound and the copy it reads is intact; there is simply nothing of
+		// kae's to record here. Stated as its own return rather than another `!keepLiveCopy`
+		// so the invariant above cannot be reopened by a later edit that adds a step below.
+		return nil
 	}
 	// Last, and on both store kinds — a file credential needs the matching identity
 	// exactly as much as a keychain item does. This used to `return nil` above for a
@@ -375,13 +389,29 @@ func rotatesSingleUse(tool string) bool { return tool == constants.ToolClaude }
 // that invalidates what kae just harvested), while missing evidence means the copy may
 // well be this account's and the directory may need a login.
 // keepsUnattributedCopy reports whether a refusal leaves the newer copy where it is
-// instead of overwriting it with the snapshot. One predicate, because two speakers act
-// on it: writeDirCredential *performs* the keep, and the pin-level pass has to state the
-// same consequence in the message it owns. Written twice, they would disagree the first
-// time either side changed — and the visible symptom would be a message saying "this
-// bind replaces it" about a copy kae kept.
+// instead of overwriting it with the snapshot.
+//
+// One caller today (writeDirCredential, which performs the keep). It is a named predicate
+// rather than an inline condition because the shape it encodes is the one this area keeps
+// getting wrong: `refused.Unattributed` and `!refused.Conflicting` are not the same
+// question, and writing the second by hand at a call site is how the conflicting refusal —
+// which must still overwrite — ended up on the keep branch. The pin-level pass deliberately
+// does *not* consult it: it words its consequence as "leaving it where it is", which is
+// true whether the write keeps or writes to another store entirely, so it needs no
+// prediction of the write's answer for a location it is not always looking at.
 func keepsUnattributedCopy(refused harvestRefusal, dirs bindDirs) bool {
 	return refused.Unattributed && dirs.Cred != ""
+}
+
+// dirCredentialNewerThanSnapshot is the half both of writeDirCredential's refusal
+// messages share. Extracted at the second occurrence rather than the third: the two
+// differ only in what they say kae *did* about it, and a prefix kept by hand in two
+// places is one edit away from describing the store by two different names.
+func dirCredentialNewerThanSnapshot(tool string, dirs bindDirs, accountName, why string) string {
+	return fmt.Sprintf(
+		"the %s credential already in %s is newer than snapshot %s/%s and kae is not harvesting it because %s",
+		tool, dirs.credDirOrConfig(), tool, accountName, why,
+	)
 }
 
 type harvestRefusal struct {
@@ -1182,7 +1212,11 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// the copy it reads any more", which is the answer removeDirCredential needs to
 		// take a pre-split file credential the purge was asked to remove.
 		migrating := app.credentialMovedOutOf(store, pinID, prev)
-		if keep[store.Dir] && (!migrating || app.refusalReported[store.Dir]) {
+		// Keyed on the credential's own location, the same expression the pass marks and the
+		// write reads. The question here is "did the pass refuse to harvest *this copy*",
+		// and after the split several stores of one account name one copy — so a config-dir
+		// key would ask it about a store rather than about the thing being deleted.
+		if keep[store.Dir] && (!migrating || app.refusalReported[store.dirs().credDirOrConfig()]) {
 			continue
 		}
 		removed, err := app.removeDirCredential(ctx, be, store, storeAccount(store, prev), purging, migrating)
@@ -1657,7 +1691,7 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			// Reaching here means the binding is moving off this store, so no login remedy
 			// is owed on top of the fact: the copy is demonstrably not this account's, and
 			// the directory is about to be bound to a credential that is fine.
-			app.markRefusalReported(store.Dir)
+			app.markRefusalReported(store.dirs().credDirOrConfig())
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: the %s credential in %s belongs to an account other than %s/%s (%s), so "+
 					"kae is not harvesting it and this bind replaces it\n",
@@ -1670,15 +1704,19 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			// directory bound to that account reads it, so overwriting it is not this
 			// directory's call); a per-directory one is still replaced, which is what binds
 			// this directory to the account it names.
-			app.markRefusalReported(store.Dir)
-			consequence := "and this bind replaces it"
-			if keepsUnattributedCopy(refused, store.dirs()) {
-				consequence = "so kae kept it rather than replacing it"
-			}
+			app.markRefusalReported(store.dirs().credDirOrConfig())
+			// "Leaving it where it is" rather than either "replaces it" or "kept it", because
+			// this one clause is true in every shape this arm reaches and the other two are
+			// not. A refusal also defers the delete, so the copy stays put; and where the
+			// binding is pre-split, the write goes to the account's store and does not touch
+			// this one at all. Choosing between the two stronger wordings needs the *write's*
+			// answer for a location this pass is not always looking at — measured: keyed on
+			// this store's own dirs, a pre-split store printed "this bind replaces it" about a
+			// copy nothing replaced.
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: kae could not preserve the %s credential this directory held for %s/%s "+
-					"(%s), %s; %s\n",
-				store.Tool, store.Tool, accountName, refused.Why, consequence, pinLoginRemedy(store.Tool, dir))
+					"(%s), so kae is leaving it where it is; %s\n",
+				store.Tool, store.Tool, accountName, refused.Why, pinLoginRemedy(store.Tool, dir))
 		}
 	}
 }

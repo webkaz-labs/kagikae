@@ -260,9 +260,10 @@ alternative exists (`secret-tool`).
   *after* a version that looked complete and passed its tests: **attribution** (a
   shared store is account-agnostic, so a re-bind finds the previous account's copy
   there and filing it under the new name would be undetectable afterwards), and that
-  **a chokepoint is not coverage** (the write path cannot see the store a mode toggle
-  or an isolated re-key is moving *off*, which is why there is a pin-level pass at
-  all).
+  **a chokepoint is not coverage** (the write path cannot see the store a re-bind to
+  another account is moving *off*, which is why there is a pin-level pass at all; this
+  said "a mode toggle or an isolated re-key" until 2026-08-08, and a toggle for one
+  account moves only the sessions).
   **The two restore paths landed next, also in v0.17.0**, and they answer differently
   because what the user asked for differs. `run -s` **skips** the restore of a tool
   whose live credential the backup's copy would supersede — it put that account there

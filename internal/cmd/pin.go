@@ -149,8 +149,9 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// (storeAccount), which both harvests below need. An unreadable one degrades to
 	// "unattributable", which the sweep reports and acts on by keeping the credential.
 	prevBinding, _, _ := readDirFragment()
-	// Before the stores are written, not after: a mode toggle or an isolated re-bind
-	// builds a *different* store from the account snapshot, so the copy the tool
+	// Before the stores are written, not after: a re-bind to another account builds a
+	// *different* credential store from the account snapshot — as does a mode toggle for a
+	// binding that predates the per-account store — so the copy the tool
 	// refreshed in the old one has to be harvested first or the directory ends up
 	// bound to a credential rotation has already invalidated. Deleting still happens
 	// last (pruneDirCredentials).

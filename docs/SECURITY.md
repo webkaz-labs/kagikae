@@ -280,8 +280,10 @@ bindable, and a **file** credential only where it is no longer the copy its own 
 reads — the account's own credential store, which holds nothing else, and a store a
 migration has just moved the credential out of. A file that is still the one its
 store reads is kept, with the sessions and settings beside it. The rest of this
-section describes the item, which is the case that most needs the sweep. A `-s` ↔
-`-i` toggle or an isolated re-bind supersedes a store, and its item would otherwise
+section describes the item, which is the case that most needs the sweep. A re-bind to
+another account supersedes a credential store, and a `-s` ↔ `-i` toggle supersedes a
+config store — which since the per-account credential store holds a credential only when
+the binding predates it — and the superseded store's item would otherwise
 keep a credential that cannot be found again: it lives under a per-directory
 service name, so it appears nowhere in kae's data dir, and no kae check reports one
 (`secret_orphan` covers kae's own secret store, not the per-directory items; a doctor

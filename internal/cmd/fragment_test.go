@@ -724,10 +724,13 @@ func TestUnpinDeletesFragment(t *testing.T) {
 	mustExit(t, constants.ExitNotFound, code, out)
 }
 
-// A mode toggle moves every tool to the other mechanism's store, so the store the
-// directory used before is unreachable the moment the fragment is rewritten. Its
+// A mode toggle moves every tool to the other mechanism's *config* store, so the store
+// the directory used before is unreachable the moment the fragment is rewritten. Its
 // keychain item is invisible from the directory tree, so kae removes it rather than
-// leaving a credential nothing points at.
+// leaving a credential nothing points at. It holds a credential only when the binding
+// predates the per-account credential store, which is why this test ages the layout —
+// the body says so at the call, and this comment said "the other mechanism's store"
+// until 2026-08-08, which reads as the credential moving too. It does not.
 func TestRunPinModeToggleRemovesTheOldModesItem(t *testing.T) {
 	app := overlayTestApp(t)
 	app.Env.GOOS = "darwin" // the keychain driver: the store is an item, not a file

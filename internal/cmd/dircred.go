@@ -142,8 +142,10 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// whichever copy is newest.
 	//
 	// This covers the store being written; it cannot see a *sibling* store of the same
-	// bound directory, which is what a mode toggle or an isolated re-bind moves the
-	// binding away from. That is the pin-level pass
+	// bound directory, which is what a re-bind to another account moves the credential
+	// away from — and, for a binding that predates the per-account credential store, the
+	// config store a mode toggle moves off. (A toggle for the same account moves the
+	// sessions only: both modes name that account's credential store.) That is the pin-level pass
 	// (harvestSupersededDirCredentials), and both are needed: this one is the only
 	// harvest on the paths that have no pin at all (`kae use -i`, `kae run -i`).
 	data, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, data)

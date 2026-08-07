@@ -787,8 +787,15 @@ say "the store", read it as whichever of the two that tool resolves:
   **not a closed set**, and each is named where it lives rather than counted here.
   Here, for the store being written. Once per bound directory before any store is
   materialized, over *every* store that directory has, which is what covers a binding
-  that moves to a **different** store: a `-s` ↔ `-i` toggle, an isolated re-bind, and
-  the shared-mode re-bind whose one store holds the *previous* account's credential.
+  whose credential moves to a **different** store: a re-bind to another account, in
+  either mode — the isolated one, and the shared one whose single store holds the
+  *previous* account's credential. A `-s` ↔ `-i` toggle for the **same** account is not
+  such a case and was listed here as one until 2026-08-08: since the per-account
+  credential store both modes name that account's store, so the toggle moves the
+  sessions and leaves the credential where it is. The pass still has to walk that
+  directory's other stores, because a binding from **before** the split left its
+  credential in the config store it is moving off, and reaching that is what makes a
+  re-pin a migration rather than a leak.
   Once more for a **globally isolated home** that predates the per-account credential
   store, which has no bound directory and therefore no pass of its own
   (`migratePreSplitHome`; see § Per-account credential store for why its migration is

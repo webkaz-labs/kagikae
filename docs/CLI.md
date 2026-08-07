@@ -504,9 +504,11 @@ moved out of its store. A file credential still sitting in a per-directory store
 `unpin` keeps is not swept in either mode — see the two-case file rule below — and it needs
 no escape, because a path the user can name is one the user can delete.
 
-Both commands sweep a **superseded per-directory credential**: a `-s` ↔ `-i`
-toggle moves every tool to the other mechanism's store and an isolated re-bind
-re-keys the store by account, so the store the directory used before is
+Both commands sweep a **superseded per-directory credential**: a re-bind to another
+account re-keys the credential store, and a `-s` ↔ `-i` toggle moves every tool to the
+other mechanism's config store — which since the per-account credential store leaves that
+account's credential where it is, but still moves the directory off a store a **pre-split**
+binding left a credential in. Either way the store the directory used before is
 unreachable, and its credential would otherwise be one nothing points at. A
 keychain item is the case that is easiest to miss, and the common one: it lives
 under a per-directory service name that appears nowhere in kae's data dir, and no
@@ -626,8 +628,9 @@ kae keeps a credential because bindings still use it, it prints how many.
   snapshot — reporting `kae: harvested …` on stderr — and then writes that.
 
   It covers **every store the bound directory has, not only the one being written** —
-  which is what a `-s` ↔ `-i` toggle and an isolated re-key need, since those bind the
-  directory to a *different* store — and it **refuses rather than guesses**: an
+  which is what a re-bind to another account needs, since that binds the directory to a
+  *different* credential store, and what reaches the credential a pre-split binding left
+  in a config store a mode toggle moves off — and it **refuses rather than guesses**: an
   unusable copy is never harvested, and neither is one kae cannot attribute to the
   account it would be filed under. [ADAPTERS.md](ADAPTERS.md) § Per-directory
   credential store is normative for the mechanism and the full list of refusals; what

@@ -163,10 +163,17 @@ block in docs/VALIDATION.md, next to two correct ones.
   the harvest belongs for the store it writes — put it in a separate "repair" step and
   the overwrite paths stay unconditional, which ships a release that fixes a login and
   then destroys it. But it cannot see a **sibling** store of the same bound directory,
-  which is what a `-s` ↔ `-i` toggle and an isolated re-key move the binding to, so
+  which is what a re-bind to a different **account** moves the credential to, so
   `kae pin` and `kae pin <tool> <account>` also run a pin-level pass **before**
   materializing while the delete sweep still runs **after** the new binding
   (`docs/ADAPTERS.md` § Per-directory credential store is normative for all of it).
+  **A `-s` ↔ `-i` toggle is no longer one of those cases and naming it as one is how
+  this passage read until 2026-08-08** — since the per-account credential store, both
+  modes read the *account's* store, so a toggle moves the sessions and leaves the
+  credential exactly where it was (measured; `TestRunPinModeToggleRemovesTheOldModesItem`
+  says the same in its body). What a toggle can still strand is the per-directory
+  credential a binding from **before** the split left in the store it moves off, which
+  is what makes a re-pin a migration.
   Two traps that outlive the specific code. Harvesting is not deleting — they belong on
   opposite sides of the write, so do not "simplify" them into one pass. And a
   suppression that keeps two speakers from repeating each other must be keyed on **what

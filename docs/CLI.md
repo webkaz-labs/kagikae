@@ -729,9 +729,15 @@ Subcommand groups complete their sub-verbs and arguments too: `kae account
 `add`/`rm`/`list`, then a profile, a companion id (`kae __complete companions`),
 and that companion's knob names (`kae companion add main git <TAB>` →
 `email`/`name`/`signingkey`, via `kae __complete companion-knobs git`).
-Positions are computed from the **flag-filtered** argument list, so a flag
-before the positionals does not shift completion (`kae add --no-login <TAB>`
-still completes tools; `kae use -i claude <TAB>` completes claude's accounts).
+`kae env <TAB>` → `set`/`unset`/`list`, then — after `set` or `unset` only — a
+tool and that tool's accounts, since `env list` takes no arguments and offering
+one would suggest a word the command rejects. `kae backup <TAB>` → `list`.
+Positions are computed from the **flag-filtered** argument list, so a **boolean**
+flag before the positionals does not shift completion (`kae add --no-login
+<TAB>` still completes tools; `kae use -i claude <TAB>` completes claude's
+accounts). A flag that takes a *value* still shifts them, which costs candidates
+and never an action ([ROADMAP.md](ROADMAP.md) § Command-system expansion owns
+why, and what the fix would be).
 When the current word starts with `-`, the command's **flag names** are
 completed (`kae add --<TAB>` → `--no-login` / `--restore`; `kae run -<TAB>` →
 `-s` / `-i` / `--env` / `-P`).
@@ -745,7 +751,8 @@ and the `kae mise init` task `complete` directives — it is not the JSON contra
 (`schema_version` is unaffected).
 
 **bash and zsh are the verified shells.** `kae completion fish` stays available
-as a best-effort generator (unit-tested and `fish -n`-valid) but is not a
+as a best-effort generator — unit-tested, and parsed by `fish --no-execute` on any
+machine that has fish, which the release machine may not — but is not a
 release-gated, officially-verified surface (dropped 2026-06-18).
 
 **Keeping completion current.** Because the script is dynamic, new candidates (a
@@ -766,9 +773,13 @@ body, and that is refreshed automatically:
 For zsh under `compinit -C` (a speed-tuned cache that skips the rescan) the
 rewritten file may not load until the compdump is rebuilt; `--refresh` prints the
 command (`rm -f "${ZSH_COMPDUMP:-$HOME/.zcompdump}" && autoload -Uz compinit &&
-compinit`) when it changed a zsh file. A `subcommandVerbs` parity test fails if a
-new subcommand group lacks a completion case, so the script side cannot silently
-drift in the first place.
+compinit`) when it changed a zsh file. Two test-side guards hold the script from
+drifting: a `subcommandVerbs` parity test over each group's sub-verbs, and a
+classification of **every** command as taking a positional or not, which requires
+each one that does to have a branch that offers candidates in all three shells.
+Neither sees a command dropped from both the command list and that classification
+([ROADMAP.md](ROADMAP.md) § Command-system expansion) — `kae env` and `kae backup`
+went without a case at all until v0.17.0 for exactly that reason.
 
 kae's own completion is **binary-scoped**, so it is registered globally, never
 per-directory (a per-directory registration would make `kae <TAB>` blink in and

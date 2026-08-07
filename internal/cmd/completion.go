@@ -119,8 +119,9 @@ _kae() {
     return
   fi
   # Positional args after the command, excluding flags, up to the cursor — so a
-  # flag like --no-login / -i / -P before the positionals does not shift the
-  # completion (np is the positional slot the cursor is at).
+  # boolean flag like --no-login / -i before the positionals does not shift the
+  # completion (np is the positional slot the cursor is at). A flag that takes a
+  # value still does: its value is not a flag word (docs/ROADMAP.md).
   local -a pos=()
   for (( i=2; i<COMP_CWORD; i++ )); do
     case "${COMP_WORDS[i]}" in
@@ -175,6 +176,23 @@ _kae() {
         COMPREPLY=( $(compgen -W "save set unset rm default" -- "$cur") )
       fi
       ;;
+    env)
+      if [ "$np" -eq 0 ]; then
+        COMPREPLY=( $(compgen -W "set unset list" -- "$cur") )
+      elif [ "${pos[0]}" != "list" ]; then
+        # set|unset take <tool> <account> KEY…; list takes no arguments.
+        if [ "$np" -eq 1 ]; then
+          COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
+        elif [ "$np" -eq 2 ]; then
+          COMPREPLY=( $(compgen -W "$(kae __complete accounts "${pos[1]}")" -- "$cur") )
+        fi
+      fi
+      ;;
+    backup)
+      if [ "$np" -eq 0 ]; then
+        COMPREPLY=( $(compgen -W "list" -- "$cur") )
+      fi
+      ;;
     completion)
       if [ "$np" -eq 0 ]; then
         COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
@@ -207,7 +225,8 @@ _kae() {
     return
   fi
   # Positional args after the command, excluding flags, up to the cursor, so a
-  # flag (--no-login / -i / -P) before the positionals does not shift completion.
+  # boolean flag (--no-login / -i) before the positionals does not shift
+  # completion. A flag that takes a value still does (docs/ROADMAP.md).
   for (( i=3; i<CURRENT; i++ )); do
     [[ "${words[i]}" == -* ]] || pos+=("${words[i]}")
   done
@@ -258,6 +277,23 @@ _kae() {
         compadd -- save set unset rm default
       fi
       ;;
+    env)
+      if (( np == 0 )); then
+        compadd -- set unset list
+      elif [[ "${pos[1]}" != list ]]; then
+        # set|unset take <tool> <account> KEY…; list takes no arguments.
+        if (( np == 1 )); then
+          compadd -- ${(f)"$(kae __complete tools)"}
+        elif (( np == 2 )); then
+          compadd -- ${(f)"$(kae __complete accounts ${pos[2]})"}
+        fi
+      fi
+      ;;
+    backup)
+      if (( np == 0 )); then
+        compadd -- list
+      fi
+      ;;
     completion)
       if (( np == 0 )); then
         compadd -- bash zsh fish
@@ -288,8 +324,9 @@ function __kae_complete
         kae __complete flags $cmd
         return
     end
-    # Positional args after the command, excluding flags, so a flag
-    # (--no-login / -i / -P) before the positionals does not shift completion.
+    # Positional args after the command, excluding flags, so a boolean flag
+    # (--no-login / -i) before the positionals does not shift completion. A flag
+    # that takes a value still does (docs/ROADMAP.md).
     set -l pos
     for i in (seq 3 $n)
         if not string match -q -- '-*' $tokens[$i]
@@ -337,6 +374,21 @@ function __kae_complete
         case profile
             if test $np -eq 0
                 printf '%s\n' save set unset rm default
+            end
+        case env
+            if test $np -eq 0
+                printf '%s\n' set unset list
+            else if test "$pos[1]" != list
+                # set|unset take <tool> <account> KEY…; list takes no arguments.
+                if test $np -eq 1
+                    kae __complete tools
+                else if test $np -eq 2
+                    kae __complete accounts $pos[2]
+                end
+            end
+        case backup
+            if test $np -eq 0
+                printf '%s\n' list
             end
         case completion
             if test $np -eq 0

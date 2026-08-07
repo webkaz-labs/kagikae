@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -172,16 +175,194 @@ func TestCompletionScriptsCompleteCompanion(t *testing.T) {
 	}
 }
 
+// positionalCommands says, for every command in completionCommands, whether it
+// accepts a positional argument — true means `kae <cmd> <TAB>` must offer
+// something, false means the command takes flags only. Each entry's comment is
+// its positional shape — or, where the answer is not obvious from the shape, why
+// (rollback). Not the usage line: the flags belong to `printHelp` and
+// docs/CLI.md, and copying one here would make this a third hand-maintained copy
+// of something those two already disagree on.
+//
+// Being keyed by completionCommands is the whole point, and the difference from
+// subcommandVerbs: that table is opt-in, so a command missing from *both* it and
+// the scripts is invisible to its guard — which is how the v0.10.0 companion gap
+// and the `kae env` / `kae backup` gap (found 2026-08-06) each shipped. A command
+// cannot be added to the router's completion set without being classified here,
+// because TestEveryPositionalCommandCompletes checks the two sets match exactly.
+//
+// What it still cannot see, and neither can subcommandVerbs: a command dropped
+// from completionCommands *and* from this map, since nothing machine-checks
+// either against Root(). Adding that check by dispatching each command is not
+// safe in a unit test — several commands reach newApp before a bad flag stops
+// them, which would read the real environment. The remedy for the shape neither
+// table sees is a test naming the verb literally, the way
+// TestCompletionScriptsCompleteRelogin does for one with no sub-verbs to key on.
+//
+// What it deliberately does not claim: that a branch routes correctly. It proves
+// the branch exists and emits candidates; whether the slots and array indices in
+// it are right is TestCompletionPositionalRouting's question, per command.
+var positionalCommands = map[string]bool{
+	"init":       false,
+	"edit":       false,
+	"doctor":     true, // [<tool>]
+	"add":        true, // <tool> [<account>]
+	"use":        true, // [<profile> | <tool> <account>]
+	"pin":        true, // [<profile> | <tool> <account>]
+	"unpin":      false,
+	"relogin":    true, // [<tool>]
+	"run":        true, // [<profile> | <tool> <account>] -- <cmd>
+	"env":        true, // <set|unset|list> ...
+	"companion":  true, // <add|rm|list> ...
+	"mise":       true, // init
+	"accounts":   false,
+	"ls":         false,
+	"account":    true, // <rm|rename|set-identity> ...
+	"profile":    true, // <save|set|unset|rm|default> ...
+	"status":     false,
+	"backup":     true,  // list
+	"rollback":   false, // the backup id is --to's value, not a positional
+	"completion": true,  // <bash|zsh|fish>
+	"version":    false,
+	"help":       false,
+}
+
+// TestEveryPositionalCommandCompletes: every command that takes a positional has
+// a branch in all three generated scripts, and every command is classified.
+//
+// The converse is asserted too — a flags-only command must NOT have a branch —
+// so a classification that goes stale is loud from either direction rather than
+// silently weakening the first half.
+func TestEveryPositionalCommandCompletes(t *testing.T) {
+	for _, cmd := range completionCommands {
+		if _, ok := positionalCommands[cmd]; !ok {
+			t.Errorf("command %q is unclassified: say in positionalCommands whether it takes a positional, and give it a completion case if it does", cmd)
+		}
+	}
+	for cmd := range positionalCommands {
+		if !slices.Contains(completionCommands, cmd) {
+			t.Errorf("positionalCommands classifies %q, which is not in completionCommands", cmd)
+		}
+	}
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		script, ok := completionScript(shell)
+		if !ok {
+			t.Fatalf("no completion script for %s", shell)
+		}
+		blocks := completionCaseBlocks(t, shell, script)
+		for cmd, takesPositional := range positionalCommands {
+			body, hasCase := blocks[cmd]
+			switch {
+			case takesPositional && !hasCase:
+				t.Errorf("%s completion has no case for %q, so `kae %s <TAB>` is a dead end:\n%s", shell, cmd, cmd, script)
+			case takesPositional && !emitsCandidates(shell, body):
+				// "Has a branch" is not "offers something": a branch that emits
+				// nothing is the same dead end with a case label in front of it.
+				t.Errorf("%s completion's %q branch emits no candidates:\n%s", shell, cmd, body)
+			case !takesPositional && hasCase:
+				t.Errorf("%s completion has a case for %q, which positionalCommands says takes no positional — one of the two is wrong", shell, cmd)
+			}
+		}
+	}
+}
+
+// emitsCandidates says whether a branch body actually offers something, in the
+// terms each shell uses to do it.
+func emitsCandidates(shell, body string) bool {
+	for _, token := range map[string][]string{
+		"bash": {"compgen -W"},
+		"zsh":  {"compadd"},
+		"fish": {"kae __complete", `printf '%s\n'`},
+	}[shell] {
+		if strings.Contains(body, token) {
+			return true
+		}
+	}
+	return false
+}
+
+// caseLabelPattern matches a bash/zsh case label alone on its line, including an
+// alternation (`use|u|pin|p|run|r)`). The character class is wider than any
+// command kae routes today so that a hyphenated or numbered one does not go
+// quietly unmatched; `-*)` and `*)` stay out because neither starts with a letter.
+//
+// The anchors are defence rather than a property under test — measured: dropping
+// them leaves every guard here green, because what they additionally exclude is a
+// match *inside* a line (the `tools)` of `compadd -- ${(f)"$(kae __complete
+// tools)"}`), and no caller looks up a block under that name.
+var caseLabelPattern = regexp.MustCompile(`^[a-z][a-z0-9|_-]*\)$`)
+
+// completionCaseBlocks splits a generated script's command dispatch into
+// label -> branch body. bash and zsh label a branch on its own line and close it
+// with a lone `;;`; fish writes `case a b` and the branch runs until a line
+// indented no deeper than the label.
+//
+// The alternation is why the callers cannot simply grep for `cmd+")"`: `use`
+// shares a branch with `pin` and `run` and appears nowhere as `use)`. Matching a
+// branch *body* rather than the whole script matters for the same reason a
+// per-verb substring check would not do: `backup`'s only sub-verb is `list`,
+// which also occurs in companion's `add rm list`.
+func completionCaseBlocks(t *testing.T, shell, script string) map[string]string {
+	t.Helper()
+	blocks := map[string]string{}
+	lines := strings.Split(script, "\n")
+	indentOf := func(s string) int { return len(s) - len(strings.TrimLeft(s, " ")) }
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		var labels, body []string
+		if shell == "fish" {
+			if !strings.HasPrefix(trimmed, "case ") {
+				continue
+			}
+			labels = strings.Fields(strings.TrimPrefix(trimmed, "case "))
+			for _, next := range lines[i+1:] {
+				if strings.TrimSpace(next) != "" && indentOf(next) <= indentOf(line) {
+					break
+				}
+				body = append(body, next)
+			}
+		} else {
+			if !caseLabelPattern.MatchString(trimmed) {
+				continue
+			}
+			labels = strings.Split(strings.TrimSuffix(trimmed, ")"), "|")
+			for _, next := range lines[i+1:] {
+				if strings.TrimSpace(next) == ";;" {
+					break
+				}
+				body = append(body, next)
+			}
+		}
+		joined := strings.Join(body, "\n")
+		for _, label := range labels {
+			blocks[label] = joined
+		}
+	}
+	return blocks
+}
+
 // subcommandVerbs lists the sub-verbs each subcommand-group command dispatches
 // (the literals inlined at the np==0 slot of the generated completion scripts).
 // It is the parity guard's source of truth: when you add a subcommand group (or
 // a verb), add it here and TestSubcommandCompletionParity forces the matching
 // case into bash, zsh, and fish. Keep in lockstep with each command's dispatcher
 // (e.g. CmdCompanion) and the script case blocks in completion.go.
+//
+// Being opt-in cuts the other way too, and no guard covers it: deleting an entry
+// takes that group's sub-verb run out of the assertions with it, silently.
+// positionalCommands still requires the branch to exist and to emit something,
+// and TestCompletionPositionalRouting still checks the slots of the groups it
+// names — but what the sub-verbs *are* is asserted here and nowhere else.
 var subcommandVerbs = map[string][]string{
 	"account":   {"rm", "rename", "set-identity"},
 	"profile":   {"save", "set", "unset", "rm", "default"},
 	"companion": {"add", "rm", "list"},
+	"env":       {"set", "unset", "list"},
+	"backup":    {"list"},
+	"mise":      {"init"},
+	// Not sub-verbs but the same thing structurally: a fixed run inlined at the
+	// np==0 slot, which nothing else asserts. Left out, `kae completion <TAB>`
+	// could offer anything at all with every test green.
+	"completion": {"bash", "zsh", "fish"},
 }
 
 // TestCompletionRefreshRewritesRegisteredFile: `completion --refresh` rewrites an
@@ -251,18 +432,21 @@ func TestSubcommandCompletionParity(t *testing.T) {
 		}
 		// The sub-verbs are inlined at the np==0 slot as one space-joined run
 		// (compgen -W "...", compadd -- ..., printf '%s\n' ...), so assert that
-		// exact run. A per-verb substring check would false-pass on short verbs
-		// that occur elsewhere (e.g. "add" is a substring of zsh's "compadd").
+		// exact run, and assert it inside the group's own branch. Both halves are
+		// load-bearing: a per-verb substring check would false-pass on short verbs
+		// that occur elsewhere ("add" is a substring of zsh's "compadd"), and a
+		// whole-script check would false-pass on a run that is itself short and
+		// shared (backup's only verb is "list", which companion's "add rm list"
+		// also contains).
 		verbRun := strings.Join(verbs, " ")
 		for shell, script := range scripts {
-			// The group must have its own case block in each script (bash/zsh use
-			// `cmd)`, fish uses `case cmd`).
-			caseExists := strings.Contains(script, cmd+")") || strings.Contains(script, "case "+cmd)
-			if !caseExists {
+			body, hasCase := completionCaseBlocks(t, shell, script)[cmd]
+			if !hasCase {
 				t.Errorf("%s completion has no case for subcommand group %q:\n%s", shell, cmd, script)
+				continue
 			}
-			if !strings.Contains(script, verbRun) {
-				t.Errorf("%s completion missing %q sub-verbs %q (inlined run)", shell, cmd, verbRun)
+			if !strings.Contains(body, verbRun) {
+				t.Errorf("%s completion missing %q sub-verbs %q (inlined run) from its own case block:\n%s", shell, cmd, verbRun, body)
 			}
 		}
 	}
@@ -490,35 +674,141 @@ func TestCompletionInstallPrintOnly(t *testing.T) {
 	}
 }
 
-// TestCompletionAccountTokenIndex guards the per-shell positional routing in the
-// static completion scripts: account completion must pass the tool word from the
-// flag-filtered positional list at the right index for that shell's array
-// convention. `kae use <tool> <TAB>` reads the first positional after `use`;
-// `kae account rm <tool> <TAB>` reads the second (past the rm/rename subcommand).
+// TestCompletionPositionalRouting guards the per-shell positional routing in the
+// generated scripts: each branch must read the argument it needs from the
+// flag-filtered positional list, at the slot and array index that shell uses.
+// `kae use <tool> <TAB>` reads the first positional after `use`; `kae account rm
+// <tool> <TAB>` and `kae env set <tool> <TAB>` read the second, past the sub-verb.
 // The positionals exclude flags, so `kae add --no-login <TAB>` still completes
-// tools (the flag is skipped, not counted as the tool). An off-by-one or a
-// missing flag-skip silently yields no/ wrong candidates (it once did for fish).
-func TestCompletionAccountTokenIndex(t *testing.T) {
+// tools. An off-by-one or a missing flag-skip silently yields no candidates or the
+// wrong ones (it once did for fish).
+//
+// Every literal is asserted inside the command's own branch, and in order,
+// because these constructs repeat: `accounts "${pos[1]}"` appears in `account` as
+// well as `env`, so a whole-script check passes on a branch that was never written
+// — which is exactly how `env`'s tool and account slots could be deleted outright
+// with all three shells still green — and both arms of one branch hold all the
+// same literals, so an unordered check passes on arms that were swapped.
+//
+// Order is as far as matching text goes: it does not prove which arm a literal
+// sits *in*, so flattening a branch into unconditional lines keeps every literal
+// in sequence and passes here while completing wrongly. That is the real-machine
+// smoke's question (docs/VALIDATION.md § v0.17.0 completion real-machine smoke).
+func TestCompletionPositionalRouting(t *testing.T) {
 	for _, tc := range []struct {
-		shell          string
-		useToolRef     string // tool word in `kae use <tool> <TAB>`
-		accountToolRef string // tool word in `kae account rm <tool> <TAB>`
-		flagSkip       string // the construct that drops flag tokens from positionals
+		shell    string
+		flagSkip string              // the construct that drops flag tokens from positionals
+		want     map[string][]string // case label -> literals its branch must contain
 	}{
-		{"bash", `accounts "${pos[0]}"`, `accounts "${pos[1]}"`, `-*) ;;`},
-		{"zsh", `accounts ${pos[1]}`, `accounts ${pos[2]}`, `== -* ]] || pos`},
-		{"fish", `accounts $pos[1]`, `accounts $pos[2]`, `string match -q -- '-*'`},
+		{"bash", `-*) ;;`, map[string][]string{
+			"use":     {`accounts "${pos[0]}"`},
+			"account": {`"$np" -eq 1`, `__complete tools`, `"$np" -eq 2`, `accounts "${pos[1]}"`},
+			"env":     {`"${pos[0]}" != "list"`, `"$np" -eq 1`, `__complete tools`, `"$np" -eq 2`, `accounts "${pos[1]}"`},
+			"backup":  {`"$np" -eq 0`, `compgen -W "list"`},
+		}},
+		{"zsh", `== -* ]] || pos`, map[string][]string{
+			"use":     {`accounts ${pos[1]}`},
+			"account": {`np == 1`, `__complete tools`, `np == 2`, `accounts ${pos[2]}`},
+			"env":     {`"${pos[1]}" != list`, `np == 1`, `__complete tools`, `np == 2`, `accounts ${pos[2]}`},
+			"backup":  {`np == 0`, `compadd -- list`},
+		}},
+		{"fish", `string match -q -- '-*'`, map[string][]string{
+			"use":     {`accounts $pos[1]`},
+			"account": {`$np -eq 1`, `__complete tools`, `$np -eq 2`, `accounts $pos[2]`},
+			"env":     {`"$pos[1]" != list`, `$np -eq 1`, `__complete tools`, `$np -eq 2`, `accounts $pos[2]`},
+			"backup":  {`$np -eq 0`, `printf '%s\n' list`},
+		}},
 	} {
-		script, _ := completionScript(tc.shell)
-		if !strings.Contains(script, tc.useToolRef) {
-			t.Fatalf("%s: missing `use` tool ref %q", tc.shell, tc.useToolRef)
+		script, ok := completionScript(tc.shell)
+		if !ok {
+			t.Fatalf("no completion script for %s", tc.shell)
 		}
-		if !strings.Contains(script, tc.accountToolRef) {
-			t.Fatalf("%s: missing `account` tool ref %q", tc.shell, tc.accountToolRef)
+		blocks := completionCaseBlocks(t, tc.shell, script)
+		for cmd, wants := range tc.want {
+			body, hasCase := blocks[cmd]
+			if !hasCase {
+				t.Errorf("%s: no case block for %q", tc.shell, cmd)
+				continue
+			}
+			// In order, not merely present: swapping two arms' bodies leaves every
+			// literal in the branch and completes the wrong thing at both slots —
+			// `kae env set <TAB>` then offers nothing (and says `pos[1]: unbound
+			// variable` under `set -u`), while `kae env set claude <TAB>` offers
+			// tools. Measured: the unordered form passed that.
+			rest := body
+			for _, want := range wants {
+				at := strings.Index(rest, want)
+				if at < 0 {
+					t.Errorf("%s: the %q branch is missing %q, or has it ahead of the literal that should precede it:\n%s", tc.shell, cmd, want, body)
+					break
+				}
+				rest = rest[at+len(want):]
+			}
 		}
 		if !strings.Contains(script, tc.flagSkip) {
-			t.Fatalf("%s: missing the flag-skip construct %q (flags must not shift positionals)", tc.shell, tc.flagSkip)
+			t.Errorf("%s: missing the flag-skip construct %q (flags must not shift positionals)", tc.shell, tc.flagSkip)
 		}
+	}
+}
+
+// TestCompletionScriptsAreSyntacticallyValid parses each generated script with the
+// shell it targets. Nothing else does: the scripts are Go string constants, so the
+// shellcheck task (which walks scripts/*.sh) never sees them, and one that fails to
+// parse breaks completion for every user of that shell.
+//
+// A shell that is not installed is skipped rather than faked, so the assertion is
+// only ever as strong as the machine — but bash is required to have run, or an
+// image without any of the three would let this pass while checking nothing.
+//
+// Two ways this could check nothing while passing, both closed here because both
+// were reachable: a shell name the script table does not know yields the empty
+// string, and every shell accepts an empty file; and a parse flag that does not
+// parse (zsh `--version`) accepts a broken one. So the name is taken with its ok,
+// and each shell is first shown a deliberately unterminated `if` and must reject
+// it before its verdict on the real script is worth anything.
+func TestCompletionScriptsAreSyntacticallyValid(t *testing.T) {
+	// Unterminated in all three: bash and zsh want `fi`, fish wants `end`.
+	const mustNotParse = "if true\n"
+	var checked []string
+	for _, tc := range []struct {
+		shell, bin string
+		parseOnly  []string // rc files are skipped so a failure can only be the script
+	}{
+		{"bash", "bash", []string{"--noprofile", "--norc", "-n"}},
+		{"zsh", "zsh", []string{"-f", "-n"}},
+		{"fish", "fish", []string{"--no-execute"}},
+	} {
+		bin, err := exec.LookPath(tc.bin)
+		if err != nil {
+			t.Logf("%s is not installed here; its syntax went unchecked", tc.shell)
+			continue
+		}
+		script, ok := completionScript(tc.shell)
+		if !ok {
+			t.Fatalf("no completion script for %s", tc.shell)
+		}
+		parse := func(name, content string) error {
+			path := filepath.Join(t.TempDir(), name+"."+tc.shell)
+			if wErr := os.WriteFile(path, []byte(content), 0o600); wErr != nil {
+				t.Fatal(wErr)
+			}
+			out, rErr := exec.Command(bin, append(append([]string{}, tc.parseOnly...), path)...).CombinedOutput()
+			if rErr != nil {
+				return fmt.Errorf("%w\n%s", rErr, out)
+			}
+			return nil
+		}
+		if parse("control", mustNotParse) == nil {
+			t.Errorf("%s %v accepted an unterminated `if`, so it is not parsing and its verdict below means nothing", tc.shell, tc.parseOnly)
+			continue
+		}
+		if pErr := parse("completion", script); pErr != nil {
+			t.Errorf("%s rejects the generated script: %v", tc.shell, pErr)
+		}
+		checked = append(checked, tc.shell)
+	}
+	if !slices.Contains(checked, "bash") {
+		t.Errorf("no bash to parse the generated script with, so this checked %v and proves nothing", checked)
 	}
 }
 
@@ -557,11 +847,11 @@ func TestMiseInitRendersCompletionTasks(t *testing.T) {
 // only at the first positional — the account is the binding's answer, never a word
 // typed here, so a second slot would offer something the parser rejects.
 //
-// Per-command like TestCompletionScriptsCompleteCompanion rather than table-driven:
-// subcommandVerbs covers the groups, and a new *verb* has no sub-verbs to key on.
-// A generic "every command with a positional has a case" guard is not written here
-// because two commands would fail it today for a reason this change did not
-// introduce (docs/ROADMAP.md § kae env and kae backup have no completion case).
+// TestEveryPositionalCommandCompletes now makes the same assertion generically,
+// and this test is kept for what that one structurally cannot see: it names
+// "relogin" as a literal, so it still fires if the verb is dropped from
+// completionCommands and positionalCommands together — the shape of gap that both
+// table-driven guards are blind to.
 func TestCompletionScriptsCompleteRelogin(t *testing.T) {
 	if !slices.Contains(completionCommands, "relogin") {
 		t.Fatal("relogin must be in completionCommands, or `kae <TAB>` never offers it")

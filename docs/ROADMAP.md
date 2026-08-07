@@ -768,21 +768,70 @@ Daily-use ergonomics, designed together as mise-style verbs so the surface
 stays coherent rather than accreting ad hoc. Account delete/rename graduates
 to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
 
-- **`kae env` and `kae backup` have no completion case** (found 2026-08-06 while
-  wiring `kae relogin`'s, **not fixed**). Both are subcommand groups —
-  `env set|unset|list`, `backup list` — and neither appears in `subcommandVerbs` nor
+- ~~**`kae env` and `kae backup` have no completion case**~~ (found 2026-08-06 while
+  wiring `kae relogin`'s, **fixed in v0.17.0**). Both are subcommand groups —
+  `env set|unset|list`, `backup list` — and neither appeared in `subcommandVerbs` nor
   in the `case` blocks of the three generated scripts, so `kae env <TAB>` and
-  `kae backup <TAB>` offer nothing at the first positional. That is the same defect
-  class the v0.10.0 companion gap was, and the parity guard exists precisely to catch
-  it; it does not, because the guard iterates the table rather than the router, so a
-  group missing from *both* is invisible to it. The fix is two entries in
-  `subcommandVerbs` plus a case in bash/zsh/fish, after which
-  `TestSubcommandCompletionParity` holds them. Left out of the v0.17.0
-  `kae relogin` change deliberately: it is unrelated surface, and shipping it inside
-  a credential-safety change would put two unrelated diffs in one review. Worth
-  considering at the same time whether the guard should iterate `completionCommands`
-  and require a case for every command that takes a positional, which would have
-  caught both without a table entry.
+  `kae backup <TAB>` offered nothing at the first positional: the same defect class
+  the v0.10.0 companion gap was, past the guard that exists precisely to catch it,
+  because that guard iterates its own table rather than the router and a group
+  missing from *both* is invisible to it.
+  Both now have a case in all three scripts and an entry in `subcommandVerbs`, and
+  the second half of the fix is the guard the entry asked for: `positionalCommands`
+  classifies **every** command in `completionCommands` as taking a positional or not,
+  and `TestEveryPositionalCommandCompletes` requires a branch for each one that does
+  — a branch that emits candidates, since a case label in front of an empty body is
+  the same dead end — and, from the other side, no branch for one that does not, so
+  a stale classification is loud rather than quietly weakening the first half. Being
+  keyed by `completionCommands` is what makes it a guard rather than a second opt-in
+  table. Review of the fix turned up two more holes of the same family and closed
+  them: `kae mise` had a case but no `subcommandVerbs` entry, so its sub-verb was
+  asserted nowhere; and the whole of `env`'s new routing could be deleted with every
+  test green, because the constructs it uses (`accounts "${pos[1]}"` and friends)
+  recur in other branches and were matched against the whole script —
+  `TestCompletionPositionalRouting` now asserts each one inside the branch that owns
+  it.
+  What it still does not see, because nothing machine-checks either list against
+  `Root()`: a command dropped from `completionCommands` and the classification
+  together. Closing *that* by dispatching each command from a test is not safe —
+  several commands reach `newApp`, and with it the real environment, before a bad
+  flag stops them — so a verb with no sub-verbs keeps its own test naming it
+  literally (`TestCompletionScriptsCompleteRelogin`).
+
+- **The completion scripts are hand-written text, so the tests parse them back**
+  (raised 2026-08-07 by review of the entry above, **not started** — advisory, not
+  a defect). `completion.go` holds three hand-maintained scripts whose `case`
+  blocks encode the same routing three times in three array conventions, and the
+  guards therefore reconstruct label→branch from the generated text
+  (`completionCaseBlocks`). Holding the per-command spec as data and rendering
+  each shell from it would let the guards read the spec instead of re-parsing the
+  output, and would make a new command one entry rather than three edits. The
+  cost is why it has not been done: rewriting all three generators is an order of
+  magnitude more than the change that raised it, and their current output has
+  real-machine acceptance behind it. Worth doing when the next command lands or a
+  fourth shell is added — not on its own.
+- **`printHelp` and docs/CLI.md disagree about `kae add`** (found 2026-08-07 while
+  classifying commands for completion, **not fixed**). `printHelp` (`cmd.go`) says
+  `kae add <tool> <account>`; `CmdAdd` accepts one or two positionals, so the
+  account is optional and `docs/CLI.md`'s `kae add <tool> [<account>]` is the
+  correct one. Nothing checks either against the parser, which is the same gap
+  the entry above names for `completionCommands`. Left alone deliberately: it is
+  unrelated surface, and the completion change is not where an unrelated
+  usage-string fix belongs.
+- **A flag that takes a *value* shifts every completion slot** (found 2026-08-07 by
+  review of the entry above, **not fixed**). The generated scripts build their
+  positional list by dropping words that start with `-`, which is enough for a
+  boolean flag and wrong for a valued one: in `kae env --config /p set <TAB>` the
+  path `/p` survives the filter and becomes the first positional, so the tool slot
+  is asked to complete accounts of `set`, and `kae env --config /p list <TAB>`
+  walks past the `list` gate the same way. `kae use --config /p claude <TAB>`
+  simply goes quiet. Go's `splitArgs` knows which flags consume the next word and
+  the shell does not, and the two are hand-kept in step. Not urgent — the cost is
+  wrong or missing candidates, never a wrong action — but the fix is one place: a
+  `kae __complete valued-flags <command>` kind fed from the same registrars
+  `flagSetFor` uses, with each script consuming it in its positional loop. Doing
+  it per script without that backend would re-create the drift the dynamic backend
+  exists to prevent.
 - **`kae profile save <name>`**: snapshot the current active set into a
   named profile, instead of hand-editing config via `kae edit`.
 - **Account rm/rename** *(v0.7.1 — see [RELEASE.md](RELEASE.md))*: `kae

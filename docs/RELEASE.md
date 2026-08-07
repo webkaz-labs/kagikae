@@ -44,7 +44,8 @@ copy its own snapshot supersedes; and the remedy every bound-credential finding 
 changed from the tool's own login command to **`kae relogin`**. Plus three
 contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
 `identity_drift` code reported for a bound directory's own store, and a new
-`credential_superseded` code; the rest is documentation.
+`credential_superseded` code — plus completion cases for `kae env` and
+`kae backup`, which changes the generated script; the rest is documentation.
 
 - **`kae relogin` — the login that lands where the binding points** (new verb).
   The remedy for a bound directory's expired credential was `cd <dir> && claude
@@ -317,6 +318,24 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   that from the **backup**, not the account snapshot, because `run -s`'s own recapture
   has already rewritten the snapshot with whatever the child left behind. claude only,
   like the harvest, because ordering two copies needs a measured rotation.
+
+- **`kae env <TAB>` and `kae backup <TAB>` offer their sub-verbs** (completion only;
+  neither command changed). Both are subcommand groups that shipped with no case in
+  any of the three generated scripts, so the first positional was a dead end. `env`
+  completes the tool and account of `env set|unset` as well, gated on the sub-verb,
+  since `env list` takes no arguments. The recurrence guard that should have caught
+  this iterates its own opt-in table, so a group missing from *both* the table and
+  the scripts was invisible to it; the guard added alongside is keyed by the command
+  list instead, and every command is now classified as taking a positional — and then
+  required to have a branch in all three shells, and that branch must offer
+  candidates and read its arguments from the slots that shell numbers them by — or
+  as taking none ([ROADMAP.md](ROADMAP.md) § Command-system expansion). The
+  generated scripts are also parsed now by whichever of the three shells the
+  machine has (bash required), which nothing did before: they are Go string
+  constants, so the shellcheck task never saw them.
+  A **structural** script
+  change like this one is the kind that needs an installed completion file
+  rewritten ([CLI.md](CLI.md) § Keeping completion current).
 
 ---
 

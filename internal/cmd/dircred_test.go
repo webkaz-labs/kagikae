@@ -978,7 +978,7 @@ func TestRunRebindRefusesAnUnknownModeWithoutHarvesting(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := app.Paths.IsolatedConfigDir(paths.PinID(cwd), constants.ToolClaude, "main")
-	writeFile(t, filepath.Join(store, ".credentials.json"),
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", store),
 		claudeOAuthPayload("sk-ant-oat01-MAIN-REFRESHED-cccc", now.Add(8*time.Hour)))
 	// A mode kae does not recognize, with everything else intact.
 	fragment := readFile(t, fragmentRelPath)

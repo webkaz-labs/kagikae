@@ -297,6 +297,10 @@ func (app *App) prepareGlobalIsolatedHome(ctx context.Context, be secret.Backend
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return "", fmt.Errorf("create global isolated home: %w", err)
 	}
+	// Before the write, like the pin-level pass: a home bound before the credential
+	// split still holds its own copy, and writing the snapshot over the account's
+	// store without harvesting that one first is a logout.
+	app.migratePreSplitHome(ctx, be, tool, account, home)
 	err := app.writeDirCredential(ctx, be, tool, account, home)
 	if err != nil && fromProfile && warnUnisolatableCredential(err, tool, account) {
 		err = nil

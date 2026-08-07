@@ -83,15 +83,26 @@ func (app *App) recordPinnedDir(pinID, absDir string) error {
 // pinnedDirs lists the bound directories kae has a store for. A store without
 // a breadcrumb is skipped rather than reported: it was bound by a kae older
 // than the record, and inventing a path for it would be a guess.
+//
+// complete is false when any store was skipped that way. Most callers report on the
+// bindings they can name and do not care; a caller that acts on the *absence* of a
+// binding does, because a skipped store is "kae could not look", not "nothing is
+// there" — credStoreRefs is the one that must tell those apart before deleting a
+// credential its siblings read.
 func (app *App) pinnedDirs() ([]pinnedDir, error) {
+	pins, _, err := app.pinnedDirsComplete()
+	return pins, err
+}
+
+func (app *App) pinnedDirsComplete() ([]pinnedDir, bool, error) {
 	entries, err := os.ReadDir(app.Paths.IsolationDir())
 	if os.IsNotExist(err) {
-		return nil, nil
+		return nil, true, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("list per-directory stores: %w", err)
+		return nil, false, fmt.Errorf("list per-directory stores: %w", err)
 	}
-	pins := []pinnedDir{}
+	pins, complete := []pinnedDir{}, true
 	for _, entry := range entries {
 		// isolation/global holds the global-isolated homes (kae use -i), which
 		// belong to no directory.
@@ -100,13 +111,17 @@ func (app *App) pinnedDirs() ([]pinnedDir, error) {
 		}
 		data, err := os.ReadFile(app.Paths.PinRecordFile(entry.Name()))
 		if err != nil {
+			complete = false // a store kae cannot name is not a store that is not there
 			continue
 		}
-		if dir := strings.TrimSpace(string(data)); dir != "" {
-			pins = append(pins, pinnedDir{PinID: entry.Name(), Dir: dir})
+		dir := strings.TrimSpace(string(data))
+		if dir == "" {
+			complete = false
+			continue
 		}
+		pins = append(pins, pinnedDir{PinID: entry.Name(), Dir: dir})
 	}
-	return pins, nil
+	return pins, complete, nil
 }
 
 // pinnedDirsMatching returns the bound directories still pinned whose fragment

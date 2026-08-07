@@ -62,6 +62,11 @@ func credentialEnvVar(tool string) string {
 // rotates a single credential instead of invalidating the copies in every other
 // bound directory (docs/ROADMAP.md § One credential per account).
 func (app *App) credStoreDir(tool, account string) string {
+	// The `account == ""` half is a statement of intent, not a live guard: every
+	// caller resolves the account from a binding or a plan first, so a mutation that
+	// removes it cannot be killed (measured 2026-08-07). It stays because composing a
+	// store path from an empty account would put every unattributed store at one
+	// shared path — write the reason rather than a test that cannot fail.
 	if credentialEnvVar(tool) == "" || account == "" {
 		return ""
 	}

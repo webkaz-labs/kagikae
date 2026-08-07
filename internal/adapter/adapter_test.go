@@ -1310,6 +1310,13 @@ func TestRelativeConfigVariablesWarnPerTool(t *testing.T) {
 	if !strings.Contains(claudeWarn, "keychain item is unaffected") {
 		t.Errorf("claude's warning must say the item is unaffected: %s", claudeWarn)
 	}
+	// The credential variable has the same hazard for the file half and needs its own
+	// warning: once it is set, the credential no longer follows CLAUDE_CONFIG_DIR at
+	// all, so the warning above is not saying anything about it.
+	wantEnvConflictWarningOn(t, "linux", claudeAdapter,
+		map[string]string{claude.EnvSecureStorageDir: "relcred"},
+		claude.EnvSecureStorageDir+" is relative")
+
 	codexWarn := warningsOf(t, "linux", codexAdapter, map[string]string{"CODEX_HOME": "relcfg"})
 	if !strings.Contains(codexWarn, "keyring account") {
 		t.Errorf("codex's warning must say the keyring account moves too: %s", codexWarn)

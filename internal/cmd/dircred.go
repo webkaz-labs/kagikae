@@ -219,6 +219,54 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	return nil
 }
 
+// migratePreSplitHome harvests and then removes the credential a **global isolated
+// home** still holds at its own name, from before kae gave each account one
+// credential store. Call it before materializing that home.
+//
+// It is the global-isolated counterpart of harvestSupersededDirCredentials, and it
+// exists for the same reason that pass does: the write path can only see the store
+// it is writing, which since the split is the account's, so a copy left at the
+// home's own name is invisible to it. A bound directory gets this from the pin-level
+// pass and the sweep that follows it; `kae use -i` and `kae run -i` have neither, so
+// without this their pre-split homes silently revert to an older snapshot copy —
+// which under single-use rotation is a logout, with no finding anywhere
+// (`credential_unsplit` walks bound directories only).
+//
+// Every refusal the harvest and the delete already have applies: an unattributable,
+// unreadable or unpreservable copy is left where it is.
+func (app *App) migratePreSplitHome(ctx context.Context, be secret.Backend, tool, accountName, home string) {
+	artName := credentialArtifactName(tool)
+	credDir := app.credStoreDir(tool, accountName)
+	if artName == "" || credDir == "" || credDir == home {
+		return // nothing to migrate: this tool keeps its credential in its home
+	}
+	specs, err := app.dirSpecs(ctx, tool, bindDirs{Config: home})
+	if err != nil {
+		return // the bind reports an unresolvable home
+	}
+	sp, ok := specByName(specs, artName)
+	if !ok || unbindableDirKeychain(sp) {
+		return
+	}
+	acc, snapshot, _, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
+	if err != nil {
+		return // no snapshot to harvest into; the bind reports it
+	}
+	dirs := bindDirs{Config: home}
+	if _, preserved, _ := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot); !preserved {
+		return
+	}
+	if !app.harvestBeforeDelete(ctx, be, specs, tool, accountName, dirs, false) {
+		return
+	}
+	if err := artifact.ApplyLive(ctx, sp, artifact.Value{Present: false}); err != nil {
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: could not remove the pre-split %s credential in %s (%v); it is a copy nothing "+
+				"reads any more, and a refresh of it elsewhere would invalidate this account's\n",
+			tool, app.displayPath(home), err)
+	}
+}
+
 // rotatesSingleUse reports whether tool's refresh token is measured to rotate
 // single-use — whether a newer copy of one account's credential *invalidates*
 // the older copies of it, rather than merely being newer than them. That fact is
@@ -698,10 +746,6 @@ type bindDirs struct {
 	Cred   string
 }
 
-// oneDir is the bindDirs of a store that keeps its credential inside its config
-// dir: the pre-split layout, and every tool but claude.
-func oneDir(dir string) bindDirs { return bindDirs{Config: dir} }
-
 // credDirOrConfig is the directory the credential actually resolves against.
 func (d bindDirs) credDirOrConfig() string {
 	if d.Cred != "" {
@@ -1156,8 +1200,10 @@ func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, stor
 // `pinChecks` already reports the orphaned store. A fragment that exists and cannot
 // be parsed is the unknown case, not the zero case.
 func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
-	pins, err := app.pinnedDirs()
-	if err != nil {
+	pins, complete, err := app.pinnedDirsComplete()
+	if err != nil || !complete {
+		// A store whose breadcrumb could not be read names a directory kae cannot
+		// reach — and that directory may be one that reads this credential.
 		return 0, false
 	}
 	for _, pin := range pins {

@@ -255,6 +255,111 @@ func TestUnpinPurgeRemovesAFileCredentialFromTheAccountStore(t *testing.T) {
 	}
 }
 
+// A globally isolated home bound before the split still holds its own copy, and it
+// has no pin, so neither the pin-level pass nor any sweep reaches it. Without a
+// migration of its own, `kae use -i` writes the account snapshot into the credential
+// store and leaves that copy — which under single-use rotation means the newer login
+// is stranded and the home silently runs an older one, with no finding anywhere
+// (`credential_unsplit` walks bound directories only).
+func TestUseIsolatedMigratesAPreSplitHome(t *testing.T) {
+	app := overlayTestApp(t) // linux: the file driver, so the copy is a file in the home
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+
+	home := app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")
+	mkdirs(t, home)
+	// The shape a pre-split `kae use -i` left: the credential in the home itself,
+	// refreshed there since, with the identity that attributes it.
+	const refreshed = "sk-ant-oat01-HOME-REFRESHED-cccc"
+	writeFile(t, filepath.Join(home, ".credentials.json"), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	writeFile(t, filepath.Join(home, ".claude.json"), claudeIdentityFile("main-uuid"))
+
+	if code, out := captureStdout(t, func() int {
+		return runUseIsolated(ctx, app, opts, constants.ToolClaude, "main")
+	}); code != constants.ExitOK {
+		t.Fatalf("use -i exit %d: %s", code, out)
+	}
+
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
+		t.Fatalf("the home's newer copy must be harvested before it is superseded: %s", got)
+	}
+	credFile := filepath.Join(app.credStoreDir(constants.ToolClaude, "main"), ".credentials.json")
+	if got := readFile(t, credFile); !strings.Contains(got, refreshed) {
+		t.Fatalf("the account store must end up holding the newest copy: %s", got)
+	}
+	// And the copy nothing reads any more is gone: refreshing it elsewhere would
+	// invalidate the one every binding of this account now shares.
+	if got := readFile(t, filepath.Join(home, ".credentials.json")); strings.Contains(got, refreshed) {
+		t.Fatalf("the pre-split copy must be removed once it is preserved: %s", got)
+	}
+}
+
+// `kae relogin` exports what the **binding** records, not what a current bind would
+// write. A directory bound before the split reads its own store, so deriving the
+// credential dir from the account would drive the login into a store that directory
+// does not read — and report a login that changed nothing while it stays stale.
+func TestReloginExportsThePreSplitBindingsStore(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	dir, storeDir, _ := boundStoreForClaudeMain(t, app)
+	makePreSplit(t, app, constants.ToolClaude, "main", dir, storeDir)
+
+	var seen []string
+	withInteractive(t, loginInto(t, constants.ToolClaude,
+		"sk-ant-oat01-RELOGGED-aaaa", "main-uuid", app.Now().Add(8*time.Hour), &seen))
+	captureBoth(t, func() int { return runRelogin(ctx, app, commonOpts{Format: formatText}, "") })
+
+	for _, entry := range seen {
+		if strings.HasPrefix(entry, credentialEnvVar(constants.ToolClaude)+"=") {
+			t.Fatalf("a pre-split binding records no credential store; kae must not invent one: %q", entry)
+		}
+	}
+	// Positive control for the fixture: the flow really ran against this store.
+	if !slicesContains(seen, isolationEnvVar(constants.ToolClaude)+"="+storeDir) {
+		t.Fatalf("the login must be driven into the bound store: %v", seen)
+	}
+}
+
+// A tool that cannot separate its credential from its home has nothing to migrate,
+// so naming it would be a warning the user can never clear.
+func TestUnsplitCheckSaysNothingAboutAToolWithNoCredentialVariable(t *testing.T) {
+	stores := []boundDirStore{{
+		Dir: "/repo", Tool: constants.ToolCodex, Account: "main",
+		StoreDir: "/store/codex", CredDir: "",
+	}}
+	if checks := pinUnsplitChecks(stores); len(checks) != 0 {
+		t.Fatalf("codex keeps its credential in its home; nothing to report: %+v", checks)
+	}
+	// The control: the same shape for a tool that does split is reported.
+	stores[0].Tool = constants.ToolClaude
+	if checks := pinUnsplitChecks(stores); len(checks) != 1 {
+		t.Fatalf("a claude binding with no credential entry must be reported: %+v", checks)
+	}
+}
+
+// The export fallback is what a user pastes when mise is not active, so it has to
+// carry both halves. With only the home variable the credential resolves at the
+// config dir's name — a store kae has written nothing to.
+func TestExportFallbackCarriesTheCredentialVariable(t *testing.T) {
+	app := overlayTestApp(t)
+	entry := app.isolationEntryFor(runTarget{Tool: constants.ToolClaude, Account: "main"}, "/store/shared")
+	out := exportFallback("main", []isolationEntry{entry}, nil)
+
+	for _, want := range []string{
+		"export " + isolationEnvVar(constants.ToolClaude) + "='/store/shared'",
+		"export " + credentialEnvVar(constants.ToolClaude) + "='" +
+			app.credStoreDir(constants.ToolClaude, "main") + "'",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the fallback must export %q:\n%s", want, out)
+		}
+	}
+}
+
 // The count has to fail closed. An unreadable fragment is not "no reference": kae
 // cannot tell, and the difference between those two answers is one logged-out
 // sibling. Reached with a fragment path that is a directory, which errors on read
@@ -309,7 +414,7 @@ func TestDirSpecsOverridesTheCredentialVariableForAnUnsplitStore(t *testing.T) {
 	}
 	store := app.Paths.SharedDir("deadbeefdeadbeef", constants.ToolClaude)
 
-	specs, err := app.dirSpecs(context.Background(), constants.ToolClaude, oneDir(store))
+	specs, err := app.dirSpecs(context.Background(), constants.ToolClaude, bindDirs{Config: store})
 	if err != nil {
 		t.Fatal(err)
 	}

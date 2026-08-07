@@ -321,7 +321,7 @@ func claudeOAuthAccount(uuid, email string) string {
 // IdentityKeys, so a key added upstream cannot be added to the spec and forgotten here.
 func TestIdentityFixtureCarriesEveryIdentityKey(t *testing.T) {
 	app := testApp(t, nil)
-	specs, err := app.dirSpecs(context.Background(), constants.ToolClaude, oneDir(t.TempDir()))
+	specs, err := app.dirSpecs(context.Background(), constants.ToolClaude, bindDirs{Config: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

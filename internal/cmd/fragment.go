@@ -514,6 +514,10 @@ func applyCompanionSection(lines, companionLines, redactions []string) ([]string
 // entry outside the block, so callers must only use it where the anchor is a
 // precondition; it exists so a hand-edited fragment loses the setting rather than
 // silently dropping it into another table.
+// The append fallback is unobservable today — `[env]` is the last table a fragment
+// has, so appending lands inside it either way — and it is written as the intent it
+// is: a hand-edited fragment with a table after `[env]` would otherwise take the
+// setting into that table (measured 2026-08-07).
 func insertAfterPrefix(lines []string, prefix, line string) []string {
 	for i, existing := range lines {
 		if strings.HasPrefix(existing, prefix) {

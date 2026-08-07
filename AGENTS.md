@@ -352,18 +352,22 @@ block in docs/VALIDATION.md, next to two correct ones.
   guard `subcommandVerbs` (its sub-verbs) and the classification
   `positionalCommands` (whether it takes a positional at all), plus
   `completionCommands` and `printHelp`, neither of which any guard checks against
-  the router. Adding a **shell** is its own lockstep: `completionScript`, the
-  usage line and the `supported: …` error in `CmdCompletion` (no guard reads
-  either), the `bash zsh fish` run inlined in all three scripts, and
-  `subcommandVerbs["completion"]`.
+  the router. Adding a **shell** reaches much further than the scripts, and no
+  guard checks any of it against `completionScript` — so find the copies rather
+  than trust a list of them: `grep -rn fish internal/`. Two kinds fail *silently*
+  instead of loudly, which is why the grep is worth running: the installer's
+  `--refresh` walk (`completion_install.go`), or the new shell's registered file
+  is never rewritten again; and the per-shell loops and table rows in
+  `completion_install_test.go`, which leave every guard below blind to it.
   `kae <cmd> <TAB>` must never be a dead end — a new subcommand group shipped
   without completion in v0.10.0, and `kae env` / `kae backup` had no case at all
   until v0.17.0. **A guard reaches only what its table names**, which is why
   those two tables are keyed differently and why neither of them closes the
-  class on its own; `positionalCommands` in `internal/cmd/completion_install_test.go`
-  is normative for what each guard does and does not see, and for why the gap is
-  not closed by dispatching each command from a test. Read it before weakening
-  either. Completion is dynamic, so candidate changes resolve live; only a
+  class on its own; `positionalCommands` **and `subcommandVerbs`** in
+  `internal/cmd/completion_install_test.go` are together normative for what each
+  guard does and does not see — including why the gap is not closed by
+  dispatching each command from a test, and what deleting an entry from
+  `subcommandVerbs` silently takes with it. Read them before weakening either. Completion is dynamic, so candidate changes resolve live; only a
   *structural* script change (a new case/kind) alters the registered script.
   That refresh is automatic: `mise run install` and `scripts/install.sh` run
   `kae completion --refresh` (rewrites already-registered files; never creates

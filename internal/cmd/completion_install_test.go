@@ -178,9 +178,10 @@ func TestCompletionScriptsCompleteCompanion(t *testing.T) {
 // positionalCommands says, for every command in completionCommands, whether it
 // accepts a positional argument — true means `kae <cmd> <TAB>` must offer
 // something, false means the command takes flags only. Each entry's comment is
-// its positional shape and nothing else: the flags belong to `printHelp` and
-// docs/CLI.md, and copying a whole usage line here would make this the third
-// hand-maintained copy of it.
+// its positional shape — or, where the answer is not obvious from the shape, why
+// (rollback). Not the usage line: the flags belong to `printHelp` and
+// docs/CLI.md, and copying one here would make this a third hand-maintained copy
+// of something those two already disagree on.
 //
 // Being keyed by completionCommands is the whole point, and the difference from
 // subcommandVerbs: that table is opt-in, so a command missing from *both* it and
@@ -193,7 +194,9 @@ func TestCompletionScriptsCompleteCompanion(t *testing.T) {
 // from completionCommands *and* from this map, since nothing machine-checks
 // either against Root(). Adding that check by dispatching each command is not
 // safe in a unit test — several commands reach newApp before a bad flag stops
-// them, which would read the real environment.
+// them, which would read the real environment. The remedy for the shape that
+// hits most often is a test naming the verb literally, the way
+// TestCompletionScriptsCompleteRelogin does for one with no sub-verbs to key on.
 //
 // What it deliberately does not claim: that a branch routes correctly. It proves
 // the branch exists and emits candidates; whether the slots and array indices in

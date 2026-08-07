@@ -489,6 +489,24 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	// the child, so a live identity that changed since is the child's doing. The
 	// restore below reads the **backup** rather than this snapshot for its own
 	// attribution, and must keep doing so — by then this recapture has rewritten it.
+	//
+	// One thing this path does not inherit from the switch-away recapture, and the
+	// reason the guards alone were not enough. There, a refusal is safe because
+	// createBackup already holds the copy being declined; here `meta` predates the
+	// child, so the child's copy exists only in the live store the restore below is
+	// about to overwrite. Refusing therefore *destroyed* the credential — a logout
+	// reported as success, which is the class this release exists to close. So the
+	// warnings are deferred until a backup of the post-child state exists to name.
+	//
+	// Two things here are measured-unobservable rather than untested, written down so
+	// nobody adds a test that cannot fail (2026-08-07). Running the downgrade guard
+	// *before* the identity one changes no outcome: keepSnapshotIdentity rewrites only
+	// the identity artifact's value, and liveValuesFreshness skips it, so the downgrade
+	// check reads the same credential either way. And the `err != nil` arm below differs
+	// from `!anyPresent` in wording alone, with no fixture that can make a live read
+	// fail while the artifacts stay resolvable.
+	var unattributable []toolPlan
+	reasons := map[string]string{}
 	for _, plan := range plans {
 		values, anyPresent, err := readLiveValues(ctx, plan.Specs)
 		switch {
@@ -496,15 +514,25 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, plan.Account, err)
 			continue
 		case !anyPresent:
-			fmt.Fprintf(os.Stderr, "kae: warning: %s logged out during the run; snapshot %s/%s left unchanged\n",
-				plan.Tool, plan.Tool, plan.Account)
+			// The adapter's own warnings ride along: captureSnapshot used to append them
+			// to its auth_missing error, and `run -s` prints them nowhere else, so an
+			// env_conflict is otherwise invisible in exactly the case it may explain.
+			detail := ""
+			if len(plan.Warnings) > 0 {
+				detail = " (" + strings.Join(plan.Warnings, "; ") + ")"
+			}
+			fmt.Fprintf(os.Stderr, "kae: warning: %s logged out during the run; snapshot %s/%s left unchanged%s\n",
+				plan.Tool, plan.Tool, plan.Account, detail)
 			continue
 		}
 		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); why != "" {
-			warnRecaptureIdentityUnconfirmed(plan.Tool, why)
+			unattributable = append(unattributable, plan)
+			reasons[plan.Tool] = why
 			continue
 		}
 		if why := app.recaptureWouldDowngrade(ctx, be, plan.Tool, plan.Account, plan.Meta, values); why != "" {
+			// No backup is taken for this one: the copy it declines is a tombstone or an
+			// older credential, so there is nothing worth preserving.
 			fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot left unchanged\n", why)
 			continue
 		}
@@ -514,6 +542,17 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 		snapPlan.Identity = plan.Meta.Identity
 		if err := app.persistSnapshot(ctx, be, snapPlan, values); err != nil {
 			fmt.Fprintf(os.Stderr, "kae: warning: recapture of %s/%s failed: %v\n", plan.Tool, plan.Account, err)
+		}
+	}
+	if len(unattributable) > 0 {
+		preID := ""
+		if preMeta, err := app.createBackup(ctx, be, unattributable, st, "run-unattributable"); err != nil {
+			fmt.Fprintf(os.Stderr, "kae: warning: could not back up the live state kae declined to adopt: %v\n", err)
+		} else {
+			preID = preMeta.ID
+		}
+		for _, plan := range unattributable {
+			warnRecaptureIdentityUnconfirmed(plan.Tool, reasons[plan.Tool], preID)
 		}
 	}
 

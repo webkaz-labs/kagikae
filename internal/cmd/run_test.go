@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/runner"
@@ -513,8 +514,10 @@ func TestRunSharedRefusesToRecaptureAForeignLogin(t *testing.T) {
 		return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
 	})
 	mustExit(t, constants.ExitOK, code, out)
-	if !strings.Contains(stderr, "outside kae") {
-		t.Errorf("expected a warning that the live login is not the one kae applied: %q", stderr)
+	// Naming the pair is part of the assertion: with the two arguments swapped the
+	// warning reads "for main/claude", which names no snapshot at all.
+	if !strings.Contains(stderr, "the live claude identity is not the one kae applied for claude/main") {
+		t.Errorf("expected a warning naming claude/main whose live login is not the one kae applied: %q", stderr)
 	}
 	if !strings.Contains(stderr, "kae add --no-login claude") {
 		t.Errorf("the refusal must say how to keep that live login: %q", stderr)
@@ -564,5 +567,171 @@ func TestRunSharedRefusesToRecaptureATombstone(t *testing.T) {
 	be := testBackend(t, app)
 	if got := snapshotPayload(t, app, be, "claude", "main"); !strings.Contains(got, "main-live") {
 		t.Fatalf("the tombstone overwrote a usable snapshot: %s", got)
+	}
+}
+
+// A refusal on this path is only safe because kae backs the declined copy up first.
+// `meta` predates the child, so the child's credential lives in the live store alone
+// until then — and the restore below overwrites it. Refusing without the backup was a
+// logout reported as success (measured against bf77135, where the unguarded recapture
+// happened to keep the copy in the snapshot instead).
+func TestRunSharedPreservesALoginItDeclinesToAdopt(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+
+	const foreign = "sk-ant-oat01-FOREIGN-LOGIN"
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		seedClaude(t, app, foreign, "stranger")
+		return 0, nil
+	})
+	code, out, stderr := captureBoth(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+
+	id := backupIDFromWarning(t, stderr)
+	// The message is worthless unless the id it names is a backup that really holds the
+	// copy, so read the object rather than trusting the sentence. It is the newest one:
+	// the pre-child backup was taken before this and the refusal's after it.
+	meta, found, err := backup.Latest(app.Paths.BackupsDir())
+	if err != nil || !found {
+		t.Fatalf("no backup written: found=%v err=%v", found, err)
+	}
+	if meta.ID != id {
+		t.Fatalf("the refusal named backup %s but the newest is %s", id, meta.ID)
+	}
+	be := testBackend(t, app)
+	held := ""
+	for _, rec := range meta.Artifacts {
+		if rec.Name != "claude_ai_oauth" {
+			continue
+		}
+		data, ok, err := be.Get(ctx, rec.SecretRef)
+		if err != nil || !ok {
+			t.Fatalf("backup payload %s unreadable: ok=%v err=%v", rec.SecretRef, ok, err)
+		}
+		held = string(data)
+	}
+	if !strings.Contains(held, foreign) {
+		t.Fatalf("backup %s does not hold the login kae declined to adopt: %s", id, held)
+	}
+	if strings.Contains(stderr, "could not preserve") {
+		t.Errorf("the backup succeeded, so kae must not say it could not preserve it: %q", stderr)
+	}
+}
+
+// backupIDFromWarning extracts the id out of the refusal's second line, which is the
+// only place it appears.
+func backupIDFromWarning(t *testing.T, stderr string) string {
+	t.Helper()
+	const marker = "preserved only in backup "
+	i := strings.Index(stderr, marker)
+	if i < 0 {
+		t.Fatalf("no backup named in the refusal: %q", stderr)
+	}
+	rest := stderr[i+len(marker):]
+	if j := strings.IndexAny(rest, " \n"); j >= 0 {
+		return rest[:j]
+	}
+	t.Fatalf("could not read the backup id out of %q", stderr)
+	return ""
+}
+
+// A child that logged out must not erase the snapshot. The arm that stops it was
+// rewritten in this diff (from captureSnapshot's ExitAuthMissing to `!anyPresent`) and
+// had no test: for claude the downgrade guard converges on the same answer, so a
+// mutation removing it survives — the tool that shows it is one whose rotation is not
+// measured, where nothing else declines and persistSnapshot deletes the credential ref.
+// codex is that tool.
+func TestRunSharedLoggedOutChildKeepsTheSnapshot(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedCodex(t, app, "codex-main-token")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "main") })
+	seedCodex(t, app, "codex-side-token")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "codex", "side") })
+	captureStdout(t, func() int { return runSwitch(ctx, app, opts, "codex", "side") })
+
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		if err := os.Remove(filepath.Join(app.Env.Home, ".codex", "auth.json")); err != nil {
+			t.Fatal(err)
+		}
+		return 0, nil
+	})
+	code, out, stderr := captureBoth(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "codex", "main", []string{"codex"})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(stderr, "logged out during the run") {
+		t.Errorf("expected the logged-out warning: %q", stderr)
+	}
+	if got := snapshotPayload(t, app, testBackend(t, app), "codex", "main"); !strings.Contains(got, "codex-main-token") {
+		t.Errorf("a logged-out child erased the snapshot: %s", got)
+	}
+}
+
+// The logged-out warning carries the adapter's own warnings. captureSnapshot used to
+// append them to its auth_missing error and `run -s` prints them nowhere else, so
+// without this an env_conflict — a plausible explanation for the logout — is invisible
+// in exactly the case it explains.
+func TestRunSharedLoggedOutWarningCarriesAdapterWarnings(t *testing.T) {
+	// An env_conflict variable: it warns without moving any of kae's stores, so the
+	// fixture still resolves. A relative CLAUDE_CONFIG_DIR would warn too, but it also
+	// moves the store, so the account could not be captured at all.
+	app := testApp(t, map[string]string{"ANTHROPIC_API_KEY": "sk-test-123"})
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+
+	seedClaude(t, app, mainToken, "main")
+	captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		if err := os.Remove(filepath.Join(app.Env.Home, ".claude", ".credentials.json")); err != nil {
+			t.Fatal(err)
+		}
+		return 0, nil
+	})
+	code, out, stderr := captureBoth(t, func() int {
+		return runRun(ctx, app, opts, runModeShared, "claude", "main", []string{"claude"})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(stderr, "logged out during the run") {
+		t.Fatalf("expected the logged-out warning: %q", stderr)
+	}
+	if !strings.Contains(stderr, "ANTHROPIC_API_KEY") {
+		t.Errorf("the logged-out warning must carry the adapter's warnings: %q", stderr)
+	}
+	if strings.Contains(stderr, "sk-test-123") {
+		t.Errorf("a warning must name the variable, never its value: %q", stderr)
+	}
+}
+
+// A refusal that cannot name a backup must say the copy is lost rather than imply it
+// survives. Unreachable through a command (createBackup would have to fail), so it is
+// asserted on the helper directly — the alternative is an untested claim about a
+// credential being destroyed.
+func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
+	_, stderr := captureStderr(t, func() int {
+		warnRecaptureIdentityUnconfirmed("claude", "kae cannot tell", "")
+		return 0
+	})
+	if !strings.Contains(stderr, "could not preserve") || !strings.Contains(stderr, "lost once") {
+		t.Errorf("want a warning that the declined login is lost: %q", stderr)
+	}
+	if strings.Contains(stderr, "preserved only in backup") {
+		t.Errorf("with no backup, kae must not claim the copy survives: %q", stderr)
+	}
+	_, withID := captureStderr(t, func() int {
+		warnRecaptureIdentityUnconfirmed("claude", "kae cannot tell", "20260101T000000Z")
+		return 0
+	})
+	if strings.Contains(withID, "could not preserve") {
+		t.Errorf("with a backup, kae must not say it could not preserve it: %q", withID)
 	}
 }

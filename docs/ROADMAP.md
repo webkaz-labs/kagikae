@@ -299,15 +299,38 @@ alternative exists (`secret-tool`).
   `captureSnapshot` directly, so a child that logged in as another account filed that
   credential *and* that identity under the target account's name, and a child whose
   refresh failed filed the tombstone; it now applies `keepSnapshotIdentity` and
-  `recaptureWouldDowngrade`, **those two and no third**. `keepSnapshotIdentity` in turn
-  called `identityDiffers` with no decodability gate, so two identity payloads that were
-  both non-records *and* byte-identical (`/oauthAccount: null` on each side, the reachable
-  shape) read as "same account" and let a recapture proceed on evidence that named nobody;
-  it now gates on `identityComparable` first, like its two siblings
-  (`dirIdentityConfirms`, `liveLoginMatchesBackup`), and its refusal is worded weaker than
-  the conflict one because kae has observed only that it cannot compare. The behaviour
-  change this adds to `kae use` — a refusal that did not exist — is the one the previous
-  release declined to scope, and it is deliberately in scope here.
+  `recaptureWouldDowngrade`, **those two and no third**.
+  **And the prescription this entry used to carry for the second half was wrong — it is
+  withdrawn, measured.** It said `keepSnapshotIdentity` should "route that comparison
+  through `identityComparable` too", adding a refusal to `kae use`. Built that way, the
+  only newly-refusing shape is two identity payloads that are both non-records **and
+  byte-identical** — and that is the shape *kae itself* produces, because applying a
+  snapshot writes its recorded identity into the live cache, so a recorded
+  `/oauthAccount: null` makes both sides that same non-record. No login can leave it,
+  since `/login` rewrites accountUuid/emailAddress unconditionally. So the refusal fired
+  exactly where nothing had happened, and on `run -s` it **destroyed the child's
+  refreshed credential** — a logout reported as success, reproduced against `bf77135`
+  where the unguarded recapture had kept it. Every other combination (a record against a
+  non-record, two different non-records) already refused through `identityDiffers`' byte
+  fallback and was unchanged.
+  What shipped instead: the gate decides the **wording, not the decision**. The refusal
+  set is exactly what it was — `identityDiffers`, byte fallback included — and
+  `identityComparable` only chooses between "somebody else is logged in" and "kae cannot
+  read the records it would compare", so a claim kae cannot support is no longer made
+  about the ordinary case where claude has cleared its cache. The general lesson is the
+  one AGENTS.md § `supersedes` already states and this entry did not apply: refusing is
+  the conservative answer for the two sibling guards, which decline to *overwrite* or
+  *delete*, and the destructive answer for a recapture, which declines to *preserve*.
+  Porting a predicate across that asymmetry needs the caller's question re-asked.
+  The reporting this leaves undone is the other entry below (a recorded identity that is
+  not an account record), whose prescription — report the broken **label**, not the
+  comparison — is the right home and is unaffected.
+  Separately, a refusal on `run -s` was destructive even where refusing is *correct* (a
+  child that really did log in as somebody else): its backup predates the child, so the
+  declined copy lived only in the store the restore overwrites. It now takes a second
+  backup (reason `run-unattributable`) of the post-child state and names it in the
+  warning. `kae use` needed nothing — `createBackup` already runs before its recapture,
+  which is the difference "the same two guards and no third" silently assumed.
   Three things worth keeping. The plan named two defects and there were **three**:
   `persistSnapshot` builds the snapshot from `plan.Identity`, which the run paths never
   set, so every `run -s` blanked the account's *recorded* login identity — a different

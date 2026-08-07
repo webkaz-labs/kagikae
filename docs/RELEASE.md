@@ -387,16 +387,30 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   payload, and the reason the fix carries `plan.Meta.Identity`. It was found by measuring
   the line rather than by reading it.
 
-  And `keepSnapshotIdentity` itself needed the decodability gate its two siblings
-  (`dirIdentityConfirms`, `liveLoginMatchesBackup`) already had. It called
-  `identityDiffers` directly, which falls back to a byte comparison for a payload it
-  cannot key on — right for the drift check, wrong for attribution — so two payloads that
-  were both non-records *and* byte-identical (`/oauthAccount: null` on each side, which
-  one bad capture propagates to every bound store of an account) read as "same account"
-  and let a recapture proceed on evidence naming nobody. Both recaptures now refuse there,
-  in wording deliberately weaker than the conflict case: kae has observed only that it
-  cannot compare, and a weak reading takes a weak consequence. This is the refusal
-  `kae use` gained, which is why it waited for a release that scoped a behaviour change.
+  And `keepSnapshotIdentity`'s comparison needed the decodability gate its two siblings
+  (`dirIdentityConfirms`, `liveLoginMatchesBackup`) already had — but as a **qualifier on
+  the wording, not on the decision**, which is not what the plan said and is the more
+  interesting half. `identityDiffers` falls back to a byte comparison for a payload it
+  cannot key on, right for the drift check and wrong for attribution, so a refusal there
+  used to claim the live login was somebody else's when kae had only observed a change it
+  could not read. It now says which of those two it means. The refusal *set* is unchanged.
+  Built the way the roadmap prescribed — comparability as a precondition for recapturing
+  at all — it destroyed credentials, and that is measured rather than argued: the only
+  newly-refusing shape is two identity payloads that are both non-records **and
+  byte-identical**, which is the shape kae itself creates (applying a snapshot writes its
+  recorded identity into the live cache, so a recorded `/oauthAccount: null` puts that
+  same non-record on both sides), and which no login can leave behind because `/login`
+  rewrites the identifying keys. So it fired where nothing had happened, and on `run -s`
+  the refusal threw away the child's refreshed token. docs/ROADMAP.md records the
+  withdrawal and the general shape of the mistake: refusing is conservative for a guard
+  that declines to overwrite, and destructive for one that declines to preserve.
+
+  Which exposed a second thing, fixed here too: on `run -s` a refusal was destructive even
+  when refusing is right. Its backup predates the child, so a declined copy lived only in
+  the store the restore overwrites. It now takes a second backup of the post-child state
+  (reason `run-unattributable`) and names it, with the two-step that turns it into an
+  account of its own. `kae use` needed nothing — its backup already precedes its
+  recapture, the asymmetry "the same two guards and no third" had assumed away.
 
 - **`kae unpin --purge` says which credential it removed** (message only). One line
   reported both removals in this sweep, and `removeDirCredential` deletes at the location

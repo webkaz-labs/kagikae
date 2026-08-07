@@ -1345,15 +1345,20 @@ pin-level pass running **before** the stores are materialized, and E additionall
 the replaced fragment being read before it is rewritten.
 **F PASSED 2026-08-04** (darwin, file driver, temp HOME, pre-release binary), run as
 written, all four assertions checked at their own points.
-**G–J PASSED 2026-08-05, re-run at every later revision of the branch and last measured
-14/14 on 2026-08-06** (darwin, file driver, temp HOME, pre-release binary), every
-documented assertion checked at its own point, and **discriminated against a control**:
-the same G block run against a binary with the skip forced off leaves `MAIN-OLD` live and
-prints "previous auth state restored", so G is not a tautology. Two defects in the block
-itself were found by the first run and are fixed above — an `echo $?` that reported
-*grep's* status and so could never fail, and case H going green over a snapshot the run
-poisons (the `snap main | grep FOREIGN` line now states it). **Re-run before the tag** on
-the final tree, as § Smoke Checks requires of every block.
+**G–J PASSED 2026-08-05, re-run at every later revision of the branch; G and H last
+measured 14/14 on 2026-08-07 against the recapture guards, I and J last on 2026-08-06**
+(darwin, file driver, temp HOME, pre-release binary), every documented assertion checked
+at its own point, and **discriminated against a control**: the same G block run against a
+binary with the skip forced off leaves `MAIN-OLD` live and prints "previous auth state
+restored", so G is not a tautology. Note the 2026-08-06 measurement of **H does not carry
+forward**: H asserted the *defect* that `run -s`'s recapture applied no guards, so fixing
+that inverted the assertion, and the earlier 14/14 was measured against a binary the block
+as written now refuses. The 2026-08-07 re-run is of the inverted block, and it added the
+recorded-identity assertion the older one had no reason to make. Three defects in the block
+itself were found by running it — an `echo $?` that reported *grep's* status and so could
+never fail; case H going green over a snapshot the run poisons; and, on 2026-08-07, no
+positive half beside `grep -c FOREIGN`, which a broken `snap()` would also satisfy. **Re-run
+before the tag** on the final tree, as § Smoke Checks requires of every block.
 
 **What G–J does not cover, stated because a green run reads as if it did.** The block
 exports `KAE_CLAUDE_DRIVER=file`, so claude's credential is a JSON-pointer file and its

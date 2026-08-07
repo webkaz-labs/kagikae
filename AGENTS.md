@@ -184,12 +184,18 @@ block in docs/VALIDATION.md, next to two correct ones.
   name its account, only the fragment being *replaced* does — read it before
   overwriting or removing it, and only trust it for the mechanism it describes. For a
   delete, an account kae cannot name at all is a reason to keep the item; so is a
-  payload kae cannot read, which may be a working login in a shape kae has not been
-  taught. One exception, and it turns on **what the user asked for**, not on the state:
-  a usable copy whose account no longer exists is deleted by `kae unpin --purge`
+  payload kae cannot read **or date**, which may be a working login in a shape kae has not
+  been taught. Two exceptions, and both turn on **what the user asked for**, not on the
+  state — a housekeeping sweep keeps, `kae unpin --purge` takes.
+  A usable copy whose account no longer exists is deleted by `kae unpin --purge`
   (refusing would strand a live token nothing can address) and **kept** by the sweep a
   bind runs — `kae account rename` reaches that sweep through kae's own re-bind remedy,
-  where deleting destroyed the newest copy of the renamed account's credential.
+  where deleting destroyed the newest copy of the renamed account's credential. And a
+  payload kae could not read or date is deleted by `--purge` too, for the first exception's
+  reason rather than as a rule of its own: keeping it strands a secret **nothing kae offers
+  can remove**, since a per-directory item is addressable only from the string kae hashes
+  its service name from and that sweep is the only path to it. Both exceptions say what
+  they are destroying; neither lets a housekeeping bind do it.
 - **Two copies of one credential are ordered in exactly one place.** `supersedes` is the
   only comparator — `expiresAt`, with the side claiming to be newer gated by `orderable`
   (`Known && !Revoked && !ExpiresAt.IsZero()`) and the other side degrading to a zero

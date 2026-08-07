@@ -489,6 +489,15 @@ also strips a pre-v0.7.2 kagikae marker block from `mise.toml` (so `kae unpin &&
 kae pin` migrates cleanly), leaving the user's own `mise.toml` content and any
 isolation directories (with their login state) intact.
 
+A per-directory credential kae **cannot read or date** is the one case where the two
+commands differ on more than which stores they look at. A bind's sweep keeps it — it may be
+a working login in a shape kae has not been taught, and a bind was not asked to destroy
+anything — and says that `kae unpin --purge` removes it. `--purge` does, and says what it is
+destroying, because keeping it there strands a secret nothing else kae offers can address
+(a per-directory keychain item is reachable only from the string kae hashes its service
+name from, and this sweep is that path). Same asymmetry as an account that no longer
+exists, for the same reason: it turns on what was asked for, not on the state.
+
 Both commands sweep a **superseded per-directory credential**: a `-s` ↔ `-i`
 toggle moves every tool to the other mechanism's store and an isolated re-bind
 re-keys the store by account, so the store the directory used before is

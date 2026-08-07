@@ -499,6 +499,21 @@ alternative exists (`secret-tool`).
   and how to re-measure it live in docs/VALIDATION.md's claude `expiresAt` row, which is the
   thing to check when a version bump makes this concrete.
 
+- **A zero `expiresAt` is indistinguishable from one kae could not parse, and the adapter's
+  comment claimed otherwise** (recorded 2026-08-07, **not fixed**). `EpochToTime` maps both
+  `n <= 0` and a non-number to the zero time, so downstream nothing can tell claude's
+  measured death certificate (`expiresAt: 0`) from a value whose type changed upstream. That
+  cost nothing while both were swept; it started mattering when the per-directory sweep
+  learned to keep everything it cannot judge, because a payload with a zero deadline and a
+  token still in it is now retained rather than swept. The claude adapter's `Freshness`
+  comment asserted that the zero was "translated here into `Revoked`" — it is not; the blank
+  tokens are what set `Revoked` — and that comment is corrected, since the line it described
+  is now load-bearing. Closing it means teaching `internal/freshness` to distinguish a JSON
+  number from a non-number, which is the only real work in it, and then folding a numeric
+  `expiresAt <= 0` into `Revoked` so death certificates sweep again. Not done here because
+  the retained item is a spent secret rather than a lost login, `kae unpin --purge` now
+  removes it, and the change reaches every `Fresher` rather than one call site.
+
 - **Rotation is measured for claude only** (recorded 2026-08-04). codex, cursor,
   copilot, opencode and agy have not been measured, so none of the copy-safety work
   above may be ported to them: "the newest copy" is unknowable without it, and

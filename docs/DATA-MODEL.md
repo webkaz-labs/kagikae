@@ -230,7 +230,8 @@ A snapshot is rewritten by `kae add`, `run -s`'s post-child recapture, (new in
 v0.8.1) `kae use`/bare `use`'s switch-away recapture of the currently-active
 account when its live credential diverges from the snapshot — which since v0.17.0
 declines a live credential the snapshot itself supersedes, so a copy an earlier
-rollback put back cannot be laundered over the newer one — and (new in v0.17.0)
+rollback put back cannot be laundered over the newer one, and both recaptures
+decline one they cannot attribute to the account they would file it under — and (new in v0.17.0)
 the **harvest** performed before overwriting or deleting a store that holds a *newer*
 copy of that account's credential — by every per-directory materializer, by the
 superseded-credential sweep, and by the pin-level pass `kae pin` / `kae pin <tool>
@@ -239,7 +240,7 @@ property worth knowing before reading `kae ls`: it can rewrite the snapshot of a
 account the **command did not name**, because the store it harvests belongs to
 whichever account the binding being replaced bound there. The harvest rewrites the credential payload and
 `captured_at` and nothing else — the identity it recorded is deliberately kept, the
-same rule the switch-away recapture follows — and it is claude-only, because
+same rule both recaptures follow — and it is claude-only, because
 ordering two copies requires a measured rotation (docs/CLI.md § kae pin,
 docs/ROADMAP.md). The snapshot's
 credential expiry, refresh-token state, and explicit invalidation are read (never

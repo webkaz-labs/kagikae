@@ -292,30 +292,34 @@ alternative exists (`secret-tool`).
   `refreshTokenExpiresAt` (no offline fix exists for *them* — this is a wording and
   expectation-setting problem, not a detection one; the detectable subset, where kae
   holds a second copy to compare against, is `credential_superseded`);
-  **`run -s`'s own recapture goes
-  through neither guard the switch-away recapture applies** — it calls
-  `captureSnapshot` directly, so it neither keeps the snapshot's identity
-  (`keepSnapshotIdentity`) nor refuses a downgrade (`recaptureWouldDowngrade`): a child
-  that logs in as another account files that credential *and* that identity under the
-  target account's name, and a child that logs out files the tombstone. The fix routes
-  that recapture through **those two and no third** — they are named here so nobody
-  invents one — and `docs/VALIDATION.md` case H asserts the defect's present-day shape,
-  so the smoke run turns from green to red the moment it is fixed and has to be updated
-  in the same commit. Measured 2026-08-05: `kae doctor` does then report `identity_drift`
-  for the account, but its remedy is `kae use <tool> <account>`, which puts the foreign
-  credential into the real home — so the reporting surface makes it worse, not better.
-  The restore skip above is gated on attribution so it does not compound this, and it
+  ~~**`run -s`'s own recapture goes
+  through neither guard the switch-away recapture applies**~~ and ~~**the switch-away
+  recapture's attribution guard has no decodability gate**~~ — **both fixed 2026-08-07**,
+  and together, because the first newly depends on the second. `run -s` called
+  `captureSnapshot` directly, so a child that logged in as another account filed that
+  credential *and* that identity under the target account's name, and a child whose
+  refresh failed filed the tombstone; it now applies `keepSnapshotIdentity` and
+  `recaptureWouldDowngrade`, **those two and no third**. `keepSnapshotIdentity` in turn
+  called `identityDiffers` with no decodability gate, so two identity payloads that were
+  both non-records *and* byte-identical (`/oauthAccount: null` on each side, the reachable
+  shape) read as "same account" and let a recapture proceed on evidence that named nobody;
+  it now gates on `identityComparable` first, like its two siblings
+  (`dirIdentityConfirms`, `liveLoginMatchesBackup`), and its refusal is worded weaker than
+  the conflict one because kae has observed only that it cannot compare. The behaviour
+  change this adds to `kae use` — a refusal that did not exist — is the one the previous
+  release declined to scope, and it is deliberately in scope here.
+  Three things worth keeping. The plan named two defects and there were **three**:
+  `persistSnapshot` builds the snapshot from `plan.Identity`, which the run paths never
+  set, so every `run -s` blanked the account's *recorded* login identity — a different
+  field from the identity payload, found by measuring rather than by reading, and fixed by
+  carrying `plan.Meta.Identity`. `docs/VALIDATION.md` case H asserted the defect's shape,
+  so it flipped in the same commit as predicted. And the 2026-08-05 measurement still
+  stands as the reason this mattered: `kae doctor` did report `identity_drift` afterwards,
+  but its remedy was `kae use <tool> <account>`, which put the foreign credential into the
+  real home — the reporting surface made it worse, so detection was never the fix.
+  The restore skip above is gated on attribution so it did not compound this, and it
   reads the **backup** rather than the snapshot precisely because the snapshot may
-  already be wrong by then; **the switch-away recapture's attribution
-  guard has no decodability gate** — `keepSnapshotIdentity` calls `identityDiffers`
-  directly, so two identity payloads that are both non-records *and* byte-identical
-  (`/oauthAccount: null` on each side, the reachable shape) read as "same account" and
-  let the recapture proceed on evidence that names nobody. The two sibling guards
-  (`dirIdentityConfirms`, `liveLoginMatchesBackup`) share `identityComparable` for
-  exactly this; the third was found by a quality lens after them and is left alone here
-  because closing it adds a refusal to `kae use`, which is a behaviour change this
-  release did not scope. The fix is one call: route that comparison through
-  `identityComparable` too; **a
+  already be wrong by then. **A
   superseded *global* isolated home is never harvested** — `kae use -i <a>` then
   `kae use -i <b>` leaves `isolation/global/<tool>/<a>/` holding a's newest copy, and
   because there is no pin, neither the pin-level pass nor any sweep ever looks at it

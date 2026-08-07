@@ -207,16 +207,19 @@ Two more consequences of kae switching a field claude maintains only lazily:
 - **`kae add` still requires a credential.** An `/oauthAccount` alone is not a
   login — it outlives a logout — so capture refuses (`auth_missing`, exit 3)
   when the identity cache is the only live artifact.
-- **A switch-away recapture keeps the recorded identity.** `kae use` refreshes
-  the snapshot of the account it switches *away* from, but deliberately does not
-  import the live `/oauthAccount`: it may name a different account than the live
-  credential (exactly the drift this artifact fixes), and importing it would pin
-  the wrong identity onto that account permanently. The exception is a live
-  identity whose *identifying* keys changed: since `/login` writes them
-  unconditionally, that means the live credential belongs to another account, so
-  the recapture is **skipped entirely** with a warning rather than filing the new
+- **A recapture keeps the recorded identity.** `kae use` refreshes the snapshot of
+  the account it switches *away* from, and `kae run -s` refreshes the snapshot of the
+  account it ran as, but neither imports the live `/oauthAccount`: it may name a
+  different account than the live credential (exactly the drift this artifact fixes),
+  and importing it would pin the wrong identity onto that account permanently. Two
+  exceptions skip the recapture **entirely** with a warning rather than filing the new
   credential under the old account's name (offline, nothing could detect that
-  afterwards — the access token is opaque).
+  afterwards — the access token is opaque): a live identity whose *identifying* keys
+  changed, which since `/login` writes them unconditionally means the live credential
+  belongs to another account; and a pair of payloads kae cannot read as account records
+  at all, which prove nothing in either direction and so cannot license a write. The
+  second is worded weaker than the first for that reason. `keepSnapshotIdentity` is
+  normative.
 
 The macOS driver reads and writes the keychain through the `security` CLI via
 the runner seam. The captured keychain item is stored and restored

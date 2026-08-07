@@ -1277,24 +1277,29 @@ cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.cla
 grep MAIN-OLD "$HOME/.claude/.credentials.json"   # assert: restored. Keeping FOREIGN
                                         #         would leave the real home running one
                                         #         account while kae records another
-snap main | grep FOREIGN                 # assert: FOREIGN — **this is the open defect**,
-                                        #         asserted so the case cannot go green
-                                        #         over it. run -s's own recapture calls
-                                        #         captureSnapshot directly and so applies
-                                        #         neither keepSnapshotIdentity nor the
-                                        #         downgrade refusal, and files whatever
-                                        #         the child left under the target's name
-                                        #         (docs/ROADMAP.md, "run -s's own
-                                        #         recapture goes through neither guard").
-                                        #         Measured 2026-08-05: `kae doctor` does
-                                        #         flag identity_drift for claude/main
-                                        #         afterwards, but its remedy is
-                                        #         `kae use claude main`, which then puts
-                                        #         FOREIGN into the real home. The restore
-                                        #         skip is gated on attribution read from
-                                        #         the **backup** so it does not compound
-                                        #         this; when the recapture is fixed, this
-                                        #         line becomes `grep -c FOREIGN` = 0
+#   assert: stderr also carries `probably logged in again outside kae` and the
+#           `kae add --no-login claude <account>` hint — the recapture refused, and it
+#           says how to keep that login instead of discarding it silently
+snap main | grep -c FOREIGN               # assert: 0. run -s's own recapture now applies
+                                        #         the same two guards the switch-away one
+                                        #         does, so the stranger's credential is
+                                        #         not filed under the target's name. This
+                                        #         line asserted `FOREIGN` **present**
+                                        #         until 2026-08-07, when the defect it
+                                        #         described was fixed; the shape it
+                                        #         guarded against is now three unit tests
+                                        #         (TestRunSharedRefusesToRecaptureA…) and
+                                        #         one measured mutation each.
+snap main | grep MAIN-OLD                # assert: the snapshot still holds its own copy —
+                                        #         the positive half, without which a
+                                        #         `grep -c` of 0 also passes for a snap()
+                                        #         that reads the wrong path
+/tmp/kae ls --json | grep you@example.com # assert: the recorded login identity survived.
+                                        #         persistSnapshot builds it from
+                                        #         plan.Identity, which the run paths never
+                                        #         set, so every run -s used to blank it —
+                                        #         a third defect on the same line that
+                                        #         docs/ROADMAP.md did not name
 
 # --- I. rollback says the credential it restores is already dead, and restores it ---
 cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"

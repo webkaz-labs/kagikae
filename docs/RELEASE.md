@@ -42,8 +42,13 @@ harvests a newer credential from the store it is about to overwrite or delete, a
 declines to delete one it could not preserve; `kae run -s` skips a restore that would
 put back a credential its child has superseded, `kae rollback` says when the copy it
 restores can no longer refresh, and `kae use`'s switch-away recapture declines a live
-copy its own snapshot supersedes; and the remedy every bound-credential finding names
-changed from the tool's own login command to **`kae relogin`**. Plus three
+copy its own snapshot supersedes; `kae run -s`'s own **recapture** now refuses the two
+cases that switch-away recapture already refused and keeps the account's recorded login
+identity, and both recaptures now refuse when the identity records they would compare
+are not readable as records at all; `kae unpin --purge` names the account credential it
+removes as the account's rather than the directory's; and the remedy every
+bound-credential finding names changed from the tool's own login command to
+**`kae relogin`**. Plus three
 contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
 `identity_drift` code reported for a bound directory's own store, and a new
 `credential_superseded` code — plus completion cases for `kae env` and
@@ -362,6 +367,45 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   that from the **backup**, not the account snapshot, because `run -s`'s own recapture
   has already rewritten the snapshot with whatever the child left behind. claude only,
   like the harvest, because ordering two copies needs a measured rotation.
+
+- **`kae run -s`'s own recapture is guarded, and so is the guard** (bug fix, behaviour
+  change). The sentence above — "`run -s`'s own recapture has already rewritten the
+  snapshot with whatever the child left behind" — described a real defect, and this
+  closes it. That recapture called `captureSnapshot` directly, applying neither guard the
+  switch-away recapture applies, so a child that ran the tool's own login flow and landed
+  on somebody else's account had that credential *and* that identity filed under the
+  target account's name — undetectable afterwards, since the token is opaque and every
+  surface then agrees on a wrong label — and a child whose refresh failed had its
+  tombstone written over a snapshot that still worked. It now applies
+  `keepSnapshotIdentity` and `recaptureWouldDowngrade`, **those two and no third**, and
+  the restore still reads the backup rather than the snapshot, which stays correct rather
+  than becoming redundant.
+
+  A **third** defect sat on the same line and no plan named it: `persistSnapshot` builds
+  the snapshot from `plan.Identity`, which the run paths never set, so every `run -s`
+  blanked the account's recorded login identity — a different field from the identity
+  payload, and the reason the fix carries `plan.Meta.Identity`. It was found by measuring
+  the line rather than by reading it.
+
+  And `keepSnapshotIdentity` itself needed the decodability gate its two siblings
+  (`dirIdentityConfirms`, `liveLoginMatchesBackup`) already had. It called
+  `identityDiffers` directly, which falls back to a byte comparison for a payload it
+  cannot key on — right for the drift check, wrong for attribution — so two payloads that
+  were both non-records *and* byte-identical (`/oauthAccount: null` on each side, which
+  one bad capture propagates to every bound store of an account) read as "same account"
+  and let a recapture proceed on evidence naming nobody. Both recaptures now refuse there,
+  in wording deliberately weaker than the conflict case: kae has observed only that it
+  cannot compare, and a weak reading takes a weak consequence. This is the refusal
+  `kae use` gained, which is why it waited for a release that scoped a behaviour change.
+
+- **`kae unpin --purge` says which credential it removed** (message only). One line
+  reported both removals in this sweep, and `removeDirCredential` deletes at the location
+  the store *reads* — which for a split store is the account's own — so removing an
+  account-wide credential was announced as a "superseded per-directory" one at the
+  config-dir store: neither the thing removed nor where it lived, and it understated a
+  removal that affects every other binding of that account. Found by running the smoke
+  procedure in docs/VALIDATION.md § v0.17.0 per-account credential, which no test pinned
+  because both existing assertions on that string are negative.
 
 - **`kae env <TAB>` and `kae backup <TAB>` offer their sub-verbs** (completion only;
   neither command changed). Both are subcommand groups that shipped with no case in

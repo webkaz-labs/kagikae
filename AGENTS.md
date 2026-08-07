@@ -226,8 +226,12 @@ block in docs/VALIDATION.md, next to two correct ones.
   reports one and restores anyway. Ordering never establishes *whose* login two copies
   are, so every consumer owes an attribution guard, and **which record it compares against
   is not interchangeable**: `run -s` reads the **backup**, never the account snapshot,
-  because its own recapture has already rewritten that snapshot with whatever the child
-  left live. Two deliberate asymmetries to leave alone. `run -s` also requires the target
+  because its own recapture has already rewritten that snapshot with what the child left
+  live. That recapture is itself guarded now — the same two the switch-away recapture
+  applies and no third, so a foreign login or a tombstone is refused rather than filed —
+  which narrows what the snapshot can be wrong about without making it a record of the
+  pre-child state, so the backup stays the right side to read.
+  Two deliberate asymmetries to leave alone. `run -s` also requires the target
   to be the account that was already active even though attribution is the stronger
   evidence — on that path the live identity cache is not an independent reading, since
   `run -s` applied the target snapshot's identity into it moments earlier, so a snapshot

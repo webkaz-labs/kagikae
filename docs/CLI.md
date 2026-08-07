@@ -142,10 +142,14 @@ matches.
   write when they match) and best-effort: it never aborts the switch, and it is
   skipped with a warning when the live state cannot be trusted as that account's —
   a logged-out tool, a live identity whose identifying keys name a different
-  account (someone ran the tool's own login outside kae), or a live credential that
-  needs a re-login while the snapshot still holds a usable one. That last guard is
-  one-directional: kae never prefers the older value, it only refuses to overwrite
-  a working credential with a dead one.
+  account (someone ran the tool's own login outside kae), two identity payloads kae
+  cannot read as account records at all (so it cannot tell whose login is live —
+  worded weaker than the previous case, because kae has observed nothing about
+  *whose* it is), or a live credential that needs a re-login while the snapshot
+  still holds a usable one. `keepSnapshotIdentity` and `recaptureWouldDowngrade`
+  are normative for the set; the freshness guard is one-directional, so kae never
+  prefers the older value, it only refuses to overwrite a working credential with
+  a dead one.
 
   If the account being switched **to** needs a re-login (expired with no usable
   refresh token, or emptied by the tool), kae warns and still proceeds; a snapshot
@@ -201,6 +205,14 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   `auth.json` on its first save); reading the pre-run store instead would report
   the tool as logged out and restore into a file nothing reads. (This is the former
   `auth` mode.)
+  That recapture applies **the same two guards a shared switch applies to its own**
+  (above), and no third: a child that logged in as another account, or one whose
+  identity kae cannot read as a record, leaves the snapshot alone with a warning
+  rather than filing a foreign credential and identity under the target's name; and
+  a child whose refresh failed leaves the tombstone live rather than over a snapshot
+  that still works. It also keeps the account's **recorded login identity**, which
+  is a separate field from the identity payload and was blanked on every `run -s`
+  before v0.17.0.
   The restore is **per tool**: `kae run -s <tool> <the account that was already
   active>` backs up that account's own credential, and claude's refresh token rotates
   single-use, so once the child has refreshed it the copy in the backup can no longer

@@ -521,9 +521,24 @@ alternative exists (`secret-tool`).
   witness walk reads them from disk without any liveness gate (deliberately — that source is
   what gives `kae run -i` a witness at all). One class of kae-written label **is** retracted now — a shared config dir's,
   once the bound account changes — but that is the leftover kind, and this entry is about the
-  kind a *current* binding wrote, which stays. What remains is the
+  kind a *current* binding wrote, which stays.
+  **The heading understates it, and the candidate fix below does not close what it
+  says it closes** (measured 2026-08-08 by an independent review, both variants of the
+  sequence above end to end, plus the globally-isolated one). Run A's sequence with a
+  label the **tool** wrote — an honest one, naming A's own account, carrying keys kae
+  never writes — and the harvest mis-files exactly the same. Provenance is not the
+  property that fails: an identity cache records the last login *observed in that
+  directory*, and the store it is being read as evidence about can have been rewritten
+  since by somebody else. So a marker saying "the tool wrote this" would be read as
+  trustworthy on precisely the run that mis-files. Whatever settles this has to make a
+  reader's silence depend on **when** it last observed the store rather than on who
+  wrote its cache — which is a different mechanism from the one below, and the reason
+  this entry stays open rather than shrinking to an implementation task. Recorded
+  because the wrong fix here is cheap to build, looks like it worked, and its failure
+  is the undetectable kind. What remains of the
   first candidate fix — record whether a cache was written by kae or observed from the tool
-  — which is also what would let `identity_drift` tell a stale label from a real one. Do
+  — is what would let `identity_drift` tell a stale label from a real one, which is worth
+  having for its own sake. Do
   not "fix" it by removing the confirmation: that would make every bind keep forever.
 
 - **`credential_superseded` reports at all only if the tie for "newest" is won by an

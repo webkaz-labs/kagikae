@@ -133,8 +133,11 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// so (reloginCredentialSpec). Quiet here — the post-flow resolution is the one
 	// that decides whether the capture back can happen, so warning now would both
 	// repeat itself and claim something about a step that has not run.
-	_, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, dirs, quiet)
+	preSpecs, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, dirs, quiet)
 	before, comparable := storeCredential(ctx, sp, haveSpec)
+	// The last point at which the copy already in that store can be kept, because the
+	// write that replaces it is the *tool's* and kae never sees it.
+	app.preserveBeforeRelogin(ctx, be, preSpecs, tool, accountName, dirs)
 
 	// Every variable the binding sets, not just the home one. The login writes the
 	// credential where the *credential* variable points, so exporting one half sends
@@ -392,6 +395,70 @@ func boundToolList(fragment fragmentInfo) string {
 		return "no tools"
 	}
 	return strings.Join(bound, ", ")
+}
+
+// preserveBeforeRelogin harvests whatever the store holds *before* the login flow
+// replaces it, and says so when it could not.
+//
+// The capture back runs after the flow, so the only copy it can ever see is the one
+// the login wrote; the copy the login destroyed is invisible to it. Since the
+// credential split that copy is the **account's**, read by every directory bound to
+// it, so it can be a live login this directory's binding says nothing about — the
+// ordinary way to get there is somebody running the tool's own `/login` inside a bound
+// directory as another account. `kae pin` declines to overwrite exactly that copy in
+// order to preserve it and then names this command as the remedy, so without this pass
+// the remedy kae prints is what destroys what the refusal kept (measured 2026-08-08,
+// end to end: the store's only refreshable copy of the other account was gone from
+// every store and every snapshot afterwards).
+//
+// A warning and not a refusal, and the asymmetry is the one AGENTS.md settles: the
+// login is what the user asked for, refusing it would leave the directory stale with
+// no way forward, and a warning never changes the exit code. What it may claim is only
+// what kae observed — the harvest's own reason — never that the copy is another
+// account's, which on the arm that matters most is precisely what kae could not
+// establish.
+//
+// Every guard is harvestDirCredential's, unchanged, so this is silent in the ordinary
+// case: a store holding nothing newer than the snapshot returns preserved with no
+// output, and one holding this account's own refreshed copy is harvested (which is
+// worth doing here for its own sake — until now that copy was only picked up by the
+// next bind).
+func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
+	specs []artifact.Spec, tool, accountName string, dirs bindDirs,
+) {
+	artName := credentialArtifactName(tool)
+	if !rotatesSingleUse(tool) || artName == "" || specs == nil {
+		return
+	}
+	acc, snapshot, _, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
+	if err != nil {
+		// captureBackAfterRelogin reports an unreadable snapshot after the flow, where it
+		// also decides the success wording; saying it twice about one read adds nothing.
+		return
+	}
+	_, preserved, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot,
+		attributionSource{Dir: dirs.Config})
+	if preserved {
+		return
+	}
+	why := refused.Why
+	if why == "" {
+		// The one route that refuses with no reason of its own: the harvest read a newer
+		// copy, attributed it, and failed to write it into the snapshot — which it has
+		// already warned about in its own words.
+		why = "kae could not write it into that snapshot"
+	}
+	// No ordering in the frame, and that is not a style choice. One of the reasons this
+	// interpolates is kae saying it **cannot** order the two copies ("cannot read or date
+	// the copy already there"), so a frame calling the copy *newer* contradicts the reason
+	// four words later — the fold docs/CLI.md § `kae rollback --json` is normative against,
+	// and the one captureBackAfterRelogin below was corrected for on 2026-08-07. Written in
+	// the shape the pin-level pass already uses, which states the fact and lets the reason
+	// carry its own strength, rather than deriving "was it ordered" a second time here.
+	fmt.Fprintf(os.Stderr,
+		"kae: warning: kae could not keep the %s credential already in %s for %s/%s (%s); completing the "+
+			"login flow replaces it, and kae has it in no snapshot\n",
+		tool, dirs.credDirOrConfig(), tool, accountName, why)
 }
 
 // captureBackAfterRelogin harvests the copy the login just wrote into the

@@ -740,3 +740,135 @@ func TestReloginRefusalDoesNotClaimAnOrderingItCannotMake(t *testing.T) {
 		}
 	}
 }
+
+// The login flow is a write kae does not perform, so the copy already in the store is
+// gone the moment the tool finishes — and since the credential split that copy belongs
+// to the *account*, not to this directory. `kae pin` declines to overwrite one it
+// cannot attribute in order to preserve it, and then names this command as the remedy;
+// following that remedy destroyed the copy the refusal had kept, with no warning and no
+// copy anywhere afterwards (measured 2026-08-08, end to end).
+//
+// So kae harvests before the flow, and says so when it could not. It may claim only
+// what it observed: the harvest's own reason, never that the copy is another account's,
+// which on this arm is exactly what kae could not establish.
+func TestReloginSaysWhatTheLoginFlowIsAboutToReplace(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+
+	// A sibling bound to the same account, which confirms — without it this directory
+	// would be the only reader that disagrees, which is the `Conflicting` arm that
+	// overwrites rather than the keep this test is about.
+	_, _, siblingCred := boundStoreForClaudeMain(t, app)
+	_, storeDir, credFile := boundStoreForClaudeMain(t, app)
+	// Positive control on the fixture itself: the two directories must be reading one
+	// copy, or the disagreement below is about a store nothing shares and the refusal
+	// under test is never reached.
+	if siblingCred != credFile {
+		t.Fatalf("the two bindings must share one account credential store: %s vs %s", siblingCred, credFile)
+	}
+
+	// Somebody ran the tool's own /login here as another account: the identity lands in
+	// this directory's config dir and the credential in the account's shared store.
+	const foreign = "sk-ant-oat01-SIDE-cccc"
+	writeFile(t, filepath.Join(storeDir, ".claude.json"), claudeIdentityFile("side-uuid"))
+	writeFile(t, credFile, claudeOAuthPayload(foreign, now.Add(8*time.Hour)))
+
+	withInteractive(t, loginInto(t, constants.ToolClaude, "sk-ant-oat01-MAIN-eeee", "main-uuid",
+		now.Add(9*time.Hour), &[]string{}))
+	code, stderr := captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	warned := strings.Index(stderr, "completing the login flow replaces it")
+	if warned < 0 {
+		t.Fatalf("the flow must not replace a copy kae could not keep without saying so: %q", stderr)
+	}
+	// Before the write it warns about, which for this one means before the flow is
+	// launched — a warning printed afterwards describes a loss that has already
+	// happened (AGENTS.md).
+	if launched := strings.Index(stderr, "complete the claude login flow"); launched < 0 || warned > launched {
+		t.Errorf("the warning must precede the flow (warned=%d launched=%d): %q", warned, launched, stderr)
+	}
+	if !strings.Contains(stderr, "disagree about whose login it is") {
+		t.Errorf("it must carry the harvest's own reason: %q", stderr)
+	}
+	// What kae did *not* establish, it may not say. On this arm the readers disagree,
+	// so kae has no verdict about whose the copy is.
+	if strings.Contains(stderr, "belongs to an account other than") {
+		t.Errorf("kae did not attribute this copy, so it must not name an owner: %q", stderr)
+	}
+	// The refusal is real: the foreign copy was not filed under this account either.
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, foreign) {
+		t.Fatalf("a copy kae could not attribute must not reach this snapshot: %s", got)
+	}
+
+	// Positive control, both directions: with the disagreement resolved the same
+	// fixture harvests silently, so the warning above is the refusal and not a line
+	// this path always prints.
+	writeFile(t, filepath.Join(storeDir, ".claude.json"), claudeIdentityFile("main-uuid"))
+	// Later than the copy the first run's login left in the snapshot, or the harvest
+	// returns at its "nothing newer" arm and this control passes without reaching the
+	// attribution it is controlling for.
+	writeFile(t, credFile, claudeOAuthPayload(foreign, now.Add(12*time.Hour)))
+	code, stderr = captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+	if strings.Contains(stderr, "completing the login flow replaces it") {
+		t.Errorf("an attributable copy is harvested, not warned about: %q", stderr)
+	}
+	// Harvested rather than merely not-warned-about, and **before** the flow: the
+	// post-flow capture back would report the same line about the login's own copy, so
+	// only the ordering distinguishes the pass this test is about from the one that was
+	// already there. The snapshot cannot carry this assertion — by the time the command
+	// returns it holds what the login wrote, which supersedes both.
+	harvested := strings.Index(stderr, "harvested the newer claude credential")
+	launched := strings.Index(stderr, "complete the claude login flow")
+	if harvested < 0 || launched < 0 || harvested > launched {
+		t.Fatalf("the copy the flow replaces must be harvested before it (harvested=%d launched=%d): %q",
+			harvested, launched, stderr)
+	}
+}
+
+// A message may claim no more than kae observed, and this one's reason is sometimes
+// kae saying it **cannot order** the two copies. So the frame must not call the copy
+// newer: that contradicts the reason it interpolates, which is the fold
+// docs/CLI.md § `kae rollback --json` is normative against and which
+// captureBackAfterRelogin was corrected for once already.
+func TestReloginPreFlightDoesNotClaimAnOrderingItCannotMake(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, _, credFile := boundStoreForClaudeMain(t, app)
+
+	// Known (expiresAt present) but undated (a non-numeric value parses to the zero
+	// time) with the tokens intact, so it is not the measured tombstone: readLiveCredential
+	// classifies it liveUnreadable, which is the arm that cannot be ordered at all.
+	writeFile(t, credFile,
+		`{"claudeAiOauth":{"accessToken":"sk-ant-oat01-ODD-ffff","refreshToken":"rt-odd",`+
+			`"expiresAt":"soon","refreshTokenExpiresAt":1830384000000}}`)
+
+	withInteractive(t, loginInto(t, constants.ToolClaude, "sk-ant-oat01-NEW-gggg", "main-uuid",
+		now.Add(9*time.Hour), &[]string{}))
+	code, stderr := captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	// Positive control first: without it, a run that never reached this arm would pass
+	// the negative assertion below for free.
+	if !strings.Contains(stderr, "cannot read or date the copy already there") {
+		t.Fatalf("the fixture must reach the un-orderable arm: %q", stderr)
+	}
+	if !strings.Contains(stderr, "could not keep the claude credential") {
+		t.Errorf("the pre-flight must still say it could not keep the copy: %q", stderr)
+	}
+	if strings.Contains(stderr, "is newer than snapshot") {
+		t.Errorf("kae could not order these two copies, so it may not call one newer: %q", stderr)
+	}
+}

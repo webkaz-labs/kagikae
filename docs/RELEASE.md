@@ -147,6 +147,18 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   that check, keyed on the reason rather than on the recorded target, since a keychain
   record's target is a service name. The bare-rollback refusal now names the preserved
   reasons actually present instead of the one literal it had hardcoded.
+  **That gate had to become a class rather than a check**, which the final pre-tag review
+  measured: it covered the moved-store check alone while three other consumers went on
+  reading such a backup as a statement about global state — the unrecorded-identity sweep
+  cleared the **real home's** identity, the `active_before` restore flipped the globally
+  active account, and the superseded-credential warning ordered the recorded copy against
+  an account it had never been attributed to. The first two compose: the identity wipe
+  removes the evidence the switch-away recapture refuses on, so the next ordinary
+  `kae use` filed one account's token under another's name. The property is now recorded on
+  the backup (`bound_store`) rather than looked up from its reason, so it also survives
+  being copied into the pre-rollback backup of such a rollback. And `kae relogin` prunes
+  like every other backup-writing path: `backup.Prune` now bounds the preserved side on its
+  own, closing the retention hole that same comment had predicted before the path existed.
 
 - **`doctor` reports the copy that lost the race** (`credential_superseded`,
   contract-additive). When two copies of one account's credential exist and one

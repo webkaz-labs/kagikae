@@ -369,12 +369,31 @@ predicate that decides which, and both consumers read it — a bare `kae rollbac
 (`latestRestorable`) even when one is the newest, and `backup_keep` does not count them;
 `kae backup list` still shows them.
 
-**A record's `target` is not always in the tool's global store**, and that is a property of
-the *reason*: `relogin-unattributable` records a store kae pointed one directory at. It
-matters on restore, because the moved-store check re-resolves today's specs globally and so
-is not an answer about such a record — `fromBoundStore` is the one place that decides it,
-and it says why it is keyed on the reason rather than on the target. Anything that reads
-these records has to ask the same question before treating a target as global:
+**A record's `target` is not always in the tool's global store**, and a backup that came
+from a store kae pointed **one directory** at records `bound_store: true` to say so
+(`relogin-unattributable` today; the field is absent, i.e. false, on every backup written
+before it and on every global one). `fromBoundStore` is the one place that reads it.
+
+It is a **recorded** field rather than something derived from `reason`, and the reason
+matters on disk: boundness is a property of the *records*, and it has to survive being
+copied into a derived backup — the pre-rollback backup of a bound-store rollback holds
+bound-store records under `reason: rollback`, so a reason lookup loses it exactly once and
+silently. It cannot be derived from the `target` either, because a keychain record's target
+is a *service name*.
+
+**What it gates is a class, not a check**, and the first version got that wrong: it gated
+the moved-store check alone while three other consumers went on reading such a backup as a
+statement about global state — the unrecorded-identity sweep (which resolves specs
+globally and so cleared the **real home's** identity), the `active_before` restore (which
+flipped the globally active account), and the superseded-credential warning (which read
+`active_before` as the account the recorded copy belongs to). The first two compose into a
+mis-filing nothing offline can detect. All measured 2026-08-08.
+
+The shape underneath: `active_before` is the **fact** "this account was globally active
+when the backup was taken", and for a bound-store backup it is *not* the authority "this is
+the account whose chain the recorded copy belongs to" — the reason such a backup exists at
+all is that kae could not attribute the copy. So anything that reads these records has to
+ask the same question before treating a target, or `active_before`, as global:
 
 - metadata: `backups/<id>.json` (id format `YYYYMMDDTHHMMSSZ`, suffixed
   `-2`, `-3`, ... on collision)

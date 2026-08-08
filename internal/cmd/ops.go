@@ -236,13 +236,16 @@ func (app *App) pruneBackups(ctx context.Context, be secret.Backend) {
 }
 
 // createBackup snapshots the live values of every plan into one backup.
-func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []toolPlan, st *state.State, reason string) (backup.Meta, error) {
+func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []toolPlan, st *state.State,
+	reason string, boundStore bool,
+) (backup.Meta, error) {
 	id := backup.NewID(app.Paths.BackupsDir(), app.Now())
 	meta := backup.Meta{
 		SchemaVersion: constants.SchemaVersion,
 		ID:            id,
 		CreatedAt:     app.Now().UTC(),
 		Reason:        reason,
+		BoundStore:    boundStore,
 		Tools:         []string{},
 		ActiveBefore:  map[string]string{},
 		Artifacts:     []backup.ArtifactRecord{},
@@ -355,8 +358,19 @@ func (app *App) rollbackTo(ctx context.Context, be secret.Backend, meta backup.M
 	if err := app.applyBackup(ctx, be, meta, nil, true); err != nil {
 		return err
 	}
-	if err := clearUnrecordedIdentity(ctx, meta, current); err != nil {
-		return fmt.Errorf("clear a stale identity cache: %w", err)
+	// **Not for a bound-store backup.** This sweep deletes an identity artifact the
+	// backup has no record of, and `current` is resolved *globally* (buildRollback runs
+	// applyGlobalScope), so on such a backup it clears the identity out of the **real
+	// home**. A bound-store backup records the credential only, deliberately — an
+	// identity restored beside it would relabel the directory — so claude's
+	// identity-only artifact is unrecorded by construction and this deleted it every
+	// time. Measured 2026-08-08: `~/.claude.json` went to `{}`, which is also what
+	// removes the evidence `keepSnapshotIdentity` refuses on, so the next ordinary
+	// `kae use` filed one account's token under another's name.
+	if !meta.BoundStore {
+		if err := clearUnrecordedIdentity(ctx, meta, current); err != nil {
+			return fmt.Errorf("clear a stale identity cache: %w", err)
+		}
 	}
 	return nil
 }

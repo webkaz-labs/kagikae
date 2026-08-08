@@ -66,7 +66,24 @@ type Meta struct {
 	Reason        string            `json:"reason"`
 	Tools         []string          `json:"tools"`
 	ActiveBefore  map[string]string `json:"active_before"`
-	Artifacts     []ArtifactRecord  `json:"artifacts"`
+	// BoundStore marks a backup whose records come from a store kae pointed **one
+	// directory** at, rather than from the tool's own global store. Absent (false) for
+	// every backup written before it existed, which is right: every one of those
+	// recorded the global store.
+	//
+	// It is **recorded** rather than derived from `Reason`, and that is the whole point.
+	// Boundness is a property of the records, and it has to survive being copied into a
+	// *derived* backup — the pre-rollback backup of a bound-store rollback holds
+	// bound-store records under `Reason: rollback`, so a reason lookup loses it exactly
+	// once and silently. It cannot be derived from a `Target` either: a keychain
+	// record's target is a *service name*, so a path test answers "not kae's" for
+	// precisely the per-directory item that most needs the distinction.
+	//
+	// What consumes it is not one check but a class: **anything that would treat a
+	// record's target, or `ActiveBefore`, as a statement about global state.** See
+	// `fromBoundStore` for the list and for what each of them did before it was asked.
+	BoundStore bool             `json:"bound_store,omitempty"`
+	Artifacts  []ArtifactRecord `json:"artifacts"`
 }
 
 // SecretRef builds the secret-backend key for one backed-up artifact.
@@ -192,25 +209,48 @@ func Prune(ctx context.Context, be secret.Backend, dir string, keep int, counts 
 		return nil, err
 	}
 	removed := []string{}
-	counted, pruning := 0, false
 	// One pass, by **position**: List already ordered these newest-first, so the keep-th
 	// countable entry and everything before it stay, and everything after it goes. An
 	// earlier version re-derived that ordering by comparing ids as strings against a
 	// cutoff, which is the comparison NewID's zero-padding exists to keep honest — not
 	// re-deriving it means one less place that depends on the id's shape.
 	//
-	// The fewer-than-`keep` case needs no branch of its own: `pruning` never flips, so
-	// nothing is deleted. That is also where the retention of *uncountable* backups is
-	// bounded, and the bound is **external** rather than enforced here: every declining
-	// `kae run -s` writes one countable backup beside its preserved copy, so an uncountable
-	// one always has a countable sibling to age against. A future path emitting a preserved
-	// copy with no countable sibling would retain them forever.
+	// A rejected entry consumes no slot, because sharing one counter let a preserved copy —
+	// created last, therefore sorting newest — evict the undo target it was meant to sit
+	// beside, which at `backup_keep = 1` left a run with no undo target at all.
+	//
+	// **`pruningUncounted` is the fewer-than-`keep`-countable case, which used to have no
+	// bound at all.** This comment named the hazard before the path existed: *"A future
+	// path emitting a preserved copy with no countable sibling would retain them forever."*
+	// `kae relogin`'s pre-flight refusal is that path — a pin-only workflow runs no command
+	// that writes a countable backup, so nothing ever ages against, and each refusal left
+	// another full copy of a credential in the secret store with no kae command able to
+	// remove one (measured 2026-08-08: five refusals, five copies). So the rejected side
+	// now carries the same `keep` on its own, reachable only where the positional cutoff
+	// never fires. It gives up nothing the no-slot rule existed for: a rejected entry still
+	// never advances `counted`.
+	//
+	// `keep == 0` deletes nothing on either side — neither flag can flip, since both are
+	// compared *after* the increment. `internal/config` refuses a value below 1, so this is
+	// the primitive being honest rather than a reachable setting.
+	counted, uncounted := 0, 0
+	pruning, pruningUncounted := false, false
 	for _, meta := range metas {
-		if !pruning {
-			if counts == nil || counts(meta) {
-				counted++
-				pruning = counted == keep
-			}
+		switch countable := counts == nil || counts(meta); {
+		case pruning:
+			// The positional cutoff: past the keep-th accepted entry everything goes,
+			// accepted or not. This is what bounds the rejected side whenever enough
+			// accepted backups exist, and it is unchanged.
+		case countable:
+			counted++
+			pruning = counted == keep
+			continue
+		case pruningUncounted:
+			// Reachable only *before* that cutoff, i.e. exactly the case that had no
+			// bound at all.
+		default:
+			uncounted++
+			pruningUncounted = uncounted == keep
 			continue
 		}
 		if err := Delete(ctx, be, dir, meta); err != nil {

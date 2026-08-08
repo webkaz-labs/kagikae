@@ -268,6 +268,12 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// compare may still have left a copy worth harvesting, and the harvest's own guards
 	// are the ones that decide that. Only the wording depends on both answers.
 	attributed := app.captureBackAfterRelogin(ctx, be, specs, tool, accountName, dirs)
+	// This command can write a backup (the pre-flight refusal), so it prunes like every
+	// other path that does. Without it a directory whose copy kae cannot attribute left one
+	// more full credential in the secret store on every run and nothing ever removed them —
+	// `kae backup` has no delete verb, and a pin-only workflow runs no other backup-writing
+	// command. The bound itself is `backup.Prune`'s; this is only what invokes it.
+	app.pruneBackups(ctx, be)
 	if changed && attributed {
 		fmt.Printf("Logged %s in for %s/%s in this directory\n", tool, tool, accountName)
 	} else {
@@ -500,7 +506,7 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 					"replaces (%v)\n", tool, serr)
 		} else if meta, berr := app.createBackup(ctx, be,
 			[]toolPlan{{Tool: tool, Account: accountName, Specs: []artifact.Spec{sp}}},
-			st, constants.BackupReasonReloginUnattributable); berr != nil {
+			st, constants.BackupReasonReloginUnattributable, true); berr != nil {
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: could not back up the %s credential the login flow replaces (%v)\n", tool, berr)
 		} else {

@@ -1099,9 +1099,15 @@ func TestBoundStoreBackupIsNeverRedirectedToTheRealHome(t *testing.T) {
 		t.Fatalf("the guarded record must restore from the bound store: %+v %v", sp, err)
 	}
 
-	// And the flag is derived from the reason in one place, so the two cannot drift.
-	if !fromBoundStore(backup.Meta{Reason: constants.BackupReasonReloginUnattributable}) {
-		t.Error("the relogin refusal's backup must be marked as coming from a bound store")
+	// The property is **recorded**, not derived from the reason, and that is what makes it
+	// survive being copied into a derived backup. A reason lookup answers "global" for the
+	// pre-rollback backup of a bound-store rollback — which holds bound-store records under
+	// `Reason: rollback` — and loses the distinction exactly once, silently.
+	if fromBoundStore(backup.Meta{Reason: constants.BackupReasonReloginUnattributable}) {
+		t.Error("the reason must not decide this; a derived backup keeps the records and changes the reason")
+	}
+	if !fromBoundStore(backup.Meta{Reason: constants.BackupReasonRollback, BoundStore: true}) {
+		t.Error("a rollback's pre-backup of bound-store records is still bound-store")
 	}
 	for _, r := range []string{
 		constants.BackupReasonSwitch, constants.BackupReasonRollback,
@@ -1111,5 +1117,224 @@ func TestBoundStoreBackupIsNeverRedirectedToTheRealHome(t *testing.T) {
 		if fromBoundStore(backup.Meta{Reason: r}) {
 			t.Errorf("%s records the tool's global store, so it must keep the moved-store check", r)
 		}
+	}
+}
+
+// A bound-store backup records **one directory's** store, so restoring it must move no
+// global state. Four consumers treated it as a statement about the global store, and the
+// first two compose into a mis-filing that nothing offline can detect afterwards. All four
+// were measured 2026-08-08 by an independent review; before it, nothing here failed when
+// the global side effects were removed, which is what let them ship.
+func TestRollbackOfABoundStoreBackupTouchesNothingGlobal(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+	// zeta's snapshot is deliberately *newer* than the copy the backup will record. That
+	// is what makes the superseded-credential warning's arm reachable: without it the
+	// absence asserted below holds because nothing was going to be printed anyway, which
+	// is the "passes for another reason" trap this package has measured repeatedly.
+	captureClaudeAt(t, app, "zeta", "sk-ant-oat01-ZETA-TOKEN-tttt", now.Add(30*time.Hour))
+
+	// Global active is zeta when the backup is taken, and side when it is restored. They
+	// must differ, or restoring `ActiveBefore` writes back the value already there and the
+	// state comparison below cannot see the write at all.
+	if code := runSwitch(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "zeta"); code != constants.ExitOK {
+		t.Fatalf("seed switch to zeta: %d", code)
+	}
+
+	_, siblingStore, credFile := boundStoreForClaudeMain(t, app)
+	_, _, _ = boundStoreForClaudeMain(t, app)
+	// The disagreement lives in the sibling, so the login flow writing its own identity in
+	// the acting directory cannot resolve it.
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("zeta-uuid"))
+	const atRisk = "sk-ant-oat01-ATRISK-pppp"
+	writeFile(t, credFile, claudeOAuthPayload(atRisk, now.Add(8*time.Hour)))
+
+	withInteractive(t, loginInto(t, constants.ToolClaude, "sk-ant-oat01-FRESH-qqqq", "main-uuid",
+		now.Add(9*time.Hour), &[]string{}))
+	code, stderr := captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	metas, err := backup.List(app.Paths.BackupsDir())
+	if err != nil {
+		t.Fatalf("list backups: %v", err)
+	}
+	kept := backup.Meta{}
+	for _, m := range metas {
+		if m.Reason == constants.BackupReasonReloginUnattributable {
+			kept = m
+		}
+	}
+	if kept.ID == "" {
+		t.Fatalf("no preserved backup to roll back to: %q", stderr)
+	}
+	if !kept.BoundStore {
+		t.Fatal("the backup must record that it came from a bound store")
+	}
+	// Positive control on the fixture: the recorded pointer must differ from the one the
+	// rollback will find, or nothing below is observable.
+	if kept.ActiveBefore[constants.ToolClaude] != "zeta" {
+		t.Fatalf("the backup must record zeta as active, got %q", kept.ActiveBefore[constants.ToolClaude])
+	}
+
+	if code := runSwitch(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "side"); code != constants.ExitOK {
+		t.Fatalf("switch to side: %d", code)
+	}
+	homeIdentity := filepath.Join(app.Env.Home, ".claude.json")
+	writeFile(t, homeIdentity, claudeIdentityFile("side-uuid"))
+	stateBefore := readFile(t, app.Paths.StateFile())
+
+	code, stderr = captureStderr(t, func() int {
+		return runRollback(ctx, app, commonOpts{Format: formatText}, kept.ID)
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	// 1. The bound store really is restored — the backup still does its job.
+	if got := readFile(t, credFile); !strings.Contains(got, atRisk) {
+		t.Fatalf("the preserved copy must come back to the bound store: %s", got)
+	}
+	// 2. The real home's identity survives. The backup records the credential only, so
+	//    claude's identity-only artifact is unrecorded *by construction*, and the
+	//    unrecorded-identity sweep resolves specs globally — it blanked `~/.claude.json`.
+	if got := readFile(t, homeIdentity); !strings.Contains(got, "side-uuid") {
+		t.Errorf("the real home's identity must be untouched, got %q", got)
+	}
+	// 3. `state.Active` is not moved. `ActiveBefore` records which account was globally
+	//    active when one directory's copy was preserved — which says nothing about the
+	//    copy, since the reason it was preserved is that kae could not attribute it.
+	if got := readFile(t, app.Paths.StateFile()); got != stateBefore {
+		t.Errorf("a bound-store rollback must not write state.json:\n before %s\n after  %s", stateBefore, got)
+	}
+	// 4. And it may not warn about an ordering against an account it never established.
+	//    zeta's snapshot is newer than the recorded copy, so this arm is reachable.
+	if strings.Contains(stderr, "recorded an older claude credential") {
+		t.Errorf("kae could not attribute this copy, so it may not order it against an account: %q", stderr)
+	}
+}
+
+// The composite the two global side effects produced: the identity wipe removed the only
+// evidence the switch-away recapture refuses on, so the next ordinary `kae use` filed one
+// account's token under another's name — opaque afterwards, which is the outcome the whole
+// attribution model exists to prevent.
+func TestBoundStoreRollbackDoesNotLaunderTheNextSwitch(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+	if code := runSwitch(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "side"); code != constants.ExitOK {
+		t.Fatalf("seed switch: %d", code)
+	}
+	writeFile(t, filepath.Join(app.Env.Home, ".claude.json"), claudeIdentityFile("side-uuid"))
+
+	_, siblingStore, credFile := boundStoreForClaudeMain(t, app)
+	_, _, _ = boundStoreForClaudeMain(t, app)
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("zeta-uuid"))
+	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-ATRISK-rrrr", now.Add(8*time.Hour)))
+	withInteractive(t, loginInto(t, constants.ToolClaude, "sk-ant-oat01-FRESH-ssss", "main-uuid",
+		now.Add(9*time.Hour), &[]string{}))
+	code, stderr := captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	metas, _ := backup.List(app.Paths.BackupsDir())
+	kept := ""
+	for _, m := range metas {
+		if m.Reason == constants.BackupReasonReloginUnattributable {
+			kept = m.ID
+		}
+	}
+	if kept == "" {
+		t.Fatalf("no preserved backup: %q", stderr)
+	}
+	if code := runRollback(ctx, app, commonOpts{Format: formatText}, kept); code != constants.ExitOK {
+		t.Fatalf("rollback: %d", code)
+	}
+
+	// The ordinary next command. Positive control first: the real home still holds side's
+	// credential, so a recapture that runs at all is recapturing side's copy.
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "side"); !strings.Contains(got, sideToken) {
+		t.Fatalf("control: side's snapshot must still hold side's token: %s", got)
+	}
+	code, stderr = captureStderr(t, func() int {
+		return runSwitch(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "main")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, sideToken) {
+		t.Fatalf("side's token must not reach claude/main's snapshot: %s", got)
+	}
+}
+
+// A refusal that keeps recurring must not pile up copies of the credential it preserves.
+// `backup.Prune`'s own comment predicted this before the path existed — "a future path
+// emitting a preserved copy with no countable sibling would retain them forever" — and
+// the pre-flight refusal is that path: a pin-only workflow runs no command that writes a
+// countable backup, so nothing ever ages against. Measured 2026-08-08: every refusal left
+// another full credential in the secret store, and `kae backup` has no delete verb.
+//
+// The disagreement is planted in the **sibling**, not in this directory, so the login flow
+// writing its own identity here cannot resolve it — which is what makes the refusal recur.
+func TestReloginRefusalsDoNotPileUpPreservedCopies(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	app.Config.Security.BackupKeep = 2
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+
+	_, siblingStore, credFile := boundStoreForClaudeMain(t, app)
+	_, _, _ = boundStoreForClaudeMain(t, app)
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("zeta-uuid"))
+
+	const runs = 6
+	for i := range runs {
+		writeFile(t, credFile, claudeOAuthPayload(fmt.Sprintf("sk-ant-oat01-AT-RISK-%d", i),
+			now.Add(time.Duration(8+i)*time.Hour)))
+		withInteractive(t, loginInto(t, constants.ToolClaude, fmt.Sprintf("sk-ant-oat01-FRESH-%d", i),
+			"main-uuid", now.Add(time.Duration(20+i)*time.Hour), &[]string{}))
+		if code := runRelogin(ctx, app, commonOpts{Format: formatText}, ""); code != constants.ExitOK {
+			t.Fatalf("relogin %d: exit %d", i, code)
+		}
+	}
+
+	metas, err := backup.List(app.Paths.BackupsDir())
+	if err != nil {
+		t.Fatalf("list backups: %v", err)
+	}
+	preserved := 0
+	for _, m := range metas {
+		if m.Reason == constants.BackupReasonReloginUnattributable {
+			preserved++
+		}
+	}
+	// Positive control: the refusal really did recur, or this asserts a bound on nothing.
+	if preserved == 0 {
+		t.Fatalf("the fixture must keep refusing across %d runs, got no preserved backups", runs)
+	}
+	if preserved > app.Config.Security.BackupKeep {
+		t.Errorf("preserved copies must be bounded by backup_keep (%d), got %d of %d runs",
+			app.Config.Security.BackupKeep, preserved, runs)
+	}
+	// And the payloads go with the metadata, or the bound is on the index only while the
+	// secrets stay.
+	be := testBackend(t, app)
+	live := 0
+	for i := range runs {
+		for _, m := range metas {
+			for _, rec := range m.Artifacts {
+				if data, found, _ := be.Get(ctx, rec.SecretRef); found &&
+					strings.Contains(string(data), fmt.Sprintf("AT-RISK-%d", i)) {
+					live++
+				}
+			}
+		}
+	}
+	if live > app.Config.Security.BackupKeep {
+		t.Errorf("credential payloads must be pruned with their metadata, %d still readable", live)
 	}
 }

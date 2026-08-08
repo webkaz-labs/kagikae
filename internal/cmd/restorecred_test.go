@@ -896,7 +896,7 @@ func TestToolsToRestoreSkipsTheSupersededToolInEitherOrder(t *testing.T) {
 	}
 	st.Active[constants.ToolClaude] = "main"
 	st.Active[constants.ToolCodex] = "main"
-	meta, err := app.createBackup(ctx, be, []toolPlan{claudePlan, codexPlan}, st, "run")
+	meta, err := app.createBackup(ctx, be, []toolPlan{claudePlan, codexPlan}, st, "run", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1128,7 +1128,7 @@ func TestRollbackSaysNothingAboutABackupWithNoActiveAccount(t *testing.T) {
 	}
 	// The state a login flow on a fresh install backs up against: a live credential, and
 	// nothing recorded as active.
-	meta, err := app.createBackup(ctx, testBackend(t, app), []toolPlan{plan}, state.New(), "login")
+	meta, err := app.createBackup(ctx, testBackend(t, app), []toolPlan{plan}, state.New(), "login", false)
 	if err != nil {
 		t.Fatal(err)
 	}

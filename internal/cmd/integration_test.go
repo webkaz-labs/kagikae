@@ -688,7 +688,7 @@ func TestLoginChangedAuthIgnoresIdentityArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	meta, err := app.createBackup(ctx, be, []toolPlan{plan}, st, "login")
+	meta, err := app.createBackup(ctx, be, []toolPlan{plan}, st, "login", false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1613,6 +1613,16 @@ human (text) report only; `--json` still emits the report shown above.
 
 Ordering: newest first.
 
+**A backup taken from a bound store restores that store and nothing else.** Today that is
+`relogin-unattributable` (the pre-flight refusal's preserved copy), and `kae rollback --to
+<id>` on one puts the copy back where it was taken from — it does **not** move
+`state.Active`, does not touch the real home's identity cache, and says nothing about how
+the copy orders against any account. All three would rest on `active_before`, which for
+such a backup records only which account happened to be globally active when one
+directory's copy was preserved; the reason the copy was preserved at all is that kae could
+not attribute it. [DATA-MODEL.md](DATA-MODEL.md) § Backups is normative for the field that
+records this and for why it is recorded rather than derived.
+
 ### `kae rollback --json`
 
 ```json

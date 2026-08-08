@@ -2,10 +2,8 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -34,82 +32,78 @@ func pinHereAs(t *testing.T, app *App, profile, mode string) string {
 	}
 	var code int
 	var out string
-	runner.With(&pinFixtureRunner{}, func() {
+	pin := func() {
 		code, out = captureStdout(t, func() int {
 			return runPin(context.Background(), app, commonOpts{Format: formatText}, profile, mode)
 		})
-	})
+	}
+	// Only when the caller has installed nothing. 8 of this helper's call sites run
+	// inside their own `runner.With`, and shadowing it is not neutral: their fake is
+	// what the test then asserts on, so a pin whose `add-generic-password` lands in a
+	// throwaway leaves the caller's simulator holding no account — which turns its
+	// account-scoping arm into an unconditional match and stops it killing a mutation
+	// of the account kae writes. Measured: `DeleteItemForAccount`'s account mutated,
+	// killed by TestUnpinPurgeRemovesACredentialNothingElseBinds before shadowing and
+	// survived after. Shadowing also un-fakes every *other* command for those sites,
+	// which sent `ensureGitExcluded` to real git.
+	if _, none := runner.Default.(runner.OSRunner); none {
+		runner.With(pinFixtureRunner{}, pin)
+	} else {
+		pin()
+	}
 	mustExit(t, constants.ExitOK, code, out)
 	return cwd
 }
 
-// pinFixtureRunner emulates the `security` CLI in memory and hands every other
-// command to the real runner, because a pin also asks git where the repository
-// root is and that answer is part of what the fixtures set up.
+// pinFixtureRunner answers the `security` CLI as an empty keychain — every lookup
+// misses, every write and delete succeeds — and hands every other command to the
+// real runner.
 //
 // It exists because pinHereAs used to call runPin with **no runner installed at
 // all**, and a pin whose adapter resolves to the keychain driver then ran the real
-// `security`. That is not hypothetical in either direction. On darwin it wrote a
-// genuine login-keychain item per pin: 956 `Claude Code-credentials-*` items under
-// claude's fallback account were found on the operator's machine on 2026-08-09,
-// 448 and 508 of them created on the two days this branch was developed — from
-// `mise run check`, the gate AGENTS.md says must never touch the real environment.
-// On linux there is no `security`, so the same call made the pin exit 1 and two
-// tests failed — which is how CI found it, on this branch's first ever CI run.
+// `security`. Not hypothetical in either direction. On darwin it wrote a genuine
+// login-keychain item per pin: 956 `Claude Code-credentials-*` items under claude's
+// fallback account were on the operator's machine on 2026-08-09, 448 and 508 of them
+// created on the two days this branch was developed — by `mise run check`, the gate
+// AGENTS.md says must never touch the real environment. On linux there is no
+// `security`, so the same call made the pin exit 1 and two tests failed, which is how
+// CI found it on this branch's first ever CI run.
 //
-// Keyed by service **and** account rather than holding one item, because a pin
-// writes one item per bound directory and these fixtures bind more than one; a
-// single-item fake would let one directory's write answer another's read.
-type pinFixtureRunner struct {
-	payload map[string]string
-	account map[string]string
-}
+// **Deliberately stateless, and the reason is a measurement rather than taste.** An
+// earlier version stored what it was told and replayed it. Eleven mutations of that
+// version — always-miss, store-nothing, drop the `-a` scoping either way, empty
+// payload, empty account, key by service+account, a shared instance — every one of
+// them survived the whole package. Nothing here is a subject; no caller asserts on a
+// value this fixture produced, so a store is state no test can observe, and the two
+// rationales the earlier comment gave for its shape (that a pin's git answer is
+// needed, that the keying must be service+account) were both refuted by their own
+// mutants. Per AGENTS.md that reason belongs in a comment rather than in a test that
+// cannot fail. What the callers do need is only that the pin **succeeds**: a write
+// that reports 0 and a lookup that is honest about an empty keychain.
+//
+// The pass-through is not decoration either: `ensureGitExcluded` asks git for the
+// common dir and the prefix, and answering that from here would be inventing a repo
+// layout. It goes to the same git the parent commit used.
+type pinFixtureRunner struct{}
 
-func (p *pinFixtureRunner) Run(ctx context.Context, name string, args ...string) (string, string, int) {
+func (p pinFixtureRunner) Run(ctx context.Context, name string, args ...string) (string, string, int) {
 	if name != "security" || len(args) == 0 {
 		return runner.OSRunner{}.Run(ctx, name, args...)
 	}
-	if p.payload == nil {
-		p.payload, p.account = map[string]string{}, map[string]string{}
-	}
-	svc := valueAfter(args, "-s")
-	notFound := "security: " + keychain.NotFoundMarker
 	switch args[0] {
-	case "find-generic-password":
-		stored, ok := p.account[svc]
-		if !ok {
-			return "", notFound, 44
-		}
-		// An account-scoped read sees the item only when the accounts agree: service
-		// plus account is how a service holding more than one legitimate item is
-		// addressed, and kae's own guard requires every keychain spec to be scoped.
-		if want := valueAfter(args, "-a"); want != "" && stored != "" && want != stored {
-			return "", notFound, 44
-		}
-		if slices.Contains(args, "-w") {
-			return p.payload[svc], "", 0
-		}
-		return fmt.Sprintf("keychain: \"login\"\nattributes:\n    \"acct\"<blob>=\"%s\"\n", stored), "", 0
-	case "add-generic-password":
-		p.payload[svc] = valueAfter(args, "-w")
-		p.account[svc] = valueAfter(args, "-a")
-		return "", "", 0
-	case "delete-generic-password":
-		stored, ok := p.account[svc]
-		if !ok {
-			return "", notFound, 44
-		}
-		if want := valueAfter(args, "-a"); want != "" && stored != "" && want != stored {
-			return "", notFound, 44
-		}
-		delete(p.payload, svc)
-		delete(p.account, svc)
+	case "add-generic-password", "delete-generic-password":
 		return "", "", 0
 	}
-	return "", "", 0
+	return "", "security: " + keychain.NotFoundMarker, 44
 }
 
-func (p *pinFixtureRunner) RunInput(ctx context.Context, _ string, name string, args ...string) (string, string, int) {
+// RunInput forwards stdin, because the pass-through reaches real programs that read
+// it — `secret-tool store` takes the secret that way, so dropping it here would run a
+// real credential helper against an empty payload.
+func (p pinFixtureRunner) RunInput(ctx context.Context, stdin, name string, args ...string) (string, string, int) {
+	if name != "security" || len(args) == 0 {
+		return runner.OSRunner{}.RunInput(ctx, stdin, name, args...)
+	}
 	return p.Run(ctx, name, args...)
 }
 

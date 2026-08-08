@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
 // The auth_missing sentence went from a pre-assembled string through `errf("%s", msg)` to a
@@ -42,7 +45,18 @@ func TestR6OnlyClaudeCanBeDeclined(t *testing.T) {
 		for _, goos := range []string{"darwin", "linux"} {
 			app := testApp(t, nil)
 			app.Env.GOOS = goos
-			plan, err := app.planTool(t.Context(), tool, "main")
+			// `planTool` resolves a keychain-backed tool by *reading* the store, and with
+			// no runner installed that read went to the operator's own login keychain. It
+			// never wrote, so this is not the pollution `pinHereAs` caused — but the
+			// `continue` below is decided by whether the read found anything, so which
+			// tools this guard actually inspected depended on which accounts the person
+			// running it happened to be logged into. A developer and CI checked different
+			// sets. A uniform miss makes the set the same everywhere.
+			var plan toolPlan
+			var err error
+			runner.With(&runnertest.Fake{Code: 44, Stderr: "security: " + keychain.NotFoundMarker}, func() {
+				plan, err = app.planTool(t.Context(), tool, "main")
+			})
 			if err != nil {
 				continue // a tool this platform cannot resolve cannot be declined either
 			}

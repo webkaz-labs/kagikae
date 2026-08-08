@@ -437,7 +437,8 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 			tool, accountName, err)
 		return false
 	}
-	_, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot)
+	_, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot,
+		attributionSource{Dir: dirs.Config})
 	switch {
 	// Either harvested — harvestDirCredential says so itself — or the snapshot already
 	// holds a copy at least as new, which is the ordinary outcome of re-running this

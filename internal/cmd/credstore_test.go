@@ -318,6 +318,43 @@ func TestUnpinPurgeRemovesAFileCredentialFromTheAccountStore(t *testing.T) {
 	}
 }
 
+// The purge that has something to lose, which the test above cannot reach: its store
+// holds the copy the bind wrote from the snapshot, so the harvest returns at the
+// timestamp comparison and attribution is never asked.
+//
+// The two gates are otherwise **mutually exclusive by construction**, and that is worth
+// stating because it is not visible from either one. A per-account store may only be
+// deleted once nothing points at it (`credStoreRefs == 0`), and the readers attribution
+// asks about are enumerated from the same two sources — so at the moment the delete is
+// allowed there is by definition no reader left to confirm the copy, and a refusal here
+// is a deletion rather than a conservative choice. The directory being torn down is the
+// honest witness: it read that credential until `runUnpin` removed its fragment moments
+// earlier. Found by review, 2026-08-08.
+func TestUnpinPurgeHarvestsANewerCopyBeforeRemovingIt(t *testing.T) {
+	app := overlayTestApp(t) // linux: the file driver
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, storeDir := bindClaudeHere(t, app, "main")
+	// The tool refreshed the account's copy in place since the bind.
+	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
+	credFile := dirCredFile(app, constants.ToolClaude, "main", storeDir)
+	writeFile(t, credFile, claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+
+	if code, out := captureStdout(t, func() int { return runUnpin(ctx, app, opts, true) }); code != constants.ExitOK {
+		t.Fatalf("unpin --purge exit %d: %s", code, out)
+	}
+
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
+		t.Fatalf("the last binding's purge must harvest before it deletes: %s", got)
+	}
+	if got := readFile(t, credFile); strings.Contains(got, refreshed) {
+		t.Fatalf("and then remove it: %s", got)
+	}
+}
+
 // A globally isolated home bound before the split still holds its own copy, and it
 // has no pin, so neither the pin-level pass nor any sweep reaches it. Without a
 // migration of its own, `kae use -i` writes the account snapshot into the credential

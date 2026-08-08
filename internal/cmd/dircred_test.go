@@ -503,14 +503,13 @@ func TestWriteDirCredentialHarvestsNewerLiveCredential(t *testing.T) {
 // free to run backwards and overwrite a good snapshot from a directory nobody has
 // opened in weeks.
 func TestWriteDirCredentialKeepsSnapshotWhenLiveIsOlder(t *testing.T) {
-	app := testApp(t, nil)
+	app := overlayTestApp(t)
 	ctx := context.Background()
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(8*time.Hour))
-	credDir := t.TempDir()
+	_, credDir := bindClaudeHere(t, app, "main")
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
 		claudeOAuthPayload("sk-ant-oat01-MAIN-OLD-dddd", now.Add(time.Hour)))
-	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
@@ -815,6 +814,179 @@ func TestUseIsolatedHarvestsWithTheGlobalHomeAsEvidence(t *testing.T) {
 	}
 }
 
+// A sibling's disagreement is not a licence for an unrelated bind to spend the copy. The
+// readers all name another account, so the copy is a live login of *somebody's* — but the
+// directory being bound is not one of them and has no reading of its own, so it takes the
+// keep branch with everything else that cannot establish an owner.
+//
+// Introduced by the first version of the witness model and caught by review, 2026-08-08:
+// `Conflicting` was returned whenever every reader that could speak conflicted, with no
+// requirement that this directory be one of them. A majority of one is not different from a
+// majority — and here it destroyed the only copy of the sibling's login, which the bind
+// *before* the witness model had kept.
+func TestRunPinDoesNotSpendACopyOnlyASiblingDisagreesAbout(t *testing.T) {
+	app := overlayTestApp(t)
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, siblingStore := bindClaudeHere(t, app, "main")
+	// A login as side inside the sibling. Its cache names side and the account's store now
+	// holds side's refreshed token — the only copy of it anywhere, since claude/side has
+	// never been captured.
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("side-uuid"))
+	const sideLive = "sk-ant-oat01-SIDE-LIVE-eeee"
+	credFile := dirCredFile(app, constants.ToolClaude, "main", siblingStore)
+	writeFile(t, credFile, claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
+
+	// A brand-new directory, which has never read that store. pinHere rather than
+	// bindClaudeHere: this bind is expected to keep the copy, so it writes no identity
+	// label and that fixture's control would fail for the right reason.
+	pinHere(t, app, modeShared)
+
+	if got := readFile(t, credFile); !strings.Contains(got, sideLive) {
+		t.Fatalf("a bind that reads nothing must not spend a login its readers say is somebody's: %s", got)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, sideLive) {
+		t.Fatalf("and must not file it under this account either: %s", got)
+	}
+}
+
+// A **pre-split** binding keeps its credential inside its own store, so it does not read
+// the account's — and the witness filter has to say that from the fragment's recorded
+// entry rather than by composing the account's store path from the account it binds.
+// Deriving it counts such a directory as a reader and lets its label attribute a copy it
+// never reads; that mutation survived the whole suite (execution-type review, 2026-08-08).
+func TestAPreSplitBindingDoesNotReadTheAccountStore(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, storeA := bindClaudeHere(t, app, "main")
+	dirB, storeB := bindClaudeHere(t, app, "main")
+	// B is left in the shape a kae from before the split produced, and someone logged in
+	// there as side. Its own store holds its own credential; it reads nothing of claude/main's.
+	makePreSplit(t, app, constants.ToolClaude, "main", dirB, storeB)
+	writeFile(t, filepath.Join(storeB, ".claude.json"), claudeIdentityFile("side-uuid"))
+
+	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", storeA), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+
+	be := testBackend(t, app)
+	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeA); err != nil {
+		t.Fatalf("writeDirCredential: %v", err)
+	}
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
+		t.Fatalf("a pre-split binding reads its own store, so its label must not veto this harvest: %s", got)
+	}
+}
+
+// A reader that cannot speak does not veto one that can: with one directory confirming and
+// another that has no cache yet, the copy is still this account's and is still harvested.
+// Requiring silence to be empty survived the suite (execution-type review, 2026-08-08).
+func TestAReaderWithNothingToSayDoesNotVetoOneThatConfirms(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, confirming := bindClaudeHere(t, app, "main")
+	_, mute := bindClaudeHere(t, app, "main")
+	if err := os.Remove(filepath.Join(mute, ".claude.json")); err != nil {
+		t.Fatal(err) // the ordinary state until the tool has run in that directory
+	}
+
+	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", confirming), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+
+	be := testBackend(t, app)
+	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", confirming); err != nil {
+		t.Fatalf("writeDirCredential: %v", err)
+	}
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
+		t.Fatalf("a reader with nothing to say must not veto one that confirms: %s", got)
+	}
+}
+
+// With **two** readers that cannot speak, neither one's reason may be reported: it would
+// describe one directory as if it described the store. The single-reader carry above it is
+// what makes that distinction worth pinning — collapsing both into one arm survived the
+// suite either way round (execution-type review, 2026-08-08).
+func TestTwoReadersThatCannotSpeakGetTheirOwnReason(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, mute := bindClaudeHere(t, app, "main")
+	if err := os.Remove(filepath.Join(mute, ".claude.json")); err != nil {
+		t.Fatal(err)
+	}
+	_, unreadable := bindClaudeHere(t, app, "main")
+	// Well-formed JSON that names no account: a different reason from the one above, so a
+	// carry of either would be visible.
+	writeFile(t, filepath.Join(unreadable, ".claude.json"), `{"oauthAccount":null,"projects":{}}`)
+
+	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", unreadable), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+
+	be := testBackend(t, app)
+	_, stderr := captureStderr(t, func() int {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", unreadable); err != nil {
+			t.Fatalf("writeDirCredential: %v", err)
+		}
+		return 0
+	})
+	if !strings.Contains(stderr, "no directory that reads this credential could attribute it") {
+		t.Fatalf("two silent readers must get the reason that describes the store: %q", stderr)
+	}
+	if strings.Contains(stderr, "the directory holds no identity cache to compare") ||
+		strings.Contains(stderr, "kae cannot read the identity records it would compare") {
+		t.Fatalf("neither reader's own reason may stand in for the store's: %q", stderr)
+	}
+}
+
+// `kae run -i` prepares the same per-account home `kae use -i` does and **never writes
+// state.synced** — so a witness set sourced from that map left it with no reader at all,
+// and every run after the first kept the copy instead of harvesting it, leaving the account
+// snapshot holding a credential single-use rotation had already invalidated. Found by
+// review, 2026-08-08; the witnesses are read from disk for exactly this.
+func TestRunIsolatedHomeIsAWitnessWithoutStateSynced(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	be := testBackend(t, app)
+
+	// The one call `kae run -i` makes per target (run.go); nothing else about that path
+	// touches the credential.
+	if _, err := app.prepareGlobalIsolatedHome(ctx, be, constants.ToolClaude, "main", false); err != nil {
+		t.Fatalf("prepare isolated home: %v", err)
+	}
+	home := app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")
+	if got := readFile(t, filepath.Join(home, ".claude.json")); !strings.Contains(got, "main-uuid") {
+		t.Fatalf("the home must carry the identity that attributes the store: %q", got)
+	}
+	// The whole point of the fixture: this path records nothing in state.synced, so a
+	// witness set read from there would be empty. Asserted rather than assumed — if
+	// `run -i` ever starts recording it, this test stops covering the disk source and
+	// says so instead of passing for the other reason.
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, recorded := st.Synced[constants.ToolClaude]; recorded {
+		t.Fatal("this fixture only covers the disk source while run -i leaves state.synced alone")
+	}
+
+	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", home),
+		claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	if _, err := app.prepareGlobalIsolatedHome(ctx, be, constants.ToolClaude, "main", false); err != nil {
+		t.Fatalf("prepare isolated home again: %v", err)
+	}
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
+		t.Fatalf("the home is the only reader, and its evidence must let the copy be harvested: %s", got)
+	}
+}
+
 // The other side of the same seam, and the reason the guard is keyed on *why* the
 // harvest refused rather than on the refusal alone: positive evidence that the copy is
 // somebody else's means this account's credential is elsewhere and fine, so the bind
@@ -860,15 +1032,14 @@ func TestWriteDirCredentialStillReplacesAConflictingCopy(t *testing.T) {
 // and manual deletion the only escape. The trade-off is docs/ROADMAP.md's to settle; the
 // behaviour here is the one that shipped.
 func TestWriteDirCredentialStillReplacesAnUnreadableCopy(t *testing.T) {
-	app := testApp(t, nil)
+	app := overlayTestApp(t)
 	ctx := context.Background()
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	credDir := t.TempDir()
+	_, credDir := bindClaudeHere(t, app, "main")
 	// Structurally valid for the artifact layer, but carrying no field kae can date.
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
 		`{"claudeAiOauth":{"accessTokenRenamedUpstream":"live-and-working"}}`)
-	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
@@ -894,11 +1065,11 @@ func TestWriteDirCredentialStillReplacesAnUnreadableCopy(t *testing.T) {
 // "there is a login here". Harvesting one would overwrite a working snapshot with a
 // dead credential, which no later kae command could undo.
 func TestWriteDirCredentialDoesNotHarvestTombstone(t *testing.T) {
-	app := testApp(t, nil)
+	app := overlayTestApp(t)
 	ctx := context.Background()
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	credDir := t.TempDir()
+	_, credDir := bindClaudeHere(t, app, "main")
 	// Blank tokens with a deadline still in the future: only Revoked separates this
 	// from a healthy copy.
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir), fmt.Sprintf(
@@ -1310,14 +1481,13 @@ func TestWriteDirCredentialPrefersAUsableCopyOverATombstonedSnapshot(t *testing.
 // only holds as an argument while the comparison stays strict. Loosening it to
 // `>=` survived the suite (execution-type review, round 3).
 func TestWriteDirCredentialDoesNotHarvestAnEqualDeadline(t *testing.T) {
-	app := testApp(t, nil)
+	app := overlayTestApp(t)
 	ctx := context.Background()
 	deadline := app.Now().Add(time.Hour)
 	captureClaudeAt(t, app, "main", mainToken, deadline)
-	credDir := t.TempDir()
+	_, credDir := bindClaudeHere(t, app, "main")
 	const other = "sk-ant-oat01-SAME-DEADLINE-dddd"
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir), claudeOAuthPayload(other, deadline))
-	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 
 	be := testBackend(t, app)
 	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir); err != nil {
@@ -1621,13 +1791,12 @@ func TestWriteDirCredentialDoesNotHarvestUndatedCredential(t *testing.T) {
 		{"an expiresAt of the wrong type", `{"accessToken":"sk-ant-oat01-UNDATED-ffff","refreshToken":"r","expiresAt":"1814400000000"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			app := testApp(t, nil)
+			app := overlayTestApp(t)
 			ctx := context.Background()
 			captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
-			credDir := t.TempDir()
+			_, credDir := bindClaudeHere(t, app, "main")
 			writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
 				`{"claudeAiOauth":`+tc.oauth+`}`)
-			writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 
 			be := testBackend(t, app)
 			_, stderr := captureStderr(t, func() int {

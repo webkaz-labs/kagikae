@@ -418,6 +418,19 @@ func boundToolList(fragment fragmentInfo) string {
 // account's, which on the arm that matters most is precisely what kae could not
 // establish.
 //
+// **What it does not do is back the copy up, and that is a decision rather than an
+// oversight** (docs/ROADMAP.md § A relogin's pre-flight refusal owes a backup it cannot
+// safely take yet). AGENTS.md's rule is that a refusal which cannot preserve is a
+// deletion and owes a backup, the way `kae run -s` answers its own with
+// `run-unattributable` — and by that rule this owes one. What stops it being a
+// ride-along is where a restore of such a backup would land: `createBackup` records the
+// spec it was handed, but `applyBackup` re-resolves today's specs **globally** and
+// `restoreSpec` prefers the live one whenever its `Kind` differs from the record's — so
+// a bound store's backup taken under one driver and restored under another writes into
+// the **real home**, which is a worse outcome than the loss it insures against. The
+// warning is the part that is safe today, and it reaches the user while the action that
+// prevents the loss — not completing the flow — is still available.
+//
 // Every guard is harvestDirCredential's, unchanged, so this is silent in the ordinary
 // case: a store holding nothing newer than the snapshot returns preserved with no
 // output, and one holding this account's own refreshed copy is harvested (which is
@@ -427,13 +440,31 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 	specs []artifact.Spec, tool, accountName string, dirs bindDirs,
 ) {
 	artName := credentialArtifactName(tool)
-	if !rotatesSingleUse(tool) || artName == "" || specs == nil {
+	if !rotatesSingleUse(tool) || artName == "" {
+		// Nothing older is invalidated by this login, so there is nothing to lose and
+		// nothing to say (docs/ROADMAP.md § Rotation is measured for claude only).
+		return
+	}
+	// The two routes on which kae cannot even look. Silence here would be the defect
+	// this whole pass exists for, one level up: "kae could not check" and "there was
+	// nothing worth keeping" are the same output and opposite facts, and the one thing
+	// the user can still act on — not completing the flow — is only available *before*
+	// it starts. So both say so, and neither offers a remedy, because kae has none.
+	// The post-flow half reports its own read, which is a different read at a different
+	// time; deferring to it would describe the loss after it happened.
+	if specs == nil {
+		// The pre-flow resolution is deliberately quiet (the post-flow one decides whether
+		// the capture back can happen), so without this line it fails silently.
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: kae could not resolve where %s keeps this directory's credential, so it cannot "+
+				"tell what the login flow is about to replace\n", tool)
 		return
 	}
 	acc, snapshot, _, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
 	if err != nil {
-		// captureBackAfterRelogin reports an unreadable snapshot after the flow, where it
-		// also decides the success wording; saying it twice about one read adds nothing.
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: kae could not read snapshot %s/%s (%v), so it cannot tell what the login flow "+
+				"is about to replace in %s\n", tool, accountName, err, dirs.credDirOrConfig())
 		return
 	}
 	_, preserved, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot,

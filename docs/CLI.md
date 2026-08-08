@@ -212,12 +212,13 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   state is backed up (`reason: "run"`), the target accounts applied, and after
   the child exits kae **re-resolves each tool's credential store**, then
   **recaptures refreshed credentials into the account snapshots** and restores the
-  previous live state. The re-resolution matters because the child can move the
-  credential to the tool's other store (codex under
-  `cli_auth_credentials_store = "auto"` creates its keychain item and deletes
-  `auth.json` on its first save); reading the pre-run store instead would report
-  the tool as logged out and restore into a file nothing reads. (This is the former
-  `auth` mode.)
+  previous live state. What the re-resolution buys is visible from the command
+  line: without it a child that moved its credential to the tool's other store
+  leaves kae reading the one the tool abandoned, so `kae run` reports the tool
+  logged out and restores into a file nothing reads.
+  [ARCHITECTURE.md](ARCHITECTURE.md) § Run Transaction owns which upstream behaviour makes
+  that reachable and what the restore then reconciles. (This is the former `auth`
+  mode.)
   That recapture applies **the same two guards a shared switch applies to its own**
   (above), and no third: a child that logged in as another account, or one that changed
   the identity cache to something kae cannot read as a record, leaves the snapshot alone

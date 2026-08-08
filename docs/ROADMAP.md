@@ -490,6 +490,28 @@ alternative exists (`secret-tool`).
   different class from a walk of everyone's caches — which is a deliberate override of the
   reader set and wants its own measurement rather than a late edit to the shared predicate.
 
+- **A relogin's pre-flight refusal owes a backup it cannot safely take yet** (recorded
+  2026-08-08 by an independent review of the pre-flight itself, **not fixed**).
+  [AGENTS.md](../AGENTS.md) states the rule the pre-flight falls under: a refusal that
+  cannot preserve is a deletion, so it owes a backup the way `kae run -s`'s recapture
+  answers its own with reason `run-unattributable`. `preserveBeforeRelogin` refuses on
+  exactly the copy `kae pin` kept and pointed at this command — the two route through one
+  `harvestDirCredential`, so a copy the bind could not attribute is a copy the relogin
+  cannot attribute either — and then the tool's login replaces it. Today that is loud
+  rather than silent, and the action that prevents it (not completing the flow) is still
+  available when the warning prints; it is not recoverable.
+  What stops the backup being a ride-along is **where a restore of one would land**, which
+  is the half a reading of `createBackup` alone does not reach: `createBackup` records the
+  spec it is handed, but `applyBackup` re-resolves today's specs **globally**, and
+  `restoreSpec` prefers the live spec whenever its `Kind` differs from the record's. A
+  bound store's backup taken under one credential driver and restored under another
+  therefore writes into the **real home** — a global logout in place of a local one, which
+  is worse than the loss it insures against, and the same "a record from one environment
+  applied in another" shape the `keychain_account` removal in v0.16.0 turned on. So the
+  backup wants the restore path to understand a bound-store record first (or an explicit
+  `--to`-only class of backup that is never redirected), which is its own change and its
+  own review. Nothing about it is urgent while the refusal is loud and pre-flight.
+
 - **A payload kae can neither read nor date is still overwritten by a bind, and that is
   a decision rather than an oversight** (recorded 2026-08-08, **not fixed**). The bind now
   keeps a newer copy it could not *attribute* in the account's credential store, because

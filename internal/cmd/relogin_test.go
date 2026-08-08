@@ -810,16 +810,26 @@ func TestReloginSaysWhatTheLoginFlowIsAboutToReplace(t *testing.T) {
 	// fixture harvests silently, so the warning above is the refusal and not a line
 	// this path always prints.
 	writeFile(t, filepath.Join(storeDir, ".claude.json"), claudeIdentityFile("main-uuid"))
-	// Later than the copy the first run's login left in the snapshot, or the harvest
-	// returns at its "nothing newer" arm and this control passes without reaching the
-	// attribution it is controlling for.
-	writeFile(t, credFile, claudeOAuthPayload(foreign, now.Add(12*time.Hour)))
+	// Three distinct deadlines, in the order a real machine produces them: the copy in
+	// the store is later than what the first run's login left in the snapshot (or the
+	// harvest returns at its "nothing newer" arm and this control never reaches the
+	// attribution it is controlling for), and the login is later again. Dating the store
+	// copy *past* the login instead makes captureBackAfterRelogin short-circuit at
+	// `!supersedes` — a state no real login reaches, since deadlines advance — and this
+	// control would then pass while exercising it.
+	const kept = "sk-ant-oat01-KEPT-hhhh"
+	writeFile(t, credFile, claudeOAuthPayload(kept, now.Add(10*time.Hour)))
+	const last = "sk-ant-oat01-LAST-iiii"
+	withInteractive(t, loginInto(t, constants.ToolClaude, last, "main-uuid", now.Add(11*time.Hour), &[]string{}))
 	code, stderr = captureStderr(t, func() int {
 		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
 	})
 	mustExit(t, constants.ExitOK, code, stderr)
 	if strings.Contains(stderr, "completing the login flow replaces it") {
 		t.Errorf("an attributable copy is harvested, not warned about: %q", stderr)
+	}
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, last) {
+		t.Fatalf("the login is the newest copy here, so the capture back must have run: %s", got)
 	}
 	// Harvested rather than merely not-warned-about, and **before** the flow: the
 	// post-flow capture back would report the same line about the login's own copy, so
@@ -870,5 +880,47 @@ func TestReloginPreFlightDoesNotClaimAnOrderingItCannotMake(t *testing.T) {
 	}
 	if strings.Contains(stderr, "is newer than snapshot") {
 		t.Errorf("kae could not order these two copies, so it may not call one newer: %q", stderr)
+	}
+}
+
+// "kae could not look" and "there was nothing worth keeping" are the same output and
+// opposite facts, and the only thing the user can still do about the second — not
+// complete the flow — is available *before* it starts. So the pre-flight says so on
+// the routes where it cannot even read the snapshot to compare against, rather than
+// deferring to the post-flow report, which describes the loss after it happened.
+func TestReloginSaysWhenItCannotCheckWhatTheFlowWillReplace(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, _, credFile := boundStoreForClaudeMain(t, app)
+	// Something worth losing is in the store, so this is not the "nothing there" case.
+	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-ATRISK-jjjj", now.Add(8*time.Hour)))
+
+	// The binding still names claude/main; the snapshot it would compare against is gone
+	// (an `kae account rm` between the bind and the login). The fragment is what relogin
+	// reads, so the command still runs.
+	if err := os.RemoveAll(app.Paths.AccountDir(constants.ToolClaude, "main")); err != nil {
+		t.Fatalf("remove the snapshot: %v", err)
+	}
+
+	withInteractive(t, loginInto(t, constants.ToolClaude, "sk-ant-oat01-NEW-kkkk", "main-uuid",
+		now.Add(9*time.Hour), &[]string{}))
+	code, stderr := captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	said := strings.Index(stderr, "cannot tell what the login flow is about to replace")
+	if said < 0 {
+		t.Fatalf("a read kae could not make must be said before the flow, not left silent: %q", stderr)
+	}
+	if launched := strings.Index(stderr, "complete the claude login flow"); launched < 0 || said > launched {
+		t.Errorf("and before it (said=%d launched=%d): %q", said, launched, stderr)
+	}
+	// No remedy: kae genuinely has none here, and inventing one would send the user at a
+	// command that cannot help.
+	if strings.Contains(stderr, "kae pin claude") {
+		t.Errorf("kae has no remedy for a snapshot it could not read: %q", stderr)
 	}
 }

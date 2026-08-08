@@ -210,7 +210,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		// Named by where the credential actually is, which is the account's own store
 		// once the two are split — naming the config dir would send the reader to a
 		// directory that holds no credential at all.
-		clause := dirCredentialNewerThanSnapshot(tool, dirs, accountName, refused.Why)
+		clause := dirCredentialRefusalClause(tool, dirs, accountName, refused)
 		switch {
 		case keepLiveCopy:
 			// The trailing clause says why the copy is not this bind's to spend, so it must
@@ -465,6 +465,20 @@ type harvestRefusal struct {
 	// one where kae can say what the directory will do next — run that other account — and
 	// a success line with no such sentence reads as "kae protected my credential".
 	ForeignToReaders bool
+	// Ordered records that kae **established** the copy in the store is newer than the
+	// snapshot, i.e. that the refusal happened past the `supersedes` gate. It is a fact
+	// about what kae measured, not about the refusal's kind, and it exists because the
+	// messages interpolate `Why` into a frame: one of the reasons is kae saying it
+	// *cannot* read or date that copy, so a frame calling it newer contradicts the
+	// reason four words later — the fold docs/CLI.md § `kae rollback --json` is
+	// normative against, measured on `kae use -i` (2026-08-08) and corrected once
+	// before in captureBackAfterRelogin.
+	//
+	// Set where the fact is known and read by the formatter, rather than re-derived at
+	// the call site as `Unattributed || Conflicting`: that expression is true today and
+	// is one new refusal away from being wrong, which is the shape this file has been
+	// bitten by (keepsUnattributedCopy says the same about its own predicate).
+	Ordered bool
 }
 
 // keepsUnattributedCopy reports whether a refusal leaves the newer copy where it is
@@ -483,14 +497,28 @@ func keepsUnattributedCopy(refused harvestRefusal, dirs bindDirs) bool {
 	return refused.Unattributed && dirs.Cred != ""
 }
 
-// dirCredentialNewerThanSnapshot is the half both of writeDirCredential's refusal
-// messages share. Extracted at the second occurrence rather than the third: the two
-// differ only in what they say kae *did* about it, and a prefix kept by hand in two
-// places is one edit away from describing the store by two different names.
-func dirCredentialNewerThanSnapshot(tool string, dirs bindDirs, accountName, why string) string {
+// dirCredentialRefusalClause is the half every refusal message shares: which credential,
+// where it is, which snapshot it was not harvested into, and why. Extracted at the second
+// occurrence rather than the third — a prefix kept by hand in two places is one edit away
+// from describing the store by two different names — and `kae relogin`'s pre-flight is the
+// third caller it was extracted for.
+//
+// **Two frames, and which one is used is a measurement, not a wording choice.** Past the
+// `supersedes` gate kae has established the copy is newer than the snapshot, and saying so
+// is the most useful thing it knows. Short of it — the copy kae could not read or date —
+// it has established no such thing, and the older single frame said "is newer than
+// snapshot" beside a reason that reads "kae cannot read or date the copy already there".
+// Measured on `kae use -i`, where no pin-level pass speaks first to suppress it.
+func dirCredentialRefusalClause(tool string, dirs bindDirs, accountName string, refused harvestRefusal) string {
+	if refused.Ordered {
+		return fmt.Sprintf(
+			"the %s credential already in %s is newer than snapshot %s/%s and kae is not harvesting it because %s",
+			tool, dirs.credDirOrConfig(), tool, accountName, refused.Why,
+		)
+	}
 	return fmt.Sprintf(
-		"the %s credential already in %s is newer than snapshot %s/%s and kae is not harvesting it because %s",
-		tool, dirs.credDirOrConfig(), tool, accountName, why,
+		"kae is not harvesting the %s credential already in %s into snapshot %s/%s because %s",
+		tool, dirs.credDirOrConfig(), tool, accountName, refused.Why,
 	)
 }
 
@@ -611,6 +639,11 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 		if !refused.Conflicting {
 			refused.Unattributed = true
 		}
+		// Reaching here means the `supersedes` gate above passed, so the ordering is
+		// something kae measured rather than assumed. Recorded on the way out, at the one
+		// point that knows it, because the formatter downstream has no way to tell this
+		// refusal from the un-orderable one otherwise.
+		refused.Ordered = true
 		return snapshot, false, refused
 	}
 	if err := be.Set(ctx, acc.Artifacts[artName].SecretRef, liveData); err != nil {

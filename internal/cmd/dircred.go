@@ -87,7 +87,9 @@ func warnUnisolatableCredential(err error, tool, account string) bool {
 // A keychain write that fails is returned, never downgraded to a plaintext
 // write. The fallback would look like success and reproduce the original defect:
 // a credential file in a directory whose tool reads the keychain first.
-func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool, accountName, configDir string) error {
+func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool, accountName, configDir string,
+	prev attributionSource,
+) error {
 	artName := credentialArtifactName(tool)
 	if artName == "" {
 		return nil // the tool has no credential kae materializes per directory
@@ -149,7 +151,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// sessions only: both modes name that account's credential store.) That is the pin-level pass
 	// (harvestSupersededDirCredentials), and both are needed: this one is the only
 	// harvest on the paths that have no pin at all (`kae use -i`, `kae run -i`).
-	data, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, data, attributionSource{Dir: dirs.Config})
+	data, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, data, attributionSource{Dir: dirs.Config, PrevKnown: prev.PrevKnown, PrevCred: prev.PrevCred})
 	// **A refusal that cannot preserve is a deletion, and here the store is not this
 	// directory's to spend.** When the credential is the *account's* (dirs.Cred is set,
 	// so the store is `credstore/<tool>/<account>` and its path names the account), every
@@ -509,9 +511,33 @@ func dirCredentialNewerThanSnapshot(tool string, dirs bindDirs, accountName, why
 // time the delete is allowed there is by construction no reader left to attribute the copy
 // it is about to destroy. Refusing there is a deletion rather than a conservative choice,
 // which is the inversion AGENTS.md records.
+//
+// PrevKnown / PrevCred are the acting directory's **own binding** as it stood before this
+// operation: which credential store it read, and whether the caller could read that at all.
+// They answer "is this directory a stranger to this store" without consulting the walk,
+// and that independence is the point. Derived from witness membership instead, the answer
+// collapsed to "kae cannot tell" whenever the walk was incomplete — which is a state a
+// *leftover store root elsewhere* can cause — so a keep on that arm left the previous
+// binding's label behind and the next run read it as this directory's own reading and
+// overwrote the copy. Measured 2026-08-08, the third defect of that family. The walk can
+// only fail about *other* directories; this one's binding is a single file.
+//
+// PrevKnown false means kae has not established anything, which is the safe default: a
+// globally isolated home has no binding and reads the account's store by construction, and
+// nothing is retracted. An empty PrevCred with PrevKnown true is a binding that predates
+// the per-account store, whose credential lived in its own config dir — a stranger to this
+// store, and its label is stale.
+//
+// Dropping the PrevKnown half is **unobservable today** and stays as a statement of intent:
+// the only caller that leaves it false is the globally isolated home, which is always one of
+// its own account's readers, so the harvest confirms rather than keeps and the retract is
+// never reached there. It stops being unobservable for any future caller that materializes a
+// directory without a binding to read.
 type attributionSource struct {
-	Dir     string
-	Unbound bool
+	Dir       string
+	Unbound   bool
+	PrevKnown bool
+	PrevCred  string
 }
 
 func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, specs []artifact.Spec,
@@ -1753,8 +1779,12 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	tool, credDir string, acc account.Account, src attributionSource,
 ) harvestRefusal {
 	witnesses, complete := app.credStoreWitnesses(credDir, tool)
+	notAReader := src.PrevKnown && src.PrevCred != credDir
 	if !complete {
-		return harvestRefusal{Why: "kae could not tell which directories read this credential"}
+		return harvestRefusal{
+			Why:                 "kae could not tell which directories read this credential",
+			ActingDirNotAReader: notAReader,
+		}
 	}
 	// A reader the caller has already unbound is still a reader for this question — see
 	// attributionSource. Appended rather than substituted: an unpin of one of several
@@ -1793,10 +1823,6 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 			confirmed++
 		}
 	}
-	// Computed once, before the arms, because it is a fact about the caller rather than
-	// about any one outcome: three of the arms below can be reached with the acting
-	// directory either in or out of the reader set.
-	notAReader := !slices.Contains(witnesses, src.Dir)
 	switch {
 	case confirmed > 0 && len(conflicting) > 0:
 		return harvestRefusal{
@@ -2088,7 +2114,7 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			continue // no snapshot to harvest into; the bind or the sweep reports it
 		}
 		_, _, refused := app.harvestDirCredential(ctx, be, specs, store.Tool, accountName, acc, store.dirs(), snapshot,
-			attributionSource{Dir: next[store.Tool].Config})
+			attributionSource{Dir: next[store.Tool].Config, PrevKnown: true, PrevCred: prev.CredDirs[store.Tool]})
 		// The one question both arms below need, asked once: does the write this bind is
 		// about to perform land on the very store being reported? Only then is the copy
 		// replaced — and only then may a message say so. A refusal that keeps is never a

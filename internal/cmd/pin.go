@@ -136,7 +136,14 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// child process runs during a bind — which is the one case both caches warn against.
 	ctx = keychain.WithReadCache(secret.WithReadCache(ctx))
 	be = secret.Cached(be)
-	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets, paths.PinID(absDir))
+	// Read before anything replaces it: the binding being replaced is the only thing
+	// that can name the account a *shared* store's credential belongs to (storeAccount),
+	// which both harvests below need — and it is what tells a keep whether the label in the
+	// directory it is materializing is this store's or a previous binding's. An unreadable
+	// one degrades to "unattributable", which the sweep reports and acts on by keeping the
+	// credential.
+	prevBinding, _, _ := readDirFragment()
+	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets, paths.PinID(absDir), prevBinding)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -144,11 +151,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err != nil {
 		return finish(opts, err)
 	}
-	// Read before anything replaces it: the binding being replaced is the only thing
-	// that can name the account a *shared* store's credential belongs to
-	// (storeAccount), which both harvests below need. An unreadable one degrades to
-	// "unattributable", which the sweep reports and acts on by keeping the credential.
-	prevBinding, _, _ := readDirFragment()
+
 	// Before the stores are written, not after: a re-bind to another account builds a
 	// *different* credential store from the account snapshot — as does a mode toggle for a
 	// binding that predates the per-account store — so the copy the tool

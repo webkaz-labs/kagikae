@@ -135,13 +135,15 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 		// unable to repair a bond dir that had been wiped, while the isolated
 		// branch below (preparePinConfig) could — an asymmetry with no reason
 		// behind it. prepareBond writes the credential too, and is idempotent.
-		sharedDir, err := app.prepareBond(ctx, be, tool, accountName, pinID)
+		sharedDir, err := app.prepareBond(ctx, be, tool, accountName, pinID,
+			attributionSource{PrevKnown: true, PrevCred: info.CredDirs[tool]})
 		if err != nil {
 			return finish(opts, fmt.Errorf("swap shared credential for %s: %w", tool, err))
 		}
 		boundDir = sharedDir
 	case paths.IsolatedSegment:
-		newDir, err := app.preparePinConfig(ctx, be, tool, accountName, pinID)
+		newDir, err := app.preparePinConfig(ctx, be, tool, accountName, pinID,
+			attributionSource{PrevKnown: true, PrevCred: info.CredDirs[tool]})
 		if err != nil {
 			return finish(opts, fmt.Errorf("prepare isolated config for %s/%s: %w", tool, accountName, err))
 		}

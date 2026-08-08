@@ -143,10 +143,10 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// one degrades to "unattributable", which the sweep reports and acts on by keeping the
 	// credential.
 	// The error is kept, not dropped: a fragment that exists and cannot be read means kae has
-	// established **nothing** about what this directory reads, and saying otherwise makes the
-	// keep retract a live label on the strength of a `PrevCred` that is empty only because
-	// the read failed (measured 2026-08-08). `readFragmentAt` returns an error for anything
-	// that is not "absent", and absent is a genuine answer.
+	// established **nothing** about what this directory was bound to, and saying otherwise
+	// makes the keep retract a live label on the strength of an emptiness that is only the
+	// read failing (measured 2026-08-08). `readFragmentAt` returns an error for anything that
+	// is not "absent", and absent is a genuine answer.
 	prevBinding, _, prevErr := readDirFragment()
 	prevKnown := prevErr == nil
 	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets, paths.PinID(absDir), prevBinding, prevKnown)

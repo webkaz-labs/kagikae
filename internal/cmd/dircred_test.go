@@ -989,6 +989,71 @@ func TestRunRebindKeepAlsoRetractsTheStaleLabel(t *testing.T) {
 	}
 }
 
+// **An isolated config dir is keyed by the account, so a label in it is never stale.** Every
+// label there was written while bound to that same account, so a disagreement can only be a
+// login as somebody else — live evidence. Re-binding *back* to an account this directory had
+// left is what proves it: that dir still exists (a re-bind keeps the stores it moves off)
+// with its label intact, and retracting it deletes the only record of whose the credential
+// is, after which an ordinary sibling confirms unopposed and files a foreign token.
+// Measured by review 2026-08-08, and it reaches `kae pin -i` as well as `kae pin <tool>`,
+// so both are exercised here.
+func TestAnIsolatedRebindBackKeepsTheLiveLabelInThatAccountsDir(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		back func(t *testing.T, app *App, ctx context.Context, opts commonOpts) int
+	}{
+		{"kae pin <tool> <account>", func(t *testing.T, app *App, ctx context.Context, opts commonOpts) int {
+			return runRebind(ctx, app, opts, constants.ToolClaude, "main")
+		}},
+		{"kae pin -i <profile>", func(t *testing.T, app *App, ctx context.Context, opts commonOpts) int {
+			return runPin(ctx, app, opts, "main", modeIsolated)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := overlayTestApp(t)
+			app.Config.Profiles["side"] = config.Profile{
+				Accounts: map[string]string{constants.ToolClaude: "side"},
+			}
+			chdirTemp(t)
+			ctx := context.Background()
+			opts := commonOpts{Format: formatText}
+			now := app.Now()
+			captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+			captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+			if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+				t.Fatalf("pin -i main exit %d", code)
+			}
+			cwd, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			mainDir := app.Paths.IsolatedConfigDir(paths.PinID(cwd), constants.ToolClaude, "main")
+			// A login as side inside claude/main's isolated store.
+			label := filepath.Join(mainDir, ".claude.json")
+			writeFile(t, label, claudeIdentityFile("side-uuid"))
+			const sideLive = "sk-ant-oat01-SIDE-LIVE-eeee"
+			writeFile(t, dirCredFile(app, constants.ToolClaude, "main", mainDir),
+				claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
+
+			// Away, then back.
+			if code := runRebind(ctx, app, opts, constants.ToolClaude, "side"); code != constants.ExitOK {
+				t.Fatalf("re-bind to side exit %d", code)
+			}
+			if code, out := captureStdout(t, func() int { return tc.back(t, app, ctx, opts) }); code != constants.ExitOK {
+				t.Fatalf("re-bind back exit %d: %s", code, out)
+			}
+
+			if got := readFile(t, label); !strings.Contains(got, "side-uuid") {
+				t.Fatalf("an isolated dir's label is never a previous binding's, so it is evidence: %q", got)
+			}
+			be := testBackend(t, app)
+			if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, sideLive) {
+				t.Fatalf("with that label gone the next reader confirms unopposed: %s", got)
+			}
+		})
+	}
+}
+
 // kae may not claim to have established what a directory reads when the read of its own
 // binding **failed**. `readFragmentAt` answers an unreadable fragment with an error and an
 // empty record, so dropping the error turns "kae could not look" into "this directory reads

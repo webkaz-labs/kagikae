@@ -91,19 +91,24 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 // keep may only retract an identity label it can show is stale, and the acting directory's
 // own previous binding is the thing that shows it (attributionSource).
 func (app *App) isolationPlan(ctx context.Context, be secret.Backend, mode string, targets []runTarget, pinID string, prev fragmentInfo, prevKnown bool) ([]isolationEntry, func(tool, account string) (string, error), error) {
-	acting := func(tool string) attributionSource {
-		return attributionSource{PrevKnown: prevKnown, PrevCred: prev.CredDirs[tool]}
+	// Only a shared bind can leave a stale label: its config dir is one per pin×tool, so a
+	// change of account makes whatever is in it kae's leftover. An isolated one is keyed by
+	// the account, so a disagreeing label there is a live login (attributionSource).
+	acting := func(tool, account string) attributionSource {
+		return attributionSource{
+			StaleLabel: prevKnown && mode == modeShared && prev.Accounts[tool] != account,
+		}
 	}
 	switch mode {
 	case modeShared:
 		return app.bondIsolationEntries(targets, pinID),
 			func(tool, account string) (string, error) {
-				return app.prepareBond(ctx, be, tool, account, pinID, acting(tool))
+				return app.prepareBond(ctx, be, tool, account, pinID, acting(tool, account))
 			}, nil
 	case modeIsolated:
 		return app.pinIsolationEntries(targets, pinID),
 			func(tool, account string) (string, error) {
-				return app.preparePinConfig(ctx, be, tool, account, pinID, acting(tool))
+				return app.preparePinConfig(ctx, be, tool, account, pinID, acting(tool, account))
 			}, nil
 	default:
 		return nil, nil, errf(constants.ExitError, "unknown per-directory bind kind %q", mode)

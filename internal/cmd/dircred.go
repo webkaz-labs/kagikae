@@ -151,7 +151,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 	// sessions only: both modes name that account's credential store.) That is the pin-level pass
 	// (harvestSupersededDirCredentials), and both are needed: this one is the only
 	// harvest on the paths that have no pin at all (`kae use -i`, `kae run -i`).
-	data, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, data, attributionSource{Dir: dirs.Config, PrevKnown: prev.PrevKnown, PrevCred: prev.PrevCred})
+	data, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, data, attributionSource{Dir: dirs.Config})
 	// **A refusal that cannot preserve is a deletion, and here the store is not this
 	// directory's to spend.** When the credential is the *account's* (dirs.Cred is set,
 	// so the store is `credstore/<tool>/<account>` and its path names the account), every
@@ -313,7 +313,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		// evidence and one kae cannot read is left for the same reason an unreadable
 		// credential is — kae has not established that it is wrong. Absence is what a first
 		// bind already leaves, so this makes the two states the same one.
-		if refused.ActingDirNotAReader && dirIdentityConfirms(ctx, be, specs, acc, configDir).Conflicting {
+		if prev.StaleLabel && dirIdentityConfirms(ctx, be, specs, acc, configDir).Conflicting {
 			if err := retractDirIdentity(ctx, specs, configDir); err != nil {
 				fmt.Fprintf(os.Stderr,
 					"kae: warning: the %s identity cache in this directory still names the account it was "+
@@ -452,17 +452,6 @@ type harvestRefusal struct {
 	// one where kae can say what the directory will do next — run that other account — and
 	// a success line with no such sentence reads as "kae protected my credential".
 	ForeignToReaders bool
-	// ActingDirNotAReader says the directory this operation acts for is **not** one of the
-	// store's readers, so whatever identity label it holds describes some other store and is
-	// stale by construction. It is the one signal that makes retracting a label safe, and it
-	// has to come from witness membership rather than from the label itself: a label that
-	// disagrees has two causes that want opposite actions — left by a previous binding
-	// (stale, retract) or written by a login in this very directory (live, and the evidence
-	// the whole model rests on). Keying the retract on "the label disagrees" deleted the
-	// second kind and let the next identical run harvest a foreign token, which is the
-	// defect the reader model exists to stop, reopened from the other side. Measured
-	// 2026-08-08.
-	ActingDirNotAReader bool
 }
 
 // keepsUnattributedCopy reports whether a refusal leaves the newer copy where it is
@@ -512,32 +501,28 @@ func dirCredentialNewerThanSnapshot(tool string, dirs bindDirs, accountName, why
 // it is about to destroy. Refusing there is a deletion rather than a conservative choice,
 // which is the inversion AGENTS.md records.
 //
-// PrevKnown / PrevCred are the acting directory's **own binding** as it stood before this
-// operation: which credential store it read, and whether the caller could read that at all.
-// They answer "is this directory a stranger to this store" without consulting the walk,
-// and that independence is the point. Derived from witness membership instead, the answer
-// collapsed to "kae cannot tell" whenever the walk was incomplete — which is a state a
-// *leftover store root elsewhere* can cause — so a keep on that arm left the previous
-// binding's label behind and the next run read it as this directory's own reading and
-// overwrote the copy. Measured 2026-08-08, the third defect of that family. The walk can
-// only fail about *other* directories; this one's binding is a single file.
+// StaleLabel says the caller has established that any identity label in the directory it is
+// materializing describes a binding that **no longer holds** — so it is kae's own leftover
+// rather than evidence, and a keep may retract it. Only the caller can answer it, because
+// the answer turns on the *mode*, which is what keys the directory:
 //
-// PrevKnown false means kae has not established anything, which is the safe default: a
-// globally isolated home has no binding and reads the account's store by construction, and
-// nothing is retracted. An empty PrevCred with PrevKnown true is a binding that predates
-// the per-account store, whose credential lived in its own config dir — a stranger to this
-// store, and its label is stale.
+//   - a **shared** config dir is account-agnostic, one per pin×tool, so a label in it was
+//     written under whichever account was bound then: a change of account makes it stale.
+//     Leaving it there is what turned a second identical `kae pin` into a destroy.
+//   - an **isolated** config dir, and a globally isolated home, are keyed by the account, so
+//     every label in one was written while bound to that same account. A disagreement there
+//     can only be a login as somebody else — live evidence, and retracting it deletes the
+//     only record of whose the credential is, after which an ordinary sibling confirms
+//     unopposed and files a foreign token. Measured 2026-08-08 through a re-bind *back* to
+//     an account the directory had left, on both `kae pin -i` and `kae pin <tool>`.
 //
-// Dropping the PrevKnown half is **unobservable today** and stays as a statement of intent:
-// the only caller that leaves it false is the globally isolated home, which is always one of
-// its own account's readers, so the harvest confirms rather than keeps and the retract is
-// never reached there. It stops being unobservable for any future caller that materializes a
-// directory without a binding to read.
+// False is the safe default in both directions: nothing is retracted, and the worst outcome
+// is that a later bind keeps a copy it could have harvested. A caller that could not read
+// its own binding must leave it false — "kae could not look" is not "nothing is bound".
 type attributionSource struct {
-	Dir       string
-	Unbound   bool
-	PrevKnown bool
-	PrevCred  string
+	Dir        string
+	Unbound    bool
+	StaleLabel bool
 }
 
 func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, specs []artifact.Spec,
@@ -1779,11 +1764,9 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	tool, credDir string, acc account.Account, src attributionSource,
 ) harvestRefusal {
 	witnesses, complete := app.credStoreWitnesses(credDir, tool)
-	notAReader := src.PrevKnown && src.PrevCred != credDir
 	if !complete {
 		return harvestRefusal{
-			Why:                 "kae could not tell which directories read this credential",
-			ActingDirNotAReader: notAReader,
+			Why: "kae could not tell which directories read this credential",
 		}
 	}
 	// A reader the caller has already unbound is still a reader for this question — see
@@ -1826,8 +1809,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	switch {
 	case confirmed > 0 && len(conflicting) > 0:
 		return harvestRefusal{
-			Why:                 "the directories that read this credential disagree about whose login it is",
-			ActingDirNotAReader: notAReader,
+			Why: "the directories that read this credential disagree about whose login it is",
 		}
 	case len(conflicting) > 0 && slices.Contains(conflicting, src.Dir):
 		return conflict
@@ -1849,8 +1831,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		return harvestRefusal{
 			Why: "the directories that read this credential say it belongs to another account, " +
 				"and this directory does not read it yet",
-			ForeignToReaders:    true,
-			ActingDirNotAReader: notAReader,
+			ForeignToReaders: true,
 		}
 	case confirmed > 0:
 		return harvestRefusal{}
@@ -1858,18 +1839,14 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		// One reader, so its own reason is the whole story, and it is the one a user can
 		// act on. The count is what makes this safe to say: with a second reader in play
 		// the sentence would describe one of them as if it described the store.
-		only := silent[0]
-		only.ActingDirNotAReader = notAReader
-		return only
+		return silent[0]
 	case len(silent) > 1:
 		return harvestRefusal{
-			Why:                 "no directory that reads this credential could attribute it",
-			ActingDirNotAReader: notAReader,
+			Why: "no directory that reads this credential could attribute it",
 		}
 	default:
 		return harvestRefusal{
-			Why:                 "no directory reads this credential yet, so nothing can say whose login it is",
-			ActingDirNotAReader: notAReader,
+			Why: "no directory reads this credential yet, so nothing can say whose login it is",
 		}
 	}
 }
@@ -2114,8 +2091,8 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			continue // no snapshot to harvest into; the bind or the sweep reports it
 		}
 		_, _, refused := app.harvestDirCredential(ctx, be, specs, store.Tool, accountName, acc, store.dirs(), snapshot,
-			// No previous binding here: PrevKnown/PrevCred only feed the retract, which lives in
-			// writeDirCredential and carries its own. Passing them would be data no arm reads.
+			// No StaleLabel here: it only feeds the retract, which lives in writeDirCredential
+			// and carries its own. Passing it would be data no arm reads.
 			attributionSource{Dir: next[store.Tool].Config})
 		// The one question both arms below need, asked once: does the write this bind is
 		// about to perform land on the very store being reported? Only then is the copy

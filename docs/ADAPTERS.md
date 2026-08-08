@@ -800,7 +800,12 @@ say "the store", read it as whichever of the two that tool resolves:
   store, which has no bound directory and therefore no pass of its own
   (`migratePreSplitHome`; see § Per-account credential store for why its migration is
   silent where a bound directory's is prompted). And in the superseded-credential
-  sweep, where a delete is final (docs/CLI.md § kae pin, docs/DATA-MODEL.md);
+  sweep, where a delete is final (docs/CLI.md § kae pin, docs/DATA-MODEL.md).
+  And on **both** sides of `kae relogin`'s flow, which is the one site where the write
+  that replaces the copy is the *tool's* rather than kae's: the pass after it can only
+  see what the login wrote, so a pass before it is what gives the copy the login is
+  about to replace any chance at all, and where that pass refuses it says so before the
+  flow starts (docs/CLI.md § kae relogin Semantics);
 - and it **refuses rather than guesses**, in every one of these places. An unusable
   copy is not harvested — the tombstone a failed refresh leaves behind is a
   fully-formed payload, so presence proves nothing. A copy kae cannot *attribute* is
@@ -889,7 +894,12 @@ say "the store", read it as whichever of the two that tool resolves:
   forbids, and one fixed string broke it in the unreadable arm.
   A kept copy is not stranded: once the tool has run there, attribution has honest evidence
   and the next bind harvests it — **unless the readers disagree**, which no bind resolves
-  and `kae relogin` in the drifted directory does — and the last binding's `kae unpin
+  and `kae relogin` in the drifted directory does, at a price the command now states
+  rather than implies: the login replaces whatever is in the store, and the copy the
+  disagreement is about is precisely the one kae could not keep, so relogin harvests
+  before the flow and warns where it could not (measured 2026-08-08 — following that
+  remedy left the other account's only refreshable copy in no store and no snapshot)
+  — and the last binding's `kae unpin
   --purge` harvests before it deletes — measured 2026-08-08, end to end, keep → purge a sibling (kept, with the
   refcount named) → purge the last one (harvested into the snapshot, then removed);
 - the pair kae holds to: never file a copy it cannot attribute under an account, and never

@@ -122,6 +122,18 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   the directory's current path while the tool reads the literal value mise exports,
   so a directory that moved would otherwise have kae create a store nothing reads and
   call it a login.
+  It harvests on **both** sides of the flow, and the pre-flow half was added after the
+  release branch was already reviewed twice, by an independent execution-type round that
+  followed kae's own printed remedy: this is the one write in kae that the *tool*
+  performs, so the pass after the login can only ever see what the login wrote. The copy
+  it replaces belongs to the account, not to the directory, so it can be a live login
+  from a `/login` somebody ran in a bound directory as somebody else — the state
+  `kae pin` declines to overwrite in order to preserve, while naming this command as the
+  remedy. Measured end to end: following that remedy left the other account's only
+  refreshable copy in no store and no snapshot, with nothing printed about it. Now the
+  copy is harvested where it can be, and where it cannot the reason is on stderr before
+  the flow starts. Not a refusal — the login is what was asked for, and declining it
+  would leave the directory stale with nothing to do about it.
 
 - **`doctor` reports the copy that lost the race** (`credential_superseded`,
   contract-additive). When two copies of one account's credential exist and one

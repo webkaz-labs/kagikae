@@ -177,6 +177,15 @@ block in docs/VALIDATION.md, next to two correct ones.
   says the same in its body). What a toggle can still strand is the per-directory
   credential a binding from **before** the split left in the store it moves off, which
   is what makes a re-pin a migration.
+  **One of these sites is not a chokepoint kae controls at all — `kae relogin`'s flow,
+  where the write that replaces the copy is the *tool's*.** A pass placed after it sees
+  only what the login wrote, never what the login destroyed, so "capture the result
+  back" is not the same requirement as "keep what was there" and that command harvests
+  on both sides. Two things make it worth remembering rather than deriving: the copy at
+  risk is the **account's**, so it can be a login the acting directory's binding says
+  nothing about; and this command is what every bound-credential refusal names as its
+  remedy, so following kae's own advice is what destroyed it (measured 2026-08-08, end
+  to end).
   **And the chokepoint's refusal is not free either: for the account's own credential
   store it now skips the write rather than overwriting.** That store is read by every
   directory bound to the account, so a bind is not entitled to spend it, and the refusal

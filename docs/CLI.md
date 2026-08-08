@@ -807,6 +807,21 @@ Contract:
 
   Exit stays `0` in all of them: the login flow ran, and only `auth_unchanged` above
   is a refusal.
+- **A harvest runs before the flow as well, and that is the one with something to
+  lose.** The login is a write kae does not perform, so whatever the store held is
+  gone the moment the tool finishes; the capture back can only ever see what the login
+  wrote. Since the credential split that copy belongs to the **account**, read by every
+  directory bound to it, so it can be a login this directory's binding says nothing
+  about — the ordinary way there is the tool's own `/login` run inside a bound
+  directory as another account, which is also the state `kae pin` declines to overwrite
+  in order to preserve while naming *this* command as the remedy. Same guards as the
+  capture back, so it is silent whenever the snapshot already holds something at least
+  as new. When it cannot keep the copy it says so on stderr **before the flow is
+  launched**, carrying the harvest's own reason and that completing the login replaces
+  it; it may not say whose the copy is, which on the arm that matters is exactly what
+  kae could not establish. It does not refuse — the login is what was asked for, and
+  declining it would leave the directory stale with nothing to do about it — so the
+  exit code is unaffected.
 - The capture back is `harvestDirCredential` with every guard it already has: it
   declines a copy that does not supersede the snapshot, and one it cannot attribute
   to this account. It runs whatever the comparison said — a flow kae could not

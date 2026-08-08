@@ -472,12 +472,13 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 	if preserved {
 		return
 	}
-	why := refused.Why
-	if why == "" {
+	if refused.Why == "" {
 		// The one route that refuses with no reason of its own: the harvest read a newer
-		// copy, attributed it, and failed to write it into the snapshot — which it has
-		// already warned about in its own words.
-		why = "kae could not write it into that snapshot"
+		// copy, attributed it, and its write into the snapshot failed — which it has
+		// already reported, naming the concrete error. A line here would be the second
+		// warning for one event, and the weaker of the two, which is the rule this file
+		// keeps elsewhere: one store that was not harvested produces exactly one message.
+		return
 	}
 	// No ordering in the frame, and that is not a style choice. One of the reasons this
 	// interpolates is kae saying it **cannot** order the two copies ("cannot read or date
@@ -489,7 +490,7 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 	fmt.Fprintf(os.Stderr,
 		"kae: warning: kae could not keep the %s credential already in %s for %s/%s (%s); completing the "+
 			"login flow replaces it, and kae has it in no snapshot\n",
-		tool, dirs.credDirOrConfig(), tool, accountName, why)
+		tool, dirs.credDirOrConfig(), tool, accountName, refused.Why)
 }
 
 // captureBackAfterRelogin harvests the copy the login just wrote into the

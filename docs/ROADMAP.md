@@ -501,7 +501,9 @@ alternative exists (`secret-tool`).
   home** is a strictly easier A than a bound directory: `prepareGlobalIsolatedHome` writes
   the label on every `kae use -i` / `kae run -i`, nothing ever removes such a home, and the
   witness walk reads them from disk without any liveness gate (deliberately — that source is
-  what gives `kae run -i` a witness at all). What remains is the
+  what gives `kae run -i` a witness at all). One class of kae-written label **is** retracted now — a shared config dir's,
+  once the bound account changes — but that is the leftover kind, and this entry is about the
+  kind a *current* binding wrote, which stays. What remains is the
   first candidate fix — record whether a cache was written by kae or observed from the tool
   — which is also what would let `identity_drift` tell a stale label from a real one. Do
   not "fix" it by removing the confirmation: that would make every bind keep forever.

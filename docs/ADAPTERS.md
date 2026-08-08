@@ -870,7 +870,18 @@ say "the store", read it as whichever of the two that tool resolves:
   let the next `kae pin` confirm against a cache kae had planted and harvest the very copy
   the first bind refused (measured 2026-08-08 — another account's token filed under this
   one's name). Absence is the honest record, and the next cache in that directory is the
-  tool's own. The pin-level pass says *leaving it where it is* only where that is
+  tool's own. **A keep also retracts a label it can show is stale**, and that is not the
+  same statement as "writes nothing": leaving one there is the way a keep destroys what it
+  kept — the next run's fragment names the new account, so the directory is one of the
+  store's readers, its stale label is its only reading, and `Conflicting` overwrites the
+  copy the first run preserved (two identical `kae pin` calls, measured 2026-08-08). What
+  makes a label stale is the **mode**, not the reader set: a shared config dir is one per
+  pin×tool, so a change of account leaves kae's own label from the previous one; an
+  account-keyed dir (isolated, and the globally isolated home) only ever held labels
+  written while bound to that account, so a disagreement there is a live login and
+  retracting it deletes the only record of whose the credential is. Among stale ones, only
+  a label that *disagrees* goes: one that agrees is evidence, and one kae cannot read is
+  left for the same reason an unreadable credential is. The pin-level pass says *leaving it where it is* only where that is
   true — when the write will keep, or when the store it is talking about is not the one the
   write touches at all (a pre-split store, whose copy the write leaves alone because it
   writes to the account's store instead). Where the write does replace, it still says so: a

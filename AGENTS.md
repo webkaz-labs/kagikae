@@ -145,7 +145,10 @@ block in docs/VALIDATION.md, next to two correct ones.
   the same trap as comparing two empty greps.
   Things that must move in lockstep with it — not a closed list: a **third**
   per-directory mechanism (today `shared` and `isolated`) has to be added to
-  `dirCredentialStores`, or its stores are silently never swept; and the sweep must
+  `dirCredentialStores`, or its stores are silently never swept, **and to
+  `attributionSource.StaleLabel`'s two call sites** (`modeStoreDir` carries the note), where
+  it falls through to *not stale* — right for an account-keyed mechanism, and the
+  "keep then destroy on the next run" defect for an account-agnostic one; and the sweep must
   run **after** the new binding is written, or a mid-sequence failure leaves the live
   binding pointing at a store whose credential is already gone.
 - **The copy in a per-directory store can be newer than the snapshot, so every
@@ -204,7 +207,15 @@ block in docs/VALIDATION.md, next to two correct ones.
   against a cache kae had planted and harvested the copy the first bind refused, filing
   another account's token under this one's name (measured). Skipping it restores the rule
   the rest of that function states, that the identity follows a *successful* credential
-  write. What it costs is that the acceptance block must seed the cache the **tool** would
+  write. **A keep must also retract a label it can show is stale** — not writing one is only
+  half of it. Leaving the previous binding's label behind is how a keep destroys what it
+  kept: the next run's fragment names the new account, so the directory is one of the store's
+  readers and that label is its only reading. What separates a stale label from a live one is
+  the **mode** — a shared config dir is one per pin×tool, an isolated one and the globally
+  isolated home are keyed by the account, so a disagreement in *those* is a login as somebody
+  else and deleting it destroys the only record of whose the credential is. Two other
+  derivations were tried and both destroyed a login (the label alone; witness membership,
+  which reads every directory as a stranger when the walk is incomplete). What it costs is that the acceptance block must seed the cache the **tool** would
   have written wherever it expects a harvest, which is the honest fixture anyway. And the
   pass words its consequence as *leaving it where it is* rather than predicting the write:
   keyed on its own store's dirs it said "this bind replaces it" about a copy nothing

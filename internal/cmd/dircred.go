@@ -300,19 +300,32 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		// the first run preserved. Measured 2026-08-08: two identical `kae pin` calls, the
 		// first keeping and the second destroying, with a success line both times.
 		//
-		// **Only where this directory is not one of the store's readers** — which is what
-		// makes the label stale rather than merely inconvenient. A label that disagrees has
-		// two causes wanting opposite actions: left by a previous binding, or written by a
-		// login in this very directory. Keyed on the label alone, this deleted the second
-		// kind on the disagree arm, after which the next identical run saw one silent reader
-		// and one confirming sibling, confirmed, and harvested the foreign token — the
-		// mis-filing the reader model exists to stop, reopened from the other side and
-		// measured 2026-08-08. Witness membership is the only thing that tells them apart.
+		// **Only where the caller established the label is stale** (attributionSource.StaleLabel),
+		// and among those only one that **disagrees**. A label that disagrees has two causes
+		// wanting opposite actions — left by a previous binding, or written by a login in this
+		// very directory — and what separates them is the **mode**, not the reader set: a
+		// shared config dir is one per pin×tool, so a change of account makes its label kae's
+		// leftover; an account-keyed one (isolated, and the globally isolated home) only ever
+		// held labels written while bound to that account, so a disagreement there is a live
+		// login.
 		//
-		// Then, among those, only a label that **disagrees**: one that agrees is honest
-		// evidence and one kae cannot read is left for the same reason an unreadable
-		// credential is — kae has not established that it is wrong. Absence is what a first
-		// bind already leaves, so this makes the two states the same one.
+		// Two derivations were tried and are wrong; both destroyed a login, both measured
+		// 2026-08-08. Keyed on the **label alone**, this deleted the live kind on the disagree
+		// arm, after which the next identical run saw one silent reader and one confirming
+		// sibling, confirmed, and harvested the foreign token — the mis-filing the reader model
+		// exists to stop, reopened from the other side. Keyed on **witness membership**, it
+		// broke on the enumeration-incomplete arm, where the walk answers "no witnesses" and so
+		// reads every directory as a stranger: an unrelated leftover store root then made kae
+		// delete a live label. Do not restore either.
+		//
+		// Not consulting the walk is the property that makes the mode-derived gate better
+		// rather than merely different: on the `!complete` keep the retract is still right,
+		// because "a shared config dir whose bound account changed holds a leftover" is true
+		// whoever reads the store.
+		//
+		// A label that agrees is honest evidence and one kae cannot read is left for the same
+		// reason an unreadable credential is — kae has not established that it is wrong.
+		// Absence is what a first bind already leaves, so this makes the two states the same one.
 		if prev.StaleLabel && dirIdentityConfirms(ctx, be, specs, acc, configDir).Conflicting {
 			if err := retractDirIdentity(ctx, specs, configDir); err != nil {
 				fmt.Fprintf(os.Stderr,

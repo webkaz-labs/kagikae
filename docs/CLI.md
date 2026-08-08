@@ -633,7 +633,13 @@ kae keeps a credential because bindings still use it, it prints how many.
   entitled to replace it on missing evidence. The binding is still written and the exit code
   is still `0`; nothing else of kae's is, for that artifact: no credential, no superseded
   plaintext copy removed, and no identity label (which is what a later bind would otherwise
-  attribute against). Whose the copy is, is answered by the directories **currently reading
+  attribute against) — and where the bind is moving this directory to a *different* account,
+  the label the previous binding left is **removed**, so the tool shows no cached account
+  there until it runs. That is the honest record rather than a fault: leaving it is how a
+  keep destroys what it kept, because the next run reads it as this directory's own reading
+  of the new account's store. A directory bound in isolated mode keeps its label, which
+  belongs to the account that dir is keyed by.
+  Whose the copy is, is answered by the directories **currently reading
   that store** — so binding a second directory to an account you are already using is not a
   refusal at all: the sibling agrees, and the bind harvests the copy and writes it back. The
   refusal is for a store nothing reads yet, and for readers that disagree with each other. A

@@ -2473,6 +2473,53 @@ The superseded partial entry (2026-08-04, tree `40fa804`) is dropped rather than
 per-worktree measurement is repeated above on the final tree, and its credential
 measurements were made against a block that has since been shown not to test its subject.
 
+**Tag-day pass (2026-08-09), `main` at merge `ed18a5b`, tree `f7572134`.** The tree moved
+again between the entry above and the tag, so every gate and block was re-measured here
+rather than carried over. What moved: a fourth independent execution review of the
+pre-flight **backup** found three more defects in it, and the backup was **withdrawn from
+this release** (`e6aaea1`) — the pre-flight's warning ships, the backup does not, and
+`docs/ROADMAP.md` § A relogin's pre-flight refusal owes a backup carries the withdrawal
+and the eviction question it never settled. The withdrawal changed a user-visible warning
+string, which is why the blocks below were re-run rather than assumed.
+
+- `mise run check` **0** on the merge, `git diff --check` clean, `mise run audit` **0**
+  (fingerprints read five installed tools and passed — not a silent skip), `mise run
+  goreleaser-check` **0**. Every one by exit code, never through a pipe: the first attempt
+  read `${PIPESTATUS[0]}` under a shell that does not set it and recorded an empty status.
+- **Real-machine `kae doctor --json`, read-only: 22 checks, non-ok 2** — both
+  `credential_expiring`, the same two cursor snapshots as the entry above, now three days
+  out. Real state, not a release finding.
+- **§ per-worktree A–F: 31/31. § v0.17.0 harvest A–J: all assertions. § v0.17.0 relogin
+  and `credential_superseded` K–M: 20/20.** K–M is the section the withdrawal could have
+  staled and did not: the pre-flight **harvest** is untouched, and its hardest assertion —
+  the harvest line appearing once *before* the login-flow line and once after — still holds.
+  No file under `docs/`, `README.md` or `AGENTS.md` names the withdrawn backup reason.
+- **§ v0.17.0 per-account credential: 16/16**, run under `. scripts/smoke-env.sh` with the
+  file driver and file backend, as that section's own text requires. Its heading calls it a
+  *real-machine* smoke and no step in it is one — the heading is what kept it out of an
+  otherwise complete isolated pass, and it should move in with the temp-HOME blocks.
+  One assertion failure in that run was the **runner's**, not kae's: `unpin --purge` on the
+  last binding leaves the store file present as `{}` because absent is applied as absent,
+  so a `test -f` reads as "not removed". The token is gone (positive control: 1 before, 0
+  after) and the message names the account's store, not a per-directory one.
+- **§ Smoke Checks L76–171 fails, and the document is what is wrong** — checked against
+  `docs/CLI.md`, which is normative and disagrees with it. Bare `kae pin` is documented as
+  isolated with symlink assertions; it is **shared** (`docs/CLI.md` § kae pin), and the
+  fragment carries `codex/shared` with no `isolated/` directory anywhere. `kae pin codex
+  side` passes a *profile* name where the command takes an **account**, and the block never
+  captures `codex/side`, so it exits `7` under any faithful reading. Two `kae use` lines
+  need a `default_profile` the block never sets and exit `64`; setting one makes both behave
+  exactly as documented. **All four predate this release** — `git show v0.16.0` carries the
+  same text, and the block is unchanged since the initial commit — so they are recorded
+  here and left for the deferred documentation pass rather than fixed at a tag.
+  The mechanism is worth more than the four: **this block's `# assert:` lines are comments,
+  not commands.** It is the only section in this file whose assertions are non-executable,
+  and it is where both real defects had accumulated — a reader "running the block" gets
+  exit 0 and never evaluates them. Four of its negative snapshot assertions also lack the
+  positive control the block's own prose says makes such a line mean anything (`B1` has it
+  and says so; `A3`, `B2`, `B3` and `E` do not) — they pass today for the right reason, and
+  nothing in the block would say if they stopped.
+
 ### v0.9.0 (2026-06-19, macOS darwin 24.6.0)
 
 Installable binaries (GoReleaser + install.sh + CI) and README OSS-parity

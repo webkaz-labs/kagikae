@@ -155,7 +155,16 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// refreshed in the old one has to be harvested first or the directory ends up
 	// bound to a credential rotation has already invalidated. Deleting still happens
 	// last (pruneDirCredentials).
-	app.harvestSupersededDirCredentials(ctx, be, paths.PinID(absDir), absDir, "", prevBinding)
+	// Where each tool's credential is about to be written, taken from the plan rather than
+	// recomposed: it is what tells a refusal whether the store it reports is replaced or
+	// merely left behind.
+	nextCred := map[string]string{}
+	for _, e := range entries {
+		if e.Warning == "" && e.CredDir != "" {
+			nextCred[e.Tool] = e.CredDir
+		}
+	}
+	app.harvestSupersededDirCredentials(ctx, be, paths.PinID(absDir), absDir, "", prevBinding, nextCred)
 	if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
 		return finish(opts, err)
 	}

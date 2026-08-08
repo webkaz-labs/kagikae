@@ -1911,8 +1911,15 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 // migration of a pre-split binding, which happens once per directory
 // (TestRunPinCoalescesTheHarvestKeychainReads measures the steady state at one read).
 // The duplication buys the case where the two are not the same store.
+// nextCred maps each tool to the credential store the binding being written will point it
+// at — read from the plan kae is about to apply, not derived from an account here. It is
+// what makes "this bind replaces it" a fact rather than a guess: a re-bind to another
+// account writes a *different* store, so the copy this pass is talking about is abandoned
+// rather than replaced, and predicting a replacement tells the user a live login is being
+// spent when it is being stranded. A tool absent from the map is one the new binding does
+// not bind, which also replaces nothing.
 func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.Backend,
-	pinID, dir, onlyTool string, prev fragmentInfo,
+	pinID, dir, onlyTool string, prev fragmentInfo, nextCred map[string]string,
 ) {
 	// Cleared here, not left to live as long as the App: the coordination with
 	// writeDirCredential's backstop is scoped to **one bind**, and a stale entry
@@ -1969,6 +1976,12 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 		}
 		_, _, refused := app.harvestDirCredential(ctx, be, specs, store.Tool, accountName, acc, store.dirs(), snapshot,
 			attributionSource{Dir: store.Dir})
+		// The one question both arms below need, asked once: does the write this bind is
+		// about to perform land on the very store being reported? Only then is the copy
+		// replaced — and only then may a message say so. A refusal that keeps is never a
+		// replacement whatever the locations say, which is the other half.
+		replacedNow := !refused.Unattributed &&
+			nextCred[store.Tool] != "" && nextCred[store.Tool] == store.dirs().credDirOrConfig()
 		switch {
 		case refused.Why == "" || !replaced[store.Dir]:
 			// Nothing to report, or a store from a binding older than the one being replaced
@@ -1985,10 +1998,19 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			// is owed on top of the fact: the copy is demonstrably not this account's, and
 			// the directory is about to be bound to a credential that is fine.
 			app.markRefusalReported(store.dirs().credDirOrConfig())
+			// Named by where the credential is, not by the config dir: for a split binding
+			// those are different directories, and every other speaker in this file was moved
+			// to credDirOrConfig for exactly that reason. And the consequence is measured
+			// rather than assumed — on `kae pin <tool> <other account>` this store is the one
+			// the binding moves *off*, so nothing replaces the copy in it.
+			consequence := "so kae is leaving it where it is"
+			if replacedNow {
+				consequence = "and this bind replaces it"
+			}
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: the %s credential in %s belongs to an account other than %s/%s (%s), so "+
-					"kae is not harvesting it and this bind replaces it\n",
-				store.Tool, store.Dir, store.Tool, accountName, refused.Why)
+					"kae is not harvesting it, %s\n",
+				store.Tool, store.dirs().credDirOrConfig(), store.Tool, accountName, refused.Why, consequence)
 		default:
 			// Missing evidence rather than a conflict: the copy may well be this account's.
 			// The remedy is right here, because dir is the bound directory rather than the
@@ -2006,9 +2028,9 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			// that kae could not back up, which AGENTS.md forbids. One fixed string broke that
 			// in the unreadable arm; keying it on this store's own dirs broke the other
 			// direction, claiming a replacement of a copy nothing replaced. Both measured.
-			consequence := "and this bind replaces it"
-			if refused.Unattributed || store.dirs().credDirOrConfig() != app.credStoreDir(store.Tool, accountName) {
-				consequence = "so kae is leaving it where it is"
+			consequence := "so kae is leaving it where it is"
+			if replacedNow {
+				consequence = "and this bind replaces it"
 			}
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: kae could not preserve the %s credential this directory held for %s/%s "+

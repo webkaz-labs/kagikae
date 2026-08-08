@@ -108,7 +108,8 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// credential still belongs to the *previous* account — and `info` is the only
 	// thing that names it. Harvesting here is what keeps a re-bind from destroying the
 	// login it is re-binding away from (docs/ROADMAP.md).
-	app.harvestSupersededDirCredentials(ctx, be, pinID, absDir, tool, info)
+	app.harvestSupersededDirCredentials(ctx, be, pinID, absDir, tool, info,
+		map[string]string{tool: app.credStoreDir(tool, accountName)})
 
 	var envDir string   // fragment env entry to repoint (isolated only)
 	var boundDir string // the store this tool reads after the re-bind

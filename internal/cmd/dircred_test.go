@@ -1677,6 +1677,67 @@ func TestRunRebindIsolatedHarvestsThePreviousAccount(t *testing.T) {
 // replaced is the only thing that says which. Without the pre-pass the re-bind
 // overwrote it with the new account's snapshot and the previous account's login was
 // gone from both the store and its snapshot (execution-type review, 2026-08-04).
+// What the pass may claim about a store the bind is moving **off**. A re-bind to another
+// account writes a different credential store, so the copy this refusal is about is
+// abandoned rather than replaced — and telling the user a live login is being spent when it
+// is being stranded is the inverse of the fact they need to act on.
+//
+// It also has to name where the credential is. `store.Dir` is the config dir, which since
+// the split holds no credential at all; every other speaker in this file was moved to
+// credDirOrConfig after a smoke run found one naming "neither the thing removed nor where
+// it lived". Both halves survived the whole suite until this test existed (measured
+// 2026-08-08); the sibling arm's guard covered only its own direction.
+func TestRunRebindConflictingCopyIsLeftBehindNotReplaced(t *testing.T) {
+	app := overlayTestApp(t)
+	chdirTemp(t)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+
+	if code := runPin(ctx, app, opts, "main", modeShared); code != constants.ExitOK {
+		t.Fatalf("pin --shared exit %d", code)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared := app.Paths.SharedDir(paths.PinID(cwd), constants.ToolClaude)
+	mainStore := app.credStoreDir(constants.ToolClaude, "main")
+	// A login as side inside the directory: this reader says side, and claude/main's own
+	// store holds side's newer token. Re-binding to side is what identity_drift's "keep
+	// what is there instead" tells the user to do.
+	writeFile(t, filepath.Join(shared, ".claude.json"), claudeIdentityFile("side-uuid"))
+	const sideLive = "sk-ant-oat01-SIDE-LIVE-eeee"
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", shared), claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
+
+	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "side") })
+
+	if !strings.Contains(stderr, "belongs to an account other than claude/main") {
+		t.Fatalf("the refusal itself must still be reported: %q", stderr)
+	}
+	if strings.Contains(stderr, "this bind replaces it") {
+		t.Fatalf("the store this bind moves off is not replaced by it: %q", stderr)
+	}
+	if !strings.Contains(stderr, "so kae is leaving it where it is") {
+		t.Fatalf("the consequence must be the one that happens: %q", stderr)
+	}
+	if !strings.Contains(stderr, mainStore) {
+		t.Fatalf("the message must name where the credential is: %q", stderr)
+	}
+	// Positive control on the location halves: the config dir is a different directory,
+	// and naming it would send the reader to one holding no credential.
+	if strings.Contains(stderr, shared) {
+		t.Fatalf("the config dir holds no credential and must not be named as its home: %q", stderr)
+	}
+	// And it really was left: the copy is still there, unharvested, for `unpin --purge`
+	// or a re-bind back to reach.
+	if got := readFile(t, filepath.Join(mainStore, ".credentials.json")); !strings.Contains(got, sideLive) {
+		t.Fatalf("the abandoned copy must survive the re-bind: %s", got)
+	}
+}
+
 func TestRunRebindSharedHarvestsThePreviousAccount(t *testing.T) {
 	app := overlayTestApp(t)
 	chdirTemp(t)

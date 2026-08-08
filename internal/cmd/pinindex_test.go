@@ -39,13 +39,11 @@ func pinHereAs(t *testing.T, app *App, profile, mode string) string {
 	}
 	// Only when the caller has installed nothing. 8 of this helper's call sites run
 	// inside their own `runner.With`, and shadowing it is not neutral: their fake is
-	// what the test then asserts on, so a pin whose `add-generic-password` lands in a
-	// throwaway leaves the caller's simulator holding no account — which turns its
-	// account-scoping arm into an unconditional match and stops it killing a mutation
-	// of the account kae writes. Measured: `DeleteItemForAccount`'s account mutated,
-	// killed by TestUnpinPurgeRemovesACredentialNothingElseBinds before shadowing and
-	// survived after. Shadowing also un-fakes every *other* command for those sites,
-	// which sent `ensureGitExcluded` to real git.
+	// what the test then asserts on, and a pin whose write lands in a throwaway leaves
+	// that simulator holding no account. pinFixtureRunner's doc carries the measurement
+	// and why `next` does not make this branch redundant; do not restate it here.
+	// Shadowing also un-fakes every *other* command for those sites, which sent
+	// `ensureGitExcluded` to real git.
 	// Both spellings, because the value and the pointer are different types to a type
 	// switch and a stray `&` would silently send the pin back to the real keychain —
 	// the exact direction this fixture exists to prevent. A nil `Default` is left to

@@ -1702,7 +1702,13 @@ cd "$B"
 #           is pre-split; a post-split directory names the credential one beside it. The
 #           fake exits 8 if it is unset, so a green run *is* the proof that kae exported it
 #   assert: stderr carries `harvested the newer claude credential from <B's store>
-#           into snapshot claude/main` — the capture-back half
+#           into snapshot claude/main` **twice**, once on each side of the flow, and
+#           the first of them appears BEFORE the `complete the claude login flow` line.
+#           The pre-flow pass is the one with something to lose: the write that replaces
+#           the copy is the tool's, so nothing after the flow can see what it destroyed
+#           (docs/CLI.md § kae relogin Semantics). One occurrence is a regression even
+#           though the capture-back assertion below still passes — which is why this
+#           counts rather than greps
 #   assert: stdout is `Logged claude in for claude/main in this directory` — the
 #           strong wording, which kae prints only when it observed all three of:
 #           the store changed, what is there now is not a tombstone, and the
@@ -1727,12 +1733,18 @@ snap main | grep B-RELOGGED              # assert: and reached the account snaps
 C=$(mktemp -d); cd "$C"
 /tmp/kae relogin; echo "exit=$?"
 #   assert: exit=7 and `this directory is not pinned`, naming `kae add --restore`
-grep SIDE-OLD "$HOME/.claude/.credentials.json"   # assert: the temp real home still holds
-                                        #   what the preamble left there last (the preamble
-                                        #   writes MAIN-OLD, captures, then overwrites with
-                                        #   SIDE-OLD to capture the second account — so
-                                        #   SIDE-OLD is the resting value, and asserting
-                                        #   MAIN-OLD here silently matched nothing)
+grep SOLO-OLD "$HOME/.claude/.credentials.json"   # assert: the temp real home still holds
+                                        #   what the preamble left there last. The literal is
+                                        #   the account the preamble captures **last**, not a
+                                        #   fixed name — it writes one payload per account and
+                                        #   the final one stays. This line has now been wrong
+                                        #   twice for that reason, each time by one account:
+                                        #   `MAIN-OLD` while there were two, then `SIDE-OLD`
+                                        #   once `solo` was added (measured 2026-08-08, by
+                                        #   running it). A wrong literal here matches nothing
+                                        #   *and* silently unguards the `grep -c` below, which
+                                        #   is the pair's whole purpose — so re-derive it from
+                                        #   the preamble whenever an account is added there
 grep -c B-RELOGGED "$HOME/.claude/.credentials.json"   # assert: 0 — paired with the positive
                                         #   line above, because a `grep -c` for absence prints
                                         #   0 when the file is missing too.
@@ -1747,7 +1759,15 @@ rather than under `set -e`.
 
 **K–M PASSED 2026-08-08 on the release tree, 20/20** (darwin 24.6.0, file driver, file
 backend, temp HOME, `/tmp/kae` = v0.17.0), run after the preamble alone, each assertion
-checked at its own point. The 2026-08-06 record it replaces was measured before the
+checked at its own point. **Re-run the same day by an independent review, which found one
+of those 20 asserting a literal that matched nothing**: M's positive control still named
+`SIDE-OLD` after the preamble grew a third account, so the resting payload was
+`SOLO-OLD` — the identical off-by-one-account this same block had already been corrected
+for once, and it takes the `grep -c` beside it down with it. Corrected above, together
+with L's harvest assertion, which the pre-flow pass in `kae relogin` turns from one line
+into two. Both of those are why a passing record is not a substitute for re-running: the
+first was a dead assertion inside a green run, and the second is output that moved
+under a block nobody had edited. The 2026-08-06 record it replaces was measured before the
 per-account credential store landed, which is what made K's two-copies construction
 unbuildable as written; the block above now says how the state is reached and why. It had
 also been **re-run verbatim after each review round's changes** — round 1 (the hedged

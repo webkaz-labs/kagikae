@@ -109,6 +109,29 @@ alternative exists (`secret-tool`).
 
 ## Hardening backlog — daily-use robustness
 
+- **A test that forgets to install a runner is silent, and it writes to the machine
+  it runs on** (recorded 2026-08-09, **not fixed**). `runner.Default` falls back to
+  `OSRunner`, so a test that never calls `runner.With` executes the real program and
+  passes on a developer's laptop. Two live instances were found the day CI first ran
+  on the v0.17.0 branch, and only one of them failed anything: `pinHereAs` ran the
+  real `security` and wrote **956** items into the operator's login keychain across
+  two days of `mise run check` — the gate AGENTS.md says must never touch the real
+  environment — while on linux the same call had no `security` and failed two tests.
+  The second, `TestR6OnlyClaudeCanBeDeclined`, only *read*, so nothing failed
+  anywhere; what it silently did was let the operator's login state decide which
+  tools the guard inspected.
+  Both are fixed at their call sites, and that is what makes this worth recording:
+  **a per-site fix does not close the class**, because the next omission is just as
+  quiet. The seam that would is a `TestMain` in `internal/cmd` installing a runner
+  that fails loudly, with the argv, on any command a test did not opt into. It is not
+  the ten lines it looks like: one package alone issues **181** real
+  `git rev-parse --git-common-dir --show-prefix` calls that are legitimate
+  (`ensureGitExcluded` needs a real repository layout, and `fragment_test.go` has a
+  deliberate real-git case), so the guard has to be a denylist of the credential
+  programs — `security`, `secret-tool` — rather than a blanket refusal, or it fails
+  the wrong things. Deliberately not done at a release boundary; the two call-site
+  fixes hold until then.
+
 - **Upstream now documents parallel sessions racing on one credential store**
   (recorded 2026-07-31). Claude Code v2.1.211: *"Fixed parallel Claude Code sessions
   all logging out simultaneously after wake-from-sleep when many sessions share one

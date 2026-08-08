@@ -214,10 +214,20 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 			// The trailing clause says why the copy is not this bind's to spend, so it must
 			// not restate the reason: paired with "no directory reads this credential yet"
 			// the older wording ("holds …'s credential for everything that reads it") read
-			// as a contradiction inside one sentence.
+			// as a contradiction inside one sentence. It separates the **store** (this
+			// account's, shared) from the **copy** in it (whoever's), because the one arm
+			// below says those are two different accounts four words apart.
+			consequence := ""
+			if refused.ForeignToReaders {
+				// The only keep where kae knows what happens next. Without it the command
+				// still prints its success line and nothing says the directory will go on
+				// running somebody else's login.
+				consequence = "; until you log in inside this directory it will run that other account"
+			}
 			fmt.Fprintf(os.Stderr,
-				"kae: warning: %s — so kae kept it rather than replacing it: that store belongs to "+
-					"%s/%s rather than to this directory\n", clause, tool, accountName)
+				"kae: warning: %s — so kae kept it rather than replacing it: the store is %s/%s's and "+
+					"shared, so a copy in it is not this bind's to spend%s\n",
+				clause, tool, accountName, consequence)
 		case refused.Why != "":
 			fmt.Fprintf(os.Stderr, "kae: warning: %s, so this write replaces it\n", clause)
 		}
@@ -402,6 +412,13 @@ type harvestRefusal struct {
 	// are about the payload (unreadable, undatable) and take a different answer — the
 	// distinction is what keeps a caller from folding three states into two.
 	Unattributed bool
+	// ForeignToReaders marks the one *keeping* refusal where kae has positive evidence
+	// about the copy: every directory that reads the store says it is another account's,
+	// and the directory being bound is not one of them, so it has no reading of its own to
+	// weigh against theirs. It keeps like every unattributed refusal, but it is the only
+	// one where kae can say what the directory will do next — run that other account — and
+	// a success line with no such sentence reads as "kae protected my credential".
+	ForeignToReaders bool
 }
 
 // keepsUnattributedCopy reports whether a refusal leaves the newer copy where it is
@@ -441,7 +458,10 @@ func dirCredentialNewerThanSnapshot(tool string, dirs bindDirs, accountName, why
 // bind to spend it.
 //
 // Unbound says the caller has already removed that directory's binding, so the walk cannot
-// see it — and only a caller that really did tear it down may say so. The delete path must,
+// see it — and only a caller that really did tear it down may say so, which is why the
+// delete path passes its own `purging` rather than a literal: `harvestBeforeDelete` is also
+// reached at bind time, where the directory is still very much bound, and a hardcoded true
+// there would have rested on a `!purging` early return two functions away. The delete path must,
 // because its own precondition erases its evidence: a per-account store may be deleted only
 // once nothing points at it, and the readers are enumerated from the same source, so by the
 // time the delete is allowed there is by construction no reader left to attribute the copy
@@ -1578,6 +1598,12 @@ func (app *App) credStoreWitnesses(credDir, tool string) (configDirs []string, c
 	// from `state.synced`, `kae run -i` had **no witness at all** — it exports both
 	// variables and never writes that map — so every run after the first kept the copy and
 	// the account snapshot was never updated again (found by review, 2026-08-08).
+	//
+	// The asymmetry has a benign second half worth stating: such a home is trusted to
+	// *attribute* a copy while not counting as a *reference*, so the last bound directory's
+	// `kae unpin --purge` deletes a credential that home reads. Nothing is lost — the purge
+	// harvests into the snapshot first, and the next `run -i` re-materializes the home from
+	// it — which is why refs may stay on the narrower source.
 	entries, err := os.ReadDir(filepath.Join(app.Paths.GlobalIsolationDir(), tool))
 	if err != nil && !os.IsNotExist(err) {
 		return nil, false
@@ -1689,6 +1715,15 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		}
 	case len(conflicting) > 0 && slices.Contains(conflicting, src.Dir):
 		return conflict
+	// A **mode toggle** of one directory does not satisfy that test even though the same
+	// directory is the conflicting reader: the witness is derived from the fragment, which
+	// still names the previous mode's config dir, while src.Dir is the new mode's. Left
+	// alone deliberately rather than aliased to the previous-mode dir. Aliasing would make
+	// the toggle *replace*, and what it would replace is a login with no snapshot anywhere
+	// — the same trade AGENTS.md settles by keeping, and the same answer the code before
+	// the reader model gave (a fresh isolated config dir has no cache, so attribution
+	// refused for missing evidence there too). So this is not a regression; it is an
+	// asymmetry with a same-mode re-pin, and docs/ROADMAP.md § A mode toggle records it.
 	case len(conflicting) > 0:
 		// Every reader that can speak says the copy is somebody else's, and the directory
 		// this operation acts for is not one of them — so it has no reading of its own and
@@ -1698,6 +1733,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		return harvestRefusal{
 			Why: "the directories that read this credential say it belongs to another account, " +
 				"and this directory does not read it yet",
+			ForeignToReaders: true,
 		}
 	case confirmed > 0:
 		return harvestRefusal{}
@@ -1828,7 +1864,7 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 		return false
 	default:
 		_, preserved, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot,
-			attributionSource{Dir: dirs.Config, Unbound: true})
+			attributionSource{Dir: dirs.Config, Unbound: purging})
 		if !preserved {
 			why := refused.Why
 			if why == "" {
@@ -2460,16 +2496,26 @@ func (app *App) pinIdentityChecks(ctx context.Context, be secret.Backend, stores
 //
 // Neither the live nor the stored identity value appears: an identity is PII, and
 // the tool, account and directory are enough to act on.
+//
+// The remedy is `kae relogin`, not `kae pin`. `kae pin` was the remedy until 2026-08-08
+// and it is a **no-op in the state this check reports most often**: the account's
+// credential store is shared, so when a sibling directory still confirms the account, the
+// readers disagree, the harvest keeps the copy, and a bind that keeps writes no identity
+// label either — so the directory goes on running the other account, and the next `kae
+// doctor` prints this same finding with the same remedy. `kae relogin` repairs both causes
+// the sentence states: it mints a login in that directory (so the store and the label
+// agree with the binding) and captures it back. Found by review; a remedy that lands
+// where nothing changes is the same defect as one that names a path nothing reads.
 func pinIdentityDriftMessage(bound boundDirStore) string {
 	return fmt.Sprintf(
 		"the %s identity cache in %s names an account other than %s/%s, which that directory binds: "+
 			"either something logged in there as another account — in which case that directory is running "+
 			"an account its binding does not name — or kae could not apply the identity when it bound the "+
 			"directory, and %s displays the wrong account while running the bound one (kae cannot tell "+
-			"those apart offline). To make the binding true again: cd %s && kae pin %s %s, which replaces "+
-			"what is in that store; to keep what is there instead, bind the directory to that account",
+			"those apart offline). To make the binding true again: %s; to keep what is there instead, "+
+			"bind the directory to that account",
 		bound.Tool, bound.Dir, bound.Tool, bound.Account,
-		bound.Tool, bound.Dir, bound.Tool, bound.Account,
+		bound.Tool, pinLoginRemedy(bound.Tool, bound.Dir),
 	)
 }
 

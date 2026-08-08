@@ -453,7 +453,12 @@ func TestDoctorReportsBoundDirectoryIdentityNamingAnotherAccount(t *testing.T) {
 	}
 	// Bound-directory wording, not the global check's: the two share a code, and a
 	// message from the wrong frame would otherwise satisfy this test.
-	for _, want := range []string{"claude identity cache in " + dir, "claude/main", "cd " + dir + " && kae pin claude main"} {
+	//
+	// The remedy is `kae relogin` and not `kae pin`, which this asserted until 2026-08-08:
+	// the credential store is the account's, so while a sibling directory still confirms
+	// the account the readers disagree, the bind keeps the copy and writes no identity
+	// label either — and the finding repeats unchanged after the remedy it gave.
+	for _, want := range []string{"claude identity cache in " + dir, "claude/main", "cd " + dir + " && kae relogin claude"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message missing %q: %q", want, msg)
 		}

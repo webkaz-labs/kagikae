@@ -877,8 +877,9 @@ say "the store", read it as whichever of the two that tool resolves:
   message that implies a copy survived when kae could not back it up is the thing AGENTS.md
   forbids, and one fixed string broke it in the unreadable arm.
   A kept copy is not stranded: once the tool has run there, attribution has honest evidence
-  and the next bind harvests it, and the last binding's `kae unpin --purge` harvests before
-  it deletes — measured 2026-08-08, end to end, keep → purge a sibling (kept, with the
+  and the next bind harvests it — **unless the readers disagree**, which no bind resolves
+  and `kae relogin` in the drifted directory does — and the last binding's `kae unpin
+  --purge` harvests before it deletes — measured 2026-08-08, end to end, keep → purge a sibling (kept, with the
   refcount named) → purge the last one (harvested into the snapshot, then removed);
 - the pair kae holds to: never file a copy it cannot attribute under an account, and never
   destroy one either. Both directions were reachable while attribution for the account's

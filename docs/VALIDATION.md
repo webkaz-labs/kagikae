@@ -1309,7 +1309,10 @@ cred FOREIGN $NEW > "$(accstore main)"
 Q="$HOME/newcomer"; mkdir -p "$Q"; cd "$Q"
 /tmp/kae pin main
 #   assert: exit 0, and kae `kept it rather than replacing it`, naming the reason
-#           `this directory does not read it yet` — NOT `this write replaces it`
+#           `this directory does not read it yet` — NOT `this write replaces it` — and,
+#           only on this arm, the consequence `it will run that other account`. This is
+#           the one keep where kae has positive evidence about the copy and so can say
+#           what the directory does next; the command still prints its success line
 grep FOREIGN "$(accstore main)"         # assert: the sibling's live login survives. B1 is
                                         #         the same fixture with the bind run *in* a
                                         #         reader, and there it is replaced — the

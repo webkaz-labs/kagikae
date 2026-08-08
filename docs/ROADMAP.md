@@ -431,6 +431,21 @@ alternative exists (`secret-tool`).
   swept unchanged is the per-directory item a **pre-split** binding left behind,
   which is what makes re-running `kae pin` a migration rather than a leak.
 
+- **A mode toggle and a same-mode re-pin answer a poisoned store differently** (recorded
+  2026-08-08 by a reading-type review, **not fixed, and deliberately so**). `Conflicting`
+  — the refusal that still overwrites — requires the directory the operation acts for to be
+  one of the readers that disagree. A same-mode re-pin satisfies that (its config dir is the
+  reader); a `-s` ↔ `-i` toggle does not, because the reader is derived from the fragment
+  and still names the *previous* mode's config dir while the operation acts for the new
+  one. So a directory someone logged into as another account is switched back by
+  `kae pin <same mode>` and kept by `kae pin -i`. Aliasing the previous-mode dir would make
+  the toggle replace, and what it would replace is a live login with no snapshot anywhere;
+  keeping is the answer AGENTS.md settles on and the one the code before the reader model
+  also gave (a fresh isolated config dir has no cache, so attribution refused for missing
+  evidence). What would settle it properly is deciding whether `Conflicting` should
+  overwrite at all when the account it names has no snapshot to fall back on — which is the
+  same question the `--purge` exceptions turn on, and a wider change than this one.
+
 - **A moved bound directory is not a witness, and its absence does not make the reader set
   incomplete** (recorded 2026-08-08 by a reading-type review, **not fixed**).
   `credStoreWitnesses` skips a pin whose recorded directory is gone and leaves `complete`
@@ -482,7 +497,11 @@ alternative exists (`secret-tool`).
   disagrees and the harvest refuses — but a store all of whose readers are kae-labelled
   still confirms. Reachable: bind A to an account and never run the tool there, bind B and
   log in as somebody else, then re-bind B elsewhere; A is now the only reader, it agrees
-  with kae's own label, and B's token is harvested under A's account. What remains is the
+  with kae's own label, and B's token is harvested under A's account. A **globally isolated
+  home** is a strictly easier A than a bound directory: `prepareGlobalIsolatedHome` writes
+  the label on every `kae use -i` / `kae run -i`, nothing ever removes such a home, and the
+  witness walk reads them from disk without any liveness gate (deliberately — that source is
+  what gives `kae run -i` a witness at all). What remains is the
   first candidate fix — record whether a cache was written by kae or observed from the tool
   — which is also what would let `identity_drift` tell a stale label from a real one. Do
   not "fix" it by removing the confirmation: that would make every bind keep forever.

@@ -1452,9 +1452,13 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   apart offline — the token is opaque — and they point opposite ways: something
   logged in there as another account (so that directory is *running* an account its
   binding does not name), or kae could not apply the identity when it bound the
-  directory (so only the label is wrong). Remedy `cd <dir> && kae pin <tool>
-  <account>` makes the binding true again and replaces what is in the store; keeping
-  what is there means binding the directory to that account instead. Unlike the
+  directory (so only the label is wrong). Remedy `cd <dir> && kae relogin <tool>`,
+  which repairs both causes; keeping what is there means binding the directory to that
+  account instead. It named `kae pin` until 2026-08-08, and that is a **no-op in the state
+  this check reports most often**: the credential store is the account's, so while a
+  sibling directory still confirms the account the readers disagree, the bind keeps the
+  copy, and a bind that keeps writes no identity label either — the finding then repeats
+  unchanged after the remedy the user was given. Unlike the
   other bound-directory checks this one **needs the secret backend**, to read the
   account's recorded identity, so an unavailable backend skips it while the bound
   credential checks still run.

@@ -109,6 +109,58 @@ alternative exists (`secret-tool`).
 
 ## Hardening backlog — daily-use robustness
 
+- **A test that forgets to install a runner is silent, and it writes to the machine
+  it runs on** (recorded 2026-08-09, **not fixed**). `runner.Default` falls back to
+  `OSRunner`, so a test that never calls `runner.With` executes the real program and
+  passes on a developer's laptop. Two live instances were found the day CI first ran
+  on the v0.17.0 branch, and only one of them failed anything: `pinHereAs` ran the
+  real `security` and wrote **956** items into the operator's login keychain across
+  two days of `mise run check` — the gate AGENTS.md says must never touch the real
+  environment — while on linux the same call had no `security` and failed two tests.
+  The second, `TestR6OnlyClaudeCanBeDeclined`, only *read*, so nothing failed
+  anywhere; what it silently did was let the operator's login state decide which
+  tools the guard inspected.
+  Both are fixed at their call sites, and that is what makes this worth recording:
+  **a per-site fix does not close the class**, because the next omission is just as
+  quiet. The seam that would is a `TestMain` in `internal/cmd` installing a runner
+  that fails loudly, with the argv, on any command a test did not opt into. It is not
+  the ten lines it looks like, and three measurements bound what it would actually
+  take.
+  First, `go test ./...` issues **171** real `git rev-parse --git-common-dir
+  --show-prefix` calls through the seam, all legitimate — `ensureGitExcluded` needs a
+  real repository layout — so the guard has to name the credential programs
+  (`security`, `secret-tool`) rather than refuse everything, or it fails the wrong
+  things. (`TestEnsureGitExcludedLeavesEveryWorktreeClean` makes nine more deliberate
+  git calls, but through `exec.Command` directly rather than the runner, so they would
+  be invisible to such a guard and cannot constrain its design either way.)
+  Second, **that exemption leaves a hole in the same breath**: real git means
+  `ensureGitExcluded` appends to the `$GIT_COMMON_DIR/info/exclude` of whatever
+  repository contains the temp dir — measured at **292 lines, 146 entries, per suite
+  run**, and it accumulates run over run. The defaults on macOS and ubuntu put
+  `TMPDIR` outside any repository, which is the only reason this is not already
+  happening — but `mise.toml` reads `TMPDIR` in nine places, so a per-project value
+  would write those lines into kagikae's own `.git/info/exclude`. A denylist that
+  exempts git cannot see it; bounding `TMPDIR` for tests is the separate half.
+  Third, `runner.Default` is **one of three seams**. `runner.RunInteractive` and
+  `runner.RunWithEnv` are their own package-level vars with their own overrides
+  (`withInteractive`, `withRunWithEnv`), and a `TestMain` on the first would not touch
+  them. `RunInteractive` inherits the operator's stdio and takes an arbitrary child
+  command, so a forgotten override there is worse than a forgotten `runner.With`;
+  instrumenting all three seams shows no live instance of either today (the only
+  non-git execs through `runner.Default` are `cat` and `false`, from
+  `internal/runner`'s own tests).
+  Deliberately not done at a release boundary; the two call-site fixes hold until then.
+  A **separate** gap surfaced by the same review and older than it: `keychainSim` can
+  catch a keychain item deleted under the *wrong* account but not one deleted with **no
+  account scoping at all**. Its delete arm is
+  `want := valueAfter(args, "-a"); want != "" && …`, so dropping `-a` short-circuits to
+  a match, the delete is recorded, and `TestUnpinPurgeRemovesACredentialNothingElseBinds`
+  — which asserts only that a delete happened — passes. Measured: replacing
+  `DeleteItemForAccount(…, sp.KeychainAccount)` with `DeleteItem(ctx, sp.Target)`
+  survives the whole suite, identically before and after the fixture work. That is the
+  v0.12.0 defect's own shape (an item addressed by service alone), so the sim should
+  refuse an un-scoped delete outright rather than treat it as a wildcard.
+
 - **Upstream now documents parallel sessions racing on one credential store**
   (recorded 2026-07-31). Claude Code v2.1.211: *"Fixed parallel Claude Code sessions
   all logging out simultaneously after wake-from-sleep when many sessions share one

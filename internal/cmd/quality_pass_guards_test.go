@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
+	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
 // The auth_missing sentence went from a pre-assembled string through `errf("%s", msg)` to a
@@ -42,7 +45,24 @@ func TestR6OnlyClaudeCanBeDeclined(t *testing.T) {
 		for _, goos := range []string{"darwin", "linux"} {
 			app := testApp(t, nil)
 			app.Env.GOOS = goos
-			plan, err := app.planTool(t.Context(), tool, "main")
+			// `planTool` resolves a keychain-backed tool by *reading* the store, and with
+			// no runner installed that read went to the operator's own login keychain,
+			// through `find-generic-password -w` — which prints the secret, so three live
+			// tokens were read into this process on every run.
+			//
+			// What varied is **whether `security` exists**, not whose account it held:
+			// measured across four keychain worlds, a hit and a miss inspect the same 11
+			// of 12 rows, and no `security` at all inspects **8** — so CI checked three
+			// fewer tool/platform rows than a developer did, `claude/darwin` among them.
+			// (A payload that does not parse inspects 10, so content is not entirely
+			// inert; what it cannot do is vary by *which* account is logged in, which is
+			// what an earlier version of this comment claimed.) A uniform miss makes the
+			// set the same everywhere, and larger than CI's was.
+			var plan toolPlan
+			var err error
+			runner.With(&runnertest.Fake{Code: 44, Stderr: "security: " + keychain.NotFoundMarker}, func() {
+				plan, err = app.planTool(t.Context(), tool, "main")
+			})
 			if err != nil {
 				continue // a tool this platform cannot resolve cannot be declined either
 			}

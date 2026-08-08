@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/paths"
+	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
 // pinHere binds a temp cwd with overlayTestApp's profile (claude/main, never
@@ -28,11 +30,115 @@ func pinHereAs(t *testing.T, app *App, profile, mode string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, profile, mode)
-	})
+	var code int
+	var out string
+	pin := func() {
+		code, out = captureStdout(t, func() int {
+			return runPin(context.Background(), app, commonOpts{Format: formatText}, profile, mode)
+		})
+	}
+	// Only when the caller has installed nothing. 8 of this helper's call sites run
+	// inside their own `runner.With`, and shadowing it is not neutral: their fake is
+	// what the test then asserts on, so a pin whose `add-generic-password` lands in a
+	// throwaway leaves the caller's simulator holding no account — which turns its
+	// account-scoping arm into an unconditional match and stops it killing a mutation
+	// of the account kae writes. Measured: `DeleteItemForAccount`'s account mutated,
+	// killed by TestUnpinPurgeRemovesACredentialNothingElseBinds before shadowing and
+	// survived after. Shadowing also un-fakes every *other* command for those sites,
+	// which sent `ensureGitExcluded` to real git.
+	// Both spellings, because the value and the pointer are different types to a type
+	// switch and a stray `&` would silently send the pin back to the real keychain —
+	// the exact direction this fixture exists to prevent. A nil `Default` is left to
+	// panic: that is a broken setup, and installing a fixture over it would hide it.
+	switch runner.Default.(type) {
+	case runner.OSRunner, *runner.OSRunner:
+		runner.With(pinFixtureRunner{next: runner.Default}, pin)
+	default:
+		pin()
+	}
 	mustExit(t, constants.ExitOK, code, out)
 	return cwd
+}
+
+// pinFixtureRunner answers the `security` CLI as an empty keychain — every lookup
+// misses, every write and delete succeeds — and hands every other command to the
+// real runner.
+//
+// It exists because pinHereAs used to call runPin with **no runner installed at
+// all**, and a pin whose adapter resolves to the keychain driver then ran the real
+// `security`. Not hypothetical in either direction. On darwin it wrote a genuine
+// login-keychain item per pin: 956 `Claude Code-credentials-*` items under claude's
+// fallback account were on the operator's machine on 2026-08-09, 448 and 508 of them
+// created on the two days this branch was developed — by `mise run check`, the gate
+// AGENTS.md says must never touch the real environment. On linux there is no
+// `security`, so the same call made the pin exit 1 and two tests failed, which is how
+// CI found it on this branch's first ever CI run.
+//
+// **Deliberately stateless, and the reason is a measurement rather than taste.** An
+// earlier version stored what it was told and replayed it. Eleven mutations of that
+// version — always-miss, store-nothing, drop the `-a` scoping either way, empty
+// payload, empty account, key by service+account, a shared instance — every one of
+// them survived the whole package. Nothing here is a subject; no caller asserts on a
+// value this fixture produced, so a store is state no test can observe, and the two
+// rationales the earlier comment gave for its shape (that a pin's git answer is
+// needed, that the keying must be service+account) were both refuted by their own
+// mutants. Per AGENTS.md that reason belongs in a comment rather than in a test that
+// cannot fail. What the callers do need is only that the pin **succeeds**: a write
+// that reports 0 and a lookup that is honest about an empty keychain.
+//
+// The pass-through is not decoration either: `ensureGitExcluded` asks git for the
+// common dir and the prefix, and answering that from here would be inventing a repo
+// layout. It goes to `next`, the runner this one replaced — which restores the
+// *other* commands for a caller that had installed its own. It does **not** make the
+// branch at the call site redundant, and that is worth being exact about: with the
+// branch removed and `next` still in place, a caller's simulator still never sees the
+// pin's write, and the account mutation at `artifact.go:325` goes from killed to
+// survived while the whole package stays green. The branch is what keeps the caller's
+// simulator authoritative; `next` only keeps git honest.
+//
+// **Both credential programs are intercepted, not just `security`**, and each gets the
+// reply *its own* reader treats as an empty store — they do not share a convention.
+// `internal/keychain` needs a non-zero exit carrying `NotFoundMarker` on stderr;
+// `internal/secret`'s libsecret backend discriminates on **empty** stderr instead
+// (`libsecret.go`: "a non-zero exit with empty stderr means no items are stored"), so
+// the keychain's wording handed to it would read as a hard error rather than a miss.
+// `RunInput` matters for the same half: `secret-tool store` takes its secret on stdin,
+// and passing that through would hand a live credential to a real keyring.
+//
+// No test reaches the `secret-tool` half today — measured, by planting a panic here
+// and running the package — because `testApp` pins the file backend, and
+// `secret.Resolve` returns it without consulting `LookPath` at all.
+type pinFixtureRunner struct{ next runner.Runner }
+
+func (p pinFixtureRunner) Run(ctx context.Context, name string, args ...string) (string, string, int) {
+	if len(args) == 0 {
+		return p.next.Run(ctx, name, args...)
+	}
+	switch name {
+	case "security":
+		switch args[0] {
+		case "add-generic-password", "delete-generic-password":
+			return "", "", 0
+		}
+		return "", "security: " + keychain.NotFoundMarker, 44
+	case "secret-tool":
+		switch args[0] {
+		case "store", "clear":
+			return "", "", 0
+		}
+		return "", "", 1
+	}
+	return p.next.Run(ctx, name, args...)
+}
+
+func (p pinFixtureRunner) RunInput(ctx context.Context, stdin, name string, args ...string) (string, string, int) {
+	// The zero-arg case delegates from here rather than through Run, which would drop
+	// stdin on the way. Unreachable — no credential call is argument-less — but this is
+	// the method whose whole reason is not losing a secret on the way past.
+	if len(args) == 0 || (name != "security" && name != "secret-tool") {
+		return p.next.RunInput(ctx, stdin, name, args...)
+	}
+	return p.Run(ctx, name, args...)
 }
 
 // TestPinRecordsTheBoundDirectory pins that a bound directory is findable from

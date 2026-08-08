@@ -296,6 +296,17 @@ func (app *App) applyGlobalScope() {
 // in lockstep already (AGENTS.md); three switches to keep in step instead of one is
 // how the new one ends up half-added, silently pointing some caller at a store that
 // does not exist.
+//
+// A **fourth** switch on the mode lives outside this function and has to be decided
+// deliberately for a new mechanism: `attributionSource.StaleLabel`, computed in
+// `isolationPlan` and `runRebind`. It asks whether the config dir the bind materializes
+// into is keyed by the account (isolated, and the globally isolated home — a label there
+// is a live login) or shared by every account the directory ever bound (shared — a label
+// there is kae's own leftover once the account changes). A new mode falls through to
+// *not stale*, which is the safe answer for an account-keyed mechanism and the round-2
+// destroy for an account-agnostic one: the stale label survives the keep and the next
+// run reads it as this directory's own reading. Neither polarity is pinned by a test,
+// because there is no third mode to write one against.
 func (app *App) modeStoreDir(mode, pinID, tool, account string) (dir string, ok bool) {
 	switch mode {
 	case modeShared:

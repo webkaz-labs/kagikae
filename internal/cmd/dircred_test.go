@@ -989,6 +989,57 @@ func TestRunRebindKeepAlsoRetractsTheStaleLabel(t *testing.T) {
 	}
 }
 
+// The other direction of the same expression, and the destructive one: a re-bind to the
+// account the directory is **already** bound to (`runRebind` has no short-circuit for it).
+// The label there was written under that same account, so it is a live login and not kae's
+// leftover. `StaleLabel: true` at this call site survived the whole suite while its twin in
+// `isolationPlan` did not — two call sites computing one fact, covered asymmetrically
+// (execution-type review, 2026-08-08).
+func TestRunRebindToTheSameAccountKeepsTheLiveLabel(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	bindClaudeHere(t, app, "main") // a sibling that confirms, so the disagree arm keeps
+	_, poisoned := bindClaudeHere(t, app, "main")
+	// A login as side inside this directory, and its newer token in the account's store.
+	label := filepath.Join(poisoned, ".claude.json")
+	writeFile(t, label, claudeIdentityFile("side-uuid"))
+	const sideLive = "sk-ant-oat01-SIDE-LIVE-eeee"
+	credFile := dirCredFile(app, constants.ToolClaude, "main", poisoned)
+	writeFile(t, credFile, claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
+
+	if code, out := captureStdout(t, func() int {
+		return runRebind(ctx, app, opts, constants.ToolClaude, "main")
+	}); code != constants.ExitOK {
+		t.Fatalf("same-account re-bind exit %d: %s", code, out)
+	}
+	if got := readFile(t, label); !strings.Contains(got, "side-uuid") {
+		t.Fatalf("a label written under the account being re-bound is a live login, not a leftover: %q", got)
+	}
+	if got := readFile(t, credFile); !strings.Contains(got, sideLive) {
+		t.Fatalf("and the copy the readers disagree about is kept: %s", got)
+	}
+}
+
+// The two constant families that name a bind mechanism are compared across package
+// boundaries without anything tying them: `isolationPlan` switches on `constants.Mode*`
+// while `runRebind` switches the mode read from the fragment on `paths.*Segment`, so a
+// drift would put the two entry points on different branches of the same question —
+// the "two tables keyed differently" hazard AGENTS.md records for the completion guards.
+// Measured interchangeable 2026-08-08; nothing enforced it.
+func TestBindModeConstantsAgreeAcrossPackages(t *testing.T) {
+	for _, pair := range []struct{ name, mode, segment string }{
+		{"shared", constants.ModeShared, paths.SharedSegment},
+		{"isolated", constants.ModeIsolated, paths.IsolatedSegment},
+	} {
+		if pair.mode != pair.segment {
+			t.Errorf("%s: constants %q and paths %q must name one mechanism", pair.name, pair.mode, pair.segment)
+		}
+	}
+}
+
 // **An isolated config dir is keyed by the account, so a label in it is never stale.** Every
 // label there was written while bound to that same account, so a disagreement can only be a
 // login as somebody else — live evidence. Re-binding *back* to an account this directory had

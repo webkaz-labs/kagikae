@@ -12,7 +12,6 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
-	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 // CmdRelogin drives a tool's own login flow into the store the current
@@ -139,15 +138,6 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// The last point at which the copy already in that store can be kept, because the
 	// write that replaces it is the *tool's* and kae never sees it.
 	app.preserveBeforeRelogin(ctx, be, preSpecs, tool, accountName, dirs)
-	// Pruned **here**, not at the end of the command, because this is the only point at
-	// which this command writes a backup — and two returns sit between here and the tail:
-	// a launch failure, and `auth_unchanged`, which *is* the aborted or failed login flow,
-	// the case a user repeats. With the prune at the tail those runs each left another full
-	// credential copy behind and nothing removed them (measured at `backup_keep = 1`: five
-	// aborted runs, five copies). Before the flow rather than deferred after it, so the
-	// context is still live: an interrupted login cancels it, and a prune that cannot run is
-	// the same accumulation by another route.
-	app.pruneBackups(ctx, be)
 
 	// Every variable the binding sets, not just the home one. The login writes the
 	// credential where the *credential* variable points, so exporting one half sends
@@ -428,18 +418,18 @@ func boundToolList(fragment fragmentInfo) string {
 // account's, which on the arm that matters most is precisely what kae could not
 // establish.
 //
-// **It backs the copy up as well** (reason `relogin-unattributable`, the credential only),
-// because AGENTS.md's rule is that a refusal which cannot preserve is a deletion and owes
-// a backup, the way `kae run -s` answers its own with `run-unattributable`.
-//
-// This paragraph said the opposite for one commit, giving the hazard that blocked the
-// backup as a settled design decision — a restore of such a backup landing in the **real
-// home**, because `applyBackup` re-resolves specs globally and `restoreSpec` prefers the
-// live one on a `Kind` mismatch. That hazard is real and is what `fromBoundStore` now
-// gates; the stale paragraph outlived it by one commit and was a standing licence to
-// delete the backup below. docs/ROADMAP.md § A relogin's pre-flight refusal owes a backup
-// carries the struck-through entry and the constraint that still governs any *future*
-// bound-store backup.
+// **What it does not do is back the copy up, and that is a decision rather than an
+// oversight** (docs/ROADMAP.md § A relogin's pre-flight refusal owes a backup it cannot
+// safely take yet). AGENTS.md's rule is that a refusal which cannot preserve is a
+// deletion and owes a backup, the way `kae run -s` answers its own with
+// `run-unattributable` — and by that rule this owes one. What stops it being a
+// ride-along is where a restore of such a backup would land: `createBackup` records the
+// spec it was handed, but `applyBackup` re-resolves today's specs **globally** and
+// `restoreSpec` prefers the live one whenever its `Kind` differs from the record's — so
+// a bound store's backup taken under one driver and restored under another writes into
+// the **real home**, which is a worse outcome than the loss it insures against. The
+// warning is the part that is safe today, and it reaches the user while the action that
+// prevents the loss — not completing the flow — is still available.
 //
 // Every guard is harvestDirCredential's, unchanged, so this is silent in the ordinary
 // case: a store holding nothing newer than the snapshot returns preserved with no
@@ -488,60 +478,17 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 		// already reported, naming the concrete error. A line here would be the second
 		// warning for one event, and the weaker of the two, which is the rule this file
 		// keeps elsewhere: one store that was not harvested produces exactly one message.
-		// No backup either: the copy is *in* the snapshot's account, kae simply could not
-		// write it, and the next bind of a directory still holding it re-harvests.
 		return
-	}
-	// **A refusal that cannot preserve is a deletion, so it owes a backup**, and this one
-	// owes it for the same reason `kae run -s`'s recapture does (AGENTS.md): the caller
-	// then lets the copy be overwritten. The only difference is who performs that write —
-	// there kae, here the tool — and the copy is gone either way.
-	//
-	// The **credential only**, not everything the store declares. A restore of this backup
-	// puts back the copy the login replaced; restoring the identity cache beside it would
-	// write a pre-login label over the one the login just wrote, which is a relabel nobody
-	// asked for and the thing dirIdentityConfirms would then read as evidence.
-	backupID := ""
-	if sp, ok := specByName(specs, artName); ok {
-		// A state read failure must not cost the backup. The only thing `st` supplies is
-		// `ActiveBefore`, and every consumer of a bound-store backup skips that field by
-		// construction (fromBoundStore) — so an empty one loses nothing, while refusing to
-		// back up would strand the copy over an unrelated file. `createBackup` dereferences
-		// `st`, so the fallback is a value rather than nil.
-		st, serr := app.loadState()
-		if serr != nil {
-			st = state.New()
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: could not read kae's state (%v); the %s credential the login flow replaces "+
-					"is still backed up, without the record of which account was globally active\n", serr, tool)
-		}
-		if meta, berr := app.createBackup(ctx, be,
-			[]toolPlan{{Tool: tool, Account: accountName, Specs: []artifact.Spec{sp}}},
-			st, constants.BackupReasonReloginUnattributable, true); berr != nil {
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: could not back up the %s credential the login flow replaces (%v)\n", tool, berr)
-		} else {
-			backupID = meta.ID
-		}
 	}
 	// The clause is the shared one, so this cannot describe the store by a different name
 	// than the bind path does — and it carries the ordering only where kae established it,
-	// which matters here because one of the reasons it interpolates is kae saying it cannot
-	// read or date that copy.
+	// which matters here because one of the reasons it interpolates is kae saying it
+	// **cannot** read or date that copy, and a frame calling it *newer* would contradict
+	// the reason four words later (the fold docs/CLI.md § `kae rollback --json` is
+	// normative against).
 	clause := dirCredentialRefusalClause(tool, dirs, accountName, refused)
-	// A message may not imply a copy survives when kae could not back it up (AGENTS.md),
-	// so the two endings are the two facts, not one hedge. `--to` and not a bare
-	// `kae rollback`: this backup is a preserved artifact rather than an undo target, which
-	// is what isUndoTarget keeps it out of.
-	if backupID == "" {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: %s; completing the login flow replaces it, and kae has it in no snapshot "+
-				"and could not back it up either\n", clause)
-		return
-	}
 	fmt.Fprintf(os.Stderr,
-		"kae: warning: %s; completing the login flow replaces it, so kae backed it up first — "+
-			"%s rollback --to %s puts that copy back\n", clause, toolName, backupID)
+		"kae: warning: %s; completing the login flow replaces it, and kae has it in no snapshot\n", clause)
 }
 
 // captureBackAfterRelogin harvests the copy the login just wrote into the

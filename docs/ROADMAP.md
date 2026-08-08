@@ -490,29 +490,8 @@ alternative exists (`secret-tool`).
   different class from a walk of everyone's caches — which is a deliberate override of the
   reader set and wants its own measurement rather than a late edit to the shared predicate.
 
-- ~~**A relogin's pre-flight refusal owes a backup it cannot safely take yet**~~ (recorded
-  2026-08-08 by an independent review of the pre-flight itself, **fixed the same day** —
-  see [RELEASE.md](RELEASE.md) v0.17.0). It now takes one, reason
-  `relogin-unattributable`, and the message names `kae rollback --to <id>`. What the entry
-  said blocked it was real and is what the fix had to close first: `applyBackup`
-  re-resolves specs **globally**, so a bound store's record went through a check that is
-  not an answer about it. `fromBoundStore` gates that check, keyed on the reason and not on
-  the recorded target — a keychain record's target is a *service name*, so a path test
-  answers "not kae's" for exactly the per-directory item that most needs it.
-  One correction to the entry as first written, found by building the control rather than
-  by reading: the severe outcome it named (a restore writing the **real home**) needs the
-  tool's two stores to hold interchangeable payloads, which is codex, not claude. For
-  claude the unguarded path *refuses* instead — recoverable, but it makes the backup
-  worthless exactly when it is needed. One predicate covers both; each has its own control
-  in `TestBoundStoreBackupIsNeverRedirectedToTheRealHome`.
-  The backup holds the **credential only**: restoring a pre-login identity cache beside it
-  would relabel the directory, and that label is what attribution reads next.
-
-  The original entry, kept because the constraint it names still governs any future
-  bound-store backup:
-
 - **A relogin's pre-flight refusal owes a backup it cannot safely take yet** (recorded
-  2026-08-08 by an independent review of the pre-flight itself, **fixed**).
+  2026-08-08 by an independent review of the pre-flight itself, **not fixed**).
   [AGENTS.md](../AGENTS.md) states the rule the pre-flight falls under: a refusal that
   cannot preserve is a deletion, so it owes a backup the way `kae run -s`'s recapture
   answers its own with reason `run-unattributable`. `preserveBeforeRelogin` refuses on
@@ -532,6 +511,26 @@ alternative exists (`secret-tool`).
   backup wants the restore path to understand a bound-store record first (or an explicit
   `--to`-only class of backup that is never redirected), which is its own change and its
   own review. Nothing about it is urgent while the refusal is loud and pre-flight.
+  **It was built and then withdrawn before v0.17.0 shipped** (2026-08-09), and what the
+  attempt measured is worth more than the entry above. The restore-landing hazard is *not*
+  what stopped it: a recorded `BoundStore` field on the meta, read at one predicate, gated
+  it — and gating one consumer was the first defect, because the hazard is a **class**, not
+  a check. kae's backup subsystem rests on an unstated invariant, *a backup records the
+  tool's global live state*, which 7 of its 13 consumers had encoded; four independent
+  execution reviews each surfaced one more consumer still assuming it (an identity sweep
+  that cleared the **real home's** cache, an `ActiveBefore` restore that moved the globally
+  active account, a superseded-credential warning that ordered two unrelated chains, and a
+  producer handing a global record to a meta marked not-global). Two of those compose into
+  filing one account's token under another's name.
+  One question the attempt never settled, and a retry must settle **first**: what a bounded
+  preserved side should evict. Bounding it made an aborted `kae relogin` — a run that
+  changed nothing — evict the previous run's preserved copy, and eviction is purely
+  positional, so it took the *irreplaceable* copy (another account's only login) and kept
+  one still live in the store. Retention has no notion that a preserved copy whose payload
+  is still live is worth less.
+  So a retry starts by enumerating that invariant's consumers and deciding the eviction
+  rule, not by writing the backup. The warning half shipped and is unaffected: it produced
+  zero findings across all four rounds, and it is what turned this from silent to loud.
 
 - **A payload kae can neither read nor date is still overwritten by a bind, and that is
   a decision rather than an oversight** (recorded 2026-08-08, **not fixed**). The bind now

@@ -74,15 +74,9 @@ func TestR4PruneInterleaved(t *testing.T) {
 	}
 }
 
-// Fewer than `keep` countable backups, so the positional cutoff never fires — the case
-// that used to prune nothing at all and therefore had no bound on the rejected side.
-//
-// **This test asserted that unboundedness until 2026-08-08**, on the stated grounds that
-// every declining `run -s` writes one countable backup beside its preserved copy, so one
-// always existed to age against. `kae relogin`'s pre-flight refusal broke that: a pin-only
-// workflow runs no backup-writing command, so five refusals left five full copies of a
-// credential in the secret store with nothing able to remove them. The rejected side now
-// carries `keep` on its own, which is what this asserts instead.
+// Fewer than `keep` countable backups: nothing is pruned at all, including rejects that
+// are older than every accepted one. Bounded in practice only because every declining
+// `run -s` writes one countable backup beside its preserved copy.
 func TestR4PruneFewerThanKeepCountable(t *testing.T) {
 	dir := t.TempDir()
 	pairs := [][2]string{{"20260611T012300Z", "run"}}
@@ -101,23 +95,9 @@ func TestR4PruneFewerThanKeepCountable(t *testing.T) {
 	}
 	left, _ := List(dir)
 	t.Logf("removed=%d left=%d", len(removed), len(left))
-	// 30 rejected (their own keep) + the single countable one, which the cutoff never
-	// reaches. The 10 oldest rejected entries go.
-	if len(left) != 31 {
-		t.Errorf("expected the rejected side bounded at keep + the countable one, got %d", len(left))
+	if len(left) != 41 {
+		t.Errorf("expected everything retained while under keep, got %d", len(left))
 	}
-	if len(removed) != 10 {
-		t.Errorf("expected the 10 oldest rejected entries pruned, got %d", len(removed))
-	}
-	// The bound must not have come from the countable one being evicted: an undo target
-	// under keep is never pruned, and losing it is the failure the no-slot rule exists for.
-	for _, m := range left {
-		if m.Reason == "run" {
-			goto countableSurvived
-		}
-	}
-	t.Fatalf("the countable backup must survive: %v", ids(left))
-countableSurvived:
 }
 
 // The padded/unpadded boundary. Old ids (`-2`) and new ones (`-02`) cannot share a

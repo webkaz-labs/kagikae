@@ -428,7 +428,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 	if err != nil {
 		return 0, err
 	}
-	meta, err := app.createBackup(ctx, be, plans, st, constants.BackupReasonRun, false)
+	meta, err := app.createBackup(ctx, be, plans, st, constants.BackupReasonRun)
 	if err != nil {
 		return 0, err
 	}
@@ -584,7 +584,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 		for i, d := range declined {
 			declinedPlans[i] = d.plan
 		}
-		if preMeta, err := app.createBackup(ctx, be, declinedPlans, st, constants.BackupReasonRunUnattributable, false); err != nil {
+		if preMeta, err := app.createBackup(ctx, be, declinedPlans, st, constants.BackupReasonRunUnattributable); err != nil {
 			fmt.Fprintf(os.Stderr, "kae: warning: could not back up the live state kae declined to adopt: %v\n", err)
 		} else {
 			preID = preMeta.ID

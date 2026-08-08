@@ -232,21 +232,6 @@ func (app *App) restoreWouldKillNewerLogin(ctx context.Context, be secret.Backen
 func (app *App) warnRestoringSupersededCredential(ctx context.Context, be secret.Backend,
 	meta backup.Meta, preID string, current map[string][]artifact.Spec,
 ) {
-	// **Silent for a bound-store backup, and not because it has nothing to compare.** The
-	// account below comes from `ActiveBefore`, which for such a backup records whichever
-	// account was globally active when one directory's copy was preserved — and the reason
-	// that copy was preserved at all is that kae **could not attribute it**. Every clause
-	// this function builds would then be about an account the recorded copy has no
-	// established relation to: it would order two unrelated chains by `expiresAt` (which
-	// AGENTS.md is explicit never establishes *whose* login two copies are), name a
-	// snapshot that is not the copy's, and offer a `kae use` remedy for it. Measured
-	// 2026-08-08 — every clause of the emitted sentence was wrong.
-	//
-	// Silence is the honest answer rather than a weaker wording: there is no account here
-	// for kae to make even a hedged statement about.
-	if meta.BoundStore {
-		return
-	}
 	for _, tool := range meta.Tools {
 		if !rotatesSingleUse(tool) {
 			continue

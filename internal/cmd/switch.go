@@ -187,7 +187,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	if err != nil {
 		return nil, err
 	}
-	meta, err := app.createBackup(ctx, be, plans, st, constants.BackupReasonSwitch, false)
+	meta, err := app.createBackup(ctx, be, plans, st, constants.BackupReasonSwitch)
 	if err != nil {
 		return nil, err
 	}

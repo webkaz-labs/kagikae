@@ -236,16 +236,13 @@ func (app *App) pruneBackups(ctx context.Context, be secret.Backend) {
 }
 
 // createBackup snapshots the live values of every plan into one backup.
-func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []toolPlan, st *state.State,
-	reason string, boundStore bool,
-) (backup.Meta, error) {
+func (app *App) createBackup(ctx context.Context, be secret.Backend, plans []toolPlan, st *state.State, reason string) (backup.Meta, error) {
 	id := backup.NewID(app.Paths.BackupsDir(), app.Now())
 	meta := backup.Meta{
 		SchemaVersion: constants.SchemaVersion,
 		ID:            id,
 		CreatedAt:     app.Now().UTC(),
 		Reason:        reason,
-		BoundStore:    boundStore,
 		Tools:         []string{},
 		ActiveBefore:  map[string]string{},
 		Artifacts:     []backup.ArtifactRecord{},
@@ -327,7 +324,7 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 		if err != nil {
 			return err
 		}
-		sp, warning, err := restoreSpec(current, rec, fromBoundStore(meta))
+		sp, warning, err := restoreSpec(current, rec)
 		if err != nil {
 			return err
 		}
@@ -358,19 +355,8 @@ func (app *App) rollbackTo(ctx context.Context, be secret.Backend, meta backup.M
 	if err := app.applyBackup(ctx, be, meta, nil, true); err != nil {
 		return err
 	}
-	// **Not for a bound-store backup.** This sweep deletes an identity artifact the
-	// backup has no record of, and `current` is resolved *globally* (buildRollback runs
-	// applyGlobalScope), so on such a backup it clears the identity out of the **real
-	// home**. A bound-store backup records the credential only, deliberately — an
-	// identity restored beside it would relabel the directory — so claude's
-	// identity-only artifact is unrecorded by construction and this deleted it every
-	// time. Measured 2026-08-08: `~/.claude.json` went to `{}`, which is also what
-	// removes the evidence `keepSnapshotIdentity` refuses on, so the next ordinary
-	// `kae use` filed one account's token under another's name.
-	if !meta.BoundStore {
-		if err := clearUnrecordedIdentity(ctx, meta, current); err != nil {
-			return fmt.Errorf("clear a stale identity cache: %w", err)
-		}
+	if err := clearUnrecordedIdentity(ctx, meta, current); err != nil {
+		return fmt.Errorf("clear a stale identity cache: %w", err)
 	}
 	return nil
 }
@@ -433,22 +419,11 @@ func storedValue(ctx context.Context, be secret.Backend, ref string, present, id
 // current is nil only where no declaration was resolved; the record then stands
 // alone, which is the pre-fix behaviour.
 //
-// **boundStore turns the whole check off, and that is not a special case bolted on.**
-// Everything above rests on `current` being an answer about the *same* store the record
-// came from — true while every backup records the tool's global store. A backup taken
-// from a store kae pointed one directory at was never in the global store, so today's
-// global resolution is not a statement about it, and following it on a kind mismatch
-// writes the **real home**: one directory's loss becomes a global logout. `fromBoundStore`
-// is the single place that decides this and says why it is keyed on the reason.
-//
 // The returned warning is non-empty when the restore is knowingly partial. It is
 // returned rather than printed so the caller that performs the write emits it once,
 // immediately before that write — the pre-rollback capture resolves the same spec
 // and must not print it a second time.
-func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord, boundStore bool) (sp artifact.Spec, warning string, err error) {
-	if boundStore {
-		return specFromRecord(rec), "", nil
-	}
+func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) (sp artifact.Spec, warning string, err error) {
 	for _, live := range current[rec.Tool] {
 		if live.Name != rec.Name || live.Kind == rec.Kind {
 			continue
@@ -618,40 +593,20 @@ func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) [
 		if _, seen := specsByTool[rec.Tool]; !seen {
 			order = append(order, rec.Tool)
 		}
-		sp, _, err := restoreSpec(current, rec, fromBoundStore(meta))
+		sp, _, err := restoreSpec(current, rec)
 		if err != nil {
 			sp = specFromRecord(rec)
 		}
 		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], sp)
 	}
-	// **Never for a bound-store backup**, and the invariant is worth stating because the
-	// flag is on the *meta* while the danger is per *record*: a meta marked "not global"
-	// must not be handed a global record, or every consumer that trusts the flag is wrong
-	// about one artifact.
-	//
-	// `current` is a **global** resolution (buildRollback runs applyGlobalScope), so for
-	// such a backup it is not an answer about these records at all. claude's identity-only
-	// artifact is unrecorded there *by construction* — the pre-flight backs up the
-	// credential alone, deliberately — so it was appended every time, and the pre-rollback
-	// backup then carried a record targeting the **real home** while being marked
-	// BoundStore. Rolling back to it wrote the real home's identity, leaving it naming one
-	// account while the credential beside it was another's; the next ordinary command reads
-	// that as a login made outside kae and declines to recapture, which under single-use
-	// rotation is the logout class. Measured 2026-08-08.
-	//
-	// The append loses nothing here: its whole purpose is to keep
-	// `clearUnrecordedIdentity` reversible, and that sweep is skipped for exactly these
-	// backups (rollbackTo).
-	if !fromBoundStore(meta) {
-		for _, tool := range order {
-			recorded := make(map[string]bool, len(specsByTool[tool]))
-			for _, sp := range specsByTool[tool] {
-				recorded[sp.Name] = true
-			}
-			for _, sp := range current[tool] {
-				if !recorded[sp.Name] {
-					specsByTool[tool] = append(specsByTool[tool], sp)
-				}
+	for _, tool := range order {
+		recorded := make(map[string]bool, len(specsByTool[tool]))
+		for _, sp := range specsByTool[tool] {
+			recorded[sp.Name] = true
+		}
+		for _, sp := range current[tool] {
+			if !recorded[sp.Name] {
+				specsByTool[tool] = append(specsByTool[tool], sp)
 			}
 		}
 	}

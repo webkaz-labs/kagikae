@@ -132,37 +132,8 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   remedy. Measured end to end: following that remedy left the other account's only
   refreshable copy in no store and no snapshot, with nothing printed about it. Now the
   copy is harvested where it can be, and where it cannot the reason is on stderr before
-  the flow starts **and the copy is backed up first** (reason `relogin-unattributable`,
-  the credential only, with `kae rollback --to <id>` named in the warning) — because a
-  refusal that cannot preserve is a deletion, which is the rule `kae run -s`'s recapture
-  already answers with `run-unattributable`. Not a refusal of the login itself: that is
-  what was asked for, and declining it would leave the directory stale with nothing to do
-  about it.
-  It is the first backup kae takes from a **bound** store rather than the tool's global
-  one, and that cost one more guard than it looks: the restore's moved-store check
-  re-resolves specs globally, so following it would write the **real home** — one
-  directory's loss becoming a global logout — for a tool whose two stores hold
-  interchangeable payloads, and would refuse outright for one whose stores do not (claude
-  today), making the backup worthless exactly when it is needed. `fromBoundStore` gates
-  that check, keyed on the reason rather than on the recorded target, since a keychain
-  record's target is a service name. The bare-rollback refusal now names the preserved
-  reasons actually present instead of the one literal it had hardcoded.
-  **That gate had to become a class rather than a check**, which the final pre-tag review
-  measured: it covered the moved-store check alone while three other consumers went on
-  reading such a backup as a statement about global state — the unrecorded-identity sweep
-  cleared the **real home's** identity, the `active_before` restore flipped the globally
-  active account, and the superseded-credential warning ordered the recorded copy against
-  an account it had never been attributed to. The first two compose: the identity wipe
-  removes the evidence the switch-away recapture refuses on, so the next ordinary
-  `kae use` filed one account's token under another's name. The property is now recorded on
-  the backup (`bound_store`) rather than looked up from its reason, so it also survives
-  being copied into the pre-rollback backup of such a rollback. And `kae relogin` prunes at the one point
-  it writes a backup, which is before the flow rather than at the end of the command: two
-  returns sit in between — a launch failure and `auth_unchanged`, the latter being the
-  aborted login itself, the case a user repeats — so a prune at the tail left every aborted
-  run another copy behind. `backup.Prune` also bounds the preserved side on its own now,
-  closing the retention hole that function's own comment had predicted before the path
-  existed.
+  the flow starts. Not a refusal — the login is what was asked for, and declining it
+  would leave the directory stale with nothing to do about it.
 
 - **`doctor` reports the copy that lost the race** (`credential_superseded`,
   contract-additive). When two copies of one account's credential exist and one

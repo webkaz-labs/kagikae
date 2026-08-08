@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/backup"
@@ -19,12 +18,6 @@ type backupItem struct {
 	CreatedAt string   `json:"created_at"`
 	Reason    string   `json:"reason"`
 	Tools     []string `json:"tools"`
-	// BoundStore is additive (absent = false, as on disk). It is exposed because the
-	// distinction is not derivable from `reason` — the pre-rollback backup of a
-	// bound-store rollback carries `rollback` — and it changes what `kae rollback --to`
-	// does: restore one directory's store, move no active pointer, say nothing about
-	// ordering. An agent reading only this list could not tell those apart.
-	BoundStore bool `json:"bound_store,omitempty"`
 }
 
 type backupListReport struct {
@@ -63,11 +56,10 @@ func runBackupList(_ context.Context, app *App, opts commonOpts) int {
 			tools = []string{}
 		}
 		report.Backups = append(report.Backups, backupItem{
-			ID:         meta.ID,
-			CreatedAt:  meta.CreatedAt.UTC().Format(time.RFC3339),
-			Reason:     meta.Reason,
-			Tools:      tools,
-			BoundStore: meta.BoundStore,
+			ID:        meta.ID,
+			CreatedAt: meta.CreatedAt.UTC().Format(time.RFC3339),
+			Reason:    meta.Reason,
+			Tools:     tools,
 		})
 	}
 	if opts.Format == formatJSON {
@@ -151,13 +143,9 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 			return nil, err
 		}
 		if !found {
-			// Named from the same predicate that excluded them, not from a literal: this
-			// sentence said `run-unattributable` alone while a second preserved reason
-			// existed, so a user looking at a `relogin-unattributable` backup was told the
-			// refusal was about something else. It reports what is actually there.
 			return nil, errf(constants.ExitNotFound,
-				"no backup kae can roll back to%s; see kae backup list, then kae rollback --to <id>",
-				preservedOnlyDetail(app.Paths.BackupsDir()))
+				"no backup kae can roll back to (a %s backup is a preserved copy, not an undo target; "+
+					"see kae backup list, then kae rollback --to <id>)", constants.BackupReasonRunUnattributable)
 		}
 		meta = latest
 	} else {
@@ -217,21 +205,6 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	// know which artifact that is. One resolution means one warning per tool.
 	current, unresolved := app.currentSpecs(ctx, meta)
 	for _, u := range unresolved {
-		// Two sentences, because a bound-store backup makes both tails of the other one
-		// false: its identity sweep never runs (so nothing is "left as it is" to fix), and
-		// `reapplyHint` names `kae use <tool> <account>` from `ActiveBefore` — a **global**
-		// switch to whichever account happened to be active when one directory's copy was
-		// preserved. Following that overwrites the real home's current login for no reason,
-		// and the copy it names is precisely the one kae could not attribute. Measured
-		// 2026-08-08.
-		if meta.BoundStore {
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: could not resolve current %s artifacts (%v); this backup holds one "+
-					"bound directory's store, so the pre-rollback backup covers only what it recorded "+
-					"— nothing global is changed either way, and `%s rollback --to %s` is the way back\n",
-				u.Tool, u.Err, toolName, meta.ID)
-			continue
-		}
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: could not resolve current %s artifacts (%v); the pre-rollback backup "+
 				"covers only what this backup recorded, and a stale %s identity cache is left as "+
@@ -239,7 +212,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	}
 	// rollback is itself a live mutation: back up the current state first so
 	// it stays reversible.
-	preMeta, err := app.createBackup(ctx, be, plansFromBackupMeta(meta, current), st, constants.BackupReasonRollback, meta.BoundStore)
+	preMeta, err := app.createBackup(ctx, be, plansFromBackupMeta(meta, current), st, constants.BackupReasonRollback)
 	if err != nil {
 		return nil, err
 	}
@@ -292,9 +265,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	// failed to come back.
 	for _, tool := range meta.Tools {
 		recorded := meta.ActiveBefore[tool]
-		// Silent for a bound-store backup for the same reason the write below is skipped:
-		// there is no pointer being restored, so there is none that failed to come back.
-		if recorded == "" || restorable[tool] != "" || meta.BoundStore {
+		if recorded == "" || restorable[tool] != "" {
 			continue
 		}
 		fmt.Fprintf(os.Stderr,
@@ -302,16 +273,19 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 				"captured, so kae is leaving %s with no active account rather than naming one that is gone; %s\n",
 			meta.ID, tool, recorded, tool, app.reapplyHint(meta, tool))
 	}
-	// **A bound-store backup names no global pointer, so it moves none.** Its
-	// `ActiveBefore` records which account happened to be globally active when one
-	// directory's copy was preserved, which says nothing about the copy — the reason it
-	// was preserved is that kae could not attribute it. Writing it here flipped
-	// `state.Active` (and `active_profile`) to that account while the real home went on
-	// holding somebody else's credential, so `kae status` reported an account the machine
-	// was not running. Measured 2026-08-08. The restore of the recorded artifacts still
-	// happens; only the global pointer is left alone.
-	if err := app.restoreActivePointers(meta, restorable, preMeta); err != nil {
-		return nil, err
+	if _, err := app.mutateState(func(st *state.State) {
+		for _, tool := range meta.Tools {
+			if before := restorable[tool]; before != "" {
+				st.Active[tool] = before
+			} else {
+				delete(st.Active, tool)
+			}
+		}
+		st.ActiveProfile = app.Config.MatchProfile(st.Active)
+	}); err != nil {
+		return nil, errf(exitOf(err),
+			"live state was rolled back but recording it failed (%v); verify with kae status, undo with: kae rollback --to %s",
+			err, preMeta.ID)
 	}
 	app.pruneBackups(ctx, be)
 	return report, nil
@@ -352,111 +326,5 @@ func latestRestorable(dir string) (backup.Meta, bool, error) {
 // whichever of those two the other site owns — the drift AGENTS.md describes for
 // `supersedes`, one predicate over.
 func isUndoTarget(meta backup.Meta) bool {
-	return meta.Reason != constants.BackupReasonRunUnattributable &&
-		meta.Reason != constants.BackupReasonReloginUnattributable
-}
-
-// restoreActivePointers puts `state.Active` back to what the backup recorded — for a
-// backup that recorded the **global** store, which is every reason but one.
-//
-// A bound-store backup is skipped whole, and the skip lives here rather than at the call
-// site so the decision sits beside the reason for it. What it protects is not the pointer
-// but everything downstream of a wrong one: `state.Active` is what the switch-away
-// recapture reads to decide *whose* snapshot the live credential belongs to, so a pointer
-// pointing at an account the real home is not running turns the next ordinary `kae use`
-// into a mis-filing (measured 2026-08-08, end to end).
-func (app *App) restoreActivePointers(meta backup.Meta, restorable map[string]string, preMeta backup.Meta) error {
-	if meta.BoundStore {
-		return nil
-	}
-	if _, err := app.mutateState(func(st *state.State) {
-		for _, tool := range meta.Tools {
-			if before := restorable[tool]; before != "" {
-				st.Active[tool] = before
-			} else {
-				delete(st.Active, tool)
-			}
-		}
-		st.ActiveProfile = app.Config.MatchProfile(st.Active)
-	}); err != nil {
-		return errf(exitOf(err),
-			"live state was rolled back but recording it failed (%v); verify with kae status, undo with: kae rollback --to %s",
-			err, preMeta.ID)
-	}
-	return nil
-}
-
-// preservedOnlyDetail explains an empty bare-rollback target when the directory is not
-// empty: every backup in it is a preserved copy rather than an undo target. It names the
-// reasons actually present, so the sentence cannot go stale the way a hardcoded one did
-// when a second preserved reason shipped. Empty when there is genuinely nothing there,
-// where "no backup kae can roll back to" is the whole story.
-func preservedOnlyDetail(dir string) string {
-	metas, err := backup.List(dir)
-	if err != nil || len(metas) == 0 {
-		return ""
-	}
-	seen := map[string]bool{}
-	reasons := []string{}
-	for _, m := range metas {
-		if !isUndoTarget(m) && !seen[m.Reason] {
-			seen[m.Reason] = true
-			reasons = append(reasons, m.Reason)
-		}
-	}
-	if len(reasons) == 0 {
-		return ""
-	}
-	return fmt.Sprintf(" (every backup here is a preserved copy rather than an undo target: %s)",
-		strings.Join(reasons, ", "))
-}
-
-// fromBoundStore reports whether a backup's records were taken from a store kae itself
-// pointed one directory at, rather than from the tool's own global store.
-//
-// It gates the restore's moved-store check (restoreSpec), and the reason it has to is the
-// asymmetry that check rests on: it exists because a **child process** can move a tool's
-// credential between the tool's *own* stores, so today's global resolution is the better
-// answer than a stale record. A record kae took from a bound store was never in the global
-// store, so that resolution is not an answer about it at all. Every other reason records
-// global specs, which is why nothing needed this until the first bound-store backup.
-//
-// Two consequences, and the severe one is not the one reachable today — worth writing
-// down, because a reader who checks only claude will conclude the guard is unnecessary.
-// Where a tool's two stores hold **interchangeable** payloads (codex: `auth.json` and its
-// keyring item are both whole documents) the check *redirects*, and the restore then writes
-// the tool's **global** store: one directory's loss becomes a global logout. Where they do
-// not (claude today: a JSON pointer into `.credentials.json` against a keychain item) it
-// *refuses*, so the preserved copy cannot be put back at all — recoverable, but it makes
-// the backup worthless exactly when it is needed. One predicate covers both, and
-// TestBoundStoreBackupIsNeverRedirectedToTheRealHome pins each with its own control.
-//
-// It is read from the meta rather than derived, and `backup.Meta.BoundStore` says why a
-// reason lookup and a target test both lose it.
-//
-// **It gates a class, not a check, and getting that wrong is what shipped.** The first
-// version gated `restoreSpec` alone — the one consumer its author was looking at — while
-// three others went on treating such a backup as a statement about global state, each
-// measured 2026-08-08 by an independent review:
-//
-//   - `rollbackTo`'s unrecorded-identity sweep resolves specs **globally**, so it cleared
-//     the identity out of the **real home**;
-//   - `buildRollback`'s state mutation wrote `ActiveBefore` into `state.Active`, flipping
-//     the globally active account to whichever one happened to be active when one
-//     directory's copy was preserved;
-//   - `warnRestoringSupersededCredential` read `ActiveBefore` as the account the recorded
-//     copy belongs to and compared two unrelated chains by `expiresAt`.
-//
-// The first two compose: the identity wipe removes the evidence `keepSnapshotIdentity`
-// refuses on, so the next ordinary `kae use` filed one account's token under another's
-// name — undetectable afterwards, the outcome the whole attribution model exists to stop.
-//
-// The shape underneath is the one AGENTS.md names: `ActiveBefore` is the **fact** "this
-// account was globally active when the backup was taken", read as the **authority** "this
-// is the account whose chain the recorded copy belongs to". For a bound-store backup that
-// is false by construction — the reason it exists at all is that kae could not attribute
-// the copy. So a new consumer of a `backup.Meta` owes this question rather than being
-// covered by the three fixed here.
-func fromBoundStore(meta backup.Meta) bool {
-	return meta.BoundStore
+	return meta.Reason != constants.BackupReasonRunUnattributable
 }

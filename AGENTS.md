@@ -299,31 +299,6 @@ block in docs/VALIDATION.md, next to two correct ones.
   `kae rollback` must not target it (`latestRestorable`). Ported without re-asking the
   question, this shipped the logout twice in one branch — once on attribution, once on
   ordering.
-  **A third instance is `kae relogin`'s pre-flight, and it is the one that shows the rule
-  is not about who performs the overwrite.** There the write is the *tool's* own login, and
-  the copy is gone just the same, so the refusal owes its backup
-  (`relogin-unattributable`) exactly as `run -s`'s does. What it also cost is the price of
-  being the first backup taken from a **bound** store: every consumer of a backup record
-  had assumed the record came from the tool's *global* store, and the restore's moved-store
-  check re-resolves specs globally — so following it writes the **real home**, turning one
-  directory's loss into a global logout (and for a tool whose two stores are not
-  interchangeable it refuses instead, which merely makes the backup worthless when it is
-  needed). `fromBoundStore` is the one place that decides it, reading a **recorded**
-  `Meta.BoundStore` — not the reason (a derived backup keeps the records and changes the
-  reason, so a reason lookup loses it exactly once) and not the target (a keychain record's
-  target is a *service name*, so a path test answers "not kae's" for the per-directory item
-  that most needs it). A future backup taken from anywhere but the global store owes the
-  same question.
-  **And it gates a class, not a check — getting that wrong is what shipped.** The first
-  version gated the moved-store check alone, while three other consumers went on treating
-  such a backup as a statement about global state: the unrecorded-identity sweep (specs
-  resolved globally, so it cleared the **real home's** identity), the `ActiveBefore` restore
-  (which flipped the globally active account), and the superseded-credential warning (which
-  read `ActiveBefore` as the account the recorded copy belongs to and ordered two unrelated
-  chains by `expiresAt`). The first two **compose**: the identity wipe removes the evidence
-  `keepSnapshotIdentity` refuses on, so the next ordinary `kae use` files one account's
-  token under another's name. Measured end to end 2026-08-08 — and nothing failed when the
-  global side effects were deleted, which is how they shipped.
   **Which side to keep is forced, not chosen**, and the fact that forces it is worth
   knowing before re-deriving it: **nothing backs up an account snapshot.** `createBackup`
   records live artifacts only (`artifact.ReadLive`), and no command archives a snapshot,

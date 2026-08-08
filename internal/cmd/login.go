@@ -136,7 +136,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	if err != nil {
 		return finish(opts, err)
 	}
-	meta, err := app.createBackup(ctx, be, []toolPlan{plan}, st, constants.BackupReasonLogin, false)
+	meta, err := app.createBackup(ctx, be, []toolPlan{plan}, st, constants.BackupReasonLogin)
 	if err != nil {
 		return finish(opts, err)
 	}

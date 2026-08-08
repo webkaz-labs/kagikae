@@ -265,24 +265,16 @@ const (
 // here instead of restating them; to see the whole set, read this block.
 //
 // Four of them record "the live state before kae changed it", which is what makes a
-// rollback a rollback. The two `*Unattributable` reasons do not: they record a copy kae
-// **declined to adopt or could not keep**, retained only so that a refusal is not a
-// deletion (docs/CLI.md § kae run Semantics, § kae relogin Semantics). A consumer that
-// treats every backup as an undo target has to reckon with that difference — `isUndoTarget`
-// is the one place that decides it.
-//
-// ReloginUnattributable differs from every other reason in a second way, and it is the one
-// a restore has to know about: its records come from a **bound store** kae pointed a
-// directory at, not from the tool's global one. `fromBoundStore` is the one place that
-// decides *that*, and it exists because the restore's moved-store check re-resolves specs
-// globally.
+// rollback a rollback. RunUnattributable does not: it records the post-child state
+// `kae run -s` **declined to adopt**, kept only so a refusal is not a deletion
+// (docs/CLI.md § kae run Semantics). A consumer that treats every backup as an undo
+// target has to reckon with that difference.
 const (
-	BackupReasonSwitch                = "switch"
-	BackupReasonRollback              = "rollback"
-	BackupReasonRun                   = "run"
-	BackupReasonLogin                 = "login"
-	BackupReasonRunUnattributable     = "run-unattributable"
-	BackupReasonReloginUnattributable = "relogin-unattributable"
+	BackupReasonSwitch            = "switch"
+	BackupReasonRollback          = "rollback"
+	BackupReasonRun               = "run"
+	BackupReasonLogin             = "login"
+	BackupReasonRunUnattributable = "run-unattributable"
 )
 
 // Exit codes and their stable error-code tokens.

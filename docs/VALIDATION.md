@@ -1262,6 +1262,10 @@ grep SOLO-NEW "$(accstore solo)"         # assert: the only copy that can refres
 snap solo | grep -c SOLO-NEW             # assert: 0 — kept is not harvested. kae could not
                                         #         tell whose the copy is, so it neither
                                         #         destroys it nor files it under this account
+test -d "$(store)"                       # assert: positive control for the line below. An
+                                        #         empty expansion makes it `test ! -e
+                                        #         "/.claude.json"`, which passes for a
+                                        #         `store()` that returned nothing at all
 test ! -e "$(store)/.claude.json"        # assert: and NO label was written; see A2
 cd "$P"
 

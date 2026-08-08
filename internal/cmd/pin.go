@@ -158,13 +158,13 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// Where each tool's credential is about to be written, taken from the plan rather than
 	// recomposed: it is what tells a refusal whether the store it reports is replaced or
 	// merely left behind.
-	nextCred := map[string]string{}
+	next := map[string]bindDirs{}
 	for _, e := range entries {
-		if e.Warning == "" && e.CredDir != "" {
-			nextCred[e.Tool] = e.CredDir
+		if e.Warning == "" {
+			next[e.Tool] = bindDirs{Config: e.Dir, Cred: e.CredDir}
 		}
 	}
-	app.harvestSupersededDirCredentials(ctx, be, paths.PinID(absDir), absDir, "", prevBinding, nextCred)
+	app.harvestSupersededDirCredentials(ctx, be, paths.PinID(absDir), absDir, "", prevBinding, next)
 	if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
 		return finish(opts, err)
 	}

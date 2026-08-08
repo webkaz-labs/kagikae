@@ -286,9 +286,33 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		}
 	}
 	if keepLiveCopy {
-		// The directory is bound and the copy it reads is intact; there is simply nothing of
-		// kae's to record here. Stated as its own return rather than another `!keepLiveCopy`
-		// so the invariant above cannot be reopened by a later edit that adds a step below.
+		// The directory is bound and the copy it reads is intact; there is nothing of kae's
+		// to *record* here. There is something of kae's to **retract**, and leaving it is the
+		// one way a keep destroys what it kept.
+		//
+		// A bind that moves a directory to another account leaves the previous binding's
+		// label in its config dir, because a keep writes none. On the next run the fragment
+		// names the new account, so this directory *is* one of the store's readers — and its
+		// stale label is then read as this directory's own reading of the new account's
+		// store, which makes it a conflicting reader and `Conflicting` overwrites the copy
+		// the first run preserved. Measured 2026-08-08: two identical `kae pin` calls, the
+		// first keeping and the second destroying, with a success line both times.
+		//
+		// Only a label that **disagrees** is retracted, and only where kae may write at all
+		// (writeDirIdentity's escape guard: a target linked out to the real home labels
+		// *that*, and removing through it would relabel the real home). One that agrees is
+		// honest evidence and one kae cannot read is left for the same reason an unreadable
+		// credential is: kae has not established that it is wrong. Absence is what a first
+		// bind already leaves, so this makes the two states the same one.
+		if refused := dirIdentityConfirms(ctx, be, specs, acc, configDir); refused.Conflicting {
+			if err := retractDirIdentity(ctx, specs, configDir); err != nil {
+				fmt.Fprintf(os.Stderr,
+					"kae: warning: the %s identity cache in this directory still names the account it was "+
+						"bound to before, and kae could not remove it (%v); run `%s relogin %s` here, or the "+
+						"next bind may read it as this directory's own and replace the credential kae just kept\n",
+					tool, err, toolName, tool)
+			}
+		}
 		return nil
 	}
 	// Last, and on both store kinds — a file credential needs the matching identity
@@ -874,6 +898,40 @@ func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.S
 		}
 		if err := artifact.ApplyLive(ctx, sp, value); err != nil {
 			return fmt.Errorf("write %s identity for account %s: %w", acc.Tool, acc.Name, err)
+		}
+	}
+	return nil
+}
+
+// retractDirIdentity removes the identity-only artifacts inside configDir. It is
+// writeDirIdentity's inverse and shares its one hard rule: never act through a target that
+// resolves outside the store, because that target is the real tool home and removing the
+// account there is a global change made from one directory.
+//
+// Its caller is the keep path, which has established that the label disagrees with the
+// account being bound — see writeDirCredential for why leaving one there turns a second
+// identical bind into a destroy.
+//
+// That makes the escape check **unreachable from the only caller**, and it stays as a
+// statement of intent rather than as a test that cannot fail: dirIdentityConfirms answers a
+// target that escapes with "its identity cache is shared with the real tool home", which is
+// deliberately *not* Conflicting, so the condition guarding this call can never be true for
+// one. A second caller — anything that retracts on weaker evidence — reaches it immediately,
+// which is exactly when it must already be here.
+func retractDirIdentity(ctx context.Context, specs []artifact.Spec, configDir string) error {
+	for _, sp := range specs {
+		if !sp.IdentityOnly {
+			continue
+		}
+		outside, err := identityTargetEscapes(sp.Target, configDir)
+		if err != nil {
+			return err
+		}
+		if outside {
+			continue
+		}
+		if err := artifact.ApplyLive(ctx, sp, artifact.Value{Present: false}); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1911,15 +1969,29 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 // migration of a pre-split binding, which happens once per directory
 // (TestRunPinCoalescesTheHarvestKeychainReads measures the steady state at one read).
 // The duplication buys the case where the two are not the same store.
-// nextCred maps each tool to the credential store the binding being written will point it
-// at — read from the plan kae is about to apply, not derived from an account here. It is
-// what makes "this bind replaces it" a fact rather than a guess: a re-bind to another
-// account writes a *different* store, so the copy this pass is talking about is abandoned
-// rather than replaced, and predicting a replacement tells the user a live login is being
-// spent when it is being stranded. A tool absent from the map is one the new binding does
-// not bind, which also replaces nothing.
+// next maps each tool to the pair the binding being written will point it at — read from
+// the plan kae is about to apply, not derived from an account here. Both halves are used
+// and for different reasons.
+//
+// Cred is what makes "this bind replaces it" a fact rather than a guess: a re-bind to
+// another account writes a *different* store, so the copy this pass is talking about is
+// abandoned rather than replaced, and predicting a replacement tells the user a live login
+// is being spent when it is being stranded.
+//
+// Config is the directory the *write* will act for, and passing it here is what keeps this
+// pass and writeDirCredential from answering the same question differently. They did: a
+// `-s` ↔ `-i` toggle changes the config dir, so the pass (acting under the old one, which
+// is a reader) said `Conflicting` and predicted a replacement while the write (acting under
+// the new one, which is not) kept the copy — the message was the exact inverse of what
+// happened. Measured 2026-08-08.
+//
+// A tool absent from the map is one the new binding does not bind, which replaces nothing.
+// An empty Cred means the tool has no credential store separate from its config dir, where
+// a same-mode re-pin *does* replace the copy and the write never keeps — unreachable while
+// the harvest is claude-only (rotatesSingleUse), and it unlocks with the second measured
+// tool, which docs/ROADMAP.md § Rotation is measured for claude only already gates.
 func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.Backend,
-	pinID, dir, onlyTool string, prev fragmentInfo, nextCred map[string]string,
+	pinID, dir, onlyTool string, prev fragmentInfo, next map[string]bindDirs,
 ) {
 	// Cleared here, not left to live as long as the App: the coordination with
 	// writeDirCredential's backstop is scoped to **one bind**, and a stale entry
@@ -1975,13 +2047,13 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			continue // no snapshot to harvest into; the bind or the sweep reports it
 		}
 		_, _, refused := app.harvestDirCredential(ctx, be, specs, store.Tool, accountName, acc, store.dirs(), snapshot,
-			attributionSource{Dir: store.Dir})
+			attributionSource{Dir: next[store.Tool].Config})
 		// The one question both arms below need, asked once: does the write this bind is
 		// about to perform land on the very store being reported? Only then is the copy
 		// replaced — and only then may a message say so. A refusal that keeps is never a
 		// replacement whatever the locations say, which is the other half.
 		replacedNow := !refused.Unattributed &&
-			nextCred[store.Tool] != "" && nextCred[store.Tool] == store.dirs().credDirOrConfig()
+			next[store.Tool].Cred != "" && next[store.Tool].Cred == store.dirs().credDirOrConfig()
 		switch {
 		case refused.Why == "" || !replaced[store.Dir]:
 			// Nothing to report, or a store from a binding older than the one being replaced

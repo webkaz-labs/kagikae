@@ -772,6 +772,12 @@ func TestWriteDirCredentialKeepsWhatItCannotEnumerateTheReadersOf(t *testing.T) 
 	if !strings.Contains(stderr, "kae could not tell which directories read this credential") {
 		t.Fatalf("the refusal must name the enumeration, not an absent cache: %q", stderr)
 	}
+	// A keep retracts only a label that **disagrees** with the account being bound. This
+	// one agrees, so it is honest evidence and stays — retracting every label on every keep
+	// survived the suite until this line existed.
+	if got := readFile(t, filepath.Join(storeDir, ".claude.json")); !strings.Contains(got, "main-uuid") {
+		t.Fatalf("a label that agrees is evidence and must survive a keep: %q", got)
+	}
 }
 
 // A globally isolated home reads the account's credential too, and it has no fragment and
@@ -811,6 +817,122 @@ func TestUseIsolatedHarvestsWithTheGlobalHomeAsEvidence(t *testing.T) {
 	be := testBackend(t, app)
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
 		t.Fatalf("the only reader's evidence must let the copy be harvested: %s", got)
+	}
+}
+
+// **The keep has to be idempotent, and it was not.** A bind that moves a directory to
+// another account leaves the previous binding's label in its config dir, because a keep
+// writes none — and on the next run the fragment names the new account, so that directory
+// is one of the store's readers and its stale label is its only reading. It then reads as a
+// conflicting reader, `Conflicting` overwrites, and the second of two identical `kae pin`
+// calls destroys the live login the first one preserved, with a success line both times.
+// Measured by review 2026-08-08. The keep now retracts a label that disagrees.
+func TestRunPinTwiceKeepsTheSameCopyBothTimes(t *testing.T) {
+	app := overlayTestApp(t)
+	app.Config.Profiles["side"] = config.Profile{
+		Accounts: map[string]string{constants.ToolClaude: "side"},
+	}
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+	_, sideStore := bindClaudeHere(t, app, "side")
+	if got := readFile(t, filepath.Join(sideStore, ".claude.json")); !strings.Contains(got, "side-uuid") {
+		t.Fatalf("the fixture needs the previous binding's label in place: %q", got)
+	}
+
+	// A newer copy in claude/main's store that nothing reads — a `kae use -i`, another
+	// machine, or a binding since unpinned.
+	const live = "sk-ant-oat01-MAIN-LIVE-eeee"
+	mainCopy := dirCredFile(app, constants.ToolClaude, "main", sideStore)
+	mkdirs(t, filepath.Dir(mainCopy))
+	writeFile(t, mainCopy, claudeOAuthPayload(live, now.Add(8*time.Hour)))
+
+	opts := commonOpts{Format: formatText}
+	for i, want := range []string{"first bind", "second bind"} {
+		if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+			t.Fatalf("%s: pin exit %d: %s", want, code, out)
+		}
+		if got := readFile(t, mainCopy); !strings.Contains(got, live) {
+			t.Fatalf("%s (run %d) destroyed the copy the keep preserved: %s", want, i+1, got)
+		}
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, live) {
+		t.Fatalf("a copy no reader can attribute must not be filed under this account either: %s", got)
+	}
+}
+
+// A `-s` ↔ `-i` toggle changes the config dir, so the pin-level pass and the write acted
+// under two different identities: the pass under the old dir, which is a reader, and the
+// write under the new one, which is not. The pass said `Conflicting` and predicted a
+// replacement while the write kept the copy — the message was the exact inverse of what
+// happened, on the one arm that had no consequence check. Measured by review 2026-08-08.
+func TestRunPinModeToggleReportsWhatTheWriteActuallyDid(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, shared := bindClaudeHere(t, app, "main")
+	// A login as side inside the directory, and the account's store holds side's copy.
+	writeFile(t, filepath.Join(shared, ".claude.json"), claudeIdentityFile("side-uuid"))
+	const sideLive = "sk-ant-oat01-SIDE-LIVE-eeee"
+	credFile := dirCredFile(app, constants.ToolClaude, "main", shared)
+	writeFile(t, credFile, claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
+
+	opts := commonOpts{Format: formatText}
+	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeIsolated) })
+
+	if got := readFile(t, credFile); !strings.Contains(got, sideLive) {
+		t.Fatalf("the toggle kept the copy in earlier versions too; it must still: %s", got)
+	}
+	if strings.Contains(stderr, "this bind replaces it") {
+		t.Fatalf("the message must not predict a replacement the write did not make: %q", stderr)
+	}
+	if !strings.Contains(stderr, "leaving it where it is") {
+		t.Fatalf("the message must state what happened: %q", stderr)
+	}
+}
+
+// The global-home walk matches by **path**, and that filter is load-bearing: without it a
+// home of any other account counts as a reader of this one's store, disagrees with every
+// real reader, and the harvest stops running for every account as soon as a second account
+// has an isolated home. Replacing the condition with `true` survived the whole suite
+// (execution-type review, 2026-08-08).
+func TestAnotherAccountsGlobalHomeIsNotAReader(t *testing.T) {
+	app := overlayTestApp(t)
+	app.Config.Profiles["side"] = config.Profile{
+		Accounts: map[string]string{constants.ToolClaude: "side"},
+	}
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+
+	// claude/side gets a global isolated home, labelled side by the materializer.
+	if code, out := captureStdout(t, func() int {
+		return runUseIsolated(ctx, app, opts, constants.ToolClaude, "side")
+	}); code != constants.ExitOK {
+		t.Fatalf("use -i side exit %d: %s", code, out)
+	}
+	sideHome := app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "side")
+	if got := readFile(t, filepath.Join(sideHome, ".claude.json")); !strings.Contains(got, "side-uuid") {
+		t.Fatalf("the fixture needs side's home to name side: %q", got)
+	}
+
+	// A directory bound to claude/main, whose own reading is honest.
+	_, storeDir := bindClaudeHere(t, app, "main")
+	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", storeDir),
+		claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+
+	be := testBackend(t, app)
+	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir); err != nil {
+		t.Fatalf("writeDirCredential: %v", err)
+	}
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
+		t.Fatalf("another account's isolated home must not be read as a reader of this store: %s", got)
 	}
 }
 
@@ -940,6 +1062,13 @@ func TestTwoReadersThatCannotSpeakGetTheirOwnReason(t *testing.T) {
 	if strings.Contains(stderr, "the directory holds no identity cache to compare") ||
 		strings.Contains(stderr, "kae cannot read the identity records it would compare") {
 		t.Fatalf("neither reader's own reason may stand in for the store's: %q", stderr)
+	}
+	// A keep retracts a label that **disagrees**, never one kae could not read — the same
+	// rule an unreadable credential gets, for the same reason: kae has not established that
+	// it is wrong. Retracting on any refusal rather than on the conflicting one survived the
+	// suite until this line existed.
+	if got := readFile(t, filepath.Join(unreadable, ".claude.json")); !strings.Contains(got, `"oauthAccount":null`) {
+		t.Fatalf("a label kae cannot read must survive a keep: %q", got)
 	}
 }
 

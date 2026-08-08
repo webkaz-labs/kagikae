@@ -46,9 +46,14 @@ func pinHereAs(t *testing.T, app *App, profile, mode string) string {
 	// killed by TestUnpinPurgeRemovesACredentialNothingElseBinds before shadowing and
 	// survived after. Shadowing also un-fakes every *other* command for those sites,
 	// which sent `ensureGitExcluded` to real git.
-	if _, none := runner.Default.(runner.OSRunner); none {
-		runner.With(pinFixtureRunner{}, pin)
-	} else {
+	// Both spellings, because the value and the pointer are different types to a type
+	// switch and a stray `&` would silently send the pin back to the real keychain —
+	// the exact direction this fixture exists to prevent. A nil `Default` is left to
+	// panic: that is a broken setup, and installing a fixture over it would hide it.
+	switch runner.Default.(type) {
+	case runner.OSRunner, *runner.OSRunner:
+		runner.With(pinFixtureRunner{next: runner.Default}, pin)
+	default:
 		pin()
 	}
 	mustExit(t, constants.ExitOK, code, out)
@@ -83,26 +88,36 @@ func pinHereAs(t *testing.T, app *App, profile, mode string) string {
 //
 // The pass-through is not decoration either: `ensureGitExcluded` asks git for the
 // common dir and the prefix, and answering that from here would be inventing a repo
-// layout. It goes to the same git the parent commit used.
-type pinFixtureRunner struct{}
+// layout. It goes to the same runner it replaced — `next`, rather than a fresh
+// `OSRunner{}`, so that removing the branch at the call site above could not quietly
+// recreate the shadowing this fixture was corrected for.
+//
+// **Both credential programs are intercepted, not just `security`.** `secret-tool`
+// is the libsecret half of the same store, and `RunInput` exists because
+// `secret-tool store` takes its secret on stdin — passing that through would hand a
+// live credential to a real keyring. It is not reachable today only because
+// `testApp` pins the file backend and injects a failing `LookPath`, which is a
+// default in another file rather than a property of this fixture.
+type pinFixtureRunner struct{ next runner.Runner }
+
+func (p pinFixtureRunner) credentialProgram(name string) bool {
+	return name == "security" || name == "secret-tool"
+}
 
 func (p pinFixtureRunner) Run(ctx context.Context, name string, args ...string) (string, string, int) {
-	if name != "security" || len(args) == 0 {
-		return runner.OSRunner{}.Run(ctx, name, args...)
+	if !p.credentialProgram(name) || len(args) == 0 {
+		return p.next.Run(ctx, name, args...)
 	}
 	switch args[0] {
-	case "add-generic-password", "delete-generic-password":
+	case "add-generic-password", "delete-generic-password", "store", "clear":
 		return "", "", 0
 	}
 	return "", "security: " + keychain.NotFoundMarker, 44
 }
 
-// RunInput forwards stdin, because the pass-through reaches real programs that read
-// it — `secret-tool store` takes the secret that way, so dropping it here would run a
-// real credential helper against an empty payload.
 func (p pinFixtureRunner) RunInput(ctx context.Context, stdin, name string, args ...string) (string, string, int) {
-	if name != "security" || len(args) == 0 {
-		return runner.OSRunner{}.RunInput(ctx, stdin, name, args...)
+	if !p.credentialProgram(name) || len(args) == 0 {
+		return p.next.RunInput(ctx, stdin, name, args...)
 	}
 	return p.Run(ctx, name, args...)
 }

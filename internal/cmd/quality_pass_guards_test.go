@@ -46,12 +46,17 @@ func TestR6OnlyClaudeCanBeDeclined(t *testing.T) {
 			app := testApp(t, nil)
 			app.Env.GOOS = goos
 			// `planTool` resolves a keychain-backed tool by *reading* the store, and with
-			// no runner installed that read went to the operator's own login keychain. It
-			// never wrote, so this is not the pollution `pinHereAs` caused — but the
-			// `continue` below is decided by whether the read found anything, so which
-			// tools this guard actually inspected depended on which accounts the person
-			// running it happened to be logged into. A developer and CI checked different
-			// sets. A uniform miss makes the set the same everywhere.
+			// no runner installed that read went to the operator's own login keychain,
+			// through `find-generic-password -w` — which prints the secret, so three live
+			// tokens were read into this process on every run. On a machine with
+			// `cursor-agent` installed the same call also ran the real one.
+			//
+			// What varied was **whether `security` exists**, not what it found: measured
+			// on the four keychain worlds, a hit and a miss inspect the same 11 of 12
+			// rows, an unparseable payload inspects 10, and no `security` at all inspects
+			// **8** — so CI checked three fewer tool/platform rows than a developer did,
+			// and `claude/darwin` was one of them. A uniform miss makes the set the same
+			// everywhere and larger than CI's was.
 			var plan toolPlan
 			var err error
 			runner.With(&runnertest.Fake{Code: 44, Stderr: "security: " + keychain.NotFoundMarker}, func() {

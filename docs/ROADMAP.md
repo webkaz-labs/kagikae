@@ -124,13 +124,27 @@ alternative exists (`secret-tool`).
   **a per-site fix does not close the class**, because the next omission is just as
   quiet. The seam that would is a `TestMain` in `internal/cmd` installing a runner
   that fails loudly, with the argv, on any command a test did not opt into. It is not
-  the ten lines it looks like: one package alone issues **181** real
-  `git rev-parse --git-common-dir --show-prefix` calls that are legitimate
-  (`ensureGitExcluded` needs a real repository layout, and `fragment_test.go` has a
-  deliberate real-git case), so the guard has to be a denylist of the credential
-  programs — `security`, `secret-tool` — rather than a blanket refusal, or it fails
-  the wrong things. Deliberately not done at a release boundary; the two call-site
-  fixes hold until then.
+  the ten lines it looks like, and three measurements bound what it would actually
+  take.
+  First, `go test ./...` issues **171** real `git rev-parse --git-common-dir
+  --show-prefix` calls that are legitimate — `ensureGitExcluded` needs a real
+  repository layout, and `TestEnsureGitExcludedLeavesEveryWorktreeClean` has nine more
+  deliberate ones — so the guard has to name the credential programs (`security`,
+  `secret-tool`) rather than refuse everything, or it fails the wrong things.
+  Second, **that exemption leaves a hole in the same breath**: real git means
+  `ensureGitExcluded` appends to the `$GIT_COMMON_DIR/info/exclude` of whatever
+  repository contains the temp dir, 120 lines per suite run. The defaults on macOS and
+  ubuntu put `TMPDIR` outside any repository, which is the only reason this is not
+  already happening — but `mise.toml` reads `TMPDIR` in nine places, so a per-project
+  value would write those lines into kagikae's own `.git/info/exclude`. A denylist
+  that exempts git cannot see it; bounding `TMPDIR` for tests is the separate half.
+  Third, `runner.Default` is **one of three seams**. `runner.RunInteractive` and
+  `runner.RunWithEnv` are their own package-level vars with their own overrides
+  (`withInteractive`, `withRunWithEnv`), and a `TestMain` on the first would not touch
+  them. `RunInteractive` inherits the operator's stdio and takes an arbitrary child
+  command, so a forgotten override there is worse than a forgotten `runner.With`; no
+  instance is live today (instrumented: zero non-git execs across `./...`).
+  Deliberately not done at a release boundary; the two call-site fixes hold until then.
 
 - **Upstream now documents parallel sessions racing on one credential store**
   (recorded 2026-07-31). Claude Code v2.1.211: *"Fixed parallel Claude Code sessions

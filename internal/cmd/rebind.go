@@ -127,6 +127,10 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// store: a shared-mode re-bind keeps one config dir and still has to point the
 	// credential at the new account's own store.
 	credDir := app.credStoreDir(tool, accountName)
+	// One question, one answer, before the branch: assembling it per branch is how the two
+	// bind paths came to encode the polarity as an empty literal in one arm and an
+	// expression in the other (modeLabelStale).
+	staleLabel := modeLabelStale(info.Mode, info.Accounts[tool], accountName)
 	switch info.Mode {
 	case paths.SharedSegment:
 		// prepareBond, not writeDirCredential alone: the bond dir also holds the
@@ -135,21 +139,13 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 		// unable to repair a bond dir that had been wiped, while the isolated
 		// branch below (preparePinConfig) could — an asymmetry with no reason
 		// behind it. prepareBond writes the credential too, and is idempotent.
-		// A shared config dir is account-agnostic, so a re-bind to another account leaves
-		// kae's own label from the previous one behind (attributionSource).
-		sharedDir, err := app.prepareBond(ctx, be, tool, accountName, pinID,
-			attributionSource{StaleLabel: info.Accounts[tool] != accountName})
+		sharedDir, err := app.prepareBond(ctx, be, tool, accountName, pinID, staleLabel)
 		if err != nil {
 			return finish(opts, fmt.Errorf("swap shared credential for %s: %w", tool, err))
 		}
 		boundDir = sharedDir
 	case paths.IsolatedSegment:
-		// Never stale: an isolated config dir is keyed by the account, so every label in it
-		// was written while bound to that same account (attributionSource). Re-binding
-		// *back* to an account this directory had left is the case that proves it — the dir
-		// is still there with a live label, and retracting it deleted the only record of
-		// whose the credential was (measured 2026-08-08).
-		newDir, err := app.preparePinConfig(ctx, be, tool, accountName, pinID, attributionSource{})
+		newDir, err := app.preparePinConfig(ctx, be, tool, accountName, pinID, staleLabel)
 		if err != nil {
 			return finish(opts, fmt.Errorf("prepare isolated config for %s/%s: %w", tool, accountName, err))
 		}

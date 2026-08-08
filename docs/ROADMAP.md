@@ -431,6 +431,24 @@ alternative exists (`secret-tool`).
   swept unchanged is the per-directory item a **pre-split** binding left behind,
   which is what makes re-running `kae pin` a migration rather than a leak.
 
+- **The reader walk runs twice per bind, and a third walk of live bindings now exists**
+  (recorded 2026-08-08 by a quality pass, **not fixed**). `credStoreWitnesses` reads the pin
+  index and every bound directory's fragment, and both the pin-level pass and the write call
+  it — with nothing between them that changes the answer. It sits behind the `supersedes`
+  gate, so it costs nothing unless there is a copy worth harvesting; where that stops being
+  true is `kae run -i`, which the mise hook makes a per-invocation path, and where the
+  per-witness `dirSpecs` resolution stops being free is the day a second tool's rotation is
+  measured (codex's `Artifacts` can probe the keychain). The fix is a per-command memo, and
+  the reason it is not an `App` field is that this package has already had one of those make
+  a test pass for the wrong reason without a per-operation reset.
+  Separately, that walk is the **third** written over the same source: `credStoreRefs` shares
+  its mechanics exactly (including the `dirExists` gate whose only consequence is the ENOTDIR
+  case, documented on one of them and not the other), and `boundDirStores` shares them with a
+  different error policy. Sharing them means giving `boundDirStores` the completeness signal
+  it currently swallows, which changes what every doctor consumer sees on an unreadable
+  fragment — refuse-versus-skip, the seam where this area's defects live — so it wants its
+  own change and its own review rather than a ride-along.
+
 - **A mode toggle and a same-mode re-pin answer a poisoned store differently** (recorded
   2026-08-08 by a reading-type review, **not fixed, and deliberately so**). `Conflicting`
   — the refusal that still overwrites — requires the directory the operation acts for to be

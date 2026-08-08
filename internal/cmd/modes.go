@@ -285,6 +285,29 @@ func (app *App) applyGlobalScope() {
 	}
 }
 
+// modeLabelStale answers the fourth question the bind mechanism decides: is the identity
+// label in the config dir a bind materializes into kae's own leftover, or evidence?
+//
+// A **shared** config dir is one per pin×tool, so a label in it was written under whichever
+// account was bound then — a change of account makes it a leftover, and leaving it there is
+// how a keep destroys what it kept (the next run's fragment names the new account, so the
+// directory is one of the store's readers and that label is its only reading). An
+// **isolated** dir, and the globally isolated home, are keyed by the account: every label in
+// one was written while bound to that same account, so a disagreement there is a login as
+// somebody else, and retracting it deletes the only record of whose the credential is. Both
+// destroyed a login before this was stated (measured 2026-08-08).
+//
+// It lives beside modeStoreDir because it is the same kind of fact — what the mechanism
+// implies about its store — and because assembling it by hand at each bind path is how the
+// two paths came to switch on different constant families for one question
+// (TestBindModeConstantsAgreeAcrossPackages). A mode kae does not recognize answers *not
+// stale*, which is right for an account-keyed mechanism and the "keep then destroy on the
+// next run" defect for an account-agnostic one — so a third mechanism has to decide here,
+// as the lockstep note below says.
+func modeLabelStale(mode, prevAccount, account string) bool {
+	return mode == modeShared && prevAccount != account
+}
+
 // modeStoreDir answers "which directory does a per-directory bind in mode point
 // tool at" — the one place that maps the bind mechanism to its store layout. ok is
 // false for a mode kae does not recognize, so a caller reading a hand-edited or
@@ -297,16 +320,8 @@ func (app *App) applyGlobalScope() {
 // how the new one ends up half-added, silently pointing some caller at a store that
 // does not exist.
 //
-// A **fourth** switch on the mode lives outside this function and has to be decided
-// deliberately for a new mechanism: `attributionSource.StaleLabel`, computed in
-// `isolationPlan` and `runRebind`. It asks whether the config dir the bind materializes
-// into is keyed by the account (isolated, and the globally isolated home — a label there
-// is a live login) or shared by every account the directory ever bound (shared — a label
-// there is kae's own leftover once the account changes). A new mode falls through to
-// *not stale*, which is the safe answer for an account-keyed mechanism and the round-2
-// destroy for an account-agnostic one: the stale label survives the keep and the next
-// run reads it as this directory's own reading. Neither polarity is pinned by a test,
-// because there is no third mode to write one against.
+// A **fourth** switch on the mode is `modeLabelStale` above, which a new mechanism has to
+// decide in the same way and for a consequence just as sharp — its own doc says which.
 func (app *App) modeStoreDir(mode, pinID, tool, account string) (dir string, ok bool) {
 	switch mode {
 	case modeShared:

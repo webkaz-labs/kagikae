@@ -45,7 +45,7 @@ func TestWriteDirCredentialRefusesGlobalKeychainStore(t *testing.T) {
 	var err error
 	runner.With(fake, func() {
 		err = app.writeDirCredential(context.Background(), testBackend(t, app),
-			constants.ToolCodex, "main", credDir, attributionSource{})
+			constants.ToolCodex, "main", credDir, false)
 	})
 
 	if !errors.Is(err, errGlobalCredentialStore) {
@@ -77,7 +77,7 @@ func TestWriteDirCredentialWritesDirScopedKeychainStore(t *testing.T) {
 	fake := &runnertest.Fake{Code: 0}
 	runner.With(fake, func() {
 		if err := app.writeDirCredential(context.Background(), testBackend(t, app),
-			constants.ToolClaude, "main", credDir, attributionSource{}); err != nil {
+			constants.ToolClaude, "main", credDir, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 	})
@@ -114,7 +114,7 @@ func TestWriteDirCredentialAppliesIdentityCache(t *testing.T) {
 		`{"oauthAccount":{"accountUuid":"side-uuid","emailAddress":"side@example.com"},"projects":{"/repo":{}}}`)
 
 	if err := app.writeDirCredential(context.Background(), testBackend(t, app),
-		constants.ToolClaude, "main", credDir, attributionSource{}); err != nil {
+		constants.ToolClaude, "main", credDir, false); err != nil {
 		t.Fatalf("writeDirCredential: %v", err)
 	}
 	got := readFile(t, filepath.Join(credDir, ".claude.json"))
@@ -144,7 +144,7 @@ func TestWriteDirCredentialDeclinesIdentityThroughSharedLink(t *testing.T) {
 	var werr error
 	_, stderr := captureStderr(t, func() int {
 		werr = app.writeDirCredential(context.Background(), testBackend(t, app),
-			constants.ToolClaude, "main", credDir, attributionSource{})
+			constants.ToolClaude, "main", credDir, false)
 		return 0
 	})
 	if werr != nil {
@@ -182,7 +182,7 @@ func TestWriteDirCredentialRemovesIdentityWithoutSnapshot(t *testing.T) {
 		`{"oauthAccount":{"accountUuid":"side-uuid"},"projects":{"/repo":{}}}`)
 
 	if err := app.writeDirCredential(context.Background(), testBackend(t, app),
-		constants.ToolClaude, "main", credDir, attributionSource{}); err != nil {
+		constants.ToolClaude, "main", credDir, false); err != nil {
 		t.Fatalf("writeDirCredential: %v", err)
 	}
 	got := readFile(t, filepath.Join(credDir, ".claude.json"))
@@ -211,7 +211,7 @@ func TestWriteDirCredentialDeclinesIdentityThroughDanglingLink(t *testing.T) {
 	var werr error
 	_, stderr := captureStderr(t, func() int {
 		werr = app.writeDirCredential(context.Background(), testBackend(t, app),
-			constants.ToolClaude, "main", credDir, attributionSource{})
+			constants.ToolClaude, "main", credDir, false)
 		return 0
 	})
 	if werr != nil {
@@ -238,7 +238,7 @@ func TestWriteDirCredentialIdentityFailureWarnsWithoutLeaking(t *testing.T) {
 	var werr error
 	_, stderr := captureStderr(t, func() int {
 		werr = app.writeDirCredential(context.Background(), testBackend(t, app),
-			constants.ToolClaude, "main", credDir, attributionSource{})
+			constants.ToolClaude, "main", credDir, false)
 		return 0
 	})
 	if werr != nil {
@@ -293,6 +293,22 @@ func captureClaudeAt(t *testing.T, app *App, accountName, token string, expiresA
 			constants.ToolClaude, accountName)
 	})
 	mustExit(t, constants.ExitOK, code, out)
+}
+
+// twoClaudeAccounts is overlayTestApp with a second profile and both accounts captured at
+// one deadline — the state every test that moves a directory *between* accounts starts
+// from. Extracted at the sixth copy; the deadline is returned because each of those tests
+// then dates a store's copy relative to it.
+func twoClaudeAccounts(t *testing.T) (*App, time.Time) {
+	t.Helper()
+	app := overlayTestApp(t)
+	app.Config.Profiles["side"] = config.Profile{
+		Accounts: map[string]string{constants.ToolClaude: "side"},
+	}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+	return app, now
 }
 
 // bindClaudeHere binds a fresh temp cwd to profile's claude account in shared mode and
@@ -425,7 +441,7 @@ func TestWriteDirCredentialRefusesTwoIdentitiesThatAreNotAccountRecords(t *testi
 	}
 
 	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, attributionSource{}); err != nil {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 		return 0
@@ -474,7 +490,7 @@ func TestWriteDirCredentialHarvestsNewerLiveCredential(t *testing.T) {
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, attributionSource{}); err != nil {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 		return 0
@@ -513,7 +529,7 @@ func TestWriteDirCredentialKeepsSnapshotWhenLiveIsOlder(t *testing.T) {
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, attributionSource{}); err != nil {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 		return 0
@@ -557,7 +573,7 @@ func TestWriteDirCredentialRefusesToHarvestAnotherAccountsCredential(t *testing.
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, attributionSource{}); err != nil {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 		return 0
@@ -600,7 +616,7 @@ func TestWriteDirCredentialKeepsANewerCopyItCannotAttribute(t *testing.T) {
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, attributionSource{}); err != nil {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 		return 0
@@ -652,14 +668,8 @@ func TestWriteDirCredentialKeepsANewerCopyItCannotAttribute(t *testing.T) {
 // rewritten, which is what keeps the stale label out without threading the previous
 // binding down to the attribution.
 func TestRunPinRebindBetweenAccountsPreservesTheTargetsLiveCredential(t *testing.T) {
-	app := overlayTestApp(t)
-	app.Config.Profiles["side"] = config.Profile{
-		Accounts: map[string]string{constants.ToolClaude: "side"},
-	}
+	app, now := twoClaudeAccounts(t)
 	ctx := context.Background()
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 
 	// The sibling, already bound to claude/main and reading its store.
 	_, siblingStore := bindClaudeHere(t, app, "main")
@@ -715,7 +725,7 @@ func TestWriteDirCredentialKeepsACopyItsReadersDisagreeAbout(t *testing.T) {
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, attributionSource{}); err != nil {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 		return 0
@@ -757,7 +767,7 @@ func TestWriteDirCredentialKeepsWhatItCannotEnumerateTheReadersOf(t *testing.T) 
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, attributionSource{}); err != nil {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 		return 0
@@ -828,14 +838,8 @@ func TestUseIsolatedHarvestsWithTheGlobalHomeAsEvidence(t *testing.T) {
 // calls destroys the live login the first one preserved, with a success line both times.
 // Measured by review 2026-08-08. The keep now retracts a label that disagrees.
 func TestRunPinTwiceKeepsTheSameCopyBothTimes(t *testing.T) {
-	app := overlayTestApp(t)
-	app.Config.Profiles["side"] = config.Profile{
-		Accounts: map[string]string{constants.ToolClaude: "side"},
-	}
+	app, now := twoClaudeAccounts(t)
 	ctx := context.Background()
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 	_, sideStore := bindClaudeHere(t, app, "side")
 	if got := readFile(t, filepath.Join(sideStore, ".claude.json")); !strings.Contains(got, "side-uuid") {
 		t.Fatalf("the fixture needs the previous binding's label in place: %q", got)
@@ -870,14 +874,8 @@ func TestRunPinTwiceKeepsTheSameCopyBothTimes(t *testing.T) {
 // reason the "is this directory a reader" fact comes from the directory's own binding
 // rather than from the walk: the walk can only fail about *other* directories.
 func TestRunPinKeepsAndRetractsEvenWhenTheWalkIsIncomplete(t *testing.T) {
-	app := overlayTestApp(t)
-	app.Config.Profiles["side"] = config.Profile{
-		Accounts: map[string]string{constants.ToolClaude: "side"},
-	}
+	app, now := twoClaudeAccounts(t)
 	ctx := context.Background()
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 	_, sideStore := bindClaudeHere(t, app, "side")
 
 	const live = "sk-ant-oat01-MAIN-LIVE-eeee"
@@ -957,15 +955,9 @@ func TestRunRebindIsolatedToTheSameAccountActsUnderItsOwnDir(t *testing.T) {
 // (execution-type review, 2026-08-08), which would put the "keep, then destroy on the next
 // run" defect back on this path alone.
 func TestRunRebindKeepAlsoRetractsTheStaleLabel(t *testing.T) {
-	app := overlayTestApp(t)
-	app.Config.Profiles["side"] = config.Profile{
-		Accounts: map[string]string{constants.ToolClaude: "side"},
-	}
+	app, now := twoClaudeAccounts(t)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 	_, sideStore := bindClaudeHere(t, app, "side")
 	label := filepath.Join(sideStore, ".claude.json")
 	if got := readFile(t, label); !strings.Contains(got, "side-uuid") {
@@ -1224,14 +1216,8 @@ func TestAnIncompleteWalkDoesNotMakeALiveLabelStale(t *testing.T) {
 // evidence the moment this bind makes the directory a reader, so it is not retracted.
 // Dropping the conjunct survived the suite (execution-type review, 2026-08-08).
 func TestRunPinKeepsALabelThatAgreesEvenFromAStranger(t *testing.T) {
-	app := overlayTestApp(t)
-	app.Config.Profiles["side"] = config.Profile{
-		Accounts: map[string]string{constants.ToolClaude: "side"},
-	}
+	app, now := twoClaudeAccounts(t)
 	ctx := context.Background()
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 	_, sideStore := bindClaudeHere(t, app, "side")
 	// Bound to side, but the tool ran here and logged in as main.
 	label := filepath.Join(sideStore, ".claude.json")
@@ -1369,15 +1355,9 @@ func TestRunPinModeToggleReportsWhatTheWriteActuallyDid(t *testing.T) {
 // has an isolated home. Replacing the condition with `true` survived the whole suite
 // (execution-type review, 2026-08-08).
 func TestAnotherAccountsGlobalHomeIsNotAReader(t *testing.T) {
-	app := overlayTestApp(t)
-	app.Config.Profiles["side"] = config.Profile{
-		Accounts: map[string]string{constants.ToolClaude: "side"},
-	}
+	app, now := twoClaudeAccounts(t)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 
 	// claude/side gets a global isolated home, labelled side by the materializer.
 	if code, out := captureStdout(t, func() int {
@@ -1397,7 +1377,7 @@ func TestAnotherAccountsGlobalHomeIsNotAReader(t *testing.T) {
 		claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 
 	be := testBackend(t, app)
-	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, attributionSource{}); err != nil {
+	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
 		t.Fatalf("writeDirCredential: %v", err)
 	}
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
@@ -1463,7 +1443,7 @@ func TestAPreSplitBindingDoesNotReadTheAccountStore(t *testing.T) {
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", storeA), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 
 	be := testBackend(t, app)
-	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeA, attributionSource{}); err != nil {
+	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeA, false); err != nil {
 		t.Fatalf("writeDirCredential: %v", err)
 	}
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
@@ -1489,7 +1469,7 @@ func TestAReaderWithNothingToSayDoesNotVetoOneThatConfirms(t *testing.T) {
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", confirming), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 
 	be := testBackend(t, app)
-	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", confirming, attributionSource{}); err != nil {
+	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", confirming, false); err != nil {
 		t.Fatalf("writeDirCredential: %v", err)
 	}
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
@@ -1520,7 +1500,7 @@ func TestTwoReadersThatCannotSpeakGetTheirOwnReason(t *testing.T) {
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", unreadable, attributionSource{}); err != nil {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", unreadable, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 		return 0
@@ -1609,7 +1589,7 @@ func TestWriteDirCredentialStillReplacesAConflictingCopy(t *testing.T) {
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, attributionSource{}); err != nil {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 		return 0
@@ -1641,7 +1621,7 @@ func TestWriteDirCredentialStillReplacesAnUnreadableCopy(t *testing.T) {
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, attributionSource{}); err != nil {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 		return 0
@@ -1677,7 +1657,7 @@ func TestWriteDirCredentialDoesNotHarvestTombstone(t *testing.T) {
 	writeFile(t, filepath.Join(credDir, ".claude.json"), claudeIdentityFile("main-uuid"))
 
 	be := testBackend(t, app)
-	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, attributionSource{}); err != nil {
+	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, false); err != nil {
 		t.Fatalf("writeDirCredential: %v", err)
 	}
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
@@ -1705,7 +1685,7 @@ func TestWriteDirCredentialDoesNotHarvestUnmeasuredTool(t *testing.T) {
 		`{"tokens":{"access_token":"`+jwtWithExp(app.Now().Add(9*time.Hour))+`"}}`)
 
 	be := testBackend(t, app)
-	if err := app.writeDirCredential(ctx, be, constants.ToolCodex, "main", credDir, attributionSource{}); err != nil {
+	if err := app.writeDirCredential(ctx, be, constants.ToolCodex, "main", credDir, false); err != nil {
 		t.Fatalf("writeDirCredential: %v", err)
 	}
 	if got := snapshotPayload(t, app, be, constants.ToolCodex, "main"); !strings.Contains(got, "codex-main-token") {
@@ -2071,7 +2051,7 @@ func TestWriteDirCredentialPrefersAUsableCopyOverATombstonedSnapshot(t *testing.
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", storeDir), claudeOAuthPayload(alive, now.Add(2*time.Hour)))
 
 	be := testBackend(t, app)
-	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, attributionSource{}); err != nil {
+	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
 		t.Fatalf("writeDirCredential: %v", err)
 	}
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, alive) {
@@ -2096,7 +2076,7 @@ func TestWriteDirCredentialDoesNotHarvestAnEqualDeadline(t *testing.T) {
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir), claudeOAuthPayload(other, deadline))
 
 	be := testBackend(t, app)
-	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, attributionSource{}); err != nil {
+	if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, false); err != nil {
 		t.Fatalf("writeDirCredential: %v", err)
 	}
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, other) {
@@ -2467,7 +2447,7 @@ func TestWriteDirCredentialDoesNotHarvestUndatedCredential(t *testing.T) {
 
 			be := testBackend(t, app)
 			_, stderr := captureStderr(t, func() int {
-				if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, attributionSource{}); err != nil {
+				if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, false); err != nil {
 					t.Fatalf("writeDirCredential: %v", err)
 				}
 				return 0
@@ -2514,7 +2494,7 @@ func TestWriteDirCredentialDoesNotHarvestThroughSharedIdentity(t *testing.T) {
 
 	be := testBackend(t, app)
 	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, attributionSource{}); err != nil {
+		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
 			t.Fatalf("writeDirCredential: %v", err)
 		}
 		return 0
@@ -2552,7 +2532,7 @@ func TestPrepareBondWarnsOnGlobalStoreAndKeepsBinding(t *testing.T) {
 	var err error
 	runner.With(fake, func() {
 		err = app.prepareIsolationDirs(modeShared, entries, func(tool, account string) (string, error) {
-			return app.prepareBond(ctx, be, tool, account, pinID, attributionSource{})
+			return app.prepareBond(ctx, be, tool, account, pinID, false)
 		})
 	})
 	if err != nil {

@@ -88,7 +88,7 @@ func warnUnisolatableCredential(err error, tool, account string) bool {
 // write. The fallback would look like success and reproduce the original defect:
 // a credential file in a directory whose tool reads the keychain first.
 func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool, accountName, configDir string,
-	prev attributionSource,
+	staleLabel bool,
 ) error {
 	artName := credentialArtifactName(tool)
 	if artName == "" {
@@ -300,7 +300,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		// the first run preserved. Measured 2026-08-08: two identical `kae pin` calls, the
 		// first keeping and the second destroying, with a success line both times.
 		//
-		// **Only where the caller established the label is stale** (attributionSource.StaleLabel),
+		// **Only where the caller established the label is stale** (modeLabelStale),
 		// and among those only one that **disagrees**. A label that disagrees has two causes
 		// wanting opposite actions — left by a previous binding, or written by a login in this
 		// very directory — and what separates them is the **mode**, not the reader set: a
@@ -326,7 +326,7 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		// A label that agrees is honest evidence and one kae cannot read is left for the same
 		// reason an unreadable credential is — kae has not established that it is wrong.
 		// Absence is what a first bind already leaves, so this makes the two states the same one.
-		if prev.StaleLabel && dirIdentityConfirms(ctx, be, specs, acc, configDir).Conflicting {
+		if staleLabel && dirIdentityConfirms(ctx, be, specs, acc, configDir).Conflicting {
 			if err := retractDirIdentity(ctx, specs, configDir); err != nil {
 				fmt.Fprintf(os.Stderr,
 					"kae: warning: the %s identity cache in this directory still names the account it was "+
@@ -495,7 +495,7 @@ func dirCredentialNewerThanSnapshot(tool string, dirs bindDirs, accountName, why
 }
 
 // attributionSource is what the caller knows about the directory it is acting for that a
-// walk of the fragments on disk cannot supply. Both halves exist because a reader set built
+// walk of the fragments on disk cannot supply. Both fields exist because a reader set built
 // only from that walk answers the wrong question at one end or the other.
 //
 // Dir decides whether a store all of whose readers name **another** account may be
@@ -513,29 +513,9 @@ func dirCredentialNewerThanSnapshot(tool string, dirs bindDirs, accountName, why
 // time the delete is allowed there is by construction no reader left to attribute the copy
 // it is about to destroy. Refusing there is a deletion rather than a conservative choice,
 // which is the inversion AGENTS.md records.
-//
-// StaleLabel says the caller has established that any identity label in the directory it is
-// materializing describes a binding that **no longer holds** — so it is kae's own leftover
-// rather than evidence, and a keep may retract it. Only the caller can answer it, because
-// the answer turns on the *mode*, which is what keys the directory:
-//
-//   - a **shared** config dir is account-agnostic, one per pin×tool, so a label in it was
-//     written under whichever account was bound then: a change of account makes it stale.
-//     Leaving it there is what turned a second identical `kae pin` into a destroy.
-//   - an **isolated** config dir, and a globally isolated home, are keyed by the account, so
-//     every label in one was written while bound to that same account. A disagreement there
-//     can only be a login as somebody else — live evidence, and retracting it deletes the
-//     only record of whose the credential is, after which an ordinary sibling confirms
-//     unopposed and files a foreign token. Measured 2026-08-08 through a re-bind *back* to
-//     an account the directory had left, on both `kae pin -i` and `kae pin <tool>`.
-//
-// False is the safe default in both directions: nothing is retracted, and the worst outcome
-// is that a later bind keeps a copy it could have harvested. A caller that could not read
-// its own binding must leave it false — "kae could not look" is not "nothing is bound".
 type attributionSource struct {
-	Dir        string
-	Unbound    bool
-	StaleLabel bool
+	Dir     string
+	Unbound bool
 }
 
 func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, specs []artifact.Spec,
@@ -1663,6 +1643,14 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 // per-directory mechanism would silently attribute the account's store from the real home's
 // identity cache. That last one belongs in the same lockstep list `dirCredentialStores`
 // carries.
+// ponytail: walks every pinned directory system-wide (one ReadDir of the isolation root,
+// then a breadcrumb read, a stat and a fragment read per pin) and does it **twice** per
+// `kae pin` — once from the pin-level pass and once from the write, with nothing between
+// them that changes what it reads. It is behind the `supersedes` gate, so it costs nothing
+// unless there is a copy worth harvesting; the case where it is worth caring about is
+// `kae run -i`, which the mise hook makes per-invocation. Memoize per command if that shows
+// up — but not on App without a per-operation reset, which is the shape that already made a
+// test pass for the wrong reason here (docs/ROADMAP.md § The reader walk runs twice).
 func (app *App) credStoreWitnesses(credDir, tool string) (configDirs []string, complete bool) {
 	if credDir == "" {
 		return nil, false
@@ -2113,6 +2101,13 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 		// replacement whatever the locations say, which is the other half.
 		replacedNow := !refused.Unattributed &&
 			next[store.Tool].Cred != "" && next[store.Tool].Cred == store.dirs().credDirOrConfig()
+		// Chosen once for the same reason it is asked once: the two arms below said this in
+		// two hand-kept copies, and this function's own history is one wording drifting in
+		// the unreadable arm and the other in the replaced one. Both measured.
+		consequence := "so kae is leaving it where it is"
+		if replacedNow {
+			consequence = "and this bind replaces it"
+		}
 		switch {
 		case refused.Why == "" || !replaced[store.Dir]:
 			// Nothing to report, or a store from a binding older than the one being replaced
@@ -2134,10 +2129,6 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			// to credDirOrConfig for exactly that reason. And the consequence is measured
 			// rather than assumed — on `kae pin <tool> <other account>` this store is the one
 			// the binding moves *off*, so nothing replaces the copy in it.
-			consequence := "so kae is leaving it where it is"
-			if replacedNow {
-				consequence = "and this bind replaces it"
-			}
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: the %s credential in %s belongs to an account other than %s/%s (%s), so "+
 					"kae is not harvesting it, %s\n",
@@ -2159,10 +2150,6 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			// that kae could not back up, which AGENTS.md forbids. One fixed string broke that
 			// in the unreadable arm; keying it on this store's own dirs broke the other
 			// direction, claiming a replacement of a copy nothing replaced. Both measured.
-			consequence := "so kae is leaving it where it is"
-			if replacedNow {
-				consequence = "and this bind replaces it"
-			}
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: kae could not preserve the %s credential this directory held for %s/%s "+
 					"(%s), %s; %s\n",

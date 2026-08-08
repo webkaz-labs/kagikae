@@ -91,24 +91,21 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 // keep may only retract an identity label it can show is stale, and the acting directory's
 // own previous binding is the thing that shows it (attributionSource).
 func (app *App) isolationPlan(ctx context.Context, be secret.Backend, mode string, targets []runTarget, pinID string, prev fragmentInfo, prevKnown bool) ([]isolationEntry, func(tool, account string) (string, error), error) {
-	// Only a shared bind can leave a stale label: its config dir is one per pin×tool, so a
-	// change of account makes whatever is in it kae's leftover. An isolated one is keyed by
-	// the account, so a disagreeing label there is a live login (attributionSource).
-	acting := func(tool, account string) attributionSource {
-		return attributionSource{
-			StaleLabel: prevKnown && mode == modeShared && prev.Accounts[tool] != account,
-		}
+	// prevKnown gates it because a fragment kae could not read establishes nothing about
+	// what this directory was bound to; modeLabelStale owns the rest.
+	stale := func(tool, account string) bool {
+		return prevKnown && modeLabelStale(mode, prev.Accounts[tool], account)
 	}
 	switch mode {
 	case modeShared:
 		return app.bondIsolationEntries(targets, pinID),
 			func(tool, account string) (string, error) {
-				return app.prepareBond(ctx, be, tool, account, pinID, acting(tool, account))
+				return app.prepareBond(ctx, be, tool, account, pinID, stale(tool, account))
 			}, nil
 	case modeIsolated:
 		return app.pinIsolationEntries(targets, pinID),
 			func(tool, account string) (string, error) {
-				return app.preparePinConfig(ctx, be, tool, account, pinID, acting(tool, account))
+				return app.preparePinConfig(ctx, be, tool, account, pinID, stale(tool, account))
 			}, nil
 	default:
 		return nil, nil, errf(constants.ExitError, "unknown per-directory bind kind %q", mode)
@@ -301,7 +298,7 @@ func (app *App) bondIsolationEntries(targets []runTarget, pinID string) []isolat
 // account's credential privately (writeDirCredential). Idempotent: stale
 // symlinks are refreshed; real files in the bond dir (private overrides) are
 // left untouched.
-func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, account, pinID string, prev attributionSource) (string, error) {
+func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, account, pinID string, staleLabel bool) (string, error) {
 	bondDir := app.Paths.SharedDir(pinID, tool)
 	if err := os.MkdirAll(bondDir, 0o700); err != nil {
 		return "", fmt.Errorf("create shared dir: %w", err)
@@ -392,7 +389,7 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 	}
 
 	// Materialize the bound account's credential where the tool will read it.
-	if err := app.writeDirCredential(ctx, be, tool, account, bondDir, prev); err != nil {
+	if err := app.writeDirCredential(ctx, be, tool, account, bondDir, staleLabel); err != nil {
 		return "", err
 	}
 
@@ -486,7 +483,7 @@ func (app *App) pinIsolationEntries(targets []runTarget, pinID string) []isolati
 // symlinks opt-in shared items from the real home, then materializes the
 // account's credential privately (writeDirCredential). Idempotent: stale
 // symlinks are refreshed; real files are left.
-func (app *App) preparePinConfig(ctx context.Context, be secret.Backend, tool, account, pinID string, prev attributionSource) (string, error) {
+func (app *App) preparePinConfig(ctx context.Context, be secret.Backend, tool, account, pinID string, staleLabel bool) (string, error) {
 	configDir := app.Paths.IsolatedConfigDir(pinID, tool, account)
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return "", fmt.Errorf("create isolated config dir: %w", err)
@@ -545,7 +542,7 @@ func (app *App) preparePinConfig(ctx context.Context, be secret.Backend, tool, a
 	}
 
 	// Materialize the bound account's credential where the tool will read it.
-	if err := app.writeDirCredential(ctx, be, tool, account, configDir, prev); err != nil {
+	if err := app.writeDirCredential(ctx, be, tool, account, configDir, staleLabel); err != nil {
 		return "", err
 	}
 

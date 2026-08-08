@@ -146,8 +146,8 @@ block in docs/VALIDATION.md, next to two correct ones.
   Things that must move in lockstep with it — not a closed list: a **third**
   per-directory mechanism (today `shared` and `isolated`) has to be added to
   `dirCredentialStores`, or its stores are silently never swept, **and to
-  `attributionSource.StaleLabel`'s two call sites** (`modeStoreDir` carries the note), where
-  it falls through to *not stale* — right for an account-keyed mechanism, and the
+  `modeLabelStale`** (beside `modeStoreDir`, which carries the note), where it falls
+  through to *not stale* — right for an account-keyed mechanism, and the
   "keep then destroy on the next run" defect for an account-agnostic one; and the sweep must
   run **after** the new binding is written, or a mid-sequence failure leaves the live
   binding pointing at a store whose credential is already gone.

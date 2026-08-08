@@ -427,8 +427,7 @@ func boundToolList(fragment fragmentInfo) string {
 // **this paragraph used to predict it wrong**: the blocker is not where a restore of
 // such a backup would land — a recorded flag on the meta gated that in one predicate —
 // but that kae's backup subsystem rests on an unstated *a backup records the tool's
-// global live state*, which most of its consumers had encoded. Gating the restore path
-// alone was the first of four rounds' worth of defects, so read the withdrawal
+// global live state*, which most of its consumers had encoded. Read the withdrawal
 // paragraph in that ROADMAP section before rebuilding this. The warning is the part
 // that is safe today, and it reaches the user while the action that prevents the loss —
 // not completing the flow — is still available.

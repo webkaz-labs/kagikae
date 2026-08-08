@@ -804,16 +804,41 @@ say "the store", read it as whichever of the two that tool resolves:
 - and it **refuses rather than guesses**, in every one of these places. An unusable
   copy is not harvested — the tombstone a failed refresh leaves behind is a
   fully-formed payload, so presence proves nothing. A copy kae cannot *attribute* is
-  not harvested: the identity cache beside the credential must be readable, inside
-  that store, and name the account being harvested into, and **absence is not
+  not harvested, and **which identity cache answers that depends on whose the store is**.
+  For a per-directory store the credential and the cache sit in one directory, so that
+  directory's cache is evidence about it. For the account's own credential store they are
+  different objects — the store is the account's, the cache is the directory's — and the
+  evidence is the caches of the directories **currently reading that store**: every bound
+  directory whose fragment names it (read before a bind rewrites it, so a directory being
+  re-bound to another account is not yet one of them) plus every globally isolated home of
+  that account on disk. They confirm only if every reader that can speak names the account
+  being harvested into; if they disagree the copy is kept, deliberately *not* reported as a
+  conflict, because a live login's owner is not one bind's decision and nothing backs it up.
+  A copy every reader says is **another** account's may be replaced — but only where the
+  directory the operation acts for is itself one of those readers. A sibling's disagreement
+  is evidence that the copy is somebody's live login, not a licence for an unrelated bind to
+  spend it, and a majority of one is no different from a majority: without that condition a
+  brand-new directory's first bind destroyed the only copy of a sibling's login.
+  A caller that has just torn a binding down says so, because otherwise the delete path
+  erases its own evidence — `kae unpin --purge` may only delete once nothing points at the
+  store, which is the moment there is no reader left to confirm the copy it is about to
+  destroy. What a reader is **not** is an independent observer: a bind writes the account's
+  recorded identity into that directory's store, so a reader whose tool has never run there
+  agrees with a label kae planted ([ROADMAP.md](ROADMAP.md) § Attribution reads a label kae
+  may have written itself).
+  Whichever cache answers, **absence is not
   agreement** — no recorded identity, no live cache, an unreadable one, one that is
   well-formed JSON but not an account record (`null`, a string, a number, an array:
   it names no account, so neither a difference from it nor a match with it is
   evidence, and the rule applies to the **recorded** side as much as the live one), a
   path kae
   could not resolve, or a target that resolves outside the store (a pre-v0.16.0 bind
-  linked it to the real home, so it labels *that*) all refuse. This matters most for a `-s` store, which is shared
-  by every account the directory ever bound: its credential can legitimately belong
+  linked it to the real home, so it labels *that*) all refuse. With one reader its own
+  reason is the refusal's reason; summarising them all as "no cache to compare" claimed
+  something kae had not observed about a reader whose cache was there and unreadable.
+  This matters most for a store that is shared —
+  by every account a `-s` directory ever bound, and by every directory bound to one
+  account: its credential can legitimately belong
   to another account, and filing that under this one's name is undetectable
   afterwards — the token is opaque, so live, snapshot and doctor would all agree on a
   label that is simply wrong. That attribution answer has a **second reader**:
@@ -855,17 +880,17 @@ say "the store", read it as whichever of the two that tool resolves:
   and the next bind harvests it, and the last binding's `kae unpin --purge` harvests before
   it deletes — measured 2026-08-08, end to end, keep → purge a sibling (kept, with the
   refcount named) → purge the last one (harvested into the snapshot, then removed);
-- the two are stated as the *intent* of the pair, not as a property kae currently has:
-  never file a copy it cannot attribute under an account, and never destroy one either.
-  **Both are still reachable**, measured 2026-08-08, and for one reason — attribution for
-  the account's shared store reads the *directory's* identity cache, which since the split
-  is evidence about a different object. In shared mode that cache carries the **previous**
-  binding's label, so a re-bind between two accounts of one directory can read
-  `Conflicting` about a store the label says nothing about and overwrite a live credential;
-  and a cache that legitimately names this account can confirm a copy another directory
-  poisoned. [ROADMAP.md](ROADMAP.md) § Attribution for a shared store reads per-directory
-  evidence is normative for the shape and the fix; until it lands, do not read this bullet
-  as a guarantee;
+- the pair kae holds to: never file a copy it cannot attribute under an account, and never
+  destroy one either. Both directions were reachable while attribution for the account's
+  shared store read the *directory's* identity cache — since the split that is evidence
+  about a different object. In shared mode the cache carries the **previous** binding's
+  label, so a re-bind between two accounts read `Conflicting` (the arm that overwrites)
+  about a store the label says nothing about and destroyed a live credential; and a cache
+  that legitimately named this account confirmed a copy another directory had poisoned.
+  Reading the *readers* instead closes both, and the residue is stated where it belongs
+  rather than as a caveat on the pair: a reader kae labelled itself
+  ([ROADMAP.md](ROADMAP.md) § Attribution reads a label kae may have written itself) and a
+  bound directory that was **moved** (§ A moved bound directory);
 - the snapshot's payload **shape** must match the artifact being written.
   `KindFile` and `KindKeychain` hold a whole document, `KindJSONPointer` holds only
   the value under its pointer, and the two are not interchangeable: applying a

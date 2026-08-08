@@ -1119,9 +1119,17 @@ mechanism as covered while measuring a directory kae no longer reads a credentia
 This file's own § Upstream Behaviour Assumptions had the rule right the whole time, so
 one file contradicted itself.
 
+**Whose login a copy is, is answered by the directories that read the store, not by the
+one being bound** ([ADAPTERS.md](ADAPTERS.md) § Per-directory credential store), and that
+is what A2 and A3 separate: the same first bind of a second directory harvests when a
+sibling reader agrees and keeps when nothing reads the store at all. B1 and B2 are the
+same split on the other side — all readers naming another account is positive evidence and
+overwrites, readers that disagree is missing evidence and keeps.
+
 Three things this block cannot show, so they are not claimed. The sweep's half (a
 `--purge` harvesting before it deletes) is unit-covered here rather than smoke-covered
-— `TestUnpinPurgeRemovesAFileCredentialFromTheAccountStore` and
+— `TestUnpinPurgeRemovesAFileCredentialFromTheAccountStore`,
+`TestUnpinPurgeHarvestsANewerCopyBeforeRemovingIt` and
 `TestRePinMigrationRemovesThePreSplitFile` are the file-driver halves, and the
 keychain gates above are the other. This block deliberately does not run it: it would
 add a purge to a scenario whose subject is the ordering of two copies. Note what
@@ -1131,9 +1139,14 @@ credential could move out of the store it sits in, so this section was excusing 
 one configuration that could have caught it. The file
 backend stores payloads **base64-encoded**, so a snapshot assertion has to decode
 before matching: `grep` on the raw file finds nothing and reads as a *passing*
-assertion. And each case below re-captures the account it uses, because a harvest
+assertion. Each case below resets the account it uses (`reset_main`), because a harvest
 makes the snapshot fresh — running D before E without that reset made E's harvest a
-no-op and E "passed" while proving nothing (measured while writing this block).
+no-op and E "passed" while proving nothing. **A re-capture is not that reset**: the
+credential store belongs to the account and survives it, so with a sibling reader in play
+the next `kae pin` harvests the leftover copy straight back and the case's own fixture is
+no longer newer than anything — measured 2026-08-08, with D and E both silently reduced to
+proving nothing that way. Token names never prefix one another for the same reason:
+`grep MAIN-NEW` matched a `MAIN-NEW2` and three cases passed on a copy they were not about.
 
 ```bash
 . scripts/smoke-env.sh
@@ -1145,6 +1158,20 @@ snap() { base64 -d < "$XDG_DATA_HOME/kagikae/secrets/claude/$1/claude_ai_oauth.s
 # Both anchored at ^, so neither variable's line can be read as the other's.
 store()  { sed -n 's/^CLAUDE_CONFIG_DIR *= *"\(.*\)"/\1/p'                .config/mise/conf.d/kagikae.toml; }
 cstore() { sed -n 's/^CLAUDE_SECURESTORAGE_CONFIG_DIR *= *"\(.*\)"/\1/p'   .config/mise/conf.d/kagikae.toml; }
+# The same store by its absolute path, so a case can reach it without standing in a
+# bound directory.
+accstore() { printf '%s/kagikae/credstore/claude/%s/.credentials.json' "$XDG_DATA_HOME" "$1"; }
+# Re-capturing the account is no longer enough to reset a case. The credential store
+# belongs to the **account** and survives the re-capture, and with a sibling directory
+# already reading it the next `kae pin` harvests that leftover copy straight back into
+# the fresh snapshot — after which the case's own `$NEW` fixture is not newer than
+# anything and its guard is never reached. Measured 2026-08-08: D and E had stopped
+# testing their own subject exactly that way.
+reset_main() {
+  cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+  /tmp/kae add --no-login --identity you@example.com claude main
+  rm -f "$(accstore main)"
+}
 
 mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
 printf 'version = 1\n[security]\nsecret_backend = "file"\n' > "$XDG_CONFIG_HOME/kagikae/config.toml"
@@ -1152,8 +1179,11 @@ cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.cla
 /tmp/kae add --no-login --identity you@example.com claude main
 cred SIDE-OLD $OLD > "$HOME/.claude/.credentials.json"; ident side > "$HOME/.claude.json"
 /tmp/kae add --no-login --identity other@example.com claude side
+cred SOLO-OLD $OLD > "$HOME/.claude/.credentials.json"; ident solo > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity solo@example.com claude solo
 /tmp/kae profile set main claude main
 /tmp/kae profile set side claude side
+/tmp/kae profile set solo claude solo
 
 # --- A. the tool refreshed the copy inside the directory; a re-pin must keep it ---
 P="$HOME/proj"; mkdir -p "$P"; cd "$P"
@@ -1164,6 +1194,8 @@ P="$HOME/proj"; mkdir -p "$P"; cd "$P"
 # later bind cannot confirm against something kae planted (§ ADAPTERS.md). A block that
 # leaned on kae's own label would be testing the shape that was removed.
 ident main > "$(store)/.claude.json"
+SP1="$(store)"                          # kept for B, which needs to reach both readers'
+                                        # caches from outside their directories
 cred MAIN-NEW $NEW > "$(cstore)/.credentials.json"
 /tmp/kae pin main
 #   assert: stderr carries `kae: harvested the newer claude credential from … into
@@ -1176,39 +1208,72 @@ grep MAIN-NEW "$(cstore)/.credentials.json"  # assert: the re-pin did NOT write 
 # --- A2. a SECOND directory bound to the same account must not spend its credential ---
 # The case A cannot reach, because A re-pins a directory that already has an identity
 # cache. A brand-new directory has none — the config dir is created moments earlier and a
-# shared bind links no `.claude.json` — so attribution refuses for missing evidence, and
-# refusing used to mean overwriting anyway. That is the account's one credential store, so
-# the copy destroyed was the only one that could still refresh, for *every* directory bound
-# to it. Fixed 2026-08-08; this case is what keeps it fixed.
-cred MAIN-NEW2 $LATER > "$(cstore)/.credentials.json"   # the tool refreshed it again here
+# shared bind links no `.claude.json` — and that used to mean the bind wrote the older
+# snapshot over the store. That is the account's ONE credential store, so the copy
+# destroyed was the only one that could still refresh, for *every* directory bound to it.
+# Fixed 2026-08-08; this case is what keeps it fixed.
+#
+# The evidence is not this directory's, though: it is the sibling P, which reads the same
+# store and whose cache names main. So the copy is preserved **and** harvested — a strictly
+# better outcome than keeping it, and the one that makes `kae use claude main` apply it
+# too. A3 is the same bind with nobody reading the store.
+cred MAIN-LATE $LATER > "$(cstore)/.credentials.json"   # the tool refreshed it again here
 P2="$HOME/proj2"; mkdir -p "$P2"; cd "$P2"
 /tmp/kae pin main
-#   assert: exit 0, and stderr says kae `kept it rather than replacing it`, naming the
-#           account's store — NOT `this write replaces it`
-grep MAIN-NEW2 "$(cstore)/.credentials.json"   # assert: the copy that can still refresh is
+#   assert: exit 0, and stderr carries `harvested the newer claude credential` — NOT
+#           `this write replaces it`
+grep MAIN-LATE "$(accstore main)"        # assert: the copy that can still refresh is
                                         #         intact. This is the whole case: before
                                         #         the fix it held the older snapshot and
-                                        #         every offline check was green
-snap main | grep -c MAIN-NEW2            # assert: 0 — kept is not harvested. kae could not
-                                        #         tell whose the copy is, so it neither
-                                        #         destroys it nor files it under this account
-test ! -e "$(store)/.claude.json"        # assert: and NO label was written. kae's own label
-                                        #         is what the next bind's attribution would
-                                        #         read, so writing it here let a second
-                                        #         `kae pin` confirm against a cache kae had
-                                        #         planted and harvest the copy this bind
-                                        #         refused — measured 2026-08-08, filing
-                                        #         another account's token under this name.
-                                        #         Absence is the honest record; the next
-                                        #         cache here is the tool's
+                                        #         every offline check was green.
+                                        #         MAIN-LATE, not MAIN-NEW2: `grep MAIN-NEW`
+                                        #         elsewhere in this block matches a
+                                        #         `MAIN-NEW2` by prefix, so three cases
+                                        #         passed on a copy they were not about
+snap main | grep MAIN-LATE               # assert: and the sibling's evidence let it be
+                                        #         harvested, so the snapshot holds it too
+SP2="$(store)"
+grep u-main "$SP2/.claude.json"          # assert: the write succeeded, so the label follows
+                                        #         it. The label is written **only** on a
+                                        #         successful write: kae's own label is what
+                                        #         the next bind's attribution reads, and
+                                        #         planting one where kae kept a copy let a
+                                        #         later `kae pin` confirm against it and
+                                        #         harvest the copy the first bind refused
+                                        #         (measured 2026-08-08). A3 asserts the
+                                        #         absence on the path that keeps
 cd "$P"                                  # back to A's directory for the cases below
 
-# --- B. a copy kae cannot attribute is not adopted, and the cost is stated ---
-ident other > "$(store)/.claude.json"
-# LATER, not NEW: after A the snapshot already holds a NEW-dated copy, and a copy that
-# is merely *equal* is never harvested — so reusing NEW here made this case pass
-# without ever reaching the attribution guard (measured while writing this block).
-cred FOREIGN $LATER > "$(cstore)/.credentials.json"
+# --- A3. the same first bind with NOBODY reading the store: kept, and nothing labelled ---
+# claude/solo has no bound directory, so no reader can say whose the copy is. That is the
+# refusal that must keep rather than overwrite, and it is the one A2 stopped exercising
+# once a sibling existed.
+mkdir -p "$(dirname "$(accstore solo)")" # the store is created by whatever wrote into it;
+                                        # without this the fixture below lands nowhere and
+                                        # every assertion in this case is vacuous
+cred SOLO-NEW $NEW > "$(accstore solo)"  # left by a `kae use -i`, or by a binding since
+                                        # unpinned: the store outlives the directory
+S="$HOME/solo-proj"; mkdir -p "$S"; cd "$S"
+/tmp/kae pin solo
+#   assert: exit 0, and stderr says kae `kept it rather than replacing it`, naming the
+#           account's store and the reason `no directory reads this credential yet` —
+#           NOT `this write replaces it`
+grep SOLO-NEW "$(accstore solo)"         # assert: the only copy that can refresh survives
+snap solo | grep -c SOLO-NEW             # assert: 0 — kept is not harvested. kae could not
+                                        #         tell whose the copy is, so it neither
+                                        #         destroys it nor files it under this account
+test ! -e "$(store)/.claude.json"        # assert: and NO label was written; see A2
+cd "$P"
+
+# --- B1. every reader says the copy is another account's: replaced, once, no remedy ---
+reset_main                               # snapshot back to MAIN-OLD with an empty store,
+                                        # so $NEW below really is newer (an equal
+                                        # `expiresAt` is never harvested, and reusing a
+                                        # deadline here made this case pass without
+                                        # reaching the attribution guard at all —
+                                        # measured twice, 2026-08-08)
+ident other > "$SP1/.claude.json"; ident other > "$SP2/.claude.json"
+cred FOREIGN $NEW > "$(accstore main)"
 /tmp/kae pin main
 #   assert: exactly ONE stderr line — `belongs to an account other than claude/main`
 #           — and it does not tell you to log in. One store, one refusal, one message:
@@ -1217,10 +1282,10 @@ cred FOREIGN $LATER > "$(cstore)/.credentials.json"
 #           spoken. **No remedy on purpose**: the copy is demonstrably somebody else's,
 #           this account's credential is being written correctly, and a login here
 #           would mint a chain invalidating what kae harvested elsewhere. A
-#           missing-evidence refusal (no identity recorded, none in the directory,
-#           unreadable, or one shared with the real home) *does* carry the remedy, with
-#           the bound directory rather than the store in it. Exit code still 0
-snap main | grep MAIN-NEW               # assert: A's harvested copy is still there.
+#           missing-evidence refusal (no reader at all, no cache in one, an unreadable
+#           one, or one shared with the real home) *does* carry the remedy, with the
+#           bound directory rather than the store in it. Exit code still 0
+snap main | grep MAIN-OLD               # assert: the snapshot is the one reset_main wrote.
                                         #         This positive line is what makes the
                                         #         negative one below mean anything: a
                                         #         broken snap() (wrong secrets path, or
@@ -1228,9 +1293,54 @@ snap main | grep MAIN-NEW               # assert: A's harvested copy is still th
                                         #         0, which reads as a pass
 snap main | grep -c FOREIGN             # assert: 0 — a token filed under the wrong
                                         #         account is undetectable afterwards
-grep u-main "$(store)/.claude.json"     # assert: the bind still relabelled the dir
+grep MAIN-OLD "$(accstore main)"        # assert: and positive evidence still overwrites —
+                                        #         this account's credential is elsewhere,
+                                        #         so the bind has to take effect
+grep u-main "$SP1/.claude.json"          # assert: the bind still relabelled the dir
+
+# --- B3. only a SIBLING disagrees: an unrelated bind may not spend the copy ---
+# Same store, same unanimous readers as B1 — but the bind runs in a directory that reads
+# nothing yet, so it has no reading of its own and is not the event that gets to decide
+# whose the copy is. The first version of the reader model took a majority and destroyed
+# the only copy of the sibling's login here (found by review, 2026-08-08).
+reset_main
+ident other > "$SP1/.claude.json"; ident other > "$SP2/.claude.json"
+cred FOREIGN $NEW > "$(accstore main)"
+Q="$HOME/newcomer"; mkdir -p "$Q"; cd "$Q"
+/tmp/kae pin main
+#   assert: exit 0, and kae `kept it rather than replacing it`, naming the reason
+#           `this directory does not read it yet` — NOT `this write replaces it`
+grep FOREIGN "$(accstore main)"         # assert: the sibling's live login survives. B1 is
+                                        #         the same fixture with the bind run *in* a
+                                        #         reader, and there it is replaced — the
+                                        #         pair is the whole condition
+snap main | grep -c FOREIGN             # assert: 0 — kept is not harvested
+cd "$P"
+
+# --- B2. the readers DISAGREE: kept, and deliberately not reported as a conflict ---
+# Somebody logged in as another account inside one bound directory. The copy is live and it
+# is somebody's, and this bind is not the event that should decide whose — overwriting on a
+# majority destroys a login that has no backup. Measured 2026-08-08: asking only the
+# directory being bound is what let an ordinary re-pin file a foreign token under this
+# account's name.
+reset_main
+ident main > "$SP1/.claude.json"        # P says main, P2 still says other
+cred FOREIGN $NEW > "$(accstore main)"
+/tmp/kae pin main
+#   assert: one stderr line saying the directories that read this credential `disagree
+#           about whose login it is`, that kae is `leaving it where it is`, and the
+#           login remedy — a disagreement is missing evidence, so it carries one, unlike
+#           B1. The pin-level pass is the speaker here (it knows the bound directory),
+#           so this is *not* the chokepoint's `kept it rather than replacing it`; that
+#           wording appears in A3, where no pass had anything to say
+grep FOREIGN "$(accstore main)"         # assert: the live copy survives. This is the half
+                                        #         that inverts: a refusal here would be a
+                                        #         deletion, not a conservative choice
+snap main | grep -c FOREIGN             # assert: 0 — kept is not harvested
+ident main > "$SP2/.claude.json"        # put P2 back so the cases below start agreed
 
 # --- C. a tombstone is not a login — and only the MEASURED tombstone is silent ---
+reset_main
 ident main > "$(store)/.claude.json"
 # Two shapes, two arms, and this case tested only the second one while claiming the
 # first until 2026-08-08. The measured tombstone (§ Upstream Behaviour Assumptions,
@@ -1247,8 +1357,8 @@ printf '{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,"refr
 #   assert: NO `harvested` line — presence is not usability
 #   assert: and NO warning at all. This is the one arm that is silent, so it is the
 #           assertion that separates the two; without it C passes on either
-snap main | grep MAIN-NEW               # assert: unchanged
-grep MAIN-NEW "$(cstore)/.credentials.json"   # assert: and the snapshot really was written
+snap main | grep MAIN-OLD               # assert: unchanged
+grep MAIN-OLD "$(cstore)/.credentials.json"   # assert: and the snapshot really was written
                                         #         over it. C1's other three assertions are
                                         #         all negative, so a fixture that landed
                                         #         where kae does not read satisfies them —
@@ -1266,16 +1376,17 @@ printf '{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%s,"ref
 #           `a payload kae cannot judge may still be a login`, and the remedy
 #           `cd <this dir> && kae relogin claude`. The weak claim takes the weak
 #           consequence: kae replaces the copy but does not call it dead
-snap main | grep MAIN-NEW               # assert: unchanged
-grep MAIN-NEW "$(cstore)/.credentials.json"   # assert: replaced, which is what separates
+snap main | grep MAIN-OLD               # assert: unchanged
+grep MAIN-OLD "$(cstore)/.credentials.json"   # assert: replaced, which is what separates
                                         #         this arm from the attribution refusal in
-                                        #         A2 — that one is *kept*
+                                        #         A3 — that one is *kept*
                                         #         (docs/ROADMAP.md owns why they differ)
 
 # --- D. the mode toggle rebuilds the bound stores; the newer copy must survive it ---
-# Reset the snapshot first, or A's harvest makes this a no-op.
-cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
-/tmp/kae add --no-login --identity you@example.com claude main
+# reset_main, not a bare re-capture: the account's store survives a re-capture, and the
+# first pin below would harvest the leftover copy back into the fresh snapshot, leaving
+# this case's own $NEW fixture no newer than anything (measured 2026-08-08).
+reset_main
 T="$HOME/toggle"; mkdir -p "$T"; cd "$T"
 /tmp/kae pin main                       # shared
 ident main > "$(store)/.claude.json"    # the tool ran here (see A)
@@ -1296,8 +1407,7 @@ snap main | grep MAIN-NEW               # assert: and it reached the snapshot
 # asserts is that rebuilding the bound store set does not lose the copy.
 
 # --- E. shared re-bind to another account: the copy belongs to the OLD one ---
-cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
-/tmp/kae add --no-login --identity you@example.com claude main
+reset_main                              # see D for why a bare re-capture is not a reset
 R="$HOME/rebind"; mkdir -p "$R"; cd "$R"
 /tmp/kae pin main
 ident main > "$(store)/.claude.json"    # the tool ran here (see A)
@@ -1316,8 +1426,7 @@ grep SIDE-OLD "$(cstore)/.credentials.json"  # assert: the account store now run
 
 # --- F. doctor reports a store that names an account other than the binding ---
 # Independent of A–E; it needs only a captured account with a recorded identity.
-cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
-/tmp/kae add --no-login --identity you@example.com claude main
+reset_main
 G="$HOME/drift"; mkdir -p "$G"; cd "$G"
 /tmp/kae pin main
 ident main > "$(store)/.claude.json"    # the tool ran here (see A)
@@ -2262,13 +2371,15 @@ that is the branch tree and not the merge above it.
   could still refresh, with `kae doctor` silent afterwards because nothing was left to
   compare. The bind now keeps that copy and says so; `Conflicting` and unreadable copies are
   still replaced, deliberately (docs/ADAPTERS.md is normative, docs/ROADMAP.md owns the
-  second one's trade-off). Case **A2** in the block above is the case that keeps it fixed —
-  it did not exist, and the first run walked the destructive path three times without
-  asserting anything about it. **A2 and every other block were then run against the fixed
+  second one's trade-off). Case **A2** in the block above was added for it — it did not
+  exist, and the first run walked the destructive path three times without asserting
+  anything about it. **A2 and every other block were then run against the fixed
   binary**, extracted from this file rather than from a script, so nothing below is dated
   ahead of the tree it was measured on. The fix also moved what a bind writes when it keeps
   (no credential, no stale-file sweep, no identity label), which is why the cases that
   expect a harvest now seed the identity cache the *tool* would have written.
+  **Superseded later on the same branch** — see the last entry below; A2 now asserts a
+  harvest and **A3** is the case that holds the destruction fixed.
 - **§ v0.17.0 surface — the credential harvest, A–A2–J: every documented assertion** — but
   **only after fixing the block**, and that is the other finding of this run: every
   credential fixture still targeted
@@ -2311,6 +2422,25 @@ that is the branch tree and not the merge above it.
   per-command read cache, and `kae relogin` against a real per-directory keychain item,
   stay covered by unit tests over the darwin sim only. Unchanged from the earlier runs and
   stated again because a green run reads as if it did more.
+
+- **A second code defect, found the same way and on the same branch, and the harvest block
+  re-run against it.** The fix above stopped a bind from *overwriting* a copy it could not
+  attribute; what it did not change was **what attribution reads**. For the account's own
+  credential store that was still the bound *directory's* identity cache, which since the
+  split is evidence about a different object — so a re-bind between two accounts read
+  `Conflicting` about a store the previous binding's label says nothing about and destroyed
+  a live credential, and a cache that legitimately named this account confirmed a copy
+  another directory had poisoned. Attribution now reads the directories currently reading
+  that store. Extracting and running this file's harvest block against the change is what
+  showed that **A2, B, D and E had all stopped testing their subjects**: A2's outcome
+  legitimately changed (a sibling reader confirms, so the copy is preserved *and*
+  harvested), B's two `expiresAt` values had become equal so attribution was never reached,
+  and D and E reset their account with a re-capture — which no longer resets anything,
+  because the credential store outlives it and the next pin harvests the leftover copy
+  back. The block now carries `reset_main`, a no-reader case (**A3**) for the destruction
+  A2 used to hold, and a disagreeing-readers case (**B2**); token names no longer prefix one
+  another, after `grep MAIN-NEW` was found matching a `MAIN-NEW2`. Re-run end to end on
+  this branch: every documented assertion, checked at its own point.
 
 The superseded partial entry (2026-08-04, tree `40fa804`) is dropped rather than kept: its
 per-worktree measurement is repeated above on the final tree, and its credential

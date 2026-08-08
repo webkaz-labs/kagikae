@@ -431,31 +431,31 @@ alternative exists (`secret-tool`).
   swept unchanged is the per-directory item a **pre-split** binding left behind,
   which is what makes re-running `kae pin` a migration rather than a leak.
 
-- **Attribution for a shared store reads per-directory evidence, and both failure
-  directions are reachable** (measured 2026-08-08 by an execution-type review, **not
-  fixed**; present in v0.17.0 as shipped-to-be, not introduced by the harvest work).
-  `dirIdentityConfirms` is handed the *directory's* identity cache as evidence about the
-  credential in the *account's* store. Before the split those were the same object. They
-  are not any more, and the two consequences are opposite:
-  - **It destroys.** In shared mode the config dir belongs to the pin-id, not to the
-    account, so it still carries the **previous** binding's label. Bind a directory to one
-    account, let the tool run, then `kae pin <other-account>` (or `kae pin claude <other>`)
-    and kae reads `Conflicting` about a store that label says nothing about — and
-    `Conflicting` is the arm that still overwrites. Measured: the other account's refreshed
-    credential is gone from every location, and a second directory still bound to it now
-    holds a copy that cannot refresh. Isolated mode is safe (a fresh config dir per account
-    degrades the refusal to `Unattributed`, which keeps), so this is the **default** mode.
-  - **It mis-files.** A cache that legitimately names this account confirms a copy some
-    *other* directory poisoned, so an ordinary re-pin harvests a foreign token into this
-    account's snapshot, after which `kae use` applies it. Measured through `kae pin` and
-    through `kae unpin --purge`. This is the entry below ("a label kae may have written
-    itself") in its non-benign form; that entry called it benign and was wrong.
-  The fix is not another arm on the same evidence: for a store shared by several
-  directories, attribution has to read the caches of the directories **currently bound to
-  that store** (`credStoreRefs` already walks them) and refuse on any disagreement — and
-  `Conflicting` may only be trusted where the directory was already bound to that same
-  account for that tool, which `runPin` can supply from `prevBinding`. Until that lands,
-  `docs/ADAPTERS.md`'s "never files / never destroys" pair is an intent, not a property.
+- **A moved bound directory is not a witness, and its absence does not make the reader set
+  incomplete** (recorded 2026-08-08 by a reading-type review, **not fixed**).
+  `credStoreWitnesses` skips a pin whose recorded directory is gone and leaves `complete`
+  true. For a *deleted* directory that is right and there is no alternative: `kae unpin`
+  removes the fragment but never the breadcrumb, so one deleted temp worktree would
+  otherwise mark the set incomplete forever and silently stop every harvest for every
+  account. A directory that was **moved** is the case that pays for it — the fragment
+  travelled with it and still exports the old credential store, so it is a live reader kae
+  cannot read at the path it recorded, and a stale confirming witness elsewhere can license
+  a harvest it would have disagreed with. What would settle it is a reader set that does
+  not depend on the recorded path (`pinChecks` already reports the orphaned store, so the
+  user is told something is wrong), or a breadcrumb that `unpin` removes so absence can
+  mean incompleteness again.
+
+- **`kae relogin` declines to capture a login it watched happen when a *sibling* directory
+  has drifted** (recorded 2026-08-08 by a reading-type review, **not fixed**). Two
+  worktrees bind one account and the second one's identity cache names another (an
+  unresolved `identity_drift`). `kae relogin` in the first runs the tool's own login flow,
+  the tool writes its own cache there, and the store now holds the fresh login — but the
+  reader set disagrees, so the harvest refuses and the account snapshot keeps a copy the
+  new login has already invalidated, with no way to update it until the drift is resolved.
+  The message names the disagreement, so nothing is silent. The fix is to let the directory
+  the flow ran in answer for a login kae **itself** just performed there — evidence of a
+  different class from a walk of everyone's caches — which is a deliberate override of the
+  reader set and wants its own measurement rather than a late edit to the shared predicate.
 
 - **A payload kae can neither read nor date is still overwritten by a bind, and that is
   a decision rather than an oversight** (recorded 2026-08-08, **not fixed**). The bind now
@@ -471,19 +471,21 @@ alternative exists (`secret-tool`).
   "keep" becomes the safe default for this arm too. The warning is loud and precedes the
   write, so nothing here is silent.
 
-- **Attribution on a bound directory reads a label kae may have written itself**
-  (recorded 2026-08-08, **not fixed**, and older than this release). `dirIdentityConfirms`
-  compares the account's recorded identity against the identity cache in the config dir —
-  and a successful bind writes exactly that recorded identity there. So the *second* bind
-  of a directory attributes against kae's own copy and confirms by construction, which is
-  the shape AGENTS.md records as a HIGH defect where the sweep once relied on it. It is
-  load-bearing in a benign direction today (it is what lets a later bind harvest a copy the
-  first bind kept), and the honest evidence is the *tool's* own cache, which appears the
-  first time the tool runs in the directory. Two candidate fixes, neither cheap: record
-  whether a cache was written by kae or observed from the tool, or attribute from a sibling
-  directory that currently binds the same credential store (`credStoreRefs` already walks
-  them). Do not "fix" it by removing the confirmation — that would make every first bind
-  keep forever.
+- **Attribution reads a label kae may have written itself** (recorded 2026-08-08,
+  **narrowed and still not fixed**). A successful bind writes the account's recorded
+  identity into that directory's store, and attribution then compares the account's
+  recorded identity against exactly that — so a reader whose tool has never actually run
+  there confirms by construction. The second of the two candidate fixes below is the one
+  that shipped (attribute from the directories currently reading the store,
+  `credStoreWitnesses`), and it narrows this without closing it: the readers are now a set
+  rather than the one directory being bound, so a directory that *has* run the tool
+  disagrees and the harvest refuses — but a store all of whose readers are kae-labelled
+  still confirms. Reachable: bind A to an account and never run the tool there, bind B and
+  log in as somebody else, then re-bind B elsewhere; A is now the only reader, it agrees
+  with kae's own label, and B's token is harvested under A's account. What remains is the
+  first candidate fix — record whether a cache was written by kae or observed from the tool
+  — which is also what would let `identity_drift` tell a stale label from a real one. Do
+  not "fix" it by removing the confirmation: that would make every bind keep forever.
 
 - **`credential_superseded` reports at all only if the tie for "newest" is won by an
   attributable **store** — a snapshot winner is not attributed at all, and must not be —

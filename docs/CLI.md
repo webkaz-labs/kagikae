@@ -633,12 +633,15 @@ kae keeps a credential because bindings still use it, it prints how many.
   entitled to replace it on missing evidence. The binding is still written and the exit code
   is still `0`; nothing else of kae's is, for that artifact: no credential, no superseded
   plaintext copy removed, and no identity label (which is what a later bind would otherwise
-  attribute against). A remedy is named only where the pin-level pass reported that store,
-  because only it knows the bound directory a login would have to happen in — on a **first**
-  bind, which is the case this exists for, the directory has no earlier store for the pass
-  to report and the message is the fact alone. A copy that is provably another account's is
-  still replaced, since that account's credential is elsewhere and the bind has to take
-  effect.
+  attribute against). Whose the copy is, is answered by the directories **currently reading
+  that store** — so binding a second directory to an account you are already using is not a
+  refusal at all: the sibling agrees, and the bind harvests the copy and writes it back. The
+  refusal is for a store nothing reads yet, and for readers that disagree with each other. A
+  remedy is named only where the pin-level pass reported that store, because only it knows
+  the bound directory a login would have to happen in; where nothing reads the store there
+  is no such directory and the message is the fact alone. A copy that **every** reader says
+  is another account's is still replaced, since this account's credential is elsewhere and
+  the bind has to take effect.
 
   It covers **every store the bound directory has, not only the one being written** —
   which is what a re-bind to another account needs, since that binds the directory to a

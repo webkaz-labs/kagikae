@@ -176,11 +176,25 @@ block in docs/VALIDATION.md, next to two correct ones.
   is what makes a re-pin a migration.
   **And the chokepoint's refusal is not free either: for the account's own credential
   store it now skips the write rather than overwriting.** That store is read by every
-  directory bound to the account, so a bind is not entitled to spend it, and the
-  attribution refusal is reachable on *every first bind* (the config dir the attribution
-  reads is created moments earlier and a shared bind links no identity cache into it) —
-  which made "bind a second worktree to an account you are using" a logout of both,
-  measured 2026-08-08. `docs/ADAPTERS.md` § Per-directory credential store is normative
+  directory bound to the account, so a bind is not entitled to spend it, and the refusal
+  is reachable whenever nothing can say whose the copy is — which made "bind a second
+  worktree to an account you are using" a logout of both, measured 2026-08-08.
+  **Who can say is not the directory being bound**, and reading its cache as evidence
+  about the account's store is the same defect one level up: a shared bind's config dir
+  belongs to the pin-id, so it still carries the *previous* binding's label, and a re-bind
+  between two accounts read that as `Conflicting` — the arm that overwrites — about a store
+  the label says nothing about. The evidence is the directories **currently reading that
+  store**, read from the fragments before a bind rewrites them; so a first bind with a
+  sibling reader that agrees now harvests and writes, and only a store with no reader at
+  all is kept. **`Conflicting` needs the acting directory to be one of the readers that
+  disagree** — the first version of this took a majority of the readers, and a sibling that
+  had been logged in as somebody else then let an unrelated first bind destroy the only copy
+  of that login, which is the same defect one level in. Two corollaries that are easy to
+  miss: the delete path erases its own
+  evidence (`unpin --purge` may only delete once nothing points at the store, which is
+  exactly when no reader is left to attribute it), so a caller that has just torn a binding
+  down has to say so; and a reader is not an independent observer, because a bind writes
+  kae's own label into it. `docs/ADAPTERS.md` § Per-directory credential store is normative
   for the condition; three things about it are easy to get wrong. It is keyed on the
   *attribution* refusal alone (`Unattributed`) — marking every refusal from
   `dirIdentityConfirms` also caught the `Conflicting` one, which must still overwrite, so

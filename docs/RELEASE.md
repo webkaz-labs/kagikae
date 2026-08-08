@@ -41,9 +41,11 @@ where `kae pin` writes its ignore rule; a bind or a superseded-credential sweep 
 harvests a newer credential from the store it is about to overwrite or delete, and
 declines to delete one it could not preserve — and, in the account's own credential
 store, **declines to overwrite one it could not attribute**, since every directory bound
-to that account reads that single copy (that closes the missing-evidence arm only; the
-`Conflicting` arm still overwrites, and [ROADMAP.md](ROADMAP.md) § Attribution for a shared
-store reads per-directory evidence records the two measured cases it does not cover); `kae run -s` skips a restore that would
+to that account reads that single copy (the `Conflicting` arm still overwrites, and
+**whose the copy is, is answered by the directories currently reading that store** rather
+than by the one being bound — reading the bound directory's own cache destroyed a live
+credential on a re-bind between accounts and mis-filed a foreign token on an ordinary
+re-pin, both measured); `kae run -s` skips a restore that would
 put back a credential its child has superseded, `kae rollback` says when the copy it
 restores can no longer refresh, and `kae use`'s switch-away recapture declines a live
 copy its own snapshot supersedes; `kae run -s`'s own **recapture** now refuses the two

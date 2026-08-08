@@ -127,24 +127,39 @@ alternative exists (`secret-tool`).
   the ten lines it looks like, and three measurements bound what it would actually
   take.
   First, `go test ./...` issues **171** real `git rev-parse --git-common-dir
-  --show-prefix` calls that are legitimate — `ensureGitExcluded` needs a real
-  repository layout, and `TestEnsureGitExcludedLeavesEveryWorktreeClean` has nine more
-  deliberate ones — so the guard has to name the credential programs (`security`,
-  `secret-tool`) rather than refuse everything, or it fails the wrong things.
+  --show-prefix` calls through the seam, all legitimate — `ensureGitExcluded` needs a
+  real repository layout — so the guard has to name the credential programs
+  (`security`, `secret-tool`) rather than refuse everything, or it fails the wrong
+  things. (`TestEnsureGitExcludedLeavesEveryWorktreeClean` makes nine more deliberate
+  git calls, but through `exec.Command` directly rather than the runner, so they would
+  be invisible to such a guard and cannot constrain its design either way.)
   Second, **that exemption leaves a hole in the same breath**: real git means
   `ensureGitExcluded` appends to the `$GIT_COMMON_DIR/info/exclude` of whatever
-  repository contains the temp dir, 120 lines per suite run. The defaults on macOS and
-  ubuntu put `TMPDIR` outside any repository, which is the only reason this is not
-  already happening — but `mise.toml` reads `TMPDIR` in nine places, so a per-project
-  value would write those lines into kagikae's own `.git/info/exclude`. A denylist
-  that exempts git cannot see it; bounding `TMPDIR` for tests is the separate half.
+  repository contains the temp dir — measured at **292 lines, 146 entries, per suite
+  run**, and it accumulates run over run. The defaults on macOS and ubuntu put
+  `TMPDIR` outside any repository, which is the only reason this is not already
+  happening — but `mise.toml` reads `TMPDIR` in nine places, so a per-project value
+  would write those lines into kagikae's own `.git/info/exclude`. A denylist that
+  exempts git cannot see it; bounding `TMPDIR` for tests is the separate half.
   Third, `runner.Default` is **one of three seams**. `runner.RunInteractive` and
   `runner.RunWithEnv` are their own package-level vars with their own overrides
   (`withInteractive`, `withRunWithEnv`), and a `TestMain` on the first would not touch
   them. `RunInteractive` inherits the operator's stdio and takes an arbitrary child
-  command, so a forgotten override there is worse than a forgotten `runner.With`; no
-  instance is live today (instrumented: zero non-git execs across `./...`).
+  command, so a forgotten override there is worse than a forgotten `runner.With`;
+  instrumenting all three seams shows no live instance of either today (the only
+  non-git execs through `runner.Default` are `cat` and `false`, from
+  `internal/runner`'s own tests).
   Deliberately not done at a release boundary; the two call-site fixes hold until then.
+  A **separate** gap surfaced by the same review and older than it: `keychainSim` can
+  catch a keychain item deleted under the *wrong* account but not one deleted with **no
+  account scoping at all**. Its delete arm is
+  `want := valueAfter(args, "-a"); want != "" && …`, so dropping `-a` short-circuits to
+  a match, the delete is recorded, and `TestUnpinPurgeRemovesACredentialNothingElseBinds`
+  — which asserts only that a delete happened — passes. Measured: replacing
+  `DeleteItemForAccount(…, sp.KeychainAccount)` with `DeleteItem(ctx, sp.Target)`
+  survives the whole suite, identically before and after the fixture work. That is the
+  v0.12.0 defect's own shape (an item addressed by service alone), so the sim should
+  refuse an un-scoped delete outright rather than treat it as a wildcard.
 
 - **Upstream now documents parallel sessions racing on one credential store**
   (recorded 2026-07-31). Claude Code v2.1.211: *"Fixed parallel Claude Code sessions

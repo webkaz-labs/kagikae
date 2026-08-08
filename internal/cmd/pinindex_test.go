@@ -88,35 +88,54 @@ func pinHereAs(t *testing.T, app *App, profile, mode string) string {
 //
 // The pass-through is not decoration either: `ensureGitExcluded` asks git for the
 // common dir and the prefix, and answering that from here would be inventing a repo
-// layout. It goes to the same runner it replaced — `next`, rather than a fresh
-// `OSRunner{}`, so that removing the branch at the call site above could not quietly
-// recreate the shadowing this fixture was corrected for.
+// layout. It goes to `next`, the runner this one replaced — which restores the
+// *other* commands for a caller that had installed its own. It does **not** make the
+// branch at the call site redundant, and that is worth being exact about: with the
+// branch removed and `next` still in place, a caller's simulator still never sees the
+// pin's write, and the account mutation at `artifact.go:325` goes from killed to
+// survived while the whole package stays green. The branch is what keeps the caller's
+// simulator authoritative; `next` only keeps git honest.
 //
-// **Both credential programs are intercepted, not just `security`.** `secret-tool`
-// is the libsecret half of the same store, and `RunInput` exists because
-// `secret-tool store` takes its secret on stdin — passing that through would hand a
-// live credential to a real keyring. It is not reachable today only because
-// `testApp` pins the file backend and injects a failing `LookPath`, which is a
-// default in another file rather than a property of this fixture.
+// **Both credential programs are intercepted, not just `security`**, and each gets the
+// reply *its own* reader treats as an empty store — they do not share a convention.
+// `internal/keychain` needs a non-zero exit carrying `NotFoundMarker` on stderr;
+// `internal/secret`'s libsecret backend discriminates on **empty** stderr instead
+// (`libsecret.go`: "a non-zero exit with empty stderr means no items are stored"), so
+// the keychain's wording handed to it would read as a hard error rather than a miss.
+// `RunInput` matters for the same half: `secret-tool store` takes its secret on stdin,
+// and passing that through would hand a live credential to a real keyring.
+//
+// No test reaches the `secret-tool` half today — measured, by planting a panic here
+// and running the package — because `testApp` pins the file backend, and
+// `secret.Resolve` returns it without consulting `LookPath` at all.
 type pinFixtureRunner struct{ next runner.Runner }
 
-func (p pinFixtureRunner) credentialProgram(name string) bool {
-	return name == "security" || name == "secret-tool"
-}
-
 func (p pinFixtureRunner) Run(ctx context.Context, name string, args ...string) (string, string, int) {
-	if !p.credentialProgram(name) || len(args) == 0 {
+	if len(args) == 0 {
 		return p.next.Run(ctx, name, args...)
 	}
-	switch args[0] {
-	case "add-generic-password", "delete-generic-password", "store", "clear":
-		return "", "", 0
+	switch name {
+	case "security":
+		switch args[0] {
+		case "add-generic-password", "delete-generic-password":
+			return "", "", 0
+		}
+		return "", "security: " + keychain.NotFoundMarker, 44
+	case "secret-tool":
+		switch args[0] {
+		case "store", "clear":
+			return "", "", 0
+		}
+		return "", "", 1
 	}
-	return "", "security: " + keychain.NotFoundMarker, 44
+	return p.next.Run(ctx, name, args...)
 }
 
 func (p pinFixtureRunner) RunInput(ctx context.Context, stdin, name string, args ...string) (string, string, int) {
-	if !p.credentialProgram(name) || len(args) == 0 {
+	// The zero-arg case delegates from here rather than through Run, which would drop
+	// stdin on the way. Unreachable — no credential call is argument-less — but this is
+	// the method whose whole reason is not losing a secret on the way past.
+	if len(args) == 0 || (name != "security" && name != "secret-tool") {
 		return p.next.RunInput(ctx, stdin, name, args...)
 	}
 	return p.Run(ctx, name, args...)

@@ -1644,7 +1644,8 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 // identity cache. That last one belongs in the same lockstep list `dirCredentialStores`
 // carries.
 // ponytail: walks every pinned directory system-wide (one ReadDir of the isolation root,
-// then a breadcrumb read, a stat and a fragment read per pin) and does it **twice** per
+// then a breadcrumb read, a stat and a fragment read per pin, plus a second ReadDir for the
+// global isolated homes) and does it **twice** per
 // `kae pin` — once from the pin-level pass and once from the write, with nothing between
 // them that changes what it reads. It is behind the `supersedes` gate, so it costs nothing
 // unless there is a copy worth harvesting; the case where it is worth caring about is
@@ -2092,8 +2093,8 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			continue // no snapshot to harvest into; the bind or the sweep reports it
 		}
 		_, _, refused := app.harvestDirCredential(ctx, be, specs, store.Tool, accountName, acc, store.dirs(), snapshot,
-			// No StaleLabel here: it only feeds the retract, which lives in writeDirCredential
-			// and carries its own. Passing it would be data no arm reads.
+			// Attribution only: whether a label is stale feeds the retract, which lives in
+			// writeDirCredential and takes it as its own argument. Nothing here reads it.
 			attributionSource{Dir: next[store.Tool].Config})
 		// The one question both arms below need, asked once: does the write this bind is
 		// about to perform land on the very store being reported? Only then is the copy

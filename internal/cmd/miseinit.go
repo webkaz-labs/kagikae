@@ -89,7 +89,7 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 // the pin lock and the breadcrumb, and two derivations of one id is one too many).
 // prev is the binding being replaced, and every materializer needs it for one reason: a
 // keep may only retract an identity label it can show is stale, and the acting directory's
-// own previous binding is the thing that shows it (attributionSource).
+// own previous binding is the thing that shows it, through modeLabelStale.
 func (app *App) isolationPlan(ctx context.Context, be secret.Backend, mode string, targets []runTarget, pinID string, prev fragmentInfo, prevKnown bool) ([]isolationEntry, func(tool, account string) (string, error), error) {
 	// prevKnown gates it because a fragment kae could not read establishes nothing about
 	// what this directory was bound to; modeLabelStale owns the rest.

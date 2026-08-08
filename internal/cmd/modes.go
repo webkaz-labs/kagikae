@@ -303,7 +303,9 @@ func (app *App) applyGlobalScope() {
 // (TestBindModeConstantsAgreeAcrossPackages). A mode kae does not recognize answers *not
 // stale*, which is right for an account-keyed mechanism and the "keep then destroy on the
 // next run" defect for an account-agnostic one — so a third mechanism has to decide here,
-// as the lockstep note below says.
+// as the lockstep note below says. **Neither polarity is pinned by a test**, because there
+// is no third mode to write one against: writing this as `mode != modeIsolated` survives
+// the whole suite (measured 2026-08-08) and differs only for a mode that does not exist yet.
 func modeLabelStale(mode, prevAccount, account string) bool {
 	return mode == modeShared && prevAccount != account
 }

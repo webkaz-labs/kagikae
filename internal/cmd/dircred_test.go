@@ -984,8 +984,8 @@ func TestRunRebindKeepAlsoRetractsTheStaleLabel(t *testing.T) {
 // The other direction of the same expression, and the destructive one: a re-bind to the
 // account the directory is **already** bound to (`runRebind` has no short-circuit for it).
 // The label there was written under that same account, so it is a live login and not kae's
-// leftover. `StaleLabel: true` at this call site survived the whole suite while its twin in
-// `isolationPlan` did not — two call sites computing one fact, covered asymmetrically
+// leftover. Forcing this call site to answer *stale* survived the whole suite while the same
+// mutation of its twin in `isolationPlan` did not — two call sites computing one fact, covered asymmetrically
 // (execution-type review, 2026-08-08).
 func TestRunRebindToTheSameAccountKeepsTheLiveLabel(t *testing.T) {
 	app := overlayTestApp(t)

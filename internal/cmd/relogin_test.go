@@ -797,6 +797,14 @@ func TestReloginSaysWhatTheLoginFlowIsAboutToReplace(t *testing.T) {
 	if !strings.Contains(stderr, "disagree about whose login it is") {
 		t.Errorf("it must carry the harvest's own reason: %q", stderr)
 	}
+	// The ordered frame, which is the half the un-orderable test cannot pin. Here the
+	// harvest refused *past* the supersedes gate, so kae did establish the copy is newer
+	// and saying so is the most useful thing it knows. Without this assertion the flag
+	// that picks the frame can be tied to Conflicting — which is false for every
+	// unattributable refusal — and nothing fails (measured 2026-08-08).
+	if !strings.Contains(stderr, "is newer than snapshot claude/main") {
+		t.Errorf("kae established the ordering here, so the frame must carry it: %q", stderr)
+	}
 	// What kae did *not* establish, it may not say. On this arm the readers disagree,
 	// so kae has no verdict about whose the copy is.
 	if strings.Contains(stderr, "belongs to an account other than") {

@@ -108,7 +108,18 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// credential still belongs to the *previous* account — and `info` is the only
 	// thing that names it. Harvesting here is what keeps a re-bind from destroying the
 	// login it is re-binding away from (docs/ROADMAP.md).
-	app.harvestSupersededDirCredentials(ctx, be, pinID, absDir, tool, info)
+	// The config dir of the mode the fragment names, for the **new** account: a re-bind keeps
+	// the mode and moves the account, so this is what the write below will act for, and the
+	// pass has to act for the same directory or it answers a different question (measured —
+	// see harvestSupersededDirCredentials). Deriving it from the previous account instead is
+	// killed by TestRunRebindIsolatedActsUnderTheNewAccountsConfigDir; hardcoding the shared
+	// dir is not, and cannot be: a re-bind never changes the mode, so where the fragment says
+	// shared this *is* SharedDir, and where it says isolated the shared dir is not a reader
+	// either — the two answers coincide. Written down rather than tested (measured
+	// unkillable, 2026-08-08).
+	nextConfig, _ := app.modeStoreDir(info.Mode, pinID, tool, accountName)
+	app.harvestSupersededDirCredentials(ctx, be, pinID, absDir, tool, info,
+		map[string]bindDirs{tool: {Config: nextConfig, Cred: app.credStoreDir(tool, accountName)}})
 
 	var envDir string   // fragment env entry to repoint (isolated only)
 	var boundDir string // the store this tool reads after the re-bind
@@ -116,6 +127,10 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// store: a shared-mode re-bind keeps one config dir and still has to point the
 	// credential at the new account's own store.
 	credDir := app.credStoreDir(tool, accountName)
+	// One question, one answer, before the branch: assembling it per branch is how the two
+	// bind paths came to encode the polarity as an empty literal in one arm and an
+	// expression in the other (modeLabelStale).
+	staleLabel := modeLabelStale(info.Mode, info.Accounts[tool], accountName)
 	switch info.Mode {
 	case paths.SharedSegment:
 		// prepareBond, not writeDirCredential alone: the bond dir also holds the
@@ -124,13 +139,13 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 		// unable to repair a bond dir that had been wiped, while the isolated
 		// branch below (preparePinConfig) could — an asymmetry with no reason
 		// behind it. prepareBond writes the credential too, and is idempotent.
-		sharedDir, err := app.prepareBond(ctx, be, tool, accountName, pinID)
+		sharedDir, err := app.prepareBond(ctx, be, tool, accountName, pinID, staleLabel)
 		if err != nil {
 			return finish(opts, fmt.Errorf("swap shared credential for %s: %w", tool, err))
 		}
 		boundDir = sharedDir
 	case paths.IsolatedSegment:
-		newDir, err := app.preparePinConfig(ctx, be, tool, accountName, pinID)
+		newDir, err := app.preparePinConfig(ctx, be, tool, accountName, pinID, staleLabel)
 		if err != nil {
 			return finish(opts, fmt.Errorf("prepare isolated config for %s/%s: %w", tool, accountName, err))
 		}

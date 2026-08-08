@@ -95,7 +95,7 @@ func TestPreparePinConfigSharesOptInItems(t *testing.T) {
 
 	captureClaude(t, app, "main", mainToken)
 	if _, err := app.preparePinConfig(context.Background(), testBackend(t, app),
-		constants.ToolClaude, "main", pinID); err != nil {
+		constants.ToolClaude, "main", pinID, false); err != nil {
 		t.Fatal(err)
 	}
 	target := filepath.Join(app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main"), "output-styles")
@@ -121,7 +121,7 @@ func TestPreparePinConfigRetractsLinkDroppedFromConfig(t *testing.T) {
 	captureClaude(t, app, "main", mainToken)
 	be := testBackend(t, app)
 
-	configDir, err := app.preparePinConfig(context.Background(), be, constants.ToolClaude, "main", pinID)
+	configDir, err := app.preparePinConfig(context.Background(), be, constants.ToolClaude, "main", pinID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestPreparePinConfigRetractsLinkDroppedFromConfig(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(app.Env.Home, ".claude", "agents")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := app.preparePinConfig(context.Background(), be, constants.ToolClaude, "main", pinID); err != nil {
+	if _, err := app.preparePinConfig(context.Background(), be, constants.ToolClaude, "main", pinID, false); err != nil {
 		t.Fatal(err)
 	}
 

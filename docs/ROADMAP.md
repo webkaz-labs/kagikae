@@ -260,9 +260,10 @@ alternative exists (`secret-tool`).
   *after* a version that looked complete and passed its tests: **attribution** (a
   shared store is account-agnostic, so a re-bind finds the previous account's copy
   there and filing it under the new name would be undetectable afterwards), and that
-  **a chokepoint is not coverage** (the write path cannot see the store a mode toggle
-  or an isolated re-key is moving *off*, which is why there is a pin-level pass at
-  all).
+  **a chokepoint is not coverage** (the write path cannot see the store a re-bind to
+  another account is moving *off*, which is why there is a pin-level pass at all; this
+  said "a mode toggle or an isolated re-key" until 2026-08-08, and a toggle for one
+  account moves only the sessions).
   **The two restore paths landed next, also in v0.17.0**, and they answer differently
   because what the user asked for differs. `run -s` **skips** the restore of a tool
   whose live credential the backup's copy would supersede — it put that account there
@@ -429,6 +430,184 @@ alternative exists (`secret-tool`).
   the account's, so only `kae unpin --purge` may take it, refcounted. What is still
   swept unchanged is the per-directory item a **pre-split** binding left behind,
   which is what makes re-running `kae pin` a migration rather than a leak.
+
+- **The reader walk runs twice per bind, and a third walk of live bindings now exists**
+  (recorded 2026-08-08 by a quality pass, **not fixed**). `credStoreWitnesses` reads the pin
+  index and every bound directory's fragment, and both the pin-level pass and the write call
+  it — with nothing between them that changes the answer. It sits behind the `supersedes`
+  gate, so it costs nothing unless there is a copy worth harvesting; where that stops being
+  true is `kae run -i`, which the mise hook makes a per-invocation path, and where the
+  per-witness `dirSpecs` resolution stops being free is the day a second tool's rotation is
+  measured (codex's `Artifacts` can probe the keychain). The fix is a per-command memo, and
+  the reason it is not an `App` field is that this package has already had one of those make
+  a test pass for the wrong reason without a per-operation reset.
+  Separately, that walk is the **third** written over the same source: `credStoreRefs` shares
+  its mechanics exactly (including the `dirExists` gate whose only consequence is the ENOTDIR
+  case, documented on one of them and not the other), and `boundDirStores` shares them with a
+  different error policy. Sharing them means giving `boundDirStores` the completeness signal
+  it currently swallows, which changes what every doctor consumer sees on an unreadable
+  fragment — refuse-versus-skip, the seam where this area's defects live — so it wants its
+  own change and its own review rather than a ride-along.
+
+- **A mode toggle and a same-mode re-pin answer a poisoned store differently** (recorded
+  2026-08-08 by a reading-type review, **not fixed, and deliberately so**). `Conflicting`
+  — the refusal that still overwrites — requires the directory the operation acts for to be
+  one of the readers that disagree. A same-mode re-pin satisfies that (its config dir is the
+  reader); a `-s` ↔ `-i` toggle does not, because the reader is derived from the fragment
+  and still names the *previous* mode's config dir while the operation acts for the new
+  one. So a directory someone logged into as another account is switched back by
+  `kae pin <same mode>` and kept by `kae pin -i`. Aliasing the previous-mode dir would make
+  the toggle replace, and what it would replace is a live login with no snapshot anywhere;
+  keeping is the answer AGENTS.md settles on and the one the code before the reader model
+  also gave (a fresh isolated config dir has no cache, so attribution refused for missing
+  evidence). What would settle it properly is deciding whether `Conflicting` should
+  overwrite at all when the account it names has no snapshot to fall back on — which is the
+  same question the `--purge` exceptions turn on, and a wider change than this one.
+
+- **A moved bound directory is not a witness, and its absence does not make the reader set
+  incomplete** (recorded 2026-08-08 by a reading-type review, **not fixed**).
+  `credStoreWitnesses` skips a pin whose recorded directory is gone and leaves `complete`
+  true. For a *deleted* directory that is right and there is no alternative: `kae unpin`
+  removes the fragment but never the breadcrumb, so one deleted temp worktree would
+  otherwise mark the set incomplete forever and silently stop every harvest for every
+  account. A directory that was **moved** is the case that pays for it — the fragment
+  travelled with it and still exports the old credential store, so it is a live reader kae
+  cannot read at the path it recorded, and a stale confirming witness elsewhere can license
+  a harvest it would have disagreed with. What would settle it is a reader set that does
+  not depend on the recorded path (`pinChecks` already reports the orphaned store, so the
+  user is told something is wrong), or a breadcrumb that `unpin` removes so absence can
+  mean incompleteness again.
+
+- **`kae relogin` declines to capture a login it watched happen when a *sibling* directory
+  has drifted** (recorded 2026-08-08 by a reading-type review, **not fixed**). Two
+  worktrees bind one account and the second one's identity cache names another (an
+  unresolved `identity_drift`). `kae relogin` in the first runs the tool's own login flow,
+  the tool writes its own cache there, and the store now holds the fresh login — but the
+  reader set disagrees, so the harvest refuses and the account snapshot keeps a copy the
+  new login has already invalidated, with no way to update it until the drift is resolved.
+  The message names the disagreement, so nothing is silent. The fix is to let the directory
+  the flow ran in answer for a login kae **itself** just performed there — evidence of a
+  different class from a walk of everyone's caches — which is a deliberate override of the
+  reader set and wants its own measurement rather than a late edit to the shared predicate.
+
+- **A relogin's pre-flight refusal owes a backup it cannot safely take yet** (recorded
+  2026-08-08 by an independent review of the pre-flight itself, **not fixed**).
+  [AGENTS.md](../AGENTS.md) states the rule the pre-flight falls under: a refusal that
+  cannot preserve is a deletion, so it owes a backup the way `kae run -s`'s recapture
+  answers its own with reason `run-unattributable`. `preserveBeforeRelogin` refuses on
+  exactly the copy `kae pin` kept and pointed at this command — the two route through one
+  `harvestDirCredential`, so a copy the bind could not attribute is a copy the relogin
+  cannot attribute either — and then the tool's login replaces it. Today that is loud
+  rather than silent, and the action that prevents it (not completing the flow) is still
+  available when the warning prints; it is not recoverable.
+  What stops the backup being a ride-along is **where a restore of one would land**, which
+  is the half a reading of `createBackup` alone does not reach: `createBackup` records the
+  spec it is handed, but `applyBackup` re-resolves today's specs **globally**, and
+  `restoreSpec` prefers the live spec whenever its `Kind` differs from the record's. A
+  bound store's backup taken under one credential driver and restored under another
+  therefore writes into the **real home** — a global logout in place of a local one, which
+  is worse than the loss it insures against, and the same "a record from one environment
+  applied in another" shape the `keychain_account` removal in v0.16.0 turned on. So the
+  backup wants the restore path to understand a bound-store record first (or an explicit
+  `--to`-only class of backup that is never redirected), which is its own change and its
+  own review. Nothing about it is urgent while the refusal is loud and pre-flight.
+  **It was built and then withdrawn before v0.17.0 shipped** (2026-08-09), and what the
+  attempt measured is worth more than the entry above. The restore-landing hazard is *not*
+  what stopped it: a recorded `BoundStore` field on the meta, read at one predicate, gated
+  it — and gating one consumer was the first defect, because the hazard is a **class**, not
+  a check. kae's backup subsystem rests on an unstated invariant, *a backup records the
+  tool's global live state*, which 7 of its 13 consumers had encoded; four independent
+  execution reviews each surfaced one more consumer still assuming it (an identity sweep
+  that cleared the **real home's** cache, an `ActiveBefore` restore that moved the globally
+  active account, a superseded-credential warning that ordered two unrelated chains, and a
+  producer handing a global record to a meta marked not-global). Two of those compose into
+  filing one account's token under another's name.
+  One question the attempt never settled, and a retry must settle **first**: what a bounded
+  preserved side should evict. Bounding it made an aborted `kae relogin` — a run that
+  changed nothing — evict the previous run's preserved copy, and eviction is purely
+  positional, so it took the *irreplaceable* copy (another account's only login) and kept
+  one still live in the store. Retention has no notion that a preserved copy whose payload
+  is still live is worth less.
+  So a retry starts by enumerating that invariant's consumers and deciding the eviction
+  rule, not by writing the backup. The warning half shipped and is unaffected: it produced
+  zero findings across all four rounds, and it is what turned this from silent to loud.
+
+- **A payload kae can neither read nor date is still overwritten by a bind, and that is
+  a decision rather than an oversight** (recorded 2026-08-08, **not fixed**). The bind now
+  keeps a newer copy it could not *attribute* in the account's credential store, because
+  refusing there would otherwise destroy it. The sibling refusal — a payload kae cannot
+  parse or date, which AGENTS.md is explicit may be a working login in a shape kae has not
+  been taught — deliberately kept the old behaviour: extending "keep" to it makes a
+  corrupted or upstream-changed account store **unrepairable by `kae pin`**, leaving manual
+  deletion of a path the warning names as the only way out. Both readings destroy
+  something, which is why this is recorded rather than decided in a release fix. What would
+  settle it is a way to repair without a destructive default — an explicit
+  `kae pin --replace-credential`, or letting `kae relogin` own that repair — at which point
+  "keep" becomes the safe default for this arm too. The warning is loud and precedes the
+  write, so nothing here is silent.
+
+- **Attribution reads a label kae may have written itself** (recorded 2026-08-08,
+  **narrowed and still not fixed**). A successful bind writes the account's recorded
+  identity into that directory's store, and attribution then compares the account's
+  recorded identity against exactly that — so a reader whose tool has never actually run
+  there confirms by construction. The second of the two candidate fixes below is the one
+  that shipped (attribute from the directories currently reading the store,
+  `credStoreWitnesses`), and it narrows this without closing it: the readers are now a set
+  rather than the one directory being bound, so a directory that *has* run the tool
+  disagrees and the harvest refuses — but a store all of whose readers are kae-labelled
+  still confirms. Reachable: bind A to an account and never run the tool there, bind B and
+  log in as somebody else, then re-bind B elsewhere; A is now the only reader, it agrees
+  with kae's own label, and B's token is harvested under A's account. A **globally isolated
+  home** is a strictly easier A than a bound directory: `prepareGlobalIsolatedHome` writes
+  the label on every `kae use -i` / `kae run -i`, nothing ever removes such a home, and the
+  witness walk reads them from disk without any liveness gate (deliberately — that source is
+  what gives `kae run -i` a witness at all). One class of kae-written label **is** retracted now — a shared config dir's,
+  once the bound account changes — but that is the leftover kind, and this entry is about the
+  kind a *current* binding wrote, which stays.
+  **The heading understates it, and the candidate fix below does not close what it
+  says it closes** (measured 2026-08-08 by an independent review, both variants of the
+  sequence above end to end, plus the globally-isolated one). Run A's sequence with a
+  label the **tool** wrote — an honest one, naming A's own account, carrying keys kae
+  never writes — and the harvest mis-files exactly the same. Provenance is not the
+  property that fails: an identity cache records the last login *observed in that
+  directory*, and the store it is being read as evidence about can have been rewritten
+  since by somebody else. So a marker saying "the tool wrote this" would be read as
+  trustworthy on precisely the run that mis-files. Whatever settles this has to make a
+  reader's silence depend on **when** it last observed the store rather than on who
+  wrote its cache — which is a different mechanism from the one below, and the reason
+  this entry stays open rather than shrinking to an implementation task. Recorded
+  because the wrong fix here is cheap to build, looks like it worked, and its failure
+  is the undetectable kind. What remains of the
+  first candidate fix — record whether a cache was written by kae or observed from the tool
+  — is what would let `identity_drift` tell a stale label from a real one, which is worth
+  having for its own sake. Do
+  not "fix" it by removing the confirmation: that would make every bind keep forever.
+
+- **`credential_superseded` reports at all only if the tie for "newest" is won by an
+  attributable **store** — a snapshot winner is not attributed at all, and must not be —
+  and after the split the tie is the normal case** (measured
+  2026-08-08 during the v0.17.0 acceptance run, **not fixed**). Every directory bound to
+  one account now names the *same* credential store, so the stores in an account's group
+  usually hold the identical bytes, the ordering is a tie, and which element becomes
+  `newestIdx` falls out of walk order. `winnerUnattributable` then suppresses **every**
+  finding in the group — which is right when the winner is a genuinely different copy kae
+  cannot tie to the account, and is an accident when the winner is one of several handles
+  on the same file and merely happens to be the one with no identity cache beside it.
+  Measured with a reversible control on three bound directories: one finding, remove one
+  directory's identity cache, **zero**, restore it, one again.
+  The direction is conservative — silence, not a false alarm — which is why this is
+  recorded rather than rushed. Two things to settle before touching it, in this order.
+  First, whether the loop should group by *credential location* rather than by store, so
+  several handles on one file are one candidate and attribution is asked once per copy;
+  that is the shape the split implies, and `freshnessOf` already memoizes on exactly that
+  key. Second, that the check's designed-for shape (two worktrees, two copies) is now
+  reachable only from a **pre-split** binding or from a bound store versus the account
+  snapshot — so its remaining value is largely the migration window and the snapshot
+  comparison, which the acceptance block in
+  [VALIDATION.md](VALIDATION.md) § `kae relogin` and `credential_superseded` now states.
+  Do **not** fix it by dropping `winnerUnattributable`: it is the guard that keeps kae
+  from telling a user their login is dead on the strength of a copy it cannot attribute,
+  and the asymmetry there is deliberate ([AGENTS.md](../AGENTS.md)).
 
 - **A store bound before the credential split, unbound, then re-bound after it keeps
   its pre-split item** (recorded 2026-08-07, **not fixed** — deliberately). The

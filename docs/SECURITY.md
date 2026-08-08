@@ -188,8 +188,11 @@ child could rotate the live credential unseen — a cached value would be stale.
   account's own item below, and the two are easy to read as one.
 - Where the tool namespaces its keychain item at all (claude on macOS), a bound
   directory's credential is written to an **item rather than to a file**, and any
-  superseded plaintext copy is removed. So on macOS an isolation directory normally
-  holds no credential on disk at all — the reason is correctness (a plaintext file
+  superseded plaintext copy is removed. Both halves are conditional on the write actually
+  happening: a bind that **keeps** an unattributable newer copy writes no item, so it runs
+  no sweep either, and a plaintext copy a pre-split binding left in that config dir is
+  retained until something can attribute the store (docs/ADAPTERS.md). Otherwise, on macOS
+  an isolation directory normally holds no credential on disk at all — the reason is correctness (a plaintext file
   there is a credential the tool stops reading), and one less plaintext secret is the
   side benefit. **Which** item is not this document's to state: what namespaces it is
   a rule the adapter owns, and since v0.17.0 the answer for claude is the account's
@@ -280,8 +283,10 @@ bindable, and a **file** credential only where it is no longer the copy its own 
 reads — the account's own credential store, which holds nothing else, and a store a
 migration has just moved the credential out of. A file that is still the one its
 store reads is kept, with the sessions and settings beside it. The rest of this
-section describes the item, which is the case that most needs the sweep. A `-s` ↔
-`-i` toggle or an isolated re-bind supersedes a store, and its item would otherwise
+section describes the item, which is the case that most needs the sweep. A re-bind to
+another account supersedes a credential store, and a `-s` ↔ `-i` toggle supersedes a
+config store, which since the per-account credential store landed holds a credential only
+when the binding predates it. Either way the superseded store's item would otherwise
 keep a credential that cannot be found again: it lives under a per-directory
 service name, so it appears nowhere in kae's data dir, and no kae check reports one
 (`secret_orphan` covers kae's own secret store, not the per-directory items; a doctor

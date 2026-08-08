@@ -1082,8 +1082,11 @@ mkdir -p "$W/main/locked" && cd "$W/main/locked" && /tmp/kae pin main; echo "exi
 chmod u+w "$W/main/.git/info/exclude"
 ```
 
-**PASSED 2026-08-04** on the pre-release binary: A–F, each assertion checked
-individually **at its own point in the block** rather than from the end state. That
+**PASSED 2026-08-08 on the release tree, 31/31** (`/tmp/kae` = v0.17.0), and before that
+2026-08-04 on the pre-release binary: A–F, each assertion checked
+individually **at its own point in the block** rather than from the end state. Unlike the
+two v0.17.0 credential blocks, this one needed no correction to run on the final tree —
+it touches the fragment and git, neither of which the credential split moved. That
 distinction is not pedantry — two earlier runs of this block completed without
 erroring while assertions inside it were false (a row count changed by a case
 inserted above it, and a `chmod` that did not make anything unwritable). "The block
@@ -1104,9 +1107,29 @@ merely older, it is rejected. Temp HOME, **file** driver, file backend: no real
 `$HOME`, no real keychain, and no login, since every credential here is a fixture
 whose `expiresAt` is the only thing that orders two copies.
 
+**The credential is not in the config dir any more, and a fixture written there
+tests nothing.** Every credential fixture below goes to
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` (`cstore`), every identity fixture to
+`CLAUDE_CONFIG_DIR` (`store`) — [ADAPTERS.md](ADAPTERS.md) § Per-account credential store
+is normative for which holds what. This block sent **both** to the config dir
+until 2026-08-08, and the failure was not a red run: A, D and E stopped exercising the
+harvest at all, while C ("no `harvested` line") and every `grep -c … = 0` line went
+green *because* nothing had happened — the block reported the release's headline
+mechanism as covered while measuring a directory kae no longer reads a credential from.
+This file's own § Upstream Behaviour Assumptions had the rule right the whole time, so
+one file contradicted itself.
+
+**Whose login a copy is, is answered by the directories that read the store, not by the
+one being bound** ([ADAPTERS.md](ADAPTERS.md) § Per-directory credential store), and that
+is what A2 and A3 separate: the same first bind of a second directory harvests when a
+sibling reader agrees and keeps when nothing reads the store at all. B1 and B2 are the
+same split on the other side — all readers naming another account is positive evidence and
+overwrites, readers that disagree is missing evidence and keeps.
+
 Three things this block cannot show, so they are not claimed. The sweep's half (a
 `--purge` harvesting before it deletes) is unit-covered here rather than smoke-covered
-— `TestUnpinPurgeRemovesAFileCredentialFromTheAccountStore` and
+— `TestUnpinPurgeRemovesAFileCredentialFromTheAccountStore`,
+`TestUnpinPurgeHarvestsANewerCopyBeforeRemovingIt` and
 `TestRePinMigrationRemovesThePreSplitFile` are the file-driver halves, and the
 keychain gates above are the other. This block deliberately does not run it: it would
 add a purge to a scenario whose subject is the ordering of two copies. Note what
@@ -1116,9 +1139,14 @@ credential could move out of the store it sits in, so this section was excusing 
 one configuration that could have caught it. The file
 backend stores payloads **base64-encoded**, so a snapshot assertion has to decode
 before matching: `grep` on the raw file finds nothing and reads as a *passing*
-assertion. And each case below re-captures the account it uses, because a harvest
+assertion. Each case below resets the account it uses (`reset_main`), because a harvest
 makes the snapshot fresh — running D before E without that reset made E's harvest a
-no-op and E "passed" while proving nothing (measured while writing this block).
+no-op and E "passed" while proving nothing. **A re-capture is not that reset**: the
+credential store belongs to the account and survives it, so with a sibling reader in play
+the next `kae pin` harvests the leftover copy straight back and the case's own fixture is
+no longer newer than anything — measured 2026-08-08, with D and E both silently reduced to
+proving nothing that way. Token names never prefix one another for the same reason:
+`grep MAIN-NEW` matched a `MAIN-NEW2` and three cases passed on a copy they were not about.
 
 ```bash
 . scripts/smoke-env.sh
@@ -1127,7 +1155,23 @@ OLD=1767225600000; NEW=1798761600000; LATER=1814400000000   # expiresAt: 2026-01
 cred() { printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"rt-%s","expiresAt":%s,"refreshTokenExpiresAt":1830384000000}}' "$1" "$1" "$2"; }
 ident() { printf '{"oauthAccount":{"accountUuid":"u-%s","emailAddress":"%s@example.com"}}' "$1" "$1"; }
 snap() { base64 -d < "$XDG_DATA_HOME/kagikae/secrets/claude/$1/claude_ai_oauth.secret"; }
-store() { sed -n 's/.*CLAUDE_CONFIG_DIR *= *"\(.*\)"/\1/p' .config/mise/conf.d/kagikae.toml; }
+# Both anchored at ^, so neither variable's line can be read as the other's.
+store()  { sed -n 's/^CLAUDE_CONFIG_DIR *= *"\(.*\)"/\1/p'                .config/mise/conf.d/kagikae.toml; }
+cstore() { sed -n 's/^CLAUDE_SECURESTORAGE_CONFIG_DIR *= *"\(.*\)"/\1/p'   .config/mise/conf.d/kagikae.toml; }
+# The same store by its absolute path, so a case can reach it without standing in a
+# bound directory.
+accstore() { printf '%s/kagikae/credstore/claude/%s/.credentials.json' "$XDG_DATA_HOME" "$1"; }
+# Re-capturing the account is no longer enough to reset a case. The credential store
+# belongs to the **account** and survives the re-capture, and with a sibling directory
+# already reading it the next `kae pin` harvests that leftover copy straight back into
+# the fresh snapshot — after which the case's own `$NEW` fixture is not newer than
+# anything and its guard is never reached. Measured 2026-08-08: D and E had stopped
+# testing their own subject exactly that way.
+reset_main() {
+  cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+  /tmp/kae add --no-login --identity you@example.com claude main
+  rm -f "$(accstore main)"
+}
 
 mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
 printf 'version = 1\n[security]\nsecret_backend = "file"\n' > "$XDG_CONFIG_HOME/kagikae/config.toml"
@@ -1135,27 +1179,105 @@ cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.cla
 /tmp/kae add --no-login --identity you@example.com claude main
 cred SIDE-OLD $OLD > "$HOME/.claude/.credentials.json"; ident side > "$HOME/.claude.json"
 /tmp/kae add --no-login --identity other@example.com claude side
+cred SOLO-OLD $OLD > "$HOME/.claude/.credentials.json"; ident solo > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity solo@example.com claude solo
 /tmp/kae profile set main claude main
 /tmp/kae profile set side claude side
+/tmp/kae profile set solo claude solo
 
 # --- A. the tool refreshed the copy inside the directory; a re-pin must keep it ---
 P="$HOME/proj"; mkdir -p "$P"; cd "$P"
 /tmp/kae pin main
-cred MAIN-NEW $NEW > "$(store)/.credentials.json"
+# The identity cache the *tool* writes when it runs in a bound directory. Every case that
+# expects a harvest seeds it, because attribution must read the tool's evidence and not
+# kae's: kae no longer writes a label on the paths where it keeps a copy, precisely so a
+# later bind cannot confirm against something kae planted (§ ADAPTERS.md). A block that
+# leaned on kae's own label would be testing the shape that was removed.
+ident main > "$(store)/.claude.json"
+SP1="$(store)"                          # kept for B, which needs to reach both readers'
+                                        # caches from outside their directories
+cred MAIN-NEW $NEW > "$(cstore)/.credentials.json"
 /tmp/kae pin main
 #   assert: stderr carries `kae: harvested the newer claude credential from … into
 #           snapshot claude/main`
 snap main | grep MAIN-NEW              # assert: harvested, so `kae use claude main`
                                        #         applies it too
-grep MAIN-NEW "$(store)/.credentials.json"   # assert: the re-pin did NOT write the
+grep MAIN-NEW "$(cstore)/.credentials.json"  # assert: the re-pin did NOT write the
                                        #         older snapshot back over it
 
-# --- B. a copy kae cannot attribute is not adopted, and the cost is stated ---
-ident other > "$(store)/.claude.json"
-# LATER, not NEW: after A the snapshot already holds a NEW-dated copy, and a copy that
-# is merely *equal* is never harvested — so reusing NEW here made this case pass
-# without ever reaching the attribution guard (measured while writing this block).
-cred FOREIGN $LATER > "$(store)/.credentials.json"
+# --- A2. a SECOND directory bound to the same account must not spend its credential ---
+# The case A cannot reach, because A re-pins a directory that already has an identity
+# cache. A brand-new directory has none — the config dir is created moments earlier and a
+# shared bind links no `.claude.json` — and that used to mean the bind wrote the older
+# snapshot over the store. That is the account's ONE credential store, so the copy
+# destroyed was the only one that could still refresh, for *every* directory bound to it.
+# Fixed 2026-08-08; this case is what keeps it fixed.
+#
+# The evidence is not this directory's, though: it is the sibling P, which reads the same
+# store and whose cache names main. So the copy is preserved **and** harvested — a strictly
+# better outcome than keeping it, and the one that makes `kae use claude main` apply it
+# too. A3 is the same bind with nobody reading the store.
+cred MAIN-LATE $LATER > "$(cstore)/.credentials.json"   # the tool refreshed it again here
+P2="$HOME/proj2"; mkdir -p "$P2"; cd "$P2"
+/tmp/kae pin main
+#   assert: exit 0, and stderr carries `harvested the newer claude credential` — NOT
+#           `this write replaces it`
+grep MAIN-LATE "$(accstore main)"        # assert: the copy that can still refresh is
+                                        #         intact. This is the whole case: before
+                                        #         the fix it held the older snapshot and
+                                        #         every offline check was green.
+                                        #         MAIN-LATE, not MAIN-NEW2: `grep MAIN-NEW`
+                                        #         elsewhere in this block matches a
+                                        #         `MAIN-NEW2` by prefix, so three cases
+                                        #         passed on a copy they were not about
+snap main | grep MAIN-LATE               # assert: and the sibling's evidence let it be
+                                        #         harvested, so the snapshot holds it too
+SP2="$(store)"
+grep u-main "$SP2/.claude.json"          # assert: the write succeeded, so the label follows
+                                        #         it. The label is written **only** on a
+                                        #         successful write: kae's own label is what
+                                        #         the next bind's attribution reads, and
+                                        #         planting one where kae kept a copy let a
+                                        #         later `kae pin` confirm against it and
+                                        #         harvest the copy the first bind refused
+                                        #         (measured 2026-08-08). A3 asserts the
+                                        #         absence on the path that keeps
+cd "$P"                                  # back to A's directory for the cases below
+
+# --- A3. the same first bind with NOBODY reading the store: kept, and nothing labelled ---
+# claude/solo has no bound directory, so no reader can say whose the copy is. That is the
+# refusal that must keep rather than overwrite, and it is the one A2 stopped exercising
+# once a sibling existed.
+mkdir -p "$(dirname "$(accstore solo)")" # the store is created by whatever wrote into it;
+                                        # without this the fixture below lands nowhere and
+                                        # every assertion in this case is vacuous
+cred SOLO-NEW $NEW > "$(accstore solo)"  # left by a `kae use -i`, or by a binding since
+                                        # unpinned: the store outlives the directory
+S="$HOME/solo-proj"; mkdir -p "$S"; cd "$S"
+/tmp/kae pin solo
+#   assert: exit 0, and stderr says kae `kept it rather than replacing it`, naming the
+#           account's store and the reason `no directory reads this credential yet` —
+#           NOT `this write replaces it`
+grep SOLO-NEW "$(accstore solo)"         # assert: the only copy that can refresh survives
+snap solo | grep -c SOLO-NEW             # assert: 0 — kept is not harvested. kae could not
+                                        #         tell whose the copy is, so it neither
+                                        #         destroys it nor files it under this account
+test -d "$(store)"                       # assert: positive control for the line below. An
+                                        #         empty expansion makes it `test ! -e
+                                        #         "/.claude.json"`, which passes for a
+                                        #         `store()` that returned nothing at all
+test ! -e "$(store)/.claude.json"        # assert: and NO label was written; see A2
+cd "$P"
+
+# --- B1. every reader says the copy is another account's: replaced, once, no remedy ---
+reset_main                               # snapshot back to MAIN-OLD with an empty store,
+                                        # so $NEW below really is newer (an equal
+                                        # `expiresAt` is never harvested, and reusing a
+                                        # deadline here made this case pass without
+                                        # reaching the attribution guard at all —
+                                        # measured twice, 2026-08-08)
+ident other > "$SP1/.claude.json"; ident other > "$SP2/.claude.json"
+cred FOREIGN $NEW > "$(accstore main)"
 /tmp/kae pin main
 #   assert: exactly ONE stderr line — `belongs to an account other than claude/main`
 #           — and it does not tell you to log in. One store, one refusal, one message:
@@ -1164,10 +1286,10 @@ cred FOREIGN $LATER > "$(store)/.credentials.json"
 #           spoken. **No remedy on purpose**: the copy is demonstrably somebody else's,
 #           this account's credential is being written correctly, and a login here
 #           would mint a chain invalidating what kae harvested elsewhere. A
-#           missing-evidence refusal (no identity recorded, none in the directory,
-#           unreadable, or one shared with the real home) *does* carry the remedy, with
-#           the bound directory rather than the store in it. Exit code still 0
-snap main | grep MAIN-NEW               # assert: A's harvested copy is still there.
+#           missing-evidence refusal (no reader at all, no cache in one, an unreadable
+#           one, or one shared with the real home) *does* carry the remedy, with the
+#           bound directory rather than the store in it. Exit code still 0
+snap main | grep MAIN-OLD               # assert: the snapshot is the one reset_main wrote.
                                         #         This positive line is what makes the
                                         #         negative one below mean anything: a
                                         #         broken snap() (wrong secrets path, or
@@ -1175,55 +1297,148 @@ snap main | grep MAIN-NEW               # assert: A's harvested copy is still th
                                         #         0, which reads as a pass
 snap main | grep -c FOREIGN             # assert: 0 — a token filed under the wrong
                                         #         account is undetectable afterwards
-grep u-main "$(store)/.claude.json"     # assert: the bind still relabelled the dir
+grep MAIN-OLD "$(accstore main)"        # assert: and positive evidence still overwrites —
+                                        #         this account's credential is elsewhere,
+                                        #         so the bind has to take effect
+grep u-main "$SP1/.claude.json"          # assert: the bind still relabelled the dir
 
-# --- C. a tombstone is not a login: blank tokens with a future deadline ---
+# --- B3. only a SIBLING disagrees: an unrelated bind may not spend the copy ---
+# Same store, same unanimous readers as B1 — but the bind runs in a directory that reads
+# nothing yet, so it has no reading of its own and is not the event that gets to decide
+# whose the copy is. The first version of the reader model took a majority and destroyed
+# the only copy of the sibling's login here (found by review, 2026-08-08).
+reset_main
+ident other > "$SP1/.claude.json"; ident other > "$SP2/.claude.json"
+cred FOREIGN $NEW > "$(accstore main)"
+Q="$HOME/newcomer"; mkdir -p "$Q"; cd "$Q"
+/tmp/kae pin main
+#   assert: exit 0, and kae `kept it rather than replacing it`, naming the reason
+#           `this directory does not read it yet` — NOT `this write replaces it` — and,
+#           only on this arm, the consequence `it will run that other account`. This is
+#           the one keep where kae has positive evidence about the copy and so can say
+#           what the directory does next; the command still prints its success line
+grep FOREIGN "$(accstore main)"         # assert: the sibling's live login survives. B1 is
+                                        #         the same fixture with the bind run *in* a
+                                        #         reader, and there it is replaced — the
+                                        #         pair is the whole condition
+snap main | grep -c FOREIGN             # assert: 0 — kept is not harvested
+cd "$P"
+
+# --- B2. the readers DISAGREE: kept, and deliberately not reported as a conflict ---
+# Somebody logged in as another account inside one bound directory. The copy is live and it
+# is somebody's, and this bind is not the event that should decide whose — overwriting on a
+# majority destroys a login that has no backup. Measured 2026-08-08: asking only the
+# directory being bound is what let an ordinary re-pin file a foreign token under this
+# account's name.
+reset_main
+ident main > "$SP1/.claude.json"        # P says main, P2 still says other
+cred FOREIGN $NEW > "$(accstore main)"
+/tmp/kae pin main
+#   assert: one stderr line saying the directories that read this credential `disagree
+#           about whose login it is`, that kae is `leaving it where it is`, and the
+#           login remedy — a disagreement is missing evidence, so it carries one, unlike
+#           B1. The pin-level pass is the speaker here (it knows the bound directory),
+#           so this is *not* the chokepoint's `kept it rather than replacing it`; that
+#           wording appears in A3, where no pass had anything to say
+grep FOREIGN "$(accstore main)"         # assert: the live copy survives. This is the half
+                                        #         that inverts: a refusal here would be a
+                                        #         deletion, not a conservative choice
+snap main | grep -c FOREIGN             # assert: 0 — kept is not harvested
+ident main > "$SP2/.claude.json"        # put P2 back so the cases below start agreed
+
+# --- C. a tombstone is not a login — and only the MEASURED tombstone is silent ---
+reset_main
 ident main > "$(store)/.claude.json"
-# $LATER, not $NEW: at an expiresAt equal to the snapshot's the timestamp comparison
-# refuses the harvest on its own, so a healthy copy and a tombstone behave identically
-# and this case would pass whether or not the tombstone guard works (measured).
-printf '{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%s,"refreshTokenExpiresAt":1830384000000}}' $LATER \
-  > "$(store)/.credentials.json"
+# Two shapes, two arms, and this case tested only the second one while claiming the
+# first until 2026-08-08. The measured tombstone (§ Upstream Behaviour Assumptions,
+# the invalid_grant row) is blank tokens with **expiresAt: 0** and the login deadline
+# retained; kae reads that as "nothing to lose" and replaces it without a word. Blank
+# tokens with a *future* expiresAt are not that shape — kae cannot order them and will
+# not call them dead, so it warns and says how to keep the login it might be. C used
+# the future-dated form and asserted only the absence of a `harvested` line, which
+# both arms satisfy.
+# C1 — the measured tombstone: replaced in silence.
+printf '{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,"refreshTokenExpiresAt":1830384000000}}' \
+  > "$(cstore)/.credentials.json"
 /tmp/kae pin main
 #   assert: NO `harvested` line — presence is not usability
-snap main | grep MAIN-NEW               # assert: unchanged
+#   assert: and NO warning at all. This is the one arm that is silent, so it is the
+#           assertion that separates the two; without it C passes on either
+snap main | grep MAIN-OLD               # assert: unchanged
+grep MAIN-OLD "$(cstore)/.credentials.json"   # assert: and the snapshot really was written
+                                        #         over it. C1's other three assertions are
+                                        #         all negative, so a fixture that landed
+                                        #         where kae does not read satisfies them —
+                                        #         which is the defect this block was
+                                        #         corrected for. This is the positive half
+# C2 — blank tokens, future deadline: kae will not judge it, so it says so.
+# $LATER, not $NEW: at an expiresAt equal to the snapshot's the timestamp comparison
+# refuses the harvest on its own, so a healthy copy and a blank one behave identically
+# and this case would pass whether or not the guard works (measured).
+printf '{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%s,"refreshTokenExpiresAt":1830384000000}}' $LATER \
+  > "$(cstore)/.credentials.json"
+/tmp/kae pin main
+#   assert: NO `harvested` line
+#   assert: one stderr warning — `kae cannot read or date the copy already there`, that
+#           `a payload kae cannot judge may still be a login`, and the remedy
+#           `cd <this dir> && kae relogin claude`. The weak claim takes the weak
+#           consequence: kae replaces the copy but does not call it dead
+snap main | grep MAIN-OLD               # assert: unchanged
+grep MAIN-OLD "$(cstore)/.credentials.json"   # assert: replaced, which is what separates
+                                        #         this arm from the attribution refusal in
+                                        #         A3 — that one is *kept*
+                                        #         (docs/ROADMAP.md owns why they differ)
 
-# --- D. the binding moves to a DIFFERENT store: the mode toggle ---
-# Reset the snapshot first, or A's harvest makes this a no-op.
-cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
-/tmp/kae add --no-login --identity you@example.com claude main
+# --- D. the mode toggle rebuilds the bound stores; the newer copy must survive it ---
+# reset_main, not a bare re-capture: the account's store survives a re-capture, and the
+# first pin below would harvest the leftover copy back into the fresh snapshot, leaving
+# this case's own $NEW fixture no newer than anything (measured 2026-08-08).
+reset_main
 T="$HOME/toggle"; mkdir -p "$T"; cd "$T"
 /tmp/kae pin main                       # shared
-cred MAIN-NEW $NEW > "$(store)/.credentials.json"
-/tmp/kae pin -i main                    # isolated: a different store, built from the snapshot
+ident main > "$(store)/.claude.json"    # the tool ran here (see A)
+cred MAIN-NEW $NEW > "$(cstore)/.credentials.json"
+/tmp/kae pin -i main                    # isolated: a different *config* store, rebuilt
+                                        # from the snapshot
 #   assert: one `harvested` line
-grep MAIN-NEW "$(store)/.credentials.json"   # assert: the store the user is NOW bound
-                                        #         to holds the copy that can refresh.
-                                        #         Before this pass it held MAIN-OLD,
+grep MAIN-NEW "$(cstore)/.credentials.json"  # assert: the copy that can refresh is still
+                                        #         the one this directory is bound to.
+                                        #         Without the harvest the materializer
+                                        #         writes the snapshot's MAIN-OLD over it,
                                         #         with every offline check green
-snap main | grep MAIN-NEW               # assert: harvested from the superseded store
+snap main | grep MAIN-NEW               # assert: and it reached the snapshot
+# Measured 2026-08-08: post-split this harvests the SAME store as A
+# (credstore/claude/main) — read the path in the stderr line if you doubt it. A mode
+# toggle moves the config store, not the credential, so the case where the credential's
+# location actually moves is E and only E. Kept as its own case anyway, because what it
+# asserts is that rebuilding the bound store set does not lose the copy.
 
 # --- E. shared re-bind to another account: the copy belongs to the OLD one ---
-cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
-/tmp/kae add --no-login --identity you@example.com claude main
+reset_main                              # see D for why a bare re-capture is not a reset
 R="$HOME/rebind"; mkdir -p "$R"; cd "$R"
 /tmp/kae pin main
-cred MAIN-NEW $NEW > "$(store)/.credentials.json"
+ident main > "$(store)/.claude.json"    # the tool ran here (see A)
+cred MAIN-NEW $NEW > "$(cstore)/.credentials.json"
 /tmp/kae pin claude side
-#   assert: `harvested … into snapshot claude/main` — main, not side. The write path
-#           then notes that the copy in the store is not side's; that is the fact,
-#           without a remedy, because the pass above already preserved it
+#   assert: `harvested … into snapshot claude/main` — main, not side — and that it is the
+#           ONLY stderr line. This is the one case here where the credential's location
+#           moves (credstore/claude/main → …/side), which is why the pass has to read the
+#           store being left before the bind writes the new one. Nothing reports a foreign
+#           copy: the store now being written is side's own. Measured 2026-08-08 — this
+#           said "the write path then notes that the copy in the store is not side's",
+#           which was true while both accounts' copies shared one per-directory store
 snap main | grep MAIN-NEW               # assert: main's login survived the re-bind
 snap side | grep -c MAIN-NEW            # assert: 0 — it was not filed under side
-grep SIDE-OLD "$(store)/.credentials.json"   # assert: the store now runs side
+grep SIDE-OLD "$(cstore)/.credentials.json"  # assert: the account store now runs side
 
 # --- F. doctor reports a store that names an account other than the binding ---
 # Independent of A–E; it needs only a captured account with a recorded identity.
-cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
-/tmp/kae add --no-login --identity you@example.com claude main
+reset_main
 G="$HOME/drift"; mkdir -p "$G"; cd "$G"
 /tmp/kae pin main
-grep u-main "$(store)/.claude.json"     # assert: the bind labelled the store with main.
+ident main > "$(store)/.claude.json"    # the tool ran here (see A)
+grep u-main "$(store)/.claude.json"     # assert: the cache doctor reads is where it expects
+                                        #         it and names main.
                                         #         Positive first, and it is what makes the
                                         #         two `grep -c` lines below mean anything:
                                         #         with no cache there the check is silent
@@ -1338,17 +1553,16 @@ Several lines here exit non-zero **on purpose** (`grep -c` printing `0` is the
 assertion), so paste the block as-is rather than under `set -e`, or add `|| true` to
 those.
 
-**A–E PASSED 2026-08-04** on the pre-release binary, each assertion checked at its own
-point. D and E are the two cases a *chokepoint-only* harvest got wrong, so they are
-the ones worth re-running after any change to `kae pin`'s ordering: both depend on the
-pin-level pass running **before** the stores are materialized, and E additionally on
-the replaced fragment being read before it is rewritten.
-**F PASSED 2026-08-04** (darwin, file driver, temp HOME, pre-release binary), run as
-written, all four assertions checked at their own points.
-**G–J PASSED 2026-08-05, re-run at every later revision of the branch; G and H last
-measured 14/14 on 2026-08-07 against the recapture guards, I and J last on 2026-08-06**
-(darwin, file driver, temp HOME, pre-release binary), every documented assertion checked
-at its own point, and **discriminated against a control**: the same G block run against a
+**A–J PASSED 2026-08-08 on the release tree** (darwin 24.6.0, file driver, file
+backend, temp HOME, `/tmp/kae` = v0.17.0), each assertion checked at its own point rather
+than from the end state. A–E and F were first run 2026-08-04 and G–J from 2026-08-05; that
+record is superseded because the tree moved under it twice — see the entry in § Release
+Acceptance Log for what the re-run found, which was a defect in this block rather than in
+kae. D and E are the two cases a *chokepoint-only* harvest got wrong, so they are the ones
+worth re-running after any change to `kae pin`'s ordering: both depend on the pin-level
+pass running **before** the stores are materialized, and E additionally on the replaced
+fragment being read before it is rewritten.
+G–J were **discriminated against a control** when first written: the same G block run against a
 binary with the skip forced off leaves `MAIN-OLD` live and prints "previous auth state
 restored", so G is not a tautology. Note the 2026-08-06 measurement of **H does not carry
 forward**: H asserted the *defect* that `run -s`'s recapture applied no guards, so fixing
@@ -1357,8 +1571,12 @@ as written now refuses. The 2026-08-07 re-run is of the inverted block, and it a
 recorded-identity assertion the older one had no reason to make. Three defects in the block
 itself were found by running it — an `echo $?` that reported *grep's* status and so could
 never fail; case H going green over a snapshot the run poisons; and, on 2026-08-07, no
-positive half beside `grep -c FOREIGN`, which a broken `snap()` would also satisfy. **Re-run
-before the tag** on the final tree, as § Smoke Checks requires of every block.
+positive half beside `grep -c FOREIGN`, which a broken `snap()` would also satisfy. A fourth
+came out of the 2026-08-08 re-run and was the worst of them, because it made the block
+silently stop testing its own subject: every credential fixture was still going to the
+config dir after the credential moved to the account store. Four defects in one block, all
+four found by running it and none by reading it, is the argument § Smoke Checks makes for
+re-running every block on the final tree.
 
 **What G–J does not cover, stated because a green run reads as if it did.** The block
 exports `KAE_CLAUDE_DRIVER=file`, so claude's credential is a JSON-pointer file and its
@@ -1399,7 +1617,18 @@ and one refreshes, the other cannot any more — so `kae doctor` names the direc
 that lost, and `kae relogin` is the one command that fixes it. Same isolation as the
 harvest block above (temp HOME, **file** driver, file backend, no real keychain and
 no real login), and it **continues from that block's preamble** — the `cred`,
-`ident`, `snap` and `store` helpers and the config file are the ones defined there.
+`ident`, `snap`, `store` and `cstore` helpers and the config file are the ones defined
+there.
+
+**Two copies of one account's credential no longer arise from two ordinary bindings**,
+which changes how this state has to be built. The per-account store that shipped in this
+same release gives every directory bound to one account the *same* credential, so the
+two-copies shape now needs two different credential *locations* — and today that means
+one directory still in the pre-v0.17.0 shape, which is exactly what `credential_unsplit`
+reports and a re-pin repairs. The check's other reachable shape is a bound store against
+the **account snapshot** (`newestAt` reads `snapshot <tool>/<account>` and the remedy
+becomes `kae pin <tool> <account>`, no login needed), which L exercises on the way out.
+Both are live; the one the check was designed for is now a transitional state.
 
 One thing this block does that no other does: it puts a **fake `claude` on `PATH`**.
 That is the only way to prove the real binary exports the isolation variable, which
@@ -1413,13 +1642,31 @@ fails loudly instead of quietly writing to the temp `$HOME`.
 #  its KAE_CLAUDE_DRIVER=file, its helpers and config, its claude/main, and its
 #  `kae profile set main claude main`. Do NOT re-source smoke-env.sh here — that mints a
 #  fresh HOME and throws the account away, leaving `kae pin` below with nothing to bind.
-#  Running the harvest block's cases first is fine; they leave claude/main captured.)
+#  Run it after the PREAMBLE ONLY — **not** after the harvest block's cases, which this
+#  said was fine until 2026-08-08 and is not: their bindings of the same account make K's
+#  "newest copy" a tie, and the store that happens to win the walk order can be one kae
+#  cannot attribute — which silences the whole group. A tied store that does *not* win
+#  changes nothing; it is already skipped for not being superseded. K measured 0 findings instead of 1. docs/ROADMAP.md
+#  § credential_superseded owns the mechanism and the control that pinned it.
+#  If A–J has ALREADY run in this shell, K–M needs a fresh session: open a new shell,
+#  `. scripts/smoke-env.sh`, run the preamble above and nothing else, then this block.
+#  On the paths: use canonical directories. `mktemp -d` returns /var/... on macOS while
+#  kae resolves /private/var/..., so an uncanonical $A makes every assertion that greps
+#  it match nothing while the block still runs green on the `grep -c` lines.)
 
 # --- K. doctor names the overtaken directory, and only that one ---
-A=$(mktemp -d); B=$(mktemp -d)
-cd "$A" && /tmp/kae pin main && SA=$(store)
-cd "$B" && /tmp/kae pin main && SB=$(store)
-cred A-NEW $LATER > "$SA/.credentials.json"   # the tool refreshed in A, in place
+A=$(cd "$(mktemp -d)" && pwd -P); B=$(cd "$(mktemp -d)" && pwd -P)
+cd "$A" && /tmp/kae pin main && SA=$(cstore)
+cd "$B" && /tmp/kae pin main
+# B in the pre-v0.17.0 shape, by hand: strip its credential entry, so B's credential
+# resolves to its own config dir instead of the account store A shares. Two ordinary
+# bindings of one account cannot hold two different copies any more (see above).
+# Not `sed -i`: its in-place flag takes an argument on BSD and not on GNU, and this
+# block is meant to be pasted on either.
+BF="$B/.config/mise/conf.d/kagikae.toml"
+grep -v '^CLAUDE_SECURESTORAGE_CONFIG_DIR' "$BF" > "$BF.tmp" && mv "$BF.tmp" "$BF"
+SB=$(store)   # B's credential is its config dir again — that is the point of the edit
+cred A-NEW $LATER > "$SA/.credentials.json"   # the tool refreshed A's account store
 cred B-OLD $NEW   > "$SB/.credentials.json"   # B has been sitting since before that
 /tmp/kae doctor --json | grep -c credential_superseded   # assert: 1 — exactly one
                                         #   directory lost. Not `grep -c` alone: the
@@ -1443,14 +1690,25 @@ cat > "$FAKEBIN/claude" <<'EOF'
 printf '{"claudeAiOauth":{"accessToken":"B-RELOGGED","refreshToken":"rt-B-RELOGGED","expiresAt":1830384000000,"refreshTokenExpiresAt":1861920000000}}' > "$CLAUDE_CONFIG_DIR/.credentials.json"
 printf '{"oauthAccount":{"accountUuid":"u-main","emailAddress":"main@example.com"}}' > "$CLAUDE_CONFIG_DIR/.claude.json"
 EOF
+# The fake writes where a **pre-split** directory keeps its credential, which is what B
+# is. In a post-split directory the credential is at CLAUDE_SECURESTORAGE_CONFIG_DIR, and
+# a fake that wrote to CLAUDE_CONFIG_DIR there would leave the store unchanged — kae would
+# correctly report `auth_unchanged` (11) and the whole case would read as a kae regression.
 chmod +x "$FAKEBIN/claude"; PATH="$FAKEBIN:$PATH"; export PATH
 cd "$B"
 /tmp/kae relogin; echo "exit=$?"
 #   assert: exit=0, and stderr says kae is running it against this directory's own
-#           store, naming CLAUDE_CONFIG_DIR=<B's store>. The fake exits 8 if it is
-#           unset, so a green run *is* the proof that kae exported it
+#           store, naming CLAUDE_CONFIG_DIR=<B's store> — and only that variable, since B
+#           is pre-split; a post-split directory names the credential one beside it. The
+#           fake exits 8 if it is unset, so a green run *is* the proof that kae exported it
 #   assert: stderr carries `harvested the newer claude credential from <B's store>
-#           into snapshot claude/main` — the capture-back half
+#           into snapshot claude/main` **twice**, once on each side of the flow, and
+#           the first of them appears BEFORE the `complete the claude login flow` line.
+#           The pre-flow pass is the one with something to lose: the write that replaces
+#           the copy is the tool's, so nothing after the flow can see what it destroyed
+#           (docs/CLI.md § kae relogin Semantics). One occurrence is a regression even
+#           though the capture-back assertion below still passes — which is why this
+#           counts rather than greps
 #   assert: stdout is `Logged claude in for claude/main in this directory` — the
 #           strong wording, which kae prints only when it observed all three of:
 #           the store changed, what is there now is not a tombstone, and the
@@ -1475,12 +1733,18 @@ snap main | grep B-RELOGGED              # assert: and reached the account snaps
 C=$(mktemp -d); cd "$C"
 /tmp/kae relogin; echo "exit=$?"
 #   assert: exit=7 and `this directory is not pinned`, naming `kae add --restore`
-grep SIDE-OLD "$HOME/.claude/.credentials.json"   # assert: the temp real home still holds
-                                        #   what the preamble left there last (the preamble
-                                        #   writes MAIN-OLD, captures, then overwrites with
-                                        #   SIDE-OLD to capture the second account — so
-                                        #   SIDE-OLD is the resting value, and asserting
-                                        #   MAIN-OLD here silently matched nothing)
+grep SOLO-OLD "$HOME/.claude/.credentials.json"   # assert: the temp real home still holds
+                                        #   what the preamble left there last. The literal is
+                                        #   the account the preamble captures **last**, not a
+                                        #   fixed name — it writes one payload per account and
+                                        #   the final one stays. This line has now been wrong
+                                        #   twice for that reason, each time by one account:
+                                        #   `MAIN-OLD` while there were two, then `SIDE-OLD`
+                                        #   once `solo` was added (measured 2026-08-08, by
+                                        #   running it). A wrong literal here matches nothing
+                                        #   *and* silently unguards the `grep -c` below, which
+                                        #   is the pair's whole purpose — so re-derive it from
+                                        #   the preamble whenever an account is added there
 grep -c B-RELOGGED "$HOME/.claude/.credentials.json"   # assert: 0 — paired with the positive
                                         #   line above, because a `grep -c` for absence prints
                                         #   0 when the file is missing too.
@@ -1493,9 +1757,21 @@ grep -c B-RELOGGED "$HOME/.claude/.credentials.json"   # assert: 0 — paired wi
 `grep -c` printing `0` is an assertion on two lines here, so paste the block as-is
 rather than under `set -e`.
 
-**K–M PASSED 2026-08-06** (darwin, file driver, temp HOME, pre-release binary built
-from this branch), each assertion checked at its own point, and **re-run verbatim
-after each review round's changes** — round 1 (the hedged wording, the split remedy,
+**K–M PASSED 2026-08-08 on the release tree, 20/20** (darwin 24.6.0, file driver, file
+backend, temp HOME, `/tmp/kae` = v0.17.0), run after the preamble alone, each assertion
+checked at its own point. **Re-run the same day by an independent review, which found one
+of those 20 asserting a literal that matched nothing**: M's positive control still named
+`SIDE-OLD` after the preamble grew a third account, so the resting payload was
+`SOLO-OLD` — the identical off-by-one-account this same block had already been corrected
+for once, and it takes the `grep -c` beside it down with it. Corrected above, together
+with L's harvest assertion, which the pre-flow pass in `kae relogin` turns from one line
+into two. Both of those are why a passing record is not a substitute for re-running: the
+first was a dead assertion inside a green run, and the second is output that moved
+under a block nobody had edited. The 2026-08-06 record it replaces was measured before the
+per-account credential store landed, which is what made K's two-copies construction
+unbuildable as written; the block above now says how the state is reached and why. It had
+also been **re-run verbatim after each review round's changes** — round 1 (the hedged
+wording, the split remedy,
 the store-must-exist refusal) round 2 (the three-gate success wording), round 3
 (the emptied-store arm and the reworded warnings) and round 5 (the real-home
 assertion below, which was prose until an execution-type review pointed out that
@@ -1560,11 +1836,11 @@ Unit-covered, in `internal/cmd`:
 bash and zsh (fish is best-effort, not gated — v0.8.6). In a fresh shell with
 completion registered **and refreshed**:
 
-- [ ] `kae env <TAB>` offers `set` / `unset` / `list`; `kae backup <TAB>` offers
+- [x] `kae env <TAB>` offers `set` / `unset` / `list`; `kae backup <TAB>` offers
       `list`.
-- [ ] `kae env set <TAB>` offers tools; `kae env set claude <TAB>` offers claude's
+- [x] `kae env set <TAB>` offers tools; `kae env set claude <TAB>` offers claude's
       accounts.
-- [ ] `kae env list <TAB>` offers **nothing** — `env list` takes no arguments, and
+- [x] `kae env list <TAB>` offers **nothing** — `env list` takes no arguments, and
       the branch is gated on the sub-verb to avoid suggesting a word the command
       rejects.
 
@@ -1607,26 +1883,31 @@ Unit-covered, in `internal/cmd` (`credstore_test.go` unless noted):
 
 ### v0.17.0 per-account credential real-machine smoke (required before release)
 
-Run with `. scripts/smoke-env.sh` sourced, in a temp HOME. Two bound directories on
-one captured account:
+Run with `. scripts/smoke-env.sh` sourced, in a temp HOME, and — on macOS — with
+`KAE_CLAUDE_DRIVER=file` **and** `[security] secret_backend = "file"`, exactly as
+§ Smoke Checks requires of any claude round-trip: without both, a capture or a bind here
+reads and writes the real login keychain and leaves per-directory items behind. The
+recorded result below is a file-driver observation, so the overrides are not optional
+decoration — they are what it was measured under. Two bound directories on one captured
+account:
 
-- [ ] `kae pin <profile>` in each of two directories; each fragment carries
+- [x] `kae pin <profile>` in each of two directories; each fragment carries
       `CLAUDE_SECURESTORAGE_CONFIG_DIR` pointing at the **same**
       `credstore/claude/<account>` and `CLAUDE_CONFIG_DIR` pointing at **different**
       stores.
-- [ ] `kae doctor --json` reports no `credential_unsplit` for either.
-- [ ] Remove the credential line from one fragment by hand (this is the pre-v0.17.0
+- [x] `kae doctor --json` reports no `credential_unsplit` for either.
+- [x] Remove the credential line from one fragment by hand (this is the pre-v0.17.0
       shape); `kae doctor --json` now reports `credential_unsplit` naming that
       directory, and its remedy is `cd <dir> && kae pin`.
-- [ ] Re-run `kae pin` there; the finding goes away and the entry is back.
-- [ ] `kae unpin --purge` in one of the two: kae keeps the credential and says how
+- [x] Re-run `kae pin` there; the finding goes away and the entry is back.
+- [x] `kae unpin --purge` in one of the two: kae keeps the credential and says how
       many bindings still use it. Repeat in the last one: it is removed, and the
       message names it as **the account's** credential and points at
       `credstore/claude/<account>` — not as a "per-directory" one at the config-dir
       store, which is what it said until 2026-08-07. Read the message, not just the
       state: the state assertion passed the whole time the message was wrong, and
       both unit assertions on that string are negative ones that cannot see it.
-- [ ] `kae pin claude <other-account>` in a shared-mode directory rewrites the
+- [x] `kae pin claude <other-account>` in a shared-mode directory rewrites the
       credential entry to the other account's store while leaving `CLAUDE_CONFIG_DIR`
       unchanged.
 
@@ -2084,47 +2365,113 @@ never appears in `kae companion list` text/JSON).
 
 ## Release Acceptance Log
 
-### v0.17.0 — partial run, **must be repeated before the tag** (2026-08-04, macOS darwin 24.6.0, git 2.55.0)
+### v0.17.0 (2026-08-08, macOS darwin 24.6.0, git 2.55.0)
 
-⚠️ **This is not a completed acceptance run.** It covers the tree at `40fa804`
-(per-worktree exclude file, `kae ls --pins`, the tool tiers). v0.17.0 was then
-widened twice — link retraction, and then the **credential harvest**, which is a
-behaviour change to `kae pin` / `kae pin <tool> <account>` / `kae unpin --purge` and
-now the release's headline — so **every line below has to be re-run on the final
-tree** before the tag, and § "v0.17.0 surface — the credential harvest" has to be run
-alongside § per-worktree surfaces. A green run on a smaller tree proves nothing about
-the larger one. Kept because the measurements are real and the codex re-verification
-below is not affected by later commits.
+Run in two passes, and the distinction matters because the tree moved between them.
+The gates and the first smoke sweep were measured on `main` at merge `2882246`, tree
+`a49f3430bfbcde9661b314a1d4d27ba4a6cb5304`. That sweep found a defect in this file's own
+blocks and then, through the corrected blocks, a **code** defect (below) — so the fix and
+every re-measurement live on `fix/validation-blocks-and-release-log`, whose tree is what a
+reader should compare against. Binary `kae v0.17.0` in both. Every gate recorded by exit
+code, never through a pipe; every smoke assertion checked at its own point in its block
+rather than from the end state. Where a line below says "re-run against the fixed binary",
+that is the branch tree and not the merge above it.
 
-Every gate run and recorded by exit code, never through a pipe:
+- `mise run check` **0**, `git diff --check` clean, `mise run goreleaser-check` **0**,
+  `mise run audit` **0** — govulncheck reachable **0**, and the upstream literal
+  fingerprints unchanged for all five measurable tools (no drift signal; codex has none
+  by design).
+- **Real-machine `kae doctor --json`, read-only: 22 checks, non-ok 2** — both
+  `credential_expiring`, for two cursor snapshots whose logins genuinely expire in four
+  days. That is the check doing its job on a real machine, not a release finding; nothing
+  else was non-ok, and the codex `upstream_version` drift that the v0.16.0-era run raised
+  did not recur.
+- **§ per-worktree surfaces A–F: 31 of 31.** Run against the built binary on a temp HOME
+  with every XDG root isolated (`. scripts/smoke-env.sh`), the repositories and worktrees
+  created *inside* that HOME. This block needed no correction.
+- **A code defect the corrected block then exposed, found by review of it and fixed
+  before the tag.** A bind that could not *attribute* the copy in the account's credential
+  store overwrote it with the older snapshot — reachable on **every first bind**, because
+  the config dir attribution reads is created moments earlier and a shared bind links no
+  identity cache into it. Reproduced in the shape a user meets it (use claude in one
+  worktree, bind a second worktree to the same account) and it destroyed the only copy that
+  could still refresh, with `kae doctor` silent afterwards because nothing was left to
+  compare. The bind now keeps that copy and says so; `Conflicting` and unreadable copies are
+  still replaced, deliberately (docs/ADAPTERS.md is normative, docs/ROADMAP.md owns the
+  second one's trade-off). Case **A2** in the block above was added for it — it did not
+  exist, and the first run walked the destructive path three times without asserting
+  anything about it. **A2 and every other block were then run against the fixed
+  binary**, extracted from this file rather than from a script, so nothing below is dated
+  ahead of the tree it was measured on. The fix also moved what a bind writes when it keeps
+  (no credential, no stale-file sweep, no identity label), which is why the cases that
+  expect a harvest now seed the identity cache the *tool* would have written.
+  **Superseded later on the same branch** — see the last entry below; A2 now asserts a
+  harvest and **A3** is the case that holds the destruction fixed.
+- **§ v0.17.0 surface — the credential harvest, A–A2–J: every documented assertion** — but
+  **only after fixing the block**, and that is the other finding of this run: every
+  credential fixture still targeted
+  `CLAUDE_CONFIG_DIR` after this release moved the credential to
+  `CLAUDE_SECURESTORAGE_CONFIG_DIR`, so cases stopped exercising the harvest while their
+  negative assertions went green *because* nothing happened. kae was correct throughout —
+  the block was measuring a directory kae no longer reads a credential from. That section
+  above records what was corrected and what each case now proves. A count is deliberately
+  not given: 52 assertions were measured, and correcting case C then split it into two
+  arms whose separate measurements (the tombstone silent, the future-dated blank warning)
+  are what that case now asserts — so a number here would name a set the block no longer
+  has.
+- **§ v0.17.0 surface — `kae relogin` and `credential_superseded`, K–M: 20 of 20**, also
+  after fixing the block: two ordinary bindings of one account now share one credential
+  store, so K's two-copies state needs one directory left in the pre-split shape. Running
+  it straight after the harvest cases also turned out to be unsafe — that section, and
+  docs/ROADMAP.md § `credential_superseded`, own both corrections.
+- **§ v0.17.0 per-account credential real-machine smoke: 6 of 6** (26 assertions),
+  including that `kae unpin --purge` keeps the credential while another binding uses it
+  and, in the last one, names it as **the account's** at `credstore/claude/<account>`.
+  The removal applies "absent" through the JSON pointer, so the file survives holding
+  `{}` — asserted against a live contrast (a still-bound sibling account keeps its token)
+  so it cannot pass by reading a path that is empty either way.
+- **§ v0.17.0 completion real-machine smoke: 3 of 3** (23 assertions) in **bash and zsh**,
+  driving the real `_kae` from scripts generated by this binary with it behind a PATH shim
+  — a stale `kae` on `PATH` would answer `__complete` for the wrong build. `kae env <TAB>`
+  offers `set`/`unset`/`list`, `kae backup <TAB>` offers `list`, `kae env set claude <TAB>`
+  offers accounts and not tool names, and `kae env list <TAB>` offers nothing. Each shell
+  carries a positive control (`kae use <TAB>` non-empty), because the "offers nothing"
+  assertion passes for a harness that produced nothing — which it did on the first run,
+  where `printf "%s\n" "${COMPREPLY[@]}"` printed one newline for an empty array.
+- Secret scan: no real token, key, email or login handle anywhere in the tree; the
+  fixtures are `ghp_smoke` / `ghp_secret` / `sk-ant-oat01-<label>` placeholders and
+  `@example.com` addresses. Checked with the file backend's **base64** in mind — a raw
+  `grep` over a stored payload finds nothing and reads as a pass.
+- Deliberately **not** run, and recorded as such: no `kae pin` against the real `$HOME`
+  (every bind above ran in a temp HOME with every XDG root isolated), and the operator's
+  installed binary was not replaced. The credential blocks run under
+  `KAE_CLAUDE_DRIVER=file`, so **nothing here touches `internal/keychain`** — the
+  per-command read cache, and `kae relogin` against a real per-directory keychain item,
+  stay covered by unit tests over the darwin sim only. Unchanged from the earlier runs and
+  stated again because a green run reads as if it did more.
 
-- `mise run check` **0**, `git diff --check` clean, `mise run goreleaser-check`
-  **0**, `mise run audit` **0** — govulncheck reachable **0**, and the upstream
-  literal fingerprints unchanged for all five measurable tools (no drift signal).
-- **Real-machine `kae doctor --json`, read-only, built from the release tree: 21
-  checks, non-ok 0.** The first run had one — `upstream_version` for codex,
-  installed 0.146.0 against a recorded 0.145.0 — which is *why* this step exists:
-  no offline gate and no temp-HOME smoke could have raised it. Closed by a
-  tag-to-tag source re-verification (§ Verified Upstream Versions), not by
-  suppressing it.
-- **§ per-worktree surfaces A–F**, run verbatim against the built binary on a temp
-  HOME with every XDG root isolated (`. scripts/smoke-env.sh`), the repositories
-  and worktrees created *inside* that HOME. Each assertion checked at its own point
-  in the block rather than from the end state: **12 of 12**.
-- **Not in this run: § "v0.17.0 surface — the credential harvest"** (A–F). A–E were
-  written and run later, against a pre-release binary on its own temp HOME, and every
-  assertion held — but on a tree earlier than the final one, so it is part of what has
-  to be repeated. Two of its assertions had been passing for the wrong reason before
-  that run corrected them, which is the argument for re-running rather than trusting
-  the record. **F** (the bound-directory `identity_drift`) was added and run later
-  still, on the tree that introduced the check — so it too is on a tree earlier than
-  the final one.
-- Deliberately **not** run, and recorded as such: no real-machine `kae pin`, and
-  the operator's installed binary was not replaced. The per-worktree behaviour is
-  covered by real `git` in a temp HOME plus a test that builds a repository and a
-  linked worktree on every `mise run check`; a real-machine pin would have left a
-  binding, a store and a breadcrumb in the live data dir to clean up, which is not
-  worth it for a mechanism that is already measured against real git.
+- **A second code defect, found the same way and on the same branch, and the harvest block
+  re-run against it.** The fix above stopped a bind from *overwriting* a copy it could not
+  attribute; what it did not change was **what attribution reads**. For the account's own
+  credential store that was still the bound *directory's* identity cache, which since the
+  split is evidence about a different object — so a re-bind between two accounts read
+  `Conflicting` about a store the previous binding's label says nothing about and destroyed
+  a live credential, and a cache that legitimately named this account confirmed a copy
+  another directory had poisoned. Attribution now reads the directories currently reading
+  that store. Extracting and running this file's harvest block against the change is what
+  showed that **A2, B, D and E had all stopped testing their subjects**: A2's outcome
+  legitimately changed (a sibling reader confirms, so the copy is preserved *and*
+  harvested), B's two `expiresAt` values had become equal so attribution was never reached,
+  and D and E reset their account with a re-capture — which no longer resets anything,
+  because the credential store outlives it and the next pin harvests the leftover copy
+  back. The block now carries `reset_main`, a no-reader case (**A3**) for the destruction
+  A2 used to hold, and a disagreeing-readers case (**B2**); token names no longer prefix one
+  another, after `grep MAIN-NEW` was found matching a `MAIN-NEW2`. Re-run end to end on
+  this branch: every documented assertion, checked at its own point.
+
+The superseded partial entry (2026-08-04, tree `40fa804`) is dropped rather than kept: its
+per-worktree measurement is repeated above on the final tree, and its credential
+measurements were made against a block that has since been shown not to test its subject.
 
 ### v0.9.0 (2026-06-19, macOS darwin 24.6.0)
 

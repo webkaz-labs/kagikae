@@ -375,7 +375,7 @@ isolation alone does not yet solve — see "One account per worktree".
 | `kae use <profile\|tool account>` (`kae u`) | Switch globally (`-i` isolated, `--quiet` for hooks). |
 | `kae pin [<profile>]` (`kae p`) | Bind the current directory (`-i` isolated). |
 | `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials, harvesting each into its account snapshot first and keeping any it could not (sessions and settings are kept). |
-| `kae relogin [<tool>]` | Run the tool's login flow into *this directory's* bound store — kae exports the isolation variable itself, so it lands there whether or not the pin is active in this shell — then capture the new login back into the account snapshot. |
+| `kae relogin [<tool>]` | Run the tool's login flow into *this directory's* bound store — kae exports the isolation variable itself, so it lands there whether or not the pin is active in this shell — then capture the new login back into the account snapshot. It also harvests what the store already held **before** starting the flow, since the login is a write kae does not perform, and says so on stderr when that copy could not be kept. |
 | `kae run <tool> <account> [-- <cmd>]` (`kae r`) | Run one process under an account (`-s`/`-i`/`--env`). |
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
 | `kae ls` | List accounts and profiles in one view, with each snapshot's credential freshness. |

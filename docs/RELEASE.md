@@ -25,7 +25,7 @@ afterward for curated highlights when useful. Windows is not built
 
 ---
 
-# kae v0.17.0 (unreleased)
+# kae v0.17.0 (prepared 2026-08-08, not yet shipped)
 
 **One account per worktree — and kae no longer kills the login in it.** A binding
 has always belonged to a *directory*, which makes a `git worktree` a first-class
@@ -39,7 +39,13 @@ credential now lives in one store shared by every directory bound to it, so a bi
 writes a second env entry and a bind's sweep no longer deletes that credential;
 where `kae pin` writes its ignore rule; a bind or a superseded-credential sweep now
 harvests a newer credential from the store it is about to overwrite or delete, and
-declines to delete one it could not preserve; `kae run -s` skips a restore that would
+declines to delete one it could not preserve — and, in the account's own credential
+store, **declines to overwrite one it could not attribute**, since every directory bound
+to that account reads that single copy (the `Conflicting` arm still overwrites, and
+**whose the copy is, is answered by the directories currently reading that store** rather
+than by the one being bound — reading the bound directory's own cache destroyed a live
+credential on a re-bind between accounts and mis-filed a foreign token on an ordinary
+re-pin, both measured); `kae run -s` skips a restore that would
 put back a credential its child has superseded, `kae rollback` says when the copy it
 restores can no longer refresh, and `kae use`'s switch-away recapture declines a live
 copy its own snapshot supersedes; `kae run -s`'s own **recapture** now refuses the two
@@ -116,6 +122,18 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   the directory's current path while the tool reads the literal value mise exports,
   so a directory that moved would otherwise have kae create a store nothing reads and
   call it a login.
+  It harvests on **both** sides of the flow, and the pre-flow half was added after the
+  release branch was already reviewed twice, by an independent execution-type round that
+  followed kae's own printed remedy: this is the one write in kae that the *tool*
+  performs, so the pass after the login can only ever see what the login wrote. The copy
+  it replaces belongs to the account, not to the directory, so it can be a live login
+  from a `/login` somebody ran in a bound directory as somebody else — the state
+  `kae pin` declines to overwrite in order to preserve, while naming this command as the
+  remedy. Measured end to end: following that remedy left the other account's only
+  refreshable copy in no store and no snapshot, with nothing printed about it. Now the
+  copy is harvested where it can be, and where it cannot the reason is on stderr before
+  the flow starts. Not a refusal — the login is what was asked for, and declining it
+  would leave the directory stale with nothing to do about it.
 
 - **`doctor` reports the copy that lost the race** (`credential_superseded`,
   contract-additive). When two copies of one account's credential exist and one
@@ -277,11 +295,14 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   copy there — usually the newer one, because it is the one in daily use — and
   harvesting that would file one account's token under another's name, which nothing
   offline can detect afterwards because the token is opaque. And *a chokepoint is not
-  coverage*: the write path cannot see the store a mode toggle or an isolated re-key is
+  coverage*: the write path cannot see the store a re-bind to another **account** is
   moving off, so the directory the user had just bound held the credential rotation had
   already killed, with every offline check green. Hence a pin-level pass over every
   store of the directory before any of them is written, with the delete sweep still
-  after the new binding.
+  after the new binding. (This named a `-s` ↔ `-i` toggle as one of those cases until
+  2026-08-08. Since the per-account store both modes read the account's own credential,
+  so a toggle moves the sessions and leaves the credential where it is; what a toggle
+  still moves off is the config store a **pre-split** binding kept its credential in.)
 
   What this does **not** fix is stated because a message implying otherwise would be
   worse than silence: two directories bound to one account still cannot run at the

@@ -16,6 +16,7 @@ Standalone public repository. Follow the bundled Go CLI standard in
 | [docs/CLI.md](docs/CLI.md) | command flags, output, exit codes, JSON contract changes |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | config, snapshot, state, backup, secret-ref changes |
 | [docs/SECURITY.md](docs/SECURITY.md) | secrets, subprocess, permission, redaction changes |
+| [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | the scope/isolation model's rationale and the upstream findings behind it — read it to learn *why* a decision was made, never for the rules themselves, which live in the documents above. It was the only file under `docs/` missing from this table, which is how it came to hold a second full copy of one upstream measurement |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | long-term ordering changes |
 | [docs/RELEASE.md](docs/RELEASE.md) | active release target changes |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | before commit and release checks |
@@ -145,7 +146,10 @@ block in docs/VALIDATION.md, next to two correct ones.
   the same trap as comparing two empty greps.
   Things that must move in lockstep with it — not a closed list: a **third**
   per-directory mechanism (today `shared` and `isolated`) has to be added to
-  `dirCredentialStores`, or its stores are silently never swept; and the sweep must
+  `dirCredentialStores`, or its stores are silently never swept, **and to
+  `modeLabelStale`** (beside `modeStoreDir`, which carries the note), where it falls
+  through to *not stale* — right for an account-keyed mechanism, and the
+  "keep then destroy on the next run" defect for an account-agnostic one; and the sweep must
   run **after** the new binding is written, or a mid-sequence failure leaves the live
   binding pointing at a store whose credential is already gone.
 - **The copy in a per-directory store can be newer than the snapshot, so every
@@ -163,12 +167,71 @@ block in docs/VALIDATION.md, next to two correct ones.
   the harvest belongs for the store it writes — put it in a separate "repair" step and
   the overwrite paths stay unconditional, which ships a release that fixes a login and
   then destroys it. But it cannot see a **sibling** store of the same bound directory,
-  which is what a `-s` ↔ `-i` toggle and an isolated re-key move the binding to, so
+  which is what a re-bind to a different **account** moves the credential to, so
   `kae pin` and `kae pin <tool> <account>` also run a pin-level pass **before**
   materializing while the delete sweep still runs **after** the new binding
   (`docs/ADAPTERS.md` § Per-directory credential store is normative for all of it).
-  Two traps that outlive the specific code. Harvesting is not deleting — they belong on
-  opposite sides of the write, so do not "simplify" them into one pass. And a
+  **A `-s` ↔ `-i` toggle is no longer one of those cases and naming it as one is how
+  this passage read until 2026-08-08** — since the per-account credential store, both
+  modes read the *account's* store, so a toggle moves the sessions and leaves the
+  credential exactly where it was (measured; `TestRunPinModeToggleRemovesTheOldModesItem`
+  says the same in its body). What a toggle can still strand is the per-directory
+  credential a binding from **before** the split left in the store it moves off, which
+  is what makes a re-pin a migration.
+  **One of these sites is not a chokepoint kae controls at all — `kae relogin`'s flow,
+  where the write that replaces the copy is the *tool's*.** A pass placed after it sees
+  only what the login wrote, never what the login destroyed, so "capture the result
+  back" is not the same requirement as "keep what was there" and that command harvests
+  on both sides. Two things make it worth remembering rather than deriving: the copy at
+  risk is the **account's**, so it can be a login the acting directory's binding says
+  nothing about; and this command is what every bound-credential refusal names as its
+  remedy, so following kae's own advice is what destroyed it (measured 2026-08-08, end
+  to end).
+  **And the chokepoint's refusal is not free either: for the account's own credential
+  store it now skips the write rather than overwriting.** That store is read by every
+  directory bound to the account, so a bind is not entitled to spend it, and the refusal
+  is reachable whenever nothing can say whose the copy is — which made "bind a second
+  worktree to an account you are using" a logout of both, measured 2026-08-08.
+  **Who can say is not the directory being bound**, and reading its cache as evidence
+  about the account's store is the same defect one level up: a shared bind's config dir
+  belongs to the pin-id, so it still carries the *previous* binding's label, and a re-bind
+  between two accounts read that as `Conflicting` — the arm that overwrites — about a store
+  the label says nothing about. The evidence is the directories **currently reading that
+  store**, read from the fragments before a bind rewrites them; so a first bind with a
+  sibling reader that agrees now harvests and writes, and only a store with no reader at
+  all is kept. **`Conflicting` needs the acting directory to be one of the readers that
+  disagree** — the first version of this took a majority of the readers, and a sibling that
+  had been logged in as somebody else then let an unrelated first bind destroy the only copy
+  of that login, which is the same defect one level in. Two corollaries that are easy to
+  miss: the delete path erases its own
+  evidence (`unpin --purge` may only delete once nothing points at the store, which is
+  exactly when no reader is left to attribute it), so a caller that has just torn a binding
+  down has to say so; and a reader is not an independent observer, because a bind writes
+  kae's own label into it. `docs/ADAPTERS.md` § Per-directory credential store is normative
+  for the condition; three things about it are easy to get wrong. It is keyed on the
+  *attribution* refusal alone (`Unattributed`) — marking every refusal from
+  `dirIdentityConfirms` also caught the `Conflicting` one, which must still overwrite, so
+  a re-bind silently did not switch. **Nothing of kae's is written when the copy is kept**,
+  and the label is the half that matters: an intermediate version wrote it, and kae's own
+  label is exactly what a later bind's attribution reads — so `kae pin` again confirmed
+  against a cache kae had planted and harvested the copy the first bind refused, filing
+  another account's token under this one's name (measured). Skipping it restores the rule
+  the rest of that function states, that the identity follows a *successful* credential
+  write. **A keep must also retract a label it can show is stale** — not writing one is only
+  half of it. Leaving the previous binding's label behind is how a keep destroys what it
+  kept: the next run's fragment names the new account, so the directory is one of the store's
+  readers and that label is its only reading. What separates a stale label from a live one is
+  the **mode** — a shared config dir is one per pin×tool, an isolated one and the globally
+  isolated home are keyed by the account, so a disagreement in *those* is a login as somebody
+  else and deleting it destroys the only record of whose the credential is. Two other
+  derivations were tried and both destroyed a login (the label alone; witness membership,
+  which reads every directory as a stranger when the walk is incomplete). What it costs is that the acceptance block must seed the cache the **tool** would
+  have written wherever it expects a harvest, which is the honest fixture anyway. And the
+  pass words its consequence as *leaving it where it is* rather than predicting the write:
+  keyed on its own store's dirs it said "this bind replaces it" about a copy nothing
+  replaced, and that wording survived the entire suite until an assertion existed.
+  Two more traps that outlive the specific code. Harvesting is not deleting — they belong
+  on opposite sides of the write, so do not "simplify" them into one pass. And a
   suppression that keeps two speakers from repeating each other must be keyed on **what
   was actually reported**, not on which store *kind* a pass would have looked at: the
   second version silenced precisely the cases where the pass had nothing to say, which

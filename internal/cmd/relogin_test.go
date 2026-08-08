@@ -740,3 +740,231 @@ func TestReloginRefusalDoesNotClaimAnOrderingItCannotMake(t *testing.T) {
 		}
 	}
 }
+
+// The login flow is a write kae does not perform, so the copy already in the store is
+// gone the moment the tool finishes — and since the credential split that copy belongs
+// to the *account*, not to this directory. `kae pin` declines to overwrite one it
+// cannot attribute in order to preserve it, and then names this command as the remedy;
+// following that remedy destroyed the copy the refusal had kept, with no warning and no
+// copy anywhere afterwards (measured 2026-08-08, end to end).
+//
+// So kae harvests before the flow, and says so when it could not. It may claim only
+// what it observed: the harvest's own reason, never that the copy is another account's,
+// which on this arm is exactly what kae could not establish.
+func TestReloginSaysWhatTheLoginFlowIsAboutToReplace(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+
+	// A sibling bound to the same account, which confirms — without it this directory
+	// would be the only reader that disagrees, which is the `Conflicting` arm that
+	// overwrites rather than the keep this test is about.
+	_, _, siblingCred := boundStoreForClaudeMain(t, app)
+	_, storeDir, credFile := boundStoreForClaudeMain(t, app)
+	// Positive control on the fixture itself: the two directories must be reading one
+	// copy, or the disagreement below is about a store nothing shares and the refusal
+	// under test is never reached.
+	if siblingCred != credFile {
+		t.Fatalf("the two bindings must share one account credential store: %s vs %s", siblingCred, credFile)
+	}
+
+	// Somebody ran the tool's own /login here as another account: the identity lands in
+	// this directory's config dir and the credential in the account's shared store.
+	const foreign = "sk-ant-oat01-SIDE-cccc"
+	writeFile(t, filepath.Join(storeDir, ".claude.json"), claudeIdentityFile("side-uuid"))
+	writeFile(t, credFile, claudeOAuthPayload(foreign, now.Add(8*time.Hour)))
+
+	withInteractive(t, loginInto(t, constants.ToolClaude, "sk-ant-oat01-MAIN-eeee", "main-uuid",
+		now.Add(9*time.Hour), &[]string{}))
+	code, stderr := captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	warned := strings.Index(stderr, "completing the login flow replaces it")
+	if warned < 0 {
+		t.Fatalf("the flow must not replace a copy kae could not keep without saying so: %q", stderr)
+	}
+	// Before the write it warns about, which for this one means before the flow is
+	// launched — a warning printed afterwards describes a loss that has already
+	// happened (AGENTS.md).
+	if launched := strings.Index(stderr, "complete the claude login flow"); launched < 0 || warned > launched {
+		t.Errorf("the warning must precede the flow (warned=%d launched=%d): %q", warned, launched, stderr)
+	}
+	if !strings.Contains(stderr, "disagree about whose login it is") {
+		t.Errorf("it must carry the harvest's own reason: %q", stderr)
+	}
+	// The ordered frame, which is the half the un-orderable test cannot pin. Here the
+	// harvest refused *past* the supersedes gate, so kae did establish the copy is newer
+	// and saying so is the most useful thing it knows. Without this assertion the flag
+	// that picks the frame can be tied to Conflicting — which is false for every
+	// unattributable refusal — and nothing fails (measured 2026-08-08).
+	if !strings.Contains(stderr, "is newer than snapshot claude/main") {
+		t.Errorf("kae established the ordering here, so the frame must carry it: %q", stderr)
+	}
+	// What kae did *not* establish, it may not say. On this arm the readers disagree,
+	// so kae has no verdict about whose the copy is.
+	if strings.Contains(stderr, "belongs to an account other than") {
+		t.Errorf("kae did not attribute this copy, so it must not name an owner: %q", stderr)
+	}
+	// The refusal is real: the foreign copy was not filed under this account either.
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, foreign) {
+		t.Fatalf("a copy kae could not attribute must not reach this snapshot: %s", got)
+	}
+
+	// Positive control, both directions: with the disagreement resolved the same
+	// fixture harvests silently, so the warning above is the refusal and not a line
+	// this path always prints.
+	writeFile(t, filepath.Join(storeDir, ".claude.json"), claudeIdentityFile("main-uuid"))
+	// Three distinct deadlines, in the order a real machine produces them: the copy in
+	// the store is later than what the first run's login left in the snapshot (or the
+	// harvest returns at its "nothing newer" arm and this control never reaches the
+	// attribution it is controlling for), and the login is later again. Dating the store
+	// copy *past* the login instead makes captureBackAfterRelogin short-circuit at
+	// `!supersedes` — a state no real login reaches, since deadlines advance — and this
+	// control would then pass while exercising it.
+	const kept = "sk-ant-oat01-KEPT-hhhh"
+	writeFile(t, credFile, claudeOAuthPayload(kept, now.Add(10*time.Hour)))
+	const last = "sk-ant-oat01-LAST-iiii"
+	withInteractive(t, loginInto(t, constants.ToolClaude, last, "main-uuid", now.Add(11*time.Hour), &[]string{}))
+	code, stderr = captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+	if strings.Contains(stderr, "completing the login flow replaces it") {
+		t.Errorf("an attributable copy is harvested, not warned about: %q", stderr)
+	}
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, last) {
+		t.Fatalf("the login is the newest copy here, so the capture back must have run: %s", got)
+	}
+	// Harvested rather than merely not-warned-about, and **before** the flow: the
+	// post-flow capture back would report the same line about the login's own copy, so
+	// only the ordering distinguishes the pass this test is about from the one that was
+	// already there. The snapshot cannot carry this assertion — by the time the command
+	// returns it holds what the login wrote, which supersedes both.
+	harvested := strings.Index(stderr, "harvested the newer claude credential")
+	launched := strings.Index(stderr, "complete the claude login flow")
+	if harvested < 0 || launched < 0 || harvested > launched {
+		t.Fatalf("the copy the flow replaces must be harvested before it (harvested=%d launched=%d): %q",
+			harvested, launched, stderr)
+	}
+}
+
+// A message may claim no more than kae observed, and this one's reason is sometimes
+// kae saying it **cannot order** the two copies. So the frame must not call the copy
+// newer: that contradicts the reason it interpolates, which is the fold
+// docs/CLI.md § `kae rollback --json` is normative against and which
+// captureBackAfterRelogin was corrected for once already.
+func TestReloginPreFlightDoesNotClaimAnOrderingItCannotMake(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, _, credFile := boundStoreForClaudeMain(t, app)
+
+	// Known (expiresAt present) but undated (a non-numeric value parses to the zero
+	// time) with the tokens intact, so it is not the measured tombstone: readLiveCredential
+	// classifies it liveUnreadable, which is the arm that cannot be ordered at all.
+	writeFile(t, credFile,
+		`{"claudeAiOauth":{"accessToken":"sk-ant-oat01-ODD-ffff","refreshToken":"rt-odd",`+
+			`"expiresAt":"soon","refreshTokenExpiresAt":1830384000000}}`)
+
+	withInteractive(t, loginInto(t, constants.ToolClaude, "sk-ant-oat01-NEW-gggg", "main-uuid",
+		now.Add(9*time.Hour), &[]string{}))
+	code, stderr := captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	// Positive control first: without it, a run that never reached this arm would pass
+	// the negative assertion below for free.
+	if !strings.Contains(stderr, "cannot read or date the copy already there") {
+		t.Fatalf("the fixture must reach the un-orderable arm: %q", stderr)
+	}
+	if !strings.Contains(stderr, "kae is not harvesting the claude credential already in") {
+		t.Errorf("the pre-flight must still say it did not keep the copy: %q", stderr)
+	}
+	if strings.Contains(stderr, "is newer than snapshot") {
+		t.Errorf("kae could not order these two copies, so it may not call one newer: %q", stderr)
+	}
+}
+
+// "kae could not look" and "there was nothing worth keeping" are the same output and
+// opposite facts, and the only thing the user can still do about the second — not
+// complete the flow — is available *before* it starts. So the pre-flight says so on
+// the routes where it cannot even read the snapshot to compare against, rather than
+// deferring to the post-flow report, which describes the loss after it happened.
+func TestReloginSaysWhenItCannotCheckWhatTheFlowWillReplace(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, _, credFile := boundStoreForClaudeMain(t, app)
+	// Something worth losing is in the store, so this is not the "nothing there" case.
+	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-ATRISK-jjjj", now.Add(8*time.Hour)))
+
+	// The binding still names claude/main; the snapshot it would compare against is gone
+	// (an `kae account rm` between the bind and the login). The fragment is what relogin
+	// reads, so the command still runs.
+	if err := os.RemoveAll(app.Paths.AccountDir(constants.ToolClaude, "main")); err != nil {
+		t.Fatalf("remove the snapshot: %v", err)
+	}
+
+	withInteractive(t, loginInto(t, constants.ToolClaude, "sk-ant-oat01-NEW-kkkk", "main-uuid",
+		now.Add(9*time.Hour), &[]string{}))
+	code, stderr := captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	said := strings.Index(stderr, "cannot tell what the login flow is about to replace")
+	if said < 0 {
+		t.Fatalf("a read kae could not make must be said before the flow, not left silent: %q", stderr)
+	}
+	if launched := strings.Index(stderr, "complete the claude login flow"); launched < 0 || said > launched {
+		t.Errorf("and before it (said=%d launched=%d): %q", said, launched, stderr)
+	}
+	// No remedy: kae genuinely has none here, and inventing one would send the user at a
+	// command that cannot help.
+	if strings.Contains(stderr, "kae pin claude") {
+		t.Errorf("kae has no remedy for a snapshot it could not read: %q", stderr)
+	}
+}
+
+// A new output path is a new place a secret can leak, and this one interpolates an
+// error from the secret backend. AGENTS.md requires a redaction test for each.
+func TestReloginPreFlightWarningsCarryNoSecret(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, storeDir, credFile := boundStoreForClaudeMain(t, app)
+
+	// One reader disagreeing, so the pre-flight reaches the refusal that names the
+	// store and a reason — the wordiest of the three lines.
+	const atRisk = "sk-ant-oat01-ATRISK-llll"
+	_, siblingStore, _ := boundStoreForClaudeMain(t, app)
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("side-uuid"))
+	writeFile(t, credFile, claudeOAuthPayload(atRisk, now.Add(8*time.Hour)))
+	_ = storeDir
+
+	const fresh = "sk-ant-oat01-FRESH-mmmm"
+	withInteractive(t, loginInto(t, constants.ToolClaude, fresh, "main-uuid", now.Add(9*time.Hour), &[]string{}))
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	// Positive control: the pre-flight really spoke, so the absences below are about
+	// a line that exists rather than about a run that printed nothing.
+	if !strings.Contains(stderr, "completing the login flow replaces it") {
+		t.Fatalf("the fixture must reach the pre-flight refusal: %q", stderr)
+	}
+	for _, secret := range []string{atRisk, fresh, mainToken} {
+		if strings.Contains(stderr, secret) || strings.Contains(out, secret) {
+			t.Errorf("a credential reached the output: %q / %q", stderr, out)
+		}
+	}
+}

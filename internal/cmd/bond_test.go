@@ -76,7 +76,7 @@ func TestPrepareBondSymlinksNonDenylist(t *testing.T) {
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
 
-	bondDir, err := app.prepareBond(context.Background(), testBackend(t, app), constants.ToolClaude, "main", pinID)
+	bondDir, err := app.prepareBond(context.Background(), testBackend(t, app), constants.ToolClaude, "main", pinID, false)
 	if err != nil {
 		t.Fatalf("prepareBond: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestPrepareBondKeepsIdentityPrivateUnderUserConfigDir(t *testing.T) {
 	var bondDir string
 	_, stderr = captureStderr(t, func() int {
 		dir, err := app.prepareBond(context.Background(), testBackend(t, app),
-			constants.ToolClaude, "main", paths.PinID(t.TempDir()))
+			constants.ToolClaude, "main", paths.PinID(t.TempDir()), false)
 		if err != nil {
 			t.Errorf("prepareBond: %v", err)
 			return 1
@@ -193,7 +193,7 @@ func TestPrepareBondRetractsLinkForDeniedEntry(t *testing.T) {
 		`{"claudeAiOauth":{"accessToken":"private"}}`)
 
 	if _, err := app.prepareBond(context.Background(), testBackend(t, app),
-		constants.ToolClaude, "main", pinID); err != nil {
+		constants.ToolClaude, "main", pinID, false); err != nil {
 		t.Fatalf("prepareBond: %v", err)
 	}
 
@@ -253,7 +253,7 @@ func TestPrepareBondRetractsLinkNoLongerInRealHome(t *testing.T) {
 	writeFile(t, filepath.Join(bondDir, "private-note.md"), "keep me\n")
 
 	if _, err := app.prepareBond(context.Background(), testBackend(t, app),
-		constants.ToolClaude, "main", pinID); err != nil {
+		constants.ToolClaude, "main", pinID, false); err != nil {
 		t.Fatalf("prepareBond: %v", err)
 	}
 
@@ -298,7 +298,7 @@ func TestPrepareBondKeepsLinksWhenRealHomeIsUnreadable(t *testing.T) {
 	be := testBackend(t, app)
 	pinID := paths.PinID(t.TempDir())
 
-	bondDir, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID)
+	bondDir, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID, false)
 	if err != nil {
 		t.Fatalf("first prepareBond: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestPrepareBondKeepsLinksWhenRealHomeIsUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID); err != nil {
+	if _, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID, false); err != nil {
 		t.Fatalf("second prepareBond: %v", err)
 	}
 
@@ -333,7 +333,7 @@ func TestPrepareBondKeepsLinksWhenRealHomeListsNothing(t *testing.T) {
 	be := testBackend(t, app)
 	pinID := paths.PinID(t.TempDir())
 
-	bondDir, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID)
+	bondDir, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID, false)
 	if err != nil {
 		t.Fatalf("first prepareBond: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestPrepareBondKeepsLinksWhenRealHomeListsNothing(t *testing.T) {
 	}
 
 	_, stderr := captureStderr(t, func() int {
-		if _, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID); err != nil {
+		if _, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID, false); err != nil {
 			t.Errorf("second prepareBond: %v", err)
 			return 1
 		}
@@ -415,7 +415,7 @@ func TestPrepareBondCredentialComesFromSnapshotNotLiveHome(t *testing.T) {
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
 
-	bondDir, err := app.prepareBond(context.Background(), testBackend(t, app), constants.ToolClaude, "main", pinID)
+	bondDir, err := app.prepareBond(context.Background(), testBackend(t, app), constants.ToolClaude, "main", pinID, false)
 	if err != nil {
 		t.Fatalf("prepareBond: %v", err)
 	}
@@ -446,11 +446,11 @@ func TestPrepareBondIdempotent(t *testing.T) {
 	pinID := paths.PinID(cwd)
 
 	// First run.
-	if _, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID); err != nil {
+	if _, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID, false); err != nil {
 		t.Fatalf("first prepareBond: %v", err)
 	}
 	// Second run must succeed without error.
-	bondDir, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID)
+	bondDir, err := app.prepareBond(context.Background(), be, constants.ToolClaude, "main", pinID, false)
 	if err != nil {
 		t.Fatalf("second prepareBond (idempotent): %v", err)
 	}
@@ -472,7 +472,7 @@ func TestPrepareBondFailsWhenAccountNotCaptured(t *testing.T) {
 	cwd := t.TempDir()
 	pinID := paths.PinID(cwd)
 
-	_, err := app.prepareBond(context.Background(), testBackend(t, app), constants.ToolClaude, "main", pinID)
+	_, err := app.prepareBond(context.Background(), testBackend(t, app), constants.ToolClaude, "main", pinID, false)
 	if err == nil {
 		t.Fatal("binding an uncaptured account must fail, not silently produce a credential-less bond")
 	}
@@ -510,7 +510,7 @@ func TestPrepareBondDarwinWritesPerDirKeychainItem(t *testing.T) {
 	fake := &runnertest.Fake{Code: 0}
 	runner.With(fake, func() {
 		if _, err := app.prepareBond(context.Background(), testBackend(t, app),
-			constants.ToolClaude, "main", pinID); err != nil {
+			constants.ToolClaude, "main", pinID, false); err != nil {
 			t.Fatalf("prepareBond: %v", err)
 		}
 	})
@@ -546,7 +546,7 @@ func TestPrepareBondDarwinKeychainWriteFailureIsNotDowngraded(t *testing.T) {
 
 	runner.With(&runnertest.Fake{Stderr: "keychain is locked", Code: 1}, func() {
 		if _, err := app.prepareBond(context.Background(), testBackend(t, app),
-			constants.ToolClaude, "main", pinID); err == nil {
+			constants.ToolClaude, "main", pinID, false); err == nil {
 			t.Fatal("a failed keychain write must be reported, not downgraded to a file write")
 		}
 	})

@@ -136,7 +136,20 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// child process runs during a bind — which is the one case both caches warn against.
 	ctx = keychain.WithReadCache(secret.WithReadCache(ctx))
 	be = secret.Cached(be)
-	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets, paths.PinID(absDir))
+	// Read before anything replaces it: the binding being replaced is the only thing
+	// that can name the account a *shared* store's credential belongs to (storeAccount),
+	// which both harvests below need — and it is what tells a keep whether the label in the
+	// directory it is materializing is this store's or a previous binding's. An unreadable
+	// one degrades to "unattributable", which the sweep reports and acts on by keeping the
+	// credential.
+	// The error is kept, not dropped: a fragment that exists and cannot be read means kae has
+	// established **nothing** about what this directory was bound to, and saying otherwise
+	// makes the keep retract a live label on the strength of an emptiness that is only the
+	// read failing (measured 2026-08-08). `readFragmentAt` returns an error for anything that
+	// is not "absent", and absent is a genuine answer.
+	prevBinding, _, prevErr := readDirFragment()
+	prevKnown := prevErr == nil
+	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets, paths.PinID(absDir), prevBinding, prevKnown)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -144,17 +157,23 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err != nil {
 		return finish(opts, err)
 	}
-	// Read before anything replaces it: the binding being replaced is the only thing
-	// that can name the account a *shared* store's credential belongs to
-	// (storeAccount), which both harvests below need. An unreadable one degrades to
-	// "unattributable", which the sweep reports and acts on by keeping the credential.
-	prevBinding, _, _ := readDirFragment()
-	// Before the stores are written, not after: a mode toggle or an isolated re-bind
-	// builds a *different* store from the account snapshot, so the copy the tool
+
+	// Before the stores are written, not after: a re-bind to another account builds a
+	// *different* credential store from the account snapshot — as does a mode toggle for a
+	// binding that predates the per-account store — so the copy the tool
 	// refreshed in the old one has to be harvested first or the directory ends up
 	// bound to a credential rotation has already invalidated. Deleting still happens
 	// last (pruneDirCredentials).
-	app.harvestSupersededDirCredentials(ctx, be, paths.PinID(absDir), absDir, "", prevBinding)
+	// Where each tool's credential is about to be written, taken from the plan rather than
+	// recomposed: it is what tells a refusal whether the store it reports is replaced or
+	// merely left behind.
+	next := map[string]bindDirs{}
+	for _, e := range entries {
+		if e.Warning == "" {
+			next[e.Tool] = bindDirs{Config: e.Dir, Cred: e.CredDir}
+		}
+	}
+	app.harvestSupersededDirCredentials(ctx, be, paths.PinID(absDir), absDir, "", prevBinding, next)
 	if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
 		return finish(opts, err)
 	}
@@ -169,8 +188,10 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	}
 	// The binding is in place, so any store this directory used before and does not
 	// use now is unreachable: a mode toggle moves every tool to the other
-	// mechanism's dir, and an isolated re-pin to another account re-keys it. Their
-	// keychain items would otherwise hold a credential nothing points at.
+	// mechanism's config dir, and a re-pin to another account re-keys the credential
+	// store. Their keychain items would otherwise hold a credential nothing points at —
+	// which after the per-account split means a **pre-split** binding's item for the
+	// toggle, and the previous account's for the re-key.
 	// purging=false: this sweep is housekeeping after a re-bind, so a store whose
 	// account no longer exists keeps its credential rather than having it deleted by a
 	// command the user ran to *bind* something (harvestBeforeDelete).

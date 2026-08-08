@@ -787,26 +787,63 @@ say "the store", read it as whichever of the two that tool resolves:
   **not a closed set**, and each is named where it lives rather than counted here.
   Here, for the store being written. Once per bound directory before any store is
   materialized, over *every* store that directory has, which is what covers a binding
-  that moves to a **different** store: a `-s` ↔ `-i` toggle, an isolated re-bind, and
-  the shared-mode re-bind whose one store holds the *previous* account's credential.
+  whose credential moves to a **different** store: a re-bind to another account, in
+  either mode — the isolated one, and the shared one whose single store holds the
+  *previous* account's credential. A `-s` ↔ `-i` toggle for the **same** account is not
+  such a case and was listed here as one until 2026-08-08: since the per-account
+  credential store both modes name that account's store, so the toggle moves the
+  sessions and leaves the credential where it is. The pass still has to walk that
+  directory's other stores, because a binding from **before** the split left its
+  credential in the config store it is moving off, and reaching that is what makes a
+  re-pin a migration rather than a leak.
   Once more for a **globally isolated home** that predates the per-account credential
   store, which has no bound directory and therefore no pass of its own
   (`migratePreSplitHome`; see § Per-account credential store for why its migration is
   silent where a bound directory's is prompted). And in the superseded-credential
-  sweep, where a delete is final (docs/CLI.md § kae pin, docs/DATA-MODEL.md);
+  sweep, where a delete is final (docs/CLI.md § kae pin, docs/DATA-MODEL.md).
+  And on **both** sides of `kae relogin`'s flow, which is the one site where the write
+  that replaces the copy is the *tool's* rather than kae's: the pass after it can only
+  see what the login wrote, so a pass before it is what gives the copy the login is
+  about to replace any chance at all, and where that pass refuses it says so before the
+  flow starts (docs/CLI.md § kae relogin Semantics);
 - and it **refuses rather than guesses**, in every one of these places. An unusable
   copy is not harvested — the tombstone a failed refresh leaves behind is a
   fully-formed payload, so presence proves nothing. A copy kae cannot *attribute* is
-  not harvested: the identity cache beside the credential must be readable, inside
-  that store, and name the account being harvested into, and **absence is not
+  not harvested, and **which identity cache answers that depends on whose the store is**.
+  For a per-directory store the credential and the cache sit in one directory, so that
+  directory's cache is evidence about it. For the account's own credential store they are
+  different objects — the store is the account's, the cache is the directory's — and the
+  evidence is the caches of the directories **currently reading that store**: every bound
+  directory whose fragment names it (read before a bind rewrites it, so a directory being
+  re-bound to another account is not yet one of them) plus every globally isolated home of
+  that account on disk. They confirm only if every reader that can speak names the account
+  being harvested into; if they disagree the copy is kept, deliberately *not* reported as a
+  conflict, because a live login's owner is not one bind's decision and nothing backs it up.
+  A copy every reader says is **another** account's may be replaced — but only where the
+  directory the operation acts for is itself one of those readers. A sibling's disagreement
+  is evidence that the copy is somebody's live login, not a licence for an unrelated bind to
+  spend it, and a majority of one is no different from a majority: without that condition a
+  brand-new directory's first bind destroyed the only copy of a sibling's login.
+  A caller that has just torn a binding down says so, because otherwise the delete path
+  erases its own evidence — `kae unpin --purge` may only delete once nothing points at the
+  store, which is the moment there is no reader left to confirm the copy it is about to
+  destroy. What a reader is **not** is an independent observer: a bind writes the account's
+  recorded identity into that directory's store, so a reader whose tool has never run there
+  agrees with a label kae planted ([ROADMAP.md](ROADMAP.md) § Attribution reads a label kae
+  may have written itself).
+  Whichever cache answers, **absence is not
   agreement** — no recorded identity, no live cache, an unreadable one, one that is
   well-formed JSON but not an account record (`null`, a string, a number, an array:
   it names no account, so neither a difference from it nor a match with it is
   evidence, and the rule applies to the **recorded** side as much as the live one), a
   path kae
   could not resolve, or a target that resolves outside the store (a pre-v0.16.0 bind
-  linked it to the real home, so it labels *that*) all refuse. This matters most for a `-s` store, which is shared
-  by every account the directory ever bound: its credential can legitimately belong
+  linked it to the real home, so it labels *that*) all refuse. With one reader its own
+  reason is the refusal's reason; summarising them all as "no cache to compare" claimed
+  something kae had not observed about a reader whose cache was there and unreadable.
+  This matters most for a store that is shared —
+  by every account a `-s` directory ever bound, and by every directory bound to one
+  account: its credential can legitimately belong
   to another account, and filing that under this one's name is undetectable
   afterwards — the token is opaque, so live, snapshot and doctor would all agree on a
   label that is simply wrong. That attribution answer has a **second reader**:
@@ -816,6 +853,66 @@ say "the store", read it as whichever of the two that tool resolves:
   doctor may report cannot drift apart; and doctor reports **only** that branch,
   because every other refusal above is missing evidence and would fire on healthy
   directories;
+- and **where refusing to harvest would otherwise mean destroying, the write is skipped
+  instead.** A refusal leaves the newer copy where it is — the write does not proceed
+  with the older snapshot — on exactly one condition: the refusal is the *attribution*
+  one (kae read a usable, newer copy and could not establish whose it is) **and** the
+  store being written is the account's own credential store. That store is read by every
+  directory bound to the account, so overwriting it is not the binding directory's call,
+  and under single-use rotation it ends the login everywhere. Reachable on **every first
+  bind**, because the config dir attribution reads is created moments earlier and a shared
+  bind links no identity cache into it; measured 2026-08-08, where binding a second
+  worktree to an account in daily use destroyed the only copy that could still refresh.
+  Every refusal other than the attribution one still overwrites, deliberately — stated as
+  the condition rather than as a count, since a new reason would otherwise become an
+  uncounted third: a `Conflicting` copy is provably another account's, so this account's
+  credential is elsewhere and the bind must take effect; and a payload kae can neither read
+  nor date keeps the older behaviour because keeping it would leave a corrupted store
+  unrepairable by `kae pin`
+  ([ROADMAP.md](ROADMAP.md) owns that trade-off). Nothing of kae's is written for that artifact when the copy is kept — not the credential,
+  not the stale-file sweep, and **not the identity label**, which is the half that had to be
+  measured: kae's own label is the evidence a later bind's attribution reads, so writing it
+  let the next `kae pin` confirm against a cache kae had planted and harvest the very copy
+  the first bind refused (measured 2026-08-08 — another account's token filed under this
+  one's name). Absence is the honest record, and the next cache in that directory is the
+  tool's own. **A keep also retracts a label it can show is stale**, and that is not the
+  same statement as "writes nothing": leaving one there is the way a keep destroys what it
+  kept — the next run's fragment names the new account, so the directory is one of the
+  store's readers, its stale label is its only reading, and `Conflicting` overwrites the
+  copy the first run preserved (two identical `kae pin` calls, measured 2026-08-08). What
+  makes a label stale is the **mode**, not the reader set: a shared config dir is one per
+  pin×tool, so a change of account leaves kae's own label from the previous one; an
+  account-keyed dir (isolated, and the globally isolated home) only ever held labels
+  written while bound to that account, so a disagreement there is a live login and
+  retracting it deletes the only record of whose the credential is. Among stale ones, only
+  a label that *disagrees* goes: one that agrees is evidence, and one kae cannot read is
+  left for the same reason an unreadable credential is. The pin-level pass says *leaving it where it is* only where that is
+  true — when the write will keep, or when the store it is talking about is not the one the
+  write touches at all (a pre-split store, whose copy the write leaves alone because it
+  writes to the account's store instead). Where the write does replace, it still says so: a
+  message that implies a copy survived when kae could not back it up is the thing AGENTS.md
+  forbids, and one fixed string broke it in the unreadable arm.
+  A kept copy is not stranded: once the tool has run there, attribution has honest evidence
+  and the next bind harvests it — **unless the readers disagree**, which no bind resolves
+  and `kae relogin` in the drifted directory does, at a price the command now states
+  rather than implies: the login replaces whatever is in the store, and the copy the
+  disagreement is about is precisely the one kae could not keep, so relogin harvests
+  before the flow and warns where it could not (measured 2026-08-08 — following that
+  remedy left the other account's only refreshable copy in no store and no snapshot)
+  — and the last binding's `kae unpin
+  --purge` harvests before it deletes — measured 2026-08-08, end to end, keep → purge a sibling (kept, with the
+  refcount named) → purge the last one (harvested into the snapshot, then removed);
+- the pair kae holds to: never file a copy it cannot attribute under an account, and never
+  destroy one either. Both directions were reachable while attribution for the account's
+  shared store read the *directory's* identity cache — since the split that is evidence
+  about a different object. In shared mode the cache carries the **previous** binding's
+  label, so a re-bind between two accounts read `Conflicting` (the arm that overwrites)
+  about a store the label says nothing about and destroyed a live credential; and a cache
+  that legitimately named this account confirmed a copy another directory had poisoned.
+  Reading the *readers* instead closes both, and the residue is stated where it belongs
+  rather than as a caveat on the pair: a reader kae labelled itself
+  ([ROADMAP.md](ROADMAP.md) § Attribution reads a label kae may have written itself) and a
+  bound directory that was **moved** (§ A moved bound directory);
 - the snapshot's payload **shape** must match the artifact being written.
   `KindFile` and `KindKeychain` hold a whole document, `KindJSONPointer` holds only
   the value under its pointer, and the two are not interchangeable: applying a

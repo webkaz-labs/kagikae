@@ -212,12 +212,13 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   state is backed up (`reason: "run"`), the target accounts applied, and after
   the child exits kae **re-resolves each tool's credential store**, then
   **recaptures refreshed credentials into the account snapshots** and restores the
-  previous live state. The re-resolution matters because the child can move the
-  credential to the tool's other store (codex under
-  `cli_auth_credentials_store = "auto"` creates its keychain item and deletes
-  `auth.json` on its first save); reading the pre-run store instead would report
-  the tool as logged out and restore into a file nothing reads. (This is the former
-  `auth` mode.)
+  previous live state. What the re-resolution buys is visible from the command
+  line: without it a child that moved its credential to the tool's other store
+  leaves kae reading the one the tool abandoned, so `kae run` reports the tool
+  logged out and restores into a file nothing reads.
+  [ARCHITECTURE.md](ARCHITECTURE.md) § Run Transaction owns which upstream behaviour makes
+  that reachable and what the restore then reconciles. (This is the former `auth`
+  mode.)
   That recapture applies **the same two guards a shared switch applies to its own**
   (above), and no third: a child that logged in as another account, or one that changed
   the identity cache to something kae cannot read as a record, leaves the snapshot alone
@@ -504,9 +505,11 @@ moved out of its store. A file credential still sitting in a per-directory store
 `unpin` keeps is not swept in either mode — see the two-case file rule below — and it needs
 no escape, because a path the user can name is one the user can delete.
 
-Both commands sweep a **superseded per-directory credential**: a `-s` ↔ `-i`
-toggle moves every tool to the other mechanism's store and an isolated re-bind
-re-keys the store by account, so the store the directory used before is
+Both commands sweep a **superseded per-directory credential**: a re-bind to another
+account re-keys the credential store, and a `-s` ↔ `-i` toggle moves every tool to the
+other mechanism's config store — which since the per-account credential store leaves that
+account's credential where it is, but still moves the directory off a store a **pre-split**
+binding left a credential in. Either way the store the directory used before is
 unreachable, and its credential would otherwise be one nothing points at. A
 keychain item is the case that is easiest to miss, and the common one: it lives
 under a per-directory service name that appears nowhere in kae's data dir, and no
@@ -625,9 +628,32 @@ kae keeps a credential because bindings still use it, it prints how many.
   the copy that is there, compares `expiresAt`, copies the newer one into the account
   snapshot — reporting `kae: harvested …` on stderr — and then writes that.
 
+  When it declines a copy it could not **attribute** in the account's own credential
+  store, the bind leaves that copy in place instead of writing the snapshot over it, and
+  says so — every directory bound to the account reads that one copy, so a bind is not
+  entitled to replace it on missing evidence. The binding is still written and the exit code
+  is still `0`; nothing else of kae's is, for that artifact: no credential, no superseded
+  plaintext copy removed, and no identity label (which is what a later bind would otherwise
+  attribute against) — and where the bind is moving this directory to a *different* account,
+  the label the previous binding left is **removed**, so the tool shows no cached account
+  there until it runs. That is the honest record rather than a fault: leaving it is how a
+  keep destroys what it kept, because the next run reads it as this directory's own reading
+  of the new account's store. A directory bound in isolated mode keeps its label, which
+  belongs to the account that dir is keyed by.
+  Whose the copy is, is answered by the directories **currently reading
+  that store** — so binding a second directory to an account you are already using is not a
+  refusal at all: the sibling agrees, and the bind harvests the copy and writes it back. The
+  refusal is for a store nothing reads yet, and for readers that disagree with each other. A
+  remedy is named only where the pin-level pass reported that store, because only it knows
+  the bound directory a login would have to happen in; where nothing reads the store there
+  is no such directory and the message is the fact alone. A copy that **every** reader says
+  is another account's is still replaced, since this account's credential is elsewhere and
+  the bind has to take effect.
+
   It covers **every store the bound directory has, not only the one being written** —
-  which is what a `-s` ↔ `-i` toggle and an isolated re-key need, since those bind the
-  directory to a *different* store — and it **refuses rather than guesses**: an
+  which is what a re-bind to another account needs, since that binds the directory to a
+  *different* credential store, and what reaches the credential a pre-split binding left
+  in a config store a mode toggle moves off — and it **refuses rather than guesses**: an
   unusable copy is never harvested, and neither is one kae cannot attribute to the
   account it would be filed under. [ADAPTERS.md](ADAPTERS.md) § Per-directory
   credential store is normative for the mechanism and the full list of refusals; what
@@ -782,6 +808,21 @@ Contract:
 
   Exit stays `0` in all of them: the login flow ran, and only `auth_unchanged` above
   is a refusal.
+- **A harvest runs before the flow as well, and that is the one with something to
+  lose.** The login is a write kae does not perform, so whatever the store held is
+  gone the moment the tool finishes; the capture back can only ever see what the login
+  wrote. Since the credential split that copy belongs to the **account**, read by every
+  directory bound to it, so it can be a login this directory's binding says nothing
+  about — the ordinary way there is the tool's own `/login` run inside a bound
+  directory as another account, which is also the state `kae pin` declines to overwrite
+  in order to preserve while naming *this* command as the remedy. Same guards as the
+  capture back, so it is silent whenever the snapshot already holds something at least
+  as new. When it cannot keep the copy it says so on stderr **before the flow is
+  launched**, carrying the harvest's own reason and that completing the login replaces
+  it; it may not say whose the copy is, which on the arm that matters is exactly what
+  kae could not establish. It does not refuse — the login is what was asked for, and
+  declining it would leave the directory stale with nothing to do about it — so the
+  exit code is unaffected.
 - The capture back is `harvestDirCredential` with every guard it already has: it
   declines a copy that does not supersede the snapshot, and one it cannot attribute
   to this account. It runs whatever the comparison said — a flow kae could not
@@ -1433,9 +1474,13 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   apart offline — the token is opaque — and they point opposite ways: something
   logged in there as another account (so that directory is *running* an account its
   binding does not name), or kae could not apply the identity when it bound the
-  directory (so only the label is wrong). Remedy `cd <dir> && kae pin <tool>
-  <account>` makes the binding true again and replaces what is in the store; keeping
-  what is there means binding the directory to that account instead. Unlike the
+  directory (so only the label is wrong). Remedy `cd <dir> && kae relogin <tool>`,
+  which repairs both causes; keeping what is there means binding the directory to that
+  account instead. It named `kae pin` until 2026-08-08, and that is a **no-op in the state
+  this check reports most often**: the credential store is the account's, so while a
+  sibling directory still confirms the account the readers disagree, the bind keeps the
+  copy, and a bind that keeps writes no identity label either — the finding then repeats
+  unchanged after the remedy the user was given. Unlike the
   other bound-directory checks this one **needs the secret backend**, to read the
   account's recorded identity, so an unavailable backend skips it while the bound
   credential checks still run.

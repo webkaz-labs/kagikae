@@ -303,7 +303,10 @@ func (app *App) prepareGlobalIsolatedHome(ctx context.Context, be secret.Backend
 	// split still holds its own copy, and writing the snapshot over the account's
 	// store without harvesting that one first is a logout.
 	app.migratePreSplitHome(ctx, be, tool, account, home)
-	err := app.writeDirCredential(ctx, be, tool, account, home)
+	// Never a stale label: this home is keyed by the account, so anything in it was written
+	// while bound to that account and a disagreement is a live login (modeLabelStale states
+	// the same rule for the isolated bind mode).
+	err := app.writeDirCredential(ctx, be, tool, account, home, false)
 	if err != nil && fromProfile && warnUnisolatableCredential(err, tool, account) {
 		err = nil
 	}

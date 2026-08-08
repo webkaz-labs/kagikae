@@ -156,37 +156,25 @@ gives a fresh-process `AUTH-OK`. That half still holds.
 
 **Amended by real-machine validation (2026-07-29, Claude Code 2.1.220):** the
 *self-heal* half does not hold **unconditionally**. It is real but TTL-gated, and
-two behaviours together make the cache effectively never stale:
+the gate is long enough relative to how often a credential in daily use refreshes
+that the cache is effectively never stale — so a switched token leaves the
+previous account's `emailAddress` in place indefinitely, and kae's switch of
+`/oauthAccount` is what makes the identity correct *immediately*.
 
-- on startup the profile refetch is skipped while `oauthAccount.profileFetchedAt`
-  is under **24h** old (and the cached object has its billing/onboarding fields);
-  past the TTL, or with an incomplete cache, claude *does* fetch the profile with
-  the live access token and write `emailAddress` + `profileFetchedAt`;
-- a **token refresh** renews `profileFetchedAt` and the org/plan fields but
-  does **not** rewrite `accountUuid` / `emailAddress`;
-- `claude /login`, by contrast, rewrites `accountUuid` / `emailAddress` /
-  `organizationUuid` unconditionally — no TTL guards that path.
+What that looked like on the machine, which is the part this document is for:
+`kae` had switched the login while Claude Code kept displaying — and reporting to
+`kae add` — the old account. The keychain token resolved to account A via
+`api.anthropic.com/api/oauth/profile` while `~/.claude.json` still named account
+B, with `profileFetchedAt` refreshed the same day.
 
-A credential in daily use refreshes well inside 24h, so a switched token leaves
-the previous account's `emailAddress` in place indefinitely: `kae` had switched
-the login while Claude Code kept displaying — and reporting to `kae add` — the
-old account. Measured live: keychain token resolved to account A via
-`api.anthropic.com/api/oauth/profile` while `~/.claude.json` still named
-account B, `profileFetchedAt` refreshed the same day.
-
-Two things follow from the TTL being real, and both matter more than the
-"effectively never" summary:
-
-- **A switched identity's lifetime is its snapshot's.** kae writes back the
-  `profileFetchedAt` that was live at capture time, so a snapshot older than 24h
-  makes claude refetch on its next start and fix the email itself. kae's switch is
-  what makes the identity correct *immediately*.
-- **The payload is therefore not comparable byte for byte.** A refetch rewrites
-  `profileFetchedAt` and the plan fields under kae's feet, so any "is the live
-  identity still what kae applied?" check must compare only the identifying keys
-  (`IdentityKeys` on the artifact spec: `accountUuid`, `emailAddress`,
-  `organizationUuid`). Comparing whole payloads warned about correctly switched
-  accounts a day later and pointed the user at a re-apply that could not help.
+**Which write renews which field, and the two consequences that follow** — that a
+switched identity's lifetime is its snapshot's, and that the payload is comparable
+on the identifying keys only and never byte for byte — are normative in
+[ADAPTERS.md](ADAPTERS.md) § claude, beside the switched/preserved allowlist the
+code has to match. They were restated here in full until 2026-08-08, which is two
+copies of one upstream measurement in a repository that has been bitten by exactly
+that; this section keeps the finding and the design decision, and that one keeps
+the rules.
 
 Therefore the design is: **the token stays claude's sole auth artifact, and
 `/oauthAccount` is switched alongside it as a second, identity-only artifact**

@@ -1605,7 +1605,8 @@ human (text) report only; `--json` still emits the report shown above.
       "id": "20260611T012345Z",
       "created_at": "2026-06-11T01:23:45Z",
       "reason": "switch",
-      "tools": ["claude", "codex"]
+      "tools": ["claude", "codex"],
+      "bound_store": false
     }
   ]
 }
@@ -1636,7 +1637,19 @@ records this and for why it is recorded rather than derived.
 }
 ```
 
-`restored` counts the backup's own records. Rollback restores **global** live
+`restored` counts the backup's own records.
+
+**Both rules below are for a backup that recorded the tool's global store, which is every
+one except a `bound_store` backup** (`kae backup list --json` exposes the field;
+[DATA-MODEL.md](DATA-MODEL.md) § Backups says why it may not be derived from `reason`).
+Restoring one of those puts a single bound directory's store back and does nothing global:
+no active pointer is moved, the real home's identity cache is not touched, and kae says
+nothing about how the recorded copy orders against any account — all three would rest on
+`active_before`, which for such a backup names only whichever account happened to be
+globally active when that copy was preserved, and the reason it was preserved is that kae
+could not attribute it.
+
+Rollback restores **global** live
 state, so it ignores a kae-managed isolation env var the way `use` and `add` do:
 recorded artifacts carry absolute targets, but the pre-rollback backup and the
 cleanup of an artifact the backup never recorded resolve today's adapter specs,

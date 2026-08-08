@@ -1485,3 +1485,52 @@ func mustListBackups(t *testing.T, app *App) []backup.Meta {
 	}
 	return metas
 }
+
+// The sibling of TestReloginRefusalsDoNotPileUpPreservedCopies, one exit code over. That
+// test's loop only ever reached the exit-0 path, so the prune guard it kills was live on
+// that path alone — and the path that matters is the other one: `auth_unchanged` **is** the
+// aborted or failed login flow, which is the case a user repeats. Measured at
+// `backup_keep = 1`: five aborted runs left five full credential copies with nothing able
+// to remove them.
+func TestReloginAbortedFlowsDoNotPileUpPreservedCopies(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	app.Config.Security.BackupKeep = 2
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+
+	_, siblingStore, credFile := boundStoreForClaudeMain(t, app)
+	_, _, _ = boundStoreForClaudeMain(t, app)
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("zeta-uuid"))
+	// The aborted flow: the tool exits non-zero and writes nothing, so the store is
+	// unchanged and kae answers auth_unchanged.
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) { return 1, nil })
+
+	const runs = 6
+	for i := range runs {
+		writeFile(t, credFile, claudeOAuthPayload(fmt.Sprintf("sk-ant-oat01-AT-RISK-%d", i),
+			now.Add(time.Duration(8+i)*time.Hour)))
+		code, stderr := captureStderr(t, func() int {
+			return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+		})
+		// Positive control on the fixture: this must be the aborted path, or the test is a
+		// duplicate of the exit-0 one it exists to complement.
+		if code != constants.ExitAuthUnchanged {
+			t.Fatalf("run %d: exit %d, want auth_unchanged: %s", i, code, stderr)
+		}
+	}
+
+	preserved := 0
+	for _, m := range mustListBackups(t, app) {
+		if m.Reason == constants.BackupReasonReloginUnattributable {
+			preserved++
+		}
+	}
+	if preserved == 0 {
+		t.Fatalf("the refusal must still have taken backups across %d aborted runs", runs)
+	}
+	if preserved > app.Config.Security.BackupKeep {
+		t.Errorf("aborted flows must be bounded by backup_keep (%d), got %d of %d runs",
+			app.Config.Security.BackupKeep, preserved, runs)
+	}
+}

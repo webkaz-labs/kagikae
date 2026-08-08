@@ -19,6 +19,12 @@ type backupItem struct {
 	CreatedAt string   `json:"created_at"`
 	Reason    string   `json:"reason"`
 	Tools     []string `json:"tools"`
+	// BoundStore is additive (absent = false, as on disk). It is exposed because the
+	// distinction is not derivable from `reason` — the pre-rollback backup of a
+	// bound-store rollback carries `rollback` — and it changes what `kae rollback --to`
+	// does: restore one directory's store, move no active pointer, say nothing about
+	// ordering. An agent reading only this list could not tell those apart.
+	BoundStore bool `json:"bound_store,omitempty"`
 }
 
 type backupListReport struct {
@@ -57,10 +63,11 @@ func runBackupList(_ context.Context, app *App, opts commonOpts) int {
 			tools = []string{}
 		}
 		report.Backups = append(report.Backups, backupItem{
-			ID:        meta.ID,
-			CreatedAt: meta.CreatedAt.UTC().Format(time.RFC3339),
-			Reason:    meta.Reason,
-			Tools:     tools,
+			ID:         meta.ID,
+			CreatedAt:  meta.CreatedAt.UTC().Format(time.RFC3339),
+			Reason:     meta.Reason,
+			Tools:      tools,
+			BoundStore: meta.BoundStore,
 		})
 	}
 	if opts.Format == formatJSON {

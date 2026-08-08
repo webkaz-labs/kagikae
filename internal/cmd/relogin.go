@@ -12,6 +12,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 // CmdRelogin drives a tool's own login flow into the store the current
@@ -138,6 +139,15 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// The last point at which the copy already in that store can be kept, because the
 	// write that replaces it is the *tool's* and kae never sees it.
 	app.preserveBeforeRelogin(ctx, be, preSpecs, tool, accountName, dirs)
+	// Pruned **here**, not at the end of the command, because this is the only point at
+	// which this command writes a backup — and two returns sit between here and the tail:
+	// a launch failure, and `auth_unchanged`, which *is* the aborted or failed login flow,
+	// the case a user repeats. With the prune at the tail those runs each left another full
+	// credential copy behind and nothing removed them (measured at `backup_keep = 1`: five
+	// aborted runs, five copies). Before the flow rather than deferred after it, so the
+	// context is still live: an interrupted login cancels it, and a prune that cannot run is
+	// the same accumulation by another route.
+	app.pruneBackups(ctx, be)
 
 	// Every variable the binding sets, not just the home one. The login writes the
 	// credential where the *credential* variable points, so exporting one half sends
@@ -268,12 +278,6 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// compare may still have left a copy worth harvesting, and the harvest's own guards
 	// are the ones that decide that. Only the wording depends on both answers.
 	attributed := app.captureBackAfterRelogin(ctx, be, specs, tool, accountName, dirs)
-	// This command can write a backup (the pre-flight refusal), so it prunes like every
-	// other path that does. Without it a directory whose copy kae cannot attribute left one
-	// more full credential in the secret store on every run and nothing ever removed them —
-	// `kae backup` has no delete verb, and a pin-only workflow runs no other backup-writing
-	// command. The bound itself is `backup.Prune`'s; this is only what invokes it.
-	app.pruneBackups(ctx, be)
 	if changed && attributed {
 		fmt.Printf("Logged %s in for %s/%s in this directory\n", tool, tool, accountName)
 	} else {
@@ -424,18 +428,18 @@ func boundToolList(fragment fragmentInfo) string {
 // account's, which on the arm that matters most is precisely what kae could not
 // establish.
 //
-// **What it does not do is back the copy up, and that is a decision rather than an
-// oversight** (docs/ROADMAP.md § A relogin's pre-flight refusal owes a backup it cannot
-// safely take yet). AGENTS.md's rule is that a refusal which cannot preserve is a
-// deletion and owes a backup, the way `kae run -s` answers its own with
-// `run-unattributable` — and by that rule this owes one. What stops it being a
-// ride-along is where a restore of such a backup would land: `createBackup` records the
-// spec it was handed, but `applyBackup` re-resolves today's specs **globally** and
-// `restoreSpec` prefers the live one whenever its `Kind` differs from the record's — so
-// a bound store's backup taken under one driver and restored under another writes into
-// the **real home**, which is a worse outcome than the loss it insures against. The
-// warning is the part that is safe today, and it reaches the user while the action that
-// prevents the loss — not completing the flow — is still available.
+// **It backs the copy up as well** (reason `relogin-unattributable`, the credential only),
+// because AGENTS.md's rule is that a refusal which cannot preserve is a deletion and owes
+// a backup, the way `kae run -s` answers its own with `run-unattributable`.
+//
+// This paragraph said the opposite for one commit, giving the hazard that blocked the
+// backup as a settled design decision — a restore of such a backup landing in the **real
+// home**, because `applyBackup` re-resolves specs globally and `restoreSpec` prefers the
+// live one on a `Kind` mismatch. That hazard is real and is what `fromBoundStore` now
+// gates; the stale paragraph outlived it by one commit and was a standing licence to
+// delete the backup below. docs/ROADMAP.md § A relogin's pre-flight refusal owes a backup
+// carries the struck-through entry and the constraint that still governs any *future*
+// bound-store backup.
 //
 // Every guard is harvestDirCredential's, unchanged, so this is silent in the ordinary
 // case: a store holding nothing newer than the snapshot returns preserved with no
@@ -499,12 +503,19 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 	// asked for and the thing dirIdentityConfirms would then read as evidence.
 	backupID := ""
 	if sp, ok := specByName(specs, artName); ok {
+		// A state read failure must not cost the backup. The only thing `st` supplies is
+		// `ActiveBefore`, and every consumer of a bound-store backup skips that field by
+		// construction (fromBoundStore) — so an empty one loses nothing, while refusing to
+		// back up would strand the copy over an unrelated file. `createBackup` dereferences
+		// `st`, so the fallback is a value rather than nil.
 		st, serr := app.loadState()
 		if serr != nil {
+			st = state.New()
 			fmt.Fprintf(os.Stderr,
-				"kae: warning: could not read kae's state to back up the %s credential the login flow "+
-					"replaces (%v)\n", tool, serr)
-		} else if meta, berr := app.createBackup(ctx, be,
+				"kae: warning: could not read kae's state (%v); the %s credential the login flow replaces "+
+					"is still backed up, without the record of which account was globally active\n", serr, tool)
+		}
+		if meta, berr := app.createBackup(ctx, be,
 			[]toolPlan{{Tool: tool, Account: accountName, Specs: []artifact.Spec{sp}}},
 			st, constants.BackupReasonReloginUnattributable, true); berr != nil {
 			fmt.Fprintf(os.Stderr,

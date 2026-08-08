@@ -156,9 +156,13 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   removes the evidence the switch-away recapture refuses on, so the next ordinary
   `kae use` filed one account's token under another's name. The property is now recorded on
   the backup (`bound_store`) rather than looked up from its reason, so it also survives
-  being copied into the pre-rollback backup of such a rollback. And `kae relogin` prunes
-  like every other backup-writing path: `backup.Prune` now bounds the preserved side on its
-  own, closing the retention hole that same comment had predicted before the path existed.
+  being copied into the pre-rollback backup of such a rollback. And `kae relogin` prunes at the one point
+  it writes a backup, which is before the flow rather than at the end of the command: two
+  returns sit in between — a launch failure and `auth_unchanged`, the latter being the
+  aborted login itself, the case a user repeats — so a prune at the tail left every aborted
+  run another copy behind. `backup.Prune` also bounds the preserved side on its own now,
+  closing the retention hole that function's own comment had predicted before the path
+  existed.
 
 - **`doctor` reports the copy that lost the race** (`credential_superseded`,
   contract-additive). When two copies of one account's credential exist and one

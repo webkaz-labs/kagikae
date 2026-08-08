@@ -422,14 +422,16 @@ func boundToolList(fragment fragmentInfo) string {
 // oversight** (docs/ROADMAP.md § A relogin's pre-flight refusal owes a backup it cannot
 // safely take yet). AGENTS.md's rule is that a refusal which cannot preserve is a
 // deletion and owes a backup, the way `kae run -s` answers its own with
-// `run-unattributable` — and by that rule this owes one. What stops it being a
-// ride-along is where a restore of such a backup would land: `createBackup` records the
-// spec it was handed, but `applyBackup` re-resolves today's specs **globally** and
-// `restoreSpec` prefers the live one whenever its `Kind` differs from the record's — so
-// a bound store's backup taken under one driver and restored under another writes into
-// the **real home**, which is a worse outcome than the loss it insures against. The
-// warning is the part that is safe today, and it reaches the user while the action that
-// prevents the loss — not completing the flow — is still available.
+// `run-unattributable` — and by that rule this owes one. It was built and withdrawn
+// before v0.17.0 shipped, so what stops it is now measured rather than predicted, and
+// **this paragraph used to predict it wrong**: the blocker is not where a restore of
+// such a backup would land — a recorded flag on the meta gated that in one predicate —
+// but that kae's backup subsystem rests on an unstated *a backup records the tool's
+// global live state*, which most of its consumers had encoded. Gating the restore path
+// alone was the first of four rounds' worth of defects, so read the withdrawal
+// paragraph in that ROADMAP section before rebuilding this. The warning is the part
+// that is safe today, and it reaches the user while the action that prevents the loss —
+// not completing the flow — is still available.
 //
 // Every guard is harvestDirCredential's, unchanged, so this is silent in the ordinary
 // case: a store holding nothing newer than the snapshot returns preserved with no

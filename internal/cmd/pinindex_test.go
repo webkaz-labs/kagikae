@@ -15,13 +15,21 @@ import (
 // captured) and returns the bound directory.
 func pinHere(t *testing.T, app *App, mode string) string {
 	t.Helper()
+	return pinHereAs(t, app, "main", mode)
+}
+
+// pinHereAs is pinHere for a fixture that needs a second directory bound to a
+// *different* profile — two directories reading two different accounts' credential
+// stores is the state the shared-store attribution turns on.
+func pinHereAs(t *testing.T, app *App, profile, mode string) string {
+	t.Helper()
 	chdirTemp(t)
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
 	code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", mode)
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, profile, mode)
 	})
 	mustExit(t, constants.ExitOK, code, out)
 	return cwd

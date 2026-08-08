@@ -487,7 +487,18 @@ func (app *App) harvestDirCredential(ctx context.Context, be secret.Backend, spe
 	if !supersedes(liveInfo, freshnessOf(tool, snapshot)) {
 		return snapshot, true, harvestRefusal{}
 	}
-	if refused := dirIdentityConfirms(ctx, be, specs, acc, dirs.Config); refused.Why != "" {
+	// Which evidence answers this depends on what the store is. For the account's own
+	// credential store, the readers are the evidence (sharedStoreAttribution); for a
+	// per-directory store the credential and the cache are in one directory, so that
+	// directory is. Asking the bound directory about a shared store is the defect
+	// docs/ROADMAP.md § Attribution for a shared store reads per-directory evidence records.
+	attribution := func() harvestRefusal {
+		if dirs.Cred != "" {
+			return app.sharedStoreAttribution(ctx, be, tool, dirs.Cred, acc)
+		}
+		return dirIdentityConfirms(ctx, be, specs, acc, dirs.Config)
+	}
+	if refused := attribution(); refused.Why != "" {
 		// Reported by the caller, not here. Two harvests can look at one store in a
 		// single command (the pin-level pass and this chokepoint), so printing at the
 		// point of detection said the same thing twice — measured, 2026-08-04 — and only
@@ -1460,6 +1471,143 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 		}
 	}
 	return refs, true
+}
+
+// credStoreWitnesses names the config dirs of everything currently reading the credential
+// in credDir for tool — the directories whose identity cache is evidence about *that copy*.
+//
+// It exists because the per-account store broke the assumption attribution used to rest on.
+// A per-directory store's credential and its identity cache sat in one directory, so the
+// cache beside the credential was evidence about it. Since the split the credential is the
+// account's and the cache is the directory's, and the two answer different questions: in
+// shared mode a directory's config dir belongs to its pin-id, so it still carries the
+// **previous** binding's label. Reading that as evidence about the new account's store is
+// how a re-bind between two accounts came to destroy a live credential (measured
+// 2026-08-08; docs/ROADMAP.md § Attribution for a shared store reads per-directory
+// evidence).
+//
+// Read from the fragments on disk, which during a bind still describe the **previous**
+// state — and that is the property that makes this correct rather than a coincidence. A
+// directory being re-bound to a different account is not yet a reader of the new account's
+// store, so its stale label is excluded without anyone having to pass the previous binding
+// down here. A re-pin to the same account is still a reader, so its cache still counts.
+//
+// complete is false when kae cannot enumerate them, which every caller must read as missing
+// evidence rather than as "nobody reads it".
+func (app *App) credStoreWitnesses(credDir, tool string) (configDirs []string, complete bool) {
+	if credDir == "" {
+		return nil, false
+	}
+	pins, ok, err := app.pinnedDirsComplete()
+	if err != nil || !ok {
+		return nil, false
+	}
+	for _, pin := range pins {
+		if !dirExists(pin.Dir) {
+			continue
+		}
+		fragment, exists, ferr := readFragmentAt(pin.Dir)
+		if ferr != nil {
+			return nil, false
+		}
+		if !exists || fragment.CredDirs[tool] != credDir {
+			continue // unpinned, or bound to some other account's credential
+		}
+		if store, bound := app.boundStoreDir(paths.PinID(pin.Dir), tool, fragment); bound {
+			configDirs = append(configDirs, store)
+		}
+	}
+	st, err := app.loadState()
+	if err != nil {
+		return nil, false
+	}
+	// A globally isolated home reads the account's credential too, and it has no fragment;
+	// its home *is* the config dir.
+	for syncedTool, syncedAccount := range st.Synced {
+		if syncedTool == tool && app.credStoreDir(syncedTool, syncedAccount) == credDir {
+			configDirs = append(configDirs, app.Paths.GlobalIsolatedHomeDir(syncedTool, syncedAccount))
+		}
+	}
+	return configDirs, true
+}
+
+// sharedStoreAttribution answers "whose login is the copy in the account's own credential
+// store" by asking every directory that reads it, instead of asking the one directory kae
+// happens to be binding.
+//
+// Four outcomes, and the two mixed ones are the point:
+//
+//   - every witness that can speak says this account: confirmed.
+//   - every witness that can speak says somebody else: `Conflicting`. The store really does
+//     hold another account's credential, this account's is elsewhere, and the bind may
+//     replace it — which is the housekeeping re-pin that switches a directory back.
+//   - witnesses **disagree**: refused, and deliberately *not* `Conflicting`. One reader
+//     logged in as somebody else, so the copy is live and somebody's, and this bind is not
+//     the event that should decide whose. Overwriting on a majority would destroy a login
+//     that has no backup; `kae doctor` reports the disagreeing directory as
+//     `identity_drift` and the user resolves it. Measured 2026-08-08: this is the case that
+//     filed a foreign token under this account's name.
+//   - nobody can speak (a first bind, an unenumerable index, no cache anywhere yet):
+//     refused, missing evidence, so the caller keeps the copy.
+//
+// The last outcome is where the *reason* has to be carried rather than summarised. A
+// reader that cannot speak has its own reason for it — no cache, a cache kae cannot read
+// as an account record, a cache symlinked out to the real tool home — and an earlier
+// version of this answered all of them with one sentence saying no reader had a cache at
+// all. That claims something kae did not observe (AGENTS.md), and it sends the user to
+// look for a missing file when the file is there and unreadable, which on this path is
+// also the only early signal of an upstream format change.
+func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
+	tool, credDir string, acc account.Account,
+) harvestRefusal {
+	witnesses, complete := app.credStoreWitnesses(credDir, tool)
+	if !complete {
+		return harvestRefusal{Why: "kae could not tell which directories read this credential"}
+	}
+	confirmed, conflicting := 0, 0
+	var conflict harvestRefusal
+	silent := []harvestRefusal{} // readers that could not speak, and why each could not
+	for _, dir := range witnesses {
+		specs, err := app.dirSpecs(ctx, tool, bindDirs{Config: dir, Cred: credDir})
+		if err != nil {
+			// One unreadable reader is missing evidence, not a verdict — and it is a
+			// reader that could not speak like any other. Dropped silently it made the
+			// count below a lie, so a lone reader kae could not even resolve would have
+			// reported that *nothing* reads this credential.
+			silent = append(silent, harvestRefusal{
+				Why: "kae could not resolve where one directory that reads it keeps its identity",
+			})
+			continue
+		}
+		switch refused := dirIdentityConfirms(ctx, be, specs, acc, dir); {
+		case refused.Conflicting:
+			conflicting++
+			conflict = refused
+		case refused.Why != "":
+			silent = append(silent, refused)
+		default:
+			confirmed++
+		}
+	}
+	switch {
+	case confirmed > 0 && conflicting > 0:
+		return harvestRefusal{
+			Why: "the directories that read this credential disagree about whose login it is",
+		}
+	case conflicting > 0:
+		return conflict
+	case confirmed > 0:
+		return harvestRefusal{}
+	case len(silent) == 1:
+		// One reader, so its own reason is the whole story, and it is the one a user can
+		// act on. The count is what makes this safe to say: with a second reader in play
+		// the sentence would describe one of them as if it described the store.
+		return silent[0]
+	case len(silent) > 1:
+		return harvestRefusal{Why: "no directory that reads this credential could attribute it"}
+	default:
+		return harvestRefusal{Why: "no directory reads this credential yet, so nothing can say whose login it is"}
+	}
 }
 
 // harvestBeforeDelete reports whether the credential in credDir may be deleted:

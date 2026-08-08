@@ -298,13 +298,20 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		// the first run preserved. Measured 2026-08-08: two identical `kae pin` calls, the
 		// first keeping and the second destroying, with a success line both times.
 		//
-		// Only a label that **disagrees** is retracted, and only where kae may write at all
-		// (writeDirIdentity's escape guard: a target linked out to the real home labels
-		// *that*, and removing through it would relabel the real home). One that agrees is
-		// honest evidence and one kae cannot read is left for the same reason an unreadable
-		// credential is: kae has not established that it is wrong. Absence is what a first
+		// **Only where this directory is not one of the store's readers** — which is what
+		// makes the label stale rather than merely inconvenient. A label that disagrees has
+		// two causes wanting opposite actions: left by a previous binding, or written by a
+		// login in this very directory. Keyed on the label alone, this deleted the second
+		// kind on the disagree arm, after which the next identical run saw one silent reader
+		// and one confirming sibling, confirmed, and harvested the foreign token — the
+		// mis-filing the reader model exists to stop, reopened from the other side and
+		// measured 2026-08-08. Witness membership is the only thing that tells them apart.
+		//
+		// Then, among those, only a label that **disagrees**: one that agrees is honest
+		// evidence and one kae cannot read is left for the same reason an unreadable
+		// credential is — kae has not established that it is wrong. Absence is what a first
 		// bind already leaves, so this makes the two states the same one.
-		if refused := dirIdentityConfirms(ctx, be, specs, acc, configDir); refused.Conflicting {
+		if refused.ActingDirNotAReader && dirIdentityConfirms(ctx, be, specs, acc, configDir).Conflicting {
 			if err := retractDirIdentity(ctx, specs, configDir); err != nil {
 				fmt.Fprintf(os.Stderr,
 					"kae: warning: the %s identity cache in this directory still names the account it was "+
@@ -443,6 +450,17 @@ type harvestRefusal struct {
 	// one where kae can say what the directory will do next — run that other account — and
 	// a success line with no such sentence reads as "kae protected my credential".
 	ForeignToReaders bool
+	// ActingDirNotAReader says the directory this operation acts for is **not** one of the
+	// store's readers, so whatever identity label it holds describes some other store and is
+	// stale by construction. It is the one signal that makes retracting a label safe, and it
+	// has to come from witness membership rather than from the label itself: a label that
+	// disagrees has two causes that want opposite actions — left by a previous binding
+	// (stale, retract) or written by a login in this very directory (live, and the evidence
+	// the whole model rests on). Keying the retract on "the label disagrees" deleted the
+	// second kind and let the next identical run harvest a foreign token, which is the
+	// defect the reader model exists to stop, reopened from the other side. Measured
+	// 2026-08-08.
+	ActingDirNotAReader bool
 }
 
 // keepsUnattributedCopy reports whether a refusal leaves the newer copy where it is
@@ -912,14 +930,23 @@ func writeDirIdentity(ctx context.Context, be secret.Backend, specs []artifact.S
 // account being bound — see writeDirCredential for why leaving one there turns a second
 // identical bind into a destroy.
 //
-// That makes the escape check **unreachable from the only caller**, and it stays as a
-// statement of intent rather than as a test that cannot fail: dirIdentityConfirms answers a
-// target that escapes with "its identity cache is shared with the real tool home", which is
-// deliberately *not* Conflicting, so the condition guarding this call can never be true for
-// one. A second caller — anything that retracts on weaker evidence — reaches it immediately,
-// which is exactly when it must already be here.
+// The escape check is **unreachable today**, and it stays as a statement of intent rather
+// than as a test that cannot fail. The reason is not the one it first said, which was a
+// condition short: dirIdentityConfirms *returns* at the first spec that conflicts, so with
+// two identity-only specs — a differing one and an escaping one — it answers `Conflicting`
+// and this function is then called with the escaping spec still in the set. What makes it
+// unreachable is that **claude declares exactly one IdentityOnly artifact**, no other
+// adapter declares any, and the keep path is claude-only. A second identity-only artifact
+// on the same tool reaches this guard, and nothing guards that count the way
+// TestKeychainSpecsAreAccountScoped guards keychain scoping (measured by review,
+// 2026-08-08).
 func retractDirIdentity(ctx context.Context, specs []artifact.Spec, configDir string) error {
 	for _, sp := range specs {
+		// Redundant with the escape guard below today and kept anyway: a credential spec's
+		// target resolves inside the *credential store*, which is outside configDir, so the
+		// guard already skips it (measured 2026-08-08). The redundancy stops being one for a
+		// tool whose credential lives in its config dir, where deleting it here would be a
+		// logout rather than a relabel.
 		if !sp.IdentityOnly {
 			continue
 		}
@@ -1766,10 +1793,15 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 			confirmed++
 		}
 	}
+	// Computed once, before the arms, because it is a fact about the caller rather than
+	// about any one outcome: three of the arms below can be reached with the acting
+	// directory either in or out of the reader set.
+	notAReader := !slices.Contains(witnesses, src.Dir)
 	switch {
 	case confirmed > 0 && len(conflicting) > 0:
 		return harvestRefusal{
-			Why: "the directories that read this credential disagree about whose login it is",
+			Why:                 "the directories that read this credential disagree about whose login it is",
+			ActingDirNotAReader: notAReader,
 		}
 	case len(conflicting) > 0 && slices.Contains(conflicting, src.Dir):
 		return conflict
@@ -1791,7 +1823,8 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		return harvestRefusal{
 			Why: "the directories that read this credential say it belongs to another account, " +
 				"and this directory does not read it yet",
-			ForeignToReaders: true,
+			ForeignToReaders:    true,
+			ActingDirNotAReader: notAReader,
 		}
 	case confirmed > 0:
 		return harvestRefusal{}
@@ -1799,11 +1832,19 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		// One reader, so its own reason is the whole story, and it is the one a user can
 		// act on. The count is what makes this safe to say: with a second reader in play
 		// the sentence would describe one of them as if it described the store.
-		return silent[0]
+		only := silent[0]
+		only.ActingDirNotAReader = notAReader
+		return only
 	case len(silent) > 1:
-		return harvestRefusal{Why: "no directory that reads this credential could attribute it"}
+		return harvestRefusal{
+			Why:                 "no directory that reads this credential could attribute it",
+			ActingDirNotAReader: notAReader,
+		}
 	default:
-		return harvestRefusal{Why: "no directory reads this credential yet, so nothing can say whose login it is"}
+		return harvestRefusal{
+			Why:                 "no directory reads this credential yet, so nothing can say whose login it is",
+			ActingDirNotAReader: notAReader,
+		}
 	}
 }
 

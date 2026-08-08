@@ -108,6 +108,15 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// credential still belongs to the *previous* account — and `info` is the only
 	// thing that names it. Harvesting here is what keeps a re-bind from destroying the
 	// login it is re-binding away from (docs/ROADMAP.md).
+	// The config dir of the mode the fragment names, for the **new** account: a re-bind keeps
+	// the mode and moves the account, so this is what the write below will act for, and the
+	// pass has to act for the same directory or it answers a different question (measured —
+	// see harvestSupersededDirCredentials). Deriving it from the previous account instead is
+	// killed by TestRunRebindIsolatedActsUnderTheNewAccountsConfigDir; hardcoding the shared
+	// dir is not, and cannot be: a re-bind never changes the mode, so where the fragment says
+	// shared this *is* SharedDir, and where it says isolated the shared dir is not a reader
+	// either — the two answers coincide. Written down rather than tested (measured
+	// unkillable, 2026-08-08).
 	nextConfig, _ := app.modeStoreDir(info.Mode, pinID, tool, accountName)
 	app.harvestSupersededDirCredentials(ctx, be, pinID, absDir, tool, info,
 		map[string]bindDirs{tool: {Config: nextConfig, Cred: app.credStoreDir(tool, accountName)}})

@@ -863,6 +863,87 @@ func TestRunPinTwiceKeepsTheSameCopyBothTimes(t *testing.T) {
 	}
 }
 
+// The other half of the retract, and the one that inverts it: a label that disagrees has
+// two causes wanting **opposite** actions. Left by a previous binding it is stale and must
+// go; written by a login in this very directory it is the evidence the whole model rests
+// on. Keyed on the label alone the retract deleted the second kind — after which the next
+// identical run saw one silent reader and one confirming sibling, confirmed, and harvested
+// the foreign token into this account's snapshot. That is the mis-filing the reader model
+// exists to stop, reopened from the other side; measured by review 2026-08-08 and a
+// regression of the retract that fixed the first half.
+func TestRunPinTwiceKeepsALiveLabelThatDisagrees(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	bindClaudeHere(t, app, "main") // the sibling, whose label honestly says main
+	_, poisoned := bindClaudeHere(t, app, "main")
+	// A login as side in *this* directory, and the account's store now holds side's token —
+	// the only copy of it anywhere, since claude/side has never been captured.
+	label := filepath.Join(poisoned, ".claude.json")
+	writeFile(t, label, claudeIdentityFile("side-uuid"))
+	const sideLive = "sk-ant-oat01-SIDE-LIVE-eeee"
+	credFile := dirCredFile(app, constants.ToolClaude, "main", poisoned)
+	writeFile(t, credFile, claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
+
+	be := testBackend(t, app)
+	opts := commonOpts{Format: formatText}
+	for run := 1; run <= 2; run++ {
+		if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+			t.Fatalf("run %d: pin exit %d: %s", run, code, out)
+		}
+		if got := readFile(t, label); !strings.Contains(got, "side-uuid") {
+			t.Fatalf("run %d retracted a live label, which is the evidence of the disagreement: %q", run, got)
+		}
+		if got := readFile(t, credFile); !strings.Contains(got, sideLive) {
+			t.Fatalf("run %d destroyed the copy the readers disagree about: %s", run, got)
+		}
+		if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, sideLive) {
+			t.Fatalf("run %d filed another account's token under this one: %s", run, got)
+		}
+	}
+}
+
+// `runRebind` has to hand the pass the config dir of the mode the fragment names, or the
+// pass acts under the *previous* account's isolated dir — which is a reader — and answers
+// `Conflicting` where the write answers "this directory does not read it yet". Deriving it
+// from `info.Accounts[tool]` survived the suite (execution-type review, 2026-08-08); the
+// shared branch was already covered, this is the isolated one.
+func TestRunRebindIsolatedActsUnderTheNewAccountsConfigDir(t *testing.T) {
+	app := overlayTestApp(t)
+	chdirTemp(t)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+		t.Fatalf("pin --isolated exit %d", code)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinID := paths.PinID(cwd)
+	// A login as side inside the isolated store this directory currently reads.
+	mainConfig := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+	writeFile(t, filepath.Join(mainConfig, ".claude.json"), claudeIdentityFile("side-uuid"))
+	const sideLive = "sk-ant-oat01-SIDE-LIVE-eeee"
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", mainConfig),
+		claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
+
+	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "side") })
+
+	// The directory the re-bind acts for is claude/side's isolated config dir, which reads
+	// nothing yet — so this is missing evidence with a login remedy, not a conflict.
+	if !strings.Contains(stderr, "this directory does not read it yet") {
+		t.Fatalf("the pass must act under the new account's config dir: %q", stderr)
+	}
+	if strings.Contains(stderr, "belongs to an account other than") {
+		t.Fatalf("acting under the previous account's dir is what produces this wording: %q", stderr)
+	}
+}
+
 // A `-s` ↔ `-i` toggle changes the config dir, so the pin-level pass and the write acted
 // under two different identities: the pass under the old dir, which is a reader, and the
 // write under the new one, which is not. The pass said `Conflicting` and predicted a
@@ -1389,6 +1470,14 @@ func TestRunPinReportsOneRefusalPerStoreWithTheRightRemedy(t *testing.T) {
 	}
 	if strings.Contains(stderr, "log in inside") {
 		t.Fatalf("a copy that belongs to another account must not come with a login remedy:\n%s", stderr)
+	}
+	// The positive half of the consequence clause, and the only one in the repo: every other
+	// assertion on this string fails if it is *present*, so swapping which half of the pair
+	// `replacedNow` compares made the clause disappear everywhere and survived the suite
+	// (execution-type review, 2026-08-08). Here the write really does replace — same
+	// account, same store — so it has to say so.
+	if !strings.Contains(stderr, "and this bind replaces it") {
+		t.Fatalf("a store the write really does overwrite must be reported as replaced:\n%s", stderr)
 	}
 }
 

@@ -924,3 +924,39 @@ func TestReloginSaysWhenItCannotCheckWhatTheFlowWillReplace(t *testing.T) {
 		t.Errorf("kae has no remedy for a snapshot it could not read: %q", stderr)
 	}
 }
+
+// A new output path is a new place a secret can leak, and this one interpolates an
+// error from the secret backend. AGENTS.md requires a redaction test for each.
+func TestReloginPreFlightWarningsCarryNoSecret(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, storeDir, credFile := boundStoreForClaudeMain(t, app)
+
+	// One reader disagreeing, so the pre-flight reaches the refusal that names the
+	// store and a reason — the wordiest of the three lines.
+	const atRisk = "sk-ant-oat01-ATRISK-llll"
+	_, siblingStore, _ := boundStoreForClaudeMain(t, app)
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("side-uuid"))
+	writeFile(t, credFile, claudeOAuthPayload(atRisk, now.Add(8*time.Hour)))
+	_ = storeDir
+
+	const fresh = "sk-ant-oat01-FRESH-mmmm"
+	withInteractive(t, loginInto(t, constants.ToolClaude, fresh, "main-uuid", now.Add(9*time.Hour), &[]string{}))
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	// Positive control: the pre-flight really spoke, so the absences below are about
+	// a line that exists rather than about a run that printed nothing.
+	if !strings.Contains(stderr, "could not keep the claude credential") {
+		t.Fatalf("the fixture must reach the pre-flight refusal: %q", stderr)
+	}
+	for _, secret := range []string{atRisk, fresh, mainToken} {
+		if strings.Contains(stderr, secret) || strings.Contains(out, secret) {
+			t.Errorf("a credential reached the output: %q / %q", stderr, out)
+		}
+	}
+}

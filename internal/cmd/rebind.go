@@ -142,6 +142,13 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 		}
 		boundDir = sharedDir
 	case paths.IsolatedSegment:
+		// The previous binding is passed for the same reason the shared branch passes it,
+		// and here it is **unobservable** (measured 2026-08-08): an isolated config dir is
+		// keyed by account, so a re-bind to another account materializes a *fresh* one with
+		// no label to retract, and a re-bind to the same account has PrevCred == the store
+		// being written, which is not a stranger. It stays because the branch and its
+		// sibling must not answer this differently — that asymmetry is what put the pass and
+		// the write under two identities once already.
 		newDir, err := app.preparePinConfig(ctx, be, tool, accountName, pinID,
 			attributionSource{PrevKnown: true, PrevCred: info.CredDirs[tool]})
 		if err != nil {

@@ -90,9 +90,9 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 // prev is the binding being replaced, and every materializer needs it for one reason: a
 // keep may only retract an identity label it can show is stale, and the acting directory's
 // own previous binding is the thing that shows it (attributionSource).
-func (app *App) isolationPlan(ctx context.Context, be secret.Backend, mode string, targets []runTarget, pinID string, prev fragmentInfo) ([]isolationEntry, func(tool, account string) (string, error), error) {
+func (app *App) isolationPlan(ctx context.Context, be secret.Backend, mode string, targets []runTarget, pinID string, prev fragmentInfo, prevKnown bool) ([]isolationEntry, func(tool, account string) (string, error), error) {
 	acting := func(tool string) attributionSource {
-		return attributionSource{PrevKnown: true, PrevCred: prev.CredDirs[tool]}
+		return attributionSource{PrevKnown: prevKnown, PrevCred: prev.CredDirs[tool]}
 	}
 	switch mode {
 	case modeShared:

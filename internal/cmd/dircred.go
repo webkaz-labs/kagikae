@@ -2114,7 +2114,9 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 			continue // no snapshot to harvest into; the bind or the sweep reports it
 		}
 		_, _, refused := app.harvestDirCredential(ctx, be, specs, store.Tool, accountName, acc, store.dirs(), snapshot,
-			attributionSource{Dir: next[store.Tool].Config, PrevKnown: true, PrevCred: prev.CredDirs[store.Tool]})
+			// No previous binding here: PrevKnown/PrevCred only feed the retract, which lives in
+			// writeDirCredential and carries its own. Passing them would be data no arm reads.
+			attributionSource{Dir: next[store.Tool].Config})
 		// The one question both arms below need, asked once: does the write this bind is
 		// about to perform land on the very store being reported? Only then is the copy
 		// replaced — and only then may a message say so. A refusal that keeps is never a

@@ -909,6 +909,169 @@ func TestRunPinKeepsAndRetractsEvenWhenTheWalkIsIncomplete(t *testing.T) {
 	}
 }
 
+// An isolated re-bind **to the account the directory is already bound to** is what separates
+// `modeStoreDir` from a hardcoded shared dir: there this pin's own isolated config dir is a
+// reader and the shared dir is not, so acting under the wrong one flips the pass to
+// "leaving it where it is" while the write replaces — a message that is the inverse of what
+// happened, which is the class two earlier fixes exist for. `runRebind` has no no-op
+// short-circuit, so this runs the whole path (execution-type review, 2026-08-08).
+func TestRunRebindIsolatedToTheSameAccountActsUnderItsOwnDir(t *testing.T) {
+	app := overlayTestApp(t)
+	chdirTemp(t)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+		t.Fatalf("pin --isolated exit %d", code)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := app.Paths.IsolatedConfigDir(paths.PinID(cwd), constants.ToolClaude, "main")
+	// A login as side inside the store this directory reads.
+	writeFile(t, filepath.Join(config, ".claude.json"), claudeIdentityFile("side-uuid"))
+	const sideLive = "sk-ant-oat01-SIDE-LIVE-eeee"
+	credFile := dirCredFile(app, constants.ToolClaude, "main", config)
+	writeFile(t, credFile, claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
+
+	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "main") })
+
+	// This directory *is* the conflicting reader and the write targets this very store, so
+	// the copy is replaced — and the message has to say that rather than promise a keep.
+	if !strings.Contains(stderr, "belongs to an account other than claude/main") {
+		t.Fatalf("the acting directory is the conflicting reader here: %q", stderr)
+	}
+	if !strings.Contains(stderr, "and this bind replaces it") {
+		t.Fatalf("the message must not promise a keep the write does not make: %q", stderr)
+	}
+	if got := readFile(t, credFile); strings.Contains(got, sideLive) {
+		t.Fatalf("and it really is replaced: %s", got)
+	}
+}
+
+// `kae pin <tool> <account>` is the other command that moves a directory between accounts,
+// so its keep owes the same retract — and it reaches the materializers by a different route
+// (runRebind, not isolationPlan). Handing them an empty binding there survived the suite
+// (execution-type review, 2026-08-08), which would put the "keep, then destroy on the next
+// run" defect back on this path alone.
+func TestRunRebindKeepAlsoRetractsTheStaleLabel(t *testing.T) {
+	app := overlayTestApp(t)
+	app.Config.Profiles["side"] = config.Profile{
+		Accounts: map[string]string{constants.ToolClaude: "side"},
+	}
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+	_, sideStore := bindClaudeHere(t, app, "side")
+	label := filepath.Join(sideStore, ".claude.json")
+	if got := readFile(t, label); !strings.Contains(got, "side-uuid") {
+		t.Fatalf("the fixture needs the previous binding's label: %q", got)
+	}
+	// A newer copy in claude/main's store that nothing reads yet.
+	const live = "sk-ant-oat01-MAIN-LIVE-eeee"
+	mainCopy := dirCredFile(app, constants.ToolClaude, "main", sideStore)
+	mkdirs(t, filepath.Dir(mainCopy))
+	writeFile(t, mainCopy, claudeOAuthPayload(live, now.Add(8*time.Hour)))
+
+	for run := 1; run <= 2; run++ {
+		if code, out := captureStdout(t, func() int {
+			return runRebind(ctx, app, opts, constants.ToolClaude, "main")
+		}); code != constants.ExitOK {
+			t.Fatalf("run %d: re-bind exit %d: %s", run, code, out)
+		}
+		if got := readFile(t, mainCopy); !strings.Contains(got, live) {
+			t.Fatalf("run %d destroyed the copy the keep preserved: %s", run, got)
+		}
+	}
+}
+
+// kae may not claim to have established what a directory reads when the read of its own
+// binding **failed**. `readFragmentAt` answers an unreadable fragment with an error and an
+// empty record, so dropping the error turns "kae could not look" into "this directory reads
+// nothing" — and the keep then retracts a live label on the strength of an emptiness that is
+// only the read failing. Found by review 2026-08-08, in the threading that fixed the
+// previous defect.
+func TestAnUnreadableOwnFragmentDoesNotRetractALiveLabel(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("chmod 000 does not stop root from reading the fragment")
+	}
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	bindClaudeHere(t, app, "main") // the sibling that confirms
+	dir, poisoned := bindClaudeHere(t, app, "main")
+	label := filepath.Join(poisoned, ".claude.json")
+	writeFile(t, label, claudeIdentityFile("side-uuid"))
+	const sideLive = "sk-ant-oat01-SIDE-LIVE-eeee"
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", poisoned),
+		claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
+
+	// The shell that activated this directory still exports the binding, so it goes on
+	// reading that store — kae just cannot read the record of it.
+	fragment := filepath.Join(dir, fragmentRelPath)
+	if err := os.Chmod(fragment, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(fragment, 0o600) })
+	if _, _, err := readFragmentAt(dir); err == nil {
+		t.Skip("this filesystem does not make an unreadable fragment fail the read")
+	}
+
+	opts := commonOpts{Format: formatText}
+	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+		t.Fatalf("pin exit %d: %s", code, out)
+	}
+	if got := readFile(t, label); !strings.Contains(got, "side-uuid") {
+		t.Fatalf("a failed read of this directory's own binding is not evidence that its label is stale: %q", got)
+	}
+}
+
+// A globally isolated home passes no binding at all, and that zero value is the only thing
+// between its live label and the retract. The claim it rests on — "the home is always one of
+// its own account's readers, so the harvest confirms rather than keeps" — is one condition
+// short: it confirms only while it is the only reader that can speak. Give it a bound
+// sibling that confirms and the home becomes the **disagreeing** reader, which keeps.
+// Measured by review 2026-08-08, after this was written down as unobservable.
+func TestAGlobalIsolatedHomeKeepsItsOwnDisagreeingLabel(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	bindClaudeHere(t, app, "main") // a bound reader whose cache honestly says main
+
+	if code, out := captureStdout(t, func() int {
+		return runUseIsolated(ctx, app, opts, constants.ToolClaude, "main")
+	}); code != constants.ExitOK {
+		t.Fatalf("use -i exit %d: %s", code, out)
+	}
+	home := app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")
+	// A login as side inside the isolated home.
+	homeLabel := filepath.Join(home, ".claude.json")
+	writeFile(t, homeLabel, claudeIdentityFile("side-uuid"))
+	const sideLive = "sk-ant-oat01-SIDE-LIVE-eeee"
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", home),
+		claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
+
+	if code, out := captureStdout(t, func() int {
+		return runUseIsolated(ctx, app, opts, constants.ToolClaude, "main")
+	}); code != constants.ExitOK {
+		t.Fatalf("second use -i exit %d: %s", code, out)
+	}
+	if got := readFile(t, homeLabel); !strings.Contains(got, "side-uuid") {
+		t.Fatalf("the home has no binding to prove its label stale, so it must survive: %q", got)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, sideLive) {
+		t.Fatalf("retracting it lets the next run confirm and file a foreign token: %s", got)
+	}
+}
+
 // The other direction of the same derivation, and the one that makes the walk unusable for
 // it: `credStoreWitnesses` answers an incomplete enumeration with **no** witnesses, so
 // membership in that list reads every directory as a stranger — including one that is

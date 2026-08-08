@@ -624,14 +624,34 @@ func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) [
 		}
 		specsByTool[rec.Tool] = append(specsByTool[rec.Tool], sp)
 	}
-	for _, tool := range order {
-		recorded := make(map[string]bool, len(specsByTool[tool]))
-		for _, sp := range specsByTool[tool] {
-			recorded[sp.Name] = true
-		}
-		for _, sp := range current[tool] {
-			if !recorded[sp.Name] {
-				specsByTool[tool] = append(specsByTool[tool], sp)
+	// **Never for a bound-store backup**, and the invariant is worth stating because the
+	// flag is on the *meta* while the danger is per *record*: a meta marked "not global"
+	// must not be handed a global record, or every consumer that trusts the flag is wrong
+	// about one artifact.
+	//
+	// `current` is a **global** resolution (buildRollback runs applyGlobalScope), so for
+	// such a backup it is not an answer about these records at all. claude's identity-only
+	// artifact is unrecorded there *by construction* — the pre-flight backs up the
+	// credential alone, deliberately — so it was appended every time, and the pre-rollback
+	// backup then carried a record targeting the **real home** while being marked
+	// BoundStore. Rolling back to it wrote the real home's identity, leaving it naming one
+	// account while the credential beside it was another's; the next ordinary command reads
+	// that as a login made outside kae and declines to recapture, which under single-use
+	// rotation is the logout class. Measured 2026-08-08.
+	//
+	// The append loses nothing here: its whole purpose is to keep
+	// `clearUnrecordedIdentity` reversible, and that sweep is skipped for exactly these
+	// backups (rollbackTo).
+	if !fromBoundStore(meta) {
+		for _, tool := range order {
+			recorded := make(map[string]bool, len(specsByTool[tool]))
+			for _, sp := range specsByTool[tool] {
+				recorded[sp.Name] = true
+			}
+			for _, sp := range current[tool] {
+				if !recorded[sp.Name] {
+					specsByTool[tool] = append(specsByTool[tool], sp)
+				}
 			}
 		}
 	}

@@ -210,6 +210,21 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	// know which artifact that is. One resolution means one warning per tool.
 	current, unresolved := app.currentSpecs(ctx, meta)
 	for _, u := range unresolved {
+		// Two sentences, because a bound-store backup makes both tails of the other one
+		// false: its identity sweep never runs (so nothing is "left as it is" to fix), and
+		// `reapplyHint` names `kae use <tool> <account>` from `ActiveBefore` — a **global**
+		// switch to whichever account happened to be active when one directory's copy was
+		// preserved. Following that overwrites the real home's current login for no reason,
+		// and the copy it names is precisely the one kae could not attribute. Measured
+		// 2026-08-08.
+		if meta.BoundStore {
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: could not resolve current %s artifacts (%v); this backup holds one "+
+					"bound directory's store, so the pre-rollback backup covers only what it recorded "+
+					"— nothing global is changed either way, and `%s rollback --to %s` is the way back\n",
+				u.Tool, u.Err, toolName, meta.ID)
+			continue
+		}
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: could not resolve current %s artifacts (%v); the pre-rollback backup "+
 				"covers only what this backup recorded, and a stale %s identity cache is left as "+

@@ -1338,3 +1338,150 @@ func TestReloginRefusalsDoNotPileUpPreservedCopies(t *testing.T) {
 		t.Errorf("credential payloads must be pruned with their metadata, %d still readable", live)
 	}
 }
+
+// The flag lives on the **meta** while the danger is per **record**, so a meta marked
+// "not global" must never be handed a global one. `plansFromBackupMeta` did exactly that:
+// it appends every artifact today's *global* resolution declares that the source backup has
+// no record of, and for a bound-store backup claude's identity-only artifact is unrecorded
+// by construction. The pre-rollback backup then carried a real-home target while being
+// marked BoundStore, and rolling back to it rewrote the real home's identity. Measured
+// 2026-08-08 by the review of the fix that introduced the flag.
+//
+// It also pins the two arms that review found no test reached at all: the flag surviving
+// into the derived backup, and the active-pointer warning staying silent for it.
+func TestPreRollbackBackupOfABoundStoreRollbackStaysBoundStore(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+	if code := runSwitch(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "side"); code != constants.ExitOK {
+		t.Fatalf("seed switch: %d", code)
+	}
+	homeIdentity := filepath.Join(app.Env.Home, ".claude.json")
+	writeFile(t, homeIdentity, claudeIdentityFile("side-uuid"))
+
+	_, siblingStore, credFile := boundStoreForClaudeMain(t, app)
+	_, _, _ = boundStoreForClaudeMain(t, app)
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("zeta-uuid"))
+	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-ATRISK-uuuu", now.Add(8*time.Hour)))
+	withInteractive(t, loginInto(t, constants.ToolClaude, "sk-ant-oat01-FRESH-vvvv", "main-uuid",
+		now.Add(9*time.Hour), &[]string{}))
+	code, stderr := captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	source := backup.Meta{}
+	for _, m := range mustListBackups(t, app) {
+		if m.Reason == constants.BackupReasonReloginUnattributable {
+			source = m
+		}
+	}
+	if source.ID == "" {
+		t.Fatalf("no preserved backup: %q", stderr)
+	}
+	// Positive control: the source really records the credential only, which is what makes
+	// the identity artifact "unrecorded" and so a candidate for the append under test.
+	if len(source.Artifacts) != 1 {
+		t.Fatalf("the preserved backup must record the credential alone: %+v", source.Artifacts)
+	}
+
+	if code := runRollback(ctx, app, commonOpts{Format: formatText}, source.ID); code != constants.ExitOK {
+		t.Fatalf("rollback to the preserved copy: %d", code)
+	}
+	pre := backup.Meta{}
+	for _, m := range mustListBackups(t, app) {
+		if m.Reason == constants.BackupReasonRollback {
+			pre = m
+		}
+	}
+	if pre.ID == "" {
+		t.Fatal("the rollback must take a pre-rollback backup")
+	}
+	// The flag survives into the derived backup — the case a reason lookup loses exactly
+	// once. Note this is the *threading*; `restoreSpec` only redirects on a kind mismatch,
+	// so under the file driver its restore consequence is masked and this assertion is the
+	// only thing covering it.
+	if !pre.BoundStore {
+		t.Error("a pre-rollback backup of bound-store records is still bound-store")
+	}
+	// The invariant: no record the source did not have. A global target inside a meta
+	// marked not-global makes every consumer that trusts the flag wrong about one artifact.
+	recorded := map[string]bool{}
+	for _, a := range source.Artifacts {
+		recorded[a.Name] = true
+	}
+	for _, a := range pre.Artifacts {
+		if !recorded[a.Name] {
+			t.Errorf("bound-store backup gained a globally-resolved record %q -> %s", a.Name, a.Target)
+		}
+	}
+
+	// And the effect that made it matter: after switching away and rolling back to the
+	// derived backup, the real home is untouched.
+	if code := runSwitch(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "main"); code != constants.ExitOK {
+		t.Fatalf("switch to main: %d", code)
+	}
+	writeFile(t, homeIdentity, claudeIdentityFile("main-uuid"))
+	if code := runRollback(ctx, app, commonOpts{Format: formatText}, pre.ID); code != constants.ExitOK {
+		t.Fatalf("rollback to the pre-rollback backup: %d", code)
+	}
+	if got := readFile(t, homeIdentity); !strings.Contains(got, "main-uuid") {
+		t.Errorf("the real home's identity must be untouched, got %q", got)
+	}
+}
+
+// The active-pointer warning's own `BoundStore` term, which needs the recorded account's
+// snapshot to be **gone** — an arm no other fixture reaches, so deleting the term survived
+// the whole suite until this existed.
+func TestBoundStoreRollbackSaysNothingAboutAnActivePointer(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "zeta", "sk-ant-oat01-ZETA-TOKEN-wwww", now.Add(time.Hour))
+	if code := runSwitch(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "zeta"); code != constants.ExitOK {
+		t.Fatalf("seed switch: %d", code)
+	}
+	_, siblingStore, credFile := boundStoreForClaudeMain(t, app)
+	_, _, _ = boundStoreForClaudeMain(t, app)
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("side-uuid"))
+	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-ATRISK-xxxx", now.Add(8*time.Hour)))
+	withInteractive(t, loginInto(t, constants.ToolClaude, "sk-ant-oat01-FRESH-yyyy", "main-uuid",
+		now.Add(9*time.Hour), &[]string{}))
+	if code := runRelogin(ctx, app, commonOpts{Format: formatText}, ""); code != constants.ExitOK {
+		t.Fatalf("relogin: %d", code)
+	}
+	kept := ""
+	for _, m := range mustListBackups(t, app) {
+		if m.Reason == constants.BackupReasonReloginUnattributable {
+			kept = m.ID
+		}
+	}
+	if kept == "" {
+		t.Fatal("no preserved backup")
+	}
+	// The arm: the account the backup recorded as active no longer has a snapshot, which is
+	// what `restorableActiveAccount` answers false on.
+	if err := os.RemoveAll(app.Paths.AccountDir(constants.ToolClaude, "zeta")); err != nil {
+		t.Fatalf("remove the recorded account: %v", err)
+	}
+	code, stderr := captureStderr(t, func() int {
+		return runRollback(ctx, app, commonOpts{Format: formatText}, kept)
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+	if strings.Contains(stderr, "as the active account") {
+		t.Errorf("a bound-store rollback restores no pointer, so none failed to come back: %q", stderr)
+	}
+}
+
+// mustListBackups is the read every backup assertion in this file starts from.
+func mustListBackups(t *testing.T, app *App) []backup.Meta {
+	t.Helper()
+	metas, err := backup.List(app.Paths.BackupsDir())
+	if err != nil {
+		t.Fatalf("list backups: %v", err)
+	}
+	return metas
+}

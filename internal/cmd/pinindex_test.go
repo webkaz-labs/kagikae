@@ -2,13 +2,17 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/paths"
+	"github.com/webkaz-labs/kagikae/internal/runner"
 )
 
 // pinHere binds a temp cwd with overlayTestApp's profile (claude/main, never
@@ -28,11 +32,85 @@ func pinHereAs(t *testing.T, app *App, profile, mode string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, profile, mode)
+	var code int
+	var out string
+	runner.With(&pinFixtureRunner{}, func() {
+		code, out = captureStdout(t, func() int {
+			return runPin(context.Background(), app, commonOpts{Format: formatText}, profile, mode)
+		})
 	})
 	mustExit(t, constants.ExitOK, code, out)
 	return cwd
+}
+
+// pinFixtureRunner emulates the `security` CLI in memory and hands every other
+// command to the real runner, because a pin also asks git where the repository
+// root is and that answer is part of what the fixtures set up.
+//
+// It exists because pinHereAs used to call runPin with **no runner installed at
+// all**, and a pin whose adapter resolves to the keychain driver then ran the real
+// `security`. That is not hypothetical in either direction. On darwin it wrote a
+// genuine login-keychain item per pin: 956 `Claude Code-credentials-*` items under
+// claude's fallback account were found on the operator's machine on 2026-08-09,
+// 448 and 508 of them created on the two days this branch was developed — from
+// `mise run check`, the gate AGENTS.md says must never touch the real environment.
+// On linux there is no `security`, so the same call made the pin exit 1 and two
+// tests failed — which is how CI found it, on this branch's first ever CI run.
+//
+// Keyed by service **and** account rather than holding one item, because a pin
+// writes one item per bound directory and these fixtures bind more than one; a
+// single-item fake would let one directory's write answer another's read.
+type pinFixtureRunner struct {
+	payload map[string]string
+	account map[string]string
+}
+
+func (p *pinFixtureRunner) Run(ctx context.Context, name string, args ...string) (string, string, int) {
+	if name != "security" || len(args) == 0 {
+		return runner.OSRunner{}.Run(ctx, name, args...)
+	}
+	if p.payload == nil {
+		p.payload, p.account = map[string]string{}, map[string]string{}
+	}
+	svc := valueAfter(args, "-s")
+	notFound := "security: " + keychain.NotFoundMarker
+	switch args[0] {
+	case "find-generic-password":
+		stored, ok := p.account[svc]
+		if !ok {
+			return "", notFound, 44
+		}
+		// An account-scoped read sees the item only when the accounts agree: service
+		// plus account is how a service holding more than one legitimate item is
+		// addressed, and kae's own guard requires every keychain spec to be scoped.
+		if want := valueAfter(args, "-a"); want != "" && stored != "" && want != stored {
+			return "", notFound, 44
+		}
+		if slices.Contains(args, "-w") {
+			return p.payload[svc], "", 0
+		}
+		return fmt.Sprintf("keychain: \"login\"\nattributes:\n    \"acct\"<blob>=\"%s\"\n", stored), "", 0
+	case "add-generic-password":
+		p.payload[svc] = valueAfter(args, "-w")
+		p.account[svc] = valueAfter(args, "-a")
+		return "", "", 0
+	case "delete-generic-password":
+		stored, ok := p.account[svc]
+		if !ok {
+			return "", notFound, 44
+		}
+		if want := valueAfter(args, "-a"); want != "" && stored != "" && want != stored {
+			return "", notFound, 44
+		}
+		delete(p.payload, svc)
+		delete(p.account, svc)
+		return "", "", 0
+	}
+	return "", "", 0
+}
+
+func (p *pinFixtureRunner) RunInput(ctx context.Context, _ string, name string, args ...string) (string, string, int) {
+	return p.Run(ctx, name, args...)
 }
 
 // TestPinRecordsTheBoundDirectory pins that a bound directory is findable from

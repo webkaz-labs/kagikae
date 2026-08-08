@@ -324,7 +324,7 @@ func (app *App) applyBackup(ctx context.Context, be secret.Backend, meta backup.
 		if err != nil {
 			return err
 		}
-		sp, warning, err := restoreSpec(current, rec)
+		sp, warning, err := restoreSpec(current, rec, fromBoundStore(meta))
 		if err != nil {
 			return err
 		}
@@ -419,11 +419,22 @@ func storedValue(ctx context.Context, be secret.Backend, ref string, present, id
 // current is nil only where no declaration was resolved; the record then stands
 // alone, which is the pre-fix behaviour.
 //
+// **boundStore turns the whole check off, and that is not a special case bolted on.**
+// Everything above rests on `current` being an answer about the *same* store the record
+// came from — true while every backup records the tool's global store. A backup taken
+// from a store kae pointed one directory at was never in the global store, so today's
+// global resolution is not a statement about it, and following it on a kind mismatch
+// writes the **real home**: one directory's loss becomes a global logout. `fromBoundStore`
+// is the single place that decides this and says why it is keyed on the reason.
+//
 // The returned warning is non-empty when the restore is knowingly partial. It is
 // returned rather than printed so the caller that performs the write emits it once,
 // immediately before that write — the pre-rollback capture resolves the same spec
 // and must not print it a second time.
-func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) (sp artifact.Spec, warning string, err error) {
+func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord, boundStore bool) (sp artifact.Spec, warning string, err error) {
+	if boundStore {
+		return specFromRecord(rec), "", nil
+	}
 	for _, live := range current[rec.Tool] {
 		if live.Name != rec.Name || live.Kind == rec.Kind {
 			continue
@@ -593,7 +604,7 @@ func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) [
 		if _, seen := specsByTool[rec.Tool]; !seen {
 			order = append(order, rec.Tool)
 		}
-		sp, _, err := restoreSpec(current, rec)
+		sp, _, err := restoreSpec(current, rec, fromBoundStore(meta))
 		if err != nil {
 			sp = specFromRecord(rec)
 		}

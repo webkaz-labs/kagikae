@@ -490,8 +490,29 @@ alternative exists (`secret-tool`).
   different class from a walk of everyone's caches — which is a deliberate override of the
   reader set and wants its own measurement rather than a late edit to the shared predicate.
 
+- ~~**A relogin's pre-flight refusal owes a backup it cannot safely take yet**~~ (recorded
+  2026-08-08 by an independent review of the pre-flight itself, **fixed the same day** —
+  see [RELEASE.md](RELEASE.md) v0.17.0). It now takes one, reason
+  `relogin-unattributable`, and the message names `kae rollback --to <id>`. What the entry
+  said blocked it was real and is what the fix had to close first: `applyBackup`
+  re-resolves specs **globally**, so a bound store's record went through a check that is
+  not an answer about it. `fromBoundStore` gates that check, keyed on the reason and not on
+  the recorded target — a keychain record's target is a *service name*, so a path test
+  answers "not kae's" for exactly the per-directory item that most needs it.
+  One correction to the entry as first written, found by building the control rather than
+  by reading: the severe outcome it named (a restore writing the **real home**) needs the
+  tool's two stores to hold interchangeable payloads, which is codex, not claude. For
+  claude the unguarded path *refuses* instead — recoverable, but it makes the backup
+  worthless exactly when it is needed. One predicate covers both; each has its own control
+  in `TestBoundStoreBackupIsNeverRedirectedToTheRealHome`.
+  The backup holds the **credential only**: restoring a pre-login identity cache beside it
+  would relabel the directory, and that label is what attribution reads next.
+
+  The original entry, kept because the constraint it names still governs any future
+  bound-store backup:
+
 - **A relogin's pre-flight refusal owes a backup it cannot safely take yet** (recorded
-  2026-08-08 by an independent review of the pre-flight itself, **not fixed**).
+  2026-08-08 by an independent review of the pre-flight itself, **fixed**).
   [AGENTS.md](../AGENTS.md) states the rule the pre-flight falls under: a refusal that
   cannot preserve is a deletion, so it owes a backup the way `kae run -s`'s recapture
   answers its own with reason `run-unattributable`. `preserveBeforeRelogin` refuses on

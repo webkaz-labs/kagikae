@@ -105,7 +105,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--profile <name>` / `-P <name>` | bare `use`, `run`, `mise init` | resolve a named profile instead of the default; `-P` is the short form |
 | `--restore` / `--no-login` | `add` | restore the previous login after capturing (login flow only); snapshot without a login flow |
 | `--auto` / `--write` | `mise init` | add the enter hook (`kae use --quiet`); write/update `.mise.toml` |
-| `--to <backup-id>` | `rollback` | backup to restore (default: the most recent **restorable** one — the newest that records a state kae was about to change. A `run-unattributable` backup is skipped by the default because it records a state kae *declined to adopt*, not one it changed; `--to` still reaches it, which is what the refusal that created it tells you to type) |
+| `--to <backup-id>` | `rollback` | backup to restore (default: the most recent **restorable** one — the newest that records a state kae was about to change. A backup that records a copy kae *declined to adopt or could not keep* rather than one it changed is skipped by the default (`isUndoTarget`); `--to` still reaches it, which is what the refusal that created it tells you to type. When every backup present is of that kind the refusal names the reasons actually there, so it cannot go stale as the set grows) |
 
 ## kae use Semantics
 
@@ -817,12 +817,18 @@ Contract:
   directory as another account, which is also the state `kae pin` declines to overwrite
   in order to preserve while naming *this* command as the remedy. Same guards as the
   capture back, so it is silent whenever the snapshot already holds something at least
-  as new. When it cannot keep the copy it says so on stderr **before the flow is
-  launched**, carrying the harvest's own reason and that completing the login replaces
-  it; it may not say whose the copy is, which on the arm that matters is exactly what
-  kae could not establish. It does not refuse — the login is what was asked for, and
-  declining it would leave the directory stale with nothing to do about it — so the
-  exit code is unaffected.
+  as new. When it cannot keep the copy it **backs it up first** (reason
+  `relogin-unattributable`, the credential only) and says so on stderr **before the flow is
+  launched**, carrying the harvest's own reason, that completing the login replaces the
+  copy, and `kae rollback --to <id>` as the way back. A refusal that cannot preserve is a
+  deletion, so it owes that backup exactly as `kae run -s`'s recapture owes
+  `run-unattributable`; where the backup itself fails, the message says that too rather
+  than implying a copy survives. It may not say **whose** the copy is, which on the arm
+  that matters is exactly what kae could not establish. It does not refuse the login —
+  that is what was asked for, and declining it would leave the directory stale with
+  nothing to do about it — so the exit code is unaffected.
+  The credential and not the whole store: restoring a pre-login identity cache beside it
+  would relabel the directory, and that label is what the next attribution reads.
 - The capture back is `harvestDirCredential` with every guard it already has: it
   declines a copy that does not supersede the snapshot, and one it cannot attribute
   to this account. It runs whatever the comparison said — a flow kae could not

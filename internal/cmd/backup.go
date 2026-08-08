@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/backup"
@@ -143,9 +144,13 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 			return nil, err
 		}
 		if !found {
+			// Named from the same predicate that excluded them, not from a literal: this
+			// sentence said `run-unattributable` alone while a second preserved reason
+			// existed, so a user looking at a `relogin-unattributable` backup was told the
+			// refusal was about something else. It reports what is actually there.
 			return nil, errf(constants.ExitNotFound,
-				"no backup kae can roll back to (a %s backup is a preserved copy, not an undo target; "+
-					"see kae backup list, then kae rollback --to <id>)", constants.BackupReasonRunUnattributable)
+				"no backup kae can roll back to%s; see kae backup list, then kae rollback --to <id>",
+				preservedOnlyDetail(app.Paths.BackupsDir()))
 		}
 		meta = latest
 	} else {
@@ -326,5 +331,58 @@ func latestRestorable(dir string) (backup.Meta, bool, error) {
 // whichever of those two the other site owns — the drift AGENTS.md describes for
 // `supersedes`, one predicate over.
 func isUndoTarget(meta backup.Meta) bool {
-	return meta.Reason != constants.BackupReasonRunUnattributable
+	return meta.Reason != constants.BackupReasonRunUnattributable &&
+		meta.Reason != constants.BackupReasonReloginUnattributable
+}
+
+// preservedOnlyDetail explains an empty bare-rollback target when the directory is not
+// empty: every backup in it is a preserved copy rather than an undo target. It names the
+// reasons actually present, so the sentence cannot go stale the way a hardcoded one did
+// when a second preserved reason shipped. Empty when there is genuinely nothing there,
+// where "no backup kae can roll back to" is the whole story.
+func preservedOnlyDetail(dir string) string {
+	metas, err := backup.List(dir)
+	if err != nil || len(metas) == 0 {
+		return ""
+	}
+	seen := map[string]bool{}
+	reasons := []string{}
+	for _, m := range metas {
+		if !isUndoTarget(m) && !seen[m.Reason] {
+			seen[m.Reason] = true
+			reasons = append(reasons, m.Reason)
+		}
+	}
+	if len(reasons) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (every backup here is a preserved copy rather than an undo target: %s)",
+		strings.Join(reasons, ", "))
+}
+
+// fromBoundStore reports whether a backup's records were taken from a store kae itself
+// pointed one directory at, rather than from the tool's own global store.
+//
+// It gates the restore's moved-store check (restoreSpec), and the reason it has to is the
+// asymmetry that check rests on: it exists because a **child process** can move a tool's
+// credential between the tool's *own* stores, so today's global resolution is the better
+// answer than a stale record. A record kae took from a bound store was never in the global
+// store, so that resolution is not an answer about it at all. Every other reason records
+// global specs, which is why nothing needed this until the first bound-store backup.
+//
+// Two consequences, and the severe one is not the one reachable today — worth writing
+// down, because a reader who checks only claude will conclude the guard is unnecessary.
+// Where a tool's two stores hold **interchangeable** payloads (codex: `auth.json` and its
+// keyring item are both whole documents) the check *redirects*, and the restore then writes
+// the tool's **global** store: one directory's loss becomes a global logout. Where they do
+// not (claude today: a JSON pointer into `.credentials.json` against a keychain item) it
+// *refuses*, so the preserved copy cannot be put back at all — recoverable, but it makes
+// the backup worthless exactly when it is needed. One predicate covers both, and
+// TestBoundStoreBackupIsNeverRedirectedToTheRealHome pins each with its own control.
+//
+// Keyed on the reason rather than on the recorded target, because a target is not always a
+// path: a keychain record's is a *service name*, so a path test would answer "not kae's"
+// for exactly the per-directory item that most needs this.
+func fromBoundStore(meta backup.Meta) bool {
+	return meta.Reason == constants.BackupReasonReloginUnattributable
 }

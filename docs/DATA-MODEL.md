@@ -361,12 +361,20 @@ Before any live mutation, `switch`, `rollback`, `run -s` (real-home mode), and
 `login` capture the current live artifacts into a backup, so every mutation is
 reversible. The `reason` field's vocabulary is
 `internal/constants` (the `BackupReason*` block) — read it there rather than from a
-list here, which went stale the first time a reason was added. One of them is **not**
-a pre-mutation record and a consumer must not treat it as an undo target:
-`run-unattributable` is the post-child state `kae run -s` declined to adopt, kept so
-that a refusal is not a deletion ([CLI.md](CLI.md) § kae run Semantics). A bare
-`kae rollback` therefore skips it (`latestRestorable`) even though it is the newest;
-`kae backup list` still shows it:
+list here, which went stale the first time a reason was added. Some of them are **not**
+pre-mutation records and a consumer must not treat those as undo targets: they are copies
+kae **declined to adopt or could not keep**, retained so that a refusal is not a deletion
+([CLI.md](CLI.md) § kae run Semantics, § kae relogin Semantics). `isUndoTarget` is the one
+predicate that decides which, and both consumers read it — a bare `kae rollback` skips them
+(`latestRestorable`) even when one is the newest, and `backup_keep` does not count them;
+`kae backup list` still shows them.
+
+**A record's `target` is not always in the tool's global store**, and that is a property of
+the *reason*: `relogin-unattributable` records a store kae pointed one directory at. It
+matters on restore, because the moved-store check re-resolves today's specs globally and so
+is not an answer about such a record — `fromBoundStore` is the one place that decides it,
+and it says why it is keyed on the reason rather than on the target. Anything that reads
+these records has to ask the same question before treating a target as global:
 
 - metadata: `backups/<id>.json` (id format `YYYYMMDDTHHMMSSZ`, suffixed
   `-2`, `-3`, ... on collision)

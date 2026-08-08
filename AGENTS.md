@@ -299,6 +299,19 @@ block in docs/VALIDATION.md, next to two correct ones.
   `kae rollback` must not target it (`latestRestorable`). Ported without re-asking the
   question, this shipped the logout twice in one branch — once on attribution, once on
   ordering.
+  **A third instance is `kae relogin`'s pre-flight, and it is the one that shows the rule
+  is not about who performs the overwrite.** There the write is the *tool's* own login, and
+  the copy is gone just the same, so the refusal owes its backup
+  (`relogin-unattributable`) exactly as `run -s`'s does. What it also cost is the price of
+  being the first backup taken from a **bound** store: every consumer of a backup record
+  had assumed the record came from the tool's *global* store, and the restore's moved-store
+  check re-resolves specs globally — so following it writes the **real home**, turning one
+  directory's loss into a global logout (and for a tool whose two stores are not
+  interchangeable it refuses instead, which merely makes the backup worthless when it is
+  needed). `fromBoundStore` is the one place that decides it, keyed on the **reason** and
+  not on the recorded target, because a keychain record's target is a *service name* and a
+  path test answers "not kae's" for exactly the per-directory item that most needs it. A
+  future backup taken from anywhere but the global store owes the same question.
   **Which side to keep is forced, not chosen**, and the fact that forces it is worth
   knowing before re-deriving it: **nothing backs up an account snapshot.** `createBackup`
   records live artifacts only (`artifact.ReadLive`), and no command archives a snapshot,

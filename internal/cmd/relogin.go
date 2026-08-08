@@ -478,19 +478,53 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 		// already reported, naming the concrete error. A line here would be the second
 		// warning for one event, and the weaker of the two, which is the rule this file
 		// keeps elsewhere: one store that was not harvested produces exactly one message.
+		// No backup either: the copy is *in* the snapshot's account, kae simply could not
+		// write it, and the next bind of a directory still holding it re-harvests.
 		return
 	}
-	// No ordering in the frame, and that is not a style choice. One of the reasons this
-	// interpolates is kae saying it **cannot** order the two copies ("cannot read or date
-	// the copy already there"), so a frame calling the copy *newer* contradicts the reason
-	// four words later — the fold docs/CLI.md § `kae rollback --json` is normative against,
-	// and the one captureBackAfterRelogin below was corrected for on 2026-08-07. Written in
-	// the shape the pin-level pass already uses, which states the fact and lets the reason
-	// carry its own strength, rather than deriving "was it ordered" a second time here.
+	// **A refusal that cannot preserve is a deletion, so it owes a backup**, and this one
+	// owes it for the same reason `kae run -s`'s recapture does (AGENTS.md): the caller
+	// then lets the copy be overwritten. The only difference is who performs that write —
+	// there kae, here the tool — and the copy is gone either way.
+	//
+	// The **credential only**, not everything the store declares. A restore of this backup
+	// puts back the copy the login replaced; restoring the identity cache beside it would
+	// write a pre-login label over the one the login just wrote, which is a relabel nobody
+	// asked for and the thing dirIdentityConfirms would then read as evidence.
+	backupID := ""
+	if sp, ok := specByName(specs, artName); ok {
+		st, serr := app.loadState()
+		if serr != nil {
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: could not read kae's state to back up the %s credential the login flow "+
+					"replaces (%v)\n", tool, serr)
+		} else if meta, berr := app.createBackup(ctx, be,
+			[]toolPlan{{Tool: tool, Account: accountName, Specs: []artifact.Spec{sp}}},
+			st, constants.BackupReasonReloginUnattributable); berr != nil {
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: could not back up the %s credential the login flow replaces (%v)\n", tool, berr)
+		} else {
+			backupID = meta.ID
+		}
+	}
+	// The clause is the shared one, so this cannot describe the store by a different name
+	// than the bind path does — and it carries the ordering only where kae established it,
+	// which matters here because one of the reasons it interpolates is kae saying it cannot
+	// read or date that copy.
+	clause := dirCredentialRefusalClause(tool, dirs, accountName, refused)
+	// A message may not imply a copy survives when kae could not back it up (AGENTS.md),
+	// so the two endings are the two facts, not one hedge. `--to` and not a bare
+	// `kae rollback`: this backup is a preserved artifact rather than an undo target, which
+	// is what isUndoTarget keeps it out of.
+	if backupID == "" {
+		fmt.Fprintf(os.Stderr,
+			"kae: warning: %s; completing the login flow replaces it, and kae has it in no snapshot "+
+				"and could not back it up either\n", clause)
+		return
+	}
 	fmt.Fprintf(os.Stderr,
-		"kae: warning: kae could not keep the %s credential already in %s for %s/%s (%s); completing the "+
-			"login flow replaces it, and kae has it in no snapshot\n",
-		tool, dirs.credDirOrConfig(), tool, accountName, refused.Why)
+		"kae: warning: %s; completing the login flow replaces it, so kae backed it up first — "+
+			"%s rollback --to %s puts that copy back\n", clause, toolName, backupID)
 }
 
 // captureBackAfterRelogin harvests the copy the login just wrote into the

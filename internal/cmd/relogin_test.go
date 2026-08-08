@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
+	"github.com/webkaz-labs/kagikae/internal/artifact"
+	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -875,8 +877,8 @@ func TestReloginPreFlightDoesNotClaimAnOrderingItCannotMake(t *testing.T) {
 	if !strings.Contains(stderr, "cannot read or date the copy already there") {
 		t.Fatalf("the fixture must reach the un-orderable arm: %q", stderr)
 	}
-	if !strings.Contains(stderr, "could not keep the claude credential") {
-		t.Errorf("the pre-flight must still say it could not keep the copy: %q", stderr)
+	if !strings.Contains(stderr, "kae is not harvesting the claude credential already in") {
+		t.Errorf("the pre-flight must still say it did not keep the copy: %q", stderr)
 	}
 	if strings.Contains(stderr, "is newer than snapshot") {
 		t.Errorf("kae could not order these two copies, so it may not call one newer: %q", stderr)
@@ -951,12 +953,155 @@ func TestReloginPreFlightWarningsCarryNoSecret(t *testing.T) {
 
 	// Positive control: the pre-flight really spoke, so the absences below are about
 	// a line that exists rather than about a run that printed nothing.
-	if !strings.Contains(stderr, "could not keep the claude credential") {
+	if !strings.Contains(stderr, "completing the login flow replaces it") {
 		t.Fatalf("the fixture must reach the pre-flight refusal: %q", stderr)
 	}
 	for _, secret := range []string{atRisk, fresh, mainToken} {
 		if strings.Contains(stderr, secret) || strings.Contains(out, secret) {
 			t.Errorf("a credential reached the output: %q / %q", stderr, out)
+		}
+	}
+}
+
+// The pre-flight refuses on a copy it cannot attribute, and the tool's login then
+// replaces that copy — so by AGENTS.md's rule the refusal owes a backup, the way
+// `kae run -s`'s recapture owes `run-unattributable`. This asserts the three
+// properties that make the backup worth having rather than a second hazard.
+func TestReloginPreFlightBacksUpTheCopyTheLoginReplaces(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+
+	_, siblingStore, credFile := boundStoreForClaudeMain(t, app)
+	_, _, _ = boundStoreForClaudeMain(t, app)
+	// One reader names another account, so attribution refuses and the copy is at risk.
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("side-uuid"))
+	const atRisk = "sk-ant-oat01-ATRISK-nnnn"
+	writeFile(t, credFile, claudeOAuthPayload(atRisk, now.Add(8*time.Hour)))
+
+	withInteractive(t, loginInto(t, constants.ToolClaude, "sk-ant-oat01-FRESH-oooo", "main-uuid",
+		now.Add(9*time.Hour), &[]string{}))
+	code, stderr := captureStderr(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	metas, err := backup.List(app.Paths.BackupsDir())
+	if err != nil {
+		t.Fatalf("list backups: %v", err)
+	}
+	var kept *backup.Meta
+	for i := range metas {
+		if metas[i].Reason == constants.BackupReasonReloginUnattributable {
+			kept = &metas[i]
+		}
+	}
+	if kept == nil {
+		t.Fatalf("a refusal that cannot preserve owes a backup: %+v / %q", metas, stderr)
+	}
+	// 1. It holds the copy the login was about to replace, and the message names it —
+	//    a backup nothing points at is one the user cannot reach.
+	if !strings.Contains(stderr, kept.ID) {
+		t.Errorf("the warning must name the backup that holds the copy: %q", stderr)
+	}
+	be := testBackend(t, app)
+	if len(kept.Artifacts) != 1 || kept.Artifacts[0].Name != credentialArtifactName(constants.ToolClaude) {
+		t.Fatalf("the credential only: restoring a pre-login identity would relabel the directory: %+v", kept.Artifacts)
+	}
+	got, found, err := be.Get(ctx, kept.Artifacts[0].SecretRef)
+	if err != nil || !found || !strings.Contains(string(got), atRisk) {
+		t.Fatalf("the backup must hold the copy at risk: found=%v err=%v %s", found, err, got)
+	}
+	// 2. It records the **bound** store, not the real home — which is what makes a
+	//    restore put the copy back where it was taken from.
+	if kept.Artifacts[0].Target != credFile {
+		t.Errorf("target = %q, want the bound store %q", kept.Artifacts[0].Target, credFile)
+	}
+	// 3. It is a preserved artifact, never a bare `kae rollback` target: rolling into it
+	//    by accident installs a login kae explicitly refused to name. Asserted through
+	//    the shared predicate *and* through what a bare rollback would actually pick.
+	if isUndoTarget(*kept) {
+		t.Error("a copy kae declined to adopt is not an undo target")
+	}
+	latest, ok, err := latestRestorable(app.Paths.BackupsDir())
+	if err != nil {
+		t.Fatalf("latestRestorable: %v", err)
+	}
+	if ok && latest.ID == kept.ID {
+		t.Errorf("a bare rollback must not target the preserved copy: %s", latest.ID)
+	}
+	// The store itself moved on: the backup is the copy's only home now.
+	if got := readFile(t, credFile); strings.Contains(got, atRisk) {
+		t.Fatalf("the login should have replaced the store's copy: %s", got)
+	}
+}
+
+// The reason the backup is safe to have at all. Its records come from a store kae
+// pointed one directory at, so the restore's moved-store check — which re-resolves specs
+// **globally** — is not an answer about them.
+//
+// Two consequences, and they are not equally reachable, which is worth pinning because
+// the severe one is the one no fixture here can produce yet. Where the two stores hold
+// interchangeable payloads (codex: `auth.json` and its keyring item are both whole
+// documents) the check **redirects**, and following it writes the tool's *global* store —
+// one directory's loss becomes a global logout. Where they do not (claude today: a JSON
+// pointer into `.credentials.json` against a keychain item) it **refuses**, so the copy
+// cannot be restored at all. The guard is one predicate against both.
+func TestBoundStoreBackupIsNeverRedirectedToTheRealHome(t *testing.T) {
+	// The redirecting shape, which is the severe one. codex's two stores are
+	// interchangeable, so without the flag this record follows today's global item.
+	rec := backup.ArtifactRecord{
+		Tool: constants.ToolCodex, Name: "auth", Kind: constants.KindFile,
+		Target:    "/kae/isolation/deadbeef/codex/shared/auth.json",
+		SecretRef: "backup/x/codex/auth", Present: true,
+	}
+	globalNow := map[string][]artifact.Spec{constants.ToolCodex: {{
+		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth", Pointer: "/tokens",
+		KeychainAccount: "cli|1111111111111111", KeychainMatchAccount: true,
+	}}}
+	// Positive control: without the flag this record really is redirected, so the
+	// assertion below is about the flag and not about a path that never redirects.
+	if sp, _, err := restoreSpec(globalNow, rec, false); err != nil || sp.Kind != constants.KindKeychain {
+		t.Fatalf("control: a global record must still follow a moved store: %+v %v", sp, err)
+	}
+	sp, _, err := restoreSpec(globalNow, rec, true)
+	if err != nil {
+		t.Fatalf("a bound-store record must restore, not refuse: %v", err)
+	}
+	if sp.Kind != rec.Kind || sp.Target != rec.Target {
+		t.Fatalf("spec = %+v, want the recorded bound store %q", sp, rec.Target)
+	}
+
+	// The refusing shape, which is the one claude reaches today: unguarded, the restore
+	// errors out and the preserved copy cannot be put back at all.
+	claudeRec := backup.ArtifactRecord{
+		Tool: constants.ToolClaude, Name: "claude_ai_oauth", Kind: constants.KindJSONPointer,
+		Target: "/kae/credstore/claude/main/.credentials.json", Pointer: "/claudeAiOauth",
+		SecretRef: "backup/x/claude/claude_ai_oauth", Present: true,
+	}
+	claudeNow := map[string][]artifact.Spec{constants.ToolClaude: {{
+		Name: "claude_ai_oauth", Kind: constants.KindKeychain,
+		Target: "Claude Code-credentials", Pointer: "/claudeAiOauth",
+	}}}
+	if _, _, err := restoreSpec(claudeNow, claudeRec, false); exitOf(err) != constants.ExitUnsafeRefused {
+		t.Fatalf("control: unguarded, the two shapes are refused: %v", err)
+	}
+	if sp, _, err := restoreSpec(claudeNow, claudeRec, true); err != nil || sp.Target != claudeRec.Target {
+		t.Fatalf("the guarded record must restore from the bound store: %+v %v", sp, err)
+	}
+
+	// And the flag is derived from the reason in one place, so the two cannot drift.
+	if !fromBoundStore(backup.Meta{Reason: constants.BackupReasonReloginUnattributable}) {
+		t.Error("the relogin refusal's backup must be marked as coming from a bound store")
+	}
+	for _, r := range []string{
+		constants.BackupReasonSwitch, constants.BackupReasonRollback,
+		constants.BackupReasonRun, constants.BackupReasonLogin,
+		constants.BackupReasonRunUnattributable,
+	} {
+		if fromBoundStore(backup.Meta{Reason: r}) {
+			t.Errorf("%s records the tool's global store, so it must keep the moved-store check", r)
 		}
 	}
 }

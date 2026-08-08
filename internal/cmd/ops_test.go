@@ -128,7 +128,7 @@ func TestRestoreSpecFollowsAMovedStore(t *testing.T) {
 		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
 		Pointer: "/tokens", KeychainAccount: "cli|1111111111111111", KeychainMatchAccount: true,
 	}
-	sp, _, err := restoreSpec(map[string][]artifact.Spec{constants.ToolCodex: {itemNow}}, fileRec)
+	sp, _, err := restoreSpec(map[string][]artifact.Spec{constants.ToolCodex: {itemNow}}, fileRec, false)
 	if err != nil {
 		t.Fatalf("a whole-document payload must follow the tool: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestRestoreSpecFollowsAMovedStore(t *testing.T) {
 		Name: "auth", Kind: constants.KindFile, Target: "/home/u/.codex/auth.json",
 	}}}
 	for _, current := range []map[string][]artifact.Spec{fileNow, nil} {
-		sp, _, err := restoreSpec(current, fileRec)
+		sp, _, err := restoreSpec(current, fileRec, false)
 		if err != nil || sp.Kind != constants.KindFile || sp.Target != fileRec.Target {
 			t.Fatalf("an unmoved store must restore from the record: %+v %v", sp, err)
 		}
@@ -159,7 +159,7 @@ func TestRestoreSpecFollowsAMovedStore(t *testing.T) {
 		Target: "Claude Code-credentials", Pointer: "/claudeAiOauth",
 		SecretRef: "backup/x/claude/claude_ai_oauth", Present: true,
 	}
-	_, _, err = restoreSpec(pointerNow, keychainRec)
+	_, _, err = restoreSpec(pointerNow, keychainRec, false)
 	if exitOf(err) != constants.ExitUnsafeRefused {
 		t.Fatalf("err = %v (exit %d), want a refusal with exit %d",
 			err, exitOf(err), constants.ExitUnsafeRefused)
@@ -219,7 +219,7 @@ func TestPlansFromBackupMetaCapturesWhatTheRollbackWrites(t *testing.T) {
 				t.Fatalf("unexpected plans: %+v", plans)
 			}
 			captured := plans[0].Specs[0]
-			written, _, err := restoreSpec(tc.current, tc.rec)
+			written, _, err := restoreSpec(tc.current, tc.rec, false)
 			if err != nil {
 				t.Fatalf("restoreSpec: %v", err)
 			}
@@ -244,7 +244,7 @@ func TestRestoreSpecNeverRedirectsADelete(t *testing.T) {
 		Name: "auth", Kind: constants.KindKeychain, Target: "Codex Auth",
 		Pointer: "/tokens", KeychainAccount: "cli|1111111111111111", KeychainMatchAccount: true,
 	}
-	sp, _, err := restoreSpec(map[string][]artifact.Spec{constants.ToolCodex: {itemNow}}, absentFileRec)
+	sp, _, err := restoreSpec(map[string][]artifact.Spec{constants.ToolCodex: {itemNow}}, absentFileRec, false)
 	if err != nil {
 		t.Fatalf("an absent record must restore, not fail: %v", err)
 	}

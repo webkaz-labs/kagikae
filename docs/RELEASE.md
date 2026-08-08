@@ -132,8 +132,21 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   remedy. Measured end to end: following that remedy left the other account's only
   refreshable copy in no store and no snapshot, with nothing printed about it. Now the
   copy is harvested where it can be, and where it cannot the reason is on stderr before
-  the flow starts. Not a refusal — the login is what was asked for, and declining it
-  would leave the directory stale with nothing to do about it.
+  the flow starts **and the copy is backed up first** (reason `relogin-unattributable`,
+  the credential only, with `kae rollback --to <id>` named in the warning) — because a
+  refusal that cannot preserve is a deletion, which is the rule `kae run -s`'s recapture
+  already answers with `run-unattributable`. Not a refusal of the login itself: that is
+  what was asked for, and declining it would leave the directory stale with nothing to do
+  about it.
+  It is the first backup kae takes from a **bound** store rather than the tool's global
+  one, and that cost one more guard than it looks: the restore's moved-store check
+  re-resolves specs globally, so following it would write the **real home** — one
+  directory's loss becoming a global logout — for a tool whose two stores hold
+  interchangeable payloads, and would refuse outright for one whose stores do not (claude
+  today), making the backup worthless exactly when it is needed. `fromBoundStore` gates
+  that check, keyed on the reason rather than on the recorded target, since a keychain
+  record's target is a service name. The bare-rollback refusal now names the preserved
+  reasons actually present instead of the one literal it had hardcoded.
 
 - **`doctor` reports the copy that lost the race** (`credential_superseded`,
   contract-additive). When two copies of one account's credential exist and one

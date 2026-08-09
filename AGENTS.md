@@ -72,9 +72,21 @@ was captured by a `$(...)` in the block — once corrupting an assertion into a
 non-integer, once landing inside `HOME=$(mktemp -d)` and creating a directory in
 the checkout. `smoke-run.sh` closes the class instead of warning about it: it puts
 every root in a temp HOME **before** the block runs, so a preamble that fails to
-take effect still cannot reach the real one; it traps to a file descriptor rather
-than to stdout; and it fails the run if the checkout changed. Its own guards are
-tested against a deliberately leaking fixture via `SMOKE_DOC`.
+take effect still cannot reach the real one; it never prints into the block's own
+stdout; and it fails the run if the checkout changed. **`HOME` and the XDG roots
+are not the whole set** — `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `COPILOT_HOME` and
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` outrank the temp HOME, and a preamble-less
+block inheriting one was measured writing outside the sandbox while the runner
+reported a clean run, so it clears those too.
+
+**Two things it cannot do, and a green run does not claim them.** It cannot
+isolate the macOS login keychain, which ignores `$HOME`: only `secret_backend =
+"file"` in the block's own config keeps kae's snapshot store out of it, and that
+is the 956-item defect. And its leak detector sees the checkout only — a write
+elsewhere on the machine is invisible to it. `mise run check` runs
+`scripts/smoke-run-selftest.sh`, which is what keeps these claims honest; the
+sentence it replaced vouched for guards that had been checked by hand once and
+were then shown to be false.
 
 ## Implementation Boundaries
 

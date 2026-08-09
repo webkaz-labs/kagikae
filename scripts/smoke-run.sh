@@ -3,11 +3,19 @@
 # them in isolation. From the repository root:
 #
 #   bash scripts/smoke-run.sh '## Smoke Checks'
+#   SMOKE_WHOLE_FILE=1 bash scripts/smoke-run.sh '## v0.17.0 surface — the credential harvest'
+#
+# Use SMOKE_WHOLE_FILE=1 for a section that defines functions or other multi-line
+# constructs (the harvest section does). That mode has no per-line verdict and
+# says so; the default mode is the one whose exit status means something.
+#
+# `bash scripts/smoke-run-selftest.sh` checks this script's own guards, and
+# `mise run check` runs it.
 #
 # This exists instead of a paragraph telling the reader to be careful, because
 # every hand-written harness for this file has leaked, and the leaks write to
-# the machine rather than failing. Four measured ways, all of which this script
-# closes by construction rather than by warning:
+# the machine rather than failing. Measured ways, all closed here by
+# construction rather than by warning:
 #
 #   * `. scripts/smoke-env.sh` inside `$(...)` exports nothing — command
 #     substitution is a subshell — so the block runs against the real HOME while
@@ -24,16 +32,28 @@
 #   * `kae pin` binds the *current* directory and appends to
 #     $GIT_COMMON_DIR/info/exclude, so a block run from the checkout dirties it.
 #
-# The isolation is belt and braces on purpose: this script puts every root in a
-# temp HOME *before* the block runs, so a block whose own preamble silently
-# fails to take effect still cannot reach the real one.
+# WHAT THE ISOLATION DOES AND DOES NOT COVER. It puts HOME, every XDG root and
+# every tool-home variable in a temp HOME *before* the block runs, so a block
+# whose own preamble silently fails to take effect still cannot reach the real
+# ones. The tool-home variables are not decoration: `CODEX_HOME`,
+# `CLAUDE_CONFIG_DIR`, `COPILOT_HOME` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`
+# **outrank** the temp HOME, and a preamble-less block inheriting one of them was
+# measured writing outside the sandbox while this script reported a clean run.
+# It cannot isolate **the macOS login keychain**, which ignores `$HOME`
+# entirely. `KAE_CLAUDE_DRIVER=file` below keeps claude's own credential in a
+# file, but kae's *snapshot* store still follows `secret_backend`, and only the
+# block's own config.toml can set that — a block that fails to write one will
+# put captured payloads in the `kagikae` keychain item on darwin. That is the
+# defect that put 956 items in the operator's login keychain, and no environment
+# prefix can prevent it. The leak detector below sees the checkout only: writes
+# elsewhere on the machine are not detected.
 
 set -u
 
 heading=${1-'## Smoke Checks'}
-# SMOKE_DOC exists so this script's own guards can be tested against a fixture
-# document that deliberately leaks; without it the leak detector and the
-# isolation fallback below are two more assertions nothing ever evaluates.
+# SMOKE_DOC exists so this script's own guards can be tested against fixture
+# documents that deliberately leak; without it the leak detector and the
+# isolation fallback are two more assertions nothing ever evaluates.
 doc=${SMOKE_DOC:-docs/VALIDATION.md}
 
 if [ ! -f "$doc" ] || [ ! -f go.mod ]; then
@@ -41,10 +61,36 @@ if [ ! -f "$doc" ] || [ ! -f go.mod ]; then
   exit 2
 fi
 
+# Go's module cache is written read-only, so a plain `rm -rf` on the sandbox
+# fails noisily and leaves it behind.
+cleanup() {
+  [ -n "${safe:-}" ] && chmod -R u+w "$safe" 2>/dev/null
+  rm -rf "${block:-}" "${log:-}" "${safe:-}"
+}
+trap cleanup EXIT
+
+# The build caches stay OUTSIDE the sandbox, deliberately. A block starts with
+# `go build`, and with HOME redirected the module cache lands in the sandbox and
+# is re-downloaded on every run. These hold compiler output, not credential
+# state, so they are not what the isolation is protecting.
+gomodcache=$(go env GOMODCACHE 2>/dev/null || echo "")
+gocache=$(go env GOCACHE 2>/dev/null || echo "")
+
 # --- extract ---------------------------------------------------------------
 # The heading is matched as a prefix: the real ones carry a parenthetical
 # ("## Smoke Checks (built binary, isolated env)") that a caller should not have
-# to reproduce, and requiring equality silently found nothing.
+# to reproduce, and requiring equality silently found nothing. A prefix can
+# match several headings, though, and concatenating four sections into one run
+# and calling it one block is the silent-subset failure this tool exists to
+# stop — so that is an error, not a merge.
+matches=$(awk -v h="$heading" 'index($0, h) == 1 && /^## / { print }' "$doc")
+count=$(printf '%s' "$matches" | grep -c . || true)
+if [ "$count" -gt 1 ]; then
+  printf 'smoke-run: %s headings start with %s; name one of them:\n' "$count" "$heading" >&2
+  printf '%s\n' "$matches" >&2
+  exit 2
+fi
+
 block=$(mktemp)
 awk -v h="$heading" '
   index($0, h) == 1 && /^## / { insec = 1; next }
@@ -62,14 +108,18 @@ printf 'smoke-run: %s lines extracted from %s under %s\n' \
   "$(wc -l < "$block" | tr -d ' ')" "$doc" "$heading"
 
 # --- record what the checkout looks like now --------------------------------
-excl=$(git rev-parse --git-common-dir 2>/dev/null)/info/exclude
+# Content, not size: `kae pin` appends so a size check would catch the realistic
+# case, but the printed claim would be stronger than the check.
+gitdir=$(git rev-parse --git-common-dir 2>/dev/null || true)
+if [ -z "$gitdir" ]; then
+  printf 'smoke-run: not inside a git repository; the leak detector needs one\n' >&2
+  exit 2
+fi
+excl="$gitdir/info/exclude"
 status_before=$(git status --porcelain 2>/dev/null)
-excl_before=$([ -f "$excl" ] && wc -c < "$excl" || echo missing)
+excl_before=$([ -f "$excl" ] && cat "$excl" || echo missing)
 
 # --- run, pre-isolated ------------------------------------------------------
-# The block sources scripts/smoke-env.sh itself and gets its own temp HOME from
-# it. These exports are the fallback for when that does not take effect: they
-# are what the block would inherit, and none of them is the real HOME.
 safe=$(mktemp -d)
 log=$(mktemp)
 transcript=$(mktemp)
@@ -80,17 +130,23 @@ transcript=$(mktemp)
 # the middle — the same "green means nothing" defect as the block it runs. An
 # ERR trap does not fix it either, since it also fires for the command half of a
 # deliberate `<cmd>; test $? -eq <n>` pair and cannot tell that from a real
-# failure. Set SMOKE_WHOLE_FILE=1 for a section that contains functions or other
-# multi-line constructs, and read the per-line output rather than the status.
-HOME="$safe" \
-XDG_CONFIG_HOME="$safe/.config" \
-XDG_DATA_HOME="$safe/.local/share" \
-XDG_STATE_HOME="$safe/.local/state" \
-XDG_RUNTIME_DIR="$safe/.local/run" \
-NO_COLOR=1 \
-SMOKE_WHOLE_FILE="${SMOKE_WHOLE_FILE:-0}" \
-bash -c '
+# failure.
+env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
+    -u CLAUDE_SECURESTORAGE_CONFIG_DIR -u OPENCODE_AUTH_CONTENT \
+  HOME="$safe" \
+  XDG_CONFIG_HOME="$safe/.config" \
+  XDG_DATA_HOME="$safe/.local/share" \
+  XDG_STATE_HOME="$safe/.local/state" \
+  XDG_RUNTIME_DIR="$safe/.local/run" \
+  TMPDIR="$safe/tmp" \
+  GOMODCACHE="$gomodcache" \
+  GOCACHE="$gocache" \
+  NO_COLOR=1 \
+  KAE_CLAUDE_DRIVER=file \
+  SMOKE_WHOLE_FILE="${SMOKE_WHOLE_FILE:-0}" \
+  bash -c '
   block=$1; log=$2; tr=$3; out=$(mktemp); acc=""; start=0; n=0; failed=0
+  mkdir -p "$TMPDIR"
   printf "smoke-run transcript: HOME=%s\n\n" "$HOME" >"$tr"
   if [ "$SMOKE_WHOLE_FILE" = 1 ]; then
     # shellcheck disable=SC1090
@@ -100,7 +156,12 @@ bash -c '
     n=$((n + 1))
     if [ -n "$acc" ]; then acc="$acc $line"
     else
-      case $line in ""|"#"*|" "*"#"*) continue ;; esac
+      # Strip leading whitespace and test the FIRST character. Matching "#"
+      # anywhere in an indented line drops indented *commands* that merely carry
+      # a trailing comment — a silent subset, inside the tool built to stop
+      # silent subsets.
+      stripped=${line#"${line%%[! 	]*}"}
+      case $stripped in ""|"#"*) continue ;; esac
       acc=$line; start=$n
     fi
     case $acc in *\\) acc=${acc%\\}; continue ;; esac
@@ -113,13 +174,22 @@ bash -c '
     fi
     acc=""
   done 3< "$block"
-  exit "$failed"
+  # Clamped: an exit status is mod 256, so 256 failing lines exited 0 and the
+  # report called it 0 failures. Reachable — the harvest block is ~400 lines and
+  # an unbuilt /tmp/kae fails nearly all of them.
+  [ "$failed" -gt 0 ] && exit 1
+  exit 0
 ' _ "$block" "$log" "$transcript"
 rc=$?
 
 # --- report -----------------------------------------------------------------
-if [ -s "$log" ]; then
-  printf 'smoke-run: %s line(s) exited non-zero:\n' "$rc"
+if [ "${SMOKE_WHOLE_FILE:-0}" = 1 ]; then
+  # No per-line verdict exists in this mode, so do not print one. Saying
+  # "every line exited 0" here (which an earlier version did, unconditionally)
+  # reproduces the defect the per-line loop was written to fix.
+  printf 'smoke-run: whole-file mode — block exit status %s, NO per-line verdict\n' "$rc"
+elif [ -s "$log" ]; then
+  printf 'smoke-run: %s line(s) exited non-zero:\n' "$(grep -c '^  line ' "$log")"
   cat "$log"
   printf 'smoke-run: a section whose prose allows non-zero lines has to say which\n'
 else
@@ -127,11 +197,10 @@ else
 fi
 printf 'smoke-run: full transcript in %s\n' "$transcript"
 
-
 # --- did anything escape? ---------------------------------------------------
 leak=0
 status_after=$(git status --porcelain 2>/dev/null)
-excl_after=$([ -f "$excl" ] && wc -c < "$excl" || echo missing)
+excl_after=$([ -f "$excl" ] && cat "$excl" || echo missing)
 
 if [ "$status_before" != "$status_after" ]; then
   printf 'smoke-run: LEAK — the checkout changed while the block ran:\n' >&2
@@ -139,8 +208,7 @@ if [ "$status_before" != "$status_after" ]; then
   leak=1
 fi
 if [ "$excl_before" != "$excl_after" ]; then
-  printf 'smoke-run: LEAK — %s changed (%s -> %s bytes)\n' \
-    "$excl" "$excl_before" "$excl_after" >&2
+  printf 'smoke-run: LEAK — %s changed while the block ran\n' "$excl" >&2
   leak=1
 fi
 if [ "$leak" -eq 1 ]; then
@@ -148,5 +216,7 @@ if [ "$leak" -eq 1 ]; then
   exit 1
 fi
 
-printf 'smoke-run: checkout unchanged (status and %s)\n' "$excl"
+printf 'smoke-run: checkout unchanged (git status and info/exclude only — a write\n'
+printf '           elsewhere on this machine, including the login keychain, is not\n'
+printf '           something this check can see)\n'
 exit "$rc"

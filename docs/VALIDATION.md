@@ -165,12 +165,11 @@ test -z "$(find "$ISO"/*/codex/isolated -type l)"   # assert: no symlinks in iso
                                                 #   config.toml link and fails for the wrong
                                                 #   reason (measured while writing this block)
 
-/tmp/kae pin -s side                            # and `-s` switches back. Placed after the
-grep -c 'codex/shared' "$FRAG"                  #   isolated bind on purpose: run while the
-                                                #   directory is already shared it proves only
-                                                #   that the flag parses, since a build that
-                                                #   ignored `-s` would look identical
-                                                # assert: 1 — the bind really moved back
+# `-s` switches back. Placed after the isolated bind on purpose: run while the
+# directory is already shared it proves only that the flag parses, since a build
+# that ignored `-s` would look identical.
+/tmp/kae pin -s side
+grep -c 'codex/shared' "$FRAG"                  # assert: 1 — the bind really moved back
 /tmp/kae pin -i side                            # isolated again for the re-bind case below
 grep -c 'codex/isolated/main/config' "$FRAG"    # assert: 1
 
@@ -230,11 +229,13 @@ this paragraph has twice stated one that the next edit to the block falsified,
 the second time inside the very commit that was correcting the first.
 
 **Run it with `bash scripts/smoke-run.sh '## Smoke Checks'`, not by hand.** That
-script extracts the block from this file, runs it with every root already inside a
-temp HOME so a preamble that fails to take effect still cannot reach the real one,
-and fails if the checkout changed. Every hand-written harness for this file has
-leaked; the script's header records the four measured ways and is the reason it
-exists rather than a warning here.
+script extracts the block from this file, runs it with HOME, every XDG root and
+every tool-home variable already inside a temp HOME — so a preamble that fails to
+take effect still cannot reach the real ones — and fails if the checkout changed.
+Every hand-written harness for this file has leaked; the script's header records
+the measured ways, and what it still cannot cover (the login keychain ignores
+`$HOME`, and the leak detector sees only the checkout). `mise run check` runs
+`scripts/smoke-run-selftest.sh`, so those guards are checked rather than asserted.
 
 **What this block does not cover, said because a green run reads as if it did.**
 `KAE_CLAUDE_DRIVER=file` is what makes it safe on macOS, and it keeps claude's

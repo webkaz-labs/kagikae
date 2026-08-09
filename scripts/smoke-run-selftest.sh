@@ -35,15 +35,29 @@ doc() { # doc <name> <heading> <body...>
   printf '%s' "$f"
 }
 
-check() { # check <description> <expected-rc> <actual-rc> [<must-contain> <output-file>]
+check() { # check <desc> <expected-rc> <actual-rc> [<must-contain> <file>]...
   local desc=$1 want=$2 got=$3
+  shift 3
   if [ "$want" != "$got" ]; then
     printf 'FAIL  %s (want exit %s, got %s)\n' "$desc" "$want" "$got"
     fails=$((fails + 1))
     return
   fi
-  if [ $# -ge 5 ] && ! grep -q -- "$4" "$5"; then
-    printf 'FAIL  %s (output missing %s)\n' "$desc" "$4"
+  # Repeated pairs, so a guard needing two patterns does not hand-roll the
+  # bookkeeping beside the helper that already does it.
+  while [ $# -ge 2 ]; do
+    if ! grep -q -- "$1" "$2"; then
+      printf 'FAIL  %s (output missing %s)\n' "$desc" "$1"
+      fails=$((fails + 1))
+      return
+    fi
+    shift 2
+  done
+  # A pattern with no file would otherwise be dropped without a word — a silent
+  # subset inside the file written to stop silent subsets. Not reachable from any
+  # caller today (all pass 0, 2 or 4 trailing arguments); this is for the next one.
+  if [ $# -ne 0 ]; then
+    printf 'FAIL  %s (odd trailing argument: a pattern with no file)\n' "$desc"
     fails=$((fails + 1))
     return
   fi
@@ -325,11 +339,9 @@ run "$f" '## NoColor'; check 'colour is disabled for the block' 0 $? 'NO_COLOR=1
 #     a "count the paths" assertion alone reads it as success — which is the same
 #     reason the control below exists.
 #
-#     Deliberately not done here: disabling trust to make mise talk. That is the
-#     documented cure and it makes mise load the operator's global config and
-#     evaluate its `exec()` templates; one resolved a live GitHub token into a
-#     transcript on 2026-08-09. The runner's header says never to do it, and a
-#     self-test that did it anyway would be teaching the opposite.
+#     Deliberately not done here: disabling trust to make mise talk. The runner
+#     header is normative for why (it costs a secret), and a self-test that did it
+#     anyway would be teaching the opposite of the file it guards.
 f=$(doc ceiling '## Ceiling' \
   'mkdir -p "$HOME/.config/mise"' \
   'printf "[env]\nSMOKE_CEILING_CONTROL = \"1\"\n" > "$HOME/.config/mise/config.toml"' \
@@ -388,13 +400,8 @@ f=$(doc both '## Both' \
   'XEOF' \
   'touch "$HOME/after"')
 run "$f" '## Both'; rc=$?
-if [ "$rc" -ne 0 ] && grep -q 'exited non-zero' "$tmp/out" && grep -q 'ENDED EARLY' "$tmp/out"; then
-  printf 'ok    a failing line and an early end are both reported\n'
-  ok=$((ok + 1))
-else
-  printf 'FAIL  a failing line and an early end are both reported (rc=%s)\n' "$rc"
-  fails=$((fails + 1))
-fi
+check 'a failing line and an early end are both reported' 1 "$rc" \
+  'exited non-zero' "$tmp/out" 'ENDED EARLY' "$tmp/out"
 
 # 17. A block that ends on its LAST line. The counter is written before each line
 #     runs, so this shape leaves it equal to the total and passed the completeness

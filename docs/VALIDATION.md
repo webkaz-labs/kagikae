@@ -992,7 +992,11 @@ cred() { printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expires
 cred "$SOON";            /tmp/kae add --no-login claude soon      # login expires in 3 days
 cred "$FAR";             /tmp/kae add --no-login claude healthy   # 60 days out
 cred 1609459200000;      /tmp/kae add --no-login claude dead      # expired in 2021
-/tmp/kae doctor claude --json > "$HOME/A.json"
+/tmp/kae doctor claude --json > "$HOME/A.json"; test $? -eq 0
+                                                            # assert: exit 0 — a warn
+                                                            #  never fails. Taken from
+                                                            #  the call above rather than
+                                                            #  a second run of it
 grep -q '"code": "credential_expiring"' "$HOME/A.json"      # assert: "soon" is reported,
 grep -qF 'snapshot \"soon\" needs an interactive re-login in' "$HOME/A.json"
 grep -q 'kae add --restore claude soon' "$HOME/A.json"      #  named with its remedy
@@ -1004,7 +1008,6 @@ test "$(grep -c healthy "$HOME/A.json")" -eq 0              # assert: NO credent
                               #   login's life, or it is wallpaper. The four greps above
                               #   are this line's positive control: an empty report would
                               #   satisfy a lone absence check
-/tmp/kae doctor claude --json >/dev/null; test $? -eq 0     # assert: 0 (warn never fails)
 
 # --- B. the inventory column (ls / accounts / status) ---
 /tmp/kae ls --no-color > "$HOME/B.txt"
@@ -1953,16 +1956,19 @@ grep -v '^CLAUDE_SECURESTORAGE_CONFIG_DIR' "$BF" > "$BF.tmp" && mv "$BF.tmp" "$B
 SB=$(store)   # B's credential is its config dir again — that is the point of the edit
 cred A-NEW $LATER > "$SA/.credentials.json"   # the tool refreshed A's account store
 cred B-OLD $NEW   > "$SB/.credentials.json"   # B has been sitting since before that
-test "$(/tmp/kae doctor --json | grep -c credential_superseded)" -eq 1
+# One capture, not three runs over state nothing changes in between: an unscoped
+# `kae doctor` sweeps every tool plus the companion and pinned-directory checks, ~1.5s
+# a call on the machine this was measured on.
+/tmp/kae doctor --json > "$HOME/K.json"
+test "$(grep -c credential_superseded "$HOME/K.json")" -eq 1
                                         # assert: exactly one directory lost. A count
                                         #   alone would pass as a quiet 0, so the lines
                                         #   below name which one
-/tmp/kae doctor | grep "is older than" > "$HOME/K.txt"
-grep -q "bound to $B is older than another copy of claude/main (the store bound to $A)" "$HOME/K.txt"
+grep -q "bound to $B is older than another copy of claude/main (the store bound to $A)" "$HOME/K.json"
                                         # assert: B lost, and A is named as where the
                                         #   newer copy is
-grep -q "cd $B && kae relogin claude" "$HOME/K.txt"   # assert: and the remedy is a login
-test "$(/tmp/kae doctor --json | grep -c credential_stale)" -eq 0
+grep -q "cd $B && kae relogin claude" "$HOME/K.json"  # assert: and the remedy is a login
+test "$(grep -c credential_stale "$HOME/K.json")" -eq 0
                                         # assert: 0 — a superseded copy is NOT stale.
                                         #   Both deadlines here are years out; the whole
                                         #   point is that the field the stale check reads

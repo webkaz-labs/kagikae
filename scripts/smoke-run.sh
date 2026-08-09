@@ -164,8 +164,9 @@ if [ ! -s "$block" ]; then
   printf 'smoke-run: no bash block found under %s\n' "$heading" >&2
   exit 2
 fi
+block_lines=$(wc -l < "$block" | tr -d ' ')
 printf 'smoke-run: %s lines extracted from %s under %s\n' \
-  "$(wc -l < "$block" | tr -d ' ')" "$doc" "$heading"
+  "$block_lines" "$doc" "$heading"
 
 # --- record what the checkout looks like now --------------------------------
 # Content, not size: `kae pin` appends so a size check would catch the realistic
@@ -285,7 +286,7 @@ else
   # line *and* then ended early printed the failing line and nothing else, so the
   # verdict implied every other line had run. Both are reported (found in review,
   # 2026-08-09).
-  total=$(wc -l < "$block" | tr -d ' ')
+  total=$block_lines
   got=$(cat "$consumed" 2>/dev/null || echo 0)
   [ -n "$got" ] || got=0
   if [ -s "$log" ]; then

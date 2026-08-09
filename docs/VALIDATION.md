@@ -1353,6 +1353,7 @@ proving nothing that way. Token names never prefix one another for the same reas
 `grep MAIN-NEW` matched a `MAIN-NEW2` and three cases passed on a copy they were not about.
 
 ```bash
+go build -o /tmp/kae .
 . scripts/smoke-env.sh
 export KAE_CLAUDE_DRIVER=file
 OLD=1767225600000; NEW=1798761600000; LATER=1814400000000   # expiresAt: 2026-01-01, 2027-01-01, 2027-07-01
@@ -1371,11 +1372,9 @@ accstore() { printf '%s/kagikae/credstore/claude/%s/.credentials.json' "$XDG_DAT
 # the fresh snapshot — after which the case's own `$NEW` fixture is not newer than
 # anything and its guard is never reached. Measured 2026-08-08: D and E had stopped
 # testing their own subject exactly that way.
-reset_main() {
-  cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
-  /tmp/kae add --no-login --identity you@example.com claude main
-  rm -f "$(accstore main)"
-}
+# One line, because scripts/smoke-run.sh evaluates one line at a time and a function
+# body spread over several is the same trap as a here-document.
+reset_main() { cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"; /tmp/kae add --no-login --identity you@example.com claude main; rm -f "$(accstore main)"; }
 
 mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
 printf 'version = 1\n[security]\nsecret_backend = "file"\n' > "$XDG_CONFIG_HOME/kagikae/config.toml"
@@ -1397,13 +1396,24 @@ P="$HOME/proj"; mkdir -p "$P"; cd "$P"
 # kae's: kae no longer writes a label on the paths where it keeps a copy, precisely so a
 # later bind cannot confirm against something kae planted (§ ADAPTERS.md). A block that
 # leaned on kae's own label would be testing the shape that was removed.
+#
+# In THIS case the line is a no-op, and that was measured rather than assumed (2026-08-09,
+# by deleting it and watching A stay green). The pin above already materializes the
+# account's identity artifact into the config store, byte-identical to what `ident main`
+# writes, because the snapshot captured the same payload from the real home. No
+# contradiction with the paragraph above: kae labels neither the *credential* store nor a
+# copy it declined to write — the config store's identity artifact is ordinary
+# materialization. It is kept because every other case seeds explicitly and a reader
+# should not have to know which ones are redundant. What actually discriminates the
+# tool's evidence from kae's is A2, A3, B1, B2 and B3, whose own fixture mutations do
+# kill.
 ident main > "$(store)/.claude.json"
 SP1="$(store)"                          # kept for B, which needs to reach both readers'
                                         # caches from outside their directories
 cred MAIN-NEW $NEW > "$(cstore)/.credentials.json"
-/tmp/kae pin main
-#   assert: stderr carries `kae: harvested the newer claude credential from … into
-#           snapshot claude/main`
+/tmp/kae pin main 2> "$HOME/A.err"
+grep -q 'harvested the newer claude credential' "$HOME/A.err"
+grep -q 'into snapshot claude/main' "$HOME/A.err"
 snap main | grep MAIN-NEW              # assert: harvested, so `kae use claude main`
                                        #         applies it too
 grep MAIN-NEW "$(cstore)/.credentials.json"  # assert: the re-pin did NOT write the
@@ -1423,9 +1433,9 @@ grep MAIN-NEW "$(cstore)/.credentials.json"  # assert: the re-pin did NOT write 
 # too. A3 is the same bind with nobody reading the store.
 cred MAIN-LATE $LATER > "$(cstore)/.credentials.json"   # the tool refreshed it again here
 P2="$HOME/proj2"; mkdir -p "$P2"; cd "$P2"
-/tmp/kae pin main
-#   assert: exit 0, and stderr carries `harvested the newer claude credential` — NOT
-#           `this write replaces it`
+/tmp/kae pin main 2> "$HOME/A2.err"; test $? -eq 0
+grep -q 'harvested the newer claude credential' "$HOME/A2.err"
+test "$(grep -c 'this write replaces it' "$HOME/A2.err")" -eq 0
 grep MAIN-LATE "$(accstore main)"        # assert: the copy that can still refresh is
                                         #         intact. This is the whole case: before
                                         #         the fix it held the older snapshot and
@@ -1458,12 +1468,13 @@ mkdir -p "$(dirname "$(accstore solo)")" # the store is created by whatever wrot
 cred SOLO-NEW $NEW > "$(accstore solo)"  # left by a `kae use -i`, or by a binding since
                                         # unpinned: the store outlives the directory
 S="$HOME/solo-proj"; mkdir -p "$S"; cd "$S"
-/tmp/kae pin solo
-#   assert: exit 0, and stderr says kae `kept it rather than replacing it`, naming the
-#           account's store and the reason `no directory reads this credential yet` —
-#           NOT `this write replaces it`
+/tmp/kae pin solo 2> "$HOME/A3.err"; test $? -eq 0
+grep -q 'kept it rather than replacing it' "$HOME/A3.err"
+grep -q 'no directory reads this credential yet' "$HOME/A3.err"
+test "$(grep -c 'this write replaces it' "$HOME/A3.err")" -eq 0
 grep SOLO-NEW "$(accstore solo)"         # assert: the only copy that can refresh survives
-snap solo | grep -c SOLO-NEW             # assert: 0 — kept is not harvested. kae could not
+test "$(snap solo | grep -c SOLO-NEW)" -eq 0
+                                        # assert: 0 — kept is not harvested. kae could not
                                         #         tell whose the copy is, so it neither
                                         #         destroys it nor files it under this account
 test -d "$(store)"                       # assert: positive control for the line below. An
@@ -1482,8 +1493,11 @@ reset_main                               # snapshot back to MAIN-OLD with an emp
                                         # measured twice, 2026-08-08)
 ident other > "$SP1/.claude.json"; ident other > "$SP2/.claude.json"
 cred FOREIGN $NEW > "$(accstore main)"
-/tmp/kae pin main
-#   assert: exactly ONE stderr line — `belongs to an account other than claude/main`
+/tmp/kae pin main 2> "$HOME/B1.err"; test $? -eq 0
+test "$(grep -c '^kae: ' "$HOME/B1.err")" -eq 1
+grep -q 'belongs to an account other than claude/main' "$HOME/B1.err"
+test "$(grep -c 'log in inside' "$HOME/B1.err")" -eq 0
+#   the three lines above assert: exactly ONE stderr line — `belongs to an account other than claude/main`
 #           — and it does not tell you to log in. One store, one refusal, one message:
 #           the store being written is looked at by both the pin-level pass and the
 #           write path, and the write path stays quiet where the pass has already
@@ -1499,7 +1513,8 @@ snap main | grep MAIN-OLD               # assert: the snapshot is the one reset_
                                         #         broken snap() (wrong secrets path, or
                                         #         BSD `base64 -D`) makes `grep -c` print
                                         #         0, which reads as a pass
-snap main | grep -c FOREIGN             # assert: 0 — a token filed under the wrong
+test "$(snap main | grep -c FOREIGN)" -eq 0
+                                        # assert: 0 — a token filed under the wrong
                                         #         account is undetectable afterwards
 grep MAIN-OLD "$(accstore main)"        # assert: and positive evidence still overwrites —
                                         #         this account's credential is elsewhere,
@@ -1515,17 +1530,19 @@ reset_main
 ident other > "$SP1/.claude.json"; ident other > "$SP2/.claude.json"
 cred FOREIGN $NEW > "$(accstore main)"
 Q="$HOME/newcomer"; mkdir -p "$Q"; cd "$Q"
-/tmp/kae pin main
-#   assert: exit 0, and kae `kept it rather than replacing it`, naming the reason
-#           `this directory does not read it yet` — NOT `this write replaces it` — and,
-#           only on this arm, the consequence `it will run that other account`. This is
-#           the one keep where kae has positive evidence about the copy and so can say
-#           what the directory does next; the command still prints its success line
+/tmp/kae pin main 2> "$HOME/B3.err"; test $? -eq 0
+grep -q 'kept it rather than replacing it' "$HOME/B3.err"
+grep -q 'this directory does not read it yet' "$HOME/B3.err"
+grep -q 'it will run that other account' "$HOME/B3.err"
+test "$(grep -c 'this write replaces it' "$HOME/B3.err")" -eq 0
+#   `it will run that other account` is only on this arm: it is the one keep where kae has
+#   positive evidence about the copy and so can say what the directory does next; the
+#   command still prints its success line
 grep FOREIGN "$(accstore main)"         # assert: the sibling's live login survives. B1 is
                                         #         the same fixture with the bind run *in* a
                                         #         reader, and there it is replaced — the
                                         #         pair is the whole condition
-snap main | grep -c FOREIGN             # assert: 0 — kept is not harvested
+test "$(snap main | grep -c FOREIGN)" -eq 0   # assert: 0 — kept is not harvested
 cd "$P"
 
 # --- B2. the readers DISAGREE: kept, and deliberately not reported as a conflict ---
@@ -1537,17 +1554,20 @@ cd "$P"
 reset_main
 ident main > "$SP1/.claude.json"        # P says main, P2 still says other
 cred FOREIGN $NEW > "$(accstore main)"
-/tmp/kae pin main
-#   assert: one stderr line saying the directories that read this credential `disagree
-#           about whose login it is`, that kae is `leaving it where it is`, and the
-#           login remedy — a disagreement is missing evidence, so it carries one, unlike
-#           B1. The pin-level pass is the speaker here (it knows the bound directory),
-#           so this is *not* the chokepoint's `kept it rather than replacing it`; that
-#           wording appears in A3, where no pass had anything to say
+/tmp/kae pin main 2> "$HOME/B2.err"
+test "$(grep -c '^kae: ' "$HOME/B2.err")" -eq 1
+grep -q 'disagree about whose login it is' "$HOME/B2.err"
+grep -q 'leaving it where it is' "$HOME/B2.err"
+grep -q 'kae relogin claude' "$HOME/B2.err"
+test "$(grep -c 'kept it rather than replacing it' "$HOME/B2.err")" -eq 0
+#   A disagreement is missing evidence, so it carries the login remedy, unlike B1. The
+#   pin-level pass is the speaker here (it knows the bound directory), so this is *not*
+#   the chokepoint's `kept it rather than replacing it`, asserted absent above; that
+#   wording appears in A3, where no pass had anything to say
 grep FOREIGN "$(accstore main)"         # assert: the live copy survives. This is the half
                                         #         that inverts: a refusal here would be a
                                         #         deletion, not a conservative choice
-snap main | grep -c FOREIGN             # assert: 0 — kept is not harvested
+test "$(snap main | grep -c FOREIGN)" -eq 0   # assert: 0 — kept is not harvested
 ident main > "$SP2/.claude.json"        # put P2 back so the cases below start agreed
 
 # --- C. a tombstone is not a login — and only the MEASURED tombstone is silent ---
@@ -1564,10 +1584,17 @@ ident main > "$(store)/.claude.json"
 # C1 — the measured tombstone: replaced in silence.
 printf '{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,"refreshTokenExpiresAt":1830384000000}}' \
   > "$(cstore)/.credentials.json"
-/tmp/kae pin main
-#   assert: NO `harvested` line — presence is not usability
-#   assert: and NO warning at all. This is the one arm that is silent, so it is the
-#           assertion that separates the two; without it C passes on either
+/tmp/kae pin main > "$HOME/C1.out" 2> "$HOME/C1.err"
+grep -q 'Pinned this directory' "$HOME/C1.out"
+                                        # assert: the command ran — the positive control
+                                        #         for the two absences below
+test "$(grep -c harvested "$HOME/C1.err")" -eq 0   # assert: NO `harvested` line —
+                                        #         presence is not usability
+test "$(grep -c '^kae: ' "$HOME/C1.err")" -eq 0
+                                        # assert: and NO warning at all. This is the one
+                                        #         arm that is silent, so it is what
+                                        #         separates the two; without it C passes
+                                        #         on either
 snap main | grep MAIN-OLD               # assert: unchanged
 grep MAIN-OLD "$(cstore)/.credentials.json"   # assert: and the snapshot really was written
                                         #         over it. C1's other three assertions are
@@ -1581,12 +1608,17 @@ grep MAIN-OLD "$(cstore)/.credentials.json"   # assert: and the snapshot really 
 # and this case would pass whether or not the guard works (measured).
 printf '{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":%s,"refreshTokenExpiresAt":1830384000000}}' $LATER \
   > "$(cstore)/.credentials.json"
-/tmp/kae pin main
-#   assert: NO `harvested` line
-#   assert: one stderr warning — `kae cannot read or date the copy already there`, that
-#           `a payload kae cannot judge may still be a login`, and the remedy
-#           `cd <this dir> && kae relogin claude`. The weak claim takes the weak
-#           consequence: kae replaces the copy but does not call it dead
+/tmp/kae pin main 2> "$HOME/C2.err"
+test "$(grep -c harvested "$HOME/C2.err")" -eq 0   # assert: NO `harvested` line
+test "$(grep -c '^kae: ' "$HOME/C2.err")" -eq 1    # assert: exactly one warning
+grep -q 'cannot read or date the copy already there' "$HOME/C2.err"
+grep -q 'a payload kae cannot judge may still be a login' "$HOME/C2.err"
+grep -q "cd $P && kae relogin claude" "$HOME/C2.err"
+#   $P, not `pwd -P`: this warning echoes the directory kae was given, so the canonical
+#   form does not match. `kae doctor` resolves the binding instead and does print the
+#   canonical path — the two are not interchangeable (measured 2026-08-09).
+#   The weak claim takes the weak consequence: kae replaces the copy but does not call
+#   it dead
 snap main | grep MAIN-OLD               # assert: unchanged
 grep MAIN-OLD "$(cstore)/.credentials.json"   # assert: replaced, which is what separates
                                         #         this arm from the attribution refusal in
@@ -1602,9 +1634,9 @@ T="$HOME/toggle"; mkdir -p "$T"; cd "$T"
 /tmp/kae pin main                       # shared
 ident main > "$(store)/.claude.json"    # the tool ran here (see A)
 cred MAIN-NEW $NEW > "$(cstore)/.credentials.json"
-/tmp/kae pin -i main                    # isolated: a different *config* store, rebuilt
+/tmp/kae pin -i main 2> "$HOME/D.err"   # isolated: a different *config* store, rebuilt
                                         # from the snapshot
-#   assert: one `harvested` line
+test "$(grep -c harvested "$HOME/D.err")" -eq 1   # assert: one `harvested` line
 grep MAIN-NEW "$(cstore)/.credentials.json"  # assert: the copy that can refresh is still
                                         #         the one this directory is bound to.
                                         #         Without the harvest the materializer
@@ -1623,16 +1655,19 @@ R="$HOME/rebind"; mkdir -p "$R"; cd "$R"
 /tmp/kae pin main
 ident main > "$(store)/.claude.json"    # the tool ran here (see A)
 cred MAIN-NEW $NEW > "$(cstore)/.credentials.json"
-/tmp/kae pin claude side
-#   assert: `harvested … into snapshot claude/main` — main, not side — and that it is the
-#           ONLY stderr line. This is the one case here where the credential's location
+/tmp/kae pin claude side 2> "$HOME/E.err"
+test "$(grep -c '^kae: ' "$HOME/E.err")" -eq 1
+grep -q 'harvested the newer claude credential' "$HOME/E.err"
+grep -q 'into snapshot claude/main' "$HOME/E.err"
+test "$(grep -c 'into snapshot claude/side' "$HOME/E.err")" -eq 0
+#   main, not side, and it is the ONLY stderr line. This is the one case here where the credential's location
 #           moves (credstore/claude/main → …/side), which is why the pass has to read the
 #           store being left before the bind writes the new one. Nothing reports a foreign
 #           copy: the store now being written is side's own. Measured 2026-08-08 — this
 #           said "the write path then notes that the copy in the store is not side's",
 #           which was true while both accounts' copies shared one per-directory store
 snap main | grep MAIN-NEW               # assert: main's login survived the re-bind
-snap side | grep -c MAIN-NEW            # assert: 0 — it was not filed under side
+test "$(snap side | grep -c MAIN-NEW)" -eq 0   # assert: 0 — not filed under side
 grep SIDE-OLD "$(cstore)/.credentials.json"  # assert: the account store now runs side
 
 # --- F. doctor reports a store that names an account other than the binding ---
@@ -1648,16 +1683,21 @@ grep u-main "$(store)/.claude.json"     # assert: the cache doctor reads is wher
                                         #         with no cache there the check is silent
                                         #         for *missing evidence*, so a broken
                                         #         comparison would read as a pass
-/tmp/kae doctor --json | grep -c identity_drift   # assert: 0 — a store that agrees with
+test "$(/tmp/kae doctor --json | grep -c identity_drift)" -eq 0
+                                        # assert: 0 — a store that agrees with
                                         #         its binding says nothing
 ident other > "$(store)/.claude.json"   # a login inside the directory as another account
-/tmp/kae doctor --json | grep identity_drift      # assert: one warn, naming this
-                                        #         directory and claude/main, with both
-                                        #         causes and the re-bind remedy
-/tmp/kae doctor --json | grep -c 'u-other\|other@example.com'   # assert: 0 — an identity
-                                        #         is PII and never reaches the report
+/tmp/kae doctor --json > "$HOME/F.json"
+test "$(grep -c identity_drift "$HOME/F.json")" -eq 1   # assert: one warn, naming this
+grep -q "$G" "$HOME/F.json"             #         directory and claude/main, with the
+grep -q 'claude/main' "$HOME/F.json"    #         remedy
+test "$(grep -c 'u-other\|other@example.com' "$HOME/F.json")" -eq 0
+                                        # assert: 0 — an identity is PII and never
+                                        #         reaches the report. The greps above are
+                                        #         its positive control
 rm "$(store)/.claude.json"
-/tmp/kae doctor --json | grep -c identity_drift   # assert: 0 — no cache in the store is
+test "$(/tmp/kae doctor --json | grep -c identity_drift)" -eq 0
+                                        # assert: 0 — no cache in the store is
                                         #         missing evidence, not drift (the
                                         #         ordinary state until the tool runs
                                         #         there, and permanent for a directory
@@ -1665,21 +1705,25 @@ rm "$(store)/.claude.json"
 
 # --- the two restore paths. One child script for G and H, differing only in the uuid
 #     it leaves behind, because that difference is the whole attribution question ---
-cat > "$HOME/child.sh" <<EOF
-#!/bin/sh
-# \$1 access token, \$2 expiresAt, \$3 the account the identity cache ends up naming
-printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"rt-%s","expiresAt":%s,"refreshTokenExpiresAt":1830384000000}}' "\$1" "\$1" "\$2" > "$HOME/.claude/.credentials.json"
-printf '{"oauthAccount":{"accountUuid":"u-%s","emailAddress":"%s@example.com"}}' "\$3" "\$3" > "$HOME/.claude.json"
-EOF
+# Written a line at a time, not from a here-document: `scripts/smoke-run.sh` evaluates
+# one line at a time, so a here-doc has no body there and the lines below it are run as
+# commands. That is what stopped the relogin block after 35 of 146 lines while it
+# reported every line green (2026-08-09).
+: > "$HOME/child.sh"
+printf '%s\n' '#!/bin/sh' >> "$HOME/child.sh"
+printf '%s\n' '# $1 access token, $2 expiresAt, $3 the account the identity cache names' >> "$HOME/child.sh"
+printf '%s\n' "printf '{\"claudeAiOauth\":{\"accessToken\":\"%s\",\"refreshToken\":\"rt-%s\",\"expiresAt\":%s,\"refreshTokenExpiresAt\":1830384000000}}' \"\$1\" \"\$1\" \"\$2\" > \"$HOME/.claude/.credentials.json\"" >> "$HOME/child.sh"
+printf '%s\n' "printf '{\"oauthAccount\":{\"accountUuid\":\"u-%s\",\"emailAddress\":\"%s@example.com\"}}' \"\$3\" \"\$3\" > \"$HOME/.claude.json\"" >> "$HOME/child.sh"
 chmod +x "$HOME/child.sh"
 cd "$HOME"
 
 # --- G. run -s on the account that is ALREADY active keeps the child's refresh ---
 cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
 /tmp/kae add --no-login --identity you@example.com claude main
-/tmp/kae run -s claude main -- "$HOME/child.sh" MAIN-NEW $NEW main
-#   assert: stderr carries `main was already the active account` and does NOT carry
-#           `previous auth state restored` — nothing was restored, so it is not claimed
+/tmp/kae run -s claude main -- "$HOME/child.sh" MAIN-NEW $NEW main 2> "$HOME/G.err"
+grep -q 'was already the active account' "$HOME/G.err"
+test "$(grep -c 'previous auth state restored' "$HOME/G.err")" -eq 0
+#   nothing was restored, so it is not claimed; the line above is the positive control
 grep MAIN-NEW "$HOME/.claude/.credentials.json"   # assert: the real home still runs the
                                         #         copy that can refresh. Before this it
                                         #         held MAIN-OLD — a logged-out session
@@ -1690,16 +1734,19 @@ snap main | grep MAIN-NEW                # assert: the post-child recapture has 
 # --- H. the same run, except the child logged in as somebody else ---
 cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
 /tmp/kae add --no-login --identity you@example.com claude main
-/tmp/kae run -s claude main -- "$HOME/child.sh" FOREIGN $LATER other
-#   assert: stderr carries `previous auth state restored` and NOT `already the active
-#           account` — a later deadline is not evidence of whose login it is
+/tmp/kae run -s claude main -- "$HOME/child.sh" FOREIGN $LATER other 2> "$HOME/H.err"
+grep -q 'previous auth state restored' "$HOME/H.err"
+test "$(grep -c 'already the active account' "$HOME/H.err")" -eq 0
+#   a later deadline is not evidence of whose login it is
 grep MAIN-OLD "$HOME/.claude/.credentials.json"   # assert: restored. Keeping FOREIGN
                                         #         would leave the real home running one
                                         #         account while kae records another
-#   assert: stderr also carries `probably logged in again outside kae` and the
-#           `kae add --no-login claude <account>` hint — the recapture refused, and it
-#           says how to keep that login instead of discarding it silently
-snap main | grep -c FOREIGN               # assert: 0. run -s's own recapture now applies
+grep -q 'probably logged in again outside kae' "$HOME/H.err"
+grep -q 'kae add --no-login claude' "$HOME/H.err"
+#   the recapture refused, and it says how to keep that login instead of discarding it
+#   silently
+test "$(snap main | grep -c FOREIGN)" -eq 0
+                                        # assert: 0. run -s's own recapture now applies
                                         #         the same two guards the switch-away one
                                         #         does, so the stranger's credential is
                                         #         not filed under the target's name. This
@@ -1726,16 +1773,19 @@ cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.cla
 /tmp/kae use claude main                 # a backup whose active_before is main
 cred MAIN-NEW $NEW > "$HOME/.claude/.credentials.json"   # the tool refreshed in place,
                                         #         with no kae command running
-/tmp/kae rollback; echo "exit=$?"
-#   assert: exit=0 — a warning never moves the exit code. Take it from `kae` itself:
-#           `echo $?` after one of the `grep` assertions below reports *grep's* status
-#           and can never fail, which is how this line was wrong when first written
-#   assert: stderr carries `older claude credential for claude/main than the one in the
-#           live store`, and names `kae rollback --to <the pre-rollback id>` — the live
-#           copy is the one being overwritten, so that backup is the only place left
-#           holding it. NOT `kae use claude main`: the snapshot holds the older copy.
-#           The id must be the one this rollback just created, not the one it restored;
-#           compare it against `/tmp/kae backup list`
+/tmp/kae rollback 2> "$HOME/I.err"; test $? -eq 0
+#   exit 0 — a warning never moves the exit code. Taken from `kae` itself: `echo $?`
+#   after one of the `grep` assertions below reports *grep's* status and can never fail,
+#   which is how this line was wrong when first written
+grep -q 'older claude credential for claude/main than the one in the live store' "$HOME/I.err"
+test "$(grep -c 'kae use claude main' "$HOME/I.err")" -eq 0
+#   NOT `kae use claude main`: the snapshot holds the older copy. The live copy is the one
+#   being overwritten, so the backup named below is the only place left holding it
+IDT=$(sed -n 's/.*kae rollback --to \([0-9A-Za-z-]*\).*/\1/p' "$HOME/I.err")
+test -n "$IDT"                          # assert: a `--to <id>` really was printed
+/tmp/kae backup list | grep -q "$IDT"   # assert: and it names a backup that exists —
+                                        #         the id must be the one this rollback
+                                        #         just created, not the one it restored
 grep MAIN-OLD "$HOME/.claude/.credentials.json"   # assert: the rollback still happened.
                                         #         Going back is what was asked for; the
                                         #         warning is what kae adds
@@ -1746,16 +1796,23 @@ grep MAIN-OLD "$HOME/.claude/.credentials.json"   # assert: the rollback still h
 cred MAIN-NEW $NEW > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
 /tmp/kae add --no-login --identity you@example.com claude main
 cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"   # what a rollback leaves behind
-/tmp/kae use claude side
-#   assert: stderr carries `snapshot claude/main holds a later claude credential than the
-#           live store` and `snapshot left unchanged`
+/tmp/kae use claude side 2> "$HOME/J.err"
+grep -q 'snapshot claude/main holds a later claude credential than the live store' "$HOME/J.err"
+grep -q 'snapshot left unchanged' "$HOME/J.err"
 snap main | grep MAIN-NEW                # assert: the only copy that can refresh survived
-snap main | grep -c MAIN-OLD             # assert: 0 — paired with the positive line above
+test "$(snap main | grep -c MAIN-OLD)" -eq 0
+                                        # assert: 0 — paired with the positive line above
 ```
 
-Several lines here exit non-zero **on purpose** (`grep -c` printing `0` is the
-assertion), so paste the block as-is rather than under `set -e`, or add `|| true` to
-those.
+**Every line here exits 0 when the block passes**, so it runs through
+`scripts/smoke-run.sh` like every other section and its exit status means something.
+That is a change: this block used to leave `grep -c` printing `0` as the assertion and
+told the reader to paste it rather than run it, which is the opposite of the rule
+§ Smoke Checks states for the same construct — one file, two conventions, and only one
+of them checkable. Those lines are wrapped in `test` now, the stderr assertions capture
+stderr to a file instead of asking a reader to look, and the two multi-line constructs
+(a here-document and `reset_main`) are single lines, because the per-line loop cannot run
+either.
 
 **A–J PASSED 2026-08-08 on the release tree** (darwin 24.6.0, file driver, file
 backend, temp HOME, `/tmp/kae` = v0.17.0), each assertion checked at its own point rather

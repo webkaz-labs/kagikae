@@ -49,6 +49,13 @@
 # defect that put 956 items in the operator's login keychain, and no environment
 # prefix can prevent it. The leak detector below sees the checkout only: writes
 # elsewhere on the machine are not detected.
+#
+# There is also **no wall-clock cap**: a block containing a command that blocks
+# stalls this script indefinitely with no diagnostic. Deliberately not added — a
+# cap generous enough for the real sections would not catch much, and one tight
+# enough to catch a hang would kill a slow legitimate run. Interrupt it yourself;
+# the EXIT trap still cleans up. (Observed only in a mutant, never in a real
+# block.)
 
 set -u
 

@@ -16,6 +16,7 @@ runner=scripts/smoke-run.sh
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fails=0
+ok=0
 
 doc() { # doc <name> <heading> <body...>
   local f=$tmp/$1.md h=$2; shift 2
@@ -36,6 +37,7 @@ check() { # check <description> <expected-rc> <actual-rc> [<must-contain> <outpu
     return
   fi
   printf 'ok    %s\n' "$desc"
+  ok=$((ok + 1))
 }
 
 not_contains() { # not_contains <description> <string> <file>
@@ -44,25 +46,63 @@ not_contains() { # not_contains <description> <string> <file>
     fails=$((fails + 1))
   else
     printf 'ok    %s\n' "$1"
+    ok=$((ok + 1))
   fi
 }
 
 run() { SMOKE_DOC=$1 bash "$runner" "$2" > "$tmp/out" 2>&1; }
 transcript() { sed -n 's/^smoke-run: full transcript in //p' "$tmp/out"; }
 
-# Every root and every cleared variable is checked, one fixture line each.
-# Naming only a subset is how the first version of this file passed while
-# `XDG_DATA_HOME` (which holds kagikae/secrets/) and `COPILOT_HOME` were being
-# dropped from the runner's prefix — measured writing credentials outside the
-# sandbox, certified green.
-ROOTS=(HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME XDG_RUNTIME_DIR TMPDIR)
-CLEARED=(CODEX_HOME CLAUDE_CONFIG_DIR COPILOT_HOME CLAUDE_SECURESTORAGE_CONFIG_DIR
-         OPENCODE_AUTH_CONTENT MISE_CONFIG_DIR KAE_PROFILE KAE_FINGERPRINT)
+# The expected sets are WRITTEN OUT here, and separately DERIVED from the runner,
+# and the two are required to match. Neither half works alone, and both failures
+# were measured on this file:
+#
+#   * hand-maintained only — a name dropped from the list took its own guard with
+#     it. `XDG_DATA_HOME` (it holds kagikae/secrets/) and `COPILOT_HOME` were both
+#     measured writing outside the sandbox while every guard reported holding.
+#   * derived only — worse, and it is the shape that reads as the clever fix.
+#     Deriving from the file under test means removing a name from the *runner*
+#     also removes it from the list, so the guard silently stops testing exactly
+#     the thing that was just deleted. Dropping `-u COPILOT_HOME` went from
+#     KILLED back to SURVIVES the moment the list was derived.
+#
+# Equality of the two makes both directions loud: a name deleted from the runner
+# fails the comparison, and a name added to the runner fails it too until it is
+# declared here (and so gets a guard).
+EXPECTED_ROOTS="HOME TMPDIR XDG_CONFIG_HOME XDG_DATA_HOME XDG_RUNTIME_DIR XDG_STATE_HOME"
+EXPECTED_CLEARED="CLAUDE_CONFIG_DIR CLAUDE_SECURESTORAGE_CONFIG_DIR CODEX_HOME \
+COPILOT_HOME KAE_FINGERPRINT KAE_PROFILE MISE_CONFIG_DIR OPENCODE_AUTH_CONTENT"
+
+# A "root" is definitionally a variable the runner points into the sandbox, so
+# that is what is matched: an assignment whose value starts with $safe.
+# `mapfile` is bash 4+; macOS ships bash 3.2 and that is what runs this — the
+# same portability class as the GNU-vs-BSD `mktemp` difference the runner carries.
+derived_roots=$(grep -oE '^  [A-Z_]+="\$safe' "$runner" | tr -d ' ="$' | sed 's/safe//' |
+                sort | tr '\n' ' ' | sed 's/ $//')
+derived_cleared=$(grep -oE '\-u [A-Z_]+' "$runner" | sed 's/-u //' | sort -u |
+                  tr '\n' ' ' | sed 's/ $//')
+want_roots=$(printf '%s\n' $EXPECTED_ROOTS | sort | tr '\n' ' ' | sed 's/ $//')
+want_cleared=$(printf '%s\n' $EXPECTED_CLEARED | sort | tr '\n' ' ' | sed 's/ $//')
+
+if [ "$derived_roots" = "$want_roots" ] && [ "$derived_cleared" = "$want_cleared" ]; then
+  printf 'ok    the runner sets exactly the variables this file guards\n'
+  ok=$((ok + 1))
+else
+  printf 'FAIL  %s and this file disagree about which variables are handled\n' "$runner"
+  printf '        roots   runner: %s\n        roots   guarded: %s\n' "$derived_roots" "$want_roots"
+  printf '        cleared runner: %s\n        cleared guarded: %s\n' "$derived_cleared" "$want_cleared"
+  fails=$((fails + 1))
+fi
+
+ROOTS=(); CLEARED=()
+for v in $EXPECTED_ROOTS; do ROOTS+=("$v"); done
+for v in $EXPECTED_CLEARED; do CLEARED+=("$v"); done
 
 # Point every name at /real/<name> and run: a variable the runner forgot comes
-# back verbatim. `grep -c` prints its count and exits 1 when that count is zero,
-# so `|| true` is the only safe tail — `|| echo <n>` appends a second line and
-# the comparison then errors out. (Written that way here first.)
+# back verbatim, and one it merely points somewhere *else* fails the containment
+# half below. `grep -c` prints its count and exits 1 when that count is zero, so
+# `|| true` is the only safe tail — `|| echo <n>` appends a second line and the
+# comparison then errors out. (Written that way here first.)
 probe() { # probe <heading> <var...> -> fills $tmp/out, echoes the transcript path
   local h=$1; shift
   local lines=() envs=() v
@@ -70,6 +110,8 @@ probe() { # probe <heading> <var...> -> fills $tmp/out, echoes the transcript pa
     lines+=("printf '$v=%s\\n' \"\${$v-unset}\"")
     envs+=("$v=/real/$v")
   done
+  # The heading is sanitised into the fixture filename; two headings differing
+  # only in punctuation or digits would collide. Two callers today.
   local f; f=$(doc "${h//[^A-Za-z]/}" "## $h" "${lines[@]}")
   env "${envs[@]}" SMOKE_DOC="$f" bash "$runner" "## $h" > "$tmp/out" 2>&1
   sed -n 's/^smoke-run: full transcript in //p' "$tmp/out"
@@ -85,21 +127,40 @@ check 'a block touching the checkout is caught' 1 "$rc" 'LEAK' "$tmp/out"
 #     original `kae pin` leak took and the one guard 1 does not reach.
 excl="$(git rev-parse --git-common-dir)/info/exclude"
 cp "$excl" "$tmp/excl.bak" 2>/dev/null || : > "$tmp/excl.bak"
-trap 'rm -rf "$tmp" ./SMOKE-SELFTEST-LEAK; [ -f "$tmp/excl.bak" ] && cp "$tmp/excl.bak" "$excl"' EXIT
+# Restore BEFORE deleting $tmp: the backup lives in it, so the previous order
+# made the restore dead code and an interrupted run left the operator's
+# info/exclude dirty (measured).
+trap 'cp "$tmp/excl.bak" "$excl" 2>/dev/null; rm -rf "$tmp" ./SMOKE-SELFTEST-LEAK' EXIT
 f=$(doc excl '## Excl' ". scripts/smoke-env.sh" "printf 'smoke-selftest\\n' >> '$excl'")
 run "$f" '## Excl'; rc=$?
 cp "$tmp/excl.bak" "$excl"
 check 'an append to info/exclude is caught' 1 "$rc" 'LEAK' "$tmp/out"
 
-# 2. A preamble-less block must see NONE of the real roots.
+# 2. Every root must land INSIDE the sandbox. Asserting only "not the value I
+#    planted" is a weaker thing that reads the same: pointing a root at some
+#    third wrong place (or HOME at "$safe/.." — the shared user temp dir, which
+#    cleanup then never reclaims) passed that version while credentials were
+#    written outside the sandbox. Containment is what the runner promises, so it
+#    is what is checked; the /real/ count stays as the second half.
 tr=$(probe Roots "${ROOTS[@]}")
+sandbox=$(sed -n '1s/^smoke-run transcript: HOME=//p' "$tr" 2>/dev/null)
 leaked=$(grep -c '=/real/' "$tr" 2>/dev/null || true)
-seen=$(grep -c '^HOME=' "$tr" 2>/dev/null || true)
-if [ "$leaked" -eq 0 ] && [ "$seen" -eq 1 ]; then
-  printf 'ok    a preamble-less block sees none of the %s real roots\n' "${#ROOTS[@]}"
+inside=0
+# Only the fixture's own `NAME=value` output lines: the transcript's first line
+# is `smoke-run transcript: HOME=<sandbox>`, which a bare count of "=<sandbox>"
+# includes, giving 7-of-6 and a failure with nothing wrong.
+[ -n "$sandbox" ] &&
+  inside=$(grep -E '^[A-Z_]+=' "$tr" 2>/dev/null | grep -cF "=$sandbox" || true)
+# `leaked` is kept for the diagnostic only: a root pointed at the planted
+# value is not inside the sandbox either, so containment already covers it,
+# and gating on both leaves a term that can be weakened to a tautology.
+if [ -n "$sandbox" ] && [ "$inside" -eq "${#ROOTS[@]}" ]; then
+  printf 'ok    all %s roots land inside the sandbox\n' "${#ROOTS[@]}"
+  ok=$((ok + 1))
 else
-  printf 'FAIL  a real root reached a preamble-less block (seen=%s):\n' "$seen"
-  grep '=/real/' "$tr" 2>/dev/null | sed 's/^/        /'
+  printf 'FAIL  a root escaped the sandbox (%s of %s inside, %s planted values seen)\n' \
+    "$inside" "${#ROOTS[@]}" "$leaked"
+  grep -E '^[A-Z_]+=' "$tr" 2>/dev/null | grep -vF "=$sandbox" | sed 's/^/        /'
   fails=$((fails + 1))
 fi
 
@@ -108,6 +169,7 @@ tr=$(probe Cleared "${CLEARED[@]}")
 got=$(grep -c '=unset$' "$tr" 2>/dev/null || true)
 if [ "$got" -eq "${#CLEARED[@]}" ]; then
   printf 'ok    all %s inherited tool variables are cleared\n' "${#CLEARED[@]}"
+  ok=$((ok + 1))
 else
   printf 'FAIL  only %s of %s tool variables cleared:\n' "$got" "${#CLEARED[@]}"
   grep '=/real/' "$tr" 2>/dev/null | sed 's/^/        /'
@@ -154,9 +216,37 @@ run "$tmp/dup.md" '## Dup'; check 'an ambiguous heading prefix is refused' 2 $? 
 printf '## Empty\n\nprose only\n' > "$tmp/none.md"
 run "$tmp/none.md" '## Empty'; check 'a heading with no block is refused' 2 $?
 
+# 10. Extraction must STOP at the next heading. The ambiguity guard covers the
+#     heading side of silent merging; this is the section-boundary side, and it
+#     is the worse direction — dropping the runner's `insec = 0` reset ran 1065
+#     lines of unrelated sections under one heading instead of refusing.
+printf '## First\n\n```bash\ntrue\n```\n\n## Second\n\n```bash\nfalse\nfalse\n```\n' > "$tmp/two.md"
+run "$tmp/two.md" '## First'
+check 'extraction stops at the next heading' 0 $? '1 lines extracted' "$tmp/out"
+
+# 11. The backslash-continuation join — the third of the four leak classes the
+#     runner's own header names. Breaking it truncates the fixture silently.
+f=$(doc join '## Join' "printf 'joined' \\" '  > "$HOME/j"' 'test "$(cat "$HOME/j")" = joined')
+run "$f" '## Join'; check 'a backslash continuation is joined, not split' 0 $?
+
+# 12. NO_COLOR: ANSI escapes in the transcript break a block's own greps.
+f=$(doc nocolor '## NoColor' 'printf "NO_COLOR=%s\n" "${NO_COLOR-unset}"')
+run "$f" '## NoColor'; check 'colour is disabled for the block' 0 $? 'NO_COLOR=1' "$(transcript)"
+
 printf '\n'
-if [ "$fails" -ne 0 ]; then
-  printf 'smoke-run-selftest: %s guard(s) FAILED\n' "$fails" >&2
+# A deleted guard used to leave this file reporting "all guards hold" with one
+# fewer ok line — the file could be hollowed out a guard at a time, which is how
+# it got here. Both directions are loud now: adding a guard without bumping this
+# fails too.
+EXPECTED_GUARDS=17
+ran=$((ok + fails))
+if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
+  printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \
+    "$ran" "$EXPECTED_GUARDS" >&2
   exit 1
 fi
-printf 'smoke-run-selftest: all guards hold\n'
+if [ "$fails" -ne 0 ]; then
+  printf 'smoke-run-selftest: %s of %s guard(s) FAILED\n' "$fails" "$ran" >&2
+  exit 1
+fi
+printf 'smoke-run-selftest: all %s guards hold\n' "$ran"

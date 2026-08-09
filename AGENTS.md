@@ -74,10 +74,13 @@ the checkout. `smoke-run.sh` closes the class instead of warning about it: it pu
 every root in a temp HOME **before** the block runs, so a preamble that fails to
 take effect still cannot reach the real one; it never prints into the block's own
 stdout; and it fails the run if the checkout changed. **`HOME` and the XDG roots
-are not the whole set** — `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `COPILOT_HOME` and
-`CLAUDE_SECURESTORAGE_CONFIG_DIR` outrank the temp HOME, and a preamble-less
-block inheriting one was measured writing outside the sandbox while the runner
-reported a clean run, so it clears those too.
+are not the whole set** — the tool-home and `KAE_*`/`MISE_*` variables outrank the
+temp HOME, and a preamble-less block inheriting one was measured writing outside
+the sandbox while the runner reported a clean run, so it clears those too. The
+`env -u` list in the script is normative for which; do not copy it into prose,
+which is how this paragraph came to name four of the eight. It also forces
+`KAE_CLAUDE_DRIVER=file` on every section, so a section that wants claude's
+keychain driver cannot be run through it.
 
 **Two things it cannot do, and a green run does not claim them.** It cannot
 isolate the macOS login keychain, which ignores `$HOME`: only `secret_backend =

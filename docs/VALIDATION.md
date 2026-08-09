@@ -995,7 +995,9 @@ cred 1609459200000;      /tmp/kae add --no-login claude dead      # expired in 2
 /tmp/kae doctor claude --json > "$HOME/A.json"
 grep -q '"code": "credential_expiring"' "$HOME/A.json"      # assert: "soon" is reported,
 grep -qF 'snapshot \"soon\" needs an interactive re-login in' "$HOME/A.json"
-grep -q 'kae add --restore claude soon' "$HOME/A.json"      #  named with its day count
+grep -q 'kae add --restore claude soon' "$HOME/A.json"      #  named with its remedy
+grep -qE 'needs an interactive re-login in [0-9]+ day' "$HOME/A.json"
+                                                            #  and with its day count
 grep -qF 'snapshot \"dead\" is stale' "$HOME/A.json"           # assert: credential_stale
 test "$(grep -c healthy "$HOME/A.json")" -eq 0              # assert: NO credential_* check
                               #   for "healthy" — the notice must be silent for most of a
@@ -1290,19 +1292,21 @@ nothing — and `kae pin` would still report success, with the fragment sitting 
 ## v0.17.0 surface — the credential harvest
 
 **Run this section with
-`SMOKE_WHOLE_FILE=1 bash scripts/smoke-run.sh '## v0.17.0 surface — the credential harvest'`.**
-The flag is needed because the block defines shell functions, which the per-line
-runner cannot execute — and it costs the per-line verdict, so the runner reports
-the block's own exit status and says it is not a verdict.
+`bash scripts/smoke-run.sh '## v0.17.0 surface — the credential harvest'`, like every
+other section**, and a correct run exits `0` with every line exiting 0.
 
-**A correct run of this section exits `1`, and that is not a failure.** Whole-file
-mode returns the *last* command's status, and the last line here is
-`snap main | grep -c MAIN-OLD` asserting a count of zero — which `grep -c` prints
-while exiting 1. So the exit code carries no information about this block at all:
-read the transcript the runner names, checking each `# assert:` at its own line.
-That is the right way round for this section anyway, since it has the worst history
-of green runs that proved nothing — fixtures written to a directory kae had stopped
-reading, a `grep` defeated by base64, token names that prefixed one another.
+It did not use to. This block needed `SMOKE_WHOLE_FILE=1` — its two multi-line
+constructs, a here-document and `reset_main`, are things the per-line runner cannot
+execute — and that flag costs the per-line verdict, so the only thing the runner could
+report was the block's own exit status. Which was `1` on a *correct* run, because the
+last line was a bare `grep -c` asserting a count of zero. Both are fixed: the
+constructs are single lines and the zero-counts are wrapped in `test`.
+
+Read the transcript anyway when something fails. This section has the worst history of
+green runs that proved nothing — fixtures written to a directory kae had stopped
+reading, a `grep` defeated by base64, token names that prefixed one another — and a
+per-line verdict tells you *which* line, not whether the fixture reached the code it
+was aimed at.
 
 Every path that overwrites a bound directory's credential store reads it first and
 copies a newer copy into the account snapshot, because claude's refresh token
@@ -1690,7 +1694,8 @@ ident other > "$(store)/.claude.json"   # a login inside the directory as anothe
 /tmp/kae doctor --json > "$HOME/F.json"
 test "$(grep -c identity_drift "$HOME/F.json")" -eq 1   # assert: one warn, naming this
 grep -q "$G" "$HOME/F.json"             #         directory and claude/main, with the
-grep -q 'claude/main' "$HOME/F.json"    #         remedy
+grep -q 'claude/main' "$HOME/F.json"    #         re-bind remedy
+grep -q "cd $G && kae relogin claude" "$HOME/F.json"
 test "$(grep -c 'u-other\|other@example.com' "$HOME/F.json")" -eq 0
                                         # assert: 0 — an identity is PII and never
                                         #         reaches the report. The greps above are

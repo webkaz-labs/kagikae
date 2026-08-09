@@ -9,7 +9,7 @@
 # would have caught. The fixtures are cheap on purpose: no `kae` build, no
 # network, so this can run on every commit rather than when somebody remembers.
 #
-# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 18 guards and zero
+# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 19 guards and zero
 # tests of those guards.** Four separate times a change made for an unrelated
 # reason switched a guard off while the suite went on reporting every guard
 # holding: a list derived from its own subject, a containment check weakened to a
@@ -77,7 +77,7 @@ COPILOT_HOME KAE_FINGERPRINT KAE_PROFILE MISE_CONFIG_DIR OPENCODE_AUTH_CONTENT"
 # same reason: matching only `="$safe` values means a NEW assignment pointing
 # somewhere else entirely (`XDG_CACHE_HOME="/tmp/notsandbox"`) is invisible,
 # which is the "additions are silent" half all over again.
-EXPECTED_OTHER="KAE_CLAUDE_DRIVER NO_COLOR SMOKE_WHOLE_FILE"
+EXPECTED_OTHER="KAE_CLAUDE_DRIVER MISE_CEILING_PATHS NO_COLOR SMOKE_WHOLE_FILE"
 
 # A "root" is definitionally a variable the runner points into the sandbox, so
 # that is what is matched: an assignment whose value starts with $safe.
@@ -290,6 +290,46 @@ run "$f" '## Join'; check 'a backslash continuation is joined, not split' 0 $?
 f=$(doc nocolor '## NoColor' 'printf "NO_COLOR=%s\n" "${NO_COLOR-unset}"')
 run "$f" '## NoColor'; check 'colour is disabled for the block' 0 $? 'NO_COLOR=1' "$(transcript)"
 
+# 13. mise must not be able to reach a config outside the sandbox. It is the one
+#     isolated thing that has nothing to do with HOME: mise walks up from the
+#     **current directory**, and a block starts in the checkout, which sits inside
+#     the operator's home — so every root this file guards can be correct and mise
+#     still read the operator's real config (measured: two of them, 2026-08-09).
+#
+#     The first assertion is the positive control and it is not decoration. With
+#     the ceiling removed, mise on a machine that has an operator config fails
+#     outright (its `trusted-configs` lives under the redirected XDG_STATE_HOME, so
+#     the sandbox trust store is empty) and prints nothing at all — which would
+#     satisfy a lone "nothing outside the sandbox" check by printing nothing for
+#     the wrong reason. That is this file's own recorded defect class: a guard
+#     whose empty input is its success branch. So the block seeds a config *inside*
+#     the sandbox and requires mise to find that one.
+#
+#     What this guard cannot kill, measured rather than assumed: narrowing the
+#     ceiling to `$PWD` alone. The runner never leaves the checkout, and from there
+#     the `$PWD` entry stops the walk before anything above it — so the `$HOME`
+#     half is invisible here. It is still load-bearing, and the case was measured
+#     on 2026-08-09: from the checkout's *parent*, a `$PWD`-only ceiling reaches
+#     the operator's config and mise fails on it, while `$PWD:$HOME` is silent.
+#     Reproducing that would mean letting a fixture `cd` above the checkout, which
+#     buys one mutation and hands every other guard a cwd outside the repository.
+#     Note also that the failure there arrives on *stderr* with an empty stdout, so
+#     a "count the paths" assertion alone reads it as success — which is the same
+#     reason the control below exists.
+#
+#     Deliberately not done here: disabling trust to make mise talk. That is the
+#     documented cure and it makes mise load the operator's global config and
+#     evaluate its `exec()` templates; one resolved a live GitHub token into a
+#     transcript on 2026-08-09. The runner's header says never to do it, and a
+#     self-test that did it anyway would be teaching the opposite.
+f=$(doc ceiling '## Ceiling' \
+  'mkdir -p "$HOME/.config/mise"' \
+  'printf "[env]\nSMOKE_CEILING_CONTROL = \"1\"\n" > "$HOME/.config/mise/config.toml"' \
+  'test "$(mise config ls 2>/dev/null | grep -c "config.toml")" -ge 1' \
+  'test "$(mise config ls 2>/dev/null | grep -c "^/")" -eq 0')
+run "$f" '## Ceiling'
+check 'mise cannot reach a config outside the sandbox' 0 $?
+
 printf '\n'
 # A deleted guard used to leave this file reporting "all guards hold" with one
 # fewer ok line — the file could be hollowed out a guard at a time, which is how
@@ -310,7 +350,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=18
+EXPECTED_GUARDS=19
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

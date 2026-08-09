@@ -41,6 +41,30 @@
 # `CLAUDE_CONFIG_DIR`, `COPILOT_HOME` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`
 # **outrank** the temp HOME, and a preamble-less block inheriting one of them was
 # measured writing outside the sandbox while this script reported a clean run.
+#
+# `MISE_CEILING_PATHS` is the one entry here that has nothing to do with HOME, and
+# guessing at it from the others gets it backwards. mise does not reach the
+# operator's config through HOME or any XDG root: it walks **up from the current
+# directory**, and a block starts in the checkout, which is inside the operator's
+# home. So redirecting HOME does nothing for it — measured, from the repo root mise
+# loaded two configs outside the sandbox; from a cwd inside the sandbox, none. A
+# ceiling stops that walk, and **both** entries earn their place: the real home
+# alone still lets the checkout's own `mise.toml` in, since the walk collects
+# configs on the way up to the ceiling rather than only at it. `MISE_GLOBAL_CONFIG_FILE`
+# and `MISE_IGNORED_CONFIG_PATHS` were both measured *not* closing this, for the
+# same reason — the file is not being loaded as the global config in the first place.
+#
+# The reachable failure this prevents is not a stray read. Without the ceiling, a
+# block running mise from the checkout fails with `error parsing config file`,
+# whose real cause one line down is `not trusted` (this script redirects
+# XDG_STATE_HOME, and mise keeps `trusted-configs` there, so the sandbox's trust
+# store is empty). The documented cure for that, `MISE_TRUSTED_CONFIG_PATHS=/`,
+# makes mise *load* the operator's global config and evaluate its `exec()`
+# templates — one of which resolved a live GitHub token into a run transcript on
+# 2026-08-09. So: never answer a mise trust error in a smoke block by disabling
+# trust. With the ceiling there is nothing untrusted to read and the error does not
+# arise (measured: `rc=0`, no trust override).
+#
 # It cannot isolate **the macOS login keychain**, which ignores `$HOME`
 # entirely. `KAE_CLAUDE_DRIVER=file` below keeps claude's own credential in a
 # file, but kae's *snapshot* store still follows `secret_backend`, and only the
@@ -162,6 +186,7 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
   TMPDIR="$safe/tmp" \
   NO_COLOR=1 \
   KAE_CLAUDE_DRIVER=file \
+  MISE_CEILING_PATHS="$PWD:$HOME" \
   SMOKE_WHOLE_FILE="${SMOKE_WHOLE_FILE:-0}" \
   bash -c '
   # Before anything else: GNU `mktemp` honours TMPDIR and fails on a missing

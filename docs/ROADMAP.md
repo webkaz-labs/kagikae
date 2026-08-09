@@ -185,6 +185,34 @@ alternative exists (`secret-tool`).
   only ever shipped in v0.17.0. Conflating the two is the same misattribution this entry
   is named after, made while writing the entry.)
 
+- **The smoke guards have no test, and four changes switched one off without
+  anything noticing** (recorded 2026-08-09, **not fixed**).
+  `scripts/smoke-run-selftest.sh` checks `scripts/smoke-run.sh`; nothing checks
+  the selftest. Across six review rounds, four separate edits made for unrelated
+  reasons left a guard passing unconditionally while the suite reported every
+  guard holding: a variable list derived from the file it was testing (deleting
+  from the subject deleted the test); a containment check weakened to a proxy
+  ("not the value I planted" rather than "inside the sandbox"); a fixture count
+  shortened from 300 to 257 for speed, where `257 % 256 = 1` is exactly the exit
+  status a working runner returns; and a guard whose empty input fell into its
+  own success branch. Every one was found by a reviewer mutating the guard by
+  hand, and none by any check in the repository.
+  The fix is a committed mutation table — roughly 30 lines plus the ~39
+  substitutions already used across those rounds, each paired with the guard name
+  it must trip, asserting every one is caught. It would have caught all four,
+  including the `257`, which no structural rule catches because the table does not
+  reason about the value, it only checks that the guard still fires.
+  Deliberately not built now: the scripts are closing and stable, so it would be
+  machinery with no near-term change to protect, and it costs a full selftest run
+  per mutation. Two partial rules are cheaper and are worth applying at review
+  time instead — **no guard's pass condition may be satisfiable by an empty or
+  degenerate input** (that covers three of the four), and **state a fixture
+  value's requirement as a property, not a number** (the only defence against the
+  fourth, and it works by making the next editor's mistake visible rather than by
+  detecting it). Until the table exists, the header of
+  `scripts/smoke-run-selftest.sh` is normative: any change to either script has to
+  be mutation-tested by hand.
+
 - **`scripts/smoke-env.sh` leaks a temp HOME every time it is sourced** (recorded
   2026-08-09, **not fixed**). It does `HOME=$(mktemp -d)` and nothing ever removes
   the directory, so each direct run of a block in [VALIDATION.md](VALIDATION.md)

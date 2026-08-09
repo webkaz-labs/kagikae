@@ -8,6 +8,17 @@
 # of the guarded claims were false — which is exactly what a committed fixture
 # would have caught. The fixtures are cheap on purpose: no `kae` build, no
 # network, so this can run on every commit rather than when somebody remembers.
+#
+# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 18 guards and zero
+# tests of those guards.** Four separate times a change made for an unrelated
+# reason switched a guard off while the suite went on reporting every guard
+# holding: a list derived from its own subject, a containment check weakened to a
+# proxy, a fixture count shortened to the one value that equals the pass status,
+# and a guard whose empty input was its success branch. Nothing here would have
+# noticed any of them. So: **any change to `smoke-run.sh` or this file must be
+# mutation-tested by hand** — break the thing the guard protects and confirm the
+# guard fails — because no automated check will. `docs/ROADMAP.md` carries the
+# committed-mutation-table proposal that would close this properly.
 
 set -u
 
@@ -104,7 +115,14 @@ missing=""
 # An empty set makes the loop below vacuous, and vacuous is the success branch —
 # so an unreadable, emptied or reformatted smoke-env.sh would read as a pass.
 # Same shape as the `grep -c` inversion this file already carries a note about.
+# Non-emptiness alone only closes the total miss: one extra space after `export`
+# hides a single name from the pattern and shrinks this guard's coverage silently,
+# so the counts have to agree too.
 [ -n "$preamble" ] || missing=" nothing at all (smoke-env.sh unreadable or reformatted?)"
+if [ "$(grep -c '^export' scripts/smoke-env.sh)" \
+     -ne "$(printf '%s\n' $preamble | grep -c .)" ]; then
+  missing="$missing (the pattern matched fewer lines than smoke-env.sh has exports)"
+fi
 for v in $preamble; do
   case " $(norm "$EXPECTED_ROOTS $EXPECTED_OTHER") " in *" $v "*) ;; *) missing="$missing $v" ;; esac
 done

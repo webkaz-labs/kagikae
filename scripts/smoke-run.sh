@@ -98,7 +98,7 @@ fi
 # fails noisily and leaves it behind.
 cleanup() {
   [ -n "${safe:-}" ] && chmod -R u+w "$safe" 2>/dev/null
-  rm -rf "${block:-}" "${log:-}" "${safe:-}"
+  rm -rf "${block:-}" "${log:-}" "${safe:-}" "${consumed:-}"
 }
 trap cleanup EXIT
 
@@ -164,6 +164,7 @@ excl_before=$([ -f "$excl" ] && cat "$excl" || echo missing)
 safe=$(mktemp -d)
 log=$(mktemp)
 transcript=$(mktemp)
+consumed=$(mktemp)
 
 # Line by line, joining backslash continuations, because the exit status has to
 # mean something. Sourcing the whole file reports only its *last* command: a
@@ -186,7 +187,7 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
   TMPDIR="$safe/tmp" \
   NO_COLOR=1 \
   KAE_CLAUDE_DRIVER=file \
-  MISE_CEILING_PATHS="$PWD:$HOME" \
+  MISE_CEILING_PATHS="$(pwd -P):$(cd "$HOME" && pwd -P)" \
   SMOKE_WHOLE_FILE="${SMOKE_WHOLE_FILE:-0}" \
   bash -c '
   # Before anything else: GNU `mktemp` honours TMPDIR and fails on a missing
@@ -194,14 +195,22 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
   # and every subsequent redirect fails. (darwin mktemp ignores TMPDIR, which is
   # why the wrong order was invisible here.)
   mkdir -p "$TMPDIR"
-  block=$1; log=$2; tr=$3; out=$(mktemp); acc=""; start=0; n=0; failed=0
+  block=$1; log=$2; tr=$3; lines=$4; out=$(mktemp); acc=""; start=0; n=0; failed=0
   printf "smoke-run transcript: HOME=%s\n\n" "$HOME" >"$tr"
   if [ "$SMOKE_WHOLE_FILE" = 1 ]; then
     # shellcheck disable=SC1090
     . "$block" >>"$tr" 2>&1; exit $?
   fi
+  # How far the loop got, rewritten every iteration rather than set on the way out.
+  # The report needs this rather than the exit status: a block that ends itself with
+  # `exit 0` — idiomatic at the end of a fixture script — leaves a zero status and an
+  # empty log, which is the "green" shape exactly, so keying the check on a non-zero
+  # status closed only half the hole (found in review, 2026-08-09). An EXIT trap would
+  # be tidier and is deliberately not used: this whole script is a single-quoted
+  # argument to `bash -c`, so a trap body needs `'"'"'` quoting to survive, and getting
+  # that wrong expands the counter in the OUTER shell instead.
   while IFS= read -r line <&3; do
-    n=$((n + 1))
+    n=$((n + 1)); printf "%s\n" "$n" > "$lines"
     if [ -n "$acc" ]; then acc="$acc $line"
     else
       # Strip leading whitespace and test the FIRST character. Matching "#"
@@ -227,7 +236,7 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
   # an unbuilt /tmp/kae fails nearly all of them.
   [ "$failed" -gt 0 ] && exit 1
   exit 0
-' _ "$block" "$log" "$transcript"
+' _ "$block" "$log" "$transcript" "$consumed"
 rc=$?
 
 # --- report -----------------------------------------------------------------
@@ -236,11 +245,21 @@ if [ "${SMOKE_WHOLE_FILE:-0}" = 1 ]; then
   # "every line exited 0" here (which an earlier version did, unconditionally)
   # reproduces the defect the per-line loop was written to fix.
   printf 'smoke-run: whole-file mode — block exit status %s, NO per-line verdict\n' "$rc"
-elif [ -s "$log" ]; then
-  printf 'smoke-run: %s line(s) exited non-zero:\n' "$(grep -c '^  line ' "$log")"
-  cat "$log"
-  printf 'smoke-run: a section whose prose allows non-zero lines has to say which\n'
-elif [ "$rc" -ne 0 ]; then
+else
+  # Completeness and per-line failures are INDEPENDENT questions, and an earlier
+  # version made the second outrank the first with an `elif`: a block that failed a
+  # line *and* then ended early printed the failing line and nothing else, so the
+  # verdict implied every other line had run. Both are reported (found in review,
+  # 2026-08-09).
+  total=$(wc -l < "$block" | tr -d ' ')
+  got=$(cat "$consumed" 2>/dev/null || echo 0)
+  [ -n "$got" ] || got=0
+  if [ -s "$log" ]; then
+    printf 'smoke-run: %s line(s) exited non-zero:\n' "$(grep -c '^  line ' "$log")"
+    cat "$log"
+    printf 'smoke-run: a section whose prose allows non-zero lines has to say which\n'
+  fi
+  if [ "$got" -ne "$total" ]; then
   # The loop itself only ever returns 0 or 1, and the 1 is always accompanied by a
   # log entry — so an empty log beside a non-zero status means the block ended
   # *itself* and the lines after that point never ran. Reporting "every line exited
@@ -250,13 +269,15 @@ elif [ "$rc" -ne 0 ]; then
   # `exit 9` in that body, which killed the inner shell after 35 of 146 lines. The
   # run printed "every line exited 0" and exited 9, and nothing reads the exit code
   # of a line that already told you it was green.
-  printf 'smoke-run: the block ENDED EARLY — exit status %s came from the block, not\n' "$rc"
-  printf '           from the per-line loop, so the lines after that point never ran.\n'
-  printf '           A multi-line construct (here-document, function body) is the usual\n'
-  printf '           cause: this loop evaluates one line at a time. Use SMOKE_WHOLE_FILE=1\n'
-  printf '           for such a section, or rewrite the construct as single lines.\n'
-else
-  printf 'smoke-run: every line exited 0\n'
+    printf 'smoke-run: the block ENDED EARLY — %s of %s lines were read (block exit\n' "$got" "$total"
+    printf '           status %s). The lines after that point never ran, whatever the\n' "$rc"
+    printf '           status says. A multi-line construct (here-document, function body)\n'
+    printf '           is the usual cause: this loop evaluates one line at a time. Use\n'
+    printf '           SMOKE_WHOLE_FILE=1 for such a section, or rewrite it as single lines.\n'
+    rc=1
+  elif [ ! -s "$log" ]; then
+    printf 'smoke-run: every line exited 0\n'
+  fi
 fi
 printf 'smoke-run: full transcript in %s\n' "$transcript"
 

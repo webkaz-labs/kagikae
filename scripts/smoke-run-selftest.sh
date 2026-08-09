@@ -9,7 +9,7 @@
 # would have caught. The fixtures are cheap on purpose: no `kae` build, no
 # network, so this can run on every commit rather than when somebody remembers.
 #
-# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 20 guards and zero
+# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 22 guards and zero
 # tests of those guards.** Four separate times a change made for an unrelated
 # reason switched a guard off while the suite went on reporting every guard
 # holding: a list derived from its own subject, a containment check weakened to a
@@ -305,6 +305,14 @@ run "$f" '## NoColor'; check 'colour is disabled for the block' 0 $? 'NO_COLOR=1
 #     whose empty input is its success branch. So the block seeds a config *inside*
 #     the sandbox and requires mise to find that one.
 #
+#     A second thing it cannot kill, and the reason is the same: writing the ceiling
+#     from `$PWD`/`$HOME` instead of `pwd -P`. mise matches the ceiling against the
+#     CANONICAL cwd, so a logical path that differs from it silently does not apply —
+#     but on a machine where the checkout and the home are already canonical the two
+#     spellings are the same string. It bites a checkout reached through a symlink,
+#     or a relocated `$HOME` (found in review, 2026-08-09, by measuring a symlinked
+#     fixture directory rather than by reading).
+#
 #     What this guard cannot kill, measured rather than assumed: narrowing the
 #     ceiling to `$PWD` alone. The runner never leaves the checkout, and from there
 #     the `$PWD` entry stops the walk before anything above it — so the `$HOME`
@@ -352,7 +360,41 @@ f=$(doc early '## Early' \
   'XEOF' \
   'touch "$HOME/after"')
 run "$f" '## Early'; rc=$?
-check 'a block that ends early is not reported as green' 9 "$rc" 'ENDED EARLY' "$tmp/out"
+check 'a block that ends early is not reported as green' 1 "$rc" 'ENDED EARLY' "$tmp/out"
+
+# 15. The same, ending with status **0**. This is the half a status-based check
+#     cannot see, and it is the more idiomatic one — a fixture script ends `exit 0`
+#     far more often than `exit 9`. Guard 14 used 9 and so passed while this shape
+#     still reported "every line exited 0" (found in review, 2026-08-09).
+f=$(doc early0 '## Early0' \
+  'touch "$HOME/before"' \
+  "cat > \$HOME/fake <<'XEOF'" \
+  'echo unreachable' \
+  'exit 0' \
+  'XEOF' \
+  'touch "$HOME/after"')
+run "$f" '## Early0'; rc=$?
+check 'a block that ends early with status 0 is caught too' 1 "$rc" 'ENDED EARLY' "$tmp/out"
+
+# 16. A failing line AND an early end must BOTH be reported. Reporting only the
+#     failure implies every other line ran, which is the same lie one level down;
+#     an earlier version made the failure branch outrank the completeness one with
+#     an `elif` and printed exactly that (found in review, 2026-08-09).
+f=$(doc both '## Both' \
+  'touch "$HOME/before"' \
+  'false' \
+  "cat > \$HOME/fake <<'XEOF'" \
+  'exit 9' \
+  'XEOF' \
+  'touch "$HOME/after"')
+run "$f" '## Both'; rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'exited non-zero' "$tmp/out" && grep -q 'ENDED EARLY' "$tmp/out"; then
+  printf 'ok    a failing line and an early end are both reported\n'
+  ok=$((ok + 1))
+else
+  printf 'FAIL  a failing line and an early end are both reported (rc=%s)\n' "$rc"
+  fails=$((fails + 1))
+fi
 
 printf '\n'
 # A deleted guard used to leave this file reporting "all guards hold" with one
@@ -374,7 +416,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=20
+EXPECTED_GUARDS=22
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

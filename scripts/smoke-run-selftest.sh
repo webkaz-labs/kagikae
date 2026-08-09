@@ -101,6 +101,10 @@ fi
 #     sixth root added to paths.Resolve and to smoke-env.sh could be missed here.
 preamble=$(norm "$(grep -oE '^export [A-Z_]+' scripts/smoke-env.sh | sed 's/export //')")
 missing=""
+# An empty set makes the loop below vacuous, and vacuous is the success branch —
+# so an unreadable, emptied or reformatted smoke-env.sh would read as a pass.
+# Same shape as the `grep -c` inversion this file already carries a note about.
+[ -n "$preamble" ] || missing=" nothing at all (smoke-env.sh unreadable or reformatted?)"
 for v in $preamble; do
   case " $(norm "$EXPECTED_ROOTS $EXPECTED_OTHER") " in *" $v "*) ;; *) missing="$missing $v" ;; esac
 done
@@ -215,12 +219,16 @@ f=$(doc last '## Last' 'true' 'false')
 run "$f" '## Last'; check 'a failing LAST line fails the run' 1 $?
 
 # 5. Many failures must not wrap the exit status to 0.
-# 257, not 300: the cheapest count that still exceeds the 256 wrap point, and
-# this guard is otherwise the slowest one here (each failing line forks a
-# `sed | head` for its diagnostic).
-lines=(); for _ in $(seq 257); do lines+=('false'); done
+# The count must be **exactly 256**, and the requirement is not "more than the
+# wrap point" — it is "a residue that differs from the answer a working runner
+# gives". An un-clamped `exit "$failed"` returns `failed % 256`, so at 256 it
+# exits 0 and this guard fires, while at 257 it exits 1, which is the pass value:
+# a cleanup pass shortened 300 to 257 for speed and silently switched the guard
+# off, and the whole suite still reported 18/18. 300 was safe by luck (300 % 256
+# = 44); 256 is safe by construction and is also the cheapest.
+lines=(); for _ in $(seq 256); do lines+=('false'); done
 f=$(doc many '## Many' "${lines[@]}")
-run "$f" '## Many'; check '257 failing lines do not wrap to exit 0' 1 $?
+run "$f" '## Many'; check '256 failing lines do not wrap to exit 0' 1 $?
 
 # 6. Whole-file mode must not claim a per-line verdict it does not have.
 f=$(doc whole '## Whole' 'echo first' 'false' 'echo last')
@@ -272,10 +280,18 @@ printf '\n'
 #
 # What this does NOT cover, recorded so it is not re-filed: weakening a guard's
 # condition *in place* (`-eq` → `-ge`) is undetectable here, as it is in any test
-# suite. Two more limits of the same kind — a root escaping via a symlink rather
-# than via `..` is not refused, and `TMPDIR` in ROOTS proves the runner sets it,
-# not that it has any effect (darwin's `mktemp` ignores TMPDIR entirely, so on
-# this platform it sandboxes nothing).
+# suite. Four more limits of the same kind:
+#   * a root escaping via a symlink rather than via `..` is not refused;
+#   * `TMPDIR` in ROOTS proves the runner sets it, not that it has any effect
+#     (darwin's `mktemp` ignores TMPDIR entirely, so there it sandboxes nothing);
+#   * guard 0b is one-directional by design — it catches a root the preamble has
+#     and the runner lacks, not one *missing from the preamble*, which is what
+#     the 2026-07-31 incident actually was. The reverse check needs an exception
+#     list (TMPDIR, KAE_CLAUDE_DRIVER and SMOKE_WHOLE_FILE are runner-only), which
+#     is more machinery than the direction earns;
+#   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
+#     cases (either value empty, both empty, `go env` failing) were verified by
+#     hand against a `go` shim on 2026-08-09 and none exports an empty value.
 EXPECTED_GUARDS=18
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then

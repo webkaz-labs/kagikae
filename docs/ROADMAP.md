@@ -213,23 +213,6 @@ alternative exists (`secret-tool`).
   `scripts/smoke-run-selftest.sh` is normative: any change to either script has to
   be mutation-tested by hand.
 
-- **Nothing stops a block from asserting nothing** (recorded 2026-08-09, **not
-  fixed**). Five sections of [VALIDATION.md](VALIDATION.md) were converted so their
-  assertions are the commands themselves, and `scripts/smoke-run.sh` now gives each a
-  per-line verdict. But the runner cannot tell that convention from the old one: a
-  block whose checks are `#   assert:` comments prints output, asserts nothing, and is
-  reported green. That is how five defects accumulated across eight versions, and
-  nothing prevents the next section from reintroducing it — the guarantee currently
-  rests on doc-review discipline, which this file's own history shows does not survive
-  unrelated edits.
-  The fix is small: fail the run when the extracted block contains a column-0
-  `#   assert:` line, which turns "the author must remember to write a real check" into
-  "the tool refuses a block that did not". Deliberately not built yet, because the 56
-  remaining markers all sit in the `v0.8.x`/`v0.9.0` sections that are queued for
-  deletion; adding the check first would make the runner refuse sections that are about
-  to disappear. **Land it with that deletion**, not before, and give it a self-test
-  guard — this is exactly the class the "ended early" guards close, one level up.
-
 - **`scripts/smoke-env.sh` leaks a temp HOME every time it is sourced** (recorded
   2026-08-09, **not fixed**). It does `HOME=$(mktemp -d)` and nothing ever removes
   the directory, so each direct run of a block in [VALIDATION.md](VALIDATION.md)

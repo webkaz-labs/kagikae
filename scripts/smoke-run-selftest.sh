@@ -9,7 +9,7 @@
 # would have caught. The fixtures are cheap on purpose: no `kae` build, no
 # network, so this can run on every commit rather than when somebody remembers.
 #
-# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 24 guards and zero
+# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 27 guards and zero
 # tests of those guards.** Four separate times a change made for an unrelated
 # reason switched a guard off while the suite went on reporting every guard
 # holding: a list derived from its own subject, a containment check weakened to a
@@ -420,6 +420,34 @@ f=$(doc dangling '## Dangling' 'touch "$HOME/a"' 'touch "$HOME/b" \\')
 run "$f" '## Dangling'; rc=$?
 check 'a dangling continuation on the last line is caught' 1 "$rc" 'ENDED EARLY' "$tmp/out"
 
+# 19. A block whose check is a column-0 `#   assert:` comment asserts nothing: the
+#     loop skips comments, so the block would run its commands, evaluate none of
+#     the claims, and be reported green. Note the fixture's command PASSES — the
+#     refusal is about the block being uncheckable, not about it failing, and a
+#     version keyed on a failure would let this exact shape through.
+f=$(doc assertcomment '## AssertComment' 'true' '#   assert: this never runs')
+run "$f" '## AssertComment'; rc=$?
+check 'a column-0 assert comment is refused' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out"
+
+# 20. The same with ONE space. Both spellings were in the 56 markers deleted with
+#     the v0.8.x sections, so a pattern narrowed to `#   assert:` — which reads as
+#     the tidier literal — passes this and loses the guard for half its subjects.
+#     That narrowing is this repository's recorded defect class, and it is the
+#     mutation to try first on the pattern above.
+f=$(doc assertonespace '## AssertOneSpace' 'true' '# assert: also skipped')
+run "$f" '## AssertOneSpace'; rc=$?
+check 'a one-space column-0 assert comment is refused too' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out"
+
+# 21. The control the two above need, and the one that makes the pattern's column-0
+#     anchor load-bearing: a real command carrying a TRAILING `# assert:` comment is
+#     how every converted section documents what its command proves, and refusing
+#     those would refuse all six live sections. Widening the pattern to match
+#     `assert:` anywhere on a line trips here and nowhere else.
+f=$(doc asserttrailing '## AssertTrailing' 'test 1 -eq 1   # assert: the command is the assertion')
+run "$f" '## AssertTrailing'; rc=$?
+check 'a trailing assert comment on a real command is accepted' 0 "$rc" \
+  'every line exited 0' "$tmp/out"
+
 printf '\n'
 # A deleted guard used to leave this file reporting "all guards hold" with one
 # fewer ok line — the file could be hollowed out a guard at a time, which is how
@@ -440,7 +468,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=24
+EXPECTED_GUARDS=27
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

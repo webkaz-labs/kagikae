@@ -9,8 +9,10 @@
 # would have caught. The fixtures are cheap on purpose: no `kae` build, no
 # network, so this can run on every commit rather than when somebody remembers.
 #
-# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 27 guards and zero
-# tests of those guards.** Four separate times a change made for an unrelated
+# READ THIS BEFORE EDITING EITHER SCRIPT. **The guards in these two files have no
+# tests of their own** (`EXPECTED_GUARDS` at the bottom is the one place that counts
+# them; this sentence deliberately does not repeat the number, because the two drifted
+# apart the moment a guard was added). Four separate times a change made for an unrelated
 # reason switched a guard off while the suite went on reporting every guard
 # holding: a list derived from its own subject, a containment check weakened to a
 # proxy, a fixture count shortened to the one value that equals the pass status,
@@ -180,15 +182,38 @@ check 'a block touching the checkout is caught' 1 "$rc" 'LEAK' "$tmp/out"
 # 1b. The other leak branch: an append to info/exclude, which is the shape the
 #     original `kae pin` leak took and the one guard 1 does not reach.
 excl="$(git rev-parse --git-common-dir)/info/exclude"
-cp "$excl" "$tmp/excl.bak" 2>/dev/null || : > "$tmp/excl.bak"
+# Whether the file EXISTED is part of the state being restored, not just its
+# contents. `cp "$excl" bak 2>/dev/null || : > bak` looks like it handles the
+# missing case and does the opposite: on a checkout with no info/exclude the
+# fallback writes an EMPTY backup, which the restore then puts back **as a file**.
+# Measured: `mise run check` created `.git/info/exclude` in the operator's
+# checkout — the gate writing to the real environment, which AGENTS.md forbids —
+# and the next `smoke-run.sh` run then reported a false `LEAK`, because its
+# detector reads "missing" and "present but empty" as different states. A false
+# leak is the expensive half: it says the block wrote to the checkout.
+if [ -f "$excl" ]; then cp "$excl" "$tmp/excl.bak"; excl_existed=1; else excl_existed=0; fi
+restore_excl() {
+  if [ "$excl_existed" = 1 ]; then cp "$tmp/excl.bak" "$excl"; else rm -f "$excl"; fi
+}
 # Restore BEFORE deleting $tmp: the backup lives in it, so the previous order
 # made the restore dead code and an interrupted run left the operator's
 # info/exclude dirty (measured).
-trap 'cp "$tmp/excl.bak" "$excl" 2>/dev/null; rm -rf "$tmp" ./SMOKE-SELFTEST-LEAK' EXIT
+trap 'restore_excl; rm -rf "$tmp" ./SMOKE-SELFTEST-LEAK' EXIT
 f=$(doc excl '## Excl' ". scripts/smoke-env.sh" "printf 'smoke-selftest\\n' >> '$excl'")
 run "$f" '## Excl'; rc=$?
-cp "$tmp/excl.bak" "$excl"
+restore_excl
 check 'an append to info/exclude is caught' 1 "$rc" 'LEAK' "$tmp/out"
+
+# 1c. …and the restore must put back the file's EXISTENCE, not only its bytes. This
+#     is the guard for the defect above: reverting `restore_excl` to the old
+#     content-only form makes the gate leave an empty info/exclude in a checkout
+#     that had none. **Live only where the file is absent** — where it exists both
+#     forms restore the content and this cannot fail, so do not read a pass on a
+#     machine that has one as evidence. Stated rather than engineered around,
+#     because the alternative is this script deleting the operator's file to test
+#     that it puts it back.
+if [ -f "$excl" ]; then excl_now=1; else excl_now=0; fi
+check 'info/exclude existence is restored, not just its contents' "$excl_existed" "$excl_now"
 
 # 2. Every root must land INSIDE the sandbox. Asserting only "not the value I
 #    planted" is a weaker thing that reads the same: pointing a root at some
@@ -425,27 +450,76 @@ check 'a dangling continuation on the last line is caught' 1 "$rc" 'ENDED EARLY'
 #     the claims, and be reported green. Note the fixture's command PASSES — the
 #     refusal is about the block being uncheckable, not about it failing, and a
 #     version keyed on a failure would let this exact shape through.
-f=$(doc assertcomment '## AssertComment' 'true' '#   assert: this never runs')
+#
+#     The two trailing patterns are the DIAGNOSTIC, not the verdict, and they are
+#     here because both halves of it survived a mutation: dropping `-n` from the
+#     grep (losing the line numbers) and hard-coding a false count both passed 27
+#     guards. The half that tells an author *which* line to fix is the half that
+#     rots unwatched, and a count nothing checks can print a number that is simply
+#     untrue. `2:` is where the marker sits — `doc` writes the body verbatim, so the
+#     fixture's `touch` is block line 1 and the marker is line 2.
+f=$(doc assertcomment '## AssertComment' "touch \"$tmp/ac-ran\"" '#   assert: this never runs')
 run "$f" '## AssertComment'; rc=$?
-check 'a column-0 assert comment is refused' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out"
+check 'a column-0 assert comment is refused' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out" \
+  'on 1 line(s)' "$tmp/out" '2:#   assert:' "$tmp/out"
 
-# 20. The same with ONE space. Both spellings were in the 56 markers deleted with
-#     the v0.8.x sections, so a pattern narrowed to `#   assert:` — which reads as
-#     the tidier literal — passes this and loses the guard for half its subjects.
+# 20. The refusal must happen BEFORE the block runs, which is the whole reason it
+#     carries the caller-error status rather than a failure status. Nothing asserted
+#     this until now: moving the entire guard to *after* the run loop was measured
+#     SURVIVING all 27 guards, because guard 19's fixture command is `true` and no
+#     one was watching whether it executed. That is the class the header above names
+#     as having bitten four times — a guard that reads as load-bearing and is not.
+#     The fixture writes outside the sandbox on purpose ($tmp is this script's own
+#     directory, not the block's HOME), because a write inside the sandbox dies with
+#     it and cannot be inspected afterwards. Guard 24 is this one's positive control:
+#     without it, a `touch` that never worked would read as a refusal that came first.
+if [ -e "$tmp/ac-ran" ]; then rc=1; else rc=0; fi
+check 'the refusal comes before the block runs' 0 "$rc"
+
+# 21. The same marker with ONE space. Both spellings were in the 56 markers deleted
+#     with the v0.8.x sections, so a pattern narrowed to `#   assert:` — which reads
+#     as the tidier literal — passes this and loses the guard for half its subjects.
 #     That narrowing is this repository's recorded defect class, and it is the
 #     mutation to try first on the pattern above.
 f=$(doc assertonespace '## AssertOneSpace' 'true' '# assert: also skipped')
 run "$f" '## AssertOneSpace'; rc=$?
 check 'a one-space column-0 assert comment is refused too' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out"
 
-# 21. The control the two above need, and the one that makes the pattern's column-0
+# 22. And capitalised. `# Assert:` passed the first version of this guard, found by
+#     review — the pattern claimed to match spellings and matched exactly two. This
+#     is what makes the `-i` load-bearing rather than decorative.
+f=$(doc assertcap '## AssertCap' 'true' '#   Assert: capitalised, still a comment')
+run "$f" '## AssertCap'; rc=$?
+check 'a capitalised column-0 assert comment is refused' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out"
+
+# 23. The control the refusals need, and the one that makes the pattern's column-0
 #     anchor load-bearing: a real command carrying a TRAILING `# assert:` comment is
 #     how every converted section documents what its command proves, and refusing
 #     those would refuse all six live sections. Widening the pattern to match
 #     `assert:` anywhere on a line trips here and nowhere else.
-f=$(doc asserttrailing '## AssertTrailing' 'test 1 -eq 1   # assert: the command is the assertion')
+f=$(doc asserttrailing '## AssertTrailing' "touch \"$tmp/at-ran\"" \
+  'test 1 -eq 1   # assert: the command is the assertion')
 run "$f" '## AssertTrailing'; rc=$?
 check 'a trailing assert comment on a real command is accepted' 0 "$rc" \
+  'every line exited 0' "$tmp/out"
+
+# 24. Guard 20's positive control, and it is not optional: guard 20 asserts a file's
+#     ABSENCE, which an inert `touch` satisfies for free. This proves the same
+#     fixture line does create the file when the block is allowed to run, so the
+#     absence above means "refused first" and not "the touch never worked".
+if [ -e "$tmp/at-ran" ]; then rc=0; else rc=1; fi
+check 'an accepted block does reach its first line' 0 "$rc"
+
+# 25. A column-0 comment whose `assert:` is preceded by prose is not a marker, and
+#     the live harvest block has one: `#   the three lines above assert: exactly ONE
+#     stderr line`. This is the widening the column-0 anchor does NOT cover, so
+#     guard 23 cannot see it — measured, `^#.*assert:` survives every other guard
+#     here and refuses § v0.17.0 surface — the credential harvest outright. The
+#     marker has to be the first thing after the `#`, and that is what this pins.
+f=$(doc assertprose '## AssertProse' 'test 1 -eq 1' \
+  '#   the line above will assert: exactly one thing, and this is prose about it')
+run "$f" '## AssertProse'; rc=$?
+check 'a column-0 comment whose assert: follows prose is accepted' 0 "$rc" \
   'every line exited 0' "$tmp/out"
 
 printf '\n'
@@ -468,7 +542,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=27
+EXPECTED_GUARDS=32
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

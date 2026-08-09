@@ -1963,15 +1963,30 @@ separate verbatim/ACL assumption above, and it needs the real keychain and a rea
 account — so a release still runs the two-account pin: re-bind in a pinned
 directory, then launch claude there and confirm it reports the account kae bound.
 
-### Open gates (never yet run on a real machine)
+### Open gates (two live logins each)
 
-Three gates carried from the v0.8.3 release gate (2026-06-17) that have never
-run. Each needs a real keychain **and** two real interactive logins, which is
-why every release since has deferred them rather than skipped them: v0.14.0 and
-v0.15.0 both record two of the three as still open and unchanged, and the codex
-keyring two-account gate has been recorded deferred since v0.8.3 itself. They
-are listed here rather than left in a released version's section because they
-are checks a release still owes, not history.
+Three gates for which no release has recorded a result. Each needs a real
+keychain **and** two real interactive logins, which is what has kept them
+deferred, and it is what they have in common — they are listed together for that
+reason and not as the complete set of what is open (see the fourth below). They
+live here rather than under the released version whose section they were written
+into, because they are checks a release still owes.
+
+Their dates do not match that section, which is why the provenance is spelled
+out. The **Codex keyring two-account round-trip** is genuinely from the v0.8.3
+release gate (2026-06-17): that release's acceptance entry records it `DEFERRED`,
+and the v0.8.6 entry still deferred. The other two were written six weeks later
+and first recorded by v0.13.0 (2026-07-31), as "the codex per-directory keyring
+bind and the cursor three-item credential set"; v0.14.0 and v0.15.0 repeat them
+as still open. **After v0.15.0 the record is silent rather than deferring** — no
+later release notes mention any of the three, and the Release Acceptance Log
+below has no entry at all between v0.9.0 and v0.17.0.
+
+A **fourth** open real-machine gate is deliberately not in this list:
+§ Real-machine gate — does `refreshTokenExpiresAt` predict the login's death?
+above, opened 2026-07-31 and also never run. It is kept separate because it needs
+one real login and *no* second account, so it is runnable on a machine where
+these three are not.
 
 **Codex keyring two-account round-trip** (macOS, real `Codex Auth` keychain).
 Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:

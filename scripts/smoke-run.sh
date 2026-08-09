@@ -176,25 +176,32 @@ printf 'smoke-run: %s lines extracted from %s under %s\n' \
 # The loop below skips comment lines, so a column-0 `#   assert:` comment is a
 # claim nothing evaluates: the block prints output, checks none of it, and reaches
 # the report as "every line exited 0". Five defects accumulated in § Smoke Checks
-# across eight versions exactly that way, and until this guard the convention that
-# the assertion IS the command rested on doc-review discipline, which this file's
-# history shows does not survive unrelated edits.
+# exactly that way, over a block that was unchanged from the initial commit until
+# 2026-08-09 — the sourced form of that claim, since the "eight versions" this
+# comment used to give is not measurable and is wrong: 14 releases carry the
+# unchanged block. Until this guard the convention that the assertion IS the
+# command rested on doc-review discipline, which this file's history shows does
+# not survive unrelated edits.
 #
 # Refused before anything runs, and with the caller-error status the other
 # extraction refusals use: a block that cannot check itself is not a run that
 # failed, it is a document that has to be fixed first.
 #
-# Matched on the CONCEPT and not on one spelling. The 56 markers deleted with the
-# v0.8.x sections used two of them (`#   assert:` and `# assert:`), so a pattern
-# keyed on the three-space form would have let one through — the repository's own
-# recorded defect class, grepping for the literal you retired.
+# Matched on every whitespace and case variant of `assert:`, not on one spelling —
+# and that is the honest description, narrower than the "matches the concept" this
+# comment used to claim: a marker spelled `# expect:` or `# check:` passes, and
+# nothing live uses those. The 56 markers deleted with the v0.8.x sections used two
+# spellings (`#   assert:` and `# assert:`), so a pattern keyed on the three-space
+# form would have let one through — the repository's own recorded defect class,
+# grepping for the literal you retired. `-i` is there for the same reason and is
+# equally load-bearing: `# Assert:` passed until it was added.
 #
 # Column 0 only, deliberately. An INDENTED comment carrying `assert:` is how a
 # live block spells out what the command above it proves, either trailing that
 # command or continuing onto the next line, and refusing those would refuse every
 # converted section. The cost is real and is not worth more machinery: an indented
 # comment-only assertion that follows no command is a lie this does not catch.
-markers=$(grep -n '^#[[:space:]]*assert:' "$block" || true)
+markers=$(grep -in '^#[[:space:]]*assert:' "$block" || true)
 if [ -n "$markers" ]; then
   printf 'smoke-run: this block ASSERTS NOTHING on %s line(s). A column-0\n' \
     "$(printf '%s\n' "$markers" | grep -c .)" >&2

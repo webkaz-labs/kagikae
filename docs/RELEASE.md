@@ -1371,7 +1371,10 @@ the environment allows, and record PASS/defer in VALIDATION.md:
   the `gemini`/`antigravity` keychain item and a fresh agy session reports the
   switched account.
 - **fish real-machine completion smoke** (v0.8.4 — the release machine had no
-  fish; bash/zsh verified).
+  fish; bash/zsh verified). **Superseded by this very release**: v0.8.6 dropped
+  fish from the verified shells, so this one was never owed after 2026-06-18.
+  The sibling gates in this list stayed genuinely open, which is why the
+  distinction is worth marking rather than deleting.
 - **codex keyring two-account real-keychain gate** (v0.8.3 — the file-driver
   round-trip is unit-covered; the two-account real-keychain path is not).
 

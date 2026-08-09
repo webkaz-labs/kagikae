@@ -180,10 +180,11 @@ alternative exists (`secret-tool`).
   edit to the block a release is accepted against is worse than a recorded gap: this block
   spent 2026-08-07 to 2026-08-08 sending every credential fixture to the config dir after
   the credential had moved to the account store, and went green throughout by asserting
-  nothing about its own subject. (The "eight versions" figure belongs to § Smoke Checks,
-  which was unchanged since the initial commit; this block was added 2026-08-04 and has
-  only ever shipped in v0.17.0. Conflating the two is the same misattribution this entry
-  is named after, made while writing the entry.)
+  nothing about its own subject. (The long-accumulation figure belongs to § Smoke Checks,
+  which was unchanged since the initial commit — 14 releases, not the "eight versions"
+  this once said, a number that was never sourceable; this block was added 2026-08-04 and
+  has only ever shipped in v0.17.0. Conflating the two is the same misattribution this
+  entry is named after, made while writing the entry.)
 
 - **The smoke guards have no test, and four changes switched one off without
   anything noticing** (recorded 2026-08-09, **not fixed**).

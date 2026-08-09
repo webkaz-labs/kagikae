@@ -92,10 +92,12 @@
 # defect that put 956 items in the operator's login keychain, and no environment
 # prefix can prevent it. The leak detector below sees the checkout only: writes
 # elsewhere on the machine are not detected. It works by comparing `git status`
-# across the run, so editing a tracked file yourself while a block runs is
-# reported as a leak — measured, and the conclusion it invites is the wrong one
-# ("this block writes to the checkout"). Let a run finish before touching the
-# tree.
+# and info/exclude across the run, so **anything** that touches the checkout
+# meanwhile is reported as a leak — measured, and the conclusion it invites is the
+# wrong one ("this block writes to the checkout"). Your own edits are one source.
+# The other is `scripts/smoke-run-selftest.sh`, which perturbs info/exclude on
+# purpose to prove this detector works, and so therefore does `mise run check`.
+# Run one at a time.
 #
 # There is also **no wall-clock cap**: a block containing a command that blocks
 # stalls this script indefinitely with no diagnostic. Deliberately not added — a
@@ -187,26 +189,33 @@ printf 'smoke-run: %s lines extracted from %s under %s\n' \
 # extraction refusals use: a block that cannot check itself is not a run that
 # failed, it is a document that has to be fixed first.
 #
-# Matched on every whitespace and case variant of `assert:`, not on one spelling —
-# and that is the honest description, narrower than the "matches the concept" this
-# comment used to claim: a marker spelled `# expect:` or `# check:` passes, and
-# nothing live uses those. The 56 markers deleted with the v0.8.x sections used two
-# spellings (`#   assert:` and `# assert:`), so a pattern keyed on the three-space
-# form would have let one through — the repository's own recorded defect class,
-# grepping for the literal you retired. `-i` is there for the same reason and is
-# equally load-bearing: `# Assert:` passed until it was added.
+# Matched on three dimensions, because a marker is a *label* and the label is the
+# part an author invents. Whitespace: the 56 markers deleted with the v0.8.x
+# sections used two spellings (`#   assert:` and `# assert:`), so a pattern keyed on
+# the three-space form would have let one through. Case: `# Assert:` passed until
+# `-i`. And the word itself: `#   expect:` was measured passing a version of this
+# guard that only knew `assert:`, which is the repository's own recorded defect
+# class — grepping for the literal you retired — reached by substituting one word.
+# The deletion above makes that likelier rather than less: no column-0 `assert:`
+# marker survives anywhere in the file, so the next author has no example to copy
+# and is the one inventing the label.
+#
+# The alternation is an explicit vocabulary and not `[A-Za-z]+:`, which was measured
+# catching a legitimate line in the harvest block (`#           copy: the store now
+# being written is side's own`). Explicit words: 0 matches across all six live
+# blocks; generic: 1 false positive. Add a word here rather than generalising.
 #
 # Column 0 only, deliberately. An INDENTED comment carrying `assert:` is how a
 # live block spells out what the command above it proves, either trailing that
 # command or continuing onto the next line, and refusing those would refuse every
-# converted section. The cost is real and is not worth more machinery: an indented
-# comment-only assertion that follows no command is a lie this does not catch.
-markers=$(grep -in '^#[[:space:]]*assert:' "$block" || true)
+# converted section. What that costs: an indented comment-only assertion following
+# no command is a lie this does not catch.
+markers=$(grep -Ein '^#[[:space:]]*(assert|expect|verify|check|confirm|ensure)[[:space:]]*:' "$block" || true)
 if [ -n "$markers" ]; then
   printf 'smoke-run: this block ASSERTS NOTHING on %s line(s). A column-0\n' \
     "$(printf '%s\n' "$markers" | grep -c .)" >&2
-  printf '           "# assert:" comment is skipped by the runner, so the check it\n' >&2
-  printf '           describes never runs and the block reports green. Make the\n' >&2
+  printf '           "# assert:"-style comment is skipped by the runner, so the check\n' >&2
+  printf '           it names never runs and the block reports green. Make the\n' >&2
   printf '           assertion the command itself — test "$(...)" -eq N, grep -q,\n' >&2
   printf '           or <cmd>; test $? -eq N. Block line(s):\n' >&2
   printf '%s\n' "$markers" | sed 's/^/           /' >&2

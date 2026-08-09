@@ -1860,7 +1860,10 @@ sibling gate in this file, each of which is closed only by a dated run — and
 *behaviour*, and that where docs and the binary disagree the binary wins. Closing this
 one on a citation would have set a precedent the rest of the file does not follow.
 
-**Procedure** (needs a real machine and a real login; no second account):
+**Procedure** (needs a real machine and a real login; no second account). Step 4
+applies a snapshot this procedure has deliberately let go stale, so § Real-Machine
+Acceptance's account precondition below applies here too, and applies hardest: on
+the "pessimistic" outcome the credential being overwritten was *still working*.
 1. `kae add --no-login claude <acct>` immediately after a completed `/login`, and note
    both `captured_at` and `relogin_by` from `kae ls --json`. Record the login date —
    without it the measurement cannot be interpreted, which is the mistake that
@@ -1882,6 +1885,19 @@ This run doubles as the re-verification pass for the **Upstream Behaviour
 Assumptions** table above: work each installed tool's rows, then update that
 tool's `VerifiedVersion()` and its recorded version in the same commit. `kae
 doctor` naming `upstream_version` for a tool is the signal that its rows are due.
+
+**Which accounts to run any of this with, and it is the whole section's
+precondition rather than one procedure's.** Every check below and in § Open gates
+applies a *capture-time* snapshot to a live credential store, and § Upstream
+Behaviour Assumptions records the measurement that makes that consequential: a
+refresh rotates the refresh token, the superseded one is single-use, so two stores
+holding copies of one account's credential invalidate each other — the copy that
+did not refresh last is dead, and offline it is indistinguishable from a healthy
+one. So: **use a throwaway or second account, never one you are working in, and
+re-capture with `kae add` immediately before the run** so the snapshot being
+applied is live. This is not hypothetical caution. It is the lesson of the v0.8.0
+gate, which broke the maintainer's real login by applying a snapshot captured days
+earlier and needed `claude /login` to recover.
 
 Manual, on macOS, with real logged-in accounts and a fresh backup of
 `~/.claude.json`:
@@ -1963,14 +1979,16 @@ separate verbatim/ACL assumption above, and it needs the real keychain and a rea
 account — so a release still runs the two-account pin: re-bind in a pinned
 directory, then launch claude there and confirm it reports the account kae bound.
 
-### Open gates (two live logins each)
+### Open gates (a release still owes these)
 
-Three gates for which no release has recorded a result. Each needs a real
-keychain **and** two real interactive logins, which is what has kept them
-deferred, and it is what they have in common — they are listed together for that
-reason and not as the complete set of what is open (see the fourth below). They
-live here rather than under the released version whose section they were written
-into, because they are checks a release still owes.
+Three gates for which no release has recorded a result. What puts them here is
+that each is a check a release owes and records in the Release Acceptance Log —
+not that they are the complete set of what is open (see the fourth below), and
+not their preconditions. Each does need a real keychain **and** two real
+interactive logins, which is what has kept them deferred, but that is the reason
+they are unrun rather than the reason they are filed together: file by what a
+result would settle, or the fourth gate below lands in this list and gates a
+release it was never meant to gate.
 
 Their dates do not match that section, which is why the provenance is spelled
 out. The **Codex keyring two-account round-trip** is genuinely from the v0.8.3
@@ -1984,9 +2002,11 @@ below has no entry at all between v0.9.0 and v0.17.0.
 
 A **fourth** open real-machine gate is deliberately not in this list:
 § Real-machine gate — does `refreshTokenExpiresAt` predict the login's death?
-above, opened 2026-07-31 and also never run. It is kept separate because it needs
-one real login and *no* second account, so it is runnable on a machine where
-these three are not.
+above, opened 2026-07-31 and also never run. It is separate because it is an open
+**question** rather than a check that must pass — its own text says either outcome
+is a result, one confirming kae's warning and the other showing kae over-warns —
+so nothing about it blocks a release. It also needs only one real login and no
+second account, which makes it runnable on a machine where these three are not.
 
 **Codex keyring two-account round-trip** (macOS, real `Codex Auth` keychain).
 Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
@@ -2055,8 +2075,8 @@ codex does not look up from that directory:
 - [ ] `kae unpin --purge`: both are gone, the global item survives, and the store
       directories remain.
 
-Use a throwaway or second account for all three. Record the result in the
-Release Acceptance Log below.
+Account choice for all three is § Real-Machine Acceptance's precondition above, not
+a separate rule. Record the result in the Release Acceptance Log below.
 
 Never run real-machine acceptance with uncommitted work in progress in the
 live tool sessions.

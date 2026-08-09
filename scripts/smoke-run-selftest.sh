@@ -204,16 +204,21 @@ run "$f" '## Excl'; rc=$?
 restore_excl
 check 'an append to info/exclude is caught' 1 "$rc" 'LEAK' "$tmp/out"
 
-# 1c. …and the restore must put back the file's EXISTENCE, not only its bytes. This
-#     is the guard for the defect above: reverting `restore_excl` to the old
-#     content-only form makes the gate leave an empty info/exclude in a checkout
-#     that had none. **Live only where the file is absent** — where it exists both
-#     forms restore the content and this cannot fail, so do not read a pass on a
-#     machine that has one as evidence. Stated rather than engineered around,
-#     because the alternative is this script deleting the operator's file to test
-#     that it puts it back.
-if [ -f "$excl" ]; then excl_now=1; else excl_now=0; fi
-check 'info/exclude existence is restored, not just its contents' "$excl_existed" "$excl_now"
+# 1c. …and the restore must put back the file's EXISTENCE, not only its bytes, which
+#     is the guard for the defect above: the old content-only form left an empty
+#     info/exclude in a checkout that had none, so the gate itself wrote to the
+#     operator's repository and the next run reported a false LEAK.
+#
+#     Asserted against `restore_excl` driven over a FIXTURE path, not against the
+#     real file's state afterwards. Checking the real one reads as the obvious test
+#     and is inert wherever info/exclude exists — both forms restore the content
+#     there — and `git init` creates it from the template (measured, git 2.55.0), so
+#     every fresh clone takes the vacuous branch while still printing `ok`. That is
+#     the shape this file's own header names: a guard whose pass condition is
+#     satisfiable by a degenerate input. A subshell rebinds the two variables the
+#     function reads, so this perturbs nothing and is deterministic everywhere.
+( excl="$tmp/fake-excl"; excl_existed=0; : > "$excl"; restore_excl; [ ! -e "$excl" ] )
+check 'restore_excl removes a file that did not exist before' 0 $?
 
 # 2. Every root must land INSIDE the sandbox. Asserting only "not the value I
 #    planted" is a weaker thing that reads the same: pointing a root at some
@@ -492,6 +497,16 @@ f=$(doc assertcap '## AssertCap' 'true' '#   Assert: capitalised, still a commen
 run "$f" '## AssertCap'; rc=$?
 check 'a capitalised column-0 assert comment is refused' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out"
 
+# 22b. And a different WORD. `#   expect:` was measured passing a version of this
+#      guard that knew only `assert:` — the same false green, reached by substituting
+#      one word, which is the defect class the guard's own comment names. It matters
+#      more after the v0.8.x deletion than before it: no column-0 `assert:` marker is
+#      left in docs/VALIDATION.md, so the next author invents the label instead of
+#      copying one. Narrowing the alternation back to `assert` alone trips only here.
+f=$(doc assertexpect '## AssertExpect' 'true' '#   expect: a different label, same lie')
+run "$f" '## AssertExpect'; rc=$?
+check 'a column-0 marker spelled expect: is refused too' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out"
+
 # 23. The control the refusals need, and the one that makes the pattern's column-0
 #     anchor load-bearing: a real command carrying a TRAILING `# assert:` comment is
 #     how every converted section documents what its command proves, and refusing
@@ -542,7 +557,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=32
+EXPECTED_GUARDS=33
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

@@ -975,6 +975,7 @@ the file driver and the file backend — no real `$HOME`, no real keychain. Dead
 are computed from `date +%s` so the fixtures stay valid whenever this is re-run.
 
 ```bash
+go build -o /tmp/kae .
 . scripts/smoke-env.sh
 mkdir -p "$HOME/.claude" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"
 export KAE_CLAUDE_DRIVER=file
@@ -991,40 +992,81 @@ cred() { printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expires
 cred "$SOON";            /tmp/kae add --no-login claude soon      # login expires in 3 days
 cred "$FAR";             /tmp/kae add --no-login claude healthy   # 60 days out
 cred 1609459200000;      /tmp/kae add --no-login claude dead      # expired in 2021
-/tmp/kae doctor claude --json
-#   assert: {code:"credential_expiring", status:"warn"} for "soon", naming the day
-#           count and `kae add --restore claude soon`
-#   assert: {code:"credential_stale",    status:"warn"} for "dead"
-#   assert: NO credential_* check for "healthy" — the notice must be silent for most
-#           of a login's life, or it is wallpaper
-/tmp/kae doctor claude --json >/dev/null; echo "exit=$?"   # assert: 0 (warn never fails)
+/tmp/kae doctor claude --json > "$HOME/A.json"
+grep -q '"code": "credential_expiring"' "$HOME/A.json"      # assert: "soon" is reported,
+grep -qF 'snapshot \"soon\" needs an interactive re-login in' "$HOME/A.json"
+grep -q 'kae add --restore claude soon' "$HOME/A.json"      #  named with its day count
+grep -qF 'snapshot \"dead\" is stale' "$HOME/A.json"           # assert: credential_stale
+test "$(grep -c healthy "$HOME/A.json")" -eq 0              # assert: NO credential_* check
+                              #   for "healthy" — the notice must be silent for most of a
+                              #   login's life, or it is wallpaper. The four greps above
+                              #   are this line's positive control: an empty report would
+                              #   satisfy a lone absence check
+/tmp/kae doctor claude --json >/dev/null; test $? -eq 0     # assert: 0 (warn never fails)
 
 # --- B. the inventory column (ls / accounts / status) ---
-/tmp/kae ls --no-color        # assert: a Credential column reading dead=re-login now,
-                              #   healthy=ok, soon=N day(s) left
-/tmp/kae ls --json
-#   assert: schema_version still 1; each row has additive credential + relogin_by
-#   assert: relogin_by is the *login* deadline (refreshTokenExpiresAt), not expiresAt
+/tmp/kae ls --no-color > "$HOME/B.txt"
+grep -qE '^claude +dead .+re-login now$'          "$HOME/B.txt"   # assert: a Credential
+grep -qE '^claude +healthy .+ ok$'                "$HOME/B.txt"   #   column reading
+grep -qE '^claude +soon .+[0-9]+ day\(s\) left$'  "$HOME/B.txt"   #   these three
+/tmp/kae ls --json > "$HOME/B.json"
+grep -q '"schema_version": 1' "$HOME/B.json"                 # assert: schema_version still 1
+test "$(grep -c '"credential"' "$HOME/B.json")" -eq 3        # assert: each row has additive
+test "$(grep -c '"relogin_by"' "$HOME/B.json")" -eq 3        #   credential + relogin_by
+grep -q '"relogin_by": "2021-01-01T00:00:00Z"' "$HOME/B.json"
+test "$(grep -c '"relogin_by": "2020-01-01' "$HOME/B.json")" -eq 0
+                              # assert: relogin_by is the *login* deadline
+                              #   (refreshTokenExpiresAt), not expiresAt. "dead" is the
+                              #   row that separates them: its refreshTokenExpiresAt is
+                              #   2021-01-01 and its expiresAt 2020-01-01, so the pair
+                              #   above pins the field from both sides. The absence half
+                              #   cannot carry this alone — anchored on a date no fixture
+                              #   uses it passes while testing nothing, measured here on
+                              #   2026-08-09 by mutating it to 1999-01-01 and watching it
+                              #   stay green
 
 # --- C. a bound directory's own credential (the sweep) ---
 cred "$FAR"; /tmp/kae add --no-login claude main
-P="$HOME/project"; mkdir -p "$P"; cd "$P"; /tmp/kae pin main
-STORE=$(find "$XDG_DATA_HOME/kagikae/isolation" -name '.credentials.json' | head -1)
-/tmp/kae doctor --json     # assert: NO credential_* check (the copy is healthy)
-printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}' > "$STORE"
-/tmp/kae doctor --json
-#   assert: {code:"credential_stale"} whose message says `bound to <P>` and
-#           `cd <P> && claude /login` — and NOT `kae pin` / `kae add`
-#   assert: the healthy claude/main *snapshot* is not reported alongside it
+P="$HOME/project"; mkdir -p "$P"; P=$(cd "$P" && pwd -P); cd "$P"
+/tmp/kae pin main
+# The bound copy is the ACCOUNT's store, not a per-directory one: since the per-account
+# credential store, every directory bound to claude/main reads credstore/claude/<account>/.
+# This line used to `find` under isolation/<pinID>/, where a claude credential has not
+# lived since that split — and `find` exits 0 when it matches nothing, so the variable
+# went empty, the write below failed for an unrelated reason, and the case stopped
+# testing its own subject without ever going red on the count.
+CS="$XDG_DATA_HOME/kagikae/credstore/claude/main/.credentials.json"
+test -f "$CS"                                        # assert: and that is where it is
+/tmp/kae doctor --json > "$HOME/C1.json"
+test "$(grep -c 'bound to' "$HOME/C1.json")" -eq 0   # assert: NO bound-credential check
+                                                     #   while the copy is healthy
+printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1577836800000,"refreshTokenExpiresAt":1609459200000}}' > "$CS"
+/tmp/kae doctor --json > "$HOME/C2.json"
+grep -q "the claude credential bound to $P is stale" "$HOME/C2.json"
+                              # assert: credential_stale, naming the bound directory
+grep -q "cd $P && kae relogin claude" "$HOME/C2.json"
+                              # assert: the remedy is a login *in that directory*. NOT
+                              #   `kae pin` / `kae add`, which land where nothing reads
+test "$(grep -c 'kae pin' "$HOME/C2.json")" -eq 0
+grep -qF 'snapshot \"dead\" is stale' "$HOME/C2.json"   # assert: the healthy claude/main
+test "$(grep -cF 'snapshot \"main\"' "$HOME/C2.json")" -eq 0
+                              #   snapshot is not reported alongside it — the "dead"
+                              #   line is the positive control for that absence
 /tmp/kae unpin
-/tmp/kae doctor --json     # assert: silent again — unpin keeps the store on
-                           # purpose, so nothing points at it and "bound to" would lie
+/tmp/kae doctor --json > "$HOME/C3.json"
+test "$(grep -c 'bound to' "$HOME/C3.json")" -eq 0   # assert: silent again — unpin keeps
+                              #   the store on purpose, so nothing points at it and
+                              #   "bound to" would lie
 
 # --- D. kae pin still writes a real store path in both modes (modeStoreDir) ---
-cd "$P" && /tmp/kae pin main    && grep CLAUDE_CONFIG_DIR .config/mise/conf.d/kagikae.toml
-cd "$P" && /tmp/kae pin -i main && grep CLAUDE_CONFIG_DIR .config/mise/conf.d/kagikae.toml
-#   assert: non-empty, ending .../claude/shared and .../claude/isolated/main/config
-#           respectively, and both directories exist
+cd "$P" && /tmp/kae pin main
+SD=$(sed -n 's/^CLAUDE_CONFIG_DIR *= *"\(.*\)"/\1/p' .config/mise/conf.d/kagikae.toml)
+printf '%s' "$SD" | grep -q '/claude/shared$'   # assert: shared mode names its own dir
+test -d "$SD"                                   # assert: and the directory exists
+cd "$P" && /tmp/kae pin -i main
+SD=$(sed -n 's/^CLAUDE_CONFIG_DIR *= *"\(.*\)"/\1/p' .config/mise/conf.d/kagikae.toml)
+printf '%s' "$SD" | grep -q '/claude/isolated/main/config$'
+test -d "$SD"
 ```
 
 **PASSED 2026-07-31** on the pre-release binaries: A, B, C and D as asserted.

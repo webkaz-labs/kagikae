@@ -177,8 +177,13 @@ alternative exists (`secret-tool`).
   Not fixed here because the edit and the evidence are not the same size: one positive
   line per case, but verifying it means extracting the whole 398-line block, running it,
   and then breaking `snap()` on purpose to prove each new control bites. An unverified
-  edit to the block a release is accepted against is worse than a recorded gap — the
-  block passed for eight versions while measuring a directory kae no longer reads.
+  edit to the block a release is accepted against is worse than a recorded gap: this block
+  spent 2026-08-07 to 2026-08-08 sending every credential fixture to the config dir after
+  the credential had moved to the account store, and went green throughout by asserting
+  nothing about its own subject. (The "eight versions" figure belongs to § Smoke Checks,
+  which was unchanged since the initial commit; this block was added 2026-08-04 and has
+  only ever shipped in v0.17.0. Conflating the two is the same misattribution this entry
+  is named after, made while writing the entry.)
 
 - **Upstream now documents parallel sessions racing on one credential store**
   (recorded 2026-07-31). Claude Code v2.1.211: *"Fixed parallel Claude Code sessions

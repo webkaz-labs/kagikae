@@ -83,6 +83,7 @@ printf '// managed automatically\n{\n  "trustedFolders": ["/w"],\n  "lastLoggedI
 
 # --- capture and switch, one tool at a time -------------------------------
 /tmp/kae add --no-login claude main             # reports "driver: claude-file-patch"
+/tmp/kae use claude main --dry-run              # both output forms of the preview
 /tmp/kae use claude main --dry-run --json       # json-pointer action, no keychain
 /tmp/kae use claude main --json
 /tmp/kae backup list --json
@@ -109,8 +110,11 @@ grep -c '"/w"' "$HOME/.copilot/config.json"             # assert: 1 — trustedF
 echo sk-test | /tmp/kae env set claude ci ANTHROPIC_API_KEY
 /tmp/kae env list --json
 /tmp/kae run --env claude ci -- /usr/bin/env | grep -c '^ANTHROPIC_API_KEY='   # assert: 1
-env | grep -c '^ANTHROPIC_API_KEY='             # assert: 0 — the child saw it, this shell
-                                                #   does not (see the note on `grep -c` below)
+test "$(env | grep -c '^ANTHROPIC_API_KEY=')" -eq 0   # assert: the child saw it, this shell
+                                                #   does not. Wrapped in `test` because a bare
+                                                #   `grep -c` here inverts: it exits 1 when the
+                                                #   count is the correct 0, and 0 on the leak
+                                                #   this line exists to catch
 /tmp/kae run -i claude main -- /usr/bin/true    # global isolated home, no lock, no live mutation
 
 # --- profiles, and what a bare `kae use` resolves --------------------------
@@ -146,8 +150,14 @@ test -L "$ISO"/*/codex/shared/config.toml       # assert: config.toml symlinked 
 test -f "$ISO"/*/codex/shared/auth.json         # assert: auth.json private-copied, not linked
 /tmp/kae pin side                               # assert: idempotent (regenerated, no error)
 
+/tmp/kae pin -s side                            # the flag spelled out, same as bare `pin`
 /tmp/kae pin -i side                            # isolated: full isolation, no symlinks
 grep -c 'codex/isolated/main/config' "$FRAG"    # assert: 1
+test -f "$ISO"/*/codex/isolated/main/config/auth.json   # assert: credential private-copied.
+                                                #   POSITIVE CONTROL for the line below: with
+                                                #   no isolated store the `find` there expands
+                                                #   to nothing and its `test -z` passes for a
+                                                #   store that was never created
 test -z "$(find "$ISO"/*/codex/isolated -type l)"   # assert: no symlinks in isolated mode.
                                                 #   Scoped to the isolated store on purpose:
                                                 #   `kae unpin` and a mode switch both leave
@@ -155,14 +165,23 @@ test -z "$(find "$ISO"/*/codex/isolated -type l)"   # assert: no symlinks in iso
                                                 #   of the whole tree finds the shared bind's
                                                 #   config.toml link and fails for the wrong
                                                 #   reason (measured while writing this block)
-test -f "$ISO"/*/codex/isolated/main/config/auth.json   # assert: credential private-copied
 
 # `kae pin <tool> <account>` re-binds ONE tool and takes an **account**, not a profile.
 /tmp/kae add --no-login codex side --json       # so capture the account first
 /tmp/kae pin codex side
-grep -c 'codex/isolated/side/config' "$FRAG"    # assert: 1 — only the codex entry moved
-grep -c 'claude' "$FRAG"                        # assert: >=1 — the other tools are untouched
+grep -c 'codex/isolated/side/config' "$FRAG"    # assert: 1 — the codex entry moved
+grep -c 'claude/isolated/main/config' "$FRAG"   # assert: 1 — and claude did NOT. Match the
+                                                #   whole path, not the bare word `claude`:
+                                                #   the fragment names the tool three times
+                                                #   whatever it is bound to, so `grep -c claude`
+                                                #   reads as a pass even when claude moves too
 /tmp/kae unpin                                  # removes only the block
+
+# The legacy overlay-mode block still warns (internal/cmd/pin.go), so it still needs a case.
+printf '# Directory-scoped overlay mode (legacy)\n[env]\n' > .mise.toml
+/tmp/kae pin side 2>&1 | grep -c 'legacy overlay-mode block'   # assert: 1 — migration hint
+rm -f .mise.toml
+/tmp/kae unpin
 cd - >/dev/null
 
 # --- account and profile lifecycle (comment-preserving config writer) ------
@@ -173,8 +192,15 @@ cd - >/dev/null
 grep -c side2 "$XDG_CONFIG_HOME/kagikae/config.toml"   # assert: >=1 — the profile ref moved
 /tmp/kae profile default dev                    # sets default_profile
 /tmp/kae profile rm dev; test $? -eq 10         # assert: 10 — it is the default, no --force
-/tmp/kae profile default main                   # move the default off dev first
-/tmp/kae profile unset dev codex                # last mapping removes the profile
+/tmp/kae profile rm dev --force                 # --force takes it, and the default with it
+test "$(grep -c '^default_profile' "$XDG_CONFIG_HOME/kagikae/config.toml")" -eq 0
+                                                # assert: default_profile is cleared when the
+                                                #   profile it named is removed
+/tmp/kae profile set dev codex side2            # re-create it for the other removal path
+/tmp/kae profile unset dev codex                # unsetting the last mapping removes the profile
+test "$(grep -c '^\[profiles\.dev' "$XDG_CONFIG_HOME/kagikae/config.toml")" -eq 0
+                                                # assert: and the profile table went with it
+/tmp/kae profile default main                   # a default again for the lines below
 /tmp/kae account rm codex side2 --force --json  # drops the account and its profile refs
 /tmp/kae account rm codex ghost; test $? -eq 7  # assert: 7 (not_found)
 grep -c '# comment kept to prove' "$XDG_CONFIG_HOME/kagikae/config.toml"
@@ -182,14 +208,28 @@ grep -c '# comment kept to prove' "$XDG_CONFIG_HOME/kagikae/config.toml"
                                                 #   survived every edit above
 /tmp/kae switch x y; test $? -eq 64             # assert: 64 + a replacement pointer
 EDITOR=true /tmp/kae edit                       # validate round-trip
-/tmp/kae status --json                          # has "pinned" and "profiles"
+/tmp/kae status --json                          # has "profiles"; "pinned" is null here, the
+                                                #   directory above having been unpinned
 ```
 
-Several lines above exit non-zero **on purpose**: a `grep -c` printing `0` is
-the assertion, not a failure. Everything else must exit `0`, and the
-`test $? -eq <n>` lines carry the exit codes the surface promises rather than
-printing them for a reader to eyeball. Run the block by extracting it from this
-file rather than by copying it, so what runs is what is written here.
+**Every line must exit `0`**, including the `<cmd>; test $? -eq <n>` ones — those
+carry the exit code the surface promises instead of printing it for a reader to
+eyeball, so the line as a whole succeeds while the command in it does not. Nine of
+the ten `grep -c` lines assert `1` or more and exit `0` for the same reason. The
+one line that asserts a count of **zero** is wrapped in `test` rather than left
+bare, because a bare `grep -c` inverts there: it exits `1` on the correct answer
+and `0` on the failure it is looking for.
+
+Run the block by extracting it from this file rather than by copying it, so what
+runs is what is written here. Note the backslash continuations: a line-by-line
+runner splits `printf … \` from its `> file` and silently truncates the fixture.
+
+**What this block does not cover, said because a green run reads as if it did.**
+`KAE_CLAUDE_DRIVER=file` is what makes it safe on macOS, and it is also what keeps
+it away from `internal/keychain` entirely: claude's credential here is a JSON
+pointer in a file, so the keychain read/write path, the per-directory service-name
+derivation, and cursor in any form are **not** exercised. Those stay covered by
+unit tests over the darwin sim and by the real-machine gates further down.
 
 Enter-hook firing (`mise init --auto --write`) needs a live mise:
 `mise settings experimental=true` (hooks are experimental; the global config
@@ -2521,7 +2561,7 @@ string, which is why the blocks below were re-run rather than assumed.
   last binding leaves the store file present as `{}` because absent is applied as absent,
   so a `test -f` reads as "not removed". The token is gone (positive control: 1 before, 0
   after) and the message names the account's store, not a per-directory one.
-- **§ Smoke Checks L76–171 fails, and the document is what is wrong** — checked against
+- **§ Smoke Checks (v0.16.0 L76–171) fails, and the document is what is wrong** — checked against
   `docs/CLI.md`, which is normative and disagrees with it. Bare `kae pin` is documented as
   isolated with symlink assertions; it is **shared** (`docs/CLI.md` § kae pin), and the
   fragment carries `codex/shared` with no `isolated/` directory anywhere. `kae pin codex
@@ -2537,15 +2577,23 @@ string, which is why the blocks below were re-run rather than assumed.
   exit 0 and never evaluates them.
   **Fixed in the documentation pass (2026-08-09), and a fifth defect came out of the same
   run**: the block removed `codex/main2` and then asked `kae profile set dev codex main2`
-  for it, so three profile-lifecycle lines exited `7` in a cascade nothing named. The block
+  for it, so four profile-lifecycle commands exited `7` in a cascade nothing named — three
+  of them visibly, the fourth (`kae profile rm dev`) masked by the very `; echo $?` idiom
+  that was supposed to be reporting it. The block
   is now a single seeded script whose assertions are the commands themselves; the fixtures
   it used to name only in prose are written in it, and its `pin` lines run in a throwaway
   repository inside the temp HOME, because `kae pin` binds the *current* directory and
   writes a `$GIT_COMMON_DIR/info/exclude` entry — run from this checkout, as the rest of
   the section is, it dirties the operator's repository. Verified by extracting the block
-  from this file and running it: every line exits `0` except the two `grep -c` lines whose
-  `0` is the assertion, with three deliberately broken variants confirming the assertions
-  can still fail.
+  from this file and running it: **every line exits `0`**, with deliberately broken variants
+  confirming the assertions can still fail.
+  Two claims made in the first draft of this paragraph were themselves wrong and are
+  corrected here, which is the defect this whole entry is about. "Every line exits 0 except
+  the **two** `grep -c` lines" was one line, not two, and it is now wrapped in `test` so the
+  count is zero; and `grep -c 'claude' "$FRAG"` was added as "the other tools are untouched"
+  when the fragment names the tool three times whatever it is bound to — an assertion that
+  reads as a pass while claude moves with codex, in the same commit that claims to have
+  closed that class. Both found by independent execution review.
   **The positive-control finding recorded here belongs to a different section**, and saying
   it here made it unfindable: `A3`, `B1`, `B2`, `B3` and `E` are cases in
   § v0.17.0 surface — the credential harvest, which has no `# assert:`-comment problem at

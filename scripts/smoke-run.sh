@@ -68,8 +68,10 @@
 # its halves. Measured for the **cwd** half only: the walk leaves the checkout and mise
 # dies on the untrusted config it finds, which the empty sandbox trust store guarantees
 # it never parses — loud, not silent, so it is left as a note rather than handled. The
-# `$HOME` half was not measured; losing it alone should be inert, since the `$PWD` entry
-# stops the walk first from any cwd inside the checkout. A space is fine (measured).
+# `$HOME` half is inert on its own (measured too): the cwd entry survives the split and
+# bounds the walk first. That direction generalises — a fragment a split leaves behind
+# can only stop the walk earlier, never extend it, so a mangled ceiling is
+# over-restrictive rather than leaky. A space is fine (measured).
 #
 # The reachable failure this prevents is not a stray read. Without the ceiling, a
 # block running mise from the checkout fails with `error parsing config file`,

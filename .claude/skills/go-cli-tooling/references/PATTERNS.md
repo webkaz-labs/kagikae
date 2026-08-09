@@ -138,6 +138,43 @@ never drift from the real router/config/state. Read-only, no locks.
    test-visible table and assert every group's verbs appear in *all three*
    generated scripts, so a new group cannot merge without its completion case.
 
+### Isolating mise in a test harness
+
+A tool that integrates with mise will eventually want an end-to-end check that
+runs mise. Redirecting `HOME` and the XDG roots does **not** isolate it, and the
+failure is silent: **mise discovers config by walking up from the current
+directory**, so a harness whose cwd is the checkout — which normally sits inside
+the operator's home — reads the operator's real config on the way up. Measured:
+from a repository root, mise loaded two config files outside the sandbox with
+`HOME`, all four XDG roots and every `__MISE_*` variable already redirected or
+cleared; from a cwd inside the sandbox, none.
+
+1. **`MISE_CEILING_PATHS` is the only lever that works.**
+   `MISE_GLOBAL_CONFIG_FILE`, `MISE_CONFIG_DIR` and `MISE_IGNORED_CONFIG_PATHS`
+   were each measured *not* closing it, because the operator's file is not being
+   loaded as the global config in the first place — it is an ancestor directory's
+   config.
+2. **Pass canonical paths (`pwd -P`), and pass two of them.** mise matches the
+   ceiling against the *canonical* cwd, so a logical path that differs from it
+   silently does not apply — which bites a checkout reached through a symlink or
+   a relocated `$HOME`, and which no test can catch on a machine where the two
+   spellings are already identical. Give it both the cwd and the real home: the
+   home alone still lets the checkout's own `mise.toml` in, because the walk
+   collects configs on the way up to the ceiling rather than only at it.
+3. **A `:` in either path splits the value** and costs the ceiling that half.
+   Loud rather than silent (the walk escapes and mise then fails on an untrusted
+   config), and a fragment left by a split can only ever stop the walk earlier,
+   never extend it — so a mangled ceiling is over-restrictive, not leaky.
+4. **Never answer a mise trust error by widening `trusted_config_paths`.** If the
+   harness redirects `XDG_STATE_HOME`, mise's `trusted-configs` goes with it, so
+   the sandbox trust store is empty and the operator's config reads as untrusted.
+   The error says `error parsing config file`; the real cause is one line down and
+   says `not trusted`. The documented cure, `MISE_TRUSTED_CONFIG_PATHS=/`, makes
+   mise *load* that config and evaluate its templates — an `{{ exec(...) }}` knob
+   running something like `gh auth token` will then resolve a live credential into
+   the test transcript. That happened. With a correct ceiling there is nothing
+   untrusted to read and the error does not arise.
+
 ## Did-You-Mean Hints
 
 When an unknown command, subcommand, tool, or profile name is close to a real

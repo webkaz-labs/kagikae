@@ -113,11 +113,35 @@ HOME=<temp>
 XDG_CONFIG_HOME=<temp>/.config
 XDG_DATA_HOME=<temp>/.local/share
 XDG_CACHE_HOME=<temp>/.cache
+XDG_STATE_HOME=<temp>/.local/state
+XDG_RUNTIME_DIR=<temp>/.local/run
+TMPDIR=<temp>/tmp
 TERM=xterm-256color
 NO_COLOR=1
 LC_ALL=C
 TZ=UTC
 ```
+
+**Setting `HOME` is not enough, and the gap is silent.** A path resolver that
+reads each XDG root independently will honour an *absolute value already in the
+environment* over the temp `HOME`, so a harness that exports `HOME` and only some
+of the roots still resolves the rest under the operator's real home. Redirect
+every root the tool reads — including `XDG_STATE_HOME`, which is where a
+surprising number of third-party tools keep trust and tracking state — and
+`TMPDIR`, or `mktemp` inside the harness lands outside the sandbox.
+
+**Also clear the tool-home variables the CLI itself honours** (`FOO_HOME`,
+`FOO_CONFIG_DIR`, and any credential-store override): they *outrank* the temp
+`HOME`, so a harness that inherits one from the operator's shell writes to the
+real location while reporting a clean run. Unset them explicitly rather than
+assuming the temp `HOME` covers them.
+
+Keep the environment prefix in **one** script that the harness applies *before*
+the procedure runs, rather than as instructions the procedure is expected to
+follow. Sourcing a preamble is a step a harness can perform and still get wrong —
+`. ./preamble.sh` inside `$(...)` exports nothing, because command substitution
+is a subshell, and the run then looks isolated while writing to the real `$HOME`.
+Isolating by construction closes that class; a warning in prose does not.
 
 Use PTY E2E for full-screen TUI, AltScreen, raw mode, key input, Ctrl-C,
 terminal size, and clean exit behavior. PTY helpers should expose
@@ -156,6 +180,30 @@ or touch keychains directly. TUI tests use fake deps and temp HOME/XDG roots.
   is public or security-sensitive.
 - Use live-provider smoke tests sparingly and document prerequisites in the
   tool's `VALIDATION.md`.
+- **A verification procedure written as prose asserts nothing.** If `VALIDATION.md`
+  carries copy-paste blocks, make the assertions *be* the commands — `test`,
+  `grep -q`, an exit-code check — and run the blocks from a script that extracts
+  them by heading and reports a per-line verdict. A block whose checks are
+  `#   assert:` comments depends on a human comparing output to a comment, which
+  is how one tool accumulated five wrong assertions across eight releases, each
+  found only when the block was finally executed verbatim. Of four ways of
+  auditing that file — identifier index, duplication scan, claim reconciliation,
+  and running the blocks — only running them ever found a defect.
+- **A negative assertion needs a positive control beside it.** `grep -c X` prints
+  `0` for a missing file, a broken decoder, or a pattern that could never match,
+  so an absence check passes for the wrong reason. Pair it with a positive line
+  over the same artifact. Wrap zero-asserting counts in `test "$(...)" -eq 0`: a
+  bare `grep -c` exits 1 on the correct answer, inverting the verdict.
+- **If you build such a runner, verify that the loop finished — not the exit
+  status.** A block that ends itself mid-way leaves an empty failure log and a
+  status the report will happily call green. This was got wrong in four
+  positions in a row: a non-zero `exit`, `exit 0` (idiomatic at the end of a
+  fixture), an `exit` on the *last* line, and a trailing backslash continuation
+  that leaves a command pending and unrun. One invariant covers all four — the
+  loop reached its end with nothing pending — where four special cases did not.
+  Note also that a line-by-line runner cannot execute here-documents or
+  multi-line function bodies; keep such constructs on one line, or the procedure
+  stops partway while reporting success.
 - When provider inventory semantics change, smoke-test the native provider
   command and the CLI report with a forced refresh or cache-version bump.
 - Run `chezmoi apply --dry-run` from the repository root when wrappers,

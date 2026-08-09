@@ -213,6 +213,28 @@ alternative exists (`secret-tool`).
   `scripts/smoke-run-selftest.sh` is normative: any change to either script has to
   be mutation-tested by hand.
 
+- **The harvest block is the one section that cannot produce a verdict** (recorded
+  2026-08-09, **not fixed**). Every other block in [VALIDATION.md](VALIDATION.md)
+  now runs through `scripts/smoke-run.sh` with a per-line exit status that means
+  something. § v0.17.0 surface — the credential harvest cannot, and the reason is a
+  deliberate convention rather than a defect: it declares that several lines exit
+  non-zero **on purpose** (a bare `grep -c` printing `0` *is* the assertion) and
+  says to paste it rather than run it under `set -e`. § Smoke Checks states the
+  opposite rule for the same construct — wrap a zero-asserting `grep -c` in `test`
+  — so one file carries two conventions, and only one of them is machine-checkable.
+  Measured on the current tree: the block is 399 lines with **18 assertions that are
+  still comments** (all of them about stderr wording, so all of them convertible by
+  capturing stderr to a file), and roughly nine bare `grep -c` lines asserting zero.
+  It also contains a here-document, which the per-line loop cannot run at all — the
+  only other section that had one was the relogin block, and that is what made it
+  stop after 35 of 146 lines while reporting green.
+  The conversion is mechanical but not small, and the block is the worst place in
+  the repository to be careless: its own prose records **four defects introduced
+  into it by editing**, every one found by running it and none by reading it. So it
+  wants its own pass with mutation testing per case, not a rider on somebody else's
+  change. Until then `SMOKE_WHOLE_FILE=1` is the only way to run it, and that mode
+  prints no per-line verdict and says so.
+
 - **`scripts/smoke-env.sh` leaks a temp HOME every time it is sourced** (recorded
   2026-08-09, **not fixed**). It does `HOME=$(mktemp -d)` and nothing ever removes
   the directory, so each direct run of a block in [VALIDATION.md](VALIDATION.md)

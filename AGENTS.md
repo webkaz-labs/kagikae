@@ -62,6 +62,20 @@ a state `kae doctor` reported nothing about until `active_orphan` was added.
 of them and says which roots and why. The omission happened while writing a fresh
 block in docs/VALIDATION.md, next to two correct ones.
 
+**Sourcing it correctly is also not enough, so do not drive these blocks by hand
+either — `bash scripts/smoke-run.sh '## <heading>'`.** Sourcing the preamble is a
+step a harness can perform and still not get: `. scripts/smoke-env.sh` inside
+`$(...)` exports nothing, because command substitution is a subshell, and the run
+then looks isolated while writing to the real `$HOME`. That happened twice on
+2026-08-09, in the same session that a progress `echo` from an `ERR`/`DEBUG` trap
+was captured by a `$(...)` in the block — once corrupting an assertion into a
+non-integer, once landing inside `HOME=$(mktemp -d)` and creating a directory in
+the checkout. `smoke-run.sh` closes the class instead of warning about it: it puts
+every root in a temp HOME **before** the block runs, so a preamble that fails to
+take effect still cannot reach the real one; it traps to a file descriptor rather
+than to stdout; and it fails the run if the checkout changed. Its own guards are
+tested against a deliberately leaking fixture via `SMOKE_DOC`.
+
 ## Implementation Boundaries
 
 - Keep `main.go` as dispatch only; handlers and report builders in

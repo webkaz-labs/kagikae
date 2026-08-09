@@ -72,23 +72,33 @@ transcript() { sed -n 's/^smoke-run: full transcript in //p' "$tmp/out"; }
 EXPECTED_ROOTS="HOME TMPDIR XDG_CONFIG_HOME XDG_DATA_HOME XDG_RUNTIME_DIR XDG_STATE_HOME"
 EXPECTED_CLEARED="CLAUDE_CONFIG_DIR CLAUDE_SECURESTORAGE_CONFIG_DIR CODEX_HOME \
 COPILOT_HOME KAE_FINGERPRINT KAE_PROFILE MISE_CONFIG_DIR OPENCODE_AUTH_CONTENT"
+# The rest of the prefix — set, but not paths into the sandbox. Declared for the
+# same reason: matching only `="$safe` values means a NEW assignment pointing
+# somewhere else entirely (`XDG_CACHE_HOME="/tmp/notsandbox"`) is invisible,
+# which is the "additions are silent" half all over again.
+EXPECTED_OTHER="KAE_CLAUDE_DRIVER NO_COLOR SMOKE_WHOLE_FILE"
 
 # A "root" is definitionally a variable the runner points into the sandbox, so
 # that is what is matched: an assignment whose value starts with $safe.
 # `mapfile` is bash 4+; macOS ships bash 3.2 and that is what runs this — the
 # same portability class as the GNU-vs-BSD `mktemp` difference the runner carries.
-derived_roots=$(grep -oE '^  [A-Z_]+="\$safe' "$runner" | tr -d ' ="$' | sed 's/safe//' |
-                sort | tr '\n' ' ' | sed 's/ $//')
-derived_cleared=$(grep -oE '\-u [A-Z_]+' "$runner" | sed 's/-u //' | sort -u |
-                  tr '\n' ' ' | sed 's/ $//')
-want_roots=$(printf '%s\n' $EXPECTED_ROOTS | sort | tr '\n' ' ' | sed 's/ $//')
-want_cleared=$(printf '%s\n' $EXPECTED_CLEARED | sort | tr '\n' ' ' | sed 's/ $//')
+norm() { printf '%s\n' $1 | sort -u | tr '\n' ' ' | sed 's/ $//'; }
 
-if [ "$derived_roots" = "$want_roots" ] && [ "$derived_cleared" = "$want_cleared" ]; then
+# Every assignment in the prefix, not only the ones pointing at $safe.
+derived_all=$(norm "$(grep -oE '^  [A-Z_]+=' "$runner" | tr -d ' =')")
+derived_roots=$(norm "$(grep -oE '^  [A-Z_]+="\$safe' "$runner" | tr -d ' ="$' | sed 's/safe//')")
+derived_cleared=$(norm "$(grep -oE '\-u [A-Z_]+' "$runner" | sed 's/-u //')")
+want_all=$(norm "$EXPECTED_ROOTS $EXPECTED_OTHER")
+want_roots=$(norm "$EXPECTED_ROOTS")
+want_cleared=$(norm "$EXPECTED_CLEARED")
+
+if [ "$derived_all" = "$want_all" ] && [ "$derived_roots" = "$want_roots" ] &&
+   [ "$derived_cleared" = "$want_cleared" ]; then
   printf 'ok    the runner sets exactly the variables this file guards\n'
   ok=$((ok + 1))
 else
   printf 'FAIL  %s and this file disagree about which variables are handled\n' "$runner"
+  printf '        set     runner: %s\n        set     guarded: %s\n' "$derived_all" "$want_all"
   printf '        roots   runner: %s\n        roots   guarded: %s\n' "$derived_roots" "$want_roots"
   printf '        cleared runner: %s\n        cleared guarded: %s\n' "$derived_cleared" "$want_cleared"
   fails=$((fails + 1))
@@ -151,10 +161,16 @@ inside=0
 # includes, giving 7-of-6 and a failure with nothing wrong.
 [ -n "$sandbox" ] &&
   inside=$(grep -E '^[A-Z_]+=' "$tr" 2>/dev/null | grep -cF "=$sandbox" || true)
+# Both the derivation above and this containment are PREFIX matches, so
+# `XDG_DATA_HOME="$safe/../escape"` satisfies each of them while landing outside
+# the sandbox — and, being outside, the credential it holds survives the
+# runner's `rm -rf "$safe"` instead of going with it. `HOME` is immune because it
+# is what defines $sandbox; every other root was not. Measured 2026-08-09.
+escaped=$(grep -E '^[A-Z_]+=' "$tr" 2>/dev/null | grep -c '\.\.' || true)
 # `leaked` is kept for the diagnostic only: a root pointed at the planted
 # value is not inside the sandbox either, so containment already covers it,
 # and gating on both leaves a term that can be weakened to a tautology.
-if [ -n "$sandbox" ] && [ "$inside" -eq "${#ROOTS[@]}" ]; then
+if [ -n "$sandbox" ] && [ "$inside" -eq "${#ROOTS[@]}" ] && [ "$escaped" -eq 0 ]; then
   printf 'ok    all %s roots land inside the sandbox\n' "${#ROOTS[@]}"
   ok=$((ok + 1))
 else
@@ -238,6 +254,13 @@ printf '\n'
 # fewer ok line — the file could be hollowed out a guard at a time, which is how
 # it got here. Both directions are loud now: adding a guard without bumping this
 # fails too.
+#
+# What this does NOT cover, recorded so it is not re-filed: weakening a guard's
+# condition *in place* (`-eq` → `-ge`) is undetectable here, as it is in any test
+# suite. Two more limits of the same kind — a root escaping via a symlink rather
+# than via `..` is not refused, and `TMPDIR` in ROOTS proves the runner sets it,
+# not that it has any effect (darwin's `mktemp` ignores TMPDIR entirely, so on
+# this platform it sandboxes nothing).
 EXPECTED_GUARDS=17
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then

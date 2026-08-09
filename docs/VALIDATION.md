@@ -1171,6 +1171,7 @@ driver, file backend — no real `$HOME`, no real keychain. The repositories are
 built **inside the temp HOME**, so nothing here can dirty a real checkout.
 
 ```bash
+go build -o /tmp/kae .
 . scripts/smoke-env.sh
 export KAE_CLAUDE_DRIVER=file
 mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
@@ -1186,39 +1187,60 @@ git worktree add -q "$W/wt1" -b side
 mkdir -p "$W/main/nested"
 
 # --- A. the main checkout: no tracked file touched, nothing dirty ---
-cd "$W/main" && /tmp/kae pin main
-#   assert: the report reads `Wrote … (ignored via …/main/.git/info/exclude)`
-git status --porcelain                 # assert: empty
-git -C "$W/wt1" status --porcelain     # assert: empty — one entry already covers it
+cd "$W/main" && /tmp/kae pin main > "$HOME/A.out" 2>&1
+grep -q 'ignored via ~/work/main/.git/info/exclude' "$HOME/A.out"
+                                       # assert: the report names the exclude file
+test -z "$(git status --porcelain)"    # assert: empty
+test -z "$(git -C "$W/wt1" status --porcelain)"
+                                       # assert: empty — one entry already covers it
 test ! -e "$W/main/.gitignore"         # assert: no tracked .gitignore was created
 
 # --- B. the linked worktree binds independently and stays clean ---
-cd "$W/wt1" && /tmp/kae pin main
-#   assert: the exclude file named is the *main* checkout's .git/info/exclude
-git -C "$W/main" status --porcelain; git status --porcelain   # assert: both empty
+# kae prints this one ABSOLUTE where A printed `~`: it resolves $GIT_COMMON_DIR, which
+# git answers canonically (/private/var/... on macOS), and that no longer has $HOME as a
+# prefix to abbreviate. Measured; assert what it prints, not what A printed.
+MAINP=$(cd "$W/main" && pwd -P)
+cd "$W/wt1" && /tmp/kae pin main > "$HOME/B.out" 2>&1
+grep -q "ignored via $MAINP/.git/info/exclude" "$HOME/B.out"
+                                       # assert: the file named is the MAIN checkout's
+test -z "$(git -C "$W/main" status --porcelain)"   # assert: both empty
+test -z "$(git status --porcelain)"
 
 # --- C. a nested directory: the entry is anchored at the repository root ---
 cd "$W/main/nested" && /tmp/kae pin main
-grep nested "$W/main/.git/info/exclude"
-#   assert: `/nested/.config/mise/conf.d/kagikae.toml` — without --show-prefix this
-#           would read `/.config/…` and ignore nothing
-git -C "$W/main" status --porcelain    # assert: empty
+grep -q '^/nested/\.config/mise/conf\.d/kagikae\.toml$' "$W/main/.git/info/exclude"
+                                       # assert: anchored at the repository root, not at
+                                       #   its own directory — without --show-prefix this
+                                       #   would read `/.config/…` and ignore nothing
+test -z "$(git -C "$W/main" status --porcelain)"   # assert: empty
 
 # --- D. outside any repository: no rule, and no claim of one ---
-mkdir -p "$HOME/norepo"; cd "$HOME/norepo" && /tmp/kae pin main
-#   assert: the report says `Wrote …; your mise.toml is untouched.` with NO
-#           `ignored via`, and no .gitignore exists here
+mkdir -p "$HOME/norepo"; cd "$HOME/norepo" && /tmp/kae pin main > "$HOME/D.out" 2>&1
+grep -q 'your mise.toml is untouched' "$HOME/D.out"   # assert: it still reports the write
+test "$(grep -c 'ignored via' "$HOME/D.out")" -eq 0
+                                       # assert: and claims no ignore rule. The line
+                                       #   above is this one's positive control
+test ! -e "$HOME/norepo/.gitignore"
 
 # --- E. kae ls --pins, from outside every bound directory ---
-cd "$HOME" && /tmp/kae ls --pins
-#   assert: four rows (norepo, work/main, work/main/nested, work/wt1), sorted by
-#           directory, Current blank for all of them
-cd "$W/wt1" && /tmp/kae ls --pins
-#   assert: `*` in Current on work/wt1 only
-/tmp/kae ls --pins --json              # assert: schema_version 1, bound_directories[]
-/tmp/kae unpin && /tmp/kae ls --pins
-#   assert: work/wt1 is GONE from the list — unpin keeps the store on purpose, and a
-#           store is not a binding
+cd "$HOME" && /tmp/kae ls --pins > "$HOME/E1.txt"
+test "$(grep -oE '^~[^ ]*' "$HOME/E1.txt" | tr '\n' ' ')" = "~/norepo ~/work/main ~/work/main/nested ~/work/wt1 "
+                                       # assert: four rows, sorted by directory — one
+                                       #   assertion so a missing row cannot pass as a
+                                       #   reordering
+test "$(grep -c '\*' "$HOME/E1.txt")" -eq 0   # assert: Current blank for all of them
+cd "$W/wt1" && /tmp/kae ls --pins > "$HOME/E2.txt"
+grep -qE '^~/work/wt1 +\*' "$HOME/E2.txt"     # assert: `*` on work/wt1 ...
+test "$(grep -c '\*' "$HOME/E2.txt")" -eq 1   # assert: ... and only there
+/tmp/kae ls --pins --json > "$HOME/E3.json"
+grep -q '"schema_version": 1' "$HOME/E3.json"
+test "$(grep -c '"directory"' "$HOME/E3.json")" -eq 4   # assert: bound_directories[]
+/tmp/kae unpin && /tmp/kae ls --pins > "$HOME/E4.txt"
+test "$(grep -c 'work/wt1' "$HOME/E4.txt")" -eq 0
+test "$(grep -c '^~/' "$HOME/E4.txt")" -eq 3
+                                       # assert: work/wt1 is GONE — unpin keeps the store
+                                       #   on purpose, and a store is not a binding. The
+                                       #   count of 3 is the absence check's control
 
 # --- F. an unrecordable rule warns; it must not fail the bind ---
 # Deliberately last: this case leaves a binding whose fragment is NOT ignored, so
@@ -1230,13 +1252,22 @@ cd "$W/wt1" && /tmp/kae ls --pins
 # 2026-08-04, that pin succeeded and recorded its rule as usual, so that draft
 # proved nothing.
 chmod a-w "$W/main/.git/info/exclude"
-mkdir -p "$W/main/locked" && cd "$W/main/locked" && /tmp/kae pin main; echo "exit=$?"
-#   assert: exit 0, a stderr warning `could not tell git to ignore …` saying the
-#           binding is in place, and NO `ignored via` in the report. Reachable in
-#           practice because the exclude file is *outside* the pinned directory: a
-#           worktree can be writable while the main checkout's .git is not
-#   assert: `git -C "$W/main" status --porcelain` now shows `?? locked/` — the
-#           fragment really is unignored, which is what the warning told the user
+mkdir -p "$W/main/locked" && cd "$W/main/locked"
+/tmp/kae pin main > "$HOME/F.out" 2> "$HOME/F.err"; test $? -eq 0
+                                       # assert: exit 0 — a warning never fails the bind
+grep -q 'could not tell git to ignore' "$HOME/F.err"
+grep -q 'the binding is in place' "$HOME/F.err"
+                                       # assert: and the warning says so. Reachable in
+                                       #   practice because the exclude file is *outside*
+                                       #   the pinned directory: a worktree can be
+                                       #   writable while the main checkout's .git is not
+test "$(grep -c 'ignored via' "$HOME/F.out")" -eq 0
+                                       # assert: NO `ignored via` in the report; the two
+                                       #   greps above are its positive control
+git -C "$W/main" status --porcelain > "$HOME/F.status"
+grep -q '^?? locked/$' "$HOME/F.status"
+                                       # assert: the fragment really is unignored, which
+                                       #   is what the warning told the user
 chmod u+w "$W/main/.git/info/exclude"
 ```
 

@@ -185,6 +185,19 @@ alternative exists (`secret-tool`).
   only ever shipped in v0.17.0. Conflating the two is the same misattribution this entry
   is named after, made while writing the entry.)
 
+- **`scripts/smoke-env.sh` leaks a temp HOME every time it is sourced** (recorded
+  2026-08-09, **not fixed**). It does `HOME=$(mktemp -d)` and nothing ever removes
+  the directory, so each direct run of a block in [VALIDATION.md](VALIDATION.md)
+  leaves one behind under the system temp dir, holding that run's fixtures.
+  Harmless — the contents are placeholders (`tok-A`, `you@example.com`) and the OS
+  reclaims the directory eventually — and deliberately left alone, because the
+  preamble is sourced *into the caller's shell* and has no place to hang a trap
+  that would not also fire on the caller's own exit. `scripts/smoke-run.sh` does
+  clean up its own sandbox, so the accumulation stops mattering once blocks are
+  run through it, which is the actual remedy. Recorded because it was invisible:
+  the directories are indistinguishable from every other `mktemp -d` on the
+  machine, so nothing counts them and no run reports one.
+
 - **Upstream now documents parallel sessions racing on one credential store**
   (recorded 2026-07-31). Claude Code v2.1.211: *"Fixed parallel Claude Code sessions
   all logging out simultaneously after wake-from-sleep when many sessions share one

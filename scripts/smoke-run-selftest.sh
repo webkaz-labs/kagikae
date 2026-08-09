@@ -40,16 +40,6 @@ check() { # check <description> <expected-rc> <actual-rc> [<must-contain> <outpu
   ok=$((ok + 1))
 }
 
-not_contains() { # not_contains <description> <string> <file>
-  if grep -q -- "$2" "$3"; then
-    printf 'FAIL  %s (output must NOT contain %s)\n' "$1" "$2"
-    fails=$((fails + 1))
-  else
-    printf 'ok    %s\n' "$1"
-    ok=$((ok + 1))
-  fi
-}
-
 run() { SMOKE_DOC=$1 bash "$runner" "$2" > "$tmp/out" 2>&1; }
 transcript() { sed -n 's/^smoke-run: full transcript in //p' "$tmp/out"; }
 
@@ -104,6 +94,24 @@ else
   fails=$((fails + 1))
 fi
 
+# 0b. The runner must isolate at least everything the preamble does. They are two
+#     hand-written copies of the same set in two files — which is the "three
+#     copies, three chances to omit one" defect smoke-env.sh's own header exists
+#     to prevent, reintroduced one layer up. Nothing else compares them, so a
+#     sixth root added to paths.Resolve and to smoke-env.sh could be missed here.
+preamble=$(norm "$(grep -oE '^export [A-Z_]+' scripts/smoke-env.sh | sed 's/export //')")
+missing=""
+for v in $preamble; do
+  case " $(norm "$EXPECTED_ROOTS $EXPECTED_OTHER") " in *" $v "*) ;; *) missing="$missing $v" ;; esac
+done
+if [ -z "$missing" ]; then
+  printf 'ok    the runner isolates everything scripts/smoke-env.sh does\n'
+  ok=$((ok + 1))
+else
+  printf 'FAIL  scripts/smoke-env.sh isolates%s, which %s does not\n' "$missing" "$runner"
+  fails=$((fails + 1))
+fi
+
 ROOTS=(); CLEARED=()
 for v in $EXPECTED_ROOTS; do ROOTS+=("$v"); done
 for v in $EXPECTED_CLEARED; do CLEARED+=("$v"); done
@@ -124,7 +132,7 @@ probe() { # probe <heading> <var...> -> fills $tmp/out, echoes the transcript pa
   # only in punctuation or digits would collide. Two callers today.
   local f; f=$(doc "${h//[^A-Za-z]/}" "## $h" "${lines[@]}")
   env "${envs[@]}" SMOKE_DOC="$f" bash "$runner" "## $h" > "$tmp/out" 2>&1
-  sed -n 's/^smoke-run: full transcript in //p' "$tmp/out"
+  transcript
 }
 
 # 1. A block that writes into the checkout must void the run.
@@ -207,14 +215,21 @@ f=$(doc last '## Last' 'true' 'false')
 run "$f" '## Last'; check 'a failing LAST line fails the run' 1 $?
 
 # 5. Many failures must not wrap the exit status to 0.
-lines=(); for _ in $(seq 300); do lines+=('false'); done
+# 257, not 300: the cheapest count that still exceeds the 256 wrap point, and
+# this guard is otherwise the slowest one here (each failing line forks a
+# `sed | head` for its diagnostic).
+lines=(); for _ in $(seq 257); do lines+=('false'); done
 f=$(doc many '## Many' "${lines[@]}")
-run "$f" '## Many'; check '300 failing lines do not wrap to exit 0' 1 $?
+run "$f" '## Many'; check '257 failing lines do not wrap to exit 0' 1 $?
 
 # 6. Whole-file mode must not claim a per-line verdict it does not have.
 f=$(doc whole '## Whole' 'echo first' 'false' 'echo last')
 SMOKE_DOC=$f SMOKE_WHOLE_FILE=1 bash "$runner" '## Whole' > "$tmp/out" 2>&1
-not_contains 'whole-file mode does not print a per-line verdict' 'every line exited 0' "$tmp/out"
+if grep -q -- 'every line exited 0' "$tmp/out"; then
+  printf 'FAIL  whole-file mode must not print a per-line verdict\n'; fails=$((fails + 1))
+else
+  printf 'ok    whole-file mode does not print a per-line verdict\n'; ok=$((ok + 1))
+fi
 # Absence alone passes for a mode that prints nothing at all, so require the
 # statement too.
 check 'whole-file mode says which mode it is' 0 0 'whole-file mode —' "$tmp/out"
@@ -261,7 +276,7 @@ printf '\n'
 # than via `..` is not refused, and `TMPDIR` in ROOTS proves the runner sets it,
 # not that it has any effect (darwin's `mktemp` ignores TMPDIR entirely, so on
 # this platform it sandboxes nothing).
-EXPECTED_GUARDS=17
+EXPECTED_GUARDS=18
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

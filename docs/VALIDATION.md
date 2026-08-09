@@ -228,17 +228,15 @@ on the failure it is looking for. No count of such lines is given deliberately:
 this paragraph has twice stated one that the next edit to the block falsified,
 the second time inside the very commit that was correcting the first.
 
-**Run it with `bash scripts/smoke-run.sh '## Smoke Checks'`, not by hand.** That
-script extracts the block from this file, redirects `HOME`, every XDG root and
-`TMPDIR` into a temp HOME and **unsets** the tool-home variables that outrank it
-(`CODEX_HOME` and friends) — so a preamble that fails to take effect still cannot
-reach the real ones — and fails if the checkout changed. It also forces
-`KAE_CLAUDE_DRIVER=file` for every section, so a section wanting claude's keychain
-driver cannot be run through it. Every hand-written harness for this file has
-leaked; the script's header records the measured ways, and what it still cannot
-cover (the login keychain ignores `$HOME`, and the leak detector sees only the
-checkout). `mise run check` runs `scripts/smoke-run-selftest.sh`, so those guards
-are checked rather than asserted.
+**Run it with `bash scripts/smoke-run.sh '## Smoke Checks'`, not by hand.** Every
+hand-written harness for this file has leaked, and the leaks write to the machine
+rather than failing. That script's header is normative for what it isolates and
+what it cannot; do not restate the mechanism here, which is how the copy in
+`AGENTS.md` came to name four of the eight cleared variables. Two consequences are
+worth knowing before you read a green run, because they bound what it proves: the
+macOS login keychain ignores `$HOME` and so is **not** isolated by anything, and
+the leak detector sees the checkout only. `mise run check` runs
+`scripts/smoke-run-selftest.sh`, so those guards are checked rather than asserted.
 
 **What this block does not cover, said because a green run reads as if it did.**
 `KAE_CLAUDE_DRIVER=file` is what makes it safe on macOS, and it keeps claude's
@@ -1180,6 +1178,21 @@ nothing — and `kae pin` would still report success, with the fragment sitting 
 `git status` for the user to find.
 
 ## v0.17.0 surface — the credential harvest
+
+**Run this section with
+`SMOKE_WHOLE_FILE=1 bash scripts/smoke-run.sh '## v0.17.0 surface — the credential harvest'`.**
+The flag is needed because the block defines shell functions, which the per-line
+runner cannot execute — and it costs the per-line verdict, so the runner reports
+the block's own exit status and says it is not a verdict.
+
+**A correct run of this section exits `1`, and that is not a failure.** Whole-file
+mode returns the *last* command's status, and the last line here is
+`snap main | grep -c MAIN-OLD` asserting a count of zero — which `grep -c` prints
+while exiting 1. So the exit code carries no information about this block at all:
+read the transcript the runner names, checking each `# assert:` at its own line.
+That is the right way round for this section anyway, since it has the worst history
+of green runs that proved nothing — fixtures written to a directory kae had stopped
+reading, a `grep` defeated by base64, token names that prefixed one another.
 
 Every path that overwrites a bound directory's credential store reads it first and
 copies a newer copy into the account snapshot, because claude's refresh token

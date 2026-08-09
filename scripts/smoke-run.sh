@@ -83,14 +83,15 @@ trap cleanup EXIT
 # is re-downloaded on every run. These hold compiler output, not credential
 # state, so they are not what the isolation is protecting.
 #
-# Only passed when `go env` actually answered: exporting them EMPTY is not the
-# same as not exporting them — Go falls back to $HOME/go/pkg/mod, which is inside
-# the sandbox, i.e. exactly the re-download this is avoiding.
-cache_env=()
-gomodcache=$(go env GOMODCACHE 2>/dev/null || true)
-gocache=$(go env GOCACHE 2>/dev/null || true)
-[ -n "$gomodcache" ] && cache_env+=("GOMODCACHE=$gomodcache")
-[ -n "$gocache" ] && cache_env+=("GOCACHE=$gocache")
+# Only exported when `go env` actually answered: setting them EMPTY is not the
+# same as not setting them — Go falls back to $HOME/go/pkg/mod, which is inside
+# the sandbox, i.e. exactly the re-download this is avoiding. `env` below is not
+# given -i, so it inherits these.
+go_cache=$(go env GOMODCACHE GOCACHE 2>/dev/null || true)   # one call, in argument order
+gomodcache=$(printf '%s\n' "$go_cache" | sed -n 1p)
+gocache=$(printf '%s\n' "$go_cache" | sed -n 2p)
+if [ -n "$gomodcache" ]; then export GOMODCACHE="$gomodcache"; fi
+if [ -n "$gocache" ]; then export GOCACHE="$gocache"; fi
 
 # --- extract ---------------------------------------------------------------
 # The heading is matched as a prefix: the real ones carry a parenthetical
@@ -162,7 +163,6 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
   NO_COLOR=1 \
   KAE_CLAUDE_DRIVER=file \
   SMOKE_WHOLE_FILE="${SMOKE_WHOLE_FILE:-0}" \
-  "${cache_env[@]+"${cache_env[@]}"}" \
   bash -c '
   # Before anything else: GNU `mktemp` honours TMPDIR and fails on a missing
   # directory, so `out=$(mktemp)` above this line yields an empty path on linux

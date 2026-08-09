@@ -192,11 +192,17 @@ alternative exists (`secret-tool`).
   Harmless — the contents are placeholders (`tok-A`, `you@example.com`) and the OS
   reclaims the directory eventually — and deliberately left alone, because the
   preamble is sourced *into the caller's shell* and has no place to hang a trap
-  that would not also fire on the caller's own exit. `scripts/smoke-run.sh` does
-  clean up its own sandbox, so the accumulation stops mattering once blocks are
-  run through it, which is the actual remedy. Recorded because it was invisible:
-  the directories are indistinguishable from every other `mktemp -d` on the
-  machine, so nothing counts them and no run reports one.
+  that would not also fire on the caller's own exit.
+  **Running blocks through `scripts/smoke-run.sh` does not fix it, and the first
+  version of this entry said it did.** The runner cleans up its own sandbox and
+  sets `TMPDIR` inside it so a nested `mktemp` would land there — but darwin's
+  `mktemp` ignores `TMPDIR` entirely, and the block's *own* `. scripts/smoke-env.sh`
+  is what allocates the leaked directory. Measured on darwin 24.6.0: one full run
+  of § Smoke Checks through the runner took the system temp dir from 1239 to 1240
+  entries, exactly as a direct run does. On linux the `TMPDIR` would take effect and
+  the claim would hold, which is why it read as true.
+  Recorded because it is invisible: the directories are indistinguishable from every
+  other `mktemp -d` on the machine, so nothing counts them and no run reports one.
 
 - **Upstream now documents parallel sessions racing on one credential store**
   (recorded 2026-07-31). Claude Code v2.1.211: *"Fixed parallel Claude Code sessions

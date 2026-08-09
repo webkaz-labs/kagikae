@@ -70,26 +70,22 @@ then looks isolated while writing to the real `$HOME`. That happened twice on
 2026-08-09, in the same session that a progress `echo` from an `ERR`/`DEBUG` trap
 was captured by a `$(...)` in the block — once corrupting an assertion into a
 non-integer, once landing inside `HOME=$(mktemp -d)` and creating a directory in
-the checkout. `smoke-run.sh` closes the class instead of warning about it: it puts
-every root in a temp HOME **before** the block runs, so a preamble that fails to
-take effect still cannot reach the real one; it never prints into the block's own
-stdout; and it fails the run if the checkout changed. **`HOME` and the XDG roots
-are not the whole set** — the tool-home and `KAE_*`/`MISE_*` variables outrank the
-temp HOME, and a preamble-less block inheriting one was measured writing outside
-the sandbox while the runner reported a clean run, so it clears those too. The
-`env -u` list in the script is normative for which; do not copy it into prose,
-which is how this paragraph came to name four of the eight. It also forces
-`KAE_CLAUDE_DRIVER=file` on every section, so a section that wants claude's
-keychain driver cannot be run through it.
+the checkout. `smoke-run.sh` closes the class instead of warning about it, by
+isolating the environment **before** the block runs rather than relying on the
+block to do it. **Its header is normative for what it isolates and what it does
+not; do not restate that here.** This paragraph twice described the mechanism from
+memory and was wrong both times — naming four of the eight cleared variables, and
+claiming a temp `HOME` covers a set that the tool-home variables outrank.
 
 **Two things it cannot do, and a green run does not claim them.** It cannot
 isolate the macOS login keychain, which ignores `$HOME`: only `secret_backend =
 "file"` in the block's own config keeps kae's snapshot store out of it, and that
 is the 956-item defect. And its leak detector sees the checkout only — a write
-elsewhere on the machine is invisible to it. `mise run check` runs
-`scripts/smoke-run-selftest.sh`, which is what keeps these claims honest; the
-sentence it replaced vouched for guards that had been checked by hand once and
-were then shown to be false.
+elsewhere on the machine is invisible to it. Those two bound what any green run
+proves, which is why they are here and not only in the script. `mise run check`
+runs `scripts/smoke-run-selftest.sh`, which is what keeps the script's own claims
+honest; the sentence it replaced vouched for guards that had been checked by hand
+once and were then shown to be false.
 
 ## Implementation Boundaries
 

@@ -240,6 +240,21 @@ elif [ -s "$log" ]; then
   printf 'smoke-run: %s line(s) exited non-zero:\n' "$(grep -c '^  line ' "$log")"
   cat "$log"
   printf 'smoke-run: a section whose prose allows non-zero lines has to say which\n'
+elif [ "$rc" -ne 0 ]; then
+  # The loop itself only ever returns 0 or 1, and the 1 is always accompanied by a
+  # log entry — so an empty log beside a non-zero status means the block ended
+  # *itself* and the lines after that point never ran. Reporting "every line exited
+  # 0" here is the exact defect this tool exists to stop, and it did exactly that
+  # until 2026-08-09: an unterminated here-document (`cat > f <<'EOF'` is one line
+  # to this loop, so the body that follows gets evaluated as commands) reached an
+  # `exit 9` in that body, which killed the inner shell after 35 of 146 lines. The
+  # run printed "every line exited 0" and exited 9, and nothing reads the exit code
+  # of a line that already told you it was green.
+  printf 'smoke-run: the block ENDED EARLY — exit status %s came from the block, not\n' "$rc"
+  printf '           from the per-line loop, so the lines after that point never ran.\n'
+  printf '           A multi-line construct (here-document, function body) is the usual\n'
+  printf '           cause: this loop evaluates one line at a time. Use SMOKE_WHOLE_FILE=1\n'
+  printf '           for such a section, or rewrite the construct as single lines.\n'
 else
   printf 'smoke-run: every line exited 0\n'
 fi

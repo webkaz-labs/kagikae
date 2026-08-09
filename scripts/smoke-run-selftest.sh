@@ -9,7 +9,7 @@
 # would have caught. The fixtures are cheap on purpose: no `kae` build, no
 # network, so this can run on every commit rather than when somebody remembers.
 #
-# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 19 guards and zero
+# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 20 guards and zero
 # tests of those guards.** Four separate times a change made for an unrelated
 # reason switched a guard off while the suite went on reporting every guard
 # holding: a list derived from its own subject, a containment check weakened to a
@@ -330,6 +330,30 @@ f=$(doc ceiling '## Ceiling' \
 run "$f" '## Ceiling'
 check 'mise cannot reach a config outside the sandbox' 0 $?
 
+# 14. A block that ends itself must not be reported as green. The per-line loop
+#     records failures in a log and the report reads that log, so a block which
+#     exits *out* of the loop leaves it empty — which used to select the "every
+#     line exited 0" branch while the run exited non-zero. Measured on the real
+#     relogin section: 35 of 146 lines ran and it reported every line green.
+#     The fixture uses a here-document because that is how it actually happened —
+#     one line to this loop, its body then evaluated as commands — so this guard
+#     covers the reachable cause and not just the bare `exit`.
+#
+#     The `ENDED EARLY` half is the load-bearing one and dropping it looks
+#     harmless: measured 2026-08-09, a version checking only the exit status
+#     SURVIVES, because the broken runner already exited 9. It was the *message*
+#     that lied. Anything asserting on this behaviour has to read what the run
+#     said, not only what it returned.
+f=$(doc early '## Early' \
+  'touch "$HOME/before"' \
+  "cat > \$HOME/fake <<'XEOF'" \
+  'echo unreachable' \
+  'exit 9' \
+  'XEOF' \
+  'touch "$HOME/after"')
+run "$f" '## Early'; rc=$?
+check 'a block that ends early is not reported as green' 9 "$rc" 'ENDED EARLY' "$tmp/out"
+
 printf '\n'
 # A deleted guard used to leave this file reporting "all guards hold" with one
 # fewer ok line — the file could be hollowed out a guard at a time, which is how
@@ -350,7 +374,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=19
+EXPECTED_GUARDS=20
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

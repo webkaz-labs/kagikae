@@ -3,11 +3,16 @@
 # them in isolation. From the repository root:
 #
 #   bash scripts/smoke-run.sh '## Smoke Checks'
-#   SMOKE_WHOLE_FILE=1 bash scripts/smoke-run.sh '## v0.17.0 surface — the credential harvest'
 #
-# Use SMOKE_WHOLE_FILE=1 for a section that defines functions or other multi-line
-# constructs (the harvest section does). That mode has no per-line verdict and
-# says so; the default mode is the one whose exit status means something.
+# **No section in docs/VALIDATION.md needs SMOKE_WHOLE_FILE=1 today.** The harvest
+# section did until 2026-08-09, and this header went on naming it as the example
+# after that section had been converted and said the opposite in its own opening
+# paragraph — two files contradicting each other about one section, found in review.
+# The flag survives as an escape hatch for a section that acquires a multi-line
+# construct (a here-document, a function body spread over lines) the per-line loop
+# cannot execute. Prefer rewriting the construct as single lines: that mode has no
+# per-line verdict and says so, and the default mode is the one whose exit status
+# means something.
 #
 # `bash scripts/smoke-run-selftest.sh` checks this script's own guards, and
 # `mise run check` runs it.
@@ -53,6 +58,15 @@
 # configs on the way up to the ceiling rather than only at it. `MISE_GLOBAL_CONFIG_FILE`
 # and `MISE_IGNORED_CONFIG_PATHS` were both measured *not* closing this, for the
 # same reason — the file is not being loaded as the global config in the first place.
+#
+# It is `pwd -P` and not `$PWD` because mise matches the ceiling against the
+# **canonical** cwd: a logical path that differs from it silently does not apply, so a
+# checkout reached through a symlink, or a relocated `$HOME`, would lose the isolation.
+# No guard can kill that — on a machine whose checkout and home are already canonical
+# the two spellings are the same string — so do not "simplify" it back. A `:` in either
+# path splits the value and disables the ceiling too; that one is loud rather than
+# silent (mise walks out and dies on the untrusted config it then finds, which the
+# empty sandbox trust store guarantees it never parses), so it is left as a note.
 #
 # The reachable failure this prevents is not a stray read. Without the ceiling, a
 # block running mise from the checkout fails with `error parsing config file`,
@@ -231,6 +245,13 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
     fi
     acc=""
   done 3< "$block"
+  # The sentinel, not the count. The counter above is written BEFORE its line runs —
+  # deliberately, so a trailing comment or a backslash continuation cannot read as an
+  # early end — which means a block ending on its LAST line leaves the count equal to
+  # the total and passes the completeness check. Measured in review (2026-08-09): a
+  # three-line fixture ending `exit 9` reported "every line exited 0" while exiting 9.
+  # "Did the loop finish" is what the check actually means.
+  printf "complete\n" > "$lines"
   # Clamped: an exit status is mod 256, so 256 failing lines exited 0 and the
   # report called it 0 failures. Reachable — the harvest block is ~400 lines and
   # an unbuilt /tmp/kae fails nearly all of them.
@@ -259,7 +280,7 @@ else
     cat "$log"
     printf 'smoke-run: a section whose prose allows non-zero lines has to say which\n'
   fi
-  if [ "$got" -ne "$total" ]; then
+  if [ "$got" != complete ]; then
   # The loop itself only ever returns 0 or 1, and the 1 is always accompanied by a
   # log entry — so an empty log beside a non-zero status means the block ended
   # *itself* and the lines after that point never ran. Reporting "every line exited
@@ -269,10 +290,10 @@ else
   # `exit 9` in that body, which killed the inner shell after 35 of 146 lines. The
   # run printed "every line exited 0" and exited 9, and nothing reads the exit code
   # of a line that already told you it was green.
-    printf 'smoke-run: the block ENDED EARLY — %s of %s lines were read (block exit\n' "$got" "$total"
-    printf '           status %s). The lines after that point never ran, whatever the\n' "$rc"
-    printf '           status says. A multi-line construct (here-document, function body)\n'
-    printf '           is the usual cause: this loop evaluates one line at a time. Use\n'
+    printf 'smoke-run: the block ENDED EARLY — the loop stopped at line %s of %s (block\n' "$got" "$total"
+    printf '           exit status %s). Nothing after that line ran, whatever the status\n' "$rc"
+    printf '           says. A multi-line construct (here-document, function body) is\n'
+    printf '           the usual cause: this loop evaluates one line at a time. Use\n'
     printf '           SMOKE_WHOLE_FILE=1 for such a section, or rewrite it as single lines.\n'
     rc=1
   elif [ ! -s "$log" ]; then

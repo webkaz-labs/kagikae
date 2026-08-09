@@ -1694,7 +1694,7 @@ ident other > "$(store)/.claude.json"   # a login inside the directory as anothe
 /tmp/kae doctor --json > "$HOME/F.json"
 test "$(grep -c identity_drift "$HOME/F.json")" -eq 1   # assert: one warn, naming this
 grep -q "$G" "$HOME/F.json"             #         directory and claude/main, with the
-grep -q 'claude/main' "$HOME/F.json"    #         re-bind remedy
+grep -q 'claude/main' "$HOME/F.json"    #         relogin remedy
 grep -q "cd $G && kae relogin claude" "$HOME/F.json"
 test "$(grep -c 'u-other\|other@example.com' "$HOME/F.json")" -eq 0
                                         # assert: 0 — an identity is PII and never

@@ -92,9 +92,13 @@ run = "go mod verify"
 description = "Build packages"
 run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go build ./..."
 
+[tasks.smoke-selftest]
+description = "Check the guards in scripts/smoke-run.sh (no kae build, no network)"
+run = "bash scripts/smoke-run-selftest.sh"
+
 [tasks.check]
 description = "Run the standard local validation suite"
-depends = ["lint", "test", "vet", "mod-verify", "build"]
+depends = ["lint", "test", "vet", "mod-verify", "build", "smoke-selftest"]
 
 [tasks.vuln]
 description = "Run Go vulnerability audit"

@@ -32,7 +32,9 @@ git diff --check
 `mise run check` is the authoritative gate; it must pass before every commit.
 It runs `lint` (gofumpt + goimports format check, `staticcheck -checks=SA*`,
 curated `golangci-lint`, `shellcheck`), `go test ./...`, `go vet`,
-`go mod verify`, and `go build ./...`. `mise run audit` (govulncheck, plus the
+`go mod verify`, `go build ./...`, and `smoke-selftest`
+(`scripts/smoke-run-selftest.sh`, which checks the smoke runner's own guards — no
+`kae` build and no network, so it costs a few seconds). `mise run audit` (govulncheck, plus the
 upstream literal fingerprints — it reads the installed tools' own binaries, so it
 only means anything on a machine that has them) and `mise run goreleaser-check` are
 slower release-time checks. Lint tools run via `go run <tool>@<pinned version>`; the
@@ -61,6 +63,31 @@ a state `kae doctor` reported nothing about until `active_orphan` was added.
 **Never hand-write the exports: `. scripts/smoke-env.sh`**, which is the one copy
 of them and says which roots and why. The omission happened while writing a fresh
 block in docs/VALIDATION.md, next to two correct ones.
+
+**Sourcing it correctly is also not enough, so do not drive these blocks by hand
+either — `bash scripts/smoke-run.sh '## <heading>'`.** Sourcing the preamble is a
+step a harness can perform and still not get: `. scripts/smoke-env.sh` inside
+`$(...)` exports nothing, because command substitution is a subshell, and the run
+then looks isolated while writing to the real `$HOME`. That happened twice on
+2026-08-09, in the same session that a progress `echo` from an `ERR`/`DEBUG` trap
+was captured by a `$(...)` in the block — once corrupting an assertion into a
+non-integer, once landing inside `HOME=$(mktemp -d)` and creating a directory in
+the checkout. `smoke-run.sh` closes the class instead of warning about it, by
+isolating the environment **before** the block runs rather than relying on the
+block to do it. **Its header is normative for what it isolates and what it does
+not; do not restate that here.** This paragraph twice described the mechanism from
+memory and was wrong both times — naming four of the eight cleared variables, and
+claiming a temp `HOME` covers a set that the tool-home variables outrank.
+
+**Two things it cannot do, and a green run does not claim them.** It cannot
+isolate the macOS login keychain, which ignores `$HOME`: only `secret_backend =
+"file"` in the block's own config keeps kae's snapshot store out of it, and that
+is the 956-item defect. And its leak detector sees the checkout only — a write
+elsewhere on the machine is invisible to it. Those two bound what any green run
+proves, which is why they are here and not only in the script. `mise run check`
+runs `scripts/smoke-run-selftest.sh`, which is what keeps the script's own claims
+honest; the sentence it replaced vouched for guards that had been checked by hand
+once and were then shown to be false.
 
 ## Implementation Boundaries
 

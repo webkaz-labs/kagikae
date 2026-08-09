@@ -161,6 +161,77 @@ alternative exists (`secret-tool`).
   v0.12.0 defect's own shape (an item addressed by service alone), so the sim should
   refuse an un-scoped delete outright rather than treat it as a wildcard.
 
+- **Two assertions in the harvest block still pass when the thing that reads the
+  snapshot is broken** (recorded 2026-08-09, **not fixed**). In
+  [VALIDATION.md](VALIDATION.md) § v0.17.0 surface — the credential harvest, cases `B2`
+  and `B3` pair `snap main | grep -c FOREIGN` with a positive line on the **store**
+  (`grep FOREIGN "$(accstore main)"`) rather than on `snap()` — so a `snap()` that
+  returns nothing at all prints `0` and reads as a pass. That is the defect the block's
+  own closing prose records fixing once already, for `B1` on 2026-08-07; it was fixed
+  where it was found and not as a class. Re-measured 2026-08-09, two more are partial
+  rather than absent, which is why the earlier record of this ("`A3`, `B2`, `B3` and `E`
+  do not [have one]") was too strong: `A3` carries an explicitly labelled control
+  (`test -d "$(store)"`) for its `test ! -e` line but none for its `snap` line, and `E`'s
+  `snap main | grep MAIN-NEW` immediately above its negative *is* a real control on
+  `snap()`, weakened only by naming a different account than the negative does.
+  Not fixed here because the edit and the evidence are not the same size: one positive
+  line per case, but verifying it means extracting the whole 398-line block, running it,
+  and then breaking `snap()` on purpose to prove each new control bites. An unverified
+  edit to the block a release is accepted against is worse than a recorded gap: this block
+  spent 2026-08-07 to 2026-08-08 sending every credential fixture to the config dir after
+  the credential had moved to the account store, and went green throughout by asserting
+  nothing about its own subject. (The "eight versions" figure belongs to § Smoke Checks,
+  which was unchanged since the initial commit; this block was added 2026-08-04 and has
+  only ever shipped in v0.17.0. Conflating the two is the same misattribution this entry
+  is named after, made while writing the entry.)
+
+- **The smoke guards have no test, and four changes switched one off without
+  anything noticing** (recorded 2026-08-09, **not fixed**).
+  `scripts/smoke-run-selftest.sh` checks `scripts/smoke-run.sh`; nothing checks
+  the selftest. Across six review rounds, four separate edits made for unrelated
+  reasons left a guard passing unconditionally while the suite reported every
+  guard holding: a variable list derived from the file it was testing (deleting
+  from the subject deleted the test); a containment check weakened to a proxy
+  ("not the value I planted" rather than "inside the sandbox"); a fixture count
+  shortened from 300 to 257 for speed, where `257 % 256 = 1` is exactly the exit
+  status a working runner returns; and a guard whose empty input fell into its
+  own success branch. Every one was found by a reviewer mutating the guard by
+  hand, and none by any check in the repository.
+  The fix is a committed mutation table — roughly 30 lines plus the ~39
+  substitutions already used across those rounds, each paired with the guard name
+  it must trip, asserting every one is caught. It would have caught all four,
+  including the `257`, which no structural rule catches because the table does not
+  reason about the value, it only checks that the guard still fires.
+  Deliberately not built now: the scripts are closing and stable, so it would be
+  machinery with no near-term change to protect, and it costs a full selftest run
+  per mutation. Two partial rules are cheaper and are worth applying at review
+  time instead — **no guard's pass condition may be satisfiable by an empty or
+  degenerate input** (that covers three of the four), and **state a fixture
+  value's requirement as a property, not a number** (the only defence against the
+  fourth, and it works by making the next editor's mistake visible rather than by
+  detecting it). Until the table exists, the header of
+  `scripts/smoke-run-selftest.sh` is normative: any change to either script has to
+  be mutation-tested by hand.
+
+- **`scripts/smoke-env.sh` leaks a temp HOME every time it is sourced** (recorded
+  2026-08-09, **not fixed**). It does `HOME=$(mktemp -d)` and nothing ever removes
+  the directory, so each direct run of a block in [VALIDATION.md](VALIDATION.md)
+  leaves one behind under the system temp dir, holding that run's fixtures.
+  Harmless — the contents are placeholders (`tok-A`, `you@example.com`) and the OS
+  reclaims the directory eventually — and deliberately left alone, because the
+  preamble is sourced *into the caller's shell* and has no place to hang a trap
+  that would not also fire on the caller's own exit.
+  **Running blocks through `scripts/smoke-run.sh` does not fix it, and the first
+  version of this entry said it did.** The runner cleans up its own sandbox and
+  sets `TMPDIR` inside it so a nested `mktemp` would land there — but darwin's
+  `mktemp` ignores `TMPDIR` entirely, and the block's *own* `. scripts/smoke-env.sh`
+  is what allocates the leaked directory. Measured on darwin 24.6.0: one full run
+  of § Smoke Checks through the runner took the system temp dir from 1239 to 1240
+  entries, exactly as a direct run does. On linux the `TMPDIR` would take effect and
+  the claim would hold, which is why it read as true.
+  Recorded because it is invisible: the directories are indistinguishable from every
+  other `mktemp -d` on the machine, so nothing counts them and no run reports one.
+
 - **Upstream now documents parallel sessions racing on one credential store**
   (recorded 2026-07-31). Claude Code v2.1.211: *"Fixed parallel Claude Code sessions
   all logging out simultaneously after wake-from-sleep when many sessions share one

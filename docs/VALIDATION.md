@@ -30,145 +30,166 @@ All smoke checks run against a temp HOME. On Linux this isolates every
 credential path. **On macOS it does not isolate the keychain-backed tools
 (claude, cursor)**: those adapters always select a keychain driver and the
 `security` CLI ignores `$HOME`, so their capture/switch/login against a temp
-HOME still read — and switch **writes** — the real login keychain item. Run
-the claude fixture block below on Linux only (e.g. in a container); on macOS
-stick to the read-only commands and file-based tools, **or set
-`KAE_CLAUDE_DRIVER=file`** to force claude onto the file-patch driver so the
-whole capture/switch round-trip closes on `.credentials.json` and never reads
-or writes the real login keychain (see [ADAPTERS.md](ADAPTERS.md) "File-driver
-override"). cursor is darwin-only, so it cannot be live-switched safely in a
-smoke run at all (Linux reports it unsupported, macOS would touch the real
-keychain) — verify cursor on the real machine only.
+HOME still read — and switch **writes** — the real login keychain item. The
+block below is therefore safe on both platforms only because it sets **two**
+things, and it sets them in its own first lines rather than leaving them to a
+reader: `KAE_CLAUDE_DRIVER=file` (claude's live credential → the file-patch
+driver, so the whole capture/switch round-trip closes on `.credentials.json`;
+see [ADAPTERS.md](ADAPTERS.md) "File-driver override") **and** `[security]
+secret_backend = "file"` (kae's own snapshot store → file backend, not the
+`kagikae` keychain). Neither alone is enough: the driver override still leaves
+`kae add` writing the captured payload to the `kagikae` keychain item, which
+prompts a macOS authorization dialog. The `secret_backend` line has to be
+written **before the first `kae add`**, which is why the block writes its own
+`config.toml` instead of taking what `kae init` leaves.
 
-To exercise claude switching on macOS without touching any keychain, set **two**
-things: `KAE_CLAUDE_DRIVER=file` (claude's live credential → file driver) **and**
-`[security] secret_backend = "file"` (kae's own snapshot store → file backend,
-not the `kagikae` keychain). The driver override alone still leaves `kae add`
-writing the captured payload to the `kagikae` keychain item, which prompts a
-macOS authorization dialog.
+cursor is darwin-only, so it cannot be live-switched safely in a smoke run at
+all (Linux reports it unsupported, macOS would touch the real keychain) —
+verify cursor on the real machine only.
 
 ```bash
 go build -o /tmp/kae .
-. scripts/smoke-env.sh   # every line below writes where kae or claude reads
-export KAE_CLAUDE_DRIVER=file
-mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
-printf 'version = 1\n[security]\nsecret_backend = "file"\nbackup_keep = 30\n' \
+. scripts/smoke-env.sh          # HOME + every root paths.Resolve reads; the script says why
+export KAE_CLAUDE_DRIVER=file   # claude's live credential -> file driver, never the keychain
+unset COPILOT_HOME CLAUDE_CONFIG_DIR CODEX_HOME CLAUDE_SECURESTORAGE_CONFIG_DIR
+                                # each of these outranks the temp HOME, so a smoke run with
+                                # one still set patches the real config
+
+# kae's own snapshot store -> file backend. This must be written BEFORE the first
+# `kae add`: the config `kae init` writes puts captured payloads in the `kagikae`
+# keychain item, which prompts for authorization on macOS.
+mkdir -p "$XDG_CONFIG_HOME/kagikae"
+printf '# comment kept to prove the config writer preserves it\nversion = 1\n[security]\nsecret_backend = "file"\nbackup_keep = 30\n' \
   > "$XDG_CONFIG_HOME/kagikae/config.toml"
-# seed $CLAUDE_CONFIG_DIR/.credentials.json (or ~/.claude/.credentials.json):
-printf '{"claudeAiOauth":{"accessToken":"tok-A"}}' > "$HOME/.claude/.credentials.json"
-/tmp/kae add --no-login claude main          # "driver: claude-file-patch"
-/tmp/kae use claude main --dry-run --json    # json-pointer action, no keychain
-```
 
-```bash
-go build -o /tmp/kae .
-. scripts/smoke-env.sh   # HOME + every root paths.Resolve reads; the script says why
+# Fixtures. Each is a file some adapter reads; the surfaces below capture from them.
+mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.copilot" "$XDG_DATA_HOME/opencode"
+printf '{"claudeAiOauth":{"accessToken":"tok-A","refreshToken":"r-A","expiresAt":9999999999999}}' \
+  > "$HOME/.claude/.credentials.json"
+printf '{"oauthAccount":{"emailAddress":"you@example.com","accountUuid":"u-1"}}' \
+  > "$HOME/.claude.json"
+printf '{"tokens":{"access_token":"a-1","refresh_token":"r-1","account_id":"acct-1"}}' \
+  > "$HOME/.codex/auth.json"
+printf 'model = "gpt-5"\n' > "$HOME/.codex/config.toml"
+printf '{"openai":{"type":"oauth","refresh":"r-main","access":"a-main"},"other":{"type":"api","key":"sk-other"}}' \
+  > "$XDG_DATA_HOME/opencode/auth.json"
+printf '// managed automatically\n{\n  "trustedFolders": ["/w"],\n  "lastLoggedInUser": {"host":"h","login":"a"},\n  "loggedInUsers": [{"host":"h","login":"a"}]\n}\n' \
+  > "$HOME/.copilot/config.json"
 
 /tmp/kae init
 /tmp/kae doctor --json
 /tmp/kae status --json
 /tmp/kae version --format json
-```
 
-With fixture credentials (see `internal/cmd` tests for the fixture shapes;
-Linux only — see the macOS keychain warning above):
-
-```bash
-# seed ~/.claude/.credentials.json + ~/.claude.json fixtures, then:
-/tmp/kae add --no-login claude main
-/tmp/kae use claude main --dry-run
+# --- capture and switch, one tool at a time -------------------------------
+/tmp/kae add --no-login claude main             # reports "driver: claude-file-patch"
+/tmp/kae use claude main --dry-run --json       # json-pointer action, no keychain
 /tmp/kae use claude main --json
 /tmp/kae backup list --json
 /tmp/kae rollback
 
-# v0.2.0 surfaces:
-/tmp/kae run claude main -- /usr/bin/true        # auth transaction + restore
-echo sk-test | /tmp/kae env set claude ci ANTHROPIC_API_KEY
-/tmp/kae env list --json
-/tmp/kae run --env claude ci -- /usr/bin/env     # var visible to child only
-/tmp/kae run -i claude main -- /usr/bin/true     # global isolated home, no lock, no live mutation
-/tmp/kae mise init --profile main                  # preview, no write
+/tmp/kae add --no-login codex main --json
+/tmp/kae use codex main --json
 
-# v0.4.0 surfaces (on macOS use codex-only profiles for live switching —
-# see the keychain warning above; codex auth.json is file-based):
-/tmp/kae use main --json
-/tmp/kae use --json                                # idempotent (resolved profile); re-run: "changed": false
-KAE_PROFILE=side /tmp/kae use --json               # env resolution
-/tmp/kae use --quiet                               # prints nothing on success
-/tmp/kae mise init --profile main --auto           # preview: [hooks.enter] kae use --quiet
-
-# v0.5.0 surfaces (pin binds never mutate live state, so claude is safe
-# to include in the pinned profile even on macOS):
-/tmp/kae add --no-login codex main --json          # old capture shape
-/tmp/kae use codex main --json                     # tool+account form
-/tmp/kae pin side                                  # writes .config/mise/conf.d/kagikae.toml (kae-owned fragment)
-#   assert: CODEX_HOME / CLAUDE_CONFIG_DIR entry in fragment pointing to
-#   isolation/<pin-id>/<tool>/shared/ (shared mode) or
-#   isolation/<pin-id>/<tool>/isolated/<account>/config/ (isolated mode)
-#   assert: shared bind stores under $XDG_DATA_HOME/kagikae/isolation/<pin-id>/<tool>/shared/
-#   assert: isolated bind stores under $XDG_DATA_HOME/kagikae/isolation/<pin-id>/<tool>/isolated/<account>/config/
-#   assert: re-running pin is idempotent (fragment regenerated, no error)
-/tmp/kae unpin                                     # removes only the block
-/tmp/kae switch x y; echo $?                       # 64 + replacement pointer
-EDITOR=true /tmp/kae edit                          # validate round-trip
-/tmp/kae status --json                             # has "pinned" + "profiles"
-
-# v0.7.0 surfaces (bond → pin --shared, per-directory isolation):
-# codex: auth.json is file-based — safe on macOS.
-# claude: on macOS CLAUDE_CONFIG_DIR suppresses keychain, so kae reads the
-#   keychain credential bytes and writes them as .credentials.json into the
-#   shared dir. Real-machine gate required (temp-HOME smoke cannot cover this).
-/tmp/kae pin -s side                               # writes .config/mise/conf.d/kagikae.toml (shared mode)
-#   assert: CODEX_HOME entry in fragment pointing to isolation/<pin-id>/codex/shared/
-#   assert: config.toml symlinked from real ~/.codex; auth.json private-copied
-#   assert: re-running kae pin -s is idempotent (no error, symlinks refreshed)
-
-# v0.7.0 surfaces (pin -i mode):
-/tmp/kae pin side                                  # writes fragment (isolated mode, default)
-#   assert: CODEX_HOME entry pointing to isolation/<pin-id>/codex/isolated/main/config/
-#   assert: no symlinks by default (full isolation); credential private-copied
-#   assert: re-running kae pin is idempotent (fragment regenerated, no error)
-#   assert: legacy overlay-mode block triggers migration warning on stderr
-# Re-bind one tool inside a pinned directory:
-/tmp/kae pin codex side
-#   assert: only the codex entry in the fragment is updated; other tools unchanged
-/tmp/kae switch x y; echo $?                       # 64 (renamed in v0.7.0, re-test)
-
-# v0.6.0 surfaces (opencode auth.json is file-based — safe on macOS; seed
-# $XDG_DATA_HOME/opencode/auth.json with {"openai":{...},"other":{...}}):
 /tmp/kae add --no-login opencode main --json
 /tmp/kae use opencode main --json
-#   assert: the "other" sibling key in auth.json is untouched
-/tmp/kae doctor --json                             # opencode checks present
+grep -c '"other"' "$XDG_DATA_HOME/opencode/auth.json"   # assert: 1 — the sibling provider
+                                                        #   key survives the switch
 
-# v0.7.1 surfaces (account lifecycle; config.toml comment-preserving edits):
-#   seed a config.toml with a profile that references the account plus a
-#   comment, then:
-/tmp/kae account rm claude main; echo $?           # 10 if active (no --force)
-/tmp/kae account rename codex main main2 --json    # rewrites profile refs
-#   assert: config.toml comments and unrelated keys survive the edit
-/tmp/kae account rm codex main2 --force --json     # drops active + profile ref
-/tmp/kae account rm codex ghost; echo $?           # 7 (not_found)
-
-# v0.7.1 surfaces (profile lifecycle; same comment-preserving writer):
-/tmp/kae profile set dev codex main2               # creates/updates a mapping
-/tmp/kae profile default dev                       # sets default_profile
-/tmp/kae profile default                           # prints the current default
-/tmp/kae profile save snapshot                     # from the active accounts
-/tmp/kae profile rm dev; echo $?                   # 10 if default (no --force)
-/tmp/kae profile unset dev codex                   # last mapping removes profile
-#   assert: comments survive; default_profile cleared when its profile is removed
-
-# copilot is config.json-pointer based (kae never touches the keychain
-# tokens), so it is safe on macOS; seed ~/.copilot/config.json with the JSONC
-# shape (leading // comments + lastLoggedInUser/loggedInUsers/trustedFolders).
-# `unset COPILOT_HOME` first: it outranks the temp HOME, so a smoke run with it
-# still set would patch the real config (same for CLAUDE_CONFIG_DIR/CODEX_HOME):
 /tmp/kae add --no-login copilot main --json
 /tmp/kae use copilot main --json
-#   assert: leading // comments and trustedFolders survive the patch
-/tmp/kae doctor --json                             # copilot checks present
+head -1 "$HOME/.copilot/config.json" | grep '^//'       # assert: the leading JSONC comment
+                                                        #   survives the pointer patch
+grep -c '"/w"' "$HOME/.copilot/config.json"             # assert: 1 — trustedFolders survive
+
+/tmp/kae doctor --json                          # opencode and copilot checks present
+
+# --- run: the auth transaction, per-command env, the global isolated home ---
+/tmp/kae run claude main -- /usr/bin/true       # auth transaction + restore
+echo sk-test | /tmp/kae env set claude ci ANTHROPIC_API_KEY
+/tmp/kae env list --json
+/tmp/kae run --env claude ci -- /usr/bin/env | grep -c '^ANTHROPIC_API_KEY='   # assert: 1
+env | grep -c '^ANTHROPIC_API_KEY='             # assert: 0 — the child saw it, this shell
+                                                #   does not (see the note on `grep -c` below)
+/tmp/kae run -i claude main -- /usr/bin/true    # global isolated home, no lock, no live mutation
+
+# --- profiles, and what a bare `kae use` resolves --------------------------
+/tmp/kae profile set main claude main
+/tmp/kae profile set side claude main
+/tmp/kae profile set side codex main
+/tmp/kae use main --json                        # profile form
+/tmp/kae use --json; test $? -eq 64             # assert: 64 — a bare `kae use` resolves
+                                                #   default_profile, which is not set yet
+/tmp/kae profile default main
+/tmp/kae use --json                             # now resolves; re-run: "changed": false
+KAE_PROFILE=side /tmp/kae use --json            # env resolution
+/tmp/kae use --quiet                            # prints nothing on success
+/tmp/kae profile default                        # prints the current default
+/tmp/kae profile save snapshot                  # from the active accounts
+/tmp/kae mise init --profile main               # preview, no write
+/tmp/kae mise init --profile main --auto        # preview: [hooks.enter] kae use --quiet
+
+# --- pin: binds the CURRENT directory, so run it inside the temp HOME ------
+# `kae pin` also writes a $GIT_COMMON_DIR/info/exclude entry, which is why this is a
+# throwaway repository and never this checkout.
+P="$HOME/code/side-project"; mkdir -p "$P"; cd "$P"; git init -q .
+FRAG=.config/mise/conf.d/kagikae.toml
+ISO="$XDG_DATA_HOME/kagikae/isolation"
+
+/tmp/kae pin side                               # DEFAULT IS SHARED (-s), not isolated;
+                                                #   docs/CLI.md § kae pin is normative
+grep -c 'codex/shared' "$FRAG"                  # assert: 1 — CODEX_HOME points at
+                                                #   isolation/<pin-id>/codex/shared/
+grep -c 'CLAUDE_SECURESTORAGE_CONFIG_DIR' "$FRAG"   # assert: 1 — a bind exports the pair,
+                                                #   config dir and per-account credential store
+test -L "$ISO"/*/codex/shared/config.toml       # assert: config.toml symlinked from ~/.codex
+test -f "$ISO"/*/codex/shared/auth.json         # assert: auth.json private-copied, not linked
+/tmp/kae pin side                               # assert: idempotent (regenerated, no error)
+
+/tmp/kae pin -i side                            # isolated: full isolation, no symlinks
+grep -c 'codex/isolated/main/config' "$FRAG"    # assert: 1
+test -z "$(find "$ISO"/*/codex/isolated -type l)"   # assert: no symlinks in isolated mode.
+                                                #   Scoped to the isolated store on purpose:
+                                                #   `kae unpin` and a mode switch both leave
+                                                #   the previous store in place, so a search
+                                                #   of the whole tree finds the shared bind's
+                                                #   config.toml link and fails for the wrong
+                                                #   reason (measured while writing this block)
+test -f "$ISO"/*/codex/isolated/main/config/auth.json   # assert: credential private-copied
+
+# `kae pin <tool> <account>` re-binds ONE tool and takes an **account**, not a profile.
+/tmp/kae add --no-login codex side --json       # so capture the account first
+/tmp/kae pin codex side
+grep -c 'codex/isolated/side/config' "$FRAG"    # assert: 1 — only the codex entry moved
+grep -c 'claude' "$FRAG"                        # assert: >=1 — the other tools are untouched
+/tmp/kae unpin                                  # removes only the block
+cd - >/dev/null
+
+# --- account and profile lifecycle (comment-preserving config writer) ------
+# Ordering matters: nothing here may remove an account a later line needs.
+/tmp/kae account rm claude main; test $? -eq 10 # assert: 10 — active, and no --force
+/tmp/kae profile set dev codex side             # a profile that references the account
+/tmp/kae account rename codex side side2 --json
+grep -c side2 "$XDG_CONFIG_HOME/kagikae/config.toml"   # assert: >=1 — the profile ref moved
+/tmp/kae profile default dev                    # sets default_profile
+/tmp/kae profile rm dev; test $? -eq 10         # assert: 10 — it is the default, no --force
+/tmp/kae profile default main                   # move the default off dev first
+/tmp/kae profile unset dev codex                # last mapping removes the profile
+/tmp/kae account rm codex side2 --force --json  # drops the account and its profile refs
+/tmp/kae account rm codex ghost; test $? -eq 7  # assert: 7 (not_found)
+grep -c '# comment kept to prove' "$XDG_CONFIG_HOME/kagikae/config.toml"
+                                                # assert: 1 — comments and unrelated keys
+                                                #   survived every edit above
+/tmp/kae switch x y; test $? -eq 64             # assert: 64 + a replacement pointer
+EDITOR=true /tmp/kae edit                       # validate round-trip
+/tmp/kae status --json                          # has "pinned" and "profiles"
 ```
+
+Several lines above exit non-zero **on purpose**: a `grep -c` printing `0` is
+the assertion, not a failure. Everything else must exit `0`, and the
+`test $? -eq <n>` lines carry the exit codes the surface promises rather than
+printing them for a reader to eyeball. Run the block by extracting it from this
+file rather than by copying it, so what runs is what is written here.
 
 Enter-hook firing (`mise init --auto --write`) needs a live mise:
 `mise settings experimental=true` (hooks are experimental; the global config
@@ -179,8 +200,6 @@ this writes must itself be `mise trust`-ed), `mise trust` on the project
 neutral directory (the repo's own untrusted mise.toml otherwise aborts
 hook-env) and assert `kae use --quiet` fired and that re-entry adds no backup.
 
-Use `secret_backend = "file"` in the temp config for smoke checks so no real
-keychain entries are created.
 
 ## v0.8.0 surfaces
 
@@ -2513,12 +2532,31 @@ string, which is why the blocks below were re-run rather than assumed.
   same text, and the block is unchanged since the initial commit — so they are recorded
   here and left for the deferred documentation pass rather than fixed at a tag.
   The mechanism is worth more than the four: **this block's `# assert:` lines are comments,
-  not commands.** It is the only section in this file whose assertions are non-executable,
-  and it is where both real defects had accumulated — a reader "running the block" gets
-  exit 0 and never evaluates them. Four of its negative snapshot assertions also lack the
-  positive control the block's own prose says makes such a line mean anything (`B1` has it
-  and says so; `A3`, `B2`, `B3` and `E` do not) — they pass today for the right reason, and
-  nothing in the block would say if they stopped.
+  not commands.** It was the only section in this file whose assertions were non-executable,
+  and it is where the defects had accumulated — a reader "running the block" gets
+  exit 0 and never evaluates them.
+  **Fixed in the documentation pass (2026-08-09), and a fifth defect came out of the same
+  run**: the block removed `codex/main2` and then asked `kae profile set dev codex main2`
+  for it, so three profile-lifecycle lines exited `7` in a cascade nothing named. The block
+  is now a single seeded script whose assertions are the commands themselves; the fixtures
+  it used to name only in prose are written in it, and its `pin` lines run in a throwaway
+  repository inside the temp HOME, because `kae pin` binds the *current* directory and
+  writes a `$GIT_COMMON_DIR/info/exclude` entry — run from this checkout, as the rest of
+  the section is, it dirties the operator's repository. Verified by extracting the block
+  from this file and running it: every line exits `0` except the two `grep -c` lines whose
+  `0` is the assertion, with three deliberately broken variants confirming the assertions
+  can still fail.
+  **The positive-control finding recorded here belongs to a different section**, and saying
+  it here made it unfindable: `A3`, `B1`, `B2`, `B3` and `E` are cases in
+  § v0.17.0 surface — the credential harvest, which has no `# assert:`-comment problem at
+  all. Re-measured 2026-08-09, and the original wording was also too strong in two places.
+  What holds: `B2` and `B3` pair their `snap … | grep -c FOREIGN` with a positive line on
+  the **store**, not on `snap()`, so a broken `snap()` still reads as a pass. What does not:
+  `A3` carries an explicitly labelled positive control (`test -d "$(store)"`) for its
+  `test ! -e` line — what it lacks is one for its `snap` line; and `E` has a working
+  `snap main | grep MAIN-NEW` immediately above its negative, which is a genuine control on
+  `snap()` itself, weakened only by naming a different account. `B1` has a full one and says
+  so.
 
 ### v0.9.0 (2026-06-19, macOS darwin 24.6.0)
 

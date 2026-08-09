@@ -161,6 +161,25 @@ alternative exists (`secret-tool`).
   v0.12.0 defect's own shape (an item addressed by service alone), so the sim should
   refuse an un-scoped delete outright rather than treat it as a wildcard.
 
+- **Two assertions in the harvest block still pass when the thing that reads the
+  snapshot is broken** (recorded 2026-08-09, **not fixed**). In
+  [VALIDATION.md](VALIDATION.md) § v0.17.0 surface — the credential harvest, cases `B2`
+  and `B3` pair `snap main | grep -c FOREIGN` with a positive line on the **store**
+  (`grep FOREIGN "$(accstore main)"`) rather than on `snap()` — so a `snap()` that
+  returns nothing at all prints `0` and reads as a pass. That is the defect the block's
+  own closing prose records fixing once already, for `B1` on 2026-08-07; it was fixed
+  where it was found and not as a class. Re-measured 2026-08-09, two more are partial
+  rather than absent, which is why the earlier record of this ("`A3`, `B2`, `B3` and `E`
+  do not [have one]") was too strong: `A3` carries an explicitly labelled control
+  (`test -d "$(store)"`) for its `test ! -e` line but none for its `snap` line, and `E`'s
+  `snap main | grep MAIN-NEW` immediately above its negative *is* a real control on
+  `snap()`, weakened only by naming a different account than the negative does.
+  Not fixed here because the edit and the evidence are not the same size: one positive
+  line per case, but verifying it means extracting the whole 398-line block, running it,
+  and then breaking `snap()` on purpose to prove each new control bites. An unverified
+  edit to the block a release is accepted against is worse than a recorded gap — the
+  block passed for eight versions while measuring a directory kae no longer reads.
+
 - **Upstream now documents parallel sessions racing on one credential store**
   (recorded 2026-07-31). Claude Code v2.1.211: *"Fixed parallel Claude Code sessions
   all logging out simultaneously after wake-from-sleep when many sessions share one

@@ -229,13 +229,16 @@ this paragraph has twice stated one that the next edit to the block falsified,
 the second time inside the very commit that was correcting the first.
 
 **Run it with `bash scripts/smoke-run.sh '## Smoke Checks'`, not by hand.** That
-script extracts the block from this file, runs it with HOME, every XDG root and
-every tool-home variable already inside a temp HOME — so a preamble that fails to
-take effect still cannot reach the real ones — and fails if the checkout changed.
-Every hand-written harness for this file has leaked; the script's header records
-the measured ways, and what it still cannot cover (the login keychain ignores
-`$HOME`, and the leak detector sees only the checkout). `mise run check` runs
-`scripts/smoke-run-selftest.sh`, so those guards are checked rather than asserted.
+script extracts the block from this file, redirects `HOME`, every XDG root and
+`TMPDIR` into a temp HOME and **unsets** the tool-home variables that outrank it
+(`CODEX_HOME` and friends) — so a preamble that fails to take effect still cannot
+reach the real ones — and fails if the checkout changed. It also forces
+`KAE_CLAUDE_DRIVER=file` for every section, so a section wanting claude's keychain
+driver cannot be run through it. Every hand-written harness for this file has
+leaked; the script's header records the measured ways, and what it still cannot
+cover (the login keychain ignores `$HOME`, and the leak detector sees only the
+checkout). `mise run check` runs `scripts/smoke-run-selftest.sh`, so those guards
+are checked rather than asserted.
 
 **What this block does not cover, said because a green run reads as if it did.**
 `KAE_CLAUDE_DRIVER=file` is what makes it safe on macOS, and it keeps claude's

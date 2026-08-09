@@ -32,10 +32,12 @@
 #   * `kae pin` binds the *current* directory and appends to
 #     $GIT_COMMON_DIR/info/exclude, so a block run from the checkout dirties it.
 #
-# WHAT THE ISOLATION DOES AND DOES NOT COVER. It puts HOME, every XDG root and
-# every tool-home variable in a temp HOME *before* the block runs, so a block
-# whose own preamble silently fails to take effect still cannot reach the real
-# ones. The tool-home variables are not decoration: `CODEX_HOME`,
+# WHAT THE ISOLATION DOES AND DOES NOT COVER. It redirects HOME, every XDG root
+# and TMPDIR into a temp HOME and *unsets* the tool-home variables, before the
+# block runs, so a block whose own preamble silently fails to take effect still
+# cannot reach the real ones. It also forces `KAE_CLAUDE_DRIVER=file` for every
+# section, so a section that wants claude's keychain driver cannot be run through
+# this script. The tool-home variables are not decoration: `CODEX_HOME`,
 # `CLAUDE_CONFIG_DIR`, `COPILOT_HOME` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`
 # **outrank** the temp HOME, and a preamble-less block inheriting one of them was
 # measured writing outside the sandbox while this script reported a clean run.
@@ -73,8 +75,15 @@ trap cleanup EXIT
 # `go build`, and with HOME redirected the module cache lands in the sandbox and
 # is re-downloaded on every run. These hold compiler output, not credential
 # state, so they are not what the isolation is protecting.
-gomodcache=$(go env GOMODCACHE 2>/dev/null || echo "")
-gocache=$(go env GOCACHE 2>/dev/null || echo "")
+#
+# Only passed when `go env` actually answered: exporting them EMPTY is not the
+# same as not exporting them — Go falls back to $HOME/go/pkg/mod, which is inside
+# the sandbox, i.e. exactly the re-download this is avoiding.
+cache_env=()
+gomodcache=$(go env GOMODCACHE 2>/dev/null || true)
+gocache=$(go env GOCACHE 2>/dev/null || true)
+[ -n "$gomodcache" ] && cache_env+=("GOMODCACHE=$gomodcache")
+[ -n "$gocache" ] && cache_env+=("GOCACHE=$gocache")
 
 # --- extract ---------------------------------------------------------------
 # The heading is matched as a prefix: the real ones carry a parenthetical
@@ -131,22 +140,29 @@ transcript=$(mktemp)
 # ERR trap does not fix it either, since it also fires for the command half of a
 # deliberate `<cmd>; test $? -eq <n>` pair and cannot tell that from a real
 # failure.
+# MISE_CONFIG_DIR is not decoration either: `kae completion --install` and
+# `kae mise init --auto --write` locate mise's *global* config.toml through it,
+# so an operator who exports it has those written outside the sandbox.
 env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
     -u CLAUDE_SECURESTORAGE_CONFIG_DIR -u OPENCODE_AUTH_CONTENT \
+    -u MISE_CONFIG_DIR -u KAE_PROFILE -u KAE_FINGERPRINT \
   HOME="$safe" \
   XDG_CONFIG_HOME="$safe/.config" \
   XDG_DATA_HOME="$safe/.local/share" \
   XDG_STATE_HOME="$safe/.local/state" \
   XDG_RUNTIME_DIR="$safe/.local/run" \
   TMPDIR="$safe/tmp" \
-  GOMODCACHE="$gomodcache" \
-  GOCACHE="$gocache" \
   NO_COLOR=1 \
   KAE_CLAUDE_DRIVER=file \
   SMOKE_WHOLE_FILE="${SMOKE_WHOLE_FILE:-0}" \
+  "${cache_env[@]+"${cache_env[@]}"}" \
   bash -c '
-  block=$1; log=$2; tr=$3; out=$(mktemp); acc=""; start=0; n=0; failed=0
+  # Before anything else: GNU `mktemp` honours TMPDIR and fails on a missing
+  # directory, so `out=$(mktemp)` above this line yields an empty path on linux
+  # and every subsequent redirect fails. (darwin mktemp ignores TMPDIR, which is
+  # why the wrong order was invisible here.)
   mkdir -p "$TMPDIR"
+  block=$1; log=$2; tr=$3; out=$(mktemp); acc=""; start=0; n=0; failed=0
   printf "smoke-run transcript: HOME=%s\n\n" "$HOME" >"$tr"
   if [ "$SMOKE_WHOLE_FILE" = 1 ]; then
     # shellcheck disable=SC1090

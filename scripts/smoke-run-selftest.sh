@@ -9,7 +9,7 @@
 # would have caught. The fixtures are cheap on purpose: no `kae` build, no
 # network, so this can run on every commit rather than when somebody remembers.
 #
-# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 23 guards and zero
+# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 24 guards and zero
 # tests of those guards.** Four separate times a change made for an unrelated
 # reason switched a guard off while the suite went on reporting every guard
 # holding: a list derived from its own subject, a containment check weakened to a
@@ -405,6 +405,14 @@ f=$(doc lastexit '## LastExit' 'touch "$HOME/a"' 'true' 'exit 9')
 run "$f" '## LastExit'; rc=$?
 check 'a block that ends on its last line is caught' 1 "$rc" 'ENDED EARLY' "$tmp/out"
 
+# 18. A last line ending in a backslash. The loop reaches EOF with a command still
+#     pending in $acc and discards it; the sentinel called that a finished loop until
+#     it was guarded on $acc (found in review, 2026-08-09). Guard 11 covers the other
+#     half of the same leak class — a continuation split from its redirection.
+f=$(doc dangling '## Dangling' 'touch "$HOME/a"' 'touch "$HOME/b" \\')
+run "$f" '## Dangling'; rc=$?
+check 'a dangling continuation on the last line is caught' 1 "$rc" 'ENDED EARLY' "$tmp/out"
+
 printf '\n'
 # A deleted guard used to leave this file reporting "all guards hold" with one
 # fewer ok line — the file could be hollowed out a guard at a time, which is how
@@ -425,7 +433,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=23
+EXPECTED_GUARDS=24
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

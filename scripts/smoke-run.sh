@@ -63,10 +63,13 @@
 # **canonical** cwd: a logical path that differs from it silently does not apply, so a
 # checkout reached through a symlink, or a relocated `$HOME`, would lose the isolation.
 # No guard can kill that — on a machine whose checkout and home are already canonical
-# the two spellings are the same string — so do not "simplify" it back. A `:` in either
-# path splits the value and disables the ceiling too; that one is loud rather than
-# silent (mise walks out and dies on the untrusted config it then finds, which the
-# empty sandbox trust store guarantees it never parses), so it is left as a note.
+# the two spellings are the same string — so do not "simplify" it back. A `:` in
+# either path splits the value on that separator and costs the ceiling one or both of
+# its halves. Measured for the **cwd** half only: the walk leaves the checkout and mise
+# dies on the untrusted config it finds, which the empty sandbox trust store guarantees
+# it never parses — loud, not silent, so it is left as a note rather than handled. The
+# `$HOME` half was not measured; losing it alone should be inert, since the `$PWD` entry
+# stops the walk first from any cwd inside the checkout. A space is fine (measured).
 #
 # The reachable failure this prevents is not a stray read. Without the ceiling, a
 # block running mise from the checkout fails with `error parsing config file`,
@@ -251,7 +254,15 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
   # the total and passes the completeness check. Measured in review (2026-08-09): a
   # three-line fixture ending `exit 9` reported "every line exited 0" while exiting 9.
   # "Did the loop finish" is what the check actually means.
-  printf "complete\n" > "$lines"
+  #
+  # Guarded on an empty $acc, because reaching EOF is not the same as running
+  # everything: a last line ending in a backslash leaves a command pending in $acc
+  # that the loop then discards without evaluating. Unguarded, the sentinel called
+  # that green (measured, same review) — the trailing half of the third leak class
+  # named in the header above, whose split half guard 11 already covers.
+  # (No apostrophes in this comment on purpose: everything from `bash -c` down is one
+  # single-quoted argument, so one would end the string. It did, once, here.)
+  if [ -z "$acc" ]; then printf "complete\n" > "$lines"; fi
   # Clamped: an exit status is mod 256, so 256 failing lines exited 0 and the
   # report called it 0 failures. Reachable — the harvest block is ~400 lines and
   # an unbuilt /tmp/kae fails nearly all of them.
@@ -293,7 +304,8 @@ else
     printf 'smoke-run: the block ENDED EARLY — the loop stopped at line %s of %s (block\n' "$got" "$total"
     printf '           exit status %s). Nothing after that line ran, whatever the status\n' "$rc"
     printf '           says. A multi-line construct (here-document, function body) is\n'
-    printf '           the usual cause: this loop evaluates one line at a time. Use\n'
+    printf '           the usual cause: this loop evaluates one line at a time; so is a\n'
+    printf '           last line ending in a backslash, whose command is never run. Use\n'
     printf '           SMOKE_WHOLE_FILE=1 for such a section, or rewrite it as single lines.\n'
     rc=1
   elif [ ! -s "$log" ]; then

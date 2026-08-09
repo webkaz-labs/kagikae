@@ -9,7 +9,7 @@
 # would have caught. The fixtures are cheap on purpose: no `kae` build, no
 # network, so this can run on every commit rather than when somebody remembers.
 #
-# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 18 guards and zero
+# READ THIS BEFORE EDITING EITHER SCRIPT. **These files have 24 guards and zero
 # tests of those guards.** Four separate times a change made for an unrelated
 # reason switched a guard off while the suite went on reporting every guard
 # holding: a list derived from its own subject, a containment check weakened to a
@@ -35,15 +35,29 @@ doc() { # doc <name> <heading> <body...>
   printf '%s' "$f"
 }
 
-check() { # check <description> <expected-rc> <actual-rc> [<must-contain> <output-file>]
+check() { # check <desc> <expected-rc> <actual-rc> [<must-contain> <file>]...
   local desc=$1 want=$2 got=$3
+  shift 3
   if [ "$want" != "$got" ]; then
     printf 'FAIL  %s (want exit %s, got %s)\n' "$desc" "$want" "$got"
     fails=$((fails + 1))
     return
   fi
-  if [ $# -ge 5 ] && ! grep -q -- "$4" "$5"; then
-    printf 'FAIL  %s (output missing %s)\n' "$desc" "$4"
+  # Repeated pairs, so a guard needing two patterns does not hand-roll the
+  # bookkeeping beside the helper that already does it.
+  while [ $# -ge 2 ]; do
+    if ! grep -q -- "$1" "$2"; then
+      printf 'FAIL  %s (output missing %s)\n' "$desc" "$1"
+      fails=$((fails + 1))
+      return
+    fi
+    shift 2
+  done
+  # A pattern with no file would otherwise be dropped without a word — a silent
+  # subset inside the file written to stop silent subsets. Not reachable from any
+  # caller today (all pass 0, 2 or 4 trailing arguments); this is for the next one.
+  if [ $# -ne 0 ]; then
+    printf 'FAIL  %s (odd trailing argument: a pattern with no file)\n' "$desc"
     fails=$((fails + 1))
     return
   fi
@@ -77,7 +91,7 @@ COPILOT_HOME KAE_FINGERPRINT KAE_PROFILE MISE_CONFIG_DIR OPENCODE_AUTH_CONTENT"
 # same reason: matching only `="$safe` values means a NEW assignment pointing
 # somewhere else entirely (`XDG_CACHE_HOME="/tmp/notsandbox"`) is invisible,
 # which is the "additions are silent" half all over again.
-EXPECTED_OTHER="KAE_CLAUDE_DRIVER NO_COLOR SMOKE_WHOLE_FILE"
+EXPECTED_OTHER="KAE_CLAUDE_DRIVER MISE_CEILING_PATHS NO_COLOR SMOKE_WHOLE_FILE"
 
 # A "root" is definitionally a variable the runner points into the sandbox, so
 # that is what is matched: an assignment whose value starts with $safe.
@@ -290,6 +304,122 @@ run "$f" '## Join'; check 'a backslash continuation is joined, not split' 0 $?
 f=$(doc nocolor '## NoColor' 'printf "NO_COLOR=%s\n" "${NO_COLOR-unset}"')
 run "$f" '## NoColor'; check 'colour is disabled for the block' 0 $? 'NO_COLOR=1' "$(transcript)"
 
+# 13. mise must not be able to reach a config outside the sandbox. It is the one
+#     isolated thing that has nothing to do with HOME: mise walks up from the
+#     **current directory**, and a block starts in the checkout, which sits inside
+#     the operator's home — so every root this file guards can be correct and mise
+#     still read the operator's real config (measured: two of them, 2026-08-09).
+#
+#     The first assertion is the positive control and it is not decoration. With
+#     the ceiling removed, mise on a machine that has an operator config fails
+#     outright (its `trusted-configs` lives under the redirected XDG_STATE_HOME, so
+#     the sandbox trust store is empty) and prints nothing at all — which would
+#     satisfy a lone "nothing outside the sandbox" check by printing nothing for
+#     the wrong reason. That is this file's own recorded defect class: a guard
+#     whose empty input is its success branch. So the block seeds a config *inside*
+#     the sandbox and requires mise to find that one.
+#
+#     A second thing it cannot kill, and the reason is the same: writing the ceiling
+#     from `$PWD`/`$HOME` instead of `pwd -P`. mise matches the ceiling against the
+#     CANONICAL cwd, so a logical path that differs from it silently does not apply —
+#     but on a machine where the checkout and the home are already canonical the two
+#     spellings are the same string. It bites a checkout reached through a symlink,
+#     or a relocated `$HOME` (found in review, 2026-08-09, by measuring a symlinked
+#     fixture directory rather than by reading).
+#
+#     What this guard cannot kill, measured rather than assumed: narrowing the
+#     ceiling to `$PWD` alone. The runner never leaves the checkout, and from there
+#     the `$PWD` entry stops the walk before anything above it — so the `$HOME`
+#     half is invisible here. It is still load-bearing, and the case was measured
+#     on 2026-08-09: from the checkout's *parent*, a `$PWD`-only ceiling reaches
+#     the operator's config and mise fails on it, while `$PWD:$HOME` is silent.
+#     Reproducing that would mean letting a fixture `cd` above the checkout, which
+#     buys one mutation and hands every other guard a cwd outside the repository.
+#     Note also that the failure there arrives on *stderr* with an empty stdout, so
+#     a "count the paths" assertion alone reads it as success — which is the same
+#     reason the control below exists.
+#
+#     Deliberately not done here: disabling trust to make mise talk. The runner
+#     header is normative for why (it costs a secret), and a self-test that did it
+#     anyway would be teaching the opposite of the file it guards.
+f=$(doc ceiling '## Ceiling' \
+  'mkdir -p "$HOME/.config/mise"' \
+  'printf "[env]\nSMOKE_CEILING_CONTROL = \"1\"\n" > "$HOME/.config/mise/config.toml"' \
+  'test "$(mise config ls 2>/dev/null | grep -c "config.toml")" -ge 1' \
+  'test "$(mise config ls 2>/dev/null | grep -c "^/")" -eq 0')
+run "$f" '## Ceiling'
+check 'mise cannot reach a config outside the sandbox' 0 $?
+
+# 14. A block that ends itself must not be reported as green. The per-line loop
+#     records failures in a log and the report reads that log, so a block which
+#     exits *out* of the loop leaves it empty — which used to select the "every
+#     line exited 0" branch while the run exited non-zero. Measured on the real
+#     relogin section: 35 of 146 lines ran and it reported every line green.
+#     The fixture uses a here-document because that is how it actually happened —
+#     one line to this loop, its body then evaluated as commands — so this guard
+#     covers the reachable cause and not just the bare `exit`.
+#
+#     The `ENDED EARLY` half is the load-bearing one and dropping it looks
+#     harmless: measured 2026-08-09, a version checking only the exit status
+#     SURVIVES, because the broken runner already exited 9. It was the *message*
+#     that lied. Anything asserting on this behaviour has to read what the run
+#     said, not only what it returned.
+f=$(doc early '## Early' \
+  'touch "$HOME/before"' \
+  "cat > \$HOME/fake <<'XEOF'" \
+  'echo unreachable' \
+  'exit 9' \
+  'XEOF' \
+  'touch "$HOME/after"')
+run "$f" '## Early'; rc=$?
+check 'a block that ends early is not reported as green' 1 "$rc" 'ENDED EARLY' "$tmp/out"
+
+# 15. The same, ending with status **0**. This is the half a status-based check
+#     cannot see, and it is the more idiomatic one — a fixture script ends `exit 0`
+#     far more often than `exit 9`. Guard 14 used 9 and so passed while this shape
+#     still reported "every line exited 0" (found in review, 2026-08-09).
+f=$(doc early0 '## Early0' \
+  'touch "$HOME/before"' \
+  "cat > \$HOME/fake <<'XEOF'" \
+  'echo unreachable' \
+  'exit 0' \
+  'XEOF' \
+  'touch "$HOME/after"')
+run "$f" '## Early0'; rc=$?
+check 'a block that ends early with status 0 is caught too' 1 "$rc" 'ENDED EARLY' "$tmp/out"
+
+# 16. A failing line AND an early end must BOTH be reported. Reporting only the
+#     failure implies every other line ran, which is the same lie one level down;
+#     an earlier version made the failure branch outrank the completeness one with
+#     an `elif` and printed exactly that (found in review, 2026-08-09).
+f=$(doc both '## Both' \
+  'touch "$HOME/before"' \
+  'false' \
+  "cat > \$HOME/fake <<'XEOF'" \
+  'exit 9' \
+  'XEOF' \
+  'touch "$HOME/after"')
+run "$f" '## Both'; rc=$?
+check 'a failing line and an early end are both reported' 1 "$rc" \
+  'exited non-zero' "$tmp/out" 'ENDED EARLY' "$tmp/out"
+
+# 17. A block that ends on its LAST line. The counter is written before each line
+#     runs, so this shape leaves it equal to the total and passed the completeness
+#     check that guards 14-16 exercise — detection depended on there being lines
+#     *after* the failure point (found in review, 2026-08-09). The runner writes a
+#     sentinel after the loop instead, so the invariant is "the loop finished".
+f=$(doc lastexit '## LastExit' 'touch "$HOME/a"' 'true' 'exit 9')
+run "$f" '## LastExit'; rc=$?
+check 'a block that ends on its last line is caught' 1 "$rc" 'ENDED EARLY' "$tmp/out"
+
+# 18. A last line ending in a backslash. The loop reaches EOF with a command still
+#     pending in $acc and discards it; the sentinel called that a finished loop until
+#     it was guarded on $acc (found in review, 2026-08-09). Guard 11 covers the other
+#     half of the same leak class — a continuation split from its redirection.
+f=$(doc dangling '## Dangling' 'touch "$HOME/a"' 'touch "$HOME/b" \\')
+run "$f" '## Dangling'; rc=$?
+check 'a dangling continuation on the last line is caught' 1 "$rc" 'ENDED EARLY' "$tmp/out"
+
 printf '\n'
 # A deleted guard used to leave this file reporting "all guards hold" with one
 # fewer ok line — the file could be hollowed out a guard at a time, which is how
@@ -310,7 +440,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=18
+EXPECTED_GUARDS=24
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

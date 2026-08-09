@@ -3,11 +3,16 @@
 # them in isolation. From the repository root:
 #
 #   bash scripts/smoke-run.sh '## Smoke Checks'
-#   SMOKE_WHOLE_FILE=1 bash scripts/smoke-run.sh '## v0.17.0 surface — the credential harvest'
 #
-# Use SMOKE_WHOLE_FILE=1 for a section that defines functions or other multi-line
-# constructs (the harvest section does). That mode has no per-line verdict and
-# says so; the default mode is the one whose exit status means something.
+# **No section in docs/VALIDATION.md needs SMOKE_WHOLE_FILE=1 today.** The harvest
+# section did until 2026-08-09, and this header went on naming it as the example
+# after that section had been converted and said the opposite in its own opening
+# paragraph — two files contradicting each other about one section, found in review.
+# The flag survives as an escape hatch for a section that acquires a multi-line
+# construct (a here-document, a function body spread over lines) the per-line loop
+# cannot execute. Prefer rewriting the construct as single lines: that mode has no
+# per-line verdict and says so, and the default mode is the one whose exit status
+# means something.
 #
 # `bash scripts/smoke-run-selftest.sh` checks this script's own guards, and
 # `mise run check` runs it.
@@ -41,6 +46,44 @@
 # `CLAUDE_CONFIG_DIR`, `COPILOT_HOME` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`
 # **outrank** the temp HOME, and a preamble-less block inheriting one of them was
 # measured writing outside the sandbox while this script reported a clean run.
+#
+# `MISE_CEILING_PATHS` is the one entry here that has nothing to do with HOME, and
+# guessing at it from the others gets it backwards. mise does not reach the
+# operator's config through HOME or any XDG root: it walks **up from the current
+# directory**, and a block starts in the checkout, which is inside the operator's
+# home. So redirecting HOME does nothing for it — measured, from the repo root mise
+# loaded two configs outside the sandbox; from a cwd inside the sandbox, none. A
+# ceiling stops that walk, and **both** entries earn their place: the real home
+# alone still lets the checkout's own `mise.toml` in, since the walk collects
+# configs on the way up to the ceiling rather than only at it. `MISE_GLOBAL_CONFIG_FILE`
+# and `MISE_IGNORED_CONFIG_PATHS` were both measured *not* closing this, for the
+# same reason — the file is not being loaded as the global config in the first place.
+#
+# It is `pwd -P` and not `$PWD` because mise matches the ceiling against the
+# **canonical** cwd: a logical path that differs from it silently does not apply, so a
+# checkout reached through a symlink, or a relocated `$HOME`, would lose the isolation.
+# No guard can kill that — on a machine whose checkout and home are already canonical
+# the two spellings are the same string — so do not "simplify" it back. A `:` in
+# either path splits the value on that separator and costs the ceiling one or both of
+# its halves. Measured for the **cwd** half only: the walk leaves the checkout and mise
+# dies on the untrusted config it finds, which the empty sandbox trust store guarantees
+# it never parses — loud, not silent, so it is left as a note rather than handled. The
+# `$HOME` half is inert on its own (measured too): the cwd entry survives the split and
+# bounds the walk first. That direction generalises — a fragment a split leaves behind
+# can only stop the walk earlier, never extend it, so a mangled ceiling is
+# over-restrictive rather than leaky. A space is fine (measured).
+#
+# The reachable failure this prevents is not a stray read. Without the ceiling, a
+# block running mise from the checkout fails with `error parsing config file`,
+# whose real cause one line down is `not trusted` (this script redirects
+# XDG_STATE_HOME, and mise keeps `trusted-configs` there, so the sandbox's trust
+# store is empty). The documented cure for that, `MISE_TRUSTED_CONFIG_PATHS=/`,
+# makes mise *load* the operator's global config and evaluate its `exec()`
+# templates — one of which resolved a live GitHub token into a run transcript on
+# 2026-08-09. So: never answer a mise trust error in a smoke block by disabling
+# trust. With the ceiling there is nothing untrusted to read and the error does not
+# arise (measured: `rc=0`, no trust override).
+#
 # It cannot isolate **the macOS login keychain**, which ignores `$HOME`
 # entirely. `KAE_CLAUDE_DRIVER=file` below keeps claude's own credential in a
 # file, but kae's *snapshot* store still follows `secret_backend`, and only the
@@ -74,7 +117,7 @@ fi
 # fails noisily and leaves it behind.
 cleanup() {
   [ -n "${safe:-}" ] && chmod -R u+w "$safe" 2>/dev/null
-  rm -rf "${block:-}" "${log:-}" "${safe:-}"
+  rm -rf "${block:-}" "${log:-}" "${safe:-}" "${consumed:-}"
 }
 trap cleanup EXIT
 
@@ -121,8 +164,9 @@ if [ ! -s "$block" ]; then
   printf 'smoke-run: no bash block found under %s\n' "$heading" >&2
   exit 2
 fi
+block_lines=$(wc -l < "$block" | tr -d ' ')
 printf 'smoke-run: %s lines extracted from %s under %s\n' \
-  "$(wc -l < "$block" | tr -d ' ')" "$doc" "$heading"
+  "$block_lines" "$doc" "$heading"
 
 # --- record what the checkout looks like now --------------------------------
 # Content, not size: `kae pin` appends so a size check would catch the realistic
@@ -140,6 +184,7 @@ excl_before=$([ -f "$excl" ] && cat "$excl" || echo missing)
 safe=$(mktemp -d)
 log=$(mktemp)
 transcript=$(mktemp)
+consumed=$(mktemp)
 
 # Line by line, joining backslash continuations, because the exit status has to
 # mean something. Sourcing the whole file reports only its *last* command: a
@@ -162,6 +207,7 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
   TMPDIR="$safe/tmp" \
   NO_COLOR=1 \
   KAE_CLAUDE_DRIVER=file \
+  MISE_CEILING_PATHS="$(pwd -P):$(cd "$HOME" && pwd -P)" \
   SMOKE_WHOLE_FILE="${SMOKE_WHOLE_FILE:-0}" \
   bash -c '
   # Before anything else: GNU `mktemp` honours TMPDIR and fails on a missing
@@ -169,14 +215,22 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
   # and every subsequent redirect fails. (darwin mktemp ignores TMPDIR, which is
   # why the wrong order was invisible here.)
   mkdir -p "$TMPDIR"
-  block=$1; log=$2; tr=$3; out=$(mktemp); acc=""; start=0; n=0; failed=0
+  block=$1; log=$2; tr=$3; lines=$4; out=$(mktemp); acc=""; start=0; n=0; failed=0
   printf "smoke-run transcript: HOME=%s\n\n" "$HOME" >"$tr"
   if [ "$SMOKE_WHOLE_FILE" = 1 ]; then
     # shellcheck disable=SC1090
     . "$block" >>"$tr" 2>&1; exit $?
   fi
+  # How far the loop got, rewritten every iteration rather than set on the way out.
+  # The report needs this rather than the exit status: a block that ends itself with
+  # `exit 0` — idiomatic at the end of a fixture script — leaves a zero status and an
+  # empty log, which is the "green" shape exactly, so keying the check on a non-zero
+  # status closed only half the hole (found in review, 2026-08-09). An EXIT trap would
+  # be tidier and is deliberately not used: this whole script is a single-quoted
+  # argument to `bash -c`, so a trap body needs `'"'"'` quoting to survive, and getting
+  # that wrong expands the counter in the OUTER shell instead.
   while IFS= read -r line <&3; do
-    n=$((n + 1))
+    n=$((n + 1)); printf "%s\n" "$n" > "$lines"
     if [ -n "$acc" ]; then acc="$acc $line"
     else
       # Strip leading whitespace and test the FIRST character. Matching "#"
@@ -197,12 +251,27 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
     fi
     acc=""
   done 3< "$block"
+  # The sentinel, not the count. The counter above is written BEFORE its line runs —
+  # deliberately, so a trailing comment or a backslash continuation cannot read as an
+  # early end — which means a block ending on its LAST line leaves the count equal to
+  # the total and passes the completeness check. Measured in review (2026-08-09): a
+  # three-line fixture ending `exit 9` reported "every line exited 0" while exiting 9.
+  # "Did the loop finish" is what the check actually means.
+  #
+  # Guarded on an empty $acc, because reaching EOF is not the same as running
+  # everything: a last line ending in a backslash leaves a command pending in $acc
+  # that the loop then discards without evaluating. Unguarded, the sentinel called
+  # that green (measured, same review) — the trailing half of the third leak class
+  # named in the header above, whose split half guard 11 already covers.
+  # (No apostrophes in this comment on purpose: everything from `bash -c` down is one
+  # single-quoted argument, so one would end the string. It did, once, here.)
+  if [ -z "$acc" ]; then printf "complete\n" > "$lines"; fi
   # Clamped: an exit status is mod 256, so 256 failing lines exited 0 and the
   # report called it 0 failures. Reachable — the harvest block is ~400 lines and
   # an unbuilt /tmp/kae fails nearly all of them.
   [ "$failed" -gt 0 ] && exit 1
   exit 0
-' _ "$block" "$log" "$transcript"
+' _ "$block" "$log" "$transcript" "$consumed"
 rc=$?
 
 # --- report -----------------------------------------------------------------
@@ -211,12 +280,40 @@ if [ "${SMOKE_WHOLE_FILE:-0}" = 1 ]; then
   # "every line exited 0" here (which an earlier version did, unconditionally)
   # reproduces the defect the per-line loop was written to fix.
   printf 'smoke-run: whole-file mode — block exit status %s, NO per-line verdict\n' "$rc"
-elif [ -s "$log" ]; then
-  printf 'smoke-run: %s line(s) exited non-zero:\n' "$(grep -c '^  line ' "$log")"
-  cat "$log"
-  printf 'smoke-run: a section whose prose allows non-zero lines has to say which\n'
 else
-  printf 'smoke-run: every line exited 0\n'
+  # Completeness and per-line failures are INDEPENDENT questions, and an earlier
+  # version made the second outrank the first with an `elif`: a block that failed a
+  # line *and* then ended early printed the failing line and nothing else, so the
+  # verdict implied every other line had run. Both are reported (found in review,
+  # 2026-08-09).
+  total=$block_lines
+  got=$(cat "$consumed" 2>/dev/null || echo 0)
+  [ -n "$got" ] || got=0
+  if [ -s "$log" ]; then
+    printf 'smoke-run: %s line(s) exited non-zero:\n' "$(grep -c '^  line ' "$log")"
+    cat "$log"
+    printf 'smoke-run: a section whose prose allows non-zero lines has to say which\n'
+  fi
+  if [ "$got" != complete ]; then
+  # The loop itself only ever returns 0 or 1, and the 1 is always accompanied by a
+  # log entry — so an empty log beside a non-zero status means the block ended
+  # *itself* and the lines after that point never ran. Reporting "every line exited
+  # 0" here is the exact defect this tool exists to stop, and it did exactly that
+  # until 2026-08-09: an unterminated here-document (`cat > f <<'EOF'` is one line
+  # to this loop, so the body that follows gets evaluated as commands) reached an
+  # `exit 9` in that body, which killed the inner shell after 35 of 146 lines. The
+  # run printed "every line exited 0" and exited 9, and nothing reads the exit code
+  # of a line that already told you it was green.
+    printf 'smoke-run: the block ENDED EARLY — the loop stopped at line %s of %s (block\n' "$got" "$total"
+    printf '           exit status %s). Nothing after that line ran, whatever the status\n' "$rc"
+    printf '           says. A multi-line construct (here-document, function body) is\n'
+    printf '           the usual cause: this loop evaluates one line at a time; so is a\n'
+    printf '           last line ending in a backslash, whose command is never run. Use\n'
+    printf '           SMOKE_WHOLE_FILE=1 for such a section, or rewrite it as single lines.\n'
+    rc=1
+  elif [ ! -s "$log" ]; then
+    printf 'smoke-run: every line exited 0\n'
+  fi
 fi
 printf 'smoke-run: full transcript in %s\n' "$transcript"
 

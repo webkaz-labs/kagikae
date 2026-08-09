@@ -150,7 +150,6 @@ test -L "$ISO"/*/codex/shared/config.toml       # assert: config.toml symlinked 
 test -f "$ISO"/*/codex/shared/auth.json         # assert: auth.json private-copied, not linked
 /tmp/kae pin side                               # assert: idempotent (regenerated, no error)
 
-/tmp/kae pin -s side                            # the flag spelled out, same as bare `pin`
 /tmp/kae pin -i side                            # isolated: full isolation, no symlinks
 grep -c 'codex/isolated/main/config' "$FRAG"    # assert: 1
 test -f "$ISO"/*/codex/isolated/main/config/auth.json   # assert: credential private-copied.
@@ -165,6 +164,15 @@ test -z "$(find "$ISO"/*/codex/isolated -type l)"   # assert: no symlinks in iso
                                                 #   of the whole tree finds the shared bind's
                                                 #   config.toml link and fails for the wrong
                                                 #   reason (measured while writing this block)
+
+/tmp/kae pin -s side                            # and `-s` switches back. Placed after the
+grep -c 'codex/shared' "$FRAG"                  #   isolated bind on purpose: run while the
+                                                #   directory is already shared it proves only
+                                                #   that the flag parses, since a build that
+                                                #   ignored `-s` would look identical
+                                                # assert: 1 — the bind really moved back
+/tmp/kae pin -i side                            # isolated again for the re-bind case below
+grep -c 'codex/isolated/main/config' "$FRAG"    # assert: 1
 
 # `kae pin <tool> <account>` re-binds ONE tool and takes an **account**, not a profile.
 /tmp/kae add --no-login codex side --json       # so capture the account first
@@ -214,22 +222,32 @@ EDITOR=true /tmp/kae edit                       # validate round-trip
 
 **Every line must exit `0`**, including the `<cmd>; test $? -eq <n>` ones — those
 carry the exit code the surface promises instead of printing it for a reader to
-eyeball, so the line as a whole succeeds while the command in it does not. Nine of
-the ten `grep -c` lines assert `1` or more and exit `0` for the same reason. The
-one line that asserts a count of **zero** is wrapped in `test` rather than left
-bare, because a bare `grep -c` inverts there: it exits `1` on the correct answer
-and `0` on the failure it is looking for.
+eyeball, so the line as a whole succeeds while the command in it does not. Every
+line asserting a `grep -c` of **zero** is wrapped in `test` rather than left bare,
+because a bare `grep -c` inverts there: it exits `1` on the correct answer and `0`
+on the failure it is looking for. No count of such lines is given deliberately:
+this paragraph has twice stated one that the next edit to the block falsified,
+the second time inside the very commit that was correcting the first.
 
-Run the block by extracting it from this file rather than by copying it, so what
-runs is what is written here. Note the backslash continuations: a line-by-line
-runner splits `printf … \` from its `> file` and silently truncates the fixture.
+**Run it with `bash scripts/smoke-run.sh '## Smoke Checks'`, not by hand.** That
+script extracts the block from this file, runs it with every root already inside a
+temp HOME so a preamble that fails to take effect still cannot reach the real one,
+and fails if the checkout changed. Every hand-written harness for this file has
+leaked; the script's header records the four measured ways and is the reason it
+exists rather than a warning here.
 
 **What this block does not cover, said because a green run reads as if it did.**
-`KAE_CLAUDE_DRIVER=file` is what makes it safe on macOS, and it is also what keeps
-it away from `internal/keychain` entirely: claude's credential here is a JSON
-pointer in a file, so the keychain read/write path, the per-directory service-name
-derivation, and cursor in any form are **not** exercised. Those stay covered by
-unit tests over the darwin sim and by the real-machine gates further down.
+`KAE_CLAUDE_DRIVER=file` is what makes it safe on macOS, and it keeps claude's
+credential in a JSON-pointer file — so claude's **per-directory keychain
+service-name derivation is never reached**, and no keychain **write** happens
+anywhere in the block (measured with a `security` shim on `PATH`: zero
+`add-generic-password` / `delete-generic-password` attempts). It does **not**
+follow that the block avoids `internal/keychain`. `kae doctor --json` and
+`kae status --json` probe agy, cursor and codex through it, and the `security`
+CLI ignores `$HOME` — so the same measured run made ten reads against the
+operator's *real* login keychain. cursor especially is only ever **read** here and
+never switched, so a green run says nothing about switching it; that stays with
+the unit tests over the darwin sim and the real-machine gates further down.
 
 Enter-hook firing (`mise init --auto --write`) needs a live mise:
 `mise settings experimental=true` (hooks are experimental; the global config

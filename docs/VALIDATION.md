@@ -1089,32 +1089,69 @@ success:
 
 Companion-auth lockstep (`kae companion`, delivered per-directory by `kae pin`).
 Smoke against a temp HOME with the file backend; the `exec()` token path needs
-`mise trust` (the same step any pin fragment needs):
+`mise trust` (the same step any pin fragment needs).
+
+This is the one block that runs `mise`, and `scripts/smoke-run.sh`'s header is
+normative for why that is isolated at all — mise finds config by walking up from
+the current directory rather than through `$HOME`, so the runner's ceiling is what
+keeps the operator's own mise config out of this. Do not answer a trust error here
+by widening `trusted_config_paths`; the header says what that costs.
 
 ```bash
-# (continues from the v0.8.0 setup: /tmp/kae built, temp HOME + file config, plus
-#  proj=$(mktemp -d) for the directory to pin). The first line below overwrites
-#  $HOME/.gitconfig, so an un-isolated shell loses the operator's real one.
-# config: [security] secret_backend = "file" + a profile, e.g. [profiles.main]
+go build -o /tmp/kae .
+. scripts/smoke-env.sh
+export KAE_CLAUDE_DRIVER=file
+mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
+printf 'version = 1\n[security]\nsecret_backend = "file"\n' > "$XDG_CONFIG_HOME/kagikae/config.toml"
+printf '{"claudeAiOauth":{"accessToken":"tok-main"}}' > "$HOME/.claude/.credentials.json"
+/tmp/kae add --no-login claude main
+/tmp/kae profile set main claude main
+# Canonical, because kae resolves /private/var/... on macOS while `mktemp -d` returns
+# /var/... — an uncanonical $proj makes the fragment's paths and these greps disagree.
+proj=$(cd "$(mktemp -d)" && pwd -P)
+# This overwrites $HOME/.gitconfig, so an un-isolated shell loses the operator's real one.
 printf '[alias]\n\tlol = log --oneline\n[user]\n\temail = real@personal.test\n' > "$HOME/.gitconfig"
+
 /tmp/kae companion add main git email=you@example.com name=You
 /tmp/kae companion add main kubectl KUBECONFIG="$HOME/.kube/main"
 printf 'ghp_smoke\n' | /tmp/kae companion add main gh GH_TOKEN
-/tmp/kae companion list
-#   assert: gh shows GH_TOKEN=(secret); config.toml holds no token plaintext
-/tmp/kae __companion-token main gh GH_TOKEN        # prints ghp_smoke (helper path)
+/tmp/kae companion list > "$HOME/comp.txt"
+grep -qE '^main +gh +GH_TOKEN=\(secret\)$' "$HOME/comp.txt"   # assert: never the value
+grep -q 'GH_TOKEN = ""' "$XDG_CONFIG_HOME/kagikae/config.toml"
+                              # assert: the knob is recorded with an empty value where
+                              #   the secret would be — the positive control for the
+                              #   absence below, which an unwritten config would satisfy
+test "$(grep -c ghp_smoke "$XDG_CONFIG_HOME/kagikae/config.toml")" -eq 0
+                              # assert: config.toml holds no token plaintext
+test "$(/tmp/kae __companion-token main gh GH_TOKEN)" = ghp_smoke   # assert: helper path
+
 cd "$proj" && /tmp/kae pin main                    # writes the fragment
-mise trust .config/mise/conf.d/kagikae.toml
-#   assert: fragment has redactions = ["GH_TOKEN"], GH_TOKEN as {{ exec(...) }},
-#           GIT_CONFIG_GLOBAL + KUBECONFIG as paths, no token plaintext
-mise exec -- git config --get user.email           # you@example.com (override)
-mise exec -- git config --get alias.lol            # log --oneline (~/.gitconfig preserved)
-mise exec -- sh -c 'echo $GH_TOKEN'                # ghp_smoke (resolved at eval)
-git config --get user.email                        # real@personal.test (unpinned: unchanged)
-/tmp/kae doctor --json                             # no companion_missing when secrets stored
-#   companion_drift: present here (pin not active in this shell → git resolves
-#   real@personal.test, not the bound you@example.com)
-mise exec -- /tmp/kae doctor --json                # no companion_drift (active pin → git matches the binding)
+F=.config/mise/conf.d/kagikae.toml
+grep -q 'redactions = \["GH_TOKEN"\]' "$F"         # assert: the fragment declares it
+grep -qF 'GH_TOKEN = "{{ exec(' "$F"               # assert: resolved at eval, not stored
+grep -q '^GIT_CONFIG_GLOBAL = "' "$F"              # assert: paths, not contents
+grep -q '^KUBECONFIG = "' "$F"
+test "$(grep -c ghp_smoke "$F")" -eq 0             # assert: no token plaintext either
+mise trust "$F"
+
+test "$(mise exec -- git config --get user.email)" = you@example.com
+                              # assert: the binding overrides the real ~/.gitconfig
+test "$(mise exec -- git config --get alias.lol)" = "log --oneline"
+                              # assert: and preserves the rest of it
+test "$(mise exec -- sh -c 'echo $GH_TOKEN')" = ghp_smoke
+                              # assert: the exec() knob resolves at eval time
+test "$(git config --get user.email)" = real@personal.test
+                              # assert: unpinned, this shell is unchanged
+
+/tmp/kae doctor --json > "$HOME/D.json"
+test "$(grep -c companion_missing "$HOME/D.json")" -eq 0   # assert: secrets are stored
+grep -q companion_drift "$HOME/D.json"
+                              # assert: companion_drift IS present here — the pin is not
+                              #   active in this shell, so git resolves real@personal.test
+                              #   rather than the bound you@example.com
+mise exec -- /tmp/kae doctor --json > "$HOME/E.json"
+grep -q '"schema_version"' "$HOME/E.json"                  # positive control for the next
+test "$(grep -c companion_drift "$HOME/E.json")" -eq 0     # assert: gone under the pin
 ```
 
 `companion_token_drift` is opt-in and needs a network call, so the temp-HOME

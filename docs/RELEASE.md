@@ -1561,8 +1561,9 @@ Shipped 2026-06-17. bash and zsh completion verified on macOS — `kae <TAB>`,
 shells' standard ambiguous-completion behavior, governed by the user's own
 `LIST_AMBIGUOUS` / `show-all-if-ambiguous` settings, not a kae defect). The
 **fish real-machine smoke is deferred** (fish was not installed on the release
-machine) and is the one open acceptance item — run the VALIDATION.md "v0.8.4
-real-machine smoke" for fish before relying on fish completion. Making the mise
+machine) and is the one open acceptance item. It was superseded a day later:
+v0.8.6 dropped fish from the verified shells, so there is nothing left to run
+(recorded in the v0.8.4 and v0.8.6 acceptance-log entries). Making the mise
 `ai-switch` tasks available globally (not just in the project that ran
 `kae mise init`) is a post-ship candidate (ROADMAP.md).
 
@@ -1947,8 +1948,9 @@ snapshot back to the live store with no recapture — only `run -s` recaptures
 (via `runAuthTransaction`'s post-child `captureSnapshot`). So a token rotated
 outside kae (a re-login in the tool, a long-unused account) leaves the snapshot
 stale, and a switch back to it can break auth — dropping to a login prompt when
-the refresh token has also rotated (observed in the v0.8.0 real-machine gate,
-[VALIDATION.md](VALIDATION.md)). v0.8.1 closes this gap symmetrically with
+the refresh token has also rotated (observed in the v0.8.0 real-machine gate;
+the mechanism is measured in [VALIDATION.md](VALIDATION.md) § "Upstream
+Behaviour Assumptions"). v0.8.1 closes this gap symmetrically with
 `run`, surfaces staleness it cannot self-heal, and pays down the per-switch
 keychain cost the recapture adds.
 

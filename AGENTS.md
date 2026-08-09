@@ -32,7 +32,9 @@ git diff --check
 `mise run check` is the authoritative gate; it must pass before every commit.
 It runs `lint` (gofumpt + goimports format check, `staticcheck -checks=SA*`,
 curated `golangci-lint`, `shellcheck`), `go test ./...`, `go vet`,
-`go mod verify`, and `go build ./...`. `mise run audit` (govulncheck, plus the
+`go mod verify`, `go build ./...`, and `smoke-selftest`
+(`scripts/smoke-run-selftest.sh`, which checks the smoke runner's own guards — no
+`kae` build and no network, so it costs a few seconds). `mise run audit` (govulncheck, plus the
 upstream literal fingerprints — it reads the installed tools' own binaries, so it
 only means anything on a machine that has them) and `mise run goreleaser-check` are
 slower release-time checks. Lint tools run via `go run <tool>@<pinned version>`; the

@@ -186,7 +186,8 @@ alternative exists (`secret-tool`).
   misattribution this entry is named after, made while writing the entry. Two release
   counts were attached to that claim and both were withdrawn — "eight versions", which
   was sourceable nowhere, and "14 releases", which counts releases since the initial
-  commit rather than anything about the block, itself edited at v0.13.0 and v0.15.3.)
+  commit rather than anything about the block: that is byte-identical to v0.9.0's for
+  only six tags, and was edited at v0.13.0 and v0.15.3 as well as repeatedly earlier.)
 
 - **The smoke guards have no test, and four changes switched one off without
   anything noticing** (recorded 2026-08-09, **not fixed**).

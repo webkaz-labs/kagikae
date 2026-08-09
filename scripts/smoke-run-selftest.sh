@@ -463,10 +463,16 @@ check 'a dangling continuation on the last line is caught' 1 "$rc" 'ENDED EARLY'
 #     rots unwatched, and a count nothing checks can print a number that is simply
 #     untrue. `2:` is where the marker sits — `doc` writes the body verbatim, so the
 #     fixture's `touch` is block line 1 and the marker is line 2.
-f=$(doc assertcomment '## AssertComment' "touch \"$tmp/ac-ran\"" '#   assert: this never runs')
+#     TWO markers, not one, and the count asserted. With a single marker the count
+#     assertion reads `on 1 line(s)`, which is the value a `grep -Einm1` also prints —
+#     measured surviving 35 guards, reporting one line however many the block has. A
+#     fixture whose expected value coincides with a degenerate one is the defect class
+#     the header above names, and it took two rounds to stop writing it.
+f=$(doc assertcomment '## AssertComment' "touch \"$tmp/ac-ran\"" \
+  '#   assert: this never runs' '#   assert: and neither does this')
 run "$f" '## AssertComment'; rc=$?
 check 'a column-0 assert comment is refused' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out" \
-  'on 1 line(s)' "$tmp/out" '2:#   assert:' "$tmp/out"
+  'on 2 line(s)' "$tmp/out" '2:#   assert:' "$tmp/out" '3:#   assert:' "$tmp/out"
 
 # 20. The refusal must happen BEFORE the block runs, which is the whole reason it
 #     carries the caller-error status rather than a failure status. Nothing asserted
@@ -507,12 +513,21 @@ f=$(doc assertexpect '## AssertExpect' 'true' '#   expect: a different label, sa
 run "$f" '## AssertExpect'; rc=$?
 check 'a column-0 marker spelled expect: is refused too' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out"
 
-# 22c. A space before the colon. `#   assert :` is refused at HEAD and nothing named
+# 22c. Whitespace before the colon. `#   assert :` is refused at HEAD and nothing named
 #      the `[[:space:]]*` that does it, so the token was silently droppable — measured
 #      SURVIVING all 33 guards before this existed.
-f=$(doc assertspacecolon '## AssertSpaceColon' 'true' '#   assert : spaced before the colon')
+#      **Two fixture lines and a COUNT, because one example pins one example.** A first
+#      version used a single space-before-colon line, and narrowing the class to ` *:`
+#      then survived 35 guards while a TAB before the colon became a false green: the
+#      space line still matched, the refusal still fired, and `ASSERTS NOTHING` was
+#      still printed. Asserting `on 2 line(s)` is what makes the character class rather
+#      than one member of it the thing under test.
+f=$(doc assertspacecolon '## AssertSpaceColon' 'true' \
+  '#   assert : space before the colon' \
+  "#   assert$(printf '\t'): tab before the colon")
 run "$f" '## AssertSpaceColon'; rc=$?
-check 'a space before the marker colon is still refused' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out"
+check 'both space and tab before the marker colon are refused' 2 "$rc" \
+  'ASSERTS NOTHING' "$tmp/out" 'on 2 line(s)' "$tmp/out"
 
 # 22d. The alternation's WORD LIST, written out here and separately derived from the
 #      runner, required to match — the same two-sided form this file already uses for
@@ -525,10 +540,20 @@ check 'a space before the marker colon is still refused' 2 "$rc" 'ASSERTS NOTHIN
 #      A pattern reshaped so the sed no longer matches derives the EMPTY set and fails
 #      the comparison rather than passing it — the degenerate-input branch this file's
 #      header warns about, checked deliberately.
+#      **Anchored at the assignment, and that is the load-bearing part.** With a
+#      leading `.*` the sed reads every line of the runner and `norm` unions the
+#      matches, so a COMMENT quoting the full pattern satisfies this guard while the
+#      code is narrowed — measured SURVIVING 35/35 while a `#   verify:` marker got
+#      `every line exited 0`. That is not a hypothetical edit: this runner quotes its
+#      retired patterns verbatim in comments three times, because the file asks it to.
+#      `derived_all` above is anchored at the prefix's indentation for the same reason;
+#      `derived_cleared` is not, which is the same gap and is older than this guard.
+#      Both sides go through `norm`, so the declaration does not have to be hand-sorted
+#      and a reordering here cannot fail while naming the runner as the culprit.
 EXPECTED_MARKER_WORDS="assert check confirm ensure expect verify"
-derived_words=$(norm "$(sed -n 's/.*\^#\[\[:space:\]\]\*(\([a-z|]*\)).*/\1/p' "$runner" | tr '|' ' ')")
+derived_words=$(norm "$(sed -n 's/^markers=.*\^#\[\[:space:\]\]\*(\([a-z|]*\)).*/\1/p' "$runner" | tr '|' ' ')")
 check 'the runner refuses exactly the marker words this file declares' \
-  "$EXPECTED_MARKER_WORDS" "$derived_words"
+  "$(norm "$EXPECTED_MARKER_WORDS")" "$derived_words"
 
 # 23. The control the refusals need, and the one that makes the pattern's column-0
 #     anchor load-bearing: a real command carrying a TRAILING `# assert:` comment is

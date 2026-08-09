@@ -1865,11 +1865,11 @@ account to work in — step 2 requires it). Of § Real-Machine Acceptance's acco
 precondition below, exactly one half applies here and the other **must not**: use a
 throwaway or second account, yes; but do *not* re-capture immediately before, because
 the aged capture is this gate's instrument and refreshing it destroys the measurement.
-That is precisely why the account choice is the only protection this gate has. What
-step 4 might overwrite is not derived here — the branch that could have cost a working
-credential is the one where the applied snapshot is *refused*, since a snapshot can
-only be refused after something else refreshed past it, and that reasoning has not
-been measured on the current code.
+That is precisely why the account choice is the only protection this gate has.
+**Unmeasured on the current code: which branch of step 4 can cost a working
+credential.** Do not infer it from this note — an earlier version named the branch
+where the snapshot still works, which is backwards on the rotation row above, and the
+reasoning that points at the other branch is no better measured.
 1. `kae add --no-login claude <acct>` immediately after a completed `/login`, and note
    both `captured_at` and `relogin_by` from `kae ls --json`. Record the login date —
    without it the measurement cannot be interpreted, which is the mistake that
@@ -1893,12 +1893,13 @@ tool's `VerifiedVersion()` and its recorded version in the same commit. `kae
 doctor` naming `upstream_version` for a tool is the signal that its rows are due.
 
 **Which accounts to run any of this with, and it is the whole section's
-precondition rather than one procedure's.** Every check below that applies a
-snapshot to a real store — which is all of them except § Bound-directory credential
-store, whose whole point is that it needs no account at all — and every gate in
-§ Open gates writes a *capture-time* snapshot into a live credential store, and
-§ Upstream Behaviour Assumptions records the measurement that makes that
-consequential: a
+precondition rather than one procedure's.** Every check below applies a
+*capture-time* snapshot to a live credential store, and so does every gate in
+§ Open gates. The one exception is § Bound-directory credential store's **shim
+procedure**, which needs no account at all — but not that subsection as a whole:
+its closing two-account pin needs the real keychain and real accounts, and so needs
+this precondition like everything else. § Upstream Behaviour Assumptions records the
+measurement that makes it consequential: a
 refresh rotates the refresh token, the superseded one is single-use, so two stores
 holding copies of one account's credential invalidate each other — the copy that
 did not refresh last is dead, and offline it is indistinguishable from a healthy
@@ -2014,8 +2015,9 @@ A **fourth** open real-machine gate is deliberately not in this list:
 above, opened 2026-07-31 and also never run. It is separate because it is an open
 **question** rather than a check that must pass — its own text says either outcome
 is a result, one confirming kae's warning and the other showing kae over-warns —
-so nothing about it blocks a release. It also needs only one real login and no
-second account, which makes it runnable on a machine where these three are not.
+so nothing about it blocks a release. Its account needs are its Procedure's to
+state, and are not the reason it is filed apart: an earlier version of this
+paragraph said it needed "no second account", which its own step 2 contradicts.
 
 **Codex keyring two-account round-trip** (macOS, real `Codex Auth` keychain).
 Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:

@@ -182,9 +182,10 @@ printf 'smoke-run: %s lines extracted from %s under %s\n' \
 # commit until 2026-08-09. That is the claim worth making and the only one measured.
 # Two release counts were tried here first and both were wrong — "eight versions",
 # which is sourceable nowhere, and then "14 releases carry the unchanged block",
-# which counts releases *since* the initial commit and is not even true of the
-# block, edited at v0.13.0 and v0.15.3. The defects survived the convention, not
-# byte-identity. Until this guard, that convention rested on doc-review discipline,
+# which counts releases *since* the initial commit and says nothing true about the
+# block: it is byte-identical to v0.9.0's for only six tags, and was edited at
+# v0.13.0 and v0.15.3 as well as repeatedly before v0.9.0. The defects survived the
+# convention, not byte-identity. Until this guard, that convention rested on doc-review discipline,
 # which this file's history shows does not survive unrelated edits.
 #
 # Refused before anything runs, and with the caller-error status the other

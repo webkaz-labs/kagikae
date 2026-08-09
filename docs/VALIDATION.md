@@ -1789,9 +1789,21 @@ The other half of the same fact: when two copies of one account's credential exi
 and one refreshes, the other cannot any more — so `kae doctor` names the directory
 that lost, and `kae relogin` is the one command that fixes it. Same isolation as the
 harvest block above (temp HOME, **file** driver, file backend, no real keychain and
-no real login), and it **continues from that block's preamble** — the `cred`,
-`ident`, `snap`, `store` and `cstore` helpers and the config file are the ones defined
-there.
+no real login). It **repeats that block's preamble** rather than continuing from it:
+the two sections seed the same fixtures, and this one has to be runnable on its own —
+`scripts/smoke-run.sh` gives every section a fresh sandbox, so "continues from the block
+above, in the same shell" meant this section could not be run by the tool built to run
+it. Read verbatim it failed at the first `kae pin` with `profile "main" is not defined`
+and then called `store`, a function nothing had defined.
+
+The duplication is the point, not an oversight: what this block needs is the preamble
+**only**, never the harvest cases. Their bindings of the same account make K's "newest
+copy" a tie, and the store that happens to win the walk order can be one kae cannot
+attribute, which silences the whole group — K measured 0 findings instead of 1 that way
+on 2026-08-08. (A tied store that does *not* win changes nothing; it is already skipped
+for not being superseded.) `docs/ROADMAP.md` § credential_superseded owns the mechanism
+and the control that pinned it. Seeding here is what makes "preamble only" structural
+instead of an instruction a reader has to obey.
 
 **Two copies of one account's credential no longer arise from two ordinary bindings**,
 which changes how this state has to be built. The per-account store that shipped in this
@@ -1811,21 +1823,28 @@ when `CLAUDE_CONFIG_DIR` is unset rather than writing somewhere, so a regression
 fails loudly instead of quietly writing to the temp `$HOME`.
 
 ```bash
-# (continues from the harvest block above, in the SAME shell: its `. scripts/smoke-env.sh`,
-#  its KAE_CLAUDE_DRIVER=file, its helpers and config, its claude/main, and its
-#  `kae profile set main claude main`. Do NOT re-source smoke-env.sh here — that mints a
-#  fresh HOME and throws the account away, leaving `kae pin` below with nothing to bind.
-#  Run it after the PREAMBLE ONLY — **not** after the harvest block's cases, which this
-#  said was fine until 2026-08-08 and is not: their bindings of the same account make K's
-#  "newest copy" a tie, and the store that happens to win the walk order can be one kae
-#  cannot attribute — which silences the whole group. A tied store that does *not* win
-#  changes nothing; it is already skipped for not being superseded. K measured 0 findings instead of 1. docs/ROADMAP.md
-#  § credential_superseded owns the mechanism and the control that pinned it.
-#  If A–J has ALREADY run in this shell, K–M needs a fresh session: open a new shell,
-#  `. scripts/smoke-env.sh`, run the preamble above and nothing else, then this block.
-#  On the paths: use canonical directories. `mktemp -d` returns /var/... on macOS while
-#  kae resolves /private/var/..., so an uncanonical $A makes every assertion that greps
-#  it match nothing while the block still runs green on the `grep -c` lines.)
+# The harvest block's preamble, repeated verbatim so this section stands alone. It must
+# be the preamble and nothing else — see above for what running it after A–J does to K.
+go build -o /tmp/kae .
+. scripts/smoke-env.sh
+export KAE_CLAUDE_DRIVER=file
+OLD=1767225600000; NEW=1798761600000; LATER=1814400000000   # expiresAt: 2026-01-01, 2027-01-01, 2027-07-01
+cred() { printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"rt-%s","expiresAt":%s,"refreshTokenExpiresAt":1830384000000}}' "$1" "$1" "$2"; }
+ident() { printf '{"oauthAccount":{"accountUuid":"u-%s","emailAddress":"%s@example.com"}}' "$1" "$1"; }
+snap() { base64 -d < "$XDG_DATA_HOME/kagikae/secrets/claude/$1/claude_ai_oauth.secret"; }
+store()  { sed -n 's/^CLAUDE_CONFIG_DIR *= *"\(.*\)"/\1/p'                .config/mise/conf.d/kagikae.toml; }
+cstore() { sed -n 's/^CLAUDE_SECURESTORAGE_CONFIG_DIR *= *"\(.*\)"/\1/p'   .config/mise/conf.d/kagikae.toml; }
+mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
+printf 'version = 1\n[security]\nsecret_backend = "file"\n' > "$XDG_CONFIG_HOME/kagikae/config.toml"
+cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+cred SIDE-OLD $OLD > "$HOME/.claude/.credentials.json"; ident side > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity other@example.com claude side
+cred SOLO-OLD $OLD > "$HOME/.claude/.credentials.json"; ident solo > "$HOME/.claude.json"
+/tmp/kae add --no-login --identity solo@example.com claude solo
+/tmp/kae profile set main claude main
+/tmp/kae profile set side claude side
+/tmp/kae profile set solo claude solo
 
 # --- K. doctor names the overtaken directory, and only that one ---
 A=$(cd "$(mktemp -d)" && pwd -P); B=$(cd "$(mktemp -d)" && pwd -P)
@@ -1841,90 +1860,121 @@ grep -v '^CLAUDE_SECURESTORAGE_CONFIG_DIR' "$BF" > "$BF.tmp" && mv "$BF.tmp" "$B
 SB=$(store)   # B's credential is its config dir again — that is the point of the edit
 cred A-NEW $LATER > "$SA/.credentials.json"   # the tool refreshed A's account store
 cred B-OLD $NEW   > "$SB/.credentials.json"   # B has been sitting since before that
-/tmp/kae doctor --json | grep -c credential_superseded   # assert: 1 — exactly one
-                                        #   directory lost. Not `grep -c` alone: the
-                                        #   line below names which, so a broken
-                                        #   extraction cannot pass as a quiet 0
-/tmp/kae doctor | grep "is older than"  # assert: names `bound to $B`, `(the store
-                                        #   bound to $A)` as where the newer copy is,
-                                        #   and `cd $B && kae relogin claude`
-/tmp/kae doctor --json | grep -c credential_stale   # assert: 0 — a superseded copy is
-                                        #   NOT stale. Both deadlines here are years
-                                        #   out; the whole point is that the field the
-                                        #   stale check reads does not move on
-                                        #   invalidation
+test "$(/tmp/kae doctor --json | grep -c credential_superseded)" -eq 1
+                                        # assert: exactly one directory lost. A count
+                                        #   alone would pass as a quiet 0, so the lines
+                                        #   below name which one
+/tmp/kae doctor | grep "is older than" > "$HOME/K.txt"
+grep -q "bound to $B is older than another copy of claude/main (the store bound to $A)" "$HOME/K.txt"
+                                        # assert: B lost, and A is named as where the
+                                        #   newer copy is
+grep -q "cd $B && kae relogin claude" "$HOME/K.txt"   # assert: and the remedy is a login
+test "$(/tmp/kae doctor --json | grep -c credential_stale)" -eq 0
+                                        # assert: 0 — a superseded copy is NOT stale.
+                                        #   Both deadlines here are years out; the whole
+                                        #   point is that the field the stale check reads
+                                        #   does not move on invalidation. The grep above
+                                        #   is the positive control: it fails if doctor
+                                        #   reported nothing at all
 
 # --- L. relogin logs in *into the bound store* and captures it back ---
 FAKEBIN=$(mktemp -d)
-cat > "$FAKEBIN/claude" <<'EOF'
-#!/bin/sh
-[ "$1" = "/login" ] || { echo "unexpected argv: $*" >&2; exit 9; }
-[ -n "$CLAUDE_CONFIG_DIR" ] || { echo "no CLAUDE_CONFIG_DIR" >&2; exit 8; }
-printf '{"claudeAiOauth":{"accessToken":"B-RELOGGED","refreshToken":"rt-B-RELOGGED","expiresAt":1830384000000,"refreshTokenExpiresAt":1861920000000}}' > "$CLAUDE_CONFIG_DIR/.credentials.json"
-printf '{"oauthAccount":{"accountUuid":"u-main","emailAddress":"main@example.com"}}' > "$CLAUDE_CONFIG_DIR/.claude.json"
-EOF
+# Written a line at a time rather than from a here-document, and that is not a style
+# choice. `scripts/smoke-run.sh` evaluates one line at a time, so `cat > f <<'EOF'` is a
+# here-doc with no body: the lines below it are then run as commands, and the `exit 9` in
+# this fake's own argv check killed the run after 35 of 146 lines. The runner said "every
+# line exited 0" while exiting 9, so the whole of L and M silently never ran (2026-08-09;
+# the runner now reports that state, and its guard 14 covers it). The alternative is
+# SMOKE_WHOLE_FILE=1, which costs the per-line verdict this section wants.
+: > "$FAKEBIN/claude"
+printf '%s\n' '#!/bin/sh' >> "$FAKEBIN/claude"
+printf '%s\n' '[ "$1" = "/login" ] || { echo "unexpected argv: $*" >&2; exit 9; }' >> "$FAKEBIN/claude"
+printf '%s\n' '[ -n "$CLAUDE_CONFIG_DIR" ] || { echo "no CLAUDE_CONFIG_DIR" >&2; exit 8; }' >> "$FAKEBIN/claude"
+printf '%s\n' 'printf %s "{\"claudeAiOauth\":{\"accessToken\":\"B-RELOGGED\",\"refreshToken\":\"rt-B-RELOGGED\",\"expiresAt\":1830384000000,\"refreshTokenExpiresAt\":1861920000000}}" > "$CLAUDE_CONFIG_DIR/.credentials.json"' >> "$FAKEBIN/claude"
+printf '%s\n' 'printf %s "{\"oauthAccount\":{\"accountUuid\":\"u-main\",\"emailAddress\":\"main@example.com\"}}" > "$CLAUDE_CONFIG_DIR/.claude.json"' >> "$FAKEBIN/claude"
 # The fake writes where a **pre-split** directory keeps its credential, which is what B
 # is. In a post-split directory the credential is at CLAUDE_SECURESTORAGE_CONFIG_DIR, and
 # a fake that wrote to CLAUDE_CONFIG_DIR there would leave the store unchanged — kae would
 # correctly report `auth_unchanged` (11) and the whole case would read as a kae regression.
 chmod +x "$FAKEBIN/claude"; PATH="$FAKEBIN:$PATH"; export PATH
 cd "$B"
-/tmp/kae relogin; echo "exit=$?"
-#   assert: exit=0, and stderr says kae is running it against this directory's own
-#           store, naming CLAUDE_CONFIG_DIR=<B's store> — and only that variable, since B
-#           is pre-split; a post-split directory names the credential one beside it. The
-#           fake exits 8 if it is unset, so a green run *is* the proof that kae exported it
-#   assert: stderr carries `harvested the newer claude credential from <B's store>
-#           into snapshot claude/main` **twice**, once on each side of the flow, and
-#           the first of them appears BEFORE the `complete the claude login flow` line.
-#           The pre-flow pass is the one with something to lose: the write that replaces
-#           the copy is the tool's, so nothing after the flow can see what it destroyed
-#           (docs/CLI.md § kae relogin Semantics). One occurrence is a regression even
-#           though the capture-back assertion below still passes — which is why this
-#           counts rather than greps
-#   assert: stdout is `Logged claude in for claude/main in this directory` — the
-#           strong wording, which kae prints only when it observed all three of:
-#           the store changed, what is there now is not a tombstone, and the
-#           harvest confirmed the account. Any other case prints `Ran the claude
-#           login flow in this directory` instead, so this line is the assertion
-#           that the three gates all passed
-grep B-RELOGGED "$SB/.credentials.json"  # assert: the login landed in B's own store
-snap main | grep B-RELOGGED              # assert: and reached the account snapshot
-/tmp/kae doctor | grep "is older than"   # assert: the finding has *moved* — it now
-                                        #   names `bound to $A`, because B is the copy
-                                        #   that refreshed last. Where the newer copy
-                                        #   is reads `snapshot claude/main`, not B's
-                                        #   store: the harvest made the two equal and
-                                        #   equal deadlines keep the earlier candidate,
-                                        #   which is the snapshot. So the remedy is
-                                        #   `cd $A && kae pin claude main` here and NOT
-                                        #   a relogin — a re-bind from the newer
-                                        #   snapshot needs no browser. Assert the
-                                        #   absence of `relogin` on this line too
+/tmp/kae relogin > "$HOME/L.out" 2> "$HOME/L.err"; test $? -eq 0   # assert: exit 0
+# kae abbreviates the store with `~` in this message, so the assertion has to as well —
+# grepping the absolute $SB matches nothing and takes the count line below down with it.
+SBREL="~${SB#$HOME}"
+grep -qF "CLAUDE_CONFIG_DIR=$SBREL" "$HOME/L.err"
+                                        # assert: kae says it is running the flow against
+                                        #   this directory's own store, and names it. The
+                                        #   fake exits 8 when the variable is unset, so a
+                                        #   green run is itself the proof kae exported it
+test "$(grep -c CLAUDE_SECURESTORAGE_CONFIG_DIR "$HOME/L.err")" -eq 0
+                                        # assert: and ONLY that variable, since B is
+                                        #   pre-split; a post-split directory names the
+                                        #   credential store beside it. The grep above is
+                                        #   this line's positive control
+test "$(grep -c 'harvested the newer claude credential' "$HOME/L.err")" -eq 2
+                                        # assert: twice, once on each side of the flow
+test "$(grep -n 'harvested the newer claude credential' "$HOME/L.err" | head -1 | cut -d: -f1)" \
+  -lt "$(grep -n 'complete the claude login flow' "$HOME/L.err" | head -1 | cut -d: -f1)"
+                                        # assert: and the FIRST one precedes the flow.
+                                        #   The pre-flow pass is the one with something to
+                                        #   lose: the write that replaces the copy is the
+                                        #   tool's, so nothing after the flow can see what
+                                        #   it destroyed (docs/CLI.md § kae relogin
+                                        #   Semantics). One occurrence is a regression even
+                                        #   though the capture-back assertions below still
+                                        #   pass, which is why this counts and orders
+test "$(cat "$HOME/L.out")" = "Logged claude in for claude/main in this directory"
+                                        # assert: the strong wording, which kae prints only
+                                        #   when it observed all three of: the store
+                                        #   changed, what is there now is not a tombstone,
+                                        #   and the harvest confirmed the account. Any
+                                        #   other case prints `Ran the claude login flow in
+                                        #   this directory`, so this is the assertion that
+                                        #   all three gates passed
+grep -q B-RELOGGED "$SB/.credentials.json"   # assert: the login landed in B's own store
+snap main | grep -q B-RELOGGED               # assert: and reached the account snapshot
+/tmp/kae doctor | grep "is older than" > "$HOME/L2.txt"
+grep -q "bound to $A is older than another copy of claude/main (snapshot claude/main)" "$HOME/L2.txt"
+                                        # assert: the finding has *moved* — it names A now,
+                                        #   because B is the copy that refreshed last. Where
+                                        #   the newer copy is reads `snapshot claude/main`,
+                                        #   not B's store: the harvest made the two equal
+                                        #   and equal deadlines keep the earlier candidate
+grep -q "cd $A && kae pin claude main" "$HOME/L2.txt"
+test "$(grep -c relogin "$HOME/L2.txt")" -eq 0
+                                        # assert: a re-bind from the newer snapshot needs
+                                        #   no browser, so this remedy is NOT a relogin.
+                                        #   Scoped to the one line, and the two greps above
+                                        #   are its positive control
 
 # --- M. outside a binding nothing is launched ---
 C=$(mktemp -d); cd "$C"
-/tmp/kae relogin; echo "exit=$?"
-#   assert: exit=7 and `this directory is not pinned`, naming `kae add --restore`
-grep SOLO-OLD "$HOME/.claude/.credentials.json"   # assert: the temp real home still holds
-                                        #   what the preamble left there last. The literal is
-                                        #   the account the preamble captures **last**, not a
-                                        #   fixed name — it writes one payload per account and
-                                        #   the final one stays. This line has now been wrong
+/tmp/kae relogin > "$HOME/M.out" 2> "$HOME/M.err"; test $? -eq 7   # assert: 7 (not_found)
+grep -q 'this directory is not pinned' "$HOME/M.err"
+grep -q 'kae add --restore' "$HOME/M.err"   # assert: and it names the global remedy
+grep -q SOLO-OLD "$HOME/.claude/.credentials.json"
+                                        # assert: the temp real home still holds what the
+                                        #   preamble left there last. The literal is the
+                                        #   account the preamble captures **last**, not a
+                                        #   fixed name — it writes one payload per account
+                                        #   and the final one stays. This has been wrong
                                         #   twice for that reason, each time by one account:
                                         #   `MAIN-OLD` while there were two, then `SIDE-OLD`
                                         #   once `solo` was added (measured 2026-08-08, by
-                                        #   running it). A wrong literal here matches nothing
-                                        #   *and* silently unguards the `grep -c` below, which
-                                        #   is the pair's whole purpose — so re-derive it from
-                                        #   the preamble whenever an account is added there
-grep -c B-RELOGGED "$HOME/.claude/.credentials.json"   # assert: 0 — paired with the positive
-                                        #   line above, because a `grep -c` for absence prints
-                                        #   0 when the file is missing too.
-#   Together they assert the flow was never launched: the fake `claude` is still first
-#   on PATH and writes into whatever CLAUDE_CONFIG_DIR names, so with none set it would
-#   land here. The exit code alone does not say that. This was prose until 2026-08-06,
-#   and prose asserts nothing
+                                        #   running it). A wrong literal matches nothing
+                                        #   *and* silently unguards the count below, which
+                                        #   is the pair's whole purpose — so re-derive it
+                                        #   from the preamble whenever an account is added
+test "$(grep -c B-RELOGGED "$HOME/.claude/.credentials.json")" -eq 0
+                                        # assert: 0 — paired with the positive line above,
+                                        #   because a count for absence prints 0 when the
+                                        #   file is missing too. Together they assert the
+                                        #   flow was never launched: the fake `claude` is
+                                        #   still first on PATH and writes into whatever
+                                        #   CLAUDE_CONFIG_DIR names, so with none set it
+                                        #   would land here. The exit code alone does not
+                                        #   say that
 ```
 
 `grep -c` printing `0` is an assertion on two lines here, so paste the block as-is

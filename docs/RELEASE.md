@@ -1373,8 +1373,9 @@ the environment allows, and record PASS/defer in VALIDATION.md:
 - **fish real-machine completion smoke** (v0.8.4 — the release machine had no
   fish; bash/zsh verified). **Superseded by this very release**: v0.8.6 dropped
   fish from the verified shells, so this one was never owed after 2026-06-18.
-  The sibling gates in this list stayed genuinely open, which is why the
-  distinction is worth marking rather than deleting.
+  Marked rather than deleted because the three bullets in this list ended
+  differently: agy PASSED in this release (see above), the codex gate below is
+  still open today, and only this one was retired without ever being run.
 - **codex keyring two-account real-keychain gate** (v0.8.3 — the file-driver
   round-trip is unit-covered; the two-account real-keychain path is not).
 

@@ -1860,10 +1860,16 @@ sibling gate in this file, each of which is closed only by a dated run — and
 *behaviour*, and that where docs and the binary disagree the binary wins. Closing this
 one on a citation would have set a precedent the rest of the file does not follow.
 
-**Procedure** (needs a real machine and a real login; no second account). Step 4
-applies a snapshot this procedure has deliberately let go stale, so § Real-Machine
-Acceptance's account precondition below applies here too, and applies hardest: on
-the "pessimistic" outcome the credential being overwritten was *still working*.
+**Procedure** (needs a real machine and one real login under test, plus a second
+account to work in — step 2 requires it). Of § Real-Machine Acceptance's account
+precondition below, exactly one half applies here and the other **must not**: use a
+throwaway or second account, yes; but do *not* re-capture immediately before, because
+the aged capture is this gate's instrument and refreshing it destroys the measurement.
+That is precisely why the account choice is the only protection this gate has. What
+step 4 might overwrite is not derived here — the branch that could have cost a working
+credential is the one where the applied snapshot is *refused*, since a snapshot can
+only be refused after something else refreshed past it, and that reasoning has not
+been measured on the current code.
 1. `kae add --no-login claude <acct>` immediately after a completed `/login`, and note
    both `captured_at` and `relogin_by` from `kae ls --json`. Record the login date —
    without it the measurement cannot be interpreted, which is the mistake that
@@ -1887,9 +1893,12 @@ tool's `VerifiedVersion()` and its recorded version in the same commit. `kae
 doctor` naming `upstream_version` for a tool is the signal that its rows are due.
 
 **Which accounts to run any of this with, and it is the whole section's
-precondition rather than one procedure's.** Every check below and in § Open gates
-applies a *capture-time* snapshot to a live credential store, and § Upstream
-Behaviour Assumptions records the measurement that makes that consequential: a
+precondition rather than one procedure's.** Every check below that applies a
+snapshot to a real store — which is all of them except § Bound-directory credential
+store, whose whole point is that it needs no account at all — and every gate in
+§ Open gates writes a *capture-time* snapshot into a live credential store, and
+§ Upstream Behaviour Assumptions records the measurement that makes that
+consequential: a
 refresh rotates the refresh token, the superseded one is single-use, so two stores
 holding copies of one account's credential invalidate each other — the copy that
 did not refresh last is dead, and offline it is indistinguishable from a healthy

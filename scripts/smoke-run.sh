@@ -178,12 +178,14 @@ printf 'smoke-run: %s lines extracted from %s under %s\n' \
 # The loop below skips comment lines, so a column-0 `#   assert:` comment is a
 # claim nothing evaluates: the block prints output, checks none of it, and reaches
 # the report as "every line exited 0". Five defects accumulated in § Smoke Checks
-# exactly that way, over a block that was unchanged from the initial commit until
-# 2026-08-09 — the sourced form of that claim, since the "eight versions" this
-# comment used to give is not measurable and is wrong: 14 releases carry the
-# unchanged block. Until this guard the convention that the assertion IS the
-# command rested on doc-review discipline, which this file's history shows does
-# not survive unrelated edits.
+# exactly that way: its checks were comments, and stayed comments, from the initial
+# commit until 2026-08-09. That is the claim worth making and the only one measured.
+# Two release counts were tried here first and both were wrong — "eight versions",
+# which is sourceable nowhere, and then "14 releases carry the unchanged block",
+# which counts releases *since* the initial commit and is not even true of the
+# block, edited at v0.13.0 and v0.15.3. The defects survived the convention, not
+# byte-identity. Until this guard, that convention rested on doc-review discipline,
+# which this file's history shows does not survive unrelated edits.
 #
 # Refused before anything runs, and with the caller-error status the other
 # extraction refusals use: a block that cannot check itself is not a run that

@@ -507,6 +507,29 @@ f=$(doc assertexpect '## AssertExpect' 'true' '#   expect: a different label, sa
 run "$f" '## AssertExpect'; rc=$?
 check 'a column-0 marker spelled expect: is refused too' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out"
 
+# 22c. A space before the colon. `#   assert :` is refused at HEAD and nothing named
+#      the `[[:space:]]*` that does it, so the token was silently droppable — measured
+#      SURVIVING all 33 guards before this existed.
+f=$(doc assertspacecolon '## AssertSpaceColon' 'true' '#   assert : spaced before the colon')
+run "$f" '## AssertSpaceColon'; rc=$?
+check 'a space before the marker colon is still refused' 2 "$rc" 'ASSERTS NOTHING' "$tmp/out"
+
+# 22d. The alternation's WORD LIST, written out here and separately derived from the
+#      runner, required to match — the same two-sided form this file already uses for
+#      EXPECTED_ROOTS/EXPECTED_CLEARED, and adopted here for the same measured reason.
+#      22b pins one word end to end and that is all it pins: narrowing the pattern to
+#      `(assert|expect)` was measured SURVIVING all 33 guards, because nothing named
+#      the other four even though a `#   verify:` marker is refused at HEAD. Testing
+#      each word end to end would cost six more `smoke-run.sh` spawns; this costs
+#      none and makes both directions loud, which is what the roots guard is for.
+#      A pattern reshaped so the sed no longer matches derives the EMPTY set and fails
+#      the comparison rather than passing it — the degenerate-input branch this file's
+#      header warns about, checked deliberately.
+EXPECTED_MARKER_WORDS="assert check confirm ensure expect verify"
+derived_words=$(norm "$(sed -n 's/.*\^#\[\[:space:\]\]\*(\([a-z|]*\)).*/\1/p' "$runner" | tr '|' ' ')")
+check 'the runner refuses exactly the marker words this file declares' \
+  "$EXPECTED_MARKER_WORDS" "$derived_words"
+
 # 23. The control the refusals need, and the one that makes the pattern's column-0
 #     anchor load-bearing: a real command carrying a TRAILING `# assert:` comment is
 #     how every converted section documents what its command proves, and refusing
@@ -557,7 +580,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=33
+EXPECTED_GUARDS=35
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

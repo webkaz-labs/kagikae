@@ -1,9 +1,18 @@
 name: Check
 
-# The single source of the gate (go vet, gofmt, go test, go mod verify),
-# mirroring the local `mise run check`. Called by ci.yml (push/PR) and by
-# release.yml (before publishing a tag), so the release gate cannot drift from
-# CI.
+# The single source of what CI runs: go vet, gofmt, go test, go mod verify. Called by
+# ci.yml (push/PR) and by release.yml (before publishing a tag), so the release gate
+# cannot drift from CI.
+#
+# It is a SUBSET of the local `mise run check`, not a mirror of it, and this comment
+# claimed to mirror it until the gap was measured: the local gate also runs gofumpt and
+# goimports (not plain gofmt), staticcheck, golangci-lint, shellcheck, build, and the
+# smoke and docs selftests. Anything only in the local gate is enforced on a developer's
+# machine and nowhere else, and this repository has already paid for that: the test that
+# ran the real `security` binary and wrote items into the operator's login keychain is
+# recorded in docs/ROADMAP.md, which also notes it failed on linux and passed on darwin —
+# a difference no single-environment gate can see. Widening this workflow is filed in
+# docs/ROADMAP.md; until then, do not describe the two as equivalent.
 on:
   workflow_call:
 

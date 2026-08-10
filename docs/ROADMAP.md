@@ -316,6 +316,25 @@ alternative exists (`secret-tool`).
   arriving through a generated path, which is why `AGENTS.md` keeps this directory out of
   the docs sweep.
 
+- **CI runs a subset of the gate, and two places called it a mirror** (recorded
+  2026-08-11, **partly fixed** — the wording is corrected, the gap is not). Measured:
+  `mise run check` depends on eleven steps; `.github/workflows/check.yml` runs four —
+  `go vet`, `gofmt`, `go test`, `go mod verify`. So gofumpt and goimports (the formatters
+  that actually gate locally, where plain `gofmt` is *not* sufficient), `staticcheck`,
+  `golangci-lint`, `shellcheck`, `build`, `smoke-selftest`, `docs-check` and
+  `docs-check-selftest` run on a developer's machine and nowhere else. `README.md` said
+  CI "mirrors it" and `check.yml`'s own header said it mirrored the local gate; both now
+  say subset, which is the half that could be fixed without deciding anything.
+  What is undecided is whether to widen the workflow, and it is not free. The entry
+  above about the real `security` binary is the argument for it: that defect passed on
+  darwin, failed on linux, and a single-environment gate could not see the difference.
+  Against it: `docs-check-selftest` copies the tracked tree four times per run,
+  `smoke-selftest` perturbs `.git/info/exclude`, and the lint tools resolve pinned
+  versions over the network on first use — so each one needs a decision about caching
+  and about what a CI runner is allowed to touch, not just a line in a YAML file.
+  Nothing here should be widened silently; the gap is now stated in all three places
+  that describe the gate.
+
 - **Two sections in `PRODUCT.md` read as architecture, not product** (recorded
   2026-08-11, **not fixed**). The rename from `docs/DESIGN.md` moved the whole file,
   because the shared standard reserved `DESIGN.md` for a visual design system and says

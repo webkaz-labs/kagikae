@@ -37,7 +37,8 @@ import pathlib
 import re
 import sys
 
-SKIP_DIRS = {".git"}
+# Matches scripts/docscan/main.go's excludedDir, which skips these same two.
+SKIP_DIRS = {".git", "dist"}
 LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 FENCE = re.compile(r"^\s*(?:```|~~~)")
 CODE_SPAN = re.compile(r"(`+)[^`]*?\1")
@@ -49,7 +50,10 @@ for path in sorted(root.rglob("*.md")):
     rel = path.relative_to(root).as_posix()
     if any(part in SKIP_DIRS for part in path.relative_to(root).parts):
         continue
-    if generated and rel.startswith(generated):
+    # Anchored with a trailing slash, the way docscan/main.go's generatedExport is:
+    # a bare prefix test would also swallow a sibling like "…/go-cli-tooling-extra/".
+    # The same substring class this repository keeps paying for.
+    if generated and (rel + "/").startswith(generated.rstrip("/") + "/"):
         continue
     fenced = False
     for line in path.read_text(errors="replace").splitlines():

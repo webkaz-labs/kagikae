@@ -100,9 +100,12 @@ if [ "$failures" -gt 0 ]; then
   exit 1
 fi
 
-if [ "$cases" -lt 4 ]; then
-  fail_count=$((cases))
-  printf 'check-docs-selftest: only %s case(s) ran, fewer than this file defines\n' "$fail_count" >&2
+# Two-directional, the way scripts/smoke-run-selftest.sh's EXPECTED_GUARDS is: a floor
+# would let a fifth case be added and then silently deleted back down to four. Adding a
+# case has to bump this, and that is the point.
+EXPECTED_CASES=4
+if [ "$cases" -ne "$EXPECTED_CASES" ]; then
+  printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1
 fi
 

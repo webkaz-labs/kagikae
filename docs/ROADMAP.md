@@ -270,6 +270,20 @@ alternative exists (`secret-tool`).
   already tells a runner to give each line a verdict and does not yet tell it to refuse
   a block whose checks are comments.
 
+- **One directory has two names, and the glossary states a preference the tree does
+  not meet** (recorded 2026-08-10, **not fixed**). [CONTEXT.md](CONTEXT.md) names
+  **bound directory** as the term and **pinned directory** as the one to avoid, and
+  both are still in use — in the user-facing docs and under `internal/` alike, so
+  neither is a register the other stays out of. It is filed rather than done because
+  it is a rewording of a few dozen sites with no behaviour attached, and nothing about
+  it needs to ride with a code change. What it costs meanwhile is a grep: a reader who
+  searches for either word finds part of the subject and cannot tell that from all of
+  it. Derive the split with the two commands in CONTEXT.md § Not converged rather than
+  from a number quoted anywhere, including this entry — the definition of what counts
+  is the whole disagreement in figures like this one. The sibling convergence,
+  `witness` → `reader`, is done (`credStoreReaders`), and it is the reason this one is
+  visible.
+
 - **`scripts/smoke-env.sh` leaks a temp HOME every time it is sourced** (recorded
   2026-08-09, **not fixed**). It does `HOME=$(mktemp -d)` and nothing ever removes
   the directory, so each direct run of a block in [VALIDATION.md](VALIDATION.md)

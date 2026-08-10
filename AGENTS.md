@@ -9,7 +9,8 @@ Standalone public repository. Follow the bundled Go CLI standard in
 | Document | When To Read |
 |----------|--------------|
 | [README.md](README.md) | user-facing command or setup changes |
-| [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, terminology, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
+| [docs/CONTEXT.md](docs/CONTEXT.md) | before naming anything, and whenever a word for an existing thing has to be chosen — it is the only authority on naming, for the user-facing terms and the mechanism vocabulary alike. It is a glossary and states no rule: an entry that names something a predicate decides says which predicate and stops, so a question about *behaviour* is never answered here |
+| [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | anything that touches what companion-auth lockstep (git/gh/cloud CLIs) switches or preserves |
 | [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | before any code writes, harvests, attributes, orders or deletes a credential **copy**. It is the normative text for its own thirteen sections and not for the whole subject: several of them defer the per-tool contract to `docs/ADAPTERS.md` or `docs/CLI.md` where they say so, and § Implementation Boundaries below keeps the credential rules that did not move, beside one routing line per rule that did |
@@ -284,7 +285,7 @@ Never use a real login handle.
 
 For every change, decide and report "changed / no change needed" for **each tracked
 markdown file this repository owns** — derive the set rather than trusting a list:
-`git ls-files '*.md' | grep -v '^\.claude/skills/go-cli-tooling/'` (17 today). It
+`git ls-files '*.md' | grep -v '^\.claude/skills/go-cli-tooling/'` (18 today). It
 covers `README.md`, `AGENTS.md`, `CLAUDE.md`, everything under `docs/`, and the
 repo-local `upstream-auth-drift` skill, which the Documentation Map cites as
 normative and which a `docs/`-only list cannot reach — that is how a rule that had

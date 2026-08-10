@@ -199,14 +199,21 @@ or touch keychains directly. TUI tests use fake deps and temp HOME/XDG roots.
   from, four unrelated edits each left a guard passing unconditionally while the suite
   reported every guard holding, so a refusal lasts only as well as whatever tests the
   refusal. Match the marker on three dimensions, because a marker is a *label* and the
-  label is the part an author invents: whitespace **on both sides of the word**, case,
-  and the word itself. Both whitespace sites were measured separately, and the one
-  before the colon was a silent survivor when dropped — `#   assert :` then reports
-  green. A guard knowing only `assert:` was measured letting `expect:` through, which
+  label is the part an author invents: whitespace **on both sides of the word and
+  nothing else before it**, case, and the word itself. Both whitespace sites were
+  measured separately, and the one before the colon was a silent survivor when dropped
+  — `#   assert :` then reports green. "Nothing else before it" is the half that bites
+  in the other direction: relaxing `^#[[:space:]]*` to `^#.*` was measured surviving
+  every other guard while *refusing a legitimate block*, because a column-0 comment can
+  narrate about an assertion without being one (`#   the lines above assert: exactly one
+  stderr line`). The marker has to be the first thing after the `#`. A
+  guard knowing only `assert:` was measured letting a column-0 `expect:` through, which
   is the defect class of grepping for a literal you retired, reached by substituting
   one word; use an explicit vocabulary (`assert|expect|verify|check|confirm|ensure`)
-  rather than `[A-Za-z]+:`, which was measured flagging a legitimate narration comment
-  whose label happened to be `copy:`. Refuse at column 0 only: an *indented* comment
+  rather than `[A-Za-z]+:`, which was measured flagging a legitimate **column-0**
+  narration comment whose label happened to be `copy:` — column-0 is why the generic
+  pattern reached it, so the vocabulary restriction is what excludes it and not the
+  anchor. Refuse at column 0 only: an *indented* comment
   is how a live block spells out what the command above it proves, so refusing those
   refuses every converted block. Say what that ceiling leaves open rather than
   implying the class is closed — an indented comment-only assertion following no

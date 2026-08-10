@@ -206,10 +206,10 @@ or touch keychains directly. TUI tests use fake deps and temp HOME/XDG roots.
   one); whitespace is allowed on both sides of the label, and the side before the colon
   matters as much as the side after it; matching is case-insensitive; and the label
   comes from an explicit vocabulary (`assert|expect|verify|check|confirm|ensure`) rather
-  than `[A-Za-z]+:`, which was measured flagging a legitimate narration comment. Each of
-  those was measured in the direction its own clause names, not guessed — some as markers
-  that got through, some as legitimate lines wrongly refused. Refusing only at
-  column 0 has a ceiling
+  than `[A-Za-z]+:`, which was measured flagging a legitimate narration comment. Both
+  measurements named there are over-refusals; the escapes behind the case, vocabulary and
+  pre-colon rules were measured in the tool this comes from and are recorded with it.
+  Refusing only at column 0 has a ceiling
   worth stating rather than leaving the class to look closed: an indented comment-only
   assertion following no command is a lie this does not catch.
 - **A negative assertion needs a positive control beside it.** `grep -c X` prints

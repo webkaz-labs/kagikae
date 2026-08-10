@@ -245,10 +245,12 @@ alternative exists (`secret-tool`).
   the next reader to reimplement a live mechanism and hid the real blocker. Both
   comments now name it — the unrun gate in [VALIDATION.md](VALIDATION.md) § Open
   gates — and the one that gave the bad instruction says so, rather than dropping it
-  silently for the next reader to re-derive. **A third site the original entry missed**
-  went with them: § Own the item's lifecycle said codex was "pending step 3" and
-  "Until step 3 lands", both of which outlived step 3. Found by grepping the *concept*
-  rather than the wording this entry quoted.
+  silently for the next reader to re-derive. Two more stale sites went with them, in
+  the bullet above § Own the item's lifecycle: step 2 said codex was carried "pending
+  step 3", and the paragraph after step 3's body said "Until step 3 lands" — both
+  outliving the step marked Done between them. **Only the first of those was new**: the
+  original entry had already quoted the second and said it "should move with them", and
+  the first draft of this retraction claimed all of it as a discovery.
 
 - ~~**This file says the agy real-keychain gate is open; VALIDATION.md records it
   PASSED**~~ (recorded 2026-08-10, **fixed** 2026-08-10). The agy entry in this
@@ -1227,7 +1229,7 @@ alternative exists (`secret-tool`).
   authenticates via GUI/browser OAuth, which kae's shell-out login flow cannot
   drive, so `kae add agy` stays `--no-login` capture only.
 - **agy keyring driver (macOS)** *(v0.8.6 §A — implemented; real-keychain gate
-  open)*: on macOS agy stores its credential in the **login Keychain**, not a
+  passed)*: on macOS agy stores its credential in the **login Keychain**, not a
   file — item `svce="gemini"`, `acct="antigravity"`; the payload is a single
   **opaque ~686-byte token string** (not JSON/JWT — verbatim capture/apply with
   a non-empty single-line guard, unlike codex's `auth.json` JSON). v0.8.6 lifted

@@ -192,32 +192,24 @@ or touch keychains directly. TUI tests use fake deps and temp HOME/XDG roots.
   a defect able to break a release. That is not a ranking of the four: the
   duplication scan there drove real consolidations, and claim reconciliation was
   never implemented, so it has never had a chance to find anything.
-- **Have the extractor refuse a block whose checks are only comments.** Asking the
-  author in prose to write real assertions is a convention, and a convention does not
-  survive unrelated edits — which is the argument for putting the refusal in the
-  extractor, not a guarantee that the refusal survives either: in the tool this comes
-  from, four unrelated edits each left a guard passing unconditionally while the suite
-  reported every guard holding, so a refusal lasts only as well as whatever tests the
-  refusal. Match the marker on three dimensions, because a marker is a *label* and the
-  label is the part an author invents: whitespace **on both sides of the word and
-  nothing else before it**, case, and the word itself. Both whitespace sites were
-  measured separately, and the one before the colon was a silent survivor when dropped
-  — `#   assert :` then reports green. "Nothing else before it" is the half that bites
-  in the other direction: relaxing `^#[[:space:]]*` to `^#.*` was measured surviving
-  every other guard while *refusing a legitimate block*, because a column-0 comment can
-  narrate about an assertion without being one (`#   the lines above assert: exactly one
-  stderr line`). The marker has to be the first thing after the `#`. A
-  guard knowing only `assert:` was measured letting a column-0 `expect:` through, which
-  is the defect class of grepping for a literal you retired, reached by substituting
-  one word; use an explicit vocabulary (`assert|expect|verify|check|confirm|ensure`)
-  rather than `[A-Za-z]+:`, which was measured flagging a legitimate **column-0**
-  narration comment whose label happened to be `copy:` — column-0 is why the generic
-  pattern reached it, so the vocabulary restriction is what excludes it and not the
-  anchor. Refuse at column 0 only: an *indented* comment
-  is how a live block spells out what the command above it proves, so refusing those
-  refuses every converted block. Say what that ceiling leaves open rather than
-  implying the class is closed — an indented comment-only assertion following no
-  command is a lie this does not catch.
+- **Have the extractor refuse a block whose checks are only comments, before it runs
+  anything.** A block that cannot check itself is not a run that failed, it is a
+  document to fix — so exit with the caller-error status a bad argument gets, not a
+  test-failure status, or one legitimately unconverted block turns the gate red and the
+  next author deletes the refusal. Asking for real assertions in prose is a convention,
+  and a convention does not survive unrelated edits; a refusal in the extractor lasts
+  only as well as whatever tests the refusal, so write that test too. Match the marker
+  on stated properties rather than a remembered count, because a marker is a *label* and
+  the label is the part an author invents: the comment starts at column 0; the label is
+  the first thing after the `#` (relaxing that to `^#.*` was measured *refusing a
+  legitimate block*, because a comment can narrate about an assertion without being
+  one); whitespace is allowed on both sides of the label, and the side before the colon
+  matters as much as the side after it; matching is case-insensitive; and the label
+  comes from an explicit vocabulary (`assert|expect|verify|check|confirm|ensure`) rather
+  than `[A-Za-z]+:`, which was measured flagging a legitimate narration comment. Each of
+  those was a measured escape, not a guess. Refusing only at column 0 has a ceiling
+  worth stating rather than leaving the class to look closed: an indented comment-only
+  assertion following no command is a lie this does not catch.
 - **A negative assertion needs a positive control beside it.** `grep -c X` prints
   `0` for a missing file, a broken decoder, or a pattern that could never match,
   so an absence check passes for the wrong reason. Pair it with a positive line

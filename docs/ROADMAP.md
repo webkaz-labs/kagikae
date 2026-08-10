@@ -268,17 +268,36 @@ alternative exists (`secret-tool`).
   `AGENTS.md § Documentation Update Checklist` asks for and what this entry's first
   draft did not do.
 
-- **The exported Go CLI standard still carries a figure withdrawn here** (recorded
-  2026-08-10, **not fixed**). `.claude/skills/go-cli-tooling/references/TESTING.md`
-  says "five wrong assertions across eight releases"; that count is sourceable nowhere
-  and was withdrawn from `scripts/smoke-run.sh` and from this file. **It cannot be
-  fixed in this repository**: the skill directory is generated, and
-  [RELEASE.md](RELEASE.md) records that it re-syncs from the chezmoi source, which is
-  also the copy other tools receive — so the reach is larger than kae. Fix the template
-  there and re-export; do not hand-edit the copy, which would be lost on the next
-  sync. The same pass could promote the rule this branch added, since that reference
-  already tells a runner to give each line a verdict and does not yet tell it to refuse
-  a block whose checks are comments.
+- ~~**The exported Go CLI standard still carries a figure withdrawn here**~~ (recorded
+  2026-08-10, **fixed here** 2026-08-10; the source half is committed and unmerged).
+  `.claude/skills/go-cli-tooling/references/TESTING.md` said "five wrong assertions
+  across eight releases"; the count is measured and the span was sourceable nowhere,
+  and the span had already been withdrawn from `scripts/smoke-run.sh` and from this
+  file. It could not be fixed in this repository — the skill directory is generated,
+  and [RELEASE.md](RELEASE.md) records that it re-syncs from the chezmoi source, which
+  is also the copy other tools receive — so the source was fixed and the bundle
+  re-exported by running the source's own export script rather than by editing any
+  copy. Which copies hold one is derived, not remembered, because a count here goes
+  stale the next time a tool receives the bundle — and derived from the path the export
+  itself creates rather than from the prose, which self-matches this file and every
+  transcript quoting it:
+  `find ~/dev ~/.agents ~/.claude -path '*go-cli-tooling/references/TESTING.md'`.
+  On 2026-08-10 it returned this repository and otowatari, and both were re-exported.
+  **This entry named one claim and the paragraph carried two.** The sentence beside it,
+  "only running them ever found a defect", dropped the qualifier
+  `scripts/docscan/main.go`'s header states — never a defect *that would have broken a
+  release*, while that same header records real consolidations the duplication scan
+  drove — and ranked four audits against the stage this section's
+  claim-reconciliation entry describes, which has no implementation and so has never
+  had a chance to find anything.
+  Correcting one unmeasured claim while leaving an unmeasured one touching it would
+  have left the paragraph in the state this entry was filed about, so both moved. The
+  pass also promoted the refusal, as this entry said it could.
+  **What is not done:** the source commit sits on an unmerged branch in the dotfiles
+  repository, so `~/docs/go-cli/TESTING.md` — a symlink into that repository's
+  canonical checkout — and any export taken from its `main` still carry the old
+  wording until that branch lands. `grep -n 'across eight releases'` over the source
+  is the check, and it is deliberately still expected to hit until then.
 
 - **The claim-reconciliation stage is unbuilt, and a `grep` in AGENTS.md stands in for
   it** (recorded 2026-08-10, **not fixed**). `scripts/docscan/main.go`'s header names a

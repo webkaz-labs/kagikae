@@ -419,7 +419,7 @@ alternative exists (`secret-tool`).
   *cause* became visible in v0.17.0: `kae doctor` reports `credential_superseded` for
   a bound directory whose copy another copy of the same account provably overtook,
   names where the newer one is, and points at the remedy that where decides
-  ([CLI.md](CLI.md) § doctor). The bomb itself is unchanged — only one copy can refresh, and the entry
+  ([CLI.md](CLI.md) § `kae doctor --json`). The bomb itself is unchanged — only one copy can refresh, and the entry
   that makes that stop being true is the SSCD split below. Nor does the check see an
   invalidation kae has no second copy of: a refresh in a directory kae does not know
   about, or in the real home under an account it is not tracking, leaves nothing to
@@ -1049,7 +1049,8 @@ alternative exists (`secret-tool`).
   those would fire on healthy directories — the mistake v0.15.0/v0.15.1 made in both
   directions. The two causes it cannot separate offline (a login made inside the
   directory versus an identity kae failed to apply) are both stated in the message,
-  since their remedies point opposite ways; [CLI.md](CLI.md) § doctor is normative.
+  since their remedies point opposite ways; [CLI.md](CLI.md) § `kae doctor --json` is
+  normative.
 - **A directory-scoped keychain item keeps a stale account attribute**: `ApplyLive`
   reuses an existing item's account attribute so a re-login that changed it is
   honored, which is right for the single global item but not for a per-directory

@@ -849,7 +849,8 @@ say "the store", read it as whichever of the two that tool resolves:
   label that is simply wrong. That attribution answer has a **second reader**:
   `kae doctor` reports the one refusal that is *positive* evidence — the store's
   identity naming a different account — as `identity_drift` for that bound directory
-  (docs/CLI.md § doctor). It is one predicate, so what the harvest may act on and what
+  (docs/CLI.md § `kae doctor --json`). It is one predicate, so what the harvest may act
+  on and what
   doctor may report cannot drift apart; and doctor reports **only** that branch,
   because every other refusal above is missing evidence and would fire on healthy
   directories;
@@ -1004,8 +1005,9 @@ What follows from that, and what a change here must keep:
   own account; anything else falls back to the store directory, where a pre-split
   credential is and where a post-split store simply has none;
 - **migration is to re-run `kae pin`** in the directory. `kae doctor` names every
-  directory that still needs it (`credential_unsplit`, docs/CLI.md § doctor), because
-  nothing else can see the state: such a copy is healthy right up to the moment
+  directory that still needs it (`credential_unsplit`,
+  docs/CLI.md § `kae doctor --json`), because nothing else can see the state: such a
+  copy is healthy right up to the moment
   another binding of that account refreshes.
   A **globally isolated home** migrates on its own instead, silently, the next time
   `kae use -i` or `kae run -i` prepares it, and the asymmetry is deliberate: that

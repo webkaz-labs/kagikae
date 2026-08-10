@@ -329,7 +329,8 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   v0.16.0) are in that list, so an unconditional warning would fire on healthy
   directories and become wallpaper, the mistake v0.15.0/v0.15.1 made in both
   directions. [ADAPTERS.md](ADAPTERS.md) § Per-directory credential store is normative
-  for the predicate and its refusals; [CLI.md](CLI.md) § doctor for the check's
+  for the predicate and its refusals; [CLI.md](CLI.md) § `kae doctor --json` for the
+  check's
   contract, message and remedy.
 
   **Review changed the predicate, and with it the harvest.** A payload that is valid
@@ -2495,7 +2496,7 @@ git tag v0.7.0).
   (not a keychain action); unset, darwin keeps the keychain driver (no
   regression). A temp-HOME smoke check switches claude with the override on
   both `kae add` and `kae use`, and asserts the real login keychain is never
-  read or written ([docs/VALIDATION.md](docs/VALIDATION.md) updated with the
+  read or written ([VALIDATION.md](VALIDATION.md) updated with the
   procedure).
 - **`kae account rm`**: removes the snapshot dir and all secret items; prints a
   confirmation; refuses the active account (exit `10`) without `--force`;

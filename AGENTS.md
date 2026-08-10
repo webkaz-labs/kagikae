@@ -9,7 +9,7 @@ Standalone public repository. Follow the bundled Go CLI standard in
 | Document | When To Read |
 |----------|--------------|
 | [README.md](README.md) | user-facing command or setup changes |
-| [docs/CONTEXT.md](docs/CONTEXT.md) | before naming anything, and whenever a word for an existing thing has to be chosen — it is the only authority on naming, for the user-facing terms and the mechanism vocabulary alike. It is a glossary and states no rule: an entry that names something a predicate decides says which predicate and stops, so a question about *behaviour* is never answered here |
+| [docs/CONTEXT.md](docs/CONTEXT.md) | before naming anything, and whenever a word for an existing thing has to be chosen — it is the authority on the vocabulary it holds, the user-facing terms and the mechanism vocabulary alike. Not for a JSON contract token, which is an enum owned by `internal/constants`; its own routing table says so. It is a glossary and states no rule: an entry that names something a predicate decides says which predicate and stops, so a question about *behaviour* is never answered here |
 | [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | anything that touches what companion-auth lockstep (git/gh/cloud CLIs) switches or preserves |
@@ -41,12 +41,6 @@ upstream literal fingerprints — it reads the installed tools' own binaries, so
 only means anything on a machine that has them) and `mise run goreleaser-check` are
 slower release-time checks. Lint tools run via `go run <tool>@<pinned version>`; the
 first run downloads them.
-
-`mise run docs-scan` is not a check of either kind: it reports prose two documents
-carry twice and can fail nothing, so it belongs to consolidating docs rather than to
-committing. Read `scripts/docscan/main.go`'s header before acting on a report — it
-records which of the four docs-scan stages has ever caught a release-breaking defect,
-and it is not this one.
 
 While editing (this is a Go module — the LSP is `gopls`):
 
@@ -296,6 +290,11 @@ covers `README.md`, `AGENTS.md`, `CLAUDE.md`, everything under `docs/`, and the
 repo-local `upstream-auth-drift` skill, which the Documentation Map cites as
 normative and which a `docs/`-only list cannot reach — that is how a rule that had
 moved kept naming `AGENTS.md` as its authority.
+
+`mise run docs-scan` belongs to this sweep and to nothing else — it reports prose two
+documents carry twice, and it can fail nothing, so it is not a check and is not in
+`mise run check`. `scripts/docscan/main.go`'s header is normative for what a report
+does and does not mean; read it before acting on one.
 
 `.claude/skills/go-cli-tooling/` is excluded because it is a **generated** export of
 the shared Go CLI standard: never hand-edit it, or the next re-sync silently drops

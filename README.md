@@ -476,7 +476,7 @@ git diff --check
 | Document | Purpose |
 |----------|---------|
 | [docs/DESIGN.md](docs/DESIGN.md) | Mission, modes, boundaries. |
-| [docs/CONTEXT.md](docs/CONTEXT.md) | The vocabulary — what each term names. Naming only; it states no rule. |
+| [docs/CONTEXT.md](docs/CONTEXT.md) | The vocabulary — what each term names. Naming only; it states no rule, and JSON contract tokens are named in `internal/constants` instead. |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Per-tool switched/preserved contract. |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | Companion-auth (git/gh/cloud CLI) switched/preserved contract. |
 | [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | Rules for writing, harvesting, attributing, ordering and deleting a credential copy. |

@@ -59,10 +59,13 @@ func TestShinglesAreTheExactWindows(t *testing.T) {
 	if len(shingles(words[:shingleN], shingleN)) != 1 {
 		t.Error("exactly one window's worth of words must yield exactly one window")
 	}
+}
 
-	// The tokenizer keeps digits and underscores, because identifiers carry them.
-	if strings.Join(normalize("Codex_Auth cli|2 dirs"), " ") != "codex_auth cli 2 dirs" {
-		t.Errorf("normalize dropped a digit or an underscore: %q", normalize("Codex_Auth cli|2 dirs"))
+// Its own test rather than a tail on the one above: the tokenizer has nothing to do
+// with windowing, and a Fatalf up there would have stopped this from running.
+func TestNormalizeKeepsDigitsAndUnderscores(t *testing.T) {
+	if got := strings.Join(normalize("Codex_Auth cli|2 dirs"), " "); got != "codex_auth cli 2 dirs" {
+		t.Errorf("normalize dropped a digit or an underscore: %q", got)
 	}
 }
 
@@ -92,9 +95,14 @@ func TestPairsAreSortedByScoreDescendingWithAStableTiebreak(t *testing.T) {
 	if got[0].a != 0 || got[0].b != 2 {
 		t.Errorf("the identical pair must sort first, got (%d,%d)", got[0].a, got[0].b)
 	}
-	// The comparator itself, because a sort of three elements cannot pin it: with
-	// two equal scores an unstable sort leaves them where they are, so removing the
-	// index tiebreak passed the ordering assertion above.
+}
+
+// The comparator on its own, because a sort of three elements cannot pin it: with
+// two equal scores an unstable sort leaves them where they are, so removing the
+// index tiebreak passed the ordering assertion in the test above. It is a separate
+// function for the same reason — that test opens with a Fatalf, and these
+// assertions share nothing with it, so they must not depend on it running.
+func TestPairLessIsATotalOrder(t *testing.T) {
 	hi := pair{a: 5, b: 9, score: 0.9}
 	lo := pair{a: 0, b: 1, score: 0.1}
 	if !pairLess(hi, lo) || pairLess(lo, hi) {
@@ -112,16 +120,18 @@ func TestPairsAreSortedByScoreDescendingWithAStableTiebreak(t *testing.T) {
 	if pairLess(first, first) {
 		t.Error("pairLess must be irreflexive, or sort.Slice has no total order to work with")
 	}
+}
 
-	// countAtLeast reads that order, and the report slices on it.
-	if n := countAtLeast(got, 1.0); n != 1 {
-		t.Errorf("countAtLeast at 1.0 must be 1, got %d", n)
+// What the report slices on, so the header's count and its "(N more)" agree.
+func TestCountAtLeastReadsTheDescendingOrder(t *testing.T) {
+	pairs := []pair{{score: 1}, {score: 0.5}, {score: 0.25}}
+	for min, want := range map[float64]int{1.01: 0, 1: 1, 0.5: 2, 0.25: 3, 0: 3} {
+		if n := countAtLeast(pairs, min); n != want {
+			t.Errorf("countAtLeast at %v must be %d, got %d", min, want, n)
+		}
 	}
-	if n := countAtLeast(got, 0); n != 3 {
-		t.Errorf("countAtLeast at 0 must be all of them, got %d", n)
-	}
-	if n := countAtLeast(got, 1.01); n != 0 {
-		t.Errorf("countAtLeast above every score must be 0, got %d", n)
+	if countAtLeast(nil, 0) != 0 {
+		t.Error("countAtLeast of nothing must be 0")
 	}
 }
 
@@ -330,6 +340,35 @@ func TestAUbiquitousAnchorStillBuckets(t *testing.T) {
 	}
 	if got := comparePairs(paras, buckets); len(got) != 3 {
 		t.Fatalf("three identical paragraphs must produce three pairs, got %d", len(got))
+	}
+}
+
+// termSections names two headings of docs/CONTEXT.md inside this program, and the
+// fixture test above repeats those same two strings — so renaming a heading in the
+// glossary would drop half the anchor set with every test still green and the report
+// still printing a healthy anchor count. This reads the real file instead, which
+// turns that rename into a red test.
+func TestTheRealGlossaryYieldsTermsFromBothTables(t *testing.T) {
+	got, err := contextTerms(filepath.Join("..", "..", "docs", "CONTEXT.md"))
+	if err != nil {
+		t.Fatalf("contextTerms on the real glossary: %v", err)
+	}
+	have := map[string]bool{}
+	for _, g := range got {
+		have[g] = true
+	}
+	// One term from each table, so a rename of either heading fails here.
+	if !have["account"] {
+		t.Errorf("no surface term found — has § Surface terms been renamed? got %v", got)
+	}
+	if !have["bound directory"] {
+		t.Errorf("no mechanism term found — has § Mechanism terms been renamed? got %v", got)
+	}
+	// And the routing table's questions are not vocabulary.
+	for _, g := range got {
+		if strings.HasPrefix(g, "what ") {
+			t.Errorf("contextTerms harvested a routing question: %q", g)
+		}
 	}
 }
 

@@ -1,9 +1,15 @@
 # kagikae vocabulary
 
-This file is the authority on **naming**: which word this repository uses for a
-thing, and which words look like synonyms and are not. It is a glossary and
-nothing else — it decides no behaviour, and an entry that starts to read like a
-rule belongs in the document that owns the rule.
+This file is the authority on **naming** for the vocabulary below: the words this
+repository uses for the things it switches, and the words that look like synonyms
+and are not. It is a glossary and nothing else — it decides no behaviour, and an
+entry that starts to read like a rule belongs in the document that owns the rule.
+
+It is not the only place a name is settled, and saying it was cost this file a
+correction: the **JSON contract tokens** are an enum whose home is
+`internal/constants`, so they are named there and documented in
+[DATA-MODEL.md](DATA-MODEL.md) § Status Vocabulary, and nothing about a status, an
+exit code, an artifact kind or a driver id belongs in the tables below.
 
 That constraint is not stylistic. Where a glossary carries a rule, a mismatch
 between it and the code stops being a bug in the code and becomes a document
@@ -23,6 +29,7 @@ Where the answers live:
 | what a mode switches | [DESIGN.md](DESIGN.md) § Switching Surface |
 | what one tool switches and preserves | [ADAPTERS.md](ADAPTERS.md) |
 | what may happen to a credential copy | [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) |
+| what a JSON status, code, artifact kind or driver id is called | `internal/constants`, described in [DATA-MODEL.md](DATA-MODEL.md) § Status Vocabulary |
 
 ## Surface terms
 
@@ -60,19 +67,15 @@ change a name.
 
 ## Not converged
 
-A preference above is a rule for new prose. It is not a claim about the tree,
-and one of them is measurably not met today: **pinned directory** is still used
-alongside **bound directory**, in both the user-facing docs and under
-`internal/`, so a reader who greps for one finds only part of the subject. The
-convergence is filed in [ROADMAP.md](ROADMAP.md) rather than done here, because
-it is a rewording of a few dozen sites with no behaviour attached and nothing
-about it needs to ride with a code change.
+A preference above is a rule for new prose, not a claim about the tree — and one
+of them is measurably not met today: **pinned directory** is still used alongside
+**bound directory**. Why it is filed rather than done is
+[ROADMAP.md](ROADMAP.md)'s to state, and it does; this section exists so a reader
+of the table above is not told a name has settled when it has not.
 
-Reproduce the split with the derivation, not with a number quoted from here:
+Count both words in one derivation rather than trusting a number quoted here:
 
 ```bash
 git ls-files | grep -v '^\.claude/skills/go-cli-tooling/' \
-  | xargs grep -oih 'bound director[a-z]*' | wc -l
-git ls-files | grep -v '^\.claude/skills/go-cli-tooling/' \
-  | xargs grep -oih 'pinned director[a-z]*' | wc -l
+  | xargs grep -oihE '(bound|pinned) director[a-z]*' | sort | uniq -c
 ```

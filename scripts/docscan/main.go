@@ -31,10 +31,12 @@
 // decision vocabulary lives in struct fields (Ordered, Conflicting,
 // Unattributed) as much as in function names, and they are unioned with
 // docs/CONTEXT.md's terms because the prose about a concept outnumbers the
-// mentions of the symbol implementing it. Measured 2026-08-10 in the units this
-// tool compares: of 927 of them, 5 name `credStoreReaders` and 28 use the word
-// reader, so a symbol-only anchor set reaches under a fifth of the writing about
-// that one concept.
+// mentions of the symbol implementing it. Measured 2026-08-10 over the units this
+// tool compares: the ones naming `credStoreReaders` are under a fifth of the ones
+// using the word *reader*, so a symbol-only anchor set reaches under a fifth of the
+// writing about that one concept. The ratio is the claim; the two counts behind it
+// move with every documentation edit, so they are deliberately not written here —
+// one of them was already stale within the hour.
 //
 // Report-only, and deliberately not part of `mise run check`: it reports overlap
 // for a human to judge, and nothing here should fail a commit. Run it from the

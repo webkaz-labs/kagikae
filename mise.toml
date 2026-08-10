@@ -100,9 +100,8 @@ run = "bash scripts/smoke-run-selftest.sh"
 description = "Run the standard local validation suite"
 depends = ["lint", "test", "vet", "mod-verify", "build", "smoke-selftest"]
 
-# Report-only, and deliberately not a dependency of `check`: it reports prose two
-# documents carry twice, which is a judgement call for a human, and it has never
-# found a release-breaking docs defect (its own header says which stage does).
+# Deliberately not a dependency of `check`. What a report does and does not mean is
+# scripts/docscan/main.go's header, which is the one copy of it.
 [tasks.docs-scan]
 description = "Report prose two documents carry twice, anchored on declared identifiers"
 run = "go run ./scripts/docscan"

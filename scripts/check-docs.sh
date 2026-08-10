@@ -53,16 +53,15 @@ generated='.claude/skills/go-cli-tooling'
 # there. It was missing from this repository until the file that holds mission and
 # product boundaries was renamed to it from DESIGN.md, which the standard now reserves
 # for a visual design system.
-required_count=0
 for required in PRODUCT ARCHITECTURE CLI DATA-MODEL SECURITY ROADMAP RELEASE VALIDATION; do
   if [ ! -f "docs/$required.md" ]; then
     fail "missing required file: docs/$required.md"
   fi
-  required_count=$((required_count + 1))
 done
-if [ "$required_count" -ne 8 ]; then
-  fail "internal: required-file loop ran $required_count times, expected 8"
-fi
+# No floor on this loop, deliberately. It iterates a literal in this file, so a count
+# of its iterations measures nothing outside the script and cannot catch the collapse
+# the other floors exist for — it would only ever check this file against itself. The
+# floors below all walk the filesystem or real grep output.
 
 # --- every docs/*.md is listed in AGENTS.md's Documentation Map -------------------
 map_start=$(grep -n '^## Documentation Map' AGENTS.md | cut -d: -f1 || true)

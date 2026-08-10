@@ -16,6 +16,14 @@ A link-shaped string inside code is an example, not a link, so fenced blocks and
 inline code spans are removed first. AGENTS.md's citation rule contains a bracketed
 `X.md` pair as an illustration of a grep form, and the first real run of the check
 reported it as a broken target.
+
+Known gap, measured as not currently reachable: CODE_SPAN handles single-backtick
+spans, so markdown's double-backtick escaping idiom is stripped as an outer pair plus
+a separate inner span, leaving any text between them exposed to LINK. No document here
+puts link syntax in that position today, and the check would report a false broken
+target rather than miss a real one, so this is disclosed rather than closed.
+Reference-style links (`[x][1]` with a separate `[1]: path` definition) are also
+invisible to LINK; there are none in this repository.
 """
 
 import pathlib

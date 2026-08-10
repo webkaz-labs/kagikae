@@ -81,6 +81,10 @@ fi
 shellcheck -S warning $files
 """
 
+[tasks.docs-check]
+description = "Check documentation entrypoints, links, and domain indexes"
+run = "scripts/check-docs.sh"
+
 [tasks.lint]
 description = "Run low-noise local lint checks"
 depends = ["fmt-check", "staticcheck", "golangci-lint", "shellcheck"]
@@ -95,7 +99,7 @@ run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/dotfiles-tool-gocache} go build ./..."
 
 [tasks.check]
 description = "Run the standard local validation suite"
-depends = ["lint", "test", "vet", "mod-verify", "build"]
+depends = ["lint", "test", "vet", "mod-verify", "build", "docs-check"]
 
 [tasks.vuln]
 description = "Run Go vulnerability audit"

@@ -28,7 +28,7 @@ The two current Go CLIs use the Charm stack for TTY interaction:
 | `charm.land/bubbles/v2` | reusable Bubble Tea widgets |
 | `charm.land/lipgloss/v2` | styling when a richer TTY view needs it |
 | `github.com/mattn/go-runewidth` | East Asian display width and truncation |
-| `github.com/charmbracelet/x/exp/teatest/v2` | Bubble Tea v2 program tests, only through a thin test helper wrapper |
+| `github.com/charmbracelet/x/exp/teatest/v2` | Optional Bubble Tea v2 program tests, only when model and built-binary PTY coverage leave a framework-integration gap |
 
 Rules:
 
@@ -38,9 +38,9 @@ Rules:
 - Keep text/non-TTY output available without Charm dependencies in the report
   builder path.
 - Keep mouse actions opt-in if they interfere with text selection.
-- Treat `charmbracelet/x` packages as experimental. Pin versions and import
-  `teatest/v2` only from an `internal/testutil/tuitest` wrapper so API changes
-  stay localized.
+- Treat `charmbracelet/x` packages as experimental. If optional program E2E is
+  justified, pin the version and import `teatest/v2` only from an
+  `internal/testutil/tuitest` wrapper so API changes stay localized.
 - Do not mix Bubble Tea v1 and v2 import paths in the same tool.
 
 ## Useful Optional Libraries

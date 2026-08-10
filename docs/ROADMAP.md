@@ -268,12 +268,8 @@ alternative exists (`secret-tool`).
   `AGENTS.md § Documentation Update Checklist` asks for and what this entry's first
   draft did not do.
 
-- **The exported Go CLI standard carried a figure withdrawn here** (recorded
-  2026-08-10, **fixed in this repository** 2026-08-10; the source half is committed and
-  unmerged). Deliberately not struck through: `- ~~` in this file has marked entries
-  that are **closed** — their status words are *fixed*, *built* and *Dropped* — so
-  striking a half-done one makes a strikethrough scan read this as done, and no count of
-  them is given here for the reason `AGENTS.md § Documentation Update Checklist` states.
+- ~~**The exported Go CLI standard carried a figure withdrawn here**~~ (recorded
+  2026-08-10, **fixed** 2026-08-11 — source and both exports).
   `.claude/skills/go-cli-tooling/references/TESTING.md` said "five wrong assertions
   across eight releases"; the count is measured and the span was sourceable nowhere,
   and the span had already been withdrawn from `scripts/smoke-run.sh` and from this
@@ -300,11 +296,25 @@ alternative exists (`secret-tool`).
   unmeasured one touching it would have left the paragraph in the state this entry was
   filed about, so both moved. The same pass promoted the extractor refusal into the
   standard.
-  **What is not done:** the source commit sits on an unmerged branch in the dotfiles
-  repository, so `~/docs/go-cli/TESTING.md` — a symlink into that repository's
-  canonical checkout — and any export taken from its `main` still carry the old
-  wording until that branch lands. `grep -n 'across eight releases'` over the source
-  is the check, and it is deliberately still expected to hit until then.
+  **One deployed copy lags, and not for a reason anything here can fix.** The dotfiles
+  `main` carries the fix, but `~/docs/go-cli/TESTING.md` is a symlink into that
+  repository's *canonical checkout*, which sits on an unrelated feature branch while
+  other work proceeds there — so the deployed file still reads the old wording and will
+  until that checkout returns to `main`. `grep -c 'across eight releases'` answers **0**
+  against the dotfiles `main` and **1** against `~/docs`, and both are correct. Nothing
+  is owed here; it is recorded because the two answers disagree and a reader who checks
+  the deployed path would otherwise conclude the fix never landed.
+
+  **The exports were regenerated from the merged `main`, not from the fix's own branch.**
+  Between cutting that branch and merging it, the dotfiles `main` moved 61 commits ahead
+  over the standard's own tree — 603 insertions across 16 files there, 15 of them export
+  inputs, three of those new, and `TESTING.md` alone going from 242 lines to 313. An
+  export taken from the branch would have been internally consistent and
+  still a state no export from `main` produces, which is this tree's recorded hazard for
+  generated directories — so both bundles were rebuilt after the merge. Only the figure
+  and the promoted rule were reviewed here; the rest of that delta is other work
+  arriving through a generated path, which is why `AGENTS.md` keeps this directory out of
+  the docs sweep.
 
 - **The claim-reconciliation stage is unbuilt, and a `grep` in AGENTS.md stands in for
   it** (recorded 2026-08-10, **not fixed**). `scripts/docscan/main.go`'s header names a

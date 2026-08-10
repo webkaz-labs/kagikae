@@ -4,10 +4,11 @@ This file is the stable entrypoint for Go CLI standards in this skill bundle.
 The detailed standards are split under [references/](.) so the root
 document stays small.
 
-These standards are derived from the two production Go CLIs in the source repository:
+These standards are exercised by the production Go CLIs in this repo:
 
 - `macos-settings`
 - `updev`
+- [tools/skill-xref-lint](../tools/skill-xref-lint)
 
 ## Standard Documents
 
@@ -15,7 +16,7 @@ These standards are derived from the two production Go CLIs in the source reposi
 |----------|---------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Package layout, runner/provider boundaries, cache, JSON contracts, TTY separation. |
 | [CLI-SPEC.md](CLI-SPEC.md) | CLI behavior contract: commands, flags, exit codes, text/JSON/TUI output, localization. |
-| [DOCUMENTATION.md](DOCUMENTATION.md) | Required README/AGENTS/docs structure and maintenance rules. |
+| [DOCUMENTATION.md](DOCUMENTATION.md) | Required README/AGENTS/docs structure, scalable domain indexes, and PRODUCT/UX/DESIGN ownership. |
 | [LIBRARIES.md](LIBRARIES.md) | Recommended Go libraries and when not to add dependencies. |
 | [SECURITY.md](SECURITY.md) | Secret handling, subprocess safety, config/file security, report evidence, external tool/API rules. |
 | [TESTING.md](TESTING.md) | Unit, JSON regression, text/TTY, integration, and smoke testing standards. |
@@ -41,7 +42,15 @@ These standards are derived from the two production Go CLIs in the source reposi
   and build.
 - Keep vulnerability, supply-chain, SAST, and agent-code-quality checks in a
   separate `audit` task unless a project documents a narrow promoted blocker.
+- For interactive CLIs, treat the built binary under a real PTY as the user
+  contract. Use pinned `shell-use` for critical journeys; framework-level E2E is
+  optional, not a required intermediate layer. See
+  [TESTING.md](TESTING.md).
 - Add docs and validation before treating a new command as shipped.
+- Keep product scope in `PRODUCT.md`, TTY behavior in conditional `UX.md`, and
+  visual-system tokens/baselines in conditional `DESIGN.md`. Large domains keep
+  the uppercase file as an index and link complete topics under a lowercase
+  sibling directory.
 - For mise integration or did-you-mean hints, follow the opt-in patterns in
   [PATTERNS.md](PATTERNS.md) instead of reinventing them.
 

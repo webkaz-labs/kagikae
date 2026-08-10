@@ -32,7 +32,7 @@ Use additional packages only when a stable ownership boundary exists:
 | `internal/runner` | every subprocess and interactive process test seam |
 | `internal/textui` | ANSI/color/table/width/non-TTY-safe rendering helpers |
 | `internal/reviewui` | reusable TTY browser/detail behavior, if the tool needs it |
-| `internal/testutil/tuitest` | Bubble Tea program/PTY test harness wrappers; test-only imports such as `teatest/v2` |
+| `internal/testutil/tuitest` | Optional Bubble Tea model/program test helpers; test-only imports such as `teatest/v2`. Built-binary PTY automation stays in the pinned `shell-use` wrapper outside production packages. |
 | `internal/provider` | external provider capability boundaries such as package managers or OS backends |
 | `internal/config` | TOML config parse/validate/format helpers |
 | `internal/cache` | process-local cache or single-flight cache when repeated reads are expensive |

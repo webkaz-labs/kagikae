@@ -37,6 +37,11 @@ kagikae/
     state/                # state.json load/save
     runner/               # subprocess seam (template standard)
     testutil/runnertest/  # shared canned-response runner fake for tests
+  scripts/
+    docscan/              # `mise run docs-scan`: reports prose two documents carry
+                          #   twice. A second package main, outside the released
+                          #   binary (.goreleaser.yaml builds `.` only), so the
+                          #   dispatch-only rule above is about kae's main.go
 ```
 
 ## Layering

@@ -46,13 +46,12 @@ separate, explicit mode.
 
 ## Terminology
 
-| Term | Meaning |
-|------|---------|
-| `account` | a tool-specific login snapshot, e.g. `claude/main`, `codex/side` |
-| `profile` | a named bundle mapping each tool to one account, e.g. `main` = claude:main + codex:main + agy:main |
-| `driver` | the platform/tool-specific mechanism that captures and applies auth artifacts |
-| `artifact` | one captured unit of authentication state (a JSON pointer value, a file, or a keychain item) |
-| `companion` | a non-AI tool (git, gh, a cloud CLI) whose auth kae binds to a profile by driving env/config — not captured like an account; see [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md) |
+Every term this repository names — `account`, `profile`, `driver`, `artifact`,
+`companion`, and the mechanism vocabulary underneath them — is defined in
+[CONTEXT.md](CONTEXT.md), which is the authority on the vocabulary it holds. This
+section held a second copy of the first five until they moved there: one name, one
+place. It is not where a **JSON contract token** is named — that enum belongs to
+`internal/constants`, and CONTEXT.md's routing table says so.
 
 Single-tool and bundle switching both work:
 

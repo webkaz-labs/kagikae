@@ -9,7 +9,8 @@ Standalone public repository. Follow the bundled Go CLI standard in
 | Document | When To Read |
 |----------|--------------|
 | [README.md](README.md) | user-facing command or setup changes |
-| [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, terminology, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
+| [docs/CONTEXT.md](docs/CONTEXT.md) | before naming anything, and whenever a word for an existing thing has to be chosen — it is the authority on the vocabulary it holds, the user-facing terms and the mechanism vocabulary alike. Not for a JSON contract token, which is an enum owned by `internal/constants`; its own routing table says so. It is a glossary and states no rule: an entry that names something a predicate decides says which predicate and stops, so a question about *behaviour* is never answered here |
+| [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | anything that touches what companion-auth lockstep (git/gh/cloud CLIs) switches or preserves |
 | [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | before any code writes, harvests, attributes, orders or deletes a credential **copy**. It is the normative text for its own thirteen sections and not for the whole subject: several of them defer the per-tool contract to `docs/ADAPTERS.md` or `docs/CLI.md` where they say so, and § Implementation Boundaries below keeps the credential rules that did not move, beside one routing line per rule that did |
@@ -284,11 +285,16 @@ Never use a real login handle.
 
 For every change, decide and report "changed / no change needed" for **each tracked
 markdown file this repository owns** — derive the set rather than trusting a list:
-`git ls-files '*.md' | grep -v '^\.claude/skills/go-cli-tooling/'` (17 today). It
+`git ls-files '*.md' | grep -v '^\.claude/skills/go-cli-tooling/'` (18 today). It
 covers `README.md`, `AGENTS.md`, `CLAUDE.md`, everything under `docs/`, and the
 repo-local `upstream-auth-drift` skill, which the Documentation Map cites as
 normative and which a `docs/`-only list cannot reach — that is how a rule that had
 moved kept naming `AGENTS.md` as its authority.
+
+`mise run docs-scan` belongs to this sweep and to nothing else — it reports prose two
+documents carry twice, and it can fail nothing, so it is not a check and is not in
+`mise run check`. `scripts/docscan/main.go`'s header is normative for what a report
+does and does not mean; read it before acting on one.
 
 `.claude/skills/go-cli-tooling/` is excluded because it is a **generated** export of
 the shared Go CLI standard: never hand-edit it, or the next re-sync silently drops
@@ -306,3 +312,46 @@ including the routing lines above, and matches this paragraph, so it is neither
 complete nor ever empty. A **bare** `AGENTS.md` citation needs none of this — it
 survives a rule moving, because the reader lands in § Implementation Boundaries and
 the routing list sends them on.
+
+**That grep sees whether the target exists and nothing else, so what it cannot see is
+a quantity written *beside* a citation.** `docs/ROADMAP.md` said "the two commands in
+CONTEXT.md § Not converged" after a later commit merged them into one: § Not converged
+still existed, so every heading-fragment grep stayed green and only reading the sentence
+found it. Sweep the added lines, then check by hand each hit that describes **another**
+file — the `+++ b/...` headers are kept in the output for exactly that:
+
+```bash
+git diff main...HEAD | grep '^+' | grep -iE \
+ '^\+\+\+ |(^|[^A-Za-z*`])\*{0,2}`?(both|one|two|three|four|five|six|seven|eight|nine|ten|thirteen|[0-9]+)`?\*{0,2} '\
+'\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?|tools?)\b'
+```
+
+Before trusting a clean run, fire it at a commit with a known bad count — the positive
+control any negative assertion here needs. `git diff main...89341f4` produces the
+`docs/ROADMAP.md` line quoted above; if it stops producing it, the pattern is broken.
+
+It is **a net, not a proof**, and its holes are not a closed set: the noun and number
+lists are enumerations, and every enumeration written in this file has turned out to be
+one short. (`thirteen` is in the number list because this repository writes "the
+thirteen rules"; anything larger it writes as a digit, which `[0-9]+` covers.) Two holes
+are known today. The first is that a quantity which **wraps** across lines is invisible
+to a line-based grep — demonstrated without depending on how this file happens to be
+wrapped, since a reflow would silently retire the demonstration:
+
+```bash
+printf 'the **two**\ncommands in X\nthe two commands in X\n' | grep -cE '(one|two) commands?'
+# 1, not 2 — the wrapped one is missed
+```
+
+The second is that the command matches its own defining sentences, which is exactly why
+the citation rule above rejects `git grep '\.md §'`: a run whose only hits are this
+file's own prose is not a clean run.
+
+The cheapest fix for the whole class is the one the rest of the tree already uses —
+**do not write the number, write the derivation**: see
+[docs/CONTEXT.md](docs/CONTEXT.md) § Not converged, the `docs/ROADMAP.md` entry that
+cites it, and the `EXPECTED_GUARDS` note in `scripts/smoke-run-selftest.sh`'s header,
+which says it deliberately does not repeat the count because the two drifted apart the
+moment a guard was added. The mechanism that would retire the sweep is the unbuilt
+claim-reconciliation stage `scripts/docscan/main.go`'s header names, filed in
+`docs/ROADMAP.md`.

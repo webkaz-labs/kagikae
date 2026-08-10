@@ -270,6 +270,37 @@ alternative exists (`secret-tool`).
   already tells a runner to give each line a verdict and does not yet tell it to refuse
   a block whose checks are comments.
 
+- **The claim-reconciliation stage is unbuilt, and a `grep` in AGENTS.md stands in for
+  it** (recorded 2026-08-10, **not fixed**). `scripts/docscan/main.go`'s header names a
+  four-stage docs scan; stage 2 (duplication) is what that program does, and stage 3 —
+  reconciling a claim one document makes *about another* against what the other one says
+  — has no implementation. `AGENTS.md § Documentation Update Checklist` covers one shape
+  of it by hand: a quantity written beside a `§` citation, swept for with a regex over
+  the diff's added lines. That sweep is a net rather than a proof by its own admission,
+  and the holes it discloses are the argument for tooling rather than prose — a count
+  that wraps across lines is invisible to a line-based grep, and the noun and number
+  lists are an enumeration, which every enumeration in that file has proved to be one
+  short. What stage 3 needs first is a definition of what counts as a claim about
+  another file; the quantity form is the only one measured so far, and the second form
+  worth naming is a citation that resolves to a heading whose *content* has moved out
+  from under it. Not queued, and that header is where the yield argument is normative
+  rather than here: every release-breaking docs defect so far came from stage 4, running
+  the executable blocks.
+
+- **One directory has two names, and the glossary states a preference the tree does
+  not meet** (recorded 2026-08-10, **not fixed**). [CONTEXT.md](CONTEXT.md) names
+  **bound directory** as the term and **pinned directory** as the one to avoid, and
+  both are still in use — in the user-facing docs and under `internal/` alike, so
+  neither is a register the other stays out of. It is filed rather than done because
+  it is a rewording of a few dozen sites with no behaviour attached, and nothing about
+  it needs to ride with a code change. What it costs meanwhile is a grep: a reader who
+  searches for either word finds part of the subject and cannot tell that from all of
+  it. Derive the split with the command in CONTEXT.md § Not converged rather than
+  from a number quoted anywhere, including this entry — the definition of what counts
+  is the whole disagreement in figures like this one. The sibling convergence,
+  `witness` → `reader`, is done (`credStoreReaders`), and it is the reason this one is
+  visible.
+
 - **`scripts/smoke-env.sh` leaks a temp HOME every time it is sourced** (recorded
   2026-08-09, **not fixed**). It does `HOME=$(mktemp -d)` and nothing ever removes
   the directory, so each direct run of a block in [VALIDATION.md](VALIDATION.md)
@@ -614,12 +645,12 @@ alternative exists (`secret-tool`).
   which is what makes re-running `kae pin` a migration rather than a leak.
 
 - **The reader walk runs twice per bind, and a third walk of live bindings now exists**
-  (recorded 2026-08-08 by a quality pass, **not fixed**). `credStoreWitnesses` reads the pin
+  (recorded 2026-08-08 by a quality pass, **not fixed**). `credStoreReaders` reads the pin
   index and every bound directory's fragment, and both the pin-level pass and the write call
   it — with nothing between them that changes the answer. It sits behind the `supersedes`
   gate, so it costs nothing unless there is a copy worth harvesting; where that stops being
   true is `kae run -i`, which the mise hook makes a per-invocation path, and where the
-  per-witness `dirSpecs` resolution stops being free is the day a second tool's rotation is
+  per-reader `dirSpecs` resolution stops being free is the day a second tool's rotation is
   measured (codex's `Artifacts` can probe the keychain). The fix is a per-command memo, and
   the reason it is not an `App` field is that this package has already had one of those make
   a test pass for the wrong reason without a per-operation reset.
@@ -647,15 +678,15 @@ alternative exists (`secret-tool`).
   overwrite at all when the account it names has no snapshot to fall back on — which is the
   same question the `--purge` exceptions turn on, and a wider change than this one.
 
-- **A moved bound directory is not a witness, and its absence does not make the reader set
-  incomplete** (recorded 2026-08-08 by a reading-type review, **not fixed**).
-  `credStoreWitnesses` skips a pin whose recorded directory is gone and leaves `complete`
+- **A moved bound directory does not count as a reader, and its absence does not make the
+  reader set incomplete** (recorded 2026-08-08 by a reading-type review, **not fixed**).
+  `credStoreReaders` skips a pin whose recorded directory is gone and leaves `complete`
   true. For a *deleted* directory that is right and there is no alternative: `kae unpin`
   removes the fragment but never the breadcrumb, so one deleted temp worktree would
   otherwise mark the set incomplete forever and silently stop every harvest for every
   account. A directory that was **moved** is the case that pays for it — the fragment
   travelled with it and still exports the old credential store, so it is a live reader kae
-  cannot read at the path it recorded, and a stale confirming witness elsewhere can license
+  cannot read at the path it recorded, and a stale confirming reader elsewhere can license
   a harvest it would have disagreed with. What would settle it is a reader set that does
   not depend on the recorded path (`pinChecks` already reports the orphaned store, so the
   user is told something is wrong), or a breadcrumb that `unpin` removes so absence can
@@ -737,7 +768,7 @@ alternative exists (`secret-tool`).
   recorded identity against exactly that — so a reader whose tool has never actually run
   there confirms by construction. The second of the two candidate fixes below is the one
   that shipped (attribute from the directories currently reading the store,
-  `credStoreWitnesses`), and it narrows this without closing it: the readers are now a set
+  `credStoreReaders`), and it narrows this without closing it: the readers are now a set
   rather than the one directory being bound, so a directory that *has* run the tool
   disagrees and the harvest refuses — but a store all of whose readers are kae-labelled
   still confirms. Reachable: bind A to an account and never run the tool there, bind B and
@@ -745,8 +776,8 @@ alternative exists (`secret-tool`).
   with kae's own label, and B's token is harvested under A's account. A **globally isolated
   home** is a strictly easier A than a bound directory: `prepareGlobalIsolatedHome` writes
   the label on every `kae use -i` / `kae run -i`, nothing ever removes such a home, and the
-  witness walk reads them from disk without any liveness gate (deliberately — that source is
-  what gives `kae run -i` a witness at all). One class of kae-written label **is** retracted now — a shared config dir's,
+  reader walk reads them from disk without any liveness gate (deliberately — that source is
+  what gives `kae run -i` a reader at all). One class of kae-written label **is** retracted now — a shared config dir's,
   once the bound account changes — but that is the leftover kind, and this entry is about the
   kind a *current* binding wrote, which stays.
   **The heading understates it, and the candidate fix below does not close what it

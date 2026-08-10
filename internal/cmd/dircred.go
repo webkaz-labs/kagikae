@@ -313,8 +313,8 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 		// 2026-08-08. Keyed on the **label alone**, this deleted the live kind on the disagree
 		// arm, after which the next identical run saw one silent reader and one confirming
 		// sibling, confirmed, and harvested the foreign token — the mis-filing the reader model
-		// exists to stop, reopened from the other side. Keyed on **witness membership**, it
-		// broke on the enumeration-incomplete arm, where the walk answers "no witnesses" and so
+		// exists to stop, reopened from the other side. Keyed on **reader membership**, it
+		// broke on the enumeration-incomplete arm, where the walk answers "no readers" and so
 		// reads every directory as a stranger: an unrelated leftover store root then made kae
 		// delete a live label. Do not restore either.
 		//
@@ -1642,7 +1642,7 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 	return refs, true
 }
 
-// credStoreWitnesses names the config dirs of everything currently reading the credential
+// credStoreReaders names the config dirs of everything currently reading the credential
 // in credDir for tool — the directories whose identity cache is evidence about *that copy*.
 //
 // It exists because the per-account store broke the assumption attribution used to rest on.
@@ -1685,7 +1685,7 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 // `kae run -i`, which the mise hook makes per-invocation. Memoize per command if that shows
 // up — but not on App without a per-operation reset, which is the shape that already made a
 // test pass for the wrong reason here (docs/ROADMAP.md § The reader walk runs twice).
-func (app *App) credStoreWitnesses(credDir, tool string) (configDirs []string, complete bool) {
+func (app *App) credStoreReaders(credDir, tool string) (configDirs []string, complete bool) {
 	if credDir == "" {
 		return nil, false
 	}
@@ -1726,7 +1726,7 @@ func (app *App) credStoreWitnesses(credDir, tool string) (configDirs []string, c
 	// still using this", where a home nobody has selected must not keep a credential alive
 	// forever; this asks "whose login is this copy", where the identity cache a tool left
 	// in a home is honest evidence whether or not that home is selected right now. Sourced
-	// from `state.synced`, `kae run -i` had **no witness at all** — it exports both
+	// from `state.synced`, `kae run -i` had **no reader at all** — it exports both
 	// variables and never writes that map — so every run after the first kept the copy and
 	// the account snapshot was never updated again (found by review, 2026-08-08).
 	//
@@ -1759,8 +1759,8 @@ func (app *App) credStoreWitnesses(credDir, tool string) (configDirs []string, c
 //
 // Four outcomes, and the two mixed ones are the point:
 //
-//   - every witness that can speak says this account: confirmed.
-//   - every witness that can speak says somebody else **and the directory this operation
+//   - every reader that can speak says this account: confirmed.
+//   - every reader that can speak says somebody else **and the directory this operation
 //     acts for is one of them**: `Conflicting`. The store really does hold another
 //     account's credential, this account's is elsewhere, and the bind may replace it —
 //     which is the housekeeping re-pin that switches a directory back.
@@ -1772,7 +1772,7 @@ func (app *App) credStoreWitnesses(credDir, tool string) (configDirs []string, c
 //     acting directory is itself a reader that disagrees, this operation is not the event
 //     that gets to decide whose the copy is, and it takes the keep branch with everything
 //     else that cannot establish an owner.
-//   - witnesses **disagree**: refused, and deliberately *not* `Conflicting`. One reader
+//   - readers **disagree**: refused, and deliberately *not* `Conflicting`. One reader
 //     logged in as somebody else, so the copy is live and somebody's, and this bind is not
 //     the event that should decide whose. Overwriting on a majority would destroy a login
 //     that has no backup; `kae doctor` reports the disagreeing directory as
@@ -1781,7 +1781,7 @@ func (app *App) credStoreWitnesses(credDir, tool string) (configDirs []string, c
 //   - nobody can speak (a first bind, an unenumerable index, no cache anywhere yet):
 //     refused, missing evidence, so the caller keeps the copy.
 //
-// What a witness is **not** is an independent observer. A successful bind writes the
+// What a reader is **not** is an independent observer. A successful bind writes the
 // account's recorded identity into that directory's store, so a reader whose tool has
 // never run there confirms against a label kae planted — narrower than asking the one
 // directory being bound, and not gone. docs/ROADMAP.md § Attribution reads a label kae
@@ -1798,7 +1798,7 @@ func (app *App) credStoreWitnesses(credDir, tool string) (configDirs []string, c
 func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	tool, credDir string, acc account.Account, src attributionSource,
 ) harvestRefusal {
-	witnesses, complete := app.credStoreWitnesses(credDir, tool)
+	readers, complete := app.credStoreReaders(credDir, tool)
 	if !complete {
 		return harvestRefusal{
 			Why: "kae could not tell which directories read this credential",
@@ -1807,14 +1807,14 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	// A reader the caller has already unbound is still a reader for this question — see
 	// attributionSource. Appended rather than substituted: an unpin of one of several
 	// bindings leaves the others, and they answer first.
-	if src.Unbound && src.Dir != "" && !slices.Contains(witnesses, src.Dir) {
-		witnesses = append(witnesses, src.Dir)
+	if src.Unbound && src.Dir != "" && !slices.Contains(readers, src.Dir) {
+		readers = append(readers, src.Dir)
 	}
 	confirmed := 0
 	var conflict harvestRefusal
 	conflicting := []string{}    // the readers that named another account
 	silent := []harvestRefusal{} // readers that could not speak, and why each could not
-	for _, dir := range witnesses {
+	for _, dir := range readers {
 		specs, err := app.dirSpecs(ctx, tool, bindDirs{Config: dir, Cred: credDir})
 		if err != nil {
 			// One unreadable reader is missing evidence, not a verdict — and it is a
@@ -1823,7 +1823,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 			// reported that *nothing* reads this credential.
 			//
 			// Untested: dirSpecs fails on a tool with no isolation variable or an adapter
-			// error, neither of which a fixture can produce for one witness out of several
+			// error, neither of which a fixture can produce for one reader out of several
 			// while the harvest is claude-only. The count is what it protects, so a change
 			// to either arm has to keep them in step by reading rather than by a red test.
 			silent = append(silent, harvestRefusal{
@@ -1849,7 +1849,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	case len(conflicting) > 0 && slices.Contains(conflicting, src.Dir):
 		return conflict
 	// A **mode toggle** of one directory does not satisfy that test even though the same
-	// directory is the conflicting reader: the witness is derived from the fragment, which
+	// directory is the conflicting reader: the reader set is derived from the fragment, which
 	// still names the previous mode's config dir, while src.Dir is the new mode's. Left
 	// alone deliberately rather than aliased to the previous-mode dir. Aliasing would make
 	// the toggle *replace*, and what it would replace is a login with no snapshot anywhere

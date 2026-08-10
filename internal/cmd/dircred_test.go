@@ -316,8 +316,8 @@ func twoClaudeAccounts(t *testing.T) (*App, time.Time) {
 //
 // The store directory is two things at once, which is what makes it the fixture the
 // harvest tests need: it is the config dir a bind materializes into, *and* it is the
-// config dir credStoreWitnesses returns for this binding. An identity cache seeded there
-// is therefore evidence about the account's credential store — a genuine **witness** —
+// config dir credStoreReaders returns for this binding. An identity cache seeded there
+// is therefore evidence about the account's credential store — a genuine **reader** —
 // while one in a bare t.TempDir() is evidence about nothing, because no binding points at
 // it. Every one of these tests used a bare temp dir until 2026-08-08, which modelled a
 // directory production never produces: all three callers of writeDirCredential run with a
@@ -332,15 +332,15 @@ func bindClaudeHere(t *testing.T, app *App, profile string) (dir, storeDir strin
 	t.Helper()
 	accountName := app.Config.Profiles[profile].Accounts[constants.ToolClaude]
 	if accountName == "" {
-		t.Fatalf("profile %q binds no claude account, so this fixture would witness nothing", profile)
+		t.Fatalf("profile %q binds no claude account, so this fixture would be evidence about nothing", profile)
 	}
 	dir = pinHereAs(t, app, profile, modeShared)
 	storeDir = app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
-	// Positive controls. The identity is what lets this witness speak at all: without one,
+	// Positive controls. The identity is what lets this reader speak at all: without one,
 	// every "kae refused" assertion downstream would hold for missing evidence rather than
 	// for the reason it names — the same trap pinIdentityApp guards against.
 	if got := readFile(t, filepath.Join(storeDir, ".claude.json")); got == "" {
-		t.Fatalf("the bind must leave an identity cache in %s for this directory to witness anything", storeDir)
+		t.Fatalf("the bind must leave an identity cache in %s for this directory to be evidence about anything", storeDir)
 	}
 	if got := readFile(t, dirCredFile(app, constants.ToolClaude, accountName, storeDir)); got == "" {
 		t.Fatalf("the bind must materialize claude/%s's credential for this store to be read", accountName)
@@ -472,7 +472,7 @@ func TestWriteDirCredentialRefusesTwoIdentitiesThatAreNotAccountRecords(t *testi
 // store, so the fixture binds one: the identity cache the bind leaves in that directory
 // is what confirms the harvest. Its opposite number is
 // TestWriteDirCredentialKeepsANewerCopyItCannotAttribute, which is the same store with no
-// reader at all — the pair is what separates "the witness gate" from "the harvest".
+// reader at all — the pair is what separates "the reader gate" from "the harvest".
 func TestWriteDirCredentialHarvestsNewerLiveCredential(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
@@ -793,7 +793,7 @@ func TestWriteDirCredentialKeepsWhatItCannotEnumerateTheReadersOf(t *testing.T) 
 // A globally isolated home reads the account's credential too, and it has no fragment and
 // no pin — so the fragment walk cannot see it and `state.synced` is the only thing that
 // can. Without that half a machine whose only claude reader is `kae use -i` would have no
-// witness at all, and every copy its tool refreshed would be kept and never harvested.
+// reader at all, and every copy its tool refreshed would be kept and never harvested.
 func TestUseIsolatedHarvestsWithTheGlobalHomeAsEvidence(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
@@ -1181,7 +1181,7 @@ func TestAGlobalIsolatedHomeKeepsItsOwnDisagreeingLabel(t *testing.T) {
 }
 
 // The other direction of the same derivation, and the one that makes the walk unusable for
-// it: `credStoreWitnesses` answers an incomplete enumeration with **no** witnesses, so
+// it: `credStoreReaders` answers an incomplete enumeration with **no** readers, so
 // membership in that list reads every directory as a stranger — including one that is
 // reading the store and whose disagreeing label is a live login. Deriving the fact from the
 // walk would therefore delete that evidence whenever a leftover store root exists somewhere
@@ -1390,11 +1390,11 @@ func TestAnotherAccountsGlobalHomeIsNotAReader(t *testing.T) {
 // directory being bound is not one of them and has no reading of its own, so it takes the
 // keep branch with everything else that cannot establish an owner.
 //
-// Introduced by the first version of the witness model and caught by review, 2026-08-08:
+// Introduced by the first version of the reader model and caught by review, 2026-08-08:
 // `Conflicting` was returned whenever every reader that could speak conflicted, with no
 // requirement that this directory be one of them. A majority of one is not different from a
 // majority — and here it destroyed the only copy of the sibling's login, which the bind
-// *before* the witness model had kept.
+// *before* the reader model had kept.
 func TestRunPinDoesNotSpendACopyOnlyASiblingDisagreesAbout(t *testing.T) {
 	app := overlayTestApp(t)
 	now := app.Now()
@@ -1423,7 +1423,7 @@ func TestRunPinDoesNotSpendACopyOnlyASiblingDisagreesAbout(t *testing.T) {
 }
 
 // A **pre-split** binding keeps its credential inside its own store, so it does not read
-// the account's — and the witness filter has to say that from the fragment's recorded
+// the account's — and the reader filter has to say that from the fragment's recorded
 // entry rather than by composing the account's store path from the account it binds.
 // Deriving it counts such a directory as a reader and lets its label attribute a copy it
 // never reads; that mutation survived the whole suite (execution-type review, 2026-08-08).
@@ -1522,11 +1522,11 @@ func TestTwoReadersThatCannotSpeakGetTheirOwnReason(t *testing.T) {
 }
 
 // `kae run -i` prepares the same per-account home `kae use -i` does and **never writes
-// state.synced** — so a witness set sourced from that map left it with no reader at all,
+// state.synced** — so a reader set sourced from that map left it with no reader at all,
 // and every run after the first kept the copy instead of harvesting it, leaving the account
 // snapshot holding a credential single-use rotation had already invalidated. Found by
-// review, 2026-08-08; the witnesses are read from disk for exactly this.
-func TestRunIsolatedHomeIsAWitnessWithoutStateSynced(t *testing.T) {
+// review, 2026-08-08; the readers are read from disk for exactly this.
+func TestRunIsolatedHomeIsAReaderWithoutStateSynced(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
 	now := app.Now()
@@ -1543,7 +1543,7 @@ func TestRunIsolatedHomeIsAWitnessWithoutStateSynced(t *testing.T) {
 		t.Fatalf("the home must carry the identity that attributes the store: %q", got)
 	}
 	// The whole point of the fixture: this path records nothing in state.synced, so a
-	// witness set read from there would be empty. Asserted rather than assumed — if
+	// reader set read from there would be empty. Asserted rather than assumed — if
 	// `run -i` ever starts recording it, this test stops covering the disk source and
 	// says so instead of passing for the other reason.
 	st, err := app.loadState()

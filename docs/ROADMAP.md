@@ -316,6 +316,21 @@ alternative exists (`secret-tool`).
   arriving through a generated path, which is why `AGENTS.md` keeps this directory out of
   the docs sweep.
 
+- **Two sections in `PRODUCT.md` read as architecture, not product** (recorded
+  2026-08-11, **not fixed**). The rename from `docs/DESIGN.md` moved the whole file,
+  because the shared standard reserved `DESIGN.md` for a visual design system and says
+  it is "not the product or software design document". Against that standard's charter
+  for `PRODUCT.md` — mission, user problem, product boundaries, completion goal, primary
+  journeys — § Mission, § Product Boundaries, § Tool Tiers and § Subscription-First
+  Authentication Model sit correctly, while **§ Switching Surface** (what each mode
+  writes and preserves) and **§ Concurrency Boundary** (per-tool locks and what may run
+  at once) are architecture. They stayed because moving them is not a rename: § Switching
+  Surface is cited by `docs/CONTEXT.md` and by `scripts/docscan/main.go`'s calibration
+  note, which names its table as one half of a measured duplicate pair, so a move has to
+  repoint both and keep that measurement meaningful. Filed rather than done for the same
+  reason the vocabulary entry is: a rewording with no behaviour attached, and nothing
+  about it needs to ride with a code change.
+
 - **The claim-reconciliation stage is unbuilt, and a `grep` in AGENTS.md stands in for
   it** (recorded 2026-08-10, **not fixed**). `scripts/docscan/main.go`'s header names a
   four-stage docs scan; stage 2 (duplication) is what that program does, and stage 3 —
@@ -1445,7 +1460,7 @@ plain-CLI layer; the TUI sits on top of them.
 ## Tier-2 tools — described, not queued
 
 Everything in this section concerns agy, opencode, cursor or copilot, which are
-**tier 2** ([DESIGN.md](DESIGN.md) § Tool Tiers): kae commits to global credential
+**tier 2** ([PRODUCT.md](PRODUCT.md) § Tool Tiers): kae commits to global credential
 switching for them and to nothing more. These entries are therefore *descriptions
 of those tools*, kept so a future session recognizes a symptom rather than
 rediscovering it — not work queued against kae. Each says what would make it

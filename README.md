@@ -338,7 +338,7 @@ The per-tool switched/preserved allowlist is the normative contract in
 
 Two tiers, a deliberate scope decision rather than a to-do list. **Which tool is
 in which tier — with the rationale and the promotion criteria — is normative in
-[docs/DESIGN.md](docs/DESIGN.md) § Tool Tiers**; this file deliberately does not
+[docs/PRODUCT.md](docs/PRODUCT.md) § Tool Tiers**; this file deliberately does not
 repeat the mapping:
 
 - **Tier 1** gets every mode: global switching, global isolated homes, both
@@ -475,7 +475,7 @@ git diff --check
 
 | Document | Purpose |
 |----------|---------|
-| [docs/DESIGN.md](docs/DESIGN.md) | Mission, modes, boundaries. |
+| [docs/PRODUCT.md](docs/PRODUCT.md) | Mission, modes, boundaries. |
 | [docs/CONTEXT.md](docs/CONTEXT.md) | The vocabulary — what each term names. Naming only; it states no rule. Not for JSON contract tokens: those are `internal/constants`', documented in docs/DATA-MODEL.md. |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Per-tool switched/preserved contract. |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | Companion-auth (git/gh/cloud CLI) switched/preserved contract. |

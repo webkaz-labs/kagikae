@@ -226,7 +226,7 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
 - **Tool tiers are written down** (documentation). claude and codex are **tier 1**
   (every mode); agy, opencode, cursor and copilot are **tier 2** (global credential
   switching, `kae run --env`, backup/rollback, doctor, identity detection where the
-  tool exposes one). The normative definition is [DESIGN.md](DESIGN.md) § Tool
+  tool exposes one). The normative definition is [PRODUCT.md](PRODUCT.md) § Tool
   Tiers, with the mechanical form in [ADAPTERS.md](ADAPTERS.md) § Isolation env vars
   and the tier-2 items collected under a ROADMAP section that says they are
   descriptions of those tools rather than queued work.

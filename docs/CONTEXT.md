@@ -28,7 +28,7 @@ Where the answers live:
 |----------|-----------|
 | what a decision does | the predicate named in the entry |
 | where something lives on disk | [DATA-MODEL.md](DATA-MODEL.md) § Directory Layout (XDG) |
-| what a mode switches | [DESIGN.md](DESIGN.md) § Switching Surface |
+| what a mode switches | [PRODUCT.md](PRODUCT.md) § Switching Surface |
 | what one tool switches and preserves | [ADAPTERS.md](ADAPTERS.md) |
 | what may happen to a credential copy | [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) |
 | what a JSON status, code, artifact kind or driver id is called | `internal/constants`, described in [DATA-MODEL.md](DATA-MODEL.md) § Status Vocabulary |
@@ -36,7 +36,7 @@ Where the answers live:
 ## Surface terms
 
 The words a user types or reads. They are the same five this file inherited from
-`DESIGN.md § Terminology`, which now points here so that there is one place to
+`PRODUCT.md § Terminology`, which now points here so that there is one place to
 change a name.
 
 | term | names |

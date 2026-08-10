@@ -10,7 +10,7 @@ detected) and refuse to write when the live layout is unrecognized
 (exit code 10, `unsafe operation refused`).
 
 **How much surface a tool gets is a tier decision**, and which tool is which is
-stated only in [DESIGN.md](DESIGN.md) § Tool Tiers — read it there rather than
+stated only in [PRODUCT.md](PRODUCT.md) § Tool Tiers — read it there rather than
 inferring it from this document. The tier decides which *modes* apply
 (§ Isolation below), never which guards apply: every allowlist, refusal and
 structure guard in this document holds identically for all six tools. A gap

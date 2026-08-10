@@ -5,7 +5,7 @@
 > (`kae use -i`). v0.8.0 then folded `apply` into bare `kae use`, redesigned
 > `kae run` onto `-s`/`-i`/`--env` (dropping `--mode`), retired the overlay and
 > home mechanisms, and unified the mechanism vocabulary on shared/isolated.
-> Normative parts live in DESIGN.md / CLI.md / ADAPTERS.md; this file is
+> Normative parts live in PRODUCT.md / CLI.md / ADAPTERS.md; this file is
 > rationale/history.
 
 ## 1. Backbone principle
@@ -284,7 +284,7 @@ stay isolated); a single explicit unsupported tool exits `5`.
 
 That split is now a stated scope decision rather than only a consequence of what
 has been measured: claude and codex are **tier 1** and the other four are **tier 2**,
-defined normatively in [DESIGN.md](DESIGN.md) § Tool Tiers. Read it before treating
+defined normatively in [PRODUCT.md](PRODUCT.md) § Tool Tiers. Read it before treating
 a tier-2 tool's missing isolation as a gap to close — the mechanism in §5 would
 work for any tool with a verified isolation env var, and copilot has one, but
 building it is demand-gated. What the tier does *not* change is any refusal: an
@@ -373,6 +373,6 @@ not needed for claude.
 The phased plan that drove this model is fully implemented (v0.7.0–v0.7.2). The
 per-commit history is the source of truth (git log) and the release-level record
 is in [RELEASE.md](RELEASE.md); current behavior, flags, layout, and contracts
-live in DESIGN.md / CLI.md / ADAPTERS.md / DATA-MODEL.md. The remaining
+live in PRODUCT.md / CLI.md / ADAPTERS.md / DATA-MODEL.md. The remaining
 surface-vocabulary alignment (`run`/`apply`/`mise init`) is tracked in
 [ROADMAP.md](ROADMAP.md).

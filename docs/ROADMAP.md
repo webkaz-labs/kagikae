@@ -614,7 +614,7 @@ alternative exists (`secret-tool`).
   which is what makes re-running `kae pin` a migration rather than a leak.
 
 - **The reader walk runs twice per bind, and a third walk of live bindings now exists**
-  (recorded 2026-08-08 by a quality pass, **not fixed**). `credStoreWitnesses` reads the pin
+  (recorded 2026-08-08 by a quality pass, **not fixed**). `credStoreReaders` reads the pin
   index and every bound directory's fragment, and both the pin-level pass and the write call
   it — with nothing between them that changes the answer. It sits behind the `supersedes`
   gate, so it costs nothing unless there is a copy worth harvesting; where that stops being
@@ -649,7 +649,7 @@ alternative exists (`secret-tool`).
 
 - **A moved bound directory is not a witness, and its absence does not make the reader set
   incomplete** (recorded 2026-08-08 by a reading-type review, **not fixed**).
-  `credStoreWitnesses` skips a pin whose recorded directory is gone and leaves `complete`
+  `credStoreReaders` skips a pin whose recorded directory is gone and leaves `complete`
   true. For a *deleted* directory that is right and there is no alternative: `kae unpin`
   removes the fragment but never the breadcrumb, so one deleted temp worktree would
   otherwise mark the set incomplete forever and silently stop every harvest for every
@@ -737,7 +737,7 @@ alternative exists (`secret-tool`).
   recorded identity against exactly that — so a reader whose tool has never actually run
   there confirms by construction. The second of the two candidate fixes below is the one
   that shipped (attribute from the directories currently reading the store,
-  `credStoreWitnesses`), and it narrows this without closing it: the readers are now a set
+  `credStoreReaders`), and it narrows this without closing it: the readers are now a set
   rather than the one directory being bound, so a directory that *has* run the tool
   disagrees and the harvest refuses — but a store all of whose readers are kae-labelled
   still confirms. Reachable: bind A to an account and never run the tool there, bind B and

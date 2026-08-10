@@ -1642,7 +1642,7 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 	return refs, true
 }
 
-// credStoreWitnesses names the config dirs of everything currently reading the credential
+// credStoreReaders names the config dirs of everything currently reading the credential
 // in credDir for tool — the directories whose identity cache is evidence about *that copy*.
 //
 // It exists because the per-account store broke the assumption attribution used to rest on.
@@ -1685,7 +1685,7 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 // `kae run -i`, which the mise hook makes per-invocation. Memoize per command if that shows
 // up — but not on App without a per-operation reset, which is the shape that already made a
 // test pass for the wrong reason here (docs/ROADMAP.md § The reader walk runs twice).
-func (app *App) credStoreWitnesses(credDir, tool string) (configDirs []string, complete bool) {
+func (app *App) credStoreReaders(credDir, tool string) (configDirs []string, complete bool) {
 	if credDir == "" {
 		return nil, false
 	}
@@ -1798,7 +1798,7 @@ func (app *App) credStoreWitnesses(credDir, tool string) (configDirs []string, c
 func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	tool, credDir string, acc account.Account, src attributionSource,
 ) harvestRefusal {
-	witnesses, complete := app.credStoreWitnesses(credDir, tool)
+	readers, complete := app.credStoreReaders(credDir, tool)
 	if !complete {
 		return harvestRefusal{
 			Why: "kae could not tell which directories read this credential",
@@ -1807,14 +1807,14 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	// A reader the caller has already unbound is still a reader for this question — see
 	// attributionSource. Appended rather than substituted: an unpin of one of several
 	// bindings leaves the others, and they answer first.
-	if src.Unbound && src.Dir != "" && !slices.Contains(witnesses, src.Dir) {
-		witnesses = append(witnesses, src.Dir)
+	if src.Unbound && src.Dir != "" && !slices.Contains(readers, src.Dir) {
+		readers = append(readers, src.Dir)
 	}
 	confirmed := 0
 	var conflict harvestRefusal
 	conflicting := []string{}    // the readers that named another account
 	silent := []harvestRefusal{} // readers that could not speak, and why each could not
-	for _, dir := range witnesses {
+	for _, dir := range readers {
 		specs, err := app.dirSpecs(ctx, tool, bindDirs{Config: dir, Cred: credDir})
 		if err != nil {
 			// One unreadable reader is missing evidence, not a verdict — and it is a

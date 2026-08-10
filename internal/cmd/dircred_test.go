@@ -316,7 +316,7 @@ func twoClaudeAccounts(t *testing.T) (*App, time.Time) {
 //
 // The store directory is two things at once, which is what makes it the fixture the
 // harvest tests need: it is the config dir a bind materializes into, *and* it is the
-// config dir credStoreWitnesses returns for this binding. An identity cache seeded there
+// config dir credStoreReaders returns for this binding. An identity cache seeded there
 // is therefore evidence about the account's credential store — a genuine **witness** —
 // while one in a bare t.TempDir() is evidence about nothing, because no binding points at
 // it. Every one of these tests used a bare temp dir until 2026-08-08, which modelled a
@@ -1181,7 +1181,7 @@ func TestAGlobalIsolatedHomeKeepsItsOwnDisagreeingLabel(t *testing.T) {
 }
 
 // The other direction of the same derivation, and the one that makes the walk unusable for
-// it: `credStoreWitnesses` answers an incomplete enumeration with **no** witnesses, so
+// it: `credStoreReaders` answers an incomplete enumeration with **no** readers, so
 // membership in that list reads every directory as a stranger — including one that is
 // reading the store and whose disagreeing label is a live login. Deriving the fact from the
 // walk would therefore delete that evidence whenever a leftover store root exists somewhere
@@ -1526,7 +1526,7 @@ func TestTwoReadersThatCannotSpeakGetTheirOwnReason(t *testing.T) {
 // and every run after the first kept the copy instead of harvesting it, leaving the account
 // snapshot holding a credential single-use rotation had already invalidated. Found by
 // review, 2026-08-08; the witnesses are read from disk for exactly this.
-func TestRunIsolatedHomeIsAWitnessWithoutStateSynced(t *testing.T) {
+func TestRunIsolatedHomeIsAReaderWithoutStateSynced(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
 	now := app.Now()

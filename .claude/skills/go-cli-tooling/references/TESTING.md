@@ -193,17 +193,24 @@ or touch keychains directly. TUI tests use fake deps and temp HOME/XDG roots.
   duplication scan there drove real consolidations, and claim reconciliation was
   never implemented, so it has never had a chance to find anything.
 - **Have the extractor refuse a block whose checks are only comments.** Asking the
-  author in prose to write real assertions is a convention, and a convention does
-  not survive unrelated edits; a refusal in the extractor does. Match the marker on
-  three dimensions, because a marker is a *label* and the label is the part an
-  author invents: leading whitespace, case, and the word itself. One tool's guard
-  knew only `assert:` and was measured letting `#   expect:` through — the same
-  defect class as grepping for a literal you retired, reached by substituting one
-  word. Use an explicit vocabulary (`assert|expect|verify|check|confirm|ensure`)
-  rather than `[A-Za-z]+:`, which was measured flagging a legitimate `#   copy:`
-  narration line in a real block. Refuse at column 0 only: an *indented* comment is
-  how a live block spells out what the command above it proves, so refusing those
-  refuses every converted block.
+  author in prose to write real assertions is a convention, and a convention does not
+  survive unrelated edits — which is the argument for putting the refusal in the
+  extractor, not a guarantee that the refusal survives either: in the tool this comes
+  from, four unrelated edits each left a guard passing unconditionally while the suite
+  reported every guard holding, so a refusal lasts only as well as whatever tests the
+  refusal. Match the marker on three dimensions, because a marker is a *label* and the
+  label is the part an author invents: whitespace **on both sides of the word**, case,
+  and the word itself. Both whitespace sites were measured separately, and the one
+  before the colon was a silent survivor when dropped — `#   assert :` then reports
+  green. A guard knowing only `assert:` was measured letting `expect:` through, which
+  is the defect class of grepping for a literal you retired, reached by substituting
+  one word; use an explicit vocabulary (`assert|expect|verify|check|confirm|ensure`)
+  rather than `[A-Za-z]+:`, which was measured flagging a legitimate narration comment
+  whose label happened to be `copy:`. Refuse at column 0 only: an *indented* comment
+  is how a live block spells out what the command above it proves, so refusing those
+  refuses every converted block. Say what that ceiling leaves open rather than
+  implying the class is closed — an indented comment-only assertion following no
+  command is a lie this does not catch.
 - **A negative assertion needs a positive control beside it.** `grep -c X` prints
   `0` for a missing file, a broken decoder, or a pattern that could never match,
   so an absence check passes for the wrong reason. Pair it with a positive line

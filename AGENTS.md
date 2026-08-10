@@ -322,18 +322,31 @@ file — the `+++ b/...` headers are kept in the output for exactly that:
 
 ```bash
 git diff main...HEAD | grep '^+' | grep -iE \
- '^\+\+\+ |(^|[^A-Za-z*`])\*{0,2}`?(both|one|two|three|four|five|six|seven|eight|nine|ten|thirteen|[0-9]+)`?\*{0,2} '\
+ '^\+\+\+ |(^|[^A-Za-z*`])\*{0,2}`?(both|one|two|three|four|five|six|seven|eight|nine|ten|thirteen'\
+'|first|second|third|fourth|fifth|sixth|seventh|[0-9]+)`?\*{0,2} '\
 '\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?|tools?)\b'
 ```
 
 Before trusting a clean run, fire it at a commit with a known bad count — the positive
-control any negative assertion here needs. `git diff main...89341f4` produces the
-`docs/ROADMAP.md` line quoted above; if it stops producing it, the pattern is broken.
+control any negative assertion here needs. **`git show 89341f4 | grep '^+' | <the
+second grep above>`** produces the `docs/ROADMAP.md` line quoted above; if it stops
+producing it, the pattern is broken. `git show`, not `git diff main...89341f4`: that
+was the first form written here and it went vacuous the day the branch merged, because
+a range against an ancestor is empty and an empty input greps clean. A positive control
+that a merge can silence is not one.
+
+The same emptiness bites the sweep itself before the first commit on a branch:
+`main...HEAD` is a range, so it sees nothing uncommitted, and a run on a branch with no
+commits yet reports clean about a working tree full of changes. Use `git diff main` while
+the change is uncommitted. Either way the count of `^+` lines is the control — if that is
+zero, the sweep proved nothing.
 
 It is **a net, not a proof**, and its holes are not a closed set: the noun and number
 lists are enumerations, and every enumeration written in this file has turned out to be
-one short. (`thirteen` is in the number list because this repository writes "the
-thirteen rules"; anything larger it writes as a digit, which `[0-9]+` covers.) Two holes
+one short — including this one, twice: `thirteen` had to be added because this
+repository writes "the thirteen rules", and the **ordinals** had to be added after a
+diff wrote "a third site" and swept clean. Anything larger than the words listed is
+written as a digit, which `[0-9]+` covers. Two holes
 are known today. The first is that a quantity which **wraps** across lines is invisible
 to a line-based grep — demonstrated without depending on how this file happens to be
 wrapped, since a reflow would silently retire the demonstration:

@@ -261,11 +261,12 @@ func TestClaudeKeychainServiceIsPerConfigDir(t *testing.T) {
 // resolves to `auth.json` (the store's default is `file`), its spec is not
 // KindKeychain, and the tool the guard exists for is skipped entirely.
 func TestKeychainDirBindableMatchesTheItemIdentity(t *testing.T) {
-	// codex's identity does move, but the capability is not declared yet: each bound
-	// directory would add a `Codex Auth` item and nothing tears it down on unpin or a
-	// `pin -s` ↔ `pin -i` toggle (docs/ROADMAP.md). Carried by name so the gap stays a
-	// gap, instead of being encoded here as "codex's identity is fixed" — which is
-	// false, and is what a Target-only derivation quietly asserted.
+	// codex's identity does move, but the capability is not declared yet: the
+	// per-directory keyring bind has never been run against a real keychain, and
+	// docs/VALIDATION.md § Open gates names that gate as the one that must pass
+	// before codex leaves this map. Carried by name so the gap stays a gap, instead
+	// of being encoded here as "codex's identity is fixed" — which is false, and is
+	// what a Target-only derivation quietly asserted.
 	bindableNotYetDeclared := map[string]bool{constants.ToolCodex: true}
 	isolationEnvVar := map[string]string{
 		constants.ToolClaude: "CLAUDE_CONFIG_DIR",
@@ -322,10 +323,31 @@ func TestKeychainDirBindableMatchesTheItemIdentity(t *testing.T) {
 // codex's `Codex Auth` item is scoped by its account rather than its service name,
 // and that account *is* derived from `CODEX_HOME` — confirmed against a real item
 // for a bond-dir-shaped path, symlink included (docs/VALIDATION.md). So the reason
-// the flag stays false is no longer "unverified derivation": it is the item's
-// lifecycle. Declaring it makes every pinned directory create a `Codex Auth` item,
-// and nothing removes one on unpin or a `pin -s` ↔ `pin -i` toggle
-// (docs/ROADMAP.md). Do not "fix" this by setting the flag; land the teardown.
+// the flag stays false is not "unverified derivation", and it is not the item's
+// lifecycle either — **this comment told the next reader to "land the teardown"
+// until 2026-08-10, and that teardown had shipped on 2026-07-30**:
+// `removeDirCredential` sweeps a keychain item exactly when the adapter declares it
+// bindable, so setting this flag is what makes the sweep cover codex, on unpin
+// --purge, on a `pin -s` ↔ `pin -i` toggle and on a re-bind alike.
+//
+// What has never run is the round-trip itself, on a real keychain with two codex
+// homes. docs/VALIDATION.md § Open gates is that gate, says outright that everything
+// else is in place including the teardown, and names the exception map in
+// TestKeychainDirBindableMatchesTheItemIdentity as what its result unblocks.
+//
+// So no *mechanism* is missing — but declaring the capability is not a one-line
+// change either, and saying "not waiting on code" without this paragraph is the same
+// over-claim in the other direction. Declaring it is a pair — `KeychainDirBindable` on
+// codex's `keyringSpec` **and** dropping codex from the map above, since either alone
+// fails the parity guard by construction — and the pair turns four guards that encode
+// codex as the unbindable example red. Each is a deliberate statement of the current
+// state rather than an obstacle: this test,
+// TestWriteDirCredentialRefusesGlobalKeychainStore,
+// TestDirCredentialFreshnessRefusesGlobalKeychainStore and
+// TestPruneDirCredentialsSkipsBoundAndUnbindableStores — the last of which fails by
+// observing the sweep issue the per-directory delete, which is the mechanism working.
+// Measured 2026-08-10 by setting the flag in a throwaway extract, not inferred.
+// Do the gate first; then those four, and nothing else.
 func TestCodexKeyringIsNotDirBindable(t *testing.T) {
 	home := t.TempDir()
 	write(t, filepath.Join(home, "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")

@@ -478,6 +478,7 @@ git diff --check
 | [docs/DESIGN.md](docs/DESIGN.md) | Mission, modes, terminology, boundaries. |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Per-tool switched/preserved contract. |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | Companion-auth (git/gh/cloud CLI) switched/preserved contract. |
+| [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | Rules for writing, harvesting, attributing, ordering and deleting a credential copy. |
 | [docs/CLI.md](docs/CLI.md) | Commands, flags, exit codes, JSON contracts, completion. |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Config, snapshots, state, backups, secrets. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Package layout and boundaries. |

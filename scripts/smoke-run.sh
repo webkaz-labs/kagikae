@@ -201,8 +201,13 @@ printf 'smoke-run: %s lines extracted from %s under %s\n' \
 # example ("both space and tab before the marker colon are refused"). This paragraph
 # named only the leading side until a review of the exported standard found that
 # omission promoted into it, where other tools implement the rule from the text alone.
-# Case: `# Assert:` passed until
-# `-i`. And the word itself: `#   expect:` was measured passing a version of this
+# The same dimension has a second half, and it fails in the opposite direction:
+# *only* whitespace may precede the word. Relaxing this to `^#.*` was measured
+# surviving every other guard while refusing a legitimate block, because a column-0
+# comment can narrate about an assertion without being one — guard 25 pins that with
+# the live harvest line, and it is the reason this is not simply `^#.*:`.
+# Case: `# Assert:` passed until `-i`.
+# And the word itself: `#   expect:` was measured passing a version of this
 # guard that only knew `assert:`, which is the repository's own recorded defect
 # class — grepping for the literal you retired — reached by substituting one word.
 # The deletion above makes that likelier rather than less: no column-0 `assert:`

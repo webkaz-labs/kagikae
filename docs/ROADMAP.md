@@ -270,9 +270,14 @@ alternative exists (`secret-tool`).
 
 - **The exported Go CLI standard carried a figure withdrawn here** (recorded
   2026-08-10, **fixed in this repository** 2026-08-10; the source half is committed and
-  unmerged). Deliberately not struck through: `- ~~` in this file has meant a finished
-  fix in all ten entries that use it, so striking a half-done one makes a
-  strikethrough scan read this as done.
+  unmerged). Deliberately not struck through: `- ~~` in this file has marked entries
+  that are **closed** — their status words are *fixed*, *built* and *Dropped* — so
+  striking a half-done one makes a strikethrough scan read this as done. No count here:
+  the first draft of this sentence gave one in the present tense while un-striking this
+  entry in the same diff, which changed it — this entry's own defect class, caught by
+  the sweep in `AGENTS.md § Documentation Update Checklist` and then nearly discarded by
+  that sweep's triage step, which is why the step now covers a quantity counting
+  something in its own file.
   `.claude/skills/go-cli-tooling/references/TESTING.md` said "five wrong assertions
   across eight releases"; the count is measured and the span was sourceable nowhere,
   and the span had already been withdrawn from `scripts/smoke-run.sh` and from this

@@ -318,7 +318,13 @@ a quantity written *beside* a citation.** `docs/ROADMAP.md` said "the two comman
 CONTEXT.md § Not converged" after a later commit merged them into one: § Not converged
 still existed, so every heading-fragment grep stayed green and only reading the sentence
 found it. Sweep the added lines, then check by hand each hit that describes **another**
-file — the `+++ b/...` headers are kept in the output for exactly that:
+file — the `+++ b/...` headers are kept in the output for exactly that — **and each hit
+that counts something inside its own file, because one diff can change what it counts.**
+That second half was missing, and the sweep's first use after it was written proved why:
+a commit un-struck one of ten struck entries in `docs/ROADMAP.md` and wrote "all ten" in
+the present tense in the same diff, the pattern caught the line, and this step said to
+skip it because it named no other file. Triage by whether the quantity can go stale, not
+by which file it points at:
 
 ```bash
 git diff main...HEAD | grep '^+' | grep -iE \

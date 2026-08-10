@@ -313,40 +313,30 @@ complete nor ever empty. A **bare** `AGENTS.md` citation needs none of this — 
 survives a rule moving, because the reader lands in § Implementation Boundaries and
 the routing list sends them on.
 
-**That grep sees whether the target exists, and nothing else — so the thing it cannot
-see is a quantity you wrote *beside* a citation.** `docs/ROADMAP.md` said "the **two**
-commands in CONTEXT.md § Not converged" while a later edit in the same branch merged
-them into one; § Not converged still existed, so every heading-fragment grep stayed
-green, and only reading the sentence found it. The same shape holds for "the five
-terms in", "the thirteen rules", "one row per" — the citation resolves and the count
-is wrong.
-
-Sweep the diff for it, because a claim about another file is where this hurts:
+**That grep sees whether the target exists and nothing else, so what it cannot see is
+a quantity written *beside* a citation.** `docs/ROADMAP.md` said "the two commands in
+CONTEXT.md § Not converged" after a later commit merged them into one: § Not converged
+still existed, so every heading-fragment grep stayed green and only reading the sentence
+found it. Sweep the added lines, then check by hand each hit that describes **another**
+file — the `+++ b/...` headers are kept in the output for exactly that:
 
 ```bash
-git diff main...HEAD | grep '^+' | grep -inE \
- '(^|[^A-Za-z*`])\*{0,2}`?(one|two|three|four|five|six|seven|eight|nine|ten|thirteen|[0-9]+)`?\*{0,2} '\
-'\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?)\b'
+git diff main...HEAD | grep '^+' | grep -iE \
+ '^\+\+\+ |(^|[^A-Za-z*`])\*{0,2}`?(both|one|two|three|four|five|six|seven|eight|nine|ten|thirteen|[0-9]+)`?\*{0,2} '\
+'\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?|tools?)\b'
 ```
 
-Two things in that pattern are there because the first version of it, written in this
-section, missed them in this section's own prose: **`**two**` is not `two`**, so the
-emphasis has to be optional on both sides, and the word list needs `thirteen` because
-this repository writes "the thirteen rules" (`one`…`five`, `nine`, `ten` and
-`thirteen` are the number words measured in use before one of these nouns; anything
-larger is written as a digit and `[0-9]+` covers it).
+Before trusting a clean run, fire it at a commit with a known bad count — the positive
+control any negative assertion here needs: `git diff main...<that commit>` must produce
+the hit.
 
-A third dimension stays **open**, and it is the same one that forces short fragments
-two paragraphs up: a quantity **wraps** across lines, and `grep` is line-based, so
-`the **two**` at the end of one line and `commands in …` at the start of the next is
-invisible to any version of this. The sentence quoting that very case, four paragraphs
-up, evades this command for exactly that reason. Closing it costs a different tool,
-not a longer pattern — which is why it is disclosed here instead of fixed.
-
-So **the noun list and the command are a net, not a proof** — every enumeration
-written in this file has turned out to be one short, and the instruction is to re-read
-the quantities the diff introduced and check each against the thing it counts. Most
-hits are about the diff's own file or a test fixture and are self-checking; the ones to
-verify describe *another* file. Before trusting a clean result, run it against a commit
-that introduced a known bad count, the way any negative assertion here needs a positive
-control — `git diff main...<that commit>` must produce the hit.
+It is **a net, not a proof**, and two holes are known. A quantity that *wraps* across
+lines is invisible to a line-based grep, and the sentence above quoting the original
+case does exactly that. And like the `\.md §` pattern the citation rule rejects, this
+one matches its own defining sentences, so a few of its hits in this file are always
+its own text. The cheapest fix for the whole class is the one the rest of the tree
+already uses — **do not write the number, write the derivation**: see
+[docs/CONTEXT.md](docs/CONTEXT.md) § Not converged, the `docs/ROADMAP.md` entry that
+cites it, and the `EXPECTED_GUARDS` note in `scripts/smoke-run-selftest.sh`'s header.
+The mechanism that would retire the sweep is the unbuilt claim-reconciliation stage
+`scripts/docscan/main.go`'s header names, filed in `docs/ROADMAP.md`.

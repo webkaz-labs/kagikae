@@ -270,6 +270,23 @@ alternative exists (`secret-tool`).
   already tells a runner to give each line a verdict and does not yet tell it to refuse
   a block whose checks are comments.
 
+- **The claim-reconciliation stage is unbuilt, and a `grep` in AGENTS.md stands in for
+  it** (recorded 2026-08-10, **not fixed**). `scripts/docscan/main.go`'s header names a
+  four-stage docs scan; stage 2 (duplication) is what that program does, and stage 3 —
+  reconciling a claim one document makes *about another* against what the other one says
+  — has no implementation. `AGENTS.md § Documentation Update Checklist` covers one shape
+  of it by hand: a quantity written beside a `§` citation, swept for with a regex over
+  the diff's added lines. That sweep is a net rather than a proof by its own admission,
+  and its two disclosed holes are the argument for tooling rather than prose — a count
+  that wraps across lines is invisible to a line-based grep, and the noun and number
+  lists are an enumeration, which every enumeration in that file has proved to be one
+  short. What stage 3 needs first is a definition of what counts as a claim about
+  another file; the quantity form is the only one measured so far, and the second form
+  worth naming is a citation that resolves to a heading whose *content* has moved out
+  from under it. Not queued, and that header is where the yield argument is normative
+  rather than here: every release-breaking docs defect so far came from stage 4, running
+  the executable blocks.
+
 - **One directory has two names, and the glossary states a preference the tree does
   not meet** (recorded 2026-08-10, **not fixed**). [CONTEXT.md](CONTEXT.md) names
   **bound directory** as the term and **pinned directory** as the one to avoid, and

@@ -268,8 +268,11 @@ alternative exists (`secret-tool`).
   `AGENTS.md § Documentation Update Checklist` asks for and what this entry's first
   draft did not do.
 
-- ~~**The exported Go CLI standard still carries a figure withdrawn here**~~ (recorded
-  2026-08-10, **fixed here** 2026-08-10; the source half is committed and unmerged).
+- **The exported Go CLI standard carried a figure withdrawn here** (recorded
+  2026-08-10, **fixed in this repository** 2026-08-10; the source half is committed and
+  unmerged). Deliberately not struck through: `- ~~` in this file has meant a finished
+  fix in all ten entries that use it, so striking a half-done one makes a
+  strikethrough scan read this as done.
   `.claude/skills/go-cli-tooling/references/TESTING.md` said "five wrong assertions
   across eight releases"; the count is measured and the span was sourceable nowhere,
   and the span had already been withdrawn from `scripts/smoke-run.sh` and from this
@@ -292,7 +295,12 @@ alternative exists (`secret-tool`).
   had a chance to find anything.
   Correcting one unmeasured claim while leaving an unmeasured one touching it would
   have left the paragraph in the state this entry was filed about, so both moved. The
-  pass also promoted the refusal, as this entry said it could.
+  pass also promoted the extractor refusal into the standard. This entry used to close
+  by proposing exactly that — the reference already told a runner to give each line a
+  verdict and did not yet tell it to refuse a block whose checks are comments — and the
+  rewrite that struck it deleted that sentence, so it is restated here rather than
+  cited: a review round caught the first draft citing a proposal its own rewrite had
+  removed.
   **What is not done:** the source commit sits on an unmerged branch in the dotfiles
   repository, so `~/docs/go-cli/TESTING.md` — a symlink into that repository's
   canonical checkout — and any export taken from its `main` still carry the old

@@ -193,9 +193,15 @@ printf 'smoke-run: %s lines extracted from %s under %s\n' \
 # failed, it is a document that has to be fixed first.
 #
 # Matched on three dimensions, because a marker is a *label* and the label is the
-# part an author invents. Whitespace: the 56 markers deleted with the v0.8.x
-# sections used two spellings (`#   assert:` and `# assert:`), so a pattern keyed on
-# the three-space form would have let one through. Case: `# Assert:` passed until
+# part an author invents. Whitespace, on **both** sides of the word: the 56 markers
+# deleted with the v0.8.x sections used two spellings (`#   assert:` and `# assert:`),
+# so a pattern keyed on the three-space form would have let one through — and the
+# quantifier before the colon is the other side, dropping which was a measured silent
+# survivor, so the selftest pins it with a space line *and* a tab line rather than one
+# example ("both space and tab before the marker colon are refused"). This paragraph
+# named only the leading side until a review of the exported standard found that
+# omission promoted into it, where other tools implement the rule from the text alone.
+# Case: `# Assert:` passed until
 # `-i`. And the word itself: `#   expect:` was measured passing a version of this
 # guard that only knew `assert:`, which is the repository's own recorded defect
 # class — grepping for the literal you retired — reached by substituting one word.

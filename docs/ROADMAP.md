@@ -272,40 +272,34 @@ alternative exists (`secret-tool`).
   2026-08-10, **fixed in this repository** 2026-08-10; the source half is committed and
   unmerged). Deliberately not struck through: `- ~~` in this file has marked entries
   that are **closed** — their status words are *fixed*, *built* and *Dropped* — so
-  striking a half-done one makes a strikethrough scan read this as done. No count here:
-  the first draft of this sentence gave one in the present tense while un-striking this
-  entry in the same diff, which changed it — this entry's own defect class, caught by
-  the sweep in `AGENTS.md § Documentation Update Checklist` and then nearly discarded by
-  that sweep's triage step, which is why the step now covers a quantity counting
-  something in its own file.
+  striking a half-done one makes a strikethrough scan read this as done, and no count of
+  them is given here for the reason `AGENTS.md § Documentation Update Checklist` states.
   `.claude/skills/go-cli-tooling/references/TESTING.md` said "five wrong assertions
   across eight releases"; the count is measured and the span was sourceable nowhere,
   and the span had already been withdrawn from `scripts/smoke-run.sh` and from this
-  file. It could not be fixed in this repository — the skill directory is generated,
-  and [RELEASE.md](RELEASE.md) records that it re-syncs from the chezmoi source, which
-  is also the copy other tools receive — so the source was fixed and the bundle
-  re-exported by running the source's own export script rather than by editing any
-  copy. Which copies hold one is derived, not remembered, because a count here goes
+  file. It could not be fixed in this repository — the skill directory is generated —
+  so the source was fixed and the bundle re-exported by running the source's own export
+  script rather than by editing any copy. Note the routing trap: the references are
+  generated from the chezmoi repository's `docs/go-cli/TESTING.md`, **not** from
+  `dot_agents/skills/go-cli-tooling/`, which [RELEASE.md](RELEASE.md) calls the
+  canonical source and which holds only `SKILL.md` and `scripts/` — a reader who follows
+  that phrase looks for `references/` where none exists.
+  Which copies hold one is derived, not remembered, because a count here goes
   stale the next time a tool receives the bundle — and derived from the path the export
   itself creates rather than from the prose, which self-matches this file and every
   transcript quoting it:
-  `find ~/dev ~/.agents ~/.claude -path '*go-cli-tooling/references/TESTING.md'`.
+  `find ~/dev ~/.agents ~/.claude -type f -path '*go-cli-tooling/references/TESTING.md'`.
   On 2026-08-10 it returned this repository and otowatari, and both were re-exported.
-  **This entry named one claim and the paragraph carried two.** The sentence beside it,
-  "only running them ever found a defect", dropped the qualifier
+  **The entry named one claim and the paragraph carried two.** The sentence beside the
+  figure, "only running them ever found a defect", dropped the qualifier
   `scripts/docscan/main.go`'s header states — never a defect *that would have broken a
   release*, while that same header records real consolidations the duplication scan
   drove — and ranked four audits against the stage this section's
   claim-reconciliation entry describes, which has no implementation and so has never
-  had a chance to find anything.
-  Correcting one unmeasured claim while leaving an unmeasured one touching it would
-  have left the paragraph in the state this entry was filed about, so both moved. The
-  pass also promoted the extractor refusal into the standard. This entry used to close
-  by proposing exactly that — the reference already told a runner to give each line a
-  verdict and did not yet tell it to refuse a block whose checks are comments — and the
-  rewrite that struck it deleted that sentence, so it is restated here rather than
-  cited: a review round caught the first draft citing a proposal its own rewrite had
-  removed.
+  had a chance to find anything. Correcting one unmeasured claim while leaving an
+  unmeasured one touching it would have left the paragraph in the state this entry was
+  filed about, so both moved. The same pass promoted the extractor refusal into the
+  standard.
   **What is not done:** the source commit sits on an unmerged branch in the dotfiles
   repository, so `~/docs/go-cli/TESTING.md` — a symlink into that repository's
   canonical checkout — and any export taken from its `main` still carry the old
@@ -319,17 +313,18 @@ alternative exists (`secret-tool`).
   — has no implementation. `AGENTS.md § Documentation Update Checklist` covers one shape
   of it by hand: a quantity written beside a `§` citation, swept for with a regex over
   the diff's added lines. That sweep is a net rather than a proof by its own admission,
-  and the holes it discloses are the argument for tooling rather than prose. What they
-  are is `AGENTS.md`'s to state, and listing them here would go short the moment a
-  review round finds another — which is what happened: this sentence named two, and a
-  third (the number and the noun must be adjacent) arrived during the review of this
-  section's exported-Go-CLI-standard entry. What stage 3 needs first is a definition of
-  what counts as a claim about another file; the quantity form is the only one measured
-  so far, and the second form
-  worth naming is a citation that resolves to a heading whose *content* has moved out
-  from under it. Not queued, and that header is where the yield argument is normative
-  rather than here: every release-breaking docs defect so far came from stage 4, running
-  the executable blocks.
+  and what it still misses is the argument for tooling rather than prose — `AGENTS.md` is
+  normative for that list, and listing it here as well would go short the moment a review
+  round finds another, which has happened. Two of the holes it used to disclose were
+  closed instead, by joining each line to its predecessor and allowing words between the
+  number and the noun; what no widening of an added-lines sweep can reach is the shape
+  this entry exists for, **a quantity on a line the diff never touches**.
+  Stage 3 needs a definition covering every claim-form measured so far: a quantity beside
+  a `§` citation; a count of something in the writer's *own* file, which one diff can
+  change while writing it; and a citation that resolves to a heading whose *content* has
+  moved out from under it. Not queued, and that header is
+  where the yield argument is normative rather than here: every release-breaking docs
+  defect so far came from stage 4, running the executable blocks.
 
 - **One directory has two names, and the glossary states a preference the tree does
   not meet** (recorded 2026-08-10, **not fixed**). [CONTEXT.md](CONTEXT.md) names

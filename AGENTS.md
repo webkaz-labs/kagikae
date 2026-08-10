@@ -317,25 +317,40 @@ the routing list sends them on.
 a quantity written *beside* a citation.** `docs/ROADMAP.md` said "the two commands in
 CONTEXT.md § Not converged" after a later commit merged them into one: § Not converged
 still existed, so every heading-fragment grep stayed green and only reading the sentence
-found it. Sweep the added lines, then check by hand each hit that describes **another**
-file — the `+++ b/...` headers are kept so you can tell which file a hit came from — **and
-each hit that counts something inside its own file, because one diff can change what it
-counts.** That second half was missing, and a commit here proved why: it un-struck one of
-the struck entries in `docs/ROADMAP.md` while writing "all ten" of them in the present
-tense in the same diff, which made the number nine. The pattern caught the line, and this
-step told the reader to skip it because it named no other file. Triage by whether the
-quantity can go stale, not by which file it points at:
+found it.
+
+**The fix that holds is not to write the number — write the derivation**, the way
+[docs/CONTEXT.md](docs/CONTEXT.md) § Not converged does, and the `EXPECTED_GUARDS` note
+in `scripts/smoke-run-selftest.sh`'s header, which deliberately does not repeat a count
+because the two drifted apart the moment a guard was added. A quantity never written
+cannot go stale. What follows is only the net for the ones already there.
+
+Sweep the added lines, and triage each hit by whether the quantity **can go stale**, not
+by which file it points at — a count of something in its own file goes stale just as
+easily, which a commit here proved by un-striking one of the struck entries in
+`docs/ROADMAP.md` while writing "all ten" of them in the same diff. The `++ b/...` lines
+are kept so you can tell which file a hit came from.
 
 ```bash
-git diff main...HEAD | grep '^+' | grep -iE \
- '^\+\+\+ |(^|[^A-Za-z*`])\*{0,2}`?(both|one|two|three|four|five|six|seven|eight|nine|ten|thirteen'\
-'|first|second|third|fourth|fifth|sixth|seventh|[0-9]+)`?\*{0,2} '\
+git diff main...HEAD | grep '^+' | sed 's/^+//' | awk '{print prev" "$0; prev=$0}' | grep -iE \
+ '^\+\+ b/|(^|[^A-Za-z*`])\*{0,2}`?(both|one|two|three|four|five|six|seven|eight|nine|ten|thirteen'\
+'|first|second|third|fourth|fifth|sixth|seventh|[0-9]+)`?\*{0,2}( +[A-Za-z][A-Za-z-]*){0,3} +'\
 '\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?|tools?)\b'
 ```
 
+The `awk` joins each line to its predecessor and the `{0,3}` allows words between the
+number and the noun, because earlier versions of this net returned **0** on a quantity
+that wrapped across lines and on one whose noun was not adjacent to its number. Both are
+controls now; pipe either into the pipeline above and it must report 1:
+
+```bash
+printf '+the **two**\n+commands in X\n'          # a wrapped quantity
+printf '+one of ten struck entries here\n'       # a non-adjacent one
+```
+
 Before trusting a clean run, fire it at a commit with a known bad count — the positive
-control any negative assertion here needs. **`git show 89341f4 | grep '^+' | <the
-second grep above>`** produces the `docs/ROADMAP.md` line quoted above; if it stops
+control any negative assertion here needs. **`git show 89341f4 | <everything after the
+first pipe above>`** produces the `docs/ROADMAP.md` line quoted above; if it stops
 producing it, the pattern is broken. `git show`, not `git diff main...89341f4`: that
 was the first form written here and it went vacuous the day the branch merged, because
 a range against an ancestor is empty and an empty input greps clean. A positive control
@@ -347,57 +362,19 @@ commits yet reports clean about a working tree full of changes. Use `git diff ma
 the change is uncommitted. Either way the count of `^+` lines is the control — if that is
 zero, the sweep proved nothing.
 
-It is **a net, not a proof**, and its holes are not a closed set: the noun and number
-lists are enumerations, and every enumeration written in this file has turned out to be
-one short — including this one, more than once: `thirteen` had to be added because this
-repository writes "the thirteen rules", the **ordinals** had to be added after a
-diff wrote "a third site" and swept clean, and the noun list came up short again below,
-where the shortfall is disclosed instead of repaired. Counting the shortfalls here would
-be the same mistake one level up, which is how "twice" stood in this sentence while the
-third arrived lower in the same paragraph, in the same diff. Anything larger than the
-words listed is
-written as a digit, which `[0-9]+` covers. The holes below are the ones a round of review
-has actually found; no count is given, because each was found the same way and the next
-one will be too.
+It is **a net, not a proof**, and what it still misses is worth knowing rather than
+counting. The noun and number lists are enumerations, and every enumeration in this file
+has turned out short — `thirteen` and the **ordinals** were each added after a diff swept
+clean — so anything larger than the listed words is written as a digit, which `[0-9]+`
+covers. The command also matches its own defining sentences, which is why the citation
+rule above rejects `git grep '\.md §'`: a run whose only hits are this file's own prose is
+not a clean run.
 
-A quantity which **wraps** across lines is invisible to a line-based grep — demonstrated
-without depending on how this file happens to be wrapped, since a reflow would silently
-retire the demonstration:
-
-```bash
-printf 'the **two**\ncommands in X\nthe two commands in X\n' | grep -cE '(one|two) commands?'
-# 1, not 2 — the wrapped one is missed
-```
-
-The number and the noun must be **adjacent**, so one intervening word escapes — and the
-noun list escapes the same way, being an enumeration like every other one here:
-
-```bash
-printf 'all ten entries\none of ten struck entries\ntwo retired mode names\nfive assertions\n' \
-  | grep -icE '(one|two|five|ten) (entries|names)'
-# 1 of 4 — only line 1 matches; `struck` and `retired mode` break adjacency in lines 2 and 3.
-# Line 4 IS adjacent and still misses, because `assertions` is not a listed noun — it is
-# there to isolate that from adjacency, and it only does so with the intervening word
-# removed: `five wrong assertions` misses for both reasons at once and would prove
-# nothing about the noun list.
-```
-
-That is not hypothetical about this paragraph. The sentence above about a quantity
-counting something in its own file writes "one of … the struck entries", and its own net
-does not see it, because `struck` sits between the number and the noun. Stated on
-adjacency alone deliberately: whether that phrase also wraps depends on how this file is
-currently filled, and a claim that a reflow can falsify is the thing this whole section
-is about.
-
-And the command matches its own defining sentences, which is exactly why
-the citation rule above rejects `git grep '\.md §'`: a run whose only hits are this
-file's own prose is not a clean run.
-
-The cheapest fix for the whole class is the one the rest of the tree already uses —
-**do not write the number, write the derivation**: see
-[docs/CONTEXT.md](docs/CONTEXT.md) § Not converged, the `docs/ROADMAP.md` entry that
-cites it, and the `EXPECTED_GUARDS` note in `scripts/smoke-run-selftest.sh`'s header,
-which says it deliberately does not repeat the count because the two drifted apart the
-moment a guard was added. The mechanism that would retire the sweep is the unbuilt
-claim-reconciliation stage `scripts/docscan/main.go`'s header names, filed in
-`docs/ROADMAP.md`.
+**The class it cannot reach at all is a quantity on a line the diff does not touch**, and
+that is the original defect's own shape — one commit merged the two commands, and the
+sentence counting them sat unchanged in another file. `89341f4` was caught only because
+that commit happened to write the sentence as well. No widening of an added-lines sweep
+reaches this; the mechanism that would is the unbuilt claim-reconciliation stage
+`scripts/docscan/main.go`'s header names, filed in `docs/ROADMAP.md`. Until it exists,
+the first instruction in this section — write the derivation, not the number — is the only
+thing that covers it.

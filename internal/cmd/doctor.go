@@ -367,7 +367,8 @@ func (app *App) credentialHealthChecks(ctx context.Context, be secret.Backend, t
 // It compares the two records rather than watching for a cause, because several
 // paths reach this state — an interrupted `kae account rename`, a `kae rollback`
 // restoring a backup's stale `active_before`, a writer outside kae altogether — and
-// that list is not closed. **docs/CLI.md § doctor owns it; do not re-enumerate it
+// that list is not closed. **docs/CLI.md § `kae doctor --json` owns it; do not
+// re-enumerate it
 // here**, or the next cause has to be added in two places and will be added to one.
 //
 // Offline and backend-free — it compares two things kae has already loaded, which

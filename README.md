@@ -478,10 +478,12 @@ git diff --check
 | [docs/DESIGN.md](docs/DESIGN.md) | Mission, modes, terminology, boundaries. |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Per-tool switched/preserved contract. |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | Companion-auth (git/gh/cloud CLI) switched/preserved contract. |
+| [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | Rules for writing, harvesting, attributing, ordering and deleting a credential copy. |
 | [docs/CLI.md](docs/CLI.md) | Commands, flags, exit codes, JSON contracts, completion. |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Config, snapshots, state, backups, secrets. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Package layout and boundaries. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Safety rules and secret handling. |
+| [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | Why the scope/isolation model is shaped the way it is — rationale only, never the rules themselves. |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Later phases. |
 | [docs/RELEASE.md](docs/RELEASE.md) | Active release target and release process. |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | Pre-commit and release checks. |

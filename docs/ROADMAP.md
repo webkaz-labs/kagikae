@@ -419,7 +419,7 @@ alternative exists (`secret-tool`).
   *cause* became visible in v0.17.0: `kae doctor` reports `credential_superseded` for
   a bound directory whose copy another copy of the same account provably overtook,
   names where the newer one is, and points at the remedy that where decides
-  ([CLI.md](CLI.md) § doctor). The bomb itself is unchanged — only one copy can refresh, and the entry
+  ([CLI.md](CLI.md) § `kae doctor --json`). The bomb itself is unchanged — only one copy can refresh, and the entry
   that makes that stop being true is the SSCD split below. Nor does the check see an
   invalidation kae has no second copy of: a refresh in a directory kae does not know
   about, or in the real home under an account it is not tracking, leaves nothing to
@@ -435,7 +435,8 @@ alternative exists (`secret-tool`).
   across copies instead, which is why it is not a band of the stale one.
   **Built in v0.17.0**, as a two-pass harvest plus a harvest in the delete sweep;
   [ADAPTERS.md](ADAPTERS.md) § Per-directory credential store is normative for the
-  mechanism and the refusals, and [AGENTS.md](../AGENTS.md) carries the traps. Two
+  mechanism and the refusals, and [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § A credential that belongs to an
+  account, not a directory carries the traps. Two
   things the plan above did not name, recorded because both were found by review
   *after* a version that looked complete and passed its tests: **attribution** (a
   shared store is account-agnostic, so a re-bind finds the previous account's copy
@@ -499,7 +500,8 @@ alternative exists (`secret-tool`).
   `identityComparable` only chooses between "somebody else is logged in" and "kae cannot
   read the records it would compare", so a claim kae cannot support is no longer made
   about the ordinary case where claude has cleared its cache. The general lesson is the
-  one AGENTS.md § `supersedes` already states and this entry did not apply: refusing is
+  one [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § When a refusal destroys instead of
+  preserving already states and this entry did not apply: refusing is
   the conservative answer for the two sibling guards, which decline to *overwrite* or
   *delete*, and the destructive answer for a recapture, which declines to *preserve*.
   Porting a predicate across that asymmetry needs the caller's question re-asked.
@@ -638,7 +640,8 @@ alternative exists (`secret-tool`).
   one. So a directory someone logged into as another account is switched back by
   `kae pin <same mode>` and kept by `kae pin -i`. Aliasing the previous-mode dir would make
   the toggle replace, and what it would replace is a live login with no snapshot anywhere;
-  keeping is the answer AGENTS.md settles on and the one the code before the reader model
+  keeping is the answer [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Never harvest a copy
+  you cannot attribute settles on, and the one the code before the reader model
   also gave (a fresh isolated config dir has no cache, so attribution refused for missing
   evidence). What would settle it properly is deciding whether `Conflicting` should
   overwrite at all when the account it names has no snapshot to fall back on — which is the
@@ -672,7 +675,8 @@ alternative exists (`secret-tool`).
 
 - **A relogin's pre-flight refusal owes a backup it cannot safely take yet** (recorded
   2026-08-08 by an independent review of the pre-flight itself, **not fixed**).
-  [AGENTS.md](../AGENTS.md) states the rule the pre-flight falls under: a refusal that
+  [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § When a refusal destroys instead of
+  preserving states the rule the pre-flight falls under: a refusal that
   cannot preserve is a deletion, so it owes a backup the way `kae run -s`'s recapture
   answers its own with reason `run-unattributable`. `preserveBeforeRelogin` refuses on
   exactly the copy `kae pin` kept and pointed at this command — the two route through one
@@ -716,7 +720,8 @@ alternative exists (`secret-tool`).
   a decision rather than an oversight** (recorded 2026-08-08, **not fixed**). The bind now
   keeps a newer copy it could not *attribute* in the account's credential store, because
   refusing there would otherwise destroy it. The sibling refusal — a payload kae cannot
-  parse or date, which AGENTS.md is explicit may be a working login in a shape kae has not
+  parse or date, which [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § What kae observed is not
+  what the tool can do is explicit may be a working login in a shape kae has not
   been taught — deliberately kept the old behaviour: extending "keep" to it makes a
   corrupted or upstream-changed account store **unrepairable by `kae pin`**, leaving manual
   deletion of a path the warning names as the only way out. Both readings destroy
@@ -815,7 +820,8 @@ alternative exists (`secret-tool`).
   (so something still uses it) and one predates kae entirely. The two legacy-kae items
   were deleted by hand; the unattributable ones were deliberately left.
   That is the whole design constraint in one observation. Enumeration is now available
-  (AGENTS.md carries the correction and its two caveats), so a doctor check can list
+  ([CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Removing a per-directory credential carries
+  the correction and its two caveats), so a doctor check can list
   these items, attribute each by hashing the strings kae wrote into fragments, and
   report what is left over. But **attribution failure must never authorize deletion**:
   the hash is one-way, a candidate could be the operator's own `CLAUDE_CONFIG_DIR` or
@@ -1043,7 +1049,8 @@ alternative exists (`secret-tool`).
   those would fire on healthy directories — the mistake v0.15.0/v0.15.1 made in both
   directions. The two causes it cannot separate offline (a login made inside the
   directory versus an identity kae failed to apply) are both stated in the message,
-  since their remedies point opposite ways; [CLI.md](CLI.md) § doctor is normative.
+  since their remedies point opposite ways; [CLI.md](CLI.md) § `kae doctor --json` is
+  normative.
 - **A directory-scoped keychain item keeps a stale account attribute**: `ApplyLive`
   reuses an existing item's account attribute so a re-login that changed it is
   honored, which is right for the single global item but not for a per-directory

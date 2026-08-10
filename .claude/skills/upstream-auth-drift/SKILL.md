@@ -78,8 +78,8 @@ silently.
    was written four times. Grep for the constant, then for the callers of
    whatever resolves it.
 2. **Put the rule in the adapter, never at the call site.** This is a boundary in
-   [AGENTS.md](../../../AGENTS.md): only the adapter may evaluate where a
-   credential lives. If a caller needs it for a different environment, build an
+   [docs/CREDENTIAL-RULES.md](../../../docs/CREDENTIAL-RULES.md) § Resolving a
+   credential's location: only the adapter may evaluate where a credential lives. If a caller needs it for a different environment, build an
    `adapter.Env` for that environment and ask again (`dirCredentialSpec` is the
    worked example) — do not recompute a name.
 3. **Decide fail-loud vs warn vs refuse, and prefer refusing to guessing.** The

@@ -24,6 +24,14 @@
 # identical to a clean run. The floors are deliberately far below today's values so
 # ordinary editing does not trip them; they exist to catch a walk that collapsed, not
 # to pin a number.
+#
+# A floor is only real if it can be reached. Two here could not: `grep` exits 1 when it
+# matches nothing, and under `set -e` with `pipefail` that aborts the assignment it sits
+# in, so the script died with no output at all and the floor below it never ran. Both
+# were verified by mutating the extraction and confirming the *message* appears, not
+# merely that the exit status was non-zero — a silent death also exits non-zero, and it
+# was passing for that reason. Every `grep` whose zero-match case is legitimate is
+# therefore wrapped in `|| true`.
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -57,7 +65,7 @@ if [ "$required_count" -ne 8 ]; then
 fi
 
 # --- every docs/*.md is listed in AGENTS.md's Documentation Map -------------------
-map_start=$(grep -n '^## Documentation Map' AGENTS.md | cut -d: -f1)
+map_start=$(grep -n '^## Documentation Map' AGENTS.md | cut -d: -f1 || true)
 if [ -z "$map_start" ]; then
   fail "AGENTS.md has no '## Documentation Map' heading — the orphan check cannot run"
   map_body=''
@@ -70,14 +78,26 @@ if [ "${map_rows:-0}" -lt 5 ]; then
   fail "Documentation Map has ${map_rows:-0} table rows, which is too few to be the real table"
 fi
 
+# Compare against the paths the Map actually links, matched whole. A substring test
+# here passes an orphan whose name happens to sit inside another row: docs/RULES.md
+# slipped through as "ok" because CREDENTIAL-RULES.md is in the table, and so did
+# DAPTERS.md against ADAPTERS.md. Measured before this was written the exact way.
+map_targets=$(printf '%s' "$map_body" |
+  { grep -oE '\]\(docs/[A-Za-z0-9._-]+\)' || true; } |
+  sed -e 's/^](//' -e 's/)$//' |
+  sort -u)
+map_target_count=$(printf '%s\n' "$map_targets" | grep -c 'docs/' || true)
+if [ "${map_target_count:-0}" -lt 10 ]; then
+  fail "extracted only ${map_target_count:-0} docs/ links from the Map, fewer than the table holds"
+fi
+
 docs_checked=0
 while IFS= read -r doc; do
   docs_checked=$((docs_checked + 1))
-  base=${doc#docs/}
-  if ! printf '%s' "$map_body" | grep -Fq "$base"; then
-    fail "docs/$base is not listed in AGENTS.md's Documentation Map"
+  if ! printf '%s\n' "$map_targets" | grep -Fxq "$doc"; then
+    fail "$doc is not listed in AGENTS.md's Documentation Map"
   fi
-done < <(find docs -maxdepth 1 -type f -name '*.md' -print | sort)
+done < <(find docs -maxdepth 1 -type f -name '*.md' -print | sed 's|^\./||' | sort)
 if [ "$docs_checked" -lt 10 ]; then
   fail "walked only $docs_checked files under docs/, which is fewer than this repository has"
 fi

@@ -34,9 +34,16 @@ git diff --check
 `mise run check` is the authoritative gate; it must pass before every commit.
 It runs `lint` (gofumpt + goimports format check, `staticcheck -checks=SA*`,
 curated `golangci-lint`, `shellcheck`), `go test ./...`, `go vet`,
-`go mod verify`, `go build ./...`, and `smoke-selftest`
+`go mod verify`, `go build ./...`, `smoke-selftest`
 (`scripts/smoke-run-selftest.sh`, which checks the smoke runner's own guards — no
-`kae` build and no network, so it costs a few seconds). `mise run audit` (govulncheck, plus the
+`kae` build and no network, so it costs a few seconds), and `docs-check`
+(`scripts/check-docs.sh`: the shared standard's required docs set exists, every
+relative markdown link resolves, and no file under `docs/` is missing from the
+Documentation Map above — the omission that let a second normative copy grow inside
+`docs/SCOPE-MODEL.md`). Every count it prints is asserted against a floor, because a
+walk that collapses otherwise reports a clean run; its first version did exactly that
+and the floor is what said so. It is **not** `mise run docs-scan`, which reports
+duplicated prose and deliberately fails nothing. `mise run audit` (govulncheck, plus the
 upstream literal fingerprints — it reads the installed tools' own binaries, so it
 only means anything on a machine that has them) and `mise run goreleaser-check` are
 slower release-time checks. Lint tools run via `go run <tool>@<pinned version>`; the

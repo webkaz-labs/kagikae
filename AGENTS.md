@@ -312,3 +312,41 @@ including the routing lines above, and matches this paragraph, so it is neither
 complete nor ever empty. A **bare** `AGENTS.md` citation needs none of this — it
 survives a rule moving, because the reader lands in § Implementation Boundaries and
 the routing list sends them on.
+
+**That grep sees whether the target exists, and nothing else — so the thing it cannot
+see is a quantity you wrote *beside* a citation.** `docs/ROADMAP.md` said "the **two**
+commands in CONTEXT.md § Not converged" while a later edit in the same branch merged
+them into one; § Not converged still existed, so every heading-fragment grep stayed
+green, and only reading the sentence found it. The same shape holds for "the five
+terms in", "the thirteen rules", "one row per" — the citation resolves and the count
+is wrong.
+
+Sweep the diff for it, because a claim about another file is where this hurts:
+
+```bash
+git diff main...HEAD | grep '^+' | grep -inE \
+ '(^|[^A-Za-z*`])\*{0,2}`?(one|two|three|four|five|six|seven|eight|nine|ten|thirteen|[0-9]+)`?\*{0,2} '\
+'\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?)\b'
+```
+
+Two things in that pattern are there because the first version of it, written in this
+section, missed them in this section's own prose: **`**two**` is not `two`**, so the
+emphasis has to be optional on both sides, and the word list needs `thirteen` because
+this repository writes "the thirteen rules" (`one`…`five`, `nine`, `ten` and
+`thirteen` are the number words measured in use before one of these nouns; anything
+larger is written as a digit and `[0-9]+` covers it).
+
+A third dimension stays **open**, and it is the same one that forces short fragments
+two paragraphs up: a quantity **wraps** across lines, and `grep` is line-based, so
+`the **two**` at the end of one line and `commands in …` at the start of the next is
+invisible to any version of this. The sentence quoting that very case, four paragraphs
+up, evades this command for exactly that reason. Closing it costs a different tool,
+not a longer pattern — which is why it is disclosed here instead of fixed.
+
+So **the noun list and the command are a net, not a proof** — every enumeration
+written in this file has turned out to be one short, and the instruction is to re-read
+the quantities the diff introduced and check each against the thing it counts. Most
+hits are about the diff's own file or a test fixture and are self-checking; the ones to
+verify describe *another* file. Before trusting a clean result, run it against a commit
+that introduced a known bad count, the way any negative assertion here needs a positive
+control — `git diff main...<that commit>` must produce the hit.

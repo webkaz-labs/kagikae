@@ -23,6 +23,15 @@ cd -- "$root"
 
 failures=0
 cases=0
+
+# The fixture is the working tree's tracked files, so this needs a git work tree. Say so
+# rather than letting a case die inside python on a missing file, which is what happened
+# when this was first run against an extracted copy of the tree.
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  printf 'check-docs-selftest: not inside a git work tree; the fixture needs `git ls-files`\n' >&2
+  exit 1
+fi
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 

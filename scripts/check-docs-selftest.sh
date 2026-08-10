@@ -11,7 +11,7 @@
 #
 # docs/ROADMAP.md carries an open entry titled "The smoke guards have no test, and four
 # changes switched one off without anything noticing". This is that lesson applied to
-# the newer guard before it earns its own entry: two assertions, not a suite.
+# the newer guard before it earns its own entry: the cases below, not a suite.
 #
 # Each case asserts the DIAGNOSTIC, never the exit status. A script that dies silently
 # under `set -e` also exits non-zero, and that is precisely how two unreachable floors
@@ -22,6 +22,7 @@ root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd -- "$root"
 
 failures=0
+cases=0
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -41,6 +42,7 @@ fixture() {
 
 check() {
   local name="$1" want="$2" got="$3"
+  cases=$((cases + 1))
   if printf '%s' "$got" | grep -Fq "$want"; then
     printf 'ok    %s\n' "$name"
   else
@@ -89,4 +91,10 @@ if [ "$failures" -gt 0 ]; then
   exit 1
 fi
 
-printf 'check-docs-selftest: all 4 cases hold\n'
+if [ "$cases" -lt 4 ]; then
+  fail_count=$((cases))
+  printf 'check-docs-selftest: only %s case(s) ran, fewer than this file defines\n' "$fail_count" >&2
+  exit 1
+fi
+
+printf 'check-docs-selftest: all %s cases hold\n' "$cases"

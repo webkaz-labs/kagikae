@@ -297,10 +297,12 @@ the edit. A change there belongs in the chezmoi source and arrives by re-export.
 **A citation that names a `§` names a target that has to exist**, and it quotes the
 section name verbatim — so grep the name, not the sigil. Before renaming or moving a
 section, `git grep -n` a **short distinctive fragment** of the old name, and repoint
-every hit. Short because citations wrap: of the nine citations of the sections moved
-on 2026-08-10, **six span two lines**, and a grep for a whole heading finds none of
-those six. Do not reach for `git grep '\.md §'` — it misses the `[X.md](X.md) § Name`
-form, misses every bare `§ Name` including the routing lines above, and matches this
-paragraph, so it is neither complete nor ever empty. A **bare** `AGENTS.md` citation
-needs none of this: it survives a rule moving, because the reader lands in
-§ Implementation Boundaries and the routing list sends them on.
+every hit. Short because citations wrap across lines, so a grep for the whole heading
+misses them — reproducible today: `git grep -n 'Ordering two copies'` finds the
+citation in `internal/cmd/run_test.go`, and `git grep -n 'Ordering two copies of one
+credential'` finds nothing there. Do not reach for `git grep '\.md §'`: it misses the
+`[X.md](X.md) § Name` and `` `X.md` § Name `` forms, misses every bare `§ Name`
+including the routing lines above, and matches this paragraph, so it is neither
+complete nor ever empty. A **bare** `AGENTS.md` citation needs none of this — it
+survives a rule moving, because the reader lands in § Implementation Boundaries and
+the routing list sends them on.

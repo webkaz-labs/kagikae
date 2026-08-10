@@ -323,8 +323,9 @@ alternative exists (`secret-tool`).
   are is `AGENTS.md`'s to state, and listing them here would go short the moment a
   review round finds another — which is what happened: this sentence named two, and a
   third (the number and the noun must be adjacent) arrived during the review of this
-  section's exported-Go-CLI-standard entry. What stage 3 needs first is a definition of what counts as a claim about
-  another file; the quantity form is the only one measured so far, and the second form
+  section's exported-Go-CLI-standard entry. What stage 3 needs first is a definition of
+  what counts as a claim about another file; the quantity form is the only one measured
+  so far, and the second form
   worth naming is a citation that resolves to a heading whose *content* has moved out
   from under it. Not queued, and that header is where the yield argument is normative
   rather than here: every release-breaking docs defect so far came from stage 4, running

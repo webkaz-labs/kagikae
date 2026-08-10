@@ -339,8 +339,10 @@ git diff main...HEAD | grep '^+' | sed 's/^+//' | awk '{print prev" "$0; prev=$0
 ```
 
 The `awk` joins each line to its predecessor and the `{0,3}` allows words between the
-number and the noun, because earlier versions of this net returned **0** on a quantity
-that wrapped across lines and on one whose noun was not adjacent to its number. Both are
+number and the noun **within that two-line window** — a gap inside the word budget but
+spread over three lines still escapes — because earlier versions of this net returned
+**0** on a quantity that wrapped across lines and on one whose noun was not adjacent to
+its number. Both are
 controls now. Feed each to **everything after the first pipe above** — not to the whole
 pipeline, which starts at `git diff`, ignores stdin, and would silently answer about the
 branch instead — and each must yield exactly one record:
@@ -371,9 +373,11 @@ zero, the sweep proved nothing.
 
 It is **a net, not a proof**, and what it still misses is worth knowing rather than
 counting. The noun and number lists are enumerations, and every enumeration in this file
-has turned out short — `thirteen`, the **ordinals** and `assertions` were each added after
-a diff swept clean — so anything larger than the listed words is written as a digit, which
-`[0-9]+` covers. The command also matches its own defining sentences, which is why the citation
+has turned out short, and each addition was found a different way: `thirteen` from this
+repository's own prose, the **ordinals** after a diff wrote "a third site" and swept clean,
+`assertions` from reading a hit the net had returned for a *different* quantity on the same
+line. So anything larger than the listed words is written as a digit, which `[0-9]+`
+covers. The command also matches its own defining sentences, which is why the citation
 rule above rejects `git grep '\.md §'`: a run whose only hits are this file's own prose is
 not a clean run.
 

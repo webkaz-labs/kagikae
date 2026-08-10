@@ -333,9 +333,21 @@ func TestKeychainDirBindableMatchesTheItemIdentity(t *testing.T) {
 // What has never run is the round-trip itself, on a real keychain with two codex
 // homes. docs/VALIDATION.md § Open gates is that gate, says outright that everything
 // else is in place including the teardown, and names the exception map in
-// TestKeychainDirBindableMatchesTheItemIdentity as what its result unblocks. So the
-// flag is not waiting on code: set it when the gate passes, and not to close a gap
-// that no longer exists.
+// TestKeychainDirBindableMatchesTheItemIdentity as what its result unblocks.
+//
+// So no *mechanism* is missing — but declaring the capability is not a one-line
+// change either, and saying "not waiting on code" without this paragraph is the same
+// over-claim in the other direction. Declaring it is a pair — `KeychainDirBindable` on
+// codex's `keyringSpec` **and** dropping codex from the map above, since either alone
+// fails the parity guard by construction — and the pair turns four guards that encode
+// codex as the unbindable example red. Each is a deliberate statement of the current
+// state rather than an obstacle: this test,
+// TestWriteDirCredentialRefusesGlobalKeychainStore,
+// TestDirCredentialFreshnessRefusesGlobalKeychainStore and
+// TestPruneDirCredentialsSkipsBoundAndUnbindableStores — the last of which fails by
+// observing the sweep issue the per-directory delete, which is the mechanism working.
+// Measured 2026-08-10 by setting the flag in a throwaway extract, not inferred.
+// Do the gate first; then those four, and nothing else.
 func TestCodexKeyringIsNotDirBindable(t *testing.T) {
 	home := t.TempDir()
 	write(t, filepath.Join(home, "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")

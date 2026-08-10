@@ -499,7 +499,8 @@ alternative exists (`secret-tool`).
   `identityComparable` only chooses between "somebody else is logged in" and "kae cannot
   read the records it would compare", so a claim kae cannot support is no longer made
   about the ordinary case where claude has cleared its cache. The general lesson is the
-  one AGENTS.md § `supersedes` already states and this entry did not apply: refusing is
+  one [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § When a refusal destroys instead of
+  preserving already states and this entry did not apply: refusing is
   the conservative answer for the two sibling guards, which decline to *overwrite* or
   *delete*, and the destructive answer for a recapture, which declines to *preserve*.
   Porting a predicate across that asymmetry needs the caller's question re-asked.

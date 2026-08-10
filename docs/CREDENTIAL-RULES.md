@@ -1,9 +1,15 @@
 # Credential rules
 
-Rules about a credential **copy** — where one lives, and who may overwrite,
-harvest, attribute, order or delete one, in what order. Read this file before
-touching any of that. Do not trust a list of the call sites; find them:
-`git grep -ln 'dirCredential\|supersedes\|harvest\|Attribut' internal/`.
+Thirteen rules about a credential **copy** — where one lives, and who may
+overwrite, harvest, attribute, order or delete one, in what order. Read this file
+before touching any of that. Do not trust a list of the call sites; find them:
+`git grep -ln 'dirCredential\|supersedes\|harvest\|Attribut\|unintendedLinks\|buildLsPins' internal/`.
+
+**This is not every credential rule.** [AGENTS.md](../AGENTS.md) § Implementation
+Boundaries keeps the ones an ordinary task does consult — keychain-item identity, a
+credential that is a *set* of stores, store-selecting enums, the two comparison
+predicates, and that is not a closed list — so a question this file does not answer
+may still have an answer there.
 
 They live here rather than in [AGENTS.md](../AGENTS.md) because none of them is
 consulted in *every* task and AGENTS.md is the one document loaded into every
@@ -91,8 +97,9 @@ and was corrected on 2026-08-04 — `security dump-keychain` lists item attribut
 (service, account, dates) with no prompt, which is how five stale per-directory
 items were found on a real machine. **The sweep's design does not change**: an
 enumeration tells you an item exists, never whether another directory still reads
-it, and only a fragment says that (see the next entry). Two rules come out of the
-correction. Never pass `-d` — it prompts per item and prints the secret. And an
+it, and only a fragment says that (§ A store tree is history; a fragment is the
+binding). Two rules come out of the correction. Never pass `-d` — it prompts per
+item and prints the secret. And an
 empty enumeration is not proof of nothing: it reads only file-based keychains, so a
 future move to the Data Protection keychain would make this silently return zero,
 the same trap as comparing two empty greps.
@@ -323,7 +330,7 @@ and there is no default to fall back on: the two existing modes take that intent
 from deliberately different places, and one of them cannot always establish it at
 all. `docs/ADAPTERS.md` (§ per-directory shared bind, § per-directory isolated bind)
 is normative for which source each mode uses and what happens when the intent is
-unknown; do not restate the rule here or in a code comment.
+unknown; do not restate the rule in this file, in `AGENTS.md`, or in a code comment.
 
 ## A store tree is history; a fragment is the binding
 
@@ -357,4 +364,3 @@ guards in the same walk **are** killable and must stay tested: the choice of sou
 one only bites on darwin, where a per-directory keychain **item** outlives its
 deleted store directory, so a linux-only unit test sees both consumers decline for
 an unrelated reason. Assert it on the walk's own output.
-

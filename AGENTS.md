@@ -101,33 +101,38 @@ once and were then shown to be false.
 - The per-tool switched/preserved allowlists in `docs/ADAPTERS.md` are the
   normative contract: code must match that document, and any change requires
   updating it in the same commit.
-- **Everything about a credential copy — where one lives, and who may overwrite,
-  harvest, attribute, order or delete one — is in
-  [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md), which is normative for all
-  of it.** The lines below say only which section answers which question. **None of
-  them states its rule**, so acting on one of these lines is acting on a rule you
-  have not read.
+- **Thirteen rules about a credential copy live in
+  [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md), which is normative for the
+  sections it states.** The lines below say only which section answers which
+  question. **None of them states its rule**, so acting on one of these lines is
+  acting on a rule you have not read. And they are **not a map of everything about a
+  credential**: other credential rules stay in this section — keychain-item identity,
+  a credential that is a *set* of stores, store-selecting enums, the two comparison
+  predicates, and that is not a closed list — so a question the list below does not
+  answer is not a question with no answer.
   - § Resolving a credential's location — before computing a credential path or a
     keychain service name at a call site, or falling back to a second store when a
     write fails.
   - § When a store's rule is not knowable from the environment — before declaring an
-    artifact for a location you inferred rather than measured.
+    artifact for a location you inferred rather than measured, and whenever kae and
+    the tool read the same variable differently.
   - § A credential that belongs to an account, not a directory — before touching a
     per-account store, or resolving the config-dir/credential-store pair.
   - § Removing a per-directory credential — before deleting, or deciding not to
     delete, a credential a binding leaves behind.
   - § Harvesting before a write or a delete — before overwriting or removing any copy
     that lives in a per-directory store.
-  - § A chokepoint is not complete coverage — before placing a preservation pass, or
-    merging one with a delete sweep.
+  - § A chokepoint is not complete coverage — before placing a preservation pass,
+    merging one with a delete sweep, or keying a warning suppression.
   - § Never harvest a copy you cannot attribute — before copying any credential into
     a snapshot or another store.
-  - § Ordering two copies of one credential — before comparing two copies' freshness
-    anywhere; there is exactly one comparator and new consumers owe it a question.
+  - § Ordering two copies of one credential (`supersedes`) — before comparing two
+    copies' freshness anywhere.
   - § When a refusal destroys instead of preserving — before adding **or widening** a
     refusal on either recapture path.
-  - § What kae observed is not what the tool can do — before wording any message about
-    a credential kae could not read, parse or date.
+  - § What kae observed is not what the tool can do — before narrowing what counts as
+    revoked, and before wording any message about a credential kae could not read,
+    parse or date.
   - § A restore is not unconditional — before changing what `run -s` or `kae rollback`
     restores, or which record it compares against.
   - § A new per-directory mechanism and the link reconcile — when adding an isolation
@@ -154,9 +159,11 @@ once and were then shown to be false.
 - **A keychain item's identity is service + account, and per-tool.** codex derives
   the account of its single-service `Codex Auth` item from `CODEX_HOME`
   (`cli|` + 16 hex of sha256 over the **canonicalized** path — symlinks resolved),
-  so one service holds one legitimate item per tool home; claude hashes the *raw*
-  env string, NFC-normalized, to 8 hex, into the **service** name. Same idea, two
-  incompatible formulas: derive each in its own adapter and never port one.
+  so one service holds one legitimate item per tool home; claude puts its hash in the
+  **service** name instead, over a path it does **not** canonicalize
+  (`docs/CREDENTIAL-RULES.md` § Resolving a credential's location is normative for
+  that formula and the traps in it). Same idea, two incompatible formulas: derive
+  each in its own adapter and never port one.
   Consequently **never delete a keychain item by service name alone before writing**
   (`keychain.DeleteItem` on a service another home also uses): that deleted a second
   `CODEX_HOME`'s codex login on every switch, shipped through v0.12.0. **Every**

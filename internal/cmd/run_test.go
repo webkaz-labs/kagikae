@@ -785,7 +785,8 @@ func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
 // refusal is a deletion — so it is preserved rather than discarded. `supersedes` lets an
 // un-orderable losing side lose to anything, deliberately, because its usual caller asks
 // "may I overwrite this"; here the caller also tells the user the copy is finished, which
-// is the opposite question (AGENTS.md § supersedes; pinSupersededChecks is the worked
+// is the opposite question (docs/CREDENTIAL-RULES.md § Ordering two copies of one
+// credential; pinSupersededChecks is the worked
 // example). Taking that subset destroyed a refreshed token, measured 2026-08-07.
 //
 // The fixture's `expiresAt` is a **string**: Known to claude's parser, not a tombstone,

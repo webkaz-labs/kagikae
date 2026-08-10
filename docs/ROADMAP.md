@@ -180,10 +180,14 @@ alternative exists (`secret-tool`).
   edit to the block a release is accepted against is worse than a recorded gap: this block
   spent 2026-08-07 to 2026-08-08 sending every credential fixture to the config dir after
   the credential had moved to the account store, and went green throughout by asserting
-  nothing about its own subject. (The "eight versions" figure belongs to § Smoke Checks,
-  which was unchanged since the initial commit; this block was added 2026-08-04 and has
-  only ever shipped in v0.17.0. Conflating the two is the same misattribution this entry
-  is named after, made while writing the entry.)
+  nothing about its own subject. (The long-accumulation claim belongs to § Smoke Checks,
+  whose checks stayed *comments* from the initial commit until 2026-08-09; this block was
+  added 2026-08-04 and has only ever shipped in v0.17.0. Conflating the two is the same
+  misattribution this entry is named after, made while writing the entry. Two release
+  counts were attached to that claim and both were withdrawn — "eight versions", which
+  was sourceable nowhere, and "14 releases", which counts releases since the initial
+  commit rather than anything about the block: that is byte-identical to v0.9.0's for
+  only six tags, and was edited at v0.13.0 and v0.15.3 as well as repeatedly earlier.)
 
 - **The smoke guards have no test, and four changes switched one off without
   anything noticing** (recorded 2026-08-09, **not fixed**).
@@ -212,23 +216,59 @@ alternative exists (`secret-tool`).
   detecting it). Until the table exists, the header of
   `scripts/smoke-run-selftest.sh` is normative: any change to either script has to
   be mutation-tested by hand.
+  Three rounds of review on the assert-marker guard (2026-08-10) put a sharper
+  version of those two rules on the record, because each round's survivor sat on the
+  guard the round before had added: check that a guard fires **before** the thing it
+  protects (move it later and see if anything notices); assert the **diagnostic**, not
+  only the verdict; try a **proper subset** of any enumeration, not just its collapse;
+  ask **where in the file** a derived expectation reads from; and pin a character class
+  with two members and a count, since one example pins one example. Every one of those
+  was a live false green here, found by a reviewer and not by the author.
 
-- **Nothing stops a block from asserting nothing** (recorded 2026-08-09, **not
-  fixed**). Five sections of [VALIDATION.md](VALIDATION.md) were converted so their
-  assertions are the commands themselves, and `scripts/smoke-run.sh` now gives each a
-  per-line verdict. But the runner cannot tell that convention from the old one: a
-  block whose checks are `#   assert:` comments prints output, asserts nothing, and is
-  reported green. That is how five defects accumulated across eight versions, and
-  nothing prevents the next section from reintroducing it — the guarantee currently
-  rests on doc-review discipline, which this file's own history shows does not survive
-  unrelated edits.
-  The fix is small: fail the run when the extracted block contains a column-0
-  `#   assert:` line, which turns "the author must remember to write a real check" into
-  "the tool refuses a block that did not". Deliberately not built yet, because the 56
-  remaining markers all sit in the `v0.8.x`/`v0.9.0` sections that are queued for
-  deletion; adding the check first would make the runner refuse sections that are about
-  to disappear. **Land it with that deletion**, not before, and give it a self-test
-  guard — this is exactly the class the "ended early" guards close, one level up.
+- **`derived_cleared` reads the whole file, so a comment can satisfy it** (recorded
+  2026-08-10, **not fixed**). `scripts/smoke-run-selftest.sh`'s
+  `grep -oE '\-u [A-Z_]+' "$runner"` is unanchored, so a `-u NAME` written in a comment
+  counts as the runner clearing that variable. Its sibling `derived_all` is anchored at
+  the prefix's indentation, and `derived_words` was anchored at `^markers=` after
+  exactly this defect was measured on it: a comment quoting the retired pattern let the
+  code be narrowed while 35 guards reported holding. The remaining instance is the
+  weakest of the three because a stray `-u NAME` in a comment is less idiomatic here
+  than quoting a retired pattern, which the runner's header does three times — but it
+  is the same hole. Anchor it at the `env -u …` continuation lines.
+
+- **Two live test comments tell the next agent to build something that shipped**
+  (recorded 2026-08-10, **not fixed**). `internal/adapter/adapter_test.go:264-268` and
+  `:322-328` say a bound directory's `Codex Auth` item has nothing tearing it down "on
+  unpin or a `pin -s` ↔ `pin -i` toggle", and `:328` adds **"Do not 'fix' this by
+  setting the flag; land the teardown."** § Own the item's lifecycle in this file
+  records that teardown **Done (2026-07-30)**, and that the sweep "starts covering
+  codex the moment the capability is declared, with no further work". So the comments
+  send the next reader to reimplement a shipped mechanism and hide the real blocker,
+  which is the unrun gate now in [VALIDATION.md](VALIDATION.md) § Open gates. That
+  section's own "Then declare the capability … Until step 3 lands" wording is stale in
+  the same way and should move with them.
+
+- **This file says the agy real-keychain gate is open; VALIDATION.md records it
+  PASSED** (recorded 2026-08-10, **not fixed**). § Tier-1 tools' agy entry ends "the
+  two-account real-keychain gate is the open acceptance item
+  ([VALIDATION.md](VALIDATION.md))", and the file it points at records "**agy
+  two-account real-keychain gate PASSED** (verified by the maintainer)" in the v0.8.6
+  acceptance entry. The pointer lands in the document that contradicts it, and the
+  acceptance log is the one to trust. Worth fixing next to the entry above, because
+  both are this file asserting a blocker that no longer exists — the shape that acts as
+  a licence to undo work.
+
+- **The exported Go CLI standard still carries a figure withdrawn here** (recorded
+  2026-08-10, **not fixed**). `.claude/skills/go-cli-tooling/references/TESTING.md`
+  says "five wrong assertions across eight releases"; that count is sourceable nowhere
+  and was withdrawn from `scripts/smoke-run.sh` and from this file. **It cannot be
+  fixed in this repository**: the skill directory is generated, and
+  [RELEASE.md](RELEASE.md) records that it re-syncs from the chezmoi source, which is
+  also the copy other tools receive — so the reach is larger than kae. Fix the template
+  there and re-export; do not hand-edit the copy, which would be lost on the next
+  sync. The same pass could promote the rule this branch added, since that reference
+  already tells a runner to give each line a verdict and does not yet tell it to refuse
+  a block whose checks are comments.
 
 - **`scripts/smoke-env.sh` leaks a temp HOME every time it is sourced** (recorded
   2026-08-09, **not fixed**). It does `HOME=$(mktemp -d)` and nothing ever removes

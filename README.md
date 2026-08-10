@@ -476,12 +476,12 @@ git diff --check
 | Document | Purpose |
 |----------|---------|
 | [docs/DESIGN.md](docs/DESIGN.md) | Mission, modes, boundaries. |
-| [docs/CONTEXT.md](docs/CONTEXT.md) | The vocabulary — what each term names. Naming only; it states no rule, and JSON contract tokens are named in `internal/constants` instead. |
+| [docs/CONTEXT.md](docs/CONTEXT.md) | The vocabulary — what each term names. Naming only; it states no rule. Not for JSON contract tokens: those are `internal/constants`', documented in docs/DATA-MODEL.md. |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Per-tool switched/preserved contract. |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | Companion-auth (git/gh/cloud CLI) switched/preserved contract. |
 | [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | Rules for writing, harvesting, attributing, ordering and deleting a credential copy. |
 | [docs/CLI.md](docs/CLI.md) | Commands, flags, exit codes, JSON contracts, completion. |
-| [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Config, snapshots, state, backups, secrets. |
+| [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Config, snapshots, state, backups, secrets, and the JSON status vocabulary. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Package layout and boundaries. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Safety rules and secret handling. |
 | [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | Why the scope/isolation model is shaped the way it is — rationale only, never the rules themselves. |

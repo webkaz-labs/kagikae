@@ -278,7 +278,7 @@ alternative exists (`secret-tool`).
   it is a rewording of a few dozen sites with no behaviour attached, and nothing about
   it needs to ride with a code change. What it costs meanwhile is a grep: a reader who
   searches for either word finds part of the subject and cannot tell that from all of
-  it. Derive the split with the two commands in CONTEXT.md § Not converged rather than
+  it. Derive the split with the command in CONTEXT.md § Not converged rather than
   from a number quoted anywhere, including this entry — the definition of what counts
   is the whole disagreement in figures like this one. The sibling convergence,
   `witness` → `reader`, is done (`credStoreReaders`), and it is the reason this one is

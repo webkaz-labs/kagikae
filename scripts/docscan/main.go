@@ -23,9 +23,12 @@
 //     list — which is what a changelog is, not a fork. The fifth is the shape
 //     worth reading, and an earlier version of this paragraph swept it into the
 //     other four: docs/DESIGN.md's § Switching Surface table against the copy
-//     frozen in the v0.8.0 entry of docs/RELEASE.md, which has since diverged and
-//     still names two retired mode names. A frozen changelog entry may be the
+//     frozen in the **v0.7.2** entry of docs/RELEASE.md, which has since diverged
+//     and still names two retired mode names. A frozen changelog entry may be the
 //     right answer; a *universal* about the report is how a reader stops looking.
+//     The version in that sentence read v0.8.0 until it was checked against the
+//     enclosing `# kae vX.Y.Z` heading — a reviewer and I had it wrong the same way,
+//     which is the whole argument for re-deriving a detail before writing it down.
 //
 // Anchors come from the Go AST rather than a regex because this repository's
 // decision vocabulary lives in struct fields (Ordered, Conflicting,

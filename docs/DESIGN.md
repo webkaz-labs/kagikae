@@ -48,8 +48,10 @@ separate, explicit mode.
 
 Every term this repository names — `account`, `profile`, `driver`, `artifact`,
 `companion`, and the mechanism vocabulary underneath them — is defined in
-[CONTEXT.md](CONTEXT.md), the only authority on naming. This section held a
-second copy of the first five until they moved there: one name, one place.
+[CONTEXT.md](CONTEXT.md), which is the authority on the vocabulary it holds. This
+section held a second copy of the first five until they moved there: one name, one
+place. It is not where a **JSON contract token** is named — that enum belongs to
+`internal/constants`, and CONTEXT.md's routing table says so.
 
 Single-tool and bundle switching both work:
 

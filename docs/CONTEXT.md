@@ -9,7 +9,9 @@ It is not the only place a name is settled, and saying it was cost this file a
 correction: the **JSON contract tokens** are an enum whose home is
 `internal/constants`, so they are named there and documented in
 [DATA-MODEL.md](DATA-MODEL.md) § Status Vocabulary, and nothing about a status, an
-exit code, an artifact kind or a driver id belongs in the tables below.
+error code, an artifact kind or a driver id belongs in the tables below. The
+numeric **exit** codes are a third thing again, and theirs is
+[CLI.md](CLI.md) § Exit Codes.
 
 That constraint is not stylistic. Where a glossary carries a rule, a mismatch
 between it and the code stops being a bug in the code and becomes a document

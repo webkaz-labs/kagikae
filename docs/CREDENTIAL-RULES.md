@@ -189,7 +189,7 @@ readers and that label is its only reading. What separates a stale label from a 
 the **mode** — a shared config dir is one per pin×tool, an isolated one and the globally
 isolated home are keyed by the account, so a disagreement in *those* is a login as somebody
 else and deleting it destroys the only record of whose the credential is. Two other
-derivations were tried and both destroyed a login (the label alone; witness membership,
+derivations were tried and both destroyed a login (the label alone; reader membership,
 which reads every directory as a stranger when the walk is incomplete). What it costs is that the acceptance block must seed the cache the **tool** would
 have written wherever it expects a harvest, which is the honest fixture anyway. And the
 pass words its consequence as *leaving it where it is* rather than predicting the write:

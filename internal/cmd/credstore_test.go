@@ -328,7 +328,7 @@ func TestUnpinPurgeRemovesAFileCredentialFromTheAccountStore(t *testing.T) {
 // asks about are enumerated from the same two sources — so at the moment the delete is
 // allowed there is by definition no reader left to confirm the copy, and a refusal here
 // is a deletion rather than a conservative choice. The directory being torn down is the
-// honest witness: it read that credential until `runUnpin` removed its fragment moments
+// honest reader: it read that credential until `runUnpin` removed its fragment moments
 // earlier. Found by review, 2026-08-08.
 func TestUnpinPurgeHarvestsANewerCopyBeforeRemovingIt(t *testing.T) {
 	app := overlayTestApp(t) // linux: the file driver

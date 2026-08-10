@@ -619,7 +619,7 @@ alternative exists (`secret-tool`).
   it — with nothing between them that changes the answer. It sits behind the `supersedes`
   gate, so it costs nothing unless there is a copy worth harvesting; where that stops being
   true is `kae run -i`, which the mise hook makes a per-invocation path, and where the
-  per-witness `dirSpecs` resolution stops being free is the day a second tool's rotation is
+  per-reader `dirSpecs` resolution stops being free is the day a second tool's rotation is
   measured (codex's `Artifacts` can probe the keychain). The fix is a per-command memo, and
   the reason it is not an `App` field is that this package has already had one of those make
   a test pass for the wrong reason without a per-operation reset.
@@ -647,15 +647,15 @@ alternative exists (`secret-tool`).
   overwrite at all when the account it names has no snapshot to fall back on — which is the
   same question the `--purge` exceptions turn on, and a wider change than this one.
 
-- **A moved bound directory is not a witness, and its absence does not make the reader set
-  incomplete** (recorded 2026-08-08 by a reading-type review, **not fixed**).
+- **A moved bound directory does not count as a reader, and its absence does not make the
+  reader set incomplete** (recorded 2026-08-08 by a reading-type review, **not fixed**).
   `credStoreReaders` skips a pin whose recorded directory is gone and leaves `complete`
   true. For a *deleted* directory that is right and there is no alternative: `kae unpin`
   removes the fragment but never the breadcrumb, so one deleted temp worktree would
   otherwise mark the set incomplete forever and silently stop every harvest for every
   account. A directory that was **moved** is the case that pays for it — the fragment
   travelled with it and still exports the old credential store, so it is a live reader kae
-  cannot read at the path it recorded, and a stale confirming witness elsewhere can license
+  cannot read at the path it recorded, and a stale confirming reader elsewhere can license
   a harvest it would have disagreed with. What would settle it is a reader set that does
   not depend on the recorded path (`pinChecks` already reports the orphaned store, so the
   user is told something is wrong), or a breadcrumb that `unpin` removes so absence can
@@ -745,8 +745,8 @@ alternative exists (`secret-tool`).
   with kae's own label, and B's token is harvested under A's account. A **globally isolated
   home** is a strictly easier A than a bound directory: `prepareGlobalIsolatedHome` writes
   the label on every `kae use -i` / `kae run -i`, nothing ever removes such a home, and the
-  witness walk reads them from disk without any liveness gate (deliberately — that source is
-  what gives `kae run -i` a witness at all). One class of kae-written label **is** retracted now — a shared config dir's,
+  reader walk reads them from disk without any liveness gate (deliberately — that source is
+  what gives `kae run -i` a reader at all). One class of kae-written label **is** retracted now — a shared config dir's,
   once the bound account changes — but that is the leftover kind, and this entry is about the
   kind a *current* binding wrote, which stays.
   **The heading understates it, and the candidate fix below does not close what it

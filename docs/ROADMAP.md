@@ -236,27 +236,35 @@ alternative exists (`secret-tool`).
   than quoting a retired pattern, which the runner's header does three times — but it
   is the same hole. Anchor it at the `env -u …` continuation lines.
 
-- **Two live test comments tell the next agent to build something that shipped**
-  (recorded 2026-08-10, **not fixed**). `internal/adapter/adapter_test.go:264-268` and
-  `:322-328` say a bound directory's `Codex Auth` item has nothing tearing it down "on
-  unpin or a `pin -s` ↔ `pin -i` toggle", and `:328` adds **"Do not 'fix' this by
-  setting the flag; land the teardown."** § Own the item's lifecycle in this file
-  records that teardown **Done (2026-07-30)**, and that the sweep "starts covering
-  codex the moment the capability is declared, with no further work". So the comments
-  send the next reader to reimplement a shipped mechanism and hide the real blocker,
-  which is the unrun gate now in [VALIDATION.md](VALIDATION.md) § Open gates. That
-  section's own "Then declare the capability … Until step 3 lands" wording is stale in
-  the same way and should move with them.
+- ~~**Two live test comments tell the next agent to build something that shipped**~~
+  (recorded 2026-08-10, **fixed** 2026-08-10). Two comments in
+  `internal/adapter/adapter_test.go` said a bound directory's `Codex Auth` item has
+  nothing tearing it down "on unpin or a `pin -s` ↔ `pin -i` toggle", and one added
+  **"Do not 'fix' this by setting the flag; land the teardown."** That teardown had
+  shipped on 2026-07-30 (§ Own the item's lifecycle below), so the instruction sent
+  the next reader to reimplement a live mechanism and hid the real blocker. Both
+  comments now name it — the unrun gate in [VALIDATION.md](VALIDATION.md) § Open
+  gates — and the one that gave the bad instruction says so, rather than dropping it
+  silently for the next reader to re-derive. **A third site the original entry missed**
+  went with them: § Own the item's lifecycle said codex was "pending step 3" and
+  "Until step 3 lands", both of which outlived step 3. Found by grepping the *concept*
+  rather than the wording this entry quoted.
 
-- **This file says the agy real-keychain gate is open; VALIDATION.md records it
-  PASSED** (recorded 2026-08-10, **not fixed**). § Tier-1 tools' agy entry ends "the
-  two-account real-keychain gate is the open acceptance item
-  ([VALIDATION.md](VALIDATION.md))", and the file it points at records "**agy
+- ~~**This file says the agy real-keychain gate is open; VALIDATION.md records it
+  PASSED**~~ (recorded 2026-08-10, **fixed** 2026-08-10). The agy entry in this
+  section ended "the two-account real-keychain gate is the open acceptance item
+  ([VALIDATION.md](VALIDATION.md))" while the file it pointed at recorded "**agy
   two-account real-keychain gate PASSED** (verified by the maintainer)" in the v0.8.6
-  acceptance entry. The pointer lands in the document that contradicts it, and the
-  acceptance log is the one to trust. Worth fixing next to the entry above, because
-  both are this file asserting a blocker that no longer exists — the shape that acts as
-  a licence to undo work.
+  acceptance entry — a pointer landing in the document that contradicts it, with the
+  acceptance log being the one to trust. The entry now says passed and says what it
+  used to say. Fixed beside the one above because both were this file asserting a
+  blocker that no longer exists, which is the shape that acts as a licence to undo
+  work; § Open gates never listed agy, so nothing there had to move. The original
+  entry cited "§ Tier-1 tools", **a section this file has never had** — the agy entry
+  lives under § Hardening backlog like everything else here. Caught by grepping the
+  cited heading before repeating the citation, which is what
+  `AGENTS.md § Documentation Update Checklist` asks for and what this entry's first
+  draft did not do.
 
 - **The exported Go CLI standard still carries a figure withdrawn here** (recorded
   2026-08-10, **not fixed**). `.claude/skills/go-cli-tooling/references/TESTING.md`
@@ -1109,7 +1117,7 @@ alternative exists (`secret-tool`).
      the store therefore defaulted to `file`. It now selects the keyring store
      explicitly and fails when a tool with an isolation variable yields no keychain
      spec. codex is carried as a named exception (`bindableNotYetDeclared`) pending
-     step 3.
+     the acceptance gate below, not pending step 3, which has shipped.
   3. ~~**Own the item's lifecycle.**~~ **Done** (2026-07-30). A `pin -s` ↔ `pin -i`
      toggle and an isolated re-bind now sweep the keychain item of the store they
      supersede, and `kae unpin --purge` sweeps the current ones (plain `unpin` still
@@ -1119,9 +1127,11 @@ alternative exists (`secret-tool`).
      file credential that is no longer the copy its own store reads
      (`removeDirCredential` is normative). It also closed the same gap for claude, which had been creating
      per-directory items since v0.12.0 with nothing removing them.
-  Then declare the capability (drop codex from `bindableNotYetDeclared`) and add the
-  pin round-trip to the real-machine gate. Until step 3 lands, a pinned directory has
-  no codex login until you log in inside it.
+  What is left is neither of those: the pin round-trip **is** on the real-machine gate
+  ([VALIDATION.md](VALIDATION.md) § Open gates), and it has never been run. Declaring
+  the capability (dropping codex from `bindableNotYetDeclared`) is what that result
+  unblocks, and until it passes a pinned directory has no codex login until you log in
+  inside it.
 - **A tool that resolves its store from live state is modelled per artifact, not as
   a set.** codex's `auto` is the only such artifact today (the adapter probes and
   returns one spec), and the restore path reconciles a backup record against it.
@@ -1227,7 +1237,9 @@ alternative exists (`secret-tool`).
   `add-generic-password -U`, never touching a sibling item). The file driver
   stays for Linux/WSL. Identity auto-detection stays deferred (no whoami; the
   token is opaque). See [ADAPTERS.md](ADAPTERS.md); the two-account real-keychain
-  gate is the open acceptance item ([VALIDATION.md](VALIDATION.md)).
+  gate **passed** and is recorded in v0.8.6's acceptance entry
+  ([VALIDATION.md](VALIDATION.md)) — this entry called it the open acceptance item
+  until 2026-08-10, pointing at the document that already said otherwise.
 - **cursor off macOS is unblocked but unimplemented** (tier 2 — see § Tier-2
   tools; this is the platform gap, not a missing mode): the adapter refuses
   non-darwin because the storage was undocumented. It no longer is — cursor-agent

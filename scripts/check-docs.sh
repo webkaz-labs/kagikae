@@ -53,6 +53,11 @@ generated='.claude/skills/go-cli-tooling'
 # there. It was missing from this repository until the file that holds mission and
 # product boundaries was renamed to it from DESIGN.md, which the standard now reserves
 # for a visual design system.
+for required in README.md AGENTS.md CLAUDE.md; do
+  if [ ! -f "$required" ]; then
+    fail "missing required file: $required"
+  fi
+done
 for required in PRODUCT ARCHITECTURE CLI DATA-MODEL SECURITY ROADMAP RELEASE VALIDATION; do
   if [ ! -f "docs/$required.md" ]; then
     fail "missing required file: docs/$required.md"

@@ -36,14 +36,24 @@ It runs `lint` (gofumpt + goimports format check, `staticcheck -checks=SA*`,
 curated `golangci-lint`, `shellcheck`), `go test ./...`, `go vet`,
 `go mod verify`, `go build ./...`, `smoke-selftest`
 (`scripts/smoke-run-selftest.sh`, which checks the smoke runner's own guards — no
-`kae` build and no network, so it costs a few seconds), and `docs-check`
-(`scripts/check-docs.sh`: the shared standard's required docs set exists, every
-relative markdown link resolves, and no file under `docs/` is missing from the
-Documentation Map above — the omission that let a second normative copy grow inside
-`docs/SCOPE-MODEL.md`). Every count it prints is asserted against a floor, because a
-walk that collapses otherwise reports a clean run; its first version did exactly that
-and the floor is what said so. It is **not** `mise run docs-scan`, which reports
-duplicated prose and deliberately fails nothing. `mise run audit` (govulncheck, plus the
+`kae` build and no network, so it costs a few seconds), and `docs-check` with its own
+`docs-check-selftest`.
+
+`scripts/check-docs.sh` asserts the eleven files the standard's § Required Files names
+(`README.md`, `AGENTS.md`, `CLAUDE.md` and the eight under `docs/`; `UX.md` and
+`DESIGN.md` are conditional and correctly absent for a plain CLI), that every relative
+markdown link its extractor finds resolves, and that **no file under `docs/` is missing
+its own routing row in the Documentation Map above** — the omission that let a second
+normative copy grow inside `docs/SCOPE-MODEL.md`. Its own row, not any mention: a
+substring test passed an orphan whose name another row's prose happens to quote.
+`scripts/docs_links.py`'s header is normative for which link forms the extractor does
+and does not see. Every count printed is a floor, because a collapsed walk otherwise
+reports a clean run — but a floor bounds a walk's *size*, never its *predicate*, and
+both predicates were measured passing with a real defect present. That is what
+`scripts/check-docs-selftest.sh` covers, and why it asserts each diagnostic rather than
+an exit status: a script that dies silently under `set -e` exits non-zero too. It is
+**not** `mise run docs-scan`, which reports duplicated prose and deliberately fails
+nothing. `mise run audit` (govulncheck, plus the
 upstream literal fingerprints — it reads the installed tools' own binaries, so it
 only means anything on a machine that has them) and `mise run goreleaser-check` are
 slower release-time checks. Lint tools run via `go run <tool>@<pinned version>`; the

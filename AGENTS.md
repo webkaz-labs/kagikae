@@ -318,13 +318,13 @@ a quantity written *beside* a citation.** `docs/ROADMAP.md` said "the two comman
 CONTEXT.md § Not converged" after a later commit merged them into one: § Not converged
 still existed, so every heading-fragment grep stayed green and only reading the sentence
 found it. Sweep the added lines, then check by hand each hit that describes **another**
-file — the `+++ b/...` headers are kept in the output for exactly that — **and each hit
-that counts something inside its own file, because one diff can change what it counts.**
-That second half was missing, and the sweep's first use after it was written proved why:
-a commit un-struck one of ten struck entries in `docs/ROADMAP.md` and wrote "all ten" in
-the present tense in the same diff, the pattern caught the line, and this step said to
-skip it because it named no other file. Triage by whether the quantity can go stale, not
-by which file it points at:
+file — the `+++ b/...` headers are kept so you can tell which file a hit came from — **and
+each hit that counts something inside its own file, because one diff can change what it
+counts.** That second half was missing, and a commit here proved why: it un-struck one of
+the struck entries in `docs/ROADMAP.md` while writing "all ten" of them in the present
+tense in the same diff, which made the number nine. The pattern caught the line, and this
+step told the reader to skip it because it named no other file. Triage by whether the
+quantity can go stale, not by which file it points at:
 
 ```bash
 git diff main...HEAD | grep '^+' | grep -iE \
@@ -352,17 +352,36 @@ lists are enumerations, and every enumeration written in this file has turned ou
 one short — including this one, twice: `thirteen` had to be added because this
 repository writes "the thirteen rules", and the **ordinals** had to be added after a
 diff wrote "a third site" and swept clean. Anything larger than the words listed is
-written as a digit, which `[0-9]+` covers. Two holes
-are known today. The first is that a quantity which **wraps** across lines is invisible
-to a line-based grep — demonstrated without depending on how this file happens to be
-wrapped, since a reflow would silently retire the demonstration:
+written as a digit, which `[0-9]+` covers. The holes below are the ones a round of review
+has actually found; no count is given, because each was found the same way and the next
+one will be too.
+
+A quantity which **wraps** across lines is invisible to a line-based grep — demonstrated
+without depending on how this file happens to be wrapped, since a reflow would silently
+retire the demonstration:
 
 ```bash
 printf 'the **two**\ncommands in X\nthe two commands in X\n' | grep -cE '(one|two) commands?'
 # 1, not 2 — the wrapped one is missed
 ```
 
-The second is that the command matches its own defining sentences, which is exactly why
+The number and the noun must be **adjacent**, so one intervening word escapes — and the
+noun list escapes the same way, being an enumeration like every other one here:
+
+```bash
+printf 'all ten entries\none of ten struck entries\ntwo retired mode names\nfive wrong assertions\n' \
+  | grep -icE '(one|two|five|ten) (entries|names)'
+# 1 of 4 — `struck` and `retired` break adjacency, and `assertions` is not a listed noun
+```
+
+That is not hypothetical about this paragraph. The sentence above about a quantity
+counting something in its own file writes "one of … the struck entries", and its own net
+does not see it, because `struck` sits between the number and the noun. Stated on
+adjacency alone deliberately: whether that phrase also wraps depends on how this file is
+currently filled, and a claim that a reflow can falsify is the thing this whole section
+is about.
+
+And the command matches its own defining sentences, which is exactly why
 the citation rule above rejects `git grep '\.md §'`: a run whose only hits are this
 file's own prose is not a clean run.
 

@@ -185,10 +185,25 @@ or touch keychains directly. TUI tests use fake deps and temp HOME/XDG roots.
   `grep -q`, an exit-code check — and run the blocks from a script that extracts
   them by heading and reports a per-line verdict. A block whose checks are
   `#   assert:` comments depends on a human comparing output to a comment, which
-  is how one tool accumulated five wrong assertions across eight releases, each
-  found only when the block was finally executed verbatim. Of four ways of
+  is how one tool accumulated five wrong assertions in a single block, none of
+  them found until the block was finally executed verbatim. Of four ways of
   auditing that file — identifier index, duplication scan, claim reconciliation,
-  and running the blocks — only running them ever found a defect.
+  and running the blocks — running the blocks is the only one that has ever found
+  a defect able to break a release. That is not a ranking of the four: the
+  duplication scan there drove real consolidations, and claim reconciliation was
+  never implemented, so it has never had a chance to find anything.
+- **Have the extractor refuse a block whose checks are only comments.** Asking the
+  author in prose to write real assertions is a convention, and a convention does
+  not survive unrelated edits; a refusal in the extractor does. Match the marker on
+  three dimensions, because a marker is a *label* and the label is the part an
+  author invents: leading whitespace, case, and the word itself. One tool's guard
+  knew only `assert:` and was measured letting `#   expect:` through — the same
+  defect class as grepping for a literal you retired, reached by substituting one
+  word. Use an explicit vocabulary (`assert|expect|verify|check|confirm|ensure`)
+  rather than `[A-Za-z]+:`, which was measured flagging a legitimate `#   copy:`
+  narration line in a real block. Refuse at column 0 only: an *indented* comment is
+  how a live block spells out what the command above it proves, so refusing those
+  refuses every converted block.
 - **A negative assertion needs a positive control beside it.** `grep -c X` prints
   `0` for a missing file, a broken decoder, or a pattern that could never match,
   so an absence check passes for the wrong reason. Pair it with a positive line

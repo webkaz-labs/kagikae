@@ -61,5 +61,32 @@ If the tool has a TTY, keep two validation tiers:
 Avoid blind sleeps in PTY tests. Wait for a screen predicate and capture the
 screen/log on failure.
 
+Use a project-pinned `shell-use` wrapper for built-binary PTY journeys. Keep
+semantic checks color-neutral, and run visual-critical screens in a separate,
+fixed color/theme/font lane as defined by the shared `TESTING.md`.
+
+For a visual TUI, define tasks equivalent to:
+
+```bash
+mise run tui-pty       # semantic journeys against the built binary
+mise run tui-visual    # shell-use SVG -> resvg PNG -> ODiff
+mise run tui-update    # explicit local-only baseline update for review
+```
+
+Record the pinned binary/fixture, `shell-use`, `resvg`, ODiff, terminal size,
+theme, color capability, locale, time zone, and font here. Map every canonical
+baseline ID in `DESIGN.md` to a test. Layout differences and unlisted baseline
+changes fail; nonzero ODiff tolerance or ignored regions require a measured,
+per-baseline reason.
+
+When `DESIGN.md` is present, pin and run the Google DESIGN.md linter against
+its explicit path:
+
+```bash
+npx --yes --package @google/design.md@0.2.0 designmd lint docs/DESIGN.md
+```
+
+Plain CLIs without `DESIGN.md` omit this check.
+
 Run `chezmoi apply --dry-run` from the repository root when wrappers,
 templates, settings, or deploy integration change.

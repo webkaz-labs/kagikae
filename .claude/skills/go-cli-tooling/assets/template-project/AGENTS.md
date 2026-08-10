@@ -7,7 +7,9 @@ Follow the repository root `AGENTS.md` plus these tool-local rules.
 | Document | When To Read |
 |----------|--------------|
 | [README.md](README.md) | user-facing command or setup changes |
-| [docs/DESIGN.md](docs/DESIGN.md) | mission, product boundary, or completion goal changes |
+| [docs/PRODUCT.md](docs/PRODUCT.md) | mission, product boundary, completion goal, or primary journey changes |
+| [docs/UX.md](docs/UX.md) | TTY routes, focus, states, input, or interaction changes; delete for a plain CLI |
+| [docs/DESIGN.md](docs/DESIGN.md) | visual identity, semantic style, component appearance, or visual baseline changes; omit for a plain CLI |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, runner, provider, cache changes |
 | [docs/CLI.md](docs/CLI.md) | command flags, text/JSON/TUI output, exit codes |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | config, report, cache, or status vocabulary changes |
@@ -21,6 +23,7 @@ Follow the repository root `AGENTS.md` plus these tool-local rules.
 
 ```bash
 mise -C tools/dotfiles-tool run check
+mise -C tools/dotfiles-tool run docs-check
 git diff --check
 ```
 
@@ -45,7 +48,9 @@ For every change, decide whether each local doc needs an update:
 
 - `README.md`
 - `AGENTS.md`
-- `docs/DESIGN.md`
+- `docs/PRODUCT.md`
+- `docs/UX.md` when the tool has TTY-dependent behavior
+- `docs/DESIGN.md` when the tool has visual-critical TTY/TUI output
 - `docs/ARCHITECTURE.md`
 - `docs/CLI.md`
 - `docs/DATA-MODEL.md`

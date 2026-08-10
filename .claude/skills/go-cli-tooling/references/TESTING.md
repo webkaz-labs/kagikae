@@ -40,30 +40,38 @@ a unit test or in the built-binary smoke checks of `VALIDATION.md`.
 
 - Test text output through pure formatting helpers where possible.
 - Verify non-TTY output separately from TTY browser behavior.
-- TTY tests should focus on model transitions and rendered key states, not
-  provider behavior.
+- Model tests should cover transitions and rendered key states. Built-binary
+  PTY tests should cover a few critical user journeys, not live provider logic.
 - Add width regression tests when text wraps expanded detail, drill-down rows,
   URLs, paths, or other long unbroken tokens. Cover both the fallback width and
   a narrow terminal width path.
 - Keep mouse, scroll, and selection-sensitive behavior behind explicit model
   tests when a custom browser is used.
 
-### Bubble Tea TUI Test Layers
+### Interactive CLI/TUI Test Contracts
 
-For Bubble Tea v2 TUIs, do not rely on a single terminal smoke test. Cover the
-behavior in layers:
+Interactive tests protect three different contracts. Keep them separate:
 
-| Layer | Purpose |
-|-------|---------|
-| pure unit | validation, side-effect planning, path/config decisions |
-| model/update | key messages and custom messages to state transitions and commands |
-| view/golden | fixed model to deterministic screen output |
-| program E2E | `tea.NewProgram` or a wrapped `teatest/v2` harness with injected messages |
-| built binary PTY E2E | actual compiled binary, raw mode, AltScreen, exit behavior, CLI args, and exit code |
+- logic: input/message to state transition and effect plan;
+- interaction: CLI arguments, built binary, PTY input, resize, exit, and
+  terminal restoration;
+- visual: rendered hierarchy, layout, color, and truncation.
 
-Priority is model/update, then view/golden, then program E2E, then built binary
-PTY E2E. VHS or other recording tools are visual/demo aids, not the primary
-correctness test.
+For Bubble Tea v2 and other TUIs, use these layers without duplicating the same
+scenario at every layer:
+
+| Layer | Requirement | Purpose |
+|-------|-------------|---------|
+| pure unit | MUST | validation, side-effect planning, path/config decisions |
+| model/update | MUST | key/custom messages to state transitions and commands |
+| view/golden | SHOULD selectively | complex deterministic rendering only |
+| program E2E | MAY | framework integration not proven more cheaply elsewhere |
+| built binary PTY E2E | MUST for interactive flows | actual user boundary: raw mode, AltScreen, keys, resize, arguments, exit, and restore |
+
+The normal shape is a broad, fast model suite plus a small set of critical
+built-binary PTY journeys. Program E2E is not a mandatory bridge between them.
+Non-interactive commands do not need PTY coverage. Recording tools are failure
+evidence and demo aids, not the primary correctness test.
 
 Before adding or changing TUI tests, inspect `go.mod`, the Bubble Tea import
 path, related Charm major versions, existing test structure, and the CI command.
@@ -94,7 +102,7 @@ CRLF to LF, cursor show/hide, terminal title sequences, irrelevant trailing
 whitespace, absolute HOME/temp paths, timestamps, random IDs, and spinner
 frames.
 
-Program E2E verifies that the real Bubble Tea program starts, renders the
+Optional program E2E verifies that the real Bubble Tea program starts, renders the
 expected screen, responds to key messages, reaches the expected final model, and
 quits cleanly. It should not validate CLI flag parsing, OS signal behavior, raw
 PTY mode, config path resolution, or process exit codes; those belong to built
@@ -122,6 +130,10 @@ LC_ALL=C
 TZ=UTC
 ```
 
+That environment is the semantic PTY default. Visual regression is a separate
+lane: remove `NO_COLOR`, force the intended color capability, and keep theme and
+font inputs fixed so color and hierarchy are actually exercised.
+
 **Setting `HOME` is not enough, and the gap is silent.** A path resolver that
 reads each XDG root independently will honour an *absolute value already in the
 environment* over the temp `HOME`, so a harness that exports `HOME` and only some
@@ -143,12 +155,31 @@ follow. Sourcing a preamble is a step a harness can perform and still get wrong 
 is a subshell, and the run then looks isolated while writing to the real `$HOME`.
 Isolating by construction closes that class; a warning in prose does not.
 
-Use PTY E2E for full-screen TUI, AltScreen, raw mode, key input, Ctrl-C,
-terminal size, and clean exit behavior. PTY helpers should expose
-`StartBinaryPTY`, `SetSize`, `SendKeys`, `WaitScreen`, `CaptureScreen`,
-`SnapshotOnFailure`, and `Close` or equivalent. Blind sleeps are not allowed;
-wait for a screen predicate with a bounded timeout and include the captured
-screen/log on failure.
+Use PTY E2E for full-screen TUI, AltScreen, raw mode, key/mouse input, Ctrl-C,
+resize, clean exit, and terminal restoration. The standard automation engine is
+[Microsoft shell-use](https://github.com/microsoft/shell-use). Pin a tested
+release and call it through one thin project wrapper that owns session names,
+environment isolation, timeouts, artifact paths, and cleanup. Do not build a
+second PTY or terminal-emulation layer in project tests. New coverage should not
+adopt the predecessor `@microsoft/tui-test` interface unless a documented
+migration blocker requires it.
+
+An existing tmux or custom PTY harness may remain while a bounded migration is
+tracked, but do not expand it with new infrastructure. Preserve its proven
+critical journeys when moving them to `shell-use`, then remove the duplicate
+harness.
+
+Assert semantics before snapshots: wait for meaningful text or state, perform
+the interaction, assert the resulting text/state and exit code, then capture a
+snapshot only for a stable critical screen. Prefer `shell-use wait text`,
+`expect text`, `expect exit-code`, `resize`, and `wait exit`; `wait idle` is a
+secondary settling check. Blind sleeps are not allowed except as a bounded last
+resort with a documented reason.
+
+Use `120x36` as the canonical snapshot size. Interactive flows must also cover
+`80x24`; complex dashboards should cover `160x48`. Resize tests must assert that
+focused content, actions, and navigation remain usable rather than only checking
+that the process stayed alive.
 
 Split PTY coverage into a fast default path and a fuller release path. The fast
 path should prove startup, one representative route, Back/Home, and clean exit
@@ -168,6 +199,46 @@ same router refreshes later", not elapsed time.
 Keep TUI side effects behind dependencies. `Update` should return commands or
 call injected services; it should not write user config, call live providers,
 or touch keychains directly. TUI tests use fake deps and temp HOME/XDG roots.
+
+### Terminal Snapshots And Visual Regression
+
+Terminal snapshots and visual regression have different jobs:
+
+- terminal snapshots protect stable cells/text and selected color attributes;
+- visual regression protects spacing, alignment, clipping, hierarchy, and
+  whole-screen composition.
+
+Every critical stable state in the release PTY path must have a terminal
+snapshot; do not snapshot transient or low-value screens. Update goldens only
+via an explicit reviewed command; never rewrite them automatically after
+failure. Keep view, terminal, and visual goldens in separate directories.
+
+For visual-critical screens, capture SVG from `shell-use`, render a canonical
+PNG with a pinned [resvg](https://github.com/linebender/resvg), and compare it
+with a pinned [ODiff](https://github.com/dmtrKovalenko/odiff). Fix terminal size,
+theme, color mode, locale, time zone, and font inputs. A material UI change also
+requires inspection of the rendered image by a human or vision-capable reviewer;
+visual review supplements semantic assertions and never replaces them.
+
+The tool-local `docs/UX.md` is the source of truth for route, focus, state, and
+interaction acceptance. When visual-critical output exists, `docs/DESIGN.md`
+owns semantic visual tokens, component appearance, canonical baseline IDs, and
+visual acceptance. Every visual-critical baseline listed there must map to a
+terminal snapshot and visual test. `VALIDATION.md` owns the exact commands,
+pinned environment, and any
+explicit per-baseline ODiff exception; tests must not invent undocumented visual
+tolerances.
+
+On PTY or visual failure, retain enough evidence to reproduce the state: plain
+screen text, state/exit metadata, the actual SVG/PNG, the baseline and diff when
+applicable, and the `shell-use` recording or verbose log when lifecycle diagnosis
+is needed. Do not retain every artifact on success.
+
+An interactive flow is complete when model transitions are covered, the built
+distribution-equivalent binary passes a critical PTY journey at `80x24` and
+`120x36`, Back/exit and terminal restoration are verified, snapshots are
+reviewed explicitly, and visual-critical changes pass visual comparison and
+render inspection.
 
 ## Integration And Smoke
 

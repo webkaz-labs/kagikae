@@ -60,7 +60,10 @@ not just renamed:
 2. Add TOML config only when a real user policy exists.
 3. Add mutation only after preview, validation, snapshot, and rollback
    boundaries are documented.
-4. Add TTY interaction only after JSON/non-TTY reports exist.
+4. Add TTY interaction only after JSON/non-TTY reports exist. Complete the
+   behavioral contract in `docs/UX.md` before implementing the interactive
+   model. Add `docs/DESIGN.md` before implementing a visual-critical prompt or
+   full TUI.
 5. If TTY grows beyond one screen, design it as a routed review layer over the
    same reports. Preserve Back/Home, focused row identity, and item-scoped
    actions from the beginning.

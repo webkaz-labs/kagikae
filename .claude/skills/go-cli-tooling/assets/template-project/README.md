@@ -68,6 +68,7 @@ dotfiles-tool completion zsh --install
 
 ```bash
 mise run check        # standalone repo (from the repo root)
+mise run docs-check   # documentation links and domain-index ownership
 git diff --check
 ```
 
@@ -84,7 +85,9 @@ mise run audit
 
 | Document | Purpose |
 |----------|---------|
-| [docs/DESIGN.md](docs/DESIGN.md) | Mission, boundaries, completion goal. |
+| [docs/PRODUCT.md](docs/PRODUCT.md) | Mission, product boundary, completion goal, and primary journeys. |
+| [docs/UX.md](docs/UX.md) | Optional TTY/TUI routes, focus, states, and interaction contract. |
+| [docs/DESIGN.md](docs/DESIGN.md) | Conditional visual design system and visual acceptance for visual-critical TTY/TUI output. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Package layout and implementation boundaries. |
 | [docs/CLI.md](docs/CLI.md) | Command and output contract. |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Config, state, reports, status vocabulary. |

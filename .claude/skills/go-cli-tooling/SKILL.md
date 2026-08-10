@@ -27,7 +27,11 @@ standard. This exported copy is self-contained: the standard docs live in
    - opt-in patterns (mise integration, did-you-mean hints):
      `references/PATTERNS.md`
 3. If working on an existing tool, read its local `AGENTS.md` first, then its
-   `README.md`, `docs/RELEASE.md`, and `docs/ROADMAP.md`.
+   `README.md`, `docs/PRODUCT.md`, `docs/RELEASE.md`, and `docs/ROADMAP.md`.
+   For TTY behavior, read `docs/UX.md` before changing routes, focus, input,
+   return state, or async screen behavior. For visual-critical output, read
+   `docs/DESIGN.md` before changing semantic styles, component appearance,
+   composition, or visual baselines.
 4. Decide whether the request is implementation, planning, review, or new-tool
    bootstrapping before editing.
 
@@ -66,9 +70,10 @@ Audit in this order:
 2. `AGENTS.md`, `README.md`, `docs/RELEASE.md`, `docs/ROADMAP.md`, and
    `docs/VALIDATION.md` point to the same validation path.
    `docs/RELEASE.md` follows the retention rule in `references/RELEASE.md`.
-3. Tool-local docs include the standard set:
-   `DESIGN`, `ARCHITECTURE`, `CLI`, `DATA-MODEL`, `SECURITY`, `ROADMAP`,
-   `RELEASE`, and `VALIDATION`.
+3. Tool-local docs include the core set: `PRODUCT`, `ARCHITECTURE`, `CLI`,
+   `DATA-MODEL`, `SECURITY`, `ROADMAP`, `RELEASE`, and `VALIDATION`. Add `UX`
+   when behavior changes on a TTY. `DESIGN` is conditional: omit it for plain
+   CLIs, add it for visual-critical TTY output, and require it for a full TUI.
 4. JSON reports have `schema_version`, stable English tokens, deterministic
    ordering, and empty arrays as `[]` for agent-facing slices.
 5. Human output is summary-first, color is semantic, and complex item sets use
@@ -80,8 +85,9 @@ Audit in this order:
    item-scoped actions, and slow loading rows behave predictably.
 8. Subprocesses go through runner seams with context-aware execution, or the
    exception is documented.
-9. Bubble Tea or other TUI behavior is covered by model/update, view, program,
-   and built-binary PTY tests according to `references/TESTING.md`.
+9. Bubble Tea or other TUI behavior is covered by broad model/update tests and
+   critical built-binary PTY journeys according to `references/TESTING.md`.
+   Add view goldens selectively; program E2E is optional.
 10. Config precedence and unknown-key behavior are documented.
 11. Security-sensitive evidence has `available`, `stale`, `unavailable`, or
    `skipped` semantics where relevant.
@@ -113,9 +119,16 @@ If a gap should not be fixed immediately, update the tool's `RELEASE.md` or
   loading rows through messages instead of leaving and restarting the TTY.
 - If a tool has `last` or cached-report review, reopen the same review surface
   without rerunning provider mutations and label stale cached evidence.
-- For TUI changes, test `Update` and `View` directly first; use program/PTY
-  E2E for terminal integration instead of making sleeps or tmux-only smoke
-  tests the primary proof.
+- For interactive changes, test `Update` directly, build the actual binary, and
+  drive critical journeys through the project's pinned `shell-use` wrapper.
+  Assert semantic state before snapshots; verify `80x24`, canonical `120x36`,
+  clean exit, and terminal restoration. Do not use sleeps or tmux-only smoke
+  tests as primary proof.
+- Use view goldens only for complex deterministic rendering. For visual-critical
+  screens, capture SVG/PNG, run the pinned visual diff, and inspect the rendered
+  result against the semantic tokens, component contracts, baseline manifest,
+  and acceptance rules in the tool-local `docs/DESIGN.md`. Golden updates must
+  be explicit and reviewed; do not accept ad hoc screenshot similarity.
 - Keep TUI E2E split into fast local smoke and fuller release acceptance; use a
   built binary and fixture data for the fast path.
 - Keep normal user policy in TOML; use environment variables for secrets,
@@ -124,6 +137,13 @@ If a gap should not be fixed immediately, update the tool's `RELEASE.md` or
   during unrelated work.
 - Treat `references/` and `assets/template-project/` as canonical.
   Do not edit bundled references by hand; regenerate the export from the canonical source.
+- Keep uppercase domain docs as stable entrypoints. When a domain grows, split
+  complete decision areas under a lowercase sibling directory such as
+  `docs/product/` or `docs/ux/`; link every child from the index and do not
+  duplicate its long-form content.
+- Reserve `docs/DESIGN.md` for the self-contained visual design system. Product
+  scope belongs in `PRODUCT.md`, interaction behavior in `UX.md`, and software
+  structure in `ARCHITECTURE.md`.
 
 ## Validation
 

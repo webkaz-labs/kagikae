@@ -42,6 +42,12 @@ only means anything on a machine that has them) and `mise run goreleaser-check` 
 slower release-time checks. Lint tools run via `go run <tool>@<pinned version>`; the
 first run downloads them.
 
+`mise run docs-scan` is not a check of either kind: it reports prose two documents
+carry twice and can fail nothing, so it belongs to consolidating docs rather than to
+committing. Read `scripts/docscan/main.go`'s header before acting on a report — it
+records which of the four docs-scan stages has ever caught a release-breaking defect,
+and it is not this one.
+
 While editing (this is a Go module — the LSP is `gopls`):
 
 - **Symbol work goes through the LSP, not Grep** — resolve definitions,

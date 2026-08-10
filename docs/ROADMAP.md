@@ -216,6 +216,59 @@ alternative exists (`secret-tool`).
   detecting it). Until the table exists, the header of
   `scripts/smoke-run-selftest.sh` is normative: any change to either script has to
   be mutation-tested by hand.
+  Three rounds of review on the assert-marker guard (2026-08-10) put a sharper
+  version of those two rules on the record, because each round's survivor sat on the
+  guard the round before had added: check that a guard fires **before** the thing it
+  protects (move it later and see if anything notices); assert the **diagnostic**, not
+  only the verdict; try a **proper subset** of any enumeration, not just its collapse;
+  ask **where in the file** a derived expectation reads from; and pin a character class
+  with two members and a count, since one example pins one example. Every one of those
+  was a live false green here, found by a reviewer and not by the author.
+
+- **`derived_cleared` reads the whole file, so a comment can satisfy it** (recorded
+  2026-08-10, **not fixed**). `scripts/smoke-run-selftest.sh`'s
+  `grep -oE '\-u [A-Z_]+' "$runner"` is unanchored, so a `-u NAME` written in a comment
+  counts as the runner clearing that variable. Its sibling `derived_all` is anchored at
+  the prefix's indentation, and `derived_words` was anchored at `^markers=` after
+  exactly this defect was measured on it: a comment quoting the retired pattern let the
+  code be narrowed while 35 guards reported holding. The remaining instance is the
+  weakest of the three because a stray `-u NAME` in a comment is less idiomatic here
+  than quoting a retired pattern, which the runner's header does three times — but it
+  is the same hole. Anchor it at the `env -u …` continuation lines.
+
+- **Two live test comments tell the next agent to build something that shipped**
+  (recorded 2026-08-10, **not fixed**). `internal/adapter/adapter_test.go:264-268` and
+  `:322-328` say a bound directory's `Codex Auth` item has nothing tearing it down "on
+  unpin or a `pin -s` ↔ `pin -i` toggle", and `:328` adds **"Do not 'fix' this by
+  setting the flag; land the teardown."** § Own the item's lifecycle in this file
+  records that teardown **Done (2026-07-30)**, and that the sweep "starts covering
+  codex the moment the capability is declared, with no further work". So the comments
+  send the next reader to reimplement a shipped mechanism and hide the real blocker,
+  which is the unrun gate now in [VALIDATION.md](VALIDATION.md) § Open gates. That
+  section's own "Then declare the capability … Until step 3 lands" wording is stale in
+  the same way and should move with them.
+
+- **This file says the agy real-keychain gate is open; VALIDATION.md records it
+  PASSED** (recorded 2026-08-10, **not fixed**). § Tier-1 tools' agy entry ends "the
+  two-account real-keychain gate is the open acceptance item
+  ([VALIDATION.md](VALIDATION.md))", and the file it points at records "**agy
+  two-account real-keychain gate PASSED** (verified by the maintainer)" in the v0.8.6
+  acceptance entry. The pointer lands in the document that contradicts it, and the
+  acceptance log is the one to trust. Worth fixing next to the entry above, because
+  both are this file asserting a blocker that no longer exists — the shape that acts as
+  a licence to undo work.
+
+- **The exported Go CLI standard still carries a figure withdrawn here** (recorded
+  2026-08-10, **not fixed**). `.claude/skills/go-cli-tooling/references/TESTING.md`
+  says "five wrong assertions across eight releases"; that count is sourceable nowhere
+  and was withdrawn from `scripts/smoke-run.sh` and from this file. **It cannot be
+  fixed in this repository**: the skill directory is generated, and
+  [RELEASE.md](RELEASE.md) records that it re-syncs from the chezmoi source, which is
+  also the copy other tools receive — so the reach is larger than kae. Fix the template
+  there and re-export; do not hand-edit the copy, which would be lost on the next
+  sync. The same pass could promote the rule this branch added, since that reference
+  already tells a runner to give each line a verdict and does not yet tell it to refuse
+  a block whose checks are comments.
 
 - **`scripts/smoke-env.sh` leaks a temp HOME every time it is sourced** (recorded
   2026-08-09, **not fixed**). It does `HOME=$(mktemp -d)` and nothing ever removes

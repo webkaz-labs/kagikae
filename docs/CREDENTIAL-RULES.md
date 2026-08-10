@@ -79,7 +79,9 @@ where a source kae could not read has to mean keep, since "no reference found" a
 ## Removing a per-directory credential
 
 **A per-directory credential has to be removed when nothing points at it any
-more.** `removeDirCredential` is normative for *which* ones, and the rule is two
+more.** `removeDirCredential` is normative for *which* ones — how a keychain item is
+addressed at all (service **and** account, never service alone before a write) stays
+in [AGENTS.md](../AGENTS.md) § Implementation Boundaries — and the rule is two
 rules over two kinds, not one: a **keychain item** where the adapter declares it
 `KeychainDirBindable`, and a **file** credential only where it is no longer the
 copy its own store reads (the account's own store, or a store a migration just

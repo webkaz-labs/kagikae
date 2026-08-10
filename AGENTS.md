@@ -12,7 +12,7 @@ Standalone public repository. Follow the bundled Go CLI standard in
 | [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, terminology, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | anything that touches what companion-auth lockstep (git/gh/cloud CLIs) switches or preserves |
-| [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | before any code writes, harvests, attributes, orders or deletes a credential **copy**. It is normative for the sections it states and is not the whole of the subject — § Implementation Boundaries below keeps the rest, beside one routing line per moved rule |
+| [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | before any code writes, harvests, attributes, orders or deletes a credential **copy**. It is the normative text for its own thirteen sections and not for the whole subject: several of them defer the per-tool contract to `docs/ADAPTERS.md` or `docs/CLI.md` where they say so, and § Implementation Boundaries below keeps the credential rules that did not move, beside one routing line per rule that did |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, adapter interface, transaction, lock changes |
 | [docs/CLI.md](docs/CLI.md) | command flags, output, exit codes, JSON contract changes |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | config, snapshot, state, backup, secret-ref changes |
@@ -119,13 +119,14 @@ once and were then shown to be false.
     per-account store, or resolving the config-dir/credential-store pair.
   - § Removing a per-directory credential — before deleting, or deciding not to
     delete, a credential a binding leaves behind.
-  - § Harvesting before a write or a delete — any copy that lives in a per-directory
-    store.
+  - § Harvesting before a write or a delete — before overwriting or removing any
+    existing copy of a credential.
   - § A chokepoint is not complete coverage — before placing a preservation pass,
     merging one with a delete sweep, or keying a warning suppression.
   - § Never harvest a copy you cannot attribute — before copying any credential into
     a snapshot or another store.
-  - § Ordering two copies of one credential (`supersedes`).
+  - § Ordering two copies of one credential (`supersedes`) — before adding any consumer
+    that decides which of two copies is newer, or calls one of them dead.
   - § When a refusal destroys instead of preserving — before adding **or widening** a
     refusal on either recapture path.
   - § What kae observed is not what the tool can do — before narrowing what counts as
@@ -157,9 +158,10 @@ once and were then shown to be false.
 - **A keychain item's identity is service + account, and per-tool.** codex derives
   the account of its single-service `Codex Auth` item from `CODEX_HOME`
   (`cli|` + 16 hex of sha256 over the **canonicalized** path — symlinks resolved),
-  so one service holds one legitimate item per tool home; claude hashes the *raw*
-  value into the **service** name instead (`docs/ADAPTERS.md` § Credential storage
-  resolution derives it, and `claude.keychainService` is the only code that may).
+  so one service holds one legitimate item per tool home; claude hashes the value
+  **without resolving or cleaning the path** into the **service** name instead
+  (`docs/ADAPTERS.md` § Credential storage resolution derives it, NFC step included,
+  and `claude.keychainService` is the only code that may).
   Same idea, two incompatible formulas: derive each in its own adapter and never
   port one.
   Consequently **never delete a keychain item by service name alone before writing**
@@ -292,7 +294,13 @@ moved kept naming `AGENTS.md` as its authority.
 the shared Go CLI standard: never hand-edit it, or the next re-sync silently drops
 the edit. A change there belongs in the chezmoi source and arrives by re-export.
 
-**A citation that names a `§` names a target that has to exist.** A bare
-`AGENTS.md` citation survives a rule moving, because the reader lands on a routing
-line; one that names a section does not. After moving or renaming any section, run
-`git grep -n '\.md §'` and repoint what no longer resolves.
+**A citation that names a `§` names a target that has to exist**, and it quotes the
+section name verbatim — so grep the name, not the sigil. Before renaming or moving a
+section, `git grep -n` a **short distinctive fragment** of the old name, and repoint
+every hit. Short because citations wrap: of the nine citations of the sections moved
+on 2026-08-10, **six span two lines**, and a grep for a whole heading finds none of
+those six. Do not reach for `git grep '\.md §'` — it misses the `[X.md](X.md) § Name`
+form, misses every bare `§ Name` including the routing lines above, and matches this
+paragraph, so it is neither complete nor ever empty. A **bare** `AGENTS.md` citation
+needs none of this: it survives a rule moving, because the reader lands in
+§ Implementation Boundaries and the routing list sends them on.

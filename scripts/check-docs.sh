@@ -48,25 +48,63 @@ fail() {
 # re-sync, so a finding in it is not actionable here.
 generated='.claude/skills/go-cli-tooling'
 
-# --- the standard's required set ------------------------------------------------
-# docs/PRODUCT.md is on this list because the standard's DOCUMENTATION.md puts it
-# there. It was missing from this repository until the file that holds mission and
-# product boundaries was renamed to it from DESIGN.md, which the standard now reserves
-# for a visual design system.
-for required in README.md AGENTS.md CLAUDE.md; do
-  if [ ! -f "$required" ]; then
-    fail "missing required file: $required"
+# --- the standard's required set, DERIVED from the standard --------------------
+# Read out of the generated export rather than copied into this file. A hand-copy is the
+# half of this check that exists purely to track an external document, and it is the half
+# that cannot notice that document changing: the export re-syncs from chezmoi without this
+# repository's involvement, so a re-sync that adds a required file would leave a literal
+# here reporting ok forever. An earlier version copied the list and then dropped the floor
+# over it, on the correct observation that counting iterations of a literal checks the
+# script against itself — the conclusion should have been to stop iterating a literal.
+#
+# `docs/PRODUCT.md` is in the derived set. It was absent from this repository until the
+# file holding mission and product boundaries was renamed to it from `DESIGN.md`, which
+# the standard reserves for a visual design system. `UX.md` and `DESIGN.md` are named
+# elsewhere in that document as conditional and are correctly not in this block.
+required_files=$(awk '/^## Required Files/{f=1} f&&/^```/{c++; if(c==2) exit; next} f&&c==1' \
+  "$generated/references/DOCUMENTATION.md" 2>/dev/null |
+  { grep -oE '[A-Za-z0-9.-]+\.md' || true; })
+required_count=$(printf '%s\n' "$required_files" | grep -c '\.md' || true)
+if [ "${required_count:-0}" -lt 8 ]; then
+  fail "derived only ${required_count:-0} required files from the standard, fewer than it names"
+fi
+while IFS= read -r required; do
+  case $required in
+    '') continue ;;
+    README.md | AGENTS.md | CLAUDE.md) path=$required ;;
+    *) path="docs/$required" ;;
+  esac
+  if [ ! -f "$path" ]; then
+    fail "missing required file: $path (the standard's § Required Files names it)"
   fi
-done
-for required in PRODUCT ARCHITECTURE CLI DATA-MODEL SECURITY ROADMAP RELEASE VALIDATION; do
-  if [ ! -f "docs/$required.md" ]; then
-    fail "missing required file: docs/$required.md"
+done <<REQUIRED
+$required_files
+REQUIRED
+
+# --- a docs/<domain>/ child must be linked from its uppercase index ------------
+# Kept from the standard's template even though kae has no docs/<domain>/ directories
+# today: it self-no-ops when the directory is absent, so it costs nothing, and the same
+# standard tells this repository to shard documents past 300-500 lines. On the day
+# docs/release/ exists, the Documentation Map walk below (maxdepth 1) will not see its
+# children and this will.
+check_domain_index() {
+  domain=$1
+  index=$2
+  if [ ! -d "docs/$domain" ]; then
+    return
   fi
-done
-# No floor on this loop, deliberately. It iterates a literal in this file, so a count
-# of its iterations measures nothing outside the script and cannot catch the collapse
-# the other floors exist for — it would only ever check this file against itself. The
-# floors below all walk the filesystem or real grep output.
+  while IFS= read -r child; do
+    if ! grep -Fq "$domain/$(basename -- "$child")" "docs/$index"; then
+      fail "docs/$domain/$(basename -- "$child") is not linked from docs/$index"
+    fi
+  done < <(find "docs/$domain" -mindepth 1 -maxdepth 1 -type f -name '*.md' -print)
+  if find "docs/$domain" -mindepth 2 -type f -print -quit | grep -q .; then
+    fail "docs/$domain is deeper than the standard's one-level domain hierarchy"
+  fi
+}
+check_domain_index product PRODUCT.md
+check_domain_index ux UX.md
+check_domain_index architecture ARCHITECTURE.md
 
 # --- every docs/*.md is listed in AGENTS.md's Documentation Map -------------------
 map_start=$(grep -n '^## Documentation Map' AGENTS.md | cut -d: -f1 || true)
@@ -118,7 +156,15 @@ while IFS=$'\t' read -r md_rel link; do
     /*) continue ;;    # absolute path, not ours to resolve
   esac
   links_checked=$((links_checked + 1))
-  md_dir=$(dirname -- "$md_rel")
+  # Parameter expansion, not `dirname`: this loop runs once per link, and forking a
+  # process there was measured at ~2.1s of the ~2.3s this script took — 294 of its ~320
+  # subprocesses. The selftest calls this script four times, so it dominated there too.
+  # Written as an `if` rather than `[ ... ] && ...` because AGENTS.md forbids that form
+  # under `set -e`.
+  md_dir=${md_rel%/*}
+  if [ "$md_dir" = "$md_rel" ]; then
+    md_dir=.
+  fi
   if [ ! -e "$md_dir/$target" ]; then
     fail "$md_rel link target does not exist: $link"
   fi

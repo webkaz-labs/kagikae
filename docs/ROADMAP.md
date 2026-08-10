@@ -192,7 +192,12 @@ alternative exists (`secret-tool`).
 - **The smoke guards have no test, and four changes switched one off without
   anything noticing** (recorded 2026-08-09, **not fixed**).
   `scripts/smoke-run-selftest.sh` checks `scripts/smoke-run.sh`; nothing checks
-  the selftest. Across six review rounds, four separate edits made for unrelated
+  the selftest. **There are two selftests now** — `scripts/check-docs-selftest.sh`
+  arrived 2026-08-11 for `scripts/check-docs.sh` — and this entry covers both: neither
+  is checked by anything, and none of the docs selftest's cases exercises any of the
+  five floors in the script it tests, all of which were verified by hand mutation and
+  recorded in a commit message rather than by any check in the repository. That is the
+  same state described below. Across six review rounds, four separate edits made for unrelated
   reasons left a guard passing unconditionally while the suite reported every
   guard holding: a variable list derived from the file it was testing (deleting
   from the subject deleted the test); a containment check weakened to a proxy
@@ -335,20 +340,48 @@ alternative exists (`secret-tool`).
   Nothing here should be widened silently; the gap is now stated in all three places
   that describe the gate.
 
-- **Two sections in `PRODUCT.md` read as architecture, not product** (recorded
-  2026-08-11, **not fixed**). The rename from `docs/DESIGN.md` moved the whole file,
-  because the shared standard reserved `DESIGN.md` for a visual design system and says
-  it is "not the product or software design document". Against that standard's charter
-  for `PRODUCT.md` — mission, user problem, product boundaries, completion goal, primary
-  journeys — § Mission, § Product Boundaries, § Tool Tiers and § Subscription-First
-  Authentication Model sit correctly, while **§ Switching Surface** (what each mode
-  writes and preserves) and **§ Concurrency Boundary** (per-tool locks and what may run
-  at once) are architecture. They stayed because moving them is not a rename: § Switching
-  Surface is cited by `docs/CONTEXT.md` and by `scripts/docscan/main.go`'s calibration
-  note, which names its table as one half of a measured duplicate pair, so a move has to
-  repoint both and keep that measurement meaningful. Filed rather than done for the same
-  reason the vocabulary entry is: a rewording with no behaviour attached, and nothing
-  about it needs to ride with a code change.
+- **One paragraph in `PRODUCT.md` is architecture** (recorded 2026-08-11, **not fixed**).
+  The rename from `docs/DESIGN.md` moved the whole file, because the shared standard
+  reserved `DESIGN.md` for a visual design system and says it is "not the product or
+  software design document". A first draft of this entry named two whole sections and
+  priced a section-level move; reading them says otherwise, and the correction is the
+  useful part. **§ Switching Surface is a primary journey**, which the standard's charter
+  for `PRODUCT.md` explicitly includes — a scope × environment table plus verb semantics.
+  The only architecture in it is the closing paragraph headed `**Mechanisms.**`
+  (in-place credential patch / `CLAUDE_CONFIG_DIR` / symlink-everything-but-credential),
+  which already ends by pointing at [ADAPTERS.md](ADAPTERS.md). **§ Concurrency Boundary
+  is a product boundary**, not architecture: its content is the user-visible limit that
+  two accounts of one tool cannot run concurrently, and `## Product Boundaries` is the
+  next heading in the same file — while the mechanism is separately owned by
+  [ARCHITECTURE.md](ARCHITECTURE.md) § Locking, at length, with no overlap.
+  So the work is a paragraph move plus a same-file fold, not a section move. It also
+  costs nothing in citations, which the first draft claimed it would: both citations —
+  `docs/CONTEXT.md` and `scripts/docscan/main.go`'s calibration note — point at
+  § Switching Surface's **table**, so moving the `**Mechanisms.**` paragraph leaves the
+  heading and both citations untouched, and keeps that measured duplicate pair meaningful.
+  Classifying by the topic word (*locks*, *mechanisms*) rather than by the question the
+  passage answers is what produced the wrong estimate.
+
+- **The standard's own docs check cannot run clean, and this repository forked it instead
+  of fixing it** (recorded 2026-08-11, **not fixed here** — the fix belongs upstream).
+  `scripts/check-docs.sh` says it kept the required-file list and the link walk from
+  `.claude/skills/go-cli-tooling/assets/template-project/scripts/check-docs.sh`. It
+  re-implemented both, because both are wrong there, and every tool on this standard will
+  hit the same two defects. First: that script asserts only the eight files under `docs/`,
+  while its own § Required Files names eleven — `README.md`, `AGENTS.md` and `CLAUDE.md`
+  are described and then checked by nothing. Second: its link extractor is a bare
+  `grep -Eo` with no fence or code-span stripping, so it reports the bracketed example
+  inside `` `[X.md](X.md)` `` in `AGENTS.md`'s citation rule as a broken target —
+  **the standard's script cannot pass on a repository that uses the citation idiom the
+  standard itself teaches**, and since the template wires it into `mise run check` the
+  symptom is a gate blocking a commit on correct prose.
+  Both fixes are properties of markdown rather than of kae, so they belong in the chezmoi
+  source, and the local script should shrink to the part that is genuinely kae's: the
+  Documentation Map shape, because kae has no `docs/<domain>/` directories. Until that
+  happens two copies of one requirement are maintained here, which is the second-normative-
+  copy defect this check was written to detect, now inside the check. Note that
+  `mise run docs-scan` cannot see it: that program compares `.md` files, and this
+  duplication lives in shell and Python headers.
 
 - **The claim-reconciliation stage is unbuilt, and a `grep` in AGENTS.md stands in for
   it** (recorded 2026-08-10, **not fixed**). `scripts/docscan/main.go`'s header names a

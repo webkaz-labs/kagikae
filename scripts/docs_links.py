@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Emit every markdown link in the tree as `<file>\t<target>`, for check-docs.sh.
 
-Why this is Python and not another line in that shell script: AGENTS.md's own rule
-says to use python3 for regex extraction you intend to count, because BSD `grep -oE`
-can exit 1 on a file that does contain matches. Two further shell traps were hit
-writing this the other way, both already recorded in this repository:
+Why this is Python and not another line in that shell script. The extraction carries
+state across lines — a `fenced` flag, and a code-span strip that has to match a run of
+backticks with the same run — which is where the shell attempts broke. Two traps, both
+measured while writing them:
 
   * `grep` exits 1 on a markdown file with no links, which under `set -e` with
     `pipefail` kills the producer and leaves the walk reporting zero links found;
   * an apostrophe inside a comment (`AGENTS.md's`) sitting inside a process
     substitution opens a single-quoted string and mangles everything after it.
     `bash -n` and `shellcheck` both pass on that; it only fails at run time.
+
+An earlier version of this paragraph cited an AGENTS.md rule about using Python for
+countable regex extraction. There is no such rule in AGENTS.md — `grep -n python3
+AGENTS.md` returns nothing — and the BSD `grep -oE` exit-status claim it rested on did
+not reproduce. The two traps above did, and they are the whole reason.
 
 A link-shaped string inside code is an example, not a link, so fenced blocks and
 inline code spans are removed first. AGENTS.md's citation rule contains a bracketed

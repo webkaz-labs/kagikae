@@ -3,13 +3,22 @@
 ## Standard Suite (before every commit)
 
 ```bash
-mise run check     # lint (gofumpt/goimports/staticcheck/golangci-lint/shellcheck), test, vet, mod-verify, build
+mise run check     # see mise.toml [tasks.check] for what it depends on
 git diff --check
 ```
 
-`mise run check` is the authoritative gate. Slower release-time checks live in
-`mise run audit` (govulncheck) and `mise run goreleaser-check`. Lint tools run
-via `go run <tool>@<pinned version>`; the first run downloads them.
+`mise run check` is the authoritative gate. **Its steps are not enumerated here**:
+`mise.toml`'s `[tasks.check]` `depends` list is the one copy, and three hand copies of
+it had already drifted — this line omitted `smoke-selftest` for as long as it existed,
+and `AGENTS.md` and `README.md` each carried a third version. Read the task.
+
+CI is a **subset**, not a mirror: `.github/workflows/check.yml` runs `go vet`, `gofmt`,
+`go test` and `go mod verify`, so everything else in the gate is enforced on a
+developer's machine only ([ROADMAP.md](ROADMAP.md) carries what widening it would cost).
+
+Slower release-time checks live in `mise run audit` (govulncheck) and
+`mise run goreleaser-check`. Lint tools run via `go run <tool>@<pinned version>`; the
+first run downloads them.
 
 Run `go mod tidy` before committing dependency changes.
 

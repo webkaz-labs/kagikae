@@ -319,10 +319,11 @@ alternative exists (`secret-tool`).
   closed instead, by joining each line to its predecessor and allowing words between the
   number and the noun; what no widening of an added-lines sweep can reach is the shape
   this entry exists for, **a quantity on a line the diff never touches**.
-  Stage 3 needs a definition covering every claim-form measured so far: a quantity beside
-  a `§` citation; a count of something in the writer's *own* file, which one diff can
-  change while writing it; and a citation that resolves to a heading whose *content* has
-  moved out from under it. Not queued, and that header is
+  Stage 3 needs a definition covering the claim-forms seen so far, and they do not all
+  have the same standing: a quantity beside a `§` citation and a count of something in the
+  writer's *own* file — which one diff can change while writing it — have each been
+  measured here, while a citation resolving to a heading whose *content* has moved out
+  from under it is named rather than yet observed. Not queued, and that header is
   where the yield argument is normative rather than here: every release-breaking docs
   defect so far came from stage 4, running the executable blocks.
 

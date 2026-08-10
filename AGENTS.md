@@ -334,19 +334,26 @@ are kept so you can tell which file a hit came from.
 ```bash
 git diff main...HEAD | grep '^+' | sed 's/^+//' | awk '{print prev" "$0; prev=$0}' | grep -iE \
  '^\+\+ b/|(^|[^A-Za-z*`])\*{0,2}`?(both|one|two|three|four|five|six|seven|eight|nine|ten|thirteen'\
-'|first|second|third|fourth|fifth|sixth|seventh|[0-9]+)`?\*{0,2}( +[A-Za-z][A-Za-z-]*){0,3} +'\
-'\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?|tools?)\b'
+'|first|second|third|fourth|fifth|sixth|seventh|[0-9]+)`?\*{0,2}( +[^ ]+){0,3} +'\
+'\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?|tools?|assertions?)\b'
 ```
 
 The `awk` joins each line to its predecessor and the `{0,3}` allows words between the
 number and the noun, because earlier versions of this net returned **0** on a quantity
 that wrapped across lines and on one whose noun was not adjacent to its number. Both are
-controls now; pipe either into the pipeline above and it must report 1:
+controls now. Feed each to **everything after the first pipe above** — not to the whole
+pipeline, which starts at `git diff`, ignores stdin, and would silently answer about the
+branch instead — and each must yield exactly one record:
 
 ```bash
-printf '+the **two**\n+commands in X\n'          # a wrapped quantity
-printf '+one of ten struck entries here\n'       # a non-adjacent one
+printf '+the **two**\n+commands in X\n'                 # a wrapped quantity
+printf '+one of ten **struck** entries here\n'          # a non-adjacent one
 ```
+
+The intervening group is `[^ ]+` rather than a letters-only class because both files here
+write emphasis and code spans mid-sentence ("the **two** commands"), and a letters-only
+class let exactly those through — which is why the second control carries an emphasized
+word. One example does not pin a character class.
 
 Before trusting a clean run, fire it at a commit with a known bad count — the positive
 control any negative assertion here needs. **`git show 89341f4 | <everything after the
@@ -364,9 +371,9 @@ zero, the sweep proved nothing.
 
 It is **a net, not a proof**, and what it still misses is worth knowing rather than
 counting. The noun and number lists are enumerations, and every enumeration in this file
-has turned out short — `thirteen` and the **ordinals** were each added after a diff swept
-clean — so anything larger than the listed words is written as a digit, which `[0-9]+`
-covers. The command also matches its own defining sentences, which is why the citation
+has turned out short — `thirteen`, the **ordinals** and `assertions` were each added after
+a diff swept clean — so anything larger than the listed words is written as a digit, which
+`[0-9]+` covers. The command also matches its own defining sentences, which is why the citation
 rule above rejects `git grep '\.md §'`: a run whose only hits are this file's own prose is
 not a clean run.
 

@@ -349,9 +349,12 @@ zero, the sweep proved nothing.
 
 It is **a net, not a proof**, and its holes are not a closed set: the noun and number
 lists are enumerations, and every enumeration written in this file has turned out to be
-one short — including this one, twice: `thirteen` had to be added because this
-repository writes "the thirteen rules", and the **ordinals** had to be added after a
-diff wrote "a third site" and swept clean. Anything larger than the words listed is
+one short — including this one, more than once: `thirteen` had to be added because this
+repository writes "the thirteen rules", the **ordinals** had to be added after a
+diff wrote "a third site" and swept clean, and the noun list came up short again below,
+where the shortfall is disclosed instead of repaired. Counting the shortfalls here would
+be the same mistake one level up, which is how "twice" stood in this sentence while the
+third arrived twenty lines lower in the same diff. Anything larger than the words listed is
 written as a digit, which `[0-9]+` covers. The holes below are the ones a round of review
 has actually found; no count is given, because each was found the same way and the next
 one will be too.
@@ -369,9 +372,13 @@ The number and the noun must be **adjacent**, so one intervening word escapes �
 noun list escapes the same way, being an enumeration like every other one here:
 
 ```bash
-printf 'all ten entries\none of ten struck entries\ntwo retired mode names\nfive wrong assertions\n' \
+printf 'all ten entries\none of ten struck entries\ntwo retired mode names\nfive assertions\n' \
   | grep -icE '(one|two|five|ten) (entries|names)'
-# 1 of 4 — `struck` and `retired` break adjacency, and `assertions` is not a listed noun
+# 1 of 4 — only line 1 is adjacent; `struck` and `retired mode` break lines 2 and 3.
+# Line 4 IS adjacent and still misses, because `assertions` is not a listed noun — it is
+# there to isolate that from adjacency, and it only does so with the intervening word
+# removed: `five wrong assertions` misses for both reasons at once and would prove
+# nothing about the noun list.
 ```
 
 That is not hypothetical about this paragraph. The sentence above about a quantity

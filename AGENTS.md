@@ -12,7 +12,7 @@ Standalone public repository. Follow the bundled Go CLI standard in
 | [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, terminology, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | anything that touches what companion-auth lockstep (git/gh/cloud CLIs) switches or preserves |
-| [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | before any code writes, harvests, attributes, orders or deletes a credential **copy** — normative for all of it. § Implementation Boundaries below carries one routing line per rule and deliberately states none of them, so a citation of `AGENTS.md` for one of those rules means a section of this file |
+| [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | before any code writes, harvests, attributes, orders or deletes a credential **copy**. It is normative for the sections it states and is not the whole of the subject — § Implementation Boundaries below keeps the rest, beside one routing line per moved rule |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, adapter interface, transaction, lock changes |
 | [docs/CLI.md](docs/CLI.md) | command flags, output, exit codes, JSON contract changes |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | config, snapshot, state, backup, secret-ref changes |
@@ -105,11 +105,10 @@ once and were then shown to be false.
   [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md), which is normative for the
   sections it states.** The lines below say only which section answers which
   question. **None of them states its rule**, so acting on one of these lines is
-  acting on a rule you have not read. And they are **not a map of everything about a
-  credential**: other credential rules stay in this section — keychain-item identity,
-  a credential that is a *set* of stores, store-selecting enums, the two comparison
-  predicates, and that is not a closed list — so a question the list below does not
-  answer is not a question with no answer.
+  acting on a rule you have not read — and a bare citation of `AGENTS.md` for one of
+  those rules means the section there. They are also **not a map of everything about
+  a credential**: other credential rules stay in this section, so a question the list
+  below does not answer is not a question with no answer.
   - § Resolving a credential's location — before computing a credential path or a
     keychain service name at a call site, or falling back to a second store when a
     write fails.
@@ -120,14 +119,13 @@ once and were then shown to be false.
     per-account store, or resolving the config-dir/credential-store pair.
   - § Removing a per-directory credential — before deleting, or deciding not to
     delete, a credential a binding leaves behind.
-  - § Harvesting before a write or a delete — before overwriting or removing any copy
-    that lives in a per-directory store.
+  - § Harvesting before a write or a delete — any copy that lives in a per-directory
+    store.
   - § A chokepoint is not complete coverage — before placing a preservation pass,
     merging one with a delete sweep, or keying a warning suppression.
   - § Never harvest a copy you cannot attribute — before copying any credential into
     a snapshot or another store.
-  - § Ordering two copies of one credential (`supersedes`) — before comparing two
-    copies' freshness anywhere.
+  - § Ordering two copies of one credential (`supersedes`).
   - § When a refusal destroys instead of preserving — before adding **or widening** a
     refusal on either recapture path.
   - § What kae observed is not what the tool can do — before narrowing what counts as
@@ -159,11 +157,11 @@ once and were then shown to be false.
 - **A keychain item's identity is service + account, and per-tool.** codex derives
   the account of its single-service `Codex Auth` item from `CODEX_HOME`
   (`cli|` + 16 hex of sha256 over the **canonicalized** path — symlinks resolved),
-  so one service holds one legitimate item per tool home; claude puts its hash in the
-  **service** name instead, over a path it does **not** canonicalize
-  (`docs/CREDENTIAL-RULES.md` § Resolving a credential's location is normative for
-  that formula and the traps in it). Same idea, two incompatible formulas: derive
-  each in its own adapter and never port one.
+  so one service holds one legitimate item per tool home; claude hashes the *raw*
+  value into the **service** name instead (`docs/ADAPTERS.md` § Credential storage
+  resolution derives it, and `claude.keychainService` is the only code that may).
+  Same idea, two incompatible formulas: derive each in its own adapter and never
+  port one.
   Consequently **never delete a keychain item by service name alone before writing**
   (`keychain.DeleteItem` on a service another home also uses): that deleted a second
   `CODEX_HOME`'s codex login on every switch, shipped through v0.12.0. **Every**
@@ -282,5 +280,19 @@ Never use a real login handle.
 
 ## Documentation Update Checklist
 
-For every change, decide and report "changed / no change needed" for each:
-`README.md`, `AGENTS.md`, and every file under `docs/`.
+For every change, decide and report "changed / no change needed" for **each tracked
+markdown file this repository owns** — derive the set rather than trusting a list:
+`git ls-files '*.md' | grep -v '^\.claude/skills/go-cli-tooling/'` (17 today). It
+covers `README.md`, `AGENTS.md`, `CLAUDE.md`, everything under `docs/`, and the
+repo-local `upstream-auth-drift` skill, which the Documentation Map cites as
+normative and which a `docs/`-only list cannot reach — that is how a rule that had
+moved kept naming `AGENTS.md` as its authority.
+
+`.claude/skills/go-cli-tooling/` is excluded because it is a **generated** export of
+the shared Go CLI standard: never hand-edit it, or the next re-sync silently drops
+the edit. A change there belongs in the chezmoi source and arrives by re-export.
+
+**A citation that names a `§` names a target that has to exist.** A bare
+`AGENTS.md` citation survives a rule moving, because the reader lands on a routing
+line; one that names a section does not. After moving or renaming any section, run
+`git grep -n '\.md §'` and repoint what no longer resolves.

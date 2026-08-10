@@ -3,20 +3,18 @@
 Thirteen rules about a credential **copy** — where one lives, and who may
 overwrite, harvest, attribute, order or delete one, in what order. Read this file
 before touching any of that. Do not trust a list of the call sites; find them:
-`git grep -ln 'dirCredential\|supersedes\|harvest\|Attribut\|unintendedLinks\|buildLsPins' internal/`.
+`git grep -ln 'dirCredential\|supersedes\|harvest\|Attribut\|unintendedLinks\|buildLsPins\|EnvConflict' internal/`
+— checked against all thirteen rules: each has a call site in the result, and
+`EnvConflict` is the only term that reaches `internal/adapter/`, so a rule about
+adapter-level code is silently missing without it.
 
-**This is not every credential rule.** [AGENTS.md](../AGENTS.md) § Implementation
-Boundaries keeps the ones an ordinary task does consult — keychain-item identity, a
-credential that is a *set* of stores, store-selecting enums, the two comparison
-predicates, and that is not a closed list — so a question this file does not answer
-may still have an answer there.
-
-They live here rather than in [AGENTS.md](../AGENTS.md) because none of them is
-consulted in *every* task and AGENTS.md is the one document loaded into every
-session. [AGENTS.md](../AGENTS.md) § Implementation Boundaries keeps one routing
-line per rule and deliberately states none of them, so **this file is the
-normative text**, and a code comment citing `AGENTS.md` for one of these rules
-means the section here.
+**This is not every credential rule.** They live here rather than in
+[AGENTS.md](../AGENTS.md) — the one document loaded into every session — because
+none of them is consulted in *every* task. Its § Implementation Boundaries keeps one
+routing line per rule and deliberately states none of them, so **this file is the
+normative text** and a code comment citing `AGENTS.md` for one of these rules means
+the section here. That section also keeps the credential rules an ordinary task does
+consult, so a question this file does not answer may still have an answer there.
 
 Each rule carries its own measurement and date. Keep them with the rule.
 
@@ -330,7 +328,7 @@ and there is no default to fall back on: the two existing modes take that intent
 from deliberately different places, and one of them cannot always establish it at
 all. `docs/ADAPTERS.md` (§ per-directory shared bind, § per-directory isolated bind)
 is normative for which source each mode uses and what happens when the intent is
-unknown; do not restate the rule in this file, in `AGENTS.md`, or in a code comment.
+unknown; do not restate the rule anywhere else, including in a code comment.
 
 ## A store tree is history; a fragment is the binding
 

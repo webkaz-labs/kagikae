@@ -483,7 +483,7 @@ git diff --check
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Config, snapshots, state, backups, secrets. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Package layout and boundaries. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Safety rules and secret handling. |
-| [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | Why the scope/isolation model is shaped the way it is. |
+| [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | Why the scope/isolation model is shaped the way it is — rationale only, never the rules themselves. |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Later phases. |
 | [docs/RELEASE.md](docs/RELEASE.md) | Active release target and release process. |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | Pre-commit and release checks. |

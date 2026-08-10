@@ -277,7 +277,7 @@ alternative exists (`secret-tool`).
   — has no implementation. `AGENTS.md § Documentation Update Checklist` covers one shape
   of it by hand: a quantity written beside a `§` citation, swept for with a regex over
   the diff's added lines. That sweep is a net rather than a proof by its own admission,
-  and its two disclosed holes are the argument for tooling rather than prose — a count
+  and the holes it discloses are the argument for tooling rather than prose — a count
   that wraps across lines is invisible to a line-based grep, and the noun and number
   lists are an enumeration, which every enumeration in that file has proved to be one
   short. What stage 3 needs first is a definition of what counts as a claim about

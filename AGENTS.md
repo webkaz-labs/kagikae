@@ -327,16 +327,31 @@ git diff main...HEAD | grep '^+' | grep -iE \
 ```
 
 Before trusting a clean run, fire it at a commit with a known bad count — the positive
-control any negative assertion here needs: `git diff main...<that commit>` must produce
-the hit.
+control any negative assertion here needs. `git diff main...89341f4` produces the
+`docs/ROADMAP.md` line quoted above; if it stops producing it, the pattern is broken.
 
-It is **a net, not a proof**, and two holes are known. A quantity that *wraps* across
-lines is invisible to a line-based grep, and the sentence above quoting the original
-case does exactly that. And like the `\.md §` pattern the citation rule rejects, this
-one matches its own defining sentences, so a few of its hits in this file are always
-its own text. The cheapest fix for the whole class is the one the rest of the tree
-already uses — **do not write the number, write the derivation**: see
+It is **a net, not a proof**, and its holes are not a closed set: the noun and number
+lists are enumerations, and every enumeration written in this file has turned out to be
+one short. (`thirteen` is in the number list because this repository writes "the
+thirteen rules"; anything larger it writes as a digit, which `[0-9]+` covers.) Two holes
+are known today. The first is that a quantity which **wraps** across lines is invisible
+to a line-based grep — demonstrated without depending on how this file happens to be
+wrapped, since a reflow would silently retire the demonstration:
+
+```bash
+printf 'the **two**\ncommands in X\nthe two commands in X\n' | grep -cE '(one|two) commands?'
+# 1, not 2 — the wrapped one is missed
+```
+
+The second is that the command matches its own defining sentences, which is exactly why
+the citation rule above rejects `git grep '\.md §'`: a run whose only hits are this
+file's own prose is not a clean run.
+
+The cheapest fix for the whole class is the one the rest of the tree already uses —
+**do not write the number, write the derivation**: see
 [docs/CONTEXT.md](docs/CONTEXT.md) § Not converged, the `docs/ROADMAP.md` entry that
-cites it, and the `EXPECTED_GUARDS` note in `scripts/smoke-run-selftest.sh`'s header.
-The mechanism that would retire the sweep is the unbuilt claim-reconciliation stage
-`scripts/docscan/main.go`'s header names, filed in `docs/ROADMAP.md`.
+cites it, and the `EXPECTED_GUARDS` note in `scripts/smoke-run-selftest.sh`'s header,
+which says it deliberately does not repeat the count because the two drifted apart the
+moment a guard was added. The mechanism that would retire the sweep is the unbuilt
+claim-reconciliation stage `scripts/docscan/main.go`'s header names, filed in
+`docs/ROADMAP.md`.

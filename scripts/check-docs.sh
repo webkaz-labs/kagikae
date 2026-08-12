@@ -80,6 +80,14 @@ required_count=$(printf '%s\n' "$required_files" | grep -c '\.md' || true)
 # defect docs/ROADMAP.md files against the template ("described and then checked by
 # nothing"), reproduced here. At today's value a legitimate upstream *removal* fails
 # loudly, which is the notification a derived set owes its reader.
+#
+# Do not turn this back into a floor. Measured against three upstream changes: adding a
+# file kae already has reports the count alone; adding one kae lacks reports the count and
+# names the file; and swapping one file for another — which keeps the count at 11 — is
+# caught by the per-file check below rather than by this comparison. The two halves cover
+# different things. The cost of equality is that a purely additive upstream change fails
+# until this constant is bumped, which is the same bargain `EXPECTED_GUARDS` makes in
+# scripts/smoke-run-selftest.sh.
 EXPECTED_REQUIRED=11
 if [ "${required_count:-0}" -ne "$EXPECTED_REQUIRED" ]; then
   fail "derived ${required_count:-0} required files from the standard, expected $EXPECTED_REQUIRED"

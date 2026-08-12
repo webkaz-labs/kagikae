@@ -61,6 +61,16 @@ generated='.claude/skills/go-cli-tooling'
 # file holding mission and product boundaries was renamed to it from `DESIGN.md`, which
 # the standard reserves for a visual design system. `UX.md` and `DESIGN.md` are named
 # elsewhere in that document as conditional and are correctly not in this block.
+#
+# Only a directory line at indent 2 becomes the path prefix. A deeper one is consumed
+# without setting it, so a grandchild would be reported at the path of the directory above
+# it. That fails loudly on both the count and the path, and a two-level docs/ tree breaks
+# the one-level rule the standard states — which check_domain_index flags on its own — so
+# the case is disclosed here rather than handled.
+#
+# No apostrophe belongs inside the awk program below: it is single-quoted, and one in a
+# comment there terminated the string and broke the script. Third time in this repository,
+# after a process substitution and a `bash -c`.
 required_files=$(awk '
   /^## Required Files/ { f = 1 }
   f && /^```/ { c++; if (c == 2) exit; next }
@@ -90,7 +100,7 @@ required_count=$(printf '%s\n' "$required_files" | grep -c '\.md' || true)
 # scripts/smoke-run-selftest.sh.
 EXPECTED_REQUIRED=11
 if [ "${required_count:-0}" -ne "$EXPECTED_REQUIRED" ]; then
-  fail "derived ${required_count:-0} required files from the standard, expected $EXPECTED_REQUIRED"
+  fail "derived ${required_count:-0} required files from the standard, expected $EXPECTED_REQUIRED — check the new or removed file, then bump EXPECTED_REQUIRED"
 fi
 
 # Paths come out of the block's own indentation, so no location is hard-coded here. The
@@ -114,6 +124,11 @@ REQUIRED
 # standard tells this repository to shard documents past 300-500 lines. On the day
 # docs/release/ exists, the Documentation Map walk below (maxdepth 1) will not see its
 # children and this will.
+#
+# The membership test is the link form, not the bare path: prose naming a child used to
+# satisfy it. That is a literal, so three legitimate spellings would report "not linked" —
+# a link title, angle brackets, and a `./` prefix. All fail in the loud direction, unlike
+# the false negative they replaced, and none is worth a regex until a child exists.
 check_domain_index() {
   domain=$1
   index=$2

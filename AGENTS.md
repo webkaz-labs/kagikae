@@ -33,8 +33,8 @@ git diff --check
 
 `mise run check` is the authoritative gate; it must pass before every commit.
 **Its steps are not listed here** — `mise.toml`'s `[tasks.check]` is the one copy, and
-three hand copies of it had already drifted apart. Two of them are worth a word about
-what they do rather than that they exist: `smoke-selftest`
+three hand copies of it had already drifted apart. Some are worth a word about what they
+do rather than that they exist: `smoke-selftest`
 (`scripts/smoke-run-selftest.sh`, which checks the smoke runner's own guards — no
 `kae` build and no network, so it costs a few seconds), and `docs-check`
 (`scripts/check-docs.sh`: the standard's required files exist, every markdown link its

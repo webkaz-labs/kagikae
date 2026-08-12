@@ -197,7 +197,7 @@ alternative exists (`secret-tool`).
   is checked by anything. The docs selftest reaches **three** of the five floors in the
   script it tests, via degenerate input — an empty `docs/`, an extractor emitting nothing,
   and a renamed Documentation Map heading — and each was verified to fail when its floor
-  is deleted. Renaming that heading reaches two floors with one mutation, which is why it
+  is deleted. Renaming that heading trips two floors with one mutation but asserts one of them, which is why it
   is one case. The remaining two (the Map's table-row count, and the derived required set
   — whose floor is now an equality against today's derived value, so a collapse cannot
   land on it) are hand-verified in a commit message rather than by any check here, which

@@ -194,10 +194,12 @@ alternative exists (`secret-tool`).
   `scripts/smoke-run-selftest.sh` checks `scripts/smoke-run.sh`; nothing checks
   the selftest. **There are two selftests now** — `scripts/check-docs-selftest.sh`
   arrived 2026-08-11 for `scripts/check-docs.sh` — and this entry covers both: neither
-  is checked by anything, and none of the docs selftest's cases exercises any of the
-  five floors in the script it tests, all of which were verified by hand mutation and
-  recorded in a commit message rather than by any check in the repository. That is the
-  same state described below. Across six review rounds, four separate edits made for unrelated
+  is checked by anything. The docs selftest reaches **two** of the five floors in the
+  script it tests, via degenerate input — an empty `docs/` and an extractor emitting
+  nothing — and each was verified to fail when its floor is deleted. The other three
+  (the derived required set, the Map's table rows, the Map's link extraction) are still
+  hand-verified in a commit message rather than by any check here, which is the state
+  described below. Across six review rounds, four separate edits made for unrelated
   reasons left a guard passing unconditionally while the suite reported every
   guard holding: a variable list derived from the file it was testing (deleting
   from the subject deleted the test); a containment check weakened to a proxy

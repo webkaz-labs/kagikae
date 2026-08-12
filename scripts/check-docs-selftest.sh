@@ -95,6 +95,24 @@ printf '\nSee `[X.md](X.md)` and ``[Y.md](Y.md)`` forms.\n' >> "$dir/README.md"
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
 check 'links inside code spans are ignored' 'check-docs: ok' "$out"
 
+# 5. Degenerate input, docs side. Every floor in check-docs.sh exists because a walk that
+#    collapses otherwise reports a clean run, and until these two cases the floors were
+#    verified by hand mutation and recorded in a commit message — the state
+#    docs/ROADMAP.md's smoke-guards entry describes. An empty docs/ also trips the
+#    required-file checks, so the assertion names the floor's own message.
+dir=$(fixture emptydocs)
+rm -f "$dir"/docs/*.md
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'an empty docs/ trips the walk floor' 'walked only 0 files' "$out"
+
+# 6. Degenerate input, link side: an extractor that emits nothing must not read as a
+#    clean run. Replacing it is the cheapest way to reach that floor, and it is exactly
+#    what a mistyped glob or an over-broad prune would do in practice.
+dir=$(fixture nolinks)
+printf '#!/usr/bin/env python3\n' > "$dir/scripts/docs_links.py"
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'an extractor emitting nothing trips the link floor' 'resolved only 0 relative links' "$out"
+
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs-selftest: %s case(s) failed\n' "$failures" >&2
   exit 1
@@ -103,7 +121,7 @@ fi
 # Two-directional, the way scripts/smoke-run-selftest.sh's EXPECTED_GUARDS is: a floor
 # would let a fifth case be added and then silently deleted back down to four. Adding a
 # case has to bump this, and that is the point.
-EXPECTED_CASES=4
+EXPECTED_CASES=6
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

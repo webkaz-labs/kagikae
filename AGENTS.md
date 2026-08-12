@@ -1,8 +1,27 @@
 # kagikae working guide
 
-Standalone public repository. Follow the bundled Go CLI standard in
-[.claude/skills/go-cli-tooling/](.claude/skills/go-cli-tooling/SKILL.md)
-(references under `references/`), plus these local rules.
+Standalone public repository. Follow the shared Go CLI standard — read it from the
+user-level `go-cli-tooling` skill (`~/.agents/skills/go-cli-tooling/`, which
+`~/.claude/skills/` links to; its `SKILL.md` routes to the detail under
+`references/go-cli/`) — plus these local rules.
+
+**This repository deliberately carries no copy of that standard, and re-bundling it is a
+change to argue for, not a correction to make.** The standard's own
+`references/go-cli/TEMPLATE.md` § Copy (standalone public repository) tells a repository
+like this one to copy the whole skill into `.claude/skills/go-cli-tooling` and point this
+file at the copy, so a reader following the standard correctly restores the bundle unless
+something says otherwise — which is what this paragraph is for. What was measured while a
+copy was here: the source moves, its canonical path included, so a copy is a snapshot that
+goes stale with nothing reporting it; an export taken from a stale branch put an old
+standard plus a local fix on `main`; and most of that directory's history here was
+re-exports chasing the source. It also froze two upstream defects into this repository's
+own gate — filed in [docs/ROADMAP.md](docs/ROADMAP.md), and fixed in the chezmoi source,
+never here. Reading the standard from outside is dependable for a specific reason:
+`chezmoi apply` validates a staged export and compares a deterministic source hash before
+moving the symlink, so the installed directory's own name is the hash of the source it
+came from. The cost is equally specific and is not grounds for quietly reversing the
+decision: a clone on a machine without that skill cannot read the standard at all, and no
+check here can notice that the standard changed.
 
 ## Documentation Map
 
@@ -37,12 +56,13 @@ three hand copies of it had already drifted apart. Some are worth a word about w
 do rather than that they exist: `smoke-selftest`
 (`scripts/smoke-run-selftest.sh`, which checks the smoke runner's own guards — no
 `kae` build and no network, so it costs a few seconds), and `docs-check`
-(`scripts/check-docs.sh`: the standard's required files exist, every markdown link its
-extractor finds resolves, and no file under `docs/` is missing **its own routing row**
-in the Documentation Map above — the omission that let a second normative copy grow
-inside `docs/SCOPE-MODEL.md`), and `docs-check-selftest`, which checks that one. Those
-three script headers are normative for which link forms the extractor sees, why each
-count is a floor, and why a floor cannot reach a predicate; do not restate them here.
+(`scripts/check-docs.sh`: every markdown link its extractor finds resolves, no file under
+`docs/` is missing **its own routing row** in the Documentation Map above — the omission
+that let a second normative copy grow inside `docs/SCOPE-MODEL.md` — and `CLAUDE.md`
+exists, which no link reaches), and `docs-check-selftest`, which
+checks that one. Those three script headers are normative for which link forms the
+extractor sees, why each count is a floor, and why a floor cannot reach a predicate; do
+not restate them here.
 `docs-check` is **not** `mise run docs-scan`, which reports duplicated prose and
 deliberately fails nothing. `mise run audit` (govulncheck, plus the
 upstream literal fingerprints — it reads the installed tools' own binaries, so it
@@ -293,20 +313,18 @@ Never use a real login handle.
 
 For every change, decide and report "changed / no change needed" for **each tracked
 markdown file this repository owns** — derive the set rather than trusting a list:
-`git ls-files '*.md' | grep -v '^\.claude/skills/go-cli-tooling/'` (18 today). It
-covers `README.md`, `AGENTS.md`, `CLAUDE.md`, everything under `docs/`, and the
-repo-local `upstream-auth-drift` skill, which the Documentation Map cites as
-normative and which a `docs/`-only list cannot reach — that is how a rule that had
-moved kept naming `AGENTS.md` as its authority.
+`git ls-files '*.md'` (18 today). It covers `README.md`, `AGENTS.md`, `CLAUDE.md`,
+everything under `docs/`, and the repo-local `upstream-auth-drift` skill, which the
+Documentation Map cites as normative and which a `docs/`-only list cannot reach — that
+is how a rule that had moved kept naming `AGENTS.md` as its authority. Every tracked
+markdown file is now one this repository owns; the command used to filter out
+`.claude/skills/go-cli-tooling/`, a generated export of the shared standard where an
+edit was lost on the next re-sync, and this file's opening says why that export is gone.
 
 `mise run docs-scan` belongs to this sweep and to nothing else — it reports prose two
 documents carry twice, and it can fail nothing, so it is not a check and is not in
 `mise run check`. `scripts/docscan/main.go`'s header is normative for what a report
 does and does not mean; read it before acting on one.
-
-`.claude/skills/go-cli-tooling/` is excluded because it is a **generated** export of
-the shared Go CLI standard: never hand-edit it, or the next re-sync silently drops
-the edit. A change there belongs in the chezmoi source and arrives by re-export.
 
 **A citation that names a `§` names a target that has to exist**, and it quotes the
 section name verbatim — so grep the name, not the sigil. Before renaming or moving a

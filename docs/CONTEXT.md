@@ -78,6 +78,5 @@ of the table above is not told a name has settled when it has not.
 Count both words in one derivation rather than trusting a number quoted here:
 
 ```bash
-git ls-files | grep -v '^\.claude/skills/go-cli-tooling/' \
-  | xargs grep -oihE '(bound|pinned) director[a-z]*' | sort | uniq -c
+git ls-files | xargs grep -oihE '(bound|pinned) director[a-z]*' | sort | uniq -c
 ```

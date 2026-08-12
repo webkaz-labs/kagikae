@@ -9,11 +9,11 @@
 # found it (docs/ROADMAP.md records the pass). The Map is what routes a reader to a
 # file; a file it omits is a file that only gets read by accident.
 #
-# Adapted from the shared Go CLI standard's template check
-# (.claude/skills/go-cli-tooling/assets/template-project/scripts/check-docs.sh), which
-# checks required files, one-level domain indexes and link targets. kae has no
-# docs/<domain>/ subdirectories, so the domain-index half is replaced by the
-# Documentation Map check; the required-file list and the link walk are the standard's.
+# Adapted from the shared Go CLI standard's template check, which checks required files,
+# one-level domain indexes and link targets. kae has no docs/<domain>/ subdirectories, so
+# the domain-index half is replaced by the Documentation Map check, and the required-file
+# half is gone with the bundle that used to hold the standard here (AGENTS.md's opening
+# says why the bundle went away). The link walk is the standard's.
 #
 # Distinct from `mise run docs-scan`, which reports prose two documents carry twice and
 # deliberately fails nothing. This one fails, so it is in `mise run check`.
@@ -43,80 +43,26 @@ fail() {
   failures=$((failures + 1))
 }
 
-# The generated export of the shared standard. Excluded for the reason AGENTS.md
-# § Documentation Update Checklist excludes it: an edit there is lost on the next
-# re-sync, so a finding in it is not actionable here.
-generated='.claude/skills/go-cli-tooling'
-
-# --- the standard's required set, DERIVED from the standard --------------------
-# Read out of the generated export rather than copied into this file. A hand-copy is the
-# half of this check that exists purely to track an external document, and it is the half
-# that cannot notice that document changing: the export re-syncs from chezmoi without this
-# repository's involvement, so a re-sync that adds a required file would leave a literal
-# here reporting ok forever. An earlier version copied the list and then dropped the floor
-# over it, on the correct observation that counting iterations of a literal checks the
-# script against itself — the conclusion should have been to stop iterating a literal.
+# --- the required file nothing else here would miss ----------------------------
+# This check used to derive the standard's whole required set by reading § Required Files
+# out of the bundled export, precisely so that no literal list here could go stale against
+# it. That bundle is gone, and so is the ability to track that document from this
+# repository at all: the standard now lives only in the operator's user-level
+# `go-cli-tooling` skill, which a public repository's gate must not read — a gate that
+# depends on one machine's home fails for everyone else. Re-deriving the set from a
+# hand-copied literal is not the fallback: a literal is exactly the half that cannot
+# notice the document it tracks changing, which is why the derivation existed.
 #
-# `docs/PRODUCT.md` is in the derived set. It was absent from this repository until the
-# file holding mission and product boundaries was renamed to it from `DESIGN.md`, which
-# the standard reserves for a visual design system. `UX.md` and `DESIGN.md` are named
-# elsewhere in that document as conditional and are correctly not in this block.
-#
-# Only a directory line at indent 2 becomes the path prefix. A deeper one is consumed
-# without setting it, so a grandchild would be reported at the path of the directory above
-# it. That fails loudly on both the count and the path, and a two-level docs/ tree breaks
-# the one-level rule the standard states — which check_domain_index flags on its own — so
-# the case is disclosed here rather than handled.
-#
-# No apostrophe belongs inside the awk program below: it is single-quoted, and one in a
-# comment there terminated the string and broke the script. Third time in this repository,
-# after a process substitution and a `bash -c`.
-required_files=$(awk '
-  /^## Required Files/ { f = 1 }
-  f && /^```/ { c++; if (c == 2) exit; next }
-  f && c == 1 {
-    match($0, /^ */); indent = RLENGTH
-    line = $0; sub(/^ +/, "", line)
-    if (line ~ /\/$/) { if (indent == 2) dir = line; next }
-    if (line ~ /\.md$/) { print (indent > 2 ? dir : "") line }
-  }
-' "$generated/references/DOCUMENTATION.md" 2>/dev/null || true)
-required_count=$(printf '%s\n' "$required_files" | grep -c '\.md' || true)
-
-# The floor is today's derived value, not a lower bound. It was `-lt 8` and 8 is exactly
-# what a plausible upstream reformat produces — describing README/AGENTS/CLAUDE in prose
-# and keeping only the docs/ tree in the fence — so the collapse landed *on* the floor and
-# passed silently, stopping the check from asserting those three files. That is the very
-# defect docs/ROADMAP.md files against the template ("described and then checked by
-# nothing"), reproduced here. At today's value a legitimate upstream *removal* fails
-# loudly, which is the notification a derived set owes its reader.
-#
-# Do not turn this back into a floor. Measured against three upstream changes: adding a
-# file kae already has reports the count alone; adding one kae lacks reports the count and
-# names the file; and swapping one file for another — which keeps the count at 11 — is
-# caught by the per-file check below rather than by this comparison. The two halves cover
-# different things. The cost of equality is that a purely additive upstream change fails
-# until this constant is bumped, which is the same bargain `EXPECTED_GUARDS` makes in
-# scripts/smoke-run-selftest.sh.
-EXPECTED_REQUIRED=11
-if [ "${required_count:-0}" -ne "$EXPECTED_REQUIRED" ]; then
-  fail "derived ${required_count:-0} required files from the standard, expected $EXPECTED_REQUIRED — check the new or removed file, then bump EXPECTED_REQUIRED"
+# Dropping it costs one assertion, measured by deleting each file § Required Files names
+# from a throwaway copy of the working tree and rerunning this script. Every one except
+# CLAUDE.md is already caught without it — the Map links to each of them, so a deletion
+# breaks a link the walk below resolves, and AGENTS.md instead trips the missing-heading
+# branch. CLAUDE.md is reachable from nothing, and its absence is silent in the worst
+# direction: it is what loads AGENTS.md for Claude Code, so deleting it removes every
+# project rule at once with no error anywhere.
+if [ ! -f CLAUDE.md ]; then
+  fail "CLAUDE.md is missing — it is what loads AGENTS.md for Claude Code, and nothing else here would notice"
 fi
-
-# Paths come out of the block's own indentation, so no location is hard-coded here. The
-# previous version mapped three known names to the root and everything else under docs/,
-# which meant a newly required file anywhere else was reported at a path the standard
-# never named — failing loudly, but sending the reader to create the wrong file.
-while IFS= read -r required; do
-  if [ -z "$required" ]; then
-    continue
-  fi
-  if [ ! -f "$required" ]; then
-    fail "missing required file: $required (the standard's § Required Files names it)"
-  fi
-done <<REQUIRED
-$required_files
-REQUIRED
 
 # --- a docs/<domain>/ child must be linked from its uppercase index ------------
 # Kept from the standard's template even though kae has no docs/<domain>/ directories
@@ -210,7 +156,7 @@ while IFS=$'\t' read -r md_rel link; do
   if [ ! -e "$md_dir/$target" ]; then
     fail "$md_rel link target does not exist: $link"
   fi
-done < <(python3 "$root/scripts/docs_links.py" "$generated")
+done < <(python3 "$root/scripts/docs_links.py")
 if [ "$links_checked" -lt 50 ]; then
   fail "resolved only $links_checked relative links, which is fewer than this repository has"
 fi

@@ -67,11 +67,6 @@ const (
 	// short table cells match each other word-for-word often enough to bury the
 	// report. The number skipped is printed, never dropped silently.
 	minWords = 25
-
-	// The generated export of the shared Go CLI standard. Excluded for the same
-	// reason AGENTS.md's documentation checklist excludes it: an edit there is
-	// lost on the next re-sync, so a finding in it is not actionable here.
-	generatedExport = ".claude/skills/go-cli-tooling/"
 )
 
 type paragraph struct {
@@ -203,9 +198,12 @@ func collectAnchors() (map[string]bool, error) {
 }
 
 // excludedDir keeps the walk out of the places a finding would be useless: git's
-// own tree, build output, and the generated export. `.claude` itself is walked,
-// because the upstream-auth-drift skill under it is cited as normative and its
-// prose can fork from docs/ like any other.
+// own tree and build output. `.claude` itself is walked, because the
+// upstream-auth-drift skill under it is cited as normative and its prose can fork
+// from docs/ like any other. It used to skip a third place, the generated export of
+// the shared Go CLI standard under `.claude/skills/go-cli-tooling/`, where a finding
+// was unactionable because the next re-sync would drop the edit; that export is gone
+// and the standard is read from the user-level skill instead.
 //
 // A predicate rather than an inline switch so a test can pin it: this walk is what
 // makes the tool's document set equal the one AGENTS.md's checklist derives, and
@@ -219,7 +217,7 @@ func excludedDir(path string) bool {
 	if i := strings.LastIndex(slash, "/"); i >= 0 {
 		base = slash[i+1:]
 	}
-	return base == ".git" || base == "dist" || strings.HasPrefix(slash+"/", generatedExport)
+	return base == ".git" || base == "dist"
 }
 
 func skipDir(path string) error {
@@ -313,9 +311,9 @@ func contextTerms(path string) ([]string, error) {
 }
 
 // markdownFiles returns the same set AGENTS.md's documentation checklist derives:
-// every markdown file except the generated export. It walks rather than shelling
-// out to `git ls-files`, so an untracked draft is included — which is what you
-// want from a tool run before a commit.
+// every markdown file in the tree. It walks rather than shelling out to
+// `git ls-files`, so an untracked draft is included — which is what you want from a
+// tool run before a commit.
 func markdownFiles() ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {

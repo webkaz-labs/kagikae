@@ -194,14 +194,17 @@ alternative exists (`secret-tool`).
   `scripts/smoke-run-selftest.sh` checks `scripts/smoke-run.sh`; nothing checks
   the selftest. **There are two selftests now** — `scripts/check-docs-selftest.sh`
   arrived 2026-08-11 for `scripts/check-docs.sh` — and this entry covers both: neither
-  is checked by anything. The docs selftest reaches **three** of the five floors in the
-  script it tests, via degenerate input — an empty `docs/`, an extractor emitting nothing,
-  and a renamed Documentation Map heading — and each was verified to fail when its floor
-  is deleted. Renaming that heading trips two floors with one mutation but asserts one of them, which is why it
-  is one case. The remaining two (the Map's table-row count, and the derived required set
-  — whose floor is now an equality against today's derived value, so a collapse cannot
-  land on it) are hand-verified in a commit message rather than by any check here, which
-  is the state described below. Across six review rounds, four separate edits made for unrelated
+  is checked by anything. The docs selftest reaches every floor in the script it tests
+  **except the Map's table-row count**, via degenerate input — an empty `docs/`, an
+  extractor emitting nothing, and a renamed Documentation Map heading — and each was
+  verified to fail when its floor is deleted. Renaming that heading trips two floors with
+  one mutation but asserts one of them, which is why it is one case. That one exception is
+  hand-verified in a commit message rather than by any check here, which is the state
+  described below. It used to be two: the other was the derived required set, and the
+  floor over it is gone with the derivation itself, which went when this repository
+  stopped carrying a copy of the standard to derive it from ([AGENTS.md](../AGENTS.md)
+  says why). Its replacement is a plain existence test for `CLAUDE.md` with a case of its
+  own, and no floor, because a floor bounds a walk and that is a single test. Across six review rounds, four separate edits made for unrelated
   reasons left a guard passing unconditionally while the suite reported every
   guard holding: a variable list derived from the file it was testing (deleting
   from the subject deleted the test); a containment check weakened to a proxy
@@ -293,7 +296,11 @@ alternative exists (`secret-tool`).
   stale the next time a tool receives the bundle — and derived from the path the export
   itself creates rather than from the prose, which self-matches this file and every
   transcript quoting it:
-  `find ~/dev ~/.agents ~/.claude -type f -path '*go-cli-tooling/references/TESTING.md'`.
+  `find ~/dev ~/.agents ~/.claude -type f -path '*go-cli-tooling/*TESTING.md'`. The
+  intermediate glob is not decoration: the export later moved its detail from
+  `references/` to `references/go-cli/`, so the narrower path this line first carried stops
+  matching a current export — the shape where a derivation keeps returning hits and has
+  quietly stopped covering the copy that matters.
   On 2026-08-10 it returned this repository and otowatari, and both were re-exported.
   **The entry named one claim and the paragraph carried two.** The sentence beside the
   figure, "only running them ever found a defect", dropped the qualifier
@@ -322,8 +329,10 @@ alternative exists (`secret-tool`).
   still a state no export from `main` produces, which is this tree's recorded hazard for
   generated directories — so both bundles were rebuilt after the merge. Only the figure
   and the promoted rule were reviewed here; the rest of that delta is other work
-  arriving through a generated path, which is why `AGENTS.md` keeps this directory out of
-  the docs sweep.
+  arriving through a generated path, which is why `AGENTS.md` kept this directory out of
+  the docs sweep for as long as it existed here. It does not exist here now, and this
+  paragraph is a large part of why — [AGENTS.md](../AGENTS.md)'s opening carries the
+  decision.
 
 - **CI runs a subset of the gate, and two places called it a mirror** (recorded
   2026-08-11, **partly fixed** — the wording is corrected, the gap is not). Measured:
@@ -368,24 +377,30 @@ alternative exists (`secret-tool`).
   passage answers is what produced the wrong estimate.
 
 - **The standard's own docs check cannot run clean, and this repository forked it instead
-  of fixing it** (recorded 2026-08-11, **not fixed here** — the fix belongs upstream).
-  `scripts/check-docs.sh` says it kept the required-file list and the link walk from
-  `.claude/skills/go-cli-tooling/assets/template-project/scripts/check-docs.sh`. It
-  re-implemented both, because both are wrong there, and every tool on this standard will
-  hit the same two defects. First: that script asserts only the eight files under `docs/`,
-  while its own § Required Files names eleven — `README.md`, `AGENTS.md` and `CLAUDE.md`
-  are described and then checked by nothing. Second: its link extractor is a bare
-  `grep -Eo` with no fence or code-span stripping, so it reports the bracketed example
-  inside `` `[X.md](X.md)` `` in `AGENTS.md`'s citation rule as a broken target —
-  **the standard's script cannot pass on a repository that uses the citation idiom the
-  standard itself teaches**, and since the template wires it into `mise run check` the
-  symptom is a gate blocking a commit on correct prose.
+  of fixing it** (recorded 2026-08-11, **not fixed here** — the fix belongs upstream; the
+  duplication half is gone, see the end of this entry).
+  `scripts/check-docs.sh` kept the required-file list and the link walk from the standard's
+  `assets/template-project/scripts/check-docs.sh` — reachable in the user-level
+  `go-cli-tooling` skill, since this repository no longer carries a copy of the standard
+  ([AGENTS.md](../AGENTS.md) says why). It re-implemented both, because both are wrong
+  there, and every tool on this standard will hit the same two defects. First: that script
+  asserts only the files under `docs/`, while its own § Required Files also names
+  `README.md`, `AGENTS.md` and `CLAUDE.md` — described and then checked by nothing.
+  Second: its link extractor is a bare `grep -Eo` with no fence or code-span stripping, so
+  it reports the bracketed example inside `` `[X.md](X.md)` `` in `AGENTS.md`'s citation
+  rule as a broken target — **the standard's script cannot pass on a repository that uses
+  the citation idiom the standard itself teaches**, and since the template wires it into
+  `mise run check` the symptom is a gate blocking a commit on correct prose.
   Both fixes are properties of markdown rather than of kae, so they belong in the chezmoi
-  source, and the local script should shrink to the part that is genuinely kae's: the
-  Documentation Map shape, because kae has no `docs/<domain>/` directories. Until that
-  happens two copies of one requirement are maintained here, which is the second-normative-
-  copy defect this check was written to detect, now inside the check. Note that
-  `mise run docs-scan` cannot see it: that program compares `.md` files, and this
+  source.
+  What is already settled: dropping the bundle removed the required-file half of the
+  duplication rather than fixing it. That half existed only to track the standard's
+  § Required Files, which cannot be tracked from here now, and re-deriving it from a
+  hand-copied literal is the defect the derivation was built to avoid — so the check
+  shrank to what is genuinely kae's, the Documentation Map shape plus `CLAUDE.md`, which
+  no link reaches, and its header records what deleting the derivation cost. The link walk is
+  still a second implementation, which is why this entry stays open. Note that
+  `mise run docs-scan` cannot see any of it: that program compares `.md` files, and this
   duplication lives in shell and Python headers.
 
 - **The claim-reconciliation stage is unbuilt, and a `grep` in AGENTS.md stands in for

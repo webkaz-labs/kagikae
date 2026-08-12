@@ -98,8 +98,8 @@ check 'links inside code spans are ignored' 'check-docs: ok' "$out"
 # 5. Degenerate input, docs side. Every floor in check-docs.sh exists because a walk that
 #    collapses otherwise reports a clean run, and until these two cases the floors were
 #    verified by hand mutation and recorded in a commit message — the state
-#    docs/ROADMAP.md's smoke-guards entry describes. An empty docs/ also trips the
-#    required-file checks, so the assertion names the floor's own message.
+#    docs/ROADMAP.md's smoke-guards entry describes. The assertion names the floor's own
+#    message rather than any failure, because an empty docs/ breaks Map links too.
 dir=$(fixture emptydocs)
 rm -f "$dir"/docs/*.md
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
@@ -129,6 +129,15 @@ RENAME
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
 check 'renaming the Map heading trips its extraction floor' 'extracted only 0 docs/ links' "$out"
 
+# 8. `CLAUDE.md`, which the walks cannot reach. Every other document check-docs.sh asserts
+#    the existence of is reachable from the Map, so deleting it breaks a link; this one is
+#    linked from nothing, which is why it gets its own line in that script and its own
+#    case here. No floor is involved — a floor bounds a walk, and this is a single test.
+dir=$(fixture noclaudemd)
+rm -f "$dir/CLAUDE.md"
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'a deleted CLAUDE.md is named' 'CLAUDE.md is missing' "$out"
+
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs-selftest: %s case(s) failed\n' "$failures" >&2
   exit 1
@@ -137,7 +146,7 @@ fi
 # Two-directional, the way scripts/smoke-run-selftest.sh's EXPECTED_GUARDS is: a floor
 # would let a fifth case be added and then silently deleted back down to four. Adding a
 # case has to bump this, and that is the point.
-EXPECTED_CASES=7
+EXPECTED_CASES=8
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

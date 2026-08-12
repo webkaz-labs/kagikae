@@ -97,7 +97,7 @@ description = "Check the guards in scripts/smoke-run.sh (no kae build, no networ
 run = "bash scripts/smoke-run-selftest.sh"
 
 [tasks.docs-check]
-description = "Reject a broken markdown link or a docs/ file the Documentation Map omits"
+description = "Reject a broken markdown link, a docs/ file the Documentation Map omits, or a missing root document"
 run = "bash scripts/check-docs.sh"
 
 [tasks.docs-check-selftest]

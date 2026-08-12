@@ -52,12 +52,21 @@ fixture() {
 check() {
   local name="$1" want="$2" got="$3"
   cases=$((cases + 1))
-  if printf '%s' "$got" | grep -Fq "$want"; then
-    printf 'ok    %s\n' "$name"
-  else
+  if ! printf '%s' "$got" | grep -Fq "$want"; then
     printf 'FAIL  %s\n      wanted the message: %s\n      got: %s\n' "$name" "$want" "$got" >&2
     failures=$((failures + 1))
+    return
   fi
+  # A case that wants a complaint must not also see the success line. Asserting the
+  # diagnostic catches a guard that stopped firing; it does not catch one that fires too
+  # late. Measured: moving check-docs.sh's root-document test below the exit gate makes it
+  # print the complaint *and* `check-docs: ok` and exit 0, and every case here still held.
+  if [ "$want" != "check-docs: ok" ] && printf '%s' "$got" | grep -Fq 'check-docs: ok'; then
+    printf 'FAIL  %s\n      the wanted complaint appeared beside the success line: %s\n' "$name" "$got" >&2
+    failures=$((failures + 1))
+    return
+  fi
+  printf 'ok    %s\n' "$name"
 }
 
 # 1. Baseline. Without this, every case below could be satisfied by a script that always
@@ -129,14 +138,74 @@ RENAME
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
 check 'renaming the Map heading trips its extraction floor' 'extracted only 0 docs/ links' "$out"
 
-# 8. `CLAUDE.md`, which the walks cannot reach. Every other document check-docs.sh asserts
-#    the existence of is reachable from the Map, so deleting it breaks a link; this one is
-#    linked from nothing, which is why it gets its own line in that script and its own
-#    case here. No floor is involved — a floor bounds a walk, and this is a single test.
+# 8. `CLAUDE.md`, which no link reaches. No floor is involved in this case or in the
+#    root-document cases after it — a floor bounds a walk, and these are single tests.
+#    Referring to them that way rather than by number, because inserting a case renumbers
+#    every reference to one and nothing here would report that.
 dir=$(fixture noclaudemd)
 rm -f "$dir/CLAUDE.md"
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
-check 'a deleted CLAUDE.md is named' 'CLAUDE.md is missing' "$out"
+check 'a deleted CLAUDE.md is named' 'CLAUDE.md is missing, empty, or not a regular file' "$out"
+
+# 9. The case that put README.md in that loop, and the only one of the three the link walk
+#    looked like it covered: README.md is reachable from the Map's own row and nothing else,
+#    so removing the row in the same change removes the coverage with it. Measured passing
+#    with `ok — 13 docs in the Map, 278 links resolved` before the loop existed.
+dir=$(fixture noreadme)
+rm -f "$dir/README.md"
+python3 - "$dir/AGENTS.md" <<'ROW'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+lines = p.read_text().splitlines(True)
+kept = [line for line in lines if '](README.md)' not in line]
+if len(kept) == len(lines):
+    raise SystemExit('fixture anchor miss: no Documentation Map row links README.md')
+p.write_text(''.join(kept))
+ROW
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'README.md deleted with its only Map row is named' 'README.md is missing, empty, or not a regular file' "$out"
+
+# 10. Emptied rather than deleted. `-f` alone passed this, and an empty CLAUDE.md removes
+#     every project rule exactly as thoroughly as a deleted one.
+dir=$(fixture emptyclaudemd)
+: > "$dir/CLAUDE.md"
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'an emptied CLAUDE.md is named' 'CLAUDE.md is missing, empty, or not a regular file' "$out"
+
+# 11. A root document replaced by a directory of the same name. This is the only case that
+#     pins `-f` in that loop: deleted is caught by `-e` too, and empty by `-s`, so weakening
+#     `-f` to `-e` is invisible without it. CLAUDE.md is used because nothing else reads it,
+#     which keeps the assertion on the loop rather than on a second check firing too.
+dir=$(fixture claudemddir)
+rm -f "$dir/CLAUDE.md"
+mkdir "$dir/CLAUDE.md"
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'a root doc replaced by a directory is named' 'CLAUDE.md is missing, empty, or not a regular file' "$out"
+
+# 12. A required document under docs/ replaced by a directory of the same name. This reaches the link
+#     walk's target test rather than the loop above: `-e` is satisfied by a directory, and
+#     this was measured reporting `ok — 12 docs in the Map, 121 links resolved` with a
+#     required document gone. It also proves docs_links.py skips a non-file `*.md` instead
+#     of dying on it.
+dir=$(fixture docsdir)
+rm -f "$dir/docs/PRODUCT.md"
+mkdir "$dir/docs/PRODUCT.md"
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'a required doc replaced by a directory is named' 'link target does not exist: docs/PRODUCT.md' "$out"
+
+# 13. A partially collapsed walk. The empty-extractor case above covers one that emits
+#     nothing, which the floor catches; this covers one that emits some and then fails,
+#     which the floor cannot see once the count clears it. The assertion names the
+#     extractor's exit status, not the floor — this fixture trips both, and only one of them
+#     is what this case is for.
+dir=$(fixture truncatedlinks)
+cat > "$dir/scripts/docs_links.py" <<'TRUNC'
+#!/usr/bin/env python3
+print("README.md\tdocs/CLI.md")
+raise SystemExit(3)
+TRUNC
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'an extractor that dies mid-walk is named' 'the link extractor exited non-zero' "$out"
 
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs-selftest: %s case(s) failed\n' "$failures" >&2
@@ -146,7 +215,7 @@ fi
 # Two-directional, the way scripts/smoke-run-selftest.sh's EXPECTED_GUARDS is: a floor
 # would let a fifth case be added and then silently deleted back down to four. Adding a
 # case has to bump this, and that is the point.
-EXPECTED_CASES=8
+EXPECTED_CASES=13
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

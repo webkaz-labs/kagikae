@@ -53,6 +53,17 @@ for path in sorted(root.rglob("*.md")):
     rel = path.relative_to(root).as_posix()
     if any(part in SKIP_DIRS for part in path.relative_to(root).parts):
         continue
+    # A directory or a broken symlink can carry a `.md` name, and `read_text` raises on
+    # both, which killed the walk partway through. Detection of that no longer depends on
+    # this line — check-docs.sh reads this program's exit status now, so a crash fails
+    # loudly either way — so what this buys is the accurate diagnosis rather than the
+    # catch: with it, a directory named `X.md` is reported as the broken link target it is,
+    # instead of as an extractor that died. Deliberately unpinned by any selftest case:
+    # removing it leaves every case passing, because the case for that fixture asserts the
+    # broken-link message and gets it from the links emitted before the crash. Keep it for
+    # the diagnosis, and do not read a surviving mutation here as proof it is dead code.
+    if not path.is_file():
+        continue
     fenced = False
     for line in path.read_text(errors="replace").splitlines():
         if FENCE.match(line):

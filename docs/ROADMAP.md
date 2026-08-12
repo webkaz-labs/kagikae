@@ -296,11 +296,18 @@ alternative exists (`secret-tool`).
   stale the next time a tool receives the bundle — and derived from the path the export
   itself creates rather than from the prose, which self-matches this file and every
   transcript quoting it:
-  `find ~/dev ~/.agents ~/.claude -type f -path '*go-cli-tooling/*TESTING.md'`. The
-  intermediate glob is not decoration: the export later moved its detail from
-  `references/` to `references/go-cli/`, so the narrower path this line first carried stops
-  matching a current export — the shape where a derivation keeps returning hits and has
-  quietly stopped covering the copy that matters.
+  `find ~/dev ~/.agents ~/.claude -type f -path '*go-cli-tooling*TESTING.md'`. **No slash
+  before `TESTING.md` and none after `go-cli-tooling`**, and both omissions were paid for.
+  The line first read `*go-cli-tooling/references/TESTING.md`, which the export broke by
+  moving its detail to `references/go-cli/`; widening only that segment still returned
+  nothing, because the installed skill is a **symlink** to a content-addressed
+  `.go-cli-tooling.bundle.<hash>` directory — `find` does not descend a symlink without
+  `-L`, and the physical directory's name never matches a `go-cli-tooling/` segment. The
+  narrow form had looked fine for a different reason: this repository's own copy satisfied
+  it, so deleting that copy is what exposed both defects at once. On 2026-08-13 the form
+  above returned only the deployed export, this repository and otowatari having stopped
+  carrying one. A `find` that returns nothing reads as "no stale copy remains", which is
+  the answer this entry exists to make trustworthy.
   On 2026-08-10 it returned this repository and otowatari, and both were re-exported.
   **The entry named one claim and the paragraph carried two.** The sentence beside the
   figure, "only running them ever found a defect", dropped the qualifier

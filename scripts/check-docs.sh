@@ -43,26 +43,35 @@ fail() {
   failures=$((failures + 1))
 }
 
-# --- the required file nothing else here would miss ----------------------------
+# --- the root documents the link walk cannot vouch for -------------------------
 # This check used to derive the standard's whole required set by reading § Required Files
 # out of the bundled export, precisely so that no literal list here could go stale against
 # it. That bundle is gone, and so is the ability to track that document from this
 # repository at all: the standard now lives only in the operator's user-level
-# `go-cli-tooling` skill, which a public repository's gate must not read — a gate that
-# depends on one machine's home fails for everyone else. Re-deriving the set from a
-# hand-copied literal is not the fallback: a literal is exactly the half that cannot
-# notice the document it tracks changing, which is why the derivation existed.
+# `go-cli-tooling` skill, which this gate must not read — a gate that depends on one
+# machine's home fails for everyone else. What is left is not a copy of the standard's
+# list but this repository's own invariant, which is why a literal is right here and a
+# copy of that list was not: these are the required documents living at the root, and the
+# root is where the walk below stops being able to vouch for a file.
 #
-# Dropping it costs one assertion, measured by deleting each file § Required Files names
-# from a throwaway copy of the working tree and rerunning this script. Every one except
-# CLAUDE.md is already caught without it — the Map links to each of them, so a deletion
-# breaks a link the walk below resolves, and AGENTS.md instead trips the missing-heading
-# branch. CLAUDE.md is reachable from nothing, and its absence is silent in the worst
-# direction: it is what loads AGENTS.md for Claude Code, so deleting it removes every
-# project rule at once with no error anywhere.
-if [ ! -f CLAUDE.md ]; then
-  fail "CLAUDE.md is missing — it is what loads AGENTS.md for Claude Code, and nothing else here would notice"
-fi
+# Why it cannot. Deleting a required document under docs/ is caught — the Map links it and
+# the walk resolves that link — but only while some document still links it, and nothing
+# enforces that. Measured inbound links: each docs/ one has several, README.md is
+# reachable only from the Map's own row, and AGENTS.md and CLAUDE.md from nothing at all.
+# So deleting README.md together with its row passes, which was measured, and the other
+# two rest on no link whatsoever. AGENTS.md does trip the missing-heading branch below,
+# but that is a side effect of a different check rather than coverage, and it does not
+# survive AGENTS.md being replaced by a directory.
+#
+# The predicate is three-sided on purpose. Missing, not a regular file, and empty all
+# reach the same outcome, and all three were measured reporting `ok` when this tested only
+# `-f` on one file: CLAUDE.md is what loads AGENTS.md for Claude Code, so an empty
+# CLAUDE.md removes every project rule exactly as thoroughly as a deleted one.
+for required in README.md AGENTS.md CLAUDE.md; do
+  if [ ! -f "$required" ] || [ ! -s "$required" ]; then
+    fail "$required is missing, empty, or not a regular file — no link here reaches it, so nothing else would notice"
+  fi
+done
 
 # --- a docs/<domain>/ child must be linked from its uppercase index ------------
 # Kept from the standard's template even though kae has no docs/<domain>/ directories
@@ -133,6 +142,16 @@ if [ "$docs_checked" -lt 10 ]; then
 fi
 
 # --- every relative markdown link resolves ---------------------------------------
+# The extractor's exit status is read, which `done < <(python3 …)` threw away. Measured:
+# an extractor that emits part of the walk and then dies produced
+# `ok — 13 docs in the Map, 75 links resolved` and exit 0, because the count stayed far
+# above its floor — the exact "walk that collapsed" this script's floors are described as
+# catching. The `|| fail` keeps that loud rather than letting `set -e` kill the script with
+# no message, which is indistinguishable from a clean run to anything reading only the
+# status.
+links=$(python3 "$root/scripts/docs_links.py") ||
+  fail "the link extractor exited non-zero, so the walk below is truncated and its count means nothing"
+
 links_checked=0
 while IFS=$'\t' read -r md_rel link; do
   target=${link%%#*}
@@ -153,10 +172,18 @@ while IFS=$'\t' read -r md_rel link; do
   if [ "$md_dir" = "$md_rel" ]; then
     md_dir=.
   fi
-  if [ ! -e "$md_dir/$target" ]; then
+  # `-f`, not `-e`: a directory satisfies `-e`, and replacing `docs/PRODUCT.md` with a
+  # directory of that name was measured reporting `ok — 12 docs in the Map` with a whole
+  # required document gone. Every target in this repository resolves to a regular file
+  # today (measured over all of them, none resolving to a directory or a symlink to one),
+  # so the narrowing costs nothing; a link deliberately pointing at a directory would fail
+  # loudly here and is the case to revisit this line for.
+  if [ ! -f "$md_dir/$target" ]; then
     fail "$md_rel link target does not exist: $link"
   fi
-done < <(python3 "$root/scripts/docs_links.py")
+done <<LINKS
+$links
+LINKS
 if [ "$links_checked" -lt 50 ]; then
   fail "resolved only $links_checked relative links, which is fewer than this repository has"
 fi

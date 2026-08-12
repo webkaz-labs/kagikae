@@ -15,8 +15,10 @@ copy was here: the source moves, its canonical path included, so a copy is a sna
 goes stale with nothing reporting it; an export taken from a stale branch put an old
 standard plus a local fix on `main`; and most of that directory's history here was
 re-exports chasing the source. It also froze two upstream defects into this repository's
-own gate — filed in [docs/ROADMAP.md](docs/ROADMAP.md), and fixed in the chezmoi source,
-never here. Reading the standard from outside is dependable for a specific reason:
+own gate. Both are **still open**, and both belong to the chezmoi source rather than to
+this repository — [docs/ROADMAP.md](docs/ROADMAP.md) carries them, including which half
+stopped being duplicated here when the copy went, and it is the status to read rather
+than this sentence. Reading the standard from outside is dependable for a specific reason:
 `chezmoi apply` validates a staged export and compares a deterministic source hash before
 moving the symlink, so the installed directory's own name is the hash of the source it
 came from. The cost is equally specific and is not grounds for quietly reversing the
@@ -58,8 +60,9 @@ do rather than that they exist: `smoke-selftest`
 `kae` build and no network, so it costs a few seconds), and `docs-check`
 (`scripts/check-docs.sh`: every markdown link its extractor finds resolves, no file under
 `docs/` is missing **its own routing row** in the Documentation Map above — the omission
-that let a second normative copy grow inside `docs/SCOPE-MODEL.md` — and `CLAUDE.md`
-exists, which no link reaches), and `docs-check-selftest`, which
+that let a second normative copy grow inside `docs/SCOPE-MODEL.md` — and the root
+documents no link can vouch for are present, non-empty and regular files), and
+`docs-check-selftest`, which
 checks that one. Those three script headers are normative for which link forms the
 extractor sees, why each count is a floor, and why a floor cannot reach a predicate; do
 not restate them here.

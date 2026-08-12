@@ -24,6 +24,13 @@ cd -- "$root"
 failures=0
 cases=0
 
+# The success line, in one place. It is compared both as a case's wanted message and by
+# `check`, to reject a complaint printed beside it. Written once because a reword that
+# updated only the wanted strings would leave `check`'s comparison matching nothing while
+# treating every case as a complaint case — so that assertion would pass vacuously on all of
+# them, with nothing reporting it.
+readonly OK_LINE='check-docs: ok'
+
 # The fixture is the working tree's tracked files, so this needs a git work tree. Say so
 # rather than letting a case die inside python on a missing file, which is what happened
 # when this was first run against an extracted copy of the tree.
@@ -49,8 +56,9 @@ fixture() {
   printf '%s' "$dir"
 }
 
+# check <name> <wanted message> <output> [message that must be absent]
 check() {
-  local name="$1" want="$2" got="$3"
+  local name="$1" want="$2" got="$3" unwanted="${4:-}"
   cases=$((cases + 1))
   if ! printf '%s' "$got" | grep -Fq "$want"; then
     printf 'FAIL  %s\n      wanted the message: %s\n      got: %s\n' "$name" "$want" "$got" >&2
@@ -60,13 +68,44 @@ check() {
   # A case that wants a complaint must not also see the success line. Asserting the
   # diagnostic catches a guard that stopped firing; it does not catch one that fires too
   # late. Measured: moving check-docs.sh's root-document test below the exit gate makes it
-  # print the complaint *and* `check-docs: ok` and exit 0, and every case here still held.
-  if [ "$want" != "check-docs: ok" ] && printf '%s' "$got" | grep -Fq 'check-docs: ok'; then
+  # print the complaint *and* the success line and exit 0, and every case here still held.
+  # Global rather than per-case because a new case inherits it, where a per-case flag is
+  # something a new case can simply forget.
+  if [ "$want" != "$OK_LINE" ] && printf '%s' "$got" | grep -Fq "$OK_LINE"; then
     printf 'FAIL  %s\n      the wanted complaint appeared beside the success line: %s\n' "$name" "$got" >&2
     failures=$((failures + 1))
     return
   fi
+  # Per-case, because "this message must NOT appear" is a claim about one fixture rather
+  # than a rule every case shares: a diagnosis can be correct and still name the wrong
+  # cause.
+  if [ -n "$unwanted" ] && printf '%s' "$got" | grep -Fq "$unwanted"; then
+    printf 'FAIL  %s\n      this message should not have appeared: %s\n      got: %s\n' "$name" "$unwanted" "$got" >&2
+    failures=$((failures + 1))
+    return
+  fi
   printf 'ok    %s\n' "$name"
+}
+
+# Deleting a Documentation Map row is what two cases below need, so it is one function with
+# an anchor guard rather than two near-copies of the same heredoc — the guard is the half
+# that makes a fixture worth trusting, since an edit that silently missed proves nothing.
+# The row form is required, not just the filename, to keep the guarantee the orphan case was
+# written for: it must delete a routing row, never prose that names the file. That
+# requirement is not observable on this tree — every link of this shape is already a table
+# row, measured — so dropping it changes nothing today and no case here can tell. It stays
+# because the day a document links one of these outside the table, a filename-only filter
+# would quietly delete that line too and the case would stop testing what it claims.
+drop_map_row() {
+  python3 - "$1" "$2" <<'ROW'
+import pathlib, sys
+path, target = pathlib.Path(sys.argv[1]), sys.argv[2]
+lines = path.read_text().splitlines(True)
+kept = [line for line in lines if not (line.startswith('|') and f']({target})' in line)]
+if len(kept) == len(lines):
+    raise SystemExit(f'fixture anchor miss: no Documentation Map row links {target}')
+path.write_text(''.join(kept))
+ROW
 }
 
 # 1. Baseline. Without this, every case below could be satisfied by a script that always
@@ -84,15 +123,7 @@ check 'a broken link is named' 'link target does not exist' "$out"
 # 3. The Map membership predicate, on its own routing row rather than any mention of the
 #    filename — a substring test passed this because another row's prose names the file.
 dir=$(fixture orphan)
-python3 - "$dir/AGENTS.md" <<'PY'
-import pathlib, re, sys
-p = pathlib.Path(sys.argv[1])
-text = p.read_text()
-row = re.compile(r'^\| \[docs/SCOPE-MODEL\.md\]\(docs/SCOPE-MODEL\.md\) \|.*$', re.M)
-if not row.search(text):
-    raise SystemExit('fixture anchor miss: no SCOPE-MODEL.md routing row to delete')
-p.write_text(row.sub('', text))
-PY
+drop_map_row "$dir/AGENTS.md" docs/SCOPE-MODEL.md
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
 check 'a doc whose routing row is gone is named' 'SCOPE-MODEL.md is not listed' "$out"
 
@@ -153,20 +184,12 @@ check 'a deleted CLAUDE.md is named' 'CLAUDE.md is missing, empty, or not a regu
 #    with `ok — 13 docs in the Map, 278 links resolved` before the loop existed.
 dir=$(fixture noreadme)
 rm -f "$dir/README.md"
-python3 - "$dir/AGENTS.md" <<'ROW'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1])
-lines = p.read_text().splitlines(True)
-kept = [line for line in lines if '](README.md)' not in line]
-if len(kept) == len(lines):
-    raise SystemExit('fixture anchor miss: no Documentation Map row links README.md')
-p.write_text(''.join(kept))
-ROW
+drop_map_row "$dir/AGENTS.md" README.md
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
 check 'README.md deleted with its only Map row is named' 'README.md is missing, empty, or not a regular file' "$out"
 
-# 10. Emptied rather than deleted. `-f` alone passed this, and an empty CLAUDE.md removes
-#     every project rule exactly as thoroughly as a deleted one.
+# 10. Emptied rather than deleted, which `-f` alone passed. Why empty is as bad as absent is
+#     stated once, above the predicate in scripts/check-docs.sh.
 dir=$(fixture emptyclaudemd)
 : > "$dir/CLAUDE.md"
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
@@ -182,18 +205,33 @@ mkdir "$dir/CLAUDE.md"
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
 check 'a root doc replaced by a directory is named' 'CLAUDE.md is missing, empty, or not a regular file' "$out"
 
-# 12. A required document under docs/ replaced by a directory of the same name. This reaches the link
-#     walk's target test rather than the loop above: `-e` is satisfied by a directory, and
-#     this was measured reporting `ok — 12 docs in the Map, 121 links resolved` with a
-#     required document gone. It also proves docs_links.py skips a non-file `*.md` instead
-#     of dying on it.
+# 12. A required document under docs/ replaced by a directory of the same name. This reaches
+#     the link walk's target test rather than the loop above, for the reason recorded beside
+#     that test in scripts/check-docs.sh. The fourth argument is what pins docs_links.py's
+#     non-file skip: without it the extractor dies on the directory, and the run names a
+#     dead extractor instead of the broken target — a correct failure for the wrong reason,
+#     which no other case here can tell apart.
 dir=$(fixture docsdir)
 rm -f "$dir/docs/PRODUCT.md"
 mkdir "$dir/docs/PRODUCT.md"
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
-check 'a required doc replaced by a directory is named' 'link target does not exist: docs/PRODUCT.md' "$out"
+check 'a required doc replaced by a directory is named' 'link target does not exist: docs/PRODUCT.md' "$out" \
+  'the link extractor exited non-zero'
 
-# 13. A partially collapsed walk. The empty-extractor case above covers one that emits
+# 13. The producer of the docs/ walk failing outright, which is the same class as the case
+#     below at check-docs.sh's other captured producer. Removing the directory is the cheap
+#     way to make `find docs` exit non-zero. It trips a great deal else; the assertion is on
+#     the producer's status alone.
+#
+#     The third producer, inside check_domain_index, stays unpinned: it runs only when a
+#     docs/<domain>/ directory exists, and none does, so the function self-no-ops and no
+#     fixture can reach it without inventing a domain tree.
+dir=$(fixture nodocsdir)
+rm -rf "$dir/docs"
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'a docs/ walk that fails outright is named' 'walking docs/ failed' "$out"
+
+# 14. A partially collapsed walk. The empty-extractor case above covers one that emits
 #     nothing, which the floor catches; this covers one that emits some and then fails,
 #     which the floor cannot see once the count clears it. The assertion names the
 #     extractor's exit status, not the floor — this fixture trips both, and only one of them
@@ -212,10 +250,11 @@ if [ "$failures" -gt 0 ]; then
   exit 1
 fi
 
-# Two-directional, the way scripts/smoke-run-selftest.sh's EXPECTED_GUARDS is: a floor
-# would let a fifth case be added and then silently deleted back down to four. Adding a
-# case has to bump this, and that is the point.
-EXPECTED_CASES=13
+# Two-directional, the way scripts/smoke-run-selftest.sh's EXPECTED_GUARDS is: a floor would
+# let a case be added and then silently deleted back to the count before it. Adding a case
+# has to bump this, and that is the point. Written without naming either count, because the
+# sentence that did name them was left behind by the first bump.
+EXPECTED_CASES=14
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

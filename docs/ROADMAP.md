@@ -203,8 +203,12 @@ alternative exists (`secret-tool`).
   described below. It used to be two: the other was the derived required set, and the
   floor over it is gone with the derivation itself, which went when this repository
   stopped carrying a copy of the standard to derive it from ([AGENTS.md](../AGENTS.md)
-  says why). Its replacement is a plain existence test for `CLAUDE.md` with a case of its
-  own, and no floor, because a floor bounds a walk and that is a single test. Across six review rounds, four separate edits made for unrelated
+  says why). Its replacement is not a floor and needs none, because a floor bounds a walk and
+  these are single tests: a three-sided predicate — missing, empty, or not a regular file —
+  over the root documents `README.md`, `AGENTS.md` and `CLAUDE.md`, each arm reached by its
+  own case. Do not read this as one file and one dimension; the derivation of which documents
+  belong there, and why the link walk cannot vouch for them, is in `scripts/check-docs.sh`
+  above that predicate. Across six review rounds, four separate edits made for unrelated
   reasons left a guard passing unconditionally while the suite reported every
   guard holding: a variable list derived from the file it was testing (deleting
   from the subject deleted the test); a containment check weakened to a proxy

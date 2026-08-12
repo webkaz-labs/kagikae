@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Rejects two docs defects nothing else here catches: a markdown link whose target
-# does not exist, and a document under docs/ that AGENTS.md's Documentation Map does
-# not list.
+# Rejects the docs defects nothing else here catches: a markdown link whose target does not
+# exist, a document under docs/ that AGENTS.md's Documentation Map does not list, and a root
+# document (README.md, AGENTS.md, CLAUDE.md) that is missing, empty, or not a regular file.
+# Enumerated rather than counted, because a count here would go stale the first time a
+# fourth check is added and nothing would report it.
 #
 # The orphan half is not hypothetical. docs/SCOPE-MODEL.md was the one file missing
 # from that table, so nothing told a reader when to open it, and a second normative
@@ -12,8 +14,9 @@
 # Adapted from the shared Go CLI standard's template check, which checks required files,
 # one-level domain indexes and link targets. kae has no docs/<domain>/ subdirectories, so
 # the domain-index half is replaced by the Documentation Map check, and the required-file
-# half is gone with the bundle that used to hold the standard here (AGENTS.md's opening
-# says why the bundle went away). The link walk is the standard's.
+# half — which read its list out of the copy of the standard this repository used to carry
+# (AGENTS.md's opening says why that copy went away) — is replaced by the root-document
+# invariant below, which is this repository's own. The link walk is the standard's.
 #
 # Distinct from `mise run docs-scan`, which reports prose two documents carry twice and
 # deliberately fails nothing. This one fails, so it is in `mise run check`.
@@ -54,22 +57,30 @@ fail() {
 # copy of that list was not: these are the required documents living at the root, and the
 # root is where the walk below stops being able to vouch for a file.
 #
-# Why it cannot. Deleting a required document under docs/ is caught — the Map links it and
-# the walk resolves that link — but only while some document still links it, and nothing
-# enforces that. Measured inbound links: each docs/ one has several, README.md is
-# reachable only from the Map's own row, and AGENTS.md and CLAUDE.md from nothing at all.
-# So deleting README.md together with its row passes, which was measured, and the other
-# two rest on no link whatsoever. AGENTS.md does trip the missing-heading branch below,
-# but that is a side effect of a different check rather than coverage, and it does not
-# survive AGENTS.md being replaced by a directory.
+# Why it cannot, per file, counting the documents that link each one and resolving `..`
+# rather than comparing the raw target — the first measurement of this did not, so every
+# `../AGENTS.md` from docs/ went uncounted and this comment claimed AGENTS.md was linked
+# from nothing:
 #
-# The predicate is three-sided on purpose. Missing, not a regular file, and empty all
-# reach the same outcome, and all three were measured reporting `ok` when this tested only
-# `-f` on one file: CLAUDE.md is what loads AGENTS.md for Claude Code, so an empty
-# CLAUDE.md removes every project rule exactly as thoroughly as a deleted one.
+#   * each required document under docs/ is linked from several others, so deleting one
+#     breaks a link the walk below resolves — but that is coverage by side effect, held up
+#     by documents that happen to cite it and nothing that enforces they keep doing so;
+#   * README.md is reachable from the Documentation Map's own row and nowhere else, so
+#     deleting it together with that row was measured passing;
+#   * CLAUDE.md is reachable from nothing at all;
+#   * AGENTS.md is in fact linked from several documents. It is in this loop as cheap
+#     redundancy, not because nothing else would notice — and the loop is what survives
+#     AGENTS.md being replaced by a directory, which the Map extraction below does not
+#     report as a missing document.
+#
+# The predicate is three-sided on purpose: missing, not a regular file, and empty all reach
+# the same outcome, and all three were measured reporting `ok` when this tested only `-f` on
+# CLAUDE.md alone. Empty is as bad as absent because CLAUDE.md is what loads AGENTS.md for
+# Claude Code: truncating it removes every project rule with no error anywhere. This is the
+# one copy of that reasoning — the selftest cases point here rather than restating it.
 for required in README.md AGENTS.md CLAUDE.md; do
   if [ ! -f "$required" ] || [ ! -s "$required" ]; then
-    fail "$required is missing, empty, or not a regular file — no link here reaches it, so nothing else would notice"
+    fail "$required is missing, empty, or not a regular file — the root documents are asserted here because no link walk can vouch for all of them"
   fi
 done
 
@@ -90,11 +101,18 @@ check_domain_index() {
   if [ ! -d "docs/$domain" ]; then
     return
   fi
+  children=$(find "docs/$domain" -mindepth 1 -maxdepth 1 -type f -name '*.md' -print) ||
+    fail "walking docs/$domain failed, so its children were not all checked"
   while IFS= read -r child; do
+    if [ -z "$child" ]; then
+      continue
+    fi
     if ! grep -Fq "]($domain/$(basename -- "$child"))" "docs/$index"; then
       fail "docs/$domain/$(basename -- "$child") is not linked from docs/$index"
     fi
-  done < <(find "docs/$domain" -mindepth 1 -maxdepth 1 -type f -name '*.md' -print)
+  done <<CHILDREN
+$children
+CHILDREN
   if find "docs/$domain" -mindepth 2 -type f -print -quit | grep -q .; then
     fail "docs/$domain is deeper than the standard's one-level domain hierarchy"
   fi
@@ -130,13 +148,27 @@ if [ "${map_target_count:-0}" -lt 10 ]; then
   fail "extracted only ${map_target_count:-0} docs/ links from the Map, fewer than the table holds"
 fi
 
+# Captured rather than piped in, for the reason the link walk below states at length: a
+# producer inside `done < <(…)` can die partway and leave the loop reporting a short count
+# as a clean run, because nothing reads its status. Every producer in this script is checked
+# the same way now — a `find` that half-fails is less likely than a python script crashing,
+# but "less likely" is not a reason to close the class at one producer and leave it open at
+# the rest.
+docs_list=$(find docs -maxdepth 1 -type f -name '*.md' -print | sed 's|^\./||' | sort) ||
+  fail "walking docs/ failed, so the count below is short and means nothing"
+
 docs_checked=0
 while IFS= read -r doc; do
+  if [ -z "$doc" ]; then
+    continue
+  fi
   docs_checked=$((docs_checked + 1))
   if ! printf '%s\n' "$map_targets" | grep -Fxq "$doc"; then
     fail "$doc is not listed in AGENTS.md's Documentation Map"
   fi
-done < <(find docs -maxdepth 1 -type f -name '*.md' -print | sed 's|^\./||' | sort)
+done <<DOCS
+$docs_list
+DOCS
 if [ "$docs_checked" -lt 10 ]; then
   fail "walked only $docs_checked files under docs/, which is fewer than this repository has"
 fi

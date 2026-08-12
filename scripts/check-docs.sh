@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Rejects two docs defects nothing else here catches: a markdown link whose target
-# does not exist, and a document under docs/ that AGENTS.md's Documentation Map does
-# not list.
+# Rejects the docs defects nothing else here catches: a markdown link whose target does not
+# exist, a document under docs/ that AGENTS.md's Documentation Map does not list, a root
+# document (README.md, AGENTS.md, CLAUDE.md) that is missing, empty, or not a regular file,
+# and — dormant, because no docs/<domain>/ directory exists yet — a domain child its
+# uppercase index does not link. Enumerated rather than counted: the previous header counted
+# them, undercounted by leaving the dormant one out, and nothing reported that.
 #
 # The orphan half is not hypothetical. docs/SCOPE-MODEL.md was the one file missing
 # from that table, so nothing told a reader when to open it, and a second normative
@@ -9,11 +12,13 @@
 # found it (docs/ROADMAP.md records the pass). The Map is what routes a reader to a
 # file; a file it omits is a file that only gets read by accident.
 #
-# Adapted from the shared Go CLI standard's template check
-# (.claude/skills/go-cli-tooling/assets/template-project/scripts/check-docs.sh), which
-# checks required files, one-level domain indexes and link targets. kae has no
-# docs/<domain>/ subdirectories, so the domain-index half is replaced by the
-# Documentation Map check; the required-file list and the link walk are the standard's.
+# Adapted from the shared Go CLI standard's template check, which checks required files,
+# one-level domain indexes and link targets. kae has no docs/<domain>/ subdirectories, so
+# the domain-index half is joined by the Documentation Map check rather than replaced by it —
+# it is kept and self-no-ops, as the comment above it says — and the required-file
+# half — which read its list out of the copy of the standard this repository used to carry
+# (AGENTS.md's opening says why that copy went away) — is replaced by the root-document
+# invariant below, which is this repository's own. The link walk is the standard's.
 #
 # Distinct from `mise run docs-scan`, which reports prose two documents carry twice and
 # deliberately fails nothing. This one fails, so it is in `mise run check`.
@@ -43,80 +48,43 @@ fail() {
   failures=$((failures + 1))
 }
 
-# The generated export of the shared standard. Excluded for the reason AGENTS.md
-# § Documentation Update Checklist excludes it: an edit there is lost on the next
-# re-sync, so a finding in it is not actionable here.
-generated='.claude/skills/go-cli-tooling'
-
-# --- the standard's required set, DERIVED from the standard --------------------
-# Read out of the generated export rather than copied into this file. A hand-copy is the
-# half of this check that exists purely to track an external document, and it is the half
-# that cannot notice that document changing: the export re-syncs from chezmoi without this
-# repository's involvement, so a re-sync that adds a required file would leave a literal
-# here reporting ok forever. An earlier version copied the list and then dropped the floor
-# over it, on the correct observation that counting iterations of a literal checks the
-# script against itself — the conclusion should have been to stop iterating a literal.
+# --- the root documents the link walk cannot vouch for -------------------------
+# This check used to derive the standard's whole required set by reading § Required Files
+# out of the bundled export, precisely so that no literal list here could go stale against
+# it. That bundle is gone, and so is the ability to track that document from this
+# repository at all: the standard now lives only in the operator's user-level
+# `go-cli-tooling` skill, which this gate must not read — a gate that depends on one
+# machine's home fails for everyone else. What is left is not a copy of the standard's
+# list but this repository's own invariant, which is why a literal is right here and a
+# copy of that list was not: these are the required documents living at the root, and the
+# root is where the walk below stops being able to vouch for a file.
 #
-# `docs/PRODUCT.md` is in the derived set. It was absent from this repository until the
-# file holding mission and product boundaries was renamed to it from `DESIGN.md`, which
-# the standard reserves for a visual design system. `UX.md` and `DESIGN.md` are named
-# elsewhere in that document as conditional and are correctly not in this block.
+# Why it cannot, per file, counting the documents that link each one and resolving `..`
+# rather than comparing the raw target — the first measurement of this did not, so every
+# `../AGENTS.md` from docs/ went uncounted and this comment claimed AGENTS.md was linked
+# from nothing:
 #
-# Only a directory line at indent 2 becomes the path prefix. A deeper one is consumed
-# without setting it, so a grandchild would be reported at the path of the directory above
-# it. That fails loudly on both the count and the path, and a two-level docs/ tree breaks
-# the one-level rule the standard states — which check_domain_index flags on its own — so
-# the case is disclosed here rather than handled.
+#   * each required document under docs/ is linked from several others, so deleting one
+#     breaks a link the walk below resolves — but that is coverage by side effect, held up
+#     by documents that happen to cite it and nothing that enforces they keep doing so;
+#   * README.md is reachable from the Documentation Map's own row and nowhere else, so
+#     deleting it together with that row was measured passing;
+#   * CLAUDE.md is reachable from nothing at all;
+#   * AGENTS.md is in fact linked from several documents. It is in this loop as cheap
+#     redundancy, not because nothing else would notice — and the loop is what survives
+#     AGENTS.md being replaced by a directory, which the Map extraction below does not
+#     report as a missing document.
 #
-# No apostrophe belongs inside the awk program below: it is single-quoted, and one in a
-# comment there terminated the string and broke the script. Third time in this repository,
-# after a process substitution and a `bash -c`.
-required_files=$(awk '
-  /^## Required Files/ { f = 1 }
-  f && /^```/ { c++; if (c == 2) exit; next }
-  f && c == 1 {
-    match($0, /^ */); indent = RLENGTH
-    line = $0; sub(/^ +/, "", line)
-    if (line ~ /\/$/) { if (indent == 2) dir = line; next }
-    if (line ~ /\.md$/) { print (indent > 2 ? dir : "") line }
-  }
-' "$generated/references/DOCUMENTATION.md" 2>/dev/null || true)
-required_count=$(printf '%s\n' "$required_files" | grep -c '\.md' || true)
-
-# The floor is today's derived value, not a lower bound. It was `-lt 8` and 8 is exactly
-# what a plausible upstream reformat produces — describing README/AGENTS/CLAUDE in prose
-# and keeping only the docs/ tree in the fence — so the collapse landed *on* the floor and
-# passed silently, stopping the check from asserting those three files. That is the very
-# defect docs/ROADMAP.md files against the template ("described and then checked by
-# nothing"), reproduced here. At today's value a legitimate upstream *removal* fails
-# loudly, which is the notification a derived set owes its reader.
-#
-# Do not turn this back into a floor. Measured against three upstream changes: adding a
-# file kae already has reports the count alone; adding one kae lacks reports the count and
-# names the file; and swapping one file for another — which keeps the count at 11 — is
-# caught by the per-file check below rather than by this comparison. The two halves cover
-# different things. The cost of equality is that a purely additive upstream change fails
-# until this constant is bumped, which is the same bargain `EXPECTED_GUARDS` makes in
-# scripts/smoke-run-selftest.sh.
-EXPECTED_REQUIRED=11
-if [ "${required_count:-0}" -ne "$EXPECTED_REQUIRED" ]; then
-  fail "derived ${required_count:-0} required files from the standard, expected $EXPECTED_REQUIRED — check the new or removed file, then bump EXPECTED_REQUIRED"
-fi
-
-# Paths come out of the block's own indentation, so no location is hard-coded here. The
-# previous version mapped three known names to the root and everything else under docs/,
-# which meant a newly required file anywhere else was reported at a path the standard
-# never named — failing loudly, but sending the reader to create the wrong file.
-while IFS= read -r required; do
-  if [ -z "$required" ]; then
-    continue
+# The predicate is three-sided on purpose: missing, not a regular file, and empty all reach
+# the same outcome, and all three were measured reporting `ok` when this tested only `-f` on
+# CLAUDE.md alone. Empty is as bad as absent because CLAUDE.md is what loads AGENTS.md for
+# Claude Code: truncating it removes every project rule with no error anywhere. This is the
+# one copy of that reasoning — the selftest cases point here rather than restating it.
+for required in README.md AGENTS.md CLAUDE.md; do
+  if [ ! -f "$required" ] || [ ! -s "$required" ]; then
+    fail "$required is missing, empty, or not a regular file — the root documents are asserted here because no link walk can vouch for all of them"
   fi
-  if [ ! -f "$required" ]; then
-    fail "missing required file: $required (the standard's § Required Files names it)"
-  fi
-done <<REQUIRED
-$required_files
-REQUIRED
+done
 
 # --- a docs/<domain>/ child must be linked from its uppercase index ------------
 # Kept from the standard's template even though kae has no docs/<domain>/ directories
@@ -135,11 +103,18 @@ check_domain_index() {
   if [ ! -d "docs/$domain" ]; then
     return
   fi
+  children=$(find "docs/$domain" -mindepth 1 -maxdepth 1 -type f -name '*.md' -print) ||
+    fail "walking docs/$domain failed, so its children were not all checked"
   while IFS= read -r child; do
+    if [ -z "$child" ]; then
+      continue
+    fi
     if ! grep -Fq "]($domain/$(basename -- "$child"))" "docs/$index"; then
       fail "docs/$domain/$(basename -- "$child") is not linked from docs/$index"
     fi
-  done < <(find "docs/$domain" -mindepth 1 -maxdepth 1 -type f -name '*.md' -print)
+  done <<CHILDREN
+$children
+CHILDREN
   if find "docs/$domain" -mindepth 2 -type f -print -quit | grep -q .; then
     fail "docs/$domain is deeper than the standard's one-level domain hierarchy"
   fi
@@ -175,18 +150,42 @@ if [ "${map_target_count:-0}" -lt 10 ]; then
   fail "extracted only ${map_target_count:-0} docs/ links from the Map, fewer than the table holds"
 fi
 
+# Captured rather than piped in, for the reason the link walk below states at length: a
+# producer inside `done < <(…)` can die partway and leave the loop reporting a short count
+# as a clean run, because nothing reads its status. Every producer in this script is checked
+# the same way now — a `find` that half-fails is less likely than a python script crashing,
+# but "less likely" is not a reason to close the class at one producer and leave it open at
+# the rest.
+docs_list=$(find docs -maxdepth 1 -type f -name '*.md' -print | sed 's|^\./||' | sort) ||
+  fail "walking docs/ failed, so the count below is short and means nothing"
+
 docs_checked=0
 while IFS= read -r doc; do
+  if [ -z "$doc" ]; then
+    continue
+  fi
   docs_checked=$((docs_checked + 1))
   if ! printf '%s\n' "$map_targets" | grep -Fxq "$doc"; then
     fail "$doc is not listed in AGENTS.md's Documentation Map"
   fi
-done < <(find docs -maxdepth 1 -type f -name '*.md' -print | sed 's|^\./||' | sort)
+done <<DOCS
+$docs_list
+DOCS
 if [ "$docs_checked" -lt 10 ]; then
   fail "walked only $docs_checked files under docs/, which is fewer than this repository has"
 fi
 
 # --- every relative markdown link resolves ---------------------------------------
+# The extractor's exit status is read, which `done < <(python3 …)` threw away. Measured:
+# an extractor that emits part of the walk and then dies produced
+# `ok — 13 docs in the Map, 75 links resolved` and exit 0, because the count stayed far
+# above its floor — the exact "walk that collapsed" this script's floors are described as
+# catching. The `|| fail` keeps that loud rather than letting `set -e` kill the script with
+# no message, which is indistinguishable from a clean run to anything reading only the
+# status.
+links=$(python3 "$root/scripts/docs_links.py") ||
+  fail "the link extractor exited non-zero, so the walk below is truncated and its count means nothing"
+
 links_checked=0
 while IFS=$'\t' read -r md_rel link; do
   target=${link%%#*}
@@ -207,10 +206,18 @@ while IFS=$'\t' read -r md_rel link; do
   if [ "$md_dir" = "$md_rel" ]; then
     md_dir=.
   fi
-  if [ ! -e "$md_dir/$target" ]; then
+  # `-f`, not `-e`: a directory satisfies `-e`, and replacing `docs/PRODUCT.md` with a
+  # directory of that name was measured reporting `ok — 12 docs in the Map` with a whole
+  # required document gone. Every target in this repository resolves to a regular file
+  # today (measured over all of them, none resolving to a directory or a symlink to one),
+  # so the narrowing costs nothing; a link deliberately pointing at a directory would fail
+  # loudly here and is the case to revisit this line for.
+  if [ ! -f "$md_dir/$target" ]; then
     fail "$md_rel link target does not exist: $link"
   fi
-done < <(python3 "$root/scripts/docs_links.py" "$generated")
+done <<LINKS
+$links
+LINKS
 if [ "$links_checked" -lt 50 ]; then
   fail "resolved only $links_checked relative links, which is fewer than this repository has"
 fi

@@ -1451,8 +1451,9 @@ Shipped 2026-06-17. §A: the did-you-mean hint fires at all three sites plus
 unit/temp-HOME tests — no real-machine gate (a pure-text behavior). §B (the
 chezmoi standardization of the mise-integration + did-you-mean patterns into the
 go-cli-tooling shared standard) also landed 2026-06-17: a new
-`docs/go-cli/PATTERNS.md` in the chezmoi repo, with this repo's bundled
-`.claude/skills/go-cli-tooling/` resynced from it.
+`docs/go-cli/PATTERNS.md` in the chezmoi repo, with this repo's then-bundled
+`.claude/skills/go-cli-tooling/` resynced from it. That bundle is gone now
+([AGENTS.md](../AGENTS.md) says why); the standard is read from the user-level skill.
 
 ## Scope
 
@@ -1506,8 +1507,9 @@ did-you-mean pattern from §A above. All three targets are sourced from chezmoi
 Reflect both in the three standard locations:
 - **CLI standard docs** — `docs/go-cli/` and `docs/go-cli-architecture.md`.
 - **go-cli-tooling skill** — `dot_agents/skills/go-cli-tooling/` (the canonical
-  source; it symlinks into `~/.claude` and `~/.agents`, and this repo's bundled
-  `.claude/skills/go-cli-tooling/` re-syncs from it).
+  source; it symlinks into `~/.claude` and `~/.agents`. At the time, this repo
+  also carried a bundled `.claude/skills/go-cli-tooling/` that re-synced from it;
+  it no longer does — [AGENTS.md](../AGENTS.md) says why).
 - **Templates** — the relevant `chezmoi_templates/` / `dot_*` `.tmpl` files.
 
 ## Non-Goals (this release)
@@ -1642,8 +1644,9 @@ sourced from chezmoi (`~/.local/share/chezmoi`):
 
 1. **CLI standard docs** — `docs/go-cli/` and `docs/go-cli-architecture.md`.
 2. **go-cli-tooling skill** — `dot_agents/skills/go-cli-tooling/` (the canonical
-   source; it symlinks into `~/.claude` and `~/.agents`, and this repo's bundled
-   `.claude/skills/go-cli-tooling/` re-syncs from it).
+   source; it symlinks into `~/.claude` and `~/.agents`. This repo carried a
+   bundled `.claude/skills/go-cli-tooling/` re-synced from it when this was
+   written, and no longer does — [AGENTS.md](../AGENTS.md) says why).
 3. **Templates** — the relevant `chezmoi_templates/` / `dot_*` `.tmpl` files,
    then `chezmoi apply`.
 

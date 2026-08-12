@@ -1,8 +1,9 @@
 # Architecture
 
 Package layout, layering, and implementation boundaries for `kae`.
-The repository follows the bundled Go CLI standard
-(`.claude/skills/go-cli-tooling/references/`).
+The repository follows the shared Go CLI standard, read from the user-level
+`go-cli-tooling` skill rather than a copy carried here
+([AGENTS.md](../AGENTS.md) says why).
 
 ## Package Layout
 

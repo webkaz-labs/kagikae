@@ -148,15 +148,26 @@ func TestComparableIsTheWordFloor(t *testing.T) {
 	}
 }
 
-func TestExcludedDirSkipsGitAndTheGeneratedExport(t *testing.T) {
-	for _, path := range []string{".git", "dist", ".claude/skills/go-cli-tooling", ".claude/skills/go-cli-tooling/references"} {
+func TestExcludedDirSkipsOnlyGitAndBuildOutput(t *testing.T) {
+	for _, path := range []string{".git", "dist"} {
 		if !excludedDir(path) {
 			t.Errorf("%q must be excluded from the walk", path)
 		}
 	}
 	// The other half, and the reason `.claude` is walked rather than skipped whole:
 	// the upstream-auth-drift skill under it is cited as normative.
-	for _, path := range []string{".", "docs", ".claude", ".claude/skills", ".claude/skills/upstream-auth-drift", "internal/cmd"} {
+	//
+	// `.claude/skills/go-cli-tooling` is in this list, not the one above, and that is
+	// the assertion rather than an accident of it no longer existing. The walk used to
+	// skip that path because a bundled copy of the shared standard lived there and an
+	// edit to it was unactionable. AGENTS.md records why this repository stopped
+	// carrying that copy; re-introducing the skip would quietly restore the exclusion
+	// that decision removed.
+	for _, path := range []string{
+		".", "docs", ".claude", ".claude/skills",
+		".claude/skills/upstream-auth-drift", ".claude/skills/go-cli-tooling",
+		"internal/cmd",
+	} {
 		if excludedDir(path) {
 			t.Errorf("%q must be walked", path)
 		}

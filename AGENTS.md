@@ -61,7 +61,7 @@ do rather than that they exist: `smoke-selftest`
 (`scripts/check-docs.sh`: every markdown link its extractor finds resolves, no file under
 `docs/` is missing **its own routing row** in the Documentation Map above — the omission
 that let a second normative copy grow inside `docs/SCOPE-MODEL.md` — and the root documents
-a link walk cannot vouch for are present, non-empty and regular files), and
+a link walk cannot vouch for **as a set** are present, non-empty and regular files), and
 `docs-check-selftest`, which checks that one. Those three script headers are normative for
 which link forms the extractor sees, why each count is a floor, why a floor cannot reach a
 predicate, and which documents that last check names and why; do not restate them here.

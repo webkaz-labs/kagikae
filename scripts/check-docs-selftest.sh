@@ -24,11 +24,15 @@ cd -- "$root"
 failures=0
 cases=0
 
-# The success line, in one place. It is compared both as a case's wanted message and by
-# `check`, to reject a complaint printed beside it. Written once because a reword that
-# updated only the wanted strings would leave `check`'s comparison matching nothing while
-# treating every case as a complaint case — so that assertion would pass vacuously on all of
-# them, with nothing reporting it.
+# The success line, in one place. Every comparison against it goes through this name — the
+# cases that want it, and `check`'s test for a complaint printed beside it — and the reason
+# is that the two are not independent. Reproduced before this was wired up: reword the
+# success line, and only the cases fail, so a maintainer updates the case literals the
+# failure points at and leaves the one inside `check` behind. From then on `[ "$want" !=
+# "$OK_LINE" ]` is true for every case while `grep -Fq "$OK_LINE"` matches nothing, so the
+# beside-the-success-line assertion passes vacuously on all of them; the defect it exists to
+# catch was then injected and the suite still reported every case holding. Sharing the
+# constant is what makes the reword fail at the cases instead of being absorbed by them.
 readonly OK_LINE='check-docs: ok'
 
 # The fixture is the working tree's tracked files, so this needs a git work tree. Say so
@@ -112,7 +116,7 @@ ROW
 #    fails, and the suite would look green while the check was useless.
 dir=$(fixture baseline)
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
-check 'the working tree passes' 'check-docs: ok' "$out"
+check 'the working tree passes' "$OK_LINE" "$out"
 
 # 2. The link predicate. No floor reaches this: the count rises, and stays above 50.
 dir=$(fixture brokenlink)
@@ -133,7 +137,7 @@ check 'a doc whose routing row is gone is named' 'SCOPE-MODEL.md is not listed' 
 dir=$(fixture codespan)
 printf '\nSee `[X.md](X.md)` and ``[Y.md](Y.md)`` forms.\n' >> "$dir/README.md"
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
-check 'links inside code spans are ignored' 'check-docs: ok' "$out"
+check 'links inside code spans are ignored' "$OK_LINE" "$out"
 
 # 5. Degenerate input, docs side. Every floor in check-docs.sh exists because a walk that
 #    collapses otherwise reports a clean run, and until these two cases the floors were

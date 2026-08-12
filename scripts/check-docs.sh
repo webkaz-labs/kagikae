@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Rejects the docs defects nothing else here catches: a markdown link whose target does not
-# exist, a document under docs/ that AGENTS.md's Documentation Map does not list, and a root
-# document (README.md, AGENTS.md, CLAUDE.md) that is missing, empty, or not a regular file.
-# Enumerated rather than counted, because a count here would go stale the first time a
-# fourth check is added and nothing would report it.
+# exist, a document under docs/ that AGENTS.md's Documentation Map does not list, a root
+# document (README.md, AGENTS.md, CLAUDE.md) that is missing, empty, or not a regular file,
+# and — dormant, because no docs/<domain>/ directory exists yet — a domain child its
+# uppercase index does not link. Enumerated rather than counted: the previous header counted
+# them, undercounted by leaving the dormant one out, and nothing reported that.
 #
 # The orphan half is not hypothetical. docs/SCOPE-MODEL.md was the one file missing
 # from that table, so nothing told a reader when to open it, and a second normative
@@ -13,7 +14,8 @@
 #
 # Adapted from the shared Go CLI standard's template check, which checks required files,
 # one-level domain indexes and link targets. kae has no docs/<domain>/ subdirectories, so
-# the domain-index half is replaced by the Documentation Map check, and the required-file
+# the domain-index half is joined by the Documentation Map check rather than replaced by it —
+# it is kept and self-no-ops, as the comment above it says — and the required-file
 # half — which read its list out of the copy of the standard this repository used to carry
 # (AGENTS.md's opening says why that copy went away) — is replaced by the root-document
 # invariant below, which is this repository's own. The link walk is the standard's.

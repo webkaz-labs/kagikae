@@ -113,6 +113,22 @@ printf '#!/usr/bin/env python3\n' > "$dir/scripts/docs_links.py"
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
 check 'an extractor emitting nothing trips the link floor' 'resolved only 0 relative links' "$out"
 
+# 7. Degenerate input, Map side. Renaming the heading the Map walk anchors on reaches two
+#    floors with one mutation — the table-row count and the link-extraction count — which
+#    is why this is one case rather than two. It also proves the heading-absent branch is
+#    reachable at all: an unguarded `grep` there used to kill the script before it ran.
+dir=$(fixture nomap)
+python3 - "$dir/AGENTS.md" <<'RENAME'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+text = p.read_text()
+if '## Documentation Map' not in text:
+    raise SystemExit('fixture anchor miss: no "## Documentation Map" heading to rename')
+p.write_text(text.replace('## Documentation Map', '## Doc Map', 1))
+RENAME
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'renaming the Map heading trips its extraction floor' 'extracted only 0 docs/ links' "$out"
+
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs-selftest: %s case(s) failed\n' "$failures" >&2
   exit 1
@@ -121,7 +137,7 @@ fi
 # Two-directional, the way scripts/smoke-run-selftest.sh's EXPECTED_GUARDS is: a floor
 # would let a fifth case be added and then silently deleted back down to four. Adding a
 # case has to bump this, and that is the point.
-EXPECTED_CASES=6
+EXPECTED_CASES=7
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

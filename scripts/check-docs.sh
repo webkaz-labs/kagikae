@@ -61,21 +61,40 @@ generated='.claude/skills/go-cli-tooling'
 # file holding mission and product boundaries was renamed to it from `DESIGN.md`, which
 # the standard reserves for a visual design system. `UX.md` and `DESIGN.md` are named
 # elsewhere in that document as conditional and are correctly not in this block.
-required_files=$(awk '/^## Required Files/{f=1} f&&/^```/{c++; if(c==2) exit; next} f&&c==1' \
-  "$generated/references/DOCUMENTATION.md" 2>/dev/null |
-  { grep -oE '[A-Za-z0-9.-]+\.md' || true; })
+required_files=$(awk '
+  /^## Required Files/ { f = 1 }
+  f && /^```/ { c++; if (c == 2) exit; next }
+  f && c == 1 {
+    match($0, /^ */); indent = RLENGTH
+    line = $0; sub(/^ +/, "", line)
+    if (line ~ /\/$/) { if (indent == 2) dir = line; next }
+    if (line ~ /\.md$/) { print (indent > 2 ? dir : "") line }
+  }
+' "$generated/references/DOCUMENTATION.md" 2>/dev/null || true)
 required_count=$(printf '%s\n' "$required_files" | grep -c '\.md' || true)
-if [ "${required_count:-0}" -lt 8 ]; then
-  fail "derived only ${required_count:-0} required files from the standard, fewer than it names"
+
+# The floor is today's derived value, not a lower bound. It was `-lt 8` and 8 is exactly
+# what a plausible upstream reformat produces — describing README/AGENTS/CLAUDE in prose
+# and keeping only the docs/ tree in the fence — so the collapse landed *on* the floor and
+# passed silently, stopping the check from asserting those three files. That is the very
+# defect docs/ROADMAP.md files against the template ("described and then checked by
+# nothing"), reproduced here. At today's value a legitimate upstream *removal* fails
+# loudly, which is the notification a derived set owes its reader.
+EXPECTED_REQUIRED=11
+if [ "${required_count:-0}" -ne "$EXPECTED_REQUIRED" ]; then
+  fail "derived ${required_count:-0} required files from the standard, expected $EXPECTED_REQUIRED"
 fi
+
+# Paths come out of the block's own indentation, so no location is hard-coded here. The
+# previous version mapped three known names to the root and everything else under docs/,
+# which meant a newly required file anywhere else was reported at a path the standard
+# never named — failing loudly, but sending the reader to create the wrong file.
 while IFS= read -r required; do
-  case $required in
-    '') continue ;;
-    README.md | AGENTS.md | CLAUDE.md) path=$required ;;
-    *) path="docs/$required" ;;
-  esac
-  if [ ! -f "$path" ]; then
-    fail "missing required file: $path (the standard's § Required Files names it)"
+  if [ -z "$required" ]; then
+    continue
+  fi
+  if [ ! -f "$required" ]; then
+    fail "missing required file: $required (the standard's § Required Files names it)"
   fi
 done <<REQUIRED
 $required_files
@@ -94,7 +113,7 @@ check_domain_index() {
     return
   fi
   while IFS= read -r child; do
-    if ! grep -Fq "$domain/$(basename -- "$child")" "docs/$index"; then
+    if ! grep -Fq "]($domain/$(basename -- "$child"))" "docs/$index"; then
       fail "docs/$domain/$(basename -- "$child") is not linked from docs/$index"
     fi
   done < <(find "docs/$domain" -mindepth 1 -maxdepth 1 -type f -name '*.md' -print)

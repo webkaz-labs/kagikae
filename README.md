@@ -463,7 +463,7 @@ schema: [docs/DATA-MODEL.md](docs/DATA-MODEL.md).
 ## Development
 
 ```bash
-mise run check        # go vet, gofmt, go test ./..., go mod verify
+mise run check        # see mise.toml [tasks.check] for what it depends on
 git diff --check
 ```
 

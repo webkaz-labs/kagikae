@@ -194,12 +194,14 @@ alternative exists (`secret-tool`).
   `scripts/smoke-run-selftest.sh` checks `scripts/smoke-run.sh`; nothing checks
   the selftest. **There are two selftests now** — `scripts/check-docs-selftest.sh`
   arrived 2026-08-11 for `scripts/check-docs.sh` — and this entry covers both: neither
-  is checked by anything. The docs selftest reaches **two** of the five floors in the
-  script it tests, via degenerate input — an empty `docs/` and an extractor emitting
-  nothing — and each was verified to fail when its floor is deleted. The other three
-  (the derived required set, the Map's table rows, the Map's link extraction) are still
-  hand-verified in a commit message rather than by any check here, which is the state
-  described below. Across six review rounds, four separate edits made for unrelated
+  is checked by anything. The docs selftest reaches **three** of the five floors in the
+  script it tests, via degenerate input — an empty `docs/`, an extractor emitting nothing,
+  and a renamed Documentation Map heading — and each was verified to fail when its floor
+  is deleted. Renaming that heading reaches two floors with one mutation, which is why it
+  is one case. The remaining two (the Map's table-row count, and the derived required set
+  — whose floor is now an equality against today's derived value, so a collapse cannot
+  land on it) are hand-verified in a commit message rather than by any check here, which
+  is the state described below. Across six review rounds, four separate edits made for unrelated
   reasons left a guard passing unconditionally while the suite reported every
   guard holding: a variable list derived from the file it was testing (deleting
   from the subject deleted the test); a containment check weakened to a proxy
@@ -357,10 +359,11 @@ alternative exists (`secret-tool`).
   next heading in the same file — while the mechanism is separately owned by
   [ARCHITECTURE.md](ARCHITECTURE.md) § Locking, at length, with no overlap.
   So the work is a paragraph move plus a same-file fold, not a section move. It also
-  costs nothing in citations, which the first draft claimed it would: both citations —
-  `docs/CONTEXT.md` and `scripts/docscan/main.go`'s calibration note — point at
-  § Switching Surface's **table**, so moving the `**Mechanisms.**` paragraph leaves the
-  heading and both citations untouched, and keeps that measured duplicate pair meaningful.
+  costs nothing in citations, which the first draft claimed it would: `scripts/docscan/
+  main.go`'s calibration note names § Switching Surface's **table**, and
+  `docs/CONTEXT.md`'s routing row names the section — so moving the `**Mechanisms.**`
+  paragraph leaves the heading in place, both citations resolving, and that measured
+  duplicate pair meaningful.
   Classifying by the topic word (*locks*, *mechanisms*) rather than by the question the
   passage answers is what produced the wrong estimate.
 

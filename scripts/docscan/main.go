@@ -22,7 +22,7 @@
 //     unchanged" block word for word, and two release targets deferring the same
 //     list — which is what a changelog is, not a fork. The fifth is the shape
 //     worth reading, and an earlier version of this paragraph swept it into the
-//     other four: docs/DESIGN.md's § Switching Surface table against the copy
+//     other four: docs/PRODUCT.md's § Switching Surface table against the copy
 //     frozen in the **v0.7.2** entry of docs/RELEASE.md, which has since diverged
 //     and still names two retired mode names. A frozen changelog entry may be the
 //     right answer; a *universal* about the report is how a reader stops looking.

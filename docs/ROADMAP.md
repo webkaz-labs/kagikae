@@ -192,7 +192,16 @@ alternative exists (`secret-tool`).
 - **The smoke guards have no test, and four changes switched one off without
   anything noticing** (recorded 2026-08-09, **not fixed**).
   `scripts/smoke-run-selftest.sh` checks `scripts/smoke-run.sh`; nothing checks
-  the selftest. Across six review rounds, four separate edits made for unrelated
+  the selftest. **There are two selftests now** — `scripts/check-docs-selftest.sh`
+  arrived 2026-08-11 for `scripts/check-docs.sh` — and this entry covers both: neither
+  is checked by anything. The docs selftest reaches **three** of the five floors in the
+  script it tests, via degenerate input — an empty `docs/`, an extractor emitting nothing,
+  and a renamed Documentation Map heading — and each was verified to fail when its floor
+  is deleted. Renaming that heading trips two floors with one mutation but asserts one of them, which is why it
+  is one case. The remaining two (the Map's table-row count, and the derived required set
+  — whose floor is now an equality against today's derived value, so a collapse cannot
+  land on it) are hand-verified in a commit message rather than by any check here, which
+  is the state described below. Across six review rounds, four separate edits made for unrelated
   reasons left a guard passing unconditionally while the suite reported every
   guard holding: a variable list derived from the file it was testing (deleting
   from the subject deleted the test); a containment check weakened to a proxy
@@ -315,6 +324,69 @@ alternative exists (`secret-tool`).
   and the promoted rule were reviewed here; the rest of that delta is other work
   arriving through a generated path, which is why `AGENTS.md` keeps this directory out of
   the docs sweep.
+
+- **CI runs a subset of the gate, and two places called it a mirror** (recorded
+  2026-08-11, **partly fixed** — the wording is corrected, the gap is not). Measured:
+  `mise run check` depends on eleven steps; `.github/workflows/check.yml` runs four —
+  `go vet`, `gofmt`, `go test`, `go mod verify`. So gofumpt and goimports (the formatters
+  that actually gate locally, where plain `gofmt` is *not* sufficient), `staticcheck`,
+  `golangci-lint`, `shellcheck`, `build`, `smoke-selftest`, `docs-check` and
+  `docs-check-selftest` run on a developer's machine and nowhere else. `README.md` said
+  CI "mirrors it" and `check.yml`'s own header said it mirrored the local gate; both now
+  say subset, which is the half that could be fixed without deciding anything.
+  What is undecided is whether to widen the workflow, and it is not free. The entry
+  above about the real `security` binary is the argument for it: that defect passed on
+  darwin, failed on linux, and a single-environment gate could not see the difference.
+  Against it: `docs-check-selftest` copies the tracked tree four times per run,
+  `smoke-selftest` perturbs `.git/info/exclude`, and the lint tools resolve pinned
+  versions over the network on first use — so each one needs a decision about caching
+  and about what a CI runner is allowed to touch, not just a line in a YAML file.
+  Nothing here should be widened silently; the gap is now stated in all three places
+  that describe the gate.
+
+- **One paragraph in `PRODUCT.md` is architecture** (recorded 2026-08-11, **not fixed**).
+  The rename from `docs/DESIGN.md` moved the whole file, because the shared standard
+  reserved `DESIGN.md` for a visual design system and says it is "not the product or
+  software design document". A first draft of this entry named two whole sections and
+  priced a section-level move; reading them says otherwise, and the correction is the
+  useful part. **§ Switching Surface is a primary journey**, which the standard's charter
+  for `PRODUCT.md` explicitly includes — a scope × environment table plus verb semantics.
+  The only architecture in it is the closing paragraph headed `**Mechanisms.**`
+  (in-place credential patch / `CLAUDE_CONFIG_DIR` / symlink-everything-but-credential),
+  which already ends by pointing at [ADAPTERS.md](ADAPTERS.md). **§ Concurrency Boundary
+  is a product boundary**, not architecture: its content is the user-visible limit that
+  two accounts of one tool cannot run concurrently, and `## Product Boundaries` is the
+  next heading in the same file — while the mechanism is separately owned by
+  [ARCHITECTURE.md](ARCHITECTURE.md) § Locking, at length, with no overlap.
+  So the work is a paragraph move plus a same-file fold, not a section move. It also
+  costs nothing in citations, which the first draft claimed it would: `scripts/docscan/
+  main.go`'s calibration note names § Switching Surface's **table**, and
+  `docs/CONTEXT.md`'s routing row names the section — so moving the `**Mechanisms.**`
+  paragraph leaves the heading in place, both citations resolving, and that measured
+  duplicate pair meaningful.
+  Classifying by the topic word (*locks*, *mechanisms*) rather than by the question the
+  passage answers is what produced the wrong estimate.
+
+- **The standard's own docs check cannot run clean, and this repository forked it instead
+  of fixing it** (recorded 2026-08-11, **not fixed here** — the fix belongs upstream).
+  `scripts/check-docs.sh` says it kept the required-file list and the link walk from
+  `.claude/skills/go-cli-tooling/assets/template-project/scripts/check-docs.sh`. It
+  re-implemented both, because both are wrong there, and every tool on this standard will
+  hit the same two defects. First: that script asserts only the eight files under `docs/`,
+  while its own § Required Files names eleven — `README.md`, `AGENTS.md` and `CLAUDE.md`
+  are described and then checked by nothing. Second: its link extractor is a bare
+  `grep -Eo` with no fence or code-span stripping, so it reports the bracketed example
+  inside `` `[X.md](X.md)` `` in `AGENTS.md`'s citation rule as a broken target —
+  **the standard's script cannot pass on a repository that uses the citation idiom the
+  standard itself teaches**, and since the template wires it into `mise run check` the
+  symptom is a gate blocking a commit on correct prose.
+  Both fixes are properties of markdown rather than of kae, so they belong in the chezmoi
+  source, and the local script should shrink to the part that is genuinely kae's: the
+  Documentation Map shape, because kae has no `docs/<domain>/` directories. Until that
+  happens two copies of one requirement are maintained here, which is the second-normative-
+  copy defect this check was written to detect, now inside the check. Note that
+  `mise run docs-scan` cannot see it: that program compares `.md` files, and this
+  duplication lives in shell and Python headers.
 
 - **The claim-reconciliation stage is unbuilt, and a `grep` in AGENTS.md stands in for
   it** (recorded 2026-08-10, **not fixed**). `scripts/docscan/main.go`'s header names a
@@ -1445,7 +1517,7 @@ plain-CLI layer; the TUI sits on top of them.
 ## Tier-2 tools — described, not queued
 
 Everything in this section concerns agy, opencode, cursor or copilot, which are
-**tier 2** ([DESIGN.md](DESIGN.md) § Tool Tiers): kae commits to global credential
+**tier 2** ([PRODUCT.md](PRODUCT.md) § Tool Tiers): kae commits to global credential
 switching for them and to nothing more. These entries are therefore *descriptions
 of those tools*, kept so a future session recognizes a symptom rather than
 rediscovering it — not work queued against kae. Each says what would make it

@@ -338,7 +338,7 @@ The per-tool switched/preserved allowlist is the normative contract in
 
 Two tiers, a deliberate scope decision rather than a to-do list. **Which tool is
 in which tier — with the rationale and the promotion criteria — is normative in
-[docs/DESIGN.md](docs/DESIGN.md) § Tool Tiers**; this file deliberately does not
+[docs/PRODUCT.md](docs/PRODUCT.md) § Tool Tiers**; this file deliberately does not
 repeat the mapping:
 
 - **Tier 1** gets every mode: global switching, global isolated homes, both
@@ -463,19 +463,23 @@ schema: [docs/DATA-MODEL.md](docs/DATA-MODEL.md).
 ## Development
 
 ```bash
-mise run check        # go vet, gofmt, go test ./..., go mod verify
+mise run check        # see mise.toml [tasks.check] for what it depends on
 git diff --check
 ```
 
-`mise run check` is the authoritative pre-commit gate; CI
-([.github/workflows/ci.yml](.github/workflows/ci.yml)) mirrors it, and tagging
-`vX.Y.Z` runs [GoReleaser](https://goreleaser.com) to publish the binaries.
+`mise run check` is the authoritative pre-commit gate. CI
+([.github/workflows/ci.yml](.github/workflows/ci.yml), which calls `check.yml`) runs a
+**subset** of it — `go vet`, `gofmt`, `go test`, `go mod verify` — so the formatter that
+actually gates locally (gofumpt/goimports), the static analysers, `shellcheck`, `build`
+and the docs and smoke selftests pass or fail on your machine only. Tagging `vX.Y.Z`
+runs [GoReleaser](https://goreleaser.com) to publish the binaries, behind that same
+subset.
 
 ## Documentation
 
 | Document | Purpose |
 |----------|---------|
-| [docs/DESIGN.md](docs/DESIGN.md) | Mission, modes, boundaries. |
+| [docs/PRODUCT.md](docs/PRODUCT.md) | Mission, modes, boundaries. |
 | [docs/CONTEXT.md](docs/CONTEXT.md) | The vocabulary — what each term names. Naming only; it states no rule. Not for JSON contract tokens: those are `internal/constants`', documented in docs/DATA-MODEL.md. |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Per-tool switched/preserved contract. |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | Companion-auth (git/gh/cloud CLI) switched/preserved contract. |

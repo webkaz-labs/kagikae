@@ -10,7 +10,7 @@ Standalone public repository. Follow the bundled Go CLI standard in
 |----------|--------------|
 | [README.md](README.md) | user-facing command or setup changes |
 | [docs/CONTEXT.md](docs/CONTEXT.md) | before naming anything, and whenever a word for an existing thing has to be chosen — it is the authority on the vocabulary it holds, the user-facing terms and the mechanism vocabulary alike. Not for a JSON contract token, which is an enum owned by `internal/constants`; its own routing table says so. It is a glossary and states no rule: an entry that names something a predicate decides says which predicate and stops, so a question about *behaviour* is never answered here |
-| [docs/DESIGN.md](docs/DESIGN.md) | mission, modes, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
+| [docs/PRODUCT.md](docs/PRODUCT.md) | mission, modes, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | anything that touches what companion-auth lockstep (git/gh/cloud CLIs) switches or preserves |
 | [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | before any code writes, harvests, attributes, orders or deletes a credential **copy**. It is the normative text for its own thirteen sections and not for the whole subject: several of them defer the per-tool contract to `docs/ADAPTERS.md` or `docs/CLI.md` where they say so, and § Implementation Boundaries below keeps the credential rules that did not move, beside one routing line per rule that did |
@@ -32,11 +32,19 @@ git diff --check
 ```
 
 `mise run check` is the authoritative gate; it must pass before every commit.
-It runs `lint` (gofumpt + goimports format check, `staticcheck -checks=SA*`,
-curated `golangci-lint`, `shellcheck`), `go test ./...`, `go vet`,
-`go mod verify`, `go build ./...`, and `smoke-selftest`
+**Its steps are not listed here** — `mise.toml`'s `[tasks.check]` is the one copy, and
+three hand copies of it had already drifted apart. Some are worth a word about what they
+do rather than that they exist: `smoke-selftest`
 (`scripts/smoke-run-selftest.sh`, which checks the smoke runner's own guards — no
-`kae` build and no network, so it costs a few seconds). `mise run audit` (govulncheck, plus the
+`kae` build and no network, so it costs a few seconds), and `docs-check`
+(`scripts/check-docs.sh`: the standard's required files exist, every markdown link its
+extractor finds resolves, and no file under `docs/` is missing **its own routing row**
+in the Documentation Map above — the omission that let a second normative copy grow
+inside `docs/SCOPE-MODEL.md`), and `docs-check-selftest`, which checks that one. Those
+three script headers are normative for which link forms the extractor sees, why each
+count is a floor, and why a floor cannot reach a predicate; do not restate them here.
+`docs-check` is **not** `mise run docs-scan`, which reports duplicated prose and
+deliberately fails nothing. `mise run audit` (govulncheck, plus the
 upstream literal fingerprints — it reads the installed tools' own binaries, so it
 only means anything on a machine that has them) and `mise run goreleaser-check` are
 slower release-time checks. Lint tools run via `go run <tool>@<pinned version>`; the

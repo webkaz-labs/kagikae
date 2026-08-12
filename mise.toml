@@ -96,9 +96,17 @@ run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go build ./..."
 description = "Check the guards in scripts/smoke-run.sh (no kae build, no network)"
 run = "bash scripts/smoke-run-selftest.sh"
 
+[tasks.docs-check]
+description = "Reject a broken markdown link or a docs/ file the Documentation Map omits"
+run = "bash scripts/check-docs.sh"
+
+[tasks.docs-check-selftest]
+description = "Check that scripts/check-docs.sh still detects what it exists to detect"
+run = "bash scripts/check-docs-selftest.sh"
+
 [tasks.check]
 description = "Run the standard local validation suite"
-depends = ["lint", "test", "vet", "mod-verify", "build", "smoke-selftest"]
+depends = ["lint", "test", "vet", "mod-verify", "build", "smoke-selftest", "docs-check", "docs-check-selftest"]
 
 # Deliberately not a dependency of `check`. What a report does and does not mean is
 # scripts/docscan/main.go's header, which is the one copy of it.

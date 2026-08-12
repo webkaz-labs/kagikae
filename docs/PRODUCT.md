@@ -1,4 +1,17 @@
-# kagikae Design
+# kagikae Product
+
+This was `docs/DESIGN.md` until 2026-08-11. The shared Go CLI standard reserves
+`DESIGN.md` for a *visual* design system — semantic tokens, component appearance,
+visual baseline IDs, following the Google Labs DESIGN.md specification — and says in
+as many words that it is "not the product or software design document". This file has
+always been the latter, so it carries the name the standard gives that content, and
+kae has no `DESIGN.md`: it is a plain CLI with no TTY surface, which the standard says
+should omit one.
+
+Two sections here are a poorer fit than the rest and have not been moved:
+§ Switching Surface and § Concurrency Boundary read as architecture rather than
+product. Moving them is a separate change with its own citations to repoint, filed in
+[ROADMAP.md](ROADMAP.md).
 
 ## Mission
 

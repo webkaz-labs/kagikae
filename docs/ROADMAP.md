@@ -218,7 +218,8 @@ alternative exists (`secret-tool`).
   What is undecided is whether to widen the workflow, and it is not free. The entry
   above about the real `security` binary is the argument for it: that defect passed on
   darwin, failed on linux, and a single-environment gate could not see the difference.
-  Against it: `docs-check-selftest` copies the tracked tree four times per run,
+  Against it: `docs-check-selftest` copies the tracked tree once per case and runs the
+  whole check on each,
   `smoke-selftest` perturbs `.git/info/exclude`, and the lint tools resolve pinned
   versions over the network on first use — so each one needs a decision about caching
   and about what a CI runner is allowed to touch, not just a line in a YAML file.

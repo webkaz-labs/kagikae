@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # Rejects the docs defects nothing else here catches: a markdown link whose target does not
-# exist, a document under docs/ that AGENTS.md's Documentation Map does not list, a root
-# document (README.md, AGENTS.md, CLAUDE.md) that is missing, empty, or not a regular file,
+# exist, a `X.md § Name` citation naming a section that file declares nowhere, a document
+# under docs/ that AGENTS.md's Documentation Map does not list, a root document (README.md,
+# AGENTS.md, CLAUDE.md) that is missing, empty, or not a regular file,
 # and — dormant, because no docs/<domain>/ directory exists yet — a domain child its
 # uppercase index does not link. Enumerated rather than counted: the previous header counted
 # them, undercounted by leaving the dormant one out, and nothing reported that.
+#
+# The section half is the newest and the narrowest: scripts/docsections/main.go's package
+# comment is normative for which citation forms it reads, the designs that produced false
+# positives on correct prose before this one, and — read it before trusting a clean run —
+# the ceilings it lists, one of which bounds how much of a cited name it compares. Its
+# predicate is pinned by main_test.go in that directory, which is what `go run` rather
+# than a script buys.
 #
 # The orphan half is not hypothetical. docs/SCOPE-MODEL.md was the one file missing
 # from that table, so nothing told a reader when to open it, and a second normative
@@ -222,9 +230,61 @@ if [ "$links_checked" -lt 50 ]; then
   fail "resolved only $links_checked relative links, which is fewer than this repository has"
 fi
 
+# --- every `X.md § Name` citation names a section that file declares ---------------
+# The link walk above resolves the *file* a citation points at and stops there, so a
+# citation naming a section the file has never had is invisible to it. One shipped:
+# docs/ROADMAP.md cited "§ Tier-1 tools", found by a reviewer. Status read the same way
+# as the link extractor's, and for the same measured reason.
+sections=$(GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go run ./scripts/docsections) ||
+  fail "the section extractor exited non-zero, so the walk below is truncated and its count means nothing"
+
+sections_checked=0
+sections_md=0
+sections_go=0
+while IFS=$'\t' read -r citing target verdict name; do
+  if [ -z "$verdict" ]; then
+    continue
+  fi
+  case $verdict in
+    # A target outside the tree cannot be resolved from here; scripts/docsections/main.go's package
+    # comment says which ones those are and why. Not counted, so the floor bounds only the walk
+    # this repository can actually check.
+    external) continue ;;
+    resolves) : ;;
+    absent)
+      fail "$citing cites $target § $name, which that file declares no section for"
+      ;;
+    # Fail-open was the shape here: only `absent` failed, so a typo in the extractor's
+    # verdict string turned a real phantom into a pass. Measured — `absent` misspelled
+    # `abesnt` printed `ok` with the shipped `§ Tier-1 tools` citation present.
+    *) fail "unrecognised section verdict from the extractor: $verdict" ;;
+  esac
+  sections_checked=$((sections_checked + 1))
+  case $citing in
+    *.md) sections_md=$((sections_md + 1)) ;;
+    *.go) sections_go=$((sections_go + 1)) ;;
+  esac
+done <<SECTIONS
+$sections
+SECTIONS
+# A scale floor, like the two above: it bounds how much of the walk ran, never what the
+# walk decides. An extractor emitting nothing, or a regex that matches nothing, lands at 0.
+if [ "$sections_checked" -lt 100 ]; then
+  fail "checked only $sections_checked section citations, which is fewer than this repository has"
+fi
+# What the floor cannot see, and the reason this is a predicate instead of a bigger number:
+# two single-token collapses land *above* any floor this walk could carry. Dropping `.go`
+# from scripts/docsections/main.go's suffixes, or adding `internal` to its skipDirs, silently stops
+# checking every citation in Go and still reports ~135 — measured. Naming both halves is
+# two-sided in the way a count is not.
+if [ "$sections_md" -eq 0 ] || [ "$sections_go" -eq 0 ]; then
+  fail "section citations were found in markdown ($sections_md) and Go ($sections_go), and this repository has both"
+fi
+
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs: %s problem(s)\n' "$failures" >&2
   exit 1
 fi
 
-printf 'check-docs: ok — %s docs in the Map, %s links resolved\n' "$docs_checked" "$links_checked"
+printf 'check-docs: ok — %s docs in the Map, %s links resolved, %s section citations resolved\n' \
+  "$docs_checked" "$links_checked" "$sections_checked"

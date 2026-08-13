@@ -58,12 +58,16 @@ three hand copies of it had already drifted apart. Some are worth a word about w
 do rather than that they exist: `smoke-selftest`
 (`scripts/smoke-run-selftest.sh`, which checks the smoke runner's own guards — no
 `kae` build and no network, so it costs a few seconds), and `docs-check`
-(`scripts/check-docs.sh`: every markdown link its extractor finds resolves, no file under
+(`scripts/check-docs.sh`: every markdown link its extractor finds resolves, every
+`X.md § Name` citation names a section that file declares — a link walk resolves the
+*file* and stops, so a citation naming a section the file has never had was invisible
+until one shipped — no file under
 `docs/` is missing **its own routing row** in the Documentation Map above — the omission
 that let a second normative copy grow inside `docs/SCOPE-MODEL.md` — and the root documents
 a link walk cannot vouch for **as a set** are present, non-empty and regular files), and
-`docs-check-selftest`, which checks that one. Those three script headers are normative for
-which link forms the extractor sees, why each count is a floor, why a floor cannot reach a
+`docs-check-selftest`, which checks that one. Those script headers are normative for
+which link forms the extractor sees, which citation forms the section walk reads **and
+which it cannot**, why each count is a floor, why a floor cannot reach a
 predicate, and which documents that last check names and why; do not restate them here.
 `docs-check` is **not** `mise run docs-scan`, which reports duplicated prose and
 deliberately fails nothing. `mise run audit` (govulncheck, plus the
@@ -341,11 +345,20 @@ complete nor ever empty. A **bare** `AGENTS.md` citation needs none of this — 
 survives a rule moving, because the reader lands in § Implementation Boundaries and
 the routing list sends them on.
 
+`mise run check` decides one slice of that by itself: `scripts/docsections` refuses a
+`X.md § Name` naming a section that file declares nowhere. The hand grep is for what it
+does not reach, which its package comment lists, and everything about *renaming* stays
+manual. **Removing content from under a heading that survives is the same class as
+renaming and the fragment grep stays green on it**, so the inbound references have to be
+read — a trim of `docs/ROADMAP.md` paid for that, and none of those references named
+a `§` at all.
+
 **That grep sees whether the target exists and nothing else, so what it cannot see is
 a quantity written *beside* a citation.** `docs/ROADMAP.md` said "the two commands in
-CONTEXT.md § Not converged" after a later commit merged them into one: § Not converged
-still existed, so every heading-fragment grep stayed green and only reading the sentence
-found it.
+docs/CONTEXT.md § Not converged" after a later commit merged them into one — the `docs/`
+prefix is this file's, not the quoted sentence's, because the gate resolves a citation and
+a bare `CONTEXT.md` from the root no longer does. § Not converged still existed, so every
+heading-fragment grep stayed green and only reading the sentence found it.
 
 **The fix that holds is not to write the number — write the derivation**, the way
 [docs/CONTEXT.md](docs/CONTEXT.md) § Not converged does, and the `EXPECTED_GUARDS` note
@@ -413,7 +426,8 @@ not a clean run.
 that is the original defect's own shape — one commit merged the two commands, and the
 sentence counting them sat unchanged in another file. `89341f4` was caught only because
 that commit happened to write the sentence as well. No widening of an added-lines sweep
-reaches this; the mechanism that would is the unbuilt claim-reconciliation stage
-`scripts/docscan/main.go`'s header names, filed in `docs/ROADMAP.md`. Until it exists,
-the first instruction in this section — write the derivation, not the number — is the only
-thing that covers it.
+reaches this; the mechanism that would is the claim-reconciliation stage
+`scripts/docscan/main.go`'s header names, filed in `docs/ROADMAP.md`, whose one built
+slice checks that a cited section *exists* and never what a quantity beside it says.
+For the quantity class, the first instruction in this section — write the derivation, not
+the number — is still the only thing that covers it.

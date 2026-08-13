@@ -176,10 +176,13 @@ drop_map_row() {
 # The guard is not borrowed caution: this said no guard was needed, on run_check's reasoning
 # that a mistyped path leaves the real program in place, and a review measured that false.
 # `cat` to a mistyped *filename* inside that directory leaves a second `package main` in it,
-# so `go run` fails to compile, the producer's `|| fail` fires and both floors read 0. Any
-# case whose assertion is one of those three messages therefore keeps passing while testing a
-# compile error — which is most of the callers below, though not the one that names a kind,
-# since a compile error emits no kind. Mistyping the *directory* is the loud half, because
+# so `go run` fails to compile, the producer's `|| fail` fires, both floors read 0 and the
+# md/go predicate reads 0 and 0. Any case asserting a truncated-walk symptom therefore keeps
+# passing while testing a compile error — most of the callers below, though not the one that
+# names a kind, since a compile error emits no kind. Stated as a rule rather than as the list
+# of messages it was first written as, which was short by the md/go one and would have told
+# the author of a future case that it was safe. Mistyping the *directory* is the loud half,
+# because
 # `cat` itself fails. Asymmetric, and the silent half is the one a rename inside this
 # directory would hit.
 #
@@ -471,6 +474,23 @@ out=$(run_check "$dir")
 check 'a symlinked document is read and a dangling one is skipped' \
   'ALIAS.md link target does not exist' "$out" 'the reference extractor exited non-zero'
 
+# 22. A document the walk cannot stat, which is not the same thing as not a document. The
+#     entry-skip guard first folded every stat failure into "skip", which put a whole
+#     document's references back out of reach at rc=0 — the fail-open the fatal read closed,
+#     one directory further out. A directory that is readable but not traversable is the
+#     cheapest way to produce it, and the mode is restored immediately so the fixture can be
+#     removed afterwards.
+#
+#     Running as root defeats it, in which case the case fails for want of the message rather
+#     than passing.
+dir=$(fixture unstatabledoc)
+mkdir -p "$dir/docs/sub"
+printf 'see [gone](NO-SUCH.md)\n' > "$dir/docs/sub/x.md"
+chmod 444 "$dir/docs/sub"
+out=$(run_check "$dir")
+chmod 755 "$dir/docs/sub"
+check 'a document the walk cannot stat is named' 'docrefs: stat' "$out"
+
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs-selftest: %s case(s) failed\n' "$failures" >&2
   exit 1
@@ -480,7 +500,7 @@ fi
 # let a case be added and then silently deleted back to the count before it. Adding a case
 # has to bump this, and that is the point. Written without naming either count, because the
 # sentence that did name them was left behind by the first bump.
-EXPECTED_CASES=21
+EXPECTED_CASES=22
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

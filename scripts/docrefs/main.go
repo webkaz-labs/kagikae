@@ -66,21 +66,29 @@
 // those toggles in one implementation and not the other, inverting the fence state for the
 // rest of the file.
 //
-// Which way each one fails is the part worth knowing, because it is not uniform, and an
-// earlier version of this paragraph got it wrong in both directions. Most produce a false
-// broken target, which is loud and gets fixed. The reference-style form is simply unseen.
-// The ones that fail toward a MISSED link, which is silent, are the separator class above
-// and a column-0 run of backticks that CommonMark reads as an inline span: fenceLineRe
-// reads it as a fence marker instead, the state latches, and every link up to the next
-// latch line is skipped. Both are inherited, the Python's fence pattern being the same one,
-// and main_test.go pins the latch so a reader does not take it for a defect.
+// Which way each one fails is the part worth knowing, and three attempts at enumerating it
+// here were each one condition short, so it is stated as a rule instead: the indented code
+// block is the only loud one — a link inside it is reported as broken — and every other gap
+// above is silent, because a link nothing extracts is a link nothing checks. The separator
+// class manages both at once, measured doing so in a single file: a link inside a fenced
+// example emitted as a broken target while a real link after it is dropped.
 //
-// CommonMark's rule for that last one — a fence's info string may not hold a backtick — is
-// also the predicate that decides whether this tree has an instance, and it is one grep
-// over markdown and Go for a fence marker with a second run of backticks on the same line.
-// A count of fence-marker lines does NOT decide it, and this comment claimed it did: a pair
-// of latch lines leaves that count even, so parity sees a net inversion at EOF and says
-// nothing about the links between them.
+// One of the silent ones is worth naming, because a reader will otherwise take it for a
+// defect: a column-0 run of backticks that CommonMark reads as an inline span, which
+// fenceLineRe reads as a fence marker instead, so the state latches and every link up to the
+// next latch line is skipped. Inherited, the Python's fence pattern being the same one, and
+// main_test.go pins it.
+//
+// CommonMark's rule for that one — a *backtick* fence's info string may not hold a backtick,
+// which is why a tilde marker carrying one is a real fence and not a latch — is also the
+// predicate that decides whether this tree has an instance, and it is one grep for a fence
+// marker with a further backtick after it on the same line. A count of fence-marker lines
+// does NOT decide it, and this comment claimed it did: a pair of latch lines leaves that
+// count even, so parity sees a net inversion at EOF and says nothing about the links between
+// them. The other ceilings above have no such predicate, and the greps a reader reaches for
+// return false positives on all of them — an indented list continuation reads as an indented
+// code block, and a bracketed pair inside a regex reads as a reference-style link — so those
+// are "no instance" by reading the hits, not by a command.
 //
 // Two more ceilings, these with instances today. A fence inside a blockquote matches neither
 // fence model — README.md has one — so a link inside such a block is walked as if it were
@@ -176,6 +184,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -278,9 +287,11 @@ func unwrap(text string) string {
 // N, the Python backtracks and consumes 2*floor(N/2) of them as an empty span, so N mod 2
 // backticks stay live and re-phase every later pairing on the line; this emits the whole run
 // literally and leaves nothing live. The shape is main_test.go's unmatched-run case, which
-// is where it belongs — a literal backtick run cannot be written in a doc comment here,
-// because gofumpt reads a pair of them as godoc's old quoting idiom and rewrites it to a
-// curly quote, and plain gofmt is enough to do it. The two strips already differ on this
+// is where it belongs — a test fixture is executable where a comment is not, and it also
+// sidesteps a hazard that applies to a *pair* of backticks in a doc comment, which plain
+// gofmt rewrites to a curly quote as godoc's old quoting idiom. Measured: a triple run and
+// single backticks survive gofmt byte-identically, so the earlier claim here that a backtick
+// run cannot be written in this comment at all was false. The two strips already differ on this
 // tree, and the way to see where is to run both over every line that reaches them rather
 // than to trust a list here; the differing lines include the bracketed illustration
 // AGENTS.md's citation rule carries and docs/ROADMAP.md's quotation of it. So today's
@@ -505,7 +516,19 @@ func main() {
 			// FIFO hangs the same way before that change, so the fatal read exposed it
 			// rather than caused it. A plain directory never reaches here at all — d.IsDir()
 			// returned above — which is why the read is not where this belongs.
+			//
+			// A stat that fails is not automatically "not a document", and folding the two
+			// together re-opened the fail-open one directory further out. ENOENT and its
+			// relatives do mean not-a-document — a dangling symlink, a symlink loop — but
+			// EACCES means a document this walk cannot even see. Measured with a parent
+			// directory readable but not traversable: one skip for both left a whole
+			// document's references unchecked at rc=0. The Python skipped it too, so this is
+			// a deliberate divergence from it, in the direction where the gate is loud.
 			if info, serr := os.Stat(p); serr != nil || !info.Mode().IsRegular() {
+				if errors.Is(serr, fs.ErrPermission) {
+					fmt.Fprintf(os.Stderr, "docrefs: %v\n", serr)
+					os.Exit(1)
+				}
 				return nil
 			}
 			files = append(files, p)
@@ -560,10 +583,18 @@ func main() {
 			// Flushed before exiting, because by here bufio has already written whole
 			// buffers: exiting without it truncates stdout mid-row, the caller's heredoc
 			// completes that row, and its loop reads a bogus verdict out of the fragment.
-			// Measured — the gate printed `unrecognised section verdict from the extractor:`
-			// beside the true message, sending a maintainer to the arm that exists to catch a
-			// verdict typo for a typo that did not exist. The rows are worthless either way
-			// once this exits non-zero; the diagnostic is what the flush protects.
+			// Measured over one fixture per tracked document: the fragment produced
+			// `unrecognised section verdict from the extractor:` at eight of those positions,
+			// sending a maintainer to the arm that exists to catch a verdict typo for a typo
+			// that did not exist, and at none of them after the flush. Which position it hits
+			// depends on where the buffer boundary falls, so a single before/after pair of
+			// problem counts does not reproduce and this comment claimed one that did not.
+			//
+			// The trade is not free, and the earlier "the rows are worthless either way" hid
+			// it: flushing emits more rows whose target could not be read, so the phantom
+			// citation complaints grow with them — measured 5 to 11 on one fixture. It is
+			// still the better side, because the true message comes first either way and the
+			// one it removes is the one that names a cause that does not exist.
 			//
 			// No selftest case pins this, and one was measured not working before being
 			// abandoned: whether the truncation lands mid-field depends on where the 4096-byte

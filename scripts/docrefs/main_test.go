@@ -67,7 +67,7 @@ func TestExtractLinksSkipsSpansAndFencesAndKeepsTheRest(t *testing.T) {
 		{"an unclosed fence swallows the rest", "[a](b)\n```\n[c](d)\n", "b"},
 		// A ceiling, pinned so it is not mistaken for a defect: at column 0 an inline span
 		// of three backticks is read as a fence marker, and the state latches, so every
-		// link in the rest of the file is skipped. CommonMark says the opposite — a fence's
+		// link up to the next latch line is skipped. CommonMark says the opposite — a fence's
 		// info string may not contain a backtick, so this is a span — which puts it among
 		// the gaps that fail toward a MISSED link rather than a false broken one.
 		// Inherited from the Python, whose fence pattern is the same.

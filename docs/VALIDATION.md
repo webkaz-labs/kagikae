@@ -2446,7 +2446,7 @@ identity, §C codex keyring driver, §D store + display the detected identity.
 Daily-use polish: §A concurrent `status` + secret read cache, §B `kae add`
 account-name auto-detection, §C `kae ls`, §D shared snapshot comparator + JWT
 decode consolidation. (Freshness-as-adapter-capability and cursor identity split
-to v0.8.3 — see [RELEASE.md](RELEASE.md) / [ROADMAP.md](ROADMAP.md).)
+to v0.8.3 — see [RELEASE.md](RELEASE.md).)
 
 - `mise run check` green (all packages); `-race` clean on the concurrent paths;
   `TestSecretsNeverInOutputOrMetadata` passed (no secret in the new output).

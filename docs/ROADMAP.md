@@ -6,13 +6,16 @@ by user impact. Implementation history lives in git log.
 An entry goes once it is *only* a record of what happened: what shipped is
 recorded in [RELEASE.md](RELEASE.md) and in git log, not here. **Being labelled
 shipped, or struck through, is not that criterion and licenses no deletion** —
-entries here are both and stay, because each still names work owed, retracts a
-prescription that would otherwise be re-issued, or carries a trap that is in
-neither the code nor git log. An entry cited by name from outside this file keeps
-whatever that citation depends on, whether or not its work has shipped.
+several entries below carry one label or the other and stay, because each still
+names work owed, retracts a prescription that would otherwise be re-issued, or
+carries a trap that is in neither the code nor git log.
 
-A release note that deferred something to this file has to name the release that
-shipped it instead, or its pointer outlives the entry.
+**Anything outside this file that defers a question here, or names an entry, is
+repointed in the commit that removes the entry — repoint first, then it may go.**
+Not only a release note: every miss so far was somewhere else, and each was found
+by reading rather than by any grep. A design-rationale document went on calling a
+question open that the removed entry had answered; an acceptance log, a
+user-facing error message and four code comments named content that was gone.
 
 Follow-up from v0.8.4 (not yet scheduled):
 - **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`

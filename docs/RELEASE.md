@@ -2047,7 +2047,7 @@ the detect-only refusal (exit 10 with guidance) is unchanged.
    switch-time warning (shared predicate); temp-HOME tests.
 3. §D `doctor` credential-health on the shared predicate; temp-HOME tests.
 4. §E codex keyring driver — **deferred to v0.8.2** (undocumented keyring item
-   contract; needs real-machine discovery, reason recorded in ROADMAP.md).
+   contract; needs real-machine discovery — the reason stated in §E above).
 5. Docs (CLI/ADAPTERS/DATA-MODEL/SECURITY/README); temp-HOME tests.
 6. Real-machine gate — **re-capture a live token immediately before the gate and
    use a throwaway account** (the teardown rewrites the live keychain from the

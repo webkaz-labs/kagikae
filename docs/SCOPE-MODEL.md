@@ -245,10 +245,14 @@ hook sync (a) is the fallback only if the §11 validation rules out symlinking.
 
 **This fork is settled for authentication** (§11): the real-machine validation
 proved the token is claude's sole auth artifact, so no copy+patch and no sync
-strategy is needed to keep a directory authenticated. What is *not* settled is
-identity propagation into isolation modes — the cache there is normally private
-to the directory, and how (or whether) kae should switch it is the open question
-in §6 and [ROADMAP.md](ROADMAP.md). The caution above still applies to any future
+strategy is needed to keep a directory authenticated. Identity propagation into
+isolation modes was the remaining open question and it is settled too, in v0.16.0:
+kae writes the bound account's identity into the directory's own store
+(`writeDirIdentity`, above), and claude's mixed-state file is **private** there
+rather than live-shared, because a directory cannot both name its own account and
+share the file recording which account it is. The two behaviours are exclusive, so
+there is deliberately no knob restoring the sharing ([RELEASE.md](RELEASE.md)
+v0.16.0). The caution above still applies to any future
 tool whose auth pointer is *not* token-derived — given claude's proven
 sensitivity to auth-payload consistency, verify with a fresh-process auth check,
 never assume.
@@ -373,6 +377,6 @@ not needed for claude.
 The phased plan that drove this model is fully implemented (v0.7.0–v0.7.2). The
 per-commit history is the source of truth (git log) and the release-level record
 is in [RELEASE.md](RELEASE.md); current behavior, flags, layout, and contracts
-live in PRODUCT.md / CLI.md / ADAPTERS.md / DATA-MODEL.md. The remaining
-surface-vocabulary alignment (`run`/`apply`/`mise init`) is tracked in
-[ROADMAP.md](ROADMAP.md).
+live in PRODUCT.md / CLI.md / ADAPTERS.md / DATA-MODEL.md. The
+surface-vocabulary alignment (`run`/`apply`/`mise init`) shipped in v0.8.0
+([RELEASE.md](RELEASE.md)).

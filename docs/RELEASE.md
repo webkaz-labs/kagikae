@@ -23,6 +23,15 @@ GoReleaser auto-generates the changelog from commits; edit the release body
 afterward for curated highlights when useful. Windows is not built
 ([ROADMAP.md](ROADMAP.md): `internal/lock` is Unix-only).
 
+**A past release's entry is as of that release, and its forward pointers are not
+maintained forward.** Where an entry defers something to
+[ROADMAP.md](ROADMAP.md), it is recording what was deferred *then*; the item may
+have shipped since, and a later entry — nearer the top of this file — is where that
+is recorded. Do not read
+such a pointer as current, and do not repoint it wholesale — [ROADMAP.md](ROADMAP.md)'s
+own header says a pointer that names content being removed is repointed in the commit
+that removes it, which is the case worth spending an edit on.
+
 ---
 
 # kae v0.17.0 (shipped 2026-08-09)
@@ -637,8 +646,8 @@ Baseline: v0.15.2. Contract-additive — one new `doctor` check code,
   backend. The same code covers a `state.json` that cannot be read and an active
   snapshot whose metadata will not parse; both returned silently in the first draft.
   The causes are open-ended, so the check compares the two records rather than
-  watching for one: an interrupted `kae account rename` (deliberately not in this
-  release; the ordering fix shipped in v0.16.0 above), `kae rollback` restoring an
+  watching for one: an interrupted `kae account rename` (the ordering fix shipped in
+  v0.16.0 above; deliberately not in this release), `kae rollback` restoring an
   `active_before` that a later `account rm`/`rename` invalidated, and a writer
   outside kae.
 

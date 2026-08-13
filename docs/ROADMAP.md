@@ -14,8 +14,9 @@ trap that is in neither the code nor git log re-discovered.
 **Anything outside this file that defers a question here, or names an entry, is
 repointed in the commit that removes the entry — repoint first, then it may go.**
 `git grep -in roadmap -- ':!docs/ROADMAP.md'` is the superset to start from: it
-held every reference the trims here had to repoint, two of them only on a wrapped
-line. No grep decides whether what a hit names still exists, so the work is
+held every reference the trims here had to repoint. For some the citation sits alone
+on a wrapped continuation line, so the hit shows no content — read the neighbour.
+No grep decides whether what a hit names still exists, so the work is
 reading the hits, and filtering them by a list of phrases is how each miss
 survived. Release notes hold the largest group; the rest were a design-rationale
 document, an acceptance log, a user-facing error message and code comments. A net,
@@ -290,12 +291,16 @@ alternative exists (`secret-tool`).
   Stage 3 needs a definition covering the claim-forms seen so far, and they do not all
   have the same standing: a quantity beside a `§` citation and a count of something in the
   writer's *own* file — which one diff can change while writing it — have each been
-  measured here, and so, since 2026-08-13, has a reference whose target was deleted
-  from under a heading that survives: trimming this file's shipped records left
-  thirteen of them across release notes, a design-rationale document, an acceptance
-  log, a user-facing error message and code comments, found only by reading every
-  reference to this file, after a detector written for the class failed its own
-  positive control. That is the form stage 3 has to define. Not queued, and that header is
+  measured here, and so, since 2026-08-13, has the file-level analogue of it: a
+  reference naming *content* of a document that still exists, after a trim removed
+  the content. Trimming this file's shipped records left one in every surface that
+  cites this file — release notes by a wide margin, and a design-rationale document,
+  an acceptance log, a user-facing error message and code comments — each found only
+  by reading every reference to this file, after a detector written for the class
+  failed its own positive control. Count them from the diff rather than from a number
+  written here. The `§`-heading form above stays unobserved and is the harder one: a
+  `§` grep sees that the heading exists and never what is under it.
+  Not queued, and that header is
   where the yield argument is normative rather than here: every release-breaking docs
   defect so far came from stage 4, running the executable blocks.
 

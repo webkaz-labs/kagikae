@@ -249,7 +249,7 @@ strategy is needed to keep a directory authenticated. Identity propagation into
 isolation modes was the other open question, and it is settled too, in v0.16.0:
 the bound directory gets its own private copy of the cache, for the reason given
 above (`writeDirIdentity`; [ADAPTERS.md](ADAPTERS.md) § Per-directory shared bind
-is normative for the denylist and for why no knob re-shares it). The caution above
+is normative for the denylist). The caution above
 still applies to any future tool whose auth pointer is *not* token-derived — given
 claude's proven sensitivity to auth-payload consistency, verify with a
 fresh-process auth check, never assume.

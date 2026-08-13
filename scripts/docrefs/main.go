@@ -224,14 +224,9 @@ var (
 	// change nothing. Anchored for the reason sectionNames states.
 	labelRe     = regexp.MustCompile(`^\s*(?:~~)?\*\*(.+?)\*\*`)
 	listLabelRe = regexp.MustCompile(`[-*]\s+(?:~~)?\*\*(.+?)\*\*`)
-	// Leading whitespace and `~~~`, the dialect fenceLineRe below shares. Measured
-	// honestly: reverting this to the column-0 form leaves today's output byte-identical,
-	// because the tree's only indented fence — docs/RELEASE.md, which has no column-0
-	// fence at all — happens to contain neither a `§` nor a `**`. So this is dialect
-	// alignment plus what the selftest's fenced-citation case guarantees, not a live defect
-	// repaired; the column-0 form fails that case and nothing else. Named rather than
-	// numbered because the numbers move: this said "case 18", and merging two cases in the
-	// same diff had already made it 17. Three copies of this model had
+	// Leading whitespace as well as column 0, which is what the selftest's fenced-citation
+	// case guarantees: the column-0 form fails that case and nothing else. Named rather than
+	// numbered, because the numbers move. Three copies of this model had
 	// three dialects; merging the two here leaves two copies of the model and one dialect,
 	// and scripts/docscan/main.go still carries the third (no `~~~`). That was the argument
 	// for matching a sibling rather than for the strictness.
@@ -258,8 +253,9 @@ const nameWindow = 90
 const fenceMarker = "[ \t]*(?:```|~~~)"
 
 // out is package level so readDoc can flush it, which is the whole reason it is not a local
-// in main.
-var out *bufio.Writer
+// in main, and initialised here rather than in main so readDoc has no nil case to test — a
+// branch that was measured unreachable in the built program.
+var out = bufio.NewWriter(os.Stdout)
 
 // readDoc reads a document the walk has already accepted as one, and a failure is fatal.
 //
@@ -284,9 +280,7 @@ var out *bufio.Writer
 func readDoc(p string) []byte {
 	body, err := os.ReadFile(p)
 	if err != nil {
-		if out != nil {
-			_ = out.Flush()
-		}
+		_ = out.Flush()
 		fmt.Fprintf(os.Stderr, "docrefs: reading %s: %v\n", p, err)
 		os.Exit(1)
 	}
@@ -323,13 +317,17 @@ func unwrap(text string) string {
 // Written by hand because RE2 has no backreference, so the rule the Python expressed as a
 // captured backtick run required again to close does not compile here.
 //
-// The two are NOT equivalent, and this comment claimed they were — that the difference was
-// in the leftover bytes and not in the outcome. They are not equivalent. The rule: on a run
+// The two are NOT equivalent, and the difference is in the outcome and not only in the
+// leftover bytes. The rule: on a run
 // of N backticks with no closing run of at least N, the Python backtracks and consumes
 // 2*floor(N/2) of them as an empty span, so N mod 2 backticks stay live and re-phase every
 // later pairing on the line; this emits the whole run literally and leaves nothing live. The
 // shape is main_test.go's unmatched-run case, which is where it belongs, a fixture being
-// executable where a comment is not. The two strips already differ on this tree — the way to
+// executable where a comment is not — and where a backtick *pair* cannot go: gofmt rewrites
+// one in a doc comment to a curly quote as godoc's old quoting idiom, and `mise run check`
+// fails on the rewritten file, so writing a pair here is a gate failure with no explanation
+// in the file. Measured: a triple run and single backticks survive gofmt byte-identically, so
+// the hazard is the pair and nothing else. The two strips already differ on this tree — the way to
 // see where is to run both over every line that reaches them, and the differing lines include
 // the bracketed illustration AGENTS.md's citation rule carries and docs/ROADMAP.md's
 // quotation of it — so byte-identical *output* today is an accident of where those sentences
@@ -425,11 +423,13 @@ func words(text string) []string {
 // comment.
 func stripFences(text string) string {
 	// The guard is not a micro-optimisation dressed up: `fenceRe` is `(?ms)` with a lazy
-	// `.*?`, so it costs about 20ns/byte even where nothing can match, and only 15 of the
-	// 69 sigil-bearing files hold a fence marker at all. Measured at 41ms of this
-	// program's 216ms, paid once per invocation — and the package comment's note on citeRe
-	// says how many invocations one `mise run check` makes. It cannot change the result:
-	// the pattern requires one of these two literals.
+	// `.*?`, so it costs about 20ns/byte even where nothing can match, while only a small
+	// minority of the sigil-bearing files hold a fence marker at all — the pair this
+	// sentence used to name was off by one on both halves, so derive it instead by counting
+	// the files this walk sees that contain the sigil against those that also contain a
+	// marker. Measured at 41ms of this program's 216ms, paid once per invocation; the
+	// package comment's note on citeRe says how many invocations one `mise run check`
+	// makes. It cannot change the result: the pattern requires one of these two literals.
 	if !strings.Contains(text, "```") && !strings.Contains(text, "~~~") {
 		return text
 	}
@@ -561,7 +561,10 @@ func main() {
 			// a deliberate divergence from it, in the direction where the gate is loud.
 			if info, serr := os.Stat(p); serr != nil || !info.Mode().IsRegular() {
 				if errors.Is(serr, fs.ErrPermission) {
-					fmt.Fprintf(os.Stderr, "docrefs: %v\n", serr)
+					// Worded rather than handed to `%v` alone: the verb in a *fs.PathError
+					// belongs to the standard library, so the selftest's needle would be a
+					// string this program does not own.
+					fmt.Fprintf(os.Stderr, "docrefs: cannot stat %s: %v\n", p, serr)
 					os.Exit(1)
 				}
 				return nil
@@ -586,7 +589,6 @@ func main() {
 		return n
 	}
 
-	out = bufio.NewWriter(os.Stdout)
 	// Checked rather than deferred-and-dropped: a failing write leaves bufio holding the
 	// error, and discarding it exits 0 with truncated output — a fail-open, in a program
 	// whose consumer reads a count and a floor.

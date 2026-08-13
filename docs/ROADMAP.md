@@ -224,9 +224,15 @@ alternative exists (`secret-tool`).
   versions over the network on first use — so each one needs a decision about caching
   and about what a CI runner is allowed to touch, not just a line in a YAML file.
   **The two halves of `docs-check` have come apart since this was written**, and the
-  argument above prices them as one: the check itself now needs only bash and the Go
-  toolchain CI already installs, and runs in well under a second, while every objection
-  listed belongs to its selftest. Whoever decides this should price them separately.
+  argument above prices them as one. The check itself needs bash, the POSIX utilities any
+  runner has, and the Go toolchain CI already installs — no python, which is what changed —
+  and its cost is one `go run` over the tree. Its selftest costs that once per case plus a
+  copy of the tracked tree each time, which is the only objection in the list above that
+  touches `docs-check` at all; the other two belong to `smoke-selftest` and to the lint
+  steps. Whoever decides this should price the two halves separately. **No timing is quoted
+  here on purpose**: every absolute measured while this was written disagreed with every
+  other, because the machine was running several agents at once — one reviewer had the
+  compiled extractor at 727ms and another had `go run` at 150ms in the same session.
   Nothing here should be widened silently; the gap is now stated in all three places
   that describe the gate.
 

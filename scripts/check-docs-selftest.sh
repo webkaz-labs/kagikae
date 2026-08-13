@@ -88,9 +88,12 @@ run_check() {
 }
 
 # check <name> <wanted message> <output> [message that must be absent]
+needles=()
+
 check() {
   local name="$1" want="$2" got="$3" unwanted="${4:-}"
   cases=$((cases + 1))
+  needles+=("$want")
   if ! printf '%s' "$got" | grep -Fq "$want"; then
     printf 'FAIL  %s\n      wanted the message: %s\n      got: %s\n' "$name" "$want" "$got" >&2
     failures=$((failures + 1))
@@ -127,8 +130,8 @@ check() {
 # a different way: the `skipDirs` literal's `map[string]bool{…}` is a bracket expression, so
 # sed substitutes nothing and exits 0; a `docs/…` target ends the substitute command; and a
 # bare `README.md` target has a `.` that over-matches silently. A Markdown heading is the one
-# needle here that sed would handle — which is why this sentence is about the needles and not
-# about all of them, having twice been written as a count that a later call site falsified.
+# needle here that sed would handle, which is why this sentence is about the needles rather
+# than a total.
 # awk's index() and substr() do not interpret a needle at all. Passed through
 # the environment rather than through `-v`, which
 # expands escape sequences in the value: no literal used here contains a backslash today,
@@ -215,7 +218,7 @@ check 'the working tree passes' "$OK_LINE" "$out"
 dir=$(fixture brokenlink)
 printf '\n[deliberately broken](docs/NO-SUCH-FILE.md)\n' >> "$dir/README.md"
 out=$(run_check "$dir")
-check 'a broken link is named' 'link target does not exist' "$out"
+check 'a broken link is named' 'link target does not exist: docs/NO-SUCH-FILE.md' "$out"
 
 # 3. The Map membership predicate, on its own routing row rather than any mention of the
 #    filename — a substring test passed this because another row's prose names the file.
@@ -507,18 +510,96 @@ printf 'see [gone](NO-SUCH.md)\n' > "$dir/docs/sub/x.md"
 chmod 444 "$dir/docs/sub"
 out=$(run_check "$dir")
 chmod 755 "$dir/docs/sub"
-check 'a document the walk cannot stat is named' 'docrefs: stat' "$out"
+check 'a document the walk cannot stat is named' 'docrefs: cannot stat' "$out"
+
+# 23. A citation whose TARGET cannot be read. `readDoc` is one function for both readers
+#     because they used to disagree: the walk's read exited while namesFor cached nil, so a
+#     citation to an unopenable target was judged against zero section names and reported as
+#     naming a section that file declares nowhere — a claim about a file nothing had read.
+#     Measured: re-splitting the two policies brings that back at rc=0 with every other case
+#     here green and the gate green, so the case above pins one call site and this pins the
+#     other.
+#
+#     `dist` is the isolation and not a convenience: the walk prunes it, so nothing but
+#     resolveTarget and namesFor ever touches a file in there — resolveTarget does not consult
+#     skipDirs, which is a pre-existing asymmetry with no live instance and is what makes this
+#     fixture reach namesFor and nothing else.
+#
+#     The fourth argument is the load-bearing half. The wanted needle says the failure was
+#     named; only the absence of the verdict complaint says it was not *also* asserted about a
+#     file nothing opened.
+dir=$(fixture unreadablecitetarget)
+mkdir -p "$dir/dist"
+printf '## Widget\n' > "$dir/dist/D.md"
+printf '\nsee dist/D.md § Widget here\n' >> "$dir/README.md"
+chmod 000 "$dir/dist/D.md"
+out=$(run_check "$dir")
+chmod 644 "$dir/dist/D.md"
+check 'an unreadable citation target is named, not verdicted' 'docrefs: reading' "$out" \
+  'declares no section for'
 
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs-selftest: %s case(s) failed\n' "$failures" >&2
   exit 1
 fi
 
+# No case may assert a needle that is a fragment of another case's, because `grep -Fq` accepts
+# a prefix: a needle short enough to sit inside a different diagnostic passes on that one
+# instead. Measured on three shapes. One live instance existed when this was written — `link
+# target does not exist` sat inside `link target does not exist: docs/PRODUCT.md`, so the
+# broken-link case could not tell a named target from the wrong one, and it names its own
+# fixture's target now. The other two are the vacuity this branch produced: a needle truncated
+# to `CLAUDE.md ` still matched a reworded diagnostic, and the new verdict needle loosened to
+# `unrecognised` passed on its twin's *kind* message.
+#
+# Complementary to the reference counts below rather than a replacement: that check sees a
+# constant whose uses went to zero, this one sees a single site that went short. shellcheck
+# covers only the first, and only when no use survives.
+is_fragment() {
+  case "$2" in
+    *"$1"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+for i in "${!needles[@]}"; do
+  for j in "${!needles[@]}"; do
+    if [ "$i" != "$j" ] && [ "${needles[$i]}" != "${needles[$j]}" ] &&
+      is_fragment "${needles[$i]}" "${needles[$j]}"; then
+      printf 'check-docs-selftest: a case asserts "%s", a fragment of another case'"'"'s "%s" — a needle that short passes on the wrong message\n' \
+        "${needles[$i]}" "${needles[$j]}" >&2
+      exit 1
+    fi
+  done
+done
+
+# How often each message constant is USED, counted over non-comment lines only so a comment
+# mentioning one cannot inflate it. Two-directional for the same reason EXPECTED_CASES is,
+# and added for a measured one: a mechanical edit that takes every use of a constant to zero
+# leaves its cases asserting a prefix of the real output, which `grep -Fq` still matches, so
+# they stay green while testing nothing. That happened on the branch that added this — a perl
+# replacement interpolated ROOT_DOC_MSG as a perl variable and four assertions silently became
+# `CLAUDE.md `. shellcheck caught that one only because the constant went entirely unused;
+# one surviving use and it would have been silent. Adding a case that asserts one of these
+# has to bump its number, which is the point.
+while read -r const want; do
+  if [ -z "$const" ]; then
+    continue
+  fi
+  uses=$(grep -v '^[[:space:]]*#' "$0" | { grep -Fc -- "\$$const" || true; })
+  if [ "$uses" -ne "$want" ]; then
+    printf 'check-docs-selftest: %s is used on %s line(s), expected %s\n' "$const" "$uses" "$want" >&2
+    exit 1
+  fi
+done <<'CONSTS'
+OK_LINE 4
+ROOT_DOC_MSG 4
+CONSTS
+
 # Two-directional, the way scripts/smoke-run-selftest.sh's EXPECTED_GUARDS is: a floor would
 # let a case be added and then silently deleted back to the count before it. Adding a case
 # has to bump this, and that is the point. Written without naming either count, because the
 # sentence that did name them was left behind by the first bump.
-EXPECTED_CASES=23
+EXPECTED_CASES=24
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

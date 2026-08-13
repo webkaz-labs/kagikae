@@ -564,6 +564,12 @@ func main() {
 			// beside the true message, sending a maintainer to the arm that exists to catch a
 			// verdict typo for a typo that did not exist. The rows are worthless either way
 			// once this exits non-zero; the diagnostic is what the flush protects.
+			//
+			// No selftest case pins this, and one was measured not working before being
+			// abandoned: whether the truncation lands mid-field depends on where the 4096-byte
+			// boundary falls, which depends on how much output precedes the failing file, so
+			// an assertion on it would say nothing today and would start or stop holding on
+			// unrelated docs edits. It is defence in depth, and that is all it claims.
 			_ = out.Flush()
 			fmt.Fprintf(os.Stderr, "docrefs: reading %s: %v\n", p, err)
 			os.Exit(1)

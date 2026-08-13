@@ -182,6 +182,11 @@ drop_map_row() {
 # since a compile error emits no kind. Mistyping the *directory* is the loud half, because
 # `cat` itself fails. Asymmetric, and the silent half is the one a rename inside this
 # directory would hit.
+#
+# Do not reach for a second existence check here. This guard is a precondition and cannot see
+# the other way in — a second tracked `.go` file in that package breaks the build just as
+# well — while the kind case below asserts an OUTCOME and kills both, measured. An outcome
+# assertion covers what a precondition cannot.
 stub_extractor() {
   local target="$1/scripts/docrefs/main.go"
   if [ ! -f "$target" ]; then
@@ -314,10 +319,16 @@ check 'a required doc replaced by a directory is named' 'link target does not ex
 #
 #     Running as root would defeat the fixture; the case then fails loudly for want of the
 #     message rather than passing, which is the direction to fail in.
+#     The assertion is the extractor's OWN diagnostic, not the caller's `|| fail`, and that
+#     is deliberate: deleting the line that names the path was measured leaving the whole
+#     gate green, because the caller's message says only that something exited non-zero. The
+#     path and the errno are what a developer acts on. The caller's reaction to a non-zero
+#     producer is pinned by the truncated-walk case below, so nothing is lost by asserting
+#     the useful half here.
 dir=$(fixture unreadabledoc)
 chmod 000 "$dir/docs/SECURITY.md"
 out=$(run_check "$dir")
-check 'a document the extractor cannot read is named' 'the reference extractor exited non-zero' "$out"
+check 'a document the extractor cannot read is named' 'docrefs: reading' "$out"
 
 # 14. The producer of the docs/ walk failing outright, which is the same class as the case
 #     below at check-docs.sh's other captured producer. Removing the directory is the cheap
@@ -435,6 +446,31 @@ out=$(run_check "$dir")
 check 'a directory prune that loses every Go citation is named' \
   'section citations were found in markdown' "$out"
 
+# 21. The entry the extractor must skip, against the document it must still read. Appended
+#     rather than filed beside the unreadable-document case it belongs with, because
+#     inserting there renumbers eight cases and this file has already paid for that once.
+#
+#     Two symlinks, because one of them cannot discriminate the three states on its own. The
+#     dangling one must be skipped: making the read fatal without narrowing the walk turned
+#     it into a whole gate failing for something no docs edit can fix. The aliased one must
+#     still be read, which is why the walk uses os.Stat and not d.Type() — d.Type() on a
+#     symlink is ModeSymlink, so an IsRegular test there skips a document the Python read.
+#     Measured against all three: unmutated passes, deleting the guard trips the fourth
+#     argument (the dangling link kills the extractor), and the d.Type() form loses the
+#     wanted message (the aliased document is never read). The fourth argument is load
+#     bearing because `docs/ALIAS.md` sorts before `docs/GHOST.md`, so its rows are emitted
+#     before the death and the wanted string alone would still match.
+#
+#     The alias points outside the fixture so the walk cannot reach its content any other
+#     way, which is what makes "was it read through the symlink" observable.
+dir=$(fixture symlinkedentries)
+ln -s /nonexistent/nowhere "$dir/docs/GHOST.md"
+printf 'see [gone](NO-SUCH-OUTSIDE.md)\n' > "$work/outside.md"
+ln -s "$work/outside.md" "$dir/docs/ALIAS.md"
+out=$(run_check "$dir")
+check 'a symlinked document is read and a dangling one is skipped' \
+  'ALIAS.md link target does not exist' "$out" 'the reference extractor exited non-zero'
+
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs-selftest: %s case(s) failed\n' "$failures" >&2
   exit 1
@@ -444,7 +480,7 @@ fi
 # let a case be added and then silently deleted back to the count before it. Adding a case
 # has to bump this, and that is the point. Written without naming either count, because the
 # sentence that did name them was left behind by the first bump.
-EXPECTED_CASES=20
+EXPECTED_CASES=21
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

@@ -2,3 +2,5 @@ kae
 /dist/
 *.test
 .DS_Store
+__pycache__/
+/docsections

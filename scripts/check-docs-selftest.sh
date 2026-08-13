@@ -60,6 +60,13 @@ fixture() {
   printf '%s' "$dir"
 }
 
+# The case runner, in one place: seventeen verbatim copies of this line preceded it. No
+# anchor guard is needed here, unlike drop_map_row's — a mistyped path leaves the real
+# script in place, the check passes, and the case fails loudly.
+run_check() {
+  (cd "$1" && bash scripts/check-docs.sh 2>&1) || true
+}
+
 # check <name> <wanted message> <output> [message that must be absent]
 check() {
   local name="$1" want="$2" got="$3" unwanted="${4:-}"
@@ -115,20 +122,20 @@ ROW
 # 1. Baseline. Without this, every case below could be satisfied by a script that always
 #    fails, and the suite would look green while the check was useless.
 dir=$(fixture baseline)
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'the working tree passes' "$OK_LINE" "$out"
 
 # 2. The link predicate. No floor reaches this: the count rises, and stays above 50.
 dir=$(fixture brokenlink)
 printf '\n[deliberately broken](docs/NO-SUCH-FILE.md)\n' >> "$dir/README.md"
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'a broken link is named' 'link target does not exist' "$out"
 
 # 3. The Map membership predicate, on its own routing row rather than any mention of the
 #    filename — a substring test passed this because another row's prose names the file.
 dir=$(fixture orphan)
 drop_map_row "$dir/AGENTS.md" docs/SCOPE-MODEL.md
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'a doc whose routing row is gone is named' 'SCOPE-MODEL.md is not listed' "$out"
 
 # 4. A link inside a code span is an example, not a link. Both backtick runs, because a
@@ -136,7 +143,7 @@ check 'a doc whose routing row is gone is named' 'SCOPE-MODEL.md is not listed' 
 #    prose into a gate failure.
 dir=$(fixture codespan)
 printf '\nSee `[X.md](X.md)` and ``[Y.md](Y.md)`` forms.\n' >> "$dir/README.md"
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'links inside code spans are ignored' "$OK_LINE" "$out"
 
 # 5. Degenerate input, docs side. Every floor in check-docs.sh exists because a walk that
@@ -146,7 +153,7 @@ check 'links inside code spans are ignored' "$OK_LINE" "$out"
 #    message rather than any failure, because an empty docs/ breaks Map links too.
 dir=$(fixture emptydocs)
 rm -f "$dir"/docs/*.md
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'an empty docs/ trips the walk floor' 'walked only 0 files' "$out"
 
 # 6. Degenerate input, link side: an extractor that emits nothing must not read as a
@@ -154,7 +161,7 @@ check 'an empty docs/ trips the walk floor' 'walked only 0 files' "$out"
 #    what a mistyped glob or an over-broad prune would do in practice.
 dir=$(fixture nolinks)
 printf '#!/usr/bin/env python3\n' > "$dir/scripts/docs_links.py"
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'an extractor emitting nothing trips the link floor' 'resolved only 0 relative links' "$out"
 
 # 7. Degenerate input, Map side. Renaming the heading the Map walk anchors on reaches two
@@ -170,7 +177,7 @@ if '## Documentation Map' not in text:
     raise SystemExit('fixture anchor miss: no "## Documentation Map" heading to rename')
 p.write_text(text.replace('## Documentation Map', '## Doc Map', 1))
 RENAME
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'renaming the Map heading trips its extraction floor' 'extracted only 0 docs/ links' "$out"
 
 # 8. `CLAUDE.md`, which no link reaches. No floor is involved in this case or in the
@@ -179,7 +186,7 @@ check 'renaming the Map heading trips its extraction floor' 'extracted only 0 do
 #    every reference to one and nothing here would report that.
 dir=$(fixture noclaudemd)
 rm -f "$dir/CLAUDE.md"
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'a deleted CLAUDE.md is named' 'CLAUDE.md is missing, empty, or not a regular file' "$out"
 
 # 9. The case that put README.md in that loop, and the only one of the three the link walk
@@ -189,14 +196,14 @@ check 'a deleted CLAUDE.md is named' 'CLAUDE.md is missing, empty, or not a regu
 dir=$(fixture noreadme)
 rm -f "$dir/README.md"
 drop_map_row "$dir/AGENTS.md" README.md
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'README.md deleted with its only Map row is named' 'README.md is missing, empty, or not a regular file' "$out"
 
 # 10. Emptied rather than deleted, which `-f` alone passed. Why empty is as bad as absent is
 #     stated once, above the predicate in scripts/check-docs.sh.
 dir=$(fixture emptyclaudemd)
 : > "$dir/CLAUDE.md"
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'an emptied CLAUDE.md is named' 'CLAUDE.md is missing, empty, or not a regular file' "$out"
 
 # 11. A root document replaced by a directory of the same name. This is the only case that
@@ -206,7 +213,7 @@ check 'an emptied CLAUDE.md is named' 'CLAUDE.md is missing, empty, or not a reg
 dir=$(fixture claudemddir)
 rm -f "$dir/CLAUDE.md"
 mkdir "$dir/CLAUDE.md"
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'a root doc replaced by a directory is named' 'CLAUDE.md is missing, empty, or not a regular file' "$out"
 
 # 12. A required document under docs/ replaced by a directory of the same name. This reaches
@@ -218,7 +225,7 @@ check 'a root doc replaced by a directory is named' 'CLAUDE.md is missing, empty
 dir=$(fixture docsdir)
 rm -f "$dir/docs/PRODUCT.md"
 mkdir "$dir/docs/PRODUCT.md"
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'a required doc replaced by a directory is named' 'link target does not exist: docs/PRODUCT.md' "$out" \
   'the link extractor exited non-zero'
 
@@ -232,7 +239,7 @@ check 'a required doc replaced by a directory is named' 'link target does not ex
 #     fixture can reach it without inventing a domain tree.
 dir=$(fixture nodocsdir)
 rm -rf "$dir/docs"
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'a docs/ walk that fails outright is named' 'walking docs/ failed' "$out"
 
 # 14. A partially collapsed walk. The empty-extractor case above covers one that emits
@@ -246,7 +253,7 @@ cat > "$dir/scripts/docs_links.py" <<'TRUNC'
 print("README.md\tdocs/CLI.md")
 raise SystemExit(3)
 TRUNC
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'an extractor that dies mid-walk is named' 'the link extractor exited non-zero' "$out"
 
 # 15. The section predicate. `Tier-1 tools` is the citation this repository actually
@@ -255,7 +262,7 @@ check 'an extractor that dies mid-walk is named' 'the link extractor exited non-
 #     floor reaches this: the count rises by one and stays far above 100.
 dir=$(fixture phantomsection)
 printf '\nSee [ROADMAP.md](docs/ROADMAP.md) § Tier-1 tools for the mapping.\n' >> "$dir/README.md"
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'a citation naming a section that does not exist is named' \
   'which that file declares no section for' "$out"
 
@@ -263,8 +270,12 @@ check 'a citation naming a section that does not exist is named' \
 #     the one that matters most here: the predicate passes silently on an empty walk,
 #     because "no citation was absent" is true of no citations at all.
 dir=$(fixture nosections)
-printf '#!/usr/bin/env python3\n' > "$dir/scripts/docs_sections.py"
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+cat > "$dir/scripts/docsections/main.go" <<'EMPTYSEC'
+package main
+
+func main() {}
+EMPTYSEC
+out=$(run_check "$dir")
 check 'an extractor emitting nothing trips the section floor' \
   'checked only 0 section citations' "$out"
 
@@ -272,14 +283,39 @@ check 'an extractor emitting nothing trips the section floor' \
 #     The assertion names the exit status rather than the floor, because this fixture
 #     trips both and only one of them is what the case pins.
 dir=$(fixture truncatedsections)
-cat > "$dir/scripts/docs_sections.py" <<'TRUNCSEC'
-#!/usr/bin/env python3
-print("README.md\tdocs/CLI.md\tresolves\tkae add")
-raise SystemExit(3)
+cat > "$dir/scripts/docsections/main.go" <<'TRUNCSEC'
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	fmt.Println("README.md\tdocs/CLI.md\tresolves\tkae add")
+	os.Exit(3)
+}
 TRUNCSEC
-out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+out=$(run_check "$dir")
 check 'a section extractor that dies mid-walk is named' \
   'the section extractor exited non-zero' "$out"
+
+# 18. A `§` citation inside a fenced block is an illustration, not a citation — the
+#     section-side counterpart of case 4, and the case that would have caught the strip
+#     accepting only a column-0 fence. Indented, because the one file in this tree whose
+#     only fenced block is indented is what that defect was measured on: the citation was
+#     reported absent (the gate failing on a code block) and a bold label inside the same
+#     block became a section name a phantom resolved against.
+dir=$(fixture fencedsection)
+cat >> "$dir/README.md" <<'FENCED'
+
+  ```bash
+  # see docs/CLI.md § Zznosuchsection for the flags
+  - **Zzfencedlabel** is not a section
+  ```
+FENCED
+out=$(run_check "$dir")
+check 'a citation inside a fenced block is ignored' "$OK_LINE" "$out"
 
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs-selftest: %s case(s) failed\n' "$failures" >&2
@@ -290,7 +326,7 @@ fi
 # let a case be added and then silently deleted back to the count before it. Adding a case
 # has to bump this, and that is the point. Written without naming either count, because the
 # sentence that did name them was left behind by the first bump.
-EXPECTED_CASES=17
+EXPECTED_CASES=18
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

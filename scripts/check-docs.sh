@@ -7,10 +7,12 @@
 # uppercase index does not link. Enumerated rather than counted: the previous header counted
 # them, undercounted by leaving the dormant one out, and nothing reported that.
 #
-# The section half is the newest and the narrowest: scripts/docs_sections.py's header is
-# normative for which citation forms it reads, the three designs that produced false
-# positives on correct prose before this one, and — read this before trusting a clean
-# run — that it compares only the first word of the cited name.
+# The section half is the newest and the narrowest: scripts/docsections/main.go's package
+# comment is normative for which citation forms it reads, the designs that produced false
+# positives on correct prose before this one, and — read it before trusting a clean run —
+# the ceilings it lists, one of which bounds how much of a cited name it compares. Its
+# predicate is pinned by main_test.go in that directory, which is what `go run` rather
+# than a script buys.
 #
 # The orphan half is not hypothetical. docs/SCOPE-MODEL.md was the one file missing
 # from that table, so nothing told a reader when to open it, and a second normative
@@ -233,7 +235,7 @@ fi
 # citation naming a section the file has never had is invisible to it. One shipped:
 # docs/ROADMAP.md cited "§ Tier-1 tools", found by a reviewer. Status read the same way
 # as the link extractor's, and for the same measured reason.
-sections=$(python3 "$root/scripts/docs_sections.py") ||
+sections=$(GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go run ./scripts/docsections) ||
   fail "the section extractor exited non-zero, so the walk below is truncated and its count means nothing"
 
 sections_checked=0
@@ -244,8 +246,8 @@ while IFS=$'\t' read -r citing target verdict name; do
     continue
   fi
   case $verdict in
-    # A target outside the tree cannot be resolved from here; docs_sections.py's header
-    # says which ones those are and why. Not counted, so the floor bounds only the walk
+    # A target outside the tree cannot be resolved from here; scripts/docsections/main.go's package
+    # comment says which ones those are and why. Not counted, so the floor bounds only the walk
     # this repository can actually check.
     external) continue ;;
     resolves) : ;;
@@ -272,7 +274,7 @@ if [ "$sections_checked" -lt 100 ]; then
 fi
 # What the floor cannot see, and the reason this is a predicate instead of a bigger number:
 # two single-token collapses land *above* any floor this walk could carry. Dropping `.go`
-# from docs_sections.py's SUFFIXES, or adding `internal` to its SKIP_DIRS, silently stops
+# from scripts/docsections/main.go's suffixes, or adding `internal` to its skipDirs, silently stops
 # checking every citation in Go and still reports ~135 — measured. Naming both halves is
 # two-sided in the way a count is not.
 if [ "$sections_md" -eq 0 ] || [ "$sections_go" -eq 0 ]; then

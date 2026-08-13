@@ -69,9 +69,6 @@ a link walk cannot vouch for **as a set** are present, non-empty and regular fil
 which link forms the extractor sees, which citation forms the section walk reads **and
 which it cannot**, why each count is a floor, why a floor cannot reach a
 predicate, and which documents that last check names and why; do not restate them here.
-Read `scripts/docs_sections.py`'s header before trusting a clean section walk — it lists
-what that walk does not reach, and the list has already grown once, so it is not repeated
-here.
 `docs-check` is **not** `mise run docs-scan`, which reports duplicated prose and
 deliberately fails nothing. `mise run audit` (govulncheck, plus the
 upstream literal fingerprints — it reads the installed tools' own binaries, so it
@@ -338,13 +335,7 @@ does and does not mean; read it before acting on one.
 **A citation that names a `§` names a target that has to exist**, and it quotes the
 section name verbatim — so grep the name, not the sigil. Before renaming or moving a
 section, `git grep -n` a **short distinctive fragment** of the old name, and repoint
-every hit. **Removing content from under a heading that survives is the same class and
-the fragment grep stays green on it**, so the inbound references have to be read; that is
-what a trim of `docs/ROADMAP.md` paid for thirteen times over.
-`mise run check` now decides one slice of the existence half —
-`scripts/docs_sections.py` refuses a `X.md § Name` whose first word matches no section
-name in that file — so the hand grep is for what that does not reach, which its header
-lists. Everything about *renaming* stays manual. Short because citations wrap across lines, so a grep for the whole heading
+every hit. Short because citations wrap across lines, so a grep for the whole heading
 misses them — reproducible today: `git grep -n 'Ordering two copies'` finds the
 citation in `internal/cmd/run_test.go`, and `git grep -n 'Ordering two copies of one
 credential'` finds nothing there. Do not reach for `git grep '\.md §'`: it misses the
@@ -354,9 +345,18 @@ complete nor ever empty. A **bare** `AGENTS.md` citation needs none of this — 
 survives a rule moving, because the reader lands in § Implementation Boundaries and
 the routing list sends them on.
 
+`mise run check` decides one slice of that by itself: `scripts/docsections` refuses a
+`X.md § Name` naming a section that file declares nowhere. The hand grep is for what it
+does not reach, which its package comment lists, and everything about *renaming* stays
+manual. **Removing content from under a heading that survives is the same class as
+renaming and the fragment grep stays green on it**, so the inbound references have to be
+read — a trim of `docs/ROADMAP.md` paid for that, and none of those references named
+a `§` at all.
+
 **That grep sees whether the target exists and nothing else, so what it cannot see is
 a quantity written *beside* a citation.** `docs/ROADMAP.md` said "the two commands in
-CONTEXT.md § Not converged" after a later commit merged them into one: § Not converged
+docs/CONTEXT.md § Not converged" after a later commit merged them into one: § Not
+converged
 still existed, so every heading-fragment grep stayed green and only reading the sentence
 found it.
 

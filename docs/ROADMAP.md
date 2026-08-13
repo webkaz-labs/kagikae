@@ -21,8 +21,7 @@ reading the hits, and filtering them by a list of phrases is how each miss
 survived. Release notes hold the largest group; the rest were a design-rationale
 document, an acceptance log, a user-facing error message and code comments. A net,
 not a proof — a reference that defers a question here without naming the file is
-stage 3 of the docs scan, filed below — whose one built slice checks that a cited section
-exists and never what is under it.
+stage 3 of the docs scan, filed below.
 
 ## Upstream-drift automation — what is left
 
@@ -282,7 +281,7 @@ alternative exists (`secret-tool`).
   four-stage docs scan; stage 2 (duplication) is what that program does, and stage 3 —
   reconciling a claim one document makes *about another* against what the other one says
   — has no general implementation. One slice of it is now in the gate:
-  `scripts/docs_sections.py` refuses a citation naming a section its target declares
+  `scripts/docsections` refuses a citation naming a section its target declares
   nowhere, which is the narrowest claim-about-another-document there is — the target's
   own headings answer it, with no reading needed. **Read its header for what it does not
   reach before trusting a clean run**; the list is there rather than here because it has

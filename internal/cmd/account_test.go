@@ -204,7 +204,7 @@ func (b setFailBackend) Set(ctx context.Context, key string, value []byte) error
 // still active, because the new snapshot is not complete and nothing may point at
 // it. buildAccountRename's three-stage order is what guarantees that: kae flipped
 // state.Active *first* through v0.15.3, which left state naming a snapshot dir
-// that did not exist yet (docs/ROADMAP.md).
+// that did not exist yet (docs/RELEASE.md v0.16.0).
 func TestAccountRenameCopyFailureLeavesOldAccountActive(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()

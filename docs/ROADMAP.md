@@ -1,10 +1,18 @@
 # Roadmap
 
-Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
-Implementation history lives in git log. An entry is removed once the work it
-names has shipped — what shipped is recorded in [RELEASE.md](RELEASE.md) and in
-git log, not here. A release note that deferred something to this file has to
-name the release that shipped it instead, or its pointer outlives the entry.
+Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)), ordered
+by user impact. Implementation history lives in git log.
+
+An entry goes once it is *only* a record of what happened: what shipped is
+recorded in [RELEASE.md](RELEASE.md) and in git log, not here. **Being labelled
+shipped, or struck through, is not that criterion and licenses no deletion** —
+entries here are both and stay, because each still names work owed, retracts a
+prescription that would otherwise be re-issued, or carries a trap that is in
+neither the code nor git log. An entry cited by name from outside this file keeps
+whatever that citation depends on, whether or not its work has shipped.
+
+A release note that deferred something to this file has to name the release that
+shipped it instead, or its pointer outlives the entry.
 
 Follow-up from v0.8.4 (not yet scheduled):
 - **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`
@@ -1222,6 +1230,15 @@ is anywhere near that, and only by demand.
   copilot's own hidden `--config-dir` can defeat it, which nothing in the
   environment reveals — has to be established first. **Demand-gated**: build it
   when someone needs a per-directory copilot account, not for parity.
+- **agy's file store on macOS** (recorded gap, 2026-07-31): agy skips the
+  keychain under ssh/wsl/container detection, on a 1s keyring timeout, and on any
+  keyring failure, so the file store is reachable on macOS too — but the fallback
+  file's path is not derivable from the 1.0.10 binary, so kae warns instead of
+  switching it ([ADAPTERS.md](ADAPTERS.md), [VALIDATION.md](VALIDATION.md)
+  § Upstream Behaviour Assumptions owns the measurement).
+  Blocked on a way to make agy write a token without a real login: it has no
+  kae-drivable login, so the `security` PATH shim (which does apply to agy) has
+  nothing to intercept yet. agy is the tier floor and this is the reason.
 - **agy home isolation**: no stable home/config env var is known, so the isolation
   modes refuse it. Revisit only if upstream ships one *and* the file-store gap
   above is closed — a redirected home whose fallback store kae cannot find would

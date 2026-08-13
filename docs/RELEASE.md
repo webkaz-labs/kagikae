@@ -1655,8 +1655,8 @@ itself); listed here so it is not lost.
 
 ## Non-Goals (this release)
 
-- "Did you mean X?" unknown-command suggestion — stays a separate candidate; it
-  shipped in v0.8.5.
+- "Did you mean X?" unknown-command suggestion — out of scope here; it shipped in
+  v0.8.5.
 - A completion-framework dependency (cobra / carapace / `jdx/usage`): kae stays
   hand-rolled and dependency-minimal; the `__complete` backend reproduces the
   dynamic-completion pattern natively.
@@ -1873,8 +1873,8 @@ Previous baseline: v0.8.1 (credential freshness / auto-recapture).
   email claim or `account_id` in `auth.json`, opencode → `accountId`, copilot →
   `lastLoggedInUser.login`. **cursor is deferred** — its `cursor-agent status`
   output is undocumented (discovery-blocked, like the codex keyring item), so
-  cursor requires an explicit name until a real-machine discovery; see
-  [ROADMAP.md](ROADMAP.md). The raw identity is sanitized to `[a-zA-Z0-9._-]`
+  cursor requires an explicit name until a real-machine discovery; it shipped in
+  v0.8.3. The raw identity is sanitized to `[a-zA-Z0-9._-]`
   (email → local part before `@`), capped at 64.
 - **`kae add <tool> <account>`** (explicit): unchanged — the given name wins.
 - Works on both the login flow and `--no-login` (detect from the post-login /
@@ -1905,7 +1905,7 @@ Previous baseline: v0.8.1 (credential freshness / auto-recapture).
   `Freshness(payload) Info` method touches all six adapters plus the interface,
   which grows this patch past its daily-use-polish scope. Deferred per the
   splittable note; the shared `jwtExpiry`/`epochToTime`/`decodeObject`
-  primitives stay in `internal/freshness` (see [ROADMAP.md](ROADMAP.md)).
+  primitives stay in `internal/freshness`. The capability shipped in v0.8.3.
 
 ## Non-Goals (this release)
 
@@ -2008,9 +2008,8 @@ round-trip cannot be implemented safely without first discovering the item's
 service/account naming on a real machine with a live codex keyring login —
 guessing it would violate the structure-guard rule (refuse unknown layouts,
 never best-effort write; [ADAPTERS.md](ADAPTERS.md)). Per the splittable note,
-**§E is deferred to v0.8.2** and A–D ship as v0.8.1. The deferral and its reason
-are recorded in [ROADMAP.md](ROADMAP.md); the detect-only refusal (exit 10 with
-guidance) is unchanged.
+**§E is deferred to v0.8.2** and A–D ship as v0.8.1, for the reason just above;
+the detect-only refusal (exit 10 with guidance) is unchanged.
 
 ## Non-Goals (this release)
 
@@ -2489,8 +2488,9 @@ git tag v0.7.0).
   `state.json` while the snapshot no longer exists, so the next `kae use`/
   `apply` errors with "account not captured". Documented limitation; prune the
   affected backups manually if needed.
-- TUI, Windows, Codex keyring driver, account auto-detection,
-  `env export --dotenv --reveal` — see [ROADMAP.md](ROADMAP.md).
+- TUI, Windows, Codex keyring driver, `env export --dotenv --reveal` — see
+  [ROADMAP.md](ROADMAP.md); account auto-detection shipped in v0.8.2 (cursor in
+  v0.8.3, agy in v0.8.7).
 - No automatic network access.
 
 ## Acceptance Criteria
@@ -2685,9 +2685,9 @@ adapter lands behind its own discovery note in ADAPTERS.md before code.
 ## Non-Goals (this release)
 
 TUI (ROADMAP), Windows, Codex keyring driver, `env export --dotenv --reveal`
-— see [ROADMAP.md](ROADMAP.md). Login UX polish shipped in v0.8.6, performance
-polish in v0.8.2, and the claude file-driver override in v0.7.1. No automatic
-network access:
+— see [ROADMAP.md](ROADMAP.md). The claude half of login UX polish shipped in
+v0.8.6 and agy login stays deferred, performance polish shipped in v0.8.2, and
+the claude file-driver override in v0.7.1. No automatic network access:
 the remote-definition work is design only.
 
 ## Breaking Changes

@@ -345,7 +345,7 @@ complete nor ever empty. A **bare** `AGENTS.md` citation needs none of this — 
 survives a rule moving, because the reader lands in § Implementation Boundaries and
 the routing list sends them on.
 
-`mise run check` decides one slice of that by itself: `scripts/docsections` refuses a
+`mise run check` decides one slice of that by itself: `scripts/docrefs` refuses a
 `X.md § Name` naming a section that file declares nowhere. The hand grep is for what it
 does not reach, which its package comment lists, and everything about *renaming* stays
 manual. **Removing content from under a heading that survives is the same class as

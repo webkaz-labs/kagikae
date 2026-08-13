@@ -1,19 +1,67 @@
-// Command docsections emits every `<file>.md § <name>` citation as
-// `<citing>\t<target>\t<verdict>\t<name>`, for check-docs.sh. Verdict is `resolves`,
-// `absent`, or `external`.
+// Command docrefs emits every reference from one document into another, one per line,
+// for check-docs.sh:
 //
-// The defect this exists for: a citation naming a section its target has never had. One
-// shipped — docs/ROADMAP.md cited "§ Tier-1 tools", a section that file has never had,
-// and a reviewer found it. Nothing in this repository's gate read the sigil before this
-// program.
+//	link	<citing>	<target>
+//	cite	<citing>	<target>	<verdict>	<name>
 //
-// Go rather than the Python this was first written in. scripts/docs_links.py is the only
-// Python in the tree, mise.toml declares no python, and CI runs neither docs-check nor
-// anything else that would notice a machine without python3 — so a second Python script
-// deepens an undeclared dependency. scripts/docscan is the same shape, and the release is
-// unaffected because .goreleaser.yaml builds `main: .`.
+// Verdict is `resolves`, `absent`, or `external`. A link row carries no verdict on
+// purpose: resolving one is three lines of parameter expansion in the caller, which is
+// already where the `-f` narrowing, the fragment strip and the scheme/absolute skips
+// live.
 //
-// # The predicate
+// # The defects this exists for
+//
+// A markdown link whose target does not exist, and a citation naming a section its
+// target has never had. The second shipped: docs/ROADMAP.md cited "§ Tier-1 tools", a
+// section that file has never had, and a reviewer found it. Nothing in this
+// repository's gate read the sigil before this program.
+//
+// # One program, two extractors, and why they are not one extractor
+//
+// A link and a `§` citation are both a reference from one document into another, so the
+// walk, the pruned directories, the fence dialect and the runtime are shared here — that
+// duplication used to sit in two languages. The extraction is not shared and cannot be:
+// code-span stripping is required for links and forbidden for names, which are free to
+// wrap the cited name in backticks; and line-joining is required for citations, which
+// wrap, and fatal for links, which do not — a `](` pair formed across a line break is not
+// a link. Two functions in one file is what that argues for; one function is what it
+// forbids.
+//
+// The two fence models also stay separate, for a measured difference rather than for
+// symmetry: stripFences requires a closing fence, so an unclosed one leaves the rest of
+// the file readable, while the link half toggles per line and treats everything after an
+// unclosed fence as fenced. Only the dialect is shared — leading whitespace, and `~~~`
+// as well as three backticks — and the dialect is the half that had drifted three ways.
+//
+// # Go rather than the Python the link half was first written in
+//
+// mise.toml declares no python and CI runs neither docs-check nor docs-check-selftest, so
+// a python3 the gate needs is a dependency nothing declares and nothing outside a
+// developer's machine would notice. Derive what is left rather than reading a count here:
+// `grep -rn python3 scripts/`. Measured before this port, with a python3 that exits 127:
+// check-docs.sh was loud but misdiagnosing, reporting `the link extractor exited
+// non-zero` about an interpreter that was never there, and check-docs-selftest.sh failed
+// its first two cases for a reason neither case tests and then exited 127 inside its
+// third with nothing but `command not found`. This program is also inside `go vet`,
+// `golangci-lint` and `go test`, which is where main_test.go's cases live; scripts/docscan
+// is the same shape, and the release is unaffected because .goreleaser.yaml builds
+// `main: .`.
+//
+// # The link predicate, and what it cannot see
+//
+// A link-shaped string inside code is an example, not a link, so fenced blocks and inline
+// code spans are removed first. AGENTS.md's citation rule contains a bracketed `X.md`
+// pair as an illustration of a grep form, and the first real run of this check reported it
+// as a broken target.
+//
+// The ceilings, each measured as having no instance in this tree today. A tilde fence is
+// tracked as well as a backtick one, but a four-space indented code block is not, so a
+// link inside one is reported as broken. Reference-style links (`[x][1]` with a separate
+// `[1]: path` definition), links split across lines, and `[a [b]](x)` are invisible to
+// linkRe. Every one of these fails toward a false broken target rather than a missed real
+// one, except the reference-style form, which is simply unseen.
+//
+// # The citation predicate
 //
 // It is a prefix test on the words after the sigil, and it deliberately does not try
 // to find where the cited name ends. A citation here quotes a *distinctive leading
@@ -56,7 +104,8 @@
 //
 // `citeRe` opens with a `*` quantifier, so RE2 has no literal prefix to accelerate on and
 // scans all ~2MB of joined text byte by byte: 107ms of this program's 216ms, its largest
-// single item, and check-docs.sh runs 20 times per `mise run check`. Anchoring the scan on
+// single item, and check-docs.sh runs once for the gate plus once per selftest case, so
+// the cost is paid that many times per `mise run check`. Anchoring the scan on
 // the `§` literal instead — which RE2 does accelerate — and matching the filename half
 // backwards in a bounded window was measured at 136ms saved, output identical on this tree
 // and all selftest cases holding. It is not done here because it changes *how* citations
@@ -65,7 +114,7 @@
 // pass that found two defects in this matcher. The saving and the caveat are both real;
 // take it with its own review.
 //
-// # The ceilings, so a clean run is not read as more than it is
+// # The citation ceilings, so a clean run is not read as more than it is
 //
 //   - Only the *first word* of the cited name is compared. `§ Tier-1 tools` is caught
 //     because no name in that file begins `Tier-1`; `§ Open gate` for `Open gates` is
@@ -78,7 +127,8 @@
 //     happens to share that word, so this walk confirms those citations for the wrong
 //     reason. Verifying them means matching a fragment anywhere in a name, which is a
 //     different predicate, not a tighter one.
-//   - Only markdown and Go are read, per suffixes below.
+//   - Only markdown and Go are read, per suffixes below; the link half reads markdown
+//     only, because a `](` pair in Go is not a link.
 //   - A cited name whose first character is not ASCII is not extracted at all (`§
 //     Übersicht`, `§ “quoted`), and nameWindow bounds the diagnostic in bytes, so a
 //     window ending mid-rune renders as U+FFFD in the message rather than truncating
@@ -107,19 +157,21 @@ import (
 	"strings"
 )
 
-// Matches scripts/docs_links.py, and for a measured reason rather than for symmetry:
-// enumerating with `git ls-files` was the first form here and it fails inside the
-// selftest's fixture, which is a plain copy of the tracked tree and not a repository.
+// Both halves prune the same two, which is one of the things merging them bought. Not a
+// `git ls-files` enumeration, for a measured reason: that was the first form here and it
+// fails inside the selftest's fixture, which is a plain copy of the tracked tree and not a
+// repository.
 var skipDirs = map[string]bool{".git": true, "dist": true}
 
 // Two types, and the second reason is the one that constrains this rather than the
 // first. Citations live in markdown and in Go comments today — that is measured. But a
 // walk over every text file also reads scripts/check-docs-selftest.sh, whose fixture
 // for the phantom-citation case *is* a broken citation written as a shell string, so
-// the check failed on its own test. scripts/docs_links.py never meets that because it
-// globs `*.md`; this is the same answer for the same reason. The ceiling: a citation
-// added to a shell or Python file is not checked, and nothing reports that. Widening
-// the set means moving the selftest's fixtures somewhere the walk does not reach first.
+// the check failed on its own test. The link half never meets that, because it reads the
+// `.md` subset of this same walk; this is the same answer for the same reason. The
+// ceiling: a citation added to a shell script is not checked, and nothing reports that.
+// Widening the set means moving the selftest's fixtures somewhere the walk does not reach
+// first.
 var suffixes = []string{".md", ".go"}
 
 var (
@@ -136,15 +188,20 @@ var (
 	// change nothing. Anchored for the reason sectionNames states.
 	labelRe     = regexp.MustCompile(`^\s*(?:~~)?\*\*(.+?)\*\*`)
 	listLabelRe = regexp.MustCompile(`[-*]\s+(?:~~)?\*\*(.+?)\*\*`)
-	// Leading whitespace and `~~~`, matching scripts/docs_links.py's FENCE. Measured
+	// Leading whitespace and `~~~`, the dialect fenceLineRe below shares. Measured
 	// honestly: reverting this to the column-0 form leaves today's output byte-identical,
 	// because the tree's only indented fence — docs/RELEASE.md, which has no column-0
 	// fence at all — happens to contain neither a `§` nor a `**`. So this is dialect
 	// alignment plus what selftest case 18 guarantees, not a live defect repaired; the
 	// column-0 form fails that case and nothing else. Three copies of this model had
-	// three dialects (scripts/docscan/main.go's is a third, without `~~~`), which is the
-	// argument for matching a sibling rather than for the strictness.
-	fenceRe      = regexp.MustCompile("(?ms)^[ \t]*(?:```|~~~).*?^[ \t]*(?:```|~~~)[^\n]*\n?")
+	// three dialects; merging the two here leaves two copies of the model and one dialect,
+	// and scripts/docscan/main.go still carries the third (no `~~~`). That was the argument
+	// for matching a sibling rather than for the strictness.
+	fenceRe = regexp.MustCompile("(?ms)^[ \t]*(?:```|~~~).*?^[ \t]*(?:```|~~~)[^\n]*\n?")
+	// The link half's fence, one line apart from the block form above so the dialect
+	// cannot drift again, and deliberately a different model: see the package comment.
+	fenceLineRe  = regexp.MustCompile("^[ \t]*(?:```|~~~)")
+	linkRe       = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
 	commentRe    = regexp.MustCompile(`^\s*(?://+|#+)\s*`)
 	decorationRe = regexp.MustCompile("[`*_\"'()\\[\\]|~]")
 	trailingRe   = regexp.MustCompile(`[.,;:]+$`)
@@ -166,6 +223,86 @@ func unwrap(text string) string {
 		}
 	}
 	return strings.Join(lines, " ")
+}
+
+// stripCodeSpans removes inline code spans: a run of backticks opens a span that the
+// next run of at least the same length closes, and the content between them holds no
+// backtick at all.
+//
+// The run length is the load-bearing half. A rule that only knew single backticks left
+// the two-backtick idiom exposed: given a link wrapped in a pair on each side, it ate the
+// opening pair as an empty span and then the closing pair, handing the link straight to
+// linkRe. AGENTS.md uses that idiom, and it is what you reach for when a span must itself
+// contain a backtick, which is the shape its own citation rule discusses. Since this runs
+// in `mise run check`, the symptom was a gate that blocks a commit on correct prose. One
+// example does not pin a character class, so main_test.go carries the shapes — and it
+// carries them because they were measured against the Python this replaced, not read off
+// this code.
+//
+// Written by hand because RE2 has no backreference, so the rule the Python expressed as a
+// captured backtick run required again to close does not compile here. The one
+// behavioural difference that survived is in the bytes and not in the outcome: where that
+// pattern could backtrack to a shorter opening run and consume part of it — three
+// backticks with nothing to close against left one behind — this emits the whole run
+// literally. Both then hand the same text to linkRe, which is what main_test.go's shapes
+// and this tree's byte-for-byte output between the two implementations say.
+func stripCodeSpans(line string) string {
+	var b strings.Builder
+	for i := 0; i < len(line); {
+		if line[i] != '`' {
+			b.WriteByte(line[i])
+			i++
+			continue
+		}
+		open := i
+		for i < len(line) && line[i] == '`' {
+			i++
+		}
+		run := i - open
+		// The first backtick after the content is the only candidate close, because the
+		// content may not contain one.
+		next := strings.IndexByte(line[i:], '`')
+		if next < 0 {
+			b.WriteString(line[open:i])
+			continue
+		}
+		closeAt := i + next
+		closeRun := 0
+		for closeAt+closeRun < len(line) && line[closeAt+closeRun] == '`' {
+			closeRun++
+		}
+		if closeRun < run {
+			b.WriteString(line[open:i])
+			continue
+		}
+		// The span is dropped, and any backticks past the ones this close consumed stay:
+		// they are free to open the next span.
+		i = closeAt + run
+	}
+	return b.String()
+}
+
+// extractLinks returns every relative-or-absolute markdown link target in document order.
+//
+// Per line, and per line for a reason: joining first would form a `](` pair across a line
+// break and report a link nobody wrote. The fence state carries across lines, which is
+// the only thing that does.
+func extractLinks(markdown string) []string {
+	var targets []string
+	fenced := false
+	for _, line := range strings.Split(markdown, "\n") {
+		if fenceLineRe.MatchString(line) {
+			fenced = !fenced
+			continue
+		}
+		if fenced {
+			continue
+		}
+		for _, m := range linkRe.FindAllStringSubmatch(stripCodeSpans(line), -1) {
+			targets = append(targets, m[1])
+		}
+	}
+	return targets
 }
 
 // words compares on words only: emphasis, backticks, quotes and trailing punctuation
@@ -287,7 +424,7 @@ func main() {
 	}
 	abs, err := filepath.Abs(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "docsections: %v\n", err)
+		fmt.Fprintf(os.Stderr, "docrefs: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -308,7 +445,7 @@ func main() {
 		return nil
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "docsections: walking %s: %v\n", abs, err)
+		fmt.Fprintf(os.Stderr, "docrefs: walking %s: %v\n", abs, err)
 		os.Exit(1)
 	}
 	sort.Strings(files)
@@ -334,25 +471,36 @@ func main() {
 	// whose consumer reads a count and a floor.
 	defer func() {
 		if err := out.Flush(); err != nil {
-			fmt.Fprintf(os.Stderr, "docsections: writing output: %v\n", err)
+			fmt.Fprintf(os.Stderr, "docrefs: writing output: %v\n", err)
 			os.Exit(1)
 		}
 	}()
 
 	for _, p := range files {
+		// A directory or a broken symlink can carry a `.md` name, and reading either fails.
+		// Skipping keeps the diagnosis rather than the catch: check-docs.sh reads this
+		// program's exit status, so dying would fail loudly either way, but only skipping
+		// here makes the run name the broken link target instead of a dead extractor.
+		// Pinned by the selftest's directory case, which asserts the extractor-failure
+		// message is *absent*.
 		body, err := os.ReadFile(p)
 		if err != nil {
 			continue
 		}
 		text := string(body)
-		if !strings.Contains(text, "§") {
-			continue
-		}
 		rel, err := filepath.Rel(abs, p)
 		if err != nil {
 			continue
 		}
 		rel = filepath.ToSlash(rel)
+		if strings.HasSuffix(rel, ".md") {
+			for _, target := range extractLinks(text) {
+				fmt.Fprintf(out, "link\t%s\t%s\n", rel, target)
+			}
+		}
+		if !strings.Contains(text, "§") {
+			continue
+		}
 		joined := unwrap(stripFences(text))
 		for _, loc := range citeRe.FindAllStringSubmatchIndex(joined, -1) {
 			target := joined[loc[2]:loc[3]]
@@ -369,14 +517,14 @@ func main() {
 			shown := strings.Join(cited[:min(4, len(cited))], " ")
 			resolved := resolveTarget(abs, rel, target)
 			if resolved == "" || !strings.HasSuffix(resolved, ".md") {
-				fmt.Fprintf(out, "%s\t%s\texternal\t%s\n", rel, target, shown)
+				fmt.Fprintf(out, "cite\t%s\t%s\texternal\t%s\n", rel, target, shown)
 				continue
 			}
 			verdict := "absent"
 			if firstWordMatches(namesFor(resolved), cited) {
 				verdict = "resolves"
 			}
-			fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", rel, target, verdict, shown)
+			fmt.Fprintf(out, "cite\t%s\t%s\t%s\t%s\n", rel, target, verdict, shown)
 		}
 	}
 }

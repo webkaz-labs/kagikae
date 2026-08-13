@@ -7,10 +7,67 @@ import (
 	"testing"
 )
 
-// The predicate is what the shell selftest can only reach end-to-end, through a
-// fixture copy of the whole tree. Pinning it here is the reason this program is Go:
-// each case below is a shape the citation walk has to get right, and three of them are
+// The predicates are what the shell selftest can only reach end-to-end, through a
+// fixture copy of the whole tree. Pinning them here is the reason this program is Go:
+// each case below is a shape one of the two walks has to get right, and three of them are
 // defects a review found by mutating the first implementation rather than reading it.
+//
+// The link cases' expectations are not read off this implementation. They were measured
+// against the Python this half replaced, by running its two patterns over each shape
+// below, so they pin the behaviour the port had to preserve rather than the behaviour it
+// happens to have.
+
+func linkTargets(markdown string) string {
+	return strings.Join(extractLinks(markdown), ",")
+}
+
+func TestExtractLinksSkipsSpansAndFencesAndKeepsTheRest(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"a bare link", "[x](y)\n", "y"},
+		{"a single-backtick span", "`[x](y)`\n", ""},
+		// The idiom AGENTS.md uses, and the shape a single-backtick rule turned into a
+		// gate failure on correct prose.
+		{"a double-backtick span", "``[x](y)``\n", ""},
+		{"a triple-backtick span", "```[x](y)```\n", ""},
+		// An over-long close still closes: the extra backticks are free to open the next
+		// span, and there is no next span here.
+		{"a close longer than its open", "`[x](y)``\n", ""},
+		// An open longer than its close does not close, so the link is visible again —
+		// the direction every gap in this half fails toward.
+		{"a close shorter than its open", "``[x](y)`\n", "y"},
+		{"spans either side of a link", "`a` [x](y) `b`\n", "y"},
+		{"an unclosed span", "`unclosed [x](y)\n", "y"},
+		{"a span inside a link target", "[x](`y`)\n", ""},
+		{"a backtick inside a double span", "``a`b`` [x](y)\n", "y"},
+		{"a span whose content is a backtick", "`` ` `` [x](y)\n", "y"},
+		{"a real link before a span", "[a](b) `[c](d)`\n", "b"},
+		{"two links on one line", "[a](b) and [c](d)\n", "b,d"},
+		// A fence is state, and the state is the only thing that crosses a line.
+		{"a backtick fence", "[a](b)\n```\n[c](d)\n```\n[e](f)\n", "b,f"},
+		{"a tilde fence", "[a](b)\n~~~\n[c](d)\n~~~\n[e](f)\n", "b,f"},
+		{"an indented fence", "  ```bash\n  [c](d)\n  ```\n[e](f)\n", "f"},
+		{"an unclosed fence swallows the rest", "[a](b)\n```\n[c](d)\n", "b"},
+		// Joining first would form a `](` pair nobody wrote. This is why the link half
+		// runs per line while the citation half joins.
+		{"a pair formed across a line break", "see [a]\n(b) here\n", ""},
+		{"a fragment is kept for the caller to strip", "[a](b.md#frag)\n", "b.md#frag"},
+	} {
+		if got := linkTargets(tc.in); got != tc.want {
+			t.Errorf("%s: extractLinks(%q) = %q, want %q", tc.name, tc.in, got, tc.want)
+		}
+	}
+}
+
+// No case here pins the `.md` restriction on the link half, because that decision lives
+// in main() and reaching it means running the program. It is pinned anyway, and loudly:
+// the walk reads `.go` for citations, so the link-shaped fixtures in the table above
+// would become link rows with targets that resolve nowhere, and check-docs.sh's baseline
+// selftest case would fail on this file. Widening the link half to Go is therefore not a
+// silent change — which is the property the citation fixtures buy with their ZZ names.
 
 func TestSectionNamesTakeHeadingsListTitlesAndAnchoredLabels(t *testing.T) {
 	doc := "## Tool Tiers\n" +

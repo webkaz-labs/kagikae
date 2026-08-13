@@ -119,6 +119,14 @@ path.write_text(''.join(kept))
 ROW
 }
 
+# Three cases below replace the extractor, and since the link and citation halves share one
+# program they replace the same file. No anchor guard is needed, for run_check's reason: a
+# mistyped path leaves the real program in place and the case fails loudly. The path lives
+# here once so the next rename costs one line rather than three.
+stub_extractor() {
+  cat > "$1/scripts/docrefs/main.go"
+}
+
 # 1. Baseline. Without this, every case below could be satisfied by a script that always
 #    fails, and the suite would look green while the check was useless.
 dir=$(fixture baseline)
@@ -159,8 +167,17 @@ check 'an empty docs/ trips the walk floor' 'walked only 0 files' "$out"
 # 6. Degenerate input, link side: an extractor that emits nothing must not read as a
 #    clean run. Replacing it is the cheapest way to reach that floor, and it is exactly
 #    what a mistyped glob or an over-broad prune would do in practice.
+#
+#    This mutation is shared with the section-floor case further down, because one program
+#    emits both kinds. Two cases rather than one because two floors sit behind it and each
+#    needs its own assertion — the trip/assert distinction scripts/smoke-run-selftest.sh
+#    keeps: one mutation tripping two floors covers one of them per case that names one.
 dir=$(fixture nolinks)
-printf '#!/usr/bin/env python3\n' > "$dir/scripts/docs_links.py"
+stub_extractor "$dir" <<'EMPTY'
+package main
+
+func main() {}
+EMPTY
 out=$(run_check "$dir")
 check 'an extractor emitting nothing trips the link floor' 'resolved only 0 relative links' "$out"
 
@@ -218,16 +235,16 @@ check 'a root doc replaced by a directory is named' 'CLAUDE.md is missing, empty
 
 # 12. A required document under docs/ replaced by a directory of the same name. This reaches
 #     the link walk's target test rather than the loop above, for the reason recorded beside
-#     that test in scripts/check-docs.sh. The fourth argument is what pins docs_links.py's
-#     non-file skip: without it the extractor dies on the directory, and the run names a
-#     dead extractor instead of the broken target — a correct failure for the wrong reason,
-#     which no other case here can tell apart.
+#     that test in scripts/check-docs.sh. The fourth argument is what pins the extractor's
+#     unreadable-file skip: without it the extractor dies on the directory, and the run
+#     names a dead extractor instead of the broken target — a correct failure for the wrong
+#     reason, which no other case here can tell apart.
 dir=$(fixture docsdir)
 rm -f "$dir/docs/PRODUCT.md"
 mkdir "$dir/docs/PRODUCT.md"
 out=$(run_check "$dir")
 check 'a required doc replaced by a directory is named' 'link target does not exist: docs/PRODUCT.md' "$out" \
-  'the link extractor exited non-zero'
+  'the reference extractor exited non-zero'
 
 # 13. The producer of the docs/ walk failing outright, which is the same class as the case
 #     below at check-docs.sh's other captured producer. Removing the directory is the cheap
@@ -242,19 +259,31 @@ rm -rf "$dir/docs"
 out=$(run_check "$dir")
 check 'a docs/ walk that fails outright is named' 'walking docs/ failed' "$out"
 
-# 14. A partially collapsed walk. The empty-extractor case above covers one that emits
-#     nothing, which the floor catches; this covers one that emits some and then fails,
-#     which the floor cannot see once the count clears it. The assertion names the
-#     extractor's exit status, not the floor — this fixture trips both, and only one of them
-#     is what this case is for.
-dir=$(fixture truncatedlinks)
-cat > "$dir/scripts/docs_links.py" <<'TRUNC'
-#!/usr/bin/env python3
-print("README.md\tdocs/CLI.md")
-raise SystemExit(3)
+# 14. A partially collapsed walk. The empty-extractor cases cover one that emits nothing,
+#     which the floors catch; this covers one that emits some and then fails, which no
+#     floor can see once the count clears it. The assertion names the extractor's exit
+#     status, not a floor — this fixture trips both floors, and neither is what it is for.
+#
+#     One case where there were two. Before the halves shared a producer there was a
+#     link-side death and a section-side death to pin; now there is one status to read, so
+#     the second was the same assertion written twice rather than a second guard.
+dir=$(fixture truncatedwalk)
+stub_extractor "$dir" <<'TRUNC'
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	fmt.Println("link\tREADME.md\tdocs/CLI.md")
+	fmt.Println("cite\tREADME.md\tdocs/CLI.md\tresolves\tkae add")
+	os.Exit(3)
+}
 TRUNC
 out=$(run_check "$dir")
-check 'an extractor that dies mid-walk is named' 'the link extractor exited non-zero' "$out"
+check 'an extractor that dies mid-walk is named' 'the reference extractor exited non-zero' "$out"
 
 # 15. The section predicate. `Tier-1 tools` is the citation this repository actually
 #     shipped into docs/ROADMAP.md, against a file whose only tier section is
@@ -266,41 +295,21 @@ out=$(run_check "$dir")
 check 'a citation naming a section that does not exist is named' \
   'which that file declares no section for' "$out"
 
-# 16. Degenerate input, section side. Same shape as the link-side case above, and it is
-#     the one that matters most here: the predicate passes silently on an empty walk,
-#     because "no citation was absent" is true of no citations at all.
+# 16. Degenerate input, section side. The same mutation as the link-floor case above — one
+#     program, one file to replace — and it is the one that matters most here: the
+#     predicate passes silently on an empty walk, because "no citation was absent" is true
+#     of no citations at all.
 dir=$(fixture nosections)
-cat > "$dir/scripts/docsections/main.go" <<'EMPTYSEC'
+stub_extractor "$dir" <<'EMPTY'
 package main
 
 func main() {}
-EMPTYSEC
+EMPTY
 out=$(run_check "$dir")
 check 'an extractor emitting nothing trips the section floor' \
   'checked only 0 section citations' "$out"
 
-# 17. A partially collapsed section walk: emits enough to clear nothing and then fails.
-#     The assertion names the exit status rather than the floor, because this fixture
-#     trips both and only one of them is what the case pins.
-dir=$(fixture truncatedsections)
-cat > "$dir/scripts/docsections/main.go" <<'TRUNCSEC'
-package main
-
-import (
-	"fmt"
-	"os"
-)
-
-func main() {
-	fmt.Println("README.md\tdocs/CLI.md\tresolves\tkae add")
-	os.Exit(3)
-}
-TRUNCSEC
-out=$(run_check "$dir")
-check 'a section extractor that dies mid-walk is named' \
-  'the section extractor exited non-zero' "$out"
-
-# 18. A `§` citation inside a fenced block is an illustration, not a citation — the
+# 17. A `§` citation inside a fenced block is an illustration, not a citation — the
 #     section-side counterpart of case 4, and the case that would have caught the strip
 #     accepting only a column-0 fence. Indented, because the one file in this tree whose
 #     only fenced block is indented is what that defect was measured on: the citation was
@@ -317,7 +326,7 @@ FENCED
 out=$(run_check "$dir")
 check 'a citation inside a fenced block is ignored' "$OK_LINE" "$out"
 
-# 19. The half of the collapse the floor cannot see. Pruning one directory, or dropping
+# 18. The half of the collapse the floor cannot see. Pruning one directory, or dropping
 #     one suffix, stops checking a whole class of citation and still clears any floor this
 #     walk could carry — measured at 139 of 194 with `internal` pruned. Nothing pinned
 #     that guard until this case: disabling it outright left every other case green. The
@@ -325,7 +334,7 @@ check 'a citation inside a fenced block is ignored' "$OK_LINE" "$out"
 #     the one already stated in a comment, and this is the half that was re-broken by a
 #     citation landing in scripts/ for the first time.
 dir=$(fixture prunedgo)
-python3 - "$dir/scripts/docsections/main.go" <<'PRUNE'
+python3 - "$dir/scripts/docrefs/main.go" <<'PRUNE'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
 s = p.read_text()
@@ -347,7 +356,7 @@ fi
 # let a case be added and then silently deleted back to the count before it. Adding a case
 # has to bump this, and that is the point. Written without naming either count, because the
 # sentence that did name them was left behind by the first bump.
-EXPECTED_CASES=19
+EXPECTED_CASES=18
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

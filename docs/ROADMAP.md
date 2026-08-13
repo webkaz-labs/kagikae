@@ -7,15 +7,18 @@ An entry goes once it is *only* a record of what happened: what shipped is
 recorded in [RELEASE.md](RELEASE.md) and in git log, not here. **Being labelled
 shipped, or struck through, is not that criterion and licenses no deletion** —
 several entries below carry one label or the other and stay, because each still
-names work owed, retracts a prescription that would otherwise be re-issued, or
-carries a trap that is in neither the code nor git log.
+names work owed, retracts a prescription that would otherwise be re-issued,
+carries a trap that is in neither the code nor git log, or records a result that
+would otherwise be re-measured.
 
 **Anything outside this file that defers a question here, or names an entry, is
 repointed in the commit that removes the entry — repoint first, then it may go.**
-Not only a release note: every miss so far was somewhere else, and each was found
-by reading rather than by any grep. A design-rationale document went on calling a
-question open that the removed entry had answered; an acceptance log, a
-user-facing error message and four code comments named content that was gone.
+Release notes hold the largest group of those references and are still not the
+whole set: the rest that went stale in one trim were a design-rationale document
+that kept calling a question open after the entry answering it went, an
+acceptance log, a user-facing error message, and several code comments. Each was
+found by reading; no grep found one, and a detector written for the class failed
+its own positive control, because the references are plain prose.
 
 Follow-up from v0.8.4 (not yet scheduled):
 - **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`

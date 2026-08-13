@@ -48,6 +48,19 @@
 //     side the strip has to be line-anchored; stripFences says what that cost when it
 //     was not.
 //
+// # A measured cost, not paid down
+//
+// `citeRe` opens with a `*` quantifier, so RE2 has no literal prefix to accelerate on and
+// scans all ~2MB of joined text byte by byte: 107ms of this program's 216ms, its largest
+// single item, and check-docs.sh runs 20 times per `mise run check`. Anchoring the scan on
+// the `§` literal instead — which RE2 does accelerate — and matching the filename half
+// backwards in a bounded window was measured at 136ms saved, output identical on this tree
+// and all selftest cases holding. It is not done here because it changes *how* citations
+// are found (non-overlapping forward matches become per-sigil lookback) and the
+// equivalence is measured rather than proved, which is not a trade to make in the same
+// pass that found two defects in this matcher. The saving and the caveat are both real;
+// take it with its own review.
+//
 // # The ceilings, so a clean run is not read as more than it is
 //
 //   - Only the *first word* of the cited name is compared. `§ Tier-1 tools` is caught
@@ -166,6 +179,15 @@ func words(text string) []string {
 // section name, so `§ Canonical smoke ordering` resolved against a `# canonical …`
 // comment.
 func stripFences(text string) string {
+	// The guard is not a micro-optimisation dressed up: `fenceRe` is `(?ms)` with a lazy
+	// `.*?`, so it costs about 20ns/byte even where nothing can match, and only 15 of the
+	// 69 sigil-bearing files hold a fence marker at all. Measured at 41ms of this
+	// program's 216ms — and check-docs.sh runs 20 times per `mise run check`, once for
+	// itself and once per selftest fixture. It cannot change the result: the pattern
+	// requires one of these two literals.
+	if !strings.Contains(text, "```") && !strings.Contains(text, "~~~") {
+		return text
+	}
 	return fenceRe.ReplaceAllString(text, "")
 }
 

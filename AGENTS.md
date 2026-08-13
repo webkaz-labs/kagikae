@@ -69,8 +69,9 @@ a link walk cannot vouch for **as a set** are present, non-empty and regular fil
 which link forms the extractor sees, which citation forms the section walk reads **and
 which it cannot**, why each count is a floor, why a floor cannot reach a
 predicate, and which documents that last check names and why; do not restate them here.
-Read `scripts/docs_sections.py`'s header before trusting a clean section walk: it compares
-only the first word of a cited name, and it reads markdown and Go and nothing else.
+Read `scripts/docs_sections.py`'s header before trusting a clean section walk — it lists
+what that walk does not reach, and the list has already grown once, so it is not repeated
+here.
 `docs-check` is **not** `mise run docs-scan`, which reports duplicated prose and
 deliberately fails nothing. `mise run audit` (govulncheck, plus the
 upstream literal fingerprints — it reads the installed tools' own binaries, so it
@@ -337,7 +338,13 @@ does and does not mean; read it before acting on one.
 **A citation that names a `§` names a target that has to exist**, and it quotes the
 section name verbatim — so grep the name, not the sigil. Before renaming or moving a
 section, `git grep -n` a **short distinctive fragment** of the old name, and repoint
-every hit. Short because citations wrap across lines, so a grep for the whole heading
+every hit. **Removing content from under a heading that survives is the same class and
+the fragment grep stays green on it**, so the inbound references have to be read; that is
+what a trim of `docs/ROADMAP.md` paid for thirteen times over.
+`mise run check` now decides one slice of the existence half —
+`scripts/docs_sections.py` refuses a `X.md § Name` whose first word matches no section
+name in that file — so the hand grep is for what that does not reach, which its header
+lists. Everything about *renaming* stays manual. Short because citations wrap across lines, so a grep for the whole heading
 misses them — reproducible today: `git grep -n 'Ordering two copies'` finds the
 citation in `internal/cmd/run_test.go`, and `git grep -n 'Ordering two copies of one
 credential'` finds nothing there. Do not reach for `git grep '\.md §'`: it misses the
@@ -419,7 +426,8 @@ not a clean run.
 that is the original defect's own shape — one commit merged the two commands, and the
 sentence counting them sat unchanged in another file. `89341f4` was caught only because
 that commit happened to write the sentence as well. No widening of an added-lines sweep
-reaches this; the mechanism that would is the unbuilt claim-reconciliation stage
-`scripts/docscan/main.go`'s header names, filed in `docs/ROADMAP.md`. Until it exists,
-the first instruction in this section — write the derivation, not the number — is the only
-thing that covers it.
+reaches this; the mechanism that would is the claim-reconciliation stage
+`scripts/docscan/main.go`'s header names, filed in `docs/ROADMAP.md`, whose one built
+slice checks that a cited section *exists* and never what a quantity beside it says.
+For the quantity class, the first instruction in this section — write the derivation, not
+the number — is still the only thing that covers it.

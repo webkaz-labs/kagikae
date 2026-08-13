@@ -237,29 +237,46 @@ sections=$(python3 "$root/scripts/docs_sections.py") ||
   fail "the section extractor exited non-zero, so the walk below is truncated and its count means nothing"
 
 sections_checked=0
+sections_md=0
+sections_go=0
 while IFS=$'\t' read -r citing target verdict name; do
   if [ -z "$verdict" ]; then
     continue
   fi
-  # A target outside the tree cannot be resolved from here; docs_sections.py's header
-  # says which ones those are and why. Not counted, so the floor bounds only the walk
-  # this repository can actually check.
-  if [ "$verdict" = external ]; then
-    continue
-  fi
+  case $verdict in
+    # A target outside the tree cannot be resolved from here; docs_sections.py's header
+    # says which ones those are and why. Not counted, so the floor bounds only the walk
+    # this repository can actually check.
+    external) continue ;;
+    resolves) : ;;
+    absent)
+      fail "$citing cites $target § $name, which that file declares no section for"
+      ;;
+    # Fail-open was the shape here: only `absent` failed, so a typo in the extractor's
+    # verdict string turned a real phantom into a pass. Measured — `absent` misspelled
+    # `abesnt` printed `ok` with the shipped `§ Tier-1 tools` citation present.
+    *) fail "unrecognised section verdict from the extractor: $verdict" ;;
+  esac
   sections_checked=$((sections_checked + 1))
-  if [ "$verdict" = absent ]; then
-    fail "$citing cites $target § $name, which that file declares no section for"
-  fi
+  case $citing in
+    *.md) sections_md=$((sections_md + 1)) ;;
+    *.go) sections_go=$((sections_go + 1)) ;;
+  esac
 done <<SECTIONS
 $sections
 SECTIONS
 # A scale floor, like the two above: it bounds how much of the walk ran, never what the
-# walk decides. Every way this collapses — an extractor emitting nothing, a `git ls-files`
-# that fails, a regex that matches nothing — lands at 0, and this repository carries an
-# order of magnitude more than the floor.
+# walk decides. An extractor emitting nothing, or a regex that matches nothing, lands at 0.
 if [ "$sections_checked" -lt 100 ]; then
   fail "checked only $sections_checked section citations, which is fewer than this repository has"
+fi
+# What the floor cannot see, and the reason this is a predicate instead of a bigger number:
+# two single-token collapses land *above* any floor this walk could carry. Dropping `.go`
+# from docs_sections.py's SUFFIXES, or adding `internal` to its SKIP_DIRS, silently stops
+# checking every citation in Go and still reports ~135 — measured. Naming both halves is
+# two-sided in the way a count is not.
+if [ "$sections_md" -eq 0 ] || [ "$sections_go" -eq 0 ]; then
+  fail "section citations were found in markdown ($sections_md) and Go ($sections_go), and this repository has both"
 fi
 
 if [ "$failures" -gt 0 ]; then

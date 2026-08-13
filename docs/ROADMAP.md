@@ -21,7 +21,8 @@ reading the hits, and filtering them by a list of phrases is how each miss
 survived. Release notes hold the largest group; the rest were a design-rationale
 document, an acceptance log, a user-facing error message and code comments. A net,
 not a proof — a reference that defers a question here without naming the file is
-stage 3 of the docs scan, filed below and unbuilt.
+stage 3 of the docs scan, filed below — whose one built slice checks that a cited section
+exists and never what is under it.
 
 ## Upstream-drift automation — what is left
 
@@ -275,17 +276,18 @@ alternative exists (`secret-tool`).
   `mise run docs-scan` cannot see any of it: that program compares `.md` files, and this
   duplication lives in shell and Python headers.
 
-- **The claim-reconciliation stage is unbuilt, and a `grep` in AGENTS.md stands in for
-  it** (recorded 2026-08-10, **partly built** 2026-08-13). `scripts/docscan/main.go`'s
-  header names a
+- **The claim-reconciliation stage has one slice in the gate and no general
+  implementation** (recorded 2026-08-10 as unbuilt, **partly built** 2026-08-13).
+  `scripts/docscan/main.go`'s header names a
   four-stage docs scan; stage 2 (duplication) is what that program does, and stage 3 —
   reconciling a claim one document makes *about another* against what the other one says
   — has no general implementation. One slice of it is now in the gate:
   `scripts/docs_sections.py` refuses a citation naming a section its target declares
   nowhere, which is the narrowest claim-about-another-document there is — the target's
-  own headings answer it, with no reading needed. Its header is normative for what it
-  reads and for the two things it does not (a later word of the name, and any file that
-  is not markdown or Go). What that slice does **not** touch is the shape the rest of this
+  own headings answer it, with no reading needed. **Read its header for what it does not
+  reach before trusting a clean run**; the list is there rather than here because it has
+  already grown once, and a copy of it would go short the way every enumeration in this
+  tree has. What that slice does **not** touch is the shape the rest of this
   entry describes: whether the content under a name that does exist still says what the
   citation claims.
   `AGENTS.md § Documentation Update Checklist` covers one shape
@@ -1085,7 +1087,8 @@ alternative exists (`secret-tool`).
   definition. The store directory still stays (it holds sessions and settings a
   re-pin restores); what is removed is the credential, which for a keychain store is
   the invisible half and since v0.17.0 can also be a file the store no longer reads
-  ([CLI.md](CLI.md) § pin, `removeDirCredential` for the rule). What an index would still add is the *other* direction —
+  ([CLI.md](CLI.md) § kae pin, `removeDirCredential` for the rule). What an index would
+  still add is the *other* direction —
   reaching a bound directory from outside it — which **landed on 2026-07-31** as a
   breadcrumb inside each store (`isolation/<pin-id>/dir`), so `kae account rm` /
   `rename` / `kae profile rm` now name the directories they invalidate and

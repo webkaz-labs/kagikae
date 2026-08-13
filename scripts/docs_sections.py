@@ -16,40 +16,51 @@ kae pin` cites `## kae pin and mise init Semantics` — so there is no terminato
 find. Three designs that tried anyway were measured on this tree first, and each
 would have failed the gate on correct prose:
 
-  * terminate the name at the first structural character: 21 false positives of 154,
-    on quoted names, `**bold**` names, code-span names and table cells;
-  * require the citation to *start with* a whole section name: 71 of 224, because the
-    idiom shortens the name;
-  * require the first three words to appear anywhere in the target: 59 of 191,
-    because most section names here are one or two words and the third word belongs
-    to the sentence, not the name.
+  * terminate the name at the first structural character: 21 false positives, on quoted
+    names, `**bold**` names, code-span names and table cells;
+  * require the citation to *start with* a whole section name: 71, because the idiom
+    shortens the name;
+  * require the first three words to appear anywhere in the target: 59, because most
+    section names here are one or two words and the third belongs to the sentence.
 
-The form below is 0 of 191 on this tree, and catches a planted `§ Tier-1 tools`.
+Each count is out of a different total (154, 224, 191) because each of those designs
+also changed which citations were extracted, so the three are comparable as verdicts on
+a design and not as a series. The form below fails nothing on a correct tree, and catches
+a planted `§ Tier-1 tools` — the citation this repository actually shipped.
 
-Three exclusions, each measured rather than guessed:
+Two exclusions, both measured rather than guessed:
 
-  * the sigil must be followed by a space and then a letter. `§A`, `§A/§C` (release
-    sub-sections) and `§ 6`, `§ 7` (numbered sections of docs/SCOPE-MODEL.md) do not
-    introduce a searchable name. Excluded by shape, not by a word list, because a
-    word list here would go short the way every enumeration in this tree has.
-  * a target that is not a tracked `.md` file is `external`: the shared Go CLI
-    standard lives outside this repository and its sections cannot be resolved from
-    here (AGENTS.md's opening says why the copy went away).
-  * a fenced block is stripped. `AGENTS.md` documents the citation forms themselves,
-    and the first honest run reported its illustrations as broken targets — which is
-    exactly the upstream template check's own open defect, reproduced.
+  * the sigil must be followed by a **space** and then a letter, a code span or
+    emphasis. That drops `§6`, `§7`, `§4.1` (numbered sections of docs/SCOPE-MODEL.md)
+    and `§A`, `§A/§C` (docs/RELEASE.md sub-sections), which introduce no searchable
+    name. Note which half does the work: every live instance is written with no space
+    at all, so widening the character class to admit digits would change nothing.
+  * a fenced block is stripped, on both sides. `AGENTS.md` documents the citation forms
+    themselves, and an unstripped run reported its illustrations as broken targets —
+    the upstream template check's own open defect, reproduced. On the name side the
+    strip has to be line-anchored; `strip_fences` says what that cost when it was not.
 
-**Its ceiling, so a clean run is not read as more than it is: only the first word of
-the cited name is compared.** `§ Tier-1 tools` is caught because no section name in
-that file begins `Tier-1`; `§ Open gate` for `Open gates` would not be. The stronger
-two-word form was measured at 3 failures on this tree, one of them a citation at the
-end of a Go comment whose text runs on into the code beneath it, so the gate would
-fail on a correct file. Widening this is worth doing only with that case handled.
+**Four ceilings, so a clean run is not read as more than it is.**
 
-Section names are `#` headings, list-item bold titles and bold labels, because all
-three are cited by `§` in this tree (`§ Every credential copy` is a bullet title,
-`§ Tool Tiers` is a heading). Names and citations both wrap across lines, so the
-text is joined first, with a leading comment marker stripped from continuations.
+  * Only the **first word** of the cited name is compared. `§ Tier-1 tools` is caught
+    because no name in that file begins `Tier-1`; `§ Open gate` for `Open gates` is not.
+    The two-word form was measured at 3 failures here, one a citation at the end of a Go
+    comment whose text runs into the code beneath it — a correct file. Widening it means
+    handling that case first.
+  * Only markdown and Go are read, per SUFFIXES below.
+  * Only the `X.md §` form is read. The **bare `§ Name`** form is this repository's
+    dominant idiom — AGENTS.md's routing lines are all bare — and it names no file, so
+    nothing here can resolve it. Measured: the tree holds 514 sigils and this emits
+    under 200 rows. The bare form is what `AGENTS.md § Documentation Update Checklist`
+    still asks for by hand.
+  * A target that resolves nowhere is `external`, not a failure, and `check-docs.sh`
+    does not count it — so a typo'd *directory* (`doc/CLI.md`) is reported by neither
+    half of the gate. `resolve()` says why the third candidate path exists.
+
+Section names are `#` headings, list-item bold titles, and a bold label that opens a
+line; `section_names` says why the third is anchored rather than taken from anywhere.
+Names and citations both wrap, so the text is joined first, with a leading comment
+marker stripped from continuations.
 """
 import re
 import sys
@@ -71,9 +82,15 @@ SKIP_DIRS = {".git", "dist"}
 # the selftest's fixtures somewhere the walk does not reach first.
 SUFFIXES = (".md", ".go")
 
-# The sigil must be followed by a space and then a letter or an opening quote; see
+# The sigil must be followed by a space and then a letter, a code span or emphasis; see
 # the exclusions in the module docstring.
-CITE = re.compile(r"([A-Za-z0-9_./-]*\.md)[`'\")\]]*\s*§\s+(?=[A-Za-z`\"])(.{1,90})")
+#
+# The trailing window is a **lookahead**, so it consumes nothing. As a consuming capture it
+# swallowed any second citation within 90 characters of the first — `finditer` resumes at
+# the end of a match, and the whole file is one joined line here, so the window spans lines.
+# Measured: five live citations were never emitted, and a phantom written next to a valid
+# citation passed the gate.
+CITE = re.compile(r"([A-Za-z0-9_./-]*\.md)[`'\")\]]*\s*§\s+(?=[A-Za-z`\"*_])(?=(.{1,90}))")
 DECORATION = re.compile(r"[`*_\"'()\[\]|~]")
 TRAILING_PUNCT = re.compile(r"[.,;:]+(?=\s|$)")
 
@@ -98,16 +115,39 @@ def words(text):
     return [w for w in re.split(r"\s+", text.lower()) if w]
 
 
+def strip_fences(text):
+    """Line-anchored, because a heading is matched per line: an unanchored strip leaves
+    the fence markers' own lines behind. Measured before this was anchored: 254
+    heading-shaped lines live inside fenced blocks in this tree — shell comments in
+    docs/VALIDATION.md's runnable blocks, mostly — and every one of them was being
+    accepted as a section name, so `§ Canonical smoke ordering` resolved against a
+    `# canonical …` comment."""
+    return re.sub(r"(?ms)^```.*?^```[^\n]*\n?", "", text)
+
+
 def section_names(markdown):
+    """Headings, list-item bold titles, and a bold label that opens a line.
+
+    The third form is deliberately narrow. Accepting every `**…**` run over the joined
+    text — which is what this did first — accepts mid-sentence emphasis, and this tree
+    writes a great deal of it: on docs/ROADMAP.md that produced 120 accepted first-words
+    where headings and list titles give 39, the surplus including `and`, `is`, `it`,
+    `both`, `before`, `copy` and `done`. `§ Both open gates` then resolved against the
+    word *both* in a sentence."""
+    stripped = strip_fences(markdown)
     names = []
-    for line in markdown.split("\n"):
+    for line in stripped.split("\n"):
         heading = re.match(r"^#{1,6}\s+(.*)$", line)
         if heading:
             names.append(words(heading.group(1)))
-    joined = unwrap(markdown)
+        label = re.match(r"^\s*(?:[-*]\s+)?(?:~~)?\*\*(.+?)\*\*", line)
+        if label:
+            names.append(words(label.group(1)))
+    # A list title or a label wraps, and the name is then split across two lines, so the
+    # same two forms are read again from the joined text — anchored on the list marker,
+    # which mid-sentence emphasis does not have.
+    joined = unwrap(stripped)
     for m in re.finditer(r"[-*]\s+(?:~~)?\*\*(.+?)\*\*", joined):
-        names.append(words(m.group(1)))
-    for m in re.finditer(r"\*\*(.+?)\*\*", joined):
         names.append(words(m.group(1)))
     return [n for n in names if n]
 
@@ -144,7 +184,7 @@ def main():
             continue
         if "§" not in text:
             continue
-        joined = unwrap(re.sub(r"```.*?```", " ", text, flags=re.S))
+        joined = unwrap(strip_fences(text))
         for m in CITE.finditer(joined):
             target, tail = m.group(1), m.group(2)
             cited = words(tail)

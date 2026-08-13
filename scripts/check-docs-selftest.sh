@@ -52,11 +52,24 @@ trap 'rm -rf "$work"' EXIT
 # `mise run check`, which is the gate before a commit, so checking HEAD would validate
 # the previous commit and say nothing about what is being committed — the first version
 # did that and reported a failure that had already been fixed in the working tree.
+#
+# The copy's status is read, because this function is a producer and every producer in
+# scripts/check-docs.sh is checked for the reason stated there. It was the one that was not,
+# and the consequence is worse here than a short count: an incomplete fixture makes every
+# case below run against a tree that is missing files, and a case whose mutation target is
+# among them reports ok about a check it never reached. Observed exactly that way — a
+# tracked file deleted from the working tree but not staged leaves `git ls-files` naming it,
+# tar exits non-zero on it, and this printed `tar: Cannot stat` once per case and then `all
+# 18 cases hold`. `set -e` could not see it because the last command in this function is the
+# `printf` that returns the path.
 fixture() {
   local dir="$work/$1"
   rm -rf "$dir"
   mkdir -p "$dir"
-  git ls-files -z | xargs -0 tar -cf - | tar -xf - -C "$dir"
+  if ! git ls-files -z | xargs -0 tar -cf - | tar -xf - -C "$dir"; then
+    printf 'check-docs-selftest: building the %s fixture failed, so every case would have run against an incomplete copy of the tree\n' "$1" >&2
+    exit 1
+  fi
   printf '%s' "$dir"
 }
 

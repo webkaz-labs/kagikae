@@ -39,10 +39,17 @@ kagikae/
     runner/               # subprocess seam (template standard)
     testutil/runnertest/  # shared canned-response runner fake for tests
   scripts/
+    docrefs/              # `docs-check`'s extractor: every markdown link and every
+                          #   `X.md § Name` citation, one stream with a kind column
     docscan/              # `mise run docs-scan`: reports prose two documents carry
-                          #   twice. A second package main, outside the released
-                          #   binary (.goreleaser.yaml builds `.` only), so the
-                          #   dispatch-only rule above is about kae's main.go
+                          #   twice
+                          # Both are package main outside the released binary
+                          #   (.goreleaser.yaml builds `.` only), so the dispatch-only
+                          #   rule above is about kae's main.go. This listing named one
+                          #   of them and called it "a second package main" while a
+                          #   third had already existed for a release — derive the set
+                          #   with `grep -rln '^package main$' --include='*.go'` rather
+                          #   than counting here
 ```
 
 ## Layering

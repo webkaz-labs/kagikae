@@ -65,7 +65,8 @@ until one shipped — no file under
 `docs/` is missing **its own routing row** in the Documentation Map above — the omission
 that let a second normative copy grow inside `docs/SCOPE-MODEL.md` — and the root documents
 a link walk cannot vouch for **as a set** are present, non-empty and regular files), and
-`docs-check-selftest`, which checks that one. Those script headers are normative for
+`docs-check-selftest`, which checks that one. Those script headers, together with the
+extractor package comment the `docs-check` header routes to, are normative for
 which link forms the extractor sees, which citation forms the section walk reads **and
 which it cannot**, why each count is a floor, why a floor cannot reach a
 predicate, and which documents that last check names and why; do not restate them here.
@@ -345,7 +346,7 @@ complete nor ever empty. A **bare** `AGENTS.md` citation needs none of this — 
 survives a rule moving, because the reader lands in § Implementation Boundaries and
 the routing list sends them on.
 
-`mise run check` decides one slice of that by itself: `scripts/docsections` refuses a
+`mise run check` decides one slice of that by itself: `scripts/docrefs` refuses a
 `X.md § Name` naming a section that file declares nowhere. The hand grep is for what it
 does not reach, which its package comment lists, and everything about *renaming* stays
 manual. **Removing content from under a heading that survives is the same class as

@@ -223,6 +223,16 @@ alternative exists (`secret-tool`).
   `smoke-selftest` perturbs `.git/info/exclude`, and the lint tools resolve pinned
   versions over the network on first use — so each one needs a decision about caching
   and about what a CI runner is allowed to touch, not just a line in a YAML file.
+  **The two halves of `docs-check` have come apart since this was written**, and the
+  argument above prices them as one. The check itself needs bash, the POSIX utilities any
+  runner has, and the Go toolchain CI already installs — no python, which is what changed —
+  and its cost is one `go run` over the tree. Its selftest costs that once per case plus a
+  copy of the tracked tree each time, which is the only objection in the list above that
+  touches `docs-check` at all; the other two belong to `smoke-selftest` and to the lint
+  steps. Whoever decides this should price the two halves separately. **No timing is quoted
+  here on purpose**: every absolute measured while this was written disagreed with every
+  other, because the machine was running several agents at once — one reviewer had the
+  compiled extractor at 727ms and another had `go run` at 150ms in the same session.
   Nothing here should be widened silently; the gap is now stated in all three places
   that describe the gate.
 
@@ -274,7 +284,10 @@ alternative exists (`secret-tool`).
   no link reaches, and its header records what deleting the derivation cost. The link walk is
   still a second implementation, which is why this entry stays open. Note that
   `mise run docs-scan` cannot see any of it: that program compares `.md` files, and this
-  duplication lives in shell and Python headers.
+  duplication lives in a shell header and a Go package comment. It said "shell and Python
+  headers" until the link extractor stopped being Python — the concept survived the sweep
+  that repointed the two hits naming the old directory, which is the class this file's own
+  entries keep describing.
 
 - **The claim-reconciliation stage has one slice in the gate and no general
   implementation** (recorded 2026-08-10 as unbuilt, **partly built** 2026-08-13).
@@ -282,7 +295,7 @@ alternative exists (`secret-tool`).
   four-stage docs scan; stage 2 (duplication) is what that program does, and stage 3 —
   reconciling a claim one document makes *about another* against what the other one says
   — has no general implementation. One slice of it is now in the gate:
-  `scripts/docsections` refuses a citation naming a section its target declares
+  `scripts/docrefs` refuses a citation naming a section its target declares
   nowhere, which is the narrowest claim-about-another-document there is — the target's
   own headings answer it, with no reading needed. **Read its header for what it does not
   reach before trusting a clean run**; the list is there rather than here because it has

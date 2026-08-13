@@ -1,73 +1,27 @@
 # Roadmap
 
-Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)).
-Implementation history lives in git log.
+Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)), ordered
+by user impact.
 
-Shipped: v0.12.0 (switch claude's `/oauthAccount` identity with the
-credential, and add the two offline `doctor` checks — `identity_drift` and
-`upstream_version` — that watch for an upstream *behaviour* change no layout guard
-can see; plus read refresh-token expiry and the post-failed-refresh tombstone
-instead of guessing; and derive claude's keychain service name from
-`CLAUDE_CONFIG_DIR` so a bound directory's credential lands in the store the tool
-actually reads — the release gate, now met). v0.11.0 (companion re-bind lockstep + the opt-in
-`companion_token_drift` doctor check that resolves a bound token's live login
-(`gh api user`) against a recorded `expected_login`) shipped 2026-06-27.
-v0.10.1 (finish `kae companion` shell completion and
-make completion self-maintaining via `kae completion --refresh`) shipped
-2026-06-23. v0.10.0 (companion-auth lockstep — bind git/gh/cloud-CLI
-identity per profile, delivered by `kae pin`, plus a `companion_drift` doctor
-check that flags when the live git commit identity diverges from the binding)
-shipped 2026-06-23. v0.9.1 (manual login-identity override — `kae add
---identity` and `kae account set-identity` — for tools kae cannot auto-detect,
-e.g. agy on current Antigravity) shipped 2026-06-20. v0.9.0
-(installable binaries: a GoReleaser pipeline +
-`scripts/install.sh` + CI so `curl | sh`, mise, and prebuilt
-darwin/linux archives work, with the README rewritten to OSS parity; additive,
-no contract break — see [RELEASE.md](RELEASE.md)) shipped 2026-06-19. v0.8.9
-(`kae completion zsh --install` detects an existing user `fpath` dir so the
-installed completion auto-loads with no `.zshrc` edit) shipped 2026-06-18. v0.8.8
-(daily-use fixes: opencode identity prefers the access-token email over the
-opaque accountId UUID; shell completion is flag-aware — flags before positionals
-no longer shift it — and completes flag names via a new `kae __complete flags`
-kind) shipped the same day. v0.8.7 (complete account-identity
-coverage: `agy.Identity` from `~/.gemini/google_accounts.json` so every tool
-exposes a login identity, plus an `Identity` column in `kae status`) shipped the
-same day. v0.8.6 (agy account switching on
-macOS via a Keychain driver + a terser one-shot `kae run <tool> <account>` +
-`claude /login` verification) shipped the same day; its agy two-account
-real-keychain gate **passed**, fish was **dropped** from the verified shells
-(`kae completion fish` stays best-effort), and the codex-keyring two-account gate
-stays the one carried, unit-covered open item. What remains is hardening and
-platform coverage, ordered below by user impact.
+An entry goes once it is *only* a record of what happened: what shipped is
+recorded in [RELEASE.md](RELEASE.md) and in git log, not here. **Being labelled
+shipped, or struck through, is not that criterion and licenses no deletion** —
+several entries below carry one label or the other and stay. An entry stops being
+*only* a record as soon as removing it would cost the next reader something: work
+still owed, a withdrawn prescription re-issued, a settled result re-measured, a
+trap that is in neither the code nor git log re-discovered.
 
-v0.8.5 (a "did you mean?" nearest-match hint
-for an unknown command/tool/profile, table-driven off the same live lists
-v0.8.4's `kae __complete` backend surfaces; additive, hand-rolled, no contract
-break — see [RELEASE.md](RELEASE.md)) shipped 2026-06-17, both §A and §B. §B
-(standardizing the reusable mise-integration + did-you-mean patterns into the
-go-cli-tooling shared standard via chezmoi) landed the same day as a new
-`docs/go-cli/PATTERNS.md`, with this repo's bundled skill resynced from it.
-
-v0.8.4 (deep, dynamic shell completion sourced from kae's live state on a single
-hidden `kae __complete` backend, feeding both kae's own completion and mise
-task-argument completion) shipped 2026-06-17 — bash/zsh verified; **fish was
-dropped from the verified shells** (2026-06-18; `kae completion fish` stays
-best-effort, not release-gated). v0.8.3 (discovery-unblock:
-freshness-as-adapter-capability, cursor `kae add` identity, codex keyring driver,
-stored+displayed identity) shipped 2026-06-17 — its codex keyring two-account
-real-keychain gate is deferred (also open; see [VALIDATION.md](VALIDATION.md)).
-Earlier: v0.8.2 (daily-use polish), v0.8.1 (credential freshness /
-auto-recapture), v0.8.0 (surface vocabulary unification), v0.7.2 (use/pin ×
--s/-i, global isolated home). What remains beyond v0.8.5 is hardening and
-platform coverage, ordered below by user impact.
-
-Follow-up from v0.8.4 (not yet scheduled):
-- **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`
-  tasks (and their dynamic completion) into the project's `.mise.toml` only, so
-  they exist where the tasks live. A `--global` option emitting them into the
-  global mise config (`~/.config/mise/config.toml` or `~/.config/mise/tasks/`)
-  would make `mise run ai-switch <TAB>` available in every directory. Scope
-  addition; design before implementing.
+**Anything outside this file that defers a question here, or names an entry, is
+repointed in the commit that removes the entry — repoint first, then it may go.**
+`git grep -in roadmap -- ':!docs/ROADMAP.md'` is the superset to start from: it
+held every reference the trims here had to repoint. For some the citation sits alone
+on a wrapped continuation line, so the hit shows no content — read the neighbour.
+No grep decides whether what a hit names still exists, so the work is
+reading the hits, and filtering them by a list of phrases is how each miss
+survived. Release notes hold the largest group; the rest were a design-rationale
+document, an acceptance log, a user-facing error message and code comments. A net,
+not a proof — a reference that defers a question here without naming the file is
+stage 3 of the docs scan, filed below and unbuilt.
 
 ## Upstream-drift automation — what is left
 
@@ -252,99 +206,6 @@ alternative exists (`secret-tool`).
   than quoting a retired pattern, which the runner's header does three times — but it
   is the same hole. Anchor it at the `env -u …` continuation lines.
 
-- ~~**Two live test comments tell the next agent to build something that shipped**~~
-  (recorded 2026-08-10, **fixed** 2026-08-10). Two comments in
-  `internal/adapter/adapter_test.go` said a bound directory's `Codex Auth` item has
-  nothing tearing it down "on unpin or a `pin -s` ↔ `pin -i` toggle", and one added
-  **"Do not 'fix' this by setting the flag; land the teardown."** That teardown had
-  shipped on 2026-07-30 (§ Own the item's lifecycle below), so the instruction sent
-  the next reader to reimplement a live mechanism and hid the real blocker. Both
-  comments now name it — the unrun gate in [VALIDATION.md](VALIDATION.md) § Open
-  gates — and the one that gave the bad instruction says so, rather than dropping it
-  silently for the next reader to re-derive. Two more stale sites went with them, in
-  the bullet above § Own the item's lifecycle: step 2 said codex was carried "pending
-  step 3", and the paragraph after step 3's body said "Until step 3 lands" — both
-  outliving the step marked Done between them. **Only the first of those was new**: the
-  original entry had already quoted the second and said it "should move with them", and
-  the first draft of this retraction claimed all of it as a discovery.
-
-- ~~**This file says the agy real-keychain gate is open; VALIDATION.md records it
-  PASSED**~~ (recorded 2026-08-10, **fixed** 2026-08-10). The agy entry in this
-  section ended "the two-account real-keychain gate is the open acceptance item
-  ([VALIDATION.md](VALIDATION.md))" while the file it pointed at recorded "**agy
-  two-account real-keychain gate PASSED** (verified by the maintainer)" in the v0.8.6
-  acceptance entry — a pointer landing in the document that contradicts it, with the
-  acceptance log being the one to trust. The entry now says passed and says what it
-  used to say. Fixed beside the one above because both were this file asserting a
-  blocker that no longer exists, which is the shape that acts as a licence to undo
-  work; § Open gates never listed agy, so nothing there had to move. The original
-  entry cited "§ Tier-1 tools", **a section this file has never had** — the agy entry
-  lives under § Hardening backlog like everything else here. Caught by grepping the
-  cited heading before repeating the citation, which is what
-  `AGENTS.md § Documentation Update Checklist` asks for and what this entry's first
-  draft did not do.
-
-- ~~**The exported Go CLI standard carried a figure withdrawn here**~~ (recorded
-  2026-08-10, **fixed** 2026-08-11 — source and both exports).
-  `.claude/skills/go-cli-tooling/references/TESTING.md` said "five wrong assertions
-  across eight releases"; the count is measured and the span was sourceable nowhere,
-  and the span had already been withdrawn from `scripts/smoke-run.sh` and from this
-  file. It could not be fixed in this repository — the skill directory is generated —
-  so the source was fixed and the bundle re-exported by running the source's own export
-  script rather than by editing any copy. Note the routing trap: the references are
-  generated from the chezmoi repository's `docs/go-cli/TESTING.md`, **not** from
-  `dot_agents/skills/go-cli-tooling/`, which [RELEASE.md](RELEASE.md) calls the
-  canonical source and which holds only `SKILL.md` and `scripts/` — a reader who follows
-  that phrase looks for `references/` where none exists.
-  Which copies hold one is derived, not remembered, because a count here goes
-  stale the next time a tool receives the bundle — and derived from the path the export
-  itself creates rather than from the prose, which self-matches this file and every
-  transcript quoting it:
-  `find ~/dev ~/.agents ~/.claude -type f -path '*go-cli-tooling*TESTING.md'`. **No slash
-  before `TESTING.md` and none after `go-cli-tooling`**, and both omissions were paid for.
-  The line first read `*go-cli-tooling/references/TESTING.md`, which the export broke by
-  moving its detail to `references/go-cli/`; widening only that segment still returned
-  nothing, because the installed skill is a **symlink** to a content-addressed
-  `.go-cli-tooling.bundle.<hash>` directory — `find` does not descend a symlink without
-  `-L`, and the physical directory's name never matches a `go-cli-tooling/` segment. The
-  narrow form had looked fine for a different reason: this repository's own copy satisfied
-  it, so deleting that copy is what exposed both defects at once. On 2026-08-13 the form
-  above returned only the deployed export, this repository and otowatari having stopped
-  carrying one. A `find` that returns nothing reads as "no stale copy remains", which is
-  the answer this entry exists to make trustworthy.
-  On 2026-08-10 it returned this repository and otowatari, and both were re-exported.
-  **The entry named one claim and the paragraph carried two.** The sentence beside the
-  figure, "only running them ever found a defect", dropped the qualifier
-  `scripts/docscan/main.go`'s header states — never a defect *that would have broken a
-  release*, while that same header records real consolidations the duplication scan
-  drove — and ranked four audits against the stage this section's
-  claim-reconciliation entry describes, which has no implementation and so has never
-  had a chance to find anything. Correcting one unmeasured claim while leaving an
-  unmeasured one touching it would have left the paragraph in the state this entry was
-  filed about, so both moved. The same pass promoted the extractor refusal into the
-  standard.
-  **One deployed copy lags, and not for a reason anything here can fix.** The dotfiles
-  `main` carries the fix, but `~/docs/go-cli/TESTING.md` is a symlink into that
-  repository's *canonical checkout*, which sits on an unrelated feature branch while
-  other work proceeds there — so the deployed file still reads the old wording and will
-  until that checkout returns to `main`. `grep -c 'across eight releases'` answers **0**
-  against the dotfiles `main` and **1** against `~/docs`, and both are correct. Nothing
-  is owed here; it is recorded because the two answers disagree and a reader who checks
-  the deployed path would otherwise conclude the fix never landed.
-
-  **The exports were regenerated from the merged `main`, not from the fix's own branch.**
-  Between cutting that branch and merging it, the dotfiles `main` moved 61 commits ahead
-  over the standard's own tree — 603 insertions across 16 files there, 15 of them export
-  inputs, three of those new, and `TESTING.md` alone going from 242 lines to 313. An
-  export taken from the branch would have been internally consistent and
-  still a state no export from `main` produces, which is this tree's recorded hazard for
-  generated directories — so both bundles were rebuilt after the merge. Only the figure
-  and the promoted rule were reviewed here; the rest of that delta is other work
-  arriving through a generated path, which is why `AGENTS.md` kept this directory out of
-  the docs sweep for as long as it existed here. It does not exist here now, and this
-  paragraph is a large part of why — [AGENTS.md](../AGENTS.md)'s opening carries the
-  decision.
-
 - **CI runs a subset of the gate, and two places called it a mirror** (recorded
   2026-08-11, **partly fixed** — the wording is corrected, the gap is not). Measured:
   `mise run check` depends on eleven steps; `.github/workflows/check.yml` runs four —
@@ -430,8 +291,16 @@ alternative exists (`secret-tool`).
   Stage 3 needs a definition covering the claim-forms seen so far, and they do not all
   have the same standing: a quantity beside a `§` citation and a count of something in the
   writer's *own* file — which one diff can change while writing it — have each been
-  measured here, while a citation resolving to a heading whose *content* has moved out
-  from under it is named rather than yet observed. Not queued, and that header is
+  measured here, and so, since 2026-08-13, has the file-level analogue of it: a
+  reference naming *content* of a document that still exists, after a trim removed
+  the content. Trimming this file's shipped records left one in every surface that
+  cites this file — release notes by a wide margin, and a design-rationale document,
+  an acceptance log, a user-facing error message and code comments — each found only
+  by reading every reference to this file, after a detector written for the class
+  failed its own positive control. Count them from the diff rather than from a number
+  written here. The `§`-heading form above stays unobserved and is the harder one: a
+  `§` grep sees that the heading exists and never what is under it.
+  Not queued, and that header is
   where the yield argument is normative rather than here: every release-breaking docs
   defect so far came from stage 4, running the executable blocks.
 
@@ -485,41 +354,6 @@ alternative exists (`secret-tool`).
   the configuration nothing upstream is defending.
   Still open from this entry: whether `keychain.WithReadCache` / the per-tool locks
   are enough when a switch overlaps a live session's own refresh.
-
-- ~~**`kae account rename` can strand the active pointer**~~ (recorded 2026-07-31,
-  **fixed** — see [RELEASE.md](RELEASE.md) v0.16.0). `buildAccountRename` used to
-  update `state.Active[tool] = newName` inside its state mutation and only
-  *afterwards* copy the secret payloads and write the renamed snapshot dir, so a
-  failure in between left state naming a snapshot that did not exist yet.
-  It is now three stages — build the new snapshot, flip the logical pointers, destroy
-  the old snapshot — so every crash window leaves the pointers on a snapshot that is
-  complete. **`buildAccountRename`'s comment is normative for why the ordering is
-  what it is**, including why a naive reorder would have been worse than the original
-  and why stage 3 deletes refs before the dir; it sits beside the code and cannot
-  drift from it, so this entry does not restate the argument.
-  Two decisions worth having outside the code: the "account already exists" guard was
-  deliberately left strict, because a half-written rename target is indistinguishable
-  from a genuinely taken name, and the manual recovery is documented instead
-  ([CLI.md](CLI.md) § `kae account`). The doctor check the reorder needed,
-  `secret_missing`, shipped with it.
-
-- ~~**`kae rollback` restores an active pointer without checking its snapshot is
-  still there**~~ (recorded 2026-07-31, **fixed** — the sibling of the entry above;
-  see [RELEASE.md](RELEASE.md) v0.16.0). The rollback's state mutation wrote
-  `st.Active[tool] = meta.ActiveBefore[tool]` unconditionally, so a backup taken
-  before an `account rm`/`rename` named a snapshot that was gone and the next
-  `kae use` failed with `account <tool>/<name> is not captured yet`
-  (`loadPlansWithSnapshots`). The predicate `reapplyHint` had always applied to that
-  same value — for a hint string only — is now the shared
-  `restorableActiveAccount`, and the live pointer goes through it: recorded when its
-  snapshot loads, `delete`d otherwise, with a stderr warning naming what it could
-  not restore.
-  The other end of the same gap was decided the other way: `account rm`/`rename`
-  still do **not** rewrite `active_before` in existing backups. A backup is the
-  record of what was true when it was taken, and rewriting every stored `Meta` on an
-  account edit would put a whole-directory mutation (and its own half-finished
-  state) into two commands, to save a value the restore can re-check for free
-  ([DATA-MODEL.md](DATA-MODEL.md) § Backups).
 
 - **Re-login UX: the bound-directory path is the one a human has to think about**
   (measured 2026-08-04; the bound-directory path **fixed in v0.17.0** by
@@ -1072,18 +906,6 @@ alternative exists (`secret-tool`).
   login's chain, which is what decides whether `expiresAt` can order copies **across**
   logins rather than only within one.
 
-- ~~**Link retraction only covers a name the real home still has**~~ (recorded
-  2026-07-31, **fixed** — see [RELEASE.md](RELEASE.md) v0.17.0). v0.16.0 made
-  `prepareBond` remove a symlink for a denied entry, but the removal lived inside
-  the loop over `os.ReadDir(realHome)`, so it never saw a link whose name was no
-  longer a real-home entry, and the isolated bind had no retraction at all.
-  Both are now one shared reconcile (`unintendedLinks` + `retractLinks`): every
-  symlink whose name is not in the intended set is removed, so a re-bind converges on
-  that set instead of only growing. **Which source states that intent differs per
-  mode, and one mode cannot always establish it** — [ADAPTERS.md](ADAPTERS.md)
-  (§ per-directory shared bind, § per-directory isolated bind) is normative for both,
-  and a third per-directory mechanism owes the same answer (AGENTS.md).
-
 - **A recorded identity that is not an account record silently disables attribution
   for that account** (measured 2026-08-05 while reviewing the bound-directory
   `identity_drift`, **not fixed**). An identity payload that is well-formed JSON but not
@@ -1181,55 +1003,6 @@ alternative exists (`secret-tool`).
   a path alias. Deleting a worktree is the "bound directory is gone" case, which the
   breadcrumb plus `pin_stale` already report.
 
-- **Surface vocabulary unification (`run` / `apply` / `mise init`)** *(shipped
-  in v0.8.0 — see [RELEASE.md](RELEASE.md))*: folded `apply` into `use`,
-  redesigned `run` onto `-s`/`-i`/`--env`, trimmed `mise init`, and hard-renamed
-  the mechanism + config-key vocabulary to `shared`/`isolated`.
-- **Credential freshness / auto-recapture** *(v0.8.1 — A–D implemented, see
-  [RELEASE.md](RELEASE.md))*: `use`/bare `use` wrote the capture-time snapshot
-  back to the live store with no recapture (only `run -s` recaptured), so a
-  token rotated outside kae broke a switch-back (a login prompt when the refresh
-  token had also rotated; seen in the v0.8.0 gate). v0.8.1 added switch-source
-  recapture (symmetric with `run -s`, divergence-gated), switch-time stale
-  warnings + `doctor` credential-health (`credential_stale` / `secret_orphan`),
-  and `security`-read coalescing (a per-command keychain cache). Spans every
-  OAuth/JWT tool, not just claude. The codex keyring driver (§E) is **split to
-  v0.8.2** — see below.
-- **Identity cache in isolation modes** *(v0.16.0 — see [RELEASE.md](RELEASE.md))*:
-  `kae use` / `kae add` switched claude's `/oauthAccount` identity cache while the
-  per-directory materializers wrote only the credential, so a bonded or isolated
-  directory kept whatever account first ran there and `kae pin <tool> <account>` did
-  not correct it. Auth was unaffected (the token wins) — it was an attribution gap,
-  and the UI naming the wrong account inside a pinned directory is what a user sees.
-  Now one identity step (`writeDirIdentity`) sits alongside `writeDirCredential`,
-  which all four materializers already route through. Shared (bond) mode was the open
-  design question, and the answer is that the mixed-state file is **private** in a
-  bound directory (denylisted): a directory cannot both name its own account and
-  live-share the file that records which account it is. Whether it was shared there
-  at all had depended on where claude puts it — inside `CLAUDE_CONFIG_DIR` when the
-  user sets one, at `$HOME` otherwise — so the sharing was an accident of file
-  placement, and denying it makes both configurations behave alike. A guard
-  (`identityTargetEscapes`) still declines any per-directory identity write resolving
-  outside the store, kept as defence in depth for the routes the denylist does not
-  cover.
-  ~~**What is left**: `doctor`'s `identity_drift` still skips a kae-owned isolated
-  home~~ — **done in v0.17.0** (`pinIdentityChecks`; see [RELEASE.md](RELEASE.md)).
-  The global check still skips such a shell, and keeps doing so for the remaining
-  half of the old reason: `state.Active` names the *global* account while the live
-  cache is the *bound* directory's, so those two sides are different frames. The
-  bound frame is now its own pass, reading each directory's binding and comparing
-  against **that** snapshot, beside `pinCredentialChecks` as this entry said it
-  should — both now share one walk of the live bindings (`boundDirStores`).
-  What the pass reports is narrower than "they differ", and deliberately: only a
-  divergence it can **prove** (both sides readable, `IdentityKeys` disagreeing —
-  `dirIdentityConfirms`' `Conflicting`). Every missing-evidence outcome stays
-  silent, because a bound directory legitimately has no identity cache until its
-  tool runs there and one bound before v0.16.0 never had one written, so warning on
-  those would fire on healthy directories — the mistake v0.15.0/v0.15.1 made in both
-  directions. The two causes it cannot separate offline (a login made inside the
-  directory versus an identity kae failed to apply) are both stated in the message,
-  since their remedies point opposite ways; [CLI.md](CLI.md) § `kae doctor --json` is
-  normative.
 - **A directory-scoped keychain item keeps a stale account attribute**: `ApplyLive`
   reuses an existing item's account attribute so a re-login that changed it is
   honored, which is right for the single global item but not for a per-directory
@@ -1281,18 +1054,6 @@ alternative exists (`secret-tool`).
   that migrates its own credential. Note the reconciliation would not fully
   disappear even then: "an absent record must never delete the store the tool moved
   to" and the whole-document-vs-pointer refusal are properties of the payload.
-- ~~**`account.toml`'s `keychain_account` is write-only.**~~ **Dropped** in v0.16.0
-  (see [RELEASE.md](RELEASE.md)). It was recorded at capture and read nowhere, with
-  a doc that told apply to ignore it — rightly, since it is the answer for the
-  environment the snapshot was captured in, and apply resolves the item for the
-  environment it is writing. The alternative considered was to give it the reader it
-  would be evidence for (a doctor check comparing it against today's derived
-  account: "this snapshot was captured under a different `CODEX_HOME`"). Rejected:
-  applying a snapshot captured under a different home is *correct* behaviour, so the
-  check would warn about kae working as designed. Removing it also removes a second
-  record of a fact only the adapter owns ([DATA-MODEL.md](DATA-MODEL.md)). Note the
-  asymmetry that stays: `backup.ArtifactRecord` keeps its account, because a restore
-  must address the item it captured.
 - **claude's OAuth build suffix: the environment half is refused, the build half is
   undetectable.** The suffix sits in both store names — keychain service
   `Claude Code<suffix>-credentials[-<sha8>]` and identity file
@@ -1359,27 +1120,6 @@ alternative exists (`secret-tool`).
   item, identified by service **and** the account codex derives from `CODEX_HOME`
   (see [ADAPTERS.md](ADAPTERS.md)). The two-account real-keychain gate is still
   open, and now also covers "a second `CODEX_HOME`'s login survives a switch".
-- **Login UX polish** *(v0.8.6 §C — claude verified; agy deferred)*: `claude
-  /login` is launched via the upstream flow (`internal/cmd/login.go`); the
-  "login flow exited without changing auth" case is detected and refused with
-  exit `11`. agy login stays **deferred** — a 2026-06-18 discovery (with the
-  `agy` CLI installed) found **no `login`/`auth`/`whoami` subcommand**; agy
-  authenticates via GUI/browser OAuth, which kae's shell-out login flow cannot
-  drive, so `kae add agy` stays `--no-login` capture only.
-- **agy keyring driver (macOS)** *(v0.8.6 §A — implemented; real-keychain gate
-  passed)*: on macOS agy stores its credential in the **login Keychain**, not a
-  file — item `svce="gemini"`, `acct="antigravity"`; the payload is a single
-  **opaque ~686-byte token string** (not JSON/JWT — verbatim capture/apply with
-  a non-empty single-line guard, unlike codex's `auth.json` JSON). v0.8.6 lifted
-  the file-only adapter with the verbatim-keychain pattern used for
-  codex/claude/cursor, matching by **service and account** (the `gemini` service
-  is shared, only `acct=antigravity` is agy's; apply upserts with
-  `add-generic-password -U`, never touching a sibling item). The file driver
-  stays for Linux/WSL. Identity auto-detection stays deferred (no whoami; the
-  token is opaque). See [ADAPTERS.md](ADAPTERS.md); the two-account real-keychain
-  gate **passed** and is recorded in v0.8.6's acceptance entry
-  ([VALIDATION.md](VALIDATION.md)) — this entry called it the open acceptance item
-  until 2026-08-10, pointing at the document that already said otherwise.
 - **cursor off macOS is unblocked but unimplemented** (tier 2 — see § Tier-2
   tools; this is the platform gap, not a missing mode): the adapter refuses
   non-darwin because the storage was undocumented. It no longer is — cursor-agent
@@ -1398,31 +1138,12 @@ alternative exists (`secret-tool`).
   injection-only by design). Considered for v0.8.6 but dropped: CI does not use
   kae, so there is no consumer for a value-reveal path. Revisit only if a
   kae-driven CI flow emerges.
-- **Performance polish** *(v0.8.2 §A — shipped)*: the per-switch
-  `security`-read coalescing shipped in v0.8.1 §C (a context-scoped keychain
-  read cache in `internal/keychain`). v0.8.2 §A added concurrent per-tool
-  `Detect` in `status` and a matching read cache for kae's own `secret.Backend`
-  (`secret.WithReadCache` + `Cached`, collapsing the switch-time double read of
-  each target snapshot) — see [RELEASE.md](RELEASE.md).
-- **doctor keychain-orphan detection** *(shipped in v0.8.1 §D as the
-  `secret_orphan` check)*: warns when a `kagikae` secret item has no matching
-  snapshot dir, via a new `secret.Enumerator` (file `readdir`, Linux
-  `secret-tool search --all`). The darwin keychain still cannot list items by
-  service through the `security` CLI, so the check is silently skipped on the
-  keychain backend (documented gap; [SECURITY.md](SECURITY.md)).
-- **claude driver override for isolated smoke checks** *(v0.7.1 — see
-  [RELEASE.md](RELEASE.md))*: on macOS the keychain driver ignores temp
-  `$HOME`s, so claude switch smoke checks can only run safely on Linux today;
-  an explicit file-driver override (env var primary, config opt-in secondary)
-  lets containers and smoke environments never touch the real login keychain.
-  Also the safety prerequisite for the v0.7.2 global-isolated (`kae use -i`)
-  real-machine gate.
 
 ## Command-system expansion
 
 Daily-use ergonomics, designed together as mise-style verbs so the surface
-stays coherent rather than accreting ad hoc. Account delete/rename graduates
-to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
+stays coherent rather than accreting ad hoc. Most of what is left is the
+completion surface those verbs are reached through, and two unbuilt candidates:
 
 - ~~**`kae env` and `kae backup` have no completion case**~~ (found 2026-08-06 while
   wiring `kae relogin`'s, **fixed in v0.17.0**). Both are subcommand groups —
@@ -1490,50 +1211,12 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   exists to prevent.
 - **`kae profile save <name>`**: snapshot the current active set into a
   named profile, instead of hand-editing config via `kae edit`.
-- **Account rm/rename** *(v0.7.1 — see [RELEASE.md](RELEASE.md))*: `kae
-  account rm` / `kae account rename`, replacing manual snapshot-dir + keychain
-  surgery. **`kae profile save|set|unset|rm|default`** also shipped in v0.7.1
-  (the comment-preserving config writer; see [RELEASE.md](RELEASE.md)).
-- **`kae ls`** *(v0.8.2 §C — shipped)*: a mise-style listing of accounts and
-  profiles in one view (was split across `kae accounts` and `kae status`).
-- **Account-name auto-detection** *(v0.8.2 §B — shipped; cursor v0.8.3, agy
-  v0.8.7)*: an adapter exposes the live login identity via the optional
-  `Identifier` capability so `kae add <tool>` auto-detects and sanitizes a name
-  by default, while an explicit `kae add <tool> <account>` still wins. **All six
-  tools now implement it** (claude/codex/opencode/copilot since v0.8.2, cursor
-  via `cursor-agent status` in v0.8.3, agy via `~/.gemini/google_accounts.json`
-  in v0.8.7); `TestIdentifierConformance` pins the full coverage.
-- **Shorter ad-hoc switch inside a pinned directory** *(v0.8.6 §B)*: `kae run
-  <tool> <account> -- <tool>` already works (it is not blocked by the pinned-
-  directory guard), but it is verbose; v0.8.6 defaults the child to the
-  adapter's `Binary()` when `-- <cmd>` is omitted, so `kae run <tool> <account>`
-  opens a session under that account directly.
-- **Tool-name prefix aliases** *(v0.8.0 — see [RELEASE.md](RELEASE.md); input-only sugar)*: accept any unambiguous
-  prefix in tool positions (`cl`→claude, `cod`→codex, `cu`→cursor,
-  `cop`→copilot, `o`→opencode, `a`→agy); ambiguous prefixes (`c`, `co`) error
-  with the candidate list. Resolved to the canonical name immediately and never
-  stored (config/state/JSON keep canonical names), and computed dynamically from
-  `constants.Tools` so a new tool self-adjusts the ambiguity set. Only in tool
-  positions of the two-arg forms (`use`/`pin`/`run`/`add`/`account`/`env`); a
-  one-arg `kae use cl` stays a profile lookup. (Verb aliases `u`/`p`/`r`/`d`/`s`
-  shipped in v0.7.2.)
-- **Flag short forms** *(v0.8.0 — see [RELEASE.md](RELEASE.md))*: `-P` for
-  `--profile` on `run` / bare `use` / `mise init`.
-- **Generic completion + "did you mean"** *(static completion is v0.8.0;
-  dynamic completion is v0.8.4; "did you mean" shipped in v0.8.5 — see
-  [RELEASE.md](RELEASE.md))*: (1) `kae completion <bash|zsh|fish>` shipped in
-  v0.8.0 as a static-list generator; v0.8.4 makes it **dynamic** via a hidden
-  `kae __complete` backend (live profiles/accounts at the argument positions,
-  shared with mise task completion) and adds an interactive `--install`.
-  (2) an unknown command/tool/profile printing a Levenshtein "did you mean X?"
-  hint shipped in v0.8.5, table-driven off the same
-  router/`constants.Tools`/config lists (the `kae __complete` source).
-  (3) v0.8.8 made completion flag-aware (flags before positionals no longer
-  shift it) and added flag-name completion via a `kae __complete flags <command>`
-  kind sourced from the parser's own per-command flag registrars.
-
-These overlap with the TUI item above at the surface level but are the
-plain-CLI layer; the TUI sits on top of them.
+- **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`
+  tasks (and their dynamic completion) into the project's `.mise.toml` only, so
+  they exist where the tasks live. A `--global` option emitting them into the
+  global mise config (`~/.config/mise/config.toml` or `~/.config/mise/tasks/`)
+  would make `mise run ai-switch <TAB>` available in every directory. Scope
+  addition; design before implementing.
 
 ## Platform coverage
 
@@ -1566,7 +1249,8 @@ is anywhere near that, and only by demand.
   keychain under ssh/wsl/container detection, on a 1s keyring timeout, and on any
   keyring failure, so the file store is reachable on macOS too — but the fallback
   file's path is not derivable from the 1.0.10 binary, so kae warns instead of
-  switching it ([ADAPTERS.md](ADAPTERS.md), [VALIDATION.md](VALIDATION.md)).
+  switching it ([ADAPTERS.md](ADAPTERS.md), [VALIDATION.md](VALIDATION.md)
+  § Upstream Behaviour Assumptions owns the measurement).
   Blocked on a way to make agy write a token without a real login: it has no
   kae-drivable login, so the `security` PATH shim (which does apply to agy) has
   nothing to intercept yet. agy is the tier floor and this is the reason.
@@ -1588,7 +1272,6 @@ is anywhere near that, and only by demand.
 ## Exploratory
 
 - richer TTY (routed review surface) if daily use shows the need
-- shell completion
 - localized human output (Japanese)
 - `kae shell init` convenience wrappers
 

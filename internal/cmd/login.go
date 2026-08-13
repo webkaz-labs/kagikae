@@ -114,7 +114,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	command := loginCommand(tool)
 	if command == nil {
 		return finish(opts, errf(constants.ExitUnsupported,
-			"the kae add login flow does not support %s yet (see docs/ROADMAP.md)", tool))
+			"the kae add login flow does not support %s yet (see docs/CLI.md)", tool))
 	}
 	// Plan the tool before the name is known; only plan.Account (set after login)
 	// depends on it, and that is not read until captureSnapshot below.

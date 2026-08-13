@@ -125,10 +125,10 @@ func TestDoctorIdentityDriftReportsUntrackedSnapshot(t *testing.T) {
 	}
 }
 
-// Inside a kae-owned isolated home the live identity was never applied by kae
-// (the per-directory materializers copy only the credential — the ROADMAP
-// attribution gap) and state.Active names the global account, so comparing the
-// two would warn in every pinned directory.
+// Inside a kae-owned isolated home the identity kae applied is the *bound*
+// directory's while state.Active names the global account, so comparing the two
+// would warn in every pinned directory. The bound frame has its own pass,
+// `pinIdentityChecks`.
 func TestDoctorIdentityDriftSkipsInsideKaeIsolation(t *testing.T) {
 	app := identityDriftApp(t)
 	isolated := app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")

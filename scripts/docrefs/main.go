@@ -60,8 +60,28 @@
 // tracked as well as a backtick one, but a four-space indented code block is not, so a
 // link inside one is reported as broken. Reference-style links (`[x][1]` with a separate
 // `[1]: path` definition), links split across lines, and `[a [b]](x)` are invisible to
-// linkRe. Every one of these fails toward a false broken target rather than a missed real
-// one, except the reference-style form, which is simply unseen.
+// linkRe. Python's splitlines() also ended a line on VT, FF, FS, GS, RS, NEL, LS and PS,
+// where strings.Split does not, so a fence marker after one of those toggles in one
+// implementation and not the other and inverts the fence state for the rest of the file;
+// zero instances across every .md and .go here. Most of these fail toward a false broken
+// target rather than a missed real one; the exceptions are the reference-style form, which
+// is simply unseen, and the separator class, which fails both ways.
+//
+// One gap fails the unsafe way, and the list above claimed there was none: an inline span of
+// three backticks written at column 0 is read as a fence marker, and the state latches, so
+// every link in the rest of that file is skipped and nothing reports it. CommonMark reads it
+// as a span, because a fence's info string may not hold a backtick. Inherited — the Python's
+// fence pattern is the same one — and measured at zero instances today, by the derivation
+// that no tracked markdown file has an odd number of fence-marker lines. main_test.go pins
+// the behaviour so a reader does not take it for a defect.
+//
+// Two ceilings that do have instances today, which is why they are not in that list. A
+// fence inside a blockquote matches neither fence model — README.md has one — so a link
+// inside such a block is walked as if it were prose, in this implementation and in the
+// Python alike. And a link target containing a tab splits into two fields in
+// check-docs.sh's read loop, so the diagnostic names only the part before it; the gate
+// still fails, but a *trailing* tab is eaten as field whitespace and the target resolves,
+// which was equally true of the two-variable loop this replaced.
 //
 // # The citation predicate
 //
@@ -194,8 +214,10 @@ var (
 	// honestly: reverting this to the column-0 form leaves today's output byte-identical,
 	// because the tree's only indented fence — docs/RELEASE.md, which has no column-0
 	// fence at all — happens to contain neither a `§` nor a `**`. So this is dialect
-	// alignment plus what selftest case 18 guarantees, not a live defect repaired; the
-	// column-0 form fails that case and nothing else. Three copies of this model had
+	// alignment plus what the selftest's fenced-citation case guarantees, not a live defect
+	// repaired; the column-0 form fails that case and nothing else. Named rather than
+	// numbered because the numbers move: this said "case 18", and merging two cases in the
+	// same diff had already made it 17. Three copies of this model had
 	// three dialects; merging the two here leaves two copies of the model and one dialect,
 	// and scripts/docscan/main.go still carries the third (no `~~~`). That was the argument
 	// for matching a sibling rather than for the strictness.
@@ -242,12 +264,26 @@ func unwrap(text string) string {
 // this code.
 //
 // Written by hand because RE2 has no backreference, so the rule the Python expressed as a
-// captured backtick run required again to close does not compile here. The one
-// behavioural difference that survived is in the bytes and not in the outcome: where that
-// pattern could backtrack to a shorter opening run and consume part of it — three
-// backticks with nothing to close against left one behind — this emits the whole run
-// literally. Both then hand the same text to linkRe, which is what main_test.go's shapes
-// and this tree's byte-for-byte output between the two implementations say.
+// captured backtick run required again to close does not compile here.
+//
+// The two are NOT equivalent, and this comment claimed they were — that the difference was
+// in the leftover bytes and not in the outcome, and that both hand the same text to linkRe.
+// A review falsified it. The rule: on a run of N backticks with no closing run of at least
+// N, the Python backtracks and consumes 2*floor(N/2) of them as an empty span, so N mod 2
+// backticks stay live and re-phase every later pairing on the line; this emits the whole run
+// literally and leaves nothing live. The shape is main_test.go's unmatched-run case, which
+// is where it belongs — a literal backtick run cannot be written in a doc comment here,
+// because gofumpt reads a pair of them as godoc's old quoting idiom and rewrites it to a
+// curly quote. Two of the lines where the two strips already differ are AGENTS.md's own
+// bracketed-illustration sentences, so today's byte-identical output is an accident of where
+// those sentences wrap rather than a property.
+//
+// Kept rather than reverted to the Python's shape, because the divergence runs in the
+// direction this tree prefers: a link exposed that the Python hid fails the gate loudly on
+// prose, where hiding one leaves a broken target unchecked and silent. It is also what
+// CommonMark says, an unclosed run being literal text. What is true is the narrow
+// measurement and not an equivalence — 278 link rows byte-identical over this tree, and
+// every shape in main_test.go measured against the Python before it was written down.
 func stripCodeSpans(line string) string {
 	var b strings.Builder
 	for i := 0; i < len(line); {
@@ -331,8 +367,11 @@ func stripFences(text string) string {
 	// The guard is not a micro-optimisation dressed up: `fenceRe` is `(?ms)` with a lazy
 	// `.*?`, so it costs about 20ns/byte even where nothing can match, and only 15 of the
 	// 69 sigil-bearing files hold a fence marker at all. Measured at 41ms of this
-	// program's 216ms — and check-docs.sh runs 20 times per `mise run check`, once for
-	// itself and once per selftest fixture. It cannot change the result: the pattern
+	// program's 216ms — and check-docs.sh runs once for the gate plus once per selftest
+	// case, so that cost is paid that many times per `mise run check`. This was the second
+	// copy of a literal count the same diff replaced with that derivation 200 lines up, and
+	// it went stale in the same diff, which is the class AGENTS.md's added-lines sweep
+	// cannot reach. It cannot change the result: the pattern
 	// requires one of these two literals.
 	if !strings.Contains(text, "```") && !strings.Contains(text, "~~~") {
 		return text
@@ -479,15 +518,20 @@ func main() {
 	}()
 
 	for _, p := range files {
-		// A directory or a broken symlink can carry a `.md` name, and reading either fails.
-		// Skipping keeps the diagnosis rather than the catch: check-docs.sh reads this
-		// program's exit status, so dying would fail loudly either way, but only skipping
-		// here makes the run name the broken link target instead of a dead extractor.
-		// Pinned by the selftest's directory case, which asserts the extractor-failure
-		// message is *absent*.
+		// Fatal, and the comment this replaced was wrong twice about why it was not. It said
+		// a directory carrying a `.md` name reaches here: it does not, because WalkDir
+		// reports one through d.IsDir() and the walk never appends it — which is also why
+		// the selftest's directory case pinned nothing, measured by making the skip fatal
+		// and watching every case stay green. What does reach here is an unreadable regular
+		// file or a broken symlink, and skipping those silently was a fail-open the port
+		// introduced: the Python raised, so check-docs.sh's `|| fail` caught it, while a
+		// skip leaves every reference in that file unchecked and the gate printing ok.
+		// Measured both ways on a mode-000 file, and pinned by the selftest's unreadable
+		// case.
 		body, err := os.ReadFile(p)
 		if err != nil {
-			continue
+			fmt.Fprintf(os.Stderr, "docrefs: reading %s: %v\n", p, err)
+			os.Exit(1)
 		}
 		text := string(body)
 		rel, err := filepath.Rel(abs, p)

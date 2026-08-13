@@ -116,9 +116,12 @@ check() {
 # most opaquely without one: a case dies mid-suite rather than reporting anything, which is
 # what an absent python3 was measured doing here.
 #
-# awk rather than sed because every needle below is Go or markdown source full of sed
-# metacharacters (`map[string]bool{…}`, `/`), and awk's index() and substr() do not
-# interpret a needle at all. Passed through the environment rather than through `-v`, which
+# awk rather than sed because two of the three needles below break sed, and one of the two
+# breaks it silently: the `skipDirs` literal's `map[string]bool{…}` is a bracket expression,
+# so sed substitutes nothing and exits 0, and a `docs/…` target ends the substitute command.
+# (The third, a Markdown heading, holds no sed metacharacter — "every" was this sentence's
+# own overreach.) awk's index() and substr() do not interpret a needle at all. Passed through
+# the environment rather than through `-v`, which
 # expands escape sequences in the value: no literal used here contains a backslash today,
 # which is exactly the kind of thing that stops being true without anyone noticing.
 #
@@ -165,12 +168,22 @@ drop_map_row() {
   mv "$1.new" "$1"
 }
 
-# Three cases below replace the extractor, and since the link and citation halves share one
-# program they replace the same file. No anchor guard is needed, for run_check's reason: a
-# mistyped path leaves the real program in place and the case fails loudly. The path lives
-# here once so the next rename costs one line rather than three.
+# Cases below replace the extractor, and since the link and citation halves share one program
+# they replace the same file.
+#
+# The guard is not borrowed caution: this said no guard was needed, on run_check's reasoning
+# that a mistyped path leaves the real program in place, and a review measured that false.
+# `cat` to a mistyped *filename* inside that directory leaves a second `package main` in it,
+# so `go run` fails to compile, the producer's `|| fail` fires and both floors read 0 — which
+# is every message the stub cases assert, so all of them keep passing while testing a compile
+# error. Mistyping the *directory* is the loud half, because `cat` itself fails. Asymmetric,
+# and the silent half is the one a rename inside this directory would hit.
 stub_extractor() {
-  cat > "$1/scripts/docrefs/main.go"
+  local target="$1/scripts/docrefs/main.go"
+  if [ ! -f "$target" ]; then
+    fixture_anchor_miss "no $target to replace"
+  fi
+  cat > "$target"
 }
 
 # 1. Baseline. Without this, every case below could be satisfied by a script that always
@@ -274,10 +287,14 @@ check 'a root doc replaced by a directory is named' 'CLAUDE.md is missing, empty
 
 # 12. A required document under docs/ replaced by a directory of the same name. This reaches
 #     the link walk's target test rather than the loop above, for the reason recorded beside
-#     that test in scripts/check-docs.sh. The fourth argument is what pins the extractor's
-#     unreadable-file skip: without it the extractor dies on the directory, and the run
-#     names a dead extractor instead of the broken target — a correct failure for the wrong
-#     reason, which no other case here can tell apart.
+#     that test in scripts/check-docs.sh. The fourth argument keeps the diagnosis honest:
+#     the run must name the broken target, not a dead extractor, which is a correct failure
+#     for the wrong reason that no other case here can tell apart.
+#
+#     What it does NOT pin is any skip inside the extractor, which is what this comment and
+#     the extractor's own said until a review measured it: WalkDir reports a `.md` directory
+#     through d.IsDir() and never reads it, so making the extractor fatal on a read error
+#     leaves this case green. The case below is the one that pins that.
 dir=$(fixture docsdir)
 rm -f "$dir/docs/PRODUCT.md"
 mkdir "$dir/docs/PRODUCT.md"
@@ -285,7 +302,20 @@ out=$(run_check "$dir")
 check 'a required doc replaced by a directory is named' 'link target does not exist: docs/PRODUCT.md' "$out" \
   'the reference extractor exited non-zero'
 
-# 13. The producer of the docs/ walk failing outright, which is the same class as the case
+# 13. A document the extractor cannot read. The port turned the Python's crash into a silent
+#     skip, so every reference in that file went unchecked while the gate printed ok — a
+#     fail-open, and the reason the read is fatal again. Mode 000 rather than a directory
+#     because a directory never reaches the read at all, which is what made the case above
+#     look like it pinned this.
+#
+#     Running as root would defeat the fixture; the case then fails loudly for want of the
+#     message rather than passing, which is the direction to fail in.
+dir=$(fixture unreadabledoc)
+chmod 000 "$dir/docs/SECURITY.md"
+out=$(run_check "$dir")
+check 'a document the extractor cannot read is named' 'the reference extractor exited non-zero' "$out"
+
+# 14. The producer of the docs/ walk failing outright, which is the same class as the case
 #     below at check-docs.sh's other captured producer. Removing the directory is the cheap
 #     way to make `find docs` exit non-zero. It trips a great deal else; the assertion is on
 #     the producer's status alone.
@@ -298,7 +328,7 @@ rm -rf "$dir/docs"
 out=$(run_check "$dir")
 check 'a docs/ walk that fails outright is named' 'walking docs/ failed' "$out"
 
-# 14. A partially collapsed walk. The empty-extractor cases cover one that emits nothing,
+# 15. A partially collapsed walk. The empty-extractor cases cover one that emits nothing,
 #     which the floors catch; this covers one that emits some and then fails, which no
 #     floor can see once the count clears it. The assertion names the extractor's exit
 #     status, not a floor — this fixture trips both floors, and neither is what it is for.
@@ -324,7 +354,7 @@ TRUNC
 out=$(run_check "$dir")
 check 'an extractor that dies mid-walk is named' 'the reference extractor exited non-zero' "$out"
 
-# 15. The section predicate. `Tier-1 tools` is the citation this repository actually
+# 16. The section predicate. `Tier-1 tools` is the citation this repository actually
 #     shipped into docs/ROADMAP.md, against a file whose only tier section is
 #     `## Tier-2 tools`, so the fixture is the defect rather than an invented one. No
 #     floor reaches this: the count rises by one and stays far above 100.
@@ -334,7 +364,7 @@ out=$(run_check "$dir")
 check 'a citation naming a section that does not exist is named' \
   'which that file declares no section for' "$out"
 
-# 16. Degenerate input, section side. The same mutation as the link-floor case above — one
+# 17. Degenerate input, section side. The same mutation as the link-floor case above — one
 #     program, one file to replace — and it is the one that matters most here: the
 #     predicate passes silently on an empty walk, because "no citation was absent" is true
 #     of no citations at all.
@@ -348,7 +378,7 @@ out=$(run_check "$dir")
 check 'an extractor emitting nothing trips the section floor' \
   'checked only 0 section citations' "$out"
 
-# 17. A `§` citation inside a fenced block is an illustration, not a citation — the
+# 18. A `§` citation inside a fenced block is an illustration, not a citation — the
 #     section-side counterpart of case 4, and the case that would have caught the strip
 #     accepting only a column-0 fence. Indented, because the one file in this tree whose
 #     only fenced block is indented is what that defect was measured on: the citation was
@@ -365,9 +395,30 @@ FENCED
 out=$(run_check "$dir")
 check 'a citation inside a fenced block is ignored' "$OK_LINE" "$out"
 
-# 18. The half of the collapse the floor cannot see. Pruning one directory, or dropping
+# 19. A kind check-docs.sh does not know. With two kinds sharing a producer, an unrecognised
+#     one is a whole walk going unchecked while every count stays plausible, which is why
+#     that arm exists — and nothing exercised it, because no real row carries a third kind.
+#     Measured before this case: emitting an extra kind with the arm intact fails the gate,
+#     and with the arm deleted the gate prints ok and every case here still held.
+dir=$(fixture unknownkind)
+stub_extractor "$dir" <<'THIRDKIND'
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("note\tREADME.md\tdocs/CLI.md")
+}
+THIRDKIND
+out=$(run_check "$dir")
+check 'a reference kind the gate does not know is named' \
+  'unrecognised reference kind from the extractor: note' "$out"
+
+# 20. The half of the collapse the floor cannot see. Pruning one directory, or dropping
 #     one suffix, stops checking a whole class of citation and still clears any floor this
-#     walk could carry — measured at 139 of 194 with `internal` pruned. Nothing pinned
+#     walk could carry — with `internal` pruned the count drops by the Go share and stays far
+#     above the floor, which is the whole point; the number is not written down because the
+#     pair it was first written as had already gone stale. Nothing pinned
 #     that guard until this case: disabling it outright left every other case green. The
 #     mutation is a directory prune rather than a suffix drop because the suffix half was
 #     the one already stated in a comment, and this is the half that was re-broken by a
@@ -389,7 +440,7 @@ fi
 # let a case be added and then silently deleted back to the count before it. Adding a case
 # has to bump this, and that is the point. Written without naming either count, because the
 # sentence that did name them was left behind by the first bump.
-EXPECTED_CASES=18
+EXPECTED_CASES=20
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

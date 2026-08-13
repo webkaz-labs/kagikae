@@ -60,8 +60,8 @@ func (app *App) identityDriftChecks(ctx context.Context, be secret.Backend, tool
 		// Note what is no longer a reason: the per-directory materializers do apply
 		// the identity now (writeDirIdentity), so there *is* something of kae's own to
 		// compare against here — it is just not this account's. The bound frame gets its
-		// own pass instead, `pinIdentityChecks`, which reads each directory's binding and
-		// compares against that snapshot beside the bound-directory credential checks.
+		// own pass instead, `pinIdentityChecks`, whose comment is normative for what it
+		// reports.
 		if app.toolIsolated(tool) {
 			continue
 		}

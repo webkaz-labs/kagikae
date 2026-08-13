@@ -1,32 +1,26 @@
 # Roadmap
 
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)), ordered
-by user impact. Implementation history lives in git log.
+by user impact.
 
 An entry goes once it is *only* a record of what happened: what shipped is
 recorded in [RELEASE.md](RELEASE.md) and in git log, not here. **Being labelled
 shipped, or struck through, is not that criterion and licenses no deletion** —
-several entries below carry one label or the other and stay, because each still
-names work owed, retracts a prescription that would otherwise be re-issued,
-carries a trap that is in neither the code nor git log, or records a result that
-would otherwise be re-measured.
+several entries below carry one label or the other and stay. An entry stops being
+*only* a record as soon as removing it would cost the next reader something: work
+still owed, a withdrawn prescription re-issued, a settled result re-measured, a
+trap that is in neither the code nor git log re-discovered.
 
 **Anything outside this file that defers a question here, or names an entry, is
 repointed in the commit that removes the entry — repoint first, then it may go.**
-Release notes hold the largest group of those references and are still not the
-whole set: the rest that went stale in one trim were a design-rationale document
-that kept calling a question open after the entry answering it went, an
-acceptance log, a user-facing error message, and several code comments. Each was
-found by reading; no grep found one, and a detector written for the class failed
-its own positive control, because the references are plain prose.
-
-Follow-up from v0.8.4 (not yet scheduled):
-- **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`
-  tasks (and their dynamic completion) into the project's `.mise.toml` only, so
-  they exist where the tasks live. A `--global` option emitting them into the
-  global mise config (`~/.config/mise/config.toml` or `~/.config/mise/tasks/`)
-  would make `mise run ai-switch <TAB>` available in every directory. Scope
-  addition; design before implementing.
+`git grep -in roadmap -- ':!docs/ROADMAP.md'` is the superset to start from: it
+held every reference the trims here had to repoint, two of them only on a wrapped
+line. No grep decides whether what a hit names still exists, so the work is
+reading the hits, and filtering them by a list of phrases is how each miss
+survived. Release notes hold the largest group; the rest were a design-rationale
+document, an acceptance log, a user-facing error message and code comments. A net,
+not a proof — a reference that defers a question here without naming the file is
+stage 3 of the docs scan, filed below and unbuilt.
 
 ## Upstream-drift automation — what is left
 
@@ -296,8 +290,12 @@ alternative exists (`secret-tool`).
   Stage 3 needs a definition covering the claim-forms seen so far, and they do not all
   have the same standing: a quantity beside a `§` citation and a count of something in the
   writer's *own* file — which one diff can change while writing it — have each been
-  measured here, while a citation resolving to a heading whose *content* has moved out
-  from under it is named rather than yet observed. Not queued, and that header is
+  measured here, and so, since 2026-08-13, has a reference whose target was deleted
+  from under a heading that survives: trimming this file's shipped records left
+  thirteen of them across release notes, a design-rationale document, an acceptance
+  log, a user-facing error message and code comments, found only by reading every
+  reference to this file, after a detector written for the class failed its own
+  positive control. That is the form stage 3 has to define. Not queued, and that header is
   where the yield argument is normative rather than here: every release-breaking docs
   defect so far came from stage 4, running the executable blocks.
 
@@ -1139,8 +1137,8 @@ alternative exists (`secret-tool`).
 ## Command-system expansion
 
 Daily-use ergonomics, designed together as mise-style verbs so the surface
-stays coherent rather than accreting ad hoc. Account delete/rename graduates
-to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
+stays coherent rather than accreting ad hoc. Most of what is left is the
+completion surface those verbs are reached through, and two unbuilt candidates:
 
 - ~~**`kae env` and `kae backup` have no completion case**~~ (found 2026-08-06 while
   wiring `kae relogin`'s, **fixed in v0.17.0**). Both are subcommand groups —
@@ -1208,6 +1206,12 @@ to v0.7.1 (see [RELEASE.md](RELEASE.md)); the rest remain candidates:
   exists to prevent.
 - **`kae profile save <name>`**: snapshot the current active set into a
   named profile, instead of hand-editing config via `kae edit`.
+- **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`
+  tasks (and their dynamic completion) into the project's `.mise.toml` only, so
+  they exist where the tasks live. A `--global` option emitting them into the
+  global mise config (`~/.config/mise/config.toml` or `~/.config/mise/tasks/`)
+  would make `mise run ai-switch <TAB>` available in every directory. Scope
+  addition; design before implementing.
 
 ## Platform coverage
 
@@ -1263,7 +1267,6 @@ is anywhere near that, and only by demand.
 ## Exploratory
 
 - richer TTY (routed review surface) if daily use shows the need
-- shell completion
 - localized human output (Japanese)
 - `kae shell init` convenience wrappers
 

@@ -637,10 +637,10 @@ Baseline: v0.15.2. Contract-additive — one new `doctor` check code,
   backend. The same code covers a `state.json` that cannot be read and an active
   snapshot whose metadata will not parse; both returned silently in the first draft.
   The causes are open-ended, so the check compares the two records rather than
-  watching for one: an interrupted `kae account rename` (ordering fix shipped in
-  v0.16.0 above, deliberately not in this release), `kae rollback`
-  restoring an `active_before` that a later `account rm`/`rename` invalidated, and a
-  writer outside kae.
+  watching for one: an interrupted `kae account rename` (deliberately not in this
+  release; the ordering fix shipped in v0.16.0 above), `kae rollback` restoring an
+  `active_before` that a later `account rm`/`rename` invalidated, and a writer
+  outside kae.
 
 - **The documented smoke procedure no longer writes to the real machine.** A temp
   `HOME` does not isolate kae: `paths.Resolve` reads `XDG_CONFIG_HOME`,
@@ -1655,8 +1655,7 @@ itself); listed here so it is not lost.
 
 ## Non-Goals (this release)
 
-- "Did you mean X?" unknown-command suggestion — out of scope here; it shipped in
-  v0.8.5.
+- "Did you mean X?" unknown-command suggestion — shipped later, in v0.8.5.
 - A completion-framework dependency (cobra / carapace / `jdx/usage`): kae stays
   hand-rolled and dependency-minimal; the `__complete` backend reproduces the
   dynamic-completion pattern natively.
@@ -1873,8 +1872,8 @@ Previous baseline: v0.8.1 (credential freshness / auto-recapture).
   email claim or `account_id` in `auth.json`, opencode → `accountId`, copilot →
   `lastLoggedInUser.login`. **cursor is deferred** — its `cursor-agent status`
   output is undocumented (discovery-blocked, like the codex keyring item), so
-  cursor requires an explicit name until a real-machine discovery; it shipped in
-  v0.8.3. The raw identity is sanitized to `[a-zA-Z0-9._-]`
+  cursor requires an explicit name until a real-machine discovery, which happened
+  in v0.8.3. The raw identity is sanitized to `[a-zA-Z0-9._-]`
   (email → local part before `@`), capped at 64.
 - **`kae add <tool> <account>`** (explicit): unchanged — the given name wins.
 - Works on both the login flow and `--no-login` (detect from the post-login /
@@ -1905,7 +1904,7 @@ Previous baseline: v0.8.1 (credential freshness / auto-recapture).
   `Freshness(payload) Info` method touches all six adapters plus the interface,
   which grows this patch past its daily-use-polish scope. Deferred per the
   splittable note; the shared `jwtExpiry`/`epochToTime`/`decodeObject`
-  primitives stay in `internal/freshness`. The capability shipped in v0.8.3.
+  primitives stay in `internal/freshness`.
 
 ## Non-Goals (this release)
 
@@ -2008,8 +2007,8 @@ round-trip cannot be implemented safely without first discovering the item's
 service/account naming on a real machine with a live codex keyring login —
 guessing it would violate the structure-guard rule (refuse unknown layouts,
 never best-effort write; [ADAPTERS.md](ADAPTERS.md)). Per the splittable note,
-**§E is deferred to v0.8.2** and A–D ship as v0.8.1, for the reason just above;
-the detect-only refusal (exit 10 with guidance) is unchanged.
+**§E is deferred to v0.8.2** and A–D ship as v0.8.1; the detect-only refusal
+(exit 10 with guidance) is unchanged.
 
 ## Non-Goals (this release)
 
@@ -2304,7 +2303,7 @@ the fragment is regenerated from kae state, and teardown just deletes it.
 
 - **`apply` / `run` redesign** — `apply` stays the idempotent hook form of the
   global shared switch; `run --mode` keeps its current mode values. Folding them
-  into the `-s`/`-i` vocabulary is deferred; it shipped in v0.8.0.
+  into the `-s`/`-i` vocabulary is deferred (it landed in v0.8.0).
 - **Live bidirectional sync / watcher daemon** — `use -i` is a *switch* of which
   private home is live, not a sync engine. The §6 finding (claude self-heals
   `/oauthAccount` from the token) means no copy+patch is needed; a resident
@@ -2312,7 +2311,7 @@ the fragment is regenerated from kae state, and teardown just deletes it.
 - **Renaming `run --mode` values** — `run --mode bond|pin|home|overlay` keeps
   its names even though the per-directory data paths are renamed to
   `shared`/`isolated`; aligning `run`'s vocabulary is deferred with the rest of
-  the `apply`/`run` review, which shipped in v0.8.0.
+  the `apply`/`run` review (both landed in v0.8.0).
 - **Tools without a redirectable home** (agy, opencode, cursor, copilot) —
   global shared (`use`) and `run --mode env` only, unchanged.
 - TUI, Windows, Codex keyring driver — see [ROADMAP.md](ROADMAP.md).
@@ -2684,11 +2683,10 @@ adapter lands behind its own discovery note in ADAPTERS.md before code.
 
 ## Non-Goals (this release)
 
-TUI (ROADMAP), Windows, Codex keyring driver, `env export --dotenv --reveal`
-— see [ROADMAP.md](ROADMAP.md). The claude half of login UX polish shipped in
-v0.8.6 and agy login stays deferred, performance polish shipped in v0.8.2, and
-the claude file-driver override in v0.7.1. No automatic network access:
-the remote-definition work is design only.
+TUI, Windows, Codex keyring driver, `env export --dotenv --reveal` — see
+[ROADMAP.md](ROADMAP.md). Shipped later instead: login UX polish (v0.8.6 §C),
+performance polish (v0.8.2 §A), the claude file-driver override (v0.7.1). No
+automatic network access: the remote-definition work is design only.
 
 ## Breaking Changes
 

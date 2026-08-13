@@ -35,10 +35,11 @@ cases=0
 # constant is what makes the reword fail at the cases instead of being absorbed by them.
 readonly OK_LINE='check-docs: ok'
 
-# The root-document diagnostic, in one place for the reason OK_LINE is: four cases assert it,
-# each prefixing its own filename, so rewording check-docs.sh's three-sided complaint meant
-# four edits in four places and nothing to catch a missed one. Same fix the success line
-# already has.
+# The root-document diagnostic, in one place for the reason OK_LINE is: several cases assert
+# it, each prefixing its own filename, so rewording check-docs.sh's three-sided complaint
+# meant one edit per case and nothing to catch a missed one. Same fix the success line already
+# has. No count here, because a count of this file's own cases is what went stale twice on the
+# branch that added this line.
 readonly ROOT_DOC_MSG='is missing, empty, or not a regular file'
 
 # The fixture is the working tree's tracked files, so this needs a git work tree. Say so
@@ -467,7 +468,8 @@ check 'a directory prune that loses every Go citation is named' \
 
 # 21. The entry the extractor must skip, against the document it must still read. Appended
 #     rather than filed beside the unreadable-document case it belongs with, because
-#     inserting there renumbers eight cases and this file has already paid for that once.
+#     inserting there renumbers every case after it and this file has already paid for that
+#     once.
 #
 #     Two symlinks, because one of them cannot discriminate the three states on its own. The
 #     dangling one must be skipped: making the read fatal without narrowing the walk turned

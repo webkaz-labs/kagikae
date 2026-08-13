@@ -66,8 +66,8 @@
 // those toggles in one implementation and not the other, inverting the fence state for the
 // rest of the file.
 //
-// Which way each one fails is the part worth knowing, and three attempts at enumerating it
-// here were each one condition short, so it is stated as a rule instead: the indented code
+// Which way each one fails is the part worth knowing, and it is stated as a rule rather than
+// as a list, because every attempt at listing it was one condition short: the indented code
 // block is the only loud one — a link inside it is reported as broken — and every other gap
 // above is silent, because a link nothing extracts is a link nothing checks. The separator
 // class manages both at once, measured doing so in a single file: a link inside a fenced
@@ -83,8 +83,8 @@
 // which is why a tilde marker carrying one is a real fence and not a latch — is also the
 // predicate that decides whether this tree has an instance, and it is one grep for a fence
 // marker with a further backtick after it on the same line. A count of fence-marker lines
-// does NOT decide it, and this comment claimed it did: a pair of latch lines leaves that
-// count even, so parity sees a net inversion at EOF and says nothing about the links between
+// does NOT decide it: a pair of latch lines leaves that count even, so parity sees a net
+// inversion at EOF and says nothing about the links between
 // them. The other ceilings above have no such predicate, and the greps a reader reaches for
 // return false positives on all of them — an indented list continuation reads as an indented
 // code block, and a bracketed pair inside a regex reads as a reference-style link — so those
@@ -174,8 +174,7 @@
 //     dominant idiom — AGENTS.md's routing lines are all bare — and it names no file, so
 //     nothing here can resolve it. A `§` count over the tree far exceeds this program's
 //     row count and the gap is the bare form; both numbers move with every edit, so
-//     derive them rather than reading one here. The first draft of this bullet wrote
-//     both, and the commit that wrote them falsified them.
+//     derive them rather than reading one here.
 //   - A target that resolves nowhere is `external`, which check-docs.sh skips without
 //     counting, so it can never fail. A citation naming a file that does not exist is
 //     therefore silent here; the link walk catches it only when it is written as a
@@ -236,10 +235,11 @@ var (
 	// three dialects; merging the two here leaves two copies of the model and one dialect,
 	// and scripts/docscan/main.go still carries the third (no `~~~`). That was the argument
 	// for matching a sibling rather than for the strictness.
-	fenceRe = regexp.MustCompile("(?ms)^[ \t]*(?:```|~~~).*?^[ \t]*(?:```|~~~)[^\n]*\n?")
-	// The link half's fence, one line apart from the block form above so the dialect
-	// cannot drift again, and deliberately a different model: see the package comment.
-	fenceLineRe  = regexp.MustCompile("^[ \t]*(?:```|~~~)")
+	fenceRe = regexp.MustCompile("(?ms)^" + fenceMarker + ".*?^" + fenceMarker + "[^\n]*\n?")
+	// The link half's fence, built from the same fenceMarker as the block form above so the
+	// dialect moves as one rather than by hand in two literals, and deliberately a different
+	// model: see the package comment.
+	fenceLineRe  = regexp.MustCompile("^" + fenceMarker)
 	linkRe       = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
 	commentRe    = regexp.MustCompile(`^\s*(?://+|#+)\s*`)
 	decorationRe = regexp.MustCompile("[`*_\"'()\\[\\]|~]")
@@ -250,6 +250,48 @@ var (
 // first word decides the verdict; the rest is carried so a diagnostic can quote enough
 // of the citation to find it.
 const nameWindow = 90
+
+// fenceMarker is the dialect both fence models share: leading whitespace, then either
+// marker. Named rather than spelled twice, because the two regexes claimed to share a
+// dialect while each carrying its own copy of it — which is how three copies of this model
+// came to have three dialects in the first place.
+const fenceMarker = "[ \t]*(?:```|~~~)"
+
+// out is package level so readDoc can flush it, which is the whole reason it is not a local
+// in main.
+var out *bufio.Writer
+
+// readDoc reads a document the walk has already accepted as one, and a failure is fatal.
+//
+// One function for both readers, because two policies at two sites produced a false claim.
+// The walk's read exited; namesFor's cached nil silently, so a citation whose target could
+// not be opened was judged against zero section names and reported as naming no section that
+// file declares — a claim about a file nothing had read, printed beside the true message,
+// with sort order deciding which came first. Measured on a mode-000 target before this was
+// one function.
+//
+// Flushed before exiting because by here bufio has already written whole buffers, so exiting
+// without it truncates stdout mid-row, the caller's heredoc completes that row, and its loop
+// reads a bogus verdict out of the fragment — a diagnosis pointing at the arm that catches a
+// verdict typo, for a typo that does not exist. Measured over one fixture per tracked
+// document: the fragment produced that message at several positions before the flush and at
+// none after. It is not free — flushing emits more rows whose target could not be read, so
+// the phantom-citation complaints grow with them — and it is still the better side, because
+// the true message comes first either way. No count is written for either half: which
+// position the boundary lands on depends on how much output precedes the failing file, which
+// is also why no selftest case pins the flush and one attempt at pinning it was measured
+// vacuous. It is defence in depth and claims nothing more.
+func readDoc(p string) []byte {
+	body, err := os.ReadFile(p)
+	if err != nil {
+		if out != nil {
+			_ = out.Flush()
+		}
+		fmt.Fprintf(os.Stderr, "docrefs: reading %s: %v\n", p, err)
+		os.Exit(1)
+	}
+	return body
+}
 
 // unwrap joins every line, stripping a leading comment marker from continuations so a
 // citation or a name that wrapped reads as one string.
@@ -282,29 +324,25 @@ func unwrap(text string) string {
 // captured backtick run required again to close does not compile here.
 //
 // The two are NOT equivalent, and this comment claimed they were — that the difference was
-// in the leftover bytes and not in the outcome, and that both hand the same text to linkRe.
-// A review falsified it. The rule: on a run of N backticks with no closing run of at least
-// N, the Python backtracks and consumes 2*floor(N/2) of them as an empty span, so N mod 2
-// backticks stay live and re-phase every later pairing on the line; this emits the whole run
-// literally and leaves nothing live. The shape is main_test.go's unmatched-run case, which
-// is where it belongs — a test fixture is executable where a comment is not, and it also
-// sidesteps a hazard that applies to a *pair* of backticks in a doc comment, which plain
-// gofmt rewrites to a curly quote as godoc's old quoting idiom. Measured: a triple run and
-// single backticks survive gofmt byte-identically, so the earlier claim here that a backtick
-// run cannot be written in this comment at all was false. The two strips already differ on this
-// tree, and the way to see where is to run both over every line that reaches them rather
-// than to trust a list here; the differing lines include the bracketed illustration
-// AGENTS.md's citation rule carries and docs/ROADMAP.md's quotation of it. So today's
-// byte-identical output is an accident of where those sentences wrap rather than a property.
+// in the leftover bytes and not in the outcome. They are not equivalent. The rule: on a run
+// of N backticks with no closing run of at least N, the Python backtracks and consumes
+// 2*floor(N/2) of them as an empty span, so N mod 2 backticks stay live and re-phase every
+// later pairing on the line; this emits the whole run literally and leaves nothing live. The
+// shape is main_test.go's unmatched-run case, which is where it belongs, a fixture being
+// executable where a comment is not. The two strips already differ on this tree — the way to
+// see where is to run both over every line that reaches them, and the differing lines include
+// the bracketed illustration AGENTS.md's citation rule carries and docs/ROADMAP.md's
+// quotation of it — so byte-identical *output* today is an accident of where those sentences
+// wrap rather than a property.
 //
-// Kept rather than reverted to the Python's shape. For an odd unmatched run the divergence
-// runs in the direction this tree prefers — a link exposed that the Python hid fails the
-// gate loudly on prose, where hiding one leaves a broken target unchecked and silent — and
+// Kept rather than reverted to the Python's shape, and not on the direction argument alone,
+// which covers half the class: for an odd unmatched run this exposes a link the Python hid,
+// which fails the gate loudly on prose where hiding one leaves a broken target silent, but
 // for an even one the residue lands inside link syntax and it can run either way. What
-// settles it in both cases is that an unclosed run is literal text in CommonMark, so this
-// side is the correct reading; the direction argument alone covers only half the class, as
-// it was first written here. What is true is the narrow measurement and not an equivalence:
-// 278 link rows byte-identical over this tree, and every shape in main_test.go measured
+// settles both is that an unclosed run is literal text in CommonMark, so this side is the
+// correct reading. The evidence for the port is the narrow kind and not an equivalence: the
+// link rows were byte-identical over this tree at the port, re-derivable with
+// `git show 72e24f5:scripts/docs_links.py`, and every shape in main_test.go was measured
 // against the Python before it was written down.
 func stripCodeSpans(line string) string {
 	var b strings.Builder
@@ -389,12 +427,9 @@ func stripFences(text string) string {
 	// The guard is not a micro-optimisation dressed up: `fenceRe` is `(?ms)` with a lazy
 	// `.*?`, so it costs about 20ns/byte even where nothing can match, and only 15 of the
 	// 69 sigil-bearing files hold a fence marker at all. Measured at 41ms of this
-	// program's 216ms — and check-docs.sh runs once for the gate plus once per selftest
-	// case, so that cost is paid that many times per `mise run check`. This was the second
-	// copy of a literal count the same diff replaced with that derivation 200 lines up, and
-	// it went stale in the same diff, which is the class AGENTS.md's added-lines sweep
-	// cannot reach. It cannot change the result: the pattern
-	// requires one of these two literals.
+	// program's 216ms, paid once per invocation — and the package comment's note on citeRe
+	// says how many invocations one `mise run check` makes. It cannot change the result:
+	// the pattern requires one of these two literals.
 	if !strings.Contains(text, "```") && !strings.Contains(text, "~~~") {
 		return text
 	}
@@ -546,17 +581,12 @@ func main() {
 		if n, ok := cache[p]; ok {
 			return n
 		}
-		body, err := os.ReadFile(p)
-		if err != nil {
-			cache[p] = nil
-			return nil
-		}
-		n := sectionNames(string(body))
+		n := sectionNames(string(readDoc(p)))
 		cache[p] = n
 		return n
 	}
 
-	out := bufio.NewWriter(os.Stdout)
+	out = bufio.NewWriter(os.Stdout)
 	// Checked rather than deferred-and-dropped: a failing write leaves bufio holding the
 	// error, and discarding it exits 0 with truncated output — a fail-open, in a program
 	// whose consumer reads a count and a floor.
@@ -568,44 +598,7 @@ func main() {
 	}()
 
 	for _, p := range files {
-		// Fatal, and the comment this replaced was wrong twice about why it was not. It said
-		// a directory carrying a `.md` name reaches here: it does not, because WalkDir
-		// reports one through d.IsDir() and the walk never appends it — which is also why
-		// the selftest's directory case pinned nothing, measured by making the skip fatal
-		// and watching every case stay green. What does reach here is an unreadable regular
-		// file or a broken symlink, and skipping those silently was a fail-open the port
-		// introduced: the Python raised, so check-docs.sh's `|| fail` caught it, while a
-		// skip leaves every reference in that file unchecked and the gate printing ok.
-		// Measured both ways on a mode-000 file, and pinned by the selftest's unreadable
-		// case.
-		body, err := os.ReadFile(p)
-		if err != nil {
-			// Flushed before exiting, because by here bufio has already written whole
-			// buffers: exiting without it truncates stdout mid-row, the caller's heredoc
-			// completes that row, and its loop reads a bogus verdict out of the fragment.
-			// Measured over one fixture per tracked document: the fragment produced
-			// `unrecognised section verdict from the extractor:` at eight of those positions,
-			// sending a maintainer to the arm that exists to catch a verdict typo for a typo
-			// that did not exist, and at none of them after the flush. Which position it hits
-			// depends on where the buffer boundary falls, so a single before/after pair of
-			// problem counts does not reproduce and this comment claimed one that did not.
-			//
-			// The trade is not free, and the earlier "the rows are worthless either way" hid
-			// it: flushing emits more rows whose target could not be read, so the phantom
-			// citation complaints grow with them — measured 5 to 11 on one fixture. It is
-			// still the better side, because the true message comes first either way and the
-			// one it removes is the one that names a cause that does not exist.
-			//
-			// No selftest case pins this, and one was measured not working before being
-			// abandoned: whether the truncation lands mid-field depends on where the 4096-byte
-			// boundary falls, which depends on how much output precedes the failing file, so
-			// an assertion on it would say nothing today and would start or stop holding on
-			// unrelated docs edits. It is defence in depth, and that is all it claims.
-			_ = out.Flush()
-			fmt.Fprintf(os.Stderr, "docrefs: reading %s: %v\n", p, err)
-			os.Exit(1)
-		}
-		text := string(body)
+		text := string(readDoc(p))
 		rel, err := filepath.Rel(abs, p)
 		if err != nil {
 			continue

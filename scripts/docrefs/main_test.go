@@ -123,8 +123,9 @@ func TestSectionNamesIgnoreHeadingShapedLinesInsideFences(t *testing.T) {
 			t.Fatalf("a shell comment inside a fence became a section name: %v", got)
 		}
 	}
-	// 254 heading-shaped lines live inside fenced blocks in this tree, so the negative
-	// above is the whole point; this keeps it from passing because nothing was read.
+	// Heading-shaped lines live inside fenced blocks all over this tree — stripFences says
+	// how many were measured — so the negative above is the whole point; this keeps it from
+	// passing because nothing was read.
 	if len(got) != 1 || got[0][0] != "real" {
 		t.Fatalf("expected the one real heading, got %v", got)
 	}

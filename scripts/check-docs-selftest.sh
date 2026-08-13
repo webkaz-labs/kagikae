@@ -35,6 +35,12 @@ cases=0
 # constant is what makes the reword fail at the cases instead of being absorbed by them.
 readonly OK_LINE='check-docs: ok'
 
+# The root-document diagnostic, in one place for the reason OK_LINE is: four cases assert it,
+# each prefixing its own filename, so rewording check-docs.sh's three-sided complaint meant
+# four edits in four places and nothing to catch a missed one. Same fix the success line
+# already has.
+readonly ROOT_DOC_MSG='is missing, empty, or not a regular file'
+
 # The fixture is the working tree's tracked files, so this needs a git work tree. Say so
 # rather than letting a case die inside a fixture edit on a missing file, which is what
 # happened when this was first run against an extracted copy of the tree.
@@ -268,7 +274,7 @@ check 'renaming the Map heading trips its extraction floor' 'extracted only 0 do
 dir=$(fixture noclaudemd)
 rm -f "$dir/CLAUDE.md"
 out=$(run_check "$dir")
-check 'a deleted CLAUDE.md is named' 'CLAUDE.md is missing, empty, or not a regular file' "$out"
+check 'a deleted CLAUDE.md is named' "CLAUDE.md $ROOT_DOC_MSG" "$out"
 
 # 9. The case that put README.md in that loop, and the only one of the three the link walk
 #    looked like it covered: README.md is reachable from the Map's own row and nothing else,
@@ -278,14 +284,14 @@ dir=$(fixture noreadme)
 rm -f "$dir/README.md"
 drop_map_row "$dir/AGENTS.md" README.md
 out=$(run_check "$dir")
-check 'README.md deleted with its only Map row is named' 'README.md is missing, empty, or not a regular file' "$out"
+check 'README.md deleted with its only Map row is named' "README.md $ROOT_DOC_MSG" "$out"
 
 # 10. Emptied rather than deleted, which `-f` alone passed. Why empty is as bad as absent is
 #     stated once, above the predicate in scripts/check-docs.sh.
 dir=$(fixture emptyclaudemd)
 : > "$dir/CLAUDE.md"
 out=$(run_check "$dir")
-check 'an emptied CLAUDE.md is named' 'CLAUDE.md is missing, empty, or not a regular file' "$out"
+check 'an emptied CLAUDE.md is named' "CLAUDE.md $ROOT_DOC_MSG" "$out"
 
 # 11. A root document replaced by a directory of the same name. This is the only case that
 #     pins `-f` in that loop: deleted is caught by `-e` too, and empty by `-s`, so weakening
@@ -295,7 +301,7 @@ dir=$(fixture claudemddir)
 rm -f "$dir/CLAUDE.md"
 mkdir "$dir/CLAUDE.md"
 out=$(run_check "$dir")
-check 'a root doc replaced by a directory is named' 'CLAUDE.md is missing, empty, or not a regular file' "$out"
+check 'a root doc replaced by a directory is named' "CLAUDE.md $ROOT_DOC_MSG" "$out"
 
 # 12. A required document under docs/ replaced by a directory of the same name. This reaches
 #     the link walk's target test rather than the loop above, for the reason recorded beside
@@ -397,7 +403,7 @@ check 'an extractor emitting nothing trips the section floor' \
   'checked only 0 section citations' "$out"
 
 # 18. A `§` citation inside a fenced block is an illustration, not a citation — the
-#     section-side counterpart of case 4, and the case that would have caught the strip
+#     section-side counterpart of the code-span case, and the case that would have caught the strip
 #     accepting only a column-0 fence. Indented, because the one file in this tree whose
 #     only fenced block is indented is what that defect was measured on: the citation was
 #     reported absent (the gate failing on a code block) and a bold label inside the same
@@ -418,6 +424,13 @@ check 'a citation inside a fenced block is ignored' "$OK_LINE" "$out"
 #     that arm exists — and nothing exercised it, because no real row carries a third kind.
 #     Measured before this case: emitting an extra kind with the arm intact fails the gate,
 #     and with the arm deleted the gate prints ok and every case here still held.
+#     One stub, two assertions, the way the two empty-extractor cases share theirs: the
+#     unrecognised-VERDICT arm one level in is the exact structural twin of the kind arm, and
+#     it was the one left unpinned. Measured before this row was added — weakening it to `:`
+#     left the gate green and all cases holding, and with the extractor's verdict string then
+#     misspelled the `§ Tier-1 tools` citation this repository actually shipped passed with
+#     `ok`. Pinning one arm and leaving its twin unpinned is the per-instance response this
+#     branch's own commit messages keep naming.
 dir=$(fixture unknownkind)
 stub_extractor "$dir" <<'THIRDKIND'
 package main
@@ -426,11 +439,14 @@ import "fmt"
 
 func main() {
 	fmt.Println("note\tREADME.md\tdocs/CLI.md")
+	fmt.Println("cite\tREADME.md\tdocs/CLI.md\tzzbogusverdict\tkae add")
 }
 THIRDKIND
 out=$(run_check "$dir")
 check 'a reference kind the gate does not know is named' \
   'unrecognised reference kind from the extractor: note' "$out"
+check 'a section verdict the gate does not know is named' \
+  'unrecognised section verdict from the extractor: zzbogusverdict' "$out"
 
 # 20. The half of the collapse the floor cannot see. Pruning one directory, or dropping
 #     one suffix, stops checking a whole class of citation and still clears any floor this
@@ -500,7 +516,7 @@ fi
 # let a case be added and then silently deleted back to the count before it. Adding a case
 # has to bump this, and that is the point. Written without naming either count, because the
 # sentence that did name them was left behind by the first bump.
-EXPECTED_CASES=22
+EXPECTED_CASES=23
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

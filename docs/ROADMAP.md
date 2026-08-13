@@ -223,6 +223,10 @@ alternative exists (`secret-tool`).
   `smoke-selftest` perturbs `.git/info/exclude`, and the lint tools resolve pinned
   versions over the network on first use — so each one needs a decision about caching
   and about what a CI runner is allowed to touch, not just a line in a YAML file.
+  **The two halves of `docs-check` have come apart since this was written**, and the
+  argument above prices them as one: the check itself now needs only bash and the Go
+  toolchain CI already installs, and runs in well under a second, while every objection
+  listed belongs to its selftest. Whoever decides this should price them separately.
   Nothing here should be widened silently; the gap is now stated in all three places
   that describe the gate.
 
@@ -274,7 +278,10 @@ alternative exists (`secret-tool`).
   no link reaches, and its header records what deleting the derivation cost. The link walk is
   still a second implementation, which is why this entry stays open. Note that
   `mise run docs-scan` cannot see any of it: that program compares `.md` files, and this
-  duplication lives in shell and Python headers.
+  duplication lives in a shell header and a Go package comment. It said "shell and Python
+  headers" until the link extractor stopped being Python — the concept survived the sweep
+  that repointed the two hits naming the old directory, which is the class this file's own
+  entries keep describing.
 
 - **The claim-reconciliation stage has one slice in the gate and no general
   implementation** (recorded 2026-08-10 as unbuilt, **partly built** 2026-08-13).

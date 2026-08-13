@@ -116,11 +116,13 @@ check() {
 # most opaquely without one: a case dies mid-suite rather than reporting anything, which is
 # what an absent python3 was measured doing here.
 #
-# awk rather than sed because two of the three needles below break sed, and one of the two
-# breaks it silently: the `skipDirs` literal's `map[string]bool{…}` is a bracket expression,
-# so sed substitutes nothing and exits 0, and a `docs/…` target ends the substitute command.
-# (The third, a Markdown heading, holds no sed metacharacter — "every" was this sentence's
-# own overreach.) awk's index() and substr() do not interpret a needle at all. Passed through
+# awk rather than sed because the needles these are called with break sed, and each breaks it
+# a different way: the `skipDirs` literal's `map[string]bool{…}` is a bracket expression, so
+# sed substitutes nothing and exits 0; a `docs/…` target ends the substitute command; and a
+# bare `README.md` target has a `.` that over-matches silently. A Markdown heading is the one
+# needle here that sed would handle — which is why this sentence is about the needles and not
+# about all of them, having twice been written as a count that a later call site falsified.
+# awk's index() and substr() do not interpret a needle at all. Passed through
 # the environment rather than through `-v`, which
 # expands escape sequences in the value: no literal used here contains a backslash today,
 # which is exactly the kind of thing that stops being true without anyone noticing.
@@ -174,10 +176,12 @@ drop_map_row() {
 # The guard is not borrowed caution: this said no guard was needed, on run_check's reasoning
 # that a mistyped path leaves the real program in place, and a review measured that false.
 # `cat` to a mistyped *filename* inside that directory leaves a second `package main` in it,
-# so `go run` fails to compile, the producer's `|| fail` fires and both floors read 0 — which
-# is every message the stub cases assert, so all of them keep passing while testing a compile
-# error. Mistyping the *directory* is the loud half, because `cat` itself fails. Asymmetric,
-# and the silent half is the one a rename inside this directory would hit.
+# so `go run` fails to compile, the producer's `|| fail` fires and both floors read 0. Any
+# case whose assertion is one of those three messages therefore keeps passing while testing a
+# compile error — which is most of the callers below, though not the one that names a kind,
+# since a compile error emits no kind. Mistyping the *directory* is the loud half, because
+# `cat` itself fails. Asymmetric, and the silent half is the one a rename inside this
+# directory would hit.
 stub_extractor() {
   local target="$1/scripts/docrefs/main.go"
   if [ ! -f "$target" ]; then

@@ -56,32 +56,38 @@
 // pair as an illustration of a grep form, and the first real run of this check reported it
 // as a broken target.
 //
-// The ceilings, each measured as having no instance in this tree today. A tilde fence is
-// tracked as well as a backtick one, but a four-space indented code block is not, so a
-// link inside one is reported as broken. Reference-style links (`[x][1]` with a separate
-// `[1]: path` definition), links split across lines, and `[a [b]](x)` are invisible to
-// linkRe. Python's splitlines() also ended a line on VT, FF, FS, GS, RS, NEL, LS and PS,
-// where strings.Split does not, so a fence marker after one of those toggles in one
-// implementation and not the other and inverts the fence state for the rest of the file;
-// zero instances across every .md and .go here. Most of these fail toward a false broken
-// target rather than a missed real one; the exceptions are the reference-style form, which
-// is simply unseen, and the separator class, which fails both ways.
+// The ceilings, with no instance in this tree today. A tilde fence is tracked as well as a
+// backtick one, but a four-space indented code block is not, so a link inside one is
+// reported as broken. Reference-style links (`[x][1]` with a separate `[1]: path`
+// definition), links split across lines, and `[a [b]](x)` are invisible to linkRe. And a
+// line can end where this walk does not think it ends: the Python read a document through
+// universal newlines and then splitlines(), so a lone CR — and VT, FF, FS, GS, RS, NEL, LS
+// and PS — ended a line there where none of them does here, and a fence marker after one of
+// those toggles in one implementation and not the other, inverting the fence state for the
+// rest of the file.
 //
-// One gap fails the unsafe way, and the list above claimed there was none: an inline span of
-// three backticks written at column 0 is read as a fence marker, and the state latches, so
-// every link in the rest of that file is skipped and nothing reports it. CommonMark reads it
-// as a span, because a fence's info string may not hold a backtick. Inherited — the Python's
-// fence pattern is the same one — and measured at zero instances today, by the derivation
-// that no tracked markdown file has an odd number of fence-marker lines. main_test.go pins
-// the behaviour so a reader does not take it for a defect.
+// Which way each one fails is the part worth knowing, because it is not uniform, and an
+// earlier version of this paragraph got it wrong in both directions. Most produce a false
+// broken target, which is loud and gets fixed. The reference-style form is simply unseen.
+// The ones that fail toward a MISSED link, which is silent, are the separator class above
+// and a column-0 run of backticks that CommonMark reads as an inline span: fenceLineRe
+// reads it as a fence marker instead, the state latches, and every link up to the next
+// latch line is skipped. Both are inherited, the Python's fence pattern being the same one,
+// and main_test.go pins the latch so a reader does not take it for a defect.
 //
-// Two ceilings that do have instances today, which is why they are not in that list. A
-// fence inside a blockquote matches neither fence model — README.md has one — so a link
-// inside such a block is walked as if it were prose, in this implementation and in the
-// Python alike. And a link target containing a tab splits into two fields in
-// check-docs.sh's read loop, so the diagnostic names only the part before it; the gate
-// still fails, but a *trailing* tab is eaten as field whitespace and the target resolves,
-// which was equally true of the two-variable loop this replaced.
+// CommonMark's rule for that last one — a fence's info string may not hold a backtick — is
+// also the predicate that decides whether this tree has an instance, and it is one grep
+// over markdown and Go for a fence marker with a second run of backticks on the same line.
+// A count of fence-marker lines does NOT decide it, and this comment claimed it did: a pair
+// of latch lines leaves that count even, so parity sees a net inversion at EOF and says
+// nothing about the links between them.
+//
+// Two more ceilings, these with instances today. A fence inside a blockquote matches neither
+// fence model — README.md has one — so a link inside such a block is walked as if it were
+// prose, here and in the Python alike. And a link target containing a tab splits into two
+// fields in check-docs.sh's read loop, so the diagnostic names only the part before it; the
+// gate still fails, but a *trailing* tab is eaten as field whitespace and the target
+// resolves, which was equally true of the two-variable loop this replaced.
 //
 // # The citation predicate
 //
@@ -274,16 +280,21 @@ func unwrap(text string) string {
 // literally and leaves nothing live. The shape is main_test.go's unmatched-run case, which
 // is where it belongs — a literal backtick run cannot be written in a doc comment here,
 // because gofumpt reads a pair of them as godoc's old quoting idiom and rewrites it to a
-// curly quote. Two of the lines where the two strips already differ are AGENTS.md's own
-// bracketed-illustration sentences, so today's byte-identical output is an accident of where
-// those sentences wrap rather than a property.
+// curly quote, and plain gofmt is enough to do it. The two strips already differ on this
+// tree, and the way to see where is to run both over every line that reaches them rather
+// than to trust a list here; the differing lines include the bracketed illustration
+// AGENTS.md's citation rule carries and docs/ROADMAP.md's quotation of it. So today's
+// byte-identical output is an accident of where those sentences wrap rather than a property.
 //
-// Kept rather than reverted to the Python's shape, because the divergence runs in the
-// direction this tree prefers: a link exposed that the Python hid fails the gate loudly on
-// prose, where hiding one leaves a broken target unchecked and silent. It is also what
-// CommonMark says, an unclosed run being literal text. What is true is the narrow
-// measurement and not an equivalence — 278 link rows byte-identical over this tree, and
-// every shape in main_test.go measured against the Python before it was written down.
+// Kept rather than reverted to the Python's shape. For an odd unmatched run the divergence
+// runs in the direction this tree prefers — a link exposed that the Python hid fails the
+// gate loudly on prose, where hiding one leaves a broken target unchecked and silent — and
+// for an even one the residue lands inside link syntax and it can run either way. What
+// settles it in both cases is that an unclosed run is literal text in CommonMark, so this
+// side is the correct reading; the direction argument alone covers only half the class, as
+// it was first written here. What is true is the narrow measurement and not an equivalence:
+// 278 link rows byte-identical over this tree, and every shape in main_test.go measured
+// against the Python before it was written down.
 func stripCodeSpans(line string) string {
 	var b strings.Builder
 	for i := 0; i < len(line); {
@@ -481,6 +492,22 @@ func main() {
 			return nil
 		}
 		if hasSuffix(d.Name()) {
+			// os.Stat rather than d.Type(), because it follows symlinks the way the Python's
+			// is_file() did: a symlink to a document is read, while a dangling one, a symlink
+			// to a directory and a FIFO are skipped before anything opens them. d.Type() on a
+			// symlink is ModeSymlink, so an IsRegular test there would skip a symlink to a
+			// real document instead.
+			//
+			// This half was dropped when the read below was made fatal, and dropping it
+			// turned two non-documents into a gate nobody can act on: a dangling `x.md`
+			// failed the whole run for something no docs edit can fix, and a FIFO named
+			// `x.md` blocked in open(2) with no timeout anywhere in `mise run check`. The
+			// FIFO hangs the same way before that change, so the fatal read exposed it
+			// rather than caused it. A plain directory never reaches here at all — d.IsDir()
+			// returned above — which is why the read is not where this belongs.
+			if info, serr := os.Stat(p); serr != nil || !info.Mode().IsRegular() {
+				return nil
+			}
 			files = append(files, p)
 		}
 		return nil
@@ -530,6 +557,14 @@ func main() {
 		// case.
 		body, err := os.ReadFile(p)
 		if err != nil {
+			// Flushed before exiting, because by here bufio has already written whole
+			// buffers: exiting without it truncates stdout mid-row, the caller's heredoc
+			// completes that row, and its loop reads a bogus verdict out of the fragment.
+			// Measured — the gate printed `unrecognised section verdict from the extractor:`
+			// beside the true message, sending a maintainer to the arm that exists to catch a
+			// verdict typo for a typo that did not exist. The rows are worthless either way
+			// once this exits non-zero; the diagnostic is what the flush protects.
+			_ = out.Flush()
 			fmt.Fprintf(os.Stderr, "docrefs: reading %s: %v\n", p, err)
 			os.Exit(1)
 		}

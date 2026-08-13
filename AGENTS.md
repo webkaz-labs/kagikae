@@ -66,7 +66,7 @@ until one shipped — no file under
 that let a second normative copy grow inside `docs/SCOPE-MODEL.md` — and the root documents
 a link walk cannot vouch for **as a set** are present, non-empty and regular files), and
 `docs-check-selftest`, which checks that one. Those script headers, together with the
-extractor package comment the first of them routes to, are normative for
+extractor package comment the `docs-check` header routes to, are normative for
 which link forms the extractor sees, which citation forms the section walk reads **and
 which it cannot**, why each count is a floor, why a floor cannot reach a
 predicate, and which documents that last check names and why; do not restate them here.

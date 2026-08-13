@@ -637,8 +637,8 @@ Baseline: v0.15.2. Contract-additive — one new `doctor` check code,
   backend. The same code covers a `state.json` that cannot be read and an active
   snapshot whose metadata will not parse; both returned silently in the first draft.
   The causes are open-ended, so the check compares the two records rather than
-  watching for one: an interrupted `kae account rename` (ordering fix recorded in
-  [ROADMAP.md](ROADMAP.md), deliberately not in this release), `kae rollback`
+  watching for one: an interrupted `kae account rename` (ordering fix shipped in
+  v0.16.0 above, deliberately not in this release), `kae rollback`
   restoring an `active_before` that a later `account rm`/`rename` invalidated, and a
   writer outside kae.
 
@@ -1655,8 +1655,8 @@ itself); listed here so it is not lost.
 
 ## Non-Goals (this release)
 
-- "Did you mean X?" unknown-command suggestion — stays a separate ROADMAP
-  candidate.
+- "Did you mean X?" unknown-command suggestion — stays a separate candidate; it
+  shipped in v0.8.5.
 - A completion-framework dependency (cobra / carapace / `jdx/usage`): kae stays
   hand-rolled and dependency-minimal; the `__complete` backend reproduces the
   dynamic-completion pattern natively.
@@ -1794,8 +1794,8 @@ for every tool, including cursor).
 
 ## Non-Goals (this release)
 
-- TUI, Windows, remote share-list shipping, `env export --reveal`, "did you
-  mean" suggestions — see [ROADMAP.md](ROADMAP.md).
+- TUI, Windows, remote share-list shipping, `env export --reveal` — see
+  [ROADMAP.md](ROADMAP.md); "did you mean" suggestions shipped in v0.8.5.
 - Any JSON-contract break: `schema_version` stays `1`.
 
 ## Acceptance Criteria
@@ -1910,8 +1910,8 @@ Previous baseline: v0.8.1 (credential freshness / auto-recapture).
 ## Non-Goals (this release)
 
 - Codex keyring driver (v0.8.1 §E) — still discovery-blocked (see ROADMAP.md).
-- TUI, Windows, remote share-list shipping, `env export --reveal`,
-  "did you mean" suggestions — see [ROADMAP.md](ROADMAP.md).
+- TUI, Windows, remote share-list shipping, `env export --reveal` — see
+  [ROADMAP.md](ROADMAP.md); "did you mean" suggestions shipped in v0.8.5.
 - Any JSON-contract break: `schema_version` stays `1`.
 
 ## Acceptance Criteria
@@ -2156,7 +2156,8 @@ cleanly to `shared`/`isolated`:
 - **Alias / transition window** for `--mode` or the renamed config keys — pre-1.0
   hard break with a migration note.
 - TUI, Windows, Codex keyring driver, agy home isolation, remote share-list
-  shipping, doctor orphan enumeration — see [ROADMAP.md](ROADMAP.md).
+  shipping — see [ROADMAP.md](ROADMAP.md); doctor orphan enumeration shipped in
+  v0.8.1 as the `secret_orphan` check.
 - "Did you mean X?" unknown-command suggestion — may ride along but not required.
 
 ## Acceptance Criteria
@@ -2304,7 +2305,7 @@ the fragment is regenerated from kae state, and teardown just deletes it.
 
 - **`apply` / `run` redesign** — `apply` stays the idempotent hook form of the
   global shared switch; `run --mode` keeps its current mode values. Folding them
-  into the `-s`/`-i` vocabulary is deferred ([ROADMAP.md](ROADMAP.md)).
+  into the `-s`/`-i` vocabulary is deferred; it shipped in v0.8.0.
 - **Live bidirectional sync / watcher daemon** — `use -i` is a *switch* of which
   private home is live, not a sync engine. The §6 finding (claude self-heals
   `/oauthAccount` from the token) means no copy+patch is needed; a resident
@@ -2312,7 +2313,7 @@ the fragment is regenerated from kae state, and teardown just deletes it.
 - **Renaming `run --mode` values** — `run --mode bond|pin|home|overlay` keeps
   its names even though the per-directory data paths are renamed to
   `shared`/`isolated`; aligning `run`'s vocabulary is deferred with the rest of
-  the `apply`/`run` review ([ROADMAP.md](ROADMAP.md)).
+  the `apply`/`run` review, which shipped in v0.8.0.
 - **Tools without a redirectable home** (agy, opencode, cursor, copilot) —
   global shared (`use`) and `run --mode env` only, unchanged.
 - TUI, Windows, Codex keyring driver — see [ROADMAP.md](ROADMAP.md).
@@ -2683,9 +2684,10 @@ adapter lands behind its own discovery note in ADAPTERS.md before code.
 
 ## Non-Goals (this release)
 
-TUI (ROADMAP), Windows, Codex keyring driver, login UX polish,
-`env export --dotenv --reveal`, performance polish, claude file-driver
-override — see [ROADMAP.md](ROADMAP.md). No automatic network access:
+TUI (ROADMAP), Windows, Codex keyring driver, `env export --dotenv --reveal`
+— see [ROADMAP.md](ROADMAP.md). Login UX polish shipped in v0.8.6, performance
+polish in v0.8.2, and the claude file-driver override in v0.7.1. No automatic
+network access:
 the remote-definition work is design only.
 
 ## Breaking Changes

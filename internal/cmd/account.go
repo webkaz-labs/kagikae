@@ -279,7 +279,8 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	// exist yet; and moving the flip below a single Get/Set/Delete pass would
 	// trade that for a window nothing reports at all, since the old dir would
 	// keep loading fine while the `SecretRef` its metadata declares was already
-	// deleted from the backend (docs/ROADMAP.md records the whole argument).
+	// deleted from the backend. This comment is the whole argument; the release
+	// that shipped it is docs/RELEASE.md v0.16.0.
 
 	// Stage 1: copy every payload to its new ref and complete the new snapshot
 	// dir. Secret-backend keys cannot be renamed in place, hence a copy; the old

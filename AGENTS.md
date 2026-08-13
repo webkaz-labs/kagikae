@@ -355,10 +355,10 @@ a `§` at all.
 
 **That grep sees whether the target exists and nothing else, so what it cannot see is
 a quantity written *beside* a citation.** `docs/ROADMAP.md` said "the two commands in
-docs/CONTEXT.md § Not converged" after a later commit merged them into one: § Not
-converged
-still existed, so every heading-fragment grep stayed green and only reading the sentence
-found it.
+docs/CONTEXT.md § Not converged" after a later commit merged them into one — the `docs/`
+prefix is this file's, not the quoted sentence's, because the gate resolves a citation and
+a bare `CONTEXT.md` from the root no longer does. § Not converged still existed, so every
+heading-fragment grep stayed green and only reading the sentence found it.
 
 **The fix that holds is not to write the number — write the derivation**, the way
 [docs/CONTEXT.md](docs/CONTEXT.md) § Not converged does, and the `EXPECTED_GUARDS` note

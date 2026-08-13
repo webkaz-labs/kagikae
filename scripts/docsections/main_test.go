@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -30,7 +31,7 @@ func TestSectionNamesTakeHeadingsListTitlesAndAnchoredLabels(t *testing.T) {
 	}
 	// Mid-sentence emphasis is not a section name. Accepting it made `§ Both open
 	// gates` resolve against the word *both* in a sentence: on docs/ROADMAP.md the
-	// unanchored form admitted 120 first-words where headings and list titles give 39.
+	// unanchored form admits roughly three times the first-words the anchored one does.
 	if first["both"] {
 		t.Errorf("mid-sentence emphasis must not be a section name: %v", got)
 	}
@@ -128,6 +129,27 @@ func TestBothCitationsOnOneLineAreEmitted(t *testing.T) {
 	}
 	if firstWordMatches(sectionNames("## Tier-2 tools\n"), words(tail)) {
 		t.Fatal("the phantom must not resolve")
+	}
+}
+
+// unwrap's comment-marker strip had no test, and a review found that removing it drops
+// eight citations from the walk while check-docs.sh, its selftest and `go test` all
+// report clean — the floor cannot see 186 any more than it can see 139.
+func TestUnwrapJoinsACitationWrappedAcrossTwoCommentLines(t *testing.T) {
+	src := "// the rule and the reproduction live on docs/ROADMAP.md\n" +
+		"// § Rotation is measured for claude only, which gates it\n"
+	joined := unwrap(src)
+	locs := citeRe.FindAllStringSubmatchIndex(joined, -1)
+	if len(locs) != 1 {
+		t.Fatalf("a citation wrapped across two comment lines must be found once, got %d in %q", len(locs), joined)
+	}
+	if got := words(joined[locs[0][1]-1:])[0]; got != "rotation" {
+		t.Fatalf("read the cited name as %q, want rotation", got)
+	}
+	// Without the strip the continuation keeps its `//`, so the sigil is preceded by a
+	// comment marker instead of the filename and nothing matches.
+	if len(citeRe.FindAllStringSubmatchIndex(strings.ReplaceAll(src, "\n", " "), -1)) != 0 {
+		t.Fatal("this asserts the strip is what joins them, not the newline removal")
 	}
 }
 

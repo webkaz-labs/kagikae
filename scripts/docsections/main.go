@@ -17,8 +17,12 @@
 //
 // It is a prefix test on the words after the sigil, and it deliberately does not try
 // to find where the cited name ends. A citation here quotes a *distinctive leading
-// fragment* of the name, not the whole name — `docs/CLI.md § kae pin` cites
-// `## kae pin and mise init Semantics` — so there is no terminator to find. Three
+// fragment* of the name, not the whole name — a citation reading
+// `docs/ZZEXAMPLE.md § kae pin` would name `## kae pin and mise init Semantics` — so
+// there is no terminator to find. The illustration names a file that does not exist on
+// purpose: this program reads `.go`, so a resolvable citation in its own comment counts
+// toward check-docs.sh's md/go guard, and while it did, pruning `internal` stopped 55
+// citations from being checked and the gate still reported ok. Three
 // designs that tried anyway were measured on this tree first, and each would have
 // failed the gate on correct prose:
 //
@@ -39,9 +43,9 @@
 //     emphasis. That drops `§6`, `§7`, `§4.1` (numbered sections of
 //     docs/SCOPE-MODEL.md) and `§A`, `§A/§C` (docs/RELEASE.md sub-sections), which
 //     introduce no searchable name. Note which half does the work: every live instance
-//     is written with no space at all (measured: zero `§ <digit>`, twenty-one
-//     `§<digit>`), so widening the character class to admit digits would change
-//     nothing.
+//     is written with no space at all — `git grep -o '§ [0-9]' -- '*.md' '*.go'` is
+//     empty while `§[0-9]` is not — so widening the character class to admit digits
+//     would change nothing.
 //   - A fenced block is stripped, on both sides. AGENTS.md documents the citation
 //     forms themselves, and an unstripped run reported its illustrations as broken
 //     targets — the upstream template check's own open defect, reproduced. On the name
@@ -75,6 +79,11 @@
 //     reason. Verifying them means matching a fragment anywhere in a name, which is a
 //     different predicate, not a tighter one.
 //   - Only markdown and Go are read, per suffixes below.
+//   - A cited name whose first character is not ASCII is not extracted at all (`§
+//     Übersicht`, `§ “quoted`), and nameWindow bounds the diagnostic in bytes, so a
+//     window ending mid-rune renders as U+FFFD in the message rather than truncating
+//     cleanly. Neither has an instance today; both are inherited from the form this
+//     replaced.
 //   - Only the `X.md §` form is read. The bare `§ Name` form is this repository's
 //     dominant idiom — AGENTS.md's routing lines are all bare — and it names no file, so
 //     nothing here can resolve it. A `§` count over the tree far exceeds this program's
@@ -117,8 +126,9 @@ var (
 	// The name window is bounded so a citation cannot claim the rest of the file, and
 	// the bound is applied by slicing the tail rather than by a capture group: as a
 	// consuming capture it swallowed any second citation within the window — one joined
-	// line here, so across line breaks — and five live citations went unemitted while a
-	// phantom written beside a valid citation passed.
+	// line here, so across line breaks — so live citations went unemitted (six when it was
+	// measured; derive it rather than trusting that) while a phantom written beside a
+	// valid citation passed.
 	citeRe    = regexp.MustCompile("([A-Za-z0-9_./-]*\\.md)[`'\")\\]]*[ \t]*§[ \t]+[A-Za-z`\"*_]")
 	headingRe = regexp.MustCompile(`^#{1,6}\s+(.*)$`)
 	// A bold label that opens a line, optionally struck through; a list-item title is
@@ -126,14 +136,14 @@ var (
 	// change nothing. Anchored for the reason sectionNames states.
 	labelRe     = regexp.MustCompile(`^\s*(?:~~)?\*\*(.+?)\*\*`)
 	listLabelRe = regexp.MustCompile(`[-*]\s+(?:~~)?\*\*(.+?)\*\*`)
-	// Leading whitespace and `~~~`, matching scripts/docs_links.py's FENCE rather than
-	// inventing a third dialect — three copies of this model had three different ones,
-	// and this was the strictest. It cost both halves of the strip on the one file whose
-	// only fenced block is indented: docs/RELEASE.md has two indented fences and no
-	// column-0 fence, so a `§` illustration inside it was emitted as `absent` (the gate
-	// failing on a code block) and a bold label inside it became a section name a
-	// phantom resolved against. The `~~~` half has no instance today and is here only
-	// because matching the sibling's dialect is what stops the next divergence.
+	// Leading whitespace and `~~~`, matching scripts/docs_links.py's FENCE. Measured
+	// honestly: reverting this to the column-0 form leaves today's output byte-identical,
+	// because the tree's only indented fence — docs/RELEASE.md, which has no column-0
+	// fence at all — happens to contain neither a `§` nor a `**`. So this is dialect
+	// alignment plus what selftest case 18 guarantees, not a live defect repaired; the
+	// column-0 form fails that case and nothing else. Three copies of this model had
+	// three dialects (scripts/docscan/main.go's is a third, without `~~~`), which is the
+	// argument for matching a sibling rather than for the strictness.
 	fenceRe      = regexp.MustCompile("(?ms)^[ \t]*(?:```|~~~).*?^[ \t]*(?:```|~~~)[^\n]*\n?")
 	commentRe    = regexp.MustCompile(`^\s*(?://+|#+)\s*`)
 	decorationRe = regexp.MustCompile("[`*_\"'()\\[\\]|~]")
@@ -196,8 +206,8 @@ func stripFences(text string) string {
 //
 // The third form is deliberately narrow. Accepting every bold run over the joined text
 // — which is what this did first — accepts mid-sentence emphasis, and this tree writes
-// a great deal of it: on docs/ROADMAP.md that produced 120 accepted first-words where
-// headings and list titles give 39, the surplus including "and", "is", "it", "both",
+// a great deal of it: on docs/ROADMAP.md the unanchored form accepts roughly three times
+// the first-words headings and list titles give, the surplus including "and", "is", "both",
 // "before", "copy" and "done", so `§ Both open gates` resolved against the word *both*
 // in a sentence.
 func sectionNames(markdown string) [][]string {
@@ -319,7 +329,15 @@ func main() {
 	}
 
 	out := bufio.NewWriter(os.Stdout)
-	defer out.Flush()
+	// Checked rather than deferred-and-dropped: a failing write leaves bufio holding the
+	// error, and discarding it exits 0 with truncated output — a fail-open, in a program
+	// whose consumer reads a count and a floor.
+	defer func() {
+		if err := out.Flush(); err != nil {
+			fmt.Fprintf(os.Stderr, "docsections: writing output: %v\n", err)
+			os.Exit(1)
+		}
+	}()
 
 	for _, p := range files {
 		body, err := os.ReadFile(p)

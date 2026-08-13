@@ -317,6 +317,27 @@ FENCED
 out=$(run_check "$dir")
 check 'a citation inside a fenced block is ignored' "$OK_LINE" "$out"
 
+# 19. The half of the collapse the floor cannot see. Pruning one directory, or dropping
+#     one suffix, stops checking a whole class of citation and still clears any floor this
+#     walk could carry — measured at 139 of 194 with `internal` pruned. Nothing pinned
+#     that guard until this case: disabling it outright left every other case green. The
+#     mutation is a directory prune rather than a suffix drop because the suffix half was
+#     the one already stated in a comment, and this is the half that was re-broken by a
+#     citation landing in scripts/ for the first time.
+dir=$(fixture prunedgo)
+python3 - "$dir/scripts/docsections/main.go" <<'PRUNE'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+s = p.read_text()
+old = 'var skipDirs = map[string]bool{".git": true, "dist": true}'
+if old not in s:
+    raise SystemExit("fixture anchor miss: skipDirs is not where this case expects it")
+p.write_text(s.replace(old, 'var skipDirs = map[string]bool{".git": true, "dist": true, "internal": true}'))
+PRUNE
+out=$(run_check "$dir")
+check 'a directory prune that loses every Go citation is named' \
+  'section citations were found in markdown' "$out"
+
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs-selftest: %s case(s) failed\n' "$failures" >&2
   exit 1
@@ -326,7 +347,7 @@ fi
 # let a case be added and then silently deleted back to the count before it. Adding a case
 # has to bump this, and that is the point. Written without naming either count, because the
 # sentence that did name them was left behind by the first bump.
-EXPECTED_CASES=18
+EXPECTED_CASES=19
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

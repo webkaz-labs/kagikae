@@ -276,10 +276,19 @@ alternative exists (`secret-tool`).
   duplication lives in shell and Python headers.
 
 - **The claim-reconciliation stage is unbuilt, and a `grep` in AGENTS.md stands in for
-  it** (recorded 2026-08-10, **not fixed**). `scripts/docscan/main.go`'s header names a
+  it** (recorded 2026-08-10, **partly built** 2026-08-13). `scripts/docscan/main.go`'s
+  header names a
   four-stage docs scan; stage 2 (duplication) is what that program does, and stage 3 —
   reconciling a claim one document makes *about another* against what the other one says
-  — has no implementation. `AGENTS.md § Documentation Update Checklist` covers one shape
+  — has no general implementation. One slice of it is now in the gate:
+  `scripts/docs_sections.py` refuses a citation naming a section its target declares
+  nowhere, which is the narrowest claim-about-another-document there is — the target's
+  own headings answer it, with no reading needed. Its header is normative for what it
+  reads and for the two things it does not (a later word of the name, and any file that
+  is not markdown or Go). What that slice does **not** touch is the shape the rest of this
+  entry describes: whether the content under a name that does exist still says what the
+  citation claims.
+  `AGENTS.md § Documentation Update Checklist` covers one shape
   of it by hand: a quantity written beside a `§` citation, swept for with a regex over
   the diff's added lines. That sweep is a net rather than a proof by its own admission,
   and what it still misses is the argument for tooling rather than prose — `AGENTS.md` is

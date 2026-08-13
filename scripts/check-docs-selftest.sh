@@ -249,6 +249,38 @@ TRUNC
 out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
 check 'an extractor that dies mid-walk is named' 'the link extractor exited non-zero' "$out"
 
+# 15. The section predicate. `Tier-1 tools` is the citation this repository actually
+#     shipped into docs/ROADMAP.md, against a file whose only tier section is
+#     `## Tier-2 tools`, so the fixture is the defect rather than an invented one. No
+#     floor reaches this: the count rises by one and stays far above 100.
+dir=$(fixture phantomsection)
+printf '\nSee [ROADMAP.md](docs/ROADMAP.md) § Tier-1 tools for the mapping.\n' >> "$dir/README.md"
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'a citation naming a section that does not exist is named' \
+  'which that file declares no section for' "$out"
+
+# 16. Degenerate input, section side. Same shape as the link-side case above, and it is
+#     the one that matters most here: the predicate passes silently on an empty walk,
+#     because "no citation was absent" is true of no citations at all.
+dir=$(fixture nosections)
+printf '#!/usr/bin/env python3\n' > "$dir/scripts/docs_sections.py"
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'an extractor emitting nothing trips the section floor' \
+  'checked only 0 section citations' "$out"
+
+# 17. A partially collapsed section walk: emits enough to clear nothing and then fails.
+#     The assertion names the exit status rather than the floor, because this fixture
+#     trips both and only one of them is what the case pins.
+dir=$(fixture truncatedsections)
+cat > "$dir/scripts/docs_sections.py" <<'TRUNCSEC'
+#!/usr/bin/env python3
+print("README.md\tdocs/CLI.md\tresolves\tkae add")
+raise SystemExit(3)
+TRUNCSEC
+out=$( (cd "$dir" && bash scripts/check-docs.sh 2>&1) || true)
+check 'a section extractor that dies mid-walk is named' \
+  'the section extractor exited non-zero' "$out"
+
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs-selftest: %s case(s) failed\n' "$failures" >&2
   exit 1
@@ -258,7 +290,7 @@ fi
 # let a case be added and then silently deleted back to the count before it. Adding a case
 # has to bump this, and that is the point. Written without naming either count, because the
 # sentence that did name them was left behind by the first bump.
-EXPECTED_CASES=14
+EXPECTED_CASES=17
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

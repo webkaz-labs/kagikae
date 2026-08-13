@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # Rejects the docs defects nothing else here catches: a markdown link whose target does not
-# exist, a document under docs/ that AGENTS.md's Documentation Map does not list, a root
-# document (README.md, AGENTS.md, CLAUDE.md) that is missing, empty, or not a regular file,
+# exist, a `X.md § Name` citation naming a section that file declares nowhere, a document
+# under docs/ that AGENTS.md's Documentation Map does not list, a root document (README.md,
+# AGENTS.md, CLAUDE.md) that is missing, empty, or not a regular file,
 # and — dormant, because no docs/<domain>/ directory exists yet — a domain child its
 # uppercase index does not link. Enumerated rather than counted: the previous header counted
 # them, undercounted by leaving the dormant one out, and nothing reported that.
+#
+# The section half is the newest and the narrowest: scripts/docs_sections.py's header is
+# normative for which citation forms it reads, the three designs that produced false
+# positives on correct prose before this one, and — read this before trusting a clean
+# run — that it compares only the first word of the cited name.
 #
 # The orphan half is not hypothetical. docs/SCOPE-MODEL.md was the one file missing
 # from that table, so nothing told a reader when to open it, and a second normative
@@ -222,9 +228,44 @@ if [ "$links_checked" -lt 50 ]; then
   fail "resolved only $links_checked relative links, which is fewer than this repository has"
 fi
 
+# --- every `X.md § Name` citation names a section that file declares ---------------
+# The link walk above resolves the *file* a citation points at and stops there, so a
+# citation naming a section the file has never had is invisible to it. One shipped:
+# docs/ROADMAP.md cited "§ Tier-1 tools", found by a reviewer. Status read the same way
+# as the link extractor's, and for the same measured reason.
+sections=$(python3 "$root/scripts/docs_sections.py") ||
+  fail "the section extractor exited non-zero, so the walk below is truncated and its count means nothing"
+
+sections_checked=0
+while IFS=$'\t' read -r citing target verdict name; do
+  if [ -z "$verdict" ]; then
+    continue
+  fi
+  # A target outside the tree cannot be resolved from here; docs_sections.py's header
+  # says which ones those are and why. Not counted, so the floor bounds only the walk
+  # this repository can actually check.
+  if [ "$verdict" = external ]; then
+    continue
+  fi
+  sections_checked=$((sections_checked + 1))
+  if [ "$verdict" = absent ]; then
+    fail "$citing cites $target § $name, which that file declares no section for"
+  fi
+done <<SECTIONS
+$sections
+SECTIONS
+# A scale floor, like the two above: it bounds how much of the walk ran, never what the
+# walk decides. Every way this collapses — an extractor emitting nothing, a `git ls-files`
+# that fails, a regex that matches nothing — lands at 0, and this repository carries an
+# order of magnitude more than the floor.
+if [ "$sections_checked" -lt 100 ]; then
+  fail "checked only $sections_checked section citations, which is fewer than this repository has"
+fi
+
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs: %s problem(s)\n' "$failures" >&2
   exit 1
 fi
 
-printf 'check-docs: ok — %s docs in the Map, %s links resolved\n' "$docs_checked" "$links_checked"
+printf 'check-docs: ok — %s docs in the Map, %s links resolved, %s section citations resolved\n' \
+  "$docs_checked" "$links_checked" "$sections_checked"

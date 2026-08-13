@@ -58,13 +58,19 @@ three hand copies of it had already drifted apart. Some are worth a word about w
 do rather than that they exist: `smoke-selftest`
 (`scripts/smoke-run-selftest.sh`, which checks the smoke runner's own guards — no
 `kae` build and no network, so it costs a few seconds), and `docs-check`
-(`scripts/check-docs.sh`: every markdown link its extractor finds resolves, no file under
+(`scripts/check-docs.sh`: every markdown link its extractor finds resolves, every
+`X.md § Name` citation names a section that file declares — a link walk resolves the
+*file* and stops, so a citation naming a section the file has never had was invisible
+until one shipped — no file under
 `docs/` is missing **its own routing row** in the Documentation Map above — the omission
 that let a second normative copy grow inside `docs/SCOPE-MODEL.md` — and the root documents
 a link walk cannot vouch for **as a set** are present, non-empty and regular files), and
-`docs-check-selftest`, which checks that one. Those three script headers are normative for
-which link forms the extractor sees, why each count is a floor, why a floor cannot reach a
+`docs-check-selftest`, which checks that one. Those script headers are normative for
+which link forms the extractor sees, which citation forms the section walk reads **and
+which it cannot**, why each count is a floor, why a floor cannot reach a
 predicate, and which documents that last check names and why; do not restate them here.
+Read `scripts/docs_sections.py`'s header before trusting a clean section walk: it compares
+only the first word of a cited name, and it reads markdown and Go and nothing else.
 `docs-check` is **not** `mise run docs-scan`, which reports duplicated prose and
 deliberately fails nothing. `mise run audit` (govulncheck, plus the
 upstream literal fingerprints — it reads the installed tools' own binaries, so it

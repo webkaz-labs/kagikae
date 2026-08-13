@@ -36,13 +36,15 @@
 // # Go rather than the Python the link half was first written in
 //
 // mise.toml declares no python and CI runs neither docs-check nor docs-check-selftest, so
-// a python3 the gate needs is a dependency nothing declares and nothing outside a
-// developer's machine would notice. Derive what is left rather than reading a count here:
-// `grep -rn python3 scripts/`. Measured before this port, with a python3 that exits 127:
-// check-docs.sh was loud but misdiagnosing, reporting `the link extractor exited
+// a python3 the gate needed was a dependency nothing declared and nothing outside a
+// developer's machine would notice. Measured before this port, with a python3 that exits
+// 127: check-docs.sh was loud but misdiagnosing, reporting `the link extractor exited
 // non-zero` about an interpreter that was never there, and check-docs-selftest.sh failed
 // its first two cases for a reason neither case tests and then exited 127 inside its
-// third with nothing but `command not found`. This program is also inside `go vet`,
+// third with nothing but `command not found`. The same run of `mise run check` is rc=0
+// now — that is the measurement to repeat, with the shim rather than by reading this
+// sentence, because a grep for `python3` answers a different question and finds this
+// paragraph. This program is also inside `go vet`,
 // `golangci-lint` and `go test`, which is where main_test.go's cases live; scripts/docscan
 // is the same shape, and the release is unaffected because .goreleaser.yaml builds
 // `main: .`.

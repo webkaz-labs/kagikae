@@ -36,8 +36,8 @@ cases=0
 readonly OK_LINE='check-docs: ok'
 
 # The fixture is the working tree's tracked files, so this needs a git work tree. Say so
-# rather than letting a case die inside python on a missing file, which is what happened
-# when this was first run against an extracted copy of the tree.
+# rather than letting a case die inside a fixture edit on a missing file, which is what
+# happened when this was first run against an extracted copy of the tree.
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   printf 'check-docs-selftest: not inside a git work tree; the fixture needs `git ls-files`\n' >&2
   exit 1
@@ -98,9 +98,43 @@ check() {
   printf 'ok    %s\n' "$name"
 }
 
-# Deleting a Documentation Map row is what two cases below need, so it is one function with
-# an anchor guard rather than two near-copies of the same heredoc — the guard is the half
-# that makes a fixture worth trusting, since an edit that silently missed proves nothing.
+# The three fixture edits below were python3, which made an interpreter nothing in
+# mise.toml declares a dependency of `mise run check` — and of the half of it that fails
+# most opaquely without one: a case dies mid-suite rather than reporting anything, which is
+# what an absent python3 was measured doing here.
+#
+# awk rather than sed because every needle below is Go or markdown source full of sed
+# metacharacters (`map[string]bool{…}`, `/`), and awk's index() and substr() do not
+# interpret a needle at all. Passed through the environment rather than through `-v`, which
+# expands escape sequences in the value: no literal used here contains a backslash today,
+# which is exactly the kind of thing that stops being true without anyone noticing.
+#
+# Each one refuses loudly when its anchor is absent, which is the half that makes a fixture
+# worth trusting: an edit that silently missed proves nothing, and the case built on it goes
+# on reporting ok about a mutation that never happened.
+fixture_anchor_miss() {
+  printf 'check-docs-selftest: fixture anchor miss: %s\n' "$1" >&2
+  exit 1
+}
+
+# subst_once <file> <literal> <replacement> — replaces the first occurrence.
+subst_once() {
+  awk_old=$2 awk_new=$3 awk '
+    BEGIN { old = ENVIRON["awk_old"]; repl = ENVIRON["awk_new"] }
+    !hit && (p = index($0, old)) {
+      $0 = substr($0, 1, p - 1) repl substr($0, p + length(old))
+      hit = 1
+    }
+    { print }
+    END { exit(hit ? 0 : 3) }
+  ' "$1" > "$1.new" ||
+    { rm -f "$1.new"; fixture_anchor_miss "$1 does not contain: $2"; }
+  mv "$1.new" "$1"
+}
+
+# drop_map_row <AGENTS.md> <target> — deletes every Documentation Map row linking a target,
+# which is what two cases below need.
+#
 # The row form is required, not just the filename, to keep the guarantee the orphan case was
 # written for: it must delete a routing row, never prose that names the file. That
 # requirement is not observable on this tree — every link of this shape is already a table
@@ -108,15 +142,14 @@ check() {
 # because the day a document links one of these outside the table, a filename-only filter
 # would quietly delete that line too and the case would stop testing what it claims.
 drop_map_row() {
-  python3 - "$1" "$2" <<'ROW'
-import pathlib, sys
-path, target = pathlib.Path(sys.argv[1]), sys.argv[2]
-lines = path.read_text().splitlines(True)
-kept = [line for line in lines if not (line.startswith('|') and f']({target})' in line)]
-if len(kept) == len(lines):
-    raise SystemExit(f'fixture anchor miss: no Documentation Map row links {target}')
-path.write_text(''.join(kept))
-ROW
+  awk_target=$2 awk '
+    BEGIN { row = "](" ENVIRON["awk_target"] ")" }
+    substr($0, 1, 1) == "|" && index($0, row) { hit = 1; next }
+    { print }
+    END { exit(hit ? 0 : 3) }
+  ' "$1" > "$1.new" ||
+    { rm -f "$1.new"; fixture_anchor_miss "no Documentation Map row links $2"; }
+  mv "$1.new" "$1"
 }
 
 # Three cases below replace the extractor, and since the link and citation halves share one
@@ -186,14 +219,7 @@ check 'an extractor emitting nothing trips the link floor' 'resolved only 0 rela
 #    is why this is one case rather than two. It also proves the heading-absent branch is
 #    reachable at all: an unguarded `grep` there used to kill the script before it ran.
 dir=$(fixture nomap)
-python3 - "$dir/AGENTS.md" <<'RENAME'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1])
-text = p.read_text()
-if '## Documentation Map' not in text:
-    raise SystemExit('fixture anchor miss: no "## Documentation Map" heading to rename')
-p.write_text(text.replace('## Documentation Map', '## Doc Map', 1))
-RENAME
+subst_once "$dir/AGENTS.md" '## Documentation Map' '## Doc Map'
 out=$(run_check "$dir")
 check 'renaming the Map heading trips its extraction floor' 'extracted only 0 docs/ links' "$out"
 
@@ -334,15 +360,9 @@ check 'a citation inside a fenced block is ignored' "$OK_LINE" "$out"
 #     the one already stated in a comment, and this is the half that was re-broken by a
 #     citation landing in scripts/ for the first time.
 dir=$(fixture prunedgo)
-python3 - "$dir/scripts/docrefs/main.go" <<'PRUNE'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1])
-s = p.read_text()
-old = 'var skipDirs = map[string]bool{".git": true, "dist": true}'
-if old not in s:
-    raise SystemExit("fixture anchor miss: skipDirs is not where this case expects it")
-p.write_text(s.replace(old, 'var skipDirs = map[string]bool{".git": true, "dist": true, "internal": true}'))
-PRUNE
+subst_once "$dir/scripts/docrefs/main.go" \
+  'var skipDirs = map[string]bool{".git": true, "dist": true}' \
+  'var skipDirs = map[string]bool{".git": true, "dist": true, "internal": true}'
 out=$(run_check "$dir")
 check 'a directory prune that loses every Go citation is named' \
   'section citations were found in markdown' "$out"

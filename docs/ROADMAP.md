@@ -236,28 +236,28 @@ alternative exists (`secret-tool`).
   Nothing here should be widened silently; the gap is now stated in all three places
   that describe the gate.
 
-- **One paragraph in `PRODUCT.md` is architecture** (recorded 2026-08-11, **not fixed**).
-  The rename from `docs/DESIGN.md` moved the whole file, because the shared standard
-  reserved `DESIGN.md` for a visual design system and says it is "not the product or
-  software design document". A first draft of this entry named two whole sections and
-  priced a section-level move; reading them says otherwise, and the correction is the
-  useful part. **§ Switching Surface is a primary journey**, which the standard's charter
-  for `PRODUCT.md` explicitly includes — a scope × environment table plus verb semantics.
-  The only architecture in it is the closing paragraph headed `**Mechanisms.**`
-  (in-place credential patch / `CLAUDE_CONFIG_DIR` / symlink-everything-but-credential),
-  which already ends by pointing at [ADAPTERS.md](ADAPTERS.md). **§ Concurrency Boundary
-  is a product boundary**, not architecture: its content is the user-visible limit that
-  two accounts of one tool cannot run concurrently, and `## Product Boundaries` is the
-  next heading in the same file — while the mechanism is separately owned by
-  [ARCHITECTURE.md](ARCHITECTURE.md) § Locking, at length, with no overlap.
-  So the work is a paragraph move plus a same-file fold, not a section move. It also
-  costs nothing in citations, which the first draft claimed it would: `scripts/docscan/
-  main.go`'s calibration note names § Switching Surface's **table**, and
-  `docs/CONTEXT.md`'s routing row names the section — so moving the `**Mechanisms.**`
-  paragraph leaves the heading in place, both citations resolving, and that measured
-  duplicate pair meaningful.
-  Classifying by the topic word (*locks*, *mechanisms*) rather than by the question the
-  passage answers is what produced the wrong estimate.
+- ~~**One paragraph in `PRODUCT.md` is architecture**~~ (recorded 2026-08-11, **fixed
+  2026-08-14**). The `**Mechanisms.**` paragraph is now
+  [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Mechanisms, and § Concurrency Boundary is
+  folded into § Product Boundaries as its opening paragraphs.
+  What is kept is why the first draft of this entry was wrong, since nothing in the
+  result records it: that draft named § Switching Surface and § Concurrency Boundary as
+  whole sections and priced a section-level move, because it classified by the **topic
+  word** (*locks*, *mechanisms*) rather than
+  by the question the passage answers. Reading them said otherwise — a scope ×
+  environment table plus verb semantics is a primary journey, which the standard's
+  charter for `PRODUCT.md` explicitly includes, and a user-visible limit on what can run
+  at once is a product boundary, while its mechanism was already owned separately by
+  [ARCHITECTURE.md](ARCHITECTURE.md) § Locking with no overlap. So the work was a
+  paragraph move plus a same-file fold, and it cost nothing in citations: everything
+  `git grep 'Switching Surface'` finds names a heading the move leaves in place, and
+  nothing outside `PRODUCT.md` named § Concurrency Boundary at all. Derive both rather
+  than reading a count here — what counts as a citation is where the figures in this
+  tree disagree.
+  One thing the entry never mentioned and the fix had to carry: `PRODUCT.md`'s own
+  opening still said both sections read as architecture and were queued for a move, a
+  claim this entry had already withdrawn above. A `§` grep cannot see that class, and
+  neither can the gate.
 
 - **The standard's own docs check cannot run clean, and this repository forked it instead
   of fixing it** (recorded 2026-08-11, **not fixed here** — the fix belongs upstream; the

@@ -8,11 +8,6 @@ always been the latter, so it carries the name the standard gives that content, 
 kae has no `DESIGN.md`: it is a plain CLI with no TTY surface, which the standard says
 should omit one.
 
-Two sections here are a poorer fit than the rest and have not been moved:
-§ Switching Surface and § Concurrency Boundary read as architecture rather than
-product. Moving them is a separate change with its own citations to repoint, filed in
-[ROADMAP.md](ROADMAP.md).
-
 ## Mission
 
 `kagikae` (command: `kae`) safely switches accounts, authentication state, and
@@ -111,13 +106,8 @@ already matches. `--quiet` suppresses the success report; `--json` keeps the
 exactly three isolation scopes: global (`use -i` / `run -i` share one home per
 account), per-directory shared (`pin -s`), per-directory isolated (`pin -i`).
 
-**Mechanisms.** Internally: global shared = in-place credential patch;
-global isolated = `CLAUDE_CONFIG_DIR` / `CODEX_HOME` via a kae-owned global
-mise fragment; per-dir shared = symlink-everything-but-credential; per-dir
-isolated = private config dir with opt-in shares. All per-dir bindings use
-kae-owned mise fragments — kae never edits the user's `mise.toml`. See
-[ADAPTERS.md](ADAPTERS.md) for the per-tool switched/preserved contract and
-[ROADMAP.md](ROADMAP.md) for ordering.
+What each cell does internally is
+[ARCHITECTURE.md](ARCHITECTURE.md) § Switch Mechanisms.
 
 ## Tool Tiers
 
@@ -196,9 +186,10 @@ three exist, the tool stays at Tier 2 and kae writes nothing it cannot verify.
 API-key and Vertex-style profiles are handled later by `env` mode, not by
 mutating live credential stores.
 
-## Concurrency Boundary
+## Product Boundaries
 
-A global shared switch (`kae use -s`, the default) mutates the live credential
+The first boundary is what can run at the same time. A global shared switch
+(`kae use -s`, the default) mutates the live credential
 store shared by every terminal, so two different accounts of the same tool
 cannot run concurrently this way. `kae` holds a per-tool lock during the switch
 and documents that concurrent multi-account work needs an isolated environment
@@ -233,7 +224,7 @@ NG:  two terminals both relying on a global shared switch for different accounts
      of the same tool at the same time
 ```
 
-## Product Boundaries
+The rest are what `kae` will not do:
 
 - `kae` never reimplements upstream login flows. It snapshots and restores the
   artifacts the official CLIs create.

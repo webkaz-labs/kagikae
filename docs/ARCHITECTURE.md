@@ -201,6 +201,17 @@ Adapters return structured refusals (`unsafe_refused`, `unsupported`,
 `auth_missing`) instead of writing when the live layout is unrecognized; the
 normative allowlists live in [ADAPTERS.md](ADAPTERS.md).
 
+## Switch Mechanisms
+
+One cell of the scope × environment matrix ([PRODUCT.md](PRODUCT.md) § Switching
+Surface is the user-facing statement of it) maps to one mechanism: global shared =
+in-place credential patch; global isolated = `CLAUDE_CONFIG_DIR` / `CODEX_HOME` via
+a kae-owned global mise fragment; per-dir shared =
+symlink-everything-but-credential; per-dir isolated = private config dir with
+opt-in shares. All per-dir bindings use kae-owned mise fragments — kae never edits
+the user's `mise.toml`. See [ADAPTERS.md](ADAPTERS.md) for the per-tool
+switched/preserved contract and [ROADMAP.md](ROADMAP.md) for ordering.
+
 ## Switch Transaction
 
 ```text

@@ -1581,10 +1581,9 @@ Two offline `doctor` checks watch the table between releases:
 
 A warning from either means: work that tool's rows below, then update the
 adapter's `VerifiedVersion()`, its `VerifiedOn()` and the version recorded here
-**in the same commit**. That is not the whole set of copies, and a version in this
-file is deliberately outside it —
+**in the same commit**. Those are not the whole set —
 [.claude/skills/upstream-auth-drift/SKILL.md](../.claude/skills/upstream-auth-drift/SKILL.md)
-§ Re-record is normative for both, and is where this chain ends rather than at the
+§ Re-record is normative for it, and is where this chain ends rather than at the
 adapter comment that sent you here.
 
 **For a tool whose source is public, the cheapest form of that work is a
@@ -1905,9 +1904,10 @@ the confirmation. Record the outcome, the version, and the login-to-deadline int
 ## Real-Machine Acceptance (release only)
 
 This run doubles as the re-verification pass for the **Upstream Behaviour
-Assumptions** table above: work each installed tool's rows, then update that
-tool's `VerifiedVersion()` and its recorded version in the same commit. `kae
-doctor` naming `upstream_version` for a tool is the signal that its rows are due.
+Assumptions** table above: work each installed tool's rows, then re-record in the
+same commit — § Upstream Behaviour Assumptions carries what that means and routes
+on to the full copy set. `kae doctor` naming `upstream_version` for a tool is the
+signal that its rows are due.
 
 **Which accounts to run any of this with, and it is the whole section's
 precondition rather than one procedure's.** Every check below applies a

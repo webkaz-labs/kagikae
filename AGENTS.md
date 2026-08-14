@@ -287,8 +287,8 @@ once and were then shown to be false.
   `adapter.Adapter` (`internal/adapter/adapter.go` says why each is). Re-verify that
   tool's rows in [docs/VALIDATION.md](docs/VALIDATION.md) § Upstream Behaviour
   Assumptions, then move every copy in the same commit — there are more than the
-  pair, and a version in that file is **not** one of them; the `upstream-auth-drift`
-  skill § Re-record is normative for both. kae depends on undocumented upstream
+  pair, and the `upstream-auth-drift` skill § Re-record is normative for which.
+  kae depends on undocumented upstream
   *behaviour*, not just layout, and a behaviour-only change passes every structure
   guard. Record the **condition**, never an absolute: `/oauthAccount` was left
   alone because claude was measured self-healing it, when the fact was that it

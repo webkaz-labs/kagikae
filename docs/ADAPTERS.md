@@ -1272,14 +1272,11 @@ actually happens.
 **Every other adapter must declare one**: `VerifiedVersion()` is a method of
 `adapter.Adapter`, so the compiler stops a new tool that omits it, and
 `TestVerifiedVersionFormat` (driven off `constants.Tools`) rejects a value that is
-neither a triple nor `""`. `VerifiedOn()` is a method of the same interface, and
-`TestVerifiedVersionsMatchTheDocs` is where its `YYYY-MM-DD` is parsed, beside the
-table's `VerifiedVersion()` and `VerifiedOn()` cells. kae depends on
-undocumented upstream *behaviour* as well as layout, and a behaviour-only change
-passes every structure guard. When you re-verify a tool's rows in
-[VALIDATION.md](VALIDATION.md), bump `VerifiedVersion()`, `VerifiedOn()` and both
-cells of the table above in the same commit — the check is only as honest as those
-staying in step. The rest of the copy set, and the one version in VALIDATION.md
-that is **not** part of it, are in
+neither a triple nor `""` — `VerifiedOn()` is a method of the same interface, and
+the same test parses its `YYYY-MM-DD`. kae depends on undocumented upstream
+*behaviour* as well as layout, and a behaviour-only change passes every structure
+guard. When you re-verify a tool's rows in [VALIDATION.md](VALIDATION.md), bump the
+pair and its cells above in the same commit — the check is only as honest as those
+staying in step, and the rest of the copy set is in
 [.claude/skills/upstream-auth-drift/SKILL.md](../.claude/skills/upstream-auth-drift/SKILL.md)
 § Re-record.

@@ -100,7 +100,7 @@ POSITIVE_CONTROL_COMMIT=89341f4
 
 QUANTITY_RE='(^|[^A-Za-z*`])\*{0,2}`?(both|one|two|three|four|five|six|seven|eight|nine|ten|thirteen'\
 '|first|second|third|fourth|fifth|sixth|seventh|[0-9]+)`?\*{0,2}( +[^ ]+){0,3} +'\
-'\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?|tools?|assertions?)\b'
+'\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?|tools?|assertions?|documents?|cells?)\b'
 
 MARKER_RE='^\+\+ b/'
 

@@ -184,11 +184,11 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
   above cannot — `refreshTokenExpiresAt` is exactly what an invalidation does not
   move.
 
-`VerifiedVersion() string` is **not** one of them: it is a method of `Adapter`
-itself, because kae relies on undocumented *behaviour* of every tool and a
-behaviour-only upstream change passes every structure guard, so every adapter owes
-one and the compiler is the right place to say so (a seventh tool cannot be added
-without it). It declares the upstream release the adapter's behaviour assumptions
+`VerifiedVersion() string` and `VerifiedOn() string` are **not** among them: they
+are methods of `Adapter` itself, because kae relies on undocumented *behaviour* of
+every tool and a behaviour-only upstream change passes every structure guard, so
+every adapter owes both and the compiler is the right place to say so (a new tool
+cannot be added without them). It declares the upstream release the adapter's behaviour assumptions
 were last verified against, so `doctor upstream_version` can warn when the
 installed tool is a newer major/minor. `""` means "no usable signal, skip me" —
 only for a version scheme the comparison cannot read (cursor's date versions);

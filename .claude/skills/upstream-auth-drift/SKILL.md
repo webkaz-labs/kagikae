@@ -115,6 +115,15 @@ found a cheaper one: the `security` PATH shim replaced a "seed the file, wait fo
 a token refresh" recipe that needed a real account, and that is a permanent
 improvement for everyone after you.
 
+**The `Measured on` column of
+[docs/VALIDATION.md](../../../docs/VALIDATION.md) § Upstream Literal Fingerprints
+is a version, and it is outside that set.** It records the build the *counts* were
+taken on, not the release a row was verified against, and
+`TestUpstreamLiteralFingerprints` turns it into a path that must exist rather than
+skipping. cursor's cell there carries a date version while
+`cursor.VerifiedVersion()` is `""`. Move it when you re-measure the counts; never
+to match a version you just bumped.
+
 ## Phase 5 — Verify
 
 `mise run check` is the only gate. Add the login-free smoke for the rule you just

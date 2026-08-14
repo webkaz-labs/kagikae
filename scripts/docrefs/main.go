@@ -521,11 +521,15 @@ func hasSuffix(name string) bool {
 	return false
 }
 
-// docFiles is the set both extractors read, and it is a function rather than a loop inside
-// main because main_test.go asserts a property of that same set. Two copies of this walk
-// existed for one commit, and the copy folded a stat failure back into "not a document" —
-// the fail-open the comment below records closing — so the test vouched for a tree it had
-// silently not read. One walk, one policy.
+// docFiles is the set of documents the walk hands to both extractors — not everything they
+// read, since resolveTarget and namesFor stat and open a citation's target wherever it
+// names, including under a pruned directory, which a selftest case depends on.
+//
+// It is a function rather than a loop inside main so that a test asserting a property of
+// that set does not have to re-derive it. One did, briefly, and the copy folded a stat
+// failure back into "not a document" — the fail-open the comment below records closing —
+// so the test vouched for a tree it had silently not read while this program exited 1 on
+// the same tree. One walk, one policy.
 func docFiles(root string) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {

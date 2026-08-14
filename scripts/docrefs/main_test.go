@@ -283,8 +283,11 @@ func TestResolveTargetTakesTheCitingDirectoryAndTheRootAndNothingElse(t *testing
 // costs nothing and buys the other direction, since a fenced example is not a citation.
 //
 // Two-sided, because the arm that matters is a negative and a walk that reaches nothing
-// satisfies it: the spaced form must be absent AND the unspaced form must be present. This
-// file writes both patterns as regexp source (`§` then `[`), so neither arm reads itself.
+// satisfies it: no citation may be spaced, AND an unspaced one must be present. Both arms
+// carry citeRe's own `.md` prefix — without it the negative flags ordinary prose numbering
+// that citeRe can never match, and the positive is satisfied by an `RFC 6902 §4.1` that is
+// not a citation either. This file writes both patterns as regexp source, so the sigil is
+// followed by `[` and neither arm reads itself.
 func TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil(t *testing.T) {
 	root := repositoryRoot(t)
 	// docFiles rather than a walk of its own: main() answers for which documents exist and
@@ -296,7 +299,7 @@ func TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil(t *testing.T) {
 	}
 	var (
 		spacedRe    = regexp.MustCompile("[A-Za-z0-9_./-]*\\.md[`'\")\\]]*[ \t]*§[ \t]+[0-9]")
-		unspacedRe  = regexp.MustCompile("§[0-9]")
+		unspacedRe  = regexp.MustCompile("[A-Za-z0-9_./-]*\\.md[`'\")\\]]*[ \t]*§[0-9]")
 		spaced      []string
 		sawUnspaced bool
 	)

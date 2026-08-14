@@ -17,7 +17,8 @@ name: Check
 # Docs-check is here and its selftest is not, decided 2026-08-14, because they stopped
 # costing the same thing. The check is bash plus one `go run` of a stdlib-only program
 # over the tree: no python since the extractor was ported, no network — the step's own
-# `GOPROXY: off` plus an empty `GOMODCACHE` is that claim, enforced rather than recorded —
+# `GOPROXY: off` plus an empty `GOMODCACHE` is the module half of that claim, enforced
+# rather than recorded (the step's own comment bounds what it does and does not catch) —
 # and no git, so a shallow checkout is enough.
 # The only write outside the checkout worth a decision is a Go build cache, which
 # scripts/check-docs.sh defaults to `${TMPDIR:-/tmp}/kae-gocache` unless GOCACHE is
@@ -73,9 +74,10 @@ jobs:
           # re-run on every push instead of where it goes stale. Both lines are load-bearing
           # and the second is the one a review had to add: GOPROXY only blocks downloads, so
           # an earlier step's warm module cache resolves a newly added dependency and the
-          # constraint passes anyway. Measured both ways. What the pair enforces is exactly
-          # "this step reaches no network", which is what licenses the shallow checkout — an
+          # constraint passes anyway. Measured both ways. What the pair enforces is narrower
+          # than "no network": the go command resolves no module from outside the checkout.
+          # A review measured both of the wider readings this comment tried first — an
           # import of another package in *this* module needs no proxy and is not caught, and
-          # a claim that it is was here until a review measured it.
+          # a program reaching a socket is not caught either.
           GOPROXY: off
           GOMODCACHE: ${{ runner.temp }}/docs-check-modcache

@@ -834,7 +834,8 @@ alternative exists (`secret-tool`).
   reachable only from a **pre-split** binding or from a bound store versus the account
   snapshot — so its remaining value is largely the migration window and the snapshot
   comparison, which the acceptance block in
-  [VALIDATION.md](VALIDATION.md) § `kae relogin` and `credential_superseded` now states.
+  [VALIDATION.md](VALIDATION.md) § v0.17.0 surface — `kae relogin` and
+  `credential_superseded` now states.
   Do **not** fix it by dropping `winnerUnattributable`: it is the guard that keeps kae
   from telling a user their login is dead on the strength of a copy it cannot attribute,
   and the asymmetry there is deliberate ([AGENTS.md](../AGENTS.md)).

@@ -4,10 +4,9 @@
 #
 #   bash scripts/smoke-run.sh '## Smoke Checks'
 #
-# **No section in docs/VALIDATION.md needs SMOKE_WHOLE_FILE=1 today.** The harvest
-# section did until 2026-08-09, and this header went on naming it as the example
-# after that section had been converted and said the opposite in its own opening
-# paragraph — two files contradicting each other about one section, found in review.
+# **No section in docs/VALIDATION.md needs SMOKE_WHOLE_FILE=1 today**, so this header
+# names no example for it — the last one it named had been converted while the naming
+# stayed, leaving two files contradicting each other about one section.
 # The flag survives as an escape hatch for a section that acquires a multi-line
 # construct (a here-document, a function body spread over lines) the per-line loop
 # cannot execute. Prefer rewriting the construct as single lines: that mode has no

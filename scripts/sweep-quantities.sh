@@ -76,15 +76,8 @@
 # # The sibling net that was refused, so it is not re-proposed
 #
 # AGENTS.md's closure rule — an absolute about what *is* must be written as its derivation
-# or deleted — looks like it wants a net of this shape too. One was built and measured on
-# 2026-08-14, at a broad word width and at a narrowed negative-existential one, over the
-# branch that added the rule. Both fired on their positive control and stayed silent on a
-# derivation, and both also fired on ordinary prose throughout; the narrow width returned no
-# live instance at all. Two readers counted its records differently and neither count is
-# recorded, because the count was never the finding: neither width separated the defect from
-# the background, and a third was not tried.
-#
-# It cannot, and that is the difference worth keeping. Here, the written number is itself
+# or deleted — looks like it wants a net of this shape too. It cannot have one, and that
+# is the difference worth keeping. Here, the written number is itself
 # the artifact that goes stale, so the defect and the vocabulary coincide. There, a closure
 # word is ordinary vocabulary in this tree, and what goes stale is a measurement that was
 # never run — the discriminating features are the subject's ownership and a derivation's

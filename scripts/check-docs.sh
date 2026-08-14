@@ -4,8 +4,8 @@
 # under docs/ that AGENTS.md's Documentation Map does not list, a root document (README.md,
 # AGENTS.md, CLAUDE.md) that is missing, empty, or not a regular file,
 # and — dormant, because no docs/<domain>/ directory exists yet — a domain child its
-# uppercase index does not link. Enumerated rather than counted: the previous header counted
-# them, undercounted by leaving the dormant one out, and nothing reported that.
+# uppercase index does not link. Enumerated rather than counted, because a count here has
+# no reader: it undercounted once by leaving the dormant one out and nothing reported it.
 #
 # The link and section halves come from one program: scripts/docrefs/main.go's package
 # comment is normative for which link and citation forms it reads, why the two extractors
@@ -14,11 +14,10 @@
 # how much of a cited name it compares. Both predicates are pinned by main_test.go in that
 # directory, which is what `go run` rather than a script buys.
 #
-# The orphan half is not hypothetical. docs/SCOPE-MODEL.md was the one file missing
-# from that table, so nothing told a reader when to open it, and a second normative
-# copy of an upstream measurement grew inside it unnoticed until a duplication scan
-# found it (docs/ROADMAP.md records the pass). The Map is what routes a reader to a
-# file; a file it omits is a file that only gets read by accident.
+# The orphan half is not hypothetical: docs/SCOPE-MODEL.md was once missing from that
+# table, and a second normative copy of an upstream measurement grew inside it unnoticed.
+# The Map is what routes a reader to a file; a file it omits is a file that only gets
+# read by accident.
 #
 # Adapted from the shared Go CLI standard's template check, which checks required files,
 # one-level domain indexes and link targets. kae has no docs/<domain>/ subdirectories, so

@@ -16,10 +16,15 @@ name: Check
 #
 # Docs-check is here and its selftest is not, decided 2026-08-14, because they stopped
 # costing the same thing. The check is bash plus one `go run` of a stdlib-only program
-# over the tree — no python since the extractor was ported, no network beyond the module
-# cache, and it writes nothing outside the checkout — so it needed no decision about
-# caching or about what a runner may touch. Its selftest copies the tracked tree once per
-# case and runs the whole check on each, which does.
+# over the tree: no python since the extractor was ported, no network (it runs green
+# under `GOPROXY=off` with an empty module cache), and no git, so a shallow checkout is
+# enough. What it does write outside the checkout is a Go build cache, which
+# scripts/check-docs.sh defaults to `$TMPDIR/kae-gocache` — deliberately not the
+# `GOCACHE` setup-go restores, so this step compiles that one program cold every run.
+# That is the whole cost, and it is the reason nothing here needed a caching decision;
+# do not read the sentence as "touches nothing", which is what it said first.
+# Its selftest copies the tracked tree once per case and runs the whole check on each,
+# which is a decision about runner time nobody has made.
 on:
   workflow_call:
 

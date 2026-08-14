@@ -188,7 +188,7 @@ mutating live credential stores.
 
 ## Product Boundaries
 
-The first boundary is what can run at the same time. A global shared switch
+One boundary is what can run at the same time. A global shared switch
 (`kae use -s`, the default) mutates the live credential
 store shared by every terminal, so two different accounts of the same tool
 cannot run concurrently this way. `kae` holds a per-tool lock during the switch
@@ -224,7 +224,7 @@ NG:  two terminals both relying on a global shared switch for different accounts
      of the same tool at the same time
 ```
 
-The rest are what `kae` will not do:
+The others are what `kae` will not do:
 
 - `kae` never reimplements upstream login flows. It snapshots and restores the
   artifacts the official CLIs create.

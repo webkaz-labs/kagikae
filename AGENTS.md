@@ -35,7 +35,7 @@ check here can notice that the standard changed.
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | anything that touches what companion-auth lockstep (git/gh/cloud CLIs) switches or preserves |
 | [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | before any code writes, harvests, attributes, orders or deletes a credential **copy**. It is the normative text for its own thirteen sections and not for the whole subject: several of them defer the per-tool contract to `docs/ADAPTERS.md` or `docs/CLI.md` where they say so, and § Implementation Boundaries below keeps the credential rules that did not move, beside one routing line per rule that did |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, adapter interface, transaction, lock changes |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, adapter interface, transaction, lock changes — and § Switch Mechanisms, which is what each cell of the scope × environment matrix does internally. The matrix itself is a primary journey and stays in `docs/PRODUCT.md`; the mechanism behind a cell is here, so a change to one is not a change to the other |
 | [docs/CLI.md](docs/CLI.md) | command flags, output, exit codes, JSON contract changes |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | config, snapshot, state, backup, secret-ref changes |
 | [docs/SECURITY.md](docs/SECURITY.md) | secrets, subprocess, permission, redaction changes |

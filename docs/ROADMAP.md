@@ -225,15 +225,21 @@ alternative exists (`secret-tool`).
   **`docs-check` stopped being in that list**, which is what changed and why it went in
   alone. Once its extractor stopped being python it needs bash, the POSIX utilities any
   runner has, and the Go toolchain CI already installs; its cost is one `go run` over the
-  tree and it writes nothing outside the checkout. Its selftest is the only objection
+  tree, plus a Go build cache the script points at `$TMPDIR` rather than at the one
+  setup-go restores, so that one stdlib-only program compiles cold each run.
+  `check.yml`'s header owns that detail — the first version of this said it wrote nothing
+  outside the checkout, which a review measured false. Its selftest is the only objection
   above that touches `docs-check` at all, and it stayed out.
   **No timing is quoted here on purpose**: every absolute measured while this was written
   disagreed with every other, because the machine was running several agents at once —
   one reviewer had the compiled extractor at 727ms and another had `go run` at 150ms in
   the same session.
-  Nothing else should be widened silently; the gap is stated wherever the gate is
-  described (`README.md`, [VALIDATION.md](VALIDATION.md), and `check.yml`'s own header,
-  which owns why the selftest stayed out).
+  Nothing else should be widened silently. Every place that describes the gate has to say
+  the gap, and there is no list of them here on purpose: the commit that added this step
+  repointed every such place it found, and a review then found one it had missed —
+  `RELEASE.md`'s live release procedure, which enumerated part of CI's step set inside an
+  instruction rather than in a frozen release entry. `check.yml`'s own header owns why
+  the selftest stayed out; it is the copy to repoint the others at.
 
 - ~~**One paragraph in `PRODUCT.md` is architecture**~~ (recorded 2026-08-11, **fixed
   2026-08-14**). The `**Mechanisms.**` paragraph is now
@@ -249,10 +255,12 @@ alternative exists (`secret-tool`).
   at once is a product boundary, while its mechanism was already owned separately by
   [ARCHITECTURE.md](ARCHITECTURE.md) § Locking with no overlap. So the work was a
   paragraph move plus a same-file fold, and it cost nothing in citations: everything
-  `git grep 'Switching Surface'` finds names a heading the move leaves in place, and
-  nothing outside `PRODUCT.md` named § Concurrency Boundary at all. Derive both rather
-  than reading a count here — what counts as a citation is where the figures in this
-  tree disagree.
+  `git grep 'Switching Surface'` finds names the heading, or the table under it that
+  `scripts/docscan/main.go`'s calibration note pairs against `RELEASE.md`, and the move
+  leaves both in place — while no citation anywhere resolved to § Concurrency Boundary,
+  which is why folding it repointed nothing. Derive both rather than reading a count
+  here; what counts as a citation is where the figures in this tree disagree, and this
+  entry's own prose names that section too.
   One thing the entry never mentioned and the fix had to carry: `PRODUCT.md`'s own
   opening still said both sections read as architecture and were queued for a move, a
   claim this entry had already withdrawn above. A `§` grep cannot see that class, and

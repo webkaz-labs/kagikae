@@ -13,8 +13,10 @@ by hand — the tag does it.
    VALIDATION and any behavior docs).
 3. Merge to `main` and push; CI (`ci.yml`) must be green.
 4. Tag and push: `git tag -a vX.Y.Z -m "kae vX.Y.Z — <summary>"` then
-   `git push origin vX.Y.Z`. The release workflow gates on `go vet`/`gofmt`/
-   `go test`, then GoReleaser builds darwin/linux × amd64/arm64
+   `git push origin vX.Y.Z`. The release workflow gates on the same `check.yml`
+   CI runs — a **subset** of `mise run check`, enumerated in that workflow's own
+   header and nowhere else, because this line carried a copy of it that had gone
+   stale — then GoReleaser builds darwin/linux × amd64/arm64
    (`kae_<version>_<os>_<arch>.tar.gz` + `checksums.txt`), creates the release
    with a grouped changelog, and attests the release checksum manifest.
 5. Verify the published assets and `scripts/install.sh` against the new tag.

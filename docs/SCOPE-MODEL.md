@@ -375,4 +375,4 @@ The phased plan that drove this model is fully implemented (v0.7.0–v0.7.2). Th
 per-commit history is the source of truth (git log) and the release-level record
 is in [RELEASE.md](RELEASE.md); current behavior, flags, layout, and contracts
 live in PRODUCT.md / CLI.md / ADAPTERS.md / DATA-MODEL.md — and ARCHITECTURE.md
-for what a mode does *internally*, which § 5 here is the rationale for.
+for what a mode does *internally*, which §5 here is the rationale for.

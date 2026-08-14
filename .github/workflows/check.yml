@@ -18,11 +18,14 @@ name: Check
 # costing the same thing. The check is bash plus one `go run` of a stdlib-only program
 # over the tree: no python since the extractor was ported, no network (it runs green
 # under `GOPROXY=off` with an empty module cache), and no git, so a shallow checkout is
-# enough. What it does write outside the checkout is a Go build cache, which
-# scripts/check-docs.sh defaults to `$TMPDIR/kae-gocache` — deliberately not the
+# enough. The only write outside the checkout worth a decision is a Go build cache, which
+# scripts/check-docs.sh puts at `${TMPDIR:-/tmp}/kae-gocache` — deliberately not the
 # `GOCACHE` setup-go restores, so this step compiles that one program cold every run.
-# That is the whole cost, and it is the reason nothing here needed a caching decision;
-# do not read the sentence as "touches nothing", which is what it said first.
+# Nothing here needed a caching decision because of that, not because the step touches
+# nothing: it said "writes nothing outside the checkout" first, and a review measured a
+# 45MB build cache; the replacement said that cache was the whole cost, and a second
+# review measured `go`'s telemetry counters under $HOME as well. Both were absolutes
+# about a program this file does not own.
 # Its selftest copies the tracked tree once per case and runs the whole check on each,
 # which is a decision about runner time nobody has made.
 on:

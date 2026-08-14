@@ -14,7 +14,7 @@ and `AGENTS.md` and `README.md` each carried a third version. Read the task.
 
 CI is a **subset**, not a mirror: `.github/workflows/check.yml`'s own steps are the one
 copy of which of those steps run there, and everything else is enforced on a developer's
-machine only. This line carried a second copy of that list until 2026-08-14 — three lines
+machine only. This line carried a second copy of that list until 2026-08-14, directly
 under the paragraph above saying not to ([ROADMAP.md](ROADMAP.md) carries what widening
 it further would cost, and `check.yml`'s header why the docs selftest stayed out while
 its check went in).

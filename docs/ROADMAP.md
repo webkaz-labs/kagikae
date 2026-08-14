@@ -311,11 +311,12 @@ alternative exists (`secret-tool`).
   entry describes: whether the content under a name that does exist still says what the
   citation claims.
   `AGENTS.md § Documentation Update Checklist` covers one shape
-  of it by hand: a quantity written beside a `§` citation, swept for with a regex over
-  the diff's added lines. That sweep is a net rather than a proof by its own admission,
-  and what it still misses is the argument for tooling rather than prose — `AGENTS.md` is
-  normative for that list, and listing it here as well would go short the moment a review
-  round finds another, which has happened. Two of the holes it used to disclose were
+  of it: a quantity written beside a `§` citation, swept for by
+  `scripts/sweep-quantities.sh` over the diff's added lines and triaged by hand. That sweep
+  is a net rather than a proof by its own admission, and what it still misses is the
+  argument for tooling rather than prose — **that script's header** is normative for the
+  list, and listing it here as well would go short the moment a review round finds another,
+  which has happened. Two of the holes it used to disclose were
   closed instead, by joining each line to its predecessor and allowing words between the
   number and the noun; what no widening of an added-lines sweep can reach is the shape
   this entry exists for, **a quantity on a line the diff never touches**.

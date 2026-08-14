@@ -51,19 +51,23 @@ Two tests, in this order, before adding anything here.
 
 **Can it be executed?** Then it is not prose: a command with an expected output is a
 script with a control, a property of the tree is a Go test, a property of the CI
-environment is a constraint line in the workflow. This file carries the measurement that
-argues for it — `docs-check` was born as a script with a selftest and has cost this file
-a few routing lines ever since, while the quantity sweep was born as prose and its
-debugging rounds landed *here*. Derive the share rather than reading one:
-`git log -G'quantit|sweep' --numstat bc8836a..HEAD -- AGENTS.md` against the same command
-without `-G`.
+environment is a constraint line in the workflow. The argument is a controlled comparison
+in this tree's own history: `docs-check` and the quantity sweep are the same age and the
+same class, and differ in the medium each was born into. Derive both sides rather than
+reading a figure — `git log -G'quantit|sweep' --numstat bc8836a..HEAD -- AGENTS.md`,
+`-G'docs-check|check-docs'`, and the same command with no `-G` — and note that `-G`
+attributes a whole commit's numstat to a term, so each side is an upper bound and only the
+comparison is like-for-like. The commit subjects on the sweep side are the sharper half:
+they read as a shell-pipeline changelog, in a router file.
 
 **Does a reader need it before anything cues them to look?** Kinds that do: a convention
 nothing in a task names (the example-name rule, the `set -e` traps), a tripwire against a
 default that looks correct (this file's opening, which has stopped a re-bundle), and a
 step every commit performs. Where a cue exists, the cue goes in a Documentation Map row
 and the content lives where the row points — that is what the credential rules did, and
-every one of their routing lines below is still a single line.
+their routing entries below still state no rule, which is the property that keeps them
+short. Do not read "line" as one physical line: each wraps, and a first attempt at this
+sentence said otherwise and was measured false.
 
 Asking the second question first is how a shell pipeline came to be maintained in a
 router file: a sweep run on every change answers yes to it and never meets the first test.

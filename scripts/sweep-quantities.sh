@@ -5,9 +5,11 @@
 #   <base> defaults to `main`. Before the first commit on a branch pass nothing and the
 #   working tree is swept as well; see "the empty range" below for why that matters.
 #
-# Report-only. It always exits 0 and is deliberately not in `mise run check`: every hit
-# needs a human decision, and a quantity that can go stale is not distinguishable from one
-# that cannot by anything this script can compute. Triage each hit by whether the quantity
+# Report-only, and deliberately not in `mise run check`: every hit needs a human decision,
+# and a quantity that can go stale is not distinguishable from one that cannot by anything
+# this script can compute. A report exits 0 however many hits it holds; the exits that are
+# not 0 are the `fail` calls, and each says which control or precondition it is —
+# `grep -n 'fail "'` lists them. Triage each hit by whether the quantity
 # **can go stale**, not by which file it points at — a count of something in its own file
 # goes stale just as easily, which a commit here proved by un-striking one of the struck
 # entries in docs/ROADMAP.md while writing "all ten" of them in the same diff. The
@@ -40,13 +42,18 @@
 # one.
 #
 # **The empty range.** `main...HEAD` sees nothing uncommitted, so a run on a branch with no
-# commits yet reports clean about a working tree full of changes. This script sweeps the
-# committed range and the working tree both, and refuses to call a run clean when the two
-# together added no lines at all.
+# commits yet reports clean about a working tree full of changes. This script diffs the
+# merge base against the working tree, which covers both, and refuses to call a run clean
+# when that diff adds no lines at all.
 #
-# **A fixture that no longer fires.** The two wrapped/non-adjacent shapes are run through
-# the same function the sweep uses, before the sweep, and a failure here is fatal — the
-# only case where this script does not exit 0.
+# **A fixture that no longer fires.** Every fixture runs through the same function the
+# sweep uses, before the sweep, and a failure there is fatal.
+#
+# **A report whose only hits are this file.** The pattern matches its own defining
+# sentences and its own fixtures, so a run over a change to this script reports itself. A
+# run whose hits are all this script's header and source is not a clean run and is not a
+# dirty one; it is a run that has told you nothing, and the same was true of the prose this
+# replaced.
 #
 # # What it cannot reach
 #
@@ -106,16 +113,34 @@ fail() {
   exit 1
 }
 
+# Each fixture is a shape the pattern got wrong once. They pin those shapes and no more:
+# a review measured that a proper subset of the noun list, of the number list, or of the
+# ordinals survives all of them, so this is a floor on the pattern and not a description of
+# it. The diagnostics name what was observed rather than a cause, because dropping a noun
+# these fixtures happen to use trips the fixture that uses it and says nothing about why.
+fixture() {
+  local name=$1 want=$2 input=$3 got
+  got=$(printf '%b' "$input" | sweep | wc -l | tr -d ' ')
+  if [ "$got" != "$want" ]; then
+    fail "the $name fixture yielded $got records, not $want, so the pattern no longer reads that shape"
+  fi
+}
+
 controls() {
   local got
-  got=$(printf '+the **two**\n+commands in X\n' | sweep | wc -l | tr -d ' ')
-  if [ "$got" != "1" ]; then
-    fail "the wrapped-quantity fixture yielded $got records, not 1: the pattern no longer joins lines"
-  fi
-  got=$(printf '+one of ten **struck** entries here\n' | sweep | wc -l | tr -d ' ')
-  if [ "$got" != "1" ]; then
-    fail "the non-adjacent fixture yielded $got records, not 1: the pattern no longer allows words between a number and its noun"
-  fi
+  # A quantity split across two lines: the awk join is what sees it.
+  fixture 'wrapped-quantity' 1 '+the **two**\n+commands in X\n'
+  # A word between the number and its noun, inside the two-line window.
+  fixture 'non-adjacent' 1 '+one of ten **struck** entries here\n'
+  # A digit rather than a word, and a noun the list gained late; the header names both as
+  # load-bearing and neither was pinned until a review said so.
+  fixture 'digit-and-late-noun' 1 '+the 42 assertions below\n'
+  # The file attribution the report is read with. Two lines, because the marker is matched
+  # as the *predecessor* the awk joins on — a one-line fixture leaves it as the current line
+  # with an empty prev, and the record then starts with a space and matches nothing, which
+  # is how this fixture failed on the run that added it. `diff.noprefix` in a user's git
+  # config removes the `b/` and this arm goes silent, which is why it is a fixture at all.
+  fixture 'file-attribution' 1 '+++ b/x.md\n+ordinary prose\n'
   # Fatal rather than skipped when the commit is absent. Skipping was the first form, and a
   # mutation of this constant to a commit that does not exist then produced a warning and a
   # clean sweep — a typo and a shallow clone are indistinguishable here, so the arm that
@@ -138,23 +163,35 @@ if ! git rev-parse --verify --quiet "$BASE^{commit}" >/dev/null; then
   fail "no commit named '$BASE' in this clone, so there is nothing to diff against"
 fi
 
-# `$BASE...HEAD` and `git diff HEAD` partition the change; `git diff $BASE` would be the
-# same lines a second time, which double-counted every record and doubled the added-line
-# figure this script prints — a false quantity, printed by the quantity net, on its first
-# real run.
-committed=$(git diff "$BASE...HEAD")
-uncommitted=$(git diff HEAD)
-added=$(printf '%s\n%s\n' "$committed" "$uncommitted" | grep -c '^+' || true)
+# One diff, from the merge base to the working tree, rather than a committed range plus an
+# uncommitted one. Two earlier forms were wrong in opposite directions: summing
+# `$BASE...HEAD` with `git diff $BASE` counted every committed line twice, and summing it
+# with `git diff HEAD` reported a line as added after a later edit had removed it again,
+# so a hit already fixed in the working tree kept coming back. The merge base rather than
+# `$BASE` itself is what keeps this right when the base has moved ahead.
+base=$(git merge-base "$BASE" HEAD)
+diffed=$(git diff "$base")
+# `^+++ ` is excluded before counting: a diff header starts with `+` too, so counting it
+# inflated this figure by one per file touched, and a deletion-only change reported one
+# added line and skipped the guard below. A false quantity printed by the quantity net,
+# found by a review after a different false quantity had already been fixed here.
+added=$(printf '%s\n' "$diffed" | grep -v '^+++ ' | grep -c '^+' || true)
 
 if [ "$added" = "0" ]; then
-  printf 'sweep-quantities: %s...HEAD and the working tree added no lines, so this run proved nothing\n' \
+  printf 'sweep-quantities: nothing since the merge base with %s adds a line, so this run proved nothing\n' \
     "$BASE" >&2
   exit 0
 fi
 
-hits=$(printf '%s\n%s\n' "$committed" "$uncommitted" | sweep)
+hits=$(printf '%s\n' "$diffed" | sweep)
 
-if [ -z "$hits" ]; then
+# The `^++ b/` arm is attribution, not a finding, and any change that adds a line produces
+# at least one of those records — so deciding on `hits` alone made the clean report below
+# unreachable and handed back a report on every run, which is how a report-only tool stops
+# being read. Markers are printed, and only the other records decide.
+quantities=$(printf '%s\n' "$hits" | grep -cv '^++ b/' || true)
+
+if [ -z "$hits" ] || [ "$quantities" = "0" ]; then
   printf 'sweep-quantities: ok — %s added lines, no quantity beside a claim\n' "$added"
   exit 0
 fi

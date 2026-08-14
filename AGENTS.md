@@ -45,6 +45,30 @@ check here can notice that the standard changed.
 | [docs/VALIDATION.md](docs/VALIDATION.md) | before commit and release checks |
 | [.claude/skills/upstream-auth-drift/](.claude/skills/upstream-auth-drift/SKILL.md) | an upstream tool may have changed how its authentication works: a doctor `upstream_version` / `identity_drift` warning, a tool upgrade, a "kae says it switched but the tool shows the old account" report, or a routine re-verification |
 
+## What Belongs In This File
+
+Two tests, in this order, before adding anything here.
+
+**Can it be executed?** Then it is not prose: a command with an expected output is a
+script with a control, a property of the tree is a Go test, a property of the CI
+environment is a constraint line in the workflow. The argument is a controlled comparison
+in this tree's own history — `docs-check` and the quantity sweep are the same age and the
+same class and differ in the medium each was born into — and the commit that added this
+section carries the derivation and its caveats. The sharper half needs no arithmetic: the
+subjects of the commits that grew this file read as a shell-pipeline changelog.
+
+**Does a reader need it before anything cues them to look?** Kinds that do: a convention
+nothing in a task names (the example-name rule, the `set -e` traps), a tripwire against a
+default that looks correct (this file's opening, which has stopped a re-bundle), and a
+step every commit performs. Where a cue exists, the cue goes in a Documentation Map row
+and the content lives where the row points — that is what the credential rules did, and
+their routing entries below still state no rule, which is the property that keeps them
+short. Do not read "line" as one physical line: each wraps, and a first attempt at this
+sentence said otherwise and was measured false.
+
+Asking the second question first is how a shell pipeline came to be maintained in a
+router file: a sweep run on every change answers yes to it and never meets the first test.
+
 ## Validation
 
 ```bash
@@ -375,71 +399,14 @@ in `scripts/smoke-run-selftest.sh`'s header, which deliberately does not repeat 
 because the two drifted apart the moment a guard was added. A quantity never written
 cannot go stale. What follows is only the net for the ones already there.
 
-Sweep the added lines, and triage each hit by whether the quantity **can go stale**, not
-by which file it points at — a count of something in its own file goes stale just as
-easily, which a commit here proved by un-striking one of the struck entries in
-`docs/ROADMAP.md` while writing "all ten" of them in the same diff. The `++ b/...` lines
-are kept so you can tell which file a hit came from.
-
-```bash
-git diff main...HEAD | grep '^+' | sed 's/^+//' | awk '{print prev" "$0; prev=$0}' | grep -iE \
- '^\+\+ b/|(^|[^A-Za-z*`])\*{0,2}`?(both|one|two|three|four|five|six|seven|eight|nine|ten|thirteen'\
-'|first|second|third|fourth|fifth|sixth|seventh|[0-9]+)`?\*{0,2}( +[^ ]+){0,3} +'\
-'\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?|tools?|assertions?)\b'
-```
-
-The `awk` joins each line to its predecessor and the `{0,3}` allows words between the
-number and the noun **within that two-line window** — a gap inside the word budget but
-spread over three lines still escapes — because earlier versions of this net returned
-**0** on a quantity that wrapped across lines and on one whose noun was not adjacent to
-its number. Both are
-controls now. Feed each to **everything after the first pipe above** — not to the whole
-pipeline, which starts at `git diff`, ignores stdin, and would silently answer about the
-branch instead — and each must yield exactly one record:
-
-```bash
-printf '+the **two**\n+commands in X\n'                 # a wrapped quantity
-printf '+one of ten **struck** entries here\n'          # a non-adjacent one
-```
-
-The intervening group is `[^ ]+` rather than a letters-only class because both files here
-write emphasis and code spans mid-sentence ("the **two** commands"), and a letters-only
-class let exactly those through — which is why the second control carries an emphasized
-word. One example does not pin a character class.
-
-Before trusting a clean run, fire it at a commit with a known bad count — the positive
-control any negative assertion here needs. **`git show 89341f4 | <everything after the
-first pipe above>`** produces the `docs/ROADMAP.md` line quoted above; if it stops
-producing it, the pattern is broken. `git show`, not `git diff main...89341f4`: that
-was the first form written here and it went vacuous the day the branch merged, because
-a range against an ancestor is empty and an empty input greps clean. A positive control
-that a merge can silence is not one.
-
-The same emptiness bites the sweep itself before the first commit on a branch:
-`main...HEAD` is a range, so it sees nothing uncommitted, and a run on a branch with no
-commits yet reports clean about a working tree full of changes. Use `git diff main` while
-the change is uncommitted. Either way the count of `^+` lines is the control — if that is
-zero, the sweep proved nothing.
-
-It is **a net, not a proof**, and what it still misses is worth knowing rather than
-counting. The noun and number lists are enumerations, and every enumeration in this file
-has turned out short, and each addition was found a different way: `thirteen` from this
-repository's own prose, the **ordinals** after a diff wrote "a third site" and swept clean,
-`assertions` from reading a hit the net had returned for a *different* quantity on the same
-line. So anything larger than the listed words is written as a digit, which `[0-9]+`
-covers. The command also matches its own defining sentences, which is why the citation
-rule above rejects `git grep '\.md §'`: a run whose only hits are this file's own prose is
-not a clean run.
-
-**The class it cannot reach at all is a quantity on a line the diff does not touch**, and
-that is the original defect's own shape — one commit merged the two commands, and the
-sentence counting them sat unchanged in another file. `89341f4` was caught only because
-that commit happened to write the sentence as well. No widening of an added-lines sweep
-reaches this; the mechanism that would is the claim-reconciliation stage
-`scripts/docscan/main.go`'s header names, filed in `docs/ROADMAP.md`, whose one built
-slice checks that a cited section *exists* and never what a quantity beside it says.
-For the quantity class, the first instruction in this section — write the derivation, not
-the number — is still the only thing that covers it.
+For the ones already there, run `bash scripts/sweep-quantities.sh` and read every record it
+returns. It is report-only and deliberately outside `mise run check`, because deciding a
+hit needs a reader: **triage by whether the quantity can go stale, not by which file it
+points at.** Its header is normative for everything else — the pattern, the fixtures and
+the positive control it runs before each sweep, and the classes it cannot reach, one of
+which no added-lines sweep ever will. All of that used to be in this section, and the
+rounds that debugged it are most of what this file grew by, which is the measurement
+§ What Belongs In This File rests on.
 
 **An absolute about what *is* — a universal or negative existential whose subject is
 another program's behaviour, another file's contents, a past state, or the exhaustiveness
@@ -487,15 +454,5 @@ would turn it red, not because a sentence would go quietly false. The class it w
 instance of is the untouched-line quantity above, and that is what the reconciliation stage
 filed in `docs/ROADMAP.md` still owns.
 
-A closure-word net over added lines was built and measured on 2026-08-14, at a broad word
-width and at a narrowed negative-existential one, over the branch that added the rules
-above. Both fired on their positive control and stayed silent on a derivation; both also
-fired on ordinary prose throughout, and the narrow width returned no live instance at all.
-Two readers counted its records differently and neither count is repeated here, because
-the count was never the finding: neither width separated the defect from the background,
-and a third was not tried. It
-cannot, because the class's discriminating features are the subject's ownership and a
-derivation's *absence*, and neither is lexical.
-Unlike the quantity net, where the written number is itself the artifact that goes stale, a
-closure word is ordinary vocabulary here; what goes stale is a measurement that was never
-run, and no pattern over words can see an absence.
+A sibling net over closure words was built, measured and refused; `scripts/sweep-quantities.sh`'s
+header carries the measurement and the reason, beside the net that was kept.

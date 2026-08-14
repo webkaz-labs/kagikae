@@ -1308,6 +1308,49 @@ is anywhere near that, and only by demand.
 - localized human output (Japanese)
 - `kae shell init` convenience wrappers
 
+## Delete the prose that is not load-bearing
+
+**Owed work, not a record.** Run these **at `d089914`**, where they printed 13,457 /
+1,943 / 22,778 and 164 of 285 — pinned to a commit because on any later tree the first
+number counts this entry, and because three readings of the last one, on three trees,
+were mistaken for a difference of method:
+
+```bash
+git ls-files '*.md' | xargs wc -l | tail -1
+git ls-files 'scripts/*' | xargs grep -hcE '^[[:space:]]*(#|//)' | paste -sd+ - | bc
+git ls-files '*.go' | grep -v '_test\.go$' | xargs wc -l | tail -1
+git log --no-merges --since=2026-08-01 --format=%H | while read -r c; do \
+  git show --name-only --format= "$c" \
+  | grep -qE '^(internal/|main\.go$|go\.mod$|go\.sum$)' || echo "$c"; done | wc -l
+```
+
+Comment share is 49–63% across the six the gate runs directly (`check-docs.sh`,
+`check-docs-selftest.sh`, `smoke-run.sh`, `smoke-run-selftest.sh`,
+`sweep-quantities.sh`, `docrefs/main.go`); `scripts/install.sh` is 7%.
+
+**Keep** what a wrong sentence costs a credential or a user: `docs/ADAPTERS.md`'s
+allowlists, `docs/CREDENTIAL-RULES.md`, `docs/CLI.md`'s contract, `AGENTS.md`'s safety
+rules, a trap in neither the code nor git log, and **anything a program parses or
+executes** — `git grep ReadFile -- '*.go' | grep docs`, plus `docs/VALIDATION.md`'s
+fenced blocks, which `scripts/smoke-run.sh` runs: emptying one exits 2, *thinning* one
+passes green with fewer assertions.
+
+**Delete** the rest rather than declaring it best-effort: rationale narration,
+epistemology in script headers, and measurement stories about **this repository's own
+history** — not the upstream ones in [VALIDATION.md](VALIDATION.md) § Upstream
+Behaviour Assumptions, which are the re-verification instrument and are not in git log.
+Named target: the *first* paragraph of `scripts/sweep-quantities.sh`'s "The sibling net
+that was refused, so it is not re-proposed", which records an attempt. Its second
+paragraph is why that shape of net cannot work, and the keep rule covers it.
+
+Rules to adopt with it, from the branch that closed `adapter.VersionVerifier`:
+
+- **Two rounds, then land** — one correctness, one quality. A finding in material
+  the review loop itself added is fixed inline without re-opening a round, unless it
+  changes product behaviour.
+- **No new prose-verifier** unless the defect it catches has a product consumer.
+  `docs-check`'s link and citation resolution stays; it is decidable and cheap.
+
 ## Review Triggers
 
 - First credential-layout change in any upstream tool: add a regression

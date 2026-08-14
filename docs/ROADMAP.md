@@ -232,8 +232,9 @@ alternative exists (`secret-tool`).
   disagreed with every other, because the machine was running several agents at once —
   one reviewer had the compiled extractor at 727ms and another had `go run` at 150ms in
   the same session.
-  Nothing else should be widened silently. Every place that describes the gate has to say
-  the gap, and there is no list of them here on purpose: the commit that added this step
+  Nothing else should be widened silently. Every place that describes **CI** has to say
+  the gap — a place that describes only the local gate, as `AGENTS.md` § Validation does,
+  owes nothing — and there is no list of them here on purpose: the commit that added this step
   repointed every such place it found, and a review then found one it had missed —
   `RELEASE.md`'s live release procedure, which enumerated part of CI's step set inside an
   instruction rather than in a frozen release entry. `check.yml`'s own header owns why
@@ -261,8 +262,8 @@ alternative exists (`secret-tool`).
   entry's own prose names that section too.
   One thing the entry never mentioned and the fix had to carry: `PRODUCT.md`'s own
   opening still said both sections read as architecture and were queued for a move, a
-  claim this entry had already withdrawn above. A `§` grep cannot see that class, and
-  neither can the gate.
+  claim this entry had already withdrawn above. That is the instance;
+  [AGENTS.md](../AGENTS.md) § Documentation Update Checklist states the rule it produced.
 
 - **The standard's own docs check cannot run clean, and this repository forked it instead
   of fixing it** (recorded 2026-08-11, **not fixed here** — the fix belongs upstream; the

@@ -19,8 +19,10 @@ name: Check
 # over the tree: no python since the extractor was ported, no network (it runs green
 # under `GOPROXY=off` with an empty module cache), and no git, so a shallow checkout is
 # enough. The only write outside the checkout worth a decision is a Go build cache, which
-# scripts/check-docs.sh puts at `${TMPDIR:-/tmp}/kae-gocache` — deliberately not the
-# `GOCACHE` setup-go restores, so this step compiles that one program cold every run.
+# scripts/check-docs.sh defaults to `${TMPDIR:-/tmp}/kae-gocache` unless GOCACHE is
+# already set — a repo-wide idiom mise.toml's test, vet and build tasks share, not a
+# choice made for CI. Nothing here sets it, and setup-go does not export it, so today
+# this step compiles that one program cold every run.
 # Nothing here needed a caching decision because of that, not because the step touches
 # nothing: it said "writes nothing outside the checkout" first, and a review measured a
 # 45MB build cache; the replacement said that cache was the whole cost, and a second

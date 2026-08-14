@@ -195,7 +195,7 @@ cannot run concurrently this way. `kae` holds a per-tool lock during the switch
 and documents that concurrent multi-account work needs an isolated environment
 — `kae pin` per directory, or `kae use -i` for a global per-account home.
 
-**A second limit was measured on 2026-08-04 and is now lifted for claude**: two
+**A second concurrency limit was measured on 2026-08-04 and is now lifted for claude**: two
 directories bound to the *same* account could not run at the same time, because each
 held its own **copy** of that account's credential and claude's refresh token rotates
 single-use — so whichever session refreshed first invalidated the other's copy, which

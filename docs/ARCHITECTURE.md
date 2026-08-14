@@ -209,8 +209,10 @@ in-place credential patch; global isolated = `CLAUDE_CONFIG_DIR` / `CODEX_HOME` 
 a kae-owned global mise fragment; per-dir shared =
 symlink-everything-but-credential; per-dir isolated = private config dir with
 opt-in shares. All per-dir bindings use kae-owned mise fragments — kae never edits
-the user's `mise.toml`. See [ADAPTERS.md](ADAPTERS.md) for the per-tool
-switched/preserved contract and [ROADMAP.md](ROADMAP.md) for ordering.
+the user's `mise.toml`. Each clause here is a summary: [ADAPTERS.md](ADAPTERS.md) has
+the per-tool switched/preserved contract, [SCOPE-MODEL.md](SCOPE-MODEL.md) §5 the
+rationale for the shared mechanism (including what per-dir shared does *not* symlink),
+[CONTEXT.md](CONTEXT.md) the vocabulary, and [ROADMAP.md](ROADMAP.md) the ordering.
 
 ## Switch Transaction
 

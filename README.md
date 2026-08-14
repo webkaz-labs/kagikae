@@ -471,8 +471,11 @@ git diff --check
 ([.github/workflows/ci.yml](.github/workflows/ci.yml), which calls `check.yml`) runs a
 **subset** of it, so most of the gate — the formatter that actually gates locally
 (gofumpt/goimports), the static analysers, `shellcheck`, `build` and the selftests among
-them — passes or fails on your machine only. `check.yml`'s own steps are the one copy of
-which half is which; this line carried a second, kept in lockstep by hand.
+them — passes or fails on your machine only. Which step is in which half is
+`check.yml`'s own list read against `mise.toml`'s `[tasks.check]`; this line still
+carries an informal half of it, and the enumeration it used to carry named the docs
+*selftest* while `docs-check` itself was local-only and unnamed, from the day the line
+was written until this step went into CI.
 Tagging `vX.Y.Z`
 runs [GoReleaser](https://goreleaser.com) to publish the binaries, behind that same
 subset.

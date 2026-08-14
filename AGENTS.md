@@ -362,7 +362,7 @@ for citations, `docs-check` resolves targets, and neither reads what a document 
 about itself, so a plan a file states in its own voice goes stale in silence. Closing an
 entry means reading the opening of every file the entry names.
 
-**That grep sees whether the target exists and nothing else, so what it cannot see is
+**That fragment grep sees whether the target exists and nothing else, so what it cannot see is
 a quantity written *beside* a citation.** `docs/ROADMAP.md` said "the two commands in
 docs/CONTEXT.md § Not converged" after a later commit merged them into one — the `docs/`
 prefix is this file's, not the quoted sentence's, because the gate resolves a citation and

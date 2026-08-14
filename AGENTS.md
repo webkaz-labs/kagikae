@@ -285,11 +285,12 @@ once and were then shown to be false.
 - JSON contract tokens live in `internal/constants`; never inline literals.
 - Every adapter declares `VerifiedVersion()` **and `VerifiedOn()`** — the
   interface, and why each is a method of it rather than an optional interface, in
-  `internal/adapter/adapter.go`. Re-verify that tool's rows, then move every copy
-  of the pair in the same commit;
+  `internal/adapter/adapter.go`. Re-verify that tool's rows in
+  [docs/VALIDATION.md](docs/VALIDATION.md) § Upstream Behaviour Assumptions, then
+  move every copy of the pair in the same commit;
   [.claude/skills/upstream-auth-drift/SKILL.md](.claude/skills/upstream-auth-drift/SKILL.md)
-  § Phase 4 is normative for which copies those are, which one a test holds, and
-  which version recorded in the same file is **not** one of them. kae depends on
+  § Re-record is normative for which copies those are, which one a test holds, and
+  which version recorded in that same file is **not** one of them. kae depends on
   undocumented upstream
   *behaviour*, not just layout, and a behaviour-only change passes every structure
   guard. Record the **condition**, never an absolute: `/oauthAccount` was left

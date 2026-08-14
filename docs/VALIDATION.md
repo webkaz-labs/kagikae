@@ -1580,8 +1580,12 @@ Two offline `doctor` checks watch the table between releases:
   on the release acceptance run, not on a doctor warning.
 
 A warning from either means: work that tool's rows below, then update the
-adapter's `VerifiedVersion()` and the version recorded here **in the same
-commit**.
+adapter's `VerifiedVersion()`, its `VerifiedOn()` and the version recorded here
+**in the same commit**. That is not the whole set of copies, and a version in this
+file is deliberately outside it —
+[.claude/skills/upstream-auth-drift/SKILL.md](../.claude/skills/upstream-auth-drift/SKILL.md)
+§ Re-record is normative for both, and is where this chain ends rather than at the
+adapter comment that sent you here.
 
 **For a tool whose source is public, the cheapest form of that work is a
 tag-to-tag diff of the files the rows name**, which is offline, needs no

@@ -45,6 +45,29 @@ check here can notice that the standard changed.
 | [docs/VALIDATION.md](docs/VALIDATION.md) | before commit and release checks |
 | [.claude/skills/upstream-auth-drift/](.claude/skills/upstream-auth-drift/SKILL.md) | an upstream tool may have changed how its authentication works: a doctor `upstream_version` / `identity_drift` warning, a tool upgrade, a "kae says it switched but the tool shows the old account" report, or a routine re-verification |
 
+## What Belongs In This File
+
+Two tests, in this order, before adding anything here.
+
+**Can it be executed?** Then it is not prose: a command with an expected output is a
+script with a control, a property of the tree is a Go test, a property of the CI
+environment is a constraint line in the workflow. This file carries the measurement that
+argues for it — `docs-check` was born as a script with a selftest and has cost this file
+a few routing lines ever since, while the quantity sweep was born as prose and its
+debugging rounds landed *here*. Derive the share rather than reading one:
+`git log -G'quantit|sweep' --numstat bc8836a..HEAD -- AGENTS.md` against the same command
+without `-G`.
+
+**Does a reader need it before anything cues them to look?** Kinds that do: a convention
+nothing in a task names (the example-name rule, the `set -e` traps), a tripwire against a
+default that looks correct (this file's opening, which has stopped a re-bundle), and a
+step every commit performs. Where a cue exists, the cue goes in a Documentation Map row
+and the content lives where the row points — that is what the credential rules did, and
+every one of their routing lines below is still a single line.
+
+Asking the second question first is how a shell pipeline came to be maintained in a
+router file: a sweep run on every change answers yes to it and never meets the first test.
+
 ## Validation
 
 ```bash

@@ -1313,8 +1313,8 @@ is anywhere near that, and only by demand.
 
 **Owed work, not a record.** Run these **at `d089914`**, where they printed 13,457 /
 1,943 / 22,778 and 164 of 285 — pinned to a commit because on any later tree the first
-number counts this entry, and because three readings of the last one, on three trees,
-were mistaken for a difference of method:
+number counts this entry, and because a reading taken on a different tree is not
+distinguishable from a change of method:
 
 ```bash
 git ls-files '*.md' | xargs wc -l | tail -1
@@ -1340,11 +1340,20 @@ passes green with fewer assertions.
 epistemology in script headers, and measurement stories about **this repository's own
 history** — not the upstream ones in [VALIDATION.md](VALIDATION.md) § Upstream
 Behaviour Assumptions, which are the re-verification instrument and are not in git log.
-Named target: the *first* paragraph of `scripts/sweep-quantities.sh`'s "The sibling net
-that was refused, so it is not re-proposed", which records an attempt. Its second
-paragraph is why that shape of net cannot work, and the keep rule covers it.
+The workable form of that, applied to the first pass: a sentence goes when it reports
+what a past session did or found **and** the reason, rule or trap around it still stands
+without it. A rule stays; the round that produced it does not.
 
-Rules to adopt with it, from the branch that closed `adapter.VersionVerifier`:
+**What is left is [RELEASE.md](RELEASE.md), and it is not free prose.** Everything below
+its § Release Process header is shipped-release entries, and product code cites them by
+section letter: `git grep -n 'RELEASE\.md §' -- internal/` lists the `§A`/`§B`/`§C`/`§D`
+form, and `git grep -n 'RELEASE\.md v0\.' -- internal/` the version-named one. `docs-check`
+resolves neither — a bare `§A` names no section it can look up — so deleting an entry
+dangles a comment in product code with nothing reporting it. Cutting this means repointing
+those comments in the same commit, which is a change to `internal/` and a different review
+from a prose pass. That is why the first pass stopped at the docs and the scripts.
+
+Rules adopted with it, from the branch that closed `adapter.VersionVerifier`:
 
 - **Two rounds, then land** — one correctness, one quality. A finding in material
   the review loop itself added is fixed inline without re-opening a round, unless it

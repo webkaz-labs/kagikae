@@ -130,10 +130,12 @@
 //   - The sigil must be followed by a space and then a letter, a code span or
 //     emphasis. That drops `§6`, `§7`, `§4.1` (numbered sections of
 //     docs/SCOPE-MODEL.md) and `§A`, `§A/§C` (docs/RELEASE.md sub-sections), which
-//     introduce no searchable name. Note which half does the work: every live instance
-//     is written with no space at all — `git grep -o '§ [0-9]' -- '*.md' '*.go'` is
-//     empty while `§[0-9]` is not — so widening the character class to admit digits
-//     would change nothing.
+//     introduce no searchable name. Note which half does the work: no live instance is
+//     written with a space there, so widening the character class to admit digits would
+//     change nothing. That is a property of the tree rather than of this program, and
+//     TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil is where it is checked — it
+//     used to be a `git grep` quoted here, which went false when one was added to a
+//     document in a commit that never opened this file.
 //   - A fenced block is stripped, on both sides. AGENTS.md documents the citation
 //     forms themselves, and an unstripped run reported its illustrations as broken
 //     targets — the upstream template check's own open defect, reproduced. On the name
@@ -519,21 +521,20 @@ func hasSuffix(name string) bool {
 	return false
 }
 
-func main() {
-	root := "."
-	if len(os.Args) > 1 {
-		root = os.Args[1]
-	}
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "docrefs: %v\n", err)
-		os.Exit(1)
-	}
-
+// docFiles is the set of documents the walk hands to both extractors — not everything they
+// read, since resolveTarget and namesFor stat and open a citation's target wherever it
+// names, including under a pruned directory, which a selftest case depends on.
+//
+// It is a function rather than a loop inside main so that a test asserting a property of
+// that set does not have to re-derive it. One did, briefly, and the copy folded a stat
+// failure back into "not a document" — the fail-open the comment below records closing —
+// so the test vouched for a tree it had silently not read while this program exited 1 on
+// the same tree. One walk, one policy.
+func docFiles(root string) ([]string, error) {
 	var files []string
-	err = filepath.WalkDir(abs, func(p string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("walking %s: %w", p, err)
 		}
 		if d.IsDir() {
 			if skipDirs[d.Name()] {
@@ -568,8 +569,7 @@ func main() {
 					// Worded rather than handed to `%v` alone: the verb in a *fs.PathError
 					// belongs to the standard library, so the selftest's needle would be a
 					// string this program does not own.
-					fmt.Fprintf(os.Stderr, "docrefs: cannot stat %s: %v\n", p, serr)
-					os.Exit(1)
+					return fmt.Errorf("cannot stat %s: %w", p, serr)
 				}
 				return nil
 			}
@@ -578,10 +578,28 @@ func main() {
 		return nil
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "docrefs: walking %s: %v\n", abs, err)
-		os.Exit(1)
+		return nil, err
 	}
 	sort.Strings(files)
+	return files, nil
+}
+
+func main() {
+	root := "."
+	if len(os.Args) > 1 {
+		root = os.Args[1]
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "docrefs: %v\n", err)
+		os.Exit(1)
+	}
+
+	files, err := docFiles(abs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "docrefs: %v\n", err)
+		os.Exit(1)
+	}
 
 	cache := map[string][][]string{}
 	namesFor := func(p string) [][]string {

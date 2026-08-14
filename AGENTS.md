@@ -453,16 +453,39 @@ one. A rule this repository imposes on itself is a commitment, not a measurement
 out of scope. Before commit, read your own added lines for a bare absolute — the author of
 this rule's sibling broke it twice in the session that wrote it.
 
+**A present-tense claim about a mutable subject belongs with that subject's re-executor,
+not in prose that points at one.** Look for the re-executor before building one; the
+subjects met so far each had one already. A property of **the tree** is a Go test, and the
+prose cites the test by name. A property of the **CI environment** is a constraint line in
+`.github/workflows/check.yml`: `GOPROXY: off` with an empty `GOMODCACHE` on a step
+*enforces* what a sentence claiming "runs green with no network" only *records*. A property
+of an **upstream tool** is a row in [docs/VALIDATION.md](docs/VALIDATION.md) § Upstream
+Behaviour Assumptions, which is load-bearing because code around it re-reads the installed
+tool — read that file for which check reaches which rows, since they are not uniform.
+A subject with no re-reader does not belong there,
+where it would look re-verified and not be; a proposal to file a CI runner image in that
+table was refused on exactly that ground. Measure a property of the tree by hand twice and
+it is a test, the way a procedure run by hand twice is a script.
+
+**A constraint is the stronger form only if it can fail, and what it enforces is narrower
+than the sentence it replaces.** Both were true of that `GOPROXY` line, both were found by
+review rather than by writing it, and the step's own comment in
+`.github/workflows/check.yml` is where the measurements are. A constraint that cannot fire
+is worse than the sentence it replaced, because it reads as enforced.
+
 **A derivation is run on the tree that contains the sentence citing it — after the edit,
 never only before.** The diff that writes a claim can be what falsifies it:
 `docs/RELEASE.md`'s "and nowhere else" was broken by its own diff's other hunks. So before
 commit, re-run every command your added lines quote. What this cannot reach is a
 derivation recorded in a file the diff never touches — a `§` written with a space before a
-section number, added to `docs/SCOPE-MODEL.md`, falsified an emptiness recorded in
-`scripts/docrefs/main.go`, which that diff never opened — the same class as the
-untouched-line quantity above, owned by the reconciliation stage filed in
-`docs/ROADMAP.md`. Note that naming that defect here cannot use its own form, or this
-paragraph would falsify the same measurement a third time.
+section number, added to `docs/SCOPE-MODEL.md`, falsified an emptiness then recorded in
+`scripts/docrefs/main.go`'s package comment, which that diff never opened. **That instance
+is closed**, by the paragraph above applied to itself:
+`TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil` holds it now, so naming the defect
+here still cannot use its own form — but because this file is inside that test's walk and
+would turn it red, not because a sentence would go quietly false. The class it was an
+instance of is the untouched-line quantity above, and that is what the reconciliation stage
+filed in `docs/ROADMAP.md` still owns.
 
 A closure-word net over added lines was built and measured on 2026-08-14, at a broad word
 width and at a narrowed negative-existential one, over the branch that added the rules

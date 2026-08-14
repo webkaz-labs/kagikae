@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -262,4 +263,80 @@ func TestResolveTargetTakesTheCitingDirectoryAndTheRootAndNothingElse(t *testing
 	if got := resolveTarget(root, "README.md", "NO-SUCH-FILE.md"); got != "" {
 		t.Errorf("a target that exists nowhere must not resolve, got %q", got)
 	}
+}
+
+// TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil is the measurement the digit
+// exclusion rests on, moved out of the package comment that used to quote it as a command.
+// The comment quoted a `git grep` nobody re-ran, and it was measured false on 2026-08-14 in
+// the way no re-run of a diff's own quoted commands can reach: the spaced form was added to
+// a document in a commit that never opened this file, so the sentence recording the
+// emptiness was falsified from outside its own diff and a reviewer's grep found it. Here it
+// is the tree's property, checked by the thing that already re-runs the tree's properties.
+//
+// The text is read the way citeRe reads it, through stripFences and unwrap, and that is the
+// difference that mattered against the `git grep` it replaces (which also read only tracked
+// files, and did not prune `dist/`). A grep is line-oriented, so
+// a citation that wraps after the sigil — which is where this repository's prose wraps, and
+// why unwrap exists — reads as clean to it. Measured: a `§` at end of line with `6` opening
+// the next passes a byte-level scan and is matched by a digit-admitting citeRe, so a
+// byte-level test would have vouched for exactly the claim it cannot see. Stripping fences
+// costs nothing and buys the other direction, since a fenced example is not a citation.
+//
+// Two-sided, because the arm that matters is a negative and a walk that reaches nothing
+// satisfies it: no citation may be spaced, AND an unspaced one must be present. Both arms
+// carry citeRe's own `.md` prefix — without it the negative flags ordinary prose numbering
+// that citeRe can never match, and the positive is satisfied by an `RFC 6902 §4.1` that is
+// not a citation either. This file writes both patterns as regexp source, so the sigil is
+// followed by `[` and neither arm reads itself.
+func TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil(t *testing.T) {
+	root := repositoryRoot(t)
+	// docFiles rather than a walk of its own: main() answers for which documents exist and
+	// which stat failure is fatal, and a second copy of that policy is what this test's
+	// first version got wrong.
+	files, err := docFiles(root)
+	if err != nil {
+		t.Fatalf("collecting documents under %s: %v", root, err)
+	}
+	var (
+		spacedRe    = regexp.MustCompile("[A-Za-z0-9_./-]*\\.md[`'\")\\]]*[ \t]*§[ \t]+[0-9]")
+		unspacedRe  = regexp.MustCompile("[A-Za-z0-9_./-]*\\.md[`'\")\\]]*[ \t]*§[0-9]")
+		spaced      []string
+		sawUnspaced bool
+	)
+	for _, p := range files {
+		// The same two transforms main() applies before citeRe sees the text, so this
+		// vouches for the set citeRe is actually applied to rather than for bytes on disk.
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("reading %s: %v", p, err)
+		}
+		b := []byte(unwrap(stripFences(string(raw))))
+		rel, _ := filepath.Rel(root, p)
+		for _, m := range spacedRe.FindAll(b, -1) {
+			spaced = append(spaced, rel+": "+string(m))
+		}
+		sawUnspaced = sawUnspaced || unspacedRe.Match(b)
+	}
+	if !sawUnspaced {
+		t.Fatal("no unspaced sigil-then-digit anywhere: the walk read nothing, so the negative below proves nothing")
+	}
+	if len(spaced) != 0 {
+		t.Errorf("citeRe excludes a digit after the sigil because no live instance is spaced; these are:\n%s",
+			strings.Join(spaced, "\n"))
+	}
+}
+
+// repositoryRoot is two levels up from this package, asserted rather than assumed: `go test`
+// runs with the package directory as the working directory and nothing here knows the root,
+// so a package that moved would otherwise walk some other tree and pass.
+func repositoryRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("resolving the repository root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("%s is not the repository root, so this test would vouch for the wrong tree: %v", root, err)
+	}
+	return root
 }

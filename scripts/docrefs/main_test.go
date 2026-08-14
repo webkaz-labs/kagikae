@@ -1,8 +1,10 @@
 package main
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -262,4 +264,79 @@ func TestResolveTargetTakesTheCitingDirectoryAndTheRootAndNothingElse(t *testing
 	if got := resolveTarget(root, "README.md", "NO-SUCH-FILE.md"); got != "" {
 		t.Errorf("a target that exists nowhere must not resolve, got %q", got)
 	}
+}
+
+// TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil is the measurement the digit
+// exclusion rests on, moved out of the package comment that used to quote it as a command.
+// The comment quoted a `git grep` nobody re-ran, and it went false exactly once, in the way
+// no re-run of a diff's own quoted commands can reach: the spaced form was added to a
+// document in a commit that never opened this file, so the sentence recording the emptiness
+// was falsified from outside its own diff and only a reviewer's grep found it. Here it is
+// the tree's property, checked by the thing that already re-runs the tree's properties.
+//
+// Two-sided, because the arm that matters is a negative and a walk that reaches nothing
+// satisfies it: the spaced form must be absent AND the unspaced form must be present. This
+// file writes both patterns as regexp source (`§` then `[`), so neither arm reads itself.
+func TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil(t *testing.T) {
+	root := repositoryRoot(t)
+	var (
+		spacedRe   = regexp.MustCompile("§[ \t]+[0-9]")
+		unspacedRe = regexp.MustCompile("§[0-9]")
+		spaced     []string
+		unspaced   int
+	)
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if skipDirs[d.Name()] {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !hasSuffix(d.Name()) {
+			return nil
+		}
+		// The same two suffixes and the same pruned directories the walks in main() use,
+		// so what this vouches for is the set citeRe is actually applied to.
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, relErr := filepath.Rel(root, p)
+		if relErr != nil {
+			rel = p
+		}
+		for _, m := range spacedRe.FindAll(b, -1) {
+			spaced = append(spaced, rel+": "+string(m))
+		}
+		unspaced += len(unspacedRe.FindAll(b, -1))
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking %s: %v", root, err)
+	}
+	if unspaced == 0 {
+		t.Fatal("no unspaced sigil-then-digit anywhere: the walk read nothing, so the negative below proves nothing")
+	}
+	if len(spaced) != 0 {
+		t.Errorf("citeRe excludes a digit after the sigil because no live instance is spaced; these are:\n%s",
+			strings.Join(spaced, "\n"))
+	}
+}
+
+// repositoryRoot is two levels up from this package, asserted rather than assumed: `go test`
+// runs with the package directory as the working directory and nothing here knows the root,
+// so a package that moved would otherwise walk some other tree and pass.
+func repositoryRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("resolving the repository root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("%s is not the repository root, so this test would vouch for the wrong tree: %v", root, err)
+	}
+	return root
 }

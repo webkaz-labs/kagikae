@@ -130,10 +130,12 @@
 //   - The sigil must be followed by a space and then a letter, a code span or
 //     emphasis. That drops `§6`, `§7`, `§4.1` (numbered sections of
 //     docs/SCOPE-MODEL.md) and `§A`, `§A/§C` (docs/RELEASE.md sub-sections), which
-//     introduce no searchable name. Note which half does the work: every live instance
-//     is written with no space at all — `git grep -o '§ [0-9]' -- '*.md' '*.go'` is
-//     empty while `§[0-9]` is not — so widening the character class to admit digits
-//     would change nothing.
+//     introduce no searchable name. Note which half does the work: no live instance is
+//     written with a space there, so widening the character class to admit digits would
+//     change nothing. That is a property of the tree rather than of this program, and
+//     TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil is where it is checked — it
+//     used to be a `git grep` quoted here, which went false when one was added to a
+//     document in a commit that never opened this file.
 //   - A fenced block is stripped, on both sides. AGENTS.md documents the citation
 //     forms themselves, and an unstripped run reported its illustrations as broken
 //     targets — the upstream template check's own open defect, reproduced. On the name

@@ -453,6 +453,21 @@ one. A rule this repository imposes on itself is a commitment, not a measurement
 out of scope. Before commit, read your own added lines for a bare absolute — the author of
 this rule's sibling broke it twice in the session that wrote it.
 
+**A present-tense claim about a mutable subject belongs with that subject's re-executor,
+not in prose that points at one.** Each mutable subject in this repository already has
+exactly one, so nothing new gets built to hold a claim: a property of **the tree** is a Go
+test, and the prose cites the test by name; a property of **the CI environment** is a
+constraint line in `.github/workflows/check.yml` — `GOPROXY: off` on a step *enforces*
+what a sentence claiming "runs green with no network" only *records*, and a wrong
+constraint fails loudly where a wrong claim stays silent; a property of an **upstream
+tool** is a row in [docs/VALIDATION.md](docs/VALIDATION.md) § Upstream Behaviour
+Assumptions, which
+is load-bearing only because a `VerifiedVersion()` lockstep, a doctor check and
+`mise run audit` re-read the installed tool — a subject with none of those does not
+belong in that table, where it would look re-verified and not be. Measure a property of
+the tree by hand twice and it is a test, the way a procedure run by hand twice is a
+script.
+
 **A derivation is run on the tree that contains the sentence citing it — after the edit,
 never only before.** The diff that writes a claim can be what falsifies it:
 `docs/RELEASE.md`'s "and nowhere else" was broken by its own diff's other hunks. So before

@@ -1580,7 +1580,7 @@ shells' standard ambiguous-completion behavior, governed by the user's own
 **fish real-machine smoke is deferred** (fish was not installed on the release
 machine) and is the one open acceptance item. It was superseded a day later:
 v0.8.6 dropped fish from the verified shells, so there is nothing left to run
-(recorded in the v0.8.4 and v0.8.6 acceptance-log entries). Making the mise
+(the v0.8.6 entry above records the retirement). Making the mise
 `ai-switch` tasks available globally (not just in the project that ran
 `kae mise init`) is a post-ship candidate (ROADMAP.md).
 

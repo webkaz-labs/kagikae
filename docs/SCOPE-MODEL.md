@@ -6,11 +6,12 @@
 > git log is where that sequence is.
 >
 > **The section numbers have gaps and must keep them.** Other documents and
-> product code cite this file's sections by number — `git grep -n
-> 'SCOPE-MODEL\.md[`)]* §'` lists them, `internal/cmd/dircred.go` included. A
-> bare `§N` is not a form `docs-check` resolves, so renumbering would repoint
-> every one of them at the wrong section in silence. Removing a section leaves
-> the numbers of the rest as they are.
+> product code cite this file's sections by number, and some cite as a bare
+> `§N` that names no file at all, so a grep built around this filename misses
+> them: `git grep -n '§[0-9]'` is the superset to read, where a hit naming
+> `RFC 6902` is unrelated. A bare `§N` is not a form `docs-check` resolves, so
+> renumbering would repoint every one of them at the wrong section in silence.
+> Removing a section leaves the numbers of the rest as they are.
 
 ## 1. Backbone principle
 

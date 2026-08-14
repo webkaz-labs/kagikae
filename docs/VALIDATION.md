@@ -1904,6 +1904,11 @@ same commit — § Upstream Behaviour Assumptions carries what that means and ro
 on to the full copy set. `kae doctor` naming `upstream_version` for a tool is the
 signal that its rows are due.
 
+**Record every result below, and every § Open gates result, in this release's own
+entry in [RELEASE.md](RELEASE.md).** That is what § Open gates means by a gate no
+release has recorded a result for; a gate that passes is struck from that list in
+the same commit that records it.
+
 **Which accounts to run any of this with, and it is the whole section's
 precondition rather than one procedure's.** Every check below applies a
 *capture-time* snapshot to a live credential store, and so does every gate in
@@ -2014,8 +2019,8 @@ release it was never meant to gate.
 
 Their dates do not match that section, which is why the provenance is spelled
 out. The **Codex keyring two-account round-trip** is genuinely from the v0.8.3
-release gate (2026-06-17): that release's acceptance entry records it `DEFERRED`,
-and the v0.8.6 entry still deferred. The other two were written six weeks later
+release gate (2026-06-17): [RELEASE.md](RELEASE.md)'s v0.8.3 entry records it
+deferred, and its v0.8.6 entry still lists it open. The other two were written six weeks later
 and first recorded by v0.13.0 (2026-07-31), as "the codex per-directory keyring
 bind and the cursor three-item credential set"; v0.14.0 and v0.15.0 repeat them
 as still open. **After v0.15.0 the record is silent rather than deferring** — no

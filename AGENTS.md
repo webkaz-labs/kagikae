@@ -440,3 +440,39 @@ reaches this; the mechanism that would is the claim-reconciliation stage
 slice checks that a cited section *exists* and never what a quantity beside it says.
 For the quantity class, the first instruction in this section — write the derivation, not
 the number — is still the only thing that covers it.
+
+**An absolute about what *is* — a universal or negative existential whose subject is
+another program's behaviour, another file's contents, a past state, or the exhaustiveness
+of a set — is written as its derivation or not at all.** Reduce it to a verbatim quote of
+the thing itself, a command the reader can re-run beside what it printed and when, or an
+observation bounded by who measured it and when — an observation bounds what was *seen*,
+never what *exists*. If none of those carries the argument, delete the sentence: three
+generations in `.github/workflows/check.yml`'s header each replaced a falsified absolute
+with the next absolute out, and the chain stopped only where the sentence stopped being
+one. A rule this repository imposes on itself is a commitment, not a measurement, and is
+out of scope. Before commit, read your own added lines for a bare absolute — the author of
+this rule's sibling broke it twice in the session that wrote it.
+
+**A derivation is run on the tree that contains the sentence citing it — after the edit,
+never only before.** The diff that writes a claim can be what falsifies it:
+`docs/RELEASE.md`'s "and nowhere else" was broken by its own diff's other hunks. So before
+commit, re-run every command your added lines quote. What this cannot reach is a
+derivation recorded in a file the diff never touches — a `§` written with a space before a
+section number, added to `docs/SCOPE-MODEL.md`, falsified an emptiness recorded in
+`scripts/docrefs/main.go`, which that diff never opened — the same class as the
+untouched-line quantity above, owned by the reconciliation stage filed in
+`docs/ROADMAP.md`. Note that naming that defect here cannot use its own form, or this
+paragraph would falsify the same measurement a third time.
+
+A closure-word net over added lines was built and measured on 2026-08-14, at a broad word
+width and at a narrowed negative-existential one, over the branch that added the rules
+above. Both fired on their positive control and stayed silent on a derivation; both also
+fired on ordinary prose throughout, and the narrow width returned no live instance at all.
+Two readers counted its records differently and neither count is repeated here, because
+the count was never the finding: neither width separated the defect from the background,
+and a third was not tried. It
+cannot, because the class's discriminating features are the subject's ownership and a
+derivation's *absence*, and neither is lexical.
+Unlike the quantity net, where the written number is itself the artifact that goes stale, a
+closure word is ordinary vocabulary here; what goes stale is a measurement that was never
+run, and no pattern over words can see an absence.

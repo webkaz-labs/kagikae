@@ -16,9 +16,11 @@ name: Check
 #
 # Docs-check is here and its selftest is not, decided 2026-08-14, because they stopped
 # costing the same thing. The check is bash plus one `go run` of a stdlib-only program
-# over the tree: no python since the extractor was ported, no network (it runs green
-# under `GOPROXY=off` with an empty module cache), and no git, so a shallow checkout is
-# enough. The only write outside the checkout worth a decision is a Go build cache, which
+# over the tree: no python since the extractor was ported, no network — the step's own
+# `GOPROXY: off` is that claim, enforced rather than recorded, and the day the extractor
+# grows a dependency this fails instead of a sentence going quietly false — and no git, so
+# a shallow checkout is enough.
+# The only write outside the checkout worth a decision is a Go build cache, which
 # scripts/check-docs.sh defaults to `${TMPDIR:-/tmp}/kae-gocache` unless GOCACHE is
 # already set — the idiom `grep kae-gocache mise.toml` lists, not a choice made for CI.
 # Nothing in this workflow sets GOCACHE, so unless the runner supplies one, this step
@@ -67,3 +69,8 @@ jobs:
 
       - name: Docs check
         run: bash scripts/check-docs.sh
+        env:
+          # Not a hardening knob: this is the header's "no network", written where it is
+          # re-run on every push instead of where it goes stale. scripts/docrefs imports
+          # stdlib only, so nothing here should need the proxy.
+          GOPROXY: off

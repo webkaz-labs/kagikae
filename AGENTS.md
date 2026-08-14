@@ -461,18 +461,17 @@ prose cites the test by name. A property of the **CI environment** is a constrai
 *enforces* what a sentence claiming "runs green with no network" only *records*. A property
 of an **upstream tool** is a row in [docs/VALIDATION.md](docs/VALIDATION.md) § Upstream
 Behaviour Assumptions, which is load-bearing because code around it re-reads the installed
-tool — read that file for which check reaches which rows, since they are not uniform and
-cursor's are exempt from the doctor one. A subject with no re-reader does not belong there,
+tool — read that file for which check reaches which rows, since they are not uniform.
+A subject with no re-reader does not belong there,
 where it would look re-verified and not be; a proposal to file a CI runner image in that
 table was refused on exactly that ground. Measure a property of the tree by hand twice and
 it is a test, the way a procedure run by hand twice is a script.
 
-**A constraint is the stronger form only if it can fail.** Both halves of that `GOPROXY`
-line were measured in both directions, and the second half is the one a review had to add:
-`GOPROXY: off` alone blocks downloads and nothing else, so a warm module cache — which
-`actions/setup-go` restores and the earlier `go test` step fills — resolves a newly added
-dependency and the step passes. A constraint that cannot fire is worse than the sentence it
-replaced, because it reads as enforced.
+**A constraint is the stronger form only if it can fail, and what it enforces is narrower
+than the sentence it replaces.** Both were true of that `GOPROXY` line, both were found by
+review rather than by writing it, and the step's own comment in
+`.github/workflows/check.yml` is where the measurements are. A constraint that cannot fire
+is worse than the sentence it replaced, because it reads as enforced.
 
 **A derivation is run on the tree that contains the sentence citing it — after the edit,
 never only before.** The diff that writes a claim can be what falsifies it:

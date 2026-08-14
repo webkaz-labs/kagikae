@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -275,7 +274,8 @@ func TestResolveTargetTakesTheCitingDirectoryAndTheRootAndNothingElse(t *testing
 // is the tree's property, checked by the thing that already re-runs the tree's properties.
 //
 // The text is read the way citeRe reads it, through stripFences and unwrap, and that is the
-// whole difference between this and the `git grep` it replaces. A grep is line-oriented, so
+// difference that mattered against the `git grep` it replaces (which also read only tracked
+// files, and did not prune `dist/`). A grep is line-oriented, so
 // a citation that wraps after the sigil — which is where this repository's prose wraps, and
 // why unwrap exists — reads as clean to it. Measured: a `§` at end of line with `6` opening
 // the next passes a byte-level scan and is matched by a digit-admitting citeRe, so a
@@ -287,56 +287,34 @@ func TestResolveTargetTakesTheCitingDirectoryAndTheRootAndNothingElse(t *testing
 // file writes both patterns as regexp source (`§` then `[`), so neither arm reads itself.
 func TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil(t *testing.T) {
 	root := repositoryRoot(t)
+	// docFiles rather than a walk of its own: main() answers for which documents exist and
+	// which stat failure is fatal, and a second copy of that policy is what this test's
+	// first version got wrong.
+	files, err := docFiles(root)
+	if err != nil {
+		t.Fatalf("collecting documents under %s: %v", root, err)
+	}
 	var (
-		spacedRe   = regexp.MustCompile("§[ \t]+[0-9]")
-		unspacedRe = regexp.MustCompile("§[0-9]")
-		spaced     []string
-		unspaced   int
+		spacedRe    = regexp.MustCompile("[A-Za-z0-9_./-]*\\.md[`'\")\\]]*[ \t]*§[ \t]+[0-9]")
+		unspacedRe  = regexp.MustCompile("§[0-9]")
+		spaced      []string
+		sawUnspaced bool
 	)
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if skipDirs[d.Name()] {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if !hasSuffix(d.Name()) {
-			return nil
-		}
-		// os.Stat rather than d.Type(), for the reason main() states at length: a symlink to
-		// a document is read, a dangling one and a symlink to a directory are skipped, and a
-		// FIFO is skipped before anything blocks in open(2). Returning the walk's error
-		// instead would fail this test on a dangling `x.md` — the defect main() records
-		// fixing, reintroduced here under a comment claiming the same walk.
-		info, err := os.Stat(p)
-		if err != nil || !info.Mode().IsRegular() {
-			return nil
-		}
-		// The same suffixes and pruned directories main() walks, then the same two
-		// transforms it applies before citeRe sees the text, so this vouches for the set
-		// citeRe is actually applied to rather than for the bytes on disk.
+	for _, p := range files {
+		// The same two transforms main() applies before citeRe sees the text, so this
+		// vouches for the set citeRe is actually applied to rather than for bytes on disk.
 		raw, err := os.ReadFile(p)
 		if err != nil {
-			return err
+			t.Fatalf("reading %s: %v", p, err)
 		}
 		b := []byte(unwrap(stripFences(string(raw))))
-		rel, relErr := filepath.Rel(root, p)
-		if relErr != nil {
-			rel = p
-		}
+		rel, _ := filepath.Rel(root, p)
 		for _, m := range spacedRe.FindAll(b, -1) {
 			spaced = append(spaced, rel+": "+string(m))
 		}
-		unspaced += len(unspacedRe.FindAll(b, -1))
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walking %s: %v", root, err)
+		sawUnspaced = sawUnspaced || unspacedRe.Match(b)
 	}
-	if unspaced == 0 {
+	if !sawUnspaced {
 		t.Fatal("no unspaced sigil-then-digit anywhere: the walk read nothing, so the negative below proves nothing")
 	}
 	if len(spaced) != 0 {

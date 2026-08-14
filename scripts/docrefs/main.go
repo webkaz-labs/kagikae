@@ -521,21 +521,16 @@ func hasSuffix(name string) bool {
 	return false
 }
 
-func main() {
-	root := "."
-	if len(os.Args) > 1 {
-		root = os.Args[1]
-	}
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "docrefs: %v\n", err)
-		os.Exit(1)
-	}
-
+// docFiles is the set both extractors read, and it is a function rather than a loop inside
+// main because main_test.go asserts a property of that same set. Two copies of this walk
+// existed for one commit, and the copy folded a stat failure back into "not a document" —
+// the fail-open the comment below records closing — so the test vouched for a tree it had
+// silently not read. One walk, one policy.
+func docFiles(root string) ([]string, error) {
 	var files []string
-	err = filepath.WalkDir(abs, func(p string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("walking %s: %w", p, err)
 		}
 		if d.IsDir() {
 			if skipDirs[d.Name()] {
@@ -570,8 +565,7 @@ func main() {
 					// Worded rather than handed to `%v` alone: the verb in a *fs.PathError
 					// belongs to the standard library, so the selftest's needle would be a
 					// string this program does not own.
-					fmt.Fprintf(os.Stderr, "docrefs: cannot stat %s: %v\n", p, serr)
-					os.Exit(1)
+					return fmt.Errorf("cannot stat %s: %w", p, serr)
 				}
 				return nil
 			}
@@ -580,10 +574,28 @@ func main() {
 		return nil
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "docrefs: walking %s: %v\n", abs, err)
-		os.Exit(1)
+		return nil, err
 	}
 	sort.Strings(files)
+	return files, nil
+}
+
+func main() {
+	root := "."
+	if len(os.Args) > 1 {
+		root = os.Args[1]
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "docrefs: %v\n", err)
+		os.Exit(1)
+	}
+
+	files, err := docFiles(abs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "docrefs: %v\n", err)
+		os.Exit(1)
+	}
 
 	cache := map[string][][]string{}
 	namesFor := func(p string) [][]string {

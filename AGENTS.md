@@ -39,7 +39,7 @@ check here can notice that the standard changed.
 | [docs/CLI.md](docs/CLI.md) | command flags, output, exit codes, JSON contract changes |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | config, snapshot, state, backup, secret-ref changes |
 | [docs/SECURITY.md](docs/SECURITY.md) | secrets, subprocess, permission, redaction changes |
-| [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | the scope/isolation model's rationale and the upstream findings behind it — read it to learn *why* a decision was made, never for the rules themselves, which live in the documents above. It was the only file under `docs/` missing from this table, which is how it came to hold a second full copy of one upstream measurement |
+| [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | the scope/isolation model's rationale and the upstream findings behind it — read it to learn *why* a decision was made, never for the rules themselves, which live in the documents above. Its section numbers have gaps and keep them; the file's own opening says why |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | long-term ordering changes |
 | [docs/RELEASE.md](docs/RELEASE.md) | active release target changes |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | before commit and release checks |
@@ -51,11 +51,8 @@ Two tests, in this order, before adding anything here.
 
 **Can it be executed?** Then it is not prose: a command with an expected output is a
 script with a control, a property of the tree is a Go test, a property of the CI
-environment is a constraint line in the workflow. The argument is a controlled comparison
-in this tree's own history — `docs-check` and the quantity sweep are the same age and the
-same class and differ in the medium each was born into — and the commit that added this
-section carries the derivation and its caveats. The sharper half needs no arithmetic: the
-subjects of the commits that grew this file read as a shell-pipeline changelog.
+environment is a constraint line in the workflow. The commit that added this section
+carries the derivation behind it and its caveats.
 
 **Does a reader need it before anything cues them to look?** Kinds that do: a convention
 nothing in a task names (the example-name rule, the `set -e` traps), a tripwire against a
@@ -63,11 +60,11 @@ default that looks correct (this file's opening, which has stopped a re-bundle),
 step every commit performs. Where a cue exists, the cue goes in a Documentation Map row
 and the content lives where the row points — that is what the credential rules did, and
 their routing entries below still state no rule, which is the property that keeps them
-short. Do not read "line" as one physical line: each wraps, and a first attempt at this
-sentence said otherwise and was measured false.
+short. Do not read "line" as one physical line; each wraps.
 
-Asking the second question first is how a shell pipeline came to be maintained in a
-router file: a sweep run on every change answers yes to it and never meets the first test.
+The order is the load-bearing part. A step run on every change answers yes to the second
+question and never meets the first, so asking the second first is how a shell pipeline
+comes to be maintained in a router file.
 
 ## Validation
 
@@ -377,23 +374,17 @@ the routing list sends them on.
 does not reach, which its package comment lists, and everything about *renaming* stays
 manual. **Removing content from under a heading that survives is the same class as
 renaming and the fragment grep stays green on it**, so the inbound references have to be
-read — a trim of `docs/ROADMAP.md` paid for that, and none of those references named
-a `§` at all.
+read — and an inbound reference need not name a `§` at all.
 
-**A file's own opening is an inbound reference too, and nothing treats it as one.**
-`docs/PRODUCT.md` opened by saying two of its sections read as architecture and were
-queued for a move — the estimate the `docs/ROADMAP.md` entry it pointed at had already
-withdrawn — and it would have survived the move that closed that entry. A `§` grep looks
-for citations, `docs-check` resolves targets, and neither reads what a document says
-about itself, so a plan a file states in its own voice goes stale in silence. Closing an
-entry means reading the opening of every file the entry names.
+**A file's own opening is an inbound reference too, and nothing treats it as one.** A `§`
+grep looks for citations, `docs-check` resolves targets, and neither reads what a document
+says about itself, so a plan a file states in its own voice goes stale in silence. Closing
+an entry means reading the opening of every file the entry names.
 
-**That fragment grep sees whether the target exists and nothing else, so what it cannot see is
-a quantity written *beside* a citation.** `docs/ROADMAP.md` said "the two commands in
-docs/CONTEXT.md § Not converged" after a later commit merged them into one — the `docs/`
-prefix is this file's, not the quoted sentence's, because the gate resolves a citation and
-a bare `CONTEXT.md` from the root no longer does. § Not converged still existed, so every
-heading-fragment grep stayed green and only reading the sentence found it.
+**That fragment grep sees whether the target exists and nothing else, so what it cannot
+see is a quantity written *beside* a citation** — a sentence counting what a section holds
+stays green through every heading-fragment grep once the count is wrong, because the
+section still exists. Only reading the sentence finds it.
 
 **The fix that holds is not to write the number — write the derivation**, the way
 [docs/CONTEXT.md](docs/CONTEXT.md) § Not converged does, and the `EXPECTED_GUARDS` note
@@ -406,21 +397,18 @@ returns. It is report-only and deliberately outside `mise run check`, because de
 hit needs a reader: **triage by whether the quantity can go stale, not by which file it
 points at.** Its header is normative for everything else — the pattern, the fixtures and
 the positive control it runs before each sweep, and the classes it cannot reach, one of
-which no added-lines sweep ever will. All of that used to be in this section, and the
-rounds that debugged it are most of what this file grew by, which is the measurement
-§ What Belongs In This File rests on.
+which no added-lines sweep ever will.
 
 **An absolute about what *is* — a universal or negative existential whose subject is
 another program's behaviour, another file's contents, a past state, or the exhaustiveness
 of a set — is written as its derivation or not at all.** Reduce it to a verbatim quote of
 the thing itself, a command the reader can re-run beside what it printed and when, or an
 observation bounded by who measured it and when — an observation bounds what was *seen*,
-never what *exists*. If none of those carries the argument, delete the sentence: three
-generations in `.github/workflows/check.yml`'s header each replaced a falsified absolute
-with the next absolute out, and the chain stopped only where the sentence stopped being
-one. A rule this repository imposes on itself is a commitment, not a measurement, and is
-out of scope. Before commit, read your own added lines for a bare absolute — the author of
-this rule's sibling broke it twice in the session that wrote it.
+never what *exists*. If none of those carries the argument, delete the sentence —
+`.github/workflows/check.yml`'s header is where replacing one falsified absolute with the
+next one out was paid for. A rule this repository imposes on itself is a commitment, not a
+measurement, and is out of scope. Before commit, read your own added lines for a bare
+absolute.
 
 **A present-tense claim about a mutable subject belongs with that subject's re-executor,
 not in prose that points at one.** Look for the re-executor before building one; the
@@ -432,29 +420,20 @@ of an **upstream tool** is a row in [docs/VALIDATION.md](docs/VALIDATION.md) § 
 Behaviour Assumptions, which is load-bearing because code around it re-reads the installed
 tool — read that file for which check reaches which rows, since they are not uniform.
 A subject with no re-reader does not belong there,
-where it would look re-verified and not be; a proposal to file a CI runner image in that
-table was refused on exactly that ground. Measure a property of the tree by hand twice and
+where it would look re-verified and not be. Measure a property of the tree by hand twice and
 it is a test, the way a procedure run by hand twice is a script.
 
 **A constraint is the stronger form only if it can fail, and what it enforces is narrower
-than the sentence it replaces.** Both were true of that `GOPROXY` line, both were found by
-review rather than by writing it, and the step's own comment in
-`.github/workflows/check.yml` is where the measurements are. A constraint that cannot fire
+than the sentence it replaces.** Both were true of that `GOPROXY` line, and the step's own
+comment in `.github/workflows/check.yml` is where the measurements are. A constraint that cannot fire
 is worse than the sentence it replaced, because it reads as enforced.
 
 **A derivation is run on the tree that contains the sentence citing it — after the edit,
 never only before.** The diff that writes a claim can be what falsifies it:
 `docs/RELEASE.md`'s "and nowhere else" was broken by its own diff's other hunks. So before
 commit, re-run every command your added lines quote. What this cannot reach is a
-derivation recorded in a file the diff never touches — a `§` written with a space before a
-section number, added to `docs/SCOPE-MODEL.md`, falsified an emptiness then recorded in
-`scripts/docrefs/main.go`'s package comment, which that diff never opened. **That instance
-is closed**, by the paragraph above applied to itself:
-`TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil` holds it now, so naming the defect
-here still cannot use its own form — but because this file is inside that test's walk and
-would turn it red, not because a sentence would go quietly false. The class it was an
-instance of is the untouched-line quantity above, and that is what the reconciliation stage
-filed in `docs/ROADMAP.md` still owns.
+derivation recorded in a file the diff never touches; that is the untouched-line quantity
+class above, and the reconciliation stage filed in `docs/ROADMAP.md` still owns it.
 
-A sibling net over closure words was built, measured and refused; `scripts/sweep-quantities.sh`'s
-header carries the measurement and the reason, beside the net that was kept.
+A sibling net over closure words was built and refused; `scripts/sweep-quantities.sh`'s
+header carries the reason, beside the net that was kept.

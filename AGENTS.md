@@ -52,13 +52,10 @@ Two tests, in this order, before adding anything here.
 **Can it be executed?** Then it is not prose: a command with an expected output is a
 script with a control, a property of the tree is a Go test, a property of the CI
 environment is a constraint line in the workflow. The argument is a controlled comparison
-in this tree's own history: `docs-check` and the quantity sweep are the same age and the
-same class, and differ in the medium each was born into. Derive both sides rather than
-reading a figure — `git log -G'quantit|sweep' --numstat bc8836a..HEAD -- AGENTS.md`,
-`-G'docs-check|check-docs'`, and the same command with no `-G` — and note that `-G`
-attributes a whole commit's numstat to a term, so each side is an upper bound and only the
-comparison is like-for-like. The commit subjects on the sweep side are the sharper half:
-they read as a shell-pipeline changelog, in a router file.
+in this tree's own history — `docs-check` and the quantity sweep are the same age and the
+same class and differ in the medium each was born into — and the commit that added this
+section carries the derivation and its caveats. The sharper half needs no arithmetic: the
+subjects of the commits that grew this file read as a shell-pipeline changelog.
 
 **Does a reader need it before anything cues them to look?** Kinds that do: a convention
 nothing in a task names (the example-name rule, the `set -e` traps), a tripwire against a
@@ -402,25 +399,14 @@ in `scripts/smoke-run-selftest.sh`'s header, which deliberately does not repeat 
 because the two drifted apart the moment a guard was added. A quantity never written
 cannot go stale. What follows is only the net for the ones already there.
 
-For the ones already there, `bash scripts/sweep-quantities.sh` reports every quantity the
-change writes, and **triage each hit by whether the quantity can go stale, not by which
-file it points at** — a count of something in its own file goes stale just as easily,
-which a commit here proved by un-striking one of the struck entries in `docs/ROADMAP.md`
-while writing "all ten" of them in the same diff. Report-only, and deliberately not in
-`mise run check`, because no rule this script can compute separates a stale-able quantity
-from a fixed one. Its header is normative for the pattern's shape, for the fixtures and
-the positive control it runs before every sweep, and for what it cannot reach. All of that
-used to be here, and the rounds that debugged it are most of what this file grew by, which
-is the measurement § What Belongs In This File rests on.
-
-**The class it cannot reach at all is a quantity on a line the diff does not touch**, and
-that is the original defect's own shape — one commit merged the two commands, and the
-sentence counting them sat unchanged in another file. No widening of an added-lines sweep
-reaches this; the mechanism that would is the claim-reconciliation stage
-`scripts/docscan/main.go`'s header names, filed in `docs/ROADMAP.md`, whose one built
-slice checks that a cited section *exists* and never what a quantity beside it says.
-For the quantity class, the first instruction in this section — write the derivation, not
-the number — is still the only thing that covers it.
+For the ones already there, run `bash scripts/sweep-quantities.sh` and read every record it
+returns. It is report-only and deliberately outside `mise run check`, because deciding a
+hit needs a reader: **triage by whether the quantity can go stale, not by which file it
+points at.** Its header is normative for everything else — the pattern, the fixtures and
+the positive control it runs before each sweep, and the classes it cannot reach, one of
+which no added-lines sweep ever will. All of that used to be in this section, and the
+rounds that debugged it are most of what this file grew by, which is the measurement
+§ What Belongs In This File rests on.
 
 **An absolute about what *is* — a universal or negative existential whose subject is
 another program's behaviour, another file's contents, a past state, or the exhaustiveness

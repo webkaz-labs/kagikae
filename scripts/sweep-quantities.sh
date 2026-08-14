@@ -2,8 +2,9 @@
 # Report every quantity a change writes next to a claim, so each can be triaged by hand.
 #
 # Usage: bash scripts/sweep-quantities.sh [<base>]
-#   <base> defaults to `main`. Before the first commit on a branch pass nothing and the
-#   working tree is swept as well; see "the empty range" below for why that matters.
+#   <base> defaults to `main`. The diff runs from the merge base to the working tree, so
+#   committed and uncommitted changes are both swept — untracked files are not, because
+#   `git diff` does not see them, and a brand-new document is therefore invisible here.
 #
 # Report-only, and deliberately not in `mise run check`: every hit needs a human decision,
 # and a quantity that can go stale is not distinguishable from one that cannot by anything
@@ -32,7 +33,7 @@
 # letters-only class let exactly those through — which is why the second fixture carries an
 # emphasized word. One example does not pin a character class.
 #
-# # The three ways a clean run has already lied
+# # The ways a clean run has already lied
 #
 # **A negative with no positive control.** `POSITIVE_CONTROL_COMMIT` writes a known bad
 # count, and a run that stops reporting it means the pattern is broken rather than the tree
@@ -43,8 +44,8 @@
 #
 # **The empty range.** `main...HEAD` sees nothing uncommitted, so a run on a branch with no
 # commits yet reports clean about a working tree full of changes. This script diffs the
-# merge base against the working tree, which covers both, and refuses to call a run clean
-# when that diff adds no lines at all.
+# merge base against the working tree, which covers both tracked halves, and refuses to
+# call a run clean when that diff adds no lines at all.
 #
 # **A fixture that no longer fires.** Every fixture runs through the same function the
 # sweep uses, before the sweep, and a failure there is fatal.
@@ -97,14 +98,27 @@ BASE=${1:-main}
 # converged" after a later commit had merged them into one.
 POSITIVE_CONTROL_COMMIT=89341f4
 
+QUANTITY_RE='(^|[^A-Za-z*`])\*{0,2}`?(both|one|two|three|four|five|six|seven|eight|nine|ten|thirteen'\
+'|first|second|third|fourth|fifth|sixth|seventh|[0-9]+)`?\*{0,2}( +[^ ]+){0,3} +'\
+'\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?|tools?|assertions?)\b'
+
+MARKER_RE='^\+\+ b/'
+
+# `sweep markers` adds the file-attribution arm; `sweep` alone matches only quantities.
+# The two are separate because a record carries the joined pair `prev current`, so a
+# quantity on a file's *first* added line arrives in a record that begins with the
+# attribution marker. Filtering the marker out of the combined output therefore discarded
+# that quantity — silently, and for the commonest shape there is, a single line added to a
+# single file. It reached this script because the arm it replaced was merely noisy.
 sweep() {
+  local re=$QUANTITY_RE
+  if [ "${1:-}" = markers ]; then
+    re="$MARKER_RE|$re"
+  fi
   grep '^+' |
     sed 's/^+//' |
     awk '{print prev" "$0; prev=$0}' |
-    grep -iE \
-      '^\+\+ b/|(^|[^A-Za-z*`])\*{0,2}`?(both|one|two|three|four|five|six|seven|eight|nine|ten|thirteen'\
-'|first|second|third|fourth|fifth|sixth|seventh|[0-9]+)`?\*{0,2}( +[^ ]+){0,3} +'\
-'\*{0,2}(commands?|terms?|rules?|rows?|entries|entry|sections?|bullets?|places?|copies|copy|files?|lines?|names?|pairs?|sites?|tools?|assertions?)\b' ||
+    grep -iE "$re" ||
     true
 }
 
@@ -120,7 +134,7 @@ fail() {
 # these fixtures happen to use trips the fixture that uses it and says nothing about why.
 fixture() {
   local name=$1 want=$2 input=$3 got
-  got=$(printf '%b' "$input" | sweep | wc -l | tr -d ' ')
+  got=$(printf '%b' "$input" | sweep markers | wc -l | tr -d ' ')
   if [ "$got" != "$want" ]; then
     fail "the $name fixture yielded $got records, not $want, so the pattern no longer reads that shape"
   fi
@@ -138,8 +152,8 @@ controls() {
   # The file attribution the report is read with. Two lines, because the marker is matched
   # as the *predecessor* the awk joins on — a one-line fixture leaves it as the current line
   # with an empty prev, and the record then starts with a space and matches nothing, which
-  # is how this fixture failed on the run that added it. `diff.noprefix` in a user's git
-  # config removes the `b/` and this arm goes silent, which is why it is a fixture at all.
+  # is how this fixture failed on the run that added it. What it does not cover is a git
+  # config that changes the prefix; the diff above forces those off instead.
   fixture 'file-attribution' 1 '+++ b/x.md\n+ordinary prose\n'
   # Fatal rather than skipped when the commit is absent. Skipping was the first form, and a
   # mutation of this constant to a commit that does not exist then produced a warning and a
@@ -169,13 +183,21 @@ fi
 # with `git diff HEAD` reported a line as added after a later edit had removed it again,
 # so a hit already fixed in the working tree kept coming back. The merge base rather than
 # `$BASE` itself is what keeps this right when the base has moved ahead.
-base=$(git merge-base "$BASE" HEAD)
-diffed=$(git diff "$base")
+if ! base=$(git merge-base "$BASE" HEAD 2>/dev/null); then
+  fail "no merge base between '$BASE' and HEAD, so there is no range to sweep"
+fi
+# The prefixes are forced rather than assumed: `diff.noprefix` or `diff.mnemonicPrefix` in
+# a user's config turns `+++ b/x` into `+++ x` or `+++ w/x`, which silently retires the
+# attribution arm and confuses a header line with content. The fixture below cannot see
+# that, because it feeds a fixed string — measured, and the reason this line exists.
+diffed=$(git -c diff.noprefix=false -c diff.mnemonicPrefix=false diff "$base")
 # `^+++ ` is excluded before counting: a diff header starts with `+` too, so counting it
 # inflated this figure by one per file touched, and a deletion-only change reported one
 # added line and skipped the guard below. A false quantity printed by the quantity net,
-# found by a review after a different false quantity had already been fixed here.
-added=$(printf '%s\n' "$diffed" | grep -v '^+++ ' | grep -c '^+' || true)
+# found by a review after a different false quantity had already been fixed here. `b/` is
+# part of the match because the prefixes are forced above, which keeps a document line
+# whose own text begins `+++ ` from being read as a header.
+added=$(printf '%s\n' "$diffed" | grep -v '^+++ b/' | grep -c '^+' || true)
 
 if [ "$added" = "0" ]; then
   printf 'sweep-quantities: nothing since the merge base with %s adds a line, so this run proved nothing\n' \
@@ -183,14 +205,19 @@ if [ "$added" = "0" ]; then
   exit 0
 fi
 
-hits=$(printf '%s\n' "$diffed" | sweep)
+hits=$(printf '%s\n' "$diffed" | sweep markers)
 
-# The `^++ b/` arm is attribution, not a finding, and any change that adds a line produces
-# at least one of those records — so deciding on `hits` alone made the clean report below
+# Attribution is not a finding, and every change that adds a line produces at least one
+# attribution record — so deciding on the printed records made the clean report below
 # unreachable and handed back a report on every run, which is how a report-only tool stops
-# being read. Markers are printed, and only the other records decide.
-quantities=$(printf '%s\n' "$hits" | grep -cv '^++ b/' || true)
+# being read. The decision runs the pattern again *without* the marker arm rather than
+# filtering the marker out of these records, because a quantity on a file's first added
+# line arrives inside a record that begins with one.
+quantities=$(printf '%s\n' "$diffed" | sweep | wc -l | tr -d ' ')
 
+# `hits` empty is a separate case rather than a subset: `grep -c` over one empty line
+# returns 1, so `quantities` cannot see it. Reachable under a config the diff above now
+# forces off, and cheap to keep.
 if [ -z "$hits" ] || [ "$quantities" = "0" ]; then
   printf 'sweep-quantities: ok — %s added lines, no quantity beside a claim\n' "$added"
   exit 0

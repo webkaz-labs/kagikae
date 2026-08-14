@@ -1345,9 +1345,9 @@ what a past session did or found **and** the reason, rule or trap around it stil
 without it. A rule stays; the round that produced it does not.
 
 **What is left is [RELEASE.md](RELEASE.md), and it is not free prose.** Everything below
-its § Release Process header is shipped-release entries, and product code cites them by
-section letter: `git grep -n 'RELEASE\.md §' -- internal/` lists the `§A`/`§B`/`§C`/`§D`
-form, and `git grep -n 'RELEASE\.md v0\.' -- internal/` the version-named one. `docs-check`
+its first `---` rule is shipped-release entries, and product code cites them by section
+letter: `git grep -n 'RELEASE\.md §' -- internal/` lists the `§A`/`§B`/`§C`/`§D` form,
+and `git grep -n 'RELEASE\.md v0\.' -- internal/` the version-named one. `docs-check`
 resolves neither — a bare `§A` names no section it can look up — so deleting an entry
 dangles a comment in product code with nothing reporting it. Cutting this means repointing
 those comments in the same commit, which is a change to `internal/` and a different review

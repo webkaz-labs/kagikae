@@ -28,11 +28,10 @@ Run `go mod tidy` before committing dependency changes.
 
 ## Smoke Checks (built binary, isolated env)
 
-**Every code block in this file, including the per-release acceptance sections
-further down, assumes `. scripts/smoke-env.sh` is already in effect in the current
-shell.** They seed fixtures by writing to whatever `$HOME` and `$XDG_*` path the
-surface under test reads — kae's own `config.toml` and `state.json`, a tool's
-credential file, an identity file such as `~/.claude.json` or
+**Every code block in this file assumes `. scripts/smoke-env.sh` is already in
+effect in the current shell.** They seed fixtures by writing to whatever `$HOME` and
+`$XDG_*` path the surface under test reads — kae's own `config.toml` and `state.json`,
+a tool's credential file, an identity file such as `~/.claude.json` or
 `~/.gemini/google_accounts.json`, `~/.gitconfig` — so the list is as long as the
 sections are, and the rule is per block, not per file: **anything a block writes, it
 overwrites for real if the preamble is not live.** Re-running an old section means
@@ -603,13 +602,6 @@ nothing — and `kae pin` would still report success, with the fragment sitting 
 `bash scripts/smoke-run.sh '## v0.17.0 surface — the credential harvest'`, like every
 other section**, and a correct run exits `0` with every line exiting 0.
 
-It did not use to. This block needed `SMOKE_WHOLE_FILE=1` — its two multi-line
-constructs, a here-document and `reset_main`, are things the per-line runner cannot
-execute — and that flag costs the per-line verdict, so the only thing the runner could
-report was the block's own exit status. Which was `1` on a *correct* run, because the
-last line was a bare `grep -c` asserting a count of zero. Both are fixed: the
-constructs are single lines and the zero-counts are wrapped in `test`.
-
 Read the transcript anyway when something fails. This section has the worst history of
 green runs that proved nothing — fixtures written to a directory kae had stopped
 reading, a `grep` defeated by base64, token names that prefixed one another — and a
@@ -1131,10 +1123,10 @@ either.
 backend, temp HOME, `/tmp/kae` = v0.17.0), each assertion checked at its own point rather
 than from the end state. A–E and F were first run 2026-08-04 and G–J from 2026-08-05; that
 record is superseded because the tree moved under it twice, and the re-run found a defect
-in this block rather than in kae. D and E are the two cases a *chokepoint-only* harvest got wrong, so they are the ones
-worth re-running after any change to `kae pin`'s ordering: both depend on the pin-level
-pass running **before** the stores are materialized, and E additionally on the replaced
-fragment being read before it is rewritten.
+in this block rather than in kae. D and E are the two cases a *chokepoint-only* harvest
+got wrong, so they are the ones worth re-running after any change to `kae pin`'s ordering:
+both depend on the pin-level pass running **before** the stores are materialized, and E
+additionally on the replaced fragment being read before it is rewritten.
 G–J were **discriminated against a control** when first written: the same G block run against a
 binary with the skip forced off leaves `MAIN-OLD` live and prints "previous auth state
 restored", so G is not a tautology. Note the 2026-08-06 measurement of **H does not carry
@@ -2020,8 +2012,8 @@ release it was never meant to gate.
 Their dates do not match that section, which is why the provenance is spelled
 out. The **Codex keyring two-account round-trip** is genuinely from the v0.8.3
 release gate (2026-06-17): [RELEASE.md](RELEASE.md)'s v0.8.3 entry records it
-deferred, and its v0.8.6 entry still lists it open. The other two were written six weeks later
-and first recorded by v0.13.0 (2026-07-31), as "the codex per-directory keyring
+deferred, and its v0.8.6 entry still lists it open. The other two were written six
+weeks later and first recorded by v0.13.0 (2026-07-31), as "the codex per-directory keyring
 bind and the cursor three-item credential set"; v0.14.0 and v0.15.0 repeat them
 as still open. **After v0.15.0 the record is silent rather than deferring** — no
 later release notes mention any of the three.

@@ -41,7 +41,7 @@ parameters:
    (set on enter, unset on leave; never touches global live state). For the
    global isolated home it is a global pointer (see §10).
 2. **Symlink the sharing set** into the alternate dir — from the real home
-   (`bond`) or from a per-directory store (`pin`).
+   (shared mode) or from a per-directory store (isolated mode).
 3. **Materialise the credential and mixed-state files privately** (never
    symlinked — see §6), **reading each store before writing over it**: a private
    copy is not a free copy, because the tool refreshes the one inside the directory
@@ -52,16 +52,15 @@ parameters:
 The only differences between modes are the **sharing source** (real home vs
 per-directory store) and the **default sharing set**:
 
-- **bond** = *denylist*: share everything from the real home *except* the auth
+- **shared** = *denylist*: share everything from the real home *except* the auth
   artifacts. The denylist is **hard-coded per tool** (claude `.credentials.json`
   — Linux only; on macOS the credential is keychain-only so there is no file to
   exclude; codex `auth.json`), not a dynamic scan. Unknown new files are shared
   (consistent with "same environment as global"); a newly discovered credential
   file must be added to the denylist *and* to the config-load refusal list in
   the same commit.
-- **pin** = *opt-in*: share nothing by default; the user adds specific
-  files/directories via config. (This replaces today's fixed
-  `settings.json`/`skills` allowlist.)
+- **isolated** = *opt-in*: share nothing by default; the user adds specific
+  files/directories via config.
 
 ## 6. Mixed-state files
 
@@ -90,7 +89,7 @@ The hard case is an auth value **embedded in an otherwise-shareable file**
 `mcpServers`, project trust, etc.).
 
 **Goal: the non-auth parts of such a file must stay *live-shared* with the real
-home, not snapshotted.** A snapshot (copy at bond/pin time) drifts — an mcp
+home, not snapshotted.** A snapshot (copy at bind time) drifts — an mcp
 server or a trusted project added in the real home would be invisible in the
 directory, and vice versa — which is exactly the confusing state we want to
 avoid.

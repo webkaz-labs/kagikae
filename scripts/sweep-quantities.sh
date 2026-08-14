@@ -58,12 +58,10 @@
 #
 # # What it cannot reach
 #
-# It is a net, not a proof. The noun and number lists are enumerations, and every
-# enumeration of them has turned out short so far; each addition was found a different way
-# (`thirteen` from this repository's own prose, the ordinals after a diff wrote "a third
-# site" and swept clean, `assertions` from reading a hit returned for a different quantity
-# on the same line). Anything larger than the listed words is written as a digit, which
-# `[0-9]+` covers.
+# It is a net, not a proof. The noun and number lists are enumerations, every enumeration
+# of them has turned out short so far, and each addition was found a different way — so
+# extend them rather than trusting them. Anything larger than the listed words is written
+# as a digit, which `[0-9]+` covers.
 #
 # The class it cannot reach at all is **a quantity on a line the diff does not touch**, and
 # that is the original defect's own shape: one commit merged two commands and the sentence

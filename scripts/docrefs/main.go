@@ -40,11 +40,11 @@
 // made docs-check cheap enough for CI — bash plus one `go run`, no interpreter for a
 // runner to install. Its selftest stayed out; .github/workflows/check.yml's header owns
 // both halves of that decision. To re-check that the gate needs no interpreter, put a
-// python3 that exits 127 first on PATH and run `mise run check`; do it that way rather
-// than by grepping for `python3`, which answers a different question and finds this
-// paragraph. This program is also inside `go vet`, `golangci-lint` and `go test`, which
-// is where main_test.go's cases live, and the release is unaffected because
-// .goreleaser.yaml builds `main: .`.
+// python3 that exits 127 first on PATH and run `mise run check`, which must exit 0; do
+// it that way rather than by grepping for `python3`, which answers a different question
+// and finds this paragraph. This program is also inside `go vet`, `golangci-lint` and
+// `go test`, which is where main_test.go's cases live, and the release is unaffected
+// because .goreleaser.yaml builds `main: .`.
 //
 // # The link predicate, and what it cannot see
 //

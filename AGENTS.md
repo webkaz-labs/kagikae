@@ -39,7 +39,7 @@ check here can notice that the standard changed.
 | [docs/CLI.md](docs/CLI.md) | command flags, output, exit codes, JSON contract changes |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | config, snapshot, state, backup, secret-ref changes |
 | [docs/SECURITY.md](docs/SECURITY.md) | secrets, subprocess, permission, redaction changes |
-| [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | the scope/isolation model's rationale and the upstream findings behind it — read it to learn *why* a decision was made, never for the rules themselves, which live in the documents above. Its section numbers have gaps and keep them; the file's own opening says why |
+| [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | the scope/isolation model's rationale and the upstream findings behind it — read it to learn *why* a decision was made, never for the rules themselves, which live in the documents above. Its section numbers have gaps that the file's own opening explains |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | long-term ordering changes |
 | [docs/RELEASE.md](docs/RELEASE.md) | active release target changes |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | before commit and release checks |
@@ -52,7 +52,7 @@ Two tests, in this order, before adding anything here.
 **Can it be executed?** Then it is not prose: a command with an expected output is a
 script with a control, a property of the tree is a Go test, a property of the CI
 environment is a constraint line in the workflow. The commit that added this section
-carries the derivation behind it and its caveats.
+(`46b3848`) carries the derivation and its caveats.
 
 **Does a reader need it before anything cues them to look?** Kinds that do: a convention
 nothing in a task names (the example-name rule, the `set -e` traps), a tripwire against a
@@ -82,10 +82,9 @@ do rather than that they exist: `smoke-selftest`
 (`scripts/check-docs.sh`: every markdown link its extractor finds resolves, every
 `X.md § Name` citation names a section that file declares — a link walk resolves the
 *file* and stops, so a citation naming a section the file has never had was invisible
-until one shipped — no file under
-`docs/` is missing **its own routing row** in the Documentation Map above — the omission
-that let a second normative copy grow inside `docs/SCOPE-MODEL.md` — and the root documents
-a link walk cannot vouch for **as a set** are present, non-empty and regular files), and
+until one shipped — no file under `docs/` is missing **its own routing row** in the
+Documentation Map above, and the root documents a link walk cannot vouch for **as a set**
+are present, non-empty and regular files), and
 `docs-check-selftest`, which checks that one. Those script headers, together with the
 extractor package comment the `docs-check` header routes to, are normative for
 which link forms the extractor sees, which citation forms the section walk reads **and
@@ -419,21 +418,22 @@ prose cites the test by name. A property of the **CI environment** is a constrai
 of an **upstream tool** is a row in [docs/VALIDATION.md](docs/VALIDATION.md) § Upstream
 Behaviour Assumptions, which is load-bearing because code around it re-reads the installed
 tool — read that file for which check reaches which rows, since they are not uniform.
-A subject with no re-reader does not belong there,
-where it would look re-verified and not be. Measure a property of the tree by hand twice and
-it is a test, the way a procedure run by hand twice is a script.
+A subject with no re-reader does not belong there, where it would look re-verified and
+not be — a CI runner image was refused on exactly that ground. Measure a property of the
+tree by hand twice and it is a test, the way a procedure run by hand twice is a script.
 
 **A constraint is the stronger form only if it can fail, and what it enforces is narrower
 than the sentence it replaces.** Both were true of that `GOPROXY` line, and the step's own
-comment in `.github/workflows/check.yml` is where the measurements are. A constraint that cannot fire
-is worse than the sentence it replaced, because it reads as enforced.
+comment in `.github/workflows/check.yml` is where the measurements are. A constraint that
+cannot fire is worse than the sentence it replaced, because it reads as enforced.
 
 **A derivation is run on the tree that contains the sentence citing it — after the edit,
 never only before.** The diff that writes a claim can be what falsifies it:
 `docs/RELEASE.md`'s "and nowhere else" was broken by its own diff's other hunks. So before
 commit, re-run every command your added lines quote. What this cannot reach is a
-derivation recorded in a file the diff never touches; that is the untouched-line quantity
-class above, and the reconciliation stage filed in `docs/ROADMAP.md` still owns it.
+derivation recorded in a file the diff never touches — the class no added-lines sweep
+reaches, named in `scripts/sweep-quantities.sh`'s header — and the reconciliation stage
+filed in `docs/ROADMAP.md` still owns it.
 
 A sibling net over closure words was built and refused; `scripts/sweep-quantities.sh`'s
 header carries the reason, beside the net that was kept.

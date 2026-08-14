@@ -206,35 +206,34 @@ alternative exists (`secret-tool`).
   than quoting a retired pattern, which the runner's header does three times — but it
   is the same hole. Anchor it at the `env -u …` continuation lines.
 
-- **CI runs a subset of the gate, and two places called it a mirror** (recorded
-  2026-08-11, **partly fixed** — the wording is corrected, the gap is not). Measured:
-  `mise run check` depends on eleven steps; `.github/workflows/check.yml` runs four —
-  `go vet`, `gofmt`, `go test`, `go mod verify`. So gofumpt and goimports (the formatters
-  that actually gate locally, where plain `gofmt` is *not* sufficient), `staticcheck`,
-  `golangci-lint`, `shellcheck`, `build`, `smoke-selftest`, `docs-check` and
-  `docs-check-selftest` run on a developer's machine and nowhere else. `README.md` said
-  CI "mirrors it" and `check.yml`'s own header said it mirrored the local gate; both now
-  say subset, which is the half that could be fixed without deciding anything.
-  What is undecided is whether to widen the workflow, and it is not free. The entry
-  above about the real `security` binary is the argument for it: that defect passed on
-  darwin, failed on linux, and a single-environment gate could not see the difference.
-  Against it: `docs-check-selftest` copies the tracked tree once per case and runs the
-  whole check on each,
-  `smoke-selftest` perturbs `.git/info/exclude`, and the lint tools resolve pinned
-  versions over the network on first use — so each one needs a decision about caching
-  and about what a CI runner is allowed to touch, not just a line in a YAML file.
-  **The two halves of `docs-check` have come apart since this was written**, and the
-  argument above prices them as one. The check itself needs bash, the POSIX utilities any
-  runner has, and the Go toolchain CI already installs — no python, which is what changed —
-  and its cost is one `go run` over the tree. Its selftest costs that once per case plus a
-  copy of the tracked tree each time, which is the only objection in the list above that
-  touches `docs-check` at all; the other two belong to `smoke-selftest` and to the lint
-  steps. Whoever decides this should price the two halves separately. **No timing is quoted
-  here on purpose**: every absolute measured while this was written disagreed with every
-  other, because the machine was running several agents at once — one reviewer had the
-  compiled extractor at 727ms and another had `go run` at 150ms in the same session.
-  Nothing here should be widened silently; the gap is now stated in all three places
-  that describe the gate.
+- **CI runs a subset of the gate; `docs-check` was the one step whose price fell**
+  (recorded 2026-08-11, `docs-check` **added 2026-08-14**, every other step still
+  undecided). `README.md` said CI "mirrors it" and `check.yml`'s own header said it
+  mirrored the local gate; both have said subset since 2026-08-11, which was the half
+  that could be fixed without deciding anything. Derive the two step lists rather than
+  reading one written here — `mise.toml`'s `[tasks.check]`, through `lint`, which fans
+  out again, against `check.yml`'s own steps — because hand copies of the local list had
+  already drifted apart, which is what `[tasks.check]` is the one copy of and which
+  [VALIDATION.md](VALIDATION.md) names.
+  The argument for widening is the entry above about the real `security` binary: that
+  defect passed on darwin, failed on linux, and a single-environment gate could not see
+  the difference. Against it, and per step rather than in general:
+  `docs-check-selftest` copies the tracked tree once per case and runs the whole check on
+  each, `smoke-selftest` perturbs `.git/info/exclude`, and the lint tools resolve pinned
+  versions over the network on first use — so each needs a decision about caching and
+  about what a CI runner is allowed to touch, not just a line in a YAML file.
+  **`docs-check` stopped being in that list**, which is what changed and why it went in
+  alone. Once its extractor stopped being python it needs bash, the POSIX utilities any
+  runner has, and the Go toolchain CI already installs; its cost is one `go run` over the
+  tree and it writes nothing outside the checkout. Its selftest is the only objection
+  above that touches `docs-check` at all, and it stayed out.
+  **No timing is quoted here on purpose**: every absolute measured while this was written
+  disagreed with every other, because the machine was running several agents at once —
+  one reviewer had the compiled extractor at 727ms and another had `go run` at 150ms in
+  the same session.
+  Nothing else should be widened silently; the gap is stated wherever the gate is
+  described (`README.md`, [VALIDATION.md](VALIDATION.md), and `check.yml`'s own header,
+  which owns why the selftest stayed out).
 
 - ~~**One paragraph in `PRODUCT.md` is architecture**~~ (recorded 2026-08-11, **fixed
   2026-08-14**). The `**Mechanisms.**` paragraph is now

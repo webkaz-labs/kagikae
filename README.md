@@ -469,9 +469,10 @@ git diff --check
 
 `mise run check` is the authoritative pre-commit gate. CI
 ([.github/workflows/ci.yml](.github/workflows/ci.yml), which calls `check.yml`) runs a
-**subset** of it — `go vet`, `gofmt`, `go test`, `go mod verify` — so the formatter that
-actually gates locally (gofumpt/goimports), the static analysers, `shellcheck`, `build`
-and the docs and smoke selftests pass or fail on your machine only. Tagging `vX.Y.Z`
+**subset** of it — `go vet`, `gofmt`, `go test`, `go mod verify`, `docs-check` — so the
+formatter that actually gates locally (gofumpt/goimports), the static analysers,
+`shellcheck`, `build` and the two selftests pass or fail on your machine only.
+Tagging `vX.Y.Z`
 runs [GoReleaser](https://goreleaser.com) to publish the binaries, behind that same
 subset.
 

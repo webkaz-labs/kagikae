@@ -13,8 +13,10 @@ it had already drifted — this line omitted `smoke-selftest` for as long as it 
 and `AGENTS.md` and `README.md` each carried a third version. Read the task.
 
 CI is a **subset**, not a mirror: `.github/workflows/check.yml` runs `go vet`, `gofmt`,
-`go test` and `go mod verify`, so everything else in the gate is enforced on a
-developer's machine only ([ROADMAP.md](ROADMAP.md) carries what widening it would cost).
+`go test`, `go mod verify` and `docs-check`, so everything else in the gate is enforced
+on a developer's machine only ([ROADMAP.md](ROADMAP.md) carries what widening it further
+would cost, and `check.yml`'s header why the docs selftest stayed out while its check
+went in).
 
 Slower release-time checks live in `mise run audit` (govulncheck) and
 `mise run goreleaser-check`. Lint tools run via `go run <tool>@<pinned version>`; the

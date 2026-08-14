@@ -35,9 +35,13 @@
 //
 // # Go rather than the Python the link half was first written in
 //
-// mise.toml declares no python and CI runs neither docs-check nor docs-check-selftest, so
-// a python3 the gate needed was a dependency nothing declared and nothing outside a
-// developer's machine would notice. Measured before this port, with a python3 that exits
+// mise.toml declares no python, and when this was ported CI ran neither docs-check nor
+// docs-check-selftest, so a python3 the gate needed was a dependency nothing declared and
+// nothing outside a developer's machine would notice. Half of that changed on 2026-08-14:
+// docs-check runs in CI now, and this port is what made it cheap — bash plus one `go run`
+// with no interpreter for a runner to install. Its selftest stayed out;
+// .github/workflows/check.yml's header owns both halves of that decision.
+// Measured before this port, with a python3 that exits
 // 127: check-docs.sh was loud but misdiagnosing, reporting `the link extractor exited
 // non-zero` about an interpreter that was never there, and check-docs-selftest.sh failed
 // its first two cases for a reason neither case tests and then exited 127 inside its

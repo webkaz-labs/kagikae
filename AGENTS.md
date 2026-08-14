@@ -35,7 +35,7 @@ check here can notice that the standard changed.
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | anything that touches what companion-auth lockstep (git/gh/cloud CLIs) switches or preserves |
 | [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | before any code writes, harvests, attributes, orders or deletes a credential **copy**. It is the normative text for its own thirteen sections and not for the whole subject: several of them defer the per-tool contract to `docs/ADAPTERS.md` or `docs/CLI.md` where they say so, and § Implementation Boundaries below keeps the credential rules that did not move, beside one routing line per rule that did |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, adapter interface, transaction, lock changes |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, adapter interface, transaction, lock changes — and § Switch Mechanisms, what a cell of the scope × environment matrix does internally. The matrix itself is in `docs/PRODUCT.md` |
 | [docs/CLI.md](docs/CLI.md) | command flags, output, exit codes, JSON contract changes |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | config, snapshot, state, backup, secret-ref changes |
 | [docs/SECURITY.md](docs/SECURITY.md) | secrets, subprocess, permission, redaction changes |
@@ -354,7 +354,15 @@ renaming and the fragment grep stays green on it**, so the inbound references ha
 read — a trim of `docs/ROADMAP.md` paid for that, and none of those references named
 a `§` at all.
 
-**That grep sees whether the target exists and nothing else, so what it cannot see is
+**A file's own opening is an inbound reference too, and nothing treats it as one.**
+`docs/PRODUCT.md` opened by saying two of its sections read as architecture and were
+queued for a move — the estimate the `docs/ROADMAP.md` entry it pointed at had already
+withdrawn — and it would have survived the move that closed that entry. A `§` grep looks
+for citations, `docs-check` resolves targets, and neither reads what a document says
+about itself, so a plan a file states in its own voice goes stale in silence. Closing an
+entry means reading the opening of every file the entry names.
+
+**That fragment grep sees whether the target exists and nothing else, so what it cannot see is
 a quantity written *beside* a citation.** `docs/ROADMAP.md` said "the two commands in
 docs/CONTEXT.md § Not converged" after a later commit merged them into one — the `docs/`
 prefix is this file's, not the quoted sentence's, because the gate resolves a citation and
@@ -432,3 +440,39 @@ reaches this; the mechanism that would is the claim-reconciliation stage
 slice checks that a cited section *exists* and never what a quantity beside it says.
 For the quantity class, the first instruction in this section — write the derivation, not
 the number — is still the only thing that covers it.
+
+**An absolute about what *is* — a universal or negative existential whose subject is
+another program's behaviour, another file's contents, a past state, or the exhaustiveness
+of a set — is written as its derivation or not at all.** Reduce it to a verbatim quote of
+the thing itself, a command the reader can re-run beside what it printed and when, or an
+observation bounded by who measured it and when — an observation bounds what was *seen*,
+never what *exists*. If none of those carries the argument, delete the sentence: three
+generations in `.github/workflows/check.yml`'s header each replaced a falsified absolute
+with the next absolute out, and the chain stopped only where the sentence stopped being
+one. A rule this repository imposes on itself is a commitment, not a measurement, and is
+out of scope. Before commit, read your own added lines for a bare absolute — the author of
+this rule's sibling broke it twice in the session that wrote it.
+
+**A derivation is run on the tree that contains the sentence citing it — after the edit,
+never only before.** The diff that writes a claim can be what falsifies it:
+`docs/RELEASE.md`'s "and nowhere else" was broken by its own diff's other hunks. So before
+commit, re-run every command your added lines quote. What this cannot reach is a
+derivation recorded in a file the diff never touches — a `§` written with a space before a
+section number, added to `docs/SCOPE-MODEL.md`, falsified an emptiness recorded in
+`scripts/docrefs/main.go`, which that diff never opened — the same class as the
+untouched-line quantity above, owned by the reconciliation stage filed in
+`docs/ROADMAP.md`. Note that naming that defect here cannot use its own form, or this
+paragraph would falsify the same measurement a third time.
+
+A closure-word net over added lines was built and measured on 2026-08-14, at a broad word
+width and at a narrowed negative-existential one, over the branch that added the rules
+above. Both fired on their positive control and stayed silent on a derivation; both also
+fired on ordinary prose throughout, and the narrow width returned no live instance at all.
+Two readers counted its records differently and neither count is repeated here, because
+the count was never the finding: neither width separated the defect from the background,
+and a third was not tried. It
+cannot, because the class's discriminating features are the subject's ownership and a
+derivation's *absence*, and neither is lexical.
+Unlike the quantity net, where the written number is itself the artifact that goes stale, a
+closure word is ordinary vocabulary here; what goes stale is a measurement that was never
+run, and no pattern over words can see an absence.

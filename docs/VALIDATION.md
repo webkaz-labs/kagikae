@@ -12,9 +12,13 @@ git diff --check
 it had already drifted — this line omitted `smoke-selftest` for as long as it existed,
 and `AGENTS.md` and `README.md` each carried a third version. Read the task.
 
-CI is a **subset**, not a mirror: `.github/workflows/check.yml` runs `go vet`, `gofmt`,
-`go test` and `go mod verify`, so everything else in the gate is enforced on a
-developer's machine only ([ROADMAP.md](ROADMAP.md) carries what widening it would cost).
+CI is a **subset**, not a mirror: `.github/workflows/check.yml`'s own steps are the one
+copy of which of those steps run there, and everything else is enforced on a developer's
+machine only. This line carried a second copy of that list until 2026-08-14, directly
+under the paragraph above making the same point about the local gate's own list
+([ROADMAP.md](ROADMAP.md) carries what widening
+it further would cost, and `check.yml`'s header why the docs selftest stayed out while
+its check went in).
 
 Slower release-time checks live in `mise run audit` (govulncheck) and
 `mise run goreleaser-check`. Lint tools run via `go run <tool>@<pinned version>`; the

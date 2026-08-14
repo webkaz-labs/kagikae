@@ -206,58 +206,65 @@ alternative exists (`secret-tool`).
   than quoting a retired pattern, which the runner's header does three times — but it
   is the same hole. Anchor it at the `env -u …` continuation lines.
 
-- **CI runs a subset of the gate, and two places called it a mirror** (recorded
-  2026-08-11, **partly fixed** — the wording is corrected, the gap is not). Measured:
-  `mise run check` depends on eleven steps; `.github/workflows/check.yml` runs four —
-  `go vet`, `gofmt`, `go test`, `go mod verify`. So gofumpt and goimports (the formatters
-  that actually gate locally, where plain `gofmt` is *not* sufficient), `staticcheck`,
-  `golangci-lint`, `shellcheck`, `build`, `smoke-selftest`, `docs-check` and
-  `docs-check-selftest` run on a developer's machine and nowhere else. `README.md` said
-  CI "mirrors it" and `check.yml`'s own header said it mirrored the local gate; both now
-  say subset, which is the half that could be fixed without deciding anything.
-  What is undecided is whether to widen the workflow, and it is not free. The entry
-  above about the real `security` binary is the argument for it: that defect passed on
-  darwin, failed on linux, and a single-environment gate could not see the difference.
-  Against it: `docs-check-selftest` copies the tracked tree once per case and runs the
-  whole check on each,
-  `smoke-selftest` perturbs `.git/info/exclude`, and the lint tools resolve pinned
-  versions over the network on first use — so each one needs a decision about caching
-  and about what a CI runner is allowed to touch, not just a line in a YAML file.
-  **The two halves of `docs-check` have come apart since this was written**, and the
-  argument above prices them as one. The check itself needs bash, the POSIX utilities any
-  runner has, and the Go toolchain CI already installs — no python, which is what changed —
-  and its cost is one `go run` over the tree. Its selftest costs that once per case plus a
-  copy of the tracked tree each time, which is the only objection in the list above that
-  touches `docs-check` at all; the other two belong to `smoke-selftest` and to the lint
-  steps. Whoever decides this should price the two halves separately. **No timing is quoted
-  here on purpose**: every absolute measured while this was written disagreed with every
-  other, because the machine was running several agents at once — one reviewer had the
-  compiled extractor at 727ms and another had `go run` at 150ms in the same session.
-  Nothing here should be widened silently; the gap is now stated in all three places
-  that describe the gate.
+- **CI runs a subset of the gate; `docs-check` was the one step whose price fell**
+  (recorded 2026-08-11, `docs-check` **added 2026-08-14**, every other step still
+  undecided). `README.md` said CI "mirrors it" and `check.yml`'s own header said it
+  mirrored the local gate; both have said subset since 2026-08-11, which was the half
+  that could be fixed without deciding anything. Derive the two step lists rather than
+  reading one written here — `mise.toml`'s `[tasks.check]`, through `lint`, which fans
+  out again, against `check.yml`'s own steps — because hand copies of the local list had
+  already drifted apart, which is what `[tasks.check]` is the one copy of and which
+  [VALIDATION.md](VALIDATION.md) names.
+  The argument for widening is the entry above about the real `security` binary: that
+  defect passed on darwin, failed on linux, and a single-environment gate could not see
+  the difference. Against it, and per step rather than in general:
+  `docs-check-selftest` copies the tracked tree once per case and runs the whole check on
+  each, `smoke-selftest` perturbs `.git/info/exclude`, and the lint tools resolve pinned
+  versions over the network on first use — so each needs a decision about caching and
+  about what a CI runner is allowed to touch, not just a line in a YAML file.
+  **`docs-check` stopped being in that list**, which is what changed and why it went in
+  alone; its selftest is the only objection above that touches it at all, and it stayed
+  out. `check.yml`'s header owns what the step costs and is the copy to read. The one
+  thing that belongs here rather than there: the first draft of that header claimed the
+  step "writes nothing outside the checkout", and a review measured it false — the
+  argument for admitting a step is exactly where an absolute is worth least.
+  **No timing is quoted here on purpose**: every absolute measured while this was written
+  disagreed with every other, because the machine was running several agents at once —
+  one reviewer had the compiled extractor at 727ms and another had `go run` at 150ms in
+  the same session.
+  Nothing else should be widened silently. Every place that describes **CI** has to say
+  the gap — a place that describes only the local gate, as `AGENTS.md` § Validation does,
+  owes nothing — and there is no list of them here on purpose: the commit that added this step
+  repointed every such place it found, and a review then found one it had missed —
+  `RELEASE.md`'s live release procedure, which enumerated part of CI's step set inside an
+  instruction rather than in a frozen release entry. `check.yml`'s own header owns why
+  the selftest stayed out; it is the copy to repoint the others at.
 
-- **One paragraph in `PRODUCT.md` is architecture** (recorded 2026-08-11, **not fixed**).
-  The rename from `docs/DESIGN.md` moved the whole file, because the shared standard
-  reserved `DESIGN.md` for a visual design system and says it is "not the product or
-  software design document". A first draft of this entry named two whole sections and
-  priced a section-level move; reading them says otherwise, and the correction is the
-  useful part. **§ Switching Surface is a primary journey**, which the standard's charter
-  for `PRODUCT.md` explicitly includes — a scope × environment table plus verb semantics.
-  The only architecture in it is the closing paragraph headed `**Mechanisms.**`
-  (in-place credential patch / `CLAUDE_CONFIG_DIR` / symlink-everything-but-credential),
-  which already ends by pointing at [ADAPTERS.md](ADAPTERS.md). **§ Concurrency Boundary
-  is a product boundary**, not architecture: its content is the user-visible limit that
-  two accounts of one tool cannot run concurrently, and `## Product Boundaries` is the
-  next heading in the same file — while the mechanism is separately owned by
-  [ARCHITECTURE.md](ARCHITECTURE.md) § Locking, at length, with no overlap.
-  So the work is a paragraph move plus a same-file fold, not a section move. It also
-  costs nothing in citations, which the first draft claimed it would: `scripts/docscan/
-  main.go`'s calibration note names § Switching Surface's **table**, and
-  `docs/CONTEXT.md`'s routing row names the section — so moving the `**Mechanisms.**`
-  paragraph leaves the heading in place, both citations resolving, and that measured
-  duplicate pair meaningful.
-  Classifying by the topic word (*locks*, *mechanisms*) rather than by the question the
-  passage answers is what produced the wrong estimate.
+- ~~**One paragraph in `PRODUCT.md` is architecture**~~ (recorded 2026-08-11, **fixed
+  2026-08-14**). The `**Mechanisms.**` paragraph is now
+  [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Mechanisms, and § Concurrency Boundary is
+  folded into § Product Boundaries as its opening paragraphs.
+  What is kept is why the first draft of this entry was wrong, since nothing in the
+  result records it: that draft named § Switching Surface and § Concurrency Boundary as
+  whole sections and priced a section-level move, because it classified by the **topic
+  word** (*locks*, *mechanisms*) rather than
+  by the question the passage answers. Reading them said otherwise — a scope ×
+  environment table plus verb semantics is a primary journey, which the standard's
+  charter for `PRODUCT.md` explicitly includes, and a user-visible limit on what can run
+  at once is a product boundary, while its mechanism was already owned separately by
+  [ARCHITECTURE.md](ARCHITECTURE.md) § Locking with no overlap. So the work was a
+  paragraph move plus a same-file fold, and it cost nothing in citations: everything
+  `git grep 'Switching Surface'` finds names the heading, or the table under it that
+  `scripts/docscan/main.go`'s calibration note pairs against `RELEASE.md`, and the move
+  leaves both in place — while no citation anywhere resolved to § Concurrency Boundary,
+  which is why folding it repointed nothing. Derive both rather than reading a count
+  here; what counts as a citation is where the figures in this tree disagree. Both greps
+  also match this entry's own prose, which names both sections, so neither is ever empty
+  and neither answer is the hit count.
+  One thing the entry never mentioned and the fix had to carry: `PRODUCT.md`'s own
+  opening still said both sections read as architecture and were queued for a move, a
+  claim this entry had already withdrawn above. That is the instance;
+  [AGENTS.md](../AGENTS.md) § Documentation Update Checklist states the rule it produced.
 
 - **The standard's own docs check cannot run clean, and this repository forked it instead
   of fixing it** (recorded 2026-08-11, **not fixed here** — the fix belongs upstream; the

@@ -1,18 +1,36 @@
 name: Check
 
-# The single source of what CI runs: go vet, gofmt, go test, go mod verify. Called by
-# ci.yml (push/PR) and by release.yml (before publishing a tag), so the release gate
-# cannot drift from CI.
+# The single source of what CI runs; the steps below are that list. Called by ci.yml
+# (push/PR) and by release.yml (before publishing a tag), so the release gate cannot
+# drift from CI.
 #
 # It is a SUBSET of the local `mise run check`, not a mirror of it, and this comment
 # claimed to mirror it until the gap was measured: the local gate also runs gofumpt and
-# goimports (not plain gofmt), staticcheck, golangci-lint, shellcheck, build, and the
-# smoke and docs selftests. Anything only in the local gate is enforced on a developer's
-# machine and nowhere else, and this repository has already paid for that: the test that
-# ran the real `security` binary and wrote items into the operator's login keychain is
-# recorded in docs/ROADMAP.md, which also notes it failed on linux and passed on darwin —
-# a difference no single-environment gate can see. Widening this workflow is filed in
-# docs/ROADMAP.md; until then, do not describe the two as equivalent.
+# goimports (not plain gofmt), staticcheck, golangci-lint, shellcheck, build, the smoke
+# selftest and the docs selftest. Anything only in the local gate is enforced on a
+# developer's machine and nowhere else, and this repository has already paid for that:
+# the test that ran the real `security` binary and wrote items into the operator's login
+# keychain is recorded in docs/ROADMAP.md, which also notes it failed on linux and passed
+# on darwin — a difference no single-environment gate can see. Further widening is filed
+# in docs/ROADMAP.md; until then, do not describe the two as equivalent.
+#
+# Docs-check is here and its selftest is not, decided 2026-08-14, because they stopped
+# costing the same thing. The check is bash plus one `go run` of a stdlib-only program
+# over the tree: no python since the extractor was ported, no network (it runs green
+# under `GOPROXY=off` with an empty module cache), and no git, so a shallow checkout is
+# enough. The only write outside the checkout worth a decision is a Go build cache, which
+# scripts/check-docs.sh defaults to `${TMPDIR:-/tmp}/kae-gocache` unless GOCACHE is
+# already set — the idiom `grep kae-gocache mise.toml` lists, not a choice made for CI.
+# Nothing in this workflow sets GOCACHE, so unless the runner supplies one, this step
+# compiles that one program cold. Either way the `:-` settles it without anyone
+# deciding, which is the point: the question never had to be answered.
+# Nothing here needed a caching decision because of that, not because the step touches
+# nothing: it said "writes nothing outside the checkout" first, and a review measured a
+# 45MB build cache; the replacement said that cache was the whole cost, and a second
+# review measured `go`'s telemetry counters under $HOME as well. Both were absolutes
+# about a program this file does not own.
+# Its selftest copies the tracked tree once per case and runs the whole check on each,
+# which is a decision about runner time nobody has made.
 on:
   workflow_call:
 
@@ -46,3 +64,6 @@ jobs:
 
       - name: Module verify
         run: go mod verify
+
+      - name: Docs check
+        run: bash scripts/check-docs.sh

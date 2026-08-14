@@ -264,4 +264,3 @@ fragment, then switch the real home in place. (An earlier design symlink-swapped
 `~/.claude` itself; dropped as too risky — claude's auth fragility is proven.)
 Real-machine fresh-process auth validation remains a release gate (see
 [VALIDATION.md](VALIDATION.md)).
-

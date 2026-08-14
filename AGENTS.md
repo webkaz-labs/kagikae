@@ -283,10 +283,17 @@ once and were then shown to be false.
   (BurntSushi `config.Load` → re-`Marshal`) is forbidden: it silently drops
   every user comment.
 - JSON contract tokens live in `internal/constants`; never inline literals.
-- Every adapter must implement `adapter.VersionVerifier`, and its
-  `VerifiedVersion()` moves in lockstep with that tool's rows in the
-  "Upstream Behaviour Assumptions" table of `docs/VALIDATION.md`: re-verify the
-  rows, then bump both in the same commit. kae depends on undocumented upstream
+- Every adapter declares `VerifiedVersion()` **and `VerifiedOn()`** — methods of
+  `adapter.Adapter` rather than an optional interface, because every tool owes
+  both (`internal/adapter/adapter.go` says why, and why a date is the half a
+  version cannot supply). Both move in lockstep with that tool's row in
+  [docs/ADAPTERS.md](docs/ADAPTERS.md) § Verified Upstream Versions and with its
+  rows in [docs/VALIDATION.md](docs/VALIDATION.md) § Upstream Behaviour
+  Assumptions: re-verify the rows, then bump every copy in the same commit.
+  `TestVerifiedVersionsMatchTheDocs` reaches the `docs/ADAPTERS.md` row and
+  parses "only this one table, deliberately" (its own comment), so a version
+  recorded anywhere else — including inside a § Upstream Behaviour Assumptions
+  heading — is yours to keep in step. kae depends on undocumented upstream
   *behaviour*, not just layout, and a behaviour-only change passes every structure
   guard. Record the **condition**, never an absolute: `/oauthAccount` was left
   alone because claude was measured self-healing it, when the fact was that it

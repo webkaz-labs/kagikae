@@ -461,10 +461,19 @@ check 'a section verdict the gate does not know is named' \
 #     mutation is a directory prune rather than a suffix drop because the suffix half was
 #     the one already stated in a comment, and this is the half that was re-broken by a
 #     citation landing in scripts/ for the first time.
+#
+#     Both trees are pruned, and which trees those are is the maintenance this case asks
+#     for: the mutation has to leave *no* resolving Go citation, so it must name every
+#     directory holding one. Pruning `internal` alone stopped working the day a resolving
+#     citation was added to scripts/docrefs/main_test.go — scripts/ had carried Go citations
+#     before that, but every one of them was a deliberately-absent fixture name with the
+#     `external` verdict, which the guard does not count. Derive the set rather than trust
+#     this comment: `go run ./scripts/docrefs | awk -F'\t' '$1=="cite" && $4=="resolves" &&
+#     $2 ~ /\.go$/ {print $2}'`, and prune the top-level directory of every path it prints.
 dir=$(fixture prunedgo)
 subst_once "$dir/scripts/docrefs/main.go" \
   'var skipDirs = map[string]bool{".git": true, "dist": true}' \
-  'var skipDirs = map[string]bool{".git": true, "dist": true, "internal": true}'
+  'var skipDirs = map[string]bool{".git": true, "dist": true, "internal": true, "scripts": true}'
 out=$(run_check "$dir")
 check 'a directory prune that loses every Go citation is named' \
   'section citations were found in markdown' "$out"

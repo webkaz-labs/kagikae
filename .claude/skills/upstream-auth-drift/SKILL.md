@@ -106,20 +106,23 @@ silently.
 
 ## Re-record, in the same commit (Phase 4)
 
-The first word of this heading is distinctive on purpose: `AGENTS.md` cites this
-section as normative, and `check-docs` compares only the *first word* of a cited
-name, so a citation reading `§ Phase 4` was confirmed by five sibling `Phase`
-headings and stayed green when this section was renamed away. Measured on a clone
-of `f4b0bde`, both directions.
+This section is cited as normative from outside the skill, and a citation resolves
+on its **first word** alone — `scripts/docrefs/main.go`'s package comment owns why,
+under its citation ceilings. So keep that word distinctive in this file, heading and
+bold label alike; `TestTheCitedSkillSectionHasNoFirstWordRival` is what fails if it
+stops being.
 
 `VerifiedVersion()`, `VerifiedOn()`, both cells of the `docs/ADAPTERS.md` table,
 and the version recorded in this tool's own § Upstream Behaviour Assumptions
 section. Which form it takes is a property of the section you are in, not
 something to recall: a `### <tool> (verified on <version>)` heading where that
-section has such a heading, the row's own `Verified on` cell where it does not. The
-condition, not the absolute. **A version inside a row's prose does not move**:
+section has such a heading, otherwise the `Verified on` cell of **every** row for
+that tool. The condition, not the absolute. Two cells that look like the same
+number and are not: **a version inside a row's prose does not move**, because
 `Measured 2026-08-04 on 2.1.220` is bounded provenance for that observation, and
-rewriting it claims a measurement nobody made.
+**a `Verified on` cell reading `not verified` is a row nobody has measured** — it
+moves when someone measures it and not when a sibling row is re-verified. Rewriting
+either claims a measurement nobody made.
 `TestVerifiedVersionsMatchTheDocs` fails if the method and the table disagree, so
 a half-done lockstep does not compile past the gate — but nothing checks the
 § Upstream Behaviour Assumptions prose, which is where the *procedure* lives. Update it too if you
@@ -132,11 +135,11 @@ improvement for everyone after you.
 is a version, and it is outside that set.** It records the build the *counts* were
 taken on, not the release a row was verified against, and cursor's cell there
 carries a date version while `cursor.VerifiedVersion()` is `""`. What reads it is
-`TestUpstreamLiteralFingerprints` behind `KAE_FINGERPRINT=1` — `mise run
-fingerprint`, which `mise run audit` depends on — where it becomes a path that must
-exist rather than a skip. Under `mise run check` that arm skips, so a wrong value
-there reaches release time unreported. Move it when you re-measure the counts;
-never to match a version you just bumped.
+`TestUpstreamLiteralFingerprints`, behind `KAE_FINGERPRINT=1` — the task is
+`mise run fingerprint`, which `mise run audit` depends on; § Upstream Literal
+Fingerprints is normative for which arm runs where. So the run that catches a wrong
+value here is release acceptance rather than the pre-commit gate. Move this cell
+when you re-measure the counts; never to match a version you just bumped.
 
 ## Phase 5 — Verify
 

@@ -326,6 +326,66 @@ func TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil(t *testing.T) {
 	}
 }
 
+// TestTheCitedSkillSectionHasNoFirstWordRival holds a property several routes rest on and
+// that check-docs cannot. Documents outside the skill cite
+// .claude/skills/upstream-auth-drift/SKILL.md § Re-record as normative, and firstWordMatches
+// compares only the cited name's first word — the ceilings in the package comment say why
+// widening the match was measured worse on correct prose. So another declared name in that
+// file beginning `re-record` makes those citations resolve against the wrong thing, and the
+// cited section can then be renamed away with the gate still reporting ok. Measured on a
+// clone of 20fea5c by the author and again by a reviewer, which is what makes it a test
+// here rather than a sentence in the skill asking to be remembered.
+//
+// Scoped to that file and that word rather than to uniqueness over every citation, which
+// the package comment records as measured worse.
+//
+// Two arms, because counting declared names is one condition short — this test shipped that
+// way for as long as it took to mutate it. The count has to run over sectionNames, since a
+// line-opening bold label and a list-item bold title are declared names too, and a
+// `**Re-record …**` sentence-opener in the style that file already uses is the mutation
+// that found the original defect. But the count alone is satisfied by renaming the heading
+// away *and* adding such a label in the same edit: a surviving name of the wrong kind, and
+// check-docs green. Measured, with both arms of the first version present. So the second arm
+// asks where the surviving name comes from — a heading, which is what a reader following the
+// citation lands on.
+func TestTheCitedSkillSectionHasNoFirstWordRival(t *testing.T) {
+	root := repositoryRoot(t)
+	const rel = ".claude/skills/upstream-auth-drift/SKILL.md"
+	const word = "re-record"
+	raw, err := os.ReadFile(filepath.Join(root, rel))
+	if err != nil {
+		t.Fatalf("reading %s, which three documents cite as normative: %v", rel, err)
+	}
+	var declared []string
+	for _, name := range sectionNames(string(raw)) {
+		if name[0] == word {
+			declared = append(declared, strings.Join(name, " "))
+		}
+	}
+	// The heading arm reads headings the way sectionNames does, off the same stripped text,
+	// so the two arms cannot disagree about which lines are fenced examples.
+	var headings []string
+	for _, line := range strings.Split(stripFences(string(raw)), "\n") {
+		if m := headingRe.FindStringSubmatch(line); m != nil {
+			if w := words(m[1]); len(w) > 0 && w[0] == word {
+				headings = append(headings, strings.Join(w, " "))
+			}
+		}
+	}
+	if len(declared) != 1 {
+		t.Errorf("%s declares %d names beginning `%s`, want exactly 1 — every `§ Re-record` "+
+			"citation resolves on that first word alone, so none breaks them loudly and a "+
+			"rival breaks them silently:\n%s",
+			rel, len(declared), word, strings.Join(declared, "\n"))
+	}
+	if len(headings) != 1 {
+		t.Errorf("%s declares %d headings beginning `%s`, want exactly 1: a citation that "+
+			"resolves against a bold label instead lands a reader nowhere, and the section "+
+			"can then be renamed away with every gate green:\n%s",
+			rel, len(headings), word, strings.Join(headings, "\n"))
+	}
+}
+
 // repositoryRoot is two levels up from this package, asserted rather than assumed: `go test`
 // runs with the package directory as the working directory and nothing here knows the root,
 // so a package that moved would otherwise walk some other tree and pass.

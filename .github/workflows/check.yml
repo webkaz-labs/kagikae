@@ -17,9 +17,9 @@ name: Check
 # Docs-check is here and its selftest is not, decided 2026-08-14, because they stopped
 # costing the same thing. The check is bash plus one `go run` of a stdlib-only program
 # over the tree: no python since the extractor was ported, no network — the step's own
-# `GOPROXY: off` is that claim, enforced rather than recorded, and the day the extractor
-# grows a dependency this fails instead of a sentence going quietly false — and no git, so
-# a shallow checkout is enough.
+# `GOPROXY: off` plus an empty `GOMODCACHE` is that claim, enforced rather than recorded, so
+# the day the extractor grows a dependency the step fails instead of a sentence going
+# quietly false — and no git, so a shallow checkout is enough.
 # The only write outside the checkout worth a decision is a Go build cache, which
 # scripts/check-docs.sh defaults to `${TMPDIR:-/tmp}/kae-gocache` unless GOCACHE is
 # already set — the idiom `grep kae-gocache mise.toml` lists, not a choice made for CI.
@@ -71,6 +71,11 @@ jobs:
         run: bash scripts/check-docs.sh
         env:
           # Not a hardening knob: this is the header's "no network", written where it is
-          # re-run on every push instead of where it goes stale. scripts/docrefs imports
-          # stdlib only, so nothing here should need the proxy.
+          # re-run on every push instead of where it goes stale. Both lines are load-bearing
+          # and the second is the one a review had to add: GOPROXY only blocks downloads, and
+          # by this point in the job setup-go has restored a module cache and `go test ./...`
+          # has warmed it, so a dependency added to scripts/docrefs resolves from the cache
+          # and the constraint passes. Measured both ways. An empty GOMODCACHE is what makes
+          # the step fail when the extractor stops being stdlib-only.
           GOPROXY: off
+          GOMODCACHE: ${{ runner.temp }}/docs-check-modcache

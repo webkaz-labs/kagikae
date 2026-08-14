@@ -268,11 +268,19 @@ func TestResolveTargetTakesTheCitingDirectoryAndTheRootAndNothingElse(t *testing
 
 // TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil is the measurement the digit
 // exclusion rests on, moved out of the package comment that used to quote it as a command.
-// The comment quoted a `git grep` nobody re-ran, and it went false exactly once, in the way
-// no re-run of a diff's own quoted commands can reach: the spaced form was added to a
-// document in a commit that never opened this file, so the sentence recording the emptiness
-// was falsified from outside its own diff and only a reviewer's grep found it. Here it is
-// the tree's property, checked by the thing that already re-runs the tree's properties.
+// The comment quoted a `git grep` nobody re-ran, and it was measured false on 2026-08-14 in
+// the way no re-run of a diff's own quoted commands can reach: the spaced form was added to
+// a document in a commit that never opened this file, so the sentence recording the
+// emptiness was falsified from outside its own diff and a reviewer's grep found it. Here it
+// is the tree's property, checked by the thing that already re-runs the tree's properties.
+//
+// The text is read the way citeRe reads it, through stripFences and unwrap, and that is the
+// whole difference between this and the `git grep` it replaces. A grep is line-oriented, so
+// a citation that wraps after the sigil — which is where this repository's prose wraps, and
+// why unwrap exists — reads as clean to it. Measured: a `§` at end of line with `6` opening
+// the next passes a byte-level scan and is matched by a digit-admitting citeRe, so a
+// byte-level test would have vouched for exactly the claim it cannot see. Stripping fences
+// costs nothing and buys the other direction, since a fenced example is not a citation.
 //
 // Two-sided, because the arm that matters is a negative and a walk that reaches nothing
 // satisfies it: the spaced form must be absent AND the unspaced form must be present. This
@@ -298,12 +306,23 @@ func TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil(t *testing.T) {
 		if !hasSuffix(d.Name()) {
 			return nil
 		}
-		// The same two suffixes and the same pruned directories the walks in main() use,
-		// so what this vouches for is the set citeRe is actually applied to.
-		b, err := os.ReadFile(p)
+		// os.Stat rather than d.Type(), for the reason main() states at length: a symlink to
+		// a document is read, a dangling one and a symlink to a directory are skipped, and a
+		// FIFO is skipped before anything blocks in open(2). Returning the walk's error
+		// instead would fail this test on a dangling `x.md` — the defect main() records
+		// fixing, reintroduced here under a comment claiming the same walk.
+		info, err := os.Stat(p)
+		if err != nil || !info.Mode().IsRegular() {
+			return nil
+		}
+		// The same suffixes and pruned directories main() walks, then the same two
+		// transforms it applies before citeRe sees the text, so this vouches for the set
+		// citeRe is actually applied to rather than for the bytes on disk.
+		raw, err := os.ReadFile(p)
 		if err != nil {
 			return err
 		}
+		b := []byte(unwrap(stripFences(string(raw))))
 		rel, relErr := filepath.Rel(root, p)
 		if relErr != nil {
 			rel = p

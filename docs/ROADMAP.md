@@ -223,13 +223,11 @@ alternative exists (`secret-tool`).
   versions over the network on first use — so each needs a decision about caching and
   about what a CI runner is allowed to touch, not just a line in a YAML file.
   **`docs-check` stopped being in that list**, which is what changed and why it went in
-  alone. Once its extractor stopped being python it needs bash, the POSIX utilities any
-  runner has, and the Go toolchain CI already installs; its cost is one `go run` over the
-  tree, plus a Go build cache the script points at `$TMPDIR` rather than at the one
-  setup-go restores, so that one stdlib-only program compiles cold each run.
-  `check.yml`'s header owns that detail — the first version of this said it wrote nothing
-  outside the checkout, which a review measured false. Its selftest is the only objection
-  above that touches `docs-check` at all, and it stayed out.
+  alone; its selftest is the only objection above that touches it at all, and it stayed
+  out. `check.yml`'s header owns what the step costs and is the copy to read. The one
+  thing that belongs here rather than there: the first draft of that header claimed the
+  step "writes nothing outside the checkout", and a review measured it false — the
+  argument for admitting a step is exactly where an absolute is worth least.
   **No timing is quoted here on purpose**: every absolute measured while this was written
   disagreed with every other, because the machine was running several agents at once —
   one reviewer had the compiled extractor at 727ms and another had `go run` at 150ms in

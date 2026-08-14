@@ -472,7 +472,7 @@ subst_once "$dir/scripts/docrefs/main.go" \
   'var suffixes = []string{".md"}'
 out=$(run_check "$dir")
 check 'a suffix drop that loses every Go citation is named' \
-  'section citations were found in markdown' "$out"
+  'and Go (0)' "$out"
 
 # 21. The entry the extractor must skip, against the document it must still read. Appended
 #     rather than filed beside the unreadable-document case it belongs with, because

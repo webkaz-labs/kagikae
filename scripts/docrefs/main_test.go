@@ -131,7 +131,10 @@ func TestSectionNamesIgnoreHeadingShapedLinesAReaderCannotReach(t *testing.T) {
 	}{
 		{"inside a fence", "## Real Heading\n\n```bash\n# canonical smoke ordering\n```\n"},
 		{"inside a block HTML comment", "## Real Heading\n\n<!--\n## Commented Heading\n-->\n"},
-		{"inside an inline HTML comment", "## Real Heading\n\nProse with an <!-- ## Inline Heading --> in it.\n"},
+		// A list label, not a `##`: headingRe is anchored at `^`, so an inline `## …` was
+		// never a declared name and the row passed whether the strip ran or not. listLabelRe
+		// is unanchored, so this form is reachable and the row is live.
+		{"inside an inline HTML comment", "## Real Heading\n\nProse with an <!-- - **Inline Label** --> in it.\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := sectionNames(tc.doc); len(got) != 1 || got[0][0] != "real" {

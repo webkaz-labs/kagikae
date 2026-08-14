@@ -188,11 +188,13 @@ Adapters may implement optional capability interfaces, type-asserted by `cmd`
 are methods of `Adapter` itself, because kae relies on undocumented *behaviour* of
 every tool and a behaviour-only upstream change passes every structure guard, so
 every adapter owes both and the compiler is the right place to say so (a new tool
-cannot be added without them). It declares the upstream release the adapter's behaviour assumptions
-were last verified against, so `doctor upstream_version` can warn when the
-installed tool is a newer major/minor. `""` means "no usable signal, skip me" —
-only for a version scheme the comparison cannot read (cursor's date versions);
-`TestVerifiedVersionFormat` guards the value. The assumptions themselves are
+cannot be added without them). `VerifiedVersion()` declares the upstream release
+the adapter's behaviour assumptions were last verified against, so `doctor
+upstream_version` can warn when the installed tool is a newer major/minor; `""`
+means "no usable signal, skip me", only for a version scheme the comparison cannot
+read (cursor's date versions), and `TestVerifiedVersionFormat` guards that value.
+`VerifiedOn()` is the date those assumptions were last checked, never empty, and it
+is `TestVerifiedVersionsMatchTheDocs` that parses it. The assumptions themselves are
 listed in [VALIDATION.md](VALIDATION.md) "Upstream Behaviour Assumptions".
 
 See [ADAPTERS.md](ADAPTERS.md).

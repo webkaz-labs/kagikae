@@ -452,9 +452,23 @@ func stripHTMLComments(text string) string {
 // and the output is byte-identical, which is the control to re-run rather than a grep for
 // the literal, since this comment and main_test.go's fixture both contain one.
 //
-// The order is a ceiling, not a preference: an unclosed `<!--` inside a fenced example
-// swallows text up to the next `-->`, the closing fence marker included. No instance
-// today, and the fence-first order would trade it for the reverse.
+// Three ceilings, no instance in this tree, each measured on a fixture:
+//
+//   - The order. An unclosed `<!--` inside a fenced example swallows text up to the next
+//     `-->`, the closing fence marker included; the fence-first order trades this for the
+//     reverse.
+//   - Fail-open on the link half, the direction that matters. A comment closing
+//     immediately before a fence marker (`-->` and ```` ```go ```` sharing a line) collapses
+//     to a bare marker line, which toggles extractLinks' per-line fence and hides a link
+//     CommonMark does produce. Measured against the parent commit, which reported it. The
+//     paying-for-it side is the opposite construction, a link whose label is interrupted
+//     by a multi-line comment, which CommonMark forms and only the strip finds — the trade
+//     was taken in that direction on purpose, and preserving line counts instead of
+//     removing the span loses the gain without closing the loss.
+//   - Comments are the only raw HTML read this way. A `##` line inside a `<pre>` or `<div>`
+//     block is literal text to a renderer and reachable to nothing, and it is still
+//     counted here as a heading. Closing that means parsing HTML blocks, which is not
+//     bought by a construction nobody writes.
 func stripFences(text string) string {
 	text = stripHTMLComments(text)
 	// The guard is not a micro-optimisation dressed up: `fenceRe` is `(?ms)` with a lazy

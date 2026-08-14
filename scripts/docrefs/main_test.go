@@ -132,6 +132,24 @@ func TestSectionNamesIgnoreHeadingShapedLinesInsideFences(t *testing.T) {
 	}
 }
 
+// A heading inside an HTML comment declares nothing, because CommonMark renders the
+// comment as raw HTML and no reader following a citation can reach the section. Two arms
+// for the same reason the fence case has two: the negative alone is satisfied by a strip
+// that removed everything.
+func TestSectionNamesIgnoreAHeadingInsideAnHTMLComment(t *testing.T) {
+	doc := "## Real Heading\n\n<!--\n## Commented Heading\n-->\n\n" +
+		"Prose with an inline <!-- ## Inline Heading --> comment.\n"
+	got := sectionNames(doc)
+	for _, n := range got {
+		if n[0] == "commented" || n[0] == "inline" {
+			t.Fatalf("a heading inside an HTML comment became a section name: %v", got)
+		}
+	}
+	if len(got) != 1 || got[0][0] != "real" {
+		t.Fatalf("expected the one real heading, got %v", got)
+	}
+}
+
 func TestSectionNamesJoinALabelThatWraps(t *testing.T) {
 	doc := "- **A relogin's pre-flight refusal owes a backup it cannot\n" +
 		"  safely take yet** (recorded 2026-08-08)\n"
@@ -329,25 +347,26 @@ func TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil(t *testing.T) {
 // TestTheCitedSkillSectionHasNoFirstWordRival holds a property several routes rest on and
 // that check-docs cannot. Documents outside the skill cite
 // .claude/skills/upstream-auth-drift/SKILL.md § Re-record as normative, and firstWordMatches
-// compares only the cited name's first word — the ceilings in the package comment say why
-// widening the match was measured worse on correct prose. So another declared name in that
-// file beginning `re-record` makes those citations resolve against the wrong thing, and the
-// cited section can then be renamed away with the gate still reporting ok. Measured on a
-// clone of 20fea5c by the author and again by a reviewer, which is what makes it a test
-// here rather than a sentence in the skill asking to be remembered.
+// compares only the cited name's first word — the package comment's citation ceilings say
+// why widening the match was measured worse on correct prose. So another declared name in
+// that file beginning `re-record` makes those citations resolve against the wrong thing, and
+// the cited section can then be renamed away with every gate green.
 //
 // Scoped to that file and that word rather than to uniqueness over every citation, which
 // the package comment records as measured worse.
 //
-// Two arms, because counting declared names is one condition short — this test shipped that
-// way for as long as it took to mutate it. The count has to run over sectionNames, since a
-// line-opening bold label and a list-item bold title are declared names too, and a
-// `**Re-record …**` sentence-opener in the style that file already uses is the mutation
-// that found the original defect. But the count alone is satisfied by renaming the heading
-// away *and* adding such a label in the same edit: a surviving name of the wrong kind, and
-// check-docs green. Measured, with both arms of the first version present. So the second arm
-// asks where the surviving name comes from — a heading, which is what a reader following the
+// Two arms, because counting declared names is one condition short: renaming the heading
+// away *and* adding a `**Re-record …**` label in the same edit leaves the count at one, as
+// does downgrading the heading to a list-item bold title, and both are green on a count
+// alone. The count still has to run over sectionNames rather than headings, because a
+// line-opening bold label and a list-item bold title are declared names too — that is the
+// rival a heading grep cannot see. So the counting arm runs over sectionNames, and the
+// heading arm asks whether the survivor is a heading, which is what a reader following the
 // citation lands on.
+//
+// What it does not reach: the heading surviving with the section's content replaced. Three
+// documents would still cite a section reading TODO, and the counts move without failing —
+// AGENTS.md § Documentation Update Checklist owns that class, and it stays a reading task.
 func TestTheCitedSkillSectionHasNoFirstWordRival(t *testing.T) {
 	root := repositoryRoot(t)
 	const rel = ".claude/skills/upstream-auth-drift/SKILL.md"

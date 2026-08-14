@@ -470,6 +470,9 @@ check 'a section verdict the gate does not know is named' \
 #     `external` verdict, which the guard does not count. Derive the set rather than trust
 #     this comment: `go run ./scripts/docrefs | awk -F'\t' '$1=="cite" && $4=="resolves" &&
 #     $2 ~ /\.go$/ {print $2}'`, and prune the top-level directory of every path it prints.
+#     A path with no directory to prune — a resolving citation in a top-level Go file — is
+#     the state this mutation cannot express at all, and it fails this case loudly with
+#     nowhere to go: use the suffix-drop mutation named above for that one.
 dir=$(fixture prunedgo)
 subst_once "$dir/scripts/docrefs/main.go" \
   'var skipDirs = map[string]bool{".git": true, "dist": true}' \

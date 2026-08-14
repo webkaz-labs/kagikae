@@ -240,11 +240,15 @@ var (
 	// The link half's fence, built from the same fenceMarker as the block form above so the
 	// dialect moves as one rather than by hand in two literals, and deliberately a different
 	// model: see the package comment.
-	fenceLineRe  = regexp.MustCompile("^" + fenceMarker)
-	linkRe       = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
-	commentRe    = regexp.MustCompile(`^\s*(?://+|#+)\s*`)
-	decorationRe = regexp.MustCompile("[`*_\"'()\\[\\]|~]")
-	trailingRe   = regexp.MustCompile(`[.,;:]+$`)
+	fenceLineRe = regexp.MustCompile("^" + fenceMarker)
+	// Not line-anchored, unlike the fence above: an HTML comment opens and closes
+	// mid-line as readily as on its own, and the lazy `.*?` under `(?s)` stops at the
+	// first `-->` so two comments do not merge into one span.
+	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+	linkRe        = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
+	commentRe     = regexp.MustCompile(`^\s*(?://+|#+)\s*`)
+	decorationRe  = regexp.MustCompile("[`*_\"'()\\[\\]|~]")
+	trailingRe    = regexp.MustCompile(`[.,;:]+$`)
 )
 
 // nameWindow bounds how much text after the sigil is read as the cited name. Only its
@@ -427,7 +431,21 @@ func words(text string) []string {
 // docs/VALIDATION.md's runnable blocks, mostly — and every one was accepted as a
 // section name, so `§ Canonical smoke ordering` resolved against a `# canonical …`
 // comment.
+//
+// An HTML comment goes with it, which is why this is one seam rather than two calls at
+// each site. CommonMark renders `<!-- … -->` as raw HTML, so a heading inside a comment
+// declares no section a reader can reach — and both consumers want the same answer: a
+// commented-out heading is not a target, and a commented-out citation is not a citation.
+// The defect that earned it: a section three documents cite as normative was wrapped in
+// `<!--`/`-->` on a clone of 75a67d2 and the gate reported ok, with
+// TestTheCitedSkillSectionHasNoFirstWordRival green beside it, because a `#` line matches
+// headingRe regardless of what encloses it. Commenting a section out while reworking it is
+// an ordinary edit. This changes no count today: no tracked document or Go file in this
+// tree contains `<!--` (`git grep -c '<!--' -- '*.md' '*.go'` is empty).
 func stripFences(text string) string {
+	if strings.Contains(text, "<!--") {
+		text = htmlCommentRe.ReplaceAllString(text, "")
+	}
 	// The guard is not a micro-optimisation dressed up: `fenceRe` is `(?ms)` with a lazy
 	// `.*?`, so it costs about 20ns/byte even where nothing can match, while only a small
 	// minority of the sigil-bearing files hold a fence marker at all — the pair this

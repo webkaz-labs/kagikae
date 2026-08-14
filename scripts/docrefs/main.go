@@ -240,11 +240,15 @@ var (
 	// The link half's fence, built from the same fenceMarker as the block form above so the
 	// dialect moves as one rather than by hand in two literals, and deliberately a different
 	// model: see the package comment.
-	fenceLineRe  = regexp.MustCompile("^" + fenceMarker)
-	linkRe       = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
-	commentRe    = regexp.MustCompile(`^\s*(?://+|#+)\s*`)
-	decorationRe = regexp.MustCompile("[`*_\"'()\\[\\]|~]")
-	trailingRe   = regexp.MustCompile(`[.,;:]+$`)
+	fenceLineRe = regexp.MustCompile("^" + fenceMarker)
+	// Not line-anchored, unlike the fence above: an HTML comment opens and closes
+	// mid-line as readily as on its own, and the lazy `.*?` under `(?s)` stops at the
+	// first `-->` so two comments do not merge into one span.
+	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+	linkRe        = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
+	commentRe     = regexp.MustCompile(`^\s*(?://+|#+)\s*`)
+	decorationRe  = regexp.MustCompile("[`*_\"'()\\[\\]|~]")
+	trailingRe    = regexp.MustCompile(`[.,;:]+$`)
 )
 
 // nameWindow bounds how much text after the sigil is read as the cited name. Only its
@@ -392,7 +396,7 @@ func stripCodeSpans(line string) string {
 func extractLinks(markdown string) []string {
 	var targets []string
 	fenced := false
-	for _, line := range strings.Split(markdown, "\n") {
+	for _, line := range strings.Split(stripHTMLComments(markdown), "\n") {
 		if fenceLineRe.MatchString(line) {
 			fenced = !fenced
 			continue
@@ -427,7 +431,46 @@ func words(text string) []string {
 // docs/VALIDATION.md's runnable blocks, mostly — and every one was accepted as a
 // section name, so `§ Canonical smoke ordering` resolved against a `# canonical …`
 // comment.
+//
+// stripHTMLComments is separate from stripFences for one caller: extractLinks does not use
+// the block fence model at all, toggling per line instead, so it cannot reach a strip folded
+// into stripFences — and the strip has to happen before any line split, since a comment
+// opens and closes across lines. Two callers, one seam; the alternative shipped in this
+// file's first version and left the link half seeing comments the other two did not.
+func stripHTMLComments(text string) string {
+	return htmlCommentRe.ReplaceAllString(text, "")
+}
+
+// stripHTMLComments runs first, and every consumer of this walk calls one of the two.
+// CommonMark renders `<!-- … -->` as raw HTML, so a heading inside a comment declares no
+// section a reader can reach, a citation inside one is not a citation, and a link inside
+// one is not a link. The defect that earned it: a section cited as normative from outside
+// its file was wrapped in `<!--`/`-->` on a clone of 75a67d2 and the gate reported ok, with
+// TestTheCitedSkillSectionHasNoFirstWordRival green beside it, because a `#` line matches
+// headingRe regardless of what encloses it. Commenting a section out while reworking it is
+// an ordinary edit. It changes nothing this program emits on this tree — remove the call
+// and the output is byte-identical, which is the control to re-run rather than a grep for
+// the literal, since this comment and main_test.go's fixture both contain one.
+//
+// Three ceilings, no instance in this tree, each measured on a fixture:
+//
+//   - The order. An unclosed `<!--` inside a fenced example swallows text up to the next
+//     `-->`, the closing fence marker included; the fence-first order trades this for the
+//     reverse.
+//   - Fail-open on the link half, the direction that matters. A comment closing
+//     immediately before a fence marker (`-->` and ```` ```go ```` sharing a line) collapses
+//     to a bare marker line, which toggles extractLinks' per-line fence and hides a link
+//     CommonMark does produce. Measured against the parent commit, which reported it. The
+//     paying-for-it side is the opposite construction, a link whose label is interrupted
+//     by a multi-line comment, which CommonMark forms and only the strip finds — the trade
+//     was taken in that direction on purpose, and preserving line counts instead of
+//     removing the span loses the gain without closing the loss.
+//   - Comments are the only raw HTML read this way. A `##` line inside a `<pre>` or `<div>`
+//     block is literal text to a renderer and reachable to nothing, and it is still
+//     counted here as a heading. Closing that means parsing HTML blocks, which is not
+//     bought by a construction nobody writes.
 func stripFences(text string) string {
+	text = stripHTMLComments(text)
 	// The guard is not a micro-optimisation dressed up: `fenceRe` is `(?ms)` with a lazy
 	// `.*?`, so it costs about 20ns/byte even where nothing can match, while only a small
 	// minority of the sigil-bearing files hold a fence marker at all — the pair this
@@ -451,13 +494,27 @@ func stripFences(text string) string {
 // the first-words headings and list titles give, the surplus including "and", "is", "both",
 // "before", "copy" and "done", so `§ Both open gates` resolved against the word *both*
 // in a sentence.
-func sectionNames(markdown string) [][]string {
-	stripped := stripFences(markdown)
+// headingNames returns the names ATX headings declare, which is the subset of
+// sectionNames a reader following a citation can actually land on: a bold label declares a
+// name this program resolves against and no renderer gives it an anchor. Split out for the
+// second caller, TestTheCitedSkillSectionHasNoFirstWordRival, whose whole question is
+// whether a surviving name is of this kind — it had its own copy of this loop, so a change
+// to how a heading is read would have left the test asserting against a set the program
+// does not compute. Takes text already through stripFences.
+func headingNames(stripped string) [][]string {
 	var names [][]string
 	for _, line := range strings.Split(stripped, "\n") {
 		if m := headingRe.FindStringSubmatch(line); m != nil {
 			names = append(names, words(m[1]))
 		}
+	}
+	return names
+}
+
+func sectionNames(markdown string) [][]string {
+	stripped := stripFences(markdown)
+	names := headingNames(stripped)
+	for _, line := range strings.Split(stripped, "\n") {
 		if m := labelRe.FindStringSubmatch(line); m != nil {
 			names = append(names, words(m[1]))
 		}

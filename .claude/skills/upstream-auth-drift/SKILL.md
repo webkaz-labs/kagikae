@@ -104,16 +104,40 @@ silently.
    by *inverting a predicate*, not by `if false &&`, which drops an import and
    fails to build instead of failing the assertion.
 
-## Phase 4 — Re-record, in the same commit
+## Re-record, in the same commit (Phase 4)
 
-`VerifiedVersion()`, `VerifiedOn()`, the `docs/ADAPTERS.md` table, and the
-VALIDATION row(s). The condition, not the absolute.
+This section is cited as normative from outside the skill, and a citation resolves
+on its **first word** alone — `scripts/docrefs/main.go`'s package comment owns why,
+under its citation ceilings. So keep that word distinctive in this file, heading and
+bold label alike; `TestTheCitedSkillSectionHasNoFirstWordRival` is what fails if it
+stops being.
+
+`VerifiedVersion()`, `VerifiedOn()`, that tool's cells in the `docs/ADAPTERS.md` table,
+and the version recorded in this tool's own § Upstream Behaviour Assumptions
+section. Which form it takes is a property of the section you are in, not
+something to recall: a `### <tool> (verified on <version>)` heading where that
+section has such a heading, otherwise the `Verified on` cell of **every** row for
+that tool. The condition, not the absolute. Version-shaped text that looks like it
+belongs and does not: **a version inside a row's prose does not move**, because
+`Measured 2026-08-04 on 2.1.220` is bounded provenance for that observation, and
+**a `Verified on` cell reading `not verified` is a row nobody has measured** — it
+moves when someone measures it and not when a sibling row is re-verified. Rewriting
+either claims a measurement nobody made.
 `TestVerifiedVersionsMatchTheDocs` fails if the method and the table disagree, so
 a half-done lockstep does not compile past the gate — but nothing checks the
-VALIDATION prose, which is where the *procedure* lives. Update it too if you
+§ Upstream Behaviour Assumptions prose, which is where the *procedure* lives. Update it too if you
 found a cheaper one: the `security` PATH shim replaced a "seed the file, wait for
 a token refresh" recipe that needed a real account, and that is a permanent
 improvement for everyone after you.
+
+**The `Measured on` column of
+[docs/VALIDATION.md](../../../docs/VALIDATION.md) § Upstream Literal Fingerprints
+is a version, and it is outside that set.** It records the build the *counts* were
+taken on, not the release a row was verified against, and cursor's cell there
+carries a date version while `cursor.VerifiedVersion()` is `""`. § Upstream Literal
+Fingerprints is normative for which arm reads it and where that arm runs — the task
+name it omits is `mise run fingerprint`. Move this cell when you re-measure the
+counts; never to match a version you just bumped.
 
 ## Phase 5 — Verify
 

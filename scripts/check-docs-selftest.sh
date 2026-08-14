@@ -452,22 +452,27 @@ check 'a reference kind the gate does not know is named' \
 check 'a section verdict the gate does not know is named' \
   'unrecognised section verdict from the extractor: zzbogusverdict' "$out"
 
-# 20. The half of the collapse the floor cannot see. Pruning one directory, or dropping
-#     one suffix, stops checking a whole class of citation and still clears any floor this
-#     walk could carry — with `internal` pruned the count drops by the Go share and stays far
-#     above the floor, which is the whole point; the number is not written down because the
-#     pair it was first written as had already gone stale. Nothing pinned
-#     that guard until this case: disabling it outright left every other case green. The
-#     mutation is a directory prune rather than a suffix drop because the suffix half was
-#     the one already stated in a comment, and this is the half that was re-broken by a
-#     citation landing in scripts/ for the first time.
+# 20. The half of the collapse the floor cannot see. Dropping one suffix, or pruning one
+#     directory, stops checking a whole class of citation and still clears any floor this
+#     walk could carry — the count drops by the Go share and stays far above it, which is
+#     the whole point; the number is not written down because the pair it was first written
+#     as had already gone stale. Nothing pinned that guard until this case: disabling it
+#     outright left every other case green.
+#
+#     The mutation drops the `.go` suffix rather than pruning directories, and the reason is
+#     maintenance rather than coverage — both land on the same `if` and the same needle. A
+#     prune has to name *every* top-level directory holding a resolving Go citation, so it
+#     went stale the day one was added under scripts/ (before that, scripts/ held only
+#     deliberately-absent fixture names with the `external` verdict, which the guard does
+#     not count), and it cannot express the state at all when the citation is in a
+#     top-level Go file, which has no directory to prune. The suffix has neither problem.
 dir=$(fixture prunedgo)
 subst_once "$dir/scripts/docrefs/main.go" \
-  'var skipDirs = map[string]bool{".git": true, "dist": true}' \
-  'var skipDirs = map[string]bool{".git": true, "dist": true, "internal": true}'
+  'var suffixes = []string{".md", ".go"}' \
+  'var suffixes = []string{".md"}'
 out=$(run_check "$dir")
-check 'a directory prune that loses every Go citation is named' \
-  'section citations were found in markdown' "$out"
+check 'a suffix drop that loses every Go citation is named' \
+  'and Go (0)' "$out"
 
 # 21. The entry the extractor must skip, against the document it must still read. Appended
 #     rather than filed beside the unreadable-document case it belongs with, because

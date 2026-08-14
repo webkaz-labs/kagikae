@@ -116,19 +116,31 @@ func TestSectionNamesTakeHeadingsListTitlesAndAnchoredLabels(t *testing.T) {
 	}
 }
 
-func TestSectionNamesIgnoreHeadingShapedLinesInsideFences(t *testing.T) {
-	doc := "## Real Heading\n\n```bash\n# canonical smoke ordering\n```\n"
-	got := sectionNames(doc)
-	for _, n := range got {
-		if n[0] == "canonical" {
-			t.Fatalf("a shell comment inside a fence became a section name: %v", got)
-		}
-	}
-	// Heading-shaped lines live inside fenced blocks all over this tree — stripFences says
-	// how many were measured — so the negative above is the whole point; this keeps it from
-	// passing because nothing was read.
-	if len(got) != 1 || got[0][0] != "real" {
-		t.Fatalf("expected the one real heading, got %v", got)
+// A heading-shaped line a reader cannot reach declares nothing. Each row is a form that
+// hides one: a fenced block (heading-shaped lines live inside them all over this tree —
+// stripFences says how many were measured, and `§ Canonical smoke ordering` once resolved
+// against a shell comment), and an HTML comment, which CommonMark renders as raw HTML.
+//
+// Asserting the whole result rather than the absence of the hidden name is what keeps a
+// row from passing because the strip removed everything. A third form is already a named
+// ceiling in the package comment — the four-space indented block — so this is a table.
+func TestSectionNamesIgnoreHeadingShapedLinesAReaderCannotReach(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		doc  string
+	}{
+		{"inside a fence", "## Real Heading\n\n```bash\n# canonical smoke ordering\n```\n"},
+		{"inside a block HTML comment", "## Real Heading\n\n<!--\n## Commented Heading\n-->\n"},
+		// A list label, not a `##`: headingRe is anchored at `^`, so an inline `## …` was
+		// never a declared name and the row passed whether the strip ran or not. listLabelRe
+		// is unanchored, so this form is reachable and the row is live.
+		{"inside an inline HTML comment", "## Real Heading\n\nProse with an <!-- - **Inline Label** --> in it.\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sectionNames(tc.doc); len(got) != 1 || got[0][0] != "real" {
+				t.Fatalf("expected the one real heading, got %v", got)
+			}
+		})
 	}
 }
 
@@ -323,6 +335,67 @@ func TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil(t *testing.T) {
 	if len(spaced) != 0 {
 		t.Errorf("citeRe excludes a digit after the sigil because no live instance is spaced; these are:\n%s",
 			strings.Join(spaced, "\n"))
+	}
+}
+
+// TestTheCitedSkillSectionHasNoFirstWordRival holds a property the routes into
+// .claude/skills/upstream-auth-drift/SKILL.md § Re-record rest on and that check-docs
+// cannot. firstWordMatches compares only the cited name's first word, so another declared
+// name in that file beginning `re-record` makes those citations resolve against the wrong
+// thing, and the cited section can then be renamed away with every gate green.
+//
+// An allowlist of one, because the general form is unusable rather than merely stricter:
+// most resolving citations in this tree already share a first word with more than one
+// declared name in their target, and the reason is an idiom, not an accident — every
+// heading in docs/CLI.md begins `kae`, so the commonest citation form here (`docs/CLI.md
+// § kae <verb>`) has a rival for each of them. Filtering to citations whose sentence says
+// "normative" was measured worse, not better. Re-derive both by comparing each cite row
+// from this program against firstWordMatches over its target's names.
+//
+// Two arms, because counting declared names is one condition short: renaming the heading
+// away *and* adding a `**Re-record …**` label in the same edit leaves the count at one, as
+// does downgrading the heading to a list-item bold title, and both are green on a count
+// alone. The count still has to run over sectionNames rather than headings, because a
+// line-opening bold label and a list-item bold title are declared names too — that is the
+// rival a heading grep cannot see.
+//
+// What it does not reach: the heading surviving with its section's content replaced. The
+// citations would still resolve against a section reading TODO — AGENTS.md § Documentation
+// Update Checklist owns that class, and it stays a reading task.
+func TestTheCitedSkillSectionHasNoFirstWordRival(t *testing.T) {
+	root := repositoryRoot(t)
+	const rel = ".claude/skills/upstream-auth-drift/SKILL.md"
+	const word = "re-record"
+	raw, err := os.ReadFile(filepath.Join(root, rel))
+	if err != nil {
+		t.Fatalf("reading %s, which is cited as normative from outside the skill: %v", rel, err)
+	}
+	var declared []string
+	for _, name := range sectionNames(string(raw)) {
+		if name[0] == word {
+			declared = append(declared, strings.Join(name, " "))
+		}
+	}
+	// headingNames rather than a second walk of its own: headings are a subset of the names
+	// above, so this arm is a lower bound only — a rival heading is arm one's to report, and
+	// asserting a count here would print two messages for one defect.
+	var headings []string
+	for _, name := range headingNames(stripFences(string(raw))) {
+		if name[0] == word {
+			headings = append(headings, strings.Join(name, " "))
+		}
+	}
+	if len(declared) != 1 {
+		t.Errorf("%s declares %d names beginning `%s`, want exactly 1 — every `§ Re-record` "+
+			"citation resolves on that first word alone, so none breaks them loudly and a "+
+			"rival breaks them silently:\n%s",
+			rel, len(declared), word, strings.Join(declared, "\n"))
+	}
+	if len(headings) == 0 {
+		t.Errorf("%s declares no heading beginning `%s`, so a `§ Re-record` citation resolves "+
+			"against a bold label and lands a reader nowhere — the section can be renamed away "+
+			"from here with every gate green. Declared names beginning it:\n%s",
+			rel, word, strings.Join(declared, "\n"))
 	}
 }
 

@@ -258,8 +258,9 @@ alternative exists (`secret-tool`).
   `scripts/docscan/main.go`'s calibration note pairs against `RELEASE.md`, and the move
   leaves both in place — while no citation anywhere resolved to § Concurrency Boundary,
   which is why folding it repointed nothing. Derive both rather than reading a count
-  here; what counts as a citation is where the figures in this tree disagree, and this
-  entry's own prose names that section too.
+  here; what counts as a citation is where the figures in this tree disagree. Both greps
+  also match this entry's own prose, which names both sections, so neither is ever empty
+  and neither answer is the hit count.
   One thing the entry never mentioned and the fix had to carry: `PRODUCT.md`'s own
   opening still said both sections read as architecture and were queued for a move, a
   claim this entry had already withdrawn above. That is the instance;

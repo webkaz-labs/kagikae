@@ -80,17 +80,12 @@ three hand copies of it had already drifted apart. Some are worth a word about w
 do rather than that they exist: `smoke-selftest`
 (`scripts/smoke-run-selftest.sh`, which checks the smoke runner's own guards — no
 `kae` build and no network, so it costs a few seconds), and `docs-check`
-(`scripts/check-docs.sh`: every markdown link its extractor finds resolves, every
-`X.md § Name` citation names a section that file declares — a link walk resolves the
-*file* and stops, so a citation naming a section the file has never had was invisible
-until one shipped — no file under `docs/` is missing **its own routing row** in the
-Documentation Map above, and the root documents a link walk cannot vouch for **as a set**
-are present, non-empty and regular files), and
-`docs-check-selftest`, which checks that one. Those script headers, together with the
-extractor package comment the `docs-check` header routes to, are normative for
-which link forms the extractor sees, which citation forms the section walk reads **and
-which it cannot**, why each count is a floor, why a floor cannot reach a
-predicate, and which documents that last check names and why; do not restate them here.
+(`scripts/check-docs.sh`, which rejects the docs defects nothing else here catches).
+Its header enumerates them, and together with `scripts/check-docs-selftest.sh`'s —
+which checks that one — and the extractor
+package comment it routes to, is normative for which link and citation forms the walk
+reads **and which it cannot**, why each count is a floor, and why a floor cannot reach a
+predicate. Read those before trusting a clean run; do not restate them here.
 `docs-check` is **not** `mise run docs-scan`, which reports duplicated prose and
 deliberately fails nothing. `mise run audit` (govulncheck, plus the
 upstream literal fingerprints — it reads the installed tools' own binaries, so it
@@ -111,41 +106,27 @@ Never run tests or smoke checks against the real `$HOME`; every test uses
 `t.TempDir()` HOME/XDG roots, and smoke checks export a temp HOME
 ([docs/VALIDATION.md](docs/VALIDATION.md)).
 
-**A temp `HOME` is not enough, and this has drawn blood.** `paths.Resolve` reads
-every XDG root *independently*, and an absolute value already in the environment
-**wins over the temp HOME** — so a shell that exports HOME and some of them still
-resolves `state.json` under the operator's real `~/.local/state`. A smoke run
-shaped exactly that way wrote a fixture account into a live `state.json`
-(2026-07-31), leaving `active.claude` pointing at an account that did not exist —
-a state `kae doctor` reported nothing about until `active_orphan` was added.
-**Never hand-write the exports: `. scripts/smoke-env.sh`**, which is the one copy
-of them and says which roots and why. The omission happened while writing a fresh
-block in docs/VALIDATION.md, next to two correct ones.
+**A temp `HOME` is not enough, and this has drawn blood** — a run shaped that way
+wrote a fixture account into the operator's live `state.json`.
+**Never hand-write the exports: `. scripts/smoke-env.sh`**, which is the one copy of
+them, says which roots and why, and carries the reason a temp `HOME` does not cover
+them.
 
 **Sourcing it correctly is also not enough, so do not drive these blocks by hand
 either — `bash scripts/smoke-run.sh '## <heading>'`.** Sourcing the preamble is a
-step a harness can perform and still not get: `. scripts/smoke-env.sh` inside
-`$(...)` exports nothing, because command substitution is a subshell, and the run
-then looks isolated while writing to the real `$HOME`. That happened twice on
-2026-08-09, in the same session that a progress `echo` from an `ERR`/`DEBUG` trap
-was captured by a `$(...)` in the block — once corrupting an assertion into a
-non-integer, once landing inside `HOME=$(mktemp -d)` and creating a directory in
-the checkout. `smoke-run.sh` closes the class instead of warning about it, by
-isolating the environment **before** the block runs rather than relying on the
-block to do it. **Its header is normative for what it isolates and what it does
-not; do not restate that here.** This paragraph twice described the mechanism from
-memory and was wrong both times — naming four of the eight cleared variables, and
-claiming a temp `HOME` covers a set that the tool-home variables outrank.
+step a harness can perform and still not get; the measured ways it has failed while
+looking isolated are in that script's header. `smoke-run.sh` closes that class
+instead of warning about it, by isolating the environment **before** the block runs
+rather than relying on the block to do it. **Its header is normative for what it
+isolates and what it does not; do not restate that here** — this paragraph twice
+described the mechanism from memory and was wrong both times.
 
-**Two things it cannot do, and a green run does not claim them.** It cannot
-isolate the macOS login keychain, which ignores `$HOME`: only `secret_backend =
-"file"` in the block's own config keeps kae's snapshot store out of it, and that
-is the 956-item defect. And its leak detector sees the checkout only — a write
-elsewhere on the machine is invisible to it. Those two bound what any green run
-proves, which is why they are here and not only in the script. `mise run check`
-runs `scripts/smoke-run-selftest.sh`, which is what keeps the script's own claims
-honest; the sentence it replaced vouched for guards that had been checked by hand
-once and were then shown to be false.
+**A green run is bounded, and what bounds it is worth knowing before you read one as
+proof** — the macOS login keychain and the leak detector.
+[docs/VALIDATION.md](docs/VALIDATION.md) § Smoke Checks states what each leaves
+uncovered, and that script's header states what it does and does not isolate.
+`mise run check` runs `scripts/smoke-run-selftest.sh`, which is what keeps the
+script's own claims honest.
 
 ## Implementation Boundaries
 

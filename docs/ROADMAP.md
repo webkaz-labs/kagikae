@@ -34,15 +34,16 @@ git diff v0.17.0..HEAD -- 'internal/**/*.go' 'main.go' go.mod go.sum ':!**/*_tes
   | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | grep -vE '^[+-]\s*//' | grep -vE '^[+-]\s*$'
 ```
 
-`go.mod` and `go.sum` are in that pathspec deliberately: a dependency bump with no
-`internal/` change — which is the shape a `mise run audit` finding produces — would
-otherwise print nothing and read as "there is nothing here to ship", which is how this
-command could re-affirm the deferral over a fix that ought to go out. On any
-tree where it prints only a rename and a docs pointer inside an error string, a tag
-ships the rename — while [ACCEPTANCE.md](ACCEPTANCE.md)
-§ Open gates is the cost every release carries whatever it contains, and it is a
-cost only a human can pay. Deferring spends that cost on a tree worth spending it
-on. Cut a release when the list below has landed, not on a schedule.
+On any tree where that prints only a rename and a docs pointer inside an error
+string, a tag ships the rename — while [ACCEPTANCE.md](ACCEPTANCE.md) § Open gates
+is the cost every release carries whatever it contains, and it is a cost only a
+human can pay. Deferring spends that cost on a tree worth spending it on. Cut a
+release when the list below has landed, not on a schedule.
+
+`go.mod` and `go.sum` are in that pathspec deliberately. A dependency bump with no
+`internal/` change — the shape a `mise run audit` finding produces — would otherwise
+print nothing and read as "there is nothing here to ship", which is how this command
+could re-affirm the deferral over a fix that ought to go out.
 
 Each names a section or an entry in this file and gives **only its place in the
 order and what that place turns on**. What the item *is* stays where it is: a second
@@ -58,18 +59,19 @@ copy here is the duplication `mise run docs-scan` reports.
    would have had with it.
 4. § `kae relogin` declines to capture a login it watched happen when a *sibling*
    directory has drifted — last, because it overrides the shared attribution
-   predicate § Attribution reads a label kae may have written itself keeps open, and
-   because no release date is now compressing the measurement that entry asks for.
+   predicate, whose residue § Attribution reads a label kae may have written itself
+   keeps open, and because no release date is now compressing the measurement that
+   entry asks for.
 
-Two things stay out, for unlike reasons. The freshness surfaces' wording waits on a
+What stays out does so for unlike reasons. The freshness surfaces' wording waits on a
 **result**: [ACCEPTANCE.md](ACCEPTANCE.md) § Real-machine gate — does
 `refreshTokenExpiresAt` predict the login's death? is what decides whether kae
 over-warns, and wording written first would be the unmeasured claim
 [AGENTS.md](../AGENTS.md) refuses. **The part of that gate nothing can compress is
 the waiting**, which is why it is started ahead of these batches rather than at tag
-time — but do not read that as cheap: its Procedure needs a real machine, a real
-login, and a second account to work in for the whole interval, and it states what
-the first step has to record for the result to be interpretable at all. Declaring
+time — but do not read that as cheap, because the waiting is not all it asks for:
+its Procedure is where what it costs and what the first step must record are
+stated, and neither is inferable from the deferral above. Declaring
 codex's `KeychainDirBindable` waits on [ACCEPTANCE.md](ACCEPTANCE.md) § Open gates
 the same way, and this file's § Hardening backlog entry for codex's keyring store
 says what the result unblocks.

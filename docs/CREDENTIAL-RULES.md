@@ -220,8 +220,14 @@ been taught. Two exceptions today, and both turn on **what the user asked for**,
 the state — a housekeeping sweep keeps, `kae unpin --purge` takes.
 A usable copy whose account no longer exists is deleted by `kae unpin --purge`
 (refusing would strand a live token nothing can address) and **kept** by the sweep a
-bind runs — `kae account rename` reaches that sweep through kae's own re-bind remedy,
-where deleting destroyed the newest copy of the renamed account's credential. And a
+bind runs — deleting there destroyed the newest copy of a renamed account's credential,
+which is why the two answer differently. That pair is reached for a store holding **its
+own** credential; where the credential is the account's, a bind's sweep returns earlier
+still and keeps the copy without reporting it, so `kae account rename` no longer reaches
+this decision through kae's own re-bind remedy
+(`TestAccountRenameStrandsTheBoundDirectorysCredential`;
+[ROADMAP.md](ROADMAP.md) § `kae account rename` leaves a bound directory's store under
+the old name carries what is still owed). And a
 payload kae could not read or date is deleted by `--purge` too, for the first exception's
 reason rather than as a rule of its own: keeping it strands a secret **nothing kae offers
 can remove**, since a per-directory item is addressable only from the string kae hashes

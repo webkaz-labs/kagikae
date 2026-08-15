@@ -539,9 +539,17 @@ account that no longer exists (`kae account rm`, or a `rename` that moved it). T
 is nowhere to preserve it now or ever, and a purge is where the user asked for these
 credentials to go, so keeping it would strand a live token no kae command can address.
 The sweep a **bind** runs makes the opposite call on the same state and keeps it: that
-command was asked to bind something, and `kae account rename` reaches it through kae's
-own re-bind remedy — deleting there destroyed the newest copy of the renamed account's
-credential. kae names the account in both cases.
+command was asked to bind something, not to destroy a login — deleting there destroyed
+the newest copy of a renamed account's credential, which is the defect the asymmetry
+closed. Both arms name the account.
+
+That pair is reached for a store holding **its own** credential. Where the credential is
+the account's (`credstore/<tool>/<account>`), a bind's sweep returns before this decision
+and keeps the copy *without reporting it*, so a re-bind after a `kae account rename` is
+silent about the copy it leaves behind — measured in
+`TestAccountRenameStrandsTheBoundDirectorysCredential`, with what is still owed in
+[ROADMAP.md](ROADMAP.md) § `kae account rename` leaves a bound directory's store under
+the old name.
 
 One store the binding **does** still point at is swept as well, and only in this
 shape: a directory bound before v0.17.0, whose credential has just moved into the

@@ -1377,6 +1377,11 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// not redundant with this one. One such path is live today: the account the
 		// previous binding named is gone, so the pass returns at `snapshotCredential`
 		// and the sweep keeps the copy on the account-gone arm (measured 2026-08-07).
+		// That catch reaches only a store holding its **own** credential: where the
+		// credential is the account's, removeDirCredential's
+		// `store.CredDir != "" && !purging` return fires first and neither gate runs, so
+		// an account-gone copy is kept in silence rather than reported (measured
+		// 2026-08-16, TestAccountRenameStrandsTheBoundDirectorysCredential).
 		// The one that would open silently is a tool with a credential variable whose
 		// rotation has never been measured — the pass returns at `rotatesSingleUse` and
 		// `harvestBeforeDelete` lets such a tool through unconditionally, so its kept
@@ -1983,12 +1988,25 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 				"than removed, re-bind first (kae pin %s <new name>) and it is harvested instead\n",
 			tool, accountName, tool, credDir, tool)
 	case exitOf(err) == constants.ExitNotFound:
-		// Same condition, and this is *housekeeping* rather than a purge — which
-		// `kae account rename` reaches through kae's own re-bind remedy (`kae pin <tool>
-		// <new name>`), and which used to delete the newest copy of the renamed account's
-		// credential. Worded from the fact rather than from the error: snapshotCredential
-		// says "not captured yet (run: kae add --no-login …)", the wrong instruction for an
-		// account the user removed or renamed on purpose.
+		// Same condition, and this is *housekeeping* rather than a purge — the case that
+		// used to delete the newest copy of a renamed account's credential. Worded from the
+		// fact rather than from the error: snapshotCredential says "not captured yet (run:
+		// kae add --no-login …)", the wrong instruction for an account the user removed or
+		// renamed on purpose.
+		//
+		// This used to name `kae account rename` plus kae's own re-bind remedy (`kae pin
+		// <tool> <new name>`) as what reaches it, and that is **false for a store whose
+		// credential is the account's** (CredDir set): housekeeping returns above, at
+		// `store.CredDir != "" && !purging`, before the probe and before this function is
+		// called at all. What still reaches this arm is a store holding its own credential
+		// — a pre-split binding, or a tool with no credential variable. The rename's own
+		// shape is measured in TestAccountRenameStrandsTheBoundDirectorysCredential, whose
+		// comment carries the three layers and what each one costs a fix.
+		//
+		// The remedy this message names is not the re-bind above: re-binding repoints the
+		// fragment at the new account's store, so this copy is left with no reader and the
+		// harvest refuses to attribute it. It reads correctly only for a store the *user*
+		// re-binds to an account that genuinely holds it.
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: no account named %s/%s exists any more, so the %s credential this directory "+
 				"held for it is left in place rather than deleted (%s); `kae unpin --purge` removes it, "+

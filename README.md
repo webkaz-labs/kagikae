@@ -497,7 +497,7 @@ subset.
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Later phases, and the near-term work order. |
 | [docs/RELEASE.md](docs/RELEASE.md) | Active release target and release process. |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | Pre-commit checks, the smoke blocks that run from them, and two release-only smokes. |
-| [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | What a release owes on a real machine, and what it still owes. |
+| [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | What a release owes on a real machine, what it still owes, and the observation to record when claude asks for a login it did not ask for before. |
 
 ## License
 

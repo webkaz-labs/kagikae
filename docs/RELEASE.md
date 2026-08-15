@@ -744,8 +744,8 @@ refresh token forces an interactive login.** That is the premise of `credential_
 itself, and it long predates this release. The same measurement makes it worth
 settling, because kae calls a claude snapshot stale considerably more often than the
 operator re-logs in. [ACCEPTANCE.md](ACCEPTANCE.md) carries a real-machine gate for
-it where either outcome is a result, and [ROADMAP.md](ROADMAP.md) the consequence if
-it goes the other way.
+it where every outcome it enumerates is a result, and [ROADMAP.md](ROADMAP.md) the
+consequence if it goes the other way.
 
 ---
 

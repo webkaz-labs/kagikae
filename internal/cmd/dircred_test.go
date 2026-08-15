@@ -2088,6 +2088,13 @@ func TestWriteDirCredentialDoesNotHarvestAnEqualDeadline(t *testing.T) {
 // which is **runRebind** — so that is the sweep the renamed account's newest copy meets,
 // and its `purging=false` needs pinning separately from `runPin`'s (reading-type review,
 // round 3: mutating this one to `true` passed the whole suite).
+//
+// That first sentence holds **only for the pre-split store this fixture builds**
+// (makePreSplit, below): where the credential is the account's, the sweep returns before
+// this arm and the renamed copy meets nothing at all. Measured 2026-08-16 —
+// TestAccountRenameStrandsTheBoundDirectorysCredential is that shape, and its comment
+// carries the difference. A sweep for that unscoped claim reached the docs and both
+// dircred.go comments and missed this one, because it grepped prose files.
 func TestRunRebindSweepKeepsALostAccountsCredential(t *testing.T) {
 	sim := &keychainSim{}
 	runner.With(sim, func() {
@@ -2135,19 +2142,15 @@ func TestRunRebindSweepKeepsALostAccountsCredential(t *testing.T) {
 // account's name. Following kae's own remedy — `kae pin <tool> <new>`, which is
 // runRebind — neither recovers that copy nor mentions it.
 //
-// Measured 2026-08-16 because three places answered differently, and reading settled
-// none of them. docs/ROADMAP.md § `kae account rename` leaves a bound directory's store
-// under the old name puts the stranded copy in `isolation/<pin-id>/<tool>/isolated/<old>/`
-// and says the harvest's messages name the condition; the two account-gone comments in
-// dircred.go say this is the state `kae account rename` reaches through that same
-// re-bind. Neither holds for a binding today's kae makes. claude's credential lives in
-// the per-account store (`credstore/<tool>/<old>`), and removeDirCredential returns at
+// Measured 2026-08-16 because this file's comments, dircred.go's and docs/ROADMAP.md's
+// answered differently and reading settled none of them. All of them were corrected in
+// the commit after this one, so the disagreement is in `git log` rather than in the tree
+// — do not go looking for it here. What the measurement found: claude's credential lives
+// in the per-account store (`credstore/<tool>/<old>`), and removeDirCredential returns at
 // `store.CredDir != "" && !purging` — before the existence probe and before
-// harvestBeforeDelete — so no arm of the harvest runs and nothing is printed at all.
-// Deleting that `!purging` return is what makes the account-gone warning appear here,
-// and the copy is *still* not harvested, because the snapshot it names is the one the
-// rename removed. The isolated config dir under the old name is left too, holding the
-// sessions and the identity cache but not the credential.
+// harvestBeforeDelete — so no arm of the harvest runs and nothing is printed at all. The
+// isolated config dir under the old name is left too, holding the sessions and the
+// identity cache but not the credential.
 //
 // TestRunRebindSweepKeepsALostAccountsCredential above is this same command over a
 // **pre-split** binding (makePreSplit), where CredDir is empty and the account-gone arm
@@ -2157,7 +2160,8 @@ func TestRunRebindSweepKeepsALostAccountsCredential(t *testing.T) {
 // by removing them one at a time, in this order:
 //
 //  1. the `!purging` return above; removing it reaches the account-gone arm, which keeps
-//     the copy and says so;
+//     the copy and says so — and the copy is *still* not harvested, because the snapshot
+//     that arm names is the one the rename removed;
 //  2. `storeAccount` names the account the fragment recorded, whose snapshot the rename
 //     deleted; substituting the new name at removeDirCredential's call site gets past it;
 //  3. with both gone the harvest still refuses, with "no directory reads this credential
@@ -2180,27 +2184,23 @@ func TestAccountRenameStrandsTheBoundDirectorysCredential(t *testing.T) {
 		"[profiles.main.accounts]\nclaude = \"main\"\n")
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
-	chdirTemp(t)
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
-		t.Fatalf("pin --isolated exit %d", code)
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	storeDir := app.Paths.IsolatedConfigDir(paths.PinID(cwd), constants.ToolClaude, "main")
+	// The bind, and with it this test's control: pinWithCapturedClaude derives the
+	// credential path by production's own rule and fails if the pin materialized nothing
+	// there, so every assertion below is about a path a bound directory really reads.
+	// Deriving it here instead is what put a tautological control in this test first — it
+	// asserted the bytes the test was about to write, which holds for any path. It also
+	// reaches runPin through pinHereAs, whose fixture runner keeps a test's pin off the
+	// real keychain; pinHereAs carries what calling runPin directly once cost.
+	//
+	// What no assertion here covers: re-pointing `live` after this line. A check would
+	// have to re-derive the path, which is the duplication this call removes — so take
+	// the path from the helper and never recompute it. Measured 2026-08-16: the whole
+	// test stays green with `live` reassigned to a throwaway directory.
+	_, _, live := pinWithCapturedClaude(t, app, modeIsolated)
 	// What the tool refreshed in place while the directory was bound: newer than the
 	// snapshot, and the only copy that can still refresh.
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
-	live := dirCredFile(app, constants.ToolClaude, "main", storeDir)
-	writeFile(t, live, claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
-	// Positive control: without it the assertions below could hold because the fixture
-	// seeded a place production does not read, rather than because kae stranded anything.
-	if !strings.Contains(readFile(t, live), refreshed) {
-		t.Fatalf("the refreshed copy must be where the binding reads it (%s)", live)
-	}
+	writeFile(t, live, claudeOAuthPayload(refreshed, app.Now().Add(8*time.Hour)))
 
 	if _, err := buildAccountRename(ctx, app, opts, "claude", "main", "side"); err != nil {
 		t.Fatalf("rename: %v", err)
@@ -2256,25 +2256,15 @@ func TestUnpinPurgeAfterRenameDestroysTheCopyItsRemedyCannotSave(t *testing.T) {
 		"[profiles.main.accounts]\nclaude = \"main\"\n")
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
-	chdirTemp(t)
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
-		t.Fatalf("pin --isolated exit %d", code)
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	storeDir := app.Paths.IsolatedConfigDir(paths.PinID(cwd), constants.ToolClaude, "main")
+	_, _, live := pinWithCapturedClaude(t, app, modeIsolated)
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
-	live := dirCredFile(app, constants.ToolClaude, "main", storeDir)
-	writeFile(t, live, claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	writeFile(t, live, claudeOAuthPayload(refreshed, app.Now().Add(8*time.Hour)))
 	if _, err := buildAccountRename(ctx, app, opts, "claude", "main", "side"); err != nil {
 		t.Fatalf("rename: %v", err)
 	}
-	// Positive control: the copy is still there for the purge to destroy, so a green
-	// assertion below is about what the purge did and not about an empty fixture.
+	// The copy is still there for the purge to destroy, so the assertion below is about
+	// what the purge did and not about an empty fixture. The sibling test is what
+	// establishes that the rename leaves it.
 	if !strings.Contains(readFile(t, live), refreshed) {
 		t.Fatalf("the rename must leave the copy for this test to be about anything (%s)", live)
 	}

@@ -543,13 +543,11 @@ command was asked to bind something, not to destroy a login — deleting there d
 the newest copy of a renamed account's credential, which is the defect the asymmetry
 closed. Both arms name the account.
 
-That pair is reached for a store holding **its own** credential. Where the credential is
-the account's (`credstore/<tool>/<account>`), a bind's sweep returns before this decision
-and keeps the copy *without reporting it*, so a re-bind after a `kae account rename` is
-silent about the copy it leaves behind — measured in
-`TestAccountRenameStrandsTheBoundDirectorysCredential`, with what is still owed in
-[ROADMAP.md](ROADMAP.md) § `kae account rename` leaves a bound directory's store under
-the old name.
+Which of the two a given store gets turns on where its credential lives, and
+[CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Never harvest a copy you cannot attribute
+states that; the case it leaves behind — a `kae account rename` whose stranded copy no
+sweep reports — is [ROADMAP.md](ROADMAP.md) § `kae account rename` leaves a bound
+directory's store under the old name.
 
 One store the binding **does** still point at is swept as well, and only in this
 shape: a directory bound before v0.17.0, whose credential has just moved into the

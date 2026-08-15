@@ -1994,14 +1994,12 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 		// kae add --no-login …)", the wrong instruction for an account the user removed or
 		// renamed on purpose.
 		//
-		// This used to name `kae account rename` plus kae's own re-bind remedy (`kae pin
-		// <tool> <new name>`) as what reaches it, and that is **false for a store whose
-		// credential is the account's** (CredDir set): housekeeping returns above, at
-		// `store.CredDir != "" && !purging`, before the probe and before this function is
-		// called at all. What still reaches this arm is a store holding its own credential
-		// — a pre-split binding, or a tool with no credential variable. The rename's own
-		// shape is measured in TestAccountRenameStrandsTheBoundDirectorysCredential, whose
-		// comment carries the three layers and what each one costs a fix.
+		// Reached only by a store holding its **own** credential — a pre-split binding, or
+		// a tool with no credential variable. Where the credential is the account's
+		// (CredDir set), housekeeping returns above at `store.CredDir != "" && !purging`,
+		// before the probe and before this function is called at all, and that is the
+		// shape `kae account rename` produces (measured 2026-08-16,
+		// TestAccountRenameStrandsTheBoundDirectorysCredential).
 		//
 		// The remedy this message names is not the re-bind above: re-binding repoints the
 		// fragment at the new account's store, so this copy is left with no reader and the

@@ -1054,13 +1054,13 @@ alternative exists (`secret-tool`).
   `TestUnpinPurgeAfterRenameDestroysTheCopyItsRemedyCannotSave` are what this entry now
   rests on — read them for what each command does and for the three layers a fix has to
   clear. They are the re-executors; a restatement here would be the copy that goes stale.
-  Two of this entry's own claims did not survive that re-measurement, and they are
-  recorded because a reader who trusted them would look in the wrong place: for a tool
-  with a credential variable the live copy is in `credstore/<tool>/<old>`, not in
-  `isolation/<pin-id>/<tool>/isolated/<old>/`; and the message that over-promises a
-  harvest belongs to `kae unpin --purge`, which destroys the copy on purpose
-  (docs/CLI.md § kae pin), not to the re-bind, which prints nothing at all. The comments
-  on the sweep said the re-bind reaches that message and have been corrected with it.
+  Where to look, which this entry got wrong until the re-measurement: for a tool with a
+  credential variable the live copy is in `credstore/<tool>/<old>`, not in
+  `isolation/<pin-id>/<tool>/isolated/<old>/`. Nothing reports it — the message that
+  over-promises a harvest belongs to `kae unpin --purge`, which destroys the copy on
+  purpose (docs/CLI.md § kae pin), and the re-bind prints nothing. Which store shape gets
+  which is [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Never harvest a copy you cannot
+  attribute.
   Fixing it still means deciding whether `rename` rewrites bound fragments, which is a
   write into directories the command was not asked to touch — the reason it only warns
   today. What the re-measurement adds to that decision is *where* a fix can live: the

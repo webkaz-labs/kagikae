@@ -227,10 +227,15 @@ is the account's, a bind's sweep returns earlier still and keeps the copy withou
 reporting it.
 **Neither of those is where a rename is caught, and relying on them is what cost a login
 until 2026-08-16**: re-binding repoints the fragment, so the store it leaves behind has no
-reader and the harvest can only refuse. `kae account rename` therefore harvests for
-itself, into the name it is renaming *from*, before its first write —
-`harvestRenamedAccountCredentials` is normative for the ordering and
-`TestAccountRenameHarvestsWhatTheBoundDirectoryIsReading` re-runs it. And a
+reader and the harvest can only refuse. So `kae account rename` harvests for itself,
+**into the name it is renaming from, before its first write** — that ordering is what
+keeps the copy attributable, since the readers still name the old account, and the
+rename's own copy stage carries the result to the new name. `kae account rm` has no such
+destination and must not do it. Both the account's own credential store and a
+per-directory one are in scope, and the readers of the first include a globally isolated
+home with no binding at all, which a walk of the bound directories does not reach
+(`TestAccountRenameHarvestsWhatTheBoundDirectoryIsReading` and
+`TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads` re-run the pair). And a
 payload kae could not read or date is deleted by `--purge` too, for the first exception's
 reason rather than as a rule of its own: keeping it strands a secret **nothing kae offers
 can remove**, since a per-directory item is addressable only from the string kae hashes

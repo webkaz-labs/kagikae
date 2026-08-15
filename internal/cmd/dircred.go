@@ -2084,10 +2084,14 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 // It harvests into the **old** name, and that is the whole design. The rename's own copy
 // stage then carries the result to the new name, so nothing here reasons about an account
 // that does not exist yet, and an abort between the two leaves the copy safe under the name
-// it already had. Attribution works for the same reason: the readers still name the old
-// account and the store's path is composed from it, which stops being true the moment
-// anything repoints them — every path that runs after a re-bind could only refuse, which is
-// what made kae's own remedy the thing that lost the login.
+// it already had. Attribution works for the same reason, and docs/CREDENTIAL-RULES.md
+// § Never harvest a copy you cannot attribute states the rule this follows from.
+//
+// **`kae account rm` deliberately does not share this.** A harvest persists into
+// `acc.Artifacts[artName].SecretRef`, which is the ref `rm` is deleting, so preserving
+// there would mean re-creating the account the user asked to destroy. The rename is the
+// route with a live destination, which is why this is its function and not a seam with one
+// real implementation and one that must do nothing.
 //
 // Before the rename's first write, never after: harvesting is not deleting and the two
 // belong on opposite sides of the write (docs/CREDENTIAL-RULES.md § A chokepoint is not
@@ -2164,6 +2168,13 @@ func (app *App) harvestRenamedAccountCredentials(ctx context.Context, be secret.
 // harvestRenamedStore is one store's worth of the pass above, so its two halves cannot
 // answer the same question differently — which is the drift docs/CREDENTIAL-RULES.md
 // § A chokepoint is not complete coverage records twice for two hand-kept copies.
+//
+// The `dirSpecs` → `snapshotCredential` → `harvestDirCredential` order is the same one
+// harvestSupersededDirCredentials runs inline; the two are second copies of one shape and
+// not third, because harvestBeforeDelete reads live first on purpose. Left as two: they
+// differ in attribution source, in control flow and in messaging, so a shared helper would
+// hand all three back to its callers for about the lines it saved. **A third hand-written
+// copy is where that stops being true.**
 func (app *App) harvestRenamedStore(ctx context.Context, be secret.Backend,
 	tool, accountName, artName string, dirs bindDirs,
 ) {

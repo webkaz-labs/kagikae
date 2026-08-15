@@ -755,7 +755,13 @@ alternative exists (`secret-tool`).
   `credential_superseded` started attributing a shared store by its readers; it is gated
   the same way in effect, asking only once a finding is otherwise ready and memoizing
   within an account's group — but not across groups, so an account whose bound copy really
-  was overtaken pays one walk each. The fix is a per-command memo, and
+  was overtaken pays one walk each. `kae account rename`'s harvest is a **fourth** walker
+  and the least gated of them (2026-08-16): it asks `credStoreReaders` for the account's own
+  store and then walks the pins again itself for the per-directory shape, so a rename costs
+  two `ReadDir`s and two reads of every bound directory's fragment where one would do.
+  Filesystem only, no subprocess, and a rename is typed by a human — which is why it was
+  filed here rather than deduped, and deduping it properly needs `credStoreReaders` to
+  return the pins it walked. The fix is a per-command memo, and
   the reason it is not an `App` field is that this package has already had one of those make
   a test pass for the wrong reason without a per-operation reset.
   Separately, that walk is the **third** written over the same source: `credStoreRefs` shares

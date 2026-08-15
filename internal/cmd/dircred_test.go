@@ -2138,6 +2138,20 @@ func TestRunRebindSweepKeepsALostAccountsCredential(t *testing.T) {
 	})
 }
 
+// renameFixtureApp is overlayTestApp with the config **on disk** that a rename needs, which
+// is not the same thing as one in memory: `buildAccountRename` edits the profile reference
+// through `editConfig`, and that reloads `app.Config` from the file — so a secret backend
+// set only in memory is gone by the time the rest of the command reads it, and the harvest
+// fails with "no OS credential store found" on a machine that has none. The `[security]`
+// line is what makes these tests run the same way everywhere; it is not decoration.
+func renameFixtureApp(t *testing.T) *App {
+	t.Helper()
+	app := overlayTestApp(t)
+	writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n"+
+		"[profiles.main.accounts]\nclaude = \"main\"\n")
+	return app
+}
+
 // `kae account rename` deletes the old account's credential refs, and every delete of a
 // copy a bound directory is reading harvests first (docs/CREDENTIAL-RULES.md § Harvesting
 // before a write or a delete). It did not, so renaming an account out from under a bound
@@ -2154,9 +2168,7 @@ func TestRunRebindSweepKeepsALostAccountsCredential(t *testing.T) {
 // kae does, and a test written on it stays green against a broken kae and a fixed one
 // alike. That is not hypothetical — this test was written that way first.
 func TestAccountRenameHarvestsWhatTheBoundDirectoryIsReading(t *testing.T) {
-	app := overlayTestApp(t)
-	writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n"+
-		"[profiles.main.accounts]\nclaude = \"main\"\n")
+	app := renameFixtureApp(t)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 	_, _, live := pinWithIdentifiedClaude(t, app, modeIsolated)
@@ -2197,9 +2209,7 @@ func TestAccountRenameHarvestsWhatTheBoundDirectoryIsReading(t *testing.T) {
 // shape (a tool that never wrote one, and agy, which cannot expose one at all) and the one
 // that reaches the refusal without hand-editing anything. Its own doc carries the contrast.
 func TestAccountRenameSaysSoWhenItCannotHarvest(t *testing.T) {
-	app := overlayTestApp(t)
-	writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n"+
-		"[profiles.main.accounts]\nclaude = \"main\"\n")
+	app := renameFixtureApp(t)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 	_, _, live := pinWithCapturedClaude(t, app, modeIsolated)
@@ -2235,9 +2245,7 @@ func TestAccountRenameSaysSoWhenItCannotHarvest(t *testing.T) {
 // rename harvested, this same sequence was a logout with a warning that recommended a
 // re-bind which could not have helped.
 func TestUnpinPurgeAfterRenameLosesNothingTheRenameHarvested(t *testing.T) {
-	app := overlayTestApp(t)
-	writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n"+
-		"[profiles.main.accounts]\nclaude = \"main\"\n")
+	app := renameFixtureApp(t)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 	_, _, live := pinWithIdentifiedClaude(t, app, modeIsolated)
@@ -3428,9 +3436,7 @@ func TestPurgeIsTheWayOutForACredentialKaeCannotJudge(t *testing.T) {
 // it. docs/ROADMAP.md § `kae account rename` leaves `state.synced` and the global fragment
 // on the old name carries that, including why it is not a one-line follow-on.
 func TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads(t *testing.T) {
-	app := overlayTestApp(t)
-	writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n"+
-		"[profiles.main.accounts]\nclaude = \"main\"\n")
+	app := renameFixtureApp(t)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 	now := app.Now()
@@ -3468,9 +3474,7 @@ func TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads(t *testing.T) {
 // makePreSplit builds the state deliberately: kae cannot produce it any more, and a
 // directory bound by an older release keeps its own credential until it is re-pinned.
 func TestAccountRenameHarvestsAPreSplitDirectorysOwnCopy(t *testing.T) {
-	app := overlayTestApp(t)
-	writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n"+
-		"[profiles.main.accounts]\nclaude = \"main\"\n")
+	app := renameFixtureApp(t)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 	dir, storeDir, _ := pinWithIdentifiedClaude(t, app, modeIsolated)

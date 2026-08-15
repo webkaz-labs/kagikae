@@ -10,6 +10,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -270,6 +271,13 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		return nil, err
 	}
 	defer cfgLock.Release()
+
+	// The harvest below and stage 1 read the same ref — the pass compares the old snapshot's
+	// payload, then stage 1 copies it — which is one extra `security` subprocess per rename
+	// on the darwin keychain. Only the backend cache, not the keychain one `runRebind` also
+	// wraps: nothing here reads a live store twice. Safe against the harvest's own write
+	// because `secret.Cached` invalidates the key on Set and Delete.
+	be = secret.Cached(be)
 
 	// Stage 0: preserve what the bound directories are reading into the account being
 	// renamed, while its snapshot and the fragments naming it are both still there. Stage 1

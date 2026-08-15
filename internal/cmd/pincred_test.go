@@ -67,7 +67,21 @@ func pinWithCapturedClaude(t *testing.T, app *App, mode string) (dir, storeDir, 
 	if code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") }); code != constants.ExitOK {
 		t.Fatalf("capture claude/main: %s", out)
 	}
-	dir = pinHere(t, app, mode)
+	return pinAndResolveClaudeStore(t, app, mode)
+}
+
+// pinAndResolveClaudeStore binds a temp directory to claude/main and answers where that
+// binding's credential actually is. Shared by the two fixtures above, which differ only in
+// how the account was captured: the store path derivation is the thing dirCredFile's own
+// doc says must not be kept by hand in two places.
+//
+// The path differs per mode — one directory per pin×tool for shared, a per-account one for
+// isolated — which is the branch boundStoreDir picks, so the mode is a parameter rather
+// than a second copy. Going through pinHereAs is what keeps a test's pin off the real
+// keychain; that helper carries what calling runPin directly once cost.
+func pinAndResolveClaudeStore(t *testing.T, app *App, mode string) (dir, storeDir, credFile string) {
+	t.Helper()
+	dir = pinHereAs(t, app, "main", mode)
 	storeDir = app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
 	if mode == modeIsolated {
 		storeDir = app.Paths.IsolatedConfigDir(paths.PinID(dir), constants.ToolClaude, "main")
@@ -94,15 +108,7 @@ func pinWithCapturedClaude(t *testing.T, app *App, mode string) (dir, storeDir, 
 func pinWithIdentifiedClaude(t *testing.T, app *App, mode string) (dir, storeDir, credFile string) {
 	t.Helper()
 	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
-	dir = pinHereAs(t, app, "main", mode)
-	storeDir = app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
-	if mode == modeIsolated {
-		storeDir = app.Paths.IsolatedConfigDir(paths.PinID(dir), constants.ToolClaude, "main")
-	}
-	credFile = dirCredFile(app, constants.ToolClaude, "main", storeDir)
-	if readFile(t, credFile) == "" {
-		t.Fatalf("pin (%s) did not materialize a credential at %s", mode, credFile)
-	}
+	dir, storeDir, credFile = pinAndResolveClaudeStore(t, app, mode)
 	// The reader half of attribution: without a label in the store this fixture would be
 	// evidence about nothing, exactly as bindClaudeHere's own control says.
 	if readFile(t, filepath.Join(storeDir, ".claude.json")) == "" {

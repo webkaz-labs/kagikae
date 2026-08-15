@@ -574,7 +574,7 @@ check 'an accepted block does reach its first line' 0 "$rc"
 #     the live harvest block has one: `#   the three lines above assert: exactly ONE
 #     stderr line`. This is the widening the column-0 anchor does NOT cover, so
 #     guard 23 cannot see it — measured, `^#.*assert:` survives every other guard
-#     here and refuses § v0.17.0 surface — the credential harvest outright. The
+#     here and refuses docs/VALIDATION.md § Harvesting a credential outright. The
 #     marker has to be the first thing after the `#`, and that is what this pins.
 f=$(doc assertprose '## AssertProse' 'test 1 -eq 1' \
   '#   the line above will assert: exactly one thing, and this is prose about it')

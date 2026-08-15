@@ -1415,7 +1415,7 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// a "per-directory" credential at store.Dir named neither the thing removed nor
 		// where it lived, and understated the scope of the one removal that affects
 		// every other binding of the account. Found by running the smoke procedure in
-		// docs/VALIDATION.md § v0.17.0 per-account credential. What no test pinned was the
+		// docs/VALIDATION.md § Switching a per-account credential store. What no test pinned was the
 		// **account-wide** sentence — the two assertions on this literal are both negative;
 		// the per-directory arm below is pinned positively, but on `lines[0]` containing the
 		// store dir rather than on the wording (TestPruneDirCredentialsRemovesSupersededItem),

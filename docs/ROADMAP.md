@@ -117,8 +117,8 @@ alternative exists (`secret-tool`).
 
 - **Two assertions in the harvest block still pass when the thing that reads the
   snapshot is broken** (recorded 2026-08-09, **not fixed**). In
-  [VALIDATION.md](VALIDATION.md) § v0.17.0 surface — the credential harvest, cases `B2`
-  and `B3` pair `snap main | grep -c FOREIGN` with a positive line on the **store**
+  [VALIDATION.md](VALIDATION.md) § Harvesting a credential, cases `B2` and `B3`
+  pair `snap main | grep -c FOREIGN` with a positive line on the **store**
   (`grep FOREIGN "$(accstore main)"`) rather than on `snap()` — so a `snap()` that
   returns nothing at all prints `0` and reads as a pass. That is the defect the block's
   own closing prose records fixing once already, for `B1` on 2026-08-07; it was fixed
@@ -834,8 +834,7 @@ alternative exists (`secret-tool`).
   reachable only from a **pre-split** binding or from a bound store versus the account
   snapshot — so its remaining value is largely the migration window and the snapshot
   comparison, which the acceptance block in
-  [VALIDATION.md](VALIDATION.md) § v0.17.0 surface — `kae relogin` and
-  `credential_superseded` now states.
+  [VALIDATION.md](VALIDATION.md) § `kae relogin` and `credential_superseded` now states.
   Do **not** fix it by dropping `winnerUnattributable`: it is the guard that keeps kae
   from telling a user their login is dead on the strength of a copy it cannot attribute,
   and the asymmetry there is deliberate ([AGENTS.md](../AGENTS.md)).

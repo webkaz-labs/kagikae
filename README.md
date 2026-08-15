@@ -496,7 +496,8 @@ subset.
 | [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | Why the scope/isolation model is shaped the way it is — rationale only, never the rules themselves. |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Later phases. |
 | [docs/RELEASE.md](docs/RELEASE.md) | Active release target and release process. |
-| [docs/VALIDATION.md](docs/VALIDATION.md) | Pre-commit and release checks. |
+| [docs/VALIDATION.md](docs/VALIDATION.md) | Pre-commit checks, the smoke blocks that run from them, and two release-only smokes. |
+| [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | What a release owes on a real machine, and what it still owes. |
 
 ## License
 

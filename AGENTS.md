@@ -42,7 +42,8 @@ check here can notice that the standard changed.
 | [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | the scope/isolation model's rationale and the upstream findings behind it — read it to learn *why* a decision was made, never for the rules themselves, which live in the documents above. Its section numbers have gaps that the file's own opening explains |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | long-term ordering changes |
 | [docs/RELEASE.md](docs/RELEASE.md) | active release target changes |
-| [docs/VALIDATION.md](docs/VALIDATION.md) | before commit and release checks |
+| [docs/VALIDATION.md](docs/VALIDATION.md) | before commit checks, for the smoke blocks `scripts/smoke-run.sh` executes, and for the two release-only smokes that stayed beside the surfaces they check |
+| [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | before cutting a release — what a release owes on a real machine, and **§ Open gates**, which it still owes. Nothing here runs from `mise run check` |
 | [.claude/skills/upstream-auth-drift/](.claude/skills/upstream-auth-drift/SKILL.md) | an upstream tool may have changed how its authentication works: a doctor `upstream_version` / `identity_drift` warning, a tool upgrade, a "kae says it switched but the tool shows the old account" report, or a routine re-verification |
 
 ## What Belongs In This File
@@ -267,7 +268,7 @@ Never use a real login handle.
 
 For every change, decide and report "changed / no change needed" for **each tracked
 markdown file this repository owns** — derive the set rather than trusting a list:
-`git ls-files '*.md'` (18 today). It covers `README.md`, `AGENTS.md`, `CLAUDE.md`,
+`git ls-files '*.md'`. It covers `README.md`, `AGENTS.md`, `CLAUDE.md`,
 everything under `docs/`, and the repo-local `upstream-auth-drift` skill, which the
 Documentation Map cites as normative and which a `docs/`-only list cannot reach — that
 is how a rule that had moved kept naming `AGENTS.md` as its authority. Every tracked

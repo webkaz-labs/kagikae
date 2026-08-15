@@ -32,11 +32,11 @@ check here can notice that the standard changed.
 | [README.md](README.md) | user-facing command or setup changes |
 | [docs/CONTEXT.md](docs/CONTEXT.md) | before naming anything, and whenever a word for an existing thing has to be chosen — it is the authority on the vocabulary it holds, the user-facing terms and the mechanism vocabulary alike. Not for a JSON contract token, which is an enum owned by `internal/constants`; its own routing table says so. It is a glossary and states no rule: an entry that names something a predicate decides says which predicate and stops, so a question about *behaviour* is never answered here |
 | [docs/PRODUCT.md](docs/PRODUCT.md) | mission, modes, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
-| [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves |
+| [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves — and **docs/ADAPTERS.md § Verified Upstream Versions before bumping a `VerifiedVersion()` or `VerifiedOn()`**, which owns what re-verification means and where every copy of the pair lives |
 | [docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) | anything that touches what companion-auth lockstep (git/gh/cloud CLIs) switches or preserves |
 | [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md) | before any code writes, harvests, attributes, orders or deletes a credential **copy**. It is the normative text for its own thirteen sections and not for the whole subject: several of them defer the per-tool contract to `docs/ADAPTERS.md` or `docs/CLI.md` where they say so, and § Implementation Boundaries below keeps the credential rules that did not move, beside one routing line per rule that did |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, adapter interface, transaction, lock changes — and § Switch Mechanisms, what a cell of the scope × environment matrix does internally. The matrix itself is in `docs/PRODUCT.md` |
-| [docs/CLI.md](docs/CLI.md) | command flags, output, exit codes, JSON contract changes |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | package layout, adapter interface, transaction, lock changes — and § Switch Mechanisms, what a cell of the scope × environment matrix does internally. The matrix itself is in `docs/PRODUCT.md`. Also **docs/ARCHITECTURE.md § Known Traps before any programmatic edit of a config, state or credential file** |
+| [docs/CLI.md](docs/CLI.md) | command flags, output, exit codes, JSON contract changes — and **docs/CLI.md § Keeping completion current before adding, renaming or removing a command, a subcommand or a shell**, which is normative for what has to move in the same commit and for what no guard checks |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | config, snapshot, state, backup, secret-ref changes |
 | [docs/SECURITY.md](docs/SECURITY.md) | secrets, subprocess, permission, redaction changes |
 | [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | the scope/isolation model's rationale and the upstream findings behind it — read it to learn *why* a decision was made, never for the rules themselves, which live in the documents above. Its section numbers have gaps that the file's own opening explains |
@@ -211,116 +211,39 @@ once and were then shown to be false.
   way here. The rule and the reproduction live on `runnertest.Fake`, which is the
   shared fake every package uses; read it before writing a test that stubs
   `internal/runner`.
-- **A keychain item's identity is service + account, and per-tool.** codex derives
-  the account of its single-service `Codex Auth` item from `CODEX_HOME`
-  (`cli|` + 16 hex of sha256 over the **canonicalized** path — symlinks resolved),
-  so one service holds one legitimate item per tool home; claude hashes the value
-  **without resolving or cleaning the path** into the **service** name instead
-  (`docs/ADAPTERS.md` § Credential storage resolution derives it, NFC step included,
-  and `claude.keychainService` is the only code that may).
-  Same idea, two incompatible formulas: derive each in its own adapter and never
-  port one.
-  Consequently **never delete a keychain item by service name alone before writing**
-  (`keychain.DeleteItem` on a service another home also uses): that deleted a second
-  `CODEX_HOME`'s codex login on every switch, shipped through v0.12.0. **Every**
-  keychain spec is `KeychainMatchAccount` now — a guard
-  (`TestKeychainSpecsAreAccountScoped`) refuses a new one that is not — and the
-  account is derived from the environment being written, never from the live item
-  and never from a snapshot captured elsewhere. The direction matters as much as
-  the scoping: kae used to prefer the *existing* item's account over the adapter's
-  when creating one, so a single item under a wrong account (a former `$USER`)
-  pinned every later write to it while the tool went on reading the account its own
-  rule names — the write succeeds, the item exists, and the tool reports no login.
-- A tool's credential can be a **set** of stores written as one unit, and kae must
-  switch the whole set. cursor-agent's `setAuthentication` writes the access token,
-  the refresh token and (for an api-key login) the api key together, and its logout
-  deletes all three; kae switched only the access token, so `cursor-agent status`
-  saw a consistent-looking pair from two accounts, and an api key left behind
-  re-minted the *previous* account's tokens on the next expiry. Enumerate what one
-  login writes — every item of every service the tool derives — before declaring the
-  artifacts, and when a sibling store is deliberately excluded (cursor's
-  `cursor-bedrock-*`, written by a separate upstream path) say so in
-  `docs/ADAPTERS.md` rather than leaving it unmentioned. A credential artifact is
-  never `IdentityOnly`: absent must apply as absent, or the previous account's token
-  survives the switch.
-- Upstream config values that select a **store** are an enum kae must model whole,
-  including its default. codex's `cli_auth_credentials_store` defaults to `file`
-  when absent and `auto` means *keyring first, file only if absent* — so mapping
-  "anything that is not keyring" to the file store writes `auth.json` while codex
-  reads the keychain. A value kae cannot switch (`ephemeral`, or
-  `[features] secret_auth_storage`) is refused, not approximated.
+- **These cross-tool rules already have a normative home; the lines name the question
+  and state no rule**, as the credential list above does.
+  - How a keychain item is addressed, and why claude's and codex's derivations do not
+    port to each other — [docs/ADAPTERS.md](docs/ADAPTERS.md) § Keyring item contract
+    and § Credential storage resolution, before writing or deleting one.
+  - A credential that is a **set** of stores written as one unit —
+    [docs/ADAPTERS.md](docs/ADAPTERS.md) § Cursor CLI, before declaring a tool's
+    artifacts.
+  - An upstream config value that selects a store —
+    [docs/ADAPTERS.md](docs/ADAPTERS.md) § Codex CLI, before mapping one to a driver.
+  - The two comparison predicates, credential versus identity —
+    [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) § Adapter Interface, before comparing
+    any captured payload against a live one.
+  - `VerifiedVersion()` and `VerifiedOn()` —
+    [docs/ADAPTERS.md](docs/ADAPTERS.md) § Verified Upstream Versions, before bumping
+    either.
 - Secret values must never reach stdout/stderr/JSON/metadata/logs. New output
   paths need a redaction test.
-- Two comparison predicates, never interchangeable: a **credential** is compared
-  byte-exact (`snapshotArtifactDiffers`) — one differing bit is a different
-  credential, and that strictness is never loosened. An **identity-only** payload
-  is compared on the spec's `IdentityKeys` (`identityDiffers`), because the tool
-  rewrites volatile fields in it on its own schedule (claude renews
-  `/oauthAccount.profileFetchedAt` past a 24h TTL). Reusing the credential
-  comparator for an identity makes every correct switch look like drift a day
-  later; it shipped that way once.
 - Warnings go to stderr and are emitted **before** the write they warn about.
   `--quiet` suppresses success reports, never warnings, and a warning never
   changes the exit code (a non-zero exit breaks the mise enter hook).
 - Mixed-state files are patched by JSON Pointer only; whole-file replacement
   of `~/.claude.json` is forbidden in code review, not just in docs.
-- **`state.json` writes go through `App.mutateState`, and a decision about the
-  state is made inside the mutation.** The per-tool locks deliberately let
-  `kae use claude <a>` and `kae use codex <b>` run at once, so a copy of the
-  document loaded earlier in a command is already stale by the time it is
-  written back — that reverted the other tool's field with nothing reporting it,
-  and `kae rollback` restores credentials, not this file. The seam re-reads
-  under a `state` lock; a guard test keeps `state.Save` out of the rest of
-  `internal/cmd`. The second half matters just as much: `kae account rm` decides
-  *inside* the mutation whether the account it removes is still the active one,
-  because the pre-lock answer can predate a switch that finished in between.
-- `config.toml` edits go through the comment-preserving `config.Editor` via
-  `App.editConfig` (under the config lock). A decode-then-encode round-trip
-  (BurntSushi `config.Load` → re-`Marshal`) is forbidden: it silently drops
-  every user comment.
+- **`state.json` writes go through `App.mutateState`** — before writing state, or
+  deciding anything from a copy of it read earlier
+  ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) § Locking).
+- **`config.toml` edits go through `config.Editor`** — before any programmatic
+  config mutation ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) § Known Traps).
 - JSON contract tokens live in `internal/constants`; never inline literals.
-- Every adapter declares `VerifiedVersion()` **and `VerifiedOn()`**, methods of
-  `adapter.Adapter` (`internal/adapter/adapter.go` says why each is). Re-verify that
-  tool's rows in [docs/VALIDATION.md](docs/VALIDATION.md) § Upstream Behaviour
-  Assumptions, then move every copy in the same commit — there are more than the
-  pair, and `.claude/skills/upstream-auth-drift/SKILL.md` § Re-record is normative
-  for which those are. kae depends on undocumented upstream
-  *behaviour*, not just layout, and a behaviour-only change passes every structure
-  guard. Record the **condition**, never an absolute: `/oauthAccount` was left
-  alone because claude was measured self-healing it, when the fact was that it
-  self-heals past a 24h TTL every token refresh renews — so for a credential in
-  daily use it never fired, no guard noticed, and switched sessions kept naming
-  the previous account. An absolute is what expires silently. The
-  `upstream_version` doctor check is the only offline signal, and it *skips
-  silently* on a version string it cannot parse — so a stale or typo'd value reads
-  as "nothing to report".
-- Adding or changing a command or subcommand requires updating shell completion
-  in lockstep: the `case` in all three scripts in `internal/cmd/completion.go`,
-  any new `kae __complete` kind in `internal/cmd/complete.go`, and the parity
-  guard `subcommandVerbs` (its sub-verbs) and the classification
-  `positionalCommands` (whether it takes a positional at all), plus
-  `completionCommands` and `printHelp`, neither of which any guard checks against
-  the router. Adding a **shell** reaches much further than the scripts, and no
-  guard checks any of it against `completionScript` — so find the copies rather
-  than trust a list of them: `grep -rn fish internal/`. Two kinds fail *silently*
-  instead of loudly, which is why the grep is worth running: the installer's
-  `--refresh` walk (`completion_install.go`), or the new shell's registered file
-  is never rewritten again; and the per-shell loops and table rows in the tests,
-  which leave every guard below blind to it.
-  `kae <cmd> <TAB>` must never be a dead end — a new subcommand group shipped
-  without completion in v0.10.0, and `kae env` / `kae backup` had no case at all
-  until v0.17.0. **A guard reaches only what its table names**, which is why
-  those two tables are keyed differently and why neither of them closes the
-  class on its own; `positionalCommands` **and `subcommandVerbs`** in
-  `internal/cmd/completion_install_test.go` are together normative for what each
-  guard does and does not see — including why the gap is not closed by
-  dispatching each command from a test, and what deleting an entry from
-  `subcommandVerbs` silently takes with it. Read them before weakening either. Completion is dynamic, so candidate changes resolve live; only a
-  *structural* script change (a new case/kind) alters the registered script.
-  That refresh is automatic: `mise run install` and `scripts/install.sh` run
-  `kae completion --refresh` (rewrites already-registered files; never creates
-  one), and the mise-hook registration self-sources. Plain `go build` does not,
-  so run `kae completion --refresh` if you build that way.
+- **Adding or changing a command, a subcommand or a shell requires updating
+  completion in lockstep** — before touching the router, read
+  [docs/CLI.md](docs/CLI.md) § Keeping completion current, which is normative for
+  what has to move together and for what no guard checks.
 
 ## Example Names in Docs and Tests
 

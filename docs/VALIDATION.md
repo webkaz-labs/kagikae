@@ -1858,8 +1858,9 @@ cached `refreshTokenExpiresAt` accurately predicts *when* that rejection happens
 timing claim is what `credential_stale` and `credential_expiring` both rest on, and no
 vendor page states it. A documentation citation is also a weaker instrument than every
 sibling gate in this file, each of which is closed only by a dated run — and
-[AGENTS.md](../AGENTS.md) is explicit that kae depends on undocumented upstream
-*behaviour*, and that where docs and the binary disagree the binary wins. Closing this
+[ADAPTERS.md](ADAPTERS.md) § Verified Upstream Versions is explicit that kae depends
+on undocumented upstream *behaviour*, and that where docs and the binary disagree the
+binary wins. Closing this
 one on a citation would have set a precedent the rest of the file does not follow.
 
 **Procedure** (needs a real machine and one real login under test, plus a second

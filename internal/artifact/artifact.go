@@ -345,7 +345,7 @@ func ApplyLive(ctx context.Context, sp Spec, v Value) error {
 		// is the only evidence of what the tool reads.
 		//
 		// The adapter's account is authoritative wherever there is one; this used to
-		// have that backwards, and AGENTS.md's keychain-identity boundary carries why.
+		// have that backwards; AGENTS.md's keychain-identity line routes to why.
 		account := sp.KeychainAccount
 		if account == "" {
 			if existing, _, err := keychain.ItemAccount(ctx, sp.Target); err == nil && existing != "" {

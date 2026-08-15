@@ -61,7 +61,7 @@ change a name.
 | **credential store** | the per-account directory a bind points a tool's credential variable at, so directories sharing an account share one credential | |
 | **reader** | a config dir currently reading a credential store — `credStoreReaders` enumerates them | Never **witness**. The two were used interchangeably, with the same qualifier on each ("every witness that can speak" beside "a reader that cannot speak"), so no distinction was lost by converging them |
 | **snapshot** | kae's own stored copy of one account's artifacts | |
-| **identity cache** | the tool's own record of which account is logged in (claude's `/oauthAccount`) | Evidence *about* an account, never a credential — and the two are compared by different predicates, which [ADAPTERS.md](ADAPTERS.md) and `AGENTS.md` own |
+| **identity cache** | the tool's own record of which account is logged in (claude's `/oauthAccount`) | Evidence *about* an account, never a credential — and the two are compared by different predicates, which [ARCHITECTURE.md](ARCHITECTURE.md) § Adapter Interface owns |
 | **harvest** | copying an existing credential somewhere it survives, before a write or a delete would lose it | |
 | **capture back** | **narrower than harvest**: the single harvest `kae relogin` runs after the tool's own login flow ([CLI.md](CLI.md) § kae relogin Semantics) | Not a synonym for harvest, and the only place the phrase is correct |
 | **tombstone** | a credential the tool itself overwrote to record that its own login is dead | What kae may conclude from one is [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § What kae observed is not what the tool can do |

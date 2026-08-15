@@ -259,6 +259,30 @@ alternative exists (`secret-tool`).
   with two members and a count, since one example pins one example. Every one of those
   was a live false green here, found by a reviewer and not by the author.
 
+- **[ACCEPTANCE.md](ACCEPTANCE.md)'s `## Real-…` headings confirm each other's
+  citations** (measured 2026-08-16, **not fixed**). `scripts/docrefs`' package comment
+  owns *why* only the cited name's first word is compared and why widening it is a
+  different predicate rather than a stricter one; what is recorded here is a live
+  instance, because a ceiling stated in the abstract does not tell the next reader that
+  **this** file is one where deleting a section stays green. They normalize to the same
+  first word, so either can be renamed and every citation of both still resolves.
+  Two-sided, so neither half is a guess: rename `## Real-machine gate — …` alone and
+  `bash scripts/check-docs.sh` prints `ok` with the section-citation count unchanged;
+  rename `## Real-Machine Acceptance …` as well and it exits 1 naming the citations in
+  [ROADMAP.md](ROADMAP.md) and [VALIDATION.md](VALIDATION.md). So the gate is working —
+  it is the pair that hides the one.
+  **What it costs to close is smaller than it reads**, and the first draft of this entry
+  priced it against files that do not cite either heading at all. The gate-checked
+  citations are the two that failing run named and nothing else; the rest are bare
+  `§ Name` forms inside [ACCEPTANCE.md](ACCEPTANCE.md) itself, which the walk cannot see
+  either way. So: rename one heading, repoint those, and give the result the guard that
+  already exists — `TestTheCitedSkillSectionHasNoFirstWordRival` in
+  `scripts/docrefs/main_test.go` is this exact check with the file and the word as
+  constants. That guard cannot go in first: it asserts the rival's absence, so it is red
+  until the rename lands, and its second arm is why the rename alone is not durable — a
+  line-opening bold label is a declared name too, so `**Real-machine …**` added later
+  re-opens this silently.
+
 - **`derived_cleared` reads the whole file, so a comment can satisfy it** (recorded
   2026-08-10, **not fixed**). `scripts/smoke-run-selftest.sh`'s
   `grep -oE '\-u [A-Z_]+' "$runner"` is unanchored, so a `-u NAME` written in a comment

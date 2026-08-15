@@ -1047,7 +1047,8 @@ in the same transaction.
   warnings: they must survive a piped stdout and `--quiet`, and they are emitted
   before the write they warn about, not after it.
 - JSON mode never emits color, progress, prompts, or localized text.
-- Secret values never appear in any output, log, or error message; artifacts
+- Secret values never appear in any output, log, error message or metadata file;
+  artifacts
   are referenced by name and location only.
 - Agent-facing arrays encode as `[]`, never `null`.
 - All stable reports carry integer `schema_version` (currently `1`).

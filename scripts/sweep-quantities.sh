@@ -58,12 +58,10 @@
 #
 # # What it cannot reach
 #
-# It is a net, not a proof. The noun and number lists are enumerations, and every
-# enumeration of them has turned out short so far; each addition was found a different way
-# (`thirteen` from this repository's own prose, the ordinals after a diff wrote "a third
-# site" and swept clean, `assertions` from reading a hit returned for a different quantity
-# on the same line). Anything larger than the listed words is written as a digit, which
-# `[0-9]+` covers.
+# It is a net, not a proof. The noun and number lists are enumerations, every enumeration
+# of them has turned out short so far, and each addition was found a different way — so
+# extend them rather than trusting them. Anything larger than the listed words is written
+# as a digit, which `[0-9]+` covers.
 #
 # The class it cannot reach at all is **a quantity on a line the diff does not touch**, and
 # that is the original defect's own shape: one commit merged two commands and the sentence
@@ -76,15 +74,8 @@
 # # The sibling net that was refused, so it is not re-proposed
 #
 # AGENTS.md's closure rule — an absolute about what *is* must be written as its derivation
-# or deleted — looks like it wants a net of this shape too. One was built and measured on
-# 2026-08-14, at a broad word width and at a narrowed negative-existential one, over the
-# branch that added the rule. Both fired on their positive control and stayed silent on a
-# derivation, and both also fired on ordinary prose throughout; the narrow width returned no
-# live instance at all. Two readers counted its records differently and neither count is
-# recorded, because the count was never the finding: neither width separated the defect from
-# the background, and a third was not tried.
-#
-# It cannot, and that is the difference worth keeping. Here, the written number is itself
+# or deleted — looks like it wants a net of this shape too. It cannot have one, and that
+# is the difference worth keeping. Here, the written number is itself
 # the artifact that goes stale, so the defect and the vocabulary coincide. There, a closure
 # word is ordinary vocabulary in this tree, and what goes stale is a measurement that was
 # never run — the discriminating features are the subject's ownership and a derivation's

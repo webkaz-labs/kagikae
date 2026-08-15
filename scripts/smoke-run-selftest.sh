@@ -2,12 +2,9 @@
 # Check scripts/smoke-run.sh's own guards. Run from the repository root, or via
 # `mise run smoke-selftest` (which `mise run check` includes).
 #
-# This exists because the guards were once vouched for in AGENTS.md as "tested
-# against a deliberately leaking fixture" when the fixture had been written by
-# hand, once, and thrown away. An independent review then demonstrated that two
-# of the guarded claims were false — which is exactly what a committed fixture
-# would have caught. The fixtures are cheap on purpose: no `kae` build, no
-# network, so this can run on every commit rather than when somebody remembers.
+# The fixtures are committed and cheap on purpose — no `kae` build, no network — so a
+# guard's claim is checked on every commit rather than vouched for in prose and re-run
+# by hand when somebody remembers.
 #
 # READ THIS BEFORE EDITING EITHER SCRIPT. **The guards in these two files have no
 # tests of their own** (`EXPECTED_GUARDS` at the bottom is the one place that counts

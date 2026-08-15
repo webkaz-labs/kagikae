@@ -67,10 +67,10 @@ What stays out does so for unlike reasons. The freshness surfaces' wording waits
 **result**: [ACCEPTANCE.md](ACCEPTANCE.md) § Real-machine gate — does
 `refreshTokenExpiresAt` predict the login's death? is what decides whether kae
 over-warns, and wording written first would be the unmeasured claim
-[AGENTS.md](../AGENTS.md) refuses. **That gate is an observation to record when a
-logout happens, not a run anyone can schedule**, and that file carries why its
-scheduled form was withdrawn. So this wording waits on evidence with no date on it.
-Worth knowing before treating that as a permanent block:
+[AGENTS.md](../AGENTS.md) refuses. So this wording waits on a result with no date on
+it: [ACCEPTANCE.md](ACCEPTANCE.md) records that gate as an observation rather than a
+run, and says why.
+Before treating that as a permanent block:
 the deferral covers two claims, and only one of them is that gate's. That the surfaces
 do not detect a copy another copy invalidated is already measured on the rotation row
 in [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions; only the accuracy

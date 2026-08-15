@@ -1196,8 +1196,9 @@ group. (A tied store that does *not* win changes nothing; it is already skipped
 for not being superseded.) **That particular mechanism is gone**: attribution of the
 account's own credential store now asks the directories reading it rather than the one
 handle the walk reached first, so a sibling with an identity cache answers for the copy
-([CLI.md](CLI.md) § kae doctor --json is normative for what attributes what, and
-`TestSupersededSurvivesOneSharedHandleLosingItsIdentityCache` is the control). The rule
+([ADAPTERS.md](ADAPTERS.md) § Per-directory credential store is normative for what
+attributes what, and `TestSupersededSurvivesOneSharedHandleLosingItsIdentityCache` is
+the control). The rule
 needs none of that to stand — `scripts/smoke-run.sh` gives every section a fresh
 sandbox — and seeding here is what makes "preamble only" structural instead of an
 instruction a reader has to obey.

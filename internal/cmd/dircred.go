@@ -1680,15 +1680,14 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 // then a breadcrumb read, a stat and a fragment read per pin, plus a second ReadDir for the
 // global isolated homes) and does it **twice** per
 // `kae pin` — once from the pin-level pass and once from the write, with nothing between
-// them that changes what it reads. On those two it is behind the `supersedes` gate, so it
-// costs nothing unless there is a copy worth harvesting; the case where it is worth caring
-// about is `kae run -i`, which the mise hook makes per-invocation. `kae doctor` is the
-// third caller (storeHoldsAccount) and the one **not** behind that gate: it runs once per
-// account whose bound stores can be ordered, which is the ordinary state rather than a rare
-// one. supersededChecksFor memoizes it per group; nothing memoizes across groups.
-// Memoize per command if that shows
-// up — but not on App without a per-operation reset, which is the shape that already made a
-// test pass for the wrong reason here (docs/ROADMAP.md § The reader walk runs twice).
+// them that changes what it reads. It is behind the `supersedes` gate, so it costs nothing
+// unless there is a copy worth harvesting; the case where it is worth caring about is
+// `kae run -i`, which the mise hook makes per-invocation. `kae doctor` reaches it too,
+// through storeHoldsAccount, and is gated the same way in effect — supersededChecksFor
+// asks only once a finding is otherwise ready, and memoizes per group. Memoize per
+// command if that shows up — but not on App without a per-operation reset, which is the
+// shape that already made a test pass for the wrong reason here
+// (docs/ROADMAP.md § The reader walk runs twice).
 func (app *App) credStoreReaders(credDir, tool string) (configDirs []string, complete bool) {
 	if credDir == "" {
 		return nil, false
@@ -2329,12 +2328,12 @@ func (app *App) pinCredentialChecks(ctx context.Context, stores []boundDirStore)
 //     exist to avoid.
 //
 // Cost is paid in that order: the live reads first (one per bound store, the same
-// call pinCredentialChecks makes), the snapshot once per account, and attribution last.
-// Last is not rare, though, and the sentence here used to say a healthy machine paid no
-// attribution at all — it pays it as soon as any bound store's copy is newer than the
-// snapshot, which is what a refresh in a bound directory produces. For the account's own
-// credential store that is a walk of every pinned directory on the machine
-// (credStoreReaders), once per such account.
+// call pinCredentialChecks makes), the snapshot once per account, and the adapter
+// resolution plus identity reads **only** for a finding that is otherwise ready. A
+// healthy machine pays no attribution at all — and since attribution for the account's
+// own credential store walks every pinned directory on the machine, "otherwise ready"
+// is load-bearing rather than a nicety: it is what the winner-side guard is asked
+// inside the loop for.
 //
 // ponytail: reads each bound store's credential a second time — pinCredentialChecks
 // read the same bytes for a different question moments earlier. Hoisting one read
@@ -2494,23 +2493,6 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 	if newestIdx >= 0 {
 		newestAt = "the store bound to " + group.Stores[newestIdx].Dir
 	}
-	// Hoisted: the winner is fixed for the whole loop, so re-resolving its specs and
-	// re-reading its identity once per losing store repeats work whose answer cannot
-	// change. Evaluated lazily-by-position rather than before the loop only if that
-	// mattered — it does not, since reaching this point already means an ordering
-	// exists, which is the state the doc comment says is the rare one.
-	// Phrased as the refusal, not as its complement: `newestIdx < 0` means the winner
-	// is the **snapshot**, which this check does not attribute at all, so the guard
-	// must not fire there. Written the other way round it read as "no store confirmed
-	// the win" and silenced every snapshot-side finding — caught by four tests.
-	//
-	// **Not dead, and not to be closed by removing it**: it is what keeps kae from telling
-	// a user their login is dead on the strength of a copy it cannot attribute, and the
-	// asymmetry with the loser side is deliberate (AGENTS.md). What made it look like the
-	// problem was the predicate it asked, which storeHoldsAccount now states; with that
-	// fixed it still fires, and TestSupersededStaysSilentWhenNoHandleCanAttributeTheCopy
-	// is the arm that says so.
-	winnerUnattributable := newestIdx >= 0 && !holdsAccount(group.Stores[newestIdx])
 	checks := []adapter.Check{}
 	for i, store := range group.Stores {
 		// The index, not a comparison of Dir strings: the winner *is* this element when
@@ -2527,7 +2509,27 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 		if !holdsAccount(store) {
 			continue
 		}
-		if winnerUnattributable {
+		// The winner, asked here rather than hoisted above the loop. Attribution is the
+		// most expensive thing this check does — for the account's own credential store
+		// it walks every pinned directory on the machine — and hoisted it was paid on
+		// every machine where any bound copy is newer than the snapshot, which is what a
+		// refresh in a bound directory produces. Down here it is paid only once a finding
+		// is otherwise ready, and `holdsAccount` memoizes, so a group with several losers
+		// still asks once. Pure predicate, evaluated later: same answer, same findings.
+		//
+		// Phrased as the refusal, not as its complement: `newestIdx < 0` means the winner
+		// is the **snapshot**, which this check does not attribute at all, so the guard
+		// must not fire there. Written the other way round it read as "no store confirmed
+		// the win" and silenced every snapshot-side finding — caught by four tests.
+		//
+		// **Not dead, and not to be closed by removing it**: it is what keeps kae from
+		// telling a user their login is dead on the strength of a copy it cannot
+		// attribute. The asymmetry is in blast radius rather than in the predicate — an
+		// unattributable winner silences the whole group, an unattributable loser only
+		// itself. What made it look like the problem was the predicate it asked, which
+		// storeHoldsAccount now states; with that fixed it still fires, and
+		// TestSupersededStaysSilentWhenNoHandleCanAttributeTheCopy is the arm that says so.
+		if newestIdx >= 0 && !holdsAccount(group.Stores[newestIdx]) {
 			continue
 		}
 		checks = append(checks, adapter.Check{
@@ -2572,20 +2574,24 @@ func supersededRemedy(tool, accountName, dir string, newerIsSnapshot bool) strin
 // evidence says kae does not know. (pinIdentityChecks is the consumer that reports
 // the conflict; here it is only a reason to say nothing.)
 //
-// Which evidence answers it depends on what the store is, and this is
-// harvestDirCredential's dispatch rather than a second opinion about it: the account's
-// own credential store is read by every directory bound to that account, so the
-// readers are the evidence (sharedStoreAttribution); a per-directory store keeps the
-// credential and the cache in one directory, so that directory is.
+// The dispatch below is harvestDirCredential's, and it says why there; it is repeated
+// here rather than extracted because that one already has `specs` resolved and this one
+// must not resolve them on the shared branch, where a resolution failure would refuse a
+// copy the readers can attribute. **They move together**: a third per-directory
+// mechanism makes this branch three-way (docs/CREDENTIAL-RULES.md § A new per-directory
+// mechanism and the link reconcile), and fixing one copy is this repository's
+// took-a-subset-of-the-predicate shape.
 //
 // Asking the one directory about a shared store is what made this check silent
 // exactly where it had most to say. Measured 2026-08-16 with the control in
 // TestSupersededSurvivesOneSharedHandleLosingItsIdentityCache: with three directories
 // bound to one account, whether a finding appeared at all turned on whether the
 // handle that happened to win the walk order had an identity cache beside it — while
-// a sibling handle on the same file confirmed and was never asked. Every store in a
-// group shares one credential since the split, so that is the ordinary shape, not an
-// edge of it.
+// a sibling handle on the same file confirmed and was never asked. Two directories
+// bound by a current kae are two handles on one file, which is what makes the
+// one-handle question the wrong one; a store bound before the split still keeps its
+// own copy (`credential_unsplit`), which is the shape the fixtures have to build
+// deliberately.
 func (app *App) storeHoldsAccount(ctx context.Context, be secret.Backend, acc account.Account, store boundDirStore) bool {
 	dirs := store.dirs()
 	if dirs.Cred != "" {

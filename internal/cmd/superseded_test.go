@@ -355,8 +355,8 @@ func hideIdentity(t *testing.T, storeDir string) func() {
 }
 
 // Attribution is a property of the credential, and asking one handle about it made
-// this check silent on the shape it exists for. Every directory bound to an account
-// reads one file since the split, so the store that wins the ordering is whichever
+// this check silent on the shape it exists for. Two directories bound by a current kae
+// read one file, so the store that wins the ordering is whichever
 // handle the walk reached first — and if that one had no identity cache beside it,
 // `winnerUnattributable` suppressed **every** finding in the group while a sibling
 // handle on the same file was confirming and was never asked.
@@ -466,18 +466,16 @@ func TestSupersededStaysSilentWhenNoHandleCanAttributeTheCopy(t *testing.T) {
 	}
 }
 
-// What attributing a shared store by its readers costs, stated as a test because it is
-// not obvious and nothing else says it: the reader set is enumerated from the pin index
-// **machine-wide**, so one directory under the isolation root whose pin record kae
-// cannot read makes the enumeration incomplete, and every finding about a shared store
-// goes — including for accounts and directories that record has nothing to do with.
+// What attributing a shared store by its readers costs, stated as a test because a cost
+// nobody re-runs is a cost that stops being true: the reader set is enumerated from the
+// pin index **machine-wide**, so one directory under the isolation root whose pin record
+// kae cannot read makes the enumeration incomplete, and every finding about a shared
+// store goes — including for accounts and directories that record has nothing to do
+// with.
 //
-// It is the conservative direction, and it is the same answer the harvest gives on the
-// same evidence. What makes it worth pinning rather than assuming is that **nothing
-// reports the incompleteness**: `pinChecks` reads the pins through `pinnedDirs`, which
-// drops the flag (`pinindex.go`), so an unreadable pin record produces no `pin_stale`
-// and no other signal. docs/ROADMAP.md § The pin index can be incomplete with nothing
-// saying so owns that gap; docs/CLI.md § `kae doctor --json` states the silence.
+// docs/ROADMAP.md § The pin index can be incomplete with nothing saying so owns why that
+// is the conservative direction and what is owed instead; docs/CLI.md § `kae doctor
+// --json` states the silence as part of the check's contract.
 func TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()

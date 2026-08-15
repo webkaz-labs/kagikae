@@ -727,10 +727,11 @@ alternative exists (`secret-tool`).
   gate, so it costs nothing unless there is a copy worth harvesting; where that stops being
   true is `kae run -i`, which the mise hook makes a per-invocation path, and where the
   per-reader `dirSpecs` resolution stops being free is the day a second tool's rotation is
-  measured (codex's `Artifacts` can probe the keychain). **`kae doctor` became a caller that
-  is not behind that gate** when `credential_superseded` started attributing a shared store
-  by its readers: it walks once per account whose bound stores can be ordered — the ordinary
-  state, not a rare one — memoized within a group and not across them. The fix is a per-command memo, and
+  measured (codex's `Artifacts` can probe the keychain). `kae doctor` became a caller when
+  `credential_superseded` started attributing a shared store by its readers; it is gated
+  the same way in effect, asking only once a finding is otherwise ready and memoizing
+  within an account's group — but not across groups, so an account whose bound copy really
+  was overtaken pays one walk each. The fix is a per-command memo, and
   the reason it is not an `App` field is that this package has already had one of those make
   a test pass for the wrong reason without a per-operation reset.
   Separately, that walk is the **third** written over the same source: `credStoreRefs` shares
@@ -756,9 +757,8 @@ alternative exists (`secret-tool`).
   evidence, and a reader kae could not enumerate is the one that might disagree — so what
   is owed here is the **signal**, not a weakening: a doctor check on that flag, which is a
   new code and its own change. Recorded rather than taken because the trigger is a pin
-  record written from outside kae (`recordPinnedDir` writes atomically), which is why the
-  empty-record branch is the one measured unkillable on 2026-08-07 and carries its guard
-  as a comment rather than a test.
+  record written from outside kae (`recordPinnedDir` writes atomically; `pinnedDirsComplete`
+  carries why that branch is unkillable).
 
 - **A mode toggle and a same-mode re-pin answer a poisoned store differently** (recorded
   2026-08-08 by a reading-type review, **not fixed, and deliberately so**). `Conflicting`

@@ -1356,10 +1356,9 @@ Credential-health checks (warn-level):
     nothing to lose).
   - Both must be *attributed* to the account, and what answers that depends on where
     the credential lives: the account's own credential store is answered by the
-    directories reading it — one confirming and none disagreeing — while a
-    per-directory store is answered by its own identity cache. Ordering never
-    establishes whose login two copies are, and a store legitimately holds a previous
-    account's credential. docs/ADAPTERS.md § Per-directory credential store is
+    directories reading it, a per-directory store by its own identity cache. Ordering
+    never establishes whose login two copies are, and a store legitimately holds a
+    previous account's credential. docs/ADAPTERS.md § Per-directory credential store is
     normative for that taxonomy.
   - Naming those readers means enumerating kae's pin index, which is **machine-wide**:
     one directory under the isolation root whose pin record kae cannot read makes the

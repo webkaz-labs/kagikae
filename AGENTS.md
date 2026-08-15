@@ -148,15 +148,13 @@ once and were then shown to be false.
 
 ## Implementation Boundaries
 
-- Keep `main.go` as dispatch only; handlers and report builders in
-  `internal/cmd`.
-- All subprocesses (`security`, `secret-tool`, binary detection) go through
-  `internal/runner`.
-- Adapters declare artifact specs; capture/apply/backup/rollback IO lives in
-  `internal/artifact` and generic layers. Do not duplicate IO in adapters.
-- The per-tool switched/preserved allowlists in `docs/ADAPTERS.md` are the
-  normative contract: code must match that document, and any change requires
-  updating it in the same commit.
+- **Where a handler, a subprocess and artifact IO each belong** —
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) § Package Layout, before adding a
+  package, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) § Layering, before a
+  print site or an `exec.Command`.
+- **What a tool switches and what it preserves** —
+  [docs/ADAPTERS.md](docs/ADAPTERS.md), before changing either. It is the normative
+  contract, so a change to one updates that document in the same commit.
 - **Thirteen rules about a credential copy live in
   [docs/CREDENTIAL-RULES.md](docs/CREDENTIAL-RULES.md), which is normative for the
   sections it states.** The lines below say only which section answers which
@@ -215,7 +213,8 @@ once and were then shown to be false.
   and state no rule**, as the credential list above does.
   - How a keychain item is addressed, and why claude's and codex's derivations do not
     port to each other — [docs/ADAPTERS.md](docs/ADAPTERS.md) § Keyring item contract
-    and § Credential storage resolution, before writing or deleting one.
+    and [docs/ADAPTERS.md](docs/ADAPTERS.md) § Credential storage resolution, before
+    writing or deleting one.
   - A credential that is a **set** of stores written as one unit —
     [docs/ADAPTERS.md](docs/ADAPTERS.md) § Cursor CLI, before declaring a tool's
     artifacts.
@@ -227,19 +226,22 @@ once and were then shown to be false.
   - `VerifiedVersion()` and `VerifiedOn()` —
     [docs/ADAPTERS.md](docs/ADAPTERS.md) § Verified Upstream Versions, before bumping
     either.
-- Secret values must never reach stdout/stderr/JSON/metadata/logs. New output
-  paths need a redaction test.
-- Warnings go to stderr and are emitted **before** the write they warn about.
-  `--quiet` suppresses success reports, never warnings, and a warning never
-  changes the exit code (a non-zero exit breaks the mise enter hook).
-- Mixed-state files are patched by JSON Pointer only; whole-file replacement
-  of `~/.claude.json` is forbidden in code review, not just in docs.
+- **What may not appear in output, and how a warning behaves** —
+  [docs/CLI.md](docs/CLI.md) § Output Rules, before adding any output path. Two
+  halves it does not state: a new output path needs a redaction test, and a warning
+  never changes the exit code, because a non-zero exit here breaks the mise enter
+  hook.
+- **How a mixed-state file may be written** —
+  [docs/SECURITY.md](docs/SECURITY.md) § Mutation Safety Rules, before writing one.
+  One half it does not state: that refusal is enforced in code review, not only
+  written down.
 - **`state.json` writes go through `App.mutateState`** — before writing state, or
   deciding anything from a copy of it read earlier
   ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) § Locking).
 - **`config.toml` edits go through `config.Editor`** — before any programmatic
   config mutation ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) § Known Traps).
-- JSON contract tokens live in `internal/constants`; never inline literals.
+- **Never inline a JSON contract literal** — `internal/constants` owns the tokens, and
+  the Documentation Map row above routes to what each is called.
 - **Adding or changing a command, a subcommand or a shell requires updating
   completion in lockstep** — before touching the router, read
   [docs/CLI.md](docs/CLI.md) § Keeping completion current, which is normative for

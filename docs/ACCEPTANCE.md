@@ -1,11 +1,13 @@
 # Release Acceptance
 
 What a release owes on a real machine, and what it still owes. Nearly everything
-here needs a real keychain, a real login, or both — the exception is
-§ Bound-directory credential store's shim procedure, which needs no account —
-and `mise run check` reaches none of it. Read [VALIDATION.md](VALIDATION.md) for
-what a commit owes; two release-only smokes stayed there, beside the surfaces they
-check.
+here needs a real keychain, a real login, or both, and `mise run check` reaches
+none of it. What is not like the rest: § Bound-directory credential store's shim
+procedure needs no account, and § Real-machine gate — does
+`refreshTokenExpiresAt` predict the login's death? is not a run a release owes at
+all, but an observation to record when a logout happens. Read
+[VALIDATION.md](VALIDATION.md) for what a commit owes; two release-only smokes
+stayed there, beside the surfaces they check.
 
 ## Real-machine gate — does `refreshTokenExpiresAt` predict the login's death? (**open**)
 

@@ -10,7 +10,9 @@ by hand — the tag does it.
    reported version is hardcoded, not injected; it must match the tag) and the
    `TestBuildVersionReport` expectation.
 2. `mise run check` and `git diff --check`; update the docs (RELEASE/ROADMAP/
-   VALIDATION and any behavior docs).
+   VALIDATION and any behavior docs). Work
+   [ACCEPTANCE.md](ACCEPTANCE.md) before the tag — nothing in it runs from
+   `mise run check`, and § Open gates is what a release still owes.
 3. Merge to `main` and push; CI (`ci.yml`) must be green.
 4. Tag and push: `git tag -a vX.Y.Z -m "kae vX.Y.Z — <summary>"` then
    `git push origin vX.Y.Z`. The release workflow gates on the same `check.yml`
@@ -737,7 +739,7 @@ Newly written down rather than fixed: **kae has never actually observed that a s
 refresh token forces an interactive login.** That is the premise of `credential_stale`
 itself, and it long predates this release. The same measurement makes it worth
 settling, because kae calls a claude snapshot stale considerably more often than the
-operator re-logs in. [VALIDATION.md](VALIDATION.md) carries a real-machine gate for
+operator re-logs in. [ACCEPTANCE.md](ACCEPTANCE.md) carries a real-machine gate for
 it where either outcome is a result, and [ROADMAP.md](ROADMAP.md) the consequence if
 it goes the other way.
 
@@ -802,7 +804,7 @@ downgrade that "is it usable" cannot detect because both are usable.
 [ROADMAP.md](ROADMAP.md) records the two ways it could be defined.
 
 Still open and unchanged: the two live-machine gates in
-[VALIDATION.md](VALIDATION.md) — "codex per-directory keyring bind" and "Cursor
+[ACCEPTANCE.md](ACCEPTANCE.md) — "codex per-directory keyring bind" and "Cursor
 full credential set" — both of which need a real keychain and two real accounts.
 
 ---
@@ -878,7 +880,7 @@ warn-level, so no exit code changes. Nothing needs re-capturing.
   audited-clean list in [ROADMAP.md](ROADMAP.md).
 
 Still open and unchanged: the two live-machine gates in
-[VALIDATION.md](VALIDATION.md) — "codex per-directory keyring bind" and "Cursor
+[ACCEPTANCE.md](ACCEPTANCE.md) — "codex per-directory keyring bind" and "Cursor
 full credential set" — both of which need a real keychain and two real accounts.
 
 ---
@@ -979,7 +981,7 @@ incomplete one rather than switching half a credential).
 - **Acceptance**: `mise run check`, `mise run audit` (govulncheck: 0 reachable),
   and `mise run goreleaser-check` green; every fix carries a regression test
   confirmed to fail against the old behaviour. Two real-machine gates stay open
-  and are listed in [VALIDATION.md](VALIDATION.md): the codex per-directory
+  and are listed in [ACCEPTANCE.md](ACCEPTANCE.md): the codex per-directory
   keyring bind and the cursor three-item credential set both need two live logins.
 
 ---

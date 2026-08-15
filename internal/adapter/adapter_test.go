@@ -263,7 +263,7 @@ func TestClaudeKeychainServiceIsPerConfigDir(t *testing.T) {
 func TestKeychainDirBindableMatchesTheItemIdentity(t *testing.T) {
 	// codex's identity does move, but the capability is not declared yet: the
 	// per-directory keyring bind has never been run against a real keychain, and
-	// docs/VALIDATION.md § Open gates names that gate as the one that must pass
+	// docs/ACCEPTANCE.md § Open gates names that gate as the one that must pass
 	// before codex leaves this map. Carried by name so the gap stays a gap, instead
 	// of being encoded here as "codex's identity is fixed" — which is false, and is
 	// what a Target-only derivation quietly asserted.
@@ -331,7 +331,7 @@ func TestKeychainDirBindableMatchesTheItemIdentity(t *testing.T) {
 // --purge, on a `pin -s` ↔ `pin -i` toggle and on a re-bind alike.
 //
 // What has never run is the round-trip itself, on a real keychain with two codex
-// homes. docs/VALIDATION.md § Open gates is that gate, says outright that everything
+// homes. docs/ACCEPTANCE.md § Open gates is that gate, says outright that everything
 // else is in place including the teardown, and names the exception map in
 // TestKeychainDirBindableMatchesTheItemIdentity as what its result unblocks.
 //

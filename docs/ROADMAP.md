@@ -41,7 +41,8 @@ all recorded there. The remaining two, in the order each pays for itself:
 4. **The shim harness**, table-driven and gated on the per-tool "does this tool
    shell out to `/usr/bin/security`" answer (claude yes, agy yes, codex **no**,
    cursor unverified). It should diff *the tool's* argv log against *kae's*,
-   which turns the naming-agreement check in VALIDATION.md into a script.
+   which turns the naming-agreement check in [ACCEPTANCE.md](ACCEPTANCE.md)
+   § Bound-directory credential store into a script.
 5. **Behaviour-site hashes** for the three or four sites that encode real
    behaviour, then a bundle-pair diff on upgrade. The
    `oauthAccount?.profileFetchedAt` site hash was identical across three claude
@@ -1073,7 +1074,7 @@ alternative exists (`secret-tool`).
      (`removeDirCredential` is normative). It also closed the same gap for claude, which had been creating
      per-directory items since v0.12.0 with nothing removing them.
   What is left is neither of those: the pin round-trip **is** on the real-machine gate
-  ([VALIDATION.md](VALIDATION.md) § Open gates), and it has never been run. Declaring
+  ([ACCEPTANCE.md](ACCEPTANCE.md) § Open gates), and it has never been run. Declaring
   the capability (dropping codex from `bindableNotYetDeclared`) is what that result
   unblocks, and until it passes a pinned directory has no codex login until you log in
   inside it.

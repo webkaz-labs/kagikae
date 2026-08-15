@@ -1354,9 +1354,13 @@ Credential-health checks (warn-level):
     ordering comparator elsewhere lets such a copy lose to anything (there the
     question is "may I overwrite it", where a copy with no comparable deadline is
     nothing to lose).
-  - Both must be *attributed* to the account by the store's own identity cache.
-    Ordering never establishes whose login two copies are, and a shared store
-    legitimately holds a previous account's credential.
+  - Both must be *attributed* to the account, and what answers that depends on where
+    the credential lives: the account's own credential store is answered by the
+    directories reading it — one confirming and none disagreeing — while a
+    per-directory store is answered by its own identity cache. Ordering never
+    establishes whose login two copies are, and a store legitimately holds a previous
+    account's credential. docs/ADAPTERS.md § Per-directory credential store is
+    normative for that taxonomy.
   - Equal deadlines are not overtaken, so a directory pinned moments ago — whose
     store holds exactly what the snapshot does — reports nothing.
   - A tombstoned or unreadable bound copy is left to `credential_stale`, which

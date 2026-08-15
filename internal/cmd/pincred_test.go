@@ -79,6 +79,38 @@ func pinWithCapturedClaude(t *testing.T, app *App, mode string) (dir, storeDir, 
 	return dir, storeDir, credFile
 }
 
+// pinWithIdentifiedClaude is pinWithCapturedClaude for a test whose account has to be
+// **attributable**, with a credential dated relative to `now` so the test can put a
+// directory's copy ahead of the snapshot.
+//
+// The difference is one thing and it is not cosmetic: this captures through
+// captureClaudeAt, whose seed carries the `/oauthAccount` object claude writes, so the
+// snapshot records the identity-only artifact `sharedStoreAttribution` reads.
+// pinWithCapturedClaude's account records none, so every harvest against it refuses with
+// "no oauth_account identity is recorded for that account" — which makes that fixture the
+// right one for testing a refusal and the wrong one for anything that must succeed.
+// Measured 2026-08-16, by writing a harvest test on the wrong one and watching it stay
+// green against both a broken kae and a fixed one.
+func pinWithIdentifiedClaude(t *testing.T, app *App, mode string) (dir, storeDir, credFile string) {
+	t.Helper()
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	dir = pinHereAs(t, app, "main", mode)
+	storeDir = app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude)
+	if mode == modeIsolated {
+		storeDir = app.Paths.IsolatedConfigDir(paths.PinID(dir), constants.ToolClaude, "main")
+	}
+	credFile = dirCredFile(app, constants.ToolClaude, "main", storeDir)
+	if readFile(t, credFile) == "" {
+		t.Fatalf("pin (%s) did not materialize a credential at %s", mode, credFile)
+	}
+	// The reader half of attribution: without a label in the store this fixture would be
+	// evidence about nothing, exactly as bindClaudeHere's own control says.
+	if readFile(t, filepath.Join(storeDir, ".claude.json")) == "" {
+		t.Fatalf("pin (%s) left no identity cache in %s", mode, storeDir)
+	}
+	return dir, storeDir, credFile
+}
+
 // A bound directory holds its own copy of the credential and the tool refreshes
 // that copy in place, so it can die while every account snapshot kae has still
 // looks fine. credential_stale reads snapshots, so nothing reported this at all —

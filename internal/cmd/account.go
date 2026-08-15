@@ -271,6 +271,24 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	}
 	defer cfgLock.Release()
 
+	// Stage 0: preserve what the bound directories are reading into the account being
+	// renamed, while its snapshot and the fragments naming it are both still there. Stage 1
+	// then carries the result forward like any other payload, so the three stages below are
+	// unchanged. Its own doc says why it cannot move after any of them.
+	//
+	// `acc` is re-read because a harvest rewrites the account's capture time, and saving the
+	// copy loaded before it would file the harvested payload under the older date — the same
+	// re-read rule recordHarvestTime states for itself.
+	app.harvestRenamedAccountCredentials(ctx, be, tool, oldName)
+	reloaded, stillThere, err := account.Load(app.Paths.AccountDir(tool, oldName))
+	if err != nil {
+		return nil, err
+	}
+	if !stillThere {
+		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, oldName)
+	}
+	acc = reloaded
+
 	// A rename is a copy-then-destroy in three stages — build the new snapshot,
 	// flip the logical pointers, destroy the old snapshot — so that every crash
 	// window leaves the pointers on a snapshot that is complete. Do not collapse

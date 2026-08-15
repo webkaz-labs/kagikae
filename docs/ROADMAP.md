@@ -49,16 +49,10 @@ Each names a section or an entry in this file and gives **only its place in the
 order and what that place turns on**. What the item *is* stays where it is: a second
 copy here is the duplication `mise run docs-scan` reports.
 
-1. § `kae account rename` leaves a bound directory's store under the old name — the
-   **measurement is done** (2026-08-16) and landed as the tests the entry names; what is
-   left is the fix, and it waits on a decision only the human makes: whether `rename`
-   writes into directories the command was not asked to touch. Ordered first still,
-   because that decision is the cheapest thing left here and everything the fix needs is
-   now measured.
-2. § Delete the prose that is not load-bearing, on the target that section names as
+1. § Delete the prose that is not load-bearing, on the target that section names as
    what is left — and the deferral above removes the conflict a new release entry
    would have had with it.
-3. § `kae relogin` declines to capture a login it watched happen when a *sibling*
+2. § `kae relogin` declines to capture a login it watched happen when a *sibling*
    directory has drifted — last, because it overrides the shared attribution
    predicate, whose residue § Attribution reads a label kae may have written itself
    keeps open, and because no release date is now compressing the measurement that
@@ -1045,27 +1039,6 @@ alternative exists (`secret-tool`).
   one step further in — a payload that is there and cannot serve its purpose. Note the
   refusals must not be relaxed to close it: silence about the *store* is correct when
   kae's label is broken, so the reporting belongs on the label, not on the comparison.
-
-- **`kae account rename` leaves a bound directory's store under the old name**
-  (observed 2026-08-04, re-measured 2026-08-16, **not fixed**). Renaming moves the
-  snapshot and warns about the pinned directories; the credential the bound directory
-  was reading stays behind under the old account's name.
-  `TestAccountRenameStrandsTheBoundDirectorysCredential` and
-  `TestUnpinPurgeAfterRenameDestroysTheCopyItsRemedyCannotSave` are what this entry now
-  rests on — read them for what each command does and for the three layers a fix has to
-  clear. They are the re-executors; a restatement here would be the copy that goes stale.
-  Where to look, which this entry got wrong until the re-measurement: for a tool with a
-  credential variable the live copy is in `credstore/<tool>/<old>`, not in
-  `isolation/<pin-id>/<tool>/isolated/<old>/`. Nothing reports it — the message that
-  over-promises a harvest belongs to `kae unpin --purge`, which destroys the copy on
-  purpose (docs/CLI.md § kae pin), and the re-bind prints nothing. Which store shape gets
-  which is [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Never harvest a copy you cannot
-  attribute.
-  Fixing it still means deciding whether `rename` rewrites bound fragments, which is a
-  write into directories the command was not asked to touch — the reason it only warns
-  today. What the re-measurement adds to that decision is *where* a fix can live: the
-  sweep that runs after the fragment is rewritten can no longer attribute the copy, so
-  preservation has to happen before that point.
 
 - **`kae account rename` / `kae account rm` delete a recorded `SecretRef`
   verbatim** (recorded 2026-07-31, **deliberately not fixed**). Both delete the ref

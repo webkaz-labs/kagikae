@@ -223,12 +223,14 @@ A usable copy whose account no longer exists is deleted by `kae unpin --purge`
 bind runs — deleting there destroyed the newest copy of a renamed account's credential,
 which is why the two answer differently. That pair is reached for a store holding **its
 own** credential; where the credential is the account's, a bind's sweep returns earlier
-still and keeps the copy without reporting it, so for **that** shape `kae account rename`
-no longer reaches this decision through kae's own re-bind remedy — it still does for a
-pre-split binding (`TestAccountRenameStrandsTheBoundDirectorysCredential` is the first,
-`TestRunRebindSweepKeepsALostAccountsCredential` the second;
-[ROADMAP.md](ROADMAP.md) § `kae account rename` leaves a bound directory's store under
-the old name carries what is still owed). And a
+still and keeps the copy without reporting it
+(`TestRunRebindSweepKeepsALostAccountsCredential` is the first shape).
+**Neither of those is where a rename is caught, and relying on them is what cost a login
+until 2026-08-16**: re-binding repoints the fragment, so the store it leaves behind has no
+reader and the harvest can only refuse. `kae account rename` therefore harvests for
+itself, into the name it is renaming *from*, before its first write —
+`harvestRenamedAccountCredentials` is normative for the ordering and
+`TestAccountRenameHarvestsWhatTheBoundDirectoryIsReading` re-runs it. And a
 payload kae could not read or date is deleted by `--purge` too, for the first exception's
 reason rather than as a rule of its own: keeping it strands a secret **nothing kae offers
 can remove**, since a per-directory item is addressable only from the string kae hashes

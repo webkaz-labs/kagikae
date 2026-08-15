@@ -67,11 +67,15 @@ What stays out does so for unlike reasons. The freshness surfaces' wording waits
 **result**: [ACCEPTANCE.md](ACCEPTANCE.md) § Real-machine gate — does
 `refreshTokenExpiresAt` predict the login's death? is what decides whether kae
 over-warns, and wording written first would be the unmeasured claim
-[AGENTS.md](../AGENTS.md) refuses. **The part of that gate nothing can compress is
-the waiting**, which is why it is started ahead of these batches rather than at tag
-time — but do not read that as cheap, because the waiting is not all it asks for:
-its Procedure is where what it costs and what the first step must record are
-stated, and neither is inferable from the deferral above. Declaring
+[AGENTS.md](../AGENTS.md) refuses. **That gate is an observation to record when a
+logout happens, not a run anyone can schedule** — its scheduled form wanted an account
+left untouched past its own deadline, which a machine that switches between its
+accounts cannot produce, and that file carries the withdrawal. So this wording waits on
+evidence with no date on it. Worth knowing before treating that as a permanent block:
+the deferral covers two claims, and only one of them is that gate's. That the surfaces
+do not detect a copy another copy invalidated is already measured on the rotation row
+in [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions; only the accuracy
+of the deadline itself is unmeasured. Declaring
 codex's `KeychainDirBindable` waits on [ACCEPTANCE.md](ACCEPTANCE.md) § Open gates
 the same way, and this file's § Hardening backlog entry for codex's keyring store
 says what the result unblocks.

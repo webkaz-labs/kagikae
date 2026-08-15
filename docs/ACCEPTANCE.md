@@ -36,31 +36,43 @@ on undocumented upstream *behaviour*, and that where docs and the binary disagre
 binary wins. Closing this
 one on a citation would have set a precedent the rest of the file does not follow.
 
-**Procedure** (needs a real machine and one real login under test, plus a second
-account to work in — step 2 requires it). Of § Real-Machine Acceptance's account
-precondition below, exactly one half applies here and the other **must not**: use a
-throwaway or second account, yes; but do *not* re-capture immediately before, because
-the aged capture is this gate's instrument and refreshing it destroys the measurement.
-That is precisely why the account choice is the only protection this gate has.
-**Unmeasured on the current code: which branch of step 4 can cost a working
-credential.** Do not infer it from this note — an earlier version named the branch
-where the snapshot still works, which is backwards on the rotation row in
-[VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions, and the
-reasoning that points at the other branch is no better measured.
-1. `kae add --no-login claude <acct>` immediately after a completed `/login`, and note
-   both `captured_at` and `relogin_by` from `kae ls --json`. Record the login date —
-   without it the measurement cannot be interpreted, which is the mistake that
-   produced the retracted "≈2 days" figure.
-2. Leave that account untouched past `relogin_by`, using a *different* account
-   meanwhile so the switch-away recapture does not refresh the snapshot.
-3. `kae doctor --json` — assert `credential_stale` for it, and note how close the
-   report is to the moment upstream itself starts refusing.
-4. `kae use claude <acct>`, then start claude in a **fresh process**: does it serve a
-   session, or ask for a login?
+**This is an observation to record when it happens, not a run to schedule** (changed
+2026-08-16; the scheduled form and why it was withdrawn are below). It blocks nothing,
+which § Open gates already says, and it now has no start date either.
 
-**Either outcome is a result.** Serving a session means `refreshTokenExpiresAt` is
-pessimistic and kae over-warns; asking for a login at approximately that timestamp is
-the confirmation. Record the outcome, the version, and the login-to-deadline interval.
+**When claude asks for a login it did not ask for before**, record four things while
+they are still true: which account; the deadline kae was reporting for it, from
+`kae ls --json` and `kae doctor --json`, read **before** logging back in; the moment
+of the refusal; and whether that copy had been switched to, or run under, since it was
+captured. The last one is what decides whether the record measures anything: a copy the
+tool refreshed after capture is not the copy whose deadline was recorded, so the
+interval compares two different things. Note the claude version, since this is an
+undocumented upstream behaviour like every other in
+[VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions.
+
+**Either outcome is a result.** A refusal near the recorded deadline confirms the
+timing claim `credential_stale` and `credential_expiring` rest on; a refusal well past
+it, or a session that still serves after it, means `refreshTokenExpiresAt` is
+pessimistic and kae over-warns.
+
+**Why the scheduled form was withdrawn, which is worth more than the procedure was.**
+It asked for an aged specimen: capture immediately after a `/login`, then leave that
+account untouched past `relogin_by` while working in another. Nothing about it was
+wrong; it is that **the machine kae is for cannot produce that specimen**. An account
+left untouched for days is the opposite of the case kae exists to make cheap, so on any
+machine actually switching between its accounts, every candidate specimen gets
+refreshed before its deadline arrives. The gate had been open and unrun since
+2026-07-31, and this is the reason rather than the scheduling being hard. A third
+account nobody works in would restore the scheduled form; short of that, the
+opportunistic record above is what is available.
+
+One thing the withdrawn form measured and this one does not, so it is kept here rather
+than lost: **which branch of it could cost a working credential was never established.**
+An earlier note named the branch where the snapshot still works, which is backwards on
+the rotation row in [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions, and
+the reasoning pointing at the other branch is no better measured. The observation above
+has no such branch — it records a logout that already happened rather than provoking one
+— which is the one way it is safer than what it replaces.
 
 ## Real-Machine Acceptance (release only)
 
@@ -197,12 +209,13 @@ later release notes mention any of the three.
 
 A **fourth** open real-machine gate is deliberately not in this list:
 § Real-machine gate — does `refreshTokenExpiresAt` predict the login's death?
-above, opened 2026-07-31 and also never run. It is separate because it is an open
+above, opened 2026-07-31 and never run. It is separate because it is an open
 **question** rather than a check that must pass — its own text says either outcome
 is a result, one confirming kae's warning and the other showing kae over-warns —
-so nothing about it blocks a release. Its account needs are its Procedure's to
-state, and are not the reason it is filed apart: an earlier version of this
-paragraph said it needed "no second account", which its own step 2 contradicts.
+so nothing about it blocks a release. Since 2026-08-16 it is also not a run at all
+but an observation to record when a logout happens, so it has nothing a release
+could owe: what it needs, and why its scheduled form was withdrawn, are that
+section's to state.
 
 **Codex keyring two-account round-trip** (macOS, real `Codex Auth` keychain).
 Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:

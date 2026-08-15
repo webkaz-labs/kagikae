@@ -494,7 +494,7 @@ subset.
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Package layout and boundaries. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Safety rules and secret handling. |
 | [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | Why the scope/isolation model is shaped the way it is — rationale only, never the rules themselves. |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Later phases. |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Later phases, and the near-term work order. |
 | [docs/RELEASE.md](docs/RELEASE.md) | Active release target and release process. |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | Pre-commit checks, the smoke blocks that run from them, and two release-only smokes. |
 | [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | What a release owes on a real machine, and what it still owes. |

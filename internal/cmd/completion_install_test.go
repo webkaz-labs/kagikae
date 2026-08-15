@@ -693,7 +693,7 @@ func TestCompletionInstallPrintOnly(t *testing.T) {
 // Order is as far as matching text goes: it does not prove which arm a literal
 // sits *in*, so flattening a branch into unconditional lines keeps every literal
 // in sequence and passes here while completing wrongly. That is the real-machine
-// smoke's question (docs/VALIDATION.md § v0.17.0 completion real-machine smoke).
+// smoke's question (docs/VALIDATION.md § Completion real-machine smoke).
 func TestCompletionPositionalRouting(t *testing.T) {
 	for _, tc := range []struct {
 		shell    string

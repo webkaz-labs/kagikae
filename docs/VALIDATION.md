@@ -272,7 +272,7 @@ this writes must itself be `mise trust`-ed), `mise trust` on the project
 neutral directory (the repo's own untrusted mise.toml otherwise aborts
 hook-env) and assert `kae use --quiet` fired and that re-entry adds no backup.
 
-## v0.15.x surfaces — credential lead time, inventory freshness, bound directories
+## Lead time, inventory freshness and bound directories
 
 All three are read-only reporting, so the whole block runs against a temp HOME with
 the file driver and the file backend — no real `$HOME`, no real keychain. Deadlines
@@ -583,7 +583,7 @@ chmod u+w "$W/main/.git/info/exclude"
 **PASSED 2026-08-08 on the release tree, 31/31** (`/tmp/kae` = v0.17.0), and before that
 2026-08-04 on the pre-release binary: A–F, each assertion checked
 individually **at its own point in the block** rather than from the end state. Unlike the
-two v0.17.0 credential blocks, this one needed no correction to run on the final tree —
+two credential blocks below, this one needed no correction to run on the final tree —
 it touches the fragment and git, neither of which the credential split moved. That
 distinction is not pedantry — two earlier runs of this block completed without
 erroring while assertions inside it were false (a row count changed by a case
@@ -596,11 +596,10 @@ directory, so carrying the old entry string over would write a rule that matches
 nothing — and `kae pin` would still report success, with the fragment sitting in
 `git status` for the user to find.
 
-## v0.17.0 surface — the credential harvest
+## Harvesting a credential before it is overwritten
 
-**Run this section with
-`bash scripts/smoke-run.sh '## v0.17.0 surface — the credential harvest'`, like every
-other section**, and a correct run exits `0` with every line exiting 0.
+**Run this section with `bash scripts/smoke-run.sh '## Harvesting a credential'`,
+like every other section**, and a correct run exits `0` with every line exiting 0.
 
 Read the transcript anyway when something fails. This section has the worst history of
 green runs that proved nothing — fixtures written to a directory kae had stopped
@@ -1175,7 +1174,7 @@ H asserted only the live store, which let it pass over a *snapshot* the same com
 had filed another account's credential into. A block asserts what it names, and the
 thing it does not name is where the defect sits.
 
-## v0.17.0 surface — `kae relogin` and `credential_superseded`
+## `kae relogin` and `credential_superseded`
 
 The other half of the same fact: when two copies of one account's credential exist
 and one refreshes, the other cannot any more — so `kae doctor` names the directory
@@ -1420,7 +1419,7 @@ be a `security` call there. It also drives a *fake* login: the real `claude /log
 interactive and its exact post-login file writes are what the assertions above assume.
 Both belong in the real-machine gate rather than here.
 
-## v0.17.0 surface — `kae env` and `kae backup` completion
+## Shell completion for `kae env` and `kae backup`
 
 Both subcommand groups gained a case in all three generated scripts, so this is a
 **structural** script change: an already-registered completion file has to be
@@ -1449,7 +1448,7 @@ Unit-covered, in `internal/cmd`:
   shell accepts an empty file, which is what an unknown script name yields, and a
   flag that does not parse (`zsh --version`) accepts a broken one.
 
-### v0.17.0 completion real-machine smoke (required before release)
+### Completion real-machine smoke (required before release)
 
 bash and zsh (fish is best-effort, not gated — v0.8.6). In a fresh shell with
 completion registered **and refreshed**:
@@ -1462,7 +1461,7 @@ completion registered **and refreshed**:
       the branch is gated on the sub-verb to avoid suggesting a word the command
       rejects.
 
-## v0.17.0 surface — the per-account credential store
+## Switching a per-account credential store
 
 The credential moved out of the bound directory's store and into
 `credstore/<tool>/<account>/`, which the binding names through a second env entry
@@ -1497,7 +1496,7 @@ Unit-covered, in `internal/cmd` (`credstore_test.go` unless noted):
   the point: a single-variable model passes every "the item is namespaced" check
   while writing the item claude does not read.
 
-### v0.17.0 per-account credential real-machine smoke (required before release)
+### Real-machine smoke for the per-account store (required before release)
 
 Run with `. scripts/smoke-env.sh` sourced, in a temp HOME, and — on macOS — with
 `KAE_CLAUDE_DRIVER=file` **and** `[security] secret_backend = "file"`, exactly as

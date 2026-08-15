@@ -450,7 +450,7 @@ contract-additive surfaces — the `kae ls --pins` view, `doctor`'s existing
   account-wide credential was announced as a "superseded per-directory" one at the
   config-dir store: neither the thing removed nor where it lived, and it understated a
   removal that affects every other binding of that account. Found by running the smoke
-  procedure in docs/VALIDATION.md § v0.17.0 per-account credential. Both existing
+  procedure in docs/VALIDATION.md § Switching a per-account credential store. Both existing
   assertions on that literal are negative, so nothing pinned the account-wide wording;
   the per-directory arm was pinned all along, on the line's store dir rather than on its
   sentence.

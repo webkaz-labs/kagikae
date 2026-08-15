@@ -156,8 +156,9 @@
 //     not. A two-word form was measured at three failures, and all three are correct
 //     prose: the idiom lets a citation name a *one-word* fragment of a multi-word
 //     heading (`§ Cursor` for `## Cursor CLI (cursor-agent)`) or an *interior* one
-//     (`§ kae relogin and credential_superseded` for `## v0.17.0 surface — kae relogin
-//     and credential_superseded`). The interior form is why widening is not just a
+//     (`§ kae pin` for a heading reading `## Semantics of kae pin`, illustrated rather
+//     than quoted for the same reason ZZEXAMPLE is above). The interior form is why
+//     widening is not just a
 //     stricter number: a first-word test passes it by matching some other section that
 //     happens to share that word, so this walk confirms those citations for the wrong
 //     reason. Verifying them means matching a fragment anywhere in a name, which is a

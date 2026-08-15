@@ -35,6 +35,10 @@ such a pointer as current, and do not repoint it wholesale — [ROADMAP.md](ROAD
 own header says a pointer that names content being removed is repointed in the commit
 that removes it, which is the case worth spending an edit on.
 
+**There is no active release target, and that is a decision rather than a gap.** The
+next one waits on the list in [ROADMAP.md](ROADMAP.md) § Current work order, which
+carries what decided it as a command to re-run rather than as a claim to trust.
+
 ---
 
 # kae v0.17.0 (shipped 2026-08-09)

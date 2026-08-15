@@ -314,6 +314,117 @@ func TestDoctorComparesOnlyCopiesOfTheSameAccountAndOnlyAttributedOnes(t *testin
 	}
 }
 
+// threeBoundCopiesOfClaudeMain is twoBoundCopiesOfClaudeMain with a second directory
+// on the account's shared credential, which is what an ordinary machine looks like:
+// two worktrees bound to one account are two *handles on one file*, not two copies.
+//
+// The two handles are what the fixtures above cannot express. With one, whichever
+// question this check asks of "the" bound directory has a single answer, so a
+// predicate that should have been asked of the credential and was asked of a handle
+// is indistinguishable from a correct one.
+func threeBoundCopiesOfClaudeMain(t *testing.T, app *App) (behind, ahead, alt boundCopy) {
+	t.Helper()
+	behind, ahead = twoBoundCopiesOfClaudeMain(t, app)
+	alt.Dir, alt.StoreDir, alt.CredFile = boundStoreForClaudeMain(t, app)
+	if alt.CredFile != ahead.CredFile {
+		t.Fatalf("two directories bound to one account must share one credential, got %s and %s",
+			ahead.CredFile, alt.CredFile)
+	}
+	return behind, ahead, alt
+}
+
+// hideIdentity removes a bound store's identity cache and returns the restore. The
+// bytes are kept rather than rewritten from a fixture, so a restore cannot quietly
+// put back something the bind never wrote.
+func hideIdentity(t *testing.T, storeDir string) func() {
+	t.Helper()
+	path := filepath.Join(storeDir, ".claude.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		t.Helper()
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// Attribution is a property of the credential, and asking one handle about it made
+// this check silent on the shape it exists for. Every directory bound to an account
+// reads one file since the split, so the store that wins the ordering is whichever
+// handle the walk reached first — and if that one had no identity cache beside it,
+// `winnerUnattributable` suppressed **every** finding in the group while a sibling
+// handle on the same file was confirming and was never asked.
+//
+// Reproduced with a reversible control before the fix (three bound directories: one
+// finding, remove one directory's identity cache, zero, restore it, one again), which
+// is the shape this test is. Both handles are hidden in turn rather than the winner
+// only, because which one wins is walk order and nothing here should depend on it:
+// one of the two arms is the winner's whichever way the walk goes.
+func TestSupersededSurvivesOneSharedHandleLosingItsIdentityCache(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	behind, ahead, alt := threeBoundCopiesOfClaudeMain(t, app)
+	writeFile(t, behind.CredFile, claudeOAuthPayload("sk-ant-oat01-BEHIND-mmmm", now.Add(4*time.Hour)))
+	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-AHEAD-nnnn", now.Add(8*time.Hour)))
+
+	reported := func(t *testing.T, when string) {
+		t.Helper()
+		msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+		if len(msgs) != 1 {
+			t.Fatalf("%s: the overtaken directory must still be reported, got %d: %v", when, len(msgs), msgs)
+		}
+		if !strings.Contains(msgs[0], "bound to "+behind.Dir) {
+			t.Errorf("%s: the wrong directory was named: %q", when, msgs[0])
+		}
+	}
+	reported(t, "with both handles labelled")
+	for _, handle := range []struct {
+		name  string
+		store string
+	}{{"ahead", ahead.StoreDir}, {"alt", alt.StoreDir}} {
+		restore := hideIdentity(t, handle.store)
+		reported(t, "with only "+handle.name+" unlabelled")
+		restore()
+	}
+	reported(t, "with both handles labelled again")
+}
+
+// The guard the fix above must not have removed. `winnerUnattributable` is what keeps
+// kae from telling a user their login is dead on the strength of a copy it cannot tie
+// to the account, and widening attribution from one handle to the credential's readers
+// is not the same as dropping it: with *no* handle able to speak, nothing attributes
+// the copy and the group stays silent.
+func TestSupersededStaysSilentWhenNoHandleCanAttributeTheCopy(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	behind, ahead, alt := threeBoundCopiesOfClaudeMain(t, app)
+	writeFile(t, behind.CredFile, claudeOAuthPayload("sk-ant-oat01-BEHIND-pppp", now.Add(4*time.Hour)))
+	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-AHEAD-qqqq", now.Add(8*time.Hour)))
+	hideIdentity(t, ahead.StoreDir)
+	restoreAlt := hideIdentity(t, alt.StoreDir)
+
+	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
+		t.Fatalf("a copy no reader can attribute proves nothing about the loser: %v", msgs)
+	}
+	// Positive control, so the silence above is the attribution guard and not a fixture
+	// that never reaches the comparison: one reader speaking again is enough.
+	restoreAlt()
+	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	if len(msgs) != 1 || !strings.Contains(msgs[0], "bound to "+behind.Dir) {
+		t.Fatalf("with one handle labelled again the same copy is reported: %v", msgs)
+	}
+}
+
 // Two bound copies are still copies of each other when the account's own snapshot
 // payload is gone (the `secret_missing` shape: `account.toml` and its identity
 // artifact intact, the credential payload not in the backend). The comparison must

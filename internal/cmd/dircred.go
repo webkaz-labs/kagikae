@@ -2451,6 +2451,22 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 		seen[where] = info
 		return info
 	}
+	// Attribution is a property of the **credential**, not of the handle asked, so it is
+	// memoized on the same key and it is unkillable for the same reason: a shared store's
+	// answer comes from its readers and cannot vary between two handles on it, and a
+	// per-directory store is the only handle on its own key. What differs from the read
+	// above is the cost — the reader walk visits every pinned directory on the machine —
+	// which is why the loser loop asks through this rather than directly.
+	attributed := map[string]bool{}
+	holdsAccount := func(store boundDirStore) bool {
+		where := store.dirs().credDirOrConfig()
+		if ok, cached := attributed[where]; cached {
+			return ok
+		}
+		ok := app.storeHoldsAccount(ctx, be, acc, store)
+		attributed[where] = ok
+		return ok
+	}
 	for i, store := range group.Stores {
 		info := freshnessOf(store)
 		if !orderable(info) {
@@ -2480,7 +2496,14 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 	// is the **snapshot**, which this check does not attribute at all, so the guard
 	// must not fire there. Written the other way round it read as "no store confirmed
 	// the win" and silenced every snapshot-side finding — caught by four tests.
-	winnerUnattributable := newestIdx >= 0 && !app.storeHoldsAccount(ctx, be, acc, group.Stores[newestIdx])
+	//
+	// **Not dead, and not to be closed by removing it**: it is what keeps kae from telling
+	// a user their login is dead on the strength of a copy it cannot attribute, and the
+	// asymmetry with the loser side is deliberate (AGENTS.md). What made it look like the
+	// problem was the predicate it asked, which storeHoldsAccount now states; with that
+	// fixed it still fires, and TestSupersededStaysSilentWhenNoHandleCanAttributeTheCopy
+	// is the arm that says so.
+	winnerUnattributable := newestIdx >= 0 && !holdsAccount(group.Stores[newestIdx])
 	checks := []adapter.Check{}
 	for i, store := range group.Stores {
 		// The index, not a comparison of Dir strings: the winner *is* this element when
@@ -2494,7 +2517,7 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 		}
 		// Attribution last, and on both sides: a copy kae cannot tie to this account
 		// says nothing about this account's other copies, in either direction.
-		if !app.storeHoldsAccount(ctx, be, acc, store) {
+		if !holdsAccount(store) {
 			continue
 		}
 		if winnerUnattributable {
@@ -2536,14 +2559,32 @@ func supersededRemedy(tool, accountName, dir string, newerIsSnapshot bool) strin
 	return pinLoginRemedy(tool, dir)
 }
 
-// storeHoldsAccount reports whether a bound store's own identity cache confirms it
-// holds acc's login. It is dirIdentityConfirms' positive answer and nothing else:
-// every refusal, conflicting or not, means this check must stay silent about that
-// store — a conflict says the copy is somebody else's, and missing evidence says kae
-// does not know. (pinIdentityChecks is the consumer that reports the conflict; here
-// it is only a reason to say nothing.)
+// storeHoldsAccount reports whether the credential a bound store reads is confirmed
+// to be acc's. Any refusal, conflicting or not, means this check must stay silent
+// about that store — a conflict says the copy is somebody else's, and missing
+// evidence says kae does not know. (pinIdentityChecks is the consumer that reports
+// the conflict; here it is only a reason to say nothing.)
+//
+// Which evidence answers it depends on what the store is, and this is
+// harvestDirCredential's dispatch rather than a second opinion about it: the account's
+// own credential store is read by every directory bound to that account, so the
+// readers are the evidence (sharedStoreAttribution); a per-directory store keeps the
+// credential and the cache in one directory, so that directory is.
+//
+// Asking the one directory about a shared store is what made this check silent
+// exactly where it had most to say. Measured 2026-08-16 with the control in
+// TestSupersededSurvivesOneSharedHandleLosingItsIdentityCache: with three directories
+// bound to one account, whether a finding appeared at all turned on whether the
+// handle that happened to win the walk order had an identity cache beside it — while
+// a sibling handle on the same file confirmed and was never asked. Every store in a
+// group shares one credential since the split, so that is the ordinary shape, not an
+// edge of it.
 func (app *App) storeHoldsAccount(ctx context.Context, be secret.Backend, acc account.Account, store boundDirStore) bool {
-	specs, err := app.dirSpecs(ctx, store.Tool, store.dirs())
+	dirs := store.dirs()
+	if dirs.Cred != "" {
+		return app.sharedStoreAttribution(ctx, be, store.Tool, dirs.Cred, acc, attributionSource{}).Why == ""
+	}
+	specs, err := app.dirSpecs(ctx, store.Tool, dirs)
 	if err != nil {
 		return false
 	}

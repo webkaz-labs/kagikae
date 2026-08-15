@@ -222,9 +222,9 @@ A usable copy whose account no longer exists is deleted by `kae unpin --purge`
 (refusing would strand a live token nothing can address) and **kept** by the sweep a
 bind runs — deleting there destroyed the newest copy of a renamed account's credential,
 which is why the two answer differently. That pair is reached for a store holding **its
-own** credential; where the credential is the account's, a bind's sweep returns earlier
-still and keeps the copy without reporting it
-(`TestRunRebindSweepKeepsALostAccountsCredential` is the first shape).
+own** credential (`TestRunRebindSweepKeepsALostAccountsCredential`); where the credential
+is the account's, a bind's sweep returns earlier still and keeps the copy without
+reporting it.
 **Neither of those is where a rename is caught, and relying on them is what cost a login
 until 2026-08-16**: re-binding repoints the fragment, so the store it leaves behind has no
 reader and the harvest can only refuse. `kae account rename` therefore harvests for

@@ -1040,6 +1040,21 @@ alternative exists (`secret-tool`).
   refusals must not be relaxed to close it: silence about the *store* is correct when
   kae's label is broken, so the reporting belongs on the label, not on the comparison.
 
+- **`kae account rename` leaves `state.synced` and the global fragment on the old
+  name** (measured 2026-08-16, **not fixed**). The rename updates `state.Active` and the
+  profile references and now harvests the credential, but it never touches `st.Synced`
+  or re-runs `regenGlobalFragment`. After `kae use -i <tool> <old>` then a rename, the
+  kae-owned global fragment keeps exporting `isolation/global/<tool>/<old>` and
+  `credstore/<tool>/<old>` — an account no longer captured — so a refresh the tool
+  performs afterwards lands in a store nothing will harvest.
+  `TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads` asserts the snapshot and
+  deliberately stops short of this. Not folded into that fix because the honest version
+  is not a map edit: pointing the fragment at the new name means **moving** the isolated
+  home and re-keying the credential store, which is the migration shape
+  § `PinID` does not resolve symlinks records the cost of. The cheap half — remapping
+  `st.Synced` inside the rename's existing `mutateState` closure — is wrong on its own,
+  because it would point the fragment at a home that does not exist yet.
+
 - **`kae account rename` / `kae account rm` delete a recorded `SecretRef`
   verbatim** (recorded 2026-07-31, **deliberately not fixed**). Both delete the ref
   the snapshot's metadata names, without checking it is the ref this account would

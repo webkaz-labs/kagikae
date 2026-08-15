@@ -2089,12 +2089,13 @@ func TestWriteDirCredentialDoesNotHarvestAnEqualDeadline(t *testing.T) {
 // and its `purging=false` needs pinning separately from `runPin`'s (reading-type review,
 // round 3: mutating this one to `true` passed the whole suite).
 //
-// That first sentence holds **only for the pre-split store this fixture builds**
-// (makePreSplit, below): where the credential is the account's, the sweep returns before
-// this arm and the renamed copy meets nothing at all. Measured 2026-08-16 —
-// TestAccountRenameStrandsTheBoundDirectorysCredential is that shape, and its comment
-// carries the difference. A sweep for that unscoped claim reached the docs and both
-// dircred.go comments and missed this one, because it grepped prose files.
+// That first sentence describes a rename that no longer reaches this sweep: the rename
+// harvests before its first write now, so a renamed account's copy is already in the
+// snapshot (TestAccountRenameHarvestsWhatTheBoundDirectoryIsReading). What still arrives
+// here is an account gone by **removal**, and only for a store holding its own credential
+// — the shape makePreSplit builds below. Measured 2026-08-16; a sweep for the unscoped
+// version of that sentence reached the docs and both dircred.go comments and missed this
+// one, because it grepped prose files.
 func TestRunRebindSweepKeepsALostAccountsCredential(t *testing.T) {
 	sim := &keychainSim{}
 	runner.With(sim, func() {
@@ -2215,7 +2216,7 @@ func TestAccountRenameSaysSoWhenItCannotHarvest(t *testing.T) {
 		t.Fatalf("a copy kae could not keep must be reported, not stranded in silence: %q", stderr)
 	}
 	// And it must say the thing kae used to get wrong: that re-binding does not recover it.
-	if !strings.Contains(stderr, "re-binding the directory will not reach it") {
+	if !strings.Contains(stderr, "re-binding will not reach it") {
 		t.Fatalf("the warning must not repeat the remedy that does not work: %q", stderr)
 	}
 	// A refusal keeps. Nothing here may delete the copy it declined to attribute.
@@ -3413,5 +3414,80 @@ func TestPurgeIsTheWayOutForACredentialKaeCannotJudge(t *testing.T) {
 				t.Errorf("nothing was removed, so nothing may be reported: %v", lines)
 			}
 		})
+	}
+}
+
+// The half a walk of the bound directories does not reach: a globally isolated home
+// (`kae use -i`) reads the account's own credential store with no fragment and no pin
+// record anywhere, so the first version of the rename's harvest reported nothing to do and
+// lost the copy exactly as before (measured 2026-08-16, with `pins=0`). credStoreReaders is
+// what spans both, and this test is why the pass asks it instead of walking pins.
+//
+// It asserts the snapshot and stops there on purpose: the rename does **not** move
+// `state.synced` or the global fragment, so this home keeps pointing at the old name after
+// it. docs/ROADMAP.md § `kae account rename` leaves `state.synced` and the global fragment
+// on the old name carries that, including why it is not a one-line follow-on.
+func TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads(t *testing.T) {
+	app := overlayTestApp(t)
+	writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n"+
+		"[profiles.main.accounts]\nclaude = \"main\"\n")
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	if code := runUseIsolated(ctx, app, opts, "claude", "main"); code != constants.ExitOK {
+		t.Fatalf("use --isolated exit %d", code)
+	}
+	home := app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")
+	live := dirCredFile(app, constants.ToolClaude, "main", home)
+	if !strings.Contains(readFile(t, live), mainToken) {
+		t.Fatalf("the isolated home must read a materialized credential at %s", live)
+	}
+	// Nothing is bound: this is the state the pin walk cannot see.
+	if pins, err := app.pinnedDirs(); err != nil || len(pins) != 0 {
+		t.Fatalf("this test is only about the unpinned case: pins=%v err=%v", pins, err)
+	}
+	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
+	writeFile(t, live, claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+
+	be := testBackend(t, app)
+	if _, err := buildAccountRename(ctx, app, opts, "claude", "main", "side"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "side"); !strings.Contains(got, refreshed) {
+		t.Fatalf("the renamed account must carry what the isolated home was reading: %s", got)
+	}
+}
+
+// The other half of the pass, and nothing reached it until this test: a binding made
+// before the credential split keeps its copy *inside* the per-directory store, so
+// credStoreReaders never names it and only a walk of the bound directories does. Disabling
+// that walk passed the entire suite (measured 2026-08-16), which is the same shape as a
+// test that covers one side of a two-sided predicate and reads as if it covered both.
+//
+// makePreSplit builds the state deliberately: kae cannot produce it any more, and a
+// directory bound by an older release keeps its own credential until it is re-pinned.
+func TestAccountRenameHarvestsAPreSplitDirectorysOwnCopy(t *testing.T) {
+	app := overlayTestApp(t)
+	writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n"+
+		"[profiles.main.accounts]\nclaude = \"main\"\n")
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	dir, storeDir, _ := pinWithIdentifiedClaude(t, app, modeIsolated)
+	makePreSplit(t, app, constants.ToolClaude, "main", dir, storeDir)
+
+	inStore := filepath.Join(storeDir, ".credentials.json")
+	if !strings.Contains(readFile(t, inStore), mainToken) {
+		t.Fatalf("the pre-split fixture must leave the credential inside the store (%s)", inStore)
+	}
+	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
+	writeFile(t, inStore, claudeOAuthPayload(refreshed, app.Now().Add(8*time.Hour)))
+
+	be := testBackend(t, app)
+	if _, err := buildAccountRename(ctx, app, opts, "claude", "main", "side"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "side"); !strings.Contains(got, refreshed) {
+		t.Fatalf("the renamed account must carry the pre-split directory's own copy: %s", got)
 	}
 }

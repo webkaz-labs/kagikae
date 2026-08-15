@@ -1381,7 +1381,9 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// credential is the account's, removeDirCredential's
 		// `store.CredDir != "" && !purging` return fires first and neither gate runs, so
 		// an account-gone copy is kept in silence rather than reported (measured
-		// 2026-08-16, TestAccountRenameStrandsTheBoundDirectorysCredential).
+		// 2026-08-16). What reached that state was a `kae account rename`, which no longer
+		// does — it harvests before its first write (harvestRenamedAccountCredentials) —
+		// so nothing routine is known to arrive here in silence today.
 		// The one that would open silently is a tool with a credential variable whose
 		// rotation has never been measured — the pass returns at `rotatesSingleUse` and
 		// `harvestBeforeDelete` lets such a tool through unconditionally, so its kept
@@ -2002,9 +2004,10 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 		// Reached only by a store holding its **own** credential — a pre-split binding, or
 		// a tool with no credential variable. Where the credential is the account's
 		// (CredDir set), housekeeping returns above at `store.CredDir != "" && !purging`,
-		// before the probe and before this function is called at all, and that is the
-		// shape `kae account rename` produces (measured 2026-08-16,
-		// TestAccountRenameStrandsTheBoundDirectorysCredential).
+		// before the probe and before this function is called at all (measured 2026-08-16).
+		// `kae account rename` used to be the routine way into that silence and is not any
+		// more: it harvests before its first write, so a copy reaching here is one no rename
+		// claimed (harvestRenamedAccountCredentials).
 		//
 		// The remedy this message names is not the re-bind above: re-binding repoints the
 		// fragment at the new account's store, so this copy is left with no reader and the
@@ -2072,82 +2075,123 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 // migration of a pre-split binding, which happens once per directory
 // (TestRunPinCoalescesTheHarvestKeychainReads measures the steady state at one read).
 // The duplication buys the case where the two are not the same store.
-// harvestRenamedAccountCredentials preserves what the bound directories of tool/accountName
-// are actually reading into that account's **own** snapshot, before `kae account rename`
-// destroys it. Called by nothing else: it is the rename's half of the rule that every
-// delete of a per-directory copy harvests first (docs/CREDENTIAL-RULES.md § Harvesting
-// before a write or a delete), and the rename is a delete of the old account's refs.
+// harvestRenamedAccountCredentials preserves what is reading tool/accountName's credential
+// into that account's **own** snapshot, before `kae account rename` destroys it. Called by
+// nothing else: it is the rename's half of the rule that every delete of such a copy
+// harvests first (docs/CREDENTIAL-RULES.md § Harvesting before a write or a delete), and
+// the rename is a delete of the old account's refs.
 //
 // It harvests into the **old** name, and that is the whole design. The rename's own copy
 // stage then carries the result to the new name, so nothing here reasons about an account
-// that does not exist yet, and an abort between the two leaves the copy safe under the
-// name it already had. Attribution works for the same reason: the fragments still name the
-// old account and the store's path is composed from it, which stops being true the moment
-// anything repoints them —
-// TestAccountRenameStrandsTheBoundDirectorysCredential measures the path that used to be
-// kae's recommended remedy, where no reader is left and the harvest can only refuse.
+// that does not exist yet, and an abort between the two leaves the copy safe under the name
+// it already had. Attribution works for the same reason: the readers still name the old
+// account and the store's path is composed from it, which stops being true the moment
+// anything repoints them — every path that runs after a re-bind could only refuse, which is
+// what made kae's own remedy the thing that lost the login.
 //
 // Before the rename's first write, never after: harvesting is not deleting and the two
 // belong on opposite sides of the write (docs/CREDENTIAL-RULES.md § A chokepoint is not
-// complete coverage). The dry run returns above this, so it stays a read.
+// complete coverage). The dry run returns above the call, so this stays a read.
+//
+// **Two store shapes, and a walk of the bound directories only finds one of them.** The
+// account's own credential store is read by every bound directory *and* by a globally
+// isolated home, which has no fragment and no pin record — so `kae use -i claude main`
+// followed by a rename lost the copy while a pin walk reported nothing to do (measured
+// 2026-08-16). credStoreReaders is the enumeration that spans both, so the first half asks
+// it rather than walking pins. The second half is for a copy that lives *inside* a
+// per-directory store — a binding from before the credential split, or a tool with no
+// credential variable — which is per directory by construction.
 func (app *App) harvestRenamedAccountCredentials(ctx context.Context, be secret.Backend, tool, accountName string) {
 	artName := credentialArtifactName(tool)
 	if !rotatesSingleUse(tool) || artName == "" {
 		return
 	}
+	// The account's own credential store. One copy however many directories read it, so it
+	// is harvested once; a reader supplies the config dir because dirSpecs resolves the
+	// artifacts against one, and handing it the credential store instead is the silent swap
+	// harvestDirCredential's own doc opens with.
+	if credDir := app.credStoreDir(tool, accountName); credDir != "" {
+		// The three answers are different and only one of them is "do nothing quietly".
+		// `complete` is **machine-wide**: credStoreReaders returns `(nil, false)` when any pin
+		// record anywhere is unreadable, so a single stale store elsewhere would otherwise
+		// make this whole half skip in silence — the shape this branch exists to remove, one
+		// level up. An empty *and* complete answer is different: nothing on this machine
+		// points at that store, so a copy in it was already unreachable before the rename and
+		// doctor's pin_stale owns it.
+		readers, complete := app.credStoreReaders(credDir, tool)
+		switch {
+		case len(readers) > 0:
+			// attributionSource stays zero on purpose: its Dir names the directory a bind is
+			// *acting for*, and a rename acts for none. Leaving it empty asks the readers alone
+			// whose the copy is, which is the question here — storeHoldsAccount asks it the
+			// same way.
+			app.harvestRenamedStore(ctx, be, tool, accountName, artName,
+				bindDirs{Config: readers[0], Cred: credDir})
+		case !complete:
+			fmt.Fprintf(os.Stderr,
+				"kae: warning: kae could not tell what reads the %s credential for %s/%s, so it did not "+
+					"harvest it before the rename; if a bound directory or an isolated home held a newer "+
+					"copy it stays under the old name (%s)\n", tool, tool, accountName, credDir)
+		}
+	}
+	// A copy inside a per-directory store, which only the bound directories have.
 	pins, err := app.pinnedDirs()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", err)
 		return
 	}
-	// Keyed on the credential's location, not on the directory: every directory bound to
-	// one account reads one per-account store, so without this a rename with three bound
-	// worktrees costs three `security` reads and prints any refusal three times. Safe to
-	// collapse because each of these directories is a reader naming this same account —
-	// the loop filters on exactly that — so they are not distinguishable evidence.
-	harvested := map[string]bool{}
 	for _, pin := range pins {
-		info, exists, err := readFragmentAt(pin.Dir)
-		if err != nil || !exists || info.Accounts[tool] != accountName {
+		info, exists, ferr := readFragmentAt(pin.Dir)
+		if ferr != nil || !exists || info.Accounts[tool] != accountName {
 			continue
 		}
-		stores, err := app.dirCredentialStores(pin.PinID, info)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "kae: warning: %v\n", err)
+		stores, serr := app.dirCredentialStores(pin.PinID, info)
+		if serr != nil {
+			fmt.Fprintf(os.Stderr, "kae: warning: %v\n", serr)
 			continue
 		}
 		for _, store := range stores {
-			if store.Tool != tool || storeAccount(store, info) != accountName {
+			// CredDir set means the copy is the account's, which the first half already took;
+			// harvesting it again here would re-read it once per bound directory.
+			if store.Tool != tool || store.CredDir != "" || storeAccount(store, info) != accountName {
 				continue
 			}
-			where := store.dirs().credDirOrConfig()
-			if harvested[where] {
-				continue
-			}
-			harvested[where] = true
-			specs, err := app.dirSpecs(ctx, tool, store.dirs())
-			if err != nil {
-				continue // an unresolvable store is not this command's to report
-			}
-			acc, snapshot, _, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
-			if err != nil {
-				continue // the account being renamed has no readable credential to beat
-			}
-			_, preserved, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc,
-				store.dirs(), snapshot, attributionSource{Dir: store.Dir})
-			if preserved || refused.Why == "" {
-				continue
-			}
-			// The rename is not stopped by this. It renames the snapshot either way, and the
-			// copy stays where it is — so the warning has to say that re-binding will not
-			// recover it, which is what kae used to imply and never did.
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: the %s credential in %s is newer than snapshot %s/%s and kae is not "+
-					"harvesting it because %s; the rename leaves that copy under the old name, and "+
-					"re-binding the directory will not reach it\n",
-				tool, where, tool, accountName, refused.Why)
+			app.harvestRenamedStore(ctx, be, tool, accountName, artName, store.dirs())
 		}
 	}
+}
+
+// harvestRenamedStore is one store's worth of the pass above, so its two halves cannot
+// answer the same question differently — which is the drift docs/CREDENTIAL-RULES.md
+// § A chokepoint is not complete coverage records twice for two hand-kept copies.
+func (app *App) harvestRenamedStore(ctx context.Context, be secret.Backend,
+	tool, accountName, artName string, dirs bindDirs,
+) {
+	specs, err := app.dirSpecs(ctx, tool, dirs)
+	if err != nil {
+		return // an unresolvable store is not this command's to report
+	}
+	acc, snapshot, _, err := app.snapshotCredential(ctx, be, tool, accountName, artName)
+	if err != nil {
+		return // the account being renamed has no readable credential to beat
+	}
+	_, preserved, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc,
+		dirs, snapshot, attributionSource{})
+	if preserved || refused.Why == "" {
+		return
+	}
+	// The rename is not stopped by this — it renames either way and the copy stays where it
+	// is. So the warning has to say that re-binding will not recover it, which is what kae
+	// used to imply and never did.
+	//
+	// The shared clause carries the frame, and hand-writing the prefix here was a fourth
+	// copy of it: this pass can refuse *short* of the `supersedes` gate (a payload kae could
+	// not read or date), where "is newer than snapshot" is a claim kae has not established
+	// and contradicts the reason printed beside it.
+	fmt.Fprintf(os.Stderr,
+		"kae: warning: %s; the rename leaves that copy under the old name, and re-binding "+
+			"will not reach it\n",
+		dirCredentialRefusalClause(tool, dirs, accountName, refused))
 }
 
 // next maps each tool to the pair the binding being written will point it at — read from

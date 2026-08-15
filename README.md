@@ -411,9 +411,10 @@ exit code — see [docs/CLI.md](docs/CLI.md).
   tool refreshes the credential *inside* that directory, and for claude the older
   copy is then rejected rather than merely older — so re-binding, re-materializing
   or purging a directory harvests the newer copy into the account snapshot first,
-  instead of logging the directory out hours later. `kae account rename` does it too,
-  into the name it renames *from*, so renaming an account a directory is bound to
-  keeps that directory's live login instead of costing it. It warns on stderr, before applying, when the account you are switching
+  instead of logging the directory out hours later. `kae account rename` harvests too,
+  into the name it renames *from*, so the renamed account carries the live login rather
+  than the older snapshot — re-bind the directory afterwards, as the rename tells you to,
+  and it gets that copy. It warns on stderr, before applying, when the account you are switching
   to needs a re-login (expired with no usable refresh token, or emptied by the tool
   after a failed refresh) and names the tool's login command; `kae doctor` flags
   the same snapshots and orphaned secret items.

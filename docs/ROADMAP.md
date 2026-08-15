@@ -1,8 +1,8 @@
 # Roadmap
 
 Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)), ordered
-by user impact. § Current work order carries the near-term order as well, and the
-reason there is currently no active release for the rest of this file to be beyond.
+by user impact. § Current work order, for as long as it is there, carries the
+near-term order and the release position that order is set against.
 
 An entry goes once it is *only* a record of what happened: what shipped is
 recorded in [RELEASE.md](RELEASE.md) and in git log, not here. **Being labelled
@@ -30,49 +30,55 @@ stage 3 of the docs scan, filed below.
 deliberately deferred. What decided it is reproducible rather than quoted:
 
 ```bash
-git diff v0.17.0..HEAD -- 'internal/**/*.go' 'main.go' ':!**/*_test.go' \
+git diff v0.17.0..HEAD -- 'internal/**/*.go' 'main.go' go.mod go.sum ':!**/*_test.go' \
   | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | grep -vE '^[+-]\s*//' | grep -vE '^[+-]\s*$'
 ```
 
-On any tree where that prints only a rename and a docs pointer inside an error
-string, a tag ships the rename — while [ACCEPTANCE.md](ACCEPTANCE.md) § Open gates
-is the cost every release carries whatever it contains, and it is a cost only a
-human can pay. Deferring spends that cost on a tree worth spending it on. Cut a
-release when the list below has landed, not on a schedule.
+`go.mod` and `go.sum` are in that pathspec deliberately: a dependency bump with no
+`internal/` change — which is the shape a `mise run audit` finding produces — would
+otherwise print nothing and read as "there is nothing here to ship", which is how this
+command could re-affirm the deferral over a fix that ought to go out. On any
+tree where it prints only a rename and a docs pointer inside an error string, a tag
+ships the rename — while [ACCEPTANCE.md](ACCEPTANCE.md)
+§ Open gates is the cost every release carries whatever it contains, and it is a
+cost only a human can pay. Deferring spends that cost on a tree worth spending it
+on. Cut a release when the list below has landed, not on a schedule.
 
-Each names an entry **already in this file and states none of its content**; that
-entry is the copy to read, and restating it here is the duplication
-`mise run docs-scan` reports.
+Each names a section or an entry in this file and gives **only its place in the
+order and what that place turns on**. What the item *is* stays where it is: a second
+copy here is the duplication `mise run docs-scan` reports.
 
 1. § `credential_superseded` reports at all only if the tie for "newest" is won by
-   an attributable **store** — first because a user is behind it: the detector
-   v0.17.0 shipped is silent in the configuration that same release created.
+   an attributable **store** — first, because it is the one with a user waiting on it.
 2. § `kae account rename` leaves a bound directory's store under the old name — a
-   **measurement before a fix**. That entry says the re-bind the warning prescribes
-   does not reach the old store; the code printing it reasons the other way in its
-   own comments. Reading settles neither, so whichever is wrong is what gets
-   corrected, and the measurement lands as a test rather than as a note.
-3. § Delete the prose that is not load-bearing, on the target its own closing
-   paragraph names — and the deferral above removes the conflict a new release
-   entry would have had with it.
+   **measurement before a fix**: that entry and the comments on the code printing the
+   warning answer differently, and reading settles neither. It lands as a test.
+3. § Delete the prose that is not load-bearing, on the target that section names as
+   what is left — and the deferral above removes the conflict a new release entry
+   would have had with it.
 4. § `kae relogin` declines to capture a login it watched happen when a *sibling*
-   directory has drifted — last, because it deliberately overrides the shared
-   attribution predicate that § Attribution reads a label kae may have written
-   itself keeps open, and because no release date is now compressing the
-   measurement that entry asks for.
+   directory has drifted — last, because it overrides the shared attribution
+   predicate § Attribution reads a label kae may have written itself keeps open, and
+   because no release date is now compressing the measurement that entry asks for.
 
 Two things stay out, for unlike reasons. The freshness surfaces' wording waits on a
 **result**: [ACCEPTANCE.md](ACCEPTANCE.md) § Real-machine gate — does
 `refreshTokenExpiresAt` predict the login's death? is what decides whether kae
 over-warns, and wording written first would be the unmeasured claim
-[AGENTS.md](../AGENTS.md) refuses. **That gate's cost is elapsed time rather than
-effort** — the waiting is its instrument, and its own Procedure states what the first
-step has to record for the result to be interpretable at all — so it is started ahead
-of these batches rather than at tag time. Declaring codex's `KeychainDirBindable`
-waits on [ACCEPTANCE.md](ACCEPTANCE.md) § Open gates the same way, and this file's
-§ Hardening backlog entry for codex's keyring store says what the result unblocks.
+[AGENTS.md](../AGENTS.md) refuses. **The part of that gate nothing can compress is
+the waiting**, which is why it is started ahead of these batches rather than at tag
+time — but do not read that as cheap: its Procedure needs a real machine, a real
+login, and a second account to work in for the whole interval, and it states what
+the first step has to record for the result to be interpretable at all. Declaring
+codex's `KeychainDirBindable` waits on [ACCEPTANCE.md](ACCEPTANCE.md) § Open gates
+the same way, and this file's § Hardening backlog entry for codex's keyring store
+says what the result unblocks.
 
-This section goes when the list above has landed. What each cost stays with its entry.
+This section goes when the list above has landed, and the sentences naming it go too.
+Removing it turns `docs-check` red on [RELEASE.md](RELEASE.md)'s citation, so that
+one announces itself — measured by renaming this heading and reading the failure.
+The other does not: this file's own opening names this section in the bare form no
+citation grep reads. What each item cost stays with its entry.
 
 ## Upstream-drift automation — what is left
 

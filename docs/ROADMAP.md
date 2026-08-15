@@ -722,11 +722,15 @@ alternative exists (`secret-tool`).
 - **The reader walk runs twice per bind, and a third walk of live bindings now exists**
   (recorded 2026-08-08 by a quality pass, **not fixed**). `credStoreReaders` reads the pin
   index and every bound directory's fragment, and both the pin-level pass and the write call
-  it — with nothing between them that changes the answer. It sits behind the `supersedes`
+  it — with nothing between them that changes the answer. On those two it sits behind the
+  `supersedes`
   gate, so it costs nothing unless there is a copy worth harvesting; where that stops being
   true is `kae run -i`, which the mise hook makes a per-invocation path, and where the
   per-reader `dirSpecs` resolution stops being free is the day a second tool's rotation is
-  measured (codex's `Artifacts` can probe the keychain). The fix is a per-command memo, and
+  measured (codex's `Artifacts` can probe the keychain). **`kae doctor` became a caller that
+  is not behind that gate** when `credential_superseded` started attributing a shared store
+  by its readers: it walks once per account whose bound stores can be ordered — the ordinary
+  state, not a rare one — memoized within a group and not across them. The fix is a per-command memo, and
   the reason it is not an `App` field is that this package has already had one of those make
   a test pass for the wrong reason without a per-operation reset.
   Separately, that walk is the **third** written over the same source: `credStoreRefs` shares
@@ -736,6 +740,25 @@ alternative exists (`secret-tool`).
   it currently swallows, which changes what every doctor consumer sees on an unreadable
   fragment — refuse-versus-skip, the seam where this area's defects live — so it wants its
   own change and its own review rather than a ride-along.
+
+- **The pin index can be incomplete with nothing saying so** (recorded 2026-08-16, **not
+  fixed**). `pinnedDirsComplete` answers `complete=false` when a directory under the
+  isolation root has a pin record kae cannot read, or one that is empty. The consumers
+  that read that flag refuse on it: `credStoreRefs`, where refusing keeps a credential,
+  and `credStoreReaders`, where since `credential_superseded` began attributing a shared
+  store by its readers refusing means `kae doctor` says nothing about **any** shared
+  store on the machine — including for accounts that record has nothing to do with.
+  Nothing reports the condition itself. `pinChecks` takes its pins through `pinnedDirs`,
+  which drops the flag, so an unreadable pin record produces no `pin_stale` and no other
+  signal, and the directory it names is simply absent from every walk. The silence is
+  pinned by `TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated`.
+  Refusing is the right direction in both consumers — attribution needs positive
+  evidence, and a reader kae could not enumerate is the one that might disagree — so what
+  is owed here is the **signal**, not a weakening: a doctor check on that flag, which is a
+  new code and its own change. Recorded rather than taken because the trigger is a pin
+  record written from outside kae (`recordPinnedDir` writes atomically), which is why the
+  empty-record branch is the one measured unkillable on 2026-08-07 and carries its guard
+  as a comment rather than a test.
 
 - **A mode toggle and a same-mode re-pin answer a poisoned store differently** (recorded
   2026-08-08 by a reading-type review, **not fixed, and deliberately so**). `Conflicting`

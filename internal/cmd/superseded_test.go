@@ -397,6 +397,47 @@ func TestSupersededSurvivesOneSharedHandleLosingItsIdentityCache(t *testing.T) {
 	reported(t, "with both handles labelled again")
 }
 
+// The **loser** side of the same dispatch, which the test above cannot reach: two
+// handles on one file always tie, so they are skipped for not being superseded before
+// attribution is ever asked of them, and a shared store is judged as a loser only when
+// the account's own snapshot is the newest copy. Then every directory bound to it holds
+// a superseded credential, and which of them is named has to follow the credential's
+// readers rather than each directory's own cache.
+//
+// Without this the loser call could be reverted to the per-handle predicate and the
+// whole file would stay green — measured, which is why the arm exists.
+func TestSupersededNamesEveryHandleOnALosingSharedStore(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	// The snapshot is the newest copy, so `newestIdx` stays -1 and `winnerUnattributable`
+	// is false by construction. Nothing here can pass on the winner-side fix.
+	captureClaudeAt(t, app, "main", mainToken, now.Add(8*time.Hour))
+	behind, ahead, alt := threeBoundCopiesOfClaudeMain(t, app)
+	writeFile(t, behind.CredFile, claudeOAuthPayload("sk-ant-oat01-BEHIND-rrrr", now.Add(time.Hour)))
+	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-SHARED-ssss", now.Add(4*time.Hour)))
+	hideIdentity(t, alt.StoreDir)
+
+	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
+	if len(msgs) != 3 {
+		t.Fatalf("every directory the snapshot overtook is named, got %d: %v", len(msgs), msgs)
+	}
+	// The unlabelled handle is the assertion: its sibling reads the same file and
+	// confirms, so the copy is attributed and this directory's session is as dead as
+	// the other's. The per-handle predicate reported the other two and dropped this one.
+	joined := strings.Join(msgs, "\n")
+	for _, dir := range []string{behind.Dir, ahead.Dir, alt.Dir} {
+		if !strings.Contains(joined, "bound to "+dir) {
+			t.Errorf("%s holds a copy the snapshot overtook and must be named: %v", dir, msgs)
+		}
+	}
+	// And the remedy is the snapshot-side one, which is what says the ordering ran the
+	// way this test is built to make it run.
+	if !strings.Contains(joined, "snapshot claude/main") {
+		t.Errorf("the newer copy is the snapshot: %v", msgs)
+	}
+}
+
 // The guard the fix above must not have removed. `winnerUnattributable` is what keeps
 // kae from telling a user their login is dead on the strength of a copy it cannot tie
 // to the account, and widening attribution from one handle to the credential's readers
@@ -422,6 +463,50 @@ func TestSupersededStaysSilentWhenNoHandleCanAttributeTheCopy(t *testing.T) {
 	msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded)
 	if len(msgs) != 1 || !strings.Contains(msgs[0], "bound to "+behind.Dir) {
 		t.Fatalf("with one handle labelled again the same copy is reported: %v", msgs)
+	}
+}
+
+// What attributing a shared store by its readers costs, stated as a test because it is
+// not obvious and nothing else says it: the reader set is enumerated from the pin index
+// **machine-wide**, so one directory under the isolation root whose pin record kae
+// cannot read makes the enumeration incomplete, and every finding about a shared store
+// goes — including for accounts and directories that record has nothing to do with.
+//
+// It is the conservative direction, and it is the same answer the harvest gives on the
+// same evidence. What makes it worth pinning rather than assuming is that **nothing
+// reports the incompleteness**: `pinChecks` reads the pins through `pinnedDirs`, which
+// drops the flag (`pinindex.go`), so an unreadable pin record produces no `pin_stale`
+// and no other signal. docs/ROADMAP.md § The pin index can be incomplete with nothing
+// saying so owns that gap; docs/CLI.md § `kae doctor --json` states the silence.
+func TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	behind, ahead := twoBoundCopiesOfClaudeMain(t, app)
+	writeFile(t, behind.CredFile, claudeOAuthPayload("sk-ant-oat01-BEHIND-tttt", now.Add(4*time.Hour)))
+	writeFile(t, ahead.CredFile, claudeOAuthPayload("sk-ant-oat01-AHEAD-uuuu", now.Add(8*time.Hour)))
+	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 1 {
+		t.Fatalf("the fixture must report before the index is broken, got %d: %v", len(msgs), msgs)
+	}
+
+	// A pin directory with no pin record inside it: unrelated to either binding above,
+	// and enough to make the enumeration incomplete.
+	stray := filepath.Join(app.Paths.IsolationDir(), "0123456789abcdef")
+	if err := os.MkdirAll(stray, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
+		t.Fatalf("an unenumerable pin index is missing evidence, so the group is silent: %v", msgs)
+	}
+	if err := os.Remove(stray); err != nil {
+		t.Fatal(err)
+	}
+	// Positive control: the same fixture speaks again once the index can be read, so the
+	// silence above is the enumeration and not something the stray directory did to the
+	// bindings.
+	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 1 {
+		t.Fatalf("with the index readable again the same copy is reported: %v", msgs)
 	}
 }
 

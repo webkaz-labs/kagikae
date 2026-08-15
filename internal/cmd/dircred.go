@@ -1680,9 +1680,13 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 // then a breadcrumb read, a stat and a fragment read per pin, plus a second ReadDir for the
 // global isolated homes) and does it **twice** per
 // `kae pin` — once from the pin-level pass and once from the write, with nothing between
-// them that changes what it reads. It is behind the `supersedes` gate, so it costs nothing
-// unless there is a copy worth harvesting; the case where it is worth caring about is
-// `kae run -i`, which the mise hook makes per-invocation. Memoize per command if that shows
+// them that changes what it reads. On those two it is behind the `supersedes` gate, so it
+// costs nothing unless there is a copy worth harvesting; the case where it is worth caring
+// about is `kae run -i`, which the mise hook makes per-invocation. `kae doctor` is the
+// third caller (storeHoldsAccount) and the one **not** behind that gate: it runs once per
+// account whose bound stores can be ordered, which is the ordinary state rather than a rare
+// one. supersededChecksFor memoizes it per group; nothing memoizes across groups.
+// Memoize per command if that shows
 // up — but not on App without a per-operation reset, which is the shape that already made a
 // test pass for the wrong reason here (docs/ROADMAP.md § The reader walk runs twice).
 func (app *App) credStoreReaders(credDir, tool string) (configDirs []string, complete bool) {
@@ -2325,9 +2329,12 @@ func (app *App) pinCredentialChecks(ctx context.Context, stores []boundDirStore)
 //     exist to avoid.
 //
 // Cost is paid in that order: the live reads first (one per bound store, the same
-// call pinCredentialChecks makes), the snapshot once per account, and the adapter
-// resolution plus identity reads **only** for a finding that is otherwise ready. A
-// healthy machine pays no attribution at all.
+// call pinCredentialChecks makes), the snapshot once per account, and attribution last.
+// Last is not rare, though, and the sentence here used to say a healthy machine paid no
+// attribution at all — it pays it as soon as any bound store's copy is newer than the
+// snapshot, which is what a refresh in a bound directory produces. For the account's own
+// credential store that is a walk of every pinned directory on the machine
+// (credStoreReaders), once per such account.
 //
 // ponytail: reads each bound store's credential a second time — pinCredentialChecks
 // read the same bytes for a different question moments earlier. Hoisting one read

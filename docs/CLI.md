@@ -1361,6 +1361,12 @@ Credential-health checks (warn-level):
     establishes whose login two copies are, and a store legitimately holds a previous
     account's credential. docs/ADAPTERS.md § Per-directory credential store is
     normative for that taxonomy.
+  - Naming those readers means enumerating kae's pin index, which is **machine-wide**:
+    one directory under the isolation root whose pin record kae cannot read makes the
+    enumeration incomplete, and then no shared store is attributed and no finding about
+    one is reported, for any account. That is missing evidence like any other, and
+    docs/ROADMAP.md § The pin index can be incomplete with nothing saying so carries
+    what it costs.
   - Equal deadlines are not overtaken, so a directory pinned moments ago — whose
     store holds exactly what the snapshot does — reports nothing.
   - A tombstoned or unreadable bound copy is left to `credential_stale`, which

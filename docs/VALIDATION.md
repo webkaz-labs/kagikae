@@ -1189,13 +1189,19 @@ it. Read verbatim it failed at the first `kae pin` with `profile "main" is not d
 and then called `store`, a function nothing had defined.
 
 The duplication is the point, not an oversight: what this block needs is the preamble
-**only**, never the harvest cases. Their bindings of the same account make K's "newest
-copy" a tie, and the store that happens to win the walk order can be one kae cannot
-attribute, which silences the whole group — K measured 0 findings instead of 1 that way
-on 2026-08-08. (A tied store that does *not* win changes nothing; it is already skipped
-for not being superseded.) `docs/ROADMAP.md` § credential_superseded owns the mechanism
-and the control that pinned it. Seeding here is what makes "preamble only" structural
-instead of an instruction a reader has to obey.
+**only**, never the harvest cases. Run after them on 2026-08-08, K measured 0 findings
+instead of 1 — their bindings of the same account made K's "newest copy" a tie, and the
+store that won the walk order was one kae could not attribute, which silenced the whole
+group. (A tied store that does *not* win changes nothing; it is already skipped
+for not being superseded.) **That particular mechanism is gone**: attribution of the
+account's own credential store now asks the directories reading it rather than the one
+handle the walk reached first, so a sibling with an identity cache answers for the copy
+([ADAPTERS.md](ADAPTERS.md) § Per-directory credential store is normative for what
+attributes what, and `TestSupersededSurvivesOneSharedHandleLosingItsIdentityCache` is
+the control). The rule
+needs none of that to stand — `scripts/smoke-run.sh` gives every section a fresh
+sandbox — and seeding here is what makes "preamble only" structural instead of an
+instruction a reader has to obey.
 
 **Two copies of one account's credential no longer arise from two ordinary bindings**,
 which changes how this state has to be built. The per-account store that shipped in this

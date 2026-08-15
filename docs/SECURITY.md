@@ -149,7 +149,13 @@ child could rotate the live credential unseen — a cached value would be stale.
   snapshot **and** every bound store of that account, since it compares copies rather
   than reading one deadline — so it is the widest of the three, and its canary is a
   sibling test rather than a case in the other's table (it needs a bound directory
-  and two copies before it has anything to say).
+  and two copies before it has anything to say). It also reads outside the credential
+  payloads, and further outside than the finding's own subject: to attribute the
+  account's own credential store it enumerates kae's pin index and reads every pinned
+  directory's breadcrumb and fragment, whatever account they belong to, then the
+  **identity cache** of the ones that read that store, plus every globally isolated home
+  of that account on disk — files carrying an account label, not a token. Nothing from
+  them is printed.
 
   Two payload sources, and one of them reads live. The account-snapshot half reads
   kae's own secret store; the **bound-directory** half reads the per-directory

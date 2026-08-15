@@ -852,14 +852,16 @@ say "the store", read it as whichever of the two that tool resolves:
   account: its credential can legitimately belong
   to another account, and filing that under this one's name is undetectable
   afterwards — the token is opaque, so live, snapshot and doctor would all agree on a
-  label that is simply wrong. That attribution answer has a **second reader**:
-  `kae doctor` reports the one refusal that is *positive* evidence — the store's
-  identity naming a different account — as `identity_drift` for that bound directory
+  label that is simply wrong. That attribution answer is read outside the harvest too,
+  and its consumers read opposite sides of it: `kae doctor` reports the one refusal
+  that is *positive* evidence — the store's identity naming a different account — as
+  `identity_drift` for that bound directory, while `credential_superseded` requires the
+  confirming answer before it may say anything about a copy at all
   (docs/CLI.md § `kae doctor --json`). It is one predicate, so what the harvest may act
   on and what
-  doctor may report cannot drift apart; and doctor reports **only** that branch,
-  because every other refusal above is missing evidence and would fire on healthy
-  directories;
+  doctor may report cannot drift apart; and `identity_drift` reports **only** that
+  branch, because every other refusal above is missing evidence and would fire on
+  healthy directories;
 - and **where refusing to harvest would otherwise mean destroying, the write is skipped
   instead.** A refusal leaves the newer copy where it is — the write does not proceed
   with the older snapshot — on exactly one condition: the refusal is the *attribution*

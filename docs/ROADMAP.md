@@ -49,19 +49,20 @@ Each names a section or an entry in this file and gives **only its place in the
 order and what that place turns on**. What the item *is* stays where it is: a second
 copy here is the duplication `mise run docs-scan` reports.
 
-1. § `credential_superseded` reports at all only if the tie for "newest" is won by
-   an attributable **store** — first, because it is the one with a user waiting on it.
-2. § `kae account rename` leaves a bound directory's store under the old name — a
+1. § `kae account rename` leaves a bound directory's store under the old name — a
    **measurement before a fix**: that entry and the comments on the code printing the
    warning answer differently, and reading settles neither. It lands as a test.
-3. § Delete the prose that is not load-bearing, on the target that section names as
+2. § Delete the prose that is not load-bearing, on the target that section names as
    what is left — and the deferral above removes the conflict a new release entry
    would have had with it.
-4. § `kae relogin` declines to capture a login it watched happen when a *sibling*
+3. § `kae relogin` declines to capture a login it watched happen when a *sibling*
    directory has drifted — last, because it overrides the shared attribution
    predicate, whose residue § Attribution reads a label kae may have written itself
    keeps open, and because no release date is now compressing the measurement that
    entry asks for.
+
+An item leaves this list when it lands, so what is here is what is left rather than
+what was planned; git log holds the order it was worked in.
 
 What stays out does so for unlike reasons. The freshness surfaces' wording waits on a
 **result**: [ACCEPTANCE.md](ACCEPTANCE.md) § Real-machine gate — does
@@ -724,11 +725,16 @@ alternative exists (`secret-tool`).
 - **The reader walk runs twice per bind, and a third walk of live bindings now exists**
   (recorded 2026-08-08 by a quality pass, **not fixed**). `credStoreReaders` reads the pin
   index and every bound directory's fragment, and both the pin-level pass and the write call
-  it — with nothing between them that changes the answer. It sits behind the `supersedes`
+  it — with nothing between them that changes the answer. On those two it sits behind the
+  `supersedes`
   gate, so it costs nothing unless there is a copy worth harvesting; where that stops being
   true is `kae run -i`, which the mise hook makes a per-invocation path, and where the
   per-reader `dirSpecs` resolution stops being free is the day a second tool's rotation is
-  measured (codex's `Artifacts` can probe the keychain). The fix is a per-command memo, and
+  measured (codex's `Artifacts` can probe the keychain). `kae doctor` became a caller when
+  `credential_superseded` started attributing a shared store by its readers; it is gated
+  the same way in effect, asking only once a finding is otherwise ready and memoizing
+  within an account's group — but not across groups, so an account whose bound copy really
+  was overtaken pays one walk each. The fix is a per-command memo, and
   the reason it is not an `App` field is that this package has already had one of those make
   a test pass for the wrong reason without a per-operation reset.
   Separately, that walk is the **third** written over the same source: `credStoreRefs` shares
@@ -738,6 +744,24 @@ alternative exists (`secret-tool`).
   it currently swallows, which changes what every doctor consumer sees on an unreadable
   fragment — refuse-versus-skip, the seam where this area's defects live — so it wants its
   own change and its own review rather than a ride-along.
+
+- **The pin index can be incomplete with nothing saying so** (recorded 2026-08-16, **not
+  fixed**). `pinnedDirsComplete` answers `complete=false` when a directory under the
+  isolation root has a pin record kae cannot read, or one that is empty. The consumers
+  that read that flag refuse on it: `credStoreRefs`, where refusing keeps a credential,
+  and `credStoreReaders`, where since `credential_superseded` began attributing a shared
+  store by its readers refusing means `kae doctor` says nothing about **any** shared
+  store on the machine — including for accounts that record has nothing to do with.
+  Nothing reports the condition itself. `pinChecks` takes its pins through `pinnedDirs`,
+  which drops the flag, so an unreadable pin record produces no `pin_stale` and no other
+  signal, and the directory it names is simply absent from every walk. The silence is
+  pinned by `TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated`.
+  Refusing is the right direction in both consumers — attribution needs positive
+  evidence, and a reader kae could not enumerate is the one that might disagree — so what
+  is owed here is the **signal**, not a weakening: a doctor check on that flag, which is a
+  new code and its own change. Recorded rather than taken because the trigger is a pin
+  record written from outside kae (`recordPinnedDir` writes atomically; `pinnedDirsComplete`
+  carries why that branch is unkillable).
 
 - **A mode toggle and a same-mode re-pin answer a poisoned store differently** (recorded
   2026-08-08 by a reading-type review, **not fixed, and deliberately so**). `Conflicting`
@@ -875,32 +899,6 @@ alternative exists (`secret-tool`).
   — is what would let `identity_drift` tell a stale label from a real one, which is worth
   having for its own sake. Do
   not "fix" it by removing the confirmation: that would make every bind keep forever.
-
-- **`credential_superseded` reports at all only if the tie for "newest" is won by an
-  attributable **store** — a snapshot winner is not attributed at all, and must not be —
-  and after the split the tie is the normal case** (measured
-  2026-08-08 during the v0.17.0 acceptance run, **not fixed**). Every directory bound to
-  one account now names the *same* credential store, so the stores in an account's group
-  usually hold the identical bytes, the ordering is a tie, and which element becomes
-  `newestIdx` falls out of walk order. `winnerUnattributable` then suppresses **every**
-  finding in the group — which is right when the winner is a genuinely different copy kae
-  cannot tie to the account, and is an accident when the winner is one of several handles
-  on the same file and merely happens to be the one with no identity cache beside it.
-  Measured with a reversible control on three bound directories: one finding, remove one
-  directory's identity cache, **zero**, restore it, one again.
-  The direction is conservative — silence, not a false alarm — which is why this is
-  recorded rather than rushed. Two things to settle before touching it, in this order.
-  First, whether the loop should group by *credential location* rather than by store, so
-  several handles on one file are one candidate and attribution is asked once per copy;
-  that is the shape the split implies, and `freshnessOf` already memoizes on exactly that
-  key. Second, that the check's designed-for shape (two worktrees, two copies) is now
-  reachable only from a **pre-split** binding or from a bound store versus the account
-  snapshot — so its remaining value is largely the migration window and the snapshot
-  comparison, which the acceptance block in
-  [VALIDATION.md](VALIDATION.md) § `kae relogin` and `credential_superseded` now states.
-  Do **not** fix it by dropping `winnerUnattributable`: it is the guard that keeps kae
-  from telling a user their login is dead on the strength of a copy it cannot attribute,
-  and the asymmetry there is deliberate ([AGENTS.md](../AGENTS.md)).
 
 - **A store bound before the credential split, unbound, then re-bound after it keeps
   its pre-split item** (recorded 2026-08-07, **not fixed** — deliberately). The

@@ -374,7 +374,7 @@ isolation alone does not yet solve — see "One account per worktree".
 | `kae` / `kae status` (`kae s`) | Show what is active per tool. |
 | `kae use <profile\|tool account>` (`kae u`) | Switch globally (`-i` isolated, `--quiet` for hooks). |
 | `kae pin [<profile>]` (`kae p`) | Bind the current directory (`-i` isolated). |
-| `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials, harvesting each into its account snapshot first and keeping any it could not (sessions and settings are kept). |
+| `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials, harvesting each into its account snapshot first and keeping any it could not (sessions and settings are kept). One copy it deletes without keeping: one whose account no longer exists, because there is no snapshot to keep it in — it says so, and [docs/CLI.md](docs/CLI.md) § kae pin says why. |
 | `kae relogin [<tool>]` | Run the tool's login flow into *this directory's* bound store — kae exports the isolation variable itself, so it lands there whether or not the pin is active in this shell — then capture the new login back into the account snapshot. It also harvests what the store already held **before** starting the flow, since the login is a write kae does not perform, and says so on stderr when that copy could not be kept. |
 | `kae run <tool> <account> [-- <cmd>]` (`kae r`) | Run one process under an account (`-s`/`-i`/`--env`). |
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
@@ -411,7 +411,10 @@ exit code — see [docs/CLI.md](docs/CLI.md).
   tool refreshes the credential *inside* that directory, and for claude the older
   copy is then rejected rather than merely older — so re-binding, re-materializing
   or purging a directory harvests the newer copy into the account snapshot first,
-  instead of logging the directory out hours later. It warns on stderr, before applying, when the account you are switching
+  instead of logging the directory out hours later. It needs an account to harvest
+  into, so renaming one out from under a bound directory is the gap: see
+  [docs/ROADMAP.md](docs/ROADMAP.md) § `kae account rename` leaves a bound
+  directory's store under the old name. It warns on stderr, before applying, when the account you are switching
   to needs a re-login (expired with no usable refresh token, or emptied by the tool
   after a failed refresh) and names the tool's login command; `kae doctor` flags
   the same snapshots and orphaned secret items.

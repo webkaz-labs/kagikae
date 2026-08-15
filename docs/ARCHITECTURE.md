@@ -386,7 +386,11 @@ lock is always innermost (tool locks → config lock → state lock) and is held
 only for the read plus the write, and **a decision about the state must be made
 inside the mutation, not from a copy read earlier** — `kae account rm` re-checks
 under the lock whether the account it removes is still the active one, because a
-switch can have completed in between.
+switch can have completed in between. `TestStateWritesGoThroughTheSeam` keeps the
+seam from being bypassed from the rest of `internal/cmd`, which is as far as it
+globs: `state.Save` stays exported, so nothing else stops a direct write that
+compiles, passes review and fails only under concurrency. `kae rollback` does not
+cover a mistake here — it restores credentials, not this file.
 
 ## Caching
 
@@ -436,8 +440,13 @@ source and backend-read error policy.
   re-read immediately before patching inside the lock, never reuse a value
   read earlier in the process.
 - macOS `security add-generic-password -U` updates in place but requires the
-  same service/account pair; the Claude keychain item account name is the
-  local username and must be read from the existing item, not assumed.
+  same service/account pair. The account is derived from the environment being
+  written wherever the spec carries one, rather than read back from the live item —
+  the direction kae once had backwards, and which
+  `TestKeychainSpecsAreAccountScoped` now refuses for every shipped spec. A rollback
+  of a backup whose record predates the account field is the one path that still
+  reads the live item, and `internal/artifact/artifact.go` says why.
+  [ADAPTERS.md](ADAPTERS.md) § Keyring item contract states the rule in full.
 - `secret-tool` returns exit code 1 both for "not found" and some errors;
   treat stderr content as the discriminator.
 - Codex `auto` credential store resolves to keyring only when the keyring is

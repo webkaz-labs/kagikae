@@ -172,6 +172,12 @@ from a file kae wrote — until the first token refresh, after which only the
 per-directory item is read. That is why kae writes the item, not the file, and
 removes the superseded copy (see "Per-directory credential store").
 
+**Neither this formula nor codex's ports to the other tool.** codex hashes
+a canonicalized `CODEX_HOME` into the item's **account** under one shared service
+(§ Keyring item contract); claude hashes this variable, uncleaned and unresolved, into
+the **service** instead. Same idea, two incompatible derivations: each stays in its own
+adapter.
+
 The service name also carries the build's OAuth suffix (empty for the production
 build, non-empty for a local build or with `CLAUDE_CODE_CUSTOM_OAUTH_URL` set).
 kae models the production spelling only; a build with a non-empty suffix is

@@ -1019,7 +1019,7 @@ func TestRunRebindToTheSameAccountKeepsTheLiveLabel(t *testing.T) {
 // boundaries without anything tying them: `isolationPlan` switches on `constants.Mode*`
 // while `runRebind` switches the mode read from the fragment on `paths.*Segment`, so a
 // drift would put the two entry points on different branches of the same question —
-// the "two tables keyed differently" hazard AGENTS.md records for the completion guards.
+// the "two tables keyed differently" hazard AGENTS.md routes to for the completion guards.
 // Measured interchangeable 2026-08-08; nothing enforced it.
 func TestBindModeConstantsAgreeAcrossPackages(t *testing.T) {
 	for _, pair := range []struct{ name, mode, segment string }{

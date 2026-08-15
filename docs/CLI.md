@@ -907,7 +907,9 @@ as a best-effort generator — unit-tested, and parsed by `fish --no-execute` on
 machine that has fish, which the release machine may not — but is not a
 release-gated, officially-verified surface (dropped 2026-06-18).
 
-**Keeping completion current.** Because the script is dynamic, new candidates (a
+### Keeping completion current
+
+Because the script is dynamic, new candidates (a
 profile, account, companion) appear with no action. Only a **structural** change
 — a new command/subcommand `case` or a new `__complete` kind — alters the script
 body, and that is refreshed automatically:
@@ -925,13 +927,34 @@ body, and that is refreshed automatically:
 For zsh under `compinit -C` (a speed-tuned cache that skips the rescan) the
 rewritten file may not load until the compdump is rebuilt; `--refresh` prints the
 command (`rm -f "${ZSH_COMPDUMP:-$HOME/.zcompdump}" && autoload -Uz compinit &&
-compinit`) when it changed a zsh file. Two test-side guards hold the script from
-drifting: a `subcommandVerbs` parity test over each group's sub-verbs, and a
-classification of **every** command as taking a positional or not, which requires
-each one that does to have a branch that offers candidates in all three shells.
-Neither sees a command dropped from both the command list and that classification
-([ROADMAP.md](ROADMAP.md) § Command-system expansion) — `kae env` and `kae backup`
-went without a case at all until v0.17.0 for exactly that reason.
+compinit`) when it changed a zsh file. **A guard reaches only what its table names.**
+Two test-side guards hold the script from drifting, keyed differently on purpose: a
+`subcommandVerbs` parity test over each group's sub-verbs, and `positionalCommands`, a
+classification of **every** command as taking a positional or not, which requires each
+one that does to have a branch that offers candidates in all three shells. Neither
+closes the class on its own, and neither sees a command dropped from both the command
+list and that classification ([ROADMAP.md](ROADMAP.md) § Command-system expansion) —
+`kae env` and `kae backup` went without a case at all until v0.17.0 for exactly that
+reason. Both live in `internal/cmd/completion_install_test.go` and are together
+normative for what each does and does not see — including why the gap is not closed by
+dispatching each command from a test, and what deleting an entry from `subcommandVerbs`
+silently takes with it. Read them before weakening either.
+
+**What a new command or subcommand has to touch, in the same commit.** The `case` in
+all three scripts in `internal/cmd/completion.go`; any new `kae __complete` kind in
+`internal/cmd/complete.go`; the parity guard `subcommandVerbs` (its sub-verbs) and the
+classification `positionalCommands` (whether it takes a positional at all); plus
+`completionCommands` and `printHelp`, neither of which any guard checks against the
+router. `kae <cmd> <TAB>` must never be a dead end — a new subcommand group shipped
+without completion in v0.10.0.
+
+**Adding a shell reaches much further than the scripts**, and no guard checks any of it
+against `completionScript` — so find the copies rather than trust a list of them:
+`grep -rn fish internal/`. Two kinds fail *silently* rather than loudly, which is why
+the grep is worth running: the installer's `--refresh` walk
+(`completion_install.go`), or the new shell's registered file is never rewritten again;
+and the per-shell loops and table rows in the tests, which leave every guard here blind
+to it.
 
 kae's own completion is **binary-scoped**, so it is registered globally, never
 per-directory (a per-directory registration would make `kae <TAB>` blink in and

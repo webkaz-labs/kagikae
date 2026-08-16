@@ -825,27 +825,35 @@ alternative exists (`secret-tool`).
   a harvest it would have disagreed with. What would settle it is a reader set that does
   not depend on the recorded path, or a breadcrumb that `unpin` removes so absence can
   mean incompleteness again.
-  **The consolation this entry used to offer is the sharper half of it** (measured
-  2026-08-16). It said `pinChecks` already reports the orphaned store, so the user is
-  told something is wrong. `pinChecks` reaches the moved directory through the same
-  `!dirExists(pin.Dir)` test the reader walks use — `git grep -n 'dirExists(pin\.Dir)'`
-  is the caller list, and it cannot tell a moved directory from a deleted one in any of
-  them — and what `pinChecks` prints is not a report but a **remedy**: `<dir> was bound with kae pin but is gone; its per-directory store is
-  orphaned (remove <isolation/pin-id> to reclaim it)`. For a directory that was moved,
-  the store it names is the one the moved directory is still exporting out of the
-  fragment that travelled with it, so a user who follows the remedy deletes a live
-  store. `paths.PinDir` is the parent of every tool's `shared/` and `isolated/` store
-  for that directory, so what goes is the sessions and settings of each, and for any
-  tool whose credential is not split per account the credential with them. **Mode is
-  not the condition and a first draft of this said it was**: `credentialEnvVar` names a
-  variable for claude and nothing else, so `credStoreDir` is empty for every other tool
-  and its credential materializes under the config dir — inside `PinDir` — in shared and
-  isolated mode alike, while claude's sits in `credstore/<tool>/<account>` outside
-  `PinDir` in both. The comment above that branch states the opposite in kae's own
-  voice (`Deleted or moved. Nothing can reach its store again`), which is what a fix
-  has to correct first: the reader-set half and the remedy half are the same
-  predicate, but only the remedy destroys something, so it is the half worth moving
-  first even if the reader set stays as it is.
+  **This entry used to offer a consolation and it is unsound** — that `pinChecks`
+  reports the orphaned store, so the user is told something is wrong. It is the entry
+  below, because what it prints is a remedy rather than a report and the remedy
+  destroys; the two share this entry's predicate and nothing else.
+
+- **`pinChecks` tells the user to delete a store a moved directory is still using**
+  (measured 2026-08-16, **not fixed**). It reaches a moved directory through the same
+  `!dirExists(pin.Dir)` test as the entry above — `git grep -n 'dirExists(pin\.Dir)'`
+  is the caller list, and none of them can tell a moved directory from a deleted one —
+  but where the reader walks answer by staying quiet, this one prints
+  `<dir> was bound with kae pin but is gone; its per-directory store is orphaned
+  (remove <isolation/pin-id> to reclaim it)`. For a moved directory that store is the
+  one it is still exporting, out of the fragment that travelled with it, so a user who
+  follows the remedy deletes a live store. `paths.PinDir` is the parent of every tool's
+  `shared/` and `isolated/` store for that directory, so what goes is the sessions and
+  settings of each, and for any tool whose credential is not split per account the
+  credential with them. **Mode is not the condition and a first draft of this said it
+  was**: only claude has a per-account credential variable
+  ([ADAPTERS.md](ADAPTERS.md) § Per-account credential store), so `credStoreDir` is
+  empty for every other tool and its credential materializes under the config dir —
+  inside `PinDir` — in shared and isolated mode alike, while claude's sits outside
+  `PinDir` in both.
+  What has to be corrected first is not the predicate but kae's own account of it: the
+  comment on that branch says `Deleted or moved. Nothing can reach its store again`,
+  and the moved half of that is false. A remedy that cannot tell the two apart may not
+  advise a deletion — withholding the remedy while still reporting the orphan costs
+  nothing here, since the reclaim is a convenience and the deletion is not reversible.
+  That is available without settling the reader-set question the entry above asks, and
+  it is why the two are filed apart.
 
 - **A relogin's pre-flight refusal owes a backup it cannot safely take yet** (recorded
   2026-08-08 by an independent review of the pre-flight itself, **not fixed**).
@@ -980,8 +988,10 @@ alternative exists (`secret-tool`).
   having for its own sake. Do
   not "fix" it by removing the confirmation: that would make every bind keep forever.
   **The reachable sequence is more ordinary than the one written above, and the ordinary
-  one is the silent one** (reproduced 2026-08-16 with probe tests, all three variants
-  filing the other account's token under this account's name). The sequence above ends
+  one is the silent one** (reproduced 2026-08-16 by probes written for it and
+  not kept, each of the sequences below filing the other account's token under this
+  account's name: the re-bind above, the deletion described here, and the
+  globally-isolated home). The sequence above ends
   with re-binding B elsewhere, which is a kae command; but the disagreeing reader also
   leaves the set when its directory is simply **deleted**, because `credStoreReaders`
   skips a pin whose recorded directory is gone (§ A moved bound directory) — and

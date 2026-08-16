@@ -107,11 +107,14 @@ func (Codex) ID() string { return constants.ToolCodex }
 func (Codex) Binary() string { return "codex" }
 
 // VerifiedVersion is the Codex CLI release kae's behaviour assumptions were last
-// checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
-func (Codex) VerifiedVersion() string { return "0.146.0" }
+// checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). As on claude, it
+// is not evidence that every row there was re-run on it: codex is public, so the
+// source halves are re-read tag to tag cheaply, while the rows with a live-item or
+// behavioural half keep the older observation their own cells name.
+func (Codex) VerifiedVersion() string { return "0.147.0" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Codex) VerifiedOn() string { return "2026-08-04" }
+func (Codex) VerifiedOn() string { return "2026-08-16" }
 
 // codexHome honors CODEX_HOME as the live base path when already set.
 func codexHome(env adapter.Env) string {

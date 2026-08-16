@@ -1269,7 +1269,7 @@ half-done. Do not reformat the rows without updating that test.
 | Tool | `VerifiedVersion()` | `VerifiedOn()` | `--version` output shape |
 |------|---------------------|----------------|--------------------------|
 | claude | `2.1.233` | `2026-08-16` | `2.1.233 (Claude Code)` |
-| codex | `0.146.0` | `2026-08-04` | `codex-cli 0.146.0` |
+| codex | `0.147.0` | `2026-08-16` | `codex-cli 0.147.0` |
 | agy | `1.0.10` | `2026-07-31` | `1.0.10` |
 | opencode | `1.18.16` | `2026-08-16` | `1.18.16` |
 | cursor | `""` (no signal — see below) | `2026-07-30` | `2026.06.16-20-30-07-<sha>` (date-versioned) |

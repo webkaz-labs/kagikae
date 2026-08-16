@@ -27,7 +27,7 @@ const (
 // marker-delimited kagikae block. An existing file without markers is never
 // modified. --auto adds a [hooks.enter] entry running `kae use --quiet`. The
 // former isolation modes (home/overlay/bond/pin) are gone: bind a directory
-// with `kae pin -s|-i`, which owns its own mise fragment (docs/RELEASE.md).
+// with `kae pin -s|-i`, which owns its own mise fragment.
 func CmdMise(ctx context.Context, args []string) int {
 	if len(args) == 0 || args[0] != "init" {
 		return usageError("usage: %s mise init [--profile NAME] [--auto] [--write]", toolName)
@@ -177,7 +177,7 @@ func (app *App) miseBlock(profileName string, auto bool) string {
 	// native shell completion. Account completion is intentionally NOT
 	// tool-scoped here: mise's `complete run` does not expose the prior `tool`
 	// argument, so it lists every account; kae's own shell completion keeps the
-	// tool-scoped behavior (docs/RELEASE.md §C). mise reads each arg as the
+	// tool-scoped behavior. mise reads each arg as the
 	// `usage_<name>` env var in the run script.
 	fmt.Fprintln(&b)
 	fmt.Fprintln(&b, "[tasks.ai-switch]")

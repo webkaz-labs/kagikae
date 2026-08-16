@@ -96,7 +96,7 @@ func TestRunAuthNotCaptured(t *testing.T) {
 	mustExit(t, constants.ExitNotFound, code, out)
 }
 
-// §B: with no -- <cmd>, a single-tool target defaults the child to that tool's
+// With no -- <cmd>, a single-tool target defaults the child to that tool's
 // upstream binary (claude→claude, cursor→cursor-agent).
 func TestDefaultChildCmd(t *testing.T) {
 	cases := []struct {
@@ -123,7 +123,7 @@ func TestDefaultChildCmd(t *testing.T) {
 	}
 }
 
-// §B end-to-end: kae run claude main (no --) applies the account and launches
+// End-to-end: kae run claude main (no --) applies the account and launches
 // the defaulted `claude` child through the runner seam.
 func TestRunDefaultsChildBinary(t *testing.T) {
 	app := testApp(t, nil)

@@ -48,7 +48,7 @@ func nearestMatch(input string, candidates []string) (string, bool) {
 
 // levenshtein computes the edit distance between a and b with the standard
 // single-row dynamic-programming table. Hand-rolled to keep kae dependency-free
-// (docs/RELEASE.md v0.8.5 §A: no fuzzy-matching dependency).
+// (no fuzzy-matching dependency).
 func levenshtein(a, b string) int {
 	ra, rb := []rune(a), []rune(b)
 	if len(ra) == 0 {

@@ -9,7 +9,7 @@ import (
 
 // TestNearestMatch covers the noise-avoiding threshold: a near miss hints, a
 // wildly different token does not, an exact match never hints, and a tie for the
-// best distance is suppressed (docs/RELEASE.md v0.8.5 §A).
+// best distance is suppressed.
 func TestNearestMatch(t *testing.T) {
 	cands := []string{"use", "pin", "run", "status"}
 	cases := []struct {

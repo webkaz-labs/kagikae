@@ -51,8 +51,8 @@ func toolBinary(tool string) string {
 //	kae add --no-login <tool> [<account>]     snapshot the current live state
 //
 // With the account name omitted, kae auto-detects it from the live login
-// identity (the v0.8.2 default; docs/RELEASE.md §B): --no-login reads the
-// current live state, the login flow reads the post-login state. An explicit
+// identity: --no-login reads the current live state, the login flow reads the
+// post-login state. An explicit
 // name always wins. The default backs up the current auth state, launches the
 // official login flow, captures the result into the account, and (with
 // --restore) puts the previous login back. --no-login skips the flow and
@@ -106,7 +106,7 @@ func CmdAdd(ctx context.Context, args []string) int {
 // runLogin launches the official login flow and snapshots the result. tool is
 // already canonical (CmdAdd); explicitName is the given account name, or "" to
 // auto-detect it. The name is resolved after the login flow exits, because the
-// login identity only becomes live once the flow completes (docs/RELEASE.md §B).
+// login identity only becomes live once the flow completes.
 func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName string, restore bool) int {
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
@@ -177,7 +177,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 
 	// The login flow changed auth, so the new identity is now live: resolve the
 	// account name (auto-detected from it unless given explicitly) and the raw
-	// identity to record in the snapshot (§D), then snapshot.
+	// identity to record in the snapshot, then snapshot.
 	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName, opts.IdentityOverride)
 	if err != nil {
 		return finishLoginFailure(ctx, app, opts, be, meta, restore, "detect the logged-in account", err)

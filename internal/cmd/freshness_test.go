@@ -27,7 +27,7 @@ func claudeCreds(t *testing.T, app *App) string {
 	return readFile(t, filepath.Join(app.Env.Home, ".claude", ".credentials.json"))
 }
 
-// §A: kae use A -> B -> A re-applies the token that was live when A was
+// A kae use A -> B -> A round trip re-applies the token that was live when A was
 // switched away (recaptured), not the original captured token.
 func TestSwitchAwayRecapturesRefreshedToken(t *testing.T) {
 	app := testApp(t, nil)
@@ -50,7 +50,7 @@ func TestSwitchAwayRecapturesRefreshedToken(t *testing.T) {
 	const refreshed = "sk-ant-oat01-WORK-REFRESHED-cccc"
 	seedClaude(t, app, refreshed, "main-uuid")
 
-	// Switch away: §A must recapture main's live (refreshed) token first.
+	// Switch away: the recapture must take main's live (refreshed) token first.
 	if code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "side") }); code != constants.ExitOK {
 		t.Fatalf("switch to side: %s", out)
 	}
@@ -67,7 +67,7 @@ func TestSwitchAwayRecapturesRefreshedToken(t *testing.T) {
 	}
 }
 
-// §A: when the live store still matches the snapshot, a switch away leaves the
+// When the live store still matches the snapshot, a switch away leaves the
 // snapshot untouched (the token round-trips unchanged through A->B->A).
 func TestSwitchAwaySkipsRecaptureWhenMatching(t *testing.T) {
 	app := testApp(t, nil)
@@ -90,7 +90,7 @@ func TestSwitchAwaySkipsRecaptureWhenMatching(t *testing.T) {
 	}
 }
 
-// §B: switching to an account whose snapshot is expired with no refresh token
+// Switching to an account whose snapshot is expired with no refresh token
 // warns and names kae add, but still proceeds.
 func TestSwitchToExpiredSnapshotWarns(t *testing.T) {
 	app := testApp(t, nil)
@@ -115,7 +115,8 @@ func TestSwitchToExpiredSnapshotWarns(t *testing.T) {
 	}
 }
 
-// The shared §B/§D predicate. The load-bearing rows are the last two: a refresh
+// The predicate the switch-time stale warning and doctor's credential_stale
+// share. The load-bearing rows are the last two: a refresh
 // token that has itself expired, and a credential the tool tombstoned, both used
 // to silence the warning completely.
 func TestNeedsRelogin(t *testing.T) {
@@ -160,7 +161,7 @@ func TestNeedsRelogin(t *testing.T) {
 	}
 }
 
-// §B: an expired refresh token no longer counts as a recovery path, and the
+// An expired refresh token no longer counts as a recovery path, and the
 // warning must name the tool's own login flow — re-capturing a dead credential
 // only writes it back into the snapshot.
 func TestSwitchToExpiredRefreshTokenWarns(t *testing.T) {
@@ -188,7 +189,7 @@ func TestSwitchToExpiredRefreshTokenWarns(t *testing.T) {
 	}
 }
 
-// §B: a credential the tool itself emptied (the tombstone a failed refresh
+// A credential the tool itself emptied (the tombstone a failed refresh
 // leaves) reads as "no expiry recorded", so it used to be the one state kae never
 // warned about.
 func TestSwitchToTombstonedSnapshotWarns(t *testing.T) {
@@ -215,7 +216,7 @@ func TestSwitchToTombstonedSnapshotWarns(t *testing.T) {
 	}
 }
 
-// §B: an expired snapshot that still carries a refresh token proceeds with no
+// An expired snapshot that still carries a refresh token proceeds with no
 // warning — the tool self-refreshes.
 func TestSwitchToExpiredWithRefreshNoWarning(t *testing.T) {
 	app := testApp(t, nil)
@@ -250,7 +251,7 @@ func captureBoth(t *testing.T, run func() int) (code int, stdout, stderr string)
 	return code, stdout, stderr
 }
 
-// §A: `claude /login` outside kae rewrites accountUuid/emailAddress
+// `claude /login` outside kae rewrites accountUuid/emailAddress
 // unconditionally, so afterwards the live identity names the *new* account while
 // kae's active account is still the old one. Recapturing there would file the new
 // credential under the old account's name and identity — and nothing offline can
@@ -288,7 +289,7 @@ func TestSwitchAwaySkipsRecaptureAfterOutsideLogin(t *testing.T) {
 	}
 }
 
-// §A: a live credential can *exist* and still be unusable — claude writes a
+// A live credential can *exist* and still be unusable — claude writes a
 // blanked payload over it when a refresh fails — so the logged-out guard passes
 // and recapture would overwrite a snapshot that was still good, irrecoverably
 // (the switch's backup reads the same dead live store).
@@ -320,7 +321,7 @@ func TestSwitchAwaySkipsRecaptureWhenLiveCredentialIsDead(t *testing.T) {
 	}
 }
 
-// §B delivery: the warning has to arrive on stderr and before the apply. On
+// Delivery: the warning has to arrive on stderr and before the apply. On
 // stdout after the fact it vanished through a pipe and, under bare
 // `kae use --quiet`, was never printed at all.
 func TestStaleWarningGoesToStderrNotStdout(t *testing.T) {
@@ -347,7 +348,7 @@ func TestStaleWarningGoesToStderrNotStdout(t *testing.T) {
 	}
 }
 
-// §B delivery: --quiet suppresses the success report, never a warning — and this
+// Delivery: --quiet suppresses the success report, never a warning — and this
 // is the form `kae mise init --auto` puts in the enter hook, so it was the case
 // where the warning was completely invisible. The exit code stays 0.
 func TestQuietBareUseStillWarns(t *testing.T) {
@@ -377,7 +378,7 @@ func TestQuietBareUseStillWarns(t *testing.T) {
 	}
 }
 
-// §B delivery: a profile switch fans out over several tools, so the per-tool
+// Delivery: a profile switch fans out over several tools, so the per-tool
 // lines close with one roll-up naming them.
 func TestWarnBeforeApplyRollsUpMultipleTools(t *testing.T) {
 	results := []switchResult{
@@ -505,7 +506,7 @@ func TestCredentialStateAtBands(t *testing.T) {
 	}
 }
 
-// §B lead time: switching to an account whose deadline is a real end of life and
+// Lead time: switching to an account whose deadline is a real end of life and
 // days away must say so, name `kae add --restore` (the one command that refreshes it
 // without disturbing the login that is live now), and — unlike the stale warning —
 // must not be counted among the tools that "need a re-login before use", because

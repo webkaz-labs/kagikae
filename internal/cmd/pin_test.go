@@ -201,7 +201,7 @@ func TestRemovedCommandsPointAtReplacements(t *testing.T) {
 func TestAddFlagValidation(t *testing.T) {
 	ctx := context.Background()
 	// One positional (kae add <tool>) is now valid: the account name is
-	// auto-detected (docs/RELEASE.md §B). No positional and three positionals
+	// auto-detected. No positional and three positionals
 	// stay usage errors.
 	if code := CmdAdd(ctx, nil); code != constants.ExitUsage {
 		t.Fatalf("add with no positional must be a usage error, got %d", code)

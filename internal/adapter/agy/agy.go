@@ -135,7 +135,7 @@ func googleAccountsPath(env adapter.Env) string {
 // token is opaque, so this file is the only identity source on either platform.
 // It reflects the Google account active at capture time — kae's keychain switch
 // does not rewrite it — which is the same at-capture identity model as the other
-// tools (docs/ADAPTERS.md, docs/RELEASE.md §D).
+// tools (docs/ADAPTERS.md).
 func (Agy) Identity(_ context.Context, env adapter.Env) (string, error) {
 	path := googleAccountsPath(env)
 	data, err := os.ReadFile(path)

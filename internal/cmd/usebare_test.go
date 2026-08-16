@@ -99,7 +99,7 @@ func TestBareUseQuietSuppressesSuccessOutput(t *testing.T) {
 	}
 
 	// --quiet suppresses only the human report; --json still emits so a script
-	// can read `changed` (docs/RELEASE.md).
+	// can read `changed`.
 	code, out = captureStdout(t, func() int { return runUseBare(ctx, app, commonOpts{Format: formatJSON}, false, "main", true) })
 	mustExit(t, constants.ExitOK, code, out)
 	report := decodeBareUseReport(t, out)

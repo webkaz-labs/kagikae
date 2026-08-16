@@ -27,7 +27,7 @@ const (
 var Tools = []string{ToolClaude, ToolCodex, ToolAgy, ToolOpencode, ToolCursor, ToolCopilot}
 
 // RemovedTools maps tools kae no longer supports to their successor, for
-// error messages and config tolerance (docs/RELEASE.md Breaking Changes).
+// error messages and config tolerance.
 var RemovedTools = map[string]string{
 	"gemini": ToolAgy, // upstream retired Gemini CLI for Antigravity (2026-05)
 }
@@ -67,7 +67,7 @@ const (
 )
 
 // Switch modes / isolation kinds. The mechanism vocabulary is unified on
-// shared/isolated (docs/RELEASE.md v0.8.0): the per-directory bind kinds match
+// shared/isolated (docs/CONTEXT.md § Mechanism terms): the per-directory bind kinds match
 // the user-facing -s/-i flags and the on-disk path segments.
 const (
 	ModeAuth     = "auth"     // global shared (real home; bare use, run -s)

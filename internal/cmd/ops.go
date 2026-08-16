@@ -110,8 +110,8 @@ type toolPlan struct {
 	Tool    string
 	Account string
 	Driver  string
-	// Identity is the raw detected login identity to persist in the snapshot
-	// (§D). Set by the capture/login paths from resolveAccount, and empty when
+	// Identity is the raw detected login identity to persist in the snapshot.
+	// Set by the capture/login paths from resolveAccount, and empty when
 	// undetectable. The run paths leave it empty, so a recapture has to fill it or
 	// persistSnapshot blanks the field — which is what `run -s` did until v0.17.0.
 	//

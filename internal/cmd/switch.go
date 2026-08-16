@@ -105,16 +105,16 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		return nil, err
 	}
 	// Coalesce the `security` reads a single switch makes of each tool's
-	// account-agnostic keychain service: Detect, the backup, and the §A
+	// account-agnostic keychain service: Detect, the backup, and the switch-away
 	// recapture all read it, so without a cache the recapture would multiply the
 	// keychain invocations (and auth prompts). Writes below invalidate the
 	// entry. No child process runs during a switch, so the cache never observes
-	// a stale live credential (docs/RELEASE.md §C).
+	// a stale live credential.
 	ctx = keychain.WithReadCache(ctx)
 	// Coalesce kae's own secret-store reads too: each target snapshot payload is
 	// read once for the stale warning (accountFreshness) and again in
-	// applySnapshot. secret.Cached + this cache collapse them to one backend hit
-	// (docs/RELEASE.md §A). Like the keychain cache, it never spans a child run.
+	// applySnapshot. secret.Cached + this cache collapse them to one backend hit.
+	// Like the keychain cache, it never spans a child run.
 	ctx = secret.WithReadCache(ctx)
 	app.pinnedGlobalScope()
 
@@ -139,7 +139,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		report.Profile = &profileName
 	}
 	// Resolve the secret backend up front so each target snapshot can be checked
-	// for staleness (§B). secret.Resolve does no IO, so this is cheap; a backend
+	// for staleness. secret.Resolve does no IO, so this is cheap; a backend
 	// error is fatal only on the real path — a dry-run still prints the plan.
 	be, beErr := app.secretBackend()
 	if beErr == nil {
@@ -193,7 +193,7 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	}
 	report.BackupID = meta.ID
 
-	// §A: before overwriting the real store, refresh the currently-active
+	// Before overwriting the real store, refresh the currently-active
 	// account's snapshot from the live store (only when they diverge), so a
 	// later switch back applies a live token. Must run before applySnapshot
 	// overwrites the live credential. Best-effort; never aborts the switch.

@@ -40,20 +40,23 @@ const noKeychainItemMsg = "no gemini/antigravity keychain item; log in with the 
 // versions (Linux/WSL). All are captured/applied so version changes round-trip.
 var credentialFiles = []string{"credentials.enc", "credentials.json", "oauth_creds.json"}
 
-// keyringBypassEnv are the variables agy's keyring-bypass detectors read. agy
-// does not treat the keychain as unconditional on macOS: its auth package holds a
-// keyring store *and* a file store behind one chooser, and the keyring half is
-// skipped or abandoned in three ways measured in the 1.0.10 binary —
-// `shouldBypassKeyring` next to an ssh / wsl / container detector, a 1s timeout
-// per keyring operation, and an explicit fallback on failure ("Failed to save
-// token to keyring, falling back to file", plus load and remove variants). Of the
-// three only the detectors are visible offline, and only through these variables.
+// keyringBypassEnv are the variables agy's keyring-bypass detectors read. agy does
+// not treat the keychain as unconditional on macOS — its auth package holds a
+// keyring store *and* a file store behind one chooser, which can pick the file — so
+// this list exists to warn where kae's keychain switch may not reach the tool.
+// Measured on 1.1.13; the mechanism, what each build showed and what nothing has
+// observed are docs/VALIDATION.md § Upstream Behaviour Assumptions.
+//
+// Why exactly this set: it is the whole of that chooser kae can see in the
+// environment. The container detector reads files, the dbus one reads nothing the
+// fingerprint rows for `DBUS_SESSION_BUS_ADDRESS` and `DBUS_SYSTEM_BUS_ADDRESS`
+// find, and the WSL pair cannot fire on darwin but stays here because the detector
+// set is one upstream decision.
 //
 // kae warns rather than modelling the file store: the fallback file's path is not
-// derivable from the binary (none of credentialFiles appears in it), so adding a
-// guessed artifact would write where nothing reads — the failure this whole class
-// of bug is made of. The WSL entries cannot fire on darwin; they stay in one list
-// because the detector set is one upstream decision.
+// derivable from the binary, so adding a guessed artifact would write where nothing
+// reads — the failure this whole class of bug is made of. It is at least none of
+// credentialFiles, which have fingerprint rows of their own for that reason.
 var keyringBypassEnv = []string{"SSH_TTY", "SSH_CONNECTION", "SSH_CLIENT", "WSL_DISTRO_NAME", "WSL_INTEROP"}
 
 // keyringBypassWarnings returns one warning per set bypass variable, shared by
@@ -79,10 +82,10 @@ func (Agy) Binary() string { return "agy" }
 
 // VerifiedVersion is the Antigravity CLI release kae's behaviour assumptions were
 // last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
-func (Agy) VerifiedVersion() string { return "1.0.10" }
+func (Agy) VerifiedVersion() string { return "1.1.13" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Agy) VerifiedOn() string { return "2026-07-31" }
+func (Agy) VerifiedOn() string { return "2026-08-17" }
 
 // keychainDriver reports whether this platform uses the macOS Keychain item
 // (darwin) or the file-based snapshot (Linux/WSL headless).

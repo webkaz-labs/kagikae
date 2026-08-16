@@ -112,9 +112,12 @@ and [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions is where th
 result of working them is recorded — but it does mean the cost of a re-measure scales
 with how long a version sits. The remaining two, in the order each pays for itself:
 
-4. **The shim harness**, table-driven and gated on the per-tool "does this tool
-   shell out to `/usr/bin/security`" answer (claude yes, agy yes, codex **no**,
-   cursor unverified). It should diff *the tool's* argv log against *kae's*,
+4. **The shim harness**, table-driven and gated on the per-tool "does a `PATH`
+   shim reach this tool" answer, which is **not** the question this entry used to
+   gate on ("does it shell out") and does not have the same answers —
+   [measuring.md](../.claude/skills/upstream-auth-drift/references/measuring.md)
+   § Does a `PATH` shim reach this tool? is the one copy of both columns and of
+   why they differ. It should diff *the tool's* argv log against *kae's*,
    which turns the naming-agreement check in [ACCEPTANCE.md](ACCEPTANCE.md)
    § Bound-directory credential store into a script.
 5. **Behaviour-site hashes** for the three or four sites that encode real
@@ -1488,15 +1491,19 @@ is anywhere near that, and only by demand.
   copilot's own hidden `--config-dir` can defeat it, which nothing in the
   environment reveals — has to be established first. **Demand-gated**: build it
   when someone needs a per-directory copilot account, not for parity.
-- **agy's file store on macOS** (recorded gap, 2026-07-31): agy skips the
-  keychain under ssh/wsl/container detection, on a 1s keyring timeout, and on any
-  keyring failure, so the file store is reachable on macOS too — but the fallback
-  file's path is not derivable from the 1.0.10 binary, so kae warns instead of
-  switching it ([ADAPTERS.md](ADAPTERS.md), [VALIDATION.md](VALIDATION.md)
-  § Upstream Behaviour Assumptions owns the measurement).
-  Blocked on a way to make agy write a token without a real login: it has no
-  kae-drivable login, so the `security` PATH shim (which does apply to agy) has
-  nothing to intercept yet. agy is the tier floor and this is the reason.
+- **agy's file store on macOS** (recorded gap, 2026-07-31; re-read on 1.1.13,
+  2026-08-17): agy skips the keychain under ssh/wsl/container/dbus detection, on a
+  keyring timeout, on any keyring failure, and — new since 1.0.10 — for a window
+  after a timeout it *persists*, so the file store is reachable on macOS too and a
+  bypass can outlive one run. The fallback file's path is still not derivable from
+  the binary, so kae warns instead of switching it ([ADAPTERS.md](ADAPTERS.md),
+  [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions owns the
+  measurement). Blocked on a way to make agy write a token without a real login: it
+  has no kae-drivable login. **The `security` PATH shim is not that way**, which
+  this entry claimed it was; the derivation lives once, in
+  [measuring.md](../.claude/skills/upstream-auth-drift/references/measuring.md)
+  § Does a `PATH` shim reach this tool? — agy is the tier floor and this is the
+  reason.
 - **agy home isolation**: no stable home/config env var is known, so the isolation
   modes refuse it. Revisit only if upstream ships one *and* the file-store gap
   above is closed — a redirected home whose fallback store kae cannot find would

@@ -51,14 +51,11 @@ Each names a section or an entry in this file and gives **only its place in the
 order and what that place turns on**. What the item *is* stays where it is: a second
 copy here is the duplication `mise run docs-scan` reports.
 
-1. § Delete the prose that is not load-bearing, on the target that section names as
-   what is left — and the deferral above removes the conflict a new release entry
-   would have had with it.
-2. § `kae relogin` declines to capture a login it watched happen when a *sibling*
-   directory has drifted — last, because it overrides the shared attribution
-   predicate, whose residue § Attribution reads a label kae may have written itself
-   keeps open, and because no release date is now compressing the measurement that
-   entry asks for.
+1. § `kae relogin` declines to capture a login it watched happen when a *sibling*
+   directory has drifted — the only one left, and it was last in this order because it
+   overrides the shared attribution predicate, whose residue § Attribution reads a
+   label kae may have written itself keeps open, and because no release date is now
+   compressing the measurement that entry asks for.
 
 An item leaves this list when it lands, so what is here is what is left rather than
 what was planned; git log holds the order it was worked in.
@@ -1401,23 +1398,11 @@ is anywhere near that, and only by demand.
 
 ## Delete the prose that is not load-bearing
 
-**Owed work, not a record.** Run these **at `d089914`**, where they printed 13,457 /
-1,943 / 22,778 and 164 of 285 — pinned to a commit because on any later tree the first
-number counts this entry, and because a reading taken on a different tree is not
-distinguishable from a change of method:
-
-```bash
-git ls-files '*.md' | xargs wc -l | tail -1
-git ls-files 'scripts/*' | xargs grep -hcE '^[[:space:]]*(#|//)' | paste -sd+ - | bc
-git ls-files '*.go' | grep -v '_test\.go$' | xargs wc -l | tail -1
-git log --no-merges --since=2026-08-01 --format=%H | while read -r c; do \
-  git show --name-only --format= "$c" \
-  | grep -qE '^(internal/|main\.go$|go\.mod$|go\.sum$)' || echo "$c"; done | wc -l
-```
-
-Comment share is 49–63% across the six the gate runs directly (`check-docs.sh`,
-`check-docs-selftest.sh`, `smoke-run.sh`, `smoke-run-selftest.sh`,
-`sweep-quantities.sh`, `docrefs/main.go`); `scripts/install.sh` is 7%.
+**A standing criterion, not owed work.** The pass ran in two stages: the docs and the
+scripts, then RELEASE.md's shipped-release entries together with the citations into
+them. What is left is the criterion. The measurements that motivated it are in the
+commit that filed this entry and are deliberately not repeated, since a reading taken
+on a later tree answers a different question.
 
 **Keep** what a wrong sentence costs a credential or a user: `docs/ADAPTERS.md`'s
 allowlists, `docs/CREDENTIAL-RULES.md`, `docs/CLI.md`'s contract, `AGENTS.md`'s safety
@@ -1430,18 +1415,19 @@ passes green with fewer assertions.
 epistemology in script headers, and measurement stories about **this repository's own
 history** — not the upstream ones in [VALIDATION.md](VALIDATION.md) § Upstream
 Behaviour Assumptions, which are the re-verification instrument and are not in git log.
-The workable form of that, applied to the first pass: a sentence goes when it reports
+The workable form of that: a sentence goes when it reports
 what a past session did or found **and** the reason, rule or trap around it still stands
 without it. A rule stays; the round that produced it does not.
 
-**What is left is [RELEASE.md](RELEASE.md), and it is not free prose.** Everything below
-its first `---` rule is shipped-release entries, and product code cites them by section
-letter: `git grep -n 'RELEASE\.md §' -- internal/` lists the `§A`/`§B`/`§C`/`§D` form,
-and `git grep -n 'RELEASE\.md v0\.' -- internal/` the version-named one. `docs-check`
-resolves neither — a bare `§A` names no section it can look up — so deleting an entry
-dangles a comment in product code with nothing reporting it. Cutting this means repointing
-those comments in the same commit, which is a change to `internal/` and a different review
-from a prose pass. That is why the first pass stopped at the docs and the scripts.
+**A citation is prose with a consumer, and scoping one by a single grep undercounts
+it.** The release-entry stage was mostly a change to `internal/`, and this entry sized
+it with `git grep -n 'RELEASE\.md §' -- internal/`. That derivation missed the larger
+half: a bare `§<letter>` carries no filename, and a third family named the file with no
+section at all. Scope a citation sweep by the sigil *and* by the filename, and read the
+two sets against each other. The other half of what that stage cost: no guard could see
+any of it, because `docs-check` resolves neither a bare `§A` nor a version name, so the
+same `§C` naming two different entries in two files was invisible — which is why a
+repoint is worth taking to a form the gate does resolve when one exists.
 
 Rules adopted with it, from the branch that closed `adapter.VersionVerifier`:
 

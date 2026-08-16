@@ -108,9 +108,7 @@ func (Codex) Binary() string { return "codex" }
 
 // VerifiedVersion is the Codex CLI release kae's behaviour assumptions were last
 // checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). As on claude, it
-// is not evidence that every row there was re-run on it: codex is public, so the
-// source halves are re-read tag to tag cheaply, while the rows with a live-item or
-// behavioural half keep the older observation their own cells name.
+// is not evidence that every row there was re-run on it; the rows say which.
 func (Codex) VerifiedVersion() string { return "0.147.0" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).

@@ -334,7 +334,12 @@ from "not yet captured", so `capture` fails with `auth_missing` (exit 3) while
 `switch` proceeds — switching to a captured account legitimately creates the live
 state. `doctor` and `status` carry the same hint as a warning.
 
-#### Keyring item contract (source-confirmed 2026-07-30 against `rust-v0.145.0`)
+#### Keyring item contract
+
+Source-confirmed, and **which release against** is [VALIDATION.md](VALIDATION.md)
+§ Upstream Behaviour Assumptions — this heading carried its own tag and date until
+2026-08-16, which is a second copy that goes stale without anything saying so, and
+did.
 
 - **service** `Codex Auth` — shared by **every** codex home.
 - **account** `cli|` + the first **16** hex characters of

@@ -43,11 +43,20 @@ needed a real account and a token refresh.
 ## Reading a bundle
 
 **Node CLI shipped as a launcher + package** (copilot): the binary on `PATH` is a
-launcher and the real CLI is plain minified JS on disk at
-`~/.copilot/pkg/universal/<newest>/app.js`. Look for that layout *first* — it
-turns a window-read into `grep -o`. It also means `copilot --version` reports the
-package's version, not the launcher's, so a version manager pinning an old
-launcher does not make `VerifiedVersion()` wrong.
+launcher and the real CLI is plain minified JS on disk. Look for that layout
+*first* — it turns a window-read into `grep -o`. It also means `copilot --version`
+reports the package's version, not the launcher's, so a version manager pinning an
+old launcher does not make `VerifiedVersion()` wrong.
+
+**Find the package by reading the launcher's search list, never by remembering the
+path.** It moved between 1.0.61 and 1.0.79 — the old `~/.copilot/pkg/universal/…`
+is now the *last* candidate, so it keeps answering with a stale package while a
+newer one runs; docs/VALIDATION.md § Upstream Behaviour Assumptions has the list as
+read. Two traps in reading it: a path assembled from `join("Library","Caches",…)`
+greps as **0**, so search an env-var name and read the function around it; and the
+launcher auto-updates the package, so pass `--no-auto-update` or
+`--prefer-version <v>`, or set `COPILOT_AUTO_UPDATE=false`, before measuring
+anything.
 
 **JS inlined in a single Mach-O** (claude, ~266 MB):
 

@@ -968,3 +968,124 @@ func TestReloginPreFlightWarningsCarryNoSecret(t *testing.T) {
 		}
 	}
 }
+
+// The refusal docs/ROADMAP.md § `kae relogin` declines to capture a login it watched
+// happen when a *sibling* directory has drifted records, measured end to end
+// 2026-08-16 before fixing it. kae exports the store's variables itself, runs the
+// tool's own login flow against them, watches the store change, and reads back an
+// identity cache the tool wrote naming this account — and still declines, because a
+// second worktree bound to the same account carries an unresolved `identity_drift`.
+//
+// The reader set is the mechanism: sharedStoreAttribution asks every directory that
+// reads `credstore/claude/main`, the sibling names somebody else, and a confirming
+// reader beside a conflicting one is the `disagree` outcome — a refusal, not a
+// conflict, so the copy is kept. Kept is right for a *bind*, which is what that
+// outcome was written for. Here it leaves the account snapshot holding the copy this
+// very login has already invalidated (claude's refresh token rotates single-use), with
+// no way to update it until the sibling's drift is resolved somewhere else.
+//
+// The drift is applied *after* the sibling's own bind so the fixture reaches this
+// refusal and not an earlier one: a directory bound while a sibling disagrees takes
+// the keep branch and writes no identity of its own, which would make every assertion
+// below hold for missing evidence instead.
+func TestReloginDeclinesALoginItWatchedWhenASiblingHasDrifted(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	dir, _, credFile := boundStoreForClaudeMain(t, app)
+	_, siblingStore := bindClaudeHere(t, app, "main")
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("side-uuid"))
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	const refreshed = "sk-ant-oat01-RELOGGED-aaaa"
+	seen := []string{}
+	withInteractive(t, loginInto(t, constants.ToolClaude, refreshed, "main-uuid", now.Add(8*time.Hour), &seen))
+
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	// Positive controls for the two halves kae *did* observe, so what follows is a
+	// refusal about attribution rather than a flow that never happened: the login
+	// landed in the store this directory reads, and it named this account there.
+	if got := readFile(t, credFile); !strings.Contains(got, refreshed) {
+		t.Fatalf("the login must land in the bound store for this to be about attribution: %s", got)
+	}
+	if got := readFile(t, filepath.Join(app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude),
+		".claude.json")); !strings.Contains(got, "main-uuid") {
+		t.Fatalf("the flow must leave this directory naming this account: %q", got)
+	}
+
+	be := testBackend(t, app)
+	// What the defect costs: the snapshot still holds the copy the login just
+	// invalidated, and `kae use claude main` would apply that one.
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
+		t.Fatalf("measured today as declining to capture; the snapshot keeps its own copy: %s", got)
+	}
+	if !strings.Contains(stderr, "cannot confirm the claude login now in this directory is claude/main's") {
+		t.Errorf("the refusal must be the attribution one: %q", stderr)
+	}
+	if !strings.Contains(stderr, "disagree about whose login it is") {
+		t.Errorf("and its reason must be the reader disagreement: %q", stderr)
+	}
+	if strings.Contains(out, "Logged claude in") {
+		t.Errorf("the success line may not claim an account kae did not attribute: %q", out)
+	}
+}
+
+// The same refusal with no sibling worktree at all, because a **globally isolated
+// home** reads the account's credential store too — `prepareGlobalIsolatedHome`
+// writes one per `kae use -i` / `kae run -i`, nothing removes it, and the reader walk
+// reads those from disk with no liveness gate. So one stale `kae use -i` home is
+// enough to veto a login kae watched happen in a bound directory, and the entry's
+// "two worktrees" is one shape of the mechanism rather than its extent.
+//
+// Measured 2026-08-16 alongside the test above.
+func TestReloginDeclinesALoginItWatchedWhenAnIsolatedHomeHasDrifted(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, _, credFile := boundStoreForClaudeMain(t, app)
+
+	opts := commonOpts{Format: formatText}
+	if code, out := captureStdout(t, func() int {
+		return runUseIsolated(ctx, app, opts, constants.ToolClaude, "main")
+	}); code != constants.ExitOK {
+		t.Fatalf("use -i exit %d: %s", code, out)
+	}
+	home := app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")
+	if got := readFile(t, filepath.Join(home, ".claude.json")); !strings.Contains(got, "main-uuid") {
+		t.Fatalf("the fixture needs the home to start out naming this account: %q", got)
+	}
+	// Somebody logged in as side inside that home. It has no fragment and no pin
+	// record; it is a reader because the store path composes from the account name.
+	writeFile(t, filepath.Join(home, ".claude.json"), claudeIdentityFile("side-uuid"))
+
+	const refreshed = "sk-ant-oat01-RELOGGED-bbbb"
+	seen := []string{}
+	withInteractive(t, loginInto(t, constants.ToolClaude, refreshed, "main-uuid", now.Add(8*time.Hour), &seen))
+
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, opts, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	if got := readFile(t, credFile); !strings.Contains(got, refreshed) {
+		t.Fatalf("the login must land in the bound store for this to be about attribution: %s", got)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
+		t.Fatalf("measured today as declining to capture; the snapshot keeps its own copy: %s", got)
+	}
+	if !strings.Contains(stderr, "disagree about whose login it is") {
+		t.Errorf("the reason must be the reader disagreement: %q", stderr)
+	}
+	if strings.Contains(out, "Logged claude in") {
+		t.Errorf("the success line may not claim an account kae did not attribute: %q", out)
+	}
+}

@@ -27,7 +27,7 @@ const (
 var Tools = []string{ToolClaude, ToolCodex, ToolAgy, ToolOpencode, ToolCursor, ToolCopilot}
 
 // RemovedTools maps tools kae no longer supports to their successor, for
-// error messages and config tolerance.
+// error messages and config tolerance (docs/DATA-MODEL.md § Config Schema).
 var RemovedTools = map[string]string{
 	"gemini": ToolAgy, // upstream retired Gemini CLI for Antigravity (2026-05)
 }

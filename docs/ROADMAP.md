@@ -410,7 +410,8 @@ alternative exists (`secret-tool`).
   measured here, and so, since 2026-08-13, has the file-level analogue of it: a
   reference naming *content* of a document that still exists, after a trim removed
   the content. Trimming this file's shipped records left one in every surface that
-  cites this file — release notes by a wide margin, and a design-rationale document,
+  cited this file at the time — release notes by a wide margin then, though that class
+  has since gone with the release entries, and a design-rationale document,
   an acceptance log, a user-facing error message and code comments — each found only
   by reading every reference to this file, after a detector written for the class
   failed its own positive control. Count them from the diff rather than from a number
@@ -1421,10 +1422,11 @@ without it. A rule stays; the round that produced it does not.
 
 **A citation is prose with a consumer, and scoping one by a single grep undercounts
 it.** The release-entry stage was mostly a change to `internal/`, and this entry sized
-it with `git grep -n 'RELEASE\.md §' -- internal/`. That derivation missed the larger
-half: a bare `§<letter>` carries no filename, and a third family named the file with no
-section at all. Scope a citation sweep by the sigil *and* by the filename, and read the
-two sets against each other. The other half of what that stage cost: no guard could see
+it with two greps, both keyed on the filename — one for `RELEASE.md §`, one for the
+version-named form. Between them they missed the larger half, because a bare
+`§<letter>` carries no filename at all, and a family that named the file with no
+section was outside both. Scope a citation sweep by the sigil *and* by the filename,
+and read the two sets against each other. The other half of what that stage cost: no guard could see
 any of it, because `docs-check` resolves neither a bare `§A` nor a version name, so the
 same `§C` naming two different entries in two files was invisible — which is why a
 repoint is worth taking to a form the gate does resolve when one exists.

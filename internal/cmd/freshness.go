@@ -741,8 +741,8 @@ func liveValuesFreshness(tool string, values []artifact.Value) freshness.Info {
 // copy into the snapshot and destroys the last one that works.
 //
 // One-directional like (1): it never prefers the live copy, it only refuses to
-// overwrite a later one. The rule that the live store is authoritative
-// still holds for every credential that is actually the newest; what is dropped is
+// overwrite a later one. Preferring the live store still holds for every
+// credential that is actually the newest; what is dropped is
 // the unstated assumption that whatever is live is the newest.
 //
 // **(2) splits, and the split is the whole point of `preserve`.** `supersedes` lets an

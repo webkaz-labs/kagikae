@@ -104,11 +104,9 @@ carries what that means and routes on to the full copy set. `kae doctor` naming
 `upstream_version` for a tool is the
 signal that its rows are due.
 
-**Record every result below, and every § Open gates result, in this file, naming the
-tag it was run against.** A gate that passes is struck from § Open gates in the same
-commit that records it; one that fails stays there with what was seen. This document
-owns the gates, so a result recorded anywhere else is a result § Open gates cannot
-read — which is what it means there by a gate no release has recorded a result for.
+**Record every result in this file, under the check it settles, naming the tag it was
+run against.** This document owns the gates, so a result recorded anywhere else is one
+§ Open gates cannot read.
 
 **Which accounts to run any of this with, and it is the whole section's
 precondition rather than one procedure's.** Every check below applies a
@@ -211,7 +209,9 @@ directory, then launch claude there and confirm it reports the account kae bound
 
 ### Open gates (a release still owes these)
 
-Three gates for which no release has recorded a result. What puts them here is
+Three gates with no recorded result. A result is recorded under the gate it
+settles, below, naming the tag it was run against; a gate that passes is struck from
+this list in the same commit. What puts them here is
 that each is a check a release owes a result for — not that they are the
 complete set of what is open (see the fourth below), and
 not their preconditions. Each does need a real keychain **and** two real

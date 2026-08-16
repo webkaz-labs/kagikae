@@ -306,5 +306,6 @@ Windows remains unimplemented and is tracked in [ROADMAP.md](ROADMAP.md) (v0.6.0
 removed the gemini adapter after upstream retired Gemini CLI for Antigravity on
 2026-05-19). The per-release
 record of what shipped when is the release tags and the GitHub releases they
-created ([RELEASE.md](RELEASE.md) says how one is read); `git log` is the
+created; [RELEASE.md](RELEASE.md) says how a past release's own entry is read out
+of git, and `git log` is the
 per-commit source of truth.

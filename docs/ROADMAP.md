@@ -831,9 +831,37 @@ alternative exists (`secret-tool`).
   travelled with it and still exports the old credential store, so it is a live reader kae
   cannot read at the path it recorded, and a stale confirming reader elsewhere can license
   a harvest it would have disagreed with. What would settle it is a reader set that does
-  not depend on the recorded path (`pinChecks` already reports the orphaned store, so the
-  user is told something is wrong), or a breadcrumb that `unpin` removes so absence can
+  not depend on the recorded path, or a breadcrumb that `unpin` removes so absence can
   mean incompleteness again.
+  **This entry used to offer a consolation and it is unsound** — that `pinChecks`
+  reports the orphaned store, so the user is told something is wrong. It is the entry
+  below, because what it prints is a remedy rather than a report and the remedy
+  destroys; the two share this entry's predicate and nothing else.
+
+- **`pinChecks` tells the user to delete a store a moved directory is still using**
+  (measured 2026-08-16, **not fixed**). It reaches a moved directory through the same
+  `!dirExists(pin.Dir)` test as the entry above — `git grep -n 'dirExists(pin\.Dir)'`
+  is the caller list, and none of them can tell a moved directory from a deleted one —
+  but where the reader walks answer by staying quiet, this one prints
+  `<dir> was bound with kae pin but is gone; its per-directory store is orphaned
+  (remove <isolation/pin-id> to reclaim it)`. For a moved directory that store is the
+  one it is still exporting, out of the fragment that travelled with it, so a user who
+  follows the remedy deletes a live store. `paths.PinDir` is the parent of every tool's
+  `shared/` and `isolated/` store for that directory, so what goes is the sessions and
+  settings of each, and for any tool whose credential is not split per account the
+  credential with them. **Mode is not the condition and a first draft of this said it
+  was**: only claude has a per-account credential variable
+  ([ADAPTERS.md](ADAPTERS.md) § Per-account credential store), so `credStoreDir` is
+  empty for every other tool and its credential materializes under the config dir —
+  inside `PinDir` — in shared and isolated mode alike, while claude's sits outside
+  `PinDir` in both.
+  What has to be corrected first is not the predicate but kae's own account of it: the
+  comment on that branch says `Deleted or moved. Nothing can reach its store again`,
+  and the moved half of that is false. A remedy that cannot tell the two apart may not
+  advise a deletion — withholding the remedy while still reporting the orphan costs
+  nothing here, since the reclaim is a convenience and the deletion is not reversible.
+  That is available without settling the reader-set question the entry above asks, and
+  it is why the two are filed apart.
 
 - **A relogin's pre-flight refusal owes a backup it cannot safely take yet** (recorded
   2026-08-08 by an independent review of the pre-flight itself, **not fixed**).
@@ -967,6 +995,27 @@ alternative exists (`secret-tool`).
   — is what would let `identity_drift` tell a stale label from a real one, which is worth
   having for its own sake. Do
   not "fix" it by removing the confirmation: that would make every bind keep forever.
+  **The reachable sequence is more ordinary than the one written above, and the ordinary
+  one is the silent one** (reproduced 2026-08-16 by probes written for it and
+  not kept, each of the sequences below filing the other account's token under this
+  account's name: the re-bind above, the deletion described here, and the
+  globally-isolated home). The sequence above ends
+  with re-binding B elsewhere, which is a kae command; but the disagreeing reader also
+  leaves the set when its directory is simply **deleted**, because `credStoreReaders`
+  skips a pin whose recorded directory is gone (§ A moved bound directory) — and
+  removing a temp worktree is not a kae command at all. That matters for what the user
+  is told, which is the difference between the two: while the disagreeing directory
+  still exists, `pinIdentityChecks` reports `identity_drift` against it with a remedy;
+  once it is deleted, `kae doctor` says nothing about the attribution at all, and the
+  harvest that follows prints its ordinary success line. `credential_superseded` cannot
+  fill the gap either, since after the harvest the snapshot and the store agree. Note
+  also that the drift report is per-directory, so `kae doctor <tool>` skips it: the one
+  detection window there is needs the bare form.
+  What this does **not** change is the one non-everyday precondition, which is worth
+  stating because it is what keeps this off a release gate: something has to have logged
+  into one of those directories as a *different* account. Every other step — two
+  directories reading one account, one of them going away, a later `kae pin` /
+  `kae use -i` / `kae run -i` — is ordinary use.
   **An attempt to answer the *when* question was made and withdrawn** (2026-08-16), and
   it sharpens what this entry asks for. `kae relogin` compared the write time of the label
   in the directory it ran the flow in, across the flow, and let a label written while kae
@@ -1112,6 +1161,26 @@ alternative exists (`secret-tool`).
   § `PinID` does not resolve symlinks records the cost of. The cheap half — remapping
   `st.Synced` inside the rename's existing `mutateState` closure — is wrong on its own,
   because it would point the fragment at a home that does not exist yet.
+  **For claude this loses a login rather than leaving a leftover, and the wording above
+  ("a store nothing will harvest") is too mild for it** (measured 2026-08-16). The
+  rename does harvest the copy that is live at the time, into the snapshot under the
+  new name. What happens next is the rotation row: the tool keeps running against the
+  fragment's old-name store, refreshes there, and that refresh invalidates the copy the
+  rename just preserved. So the snapshot under the new name holds a credential that can
+  no longer refresh, and the copy that can is in a store no kae command names any more —
+  `credStoreRefs` counts `st.Synced`, so even `kae unpin --purge` keeps it, and nothing
+  offers it back. The user sees nothing until the next `kae use -i` / `kae run -i` /
+  `kae pin` materializes the snapshot, at which point claude asks for a login: the
+  symptom [ACCEPTANCE.md](ACCEPTANCE.md) § Real-machine gate — does
+  `refreshTokenExpiresAt` predict the login's death? asks to be read before logging back
+  in. Two asymmetries make it quiet. `warnPinnedAccountGone` matches directories that
+  have a fragment, and a globally isolated home has none, so the pinned case warns on
+  exactly this and the `-i` case does not. And `kae doctor` never reads `st.Synced` at
+  all, while `kae status` prints it — so after a rename `status` names an account
+  `kae ls` does not have, and nothing calls that a finding.
+  Scope: `isolationEnvVar` covers claude and codex, and codex takes the
+  `!rotatesSingleUse` early return in the rename harvest, so the lost-login half is
+  claude's and the leftover half is everyone's.
 
 - **`kae account rename` / `kae account rm` delete a recorded `SecretRef`
   verbatim** (recorded 2026-07-31, **deliberately not fixed**). Both delete the ref

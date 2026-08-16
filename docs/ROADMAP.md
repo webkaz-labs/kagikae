@@ -40,7 +40,8 @@ On any tree where that prints only a rename and a docs pointer inside an error
 string, a tag ships the rename — while [ACCEPTANCE.md](ACCEPTANCE.md) § Open gates
 is the cost every release carries whatever it contains, and it is a cost only a
 human can pay. Deferring spends that cost on a tree worth spending it on. Cut a
-release when the list below has landed, not on a schedule.
+release when the list below has landed, not on a schedule — which is what this
+section's own title says, and it binds again the moment anything is queued.
 
 `go.mod` and `go.sum` are in that pathspec deliberately. A dependency bump with no
 `internal/` change — the shape a `mise run audit` finding produces — would otherwise
@@ -51,19 +52,36 @@ Each names a section or an entry in this file and gives **only its place in the
 order and what that place turns on**. What the item *is* stays where it is: a second
 copy here is the duplication `mise run docs-scan` reports.
 
-**Nothing is queued here, and that is the state the paragraph above attaches a
-consequence to.** The last item did not land: § `kae relogin` declines to capture a login
+What is queued below came from the entries the 2026-08-16 session filed, each
+re-checked in code on 2026-08-17 before being placed. What decided the order is **what
+a user loses and whether closing it needs a mechanism**, not severity alone.
+
+1. **§ `pinChecks` tells the user to delete a store a moved directory is still using.**
+   First because it is the only one of the three whose output instructs a destruction,
+   its trigger is an ordinary move, and the entry already names the first step.
+2. **§ `kae account rename` leaves `state.synced` and the global fragment on the old
+   name.** Second because it is the other ordinary command with a silent loss, and
+   because the entry has already drawn the line between its cheap half and the
+   migration behind it — including that the cheap half is wrong alone.
+
+**§ Attribution reads a label kae may have written itself takes no place here**, in
+the state the last item ended in: waiting on a mechanism rather than on a turn.
+It is the worse failure *kind* and that is not enough — ordering a missing design above
+two everyday losses would put a place in the order where a design is what is absent.
+
+The last item did not land: § `kae relogin` declines to capture a login
 it watched happen was measured, the fix it prescribed was built, and the measurement
 refused it — so the entry went back to the backlog carrying what that cost, and what it
-now waits on is a mechanism nobody has designed rather than a place in an order. A
-release is what comes next rather than another batch. That is a call for a human to make,
-not a step to take from reading this — [ACCEPTANCE.md](ACCEPTANCE.md) § Open gates is the
-cost it carries, and only a human can pay it. Re-run the command above on the current
+now waits on is a mechanism nobody has designed rather than a place in an order. That
+is a call for a human to make, not a step to take from reading this —
+[ACCEPTANCE.md](ACCEPTANCE.md) § Open gates is the cost it carries, and only a human
+can pay it. Re-run the command above on the current
 tree before treating any of this as still true.
 
 An item leaves this list two ways, and only one of them is landing: it can also be
-measured and returned to the backlog, which is what emptied the list above. So what is
-here is what is left rather than what was planned, and an item's absence is not a claim
+measured and returned to the backlog, which is what once emptied the list above. So what is
+here is what was placed plus what was left, rather than what was planned, and an
+item's absence is not a claim
 that it shipped — git log holds the order things were worked in, and the entry itself
 holds what was learned.
 

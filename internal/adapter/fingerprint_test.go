@@ -65,16 +65,22 @@ var fingerprintExclusions = map[string]string{
 var fingerprintArtifacts = map[string]string{
 	constants.ToolClaude:   ".local/share/claude/versions/" + versionToken,
 	constants.ToolCursor:   ".local/share/cursor-agent/versions/" + versionToken,
-	constants.ToolCopilot:  ".copilot/pkg/universal/" + versionToken + "/app.js",
 	constants.ToolOpencode: ".local/share/mise/installs/opencode/" + versionToken + "/opencode",
-	// agy's path carries no version, so nothing checks it against one. This used to
-	// add that a bump therefore "shows up here as moved counts", and **that is false**:
-	// measured 2026-08-17, `command -v agy` resolved into a mise install tree while
-	// /usr/local/bin/agy still answered `--version` with 1.0.10, so this test opened a
-	// leftover and passed with three of agy's counts already moved on the installed
-	// build. A versionless path reports a bump as nothing at all — the sibling defeat
-	// the header above describes, minus the part where an upgrade eventually lands here.
-	constants.ToolAgy: "/usr/local/bin/agy",
+	// copilot's package is not one app.js and not under ~/.copilot. The launcher
+	// searches several roots and takes the first, and ~/.copilot/pkg is the **last**
+	// of them, so the path this map used to hold kept answering with 1.0.61 while
+	// 1.0.79 ran (measured 2026-08-17; docs/VALIDATION.md § Upstream Behaviour
+	// Assumptions has the list as read). The arch segment is written as measured:
+	// another arch fails naming the path, which is the honest outcome.
+	constants.ToolCopilot: "Library/Caches/copilot/pkg/darwin-x64/" + versionToken,
+	// agy has no per-version directory of its own, and /usr/local/bin/agy — what this
+	// map held until 2026-08-17 — is a leftover that still answers `--version` with
+	// 1.0.10 while a newer agy runs from mise. A versionless path reports an upgrade
+	// as nothing at all, so this one is versioned through mise's install tree. **The
+	// version here is that directory's name, not the binary's**: agy replaces its own
+	// binary in place, so the counts recorded for it can be a build the path cannot
+	// name. That is a defeat this map cannot close and docs/ROADMAP.md carries.
+	constants.ToolAgy: ".local/share/mise/installs/antigravity-cli/" + versionToken + "/agy",
 }
 
 const versionToken = "<version>"

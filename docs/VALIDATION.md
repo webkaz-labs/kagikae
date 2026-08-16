@@ -1850,28 +1850,39 @@ regex-inflated count reads as upstream drift on a tool that never moved.
 |---|---|---|
 | claude | `~/.local/share/claude/versions/<version>` (one Mach-O, JS inline) | `2.1.233` |
 | cursor | `~/.local/share/cursor-agent/versions/<version>/` (webpack chunks) | `2026.06.16-20-30-07-a07d3ac` |
-| copilot | `~/.copilot/pkg/universal/<version>/app.js` (plain JS) | `1.0.61` |
+| copilot | `~/Library/Caches/copilot/pkg/darwin-x64/<version>/` (package tree; the arch segment is as measured) | `1.0.79` |
 | opencode | `~/.local/share/mise/installs/opencode/<version>/opencode` (Bun single-file executable) | `1.18.16` |
-| agy | `/usr/local/bin/agy` (Go binary; no versions directory) | `1.0.10` |
+| agy | `~/.local/share/mise/installs/antigravity-cli/<version>/agy` (Go binary) | `1.1.12` |
 
 Only the **version** column is machine-checked. The paths themselves live in
 `fingerprintArtifacts` in the test, which is what the check actually opens — this
 table documents them, and the audit logs the path it read, so a disagreement shows
 up the first time it runs rather than staying hidden.
 
-Three things these paths are not: opencode's is mise's install tree because that is
-how it is installed here, not a layout opencode defines; agy's carries no version at
-all, so nothing checks it against one — and **this used to add "a bump shows up as
-moved counts instead", which is false and was measured false here**: on 2026-08-17
-`command -v agy` resolved into a mise install tree while `/usr/local/bin/agy`
-answered `--version` with `1.0.10`, so the audit read a leftover and passed while
-three of agy's counts had moved on the installed build. A path with no version does
-not report a bump as anything; only `doctor`'s `upstream_version` saw it. And the
+Three things these paths are not. opencode's and agy's are mise's install tree
+because that is how they are installed here, not a layout either tool defines.
+copilot's is the *first* root its launcher searches rather than the documented
+config dir, and the `darwin-x64` segment is one machine's architecture. And the
 `~/.local/share` prefixes are written as measured, **not** resolved through
 `XDG_DATA_HOME`. Whether these installers honour that variable for their own install
 location is unmeasured, and guessing it is the mistake this file exists to stop — on
 a machine where the variable points elsewhere the check fails naming the path it
 tried, which is the honest outcome.
+
+**Both of the paths that moved on 2026-08-17 had been reading a leftover**, which is
+what a path that cannot go stale looks like when it is wrong: `/usr/local/bin/agy`
+still answered `--version` with `1.0.10` while agy ran from mise, and
+`~/.copilot/pkg/universal/` is now the launcher's **last** candidate and held nothing
+newer than 1.0.61. Both passed. Between them six counts had moved on the builds
+actually installed. Neither miss was a version this table got wrong — it was the path
+resolving to something real and stale, which no version check reaches.
+
+**agy's version cell is the install directory's name, and that is not the build's
+version.** agy replaces its own binary in place, so on the measuring machine a
+directory called `1.1.12` held a binary answering `1.1.13`, and its counts here are
+that binary's. The cell has to be the directory or the path stops resolving; naming
+this rather than quietly writing the tool's version is the whole of the fix, and what
+it leaves open is filed in [ROADMAP.md](ROADMAP.md).
 
 A row does not have to be a string kae's code compares. `partially-authenticated`
 appears nowhere in kae's source at all, and `exchange_user_api_key` only inside a
@@ -1897,16 +1908,16 @@ assumption changed. Do not delete a row for not matching a Go literal.
 | cursor | `exchange_user_api_key` | 1 |
 | cursor | `partially-authenticated` | 2 |
 | cursor | `Logged in as` | 12 |
-| copilot | `COPILOT_HOME` | 23 |
-| copilot | `lastLoggedInUser` | 4 |
-| copilot | `COPILOT_GITHUB_TOKEN` | 21 |
+| copilot | `COPILOT_HOME` | 61 |
+| copilot | `lastLoggedInUser` | 3 |
+| copilot | `COPILOT_GITHUB_TOKEN` | 29 |
 | opencode | `OPENCODE_AUTH_CONTENT` | 3 |
 | opencode | `XDG_DATA_HOME` | 9 |
 | opencode | `auth.json` | 8 |
 | agy | `go-keyring-base64:` | 1 |
-| agy | `shouldBypassKeyring` | 3 |
-| agy | `falling back to file` | 6 |
-| agy | `WSL_DISTRO_NAME` | 1 |
+| agy | `shouldBypassKeyring` | 4 |
+| agy | `falling back to file` | 10 |
+| agy | `WSL_DISTRO_NAME` | 5 |
 | agy | `WSL_INTEROP` | 1 |
 | agy | `SSH_CONNECTION` | 1 |
 | agy | `google_accounts.json` | 0 |

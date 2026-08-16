@@ -214,7 +214,7 @@ func (c *Config) validate() error {
 // renamedToolKeys maps per-tool config keys removed in v0.8.0 to their
 // replacement (empty = removed outright). Old configs error at load naming the
 // new key — a pre-1.0 hard break with no silent acceptance
-// (docs/DATA-MODEL.md § Config Schema carries the table).
+// (docs/DATA-MODEL.md § Config Schema).
 var renamedToolKeys = map[string]string{
 	"bond_denylist_extra":  "shared_denylist_extra",
 	"pin_shared_items":     "isolated_shared_items",

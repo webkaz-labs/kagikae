@@ -16,19 +16,11 @@
 //     line by line. Duplication and falsehood are different questions: this tool
 //     cannot see a claim that is wrong in the only place it appears, and a clean
 //     report is not evidence that the documents are true.
-//   - Calibration for whoever reads the next report: run it and compare, because
-//     the last reading is not the current one. On 2026-08-10 it found five pairs at
-//     or above 0.25 and every one of them was docs/RELEASE.md's per-release entries
-//     — four restating a status word for word, which is what a changelog is rather
-//     than a fork, and one pairing docs/PRODUCT.md's § Switching Surface table
-//     against the copy frozen in a release entry. Deleting those entries took the
-//     whole set with it: on 2026-08-16, on the tree that deleted them, the report is
-//     empty. So a pair here is now a signal rather than a floor to look past. Two
-//     things that reading cost, both worth keeping: the frozen-copy pair was swept
-//     into the other four by an earlier version of this paragraph, and the release it
-//     named read v0.8.0 until it was checked against the enclosing `# kae vX.Y.Z`
-//     heading — a reviewer and I had it wrong the same way, which is the whole
-//     argument for re-deriving a detail before writing it down.
+//   - Calibration for whoever reads the next report: run it and compare, because the
+//     last reading is not the current one. The last non-empty one was five pairs at or
+//     above 0.25 on 2026-08-10, all of them docs/RELEASE.md's per-release entries,
+//     since deleted; on 2026-08-16 the report is empty. So a pair here is now a signal
+//     rather than a floor to look past.
 //
 // Anchors come from the Go AST rather than a regex because this repository's
 // decision vocabulary lives in struct fields (Ordered, Conflicting,

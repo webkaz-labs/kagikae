@@ -9,6 +9,10 @@ but an observation rather than a run, so a release owes it nothing. Read
 [VALIDATION.md](VALIDATION.md) for what a commit owes; two release-only smokes
 stayed there, beside the surfaces they check.
 
+**Every result is recorded here, under the check it settles, naming the tag it was
+run against.** This document owns the gates, so a result recorded anywhere else is
+one § Open gates cannot read.
+
 ## Real-machine gate — does `refreshTokenExpiresAt` predict the login's death? (**open**)
 
 **If claude has just asked for a login it did not ask for before: read that account's
@@ -103,10 +107,6 @@ same commit — [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions
 carries what that means and routes on to the full copy set. `kae doctor` naming
 `upstream_version` for a tool is the
 signal that its rows are due.
-
-**Record every result in this file, under the check it settles, naming the tag it was
-run against.** This document owns the gates, so a result recorded anywhere else is one
-§ Open gates cannot read.
 
 **Which accounts to run any of this with, and it is the whole section's
 precondition rather than one procedure's.** Every check below applies a
@@ -209,9 +209,8 @@ directory, then launch claude there and confirm it reports the account kae bound
 
 ### Open gates (a release still owes these)
 
-Three gates with no recorded result. A result is recorded under the gate it
-settles, below, naming the tag it was run against; a gate that passes is struck from
-this list in the same commit. What puts them here is
+Three gates with no recorded result; one that passes is struck from this list in
+the same commit that records it. What puts them here is
 that each is a check a release owes a result for — not that they are the
 complete set of what is open (see the fourth below), and
 not their preconditions. Each does need a real keychain **and** two real
@@ -221,10 +220,10 @@ result would settle, or the fourth gate below lands in this list and gates a
 release it was never meant to gate.
 
 Their dates do not match that section, which is why the provenance is spelled
-out. The per-release entries this was read off are no longer in the tree —
-[RELEASE.md](RELEASE.md) carries the procedure and not the history — so the
-derivation is `git show <tag>:docs/RELEASE.md` and it is what to re-run rather than
-trust the sentences below. Read that way on 2026-08-16: the **Codex keyring
+out. The per-release entries this was read off are no longer in the tree, so the
+derivation is `git show v0.17.0:docs/RELEASE.md` — the last tag that carried them,
+and cumulative, so the whole set is in that one file — and it is what to re-run
+rather than trust the sentences below. Read that way on 2026-08-16: the **Codex keyring
 two-account round-trip** is genuinely from the v0.8.3 release gate (2026-06-17), whose
 entry records it deferred, and v0.8.6's still lists it open. The other two were
 written six weeks later and first recorded by v0.13.0 (2026-07-31), as "the codex

@@ -29,10 +29,11 @@ afterward for curated highlights when useful. Windows is not built
 
 **This file carries the procedure and not the history.** What shipped is the tag,
 the GitHub release it created, and `git log`. A per-release entry lived here for
-every version through v0.17.0; `git show <tag>:docs/RELEASE.md` is how one is read
-now. Read it as of that tag: its forward pointers were not maintained forward, so
-an item it defers to [ROADMAP.md](ROADMAP.md) may have shipped since, and nothing
-in it is repointed.
+every version through v0.17.0, and the file was cumulative, so
+`git show v0.17.0:docs/RELEASE.md` is the whole set. Read an entry as of its own
+tag: its forward pointers were not maintained forward, so an item it defers to
+[ROADMAP.md](ROADMAP.md) may have shipped since — that file and `git log` are
+where to check.
 
 **There is no active release target, and that is a decision rather than a gap.** The
 next one waits on the list in [ROADMAP.md](ROADMAP.md) § Current work order, which

@@ -52,10 +52,10 @@ order and what that place turns on**. What the item *is* stays where it is: a se
 copy here is the duplication `mise run docs-scan` reports.
 
 1. § `kae relogin` declines to capture a login it watched happen when a *sibling*
-   directory has drifted — the only one left, and it was last in this order because it
-   overrides the shared attribution predicate, whose residue § Attribution reads a
-   label kae may have written itself keeps open, and because no release date is now
-   compressing the measurement that entry asks for.
+   directory has drifted — what its place turns on is the shared attribution predicate
+   it overrides, whose residue § Attribution reads a label kae may have written itself
+   keeps open, and no release date is now compressing the measurement that entry
+   asks for.
 
 An item leaves this list when it lands, so what is here is what is left rather than
 what was planned; git log holds the order it was worked in.
@@ -1420,16 +1420,14 @@ The workable form of that: a sentence goes when it reports
 what a past session did or found **and** the reason, rule or trap around it still stands
 without it. A rule stays; the round that produced it does not.
 
-**A citation is prose with a consumer, and scoping one by a single grep undercounts
-it.** The release-entry stage was mostly a change to `internal/`, and this entry sized
-it with two greps, both keyed on the filename — one for `RELEASE.md §`, one for the
-version-named form. Between them they missed the larger half, because a bare
-`§<letter>` carries no filename at all, and a family that named the file with no
-section was outside both. Scope a citation sweep by the sigil *and* by the filename,
-and read the two sets against each other. The other half of what that stage cost: no guard could see
-any of it, because `docs-check` resolves neither a bare `§A` nor a version name, so the
-same `§C` naming two different entries in two files was invisible — which is why a
-repoint is worth taking to a form the gate does resolve when one exists.
+**A citation is prose with a consumer, and this kind has no guard at all.** The
+release-entry stage was mostly a change to `internal/`, and the two greps that sized
+it were both keyed on the filename — the incomplete form
+[AGENTS.md](../AGENTS.md) already names, and here the larger half was a bare
+`§<letter>`, which carries no filename to key on. What that rule does not cover,
+because it is written for renaming a section rather than deleting one: `docs-check`
+resolves neither a bare `§A` nor a version name, so nothing was checking any of them.
+Repoint to a form the gate does resolve whenever one exists.
 
 Rules adopted with it, from the branch that closed `adapter.VersionVerifier`:
 

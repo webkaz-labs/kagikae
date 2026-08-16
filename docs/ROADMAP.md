@@ -891,6 +891,23 @@ alternative exists (`secret-tool`).
   is evidence timed against the **store** rather than against a cache; nothing here
   proposes one, and the wrong version of it is cheap to build and undetectable when wrong.
 
+- **`kae relogin`'s success line reports a login for a store somebody *else* refreshed**
+  (measured 2026-08-16 by an independent review of the entry above, **not fixed**, and
+  measured to predate that work by running the same probe on the tree before it).
+  [CLI.md](CLI.md) § kae relogin Semantics is normative that the strong wording is printed
+  only where kae observed a login, and the conditions it lists are: the store's bytes changed, what
+  is there now is not a tombstone, and the harvest attributed it. **None of them asks
+  whether *this flow* is what changed the store.** Reachable with one confirming reader
+  elsewhere — a `kae use -i` home of the same account, or a sibling worktree — refreshing
+  the shared credential in place while the flow writes nothing and exits non-zero: every
+  gate passes and kae prints `Logged <tool> in for <tool>/<account> in this directory`.
+  Nothing is mis-filed — the copy really is that account's and harvesting it is right — so
+  what is wrong is only the claim, which is the class § kae relogin Semantics exists to
+  keep honest. The flow's exit code is the obvious candidate gate and it is deliberately
+  not one today (`kae add` reads it the same way: a non-zero exit does not prove nothing
+  was written), so this wants a way to tell "the store changed" from "this flow changed
+  it" rather than a fourth condition bolted on.
+
 - **A payload kae can neither read nor date is still overwritten by a bind, and that is
   a decision rather than an oversight** (recorded 2026-08-08, **not fixed**). The bind now
   keeps a newer copy it could not *attribute* in the account's credential store, because

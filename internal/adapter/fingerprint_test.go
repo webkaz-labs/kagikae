@@ -42,10 +42,22 @@ var fingerprintExclusions = map[string]string{
 //
 // The version is **pinned from the table, never guessed** — picking the newest match
 // instead was tried and read the wrong build for two tools (docs/VALIDATION.md
-// § "Upstream Literal Fingerprints" records what it did). An upgrade therefore shows
-// up as "not installed" against the recorded version, whose remedy is the re-measure
-// an upgrade calls for anyway; `doctor`'s upstream_version check is the one that
-// watches for the upgrade itself.
+// § "Upstream Literal Fingerprints" records what it did).
+//
+// This header used to say an upgrade therefore shows up here as "not installed"
+// against the recorded version. **It does not, for any tool that keeps its old
+// builds** — measured 2026-08-16, when the machine had been running claude 2.1.233
+// for some time while the table said 2.1.220: `~/.local/share/claude/versions/` held
+// 2.1.220, 2.1.221, 2.1.228 and 2.1.233 together, so this test opened the recorded
+// one, found it, and passed. A green run therefore means "the recorded build still
+// says what the table says", never "the installed tools agree with the table", and
+// the two stop being the same answer the moment a version sits. That an old bundle
+// survives is also what makes a version bump cheap to investigate
+// (.claude/skills/upstream-auth-drift/references/measuring.md calls the pair on disk
+// the highest-yield moment), so this is a property to know rather than one to fix
+// here. `doctor`'s upstream_version check is what watches for the upgrade itself —
+// and it compares major and minor only, so it is silent across exactly the range
+// this defeat was measured in.
 //
 // The `.local/share` prefixes are written as measured, not resolved through
 // XDG_DATA_HOME: whether these installers honour that variable for their own install

@@ -427,33 +427,40 @@ is unchanged: when no credential file exists, `capture` fails with
 `auth_missing`, and `doctor` warns the keyring may be in use.
 
 **The keychain is not unconditional on macOS**, which the platform-only driver
-choice above cannot express. Read from the 1.1.12 binary: agy's auth package
-holds a keyring store *and* a file store behind one chooser, and the keyring half
-is skipped or abandoned four ways — a `shouldBypassKeyring` decision next to an
-ssh / wsl / container / **dbus** detector (`SSH_TTY`, `SSH_CONNECTION`,
-`SSH_CLIENT`, `WSL_DISTRO_NAME`, `WSL_INTEROP`, `/.dockerenv`,
-`/proc/1/cgroup`), a timeout on every keyring operation, an explicit fallback on
-failure ("Keyring SaveToken timed out after %v, falling back to file storage",
-with load, remove, project-and-region and user-tier variants), and a **persisted
-timeout marker** ("a keyring timeout was recorded within the last %v", under a
-`keyring-marker-` name) that 1.0.10 did not have. A remote-shell session on a Mac
-therefore reaches the file store — and since 1.1.12 a bypass can also outlive the
-run that caused it.
+choice above cannot express. Read from the 1.1.13 binary (and 1.1.12 before it,
+identically): agy's auth package holds a keyring store *and* a file store behind
+one chooser, and the literals say the keyring half is skipped or abandoned by a
+`shouldBypassKeyring` decision next to an ssh / wsl / container / **dbus**
+detector (`SSH_TTY`, `SSH_CONNECTION`, `SSH_CLIENT`, `WSL_DISTRO_NAME`,
+`WSL_INTEROP`, `/.dockerenv`, `/proc/1/cgroup`), by a timeout on every keyring
+operation, by an explicit fallback on failure ("Keyring SaveToken timed out after
+%v, falling back to file storage", with load, remove, project-and-region and
+user-tier variants), and by a **persisted timeout marker** ("a keyring timeout was
+recorded within the last %v", under a `keyring-marker-` name) that 1.0.10 did not
+have. On that reading a remote-shell session on a Mac reaches the file store, and
+a bypass can outlive the run that caused it. **Nothing has observed either**: no
+agy run since 1.0.10 has been seen choosing a store
+([VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions carries the
+dates).
 
 kae **warns** (`env_conflict`) when one of those variables is set on macOS and
 does not model the file store there: the fallback file's path is not derivable
-from the binary — none of the three `credentialFiles` names occurs in it — so
-declaring an artifact for it would write where nothing reads. The names in the
-Linux row are the 2026-06-18 discovery, unverified against 1.1.12. The dbus
-detector adds no variable to warn on: `DBUS_SESSION_BUS_ADDRESS` and
-`DBUS_SYSTEM_BUS_ADDRESS` each occur zero times in the 1.1.12 binary, so what it
-reads is not in the environment kae can see.
+from the binary, so declaring an artifact for it would write where nothing reads.
+It is at least none of the three `credentialFiles` names — `credentials.enc` and
+`oauth_creds.json` occur zero times in 1.0.10, 1.1.12 and 1.1.13, and
+`credentials.json`'s two hits are substrings of longer Google filenames — so the
+Linux row's names, which are the 2026-06-18 discovery, remain unverified against
+any of those builds. The dbus detector adds no variable to warn on:
+`DBUS_SESSION_BUS_ADDRESS` and `DBUS_SYSTEM_BUS_ADDRESS` each occur zero times in
+all three, so what it reads is not in the environment kae can see.
 
 `kae add agy` is **`--no-login` only**: agy has no kae-drivable login
 (authentication is GUI/browser OAuth via the Antigravity app — no
 `login`/`auth`/`whoami` subcommand). agy's `Identity` reads the active Google
-account email from `~/.gemini/google_accounts.json` (`.active`). **Caveat
-(current Antigravity, 1.0.x): this file is legacy and may be stale.** Antigravity
+account email from `~/.gemini/google_accounts.json` (`.active`). **Caveat, read
+2026-06-18 on 1.0.10 and still consistent with 1.1.13: this file is legacy and may
+be stale** — the filename occurs zero times in each of those binaries, so agy does
+not name it. Antigravity
 resolves the live account from the opaque keychain token server-side and renders
 it only in the interactive banner; it no longer writes the account to disk
 (`google_accounts.json` is left at its old Gemini-CLI value, and the keychain
@@ -1282,7 +1289,7 @@ half-done. Do not reformat the rows without updating that test.
 |------|---------------------|----------------|--------------------------|
 | claude | `2.1.233` | `2026-08-16` | `2.1.233 (Claude Code)` |
 | codex | `0.147.0` | `2026-08-16` | `codex-cli 0.147.0` |
-| agy | `1.1.12` | `2026-08-17` | `1.1.12` |
+| agy | `1.1.13` | `2026-08-17` | `1.1.13` |
 | opencode | `1.18.16` | `2026-08-16` | `1.18.16` |
 | cursor | `""` (no signal — see below) | `2026-07-30` | `2026.06.16-20-30-07-<sha>` (date-versioned) |
 | copilot | `1.0.61` | `2026-07-31` | `GitHub Copilot CLI 1.0.61.` (note the trailing period) |

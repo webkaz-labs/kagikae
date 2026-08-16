@@ -23,7 +23,7 @@ func TestParseUpstreamVersion(t *testing.T) {
 	cases := []struct{ tool, output, want string }{
 		{constants.ToolClaude, "2.1.220 (Claude Code)\n", "2.1.220"},
 		{constants.ToolCodex, "codex-cli 0.145.0\n", "0.145.0"},
-		{constants.ToolAgy, "1.1.12\n", "1.1.12"},
+		{constants.ToolAgy, "1.1.13\n", "1.1.13"},
 		{constants.ToolOpencode, "1.17.4\n", "1.17.4"},
 		{constants.ToolCursor, "2026.06.16-20-30-07-a07d3ac\n", "2026.06.16"},
 		{constants.ToolCopilot, "GitHub Copilot CLI 1.0.61.\n", "1.0.61"},

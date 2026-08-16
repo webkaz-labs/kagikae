@@ -1492,12 +1492,12 @@ is anywhere near that, and only by demand.
   copilot's own hidden `--config-dir` can defeat it, which nothing in the
   environment reveals — has to be established first. **Demand-gated**: build it
   when someone needs a per-directory copilot account, not for parity.
-- **agy's file store on macOS** (recorded gap, 2026-07-31; re-read on 1.1.12,
+- **agy's file store on macOS** (recorded gap, 2026-07-31; re-read on 1.1.13,
   2026-08-17): agy skips the keychain under ssh/wsl/container/dbus detection, on a
-  keyring timeout, on any keyring failure, and — new in 1.1.12 — for a window after
-  a timeout it *persists*, so the file store is reachable on macOS too and a bypass
-  can outlive one run. The fallback file's path is still not derivable from the
-  binary, so kae warns instead of switching it ([ADAPTERS.md](ADAPTERS.md),
+  keyring timeout, on any keyring failure, and — new since 1.0.10 — for a window
+  after a timeout it *persists*, so the file store is reachable on macOS too and a
+  bypass can outlive one run. The fallback file's path is still not derivable from
+  the binary, so kae warns instead of switching it ([ADAPTERS.md](ADAPTERS.md),
   [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions owns the
   measurement). Blocked on a way to make agy write a token without a real login: it
   has no kae-drivable login. **The `security` PATH shim is not that way**, which

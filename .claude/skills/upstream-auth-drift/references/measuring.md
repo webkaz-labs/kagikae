@@ -30,7 +30,7 @@ consulted".
 | Tool | Shells out | Shim reaches it | Evidence |
 |---|---|---|---|
 | claude | **yes** | **yes** | the shim log fills with `find-generic-password` argv |
-| agy | **yes** | **no** | zalando/go-keyring: `find`/`add`/`delete-generic-password` and `keyring_darwin.go` in the binary, `SecItemAdd` and `SecItemCopyMatching` zero times, `go-keyring-base64:` prefix — all measured 2026-08-17 on 1.0.10, 1.1.12 and 1.1.13 alike. **What decides the second column is that the binary also spells `/usr/bin/security` out** (once in each of the three), an absolute path no `PATH` entry precedes. A shim run on 1.1.12 left the log empty, which by the paragraph above proves nothing on its own |
+| agy | **yes** | **no** | zalando/go-keyring: `find`/`add`/`delete-generic-password` and `keyring_darwin.go` in the binary, `SecItemAdd` and `SecItemCopyMatching` zero times, `go-keyring-base64:` prefix — all measured 2026-08-17 on 1.0.10, 1.1.12 and 1.1.13 alike. **What decides the second column is that the binary also spells `/usr/bin/security` out** (once in each of the three), an absolute path no `PATH` entry precedes. A shim run on 1.1.12 left the log empty, which by the paragraph above proves nothing on its own — that run's own agy log said `You are not logged into Antigravity`, which the never-reached-the-keyring hypothesis predicts just as well, and as of 2026-08-17 no positive discriminator like codex's had been found for agy |
 | codex | **no** | n/a | the Rust `keyring` crate calls Security.framework directly; with a shim on PATH the log stays empty and codex fails with "Platform secure storage failure: A default keychain could not be found" |
 | cursor | unverified | unverified | |
 

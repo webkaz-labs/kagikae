@@ -40,30 +40,23 @@ const noKeychainItemMsg = "no gemini/antigravity keychain item; log in with the 
 // versions (Linux/WSL). All are captured/applied so version changes round-trip.
 var credentialFiles = []string{"credentials.enc", "credentials.json", "oauth_creds.json"}
 
-// keyringBypassEnv are the variables agy's keyring-bypass detectors read. agy
-// does not treat the keychain as unconditional on macOS: its auth package holds a
-// keyring store *and* a file store behind one chooser, and read from the 1.1.13
-// binary (1.1.12 is identical), the keyring half is skipped or abandoned by
-// `shouldBypassKeyring` next to an ssh / wsl / container / dbus detector, by a
-// per-operation timeout, by an explicit fallback on failure ("Keyring SaveToken
-// timed out after %v, falling back to file storage", plus load, remove,
-// project-and-region and user-tier variants), and by a *persisted* timeout marker
-// ("a keyring timeout was recorded within the last %v", written under a
-// `keyring-marker-` name) that 1.0.10 did not have. Those are literals, not runs:
-// nothing has observed a bypass, and docs/VALIDATION.md § Upstream Behaviour
-// Assumptions carries what the last observation was and when.
+// keyringBypassEnv are the variables agy's keyring-bypass detectors read. agy does
+// not treat the keychain as unconditional on macOS — its auth package holds a
+// keyring store *and* a file store behind one chooser, which can pick the file — so
+// this list exists to warn where kae's keychain switch may not reach the tool.
+// Measured on 1.1.13; the mechanism, what each build showed and what nothing has
+// observed are docs/VALIDATION.md § Upstream Behaviour Assumptions.
 //
-// Only the ssh and wsl detectors are visible through the environment, which is what
-// this list is; the container detector reads files (`/.dockerenv`, `/proc/1/cgroup`)
-// and the dbus one reads neither variable kae could name — `DBUS_SESSION_BUS_ADDRESS`
-// and `DBUS_SYSTEM_BUS_ADDRESS` each occur zero times in 1.0.10, 1.1.12 and 1.1.13.
+// Why exactly this set: it is the whole of that chooser kae can see in the
+// environment. The container detector reads files, the dbus one reads nothing the
+// fingerprint rows for `DBUS_SESSION_BUS_ADDRESS` and `DBUS_SYSTEM_BUS_ADDRESS`
+// find, and the WSL pair cannot fire on darwin but stays here because the detector
+// set is one upstream decision.
 //
 // kae warns rather than modelling the file store: the fallback file's path is not
 // derivable from the binary, so adding a guessed artifact would write where nothing
 // reads — the failure this whole class of bug is made of. It is at least none of
-// credentialFiles: two of those names occur zero times in each of those builds and
-// the third only inside longer Google filenames. The WSL entries cannot fire on
-// darwin; they stay in one list because the detector set is one upstream decision.
+// credentialFiles, which have fingerprint rows of their own for that reason.
 var keyringBypassEnv = []string{"SSH_TTY", "SSH_CONNECTION", "SSH_CLIENT", "WSL_DISTRO_NAME", "WSL_INTEROP"}
 
 // keyringBypassWarnings returns one warning per set bypass variable, shared by

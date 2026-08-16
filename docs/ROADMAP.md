@@ -113,12 +113,11 @@ result of working them is recorded — but it does mean the cost of a re-measure
 with how long a version sits. The remaining two, in the order each pays for itself:
 
 4. **The shim harness**, table-driven and gated on the per-tool "does a `PATH`
-   shim reach this tool" answer (claude yes, agy **no**, codex **no**, cursor
-   unverified). That is not the same question as "does it shell out", which is
-   what this entry used to gate on: agy shells out and is still unreachable,
-   because it names `/usr/bin/security` absolutely
-   ([measuring.md](../.claude/skills/upstream-auth-drift/references/measuring.md)
-   holds both columns). It should diff *the tool's* argv log against *kae's*,
+   shim reach this tool" answer, which is **not** the question this entry used to
+   gate on ("does it shell out") and does not have the same answers —
+   [measuring.md](../.claude/skills/upstream-auth-drift/references/measuring.md)
+   § Does a `PATH` shim reach this tool? is the one copy of both columns and of
+   why they differ. It should diff *the tool's* argv log against *kae's*,
    which turns the naming-agreement check in [ACCEPTANCE.md](ACCEPTANCE.md)
    § Bound-directory credential store into a script.
 5. **Behaviour-site hashes** for the three or four sites that encode real
@@ -1501,9 +1500,10 @@ is anywhere near that, and only by demand.
   [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions owns the
   measurement). Blocked on a way to make agy write a token without a real login: it
   has no kae-drivable login. **The `security` PATH shim is not that way**, which
-  this entry claimed it was — agy reaches the binary through the absolute path
-  `/usr/bin/security`, so no `PATH` entry precedes it (the VALIDATION row carries
-  the derivation). agy is the tier floor and this is the reason.
+  this entry claimed it was; the derivation lives once, in
+  [measuring.md](../.claude/skills/upstream-auth-drift/references/measuring.md)
+  § Does a `PATH` shim reach this tool? — agy is the tier floor and this is the
+  reason.
 - **agy home isolation**: no stable home/config env var is known, so the isolation
   modes refuse it. Revisit only if upstream ships one *and* the file-store gap
   above is closed — a redirected home whose fallback store kae cannot find would

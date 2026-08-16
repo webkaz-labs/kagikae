@@ -67,9 +67,13 @@ var fingerprintArtifacts = map[string]string{
 	constants.ToolCursor:   ".local/share/cursor-agent/versions/" + versionToken,
 	constants.ToolCopilot:  ".copilot/pkg/universal/" + versionToken + "/app.js",
 	constants.ToolOpencode: ".local/share/mise/installs/opencode/" + versionToken + "/opencode",
-	// agy installs straight to /usr/local/bin with no per-version directory, so its
-	// recorded version cannot be checked against the path. A version bump therefore
-	// shows up here as moved counts rather than as a missing file.
+	// agy's path carries no version, so nothing checks it against one. This used to
+	// add that a bump therefore "shows up here as moved counts", and **that is false**:
+	// measured 2026-08-17, `command -v agy` resolved into a mise install tree while
+	// /usr/local/bin/agy still answered `--version` with 1.0.10, so this test opened a
+	// leftover and passed with three of agy's counts already moved on the installed
+	// build. A versionless path reports a bump as nothing at all — the sibling defeat
+	// the header above describes, minus the part where an upgrade eventually lands here.
 	constants.ToolAgy: "/usr/local/bin/agy",
 }
 

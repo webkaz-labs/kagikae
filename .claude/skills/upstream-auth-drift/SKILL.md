@@ -129,8 +129,8 @@ a real login, a real account, a switch round trip — even though its cell names
 version rather than `not verified`. A bump read out of a binary re-verifies the rows
 that are read out of a binary; carrying the login-gated ones along with it is the
 same false claim in a form that looks orderly, because every row in the tool's block
-then agrees. agy's 1.1.13 pass is the worked example: one row moved and two stayed at
-`1.0.10`.
+then agrees. agy's 1.1.13 pass is the worked example: the row read out of the binary
+moved and the rows a login gates stayed at `1.0.10`.
 `TestVerifiedVersionsMatchTheDocs` fails if the method and the table disagree, so
 a half-done lockstep does not compile past the gate — but nothing checks the
 § Upstream Behaviour Assumptions prose, which is where the *procedure* lives. Update it too if you

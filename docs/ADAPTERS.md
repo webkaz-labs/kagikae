@@ -427,40 +427,35 @@ is unchanged: when no credential file exists, `capture` fails with
 `auth_missing`, and `doctor` warns the keyring may be in use.
 
 **The keychain is not unconditional on macOS**, which the platform-only driver
-choice above cannot express. Read from the 1.1.13 binary (and 1.1.12 before it,
-identically): agy's auth package holds a keyring store *and* a file store behind
-one chooser, and the literals say the keyring half is skipped or abandoned by a
-`shouldBypassKeyring` decision next to an ssh / wsl / container / **dbus**
-detector (`SSH_TTY`, `SSH_CONNECTION`, `SSH_CLIENT`, `WSL_DISTRO_NAME`,
-`WSL_INTEROP`, `/.dockerenv`, `/proc/1/cgroup`), by a timeout on every keyring
-operation, by an explicit fallback on failure ("Keyring SaveToken timed out after
-%v, falling back to file storage", with load, remove, project-and-region and
-user-tier variants), and by a **persisted timeout marker** ("a keyring timeout was
-recorded within the last %v", under a `keyring-marker-` name) that 1.0.10 did not
-have. On that reading a remote-shell session on a Mac reaches the file store, and
-a bypass can outlive the run that caused it. **Nothing has observed either**: no
-agy run since 1.0.10 has been seen choosing a store
-([VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions carries the
-dates).
+choice above cannot express: agy's auth package holds a keyring store *and* a file
+store behind one chooser that can pick the file — under an ssh / wsl / container /
+dbus detector, on a keyring timeout, on a keyring failure, and, since some release
+after 1.0.10, for a window after a timeout that it persists to disk. So a
+remote-shell session on a Mac can reach the file store and a bypass can outlive the
+run that caused it, and kae's keychain switch reaches neither.
+
+**That paragraph is a reading of literals, not of runs**, and which build each was
+read from, what the messages say, and what nothing has observed are
+[VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions, which owns the
+measurement. Do not restate a count from there here; three copies of one had to be
+collapsed into this sentence.
 
 kae **warns** (`env_conflict`) when one of those variables is set on macOS and
 does not model the file store there: the fallback file's path is not derivable
 from the binary, so declaring an artifact for it would write where nothing reads.
-It is at least none of the three `credentialFiles` names — `credentials.enc` and
-`oauth_creds.json` occur zero times in 1.0.10, 1.1.12 and 1.1.13, and
-`credentials.json`'s two hits are substrings of longer Google filenames — so the
-Linux row's names, which are the 2026-06-18 discovery, remain unverified against
-any of those builds. The dbus detector adds no variable to warn on:
-`DBUS_SESSION_BUS_ADDRESS` and `DBUS_SYSTEM_BUS_ADDRESS` each occur zero times in
-all three, so what it reads is not in the environment kae can see.
+It is at least none of the `credentialFiles` names, and the dbus detector adds no
+variable to warn on. Both rest on counts in [VALIDATION.md](VALIDATION.md)
+§ Upstream Literal Fingerprints — mostly recorded-zero rows, with one name kept out
+of the table on purpose, which that section explains. The Linux row's names are the
+2026-06-18 discovery and stay unverified against any later build.
 
 `kae add agy` is **`--no-login` only**: agy has no kae-drivable login
 (authentication is GUI/browser OAuth via the Antigravity app — no
 `login`/`auth`/`whoami` subcommand). agy's `Identity` reads the active Google
 account email from `~/.gemini/google_accounts.json` (`.active`). **Caveat, read
-2026-06-18 on 1.0.10 and still consistent with 1.1.13: this file is legacy and may
-be stale** — the filename occurs zero times in each of those binaries, so agy does
-not name it. Antigravity
+2026-06-18 on 1.0.10: this file is legacy and may be stale** — agy does not name
+it, which is the recorded-zero fingerprint row for that filename in
+[VALIDATION.md](VALIDATION.md) § Upstream Literal Fingerprints. Antigravity
 resolves the live account from the opaque keychain token server-side and renders
 it only in the interactive banner; it no longer writes the account to disk
 (`google_accounts.json` is left at its old Gemini-CLI value, and the keychain

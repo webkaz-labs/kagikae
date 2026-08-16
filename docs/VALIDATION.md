@@ -1852,7 +1852,7 @@ regex-inflated count reads as upstream drift on a tool that never moved.
 | claude | `~/.local/share/claude/versions/<version>` (one Mach-O, JS inline) | `2.1.233` |
 | cursor | `~/.local/share/cursor-agent/versions/<version>/` (webpack chunks) | `2026.06.16-20-30-07-a07d3ac` |
 | copilot | `~/Library/Caches/copilot/pkg/darwin-x64/<version>/` (package tree in a **cache** directory; the arch segment is as measured) | `1.0.79` |
-| opencode | `~/.local/share/mise/installs/opencode/<version>/opencode` (Bun single-file executable) | `1.18.16` |
+| opencode | `~/.local/share/mise/installs/opencode/latest/opencode` (Bun single-file executable, through mise's version-independent symlink) | `1.18.16` |
 | agy | `~/.local/share/mise/installs/antigravity-cli/latest/agy` (Go binary, through mise's version-independent symlink) | `1.1.13` |
 
 Only the **version** column is machine-checked. The paths themselves live in
@@ -1874,11 +1874,13 @@ tried, which is the honest outcome.
 builds nobody ran, and the audit passed the whole time**; what that cost and what it
 leaves open is [ROADMAP.md](ROADMAP.md) § Hardening backlog rather than a second copy
 here. The half worth keeping beside the table is how each path avoids repeating it.
-agy's goes through mise's `latest` symlink instead of a pinned version **because mise
-keeps old installs** — a pinned one would resolve to a stale build again after the
-next upgrade, which is the defect itself — and it names the `agy` file rather than its
-directory, since the previous build sits beside it and a directory walk would add that
-build's literals to every count. copilot's is a tree because its literals are spread
+agy's and opencode's go through mise's `latest` symlink instead of a pinned version
+**because mise keeps old installs** — a pinned one would resolve to a stale build
+again after the next upgrade, which is the defect itself. opencode's was not stale
+when this was written, and was changed anyway, because "not stale yet" is the state
+the other two were in until an upgrade landed. agy's also names the `agy` file rather
+than its directory, since the previous build sits beside it and a directory walk would
+add that build's literals to every count. copilot's is a tree because its literals are spread
 across the package; `lastLoggedInUser` is not in `app.js` at all.
 
 **Two of copilot's rows count `changelog.json` as well as code**, which is release

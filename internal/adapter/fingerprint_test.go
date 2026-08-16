@@ -63,9 +63,14 @@ var fingerprintExclusions = map[string]string{
 // XDG_DATA_HOME: whether these installers honour that variable for their own install
 // location is unmeasured, and this file is the wrong place to guess.
 var fingerprintArtifacts = map[string]string{
-	constants.ToolClaude:   ".local/share/claude/versions/" + versionToken,
-	constants.ToolCursor:   ".local/share/cursor-agent/versions/" + versionToken,
-	constants.ToolOpencode: ".local/share/mise/installs/opencode/" + versionToken + "/opencode",
+	constants.ToolClaude: ".local/share/claude/versions/" + versionToken,
+	constants.ToolCursor: ".local/share/cursor-agent/versions/" + versionToken,
+	// Through `latest` for the same reason agy is, below: mise keeps old installs
+	// (1.17.4 and 1.18.11 were still there when this was measured), so a pinned
+	// version would go on resolving after the next upgrade. Nothing was stale here
+	// yet — `latest` and the pinned path gave identical counts — which is the point
+	// of changing it before it is.
+	constants.ToolOpencode: ".local/share/mise/installs/opencode/latest/opencode",
 	// In the search list read out of copilot's 1.0.79 launcher, ~/.copilot/pkg — the
 	// path this map used to hold — is the **last** root, and on 2026-08-17 it held
 	// nothing newer than 1.0.61 while 1.0.79 ran (docs/VALIDATION.md § Upstream

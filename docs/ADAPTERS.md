@@ -334,7 +334,12 @@ from "not yet captured", so `capture` fails with `auth_missing` (exit 3) while
 `switch` proceeds — switching to a captured account legitimately creates the live
 state. `doctor` and `status` carry the same hint as a warning.
 
-#### Keyring item contract (source-confirmed 2026-07-30 against `rust-v0.145.0`)
+#### Keyring item contract
+
+Source-confirmed, and **which release against** is [VALIDATION.md](VALIDATION.md)
+§ Upstream Behaviour Assumptions — this heading carried its own tag and date until
+2026-08-16, which is a second copy that goes stale without anything saying so, and
+did.
 
 - **service** `Codex Auth` — shared by **every** codex home.
 - **account** `cli|` + the first **16** hex characters of
@@ -1269,7 +1274,7 @@ half-done. Do not reformat the rows without updating that test.
 | Tool | `VerifiedVersion()` | `VerifiedOn()` | `--version` output shape |
 |------|---------------------|----------------|--------------------------|
 | claude | `2.1.233` | `2026-08-16` | `2.1.233 (Claude Code)` |
-| codex | `0.146.0` | `2026-08-04` | `codex-cli 0.146.0` |
+| codex | `0.147.0` | `2026-08-16` | `codex-cli 0.147.0` |
 | agy | `1.0.10` | `2026-07-31` | `1.0.10` |
 | opencode | `1.18.16` | `2026-08-16` | `1.18.16` |
 | cursor | `""` (no signal — see below) | `2026-07-30` | `2026.06.16-20-30-07-<sha>` (date-versioned) |

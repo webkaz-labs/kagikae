@@ -16,9 +16,12 @@ import (
 // versionTripleRe matches the first <major>.<minor>.<patch> triple of a
 // `--version` output. Every upstream CLI kae drives prints one, none of them in
 // the same place: "2.1.220 (Claude Code)", "codex-cli 0.145.0", bare "1.17.4",
-// "GitHub Copilot CLI 1.0.61." (trailing period), and cursor-agent's date
-// version "2026.06.16-20-30-07-<sha>". Taking the leftmost triple reads all of
-// them; TestParseUpstreamVersion pins the real outputs.
+// "GitHub Copilot CLI 1.0.79." (trailing period, and on 2026-08-17 a second line
+// followed it — "Run 'copilot update' to check for updates."; what decides whether
+// it appears was not read), and cursor-agent's date version
+// "2026.06.16-20-30-07-<sha>". Taking the **leftmost** triple reads all of them,
+// which is also what survives a trailing line: it is only safe while no such line
+// carries a triple of its own. TestParseUpstreamVersion pins the real outputs.
 var versionTripleRe = regexp.MustCompile(`([0-9]+)\.([0-9]+)\.([0-9]+)`)
 
 // upstreamVersion is a parsed major.minor.patch triple.

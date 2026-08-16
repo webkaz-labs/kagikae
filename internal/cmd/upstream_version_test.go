@@ -26,7 +26,12 @@ func TestParseUpstreamVersion(t *testing.T) {
 		{constants.ToolAgy, "1.1.13\n", "1.1.13"},
 		{constants.ToolOpencode, "1.17.4\n", "1.17.4"},
 		{constants.ToolCursor, "2026.06.16-20-30-07-a07d3ac\n", "2026.06.16"},
-		{constants.ToolCopilot, "GitHub Copilot CLI 1.0.61.\n", "1.0.61"},
+		{constants.ToolCopilot, "GitHub Copilot CLI 1.0.79.\n", "1.0.79"},
+		// What `copilot --version` actually printed on 2026-08-17 at 1.0.79: the line
+		// above plus an advisory. What decides whether the advisory appears was not
+		// read, so both shapes are pinned. The leftmost-triple rule is what carries
+		// this one — a trailing line with a version of its own would be read instead.
+		{constants.ToolCopilot, "GitHub Copilot CLI 1.0.79.\nRun 'copilot update' to check for updates.\n", "1.0.79"},
 	}
 	for _, tc := range cases {
 		raw, _, ok := parseUpstreamVersion(tc.output)

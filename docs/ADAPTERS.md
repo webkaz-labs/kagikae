@@ -1287,7 +1287,7 @@ half-done. Do not reformat the rows without updating that test.
 | agy | `1.1.13` | `2026-08-17` | `1.1.13` |
 | opencode | `1.18.16` | `2026-08-16` | `1.18.16` |
 | cursor | `""` (no signal — see below) | `2026-07-30` | `2026.06.16-20-30-07-<sha>` (date-versioned) |
-| copilot | `1.0.61` | `2026-07-31` | `GitHub Copilot CLI 1.0.61.` (note the trailing period) |
+| copilot | `1.0.79` | `2026-08-17` | `GitHub Copilot CLI 1.0.79.` (note the trailing period; an advisory line followed it when measured) |
 
 `VerifiedOn()` is the half the version cannot supply. `upstream_version` only
 fires when the installed tool moves past the verified release, so a user who

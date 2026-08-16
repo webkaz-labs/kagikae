@@ -886,7 +886,7 @@ func TestCopilotArtifactsJSONCPointer(t *testing.T) {
 }
 
 // COPILOT_HOME replaces ~/.copilot outright — it is the config directory itself,
-// not a parent. Measured at 1.0.61, where it is also the mechanism copilot's own
+// not a parent. Re-measured on 1.0.79, where it is also the mechanism copilot's own
 // (deprecated) --config-dir flag points users at.
 func TestCopilotHonorsCopilotHome(t *testing.T) {
 	copilotHome := t.TempDir()

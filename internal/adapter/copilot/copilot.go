@@ -65,14 +65,14 @@ func (Copilot) Binary() string { return binaryName }
 
 // VerifiedVersion is the GitHub Copilot CLI release kae's behaviour assumptions
 // were last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
-func (Copilot) VerifiedVersion() string { return "1.0.61" }
+func (Copilot) VerifiedVersion() string { return "1.0.79" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Copilot) VerifiedOn() string { return "2026-07-31" }
+func (Copilot) VerifiedOn() string { return "2026-08-17" }
 
 // configHome resolves the directory holding config.json. COPILOT_HOME is
-// honored verbatim, the way copilot itself uses it (`process.env.COPILOT_HOME ?
-// process.env.COPILOT_HOME : join(homedir(), ".copilot")`, measured at 1.0.61):
+// honored verbatim, the way copilot itself uses it (`t?.configDir ??
+// process.env.COPILOT_HOME ?? join(homedir(), ".copilot")`, re-measured on 1.0.79):
 // no normalization, no absolute-path check. Modelling it as $HOME/.copilot made
 // every switch in a directory with COPILOT_HOME set patch a config.json copilot
 // never reads.

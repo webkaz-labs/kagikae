@@ -1484,8 +1484,9 @@ tool's full credential set enumerated, and a real-machine round trip. Only copil
 is anywhere near that, and only by demand.
 
 - **copilot isolation** (possible, deliberately not built): `COPILOT_HOME` is a
-  verified config-dir variable (2026-07-31), so copilot could join claude and
-  codex in `isolationEnvVar` and become `use -i` / `pin -i`-capable. Reading the
+  verified config-dir variable (re-verified on 1.0.79, 2026-08-17), so copilot
+  could join claude and codex in `isolationEnvVar` and become `use -i` /
+  `pin -i`-capable. Reading the
   variable was not enough on its own: the per-account keychain items coexist and
   are never switched, so what a second home actually changes — and whether
   copilot's own hidden `--config-dir` can defeat it, which nothing in the

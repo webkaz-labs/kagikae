@@ -875,15 +875,12 @@ alternative exists (`secret-tool`).
   refuses and the account snapshot keeps a copy the new login has already invalidated. The
   entry's own fix was to let the directory the flow ran in answer for a login kae itself
   performed there, as evidence of a different class from a walk of everyone's caches.
-  **There is no such evidence, and that is the measurement rather than an implementation
-  difficulty.** claude's identity artifact is a JSON pointer into the mixed-state
-  `~/.claude.json`: the file's write time says only that claude wrote something there, and
-  the record's own bytes do not move for a relogin as the account already labelled there,
-  since `/login` rewrites its three keys unconditionally and to the same values. A version
-  resting on the file's time was built and reverted after a review reproduced it filing a
-  sibling's refreshed token into this account's snapshot from a flow that logged nobody in
-  — which is the shape § Attribution reads a label kae may have written itself predicts,
-  from the caller's side.
+  **There is no such evidence, and that is a measurement rather than an implementation
+  difficulty** — [ADAPTERS.md](ADAPTERS.md) § Per-directory credential store states what was
+  measured, beside the rule it settles. A version was built and reverted after a review
+  reproduced it filing a sibling's refreshed token into this account's snapshot from a flow
+  that logged nobody in, which is the shape § Attribution reads a label kae may have written
+  itself predicts, from the caller's side.
   Two things did land: the refusal now names the directories that disagree, so the user
   has somewhere to go ([CLI.md](CLI.md) § kae relogin Semantics), and the sibling need not
   be a worktree at all — one stale `kae use -i` home is a reader by the same walk, which

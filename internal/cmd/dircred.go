@@ -472,10 +472,12 @@ type harvestRefusal struct {
 	// one refusal here whose cause is somewhere the user can go and fix, and `Why` alone
 	// leaves them to find which of their directories it was.
 	//
-	// A list rather than a flag, and out of `Why` rather than inside it, because the reason
-	// is interpolated into three callers' frames while only one of them is positioned to
-	// send a user anywhere. Empty for every other refusal, so a consumer that reads it as a
-	// flag reads the truth.
+	// A list rather than a flag, and out of `Why` rather than inside it: the reason is
+	// interpolated into frames that several callers build, and a path spliced into it would
+	// appear in all of them whether or not that message is one a user can act on. Reading
+	// it is opt-in instead — `kae relogin` is the only caller that does today, and the bind
+	// path could without anything here changing. Empty for every other refusal, so a
+	// consumer that reads it as a flag reads the truth.
 	//
 	// **Not routed through `kae doctor`**, which is where the first wording sent the user:
 	// its identity checks cover bound directories (`pinIdentityChecks`) and the *active*
@@ -559,16 +561,12 @@ func dirCredentialRefusalClause(tool string, dirs bindDirs, accountName string, 
 // it is about to destroy. Refusing there is a deletion rather than a conservative choice,
 // which is the inversion AGENTS.md records.
 //
-// **No third field says "kae itself just ran a login in Dir", and that is a measurement
-// rather than an omission** (2026-08-16). docs/ROADMAP.md § `kae relogin` declines to
-// capture a login it watched happen proposed exactly that, and building it showed kae
-// cannot observe it: claude's identity artifact is a JSON pointer into the mixed-state
-// `~/.claude.json`, so the file's write time means "claude wrote something here" — a
-// startup qualifies — while the record's own bytes do not move at all for a relogin as
-// the account the directory is already labelled with, since `/login` rewrites
-// `accountUuid`, `emailAddress` and `organizationUuid` unconditionally and to the same
-// values (internal/adapter/claude). An override resting on the file's time was written
-// and reverted after a review reproduced it filing a sibling's token under this account.
+// **Do not add a third field saying "kae itself just ran a login in Dir".** One was
+// written, and reverted after a review reproduced it filing a sibling's token under this
+// account: nothing kae can read offline separates a tool that logged in here from a tool
+// that merely wrote its cache here. docs/ADAPTERS.md § Per-directory credential store
+// carries the measurement, and docs/ROADMAP.md § `kae relogin` declines to capture a login
+// it watched happen is the entry that asked for the field.
 type attributionSource struct {
 	Dir     string
 	Unbound bool
@@ -1729,6 +1727,10 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 // bound directory rather than kae's store under it — a store path names a pin-id hash and
 // no user can tell which worktree that is — and for a globally isolated home the two are
 // the same path, because that home is where the tool actually runs.
+// Not `boundDirStore`, which carries the same pair and more: that one is built from
+// `pinnedDirs()`, which drops the completeness flag this walk's whole answer turns on, and
+// it skips a store directory that is not there. Folding the two would trade a
+// machine-wide "kae could not look" for a silent "nobody reads it".
 type credStoreReader struct {
 	Config string
 	Dir    string
@@ -1859,9 +1861,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	// A reader the caller has already unbound is still a reader for this question — see
 	// attributionSource. Appended rather than substituted: an unpin of one of several
 	// bindings leaves the others, and they answer first.
-	if src.Unbound && src.Dir != "" && !slices.ContainsFunc(readers, func(r credStoreReader) bool {
-		return r.Config == src.Dir
-	}) {
+	if src.Unbound && src.Dir != "" && !readsFrom(readers, src.Dir) {
 		// No Dir: the caller has torn this binding down, so there is no bound directory left
 		// to name — and a message that named its store instead would send the reader to a
 		// path nothing runs in. The naming below skips it; the count and the vote do not.
@@ -1945,10 +1945,10 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	}
 }
 
-// readsFrom reports whether configDir is one of these readers — the "and the directory this
-// operation acts for is one of them" half of the `Conflicting` outcome. Keyed on Config,
-// never on Dir: what makes a reader's disagreement *this* operation's is the cache the
-// attribution read, and the two strings differ for a binding.
+// readsFrom reports whether configDir is among these readers. Both its callers ask about
+// the directory an operation is acting for: whether the walk already saw it, and whether it
+// is one of the readers that disagree. Keyed on Config, never on Dir — what ties a reader to
+// this operation is the cache attribution read, and the two strings differ for a binding.
 func readsFrom(readers []credStoreReader, configDir string) bool {
 	return slices.ContainsFunc(readers, func(r credStoreReader) bool { return r.Config == configDir })
 }

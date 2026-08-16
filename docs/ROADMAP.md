@@ -51,11 +51,12 @@ Each names a section or an entry in this file and gives **only its place in the
 order and what that place turns on**. What the item *is* stays where it is: a second
 copy here is the duplication `mise run docs-scan` reports.
 
-1. § `kae relogin` declines to capture a login it watched happen when a *sibling*
-   directory has drifted — what its place turns on is the shared attribution predicate
-   it overrides, whose residue § Attribution reads a label kae may have written itself
-   keeps open, and no release date is now compressing the measurement that entry
-   asks for.
+**Nothing is queued here, and that is the state the paragraph above attaches a
+consequence to**: the deferral was spent on landing this list, so what it was waiting
+for has happened and a release is what comes next rather than another batch. That is a
+call for a human to make, not a step to take from reading this — [ACCEPTANCE.md](ACCEPTANCE.md)
+§ Open gates is the cost it carries, and only a human can pay it. Re-run the command
+above on the current tree before treating any of this as still true.
 
 An item leaves this list when it lands, so what is here is what is left rather than
 what was planned; git log holds the order it was worked in.
@@ -820,18 +821,6 @@ alternative exists (`secret-tool`).
   user is told something is wrong), or a breadcrumb that `unpin` removes so absence can
   mean incompleteness again.
 
-- **`kae relogin` declines to capture a login it watched happen when a *sibling* directory
-  has drifted** (recorded 2026-08-08 by a reading-type review, **not fixed**). Two
-  worktrees bind one account and the second one's identity cache names another (an
-  unresolved `identity_drift`). `kae relogin` in the first runs the tool's own login flow,
-  the tool writes its own cache there, and the store now holds the fresh login — but the
-  reader set disagrees, so the harvest refuses and the account snapshot keeps a copy the
-  new login has already invalidated, with no way to update it until the drift is resolved.
-  The message names the disagreement, so nothing is silent. The fix is to let the directory
-  the flow ran in answer for a login kae **itself** just performed there — evidence of a
-  different class from a walk of everyone's caches — which is a deliberate override of the
-  reader set and wants its own measurement rather than a late edit to the shared predicate.
-
 - **A relogin's pre-flight refusal owes a backup it cannot safely take yet** (recorded
   2026-08-08 by an independent review of the pre-flight itself, **not fixed**).
   [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § When a refusal destroys instead of
@@ -926,6 +915,15 @@ alternative exists (`secret-tool`).
   — is what would let `identity_drift` tell a stale label from a real one, which is worth
   having for its own sake. Do
   not "fix" it by removing the confirmation: that would make every bind keep forever.
+  **One caller now answers the *when* question instead of the *who* question, which is
+  what this entry says a real fix has to do** (2026-08-16): `kae relogin` takes the write
+  **time** of the label in the directory it ran the flow in, across the flow, and a label
+  the tool wrote while kae watched outweighs a sibling reader's disagreement
+  (`attributionSource.WatchedLogin`; [ADAPTERS.md](ADAPTERS.md) § Per-directory credential
+  store is normative). It does not shrink this entry, and the shape of what it does not
+  reach is the useful half: the evidence is contemporaneous with the *cache*, not with the
+  **store**, so a sibling that refreshes the store after the flow wrote its label is still
+  read as agreeing. Whatever settles this entry has to time the store.
 
 - **A store bound before the credential split, unbound, then re-bound after it keeps
   its pre-split item** (recorded 2026-08-07, **not fixed** — deliberately). The

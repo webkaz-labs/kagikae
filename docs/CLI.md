@@ -831,7 +831,17 @@ Contract:
 - The capture back is `harvestDirCredential` with every guard it already has: it
   declines a copy that does not supersede the snapshot, and one it cannot attribute
   to this account. It runs whatever the comparison said — a flow kae could not
-  compare may still have left a copy worth harvesting. A login as **another** account
+  compare may still have left a copy worth harvesting.
+  **One guard it widens, and this command is the only caller that may**: where another
+  directory reading the same account's store disagrees about whose login it holds, a
+  bind keeps the copy — and here that left the snapshot holding a copy the login had
+  already invalidated, with nothing able to update it until the drift was resolved
+  elsewhere. So this directory's own reading wins, on two conditions kae has to have
+  observed: this directory is itself a reader that confirms, and the tool wrote its own
+  identity label here while the flow ran. Neither alone: without the first, a login as
+  another account would be filed under this one; without the second, an aborted flow
+  while the *sibling* refreshes the store in place would file the sibling's token here.
+  `docs/ADAPTERS.md` § Per-directory credential store is normative for both. A login as **another** account
   is left in the store (it is that account's, and it is where it belongs) and
   reported, with `kae pin <tool> <account>` as the remedy — never another login,
   which would mint a fresh chain and invalidate the copy just left in place.

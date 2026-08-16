@@ -365,6 +365,10 @@ func storeCredential(ctx context.Context, sp artifact.Spec, haveSpec bool) ([]by
 // dirIdentityConfirms's question, asked separately; this one is only about *whether the
 // tool wrote it*, which reading the payload cannot answer.
 //
+// Target is a path rather than a keychain service name, which is what makes a stat the
+// right read: TestNoIdentityArtifactIsAKeychainItem refuses an IdentityOnly keychain
+// artifact for every adapter on both platforms.
+//
 // os.Stat follows a target symlinked out to the real tool home, so a write there counts
 // here. It licenses nothing on its own: the override this feeds also requires that same
 // directory to confirm, and dirIdentityConfirms refuses an escaping target before

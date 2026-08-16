@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -154,12 +153,6 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 		"kae: complete the %s login flow; kae is running it against this directory's own store (%s), "+
 			"so it refreshes %s/%s and not the real home\n",
 		tool, strings.Join(shown, " "), tool, accountName)
-	// Taken here rather than beside the credential's `before`, so that nothing kae does
-	// itself sits between the reading and the flow: this is the last instant before the
-	// tool runs. Its pair after the flow is what says the tool wrote its own account label
-	// in this directory, which is what lets the capture back outvote a drifted sibling —
-	// attributionSource.WatchedLogin owns why the label alone is not enough.
-	identityBefore, sawIdentityBefore := dirIdentityWrittenAt(preSpecs)
 	code, err := runner.RunInteractive(ctx, loginEnv, command[0], command[1:]...)
 	if err != nil {
 		return finish(opts, fmt.Errorf("launch %s login: %w", tool, err))
@@ -274,14 +267,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// Called unconditionally, and *before* the wording is decided: a flow kae could not
 	// compare may still have left a copy worth harvesting, and the harvest's own guards
 	// are the ones that decide that. Only the wording depends on both answers.
-	// Read through the **post-flow** specs, for the reason the resolution above is repeated
-	// at all: the spec set is what the login can move. Both sides have to have been read for
-	// the comparison to mean anything — two failed stats are also "equal" — and `After`
-	// rather than `!Equal`, because a label whose mtime moved *backwards* is not a write
-	// this flow performed.
-	identityAfter, sawIdentityAfter := dirIdentityWrittenAt(specs)
-	wroteIdentity := sawIdentityBefore && sawIdentityAfter && identityAfter.After(identityBefore)
-	attributed := app.captureBackAfterRelogin(ctx, be, specs, tool, accountName, dirs, wroteIdentity)
+	attributed := app.captureBackAfterRelogin(ctx, be, specs, tool, accountName, dirs)
 	if changed && attributed {
 		fmt.Printf("Logged %s in for %s/%s in this directory\n", tool, tool, accountName)
 	} else {
@@ -341,59 +327,6 @@ func storeCredential(ctx context.Context, sp artifact.Spec, haveSpec bool) ([]by
 		return nil, true // nothing there is a state, and a login changes it
 	}
 	return live.Data, true
-}
-
-// dirIdentityWrittenAt is when the tool last wrote an identity-only artifact in a bound
-// store, for the one question a before/after pair answers: did the tool write its own
-// account label there while the login flow ran. ok is false where kae could not stat one
-// of them, and where the platform declares none at all — with nothing to compare, both
-// are the same answer to the caller.
-//
-// **A timestamp and not the payload, which was measured and is the whole reason this
-// exists** (2026-08-16). claude's identity artifact is a JSON pointer at
-// `/oauthAccount`, so a relogin as the account the directory is already labelled with
-// reads back byte-identical — the ordinary case, and the one this feature is for. Bytes
-// cannot tell a tool that rewrote the same label from a tool that wrote nothing at all;
-// an mtime can.
-//
-// A filesystem whose timestamps are coarser than the flow could hide a write inside its
-// granularity. The consequence is that kae does not claim the override and refuses as it
-// did before, which is the safe direction — and an interactive login flow is not a
-// sub-second event.
-//
-// Deliberately no interpretation of what the label says. Whose account it names is
-// dirIdentityConfirms's question, asked separately; this one is only about *whether the
-// tool wrote it*, which reading the payload cannot answer.
-//
-// Target is a path rather than a keychain service name, which is what makes a stat the
-// right read: TestNoIdentityArtifactIsAKeychainItem refuses an IdentityOnly keychain
-// artifact for every adapter on both platforms.
-//
-// os.Stat follows a target symlinked out to the real tool home, so a write there counts
-// here. It licenses nothing on its own: the override this feeds also requires that same
-// directory to confirm, and dirIdentityConfirms refuses an escaping target before
-// comparing anything.
-func dirIdentityWrittenAt(specs []artifact.Spec) (time.Time, bool) {
-	latest, found := time.Time{}, false
-	for _, sp := range specs {
-		if !sp.IdentityOnly {
-			continue
-		}
-		found = true
-		info, err := os.Stat(sp.Target)
-		switch {
-		case os.IsNotExist(err):
-			// Absent is a state and a login changes it, the same reading storeCredential
-			// gives a missing credential: the zero time here orders before any write.
-			continue
-		case err != nil:
-			return time.Time{}, false
-		}
-		if info.ModTime().After(latest) {
-			latest = info.ModTime()
-		}
-	}
-	return latest, found
 }
 
 // reloginTool picks the tool to log in: the one named, or the directory's single
@@ -565,14 +498,6 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 // that does not supersede the snapshot, and one it cannot attribute to this
 // account.
 //
-// One guard it does *widen*, and only here: wroteIdentity says the flow left the tool's
-// own account label in this directory, which is what lets this directory's confirmation
-// outweigh a drifted sibling's disagreement (attributionSource.WatchedLogin). It is
-// passed in rather than measured here because the evidence is a before/after pair around
-// the flow, and only the caller straddles it. preserveBeforeRelogin, which runs the same
-// harvest on the *other* side of the flow, deliberately claims none of this: the copy it
-// looks at is the one the login is about to replace, and kae watched nothing arrive.
-//
 // Nothing here is fatal. The login is already in the store and the directory
 // works either way; what a failure costs is that `kae use <tool> <account>` would
 // apply the older copy globally, which is what the warnings say.
@@ -593,7 +518,7 @@ func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 // than closed because closing it means the harvest distinguishing "not newer" from
 // "confirmed", which its three other callers do not need.
 func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
-	specs []artifact.Spec, tool, accountName string, dirs bindDirs, wroteIdentity bool,
+	specs []artifact.Spec, tool, accountName string, dirs bindDirs,
 ) bool {
 	// Claude-only today, through the one predicate that owns the question. A tool
 	// whose rotation is not measured has nothing to harvest *from* — its older
@@ -611,7 +536,7 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 		return false
 	}
 	_, _, refused := app.harvestDirCredential(ctx, be, specs, tool, accountName, acc, dirs, snapshot,
-		attributionSource{Dir: dirs.Config, WatchedLogin: wroteIdentity})
+		attributionSource{Dir: dirs.Config})
 	switch {
 	// Either harvested — harvestDirCredential says so itself — or the snapshot already
 	// holds a copy at least as new, which is the ordinary outcome of re-running this
@@ -643,11 +568,32 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 		// wrote its payload where relogin does not resolve the store, so the read came back
 		// absent and landed on the silent-success arm above. A read that finds nothing and
 		// a read that finds something unjudgeable are different findings.
+		//
+		// The one reason with somewhere to go, and the reason a user in this state is most
+		// likely to meet: another directory reading this account's credential says the copy
+		// is somebody else's. kae cannot settle that from here — a login it ran itself is
+		// not evidence about the store, which attributionSource records the measurement for
+		// — so what it can do is name the directory instead of leaving the user to find it.
+		//
+		// Says what has to become true, not which command to run: the directory may be a
+		// bound one (where `kae relogin` is the fix, as pinIdentityDriftMessage already
+		// says) or a globally isolated home (where it is not), and kae has no reason here
+		// to guess which the user meant that directory to run.
+		remedy := ""
+		if len(refused.Disagreeing) > 0 {
+			shown := make([]string, 0, len(refused.Disagreeing))
+			for _, dir := range refused.Disagreeing {
+				shown = append(shown, app.displayPath(dir))
+			}
+			remedy = fmt.Sprintf("; %s reads this credential and names another account, so this "+
+				"login can be captured once it names %s/%s too",
+				strings.Join(shown, ", "), tool, accountName)
+		}
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae cannot confirm the %s login now in this directory is %s/%s's (%s), "+
 				"so it did not capture it back and that snapshot still holds its own copy; "+
-				"%s use %s %s would apply that one\n",
-			tool, tool, accountName, refused.Why, toolName, tool, accountName)
+				"%s use %s %s would apply that one%s\n",
+			tool, tool, accountName, refused.Why, toolName, tool, accountName, remedy)
 	}
 	return false
 }

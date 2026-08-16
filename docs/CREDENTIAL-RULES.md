@@ -167,11 +167,12 @@ sibling reader that agrees now harvests and writes, and only a store with no rea
 all is kept. **`Conflicting` needs the acting directory to be one of the readers that
 disagree** — the first version of this took a majority of the readers, and a sibling that
 had been logged in as somebody else then let an unrelated first bind destroy the only copy
-of that login, which is the same defect one level in. **And `kae relogin` may outvote a
-disagreeing reader where a bind may not** — it ran the flow itself, so the label in that
-directory is contemporaneous with the copy in the store rather than as old as everyone
-else's; the two conditions it has to have observed, and what each keeps out, are in
-`docs/ADAPTERS.md` § Per-directory credential store with the rest of the reader model. Two corollaries that are easy to
+of that login, which is the same defect one level in. **And no caller outvotes a disagreeing
+reader, including `kae relogin`, which ran the login itself** — that override was built
+and reverted once, because the evidence it rested on does not exist offline; what was
+measured is in `docs/ADAPTERS.md` § Per-directory credential store with the rest of the
+reader model, and it is the reason to reach for the message rather than the predicate
+when this refusal is in somebody's way. Two corollaries that are easy to
 miss: the delete path erases its own
 evidence (`unpin --purge` may only delete once nothing points at the store, which is
 exactly when no reader is left to attribute it), so a caller that has just torn a binding

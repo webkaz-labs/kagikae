@@ -16,9 +16,14 @@ import (
 // versionTripleRe matches the first <major>.<minor>.<patch> triple of a
 // `--version` output. Every upstream CLI kae drives prints one, none of them in
 // the same place: "2.1.220 (Claude Code)", "codex-cli 0.145.0", bare "1.17.4",
-// "GitHub Copilot CLI 1.0.61." (trailing period), and cursor-agent's date
-// version "2026.06.16-20-30-07-<sha>". Taking the leftmost triple reads all of
-// them; TestParseUpstreamVersion pins the real outputs.
+// "GitHub Copilot CLI 1.0.79." (trailing period, and copilot prints a second line
+// with it), and cursor-agent's date version "2026.06.16-20-30-07-<sha>". Taking the
+// **leftmost** triple reads all of them, the multi-line one included: a triple in a
+// line *after* the version can never win. The ceiling is the other direction — a
+// banner or advisory printed *before* the version line, carrying a triple of its
+// own, would be read as the tool's version. Nothing measured prints one, which is
+// why that direction is a stated limit and not a test.
+// TestParseUpstreamVersion pins the real outputs and the direction that holds.
 var versionTripleRe = regexp.MustCompile(`([0-9]+)\.([0-9]+)\.([0-9]+)`)
 
 // upstreamVersion is a parsed major.minor.patch triple.

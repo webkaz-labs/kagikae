@@ -1597,16 +1597,34 @@ grep-versus-grep comparison of two empty results reports "identical". Verifying 
 
 ### claude (verified on 2.1.233)
 
-**Half of this section was re-verified on 2.1.233 and half was not, and which half
-is decided by whether the row's procedure needs a login.** Every row whose "How to
-verify" is a shim run or a bundle read was re-run on 2.1.233 (2026-08-16) and held:
-the storage-resolution rule across all four of its branches, the account attribute,
-the OAuth suffix function with its build channel, and the `CLAUDE_CONFIG_DIR`
-resolver. Every row that needs a real login — the `/oauthAccount` TTL, `/login`'s
+**Part of this section was re-verified on 2.1.233 and part was not, so what follows
+is the list rather than a rule for deriving it** — an earlier draft said "every
+login-free row", and the host-managed row below is the counter-example that makes
+that shape wrong. Re-run 2026-08-16 on 2.1.233:
+
+- **The storage-resolution rule, all four branches**, by the shim procedure that row
+  names, each against a hash computed outside kae: a bare config dir, a different
+  `CLAUDE_SECURESTORAGE_CONFIG_DIR`, that variable set empty, and a trailing slash.
+  Unchanged, including that the trailing slash is a different item.
+- **The account attribute**, from the same shim log, and the `^[a-zA-Z0-9._-]+$` test
+  beside it in the bundle. Unchanged.
+- **The service assembly, the OAuth suffix function and its build channel**, read out
+  of the bundle. Unchanged, the channel still hard-coded to production.
+
+What that leaves, and neither is a login row. The **host-managed provider** row's
+mechanism variables are all still present and still gated on a truthy
+`CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST`, but **the file validation it describes —
+the size bound, the ownership and mode tests, the live `pid`/`procStart` — was not
+re-read**, so that half still rests on the 2.1.220 reading. The **relative
+`CLAUDE_CONFIG_DIR`** row splits: the shim covers its load-bearing half, that the
+hash input is the raw value NFC-normalized with no path resolution, while the half
+about which *files* a relative value resolves against was not re-measured.
+
+Every row that needs a real login — the `/oauthAccount` TTL, `/login`'s
 unconditional rewrite, `refreshTokenExpiresAt`'s lifetime, the tombstone, rotation
 and single-use rejection, the shared-store concurrency result, and the verbatim
 round-trip — carries its own `Measured … on 2.1.220` provenance below and has not
-been re-run since. Read the heading as the version the login-free half was checked
+been re-run since. Read the heading as the version the list above was checked
 against; a row's own prose is the authority for the rest.
 
 Re-recorded from the same 2026-08-16 pass, because it is a **negative** result and

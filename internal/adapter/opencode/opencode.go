@@ -61,7 +61,12 @@ func (Opencode) ID() string { return constants.ToolOpencode }
 func (Opencode) Binary() string { return "opencode" }
 
 // VerifiedVersion is the OpenCode release kae's behaviour assumptions were last
-// checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
+// checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). As on claude,
+// this string is not evidence that every row under it was re-run: 1.18.16 is where
+// the store-precedence row was re-measured — auth.json still wins and the DB's
+// import stays confined to the one release that performs it — while the rows about
+// sibling provider keys and about the two environment inputs kae warns on keep the
+// 1.17.4 measurement their own cells name.
 func (Opencode) VerifiedVersion() string { return "1.18.16" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).

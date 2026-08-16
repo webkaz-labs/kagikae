@@ -102,7 +102,15 @@ they change no shipped binary (a test, a `mise run audit` task, and the table in
 [VALIDATION.md](VALIDATION.md) § "Upstream Literal Fingerprints"). The stability the
 idea rested on reproduced — every count identical across claude 2.1.218/219/220 while
 the bundle grew 1.8 MB — and measuring turned up three things the design had wrong,
-all recorded there. The remaining two, in the order each pays for itself:
+all recorded there. **Do not read that as counts holding in general**: re-measured on
+2026-08-16 across the wider 2.1.220 → 2.1.233 span, claude's counts had moved and
+opencode's had too, so the stability is a property of adjacent releases rather than of
+the literals. Which ones, and by how much, is [VALIDATION.md](VALIDATION.md)
+§ Upstream Literal Fingerprints and is deliberately not restated here. That is the
+check working as designed — a moved count is an instruction to work the tool's rows,
+and [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions is where the
+result of working them is recorded — but it does mean the cost of a re-measure scales
+with how long a version sits. The remaining two, in the order each pays for itself:
 
 4. **The shim harness**, table-driven and gated on the per-tool "does this tool
    shell out to `/usr/bin/security`" answer (claude yes, agy yes, codex **no**,

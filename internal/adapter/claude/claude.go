@@ -221,21 +221,16 @@ func (Claude) ID() string { return constants.ToolClaude }
 func (Claude) Binary() string { return "claude" }
 
 // VerifiedVersion is the Claude Code release kae's behaviour assumptions were
-// last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). 2.1.220
-// is where /oauthAccount's self-heal was measured as gated behind a 24h
-// profileFetchedAt TTL that a token refresh keeps renewing — the finding kae's
-// identity switch depends on — where the credential's *storage resolution* was
-// measured (the keychain service name, its per-config-dir suffix, and the account
-// attribute that keychainService and keychainAccount reproduce), and where the
-// refresh token was measured to **rotate single-use** (that row states what it means
-// for kae; it is not repeated here). Several assumptions
-// now hang on a version whose only offline signal is this string — the table is
-// the count, not this comment — so a newer minor is worth re-measuring, and none
-// of those procedures needs a login against an account in use.
-func (Claude) VerifiedVersion() string { return "2.1.220" }
+// last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). **It is
+// not evidence that every row there was re-run on it** — some rows carry an older
+// build, and each says which, so read the row rather than this string. Several
+// assumptions hang on a version whose only offline signal is this string, so a
+// newer minor is worth re-measuring, and the procedures that need no login at all
+// are marked as such there.
+func (Claude) VerifiedVersion() string { return "2.1.233" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Claude) VerifiedOn() string { return "2026-08-04" }
+func (Claude) VerifiedOn() string { return "2026-08-16" }
 
 // configDir honors CLAUDE_CONFIG_DIR as the live base path when already set.
 // Auth mode never sets it.

@@ -43,11 +43,18 @@ var credentialFiles = []string{"credentials.enc", "credentials.json", "oauth_cre
 // keyringBypassEnv are the variables agy's keyring-bypass detectors read. agy
 // does not treat the keychain as unconditional on macOS: its auth package holds a
 // keyring store *and* a file store behind one chooser, and the keyring half is
-// skipped or abandoned in three ways measured in the 1.0.10 binary —
-// `shouldBypassKeyring` next to an ssh / wsl / container detector, a 1s timeout
-// per keyring operation, and an explicit fallback on failure ("Failed to save
-// token to keyring, falling back to file", plus load and remove variants). Of the
-// three only the detectors are visible offline, and only through these variables.
+// skipped or abandoned in four ways read from the 1.1.12 binary —
+// `shouldBypassKeyring` next to an ssh / wsl / container / dbus detector, a
+// per-operation timeout, an explicit fallback on failure ("Keyring SaveToken timed
+// out after %v, falling back to file storage", plus load, remove, project-and-region
+// and user-tier variants), and a *persisted* timeout marker ("a keyring timeout was
+// recorded within the last %v", written under a `keyring-marker-` name) that was
+// absent from 1.0.10 and makes a bypass outlive the run that caused it.
+//
+// Only the ssh and wsl detectors are visible through the environment, which is what
+// this list is; the container detector reads files (`/.dockerenv`, `/proc/1/cgroup`)
+// and the dbus one reads neither variable kae could name — `DBUS_SESSION_BUS_ADDRESS`
+// and `DBUS_SYSTEM_BUS_ADDRESS` each occur zero times in the 1.1.12 binary.
 //
 // kae warns rather than modelling the file store: the fallback file's path is not
 // derivable from the binary (none of credentialFiles appears in it), so adding a
@@ -79,10 +86,10 @@ func (Agy) Binary() string { return "agy" }
 
 // VerifiedVersion is the Antigravity CLI release kae's behaviour assumptions were
 // last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
-func (Agy) VerifiedVersion() string { return "1.0.10" }
+func (Agy) VerifiedVersion() string { return "1.1.12" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Agy) VerifiedOn() string { return "2026-07-31" }
+func (Agy) VerifiedOn() string { return "2026-08-17" }
 
 // keychainDriver reports whether this platform uses the macOS Keychain item
 // (darwin) or the file-based snapshot (Linux/WSL headless).

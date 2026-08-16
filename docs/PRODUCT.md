@@ -160,9 +160,10 @@ isolation is *possible* today — `COPILOT_HOME` is a verified config-dir variab
 that kae already reads — and it is still not built: demand-gated, not blocked.
 agy is the floor and is unlikely to move: it has no scriptable login flow to drive,
 its identity comes only from a file upstream appears to have left behind
-(`google_accounts.json` occurs **0** times in the agy 1.0.10 binary even though kae
-reads it — see § Upstream Literal Fingerprints in
-[VALIDATION.md](VALIDATION.md)), its keychain use is conditional on
+(`google_accounts.json` is a recorded-zero row even though kae reads it — see
+§ Upstream Literal Fingerprints in
+[VALIDATION.md](VALIDATION.md), which carries the count and the build it was taken
+on), its keychain use is conditional on
 detectors kae cannot observe, and its file-store path is not derivable from the
 environment. agy's open items are recorded facts about the tool, not work queued
 against kae.

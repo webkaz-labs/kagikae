@@ -19,12 +19,20 @@ what it proves, which tools it applies to, and the trap that cost a session.
 **Establish this per tool before assuming the shim applies.** An audit once
 proposed generalizing it to "every keychain-backed tool" and was wrong about one.
 
-| Tool | Shells out | Evidence |
-|---|---|---|
-| claude | **yes** | the shim log fills with `find-generic-password` argv |
-| agy | **yes** | zalando/go-keyring: `find`/`add`/`delete-generic-password` in the binary, no `SecItemAdd`/`SecItemCopyMatching`, `go-keyring-base64:` prefix |
-| codex | **no** | the Rust `keyring` crate calls Security.framework directly; with a shim on PATH the log stays empty and codex fails with "Platform secure storage failure: A default keychain could not be found" |
-| cursor | unverified | |
+**Shelling out is necessary but not sufficient**, and reading this table as the
+shim's precondition is how agy's row got believed for a release: a `PATH` shim
+only intercepts a tool that *resolves* the name through `PATH`. One that spells
+`/usr/bin/security` out reaches the real binary with a shim first on `PATH` and
+leaves an empty log — indistinguishable from a tool that never asked. Check for the
+absolute path in the binary before reading an empty log as "the keyring was not
+consulted".
+
+| Tool | Shells out | Shim reaches it | Evidence |
+|---|---|---|---|
+| claude | **yes** | **yes** | the shim log fills with `find-generic-password` argv |
+| agy | **yes** | **no** | zalando/go-keyring: `find`/`add`/`delete-generic-password` in the binary, no `SecItemAdd`/`SecItemCopyMatching`, `go-keyring-base64:` prefix — but its `keyring_darwin.go` carries the literal `/usr/bin/security` (once in each of 1.0.10 and 1.1.12), and a shim run on 1.1.12 left the log empty |
+| codex | **no** | n/a | the Rust `keyring` crate calls Security.framework directly; with a shim on PATH the log stays empty and codex fails with "Platform secure storage failure: A default keychain could not be found" |
+| cursor | unverified | unverified | |
 
 The shim itself: an executable early on `PATH` named `security` that logs `"$*"`
 and exits non-zero, then
@@ -61,8 +69,14 @@ Traps, all hit for real:
 
 **Go binary** (agy): symbol names survive. Extract printable runs
 (`re.finditer(rb'[\x20-\x7e]{6,}')`) and grep those — you get package paths like
-`jetski/cli/backend/auth/auth.(*cliTokenStorage).SaveToken`, which enumerate the
-store types, the chooser and the detectors.
+`…/code_assist_client/codeassistclient.(*KeyringTokenStorage).SaveToken`, which
+enumerate the store types, the chooser and the detectors. **Anchor the grep on the
+type, not the package**: between 1.0.10 and 1.1.12 that whole group moved from
+`jetski/cli/backend/auth/auth` to
+`jetski/language_server/code_assist_client/codeassistclient` and was renamed with
+it, so a package-anchored diff of the two binaries reports the entire storage layer
+as deleted and its replacement as unrelated additions. That is what it looked like
+here before the literal counts contradicted it.
 
 **Two-modules red herring.** A symbol can exist twice: codex has
 `compute_store_key` in both `codex_login::auth::storage` (the CLI credential,

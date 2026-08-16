@@ -427,20 +427,27 @@ is unchanged: when no credential file exists, `capture` fails with
 `auth_missing`, and `doctor` warns the keyring may be in use.
 
 **The keychain is not unconditional on macOS**, which the platform-only driver
-choice above cannot express. Read from the 1.0.10 binary: agy's auth package
+choice above cannot express. Read from the 1.1.12 binary: agy's auth package
 holds a keyring store *and* a file store behind one chooser, and the keyring half
-is skipped or abandoned three ways — a `shouldBypassKeyring` decision next to an
-ssh / wsl / container detector (`SSH_TTY`, `SSH_CONNECTION`, `SSH_CLIENT`,
-`WSL_DISTRO_NAME`, `WSL_INTEROP`, `/.dockerenv`, `/proc/1/cgroup`), a **1s
-timeout** on every keyring operation, and an explicit fallback on failure
-("Failed to save token to keyring, falling back to file", with load and remove
-variants). A remote-shell session on a Mac therefore reaches the file store.
+is skipped or abandoned four ways — a `shouldBypassKeyring` decision next to an
+ssh / wsl / container / **dbus** detector (`SSH_TTY`, `SSH_CONNECTION`,
+`SSH_CLIENT`, `WSL_DISTRO_NAME`, `WSL_INTEROP`, `/.dockerenv`,
+`/proc/1/cgroup`), a timeout on every keyring operation, an explicit fallback on
+failure ("Keyring SaveToken timed out after %v, falling back to file storage",
+with load, remove, project-and-region and user-tier variants), and a **persisted
+timeout marker** ("a keyring timeout was recorded within the last %v", under a
+`keyring-marker-` name) that 1.0.10 did not have. A remote-shell session on a Mac
+therefore reaches the file store — and since 1.1.12 a bypass can also outlive the
+run that caused it.
 
 kae **warns** (`env_conflict`) when one of those variables is set on macOS and
 does not model the file store there: the fallback file's path is not derivable
 from the binary — none of the three `credentialFiles` names occurs in it — so
 declaring an artifact for it would write where nothing reads. The names in the
-Linux row are the 2026-06-18 discovery, unverified against 1.0.10.
+Linux row are the 2026-06-18 discovery, unverified against 1.1.12. The dbus
+detector adds no variable to warn on: `DBUS_SESSION_BUS_ADDRESS` and
+`DBUS_SYSTEM_BUS_ADDRESS` each occur zero times in the 1.1.12 binary, so what it
+reads is not in the environment kae can see.
 
 `kae add agy` is **`--no-login` only**: agy has no kae-drivable login
 (authentication is GUI/browser OAuth via the Antigravity app — no
@@ -1275,7 +1282,7 @@ half-done. Do not reformat the rows without updating that test.
 |------|---------------------|----------------|--------------------------|
 | claude | `2.1.233` | `2026-08-16` | `2.1.233 (Claude Code)` |
 | codex | `0.147.0` | `2026-08-16` | `codex-cli 0.147.0` |
-| agy | `1.0.10` | `2026-07-31` | `1.0.10` |
+| agy | `1.1.12` | `2026-08-17` | `1.1.12` |
 | opencode | `1.18.16` | `2026-08-16` | `1.18.16` |
 | cursor | `""` (no signal — see below) | `2026-07-30` | `2026.06.16-20-30-07-<sha>` (date-versioned) |
 | copilot | `1.0.61` | `2026-07-31` | `GitHub Copilot CLI 1.0.61.` (note the trailing period) |

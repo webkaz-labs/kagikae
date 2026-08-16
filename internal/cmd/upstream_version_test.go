@@ -14,15 +14,16 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
-// TestParseUpstreamVersion pins the six real `--version` outputs (measured
-// 2026-07-29) against the one extractor, so a shape nobody anticipated — a
-// trailing period, a date version, a bare number — cannot silently start
-// reporting the wrong version or none at all.
+// TestParseUpstreamVersion pins each tool's real `--version` output against the one
+// extractor, so a shape nobody anticipated — a trailing period, a date version, a
+// bare number — cannot silently start reporting the wrong version or none at all.
+// Each case carries the version it was captured from, which is its provenance; the
+// adapters' `VerifiedOn()` is where a date belongs.
 func TestParseUpstreamVersion(t *testing.T) {
 	cases := []struct{ tool, output, want string }{
 		{constants.ToolClaude, "2.1.220 (Claude Code)\n", "2.1.220"},
 		{constants.ToolCodex, "codex-cli 0.145.0\n", "0.145.0"},
-		{constants.ToolAgy, "1.0.10\n", "1.0.10"},
+		{constants.ToolAgy, "1.1.12\n", "1.1.12"},
 		{constants.ToolOpencode, "1.17.4\n", "1.17.4"},
 		{constants.ToolCursor, "2026.06.16-20-30-07-a07d3ac\n", "2026.06.16"},
 		{constants.ToolCopilot, "GitHub Copilot CLI 1.0.61.\n", "1.0.61"},

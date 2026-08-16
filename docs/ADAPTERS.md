@@ -506,9 +506,14 @@ deliberately not modelled: `account.json` (`{version, accounts, active}`), which
 all (the filename appears in 1.16.2 too, but a bare `auth list` there does not
 produce the file), and the `credential` table in `opencode.db`, which 1.17.4
 populates from auth.json exactly once behind a `data_migration` marker and then
-leaves alone. Measured across 1.16.2 / 1.17.3 / 1.17.4 / 1.18.5: `auth list` and
+leaves alone. Measured across 1.16.2 / 1.17.3 / 1.17.4 / 1.18.5, and re-checked on
+1.18.16 (2026-08-16): `auth list` and
 `auth logout` read and write **auth.json**, so it is the live store — a logout
-empties auth.json and leaves the imported DB row in place. That balance is what a
+empties auth.json and leaves the imported DB row in place. On 1.18.16 the DB half is inert: a
+fresh root's `opencode.db` still *has* the `credential` and `data_migration` tables —
+the schema is created either way, so their presence proves nothing — and both are
+**empty**, which is what says the import did not run. So it stays confined to the one
+release that performs it. That balance is what a
 version bump has to re-check ([VALIDATION.md](VALIDATION.md)).
 
 ### Driver
@@ -1263,10 +1268,10 @@ half-done. Do not reformat the rows without updating that test.
 
 | Tool | `VerifiedVersion()` | `VerifiedOn()` | `--version` output shape |
 |------|---------------------|----------------|--------------------------|
-| claude | `2.1.220` | `2026-08-04` | `2.1.220 (Claude Code)` |
+| claude | `2.1.233` | `2026-08-16` | `2.1.233 (Claude Code)` |
 | codex | `0.146.0` | `2026-08-04` | `codex-cli 0.146.0` |
 | agy | `1.0.10` | `2026-07-31` | `1.0.10` |
-| opencode | `1.17.4` | `2026-07-31` | `1.17.4` |
+| opencode | `1.18.16` | `2026-08-16` | `1.18.16` |
 | cursor | `""` (no signal — see below) | `2026-07-30` | `2026.06.16-20-30-07-<sha>` (date-versioned) |
 | copilot | `1.0.61` | `2026-07-31` | `GitHub Copilot CLI 1.0.61.` (note the trailing period) |
 

@@ -1595,7 +1595,28 @@ the file also changed** — and check the hit count is non-zero, since a
 grep-versus-grep comparison of two empty results reports "identical". Verifying an assumption always means launching a **fresh** tool process
 — a still-running session and a byte-compared payload both prove nothing.
 
-### claude (verified on 2.1.220)
+### claude (verified on 2.1.233)
+
+**Half of this section was re-verified on 2.1.233 and half was not, and which half
+is decided by whether the row's procedure needs a login.** Every row whose "How to
+verify" is a shim run or a bundle read was re-run on 2.1.233 (2026-08-16) and held:
+the storage-resolution rule across all four of its branches, the account attribute,
+the OAuth suffix function with its build channel, and the `CLAUDE_CONFIG_DIR`
+resolver. Every row that needs a real login — the `/oauthAccount` TTL, `/login`'s
+unconditional rewrite, `refreshTokenExpiresAt`'s lifetime, the tombstone, rotation
+and single-use rejection, the shared-store concurrency result, and the verbatim
+round-trip — carries its own `Measured … on 2.1.220` provenance below and has not
+been re-run since. Read the heading as the version the login-free half was checked
+against; a row's own prose is the authority for the rest.
+
+Re-recorded from the same 2026-08-16 pass, because it is a **negative** result and
+nothing else would keep it: `SELF_HOSTED_RUNNER_HOST_CONFIG_DIR` exists at 2.1.233
+and takes precedence over `CLAUDE_CONFIG_DIR` where it is read, but it does **not**
+move the credential. Shim-measured both ways — set alongside `CLAUDE_CONFIG_DIR` the
+service still carried the `CLAUDE_CONFIG_DIR` hash, and set alone the service was the
+unsuffixed name, so the variable is not consulted for the credential at all. kae
+therefore needs no entry for it; what would change that is a later build reading it in
+the resolver the row below names, which is the same shim run to re-check.
 
 | Assumption | How to verify |
 |---|---|
@@ -1629,7 +1650,7 @@ grep-versus-grep comparison of two empty results reports "identical". Verifying 
 | agy | the live account is resolved server-side from the opaque token and never persisted, so identity can only come from `~/.gemini/google_accounts.json` `.active` (or `--identity`) | after an Antigravity login, `kae add agy` auto-names from `.active`; no other on-disk source appears | 1.0.10 |
 | agy | **the macOS keychain is conditional, not the platform's answer.** agy's auth package pairs a keyring store with a file store: `shouldBypassKeyring` sits next to an ssh / wsl / container detector, every keyring operation has a **1s timeout**, and a failure falls back to the file ("Failed to save token to keyring, falling back to file", plus load and remove variants). So a remote-shell session on a Mac uses the file store, and kae's keychain switch does not reach it. agy **shells out to `/usr/bin/security`** (a Go keyring library, `go-keyring-base64:` / `go-keyring-encoded:` payload prefixes) | Read the binary, no login: `python3 -c "import re;d=open('/usr/local/bin/agy','rb').read();print(len(re.findall(rb'falling back to file',d)))"` for the fallback strings, then extract printable runs (`re.finditer(rb'[\x20-\x7e]{6,}')` — `strings` truncates but works too) and grep them for `jetski/cli/backend/auth/auth\.` to list the store types (`cliTokenStorage` = keyring, `cliFileTokenStorage` = file, `shouldBypassKeyring`, `containerDetector` / `sshDetector` / `wslDetector`). The detector inputs are the literals `SSH_TTY`, `SSH_CONNECTION`, `SSH_CLIENT`, `WSL_DISTRO_NAME`, `WSL_INTEROP`, `/.dockerenv`, `/proc/1/cgroup`. Live corroboration without a login: `~/.gemini/antigravity-cli/log/*.log` records `ChainedAuth: authenticated via keyring (effective: keyring)` per run — an `effective:` other than `keyring` on macOS is this row breaking. **Still unmeasured: the fallback file's path**, which is why kae warns instead of declaring an artifact; agy has no CLI login to drive, so proving it needs the `security` PATH shim (which *does* apply here, unlike codex) plus a way to make agy write a token | 1.0.10 (binary read + live logs, 2026-07-31) |
 | opencode | `/openai` is the subscription login, and sibling provider keys are independent credentials that must survive a switch | switch with an extra provider key present in `auth.json`; the sibling key is byte-identical afterwards | 1.17.4 |
-| opencode | **`auth.json` is still the live store**, with two other stores present but not authoritative: `account.json` (`{version, accounts, active}`) is **derived** from auth.json on every run by 1.17.3 and unreferenced from 1.17.4 on (the filename is in 1.16.2–1.17.0 as well, but a bare `auth list` there does not produce the file), and the `credential` table in `opencode.db` is populated from auth.json **exactly once** behind a `data_migration` marker (`credential.auth-json`, 1.17.4 only) and not maintained afterwards | Login-free, temp XDG root, no real `$HOME`: plant a dummy `{"openai":{"type":"oauth",…}}` at `$XDG_DATA_HOME/opencode/auth.json`, run `opencode auth list`, then **rewrite auth.json with a different provider key** and run it again — the second run must report the new key (the file wins). Cross-check the other two stores: `sqlite3 opencode.db "select name from data_migration; select connector_id,label,active from credential;"` (never the `value` column) and `account.json`'s `active`. Measured 2026-07-31: `auth list` reflects a rewritten auth.json on 1.16.2, 1.17.3, 1.17.4 and 1.18.5 (so the file, not a cache, is what is read); on 1.17.4 — the one version that imports — `auth logout <provider>` then empties auth.json and leaves the imported DB row untouched, which is what makes auth.json the store and the row dormant. 1.18.5 creates neither the marker nor a row. **The failure mode to watch for is a version where the DB row wins**: kae's patch would then be a silent no-op, and on 1.17.4 the row is frozen at whichever account auth.json held on the first run | 1.17.4 (behaviour, 2026-07-31; also 1.16.2 / 1.17.3 / 1.18.5) |
+| opencode | **`auth.json` is still the live store**, with two other stores present but not authoritative: `account.json` (`{version, accounts, active}`) is **derived** from auth.json on every run by 1.17.3 and unreferenced from 1.17.4 on (the filename is in 1.16.2–1.17.0 as well, but a bare `auth list` there does not produce the file), and the `credential` table in `opencode.db` is populated from auth.json **exactly once** behind a `data_migration` marker (`credential.auth-json`, 1.17.4 only) and not maintained afterwards | Login-free, temp XDG root, no real `$HOME`: plant a dummy `{"openai":{"type":"oauth",…}}` at `$XDG_DATA_HOME/opencode/auth.json`, run `opencode auth list`, then **rewrite auth.json with a different provider key** and run it again — the second run must report the new key (the file wins). Cross-check the other two stores: `sqlite3 opencode.db "select name from data_migration; select connector_id,label,active from credential;"` (never the `value` column) and `account.json`'s `active`. Measured 2026-07-31: `auth list` reflects a rewritten auth.json on 1.16.2, 1.17.3, 1.17.4 and 1.18.5 (so the file, not a cache, is what is read); on 1.17.4 — the one version that imports — `auth logout <provider>` then empties auth.json and leaves the imported DB row untouched, which is what makes auth.json the store and the row dormant. 1.18.5 creates neither the marker nor a row. **The failure mode to watch for is a version where the DB row wins**: kae's patch would then be a silent no-op, and on 1.17.4 the row is frozen at whichever account auth.json held on the first run. **Re-run on 1.18.16 (2026-08-16) and the store has not moved**: the second `auth list` reported the rewritten provider key and named `auth.json` as the source, while the `credential` table was **empty** and `data_migration` held **no** marker — so the import is still one-shot and still confined to 1.17.4, and the failure mode above has not arrived | 1.18.16 (behaviour, 2026-08-16; earlier 1.17.4 / 1.16.2 / 1.17.3 / 1.18.5, 2026-07-31) |
 | opencode | two environment inputs put kae and opencode on different credentials, and kae **warns** on both rather than following them: `OPENCODE_AUTH_CONTENT` supplies an entire auth.json body inline and is read before the file, and `XDG_DATA_HOME` is used **verbatim with no absolute-path check**, so a relative value resolves against opencode's working directory while kae ignores it per the XDG spec | `Auth.all()` starts `if(process.env.OPENCODE_AUTH_CONTENT) try{return JSON.parse(…)}` and the data home is `process.env.XDG_DATA_HOME \|\| join(homedir(),".local","share")` — both readable in the installed binary (plain minified JS inside the Mach-O: `python3 -c "import re;d=open('<binary>','rb').read();[print(repr(d[m.start()-260:m.end()+260])) for m in re.finditer(rb'XDG_DATA_HOME',d)]"`, and note two bundled plugins repeat the same resolver). Behavioural confirmation, no login: from a temp cwd containing `reldata/opencode/auth.json`, `env XDG_DATA_HOME=reldata opencode auth list` reports the credential and prints the path as `reldata/opencode/auth.json`. opencode sets `OPENCODE_AUTH_CONTENT` itself when spawning a workspace child, so an inherited value is a real case, not a hypothetical | 1.17.4 (source + behaviour, 2026-07-31) |
 | cursor | the credential is **three** opaque items under account `cursor-user` — `cursor-access-token` (a raw JWT), `cursor-refresh-token`, `cursor-api-key` — written and cleared as one unit, round-tripped verbatim. The service names come from a build-time domain constant (`cursor`), not from the environment, so kae may model them as constants | switch, then `cursor-agent status` in a fresh process reports the applied account **and** `authenticated` (not `partially-authenticated`, which is what a missing refresh item gives). The unit-ness is a source fact: read `setAuthentication` / `clearAuthentication` in the installed bundle — `~/.local/share/cursor-agent/versions/<version>/index.js` is unminified-enough JS, so `grep -oa` on the credential-store class settles it without a login. Attribute-only `security find-generic-password -s cursor-refresh-token` (never `-w`) shows which items exist | 2026.06.16 (bundle source read, 2026-07-30) |
 | cursor | **cursor-agent never redeems the stored refresh token.** Its only path to a new access token exchanges an **api key** (`cursor-api-key`, else `CURSOR_API_KEY`) at `/auth/exchange_user_api_key`, and that write persists all three items. With no api key an expiring token is returned as-is and the request fails — so an expired snapshot needs an interactive login and `Freshness` is right to say so, but for this reason and not "there is no refresh token" | Same file: the refresh helper takes `{currentToken, ephemeralToken, isTokenExpiringSoon, refreshToken}` and its `refreshToken` closure returns null without an api key. Beware the red herring: the bundle's `grant_type=refresh_token` code is the **MCP client's** OAuth (in `cursor-agent-svc.js`), not cursor's own login — the same two-modules trap codex has. If a release starts redeeming it, cursor becomes refreshable and the stale warning has to learn about it | 2026.06.16 (bundle source read, 2026-07-30) |
@@ -1694,18 +1715,24 @@ byte-identical.
 **Why a count and not just presence.** Measured across the three claude builds on
 one machine (2026-07-31): every count below was **identical** on 2.1.218, 2.1.219
 and 2.1.220, while the bundle itself grew from 264,548,368 to 266,397,712 bytes.
-The minified identifiers around these literals churn between builds; the counts do
-not. Presence alone would miss a literal that survives in one place and disappears
-from another.
+The minified identifiers around these literals churned between those builds and the
+counts did not. **That is a result about adjacent releases and does not generalize**:
+re-measured 2026-08-16 on 2.1.233, six of claude's counts below had moved from their
+2.1.220 values — a minority of the rows, but not a stable one — and the bundle had
+grown to 315,654,448 bytes, which is the check doing its job rather than a defect in
+it. Presence alone would miss a literal that
+survives in one place and disappears from another.
 
 **The counts are measured, never derived from kae's own constants.** Two of kae's
 most important literals do not exist in the bundle at all, because upstream
 *composes* them:
 
 - `claude.KeychainService` is `"Claude Code-credentials"`, and that string occurs
-  **0** times in 2.1.220. Upstream builds it as `"Claude Code"` + the OAuth suffix +
-  `"-credentials"`, so only the parts are countable (`Claude Code` occurs 1070
-  times — noise; `-credentials` 24 times — usable).
+  **0** times — re-confirmed on 2.1.233, 2026-08-16, as it was on 2.1.220. Upstream
+  builds it as `"Claude Code"` + the OAuth suffix + `"-credentials"`, so only the
+  parts are countable: `Claude Code` on its own is noise (1245 occurrences on 2.1.233,
+  1070 on 2.1.220 — the figure moves and nothing reads it), while `-credentials` is
+  usable and has its own row in the table above, which is the one copy of that count.
 - cursor's four service names (`cursor-access-token`, `cursor-refresh-token`,
   `cursor-api-key`, `cursor-user`) each occur **0** times, because cursor-agent
   composes them from a build-time domain constant. The suffixes are what to count.
@@ -1774,16 +1801,17 @@ grep -Foa -f literals.txt <artifact> | sort | uniq -c
 
 **`-F` is not optional, and leaving it off is how the first version of this table
 shipped a wrong number.** Without it, `auth.json` is a pattern whose `.` matches any
-byte: it counted 12 in opencode 1.17.4, of which 3 were `auth-json`. The literal
-occurs 9 times. The check compares literals, so a regex-inflated count reads as
-upstream drift on a tool that never moved.
+byte: it counted 12 in opencode 1.17.4, of which 3 were `auth-json`, against 9
+occurrences of the literal in that same build. Both figures are that build's; the
+table above is the one copy of the current count. The check compares literals, so a
+regex-inflated count reads as upstream drift on a tool that never moved.
 
 | Tool | Artifact | Measured on |
 |---|---|---|
-| claude | `~/.local/share/claude/versions/<version>` (one Mach-O, JS inline) | `2.1.220` |
+| claude | `~/.local/share/claude/versions/<version>` (one Mach-O, JS inline) | `2.1.233` |
 | cursor | `~/.local/share/cursor-agent/versions/<version>/` (webpack chunks) | `2026.06.16-20-30-07-a07d3ac` |
 | copilot | `~/.copilot/pkg/universal/<version>/app.js` (plain JS) | `1.0.61` |
-| opencode | `~/.local/share/mise/installs/opencode/<version>/opencode` (Bun single-file executable) | `1.17.4` |
+| opencode | `~/.local/share/mise/installs/opencode/<version>/opencode` (Bun single-file executable) | `1.18.16` |
 | agy | `/usr/local/bin/agy` (Go binary; no versions directory) | `1.0.10` |
 
 Only the **version** column is machine-checked. The paths themselves live in
@@ -1810,13 +1838,13 @@ assumption changed. Do not delete a row for not matching a Go literal.
 
 | Tool | Literal | Count |
 |---|---|---|
-| claude | `-credentials` | 24 |
+| claude | `-credentials` | 30 |
 | claude | `claude-code-user` | 3 |
-| claude | `CLAUDE_CONFIG_DIR` | 42 |
+| claude | `CLAUDE_CONFIG_DIR` | 51 |
 | claude | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | 13 |
-| claude | `CLAUDE_CODE_CUSTOM_OAUTH_URL` | 8 |
-| claude | `claudeAiOauth` | 17 |
-| claude | `oauthAccount` | 70 |
+| claude | `CLAUDE_CODE_CUSTOM_OAUTH_URL` | 10 |
+| claude | `claudeAiOauth` | 20 |
+| claude | `oauthAccount` | 75 |
 | claude | `refreshTokenExpiresAt` | 12 |
 | claude | `profileFetchedAt` | 7 |
 | cursor | `-access-token` | 4 |
@@ -1830,7 +1858,7 @@ assumption changed. Do not delete a row for not matching a Go literal.
 | copilot | `COPILOT_GITHUB_TOKEN` | 21 |
 | opencode | `OPENCODE_AUTH_CONTENT` | 3 |
 | opencode | `XDG_DATA_HOME` | 9 |
-| opencode | `auth.json` | 9 |
+| opencode | `auth.json` | 8 |
 | agy | `go-keyring-base64:` | 1 |
 | agy | `shouldBypassKeyring` | 3 |
 | agy | `falling back to file` | 6 |

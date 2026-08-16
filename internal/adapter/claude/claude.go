@@ -221,21 +221,22 @@ func (Claude) ID() string { return constants.ToolClaude }
 func (Claude) Binary() string { return "claude" }
 
 // VerifiedVersion is the Claude Code release kae's behaviour assumptions were
-// last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). 2.1.220
-// is where /oauthAccount's self-heal was measured as gated behind a 24h
-// profileFetchedAt TTL that a token refresh keeps renewing — the finding kae's
-// identity switch depends on — where the credential's *storage resolution* was
-// measured (the keychain service name, its per-config-dir suffix, and the account
-// attribute that keychainService and keychainAccount reproduce), and where the
-// refresh token was measured to **rotate single-use** (that row states what it means
-// for kae; it is not repeated here). Several assumptions
-// now hang on a version whose only offline signal is this string — the table is
+// last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). Which
+// assumption was checked *here* and which still names an older build is that
+// section's to state, and it does: the login-free half — the credential's *storage
+// resolution* (the keychain service name, its per-config-dir suffix, and the account
+// attribute that keychainService and keychainAccount reproduce) — was re-measured on
+// 2.1.233, while /oauthAccount's 24h profileFetchedAt TTL and the refresh token's
+// single-use rotation, both of which need a real login, still carry their 2.1.220
+// measurement. So this string is not evidence that every row under it was re-run;
+// only the row is. Several assumptions
+// hang on a version whose only offline signal is this string — the table is
 // the count, not this comment — so a newer minor is worth re-measuring, and none
-// of those procedures needs a login against an account in use.
-func (Claude) VerifiedVersion() string { return "2.1.220" }
+// of the login-free procedures needs an account in use.
+func (Claude) VerifiedVersion() string { return "2.1.233" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Claude) VerifiedOn() string { return "2026-08-04" }
+func (Claude) VerifiedOn() string { return "2026-08-16" }
 
 // configDir honors CLAUDE_CONFIG_DIR as the live base path when already set.
 // Auth mode never sets it.

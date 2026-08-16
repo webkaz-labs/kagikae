@@ -62,10 +62,10 @@ func (Opencode) Binary() string { return "opencode" }
 
 // VerifiedVersion is the OpenCode release kae's behaviour assumptions were last
 // checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
-func (Opencode) VerifiedVersion() string { return "1.17.4" }
+func (Opencode) VerifiedVersion() string { return "1.18.16" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Opencode) VerifiedOn() string { return "2026-07-31" }
+func (Opencode) VerifiedOn() string { return "2026-08-16" }
 
 // authJSONPath resolves opencode's credential file, honoring XDG_DATA_HOME
 // as the live base path when already set (absolute values only, as

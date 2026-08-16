@@ -61,8 +61,11 @@ not a step to take from reading this — [ACCEPTANCE.md](ACCEPTANCE.md) § Open 
 cost it carries, and only a human can pay it. Re-run the command above on the current
 tree before treating any of this as still true.
 
-An item leaves this list when it lands, so what is here is what is left rather than
-what was planned; git log holds the order it was worked in.
+An item leaves this list two ways, and only one of them is landing: it can also be
+measured and returned to the backlog, which is what emptied the list above. So what is
+here is what is left rather than what was planned, and an item's absence is not a claim
+that it shipped — git log holds the order things were worked in, and the entry itself
+holds what was learned.
 
 What stays out does so for unlike reasons. The freshness surfaces' wording waits on a
 **result**: [ACCEPTANCE.md](ACCEPTANCE.md) § Real-machine gate — does

@@ -1045,7 +1045,7 @@ func TestReloginDeclinesALoginItWatchedWhenASiblingHasDrifted(t *testing.T) {
 	}
 	// The half a user can act on. Without it the message states a disagreement and
 	// leaves them to find which of their directories caused it.
-	if !strings.Contains(stderr, siblingDir+" reads this credential and names another account") {
+	if !strings.Contains(stderr, "another account's name in "+siblingDir) {
 		t.Errorf("the directory a user has to go and fix must be named: %q", stderr)
 	}
 	if strings.Contains(out, "Logged claude in") {
@@ -1110,7 +1110,7 @@ func TestReloginDeclinesALoginItWatchedWhenAnIsolatedHomeHasDrifted(t *testing.T
 	}
 	// The home itself, which is where the tool runs — and the case `kae doctor` does not
 	// reach, so a message routed through doctor would have named nothing here.
-	if !strings.Contains(stderr, app.displayPath(home)+" reads this credential") {
+	if !strings.Contains(stderr, "another account's name in "+app.displayPath(home)) {
 		t.Errorf("the isolated home must be named: %q", stderr)
 	}
 	if strings.Contains(out, "Logged claude in") {
@@ -1224,5 +1224,14 @@ func TestReloginDoesNotCaptureAForeignLoginItWatched(t *testing.T) {
 	}
 	if strings.Contains(out, "Logged claude in") {
 		t.Errorf("the success line may not claim an account kae did not attribute: %q", out)
+	}
+	// **The directory the user is standing in is not somewhere to send them.** It is one of
+	// the readers that disagree here — that is what the login just made it — so a clause
+	// naming the disagreeing directories names the cwd unless it is excluded, four clauses
+	// after the same message called it "this directory". Measured doing exactly that
+	// (2026-08-16, an independent review), and the fixture above was green through it
+	// because it asserted nothing about this clause.
+	if strings.Contains(stderr, "another account's name in "+dir) {
+		t.Errorf("the remedy must not send the user to the directory they are in: %q", stderr)
 	}
 }

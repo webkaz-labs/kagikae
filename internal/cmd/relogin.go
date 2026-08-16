@@ -585,8 +585,12 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 			for _, dir := range refused.Disagreeing {
 				shown = append(shown, app.displayPath(dir))
 			}
-			remedy = fmt.Sprintf("; %s reads this credential and names another account, so this "+
-				"login can be captured once it names %s/%s too",
+			// Worded so the number of them does not change the grammar: this list is one
+			// directory in the case that produced it and there is no fixture with two, so a
+			// sentence whose verb agreed with "a directory" would read wrong the first time
+			// a second one ever appeared.
+			remedy = fmt.Sprintf("; kae read another account's name in %s — this login can be "+
+				"captured once %s/%s is the account named there",
 				strings.Join(shown, ", "), tool, accountName)
 		}
 		fmt.Fprintf(os.Stderr,

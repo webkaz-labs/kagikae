@@ -1675,6 +1675,22 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 	return refs, true
 }
 
+// credStoreReader is one directory reading a credential store, in its two aspects. Config
+// is where its identity cache is, which is the evidence attribution reads. Dir is the
+// directory a **message** may name, which is not the same string: for a binding it is the
+// bound directory rather than kae's store under it — a store path names a pin-id hash and
+// no user can tell which worktree that is — and for a globally isolated home the two are
+// the same path, because that home is where the tool actually runs.
+//
+// Not `boundDirStore`, which carries the same pair and more: that one is built from
+// `pinnedDirs()`, which drops the completeness flag this walk's whole answer turns on, and
+// it skips a store directory that is not there. Folding the two would trade a
+// machine-wide "kae could not look" for a silent "nobody reads it".
+type credStoreReader struct {
+	Config string
+	Dir    string
+}
+
 // credStoreReaders names the config dirs of everything currently reading the credential
 // in credDir for tool — the directories whose identity cache is evidence about *that copy*.
 //
@@ -1721,21 +1737,6 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 // command if that shows up — but not on App without a per-operation reset, which is the
 // shape that already made a test pass for the wrong reason here
 // (docs/ROADMAP.md § The reader walk runs twice).
-// credStoreReader is one directory reading a credential store, in its two aspects. Config
-// is where its identity cache is, which is the evidence attribution reads. Dir is the
-// directory a **message** may name, which is not the same string: for a binding it is the
-// bound directory rather than kae's store under it — a store path names a pin-id hash and
-// no user can tell which worktree that is — and for a globally isolated home the two are
-// the same path, because that home is where the tool actually runs.
-// Not `boundDirStore`, which carries the same pair and more: that one is built from
-// `pinnedDirs()`, which drops the completeness flag this walk's whole answer turns on, and
-// it skips a store directory that is not there. Folding the two would trade a
-// machine-wide "kae could not look" for a silent "nobody reads it".
-type credStoreReader struct {
-	Config string
-	Dir    string
-}
-
 func (app *App) credStoreReaders(credDir, tool string) (readers []credStoreReader, complete bool) {
 	if credDir == "" {
 		return nil, false
@@ -1903,7 +1904,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	case confirmed > 0 && len(conflicting) > 0:
 		return harvestRefusal{
 			Why:         "the directories that read this credential disagree about whose login it is",
-			Disagreeing: namedReaders(conflicting),
+			Disagreeing: namedReaders(conflicting, src.Dir),
 		}
 	case len(conflicting) > 0 && readsFrom(conflicting, src.Dir):
 		return conflict
@@ -1953,13 +1954,23 @@ func readsFrom(readers []credStoreReader, configDir string) bool {
 	return slices.ContainsFunc(readers, func(r credStoreReader) bool { return r.Config == configDir })
 }
 
-// namedReaders is the directories among these that a message may name. An unbound caller's
-// own entry has none and drops out here, so a caller that finds the list empty has nothing
-// to point at rather than something wrong to point at.
-func namedReaders(readers []credStoreReader) []string {
+// namedReaders is the directories among these that a message may name, which is why it
+// takes the one it must not: `acting` is the directory the caller is already talking about,
+// and naming it as somewhere to go turns "kae cannot confirm the login **in this
+// directory**" into advice to go and fix this directory. Reachable — a login as another
+// account inside a directory whose sibling still confirms puts the acting directory in the
+// conflicting set — and measured naming the cwd before this argument existed.
+//
+// An unbound caller's own entry carries no Dir and drops out for the same reason: its
+// binding is gone, so its store is a path nothing runs in. A caller that finds the list
+// empty therefore has nothing to point at, rather than something wrong to point at. That
+// half is a statement of intent and **cannot be killed by a test today** (measured): the
+// only entry without a Dir comes from the delete path, and no message that path prints
+// reads this list. It stays because the arm that would expose it is a new consumer away.
+func namedReaders(readers []credStoreReader, acting string) []string {
 	dirs := []string{}
 	for _, r := range readers {
-		if r.Dir != "" {
+		if r.Dir != "" && r.Config != acting {
 			dirs = append(dirs, r.Dir)
 		}
 	}

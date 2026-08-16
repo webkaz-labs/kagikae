@@ -66,21 +66,31 @@ var fingerprintArtifacts = map[string]string{
 	constants.ToolClaude:   ".local/share/claude/versions/" + versionToken,
 	constants.ToolCursor:   ".local/share/cursor-agent/versions/" + versionToken,
 	constants.ToolOpencode: ".local/share/mise/installs/opencode/" + versionToken + "/opencode",
-	// copilot's package is not one app.js and not under ~/.copilot. The launcher
-	// searches several roots and takes the first, and ~/.copilot/pkg is the **last**
-	// of them, so the path this map used to hold kept answering with 1.0.61 while
-	// 1.0.79 ran (measured 2026-08-17; docs/VALIDATION.md § Upstream Behaviour
-	// Assumptions has the list as read). The arch segment is written as measured:
-	// another arch fails naming the path, which is the honest outcome.
+	// In the search list read out of copilot's 1.0.79 launcher, ~/.copilot/pkg — the
+	// path this map used to hold — is the **last** root, and on 2026-08-17 it held
+	// nothing newer than 1.0.61 while 1.0.79 ran (docs/VALIDATION.md § Upstream
+	// Behaviour Assumptions has the list as read). This is the first root instead, a
+	// package tree rather than one app.js, because the literals are spread across it.
+	// The arch segment is written as measured: another arch fails naming the path,
+	// which is the honest outcome.
 	constants.ToolCopilot: "Library/Caches/copilot/pkg/darwin-x64/" + versionToken,
-	// agy has no per-version directory of its own, and /usr/local/bin/agy — what this
-	// map held until 2026-08-17 — is a leftover that still answers `--version` with
-	// 1.0.10 while a newer agy runs from mise. A versionless path reports an upgrade
-	// as nothing at all, so this one is versioned through mise's install tree. **The
-	// version here is that directory's name, not the binary's**: agy replaces its own
-	// binary in place, so the counts recorded for it can be a build the path cannot
-	// name. That is a defeat this map cannot close and docs/ROADMAP.md carries.
-	constants.ToolAgy: ".local/share/mise/installs/antigravity-cli/" + versionToken + "/agy",
+	// What this map held until 2026-08-17 was /usr/local/bin/agy, which on that day
+	// answered `--version` with 1.0.10 while `command -v agy` resolved into mise's
+	// tree — a leftover, read green for as long as it sat there.
+	//
+	// This goes through mise's **version-independent** symlink on purpose. Writing
+	// versionToken here would rebuild that defect one upgrade later: mise keeps old
+	// installs (1.0.9 was still there, binary and all, when this was measured), so a
+	// pinned version goes on resolving to a build nobody runs. `latest` follows the
+	// upgrade, so a bump lands as moved counts instead.
+	//
+	// It names the `agy` file and not its directory because the previous build sits
+	// beside it (`antigravity`, plus an `agy.<digits>.old` symlink to it), so a
+	// directory walk would add that build's literals to every count. It also lets the
+	// recorded version be the binary's: the probe on 2026-08-17 left a directory named
+	// 1.1.12 holding a binary answering 1.1.13, so a path pinned to the directory name
+	// could not have recorded the build its counts came from.
+	constants.ToolAgy: ".local/share/mise/installs/antigravity-cli/latest/agy",
 }
 
 const versionToken = "<version>"

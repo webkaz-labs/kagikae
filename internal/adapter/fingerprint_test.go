@@ -63,18 +63,39 @@ var fingerprintExclusions = map[string]string{
 // XDG_DATA_HOME: whether these installers honour that variable for their own install
 // location is unmeasured, and this file is the wrong place to guess.
 var fingerprintArtifacts = map[string]string{
-	constants.ToolClaude:   ".local/share/claude/versions/" + versionToken,
-	constants.ToolCursor:   ".local/share/cursor-agent/versions/" + versionToken,
-	constants.ToolCopilot:  ".copilot/pkg/universal/" + versionToken + "/app.js",
-	constants.ToolOpencode: ".local/share/mise/installs/opencode/" + versionToken + "/opencode",
-	// agy's path carries no version, so nothing checks it against one. This used to
-	// add that a bump therefore "shows up here as moved counts", and **that is false**:
-	// measured 2026-08-17, `command -v agy` resolved into a mise install tree while
-	// /usr/local/bin/agy still answered `--version` with 1.0.10, so this test opened a
-	// leftover and passed with three of agy's counts already moved on the installed
-	// build. A versionless path reports a bump as nothing at all — the sibling defeat
-	// the header above describes, minus the part where an upgrade eventually lands here.
-	constants.ToolAgy: "/usr/local/bin/agy",
+	constants.ToolClaude: ".local/share/claude/versions/" + versionToken,
+	constants.ToolCursor: ".local/share/cursor-agent/versions/" + versionToken,
+	// Through `latest` for the same reason agy is, below: mise keeps old installs
+	// (1.17.4 and 1.18.11 were still there when this was measured), so a pinned
+	// version would go on resolving after the next upgrade. Nothing was stale here
+	// yet — `latest` and the pinned path gave identical counts — which is the point
+	// of changing it before it is.
+	constants.ToolOpencode: ".local/share/mise/installs/opencode/latest/opencode",
+	// In the search list read out of copilot's 1.0.79 launcher, ~/.copilot/pkg — the
+	// path this map used to hold — is the **last** root, and on 2026-08-17 it held
+	// nothing newer than 1.0.61 while 1.0.79 ran (docs/VALIDATION.md § Upstream
+	// Behaviour Assumptions has the list as read). This is the first root instead, a
+	// package tree rather than one app.js, because the literals are spread across it.
+	// The arch segment is written as measured: another arch fails naming the path,
+	// which is the honest outcome.
+	constants.ToolCopilot: "Library/Caches/copilot/pkg/darwin-x64/" + versionToken,
+	// What this map held until 2026-08-17 was /usr/local/bin/agy, which on that day
+	// answered `--version` with 1.0.10 while `command -v agy` resolved into mise's
+	// tree — a leftover, read green for as long as it sat there.
+	//
+	// This goes through mise's **version-independent** symlink on purpose. Writing
+	// versionToken here would rebuild that defect one upgrade later: mise keeps old
+	// installs (1.0.9 was still there, binary and all, when this was measured), so a
+	// pinned version goes on resolving to a build nobody runs. `latest` follows the
+	// upgrade, so a bump lands as moved counts instead.
+	//
+	// It names the `agy` file and not its directory because the previous build sits
+	// beside it (`antigravity`, plus an `agy.<digits>.old` symlink to it), so a
+	// directory walk would add that build's literals to every count. It also lets the
+	// recorded version be the binary's: the probe on 2026-08-17 left a directory named
+	// 1.1.12 holding a binary answering 1.1.13, so a path pinned to the directory name
+	// could not have recorded the build its counts came from.
+	constants.ToolAgy: ".local/share/mise/installs/antigravity-cli/latest/agy",
 }
 
 const versionToken = "<version>"

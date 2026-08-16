@@ -825,6 +825,21 @@ say "the store", read it as whichever of the two that tool resolves:
   that account on disk. They confirm only if every reader that can speak names the account
   being harvested into; if they disagree the copy is kept, deliberately *not* reported as a
   conflict, because a live login's owner is not one bind's decision and nothing backs it up.
+  **Nothing outvotes that, including a `kae relogin` that ran the login itself** — an
+  override for exactly that was built and reverted (2026-08-16), and what it cost to
+  measure is worth more than the entry it came from. The override let the acting
+  directory's own confirmation win, gated on kae having seen the tool write its identity
+  label there; kae cannot see that. claude's identity artifact is a JSON pointer into the
+  mixed-state `~/.claude.json`, so the **file's** write time says only that claude wrote
+  something — a startup does — while the **record's** own bytes do not move at all for a
+  relogin as the account that directory is already labelled with, since `/login` rewrites
+  `accountUuid`, `emailAddress` and `organizationUuid` unconditionally and to the same
+  values. A review reproduced the file-time version filing a sibling's refreshed token
+  into this account's snapshot, from a flow that exited non-zero and logged nobody in.
+  So the disagreement refuses for every caller, and what the refusal carries instead is
+  the **directories that disagree** (`harvestRefusal.Disagreeing`), because that is
+  somewhere the user can go; `docs/CLI.md` § kae relogin Semantics is normative for what
+  the message says.
   A copy every reader says is **another** account's may be replaced — but only where the
   directory the operation acts for is itself one of those readers. A sibling's disagreement
   is evidence that the copy is somebody's live login, not a licence for an unrelated bind to

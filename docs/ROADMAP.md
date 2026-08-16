@@ -51,14 +51,21 @@ Each names a section or an entry in this file and gives **only its place in the
 order and what that place turns on**. What the item *is* stays where it is: a second
 copy here is the duplication `mise run docs-scan` reports.
 
-1. § `kae relogin` declines to capture a login it watched happen when a *sibling*
-   directory has drifted — what its place turns on is the shared attribution predicate
-   it overrides, whose residue § Attribution reads a label kae may have written itself
-   keeps open, and no release date is now compressing the measurement that entry
-   asks for.
+**Nothing is queued here, and that is the state the paragraph above attaches a
+consequence to.** The last item did not land: § `kae relogin` declines to capture a login
+it watched happen was measured, the fix it prescribed was built, and the measurement
+refused it — so the entry went back to the backlog carrying what that cost, and what it
+now waits on is a mechanism nobody has designed rather than a place in an order. A
+release is what comes next rather than another batch. That is a call for a human to make,
+not a step to take from reading this — [ACCEPTANCE.md](ACCEPTANCE.md) § Open gates is the
+cost it carries, and only a human can pay it. Re-run the command above on the current
+tree before treating any of this as still true.
 
-An item leaves this list when it lands, so what is here is what is left rather than
-what was planned; git log holds the order it was worked in.
+An item leaves this list two ways, and only one of them is landing: it can also be
+measured and returned to the backlog, which is what emptied the list above. So what is
+here is what is left rather than what was planned, and an item's absence is not a claim
+that it shipped — git log holds the order things were worked in, and the entry itself
+holds what was learned.
 
 What stays out does so for unlike reasons. The freshness surfaces' wording waits on a
 **result**: [ACCEPTANCE.md](ACCEPTANCE.md) § Real-machine gate — does
@@ -820,18 +827,6 @@ alternative exists (`secret-tool`).
   user is told something is wrong), or a breadcrumb that `unpin` removes so absence can
   mean incompleteness again.
 
-- **`kae relogin` declines to capture a login it watched happen when a *sibling* directory
-  has drifted** (recorded 2026-08-08 by a reading-type review, **not fixed**). Two
-  worktrees bind one account and the second one's identity cache names another (an
-  unresolved `identity_drift`). `kae relogin` in the first runs the tool's own login flow,
-  the tool writes its own cache there, and the store now holds the fresh login — but the
-  reader set disagrees, so the harvest refuses and the account snapshot keeps a copy the
-  new login has already invalidated, with no way to update it until the drift is resolved.
-  The message names the disagreement, so nothing is silent. The fix is to let the directory
-  the flow ran in answer for a login kae **itself** just performed there — evidence of a
-  different class from a walk of everyone's caches — which is a deliberate override of the
-  reader set and wants its own measurement rather than a late edit to the shared predicate.
-
 - **A relogin's pre-flight refusal owes a backup it cannot safely take yet** (recorded
   2026-08-08 by an independent review of the pre-flight itself, **not fixed**).
   [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § When a refusal destroys instead of
@@ -874,6 +869,44 @@ alternative exists (`secret-tool`).
   So a retry starts by enumerating that invariant's consumers and deciding the eviction
   rule, not by writing the backup. The warning half shipped and is unaffected: it produced
   zero findings across all four rounds, and it is what turned this from silent to loud.
+
+- **`kae relogin` declines to capture a login it watched happen when a *sibling* directory
+  has drifted** (recorded 2026-08-08 by a reading-type review; **measured, and the fix it
+  prescribed refused, 2026-08-16**). Two worktrees bind one account and the second one's
+  identity cache names another. `kae relogin` in the first runs the tool's own login flow,
+  the store now holds the fresh login — but the reader set disagrees, so the harvest
+  refuses and the account snapshot keeps a copy the new login has already invalidated. The
+  entry's own fix was to let the directory the flow ran in answer for a login kae itself
+  performed there, as evidence of a different class from a walk of everyone's caches.
+  **There is no such evidence, and that is a measurement rather than an implementation
+  difficulty** — [ADAPTERS.md](ADAPTERS.md) § Per-directory credential store states what was
+  measured, beside the rule it settles. A version was built and reverted after a review
+  reproduced it filing a sibling's refreshed token into this account's snapshot from a flow
+  that logged nobody in, which is the shape § Attribution reads a label kae may have written
+  itself predicts, from the caller's side.
+  Two things did land: the refusal now names the directories that disagree, so the user
+  has somewhere to go ([CLI.md](CLI.md) § kae relogin Semantics), and the sibling need not
+  be a worktree at all — one stale `kae use -i` home is a reader by the same walk, which
+  is also why the message cannot route through `kae doctor`. What would settle the entry
+  is evidence timed against the **store** rather than against a cache; nothing here
+  proposes one, and the wrong version of it is cheap to build and undetectable when wrong.
+
+- **`kae relogin`'s success line reports a login for a store somebody *else* refreshed**
+  (measured 2026-08-16 by an independent review of the entry above, **not fixed**, and
+  measured to predate that work by running the same probe on the tree before it).
+  [CLI.md](CLI.md) § kae relogin Semantics is normative that the strong wording is printed
+  only where kae observed a login, and the conditions it lists are: the store's bytes changed, what
+  is there now is not a tombstone, and the harvest attributed it. **None of them asks
+  whether *this flow* is what changed the store.** Reachable with one confirming reader
+  elsewhere — a `kae use -i` home of the same account, or a sibling worktree — refreshing
+  the shared credential in place while the flow writes nothing and exits non-zero: every
+  gate passes and kae prints `Logged <tool> in for <tool>/<account> in this directory`.
+  Nothing is mis-filed — the copy really is that account's and harvesting it is right — so
+  what is wrong is only the claim, which is the class § kae relogin Semantics exists to
+  keep honest. The flow's exit code is the obvious candidate gate and it is deliberately
+  not one today (`kae add` reads it the same way: a non-zero exit does not prove nothing
+  was written), so this wants a way to tell "the store changed" from "this flow changed
+  it" rather than a fourth condition bolted on.
 
 - **A payload kae can neither read nor date is still overwritten by a bind, and that is
   a decision rather than an oversight** (recorded 2026-08-08, **not fixed**). The bind now
@@ -926,6 +959,17 @@ alternative exists (`secret-tool`).
   — is what would let `identity_drift` tell a stale label from a real one, which is worth
   having for its own sake. Do
   not "fix" it by removing the confirmation: that would make every bind keep forever.
+  **An attempt to answer the *when* question was made and withdrawn** (2026-08-16), and
+  it sharpens what this entry asks for. `kae relogin` compared the write time of the label
+  in the directory it ran the flow in, across the flow, and let a label written while kae
+  watched outweigh a sibling reader's disagreement. Two things killed it. The time belongs
+  to the **file**, not to the record — claude's is a pointer into the mixed-state
+  `~/.claude.json`, which any startup rewrites — and a review reproduced a sibling's token
+  being filed under this account through exactly that gap. And the record's own bytes are
+  no better: `/login` rewrites its three identity keys unconditionally and to the same
+  values, so the ordinary relogin leaves them unchanged. The cache cannot date the store
+  under either reading, which is this entry's point restated from the other end: whatever
+  settles it has to time the **store**, and a marker on the cache will look like it did.
 
 - **A store bound before the credential split, unbound, then re-bound after it keeps
   its pre-split item** (recorded 2026-08-07, **not fixed** — deliberately). The

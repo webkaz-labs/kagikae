@@ -568,11 +568,36 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 		// wrote its payload where relogin does not resolve the store, so the read came back
 		// absent and landed on the silent-success arm above. A read that finds nothing and
 		// a read that finds something unjudgeable are different findings.
+		//
+		// The one reason with somewhere to go, and the reason a user in this state is most
+		// likely to meet: another directory reading this account's credential says the copy
+		// is somebody else's. kae cannot settle that from here — a login it ran itself is
+		// not evidence about the store, which attributionSource records the measurement for
+		// — so what it can do is name the directory instead of leaving the user to find it.
+		//
+		// Says what has to become true, not which command to run: the directory may be a
+		// bound one (where `kae relogin` is the fix, as pinIdentityDriftMessage already
+		// says) or a globally isolated home (where it is not), and kae has no reason here
+		// to guess which the user meant that directory to run.
+		remedy := ""
+		if len(refused.Disagreeing) > 0 {
+			shown := make([]string, 0, len(refused.Disagreeing))
+			for _, dir := range refused.Disagreeing {
+				shown = append(shown, app.displayPath(dir))
+			}
+			// Worded so the number of them does not change the grammar: this list is one
+			// directory in the case that produced it and there is no fixture with two, so a
+			// sentence whose verb agreed with "a directory" would read wrong the first time
+			// a second one ever appeared.
+			remedy = fmt.Sprintf("; kae read another account's name in %s — this login can be "+
+				"captured once %s/%s is the account named there",
+				strings.Join(shown, ", "), tool, accountName)
+		}
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae cannot confirm the %s login now in this directory is %s/%s's (%s), "+
 				"so it did not capture it back and that snapshot still holds its own copy; "+
-				"%s use %s %s would apply that one\n",
-			tool, tool, accountName, refused.Why, toolName, tool, accountName)
+				"%s use %s %s would apply that one%s\n",
+			tool, tool, accountName, refused.Why, toolName, tool, accountName, remedy)
 	}
 	return false
 }

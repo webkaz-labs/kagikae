@@ -465,6 +465,25 @@ type harvestRefusal struct {
 	// one where kae can say what the directory will do next — run that other account — and
 	// a success line with no such sentence reads as "kae protected my credential".
 	ForeignToReaders bool
+	// Disagreeing names the directories that produced a *reader disagreement*: they read this
+	// account's credential store and say the copy is somebody else's, while another reader
+	// says it is this account's. It is not a fourth kind of refusal — it keeps the copy like
+	// every other missing-evidence one — and it carries the directories because this is the
+	// one refusal here whose cause is somewhere the user can go and fix, and `Why` alone
+	// leaves them to find which of their directories it was.
+	//
+	// A list rather than a flag, and out of `Why` rather than inside it: the reason is
+	// interpolated into frames that several callers build, and a path spliced into it would
+	// appear in all of them whether or not that message is one a user can act on. Reading
+	// it is opt-in instead — `kae relogin` is the only caller that does today, and the bind
+	// path could without anything here changing. Empty for every other refusal, so a
+	// consumer that reads it as a flag reads the truth.
+	//
+	// **Not routed through `kae doctor`**, which is where the first wording sent the user:
+	// its identity checks cover bound directories (`pinIdentityChecks`) and the *active*
+	// account's real home, so a drifted **globally isolated home** — a reader by the same
+	// walk, and reachable with no sibling worktree at all — is reported by neither.
+	Disagreeing []string
 	// Ordered records that kae **established** the copy in the store is newer than the
 	// snapshot, i.e. that the refusal happened past the `supersedes` gate. It is a fact
 	// about what kae measured, not about the refusal's kind, and it exists because the
@@ -523,7 +542,7 @@ func dirCredentialRefusalClause(tool string, dirs bindDirs, accountName string, 
 }
 
 // attributionSource is what the caller knows about the directory it is acting for that a
-// walk of the fragments on disk cannot supply. Both fields exist because a reader set built
+// walk of the fragments on disk cannot supply. Every field exists because a reader set built
 // only from that walk answers the wrong question at one end or the other.
 //
 // Dir decides whether a store all of whose readers name **another** account may be
@@ -541,6 +560,13 @@ func dirCredentialRefusalClause(tool string, dirs bindDirs, accountName string, 
 // time the delete is allowed there is by construction no reader left to attribute the copy
 // it is about to destroy. Refusing there is a deletion rather than a conservative choice,
 // which is the inversion AGENTS.md records.
+//
+// **Do not add a third field saying "kae itself just ran a login in Dir".** One was
+// written, and reverted after a review reproduced it filing a sibling's token under this
+// account: nothing kae can read offline separates a tool that logged in here from a tool
+// that merely wrote its cache here. docs/ADAPTERS.md § Per-directory credential store
+// carries the measurement, and docs/ROADMAP.md § `kae relogin` declines to capture a login
+// it watched happen is the entry that asked for the field.
 type attributionSource struct {
 	Dir     string
 	Unbound bool
@@ -1649,6 +1675,22 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 	return refs, true
 }
 
+// credStoreReader is one directory reading a credential store, in its two aspects. Config
+// is where its identity cache is, which is the evidence attribution reads. Dir is the
+// directory a **message** may name, which is not the same string: for a binding it is the
+// bound directory rather than kae's store under it — a store path names a pin-id hash and
+// no user can tell which worktree that is — and for a globally isolated home the two are
+// the same path, because that home is where the tool actually runs.
+//
+// Not `boundDirStore`, which carries the same pair and more: that one is built from
+// `pinnedDirs()`, which drops the completeness flag this walk's whole answer turns on, and
+// it skips a store directory that is not there. Folding the two would trade a
+// machine-wide "kae could not look" for a silent "nobody reads it".
+type credStoreReader struct {
+	Config string
+	Dir    string
+}
+
 // credStoreReaders names the config dirs of everything currently reading the credential
 // in credDir for tool — the directories whose identity cache is evidence about *that copy*.
 //
@@ -1695,7 +1737,7 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 // command if that shows up — but not on App without a per-operation reset, which is the
 // shape that already made a test pass for the wrong reason here
 // (docs/ROADMAP.md § The reader walk runs twice).
-func (app *App) credStoreReaders(credDir, tool string) (configDirs []string, complete bool) {
+func (app *App) credStoreReaders(credDir, tool string) (readers []credStoreReader, complete bool) {
 	if credDir == "" {
 		return nil, false
 	}
@@ -1725,7 +1767,7 @@ func (app *App) credStoreReaders(credDir, tool string) (configDirs []string, com
 			continue // unpinned, or bound to some other account's credential
 		}
 		if store, bound := app.boundStoreDir(pin.PinID, tool, fragment); bound {
-			configDirs = append(configDirs, store)
+			readers = append(readers, credStoreReader{Config: store, Dir: pin.Dir})
 		}
 	}
 	// A globally isolated home reads the account's credential too, and it has no fragment;
@@ -1757,10 +1799,10 @@ func (app *App) credStoreReaders(credDir, tool string) (configDirs []string, com
 		// an account directory whose name does not compose to this store is a different
 		// account's home.
 		if home := app.Paths.GlobalIsolatedHomeDir(tool, entry.Name()); app.credStoreDir(tool, entry.Name()) == credDir {
-			configDirs = append(configDirs, home)
+			readers = append(readers, credStoreReader{Config: home, Dir: home})
 		}
 	}
-	return configDirs, true
+	return readers, true
 }
 
 // sharedStoreAttribution answers "whose login is the copy in the account's own credential
@@ -1787,7 +1829,10 @@ func (app *App) credStoreReaders(credDir, tool string) (configDirs []string, com
 //     the event that should decide whose. Overwriting on a majority would destroy a login
 //     that has no backup; `kae doctor` reports the disagreeing directory as
 //     `identity_drift` and the user resolves it. Measured 2026-08-08: this is the case that
-//     filed a foreign token under this account's name.
+//     filed a foreign token under this account's name. **Nothing outvotes it, including a
+//     `kae relogin` that ran the login itself** — see attributionSource for what was tried
+//     and what measuring it cost. So the refusal carries the one thing it can: `Disagreeing`,
+//     which lets a caller name the remedy instead of only the reason.
 //   - nobody can speak (a first bind, an unenumerable index, no cache anywhere yet):
 //     refused, missing evidence, so the caller keeps the copy.
 //
@@ -1817,14 +1862,18 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	// A reader the caller has already unbound is still a reader for this question — see
 	// attributionSource. Appended rather than substituted: an unpin of one of several
 	// bindings leaves the others, and they answer first.
-	if src.Unbound && src.Dir != "" && !slices.Contains(readers, src.Dir) {
-		readers = append(readers, src.Dir)
+	if src.Unbound && src.Dir != "" && !readsFrom(readers, src.Dir) {
+		// No Dir: the caller has torn this binding down, so there is no bound directory left
+		// to name — and a message that named its store instead would send the reader to a
+		// path nothing runs in. The naming below skips it; the count and the vote do not.
+		readers = append(readers, credStoreReader{Config: src.Dir})
 	}
 	confirmed := 0
 	var conflict harvestRefusal
-	conflicting := []string{}    // the readers that named another account
-	silent := []harvestRefusal{} // readers that could not speak, and why each could not
-	for _, dir := range readers {
+	conflicting := []credStoreReader{} // the readers that named another account
+	silent := []harvestRefusal{}       // readers that could not speak, and why each could not
+	for _, reader := range readers {
+		dir := reader.Config
 		specs, err := app.dirSpecs(ctx, tool, bindDirs{Config: dir, Cred: credDir})
 		if err != nil {
 			// One unreadable reader is missing evidence, not a verdict — and it is a
@@ -1843,7 +1892,7 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 		}
 		switch refused := dirIdentityConfirms(ctx, be, specs, acc, dir); {
 		case refused.Conflicting:
-			conflicting = append(conflicting, dir)
+			conflicting = append(conflicting, reader)
 			conflict = refused
 		case refused.Why != "":
 			silent = append(silent, refused)
@@ -1854,9 +1903,10 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 	switch {
 	case confirmed > 0 && len(conflicting) > 0:
 		return harvestRefusal{
-			Why: "the directories that read this credential disagree about whose login it is",
+			Why:         "the directories that read this credential disagree about whose login it is",
+			Disagreeing: namedReaders(conflicting, src.Dir),
 		}
-	case len(conflicting) > 0 && slices.Contains(conflicting, src.Dir):
+	case len(conflicting) > 0 && readsFrom(conflicting, src.Dir):
 		return conflict
 	// A **mode toggle** of one directory does not satisfy that test even though the same
 	// directory is the conflicting reader: the reader set is derived from the fragment, which
@@ -1894,6 +1944,37 @@ func (app *App) sharedStoreAttribution(ctx context.Context, be secret.Backend,
 			Why: "no directory reads this credential yet, so nothing can say whose login it is",
 		}
 	}
+}
+
+// readsFrom reports whether configDir is among these readers. Both its callers ask about
+// the directory an operation is acting for: whether the walk already saw it, and whether it
+// is one of the readers that disagree. Keyed on Config, never on Dir — what ties a reader to
+// this operation is the cache attribution read, and the two strings differ for a binding.
+func readsFrom(readers []credStoreReader, configDir string) bool {
+	return slices.ContainsFunc(readers, func(r credStoreReader) bool { return r.Config == configDir })
+}
+
+// namedReaders is the directories among these that a message may name, which is why it
+// takes the one it must not: `acting` is the directory the caller is already talking about,
+// and naming it as somewhere to go turns "kae cannot confirm the login **in this
+// directory**" into advice to go and fix this directory. Reachable — a login as another
+// account inside a directory whose sibling still confirms puts the acting directory in the
+// conflicting set — and measured naming the cwd before this argument existed.
+//
+// An unbound caller's own entry carries no Dir and drops out for the same reason: its
+// binding is gone, so its store is a path nothing runs in. A caller that finds the list
+// empty therefore has nothing to point at, rather than something wrong to point at. That
+// half is a statement of intent and **cannot be killed by a test today** (measured): the
+// only entry without a Dir comes from the delete path, and no message that path prints
+// reads this list. It stays because the arm that would expose it is a new consumer away.
+func namedReaders(readers []credStoreReader, acting string) []string {
+	dirs := []string{}
+	for _, r := range readers {
+		if r.Dir != "" && r.Config != acting {
+			dirs = append(dirs, r.Dir)
+		}
+	}
+	return dirs
 }
 
 // harvestBeforeDelete reports whether the credential in credDir may be deleted:
@@ -2130,7 +2211,7 @@ func (app *App) harvestRenamedAccountCredentials(ctx context.Context, be secret.
 			// whose the copy is, which is the question here — storeHoldsAccount asks it the
 			// same way.
 			app.harvestRenamedStore(ctx, be, tool, accountName, artName,
-				bindDirs{Config: readers[0], Cred: credDir})
+				bindDirs{Config: readers[0].Config, Cred: credDir})
 		case !complete:
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: kae could not tell what reads the %s credential for %s/%s, so it did not "+

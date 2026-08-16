@@ -968,3 +968,270 @@ func TestReloginPreFlightWarningsCarryNoSecret(t *testing.T) {
 		}
 	}
 }
+
+// kae runs the login itself, watches the store change, reads back an identity cache
+// naming this account — and still declines to capture it, because a *sibling* worktree
+// bound to the same account carries an unresolved `identity_drift`. Measured end to end
+// 2026-08-16, and this is the behaviour rather than a defect being recorded: what it
+// costs the user is a trip to the directory that disagrees, which the message now names,
+// and the alternative was measured to cost a token filed under the wrong account.
+//
+// The reader set is the mechanism: sharedStoreAttribution asks every directory that
+// reads `credstore/claude/main`, the sibling names somebody else, and a confirming
+// reader beside a conflicting one is the `disagree` outcome — a refusal, not a conflict,
+// so the copy is kept. The account snapshot then holds a copy this very login has
+// already invalidated (claude's refresh token rotates single-use), which is what the
+// remedy line exists to get the user out of.
+//
+// **An override was built here and reverted** (docs/ROADMAP.md § `kae relogin` declines
+// to capture a login it watched happen). It let this directory's own confirmation
+// outweigh the sibling, gated on kae having seen the tool write its label here — and
+// that gate cannot be measured: the label's file is claude's mixed-state `~/.claude.json`,
+// whose write time a startup moves, while the record's own bytes do not move for a
+// relogin as the account already labelled here. attributionSource carries the
+// measurement; TestReloginDoesNotCaptureASiblingsRefreshedCopy is what it protects.
+//
+// The drift is applied *after* the sibling's own bind so the fixture reaches this
+// outcome and not an earlier one: a directory bound while a sibling disagrees takes
+// the keep branch and writes no identity of its own, which would make every assertion
+// below hold for missing evidence instead.
+func TestReloginDeclinesALoginItWatchedWhenASiblingHasDrifted(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	dir, _, credFile := boundStoreForClaudeMain(t, app)
+	siblingDir, siblingStore := bindClaudeHere(t, app, "main")
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("side-uuid"))
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	const refreshed = "sk-ant-oat01-RELOGGED-aaaa"
+	seen := []string{}
+	withInteractive(t, loginInto(t, constants.ToolClaude, refreshed, "main-uuid", now.Add(8*time.Hour), &seen))
+
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	// Positive controls for the two halves kae observed, so what follows is a refusal
+	// about attribution rather than a flow that never happened: the login landed in the
+	// store this directory reads, and it named this account there.
+	if got := readFile(t, credFile); !strings.Contains(got, refreshed) {
+		t.Fatalf("the login must land in the bound store for this to be about attribution: %s", got)
+	}
+	if got := readFile(t, filepath.Join(app.Paths.SharedDir(paths.PinID(dir), constants.ToolClaude),
+		".claude.json")); !strings.Contains(got, "main-uuid") {
+		t.Fatalf("the flow must leave this directory naming this account: %q", got)
+	}
+	if got := readFile(t, filepath.Join(siblingStore, ".claude.json")); !strings.Contains(got, "side-uuid") {
+		t.Fatalf("the sibling must still name another account: %q", got)
+	}
+
+	be := testBackend(t, app)
+	// What the refusal costs, and the reason the remedy below has to be there: the
+	// snapshot still holds the copy this login invalidated, so `kae use claude main`
+	// would apply a dead one.
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
+		t.Fatalf("the harvest declines here; the snapshot keeps its own copy: %s", got)
+	}
+	if !strings.Contains(stderr, "cannot confirm the claude login now in this directory is claude/main's") {
+		t.Errorf("the refusal must be the attribution one: %q", stderr)
+	}
+	if !strings.Contains(stderr, "disagree about whose login it is") {
+		t.Errorf("and its reason must be the reader disagreement: %q", stderr)
+	}
+	// The half a user can act on. Without it the message states a disagreement and
+	// leaves them to find which of their directories caused it.
+	if !strings.Contains(stderr, "another account's name in "+siblingDir) {
+		t.Errorf("the directory a user has to go and fix must be named: %q", stderr)
+	}
+	if strings.Contains(out, "Logged claude in") {
+		t.Errorf("the success line may not claim an account kae did not attribute: %q", out)
+	}
+	if strings.Contains(stderr, refreshed) || strings.Contains(out, refreshed) {
+		t.Errorf("a credential must never reach a message: %q / %q", stderr, out)
+	}
+}
+
+// The same refusal with no sibling worktree at all, because a **globally isolated
+// home** reads the account's credential store too — `prepareGlobalIsolatedHome`
+// writes one per `kae use -i` / `kae run -i`, nothing removes it, and the reader walk
+// reads those from disk with no liveness gate. So one stale `kae use -i` home is
+// enough to reach this, and the entry's "two worktrees" is one shape of the mechanism
+// rather than its extent — which is what makes the remedy line worth its own assertion
+// here: the directory a user has to go fix is not one they pinned.
+//
+// Measured 2026-08-16, alongside the test above.
+func TestReloginDeclinesALoginItWatchedWhenAnIsolatedHomeHasDrifted(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	_, _, credFile := boundStoreForClaudeMain(t, app)
+
+	opts := commonOpts{Format: formatText}
+	if code, out := captureStdout(t, func() int {
+		return runUseIsolated(ctx, app, opts, constants.ToolClaude, "main")
+	}); code != constants.ExitOK {
+		t.Fatalf("use -i exit %d: %s", code, out)
+	}
+	home := app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")
+	if got := readFile(t, filepath.Join(home, ".claude.json")); !strings.Contains(got, "main-uuid") {
+		t.Fatalf("the fixture needs the home to start out naming this account: %q", got)
+	}
+	// Somebody logged in as side inside that home. It has no fragment and no pin
+	// record; it is a reader because the store path composes from the account name.
+	writeFile(t, filepath.Join(home, ".claude.json"), claudeIdentityFile("side-uuid"))
+
+	const refreshed = "sk-ant-oat01-RELOGGED-bbbb"
+	seen := []string{}
+	withInteractive(t, loginInto(t, constants.ToolClaude, refreshed, "main-uuid", now.Add(8*time.Hour), &seen))
+
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, opts, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	if got := readFile(t, credFile); !strings.Contains(got, refreshed) {
+		t.Fatalf("the login must land in the bound store for this to be about attribution: %s", got)
+	}
+	if got := readFile(t, filepath.Join(home, ".claude.json")); !strings.Contains(got, "side-uuid") {
+		t.Fatalf("the home must still name another account: %q", got)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
+		t.Fatalf("the harvest declines here; the snapshot keeps its own copy: %s", got)
+	}
+	if !strings.Contains(stderr, "disagree about whose login it is") {
+		t.Errorf("the reason must be the reader disagreement: %q", stderr)
+	}
+	// The home itself, which is where the tool runs — and the case `kae doctor` does not
+	// reach, so a message routed through doctor would have named nothing here.
+	if !strings.Contains(stderr, "another account's name in "+app.displayPath(home)) {
+		t.Errorf("the isolated home must be named: %q", stderr)
+	}
+	if strings.Contains(out, "Logged claude in") {
+		t.Errorf("the success line may not claim an account kae did not attribute: %q", out)
+	}
+}
+
+// What the refusal above is protecting, and the reason an override of it was built and
+// reverted: the flow leaves nothing of its own — an abort, or a failure — while the
+// **sibling** refreshes the shared store in place, which is a perfectly ordinary thing
+// for its own claude to do during an interactive login. The store changed, so relogin
+// does not take its unchanged branch and the harvest runs; the copy there is the
+// sibling's, and this directory's label is the one `kae pin` planted. Capturing it files
+// another account's token under this name, which is the one mistake nothing offline can
+// detect afterwards.
+//
+// Nothing kae can read separates this run from the test above — same readers, same
+// disagreement, same confirming label here. An override gated on "kae saw the tool write
+// its label here" was measured not to separate them either (attributionSource), and a
+// review reproduced exactly this leak through it before it was reverted.
+func TestReloginDoesNotCaptureASiblingsRefreshedCopy(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	dir, _, credFile := boundStoreForClaudeMain(t, app)
+	_, siblingStore := bindClaudeHere(t, app, "main")
+	writeFile(t, filepath.Join(siblingStore, ".claude.json"), claudeIdentityFile("side-uuid"))
+	// Somebody logged in as side inside the sibling, so the shared store holds side's copy.
+	writeFile(t, credFile, claudeOAuthPayload("sk-ant-oat01-SIDE-OLD-dddd", now.Add(2*time.Hour)))
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	const sideRefreshed = "sk-ant-oat01-SIDE-REFRESHED-eeee"
+	withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
+		credDir := ""
+		for _, entry := range extraEnv {
+			if rest, ok := strings.CutPrefix(entry, credentialEnvVar(constants.ToolClaude)+"="); ok {
+				credDir = rest
+			}
+		}
+		// The sibling's claude refreshes side's token while the user abandons the flow.
+		// Nothing is written in *this* directory.
+		writeFile(t, filepath.Join(credDir, ".credentials.json"),
+			claudeOAuthPayload(sideRefreshed, now.Add(8*time.Hour)))
+		return 1, nil
+	})
+
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	// Positive control: the store did change, so the harvest ran rather than being
+	// short-circuited by relogin's unchanged branch, which returns before it.
+	if got := readFile(t, credFile); !strings.Contains(got, sideRefreshed) {
+		t.Fatalf("the fixture must leave the sibling's refreshed copy in the store: %s", got)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, sideRefreshed) {
+		t.Fatalf("another account's token must not be filed under this one: %s", got)
+	}
+	if !strings.Contains(stderr, "disagree about whose login it is") {
+		t.Errorf("the refusal must still be the reader disagreement: %q", stderr)
+	}
+	if strings.Contains(out, "Logged claude in") {
+		t.Errorf("the success line may not claim an account kae did not attribute: %q", out)
+	}
+}
+
+// The `disagree` outcome reached from the other side: the login kae just ran was as
+// **another account**, so this directory's own label now names that account, while an
+// honest sibling still reads the store as this one's. TestReloginDoesNotFileAnother
+// AccountsLoginUnderThisAccount is the same user action with no sibling, where the
+// answer is `Conflicting` and the message names a re-bind; here a confirming reader
+// makes it the disagreement instead, and only the reason differs.
+//
+// It is the arm any override of that outcome has to leave alone, which is what makes it
+// worth its own fixture rather than a variant comment.
+func TestReloginDoesNotCaptureAForeignLoginItWatched(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	dir, _, credFile := boundStoreForClaudeMain(t, app)
+	// An honest sibling: bound to the same account and still reading the store as its own.
+	_, siblingStore := bindClaudeHere(t, app, "main")
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	const foreign = "sk-ant-oat01-SIDE-ffff"
+	seen := []string{}
+	withInteractive(t, loginInto(t, constants.ToolClaude, foreign, "side-uuid", now.Add(8*time.Hour), &seen))
+
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+
+	if got := readFile(t, filepath.Join(siblingStore, ".claude.json")); !strings.Contains(got, "main-uuid") {
+		t.Fatalf("the sibling must be the confirming reader for this to be the disagree outcome: %q", got)
+	}
+	if got := readFile(t, credFile); !strings.Contains(got, foreign) {
+		t.Fatalf("the login still belongs in the store it was made in: %s", got)
+	}
+	be := testBackend(t, app)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
+		t.Fatalf("another account's login must not reach this snapshot: %s", got)
+	}
+	if strings.Contains(out, "Logged claude in") {
+		t.Errorf("the success line may not claim an account kae did not attribute: %q", out)
+	}
+	// **The directory the user is standing in is not somewhere to send them.** It is one of
+	// the readers that disagree here — that is what the login just made it — so a clause
+	// naming the disagreeing directories names the cwd unless it is excluded, four clauses
+	// after the same message called it "this directory". Measured doing exactly that
+	// (2026-08-16, an independent review), and the fixture above was green through it
+	// because it asserted nothing about this clause.
+	if strings.Contains(stderr, "another account's name in "+dir) {
+		t.Errorf("the remedy must not send the user to the directory they are in: %q", stderr)
+	}
+}

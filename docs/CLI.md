@@ -831,7 +831,20 @@ Contract:
 - The capture back is `harvestDirCredential` with every guard it already has: it
   declines a copy that does not supersede the snapshot, and one it cannot attribute
   to this account. It runs whatever the comparison said — a flow kae could not
-  compare may still have left a copy worth harvesting. A login as **another** account
+  compare may still have left a copy worth harvesting.
+  **The refusal a user is most likely to meet here names where it comes from.** Where
+  another directory reading the same account's store disagrees about whose login it
+  holds, the harvest declines — running the login itself buys this command no exception,
+  and `docs/ADAPTERS.md` § Per-directory credential store carries what was measured when
+  one was built. What it costs is real: the account snapshot keeps a copy this login has
+  invalidated, so `kae use <tool> <account>` would apply a dead one. So the warning names
+  the **directory** that disagrees and what has to become true — that it name this
+  account too — rather than a command: that directory may be a bound one, where
+  `kae relogin` inside it is the fix, or a globally isolated home, where it is not, and
+  only the user knows which account they meant it to run. It names no remedy command for
+  the same reason `kae doctor` is not cited here: doctor's identity checks reach bound
+  directories and the *active* account's real home, so a drifted isolated home — enough
+  on its own to produce this refusal — is reported by neither. A login as **another** account
   is left in the store (it is that account's, and it is where it belongs) and
   reported, with `kae pin <tool> <account>` as the remedy — never another login,
   which would mint a fresh chain and invalidate the copy just left in place.

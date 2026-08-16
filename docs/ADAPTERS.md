@@ -664,10 +664,12 @@ block) and mixed-state:
 is copilot's own sanctioned mechanism (the deprecated, hidden `--config-dir`
 flag, which outranks it, tells users to "use COPILOT_HOME env var" instead).
 kae passes it through verbatim, with no normalization and no absolute-path
-check, because copilot applies none either
-(`process.env.COPILOT_HOME ? process.env.COPILOT_HOME : join(homedir(), ".copilot")`).
-Setting it also disables copilot's one-way `$XDG_CONFIG_HOME/.copilot` →
-`~/.copilot` migration.
+check, because copilot applies none either — the resolution kae reproduces, and
+which build it was read from, are in [VALIDATION.md](VALIDATION.md) § Upstream
+Behaviour Assumptions, which is the one copy of the expression.
+Setting it also disables copilot's one-way migrations into `~/.copilot`, which
+are `$XDG_STATE_HOME/.copilot` and `$XDG_CONFIG_HOME/.copilot`, each with its own
+file list.
 
 A **relative** value is followed but **warned** about (`kae doctor`,
 `env_conflict`): copilot resolves it against *its* working directory and kae is
@@ -683,9 +685,14 @@ That is recorded here rather than turned into a warning on `COPILOT_HOME`
 ([AGENTS.md](../AGENTS.md)).
 
 kae targets `config.json` and not the bare `config` file copilot's
-settings-migration loader falls back to when `config.json` is absent: no auth
-path writes to that fallback — a login's `writeKey("lastLoggedInUser", …)` always
-goes to `config.json` — so kae writes exactly where an upstream login does.
+settings-migration loader falls back to when `config.json` is absent: the auth
+write seen in the 1.0.61 bundle was `writeKey("lastLoggedInUser", …)` into
+`config.json`, with no auth path reaching that fallback, so kae writes where an
+upstream login was measured writing. That reading has **not** been re-established
+on a later build — the key name it anchors on left `app.js`
+([VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions) — and the live
+`~/.copilot/config.json` still carrying the key is consistent with it rather than
+proof of it.
 
 The CLI has no native account-switch or logout command (only `copilot login`,
 an OAuth device flow). Tokens are env-overridable, precedence

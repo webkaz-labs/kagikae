@@ -83,11 +83,12 @@ func configHome(env adapter.Env) string {
 	return filepath.Join(env.Home, ".copilot")
 }
 
-// configJSONPath is the config file copilot's own login writes
-// (`writeKey("lastLoggedInUser", ...)`), which is always config.json. The
-// settings-migration loader additionally falls back to a bare `config` in the
-// same directory when config.json is absent, but no auth path writes there, so
-// kae targets config.json exactly as an upstream login does.
+// configJSONPath is the config file copilot's own login was measured writing
+// (`writeKey("lastLoggedInUser", ...)` into config.json, read from the 1.0.61
+// bundle; not re-established on 1.0.79, where that key name is no longer in
+// app.js). The settings-migration loader additionally falls back to a bare
+// `config` in the same directory when config.json is absent, and no auth path was
+// seen writing there, so kae targets config.json as an upstream login did.
 func configJSONPath(env adapter.Env) string {
 	return filepath.Join(configHome(env), "config.json")
 }

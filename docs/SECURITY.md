@@ -43,7 +43,7 @@ here are part of the command contract.
   for confirmation.
 - The `kae status` `global_isolated` field and `run -i`'s home-path message
   contain only directory paths and account names — never secret values.
-- The detected login `identity` (v0.8.3 §D — an email or account id stored in
+- The detected login `identity` (an email or account id stored in
   `account.toml` and shown by `kae ls`/`kae accounts`) is **PII but not a
   secret**: it is plaintext metadata exactly like the account name, never a
   token. It is read from already-trusted live state and never derived from a
@@ -54,12 +54,12 @@ here are part of the command contract.
   there — no path special-cases it, so it inherits the same
   never-to-stdout/JSON/logs treatment as a credential. It is captured from
   already-trusted live state, never derived from a token value.
-- The codex keyring payload (the `Codex Auth` keychain item, v0.8.3 §C) **is** a
+- The codex keyring payload (the `Codex Auth` keychain item) **is** a
   credential and is treated like every other secret: captured verbatim into the
   secret backend, never written to stdout/JSON/logs/metadata; only the item's
   account attribute (`cli|<16 hex of sha256(CODEX_HOME)>` — derived from a path,
   not a secret) is recorded in `account.toml`.
-- The agy keychain payload (the `gemini`/`antigravity` item, v0.8.6 §A) **is** a
+- The agy keychain payload (the `gemini`/`antigravity` item) **is** a
   credential — an opaque ~686-byte token — and is treated identically: captured
   verbatim into the secret backend, never written to stdout/JSON/logs/metadata.
   Its account attribute is the fixed literal `antigravity` (not a secret, not

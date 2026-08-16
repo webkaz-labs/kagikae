@@ -152,7 +152,7 @@ version = 1
 tool = "claude"
 account = "main"
 driver = "claude-keychain-patch"
-identity = "you@example.com"  # optional: the raw detected login identity (§D)
+identity = "you@example.com"  # optional: the raw detected login identity
 captured_at = 2026-06-11T01:23:45Z
 
 [artifacts.claude_ai_oauth]
@@ -192,7 +192,7 @@ Its payload is identity metadata (email, account/org uuid, plan fields), stored
 in the secret backend like every other artifact payload so no code path
 special-cases it; it is PII and is never printed, exactly like `identity` below.
 
-`identity` (optional, v0.8.3 §D) is the raw login identity detected at capture
+`identity` (optional) is the raw login identity detected at capture
 (an email or account id), separate from the sanitized account `account` name —
 it disambiguates accounts whose identities sanitize to the same name. It is PII
 but **not** a secret (plaintext metadata, exactly like the account name; never a
@@ -265,7 +265,7 @@ Reading the payload costs one secret-store read per account — what `kae doctor
 already does — and the reads are concurrent, so the wall clock is one read.
 
 The per-tool reader is the adapter's
-`Freshness(payload)` capability (v0.8.3 §A), built from the shared primitives in
+`Freshness(payload)` capability, built from the shared primitives in
 `internal/freshness`: claude `claudeAiOauth.expiresAt` (Unix ms) +
 `refreshToken` + `refreshTokenExpiresAt` (Unix ms), codex
 `tokens.access_token`/`id_token` JWT `exp` + `refresh_token`, opencode `/openai`

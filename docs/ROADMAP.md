@@ -5,7 +5,7 @@ by user impact. § Current work order, for as long as it is there, carries the
 near-term order and the release position that order is set against.
 
 An entry goes once it is *only* a record of what happened: what shipped is
-recorded in [RELEASE.md](RELEASE.md) and in git log, not here. **Being labelled
+recorded in the release tags and in git log, not here. **Being labelled
 shipped, or struck through, is not that criterion and licenses no deletion** —
 several entries below carry one label or the other and stay. An entry stops being
 *only* a record as soon as removing it would cost the next reader something: work
@@ -19,7 +19,9 @@ held every reference the trims here had to repoint. For some the citation sits a
 on a wrapped continuation line, so the hit shows no content — read the neighbour.
 No grep decides whether what a hit names still exists, so the work is
 reading the hits, and filtering them by a list of phrases is how each miss
-survived. Release notes hold the largest group; the rest were a design-rationale
+survived. In the trim that measured this, release notes held the largest group by a
+wide margin — that group has since gone with the release entries themselves, so
+re-run the grep rather than expecting it — and the rest were a design-rationale
 document, an acceptance log, a user-facing error message and code comments. A net,
 not a proof — a reference that defers a question here without naming the file is
 stage 3 of the docs scan, filed below.
@@ -340,8 +342,8 @@ alternative exists (`secret-tool`).
   [ARCHITECTURE.md](ARCHITECTURE.md) § Locking with no overlap. So the work was a
   paragraph move plus a same-file fold, and it cost nothing in citations: everything
   `git grep 'Switching Surface'` finds names the heading, or the table under it that
-  `scripts/docscan/main.go`'s calibration note pairs against `RELEASE.md`, and the move
-  leaves both in place — while no citation anywhere resolved to § Concurrency Boundary,
+  `scripts/docscan/main.go`'s calibration note recorded pairing against a `RELEASE.md`
+  entry since deleted, and the move leaves both in place — while no citation anywhere resolved to § Concurrency Boundary,
   which is why folding it repointed nothing. Derive both rather than reading a count
   here; what counts as a citation is where the figures in this tree disagree. Both greps
   also match this entry's own prose, which names both sections, so neither is ever empty
@@ -678,7 +680,7 @@ alternative exists (`secret-tool`).
 
 - ~~**One credential per account, sessions still per directory — via
   `CLAUDE_SECURESTORAGE_CONFIG_DIR`**~~ (designed and gated 2026-08-04, **built**
-  in v0.17.0 — see [RELEASE.md](RELEASE.md) and
+  in v0.17.0 — see
   [ADAPTERS.md](ADAPTERS.md) § Per-account credential store, which is normative for
   the mechanism. The design below is kept because it records *why*, and because the
   premise it rests on is an upstream measurement that has to be re-checked, not a

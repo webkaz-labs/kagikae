@@ -498,7 +498,7 @@ subset.
 | [docs/SECURITY.md](docs/SECURITY.md) | Safety rules and secret handling. |
 | [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | Why the scope/isolation model is shaped the way it is — rationale only, never the rules themselves. |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Later phases, and the near-term work order. |
-| [docs/RELEASE.md](docs/RELEASE.md) | Active release target and release process. |
+| [docs/RELEASE.md](docs/RELEASE.md) | The release process, and where a shipped release's record is. |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | Pre-commit checks, the smoke blocks that run from them, and two release-only smokes. |
 | [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | What a release owes on a real machine, what it still owes, and the observation to record when claude asks for a login it did not ask for before. |
 

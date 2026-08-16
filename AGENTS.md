@@ -41,7 +41,7 @@ check here can notice that the standard changed.
 | [docs/SECURITY.md](docs/SECURITY.md) | secrets, subprocess, permission, redaction changes |
 | [docs/SCOPE-MODEL.md](docs/SCOPE-MODEL.md) | the scope/isolation model's rationale and the upstream findings behind it — read it to learn *why* a decision was made, never for the rules themselves, which live in the documents above. Its section numbers have gaps that the file's own opening explains |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | long-term ordering changes — and **§ Current work order before picking work up**, which owns the near-term order and what each item waits on |
-| [docs/RELEASE.md](docs/RELEASE.md) | active release target changes |
+| [docs/RELEASE.md](docs/RELEASE.md) | release-procedure changes, and before looking here for what a past release shipped |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | before commit checks, for the smoke blocks `scripts/smoke-run.sh` executes, and for the two release-only smokes that stayed beside the surfaces they check |
 | [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | before cutting a release — what a release owes on a real machine, and **§ Open gates**, which it still owes. Also **when claude asks for a login it did not ask for before, or a deadline kae reported passes and it keeps serving** — read what that section says to read before logging back in. Nothing here runs from `mise run check` |
 | [.claude/skills/upstream-auth-drift/](.claude/skills/upstream-auth-drift/SKILL.md) | an upstream tool may have changed how its authentication works: a doctor `upstream_version` / `identity_drift` warning, a tool upgrade, a "kae says it switched but the tool shows the old account" report, or a routine re-verification |

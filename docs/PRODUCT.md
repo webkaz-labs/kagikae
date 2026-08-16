@@ -305,5 +305,6 @@ and `kae ls --pins` lists every bound directory from anywhere
 Windows remains unimplemented and is tracked in [ROADMAP.md](ROADMAP.md) (v0.6.0
 removed the gemini adapter after upstream retired Gemini CLI for Antigravity on
 2026-05-19). The per-release
-record of what shipped when is [RELEASE.md](RELEASE.md); `git log` is the
+record of what shipped when is the release tags and the GitHub releases they
+created ([RELEASE.md](RELEASE.md) says how one is read); `git log` is the
 per-commit source of truth.

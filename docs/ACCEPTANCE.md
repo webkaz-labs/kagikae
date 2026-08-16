@@ -104,10 +104,11 @@ carries what that means and routes on to the full copy set. `kae doctor` naming
 `upstream_version` for a tool is the
 signal that its rows are due.
 
-**Record every result below, and every § Open gates result, in this release's own
-entry in [RELEASE.md](RELEASE.md).** That is what § Open gates means by a gate no
-release has recorded a result for; a gate that passes is struck from that list in
-the same commit that records it.
+**Record every result below, and every § Open gates result, in this file, naming the
+tag it was run against.** A gate that passes is struck from § Open gates in the same
+commit that records it; one that fails stays there with what was seen. This document
+owns the gates, so a result recorded anywhere else is a result § Open gates cannot
+read — which is what it means there by a gate no release has recorded a result for.
 
 **Which accounts to run any of this with, and it is the whole section's
 precondition rather than one procedure's.** Every check below applies a
@@ -220,13 +221,16 @@ result would settle, or the fourth gate below lands in this list and gates a
 release it was never meant to gate.
 
 Their dates do not match that section, which is why the provenance is spelled
-out. The **Codex keyring two-account round-trip** is genuinely from the v0.8.3
-release gate (2026-06-17): [RELEASE.md](RELEASE.md)'s v0.8.3 entry records it
-deferred, and its v0.8.6 entry still lists it open. The other two were written six
-weeks later and first recorded by v0.13.0 (2026-07-31), as "the codex per-directory keyring
-bind and the cursor three-item credential set"; v0.14.0 and v0.15.0 repeat them
-as still open. **After v0.15.0 the record is silent rather than deferring** — no
-later release notes mention any of the three.
+out. The per-release entries this was read off are no longer in the tree —
+[RELEASE.md](RELEASE.md) carries the procedure and not the history — so the
+derivation is `git show <tag>:docs/RELEASE.md` and it is what to re-run rather than
+trust the sentences below. Read that way on 2026-08-16: the **Codex keyring
+two-account round-trip** is genuinely from the v0.8.3 release gate (2026-06-17), whose
+entry records it deferred, and v0.8.6's still lists it open. The other two were
+written six weeks later and first recorded by v0.13.0 (2026-07-31), as "the codex
+per-directory keyring bind and the cursor three-item credential set"; v0.14.0 and
+v0.15.0 repeat them as still open. **After v0.15.0 that record is silent rather than
+deferring** — no later entry, up to v0.17.0, mentions any of the three.
 
 A **fourth** open real-machine gate is deliberately not in this list:
 § Real-machine gate — does `refreshTokenExpiresAt` predict the login's death?

@@ -76,13 +76,13 @@ func Root(args []string) int {
 		return CmdCompanion(ctx, args[1:])
 	case "mise":
 		return CmdMise(ctx, args[1:])
-	// Folded into the use/pin × -s/-i surface in v0.7.2 (docs/RELEASE.md);
+	// Folded into the use/pin × -s/-i surface in v0.7.2;
 	// the pointers stay for one release.
 	case "bond":
 		return removedCommand("bond", "v0.7.2", "kae pin --shared [<profile>]")
 	case "as":
 		return removedCommand("as", "v0.7.2", "kae pin <tool> <account>")
-	// Removed in v0.5.0 (docs/RELEASE.md Breaking Changes); the pointers
+	// Removed in v0.5.0; the pointers
 	// stay for one release. `s` is no longer a switch pointer — it is the
 	// status alias (below).
 	case "switch":
@@ -275,7 +275,7 @@ Tools: ` + strings.Join(constants.Tools, ", "))
 }
 
 // removedCommand reports a removed or renamed command and names its
-// replacement (kept for one release; docs/RELEASE.md Breaking Changes).
+// replacement (kept for one release).
 func removedCommand(old, version, replacement string) int {
 	return usageError("kae %s was removed in %s; use: %s", old, version, replacement)
 }

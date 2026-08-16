@@ -43,7 +43,7 @@ type pinsReport struct {
 }
 
 // CmdLs lists every captured account and every defined profile in one view
-// (alias-free; docs/RELEASE.md §C), or with --pins every bound directory.
+// (alias-free), or with --pins every bound directory.
 // Read-only.
 func CmdLs(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)

@@ -71,7 +71,7 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// classifies it, then the materializer's chokepoint reads it again before writing —
 	// and reads that account's snapshot payload twice with it. Both are the exact shape
 	// the switch path already coalesces, so opt in rather than restructure signatures to
-	// save a `security` call (docs/RELEASE.md §A/§C). Safe here for the same reason it is
+	// save a `security` call. Safe here for the same reason it is
 	// safe there: nothing between the two reads writes that store (the harvest writes
 	// only the account snapshot, and a write invalidates its own cache entry), and no
 	// child process runs during a bind — which is the one case both caches warn against.

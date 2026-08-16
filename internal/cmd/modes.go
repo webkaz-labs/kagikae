@@ -11,7 +11,7 @@ import (
 )
 
 // Per-directory bind kinds, unified on the user-facing shared/isolated
-// vocabulary (docs/RELEASE.md v0.8.0). They equal the on-disk path segments
+// vocabulary (docs/CONTEXT.md § Mechanism terms). They equal the on-disk path segments
 // (paths.SharedSegment / paths.IsolatedSegment) and the -s/-i flags.
 const (
 	modeShared   = constants.ModeShared

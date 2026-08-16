@@ -13,8 +13,7 @@ import (
 
 // resolveAccount returns the account name and the login identity for `kae add`.
 // The name is the explicit one when given, otherwise derived (sanitized) from
-// the identity (the v0.8.2 default; docs/RELEASE.md §B). The identity is
-// recorded in the snapshot's identity field (§D).
+// the identity. The identity is recorded in the snapshot's identity field.
 //
 // identityOverride is the `--identity` value: when set it is the identity
 // verbatim (sanitized), so an account whose login identity is not readable on

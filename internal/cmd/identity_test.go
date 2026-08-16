@@ -30,7 +30,7 @@ func TestSanitizeAccountName(t *testing.T) {
 }
 
 // kae add --no-login <tool> (no name) captures under the sanitized detected
-// identity (docs/RELEASE.md §B). seedClaude writes oauthAccount.emailAddress =
+// identity. seedClaude writes oauthAccount.emailAddress =
 // "<uuid>@example.com", so the detected name is the local part.
 func TestAddAutoDetectClaudeNoLogin(t *testing.T) {
 	app := testApp(t, nil)
@@ -118,7 +118,7 @@ func TestAddAutoDetectNotLoggedIn(t *testing.T) {
 	}
 }
 
-// §D: auto-detect capture records the raw detected identity (the full email)
+// Auto-detect capture records the raw detected identity (the full email)
 // in the snapshot, separate from the sanitized account name.
 func TestAddRecordsIdentityAutoDetect(t *testing.T) {
 	app := testApp(t, nil)
@@ -138,7 +138,7 @@ func TestAddRecordsIdentityAutoDetect(t *testing.T) {
 	}
 }
 
-// §D: an explicit name still records the best-effort detected identity.
+// An explicit name still records the best-effort detected identity.
 func TestAddRecordsIdentityWithExplicitName(t *testing.T) {
 	app := testApp(t, nil)
 	seedClaude(t, app, mainToken, "main")
@@ -154,7 +154,7 @@ func TestAddRecordsIdentityWithExplicitName(t *testing.T) {
 	}
 }
 
-// §D: an explicit name with no readable identity (credential present but no
+// An explicit name with no readable identity (credential present but no
 // ~/.claude.json) captures with an empty identity, never erroring.
 func TestAddExplicitNameDetectionFailureLeavesIdentityEmpty(t *testing.T) {
 	app := testApp(t, nil)
@@ -171,7 +171,7 @@ func TestAddExplicitNameDetectionFailureLeavesIdentityEmpty(t *testing.T) {
 	}
 }
 
-// §D: switch-away recapture refreshes the credential without blanking the
+// Switch-away recapture refreshes the credential without blanking the
 // stored identity.
 func TestRecapturePreservesIdentity(t *testing.T) {
 	app := testApp(t, nil)

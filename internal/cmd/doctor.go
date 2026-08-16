@@ -305,7 +305,7 @@ func (app *App) companionChecks(ctx context.Context, be secret.Backend) []adapte
 }
 
 // credentialHealthChecks surfaces credential staleness the switch path only
-// warns about inline (docs/RELEASE.md §D): expired snapshots reusing §B's
+// warns about inline: expired snapshots reusing the switch-time warning's
 // predicate, plus the two directions in which a snapshot and the secret backend
 // can disagree — a payload the snapshot declares and the backend lacks
 // (secretMissingChecks), and a stored key with no snapshot dir behind it

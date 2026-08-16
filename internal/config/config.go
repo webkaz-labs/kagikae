@@ -213,7 +213,8 @@ func (c *Config) validate() error {
 
 // renamedToolKeys maps per-tool config keys removed in v0.8.0 to their
 // replacement (empty = removed outright). Old configs error at load naming the
-// new key — a pre-1.0 hard break with no silent acceptance (docs/RELEASE.md).
+// new key — a pre-1.0 hard break with no silent acceptance
+// (docs/DATA-MODEL.md § Config Schema).
 var renamedToolKeys = map[string]string{
 	"bond_denylist_extra":  "shared_denylist_extra",
 	"pin_shared_items":     "isolated_shared_items",
@@ -260,7 +261,7 @@ func (c *Config) ToolEnabled(tool string) bool {
 
 // stripRemovedTools drops config references to tools kae no longer
 // supports with a warning instead of a hard validation error, so configs
-// written before a removal keep working (docs/RELEASE.md Breaking Changes).
+// written before a removal keep working (docs/DATA-MODEL.md § Config Schema).
 func stripRemovedTools(c *Config) []string {
 	var warnings []string
 	for tool, successor := range constants.RemovedTools {

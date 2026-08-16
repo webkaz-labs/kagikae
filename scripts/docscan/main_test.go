@@ -335,8 +335,9 @@ func TestPairsNeedASharedAnchor(t *testing.T) {
 
 // A regression test for a defect this tool shipped with for one afternoon: an
 // earlier indexAnchors skipped any anchor present in over 5% of paragraphs, and
-// the highest-scoring pair in the repository — an exact 1.00 match between two
-// docs/RELEASE.md entries — was invisible because the anchors it shared were
+// the highest-scoring pair in the repository at the time — an exact 1.00 match
+// between two of docs/RELEASE.md's then-present per-release entries, since deleted
+// — was invisible because the anchors it shared were
 // `account` and the tool names. A ubiquitous anchor is still an anchor.
 func TestAUbiquitousAnchorStillBuckets(t *testing.T) {
 	words := normalize("a paragraph long enough to carry a shingle set and the word account in it")

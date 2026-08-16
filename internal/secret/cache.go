@@ -11,7 +11,7 @@ import (
 // (accountFreshness) and again in applySnapshot. keychain.WithReadCache
 // coalesces the *upstream* tool keychain, not this store, so without this cache
 // the second read issues a second backend hit. A cache scoped to one command
-// collapses them to a single read (docs/RELEASE.md §A).
+// collapses them to a single read.
 //
 // Reads populate the cache; writes (Set/Delete) invalidate the key so a later
 // read reflects the new value. The cache lives in the context, so it is

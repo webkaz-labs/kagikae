@@ -14,8 +14,8 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
-// TestStatusDetectsConcurrently proves the per-tool Detect runs concurrently
-// (docs/RELEASE.md §A acceptance). Every adapter's Detect calls env.LookPath as
+// TestStatusDetectsConcurrently proves the per-tool Detect runs concurrently.
+// Every adapter's Detect calls env.LookPath as
 // its binary probe; a LookPath that blocks until all enabled tools have entered
 // can only be satisfied if the Detects overlap — a sequential loop would block
 // on the first tool and never reach the second.
@@ -124,7 +124,7 @@ func TestStatusShowsPinAndProfiles(t *testing.T) {
 }
 
 // TestStatusShowsActiveAccountIdentity: status surfaces the active account's
-// recorded login identity (§D / v0.8.7), in both --json and text.
+// recorded login identity, in both --json and text.
 func TestStatusShowsActiveAccountIdentity(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()

@@ -224,7 +224,8 @@ func TestCompanionValidation(t *testing.T) {
 
 // TestRenamedConfigKeysFailAtLoad asserts the v0.8.0 hard break: the renamed
 // per-tool keys error at load naming their replacement, and the removed
-// overlay/home keys error too (docs/RELEASE.md). Pre-1.0, no silent acceptance.
+// overlay/home keys error too (docs/DATA-MODEL.md § Config Schema). Pre-1.0,
+// no silent acceptance.
 func TestRenamedConfigKeysFailAtLoad(t *testing.T) {
 	cases := map[string]string{
 		"shared_denylist_extra": "[tools.claude]\nbond_denylist_extra = [\"x\"]\n",

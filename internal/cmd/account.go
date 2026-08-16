@@ -305,7 +305,7 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	// exist yet; and moving the flip below a single Get/Set/Delete pass would
 	// trade that for a window nothing reports at all, since the old dir would
 	// keep loading fine while the `SecretRef` its metadata declares was already
-	// deleted from the backend (docs/RELEASE.md v0.16.0). Stage 3's own comment,
+	// deleted from the backend. Stage 3's own comment,
 	// below, is why refs go before the dir.
 
 	// Stage 1: copy every payload to its new ref and complete the new snapshot

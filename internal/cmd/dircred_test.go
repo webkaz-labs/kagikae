@@ -402,7 +402,7 @@ func recordedIdentity(t *testing.T, app *App, tool, accountName string) string {
 // ran. Asserted on the harvest rather than on `doctor`, because `Conflicting` is false
 // either way and the doctor half cannot tell the two implementations apart.
 //
-// The cost is stated where it is paid (docs/RELEASE.md): the bind then overwrites a
+// The cost is stated where it is paid: the bind then overwrites a
 // newer copy it declined to preserve, which is a destroyed login — loud, named, with
 // the login that fixes it, and the same trade every refusal in this mechanism makes.
 func TestWriteDirCredentialRefusesTwoIdentitiesThatAreNotAccountRecords(t *testing.T) {

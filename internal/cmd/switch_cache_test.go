@@ -32,7 +32,7 @@ func (c *countingBackend) reset() {
 	c.mu.Unlock()
 }
 
-// §A acceptance: a single kae use reads each target snapshot payload from the
+// Acceptance: a single kae use reads each target snapshot payload from the
 // secret backend once (the stale-warning read and the applySnapshot read share
 // the context-scoped secret.WithReadCache).
 func TestSwitchReadsTargetSnapshotOnce(t *testing.T) {

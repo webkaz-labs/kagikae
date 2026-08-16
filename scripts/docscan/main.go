@@ -16,19 +16,11 @@
 //     line by line. Duplication and falsehood are different questions: this tool
 //     cannot see a claim that is wrong in the only place it appears, and a clean
 //     report is not evidence that the documents are true.
-//   - Calibration for whoever reads the next report: on 2026-08-10 it found five
-//     pairs at or above 0.25. Four are docs/RELEASE.md restating a per-release
-//     status — two consecutive entries carrying the same "still open and
-//     unchanged" block word for word, and two release targets deferring the same
-//     list — which is what a changelog is, not a fork. The fifth is the shape
-//     worth reading, and an earlier version of this paragraph swept it into the
-//     other four: docs/PRODUCT.md's § Switching Surface table against the copy
-//     frozen in the **v0.7.2** entry of docs/RELEASE.md, which has since diverged
-//     and still names two retired mode names. A frozen changelog entry may be the
-//     right answer; a *universal* about the report is how a reader stops looking.
-//     The version in that sentence read v0.8.0 until it was checked against the
-//     enclosing `# kae vX.Y.Z` heading — a reviewer and I had it wrong the same way,
-//     which is the whole argument for re-deriving a detail before writing it down.
+//   - Calibration for whoever reads the next report: run it and compare, because the
+//     last reading is not the current one. The last non-empty one was five pairs at or
+//     above 0.25 on 2026-08-10, all of them docs/RELEASE.md's per-release entries,
+//     since deleted; on 2026-08-16 the report is empty. So a pair here is now a signal
+//     rather than a floor to look past.
 //
 // Anchors come from the Go AST rather than a regex because this repository's
 // decision vocabulary lives in struct fields (Ordered, Conflicting,

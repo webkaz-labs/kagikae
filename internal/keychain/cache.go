@@ -7,8 +7,8 @@ import (
 )
 
 // readCache coalesces repeated `security find-generic-password` reads of the
-// same service within one command. The recapture decision added in v0.8.1
-// (docs/RELEASE.md §A/§C) reads the active account's live credential to compare
+// same service within one command. The switch-away recapture decision
+// reads the active account's live credential to compare
 // it against the snapshot; without coalescing that read would multiply the
 // `security` invocations (and the auth prompts) a single switch already makes
 // (Detect, backup, recapture all read the same account-agnostic service). A

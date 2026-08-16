@@ -30,10 +30,12 @@ archives:
     # kae_<version>_<os>_<arch>; <version> has no leading "v" (GoReleaser
     # default). scripts/install.sh and the mise github backend rely on this.
     name_template: "kae_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # docs/RELEASE.md is deliberately not here: it carries the tagging procedure
+    # rather than the changelog it used to, and the changelog a user wants is on
+    # the GitHub release this workflow creates.
     files:
       - README.md
       - LICENSE
-      - docs/RELEASE.md
 
 checksum:
   name_template: "checksums.txt"

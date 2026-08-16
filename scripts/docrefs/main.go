@@ -122,8 +122,11 @@
 //
 //   - The sigil must be followed by a space and then a letter, a code span or
 //     emphasis. That drops `§6`, `§7`, `§4.1` (numbered sections of
-//     docs/SCOPE-MODEL.md) and `§A`, `§A/§C` (docs/RELEASE.md sub-sections), which
-//     introduce no searchable name. Note which half does the work: no live instance is
+//     docs/SCOPE-MODEL.md) and `§A` (docs/VALIDATION.md naming a lettered step
+//     marker inside its own fenced block), which introduce no searchable name. The
+//     lettered form used to be mostly docs/RELEASE.md's per-release sub-sections,
+//     product code included; those are gone and the exclusion outlived them.
+//     Note which half does the work: no live instance is
 //     written with a space there, so widening the character class to admit digits would
 //     change nothing. That is a property of the tree rather than of this program, and
 //     TestSectionNumbersAreWrittenWithNoSpaceAfterTheSigil is where it is checked — it

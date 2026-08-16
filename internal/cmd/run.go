@@ -231,7 +231,7 @@ func (app *App) runIsolatedChild(ctx context.Context, opts commonOpts, targets [
 		rows = append(rows, homeRow{tgt.Tool, tgt.Account, home})
 	}
 	// Confusion guard: name the shared home so it is never invisible that
-	// run -i and kae use -i share one store per account (docs/RELEASE.md §B).
+	// run -i and kae use -i share one store per account.
 	for _, r := range rows {
 		fmt.Fprintf(os.Stderr,
 			"kae: run -i: %s runs in %s\n  (shared with `kae use -i %s`; concurrent `kae use` in other shells is not blocked)\n",

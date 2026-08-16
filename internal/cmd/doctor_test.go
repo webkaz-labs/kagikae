@@ -27,7 +27,7 @@ func findCheck(report *doctorReport, code string) (string, bool) {
 	return "", false
 }
 
-// §D: an expired snapshot with no refresh token produces a credential_stale
+// An expired snapshot with no refresh token produces a credential_stale
 // warn-level check; the report keeps schema_version 1.
 func TestDoctorReportsStaleSnapshot(t *testing.T) {
 	app := testApp(t, nil)
@@ -55,7 +55,7 @@ func TestDoctorReportsStaleSnapshot(t *testing.T) {
 	}
 }
 
-// §D: the credential Claude Code tombstones after a failed refresh (blank tokens,
+// The credential Claude Code tombstones after a failed refresh (blank tokens,
 // expiresAt 0) reads literally as "no expiry recorded" — kae's most harmless
 // state — so it used to be the one snapshot doctor stayed silent about.
 func TestDoctorReportsTombstonedSnapshot(t *testing.T) {
@@ -75,7 +75,7 @@ func TestDoctorReportsTombstonedSnapshot(t *testing.T) {
 	}
 }
 
-// §D: an expired snapshot that still carries a refresh token is not flagged.
+// An expired snapshot that still carries a refresh token is not flagged.
 func TestDoctorIgnoresRefreshableSnapshot(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
@@ -90,7 +90,7 @@ func TestDoctorIgnoresRefreshableSnapshot(t *testing.T) {
 	}
 }
 
-// §D: a stored secret item with no snapshot dir is reported as an orphan
+// A stored secret item with no snapshot dir is reported as an orphan
 // (file backend enumerates).
 func TestDoctorReportsSecretOrphan(t *testing.T) {
 	app := testApp(t, nil)
@@ -158,7 +158,7 @@ func TestDoctorSilentWhenSnapshotPayloadsPresent(t *testing.T) {
 	}
 }
 
-// §D: keys of the prefixed namespaces have no snapshot dir by design, so they
+// Keys of the prefixed namespaces have no snapshot dir by design, so they
 // are not orphans. Reading them as <tool>/<account> warned forever on every
 // companion binding and env-profile variable, with a remediation
 // (`kae account rm companion <profile>`) naming a tool that does not exist.
@@ -186,7 +186,7 @@ func TestDoctorIgnoresNonAccountSecretNamespaces(t *testing.T) {
 	}
 }
 
-// §D lead time: a snapshot that still works but whose re-login deadline is inside
+// Lead time: a snapshot that still works but whose re-login deadline is inside
 // the lead window is reported under its own code, at warn level, naming the
 // proactive refresh. credential_stale must stay silent — a consumer filtering on
 // that code to find broken accounts must not start matching healthy ones.

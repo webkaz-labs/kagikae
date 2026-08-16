@@ -19,8 +19,8 @@ import (
 )
 
 // freshnessOf reads the freshness of a captured payload for tool by dispatching
-// to the tool's adapter.Fresher (§A: per-tool credential knowledge lives on the
-// adapter, not a central switch). A tool with no Fresher — or an unknown id —
+// to the tool's adapter.Fresher: per-tool credential knowledge lives on the
+// adapter, not a central switch. A tool with no Fresher — or an unknown id —
 // is not-datable (Known=false), matching the previous default branch.
 func freshnessOf(tool string, payload []byte) freshness.Info {
 	ad, err := adapter.ForTool(tool)
@@ -49,7 +49,7 @@ func toolIsDatable(tool string) bool {
 // refresh-token presence. It returns the first artifact whose payload parses as
 // the tool's known credential format; a not-datable account (copilot pointer,
 // agy blob) yields Known=false. Shared by the switch-time stale warning
-// (docs/RELEASE.md §B) and doctor credential-health (§D).
+// and doctor credential-health.
 func (app *App) accountFreshness(ctx context.Context, be secret.Backend, acc account.Account) (freshness.Info, error) {
 	// A tool with no Fresher (copilot's pointer, agy's opaque blob) can never produce
 	// a Known reading, so reading its payloads is guaranteed-wasted work — and on
@@ -103,7 +103,7 @@ func (app *App) accountFreshness(ctx context.Context, be secret.Backend, acc acc
 const reloginLeadTime = 7 * 24 * time.Hour
 
 // snapshotFreshnessWarning returns the switch-time warning acc's snapshot
-// credential deserves (docs/RELEASE.md §B): the stale message once it can no
+// credential deserves: the stale message once it can no
 // longer open a session without an interactive re-login, the expiring notice while
 // that deadline is still ahead but within reloginLeadTime, and "" when the
 // credential is fine, undated, or not-datable.
@@ -296,7 +296,7 @@ func reloginDeadline(info freshness.Info) (time.Time, bool) {
 }
 
 // needsRelogin is the shared predicate of the switch-time stale warning
-// (docs/RELEASE.md §B) and doctor's credential_stale (§D): the credential cannot
+// and doctor's credential_stale: the credential cannot
 // produce a session again without the tool's interactive login. Either the tool
 // revoked it itself (a tombstone written after a failed refresh), or its
 // re-login deadline has passed. A not-datable or still-valid credential is false.
@@ -399,7 +399,7 @@ func utcStamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 // switch back applies a live token (symmetric with run -s). It rewrites the
 // snapshot only when the live store and the snapshot diverge, so a no-op switch
 // costs no write; the divergence read is coalesced with the switch's other
-// keychain reads (docs/RELEASE.md §A/§C). Best-effort: a logged-out or
+// keychain reads. Best-effort: a logged-out or
 // unreadable active account is left untouched with a warning, never aborting
 // the switch. Only kae use / bare use reach here — use -i / pin / run -i write
 // kae-owned isolation dirs and never the real store.
@@ -459,7 +459,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 		// Same tool/driver/specs as the target plan; only the account differs
 		// (copy so a future toolPlan field is not silently dropped). Carry the
 		// existing snapshot's identity so a recapture refreshes the credential
-		// without blanking the §D identity field.
+		// without blanking the identity field.
 		activePlan := plan
 		activePlan.Account = active
 		activePlan.Identity = acc.Identity
@@ -722,7 +722,7 @@ func liveValuesFreshness(tool string, values []artifact.Value) freshness.Info {
 //
 // Two refusals, decided together because they compare the same two readings — and
 // on darwin the snapshot side is a `security` subprocess, so asking twice is the
-// cost the switch's read coalescing exists to avoid (docs/RELEASE.md §A/§C).
+// cost the switch's read coalescing exists to avoid.
 //
 // (1) **The live copy needs a re-login and the snapshot's does not.**
 // readLiveValues proves only that the artifact *exists*: claude's tombstone (the
@@ -741,8 +741,8 @@ func liveValuesFreshness(tool string, values []artifact.Value) freshness.Info {
 // copy into the snapshot and destroys the last one that works.
 //
 // One-directional like (1): it never prefers the live copy, it only refuses to
-// overwrite a later one. "The live store is authoritative" (docs/RELEASE.md §A)
-// still holds for every credential that is actually the newest; what is dropped is
+// overwrite a later one. Preferring the live store still holds for every
+// credential that is actually the newest; what is dropped is
 // the unstated assumption that whatever is live is the newest.
 //
 // **(2) splits, and the split is the whole point of `preserve`.** `supersedes` lets an

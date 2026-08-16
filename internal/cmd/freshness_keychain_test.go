@@ -81,7 +81,7 @@ func (k *keychainSim) RunInput(ctx context.Context, _ string, name string, args 
 	return k.Run(ctx, name, args...)
 }
 
-// §C acceptance: a single switch performs at most one keychain payload read for
+// Acceptance: a single switch performs at most one keychain payload read for
 // the recapture decision (Detect, backup, and recapture share the coalesced
 // read via keychain.WithReadCache).
 func TestSwitchCoalescesKeychainReads(t *testing.T) {

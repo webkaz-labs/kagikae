@@ -1181,7 +1181,7 @@ func TestIdentityKeysConformance(t *testing.T) {
 }
 
 // TestFresherConformance pins which adapters expose readable credential
-// freshness (§A): claude/codex/opencode/cursor are datable; copilot's pointer
+// freshness: claude/codex/opencode/cursor are datable; copilot's pointer
 // and agy's opaque blob are not, so they must not implement adapter.Fresher
 // (cmd.freshnessOf then treats them as Known=false).
 func TestFresherConformance(t *testing.T) {

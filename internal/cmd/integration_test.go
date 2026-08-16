@@ -810,7 +810,7 @@ func TestDoctorHealthy(t *testing.T) {
 	}
 }
 
-// §C: with the keyring store, capture/use round-trip through the single
+// With the keyring store, capture/use round-trip through the single
 // `Codex Auth` keychain item. The per-login opaque account is captured verbatim
 // and apply deletes the prior item before writing the target's, so exactly one
 // item — with the target account's id and payload — remains. The keychainSim
@@ -968,7 +968,7 @@ func (k *geminiSim) RunInput(ctx context.Context, _ string, name string, args ..
 	return k.Run(ctx, name, args...)
 }
 
-// §A: on macOS, agy capture/use round-trip through the gemini/antigravity
+// On macOS, agy capture/use round-trip through the gemini/antigravity
 // keychain item, matched by service AND account so a sibling gemini item (the
 // Gemini ecosystem's, under a different account) is never read or written. The
 // opaque token is stored verbatim and never leaks to stdout or the snapshot.
@@ -1017,7 +1017,7 @@ func TestAgyKeychainRoundTrip(t *testing.T) {
 	})
 }
 
-// §A: an empty keychain payload is refused at capture (structure guard:
+// An empty keychain payload is refused at capture (structure guard:
 // non-empty, single-line), not stored as an unusable snapshot.
 func TestAgyKeychainEmptyPayloadRefused(t *testing.T) {
 	sim := &geminiSim{items: map[string]string{"gemini\x00antigravity": ""}}

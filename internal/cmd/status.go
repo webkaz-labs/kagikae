@@ -17,7 +17,7 @@ type toolStatus struct {
 	Tool    string  `json:"tool"`
 	Enabled bool    `json:"enabled"`
 	Account *string `json:"account"`
-	// Identity is the active account's recorded login identity (§D), additive and
+	// Identity is the active account's recorded login identity, additive and
 	// omitempty so the JSON contract stays schema_version 1; blank for a
 	// pre-identity snapshot or a tool/account with no readable identity.
 	Identity    string   `json:"identity,omitempty"`
@@ -50,8 +50,8 @@ type profileStatus struct {
 }
 
 // globalIsolatedStatus is one tool whose global mise fragment points it at a
-// private home (kae use -i / run -i share this store). docs/RELEASE.md §B/§D:
-// surfacing it keeps the shared isolated state from being invisible.
+// private home (kae use -i / run -i share this store). Surfacing it keeps
+// the shared isolated state from being invisible.
 type globalIsolatedStatus struct {
 	Tool    string `json:"tool"`
 	Account string `json:"account"`
@@ -108,7 +108,7 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 	}
 	capturedByTool := map[string][]string{}
 	// identityByAccount maps a (tool, account) pair to its recorded login identity,
-	// so status can show the active account's identity (§D) without a second
+	// so status can show the active account's identity without a second
 	// snapshot read.
 	identityByAccount := map[toolAccount]string{}
 	for _, acc := range captured {
@@ -386,7 +386,7 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 type accountItem struct {
 	Tool    string `json:"tool"`
 	Account string `json:"account"`
-	// Identity is the raw login identity detected at capture (§D), additive and
+	// Identity is the raw login identity detected at capture, additive and
 	// omitempty so the JSON contract stays schema_version 1; blank for
 	// pre-v0.8.3 snapshots and tools with no readable identity.
 	Identity   string `json:"identity,omitempty"`

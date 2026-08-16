@@ -20,7 +20,7 @@ type bareUseReport struct {
 }
 
 // CmdApply is a removed-command pointer: `apply` folded into bare `kae use` in
-// v0.8.0 (docs/RELEASE.md). Exit 64 names the replacement for one release.
+// v0.8.0. Exit 64 names the replacement for one release.
 func CmdApply(_ context.Context, _ []string) int {
 	return removedCommand("apply", "v0.8.0", "kae use [--quiet] (bare use resolves the profile)")
 }
@@ -46,7 +46,7 @@ func runUseBare(ctx context.Context, app *App, opts commonOpts, isolated bool, p
 		return finish(opts, err)
 	}
 	// --quiet suppresses the human success report (for enter hooks); the JSON
-	// report still emits so a script can read `changed` (docs/RELEASE.md).
+	// report still emits so a script can read `changed`.
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
@@ -80,7 +80,7 @@ func buildUseBare(ctx context.Context, app *App, opts commonOpts, profileName st
 	if err != nil {
 		return nil, err
 	}
-	// Bare use is the documented teardown of kae use -i (docs/RELEASE.md): after
+	// Bare use is the documented teardown of kae use -i: after
 	// switching the real home in place, drop the switched tools from
 	// state.synced and regenerate/delete the global fragment, mirroring
 	// runSwitch. A no-op when no switched tool is globally isolated.

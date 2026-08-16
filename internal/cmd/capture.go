@@ -52,10 +52,10 @@ func buildCapture(ctx context.Context, app *App, opts commonOpts, tool, explicit
 	// so without a cache --no-login capture would invoke `security` twice. The
 	// path only reads the live keychain (the snapshot is written to the secret
 	// backend, not the keychain) and runs no child process, so the cache never
-	// serves a stale credential; it simply expires with ctx (docs/RELEASE.md §C).
+	// serves a stale credential; it simply expires with ctx.
 	ctx = keychain.WithReadCache(ctx)
 	// With no explicit name, default it to the sanitized live login identity;
-	// the raw identity is recorded in the snapshot either way (§D).
+	// the raw identity is recorded in the snapshot either way.
 	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName, opts.IdentityOverride)
 	if err != nil {
 		return nil, err
@@ -135,7 +135,7 @@ func readLiveValues(ctx context.Context, specs []artifact.Spec) (values []artifa
 // persistSnapshot writes already-read live values as plan's account snapshot
 // (secret payloads + account.toml). Split from captureSnapshot so the
 // switch-away recapture can reuse the value it already read for the divergence
-// check, issuing no second keychain read (docs/RELEASE.md §A/§C).
+// check, issuing no second keychain read.
 func (app *App) persistSnapshot(ctx context.Context, be secret.Backend, plan toolPlan, values []artifact.Value) error {
 	acc := account.Account{
 		Version:    1,

@@ -5,7 +5,7 @@ by user impact. § Current work order, for as long as it is there, carries the
 near-term order and the release position that order is set against.
 
 An entry goes once it is *only* a record of what happened: what shipped is
-recorded in [RELEASE.md](RELEASE.md) and in git log, not here. **Being labelled
+recorded in the release tags and in git log, not here. **Being labelled
 shipped, or struck through, is not that criterion and licenses no deletion** —
 several entries below carry one label or the other and stay. An entry stops being
 *only* a record as soon as removing it would cost the next reader something: work
@@ -19,7 +19,9 @@ held every reference the trims here had to repoint. For some the citation sits a
 on a wrapped continuation line, so the hit shows no content — read the neighbour.
 No grep decides whether what a hit names still exists, so the work is
 reading the hits, and filtering them by a list of phrases is how each miss
-survived. Release notes hold the largest group; the rest were a design-rationale
+survived. In the trim that measured this, release notes held the largest group by a
+wide margin — that group has since gone with the release entries themselves, so
+re-run the grep rather than expecting it — and the rest were a design-rationale
 document, an acceptance log, a user-facing error message and code comments. A net,
 not a proof — a reference that defers a question here without naming the file is
 stage 3 of the docs scan, filed below.
@@ -49,14 +51,11 @@ Each names a section or an entry in this file and gives **only its place in the
 order and what that place turns on**. What the item *is* stays where it is: a second
 copy here is the duplication `mise run docs-scan` reports.
 
-1. § Delete the prose that is not load-bearing, on the target that section names as
-   what is left — and the deferral above removes the conflict a new release entry
-   would have had with it.
-2. § `kae relogin` declines to capture a login it watched happen when a *sibling*
-   directory has drifted — last, because it overrides the shared attribution
-   predicate, whose residue § Attribution reads a label kae may have written itself
-   keeps open, and because no release date is now compressing the measurement that
-   entry asks for.
+1. § `kae relogin` declines to capture a login it watched happen when a *sibling*
+   directory has drifted — what its place turns on is the shared attribution predicate
+   it overrides, whose residue § Attribution reads a label kae may have written itself
+   keeps open, and no release date is now compressing the measurement that entry
+   asks for.
 
 An item leaves this list when it lands, so what is here is what is left rather than
 what was planned; git log holds the order it was worked in.
@@ -340,8 +339,8 @@ alternative exists (`secret-tool`).
   [ARCHITECTURE.md](ARCHITECTURE.md) § Locking with no overlap. So the work was a
   paragraph move plus a same-file fold, and it cost nothing in citations: everything
   `git grep 'Switching Surface'` finds names the heading, or the table under it that
-  `scripts/docscan/main.go`'s calibration note pairs against `RELEASE.md`, and the move
-  leaves both in place — while no citation anywhere resolved to § Concurrency Boundary,
+  `scripts/docscan/main.go`'s calibration note recorded pairing against a `RELEASE.md`
+  entry since deleted, and the move leaves both in place — while no citation anywhere resolved to § Concurrency Boundary,
   which is why folding it repointed nothing. Derive both rather than reading a count
   here; what counts as a citation is where the figures in this tree disagree. Both greps
   also match this entry's own prose, which names both sections, so neither is ever empty
@@ -411,7 +410,8 @@ alternative exists (`secret-tool`).
   measured here, and so, since 2026-08-13, has the file-level analogue of it: a
   reference naming *content* of a document that still exists, after a trim removed
   the content. Trimming this file's shipped records left one in every surface that
-  cites this file — release notes by a wide margin, and a design-rationale document,
+  cited this file at the time — release notes by a wide margin then, though that class
+  has since gone with the release entries, and a design-rationale document,
   an acceptance log, a user-facing error message and code comments — each found only
   by reading every reference to this file, after a detector written for the class
   failed its own positive control. Count them from the diff rather than from a number
@@ -678,7 +678,7 @@ alternative exists (`secret-tool`).
 
 - ~~**One credential per account, sessions still per directory — via
   `CLAUDE_SECURESTORAGE_CONFIG_DIR`**~~ (designed and gated 2026-08-04, **built**
-  in v0.17.0 — see [RELEASE.md](RELEASE.md) and
+  in v0.17.0 — see
   [ADAPTERS.md](ADAPTERS.md) § Per-account credential store, which is normative for
   the mechanism. The design below is kept because it records *why*, and because the
   premise it rests on is an upstream measurement that has to be re-checked, not a
@@ -1399,23 +1399,11 @@ is anywhere near that, and only by demand.
 
 ## Delete the prose that is not load-bearing
 
-**Owed work, not a record.** Run these **at `d089914`**, where they printed 13,457 /
-1,943 / 22,778 and 164 of 285 — pinned to a commit because on any later tree the first
-number counts this entry, and because a reading taken on a different tree is not
-distinguishable from a change of method:
-
-```bash
-git ls-files '*.md' | xargs wc -l | tail -1
-git ls-files 'scripts/*' | xargs grep -hcE '^[[:space:]]*(#|//)' | paste -sd+ - | bc
-git ls-files '*.go' | grep -v '_test\.go$' | xargs wc -l | tail -1
-git log --no-merges --since=2026-08-01 --format=%H | while read -r c; do \
-  git show --name-only --format= "$c" \
-  | grep -qE '^(internal/|main\.go$|go\.mod$|go\.sum$)' || echo "$c"; done | wc -l
-```
-
-Comment share is 49–63% across the six the gate runs directly (`check-docs.sh`,
-`check-docs-selftest.sh`, `smoke-run.sh`, `smoke-run-selftest.sh`,
-`sweep-quantities.sh`, `docrefs/main.go`); `scripts/install.sh` is 7%.
+**A standing criterion, not owed work.** The pass ran in two stages: the docs and the
+scripts, then RELEASE.md's shipped-release entries together with the citations into
+them. What is left is the criterion. The measurements that motivated it are in the
+commit that filed this entry and are deliberately not repeated, since a reading taken
+on a later tree answers a different question.
 
 **Keep** what a wrong sentence costs a credential or a user: `docs/ADAPTERS.md`'s
 allowlists, `docs/CREDENTIAL-RULES.md`, `docs/CLI.md`'s contract, `AGENTS.md`'s safety
@@ -1428,18 +1416,18 @@ passes green with fewer assertions.
 epistemology in script headers, and measurement stories about **this repository's own
 history** — not the upstream ones in [VALIDATION.md](VALIDATION.md) § Upstream
 Behaviour Assumptions, which are the re-verification instrument and are not in git log.
-The workable form of that, applied to the first pass: a sentence goes when it reports
+The workable form of that: a sentence goes when it reports
 what a past session did or found **and** the reason, rule or trap around it still stands
 without it. A rule stays; the round that produced it does not.
 
-**What is left is [RELEASE.md](RELEASE.md), and it is not free prose.** Everything below
-its first `---` rule is shipped-release entries, and product code cites them by section
-letter: `git grep -n 'RELEASE\.md §' -- internal/` lists the `§A`/`§B`/`§C`/`§D` form,
-and `git grep -n 'RELEASE\.md v0\.' -- internal/` the version-named one. `docs-check`
-resolves neither — a bare `§A` names no section it can look up — so deleting an entry
-dangles a comment in product code with nothing reporting it. Cutting this means repointing
-those comments in the same commit, which is a change to `internal/` and a different review
-from a prose pass. That is why the first pass stopped at the docs and the scripts.
+**A citation is prose with a consumer, and this kind has no guard at all.** The
+release-entry stage was mostly a change to `internal/`, and the two greps that sized
+it were both keyed on the filename — the incomplete form
+[AGENTS.md](../AGENTS.md) already names, and here the larger half was a bare
+`§<letter>`, which carries no filename to key on. What that rule does not cover,
+because it is written for renaming a section rather than deleting one: `docs-check`
+resolves neither a bare `§A` nor a version name, so nothing was checking any of them.
+Repoint to a form the gate does resolve whenever one exists.
 
 Rules adopted with it, from the branch that closed `adapter.VersionVerifier`:
 

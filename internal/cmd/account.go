@@ -93,10 +93,6 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 		return nil, err
 	}
 	active := st.Active[tool] == accountName
-	if active && !force {
-		return nil, errf(constants.ExitUnsafeRefused,
-			"%s/%s is the active account; switch away first or rerun with --force", tool, accountName)
-	}
 	profiles := app.profilesReferencing(tool, accountName)
 
 	report := &accountRmReport{
@@ -106,13 +102,24 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 		ActiveCleared: active,
 	}
 	if opts.DryRun {
+		if err := app.accountRmIsolationPreflight(st, tool, accountName); err != nil {
+			return nil, err
+		}
+		if active && !force {
+			return nil, accountRmActiveError(tool, accountName)
+		}
 		return report, nil
 	}
+	if app.beforeAccountMutationLocksForTest != nil {
+		app.beforeAccountMutationLocksForTest()
+	}
 
-	be, err := app.secretBackend()
+	lifecycleLocks, err := app.acquireIsolationLifecycleWriters([]string{tool})
 	if err != nil {
 		return nil, err
 	}
+	defer releaseLocks(lifecycleLocks)
+
 	locks, err := app.acquireLocks([]string{tool})
 	if err != nil {
 		return nil, err
@@ -124,9 +131,61 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 	}
 	defer cfgLock.Release()
 
+	// The reads above are only an optimistic dry-run/report snapshot. Capture,
+	// config edits, and switches can all complete before these locks are held.
+	// Nothing below may use those stale copies to authorize deletion.
+	lockedAcc, found, err := account.Load(app.Paths.AccountDir(tool, accountName))
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, accountName)
+	}
+	acc = lockedAcc
+	report.SecretsRemoved = len(acc.ArtifactNames())
+
+	lockedConfig, _, err := config.Load(app.ConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("reload config before account removal: %w", err)
+	}
+	// A missing file legitimately means the already-loaded defaults. Direct App
+	// tests also inject the file backend there without materializing config.toml.
+	if _, statErr := os.Stat(app.ConfigPath); os.IsNotExist(statErr) {
+		lockedConfig = app.Config
+	} else if statErr != nil {
+		return nil, fmt.Errorf("stat config before account removal: %w", statErr)
+	}
+	profiles = profilesReferencing(lockedConfig, tool, accountName)
+	report.ProfilesUpdated = profiles
+	matchConfig := lockedConfig
+
+	// The lifecycle lock excludes use-i and every run-i child for this tool;
+	// the tool lock excludes shared switches. The state decision is made under
+	// state.lock before the first mutation, and --force exempts only active.
+	if err := app.inspectState(func(st *state.State) error {
+		if err := app.accountRmIsolationPreflight(st, tool, accountName); err != nil {
+			return err
+		}
+		active = st.Active[tool] == accountName
+		report.ActiveCleared = active
+		if active && !force {
+			return accountRmActiveError(tool, accountName)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	// Resolve only after config and state have been re-read under their locks;
+	// a refusal must not touch the secret backend.
+	be, err := app.secretBackendForConfig(lockedConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	// Logical removal first (config + state), then physical cleanup (snapshot
-	// dir, secrets). A failure after this point leaves at most an orphaned
-	// keychain item, which kae doctor flags — never a half-edited config.
+	// secrets, dir). Secret refs go before the dir so a partial backend failure
+	// leaves the metadata needed to retry; missing ref deletion is idempotent.
 	if len(profiles) > 0 {
 		if err := app.editConfig(func(e *config.Editor) {
 			for _, name := range profiles {
@@ -135,6 +194,7 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 		}); err != nil {
 			return nil, err
 		}
+		matchConfig = app.Config
 	}
 	// Whether this account is still the active one is decided *inside* the state
 	// lock, not from the copy read above the tool lock: a switch that completed
@@ -147,20 +207,47 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 			return
 		}
 		delete(st.Active, tool)
-		st.ActiveProfile = app.Config.MatchProfile(st.Active)
+		st.ActiveProfile = matchConfig.MatchProfile(st.Active)
 	}); err != nil {
 		return nil, err
-	}
-	if err := os.RemoveAll(app.Paths.AccountDir(tool, accountName)); err != nil {
-		return nil, fmt.Errorf("remove snapshot dir: %w", err)
 	}
 	for _, name := range acc.ArtifactNames() {
 		if err := be.Delete(ctx, acc.Artifacts[name].SecretRef); err != nil {
 			return nil, fmt.Errorf("delete secret %s: %w", acc.Artifacts[name].SecretRef, err)
 		}
 	}
+	if err := os.RemoveAll(app.Paths.AccountDir(tool, accountName)); err != nil {
+		return nil, fmt.Errorf("remove snapshot dir: %w", err)
+	}
 	app.warnPinnedAccountGone(tool, accountName, "")
 	return report, nil
+}
+
+func accountRmActiveError(tool, accountName string) error {
+	return errf(constants.ExitUnsafeRefused,
+		"%s/%s is the active account; switch away first or rerun with --force", tool, accountName)
+}
+
+func (app *App) accountRmIsolationPreflight(st *state.State, tool, accountName string) error {
+	consistent, fragmentErr := app.globalFragmentConsistent(st.Synced)
+	if fragmentErr != nil || !consistent {
+		reason := "does not match state.synced"
+		if fragmentErr != nil {
+			reason = fmt.Sprintf("cannot be read: %v", fragmentErr)
+		}
+		return errf(constants.ExitUnsafeRefused,
+			"the global isolated fragment %s, so account paths cannot be removed safely; stop every process using isolated homes, "+
+				"run `kae use -s %s %s` to regenerate it from state, then retry `kae account rm %s %s`; --force does not bypass this isolation guard",
+			reason, tool, accountName, tool, accountName)
+	}
+	if st.Synced[tool] == accountName {
+		return errf(constants.ExitUnsafeRefused,
+			"account %s/%s is selected by global isolated mode; stop every process using that isolated home "+
+				"(including `kae run -i` children and terminals activated by `kae use -i`), run `kae use -s %s %s`, "+
+				"then switch away or intentionally use --force and retry `kae account rm %s %s`; --force does not bypass this isolation guard",
+			tool, accountName, tool, accountName, tool, accountName)
+	}
+	return nil
 }
 
 func printAccountRm(r *accountRmReport) {
@@ -263,8 +350,8 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		}
 		return report, nil
 	}
-	if app.beforeAccountRenameLocksForTest != nil {
-		app.beforeAccountRenameLocksForTest()
+	if app.beforeAccountMutationLocksForTest != nil {
+		app.beforeAccountMutationLocksForTest()
 	}
 
 	// Isolation lifecycle is outermost: run-i holds its shared side for the child,

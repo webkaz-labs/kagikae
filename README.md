@@ -380,7 +380,7 @@ isolation alone does not yet solve — see "One account per worktree".
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
 | `kae ls` | List accounts and profiles in one view, with each snapshot's credential freshness. |
 | `kae ls --pins` | List every directory bound with `kae pin` — one row per bound directory or worktree. |
-| `kae account rm\|rename` | Delete or rename a captured account. Rename refuses while the old account is selected by global isolation and prints the safe teardown-and-retry sequence. |
+| `kae account rm\|rename` | Delete or rename a captured account. Both refuse while the account is selected by global isolation and print the safe teardown-and-retry sequence; `--force` on removal permits only the active-account case. |
 | `kae profile save\|set\|unset\|rm\|default` | Manage profiles without editing TOML. |
 | `kae env set\|...` | Manage API-key env profiles for `run --env`. |
 | `kae rollback` | Undo the last switch from its backup. |

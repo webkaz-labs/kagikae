@@ -393,6 +393,24 @@ in the same run (the profiles are named in the output); `kae account rm` never
 refuses on a profile reference. Unknown account exits `7` (`not_found`).
 `--dry-run` prints the plan (including the profile edits) and writes nothing.
 
+Removal refuses with exit `10` when global isolated mode selects the account,
+or when the generated global fragment is unreadable or differs from
+`state.json synced`. This applies to `--dry-run` and is not bypassed by
+`--force`; that flag permits only removal of the active account. Stop isolated
+children and terminals, run `kae use -s <tool> <account>` to tear down or
+reconcile global isolation, then switch away or intentionally retry removal
+with `--force`. A real removal also takes the exclusive per-tool isolation
+lifecycle lock before the tool, config, and state locks. A concurrent `run -i`
+child or `use -i` operation therefore returns `lock_busy` (exit `4`) without a
+write. Dry-run remains lock-free and does not promise the later real run will
+find those locks free.
+
+Removal does not harvest credentials and does not migrate or delete retained
+global-isolation homes, credential stores, or their path-derived keychain
+items. After logical config/state removal it deletes the snapshot's recorded
+secret refs before removing the snapshot directory. If backend deletion fails,
+the metadata remains so the same command can be retried after recovery.
+
 `kae account rename <tool> <old> <new>` renames a captured account: it
 copy-then-deletes each secret item (backend keys cannot be renamed in place),
 moves the snapshot directory and metadata, updates `state.json active[tool]`

@@ -43,8 +43,8 @@ type App struct {
 	// Test seams for failures and pre-lock races that cannot be scheduled
 	// deterministically around non-blocking flock acquisition. Both are nil in
 	// production.
-	regenGlobalFragmentForTest      func(map[string]string) error
-	beforeAccountRenameLocksForTest func()
+	regenGlobalFragmentForTest        func(map[string]string) error
+	beforeAccountMutationLocksForTest func()
 	// refusalReported holds the per-directory stores whose un-harvested credential the
 	// pin-level pass has already reported, so writeDirCredential's backstop does not say
 	// it twice (markRefusalReported; docs/CLI.md § kae pin). Scoped to **one bind**: the
@@ -144,10 +144,14 @@ func (app *App) requireConfigFile() error {
 
 // secretBackend resolves the configured secret backend.
 func (app *App) secretBackend() (secret.Backend, error) {
+	return app.secretBackendForConfig(app.Config)
+}
+
+func (app *App) secretBackendForConfig(cfg *config.Config) (secret.Backend, error) {
 	if app.backendForTest != nil {
 		return app.backendForTest, nil
 	}
-	be, err := secret.Resolve(app.Config.Security.SecretBackend, app.Env.GOOS,
+	be, err := secret.Resolve(cfg.Security.SecretBackend, app.Env.GOOS,
 		app.Paths.SecretsDir(), app.Env.LookPath)
 	if err != nil {
 		return nil, err

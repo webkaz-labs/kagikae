@@ -206,6 +206,10 @@ cd - >/dev/null
 # --- account and profile lifecycle (comment-preserving config writer) ------
 # Ordering matters: nothing here may remove an account a later line needs.
 /tmp/kae account rm claude main; test $? -eq 10 # assert: 10 — active, and no --force
+/tmp/kae use -i claude main
+/tmp/kae account rm claude main --force; test $? -eq 10
+                                                # assert: global isolation is never bypassed
+/tmp/kae use -s claude main                     # explicit isolation teardown
 /tmp/kae profile set dev codex side             # a profile that references the account
 /tmp/kae account rename codex side side2 --json
 grep -c side2 "$XDG_CONFIG_HOME/kagikae/config.toml"   # assert: >=1 — the profile ref moved

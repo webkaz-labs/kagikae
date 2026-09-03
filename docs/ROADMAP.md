@@ -29,22 +29,17 @@ stage 3 of the docs scan, filed below.
 ## Current work order — batches first, release after
 
 This is the executable queue. Each step names the existing entry or document that owns
-the detail; it does not restate that contract. The rename work has landed, but the
-isolation-lifecycle hole in account removal is part of the same safety boundary and is
-fixed before the v0.18.0 candidate is frozen.
+the detail; it does not restate that contract. The implementation work for this candidate
+has landed; [RELEASE.md](RELEASE.md) owns the remaining freeze and release procedure.
 
-1. **Implement and verify the decided removal contract** in **`kae account rm` can remove
-   an account while an isolated process still uses its path**. This is the last planned
-   implementation change before the candidate is frozen; it does not include migration or
-   cleanup of retained isolated stores.
-2. **Freeze the v0.18.0 release candidate.** Review the complete diff, including the
+1. **Freeze the v0.18.0 release candidate.** Review the complete diff, including the
    minimum Go version change; resolve generated-lockfile status, install the exact
    candidate, and run the release checks in [RELEASE.md](RELEASE.md).
-3. **Run the full real-machine acceptance as one batch**, following
+2. **Run the full real-machine acceptance as one batch**, following
    [ACCEPTANCE.md](ACCEPTANCE.md), then pay its § Open gates together. The
    `refreshTokenExpiresAt` gate remains a non-blocking observation unless its measured
    result changes a shipped claim.
-4. **Release only after explicit approval** for the main push and CI result, followed by
+3. **Release only after explicit approval** for the main push and CI result, followed by
    separate approval for the tag and public release. Verify the published artifacts as
    [RELEASE.md](RELEASE.md) requires.
 
@@ -1202,10 +1197,10 @@ alternative exists (`secret-tool`).
   shared `state.synced` condition rather than to a tool-specific rotation rule.
 
 - **`kae account rm` can remove an account while an isolated process still uses its
-  path** (measured from the command and lock paths 2026-09-04, **not fixed; contract and
-  ordering decided for v0.18.0, implementation not started**). `buildAccountRm` refuses
-  only when `state.active[tool]` names the account (unless `--force`), then takes the
-  ordinary tool and config locks. It neither checks `state.synced` nor takes the
+  path** (measured from the command and lock paths 2026-09-04, **fixed in the next release
+  candidate; not yet shipped**). Before the fix, `buildAccountRm` refused only when
+  `state.active[tool]` named the account (unless `--force`), then took the ordinary tool
+  and config locks. It neither checked `state.synced` nor took the
   `isolation-<tool>` lifecycle lock. `kae use -i` can select an account different from
   `state.active`, and `kae run -i` records no `state.synced` entry at all; the latter
   holds only the shared lifecycle lock while its child runs. Therefore `account rm` can

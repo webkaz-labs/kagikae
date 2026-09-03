@@ -323,12 +323,13 @@ A per-tool reader/writer lock named `isolation-<tool>` guards account-keyed
 global-isolation paths. `run -i` takes the shared side before materializing the
 home and holds it for the child lifetime, so multiple isolated children may run
 together. `use -i` takes the exclusive side for materialize → `state.synced` →
-fragment generation, and account rename takes it before the tool and config
-locks. Thus rename cannot retire an old path while a child can still refresh it,
-and `use -i` cannot recreate the old-name fragment between rename's preflight and
-commit. The global acquisition order is isolation lifecycle → tool → config →
-state; commands that do not need an outer lock skip it without reversing the
-order.
+fragment generation, and account removal and rename take it before the tool and
+config locks. Thus neither account mutation can retire an old path while a child
+can still refresh it, and `use -i` cannot recreate the old-name binding between
+their preflight and commit. `--force` on removal changes only its active-account
+guard and never skips this lock. The global acquisition order is isolation
+lifecycle → tool → config → state; commands that do not need an outer lock skip
+it without reversing the order.
 
 A fourth, `pin-<pin-id>`, serializes the commands that bind one directory
 (`kae pin`, `kae pin <tool> <account>`, `kae unpin`): they write the credential,
@@ -399,8 +400,9 @@ lock is always innermost (isolation lifecycle → tool → config → state) and
 only for the read plus the write except for that generated-fragment variant, and
 **a decision about the state must be made
 inside the mutation, not from a copy read earlier** — `kae account rm` re-checks
-under the lock whether the account it removes is still the active one, because a
-switch can have completed in between. `TestStateWritesGoThroughTheSeam` keeps the
+under the lock whether the account it removes is active or globally isolated and
+whether the generated fragment matches state, because a switch can have completed
+in between. `TestStateWritesGoThroughTheSeam` keeps the
 seam from being bypassed from the rest of `internal/cmd`, which is as far as it
 globs: `state.Save` stays exported, so nothing else stops a direct write that
 compiles, passes review and fails only under concurrency. `kae rollback` does not

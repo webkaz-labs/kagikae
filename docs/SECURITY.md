@@ -89,8 +89,13 @@ below — a stored key kae has no snapshot for cannot be found by asking snapsho
   carries `secret = ...` lines; only `attribute.key` is read and the raw output
   is never logged, so no secret value leaks.
 
-`kae account rm` deletes the snapshot dir and every secret item together, so
-orphans are rare; the check catches leftovers from manual cleanup.
+`kae account rm` deletes every recorded secret ref before deleting the snapshot
+directory. A backend failure therefore retains the metadata needed to retry;
+successful deletion followed by a directory-removal failure is also retryable
+because deleting a missing backend ref is idempotent. The command first excludes
+isolated children/updates and refuses a target still selected by global isolation,
+including under `--force`. It does not harvest or delete retained isolation homes.
+The orphan check still catches leftovers from manual cleanup.
 
 The check reads **only the account namespace** (`secret.AccountKey`): a backup,
 companion, or env-profile key has no `accounts/<tool>/<account>` dir behind it by

@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
@@ -108,7 +109,7 @@ func TestAccountRmDropsProfileReference(t *testing.T) {
 	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, commonOpts{Format: formatText}, "claude", "main") })
 	mustExit(t, constants.ExitOK, code, out)
 
-	writeConfigFile(t, app, "version = 1\n[profiles.alt.accounts]\nclaude = \"side\"\ncodex = \"main\"\n")
+	writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n[profiles.alt.accounts]\nclaude = \"side\"\ncodex = \"main\"\n")
 
 	report, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, "claude", "side", false)
 	if err != nil {
@@ -139,6 +140,288 @@ func TestAccountRmDryRunWritesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(app.Paths.AccountDir("claude", "side")); err != nil {
 		t.Fatalf("dry-run removed the snapshot dir: %v", err)
+	}
+}
+
+func TestAccountRmRefusesGloballyIsolatedTargetEvenWithForce(t *testing.T) {
+	for _, tool := range []string{constants.ToolClaude, constants.ToolCodex} {
+		t.Run(tool, func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			if tool == constants.ToolClaude {
+				captureClaude(t, app, "main", mainToken)
+			} else {
+				seedCodex(t, app, "codex-main-token")
+				code, out := captureStdout(t, func() int {
+					return runCapture(ctx, app, commonOpts{Format: formatText}, tool, "main")
+				})
+				mustExit(t, constants.ExitOK, code, out)
+			}
+			st, err := app.loadState()
+			if err != nil {
+				t.Fatal(err)
+			}
+			st.Synced = map[string]string{tool: "main"}
+			if err := state.Save(app.Paths.StateFile(), st); err != nil {
+				t.Fatal(err)
+			}
+			if err := app.regenGlobalFragment(st.Synced); err != nil {
+				t.Fatal(err)
+			}
+
+			for _, tc := range []struct {
+				dryRun bool
+				force  bool
+			}{{false, false}, {false, true}, {true, true}} {
+				_, err := buildAccountRm(ctx, app,
+					commonOpts{Format: formatText, DryRun: tc.dryRun}, tool, "main", tc.force)
+				if exitOf(err) != constants.ExitUnsafeRefused || !strings.Contains(err.Error(), "--force does not bypass") {
+					t.Fatalf("dry_run=%v force=%v: exit=%d err=%v", tc.dryRun, tc.force, exitOf(err), err)
+				}
+				if _, found, loadErr := account.Load(app.Paths.AccountDir(tool, "main")); loadErr != nil || !found {
+					t.Fatalf("refusal removed snapshot: found=%v err=%v", found, loadErr)
+				}
+			}
+		})
+	}
+}
+
+func TestAccountRmIsolationRefusalUsesJSONContract(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Synced = map[string]string{"claude": "main"}
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.regenGlobalFragment(st.Synced); err != nil {
+		t.Fatal(err)
+	}
+	_, rmErr := buildAccountRm(ctx, app, commonOpts{Format: formatJSON}, "claude", "main", true)
+	code, textOut := captureStderr(t, func() int { return finish(commonOpts{Format: formatText}, rmErr) })
+	if code != constants.ExitUnsafeRefused || !strings.Contains(textOut, "--force does not bypass this isolation guard") {
+		t.Fatalf("unexpected text refusal: exit=%d output=%q", code, textOut)
+	}
+	code, out := captureStdout(t, func() int { return finish(commonOpts{Format: formatJSON}, rmErr) })
+	mustExit(t, constants.ExitUnsafeRefused, code, out)
+	var report errorReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.ErrorCode != constants.CodeUnsafeRefused || !strings.Contains(report.Message, "kae use -s claude main") {
+		t.Fatalf("unexpected JSON refusal: %+v", report)
+	}
+}
+
+func TestAccountRmRefusesWhileRunIsolatedHoldsLifecycleLock(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	held, err := lock.AcquireShared(app.Paths.LocksDir(), isolationLifecycleLockName(constants.ToolClaude))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+
+	_, err = buildAccountRm(context.Background(), app, commonOpts{Format: formatText}, "claude", "main", true)
+	if exitOf(err) != constants.ExitLockBusy {
+		t.Fatalf("force bypassed the run-i lifecycle lock: exit=%d err=%v", exitOf(err), err)
+	}
+}
+
+func TestAccountRmRechecksActiveAfterTakingLocks(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	captureClaude(t, app, "side", sideToken)
+	app.beforeAccountMutationLocksForTest = func() {
+		st, err := app.loadState()
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.Active["claude"] = "main"
+		if err := state.Save(app.Paths.StateFile(), st); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, "claude", "main", false)
+	if exitOf(err) != constants.ExitUnsafeRefused {
+		t.Fatalf("locked active recheck did not refuse: exit=%d err=%v", exitOf(err), err)
+	}
+	if _, found, loadErr := account.Load(app.Paths.AccountDir("claude", "main")); loadErr != nil || !found {
+		t.Fatalf("active refusal removed snapshot: found=%v err=%v", found, loadErr)
+	}
+}
+
+func TestAccountRmDeleteFailureLeavesSnapshotForRetry(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	captureClaude(t, app, "side", sideToken)
+	realBackend := testBackend(t, app)
+	app.backendForTest = deleteFailBackend{Backend: realBackend, failFor: "/main/"}
+
+	if _, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, "claude", "main", false); err == nil {
+		t.Fatal("account rm succeeded despite injected secret deletion failure")
+	}
+	if _, found, err := account.Load(app.Paths.AccountDir("claude", "main")); err != nil || !found {
+		t.Fatalf("retry metadata was removed before secret cleanup completed: found=%v err=%v", found, err)
+	}
+	app.backendForTest = realBackend
+	if _, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, "claude", "main", false); err != nil {
+		t.Fatalf("retry after backend recovery failed: %v", err)
+	}
+}
+
+func TestAccountRmRefusesFragmentMismatchUntilUseSharedReconcilesIt(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	captureClaude(t, app, "main", mainToken)
+	if code := runUseIsolated(ctx, app, opts, "claude", "main"); code != constants.ExitOK {
+		t.Fatalf("use -i exit %d", code)
+	}
+	home := app.Paths.GlobalIsolatedHomeDir("claude", "main")
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(st.Synced, "claude")
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := buildAccountRm(ctx, app, opts, "claude", "main", true); exitOf(err) != constants.ExitUnsafeRefused {
+		t.Fatalf("fragment mismatch was not refused: exit=%d err=%v", exitOf(err), err)
+	}
+	if code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") }); code != constants.ExitOK {
+		t.Fatalf("use -s exit=%d output=%s", code, out)
+	}
+	if _, err := buildAccountRm(ctx, app, opts, "claude", "main", true); err != nil {
+		t.Fatalf("rm remained blocked after reconciliation: %v", err)
+	}
+	if _, err := os.Stat(home); err != nil {
+		t.Fatalf("account rm removed the retained isolated home: %v", err)
+	}
+}
+
+func TestAccountRmPreservesOtherSyncedToolAndFragment(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	captureClaude(t, app, "side", sideToken)
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Synced = map[string]string{"codex": "main"}
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.regenGlobalFragment(st.Synced); err != nil {
+		t.Fatal(err)
+	}
+	fragmentBefore := readFile(t, app.Paths.MiseGlobalFragmentFile())
+
+	if _, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, "claude", "main", false); err != nil {
+		t.Fatal(err)
+	}
+	after, err := app.loadState()
+	if err != nil || after.Synced["codex"] != "main" {
+		t.Fatalf("other synced tool changed: state=%+v err=%v", after, err)
+	}
+	if got := readFile(t, app.Paths.MiseGlobalFragmentFile()); got != fragmentBefore {
+		t.Fatal("account rm rewrote another tool's global fragment")
+	}
+}
+
+func TestAccountRmRecomputesProfilesUnderConfigLock(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	captureClaude(t, app, "side", sideToken)
+	writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n")
+	app.beforeAccountMutationLocksForTest = func() {
+		writeFile(t, app.ConfigPath, "version = 1\n[security]\nsecret_backend = \"file\"\n[profiles.alt.accounts]\nclaude = \"main\"\n")
+	}
+
+	report, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, "claude", "main", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.ProfilesUpdated) != 1 || report.ProfilesUpdated[0] != "alt" {
+		t.Fatalf("concurrent profile reference was not reported: %v", report.ProfilesUpdated)
+	}
+	cfg, _, err := config.Load(app.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := cfg.Profiles["alt"].Accounts["claude"]; exists {
+		t.Fatalf("concurrent profile reference survived: %+v", cfg.Profiles["alt"])
+	}
+}
+
+func TestAccountRmRechecksSnapshotUnderToolLock(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	captureClaude(t, app, "side", sideToken)
+	be := testBackend(t, app)
+	extraRef := account.SecretRef("claude", "main", "extra")
+	before, found, err := account.Load(app.Paths.AccountDir("claude", "main"))
+	if err != nil || !found {
+		t.Fatalf("load initial snapshot: found=%v err=%v", found, err)
+	}
+	wantRemoved := len(before.Artifacts) + 1
+	app.beforeAccountMutationLocksForTest = func() {
+		acc, found, err := account.Load(app.Paths.AccountDir("claude", "main"))
+		if err != nil || !found {
+			t.Fatalf("load concurrent snapshot: found=%v err=%v", found, err)
+		}
+		art := acc.Artifacts[acc.ArtifactNames()[0]]
+		art.SecretRef = extraRef
+		acc.Artifacts["extra"] = art
+		if err := be.Set(ctx, extraRef, []byte("extra-payload")); err != nil {
+			t.Fatal(err)
+		}
+		if err := account.Save(app.Paths.AccountDir("claude", "main"), acc); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	report, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, "claude", "main", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.SecretsRemoved != wantRemoved {
+		t.Fatalf("secrets_removed=%d want %d", report.SecretsRemoved, wantRemoved)
+	}
+	if _, ok, err := be.Get(ctx, extraRef); err != nil || ok {
+		t.Fatalf("concurrently captured secret survived: present=%v err=%v", ok, err)
+	}
+}
+
+func TestAccountRmRechecksUseIsolatedRaceUnderLifecycleLock(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	captureClaude(t, app, "side", sideToken)
+	app.beforeAccountMutationLocksForTest = func() {
+		if code := runUseIsolated(ctx, app, commonOpts{Format: formatText}, "claude", "main"); code != constants.ExitOK {
+			t.Fatalf("racing use -i exit %d", code)
+		}
+	}
+
+	_, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, "claude", "main", true)
+	if exitOf(err) != constants.ExitUnsafeRefused {
+		t.Fatalf("use-i race was not rechecked: exit=%d err=%v", exitOf(err), err)
+	}
+	if _, found, loadErr := account.Load(app.Paths.AccountDir("claude", "main")); loadErr != nil || !found {
+		t.Fatalf("use-i race refusal removed snapshot: found=%v err=%v", found, loadErr)
 	}
 }
 
@@ -184,7 +467,7 @@ func TestAccountRenameRechecksDestinationAfterTakingLocks(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
 	captureClaude(t, app, "main", mainToken)
-	app.beforeAccountRenameLocksForTest = func() {
+	app.beforeAccountMutationLocksForTest = func() {
 		captureClaude(t, app, "side", sideToken)
 	}
 
@@ -201,7 +484,7 @@ func TestAccountRenameRechecksSourceAfterTakingLocks(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
 	captureClaude(t, app, "main", mainToken)
-	app.beforeAccountRenameLocksForTest = func() {
+	app.beforeAccountMutationLocksForTest = func() {
 		if err := os.RemoveAll(app.Paths.AccountDir("claude", "main")); err != nil {
 			t.Fatal(err)
 		}
@@ -504,7 +787,7 @@ func TestAccountRenameRecomputesProfileReferencesUnderConfigLock(t *testing.T) {
 			captureClaude(t, app, "main", mainToken)
 			writeConfigFile(t, app, tc.initial)
 			// Write as a separate process would: leave this App's cached config stale.
-			app.beforeAccountRenameLocksForTest = func() { writeFile(t, app.ConfigPath, tc.concurrent) }
+			app.beforeAccountMutationLocksForTest = func() { writeFile(t, app.ConfigPath, tc.concurrent) }
 
 			report, err := buildAccountRename(ctx, app, commonOpts{Format: formatText}, "claude", "main", "side")
 			if err != nil {
@@ -550,7 +833,7 @@ func TestAccountRenameMatchesActiveProfileAgainstLockedConfig(t *testing.T) {
 			writeConfigFile(t, app, tc.initial)
 			// This profile never references the old account, so the config editor is
 			// skipped. Only the under-lock reload can make ActiveProfile current.
-			app.beforeAccountRenameLocksForTest = func() { writeFile(t, app.ConfigPath, tc.concurrent) }
+			app.beforeAccountMutationLocksForTest = func() { writeFile(t, app.ConfigPath, tc.concurrent) }
 
 			report, err := buildAccountRename(ctx, app, commonOpts{Format: formatText}, "claude", "main", "side")
 			if err != nil {

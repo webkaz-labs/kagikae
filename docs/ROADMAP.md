@@ -32,10 +32,11 @@ This is the executable queue. Each step names the existing entry or document tha
 the detail; it does not restate that contract. [RELEASE.md](RELEASE.md) keeps no active
 target until the implementation steps below have landed.
 
-1. **Settle the fail-closed contract** in **`kae account rename` leaves `state.synced`
-   and the global fragment on the old name**. It must preserve the newest isolated-store
-   credential before teardown and interlock rename with a concurrent `kae use -i`; that
-   entry owns the boundary between this fix and a future path migration.
+1. **Use the settled fail-closed contract** in **`kae account rename` leaves
+   `state.synced` and the global fragment on the old name**. Refuse while global isolation
+   selects the old account; tell the user to stop processes using that home, return the
+   tool to shared mode, and retry. Interlock the rename with `kae use -i` and `kae run -i`,
+   and retain the old home rather than migrating or deleting it.
 2. **Implement and verify that contract**, including command output, JSON/exit behaviour,
    tests, completion impact, and every documentation surface the changed contract owns.
 3. **Freeze the release candidate.** Choose the version only after reviewing the complete
@@ -1157,18 +1158,24 @@ alternative exists (`secret-tool`).
   `credstore/<tool>/<old>` — an account no longer captured — so a refresh the tool
   performs afterwards lands in a store nothing will harvest.
   `TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads` asserts the snapshot and
-  deliberately stops short of this. The next design is **fail closed rather than migrate
-  paths live**: if any `st.Synced[tool]` selects `<old>`, the rename cannot proceed until
-  processes using that isolated home have stopped and the newest credential in its store
-  has been safely attributed and captured before teardown. The preflight also has to be
-  interlocked with `kae use -i` from its check through the rename commit; checking
-  `state.synced` and renaming under separate lock lifetimes leaves a race that can recreate
-  the old-name fragment. The existing `kae use -s` path is not the remedy by itself: it
-  recaptures the real store, not the isolated store being retired.
+  deliberately stops short of this. The settled contract is **fail closed rather than
+  migrate paths live**: if any `st.Synced[tool]` selects `<old>`, reject with
+  `unsafe_refused` before the first rename mutation. Tell the user to stop every process
+  using the old isolated home, run `kae use -s <tool> <old>` to return that tool to shared
+  mode, then retry the rename. The shared switch does not harvest the isolated store, but
+  it leaves the old home and credential store in place; the retried rename's existing
+  disk-reader harvest captures that copy before changing the account.
+  The check and rename commit must also be interlocked with the `kae use -i` operation and
+  with the full lifetime of `kae run -i`. Checking `state.synced` under a separate lock
+  lifetime leaves a race that can recreate the old-name fragment, while `run -i` never
+  records `state.synced` and can refresh the old store until its child exits. A dedicated
+  per-tool isolation-path lock may preserve concurrent isolated runs; reusing the existing
+  exclusive tool lock may not serialize unrelated shared switches or two `run -i` calls.
   Pointing the fragment at `<new>` instead is not the small fix it appears to be: it also
   requires moving the isolated home and re-keying the credential store while processes may
   still hold the old paths. That migration remains a separate product decision; do not
-  smuggle it into the refusal implementation. Remapping `st.Synced` alone is still wrong,
+  smuggle it into the refusal implementation. The old home, session files, and keychain
+  item remain recoverable after rename. Remapping `st.Synced` alone is still wrong,
   because it would point the fragment at a home that does not exist.
   **For claude this loses a login rather than leaving a leftover, and the wording above
   ("a store nothing will harvest") is too mild for it** (measured 2026-08-16). The

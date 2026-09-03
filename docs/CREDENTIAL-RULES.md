@@ -240,8 +240,12 @@ destination and must not do it. Both the account's own credential store and a
 per-directory one are in scope, and the readers of the first include a globally isolated
 home with no binding at all, which a walk of the bound directories does not reach
 (`TestAccountRenameHarvestsWhatTheBoundDirectoryIsReading` and
-`TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads` re-run the pair). And a
-payload kae could not read or date is deleted by `--purge` too, for the first exception's
+`TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads` re-run the pair). A rename
+while `state.synced` still selects that home is refused; after the documented
+shared-mode teardown, the retained home must remain a reader **from disk**, not from
+`state.synced`, so the retried rename can still attribute and harvest it. Changing that
+enumeration to the state map would make following kae's own remedy lose the newest copy.
+A payload kae could not read or date is deleted by `--purge` too, for the first exception's
 reason rather than as a rule of its own: keeping it strands a secret **nothing kae offers
 can remove**, since a per-directory item is addressable only from the string kae hashes
 its service name from and that sweep is the only path to it — so it reaches only what that

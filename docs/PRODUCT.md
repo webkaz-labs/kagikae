@@ -98,7 +98,7 @@ already matches. `--quiet` suppresses the success report; `--json` keeps the
 | Flag | Environment | Behavior |
 |------|-------------|----------|
 | `-s` (default) | real home | backup → apply → run → recapture refreshed creds → restore. Both of the last two are conditional and per tool: the recapture is declined where kae cannot say whose the live copy is or cannot order it against the snapshot (and then the copy it declines is backed up rather than lost), and the restore is skipped where it would put back a credential the child has superseded ([CLI.md](CLI.md) § kae run Semantics is normative for all of it); per-tool lock held for the child run |
-| `-i` | global isolated home | reuses `isolation/global/<tool>/<account>/` shared with `kae use -i`; no lock, no live mutation — the right choice for concurrent interactive sessions |
+| `-i` | global isolated home | reuses `isolation/global/<tool>/<account>/` shared with `kae use -i`; no live-store lock or live mutation. A shared path-lifecycle lock permits concurrent `run -i` children while excluding rename — the right choice for concurrent interactive sessions |
 | `--env` | env vars only | injects the profile's env vars; no home redirect, no lock |
 
 `run -i` prints the exact isolated home path and that it is shared with

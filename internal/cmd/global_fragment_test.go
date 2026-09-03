@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
@@ -128,5 +129,26 @@ func TestUseIsolatedDryRun(t *testing.T) {
 	}
 	if _, err := os.Stat(app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")); !os.IsNotExist(err) {
 		t.Fatalf("dry-run must not create the isolated home (err=%v)", err)
+	}
+}
+
+func TestUseIsolatedRefusesWhileAccountPathsAreBeingRenamed(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	held, err := lock.Acquire(app.Paths.LocksDir(), isolationLifecycleLockName(constants.ToolClaude))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+
+	code, out := captureStdout(t, func() int {
+		return runUseIsolated(context.Background(), app, commonOpts{Format: formatText}, "claude", "main")
+	})
+	mustExit(t, constants.ExitLockBusy, code, out)
+	if _, err := os.Stat(app.Paths.MiseGlobalFragmentFile()); !os.IsNotExist(err) {
+		t.Fatalf("busy use -i wrote the fragment: %v", err)
+	}
+	if _, err := os.Stat(app.Paths.GlobalIsolatedHomeDir("claude", "main")); !os.IsNotExist(err) {
+		t.Fatalf("busy use -i materialized the home: %v", err)
 	}
 }

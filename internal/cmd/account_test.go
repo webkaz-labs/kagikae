@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -182,6 +183,82 @@ func TestAccountRenameUnknownOldExitsNotFound(t *testing.T) {
 	app := testApp(t, nil)
 	if _, err := buildAccountRename(context.Background(), app, commonOpts{Format: formatText}, "claude", "ghost", "new"); exitOf(err) != constants.ExitNotFound {
 		t.Fatalf("expected exit %d, got %v", constants.ExitNotFound, err)
+	}
+}
+
+func TestAccountRenameRefusesTheGloballyIsolatedAccountWithoutWriting(t *testing.T) {
+	for _, tool := range []string{constants.ToolClaude, constants.ToolCodex} {
+		t.Run(tool, func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			opts := commonOpts{Format: formatText}
+			if tool == constants.ToolClaude {
+				captureClaude(t, app, "main", mainToken)
+			} else {
+				seedCodex(t, app, "codex-main-token")
+				code, out := captureStdout(t, func() int {
+					return runCapture(ctx, app, opts, tool, "main")
+				})
+				mustExit(t, constants.ExitOK, code, out)
+			}
+			code, out := captureStdout(t, func() int {
+				return runUseIsolated(ctx, app, opts, tool, "main")
+			})
+			mustExit(t, constants.ExitOK, code, out)
+
+			metaPath := app.Paths.AccountDir(tool, "main") + "/account.toml"
+			before := readFile(t, metaPath)
+			for _, dryRun := range []bool{false, true} {
+				_, err := buildAccountRename(ctx, app,
+					commonOpts{Format: formatText, DryRun: dryRun}, tool, "main", "side")
+				if exitOf(err) != constants.ExitUnsafeRefused {
+					t.Fatalf("dry_run=%v: exit=%d err=%v", dryRun, exitOf(err), err)
+				}
+				message := err.Error()
+				for _, want := range []string{
+					"stop every process", "kae run -i", "kae use -i",
+					"kae use -s " + tool + " main", "kae account rename " + tool + " main side",
+				} {
+					if !strings.Contains(message, want) {
+						t.Fatalf("dry_run=%v: refusal does not contain %q: %s", dryRun, want, message)
+					}
+				}
+				if got := readFile(t, metaPath); got != before {
+					t.Fatalf("dry_run=%v: refusal rewrote the old snapshot", dryRun)
+				}
+				if _, err := os.Stat(app.Paths.AccountDir(tool, "side")); !os.IsNotExist(err) {
+					t.Fatalf("dry_run=%v: refusal created the new snapshot: %v", dryRun, err)
+				}
+				st, err := app.loadState()
+				if err != nil || st.Synced[tool] != "main" {
+					t.Fatalf("dry_run=%v: refusal changed synced: state=%+v err=%v", dryRun, st, err)
+				}
+			}
+		})
+	}
+}
+
+func TestAccountRenameGlobalIsolationRefusalUsesTheJSONErrorContract(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	code, out := captureStdout(t, func() int {
+		return runUseIsolated(ctx, app, commonOpts{Format: formatText}, "claude", "main")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	_, renameErr := buildAccountRename(ctx, app,
+		commonOpts{Format: formatJSON, DryRun: true}, "claude", "main", "side")
+	code, out = captureStdout(t, func() int {
+		return finish(commonOpts{Format: formatJSON}, renameErr)
+	})
+	mustExit(t, constants.ExitUnsafeRefused, code, out)
+	var report errorReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("decode JSON error: %v\n%s", err, out)
+	}
+	if report.OK || report.ErrorCode != constants.CodeUnsafeRefused ||
+		!strings.Contains(report.Message, "kae use -s claude main") {
+		t.Fatalf("unexpected JSON refusal: %+v", report)
 	}
 }
 

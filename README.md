@@ -380,7 +380,7 @@ isolation alone does not yet solve — see "One account per worktree".
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
 | `kae ls` | List accounts and profiles in one view, with each snapshot's credential freshness. |
 | `kae ls --pins` | List every directory bound with `kae pin` — one row per bound directory or worktree. |
-| `kae account rm\|rename` | Delete or rename a captured account. |
+| `kae account rm\|rename` | Delete or rename a captured account. Rename refuses while the old account is selected by global isolation and prints the safe teardown-and-retry sequence. |
 | `kae profile save\|set\|unset\|rm\|default` | Manage profiles without editing TOML. |
 | `kae env set\|...` | Manage API-key env profiles for `run --env`. |
 | `kae rollback` | Undo the last switch from its backup. |
@@ -413,8 +413,10 @@ exit code — see [docs/CLI.md](docs/CLI.md).
   or purging a directory harvests the newer copy into the account snapshot first,
   instead of logging the directory out hours later. `kae account rename` harvests too,
   into the name it renames *from*, so the renamed account carries the live login rather
-  than the older snapshot — re-bind the directory afterwards, as the rename tells you to,
-  and it gets that copy. It warns on stderr, before applying, when the account you are switching
+  than the older snapshot. When global isolation still selects that name, rename first
+  refuses and tells you to stop its isolated processes, return it to shared mode, and
+  retry; the retained old home is then harvested before the rename. Re-bind a directory
+  afterwards, as the rename tells you to, and it gets that copy. It warns on stderr, before applying, when the account you are switching
   to needs a re-login (expired with no usable refresh token, or emptied by the tool
   after a failed refresh) and names the tool's login command; `kae doctor` flags
   the same snapshots and orphaned secret items.

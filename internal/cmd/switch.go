@@ -328,9 +328,10 @@ type globalIsolateReport struct {
 // a single explicit unsupported tool exits 5. When mise activation is not
 // detected it prints the export fallback for the current shell.
 //
-// Unlike the shared switch it takes no per-tool locks and writes no backup: it
-// mutates no live credential store, only kae's own data dirs and state.json
-// (mirroring kae pin, which is also lock-free).
+// Unlike the shared switch it takes no live-store tool locks and writes no backup:
+// it mutates no live credential store, only kae's own data dirs and state.json. Its
+// exclusive isolation-lifecycle lock serializes those account-keyed paths with
+// rename and isolated children without blocking an unrelated shared switch.
 func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name string) int {
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
@@ -374,6 +375,11 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 		fmt.Printf("Would write %s\n", report.Fragment)
 		return constants.ExitOK
 	}
+	lifecycleLocks, err := app.acquireIsolationLifecycleWriters(runTargetTools(supported))
+	if err != nil {
+		return finish(opts, err)
+	}
+	defer releaseLocks(lifecycleLocks)
 
 	be, err := app.secretBackend()
 	if err != nil {
@@ -384,7 +390,7 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 			return finish(opts, fmt.Errorf("materialize credential for %s/%s: %w", r.Tool, r.Account, err))
 		}
 	}
-	st, err := app.mutateState(func(st *state.State) {
+	st, err := app.mutateSyncedAndFragment(func(st *state.State) {
 		if st.Synced == nil {
 			st.Synced = map[string]string{}
 		}
@@ -395,10 +401,6 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 	if err != nil {
 		return finish(opts, err)
 	}
-	if err := app.regenGlobalFragment(st.Synced); err != nil {
-		return finish(opts, err)
-	}
-
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}

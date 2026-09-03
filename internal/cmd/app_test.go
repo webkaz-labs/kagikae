@@ -45,7 +45,7 @@ func TestClaudeDriverGetenvPrecedence(t *testing.T) {
 // spurious lock_busy, or as two writers to state.json that both think they hold
 // it.
 func TestNonToolLockNamesDoNotCollideWithTools(t *testing.T) {
-	for _, name := range []string{lockNameConfig, lockNameState} {
+	for _, name := range []string{lockNameConfig, lockNameState, lockNameIsolationPrefix} {
 		if constants.IsTool(name) {
 			t.Errorf("lock name %q is also a tool id; give it a name no tool can take", name)
 		}
@@ -55,6 +55,9 @@ func TestNonToolLockNamesDoNotCollideWithTools(t *testing.T) {
 	for _, tool := range constants.Tools {
 		if strings.HasPrefix(tool, "pin-") {
 			t.Errorf("tool id %q collides with the pin-<pin-id> lock namespace", tool)
+		}
+		if strings.HasPrefix(tool, lockNameIsolationPrefix) {
+			t.Errorf("tool id %q collides with the isolation-<tool> lock namespace", tool)
 		}
 	}
 }
@@ -81,6 +84,22 @@ func TestStateWritesGoThroughTheSeam(t *testing.T) {
 		if strings.Contains(string(data), "state.Save(") {
 			t.Errorf("%s writes state.json directly; go through App.mutateState so the write "+
 				"re-reads under the state lock", name)
+		}
+	}
+}
+
+// state.synced and the global fragment are one logical record. This structural
+// guard prevents a caller from saving one through mutateState and regenerating
+// the other after the state lock has already been released.
+func TestSyncedWritesKeepTheFragmentInsideTheStateSeam(t *testing.T) {
+	for _, name := range []string{"switch.go", "global_fragment.go"} {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "mutateState(func(st *state.State)") ||
+			strings.Contains(string(data), "regenGlobalFragment(st.Synced)") {
+			t.Errorf("%s splits a synced state write from fragment regeneration; use mutateSyncedAndFragment", name)
 		}
 	}
 }

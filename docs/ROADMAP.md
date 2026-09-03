@@ -1199,6 +1199,26 @@ alternative exists (`secret-tool`).
   claude's and the leftover half is everyone's. The refusal therefore applies to the
   shared `state.synced` condition rather than to a tool-specific rotation rule.
 
+- **`kae account rm` can remove an account while an isolated process still uses its
+  path** (measured from the command and lock paths 2026-09-04, **not fixed; ordering
+  undecided and implementation not started**). `buildAccountRm` refuses only when
+  `state.active[tool]` names the account (unless `--force`), then takes the ordinary
+  tool and config locks. It neither checks `state.synced` nor takes the
+  `isolation-<tool>` lifecycle lock. `kae use -i` can select an account different from
+  `state.active`, and `kae run -i` records no `state.synced` entry at all; the latter
+  holds only the shared lifecycle lock while its child runs. Therefore `account rm` can
+  delete the snapshot and its secret-backend refs while the global fragment or a child
+  still names the account-derived home and credential store. A later refresh can leave
+  the only usable copy under a name kae no longer captures, while the persistent fragment
+  can keep exporting that removed name.
+  This is not the rename fix repeated. Rename has a destination and can harvest into the
+  old snapshot before its copy stage carries that credential forward; `account rm` has no
+  destination, and [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Never harvest a copy you
+  cannot attribute explicitly forbids preserving by recreating the account being removed.
+  The eventual work must first settle the removal/refusal contract, then interlock rm with
+  the isolation lifecycle without smuggling in deletion or migration of retained homes.
+  This entry deliberately does not place that work before or after the next release.
+
 - **`kae account rename` / `kae account rm` delete a recorded `SecretRef`
   verbatim** (recorded 2026-07-31, **deliberately not fixed**). Both delete the ref
   the snapshot's metadata names, without checking it is the ref this account would

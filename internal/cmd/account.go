@@ -254,13 +254,21 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		ActiveUpdated: activeUpdate,
 	}
 	if opts.DryRun {
+		if st.Synced[tool] == oldName {
+			return nil, accountRenameGloballyIsolatedError(tool, oldName, newName)
+		}
 		return report, nil
 	}
 
-	be, err := app.secretBackend()
+	// Isolation lifecycle is outermost: run-i holds its shared side for the child,
+	// while use-i takes the same exclusive side before materializing or recording a
+	// path. Taking it before tool/config/state keeps the global lock order acyclic.
+	lifecycleLocks, err := app.acquireIsolationLifecycleWriters([]string{tool})
 	if err != nil {
 		return nil, err
 	}
+	defer releaseLocks(lifecycleLocks)
+
 	locks, err := app.acquireLocks([]string{tool})
 	if err != nil {
 		return nil, err
@@ -271,6 +279,21 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		return nil, err
 	}
 	defer cfgLock.Release()
+	// Re-read under the state lock while the tool lock excludes a shared teardown
+	// and the exclusive lifecycle lock excludes `use -i` and every `run -i` child.
+	// This is a precondition, not a state mutation: a refused rename writes nothing.
+	if err := app.inspectState(func(st *state.State) error {
+		if st.Synced[tool] == oldName {
+			return accountRenameGloballyIsolatedError(tool, oldName, newName)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	be, err := app.secretBackend()
+	if err != nil {
+		return nil, err
+	}
 
 	// The harvest below and stage 1 read the same ref — the pass compares the old snapshot's
 	// payload, then stage 1 copies it — which is one extra `security` subprocess per rename
@@ -388,6 +411,14 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	}
 	app.warnPinnedAccountGone(tool, oldName, newName)
 	return report, nil
+}
+
+func accountRenameGloballyIsolatedError(tool, oldName, newName string) error {
+	return errf(constants.ExitUnsafeRefused,
+		"account %s/%s is selected by global isolated mode; stop every process using that isolated home "+
+			"(including `kae run -i` children and terminals activated by `kae use -i`), run `kae use -s %s %s`, "+
+			"then retry `kae account rename %s %s %s`",
+		tool, oldName, tool, oldName, tool, oldName, newName)
 }
 
 func printAccountRename(r *accountRenameReport) {

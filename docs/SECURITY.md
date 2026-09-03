@@ -250,8 +250,10 @@ from refreshing tokens concurrently. Therefore:
   silent repair.
 
 `kae run -i` operates in the global isolated home (`isolation/global/<tool>/<account>/`)
-with no lock and no live mutation. It is safe to run concurrently with
-`kae use` in other terminals — the real home is never touched.
+with no live-store tool lock and no live mutation. It is safe to run concurrently
+with shared `kae use` in other terminals — the real home is never touched. Its
+shared path-lifecycle lock permits another `run -i`, but excludes account rename
+until the child exits.
 
 ## Isolation Safety
 

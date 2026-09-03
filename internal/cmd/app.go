@@ -166,8 +166,9 @@ func (app *App) enabledTools() []string {
 // tool's lock with an unrelated critical section — guarded by
 // TestNonToolLockNamesDoNotCollideWithTools.
 const (
-	lockNameConfig = "config"
-	lockNameState  = "state"
+	lockNameConfig          = "config"
+	lockNameState           = "state"
+	lockNameIsolationPrefix = "isolation-"
 )
 
 // acquireLocks takes per-tool locks in canonical order; on failure it
@@ -212,6 +213,65 @@ func (app *App) acquireNamedLock(name, busy string) (*lock.Lock, error) {
 	return l, nil
 }
 
+// acquireNamedSharedLock is the shared-holder counterpart to acquireNamedLock.
+// It is used only for isolation lifecycle readers: several isolated children may
+// use their account-keyed homes at once, while a rename takes the exclusive side.
+func (app *App) acquireNamedSharedLock(name, busy string) (*lock.Lock, error) {
+	l, err := lock.AcquireShared(app.Paths.LocksDir(), name)
+	if err != nil {
+		if errors.Is(err, lock.ErrBusy) {
+			return nil, errf(constants.ExitLockBusy, "%s", busy)
+		}
+		return nil, err
+	}
+	return l, nil
+}
+
+func isolationLifecycleLockName(tool string) string {
+	return lockNameIsolationPrefix + tool
+}
+
+// acquireIsolationLifecycleReaders takes the shared side in canonical tool order.
+// `run -i` holds it for the child lifetime. `use -i` and account rename take the
+// exclusive side, while several isolated children may keep running concurrently.
+func (app *App) acquireIsolationLifecycleReaders(tools []string) ([]*lock.Lock, error) {
+	return app.acquireIsolationLifecycleLocks(tools, true)
+}
+
+func (app *App) acquireIsolationLifecycleWriters(tools []string) ([]*lock.Lock, error) {
+	return app.acquireIsolationLifecycleLocks(tools, false)
+}
+
+func (app *App) acquireIsolationLifecycleLocks(tools []string, shared bool) ([]*lock.Lock, error) {
+	wanted := map[string]bool{}
+	for _, tool := range tools {
+		wanted[tool] = true
+	}
+	locks := []*lock.Lock{}
+	for _, tool := range constants.Tools {
+		if !wanted[tool] {
+			continue
+		}
+		var (
+			l   *lock.Lock
+			err error
+		)
+		if shared {
+			l, err = app.acquireNamedSharedLock(isolationLifecycleLockName(tool),
+				fmt.Sprintf("another kae process is changing %s isolated account paths; retry shortly", tool))
+		} else {
+			l, err = app.acquireNamedLock(isolationLifecycleLockName(tool),
+				fmt.Sprintf("another kae process is using or changing %s isolated account paths; stop it or retry after it exits", tool))
+		}
+		if err != nil {
+			releaseLocks(locks)
+			return nil, err
+		}
+		locks = append(locks, l)
+	}
+	return locks, nil
+}
+
 // acquireConfigLock takes the shared config lock so config.toml edits do not
 // race other kae processes. Released by the caller.
 func (app *App) acquireConfigLock() (*lock.Lock, error) {
@@ -242,6 +302,49 @@ func (app *App) mutateState(mutate func(*state.State)) (*state.State, error) {
 	mutate(st)
 	st.UpdatedAt = app.Now().UTC()
 	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		return nil, err
+	}
+	return st, nil
+}
+
+// inspectState runs a read-only decision while holding the state lock. A caller
+// that acts on the answer afterwards must keep the outer lock that excludes every
+// writer of the field it inspected; account rename does that with the tool and
+// isolation lifecycle locks. Unlike mutateState this never writes, including on
+// a refusal path.
+func (app *App) inspectState(inspect func(*state.State) error) error {
+	l, err := app.acquireNamedLock(lockNameState, "another kae process is recording state; retry shortly")
+	if err != nil {
+		return err
+	}
+	defer l.Release()
+	st, err := app.loadState()
+	if err != nil {
+		return err
+	}
+	return inspect(st)
+}
+
+// mutateSyncedAndFragment keeps the state record and the fragment generated from
+// it in one state critical section. The files cannot be one atomic filesystem
+// write, but a concurrent tool update can no longer save state B and then have
+// operation A overwrite its fragment with the older state A.
+func (app *App) mutateSyncedAndFragment(mutate func(*state.State)) (*state.State, error) {
+	l, err := app.acquireNamedLock(lockNameState, "another kae process is recording state; retry shortly")
+	if err != nil {
+		return nil, err
+	}
+	defer l.Release()
+	st, err := app.loadState()
+	if err != nil {
+		return nil, err
+	}
+	mutate(st)
+	st.UpdatedAt = app.Now().UTC()
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		return nil, err
+	}
+	if err := app.regenGlobalFragment(st.Synced); err != nil {
 		return nil, err
 	}
 	return st, nil

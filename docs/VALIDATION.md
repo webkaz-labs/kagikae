@@ -127,7 +127,7 @@ test "$(env | grep -c '^ANTHROPIC_API_KEY=')" -eq 0   # assert: the child saw it
                                                 #   `grep -c` here inverts: it exits 1 when the
                                                 #   count is the correct 0, and 0 on the leak
                                                 #   this line exists to catch
-/tmp/kae run -i claude main -- /usr/bin/true    # global isolated home, no lock, no live mutation
+/tmp/kae run -i claude main -- /usr/bin/true    # global isolated home, no live-store lock or mutation
 
 # --- profiles, and what a bare `kae use` resolves --------------------------
 /tmp/kae profile set main claude main

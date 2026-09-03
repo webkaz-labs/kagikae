@@ -97,7 +97,7 @@ func (app *App) teardownSynced(tools []string) error {
 	} else if !anySynced(st, tools) {
 		return nil
 	}
-	st, err := app.mutateState(func(st *state.State) {
+	_, err := app.mutateSyncedAndFragment(func(st *state.State) {
 		for _, tool := range tools {
 			delete(st.Synced, tool)
 		}
@@ -105,7 +105,7 @@ func (app *App) teardownSynced(tools []string) error {
 	if err != nil {
 		return err
 	}
-	return app.regenGlobalFragment(st.Synced)
+	return nil
 }
 
 // anySynced reports whether any of tools is globally isolated in st.

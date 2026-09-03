@@ -191,6 +191,11 @@ matches.
   global `mise activate` (otherwise kae warns and prints the `export` line).
   Teardown is `-s` / bare `kae use`.
 
+  The materialize → `state.synced` → fragment update holds the exclusive side
+  of a per-tool isolation-lifecycle lock. This serializes it with an account
+  rename and with another `use -i` for that tool, while unrelated tools remain
+  independent. A busy lifecycle lock exits `4` (`lock_busy`).
+
 ## kae run Semantics
 
 `kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> [-- <cmd...>]` executes
@@ -268,9 +273,12 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
   ([ROADMAP.md](ROADMAP.md) § Every credential copy).
 - `-i`: runs the child with the per-account global isolated home
   (`isolation/global/<tool>/<account>/`) injected via the tool's home-isolation
-  env var. This home is **shared with `kae use -i`** for the same account; no lock
-  and no mutation of the *live* store, so a concurrent `kae use` in another terminal
-  is never blocked and never sees the isolated process. (It can write the account
+  env var. This home is **shared with `kae use -i`** for the same account; it takes
+  no live-store tool lock and makes no mutation of the *live* store, so a concurrent
+  shared `kae use` in another terminal is never blocked and never sees the isolated
+  process. It holds the shared side of the per-tool isolation-lifecycle lock for the
+  child lifetime: another `run -i` may overlap, but account rename and `use -i`
+  fail with `lock_busy` until the child exits. (It can write the account
   snapshot, when materializing that home harvests a newer credential out of it —
   § kae pin.) `run -i` prints the exact
   home and that it is shared with `kae use -i`, so the shared state is never
@@ -393,6 +401,15 @@ if it pointed at `<old>`, and rewrites every `[profiles]` reference from
 exit `10`, an unknown `<old>` with exit `7`, and sanitizes `<new>` with the
 account-name rule. `--dry-run` writes nothing.
 
+If global isolated mode currently selects `<old>` in `state.json synced`, rename
+refuses before its first mutation with exit `10` (`unsafe_refused`), including
+under `--dry-run`. Stop every process using the old isolated home (both `run -i`
+children and terminals activated by `use -i`), run
+`kae use -s <tool> <old>`, then retry the rename. The retried rename harvests a
+newer attributable credential from the retained old home before copying the
+account. It does not migrate or delete that old home, its sessions, or its
+path-derived keychain item.
+
 The order is three stages, and it is a contract rather than an implementation
 detail, because it is what an interrupted rename leaves behind: **(1)** copy every
 payload to the new refs and complete the new snapshot dir, **(2)** move the
@@ -421,6 +438,9 @@ through a comment-preserving writer (comments, field order, and unrelated keys
 survive). Existing backups are **not** rewritten — a backup's `Meta.ActiveBefore`
 keeps the old account name, and `kae rollback` re-checks it rather than trusting it
 (see [DATA-MODEL.md](DATA-MODEL.md) § Backups).
+Rename additionally holds the exclusive isolation-lifecycle lock outside those
+locks; `run -i` holds its shared side, so the old path cannot be refreshed while
+rename copies and retires the account name.
 
 ## kae profile Semantics
 

@@ -3431,10 +3431,11 @@ func TestPurgeIsTheWayOutForACredentialKaeCannotJudge(t *testing.T) {
 // lost the copy exactly as before (measured 2026-08-16, with `pins=0`). credStoreReaders is
 // what spans both, and this test is why the pass asks it instead of walking pins.
 //
-// It asserts the snapshot and stops there on purpose: the rename does **not** move
-// `state.synced` or the global fragment, so this home keeps pointing at the old name after
-// it. docs/ROADMAP.md § `kae account rename` leaves `state.synced` and the global fragment
-// on the old name carries that, including why it is not a one-line follow-on.
+// The fail-closed contract requires the documented teardown first. That teardown leaves
+// this home in place, so the retried rename must still discover it from disk and harvest
+// the refreshed copy before changing the account. This is the credential-ordering half
+// of the remedy in docs/ROADMAP.md § `kae account rename` leaves `state.synced` and the
+// global fragment on the old name.
 func TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads(t *testing.T) {
 	app := renameFixtureApp(t)
 	ctx := context.Background()
@@ -3455,6 +3456,9 @@ func TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads(t *testing.T) {
 	}
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
 	writeFile(t, live, claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	if code := runSwitch(ctx, app, opts, "claude", "main"); code != constants.ExitOK {
+		t.Fatalf("use --shared teardown exit %d", code)
+	}
 
 	be := testBackend(t, app)
 	if _, err := buildAccountRename(ctx, app, opts, "claude", "main", "side"); err != nil {
@@ -3462,6 +3466,9 @@ func TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads(t *testing.T) {
 	}
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "side"); !strings.Contains(got, refreshed) {
 		t.Fatalf("the renamed account must carry what the isolated home was reading: %s", got)
+	}
+	if _, err := os.Stat(home); err != nil {
+		t.Fatalf("rename must retain the old isolated home for recovery: %v", err)
 	}
 }
 

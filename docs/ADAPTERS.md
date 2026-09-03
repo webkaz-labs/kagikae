@@ -1195,9 +1195,11 @@ other, so the shared location is never invisible: `kae run -i` prints the exact
 home and that it is shared with `kae use -i <account>`, and `kae status`
 surfaces the global-isolated homes.
 
-`kae run -i` runs the child in this home with no lock and no live mutation —
-concurrent `kae use` in other terminals is never blocked and never seen by the
-isolated process. `kae run -s` (default) uses the real home, holds the per-tool
+`kae run -i` runs the child in this home with no live-store tool lock and no live
+mutation — concurrent shared `kae use` in other terminals is never blocked and
+never seen by the isolated process. It holds a shared path-lifecycle lock so
+another `run -i` may overlap while account rename cannot retire the home.
+`kae run -s` (default) uses the real home, holds the per-tool
 lock for the full child run, and restores the previous login.
 
 ## Login Commands

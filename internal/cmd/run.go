@@ -30,8 +30,8 @@ const (
 //
 // -s (default) runs against the real home (backup → apply → run → recapture →
 // restore, lock held the whole run); -i runs in the per-account global isolated
-// home shared with kae use -i (no lock, and no mutation of the live store — it can
-// still write the account snapshot, when materializing that home harvests a newer
+// home shared with kae use -i (shared lifecycle lock, no live-store tool lock or
+// mutation — it can still write the account snapshot when materializing that home harvests a newer
 // credential out of it); --env injects the env-profile vars only. On success the child's exit code is returned verbatim;
 // kae's own exit codes apply only to failures before the child starts (and to a
 // failed restore afterwards). The child owns stdio, so --json affects only kae's
@@ -205,6 +205,11 @@ func (app *App) runIsolatedChild(ctx context.Context, opts commonOpts, targets [
 	if err != nil {
 		return finish(opts, err)
 	}
+	lifecycleLocks, err := app.acquireIsolationLifecycleReaders(runTargetTools(supported))
+	if err != nil {
+		return finish(opts, err)
+	}
+	defer releaseLocks(lifecycleLocks)
 	be, err := app.secretBackend()
 	if err != nil {
 		return finish(opts, err)
@@ -355,6 +360,14 @@ func (app *App) toolsToRestore(ctx context.Context, be secret.Backend,
 type runTarget struct {
 	Tool    string
 	Account string
+}
+
+func runTargetTools(targets []runTarget) []string {
+	tools := make([]string, 0, len(targets))
+	for _, target := range targets {
+		tools = append(tools, target.Tool)
+	}
+	return tools
 }
 
 // resolveTargets expands <tool|all> <name> into concrete tool/account pairs.

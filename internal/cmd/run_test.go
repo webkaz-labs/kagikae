@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -242,7 +243,7 @@ func TestRunIsolated(t *testing.T) {
 	})
 
 	// run -i materializes the per-account global isolated home and points the
-	// child there; it never mutates the live credential and takes no lock.
+	// child there; it never mutates the live credential and takes no tool lock.
 	held, err := lock.Acquire(app.Paths.LocksDir(), "claude")
 	if err != nil {
 		t.Fatal(err)
@@ -272,6 +273,41 @@ func TestRunIsolated(t *testing.T) {
 		return runRun(ctx, app, opts, runModeIsolated, "agy", "main", []string{"agy"})
 	})
 	mustExit(t, constants.ExitUnsupported, code, out)
+}
+
+func TestRunIsolatedHoldsTheSharedLifecycleLockForTheChild(t *testing.T) {
+	app := applyTestApp(t, nil)
+	ctx := context.Background()
+	renameTried := false
+	withInteractive(t, func(_ context.Context, _ []string, _ string, _ ...string) (int, error) {
+		renameTried = true
+		// A second reader is allowed while this child is alive.
+		reader, err := lock.AcquireShared(app.Paths.LocksDir(), isolationLifecycleLockName(constants.ToolClaude))
+		if err != nil {
+			t.Fatalf("second run-i reader was serialized: %v", err)
+		}
+		reader.Release()
+		// Rename needs the exclusive side, so it must fail before changing paths.
+		_, err = buildAccountRename(ctx, app, commonOpts{Format: formatText}, "claude", "main", "renamed")
+		if exitOf(err) != constants.ExitLockBusy {
+			t.Fatalf("rename during run-i exit=%d err=%v", exitOf(err), err)
+		}
+		return 0, nil
+	})
+	code, out := captureStdout(t, func() int {
+		return runRun(ctx, app, commonOpts{Format: formatText}, runModeIsolated,
+			"claude", "main", []string{"claude"})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if !renameTried {
+		t.Fatal("child did not run")
+	}
+	if _, found, err := account.Load(app.Paths.AccountDir("claude", "main")); err != nil || !found {
+		t.Fatalf("old account changed during the child: found=%v err=%v", found, err)
+	}
+	if _, found, err := account.Load(app.Paths.AccountDir("claude", "renamed")); err != nil || found {
+		t.Fatalf("rename target created during the child: found=%v err=%v", found, err)
+	}
 }
 
 func TestLoginCapturesAndRestores(t *testing.T) {

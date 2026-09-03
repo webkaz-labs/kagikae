@@ -287,9 +287,10 @@ credential kae has no copy of ([DATA-MODEL.md](DATA-MODEL.md) "backup metadata")
 
 state.json is untouched: the temporary switch is invisible to the bare `kae`
 status summary. `run -i` (the per-account global isolated home, shared with
-`kae use -i`) and `run --env` (env-profile vars) never mutate live state and
-take no lock; they only build child environment entries
-(`internal/cmd/run.go`). Interactive children run through the
+`kae use -i`) never mutates live state and takes no live-store tool lock; it
+holds a shared isolation-lifecycle lock so account rename cannot retire its
+path during the child. `run --env` (env-profile vars) takes no lock. Both only
+build child environment entries (`internal/cmd/run.go`). Interactive children run through the
 `runner.RunInteractive` seam.
 
 ## Atomicity And Guards
@@ -317,6 +318,17 @@ queueing, because a queued switch could interleave with the other process's
 restore step. A separate `config` lock (same mechanism, name `config`) guards
 `config.toml` edits; commands that mutate both per-tool state and config
 (`account rm`/`rename`) take the tool lock first, then the config lock.
+
+A per-tool reader/writer lock named `isolation-<tool>` guards account-keyed
+global-isolation paths. `run -i` takes the shared side before materializing the
+home and holds it for the child lifetime, so multiple isolated children may run
+together. `use -i` takes the exclusive side for materialize → `state.synced` →
+fragment generation, and account rename takes it before the tool and config
+locks. Thus rename cannot retire an old path while a child can still refresh it,
+and `use -i` cannot recreate the old-name fragment between rename's preflight and
+commit. The global acquisition order is isolation lifecycle → tool → config →
+state; commands that do not need an outer lock skip it without reversing the
+order.
 
 A fourth, `pin-<pin-id>`, serializes the commands that bind one directory
 (`kae pin`, `kae pin <tool> <account>`, `kae unpin`): they write the credential,
@@ -379,11 +391,13 @@ safe to share: the per-tool locks deliberately let `kae use claude <a>` and
 `kae use codex <b>` run at the same time, so each held a copy of the whole
 document loaded before the other saved, and writing that copy back reverted the
 other tool's field with nothing reporting it. Every state write therefore goes
-through `App.mutateState`, which takes this lock, **re-reads the file**, applies
+through an `App` state seam: normally `mutateState`, with the synced-and-fragment
+variant described below. Each takes this lock, **re-reads the file**, applies
 the mutation and saves — the re-read is what makes the update lost-free, the
 lock is what makes the re-read atomic. Two consequences for callers: the state
-lock is always innermost (tool locks → config lock → state lock) and is held
-only for the read plus the write, and **a decision about the state must be made
+lock is always innermost (isolation lifecycle → tool → config → state) and is held
+only for the read plus the write except for that generated-fragment variant, and
+**a decision about the state must be made
 inside the mutation, not from a copy read earlier** — `kae account rm` re-checks
 under the lock whether the account it removes is still the active one, because a
 switch can have completed in between. `TestStateWritesGoThroughTheSeam` keeps the
@@ -391,6 +405,12 @@ seam from being bypassed from the rest of `internal/cmd`, which is as far as it
 globs: `state.Save` stays exported, so nothing else stops a direct write that
 compiles, passes review and fails only under concurrency. `kae rollback` does not
 cover a mistake here — it restores credentials, not this file.
+
+`state.synced` and the generated global fragment are one logical record, so their
+update keeps the state lock through both the atomic state save and fragment
+regeneration. They cannot be one filesystem transaction, but this prevents a
+concurrent operation from saving newer state and then having an older operation
+overwrite the fragment after releasing the lock.
 
 ## Caching
 

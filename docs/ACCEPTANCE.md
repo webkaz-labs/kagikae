@@ -188,18 +188,32 @@ no real account and touches neither the real `$HOME` nor the real keychain:
    and exits 0 otherwise.
 2. `kae init`, a config with `secret_backend = "file"` and a one-account profile,
    then `kae add --no-login claude main` (the capture reads the canned payload).
-3. `kae pin -i main` in a temp project dir. Read `CLAUDE_CONFIG_DIR` out of
+3. `kae pin -i main` in a temp project dir. Read both `CLAUDE_CONFIG_DIR` and
+   `CLAUDE_SECURESTORAGE_CONFIG_DIR` out of
    `.config/mise/conf.d/kagikae.toml`, and the `-s <service>` kae passed to
    `add-generic-password` out of the shim log.
 4. Run the real binary against that same directory —
    `env -i HOME=<temp> PATH=<shim>:/usr/bin:/bin USER="$USER"
-   CLAUDE_CONFIG_DIR=<dir> claude -p hi </dev/null` — and read the `-s <service>`
-   it passed to `find-generic-password`.
+   CLAUDE_CONFIG_DIR=<config-dir>
+   CLAUDE_SECURESTORAGE_CONFIG_DIR=<securestorage-dir>
+   claude -p hi </dev/null` — and read the `-s <service>` it passed to
+   `find-generic-password`.
 
-The two service names must be identical, and `<dir>/.credentials.json` must not
-exist (the superseded plaintext copy is removed). Confirmed on kae's fix commit
-with Claude Code 2.1.220; the same run against a pre-fix build writes no keychain
-item at all and reads only the unsuffixed shared one, which is the defect.
+The two service names must be identical and equal
+`Claude Code-credentials-<sha8>`, where `<sha8>` is the first eight hexadecimal
+characters of the SHA-256 of `<securestorage-dir>`; that variable, not the session
+config directory, selects the credential store. Neither directory may contain
+`.credentials.json` (the superseded plaintext copy is removed). Passing only
+`CLAUDE_CONFIG_DIR` did not test this candidate's binding: its generated fragment gave
+the credential store a different value, so claude derived a service from the config
+directory while kae wrote the service derived from the secure-storage directory.
+
+Confirmed 2026-09-04 on the v0.18.0 candidate at `495141f`, with Claude Code
+2.1.246: the production-equivalent two-variable path matched the independently
+derived service and left no plaintext credential file. The run used a temp file
+backend and a `security` shim; it did not test a real account, payload round-trip or
+keychain ACL. The same run against a pre-fix build writes no keychain item at all and
+reads only the unsuffixed shared one, which is the original defect.
 
 This is a naming-agreement check. That the payload itself round-trips is the
 separate verbatim/ACL assumption in [VALIDATION.md](VALIDATION.md)

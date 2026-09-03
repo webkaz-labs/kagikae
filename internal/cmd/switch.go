@@ -381,22 +381,25 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 	}
 	defer releaseLocks(lifecycleLocks)
 
-	be, err := app.secretBackend()
-	if err != nil {
-		return finish(opts, err)
-	}
-	for _, r := range report.Results {
-		if _, err := app.prepareGlobalIsolatedHome(ctx, be, r.Tool, r.Account, profileName != ""); err != nil {
-			return finish(opts, fmt.Errorf("materialize credential for %s/%s: %w", r.Tool, r.Account, err))
+	st, err := app.mutateSyncedAndFragment(func() error {
+		be, err := app.secretBackend()
+		if err != nil {
+			return err
 		}
-	}
-	st, err := app.mutateSyncedAndFragment(func(st *state.State) {
+		for _, r := range report.Results {
+			if _, err := app.prepareGlobalIsolatedHome(ctx, be, r.Tool, r.Account, profileName != ""); err != nil {
+				return fmt.Errorf("materialize credential for %s/%s: %w", r.Tool, r.Account, err)
+			}
+		}
+		return nil
+	}, func(st *state.State) bool {
 		if st.Synced == nil {
 			st.Synced = map[string]string{}
 		}
 		for _, r := range report.Results {
 			st.Synced[r.Tool] = r.Account
 		}
+		return true
 	})
 	if err != nil {
 		return finish(opts, err)

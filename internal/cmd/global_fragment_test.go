@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -150,5 +151,79 @@ func TestUseIsolatedRefusesWhileAccountPathsAreBeingRenamed(t *testing.T) {
 	}
 	if _, err := os.Stat(app.Paths.GlobalIsolatedHomeDir("claude", "main")); !os.IsNotExist(err) {
 		t.Fatalf("busy use -i materialized the home: %v", err)
+	}
+}
+
+func TestUseIsolatedTakesStateLockBeforeMaterializing(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	held, err := lock.Acquire(app.Paths.LocksDir(), lockNameState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+
+	code, out := captureStdout(t, func() int {
+		return runUseIsolated(context.Background(), app, commonOpts{Format: formatText}, "claude", "main")
+	})
+	mustExit(t, constants.ExitLockBusy, code, out)
+	if _, err := os.Stat(app.Paths.GlobalIsolatedHomeDir("claude", "main")); !os.IsNotExist(err) {
+		t.Fatalf("state lock refusal came after isolated-home materialization: %v", err)
+	}
+	if _, err := os.Stat(app.Paths.MiseGlobalFragmentFile()); !os.IsNotExist(err) {
+		t.Fatalf("state lock refusal wrote the fragment: %v", err)
+	}
+}
+
+func TestSyncedFragmentFailureRestoresPreviousState(t *testing.T) {
+	app := testApp(t, nil)
+	before := state.New()
+	before.Synced = map[string]string{"claude": "main"}
+	if err := state.Save(app.Paths.StateFile(), before); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.regenGlobalFragment(before.Synced); err != nil {
+		t.Fatal(err)
+	}
+	fragmentBefore := readFile(t, app.Paths.MiseGlobalFragmentFile())
+	app.regenGlobalFragmentForTest = func(map[string]string) error {
+		return errors.New("injected fragment failure")
+	}
+
+	_, err := app.mutateSyncedAndFragment(nil, func(st *state.State) bool {
+		st.Synced["codex"] = "side"
+		return true
+	})
+	if err == nil || !strings.Contains(err.Error(), "previous state restored") {
+		t.Fatalf("want restored-state failure, got %v", err)
+	}
+	after, loadErr := state.Load(app.Paths.StateFile())
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if len(after.Synced) != 1 || after.Synced["claude"] != "main" {
+		t.Fatalf("state was not rolled back: %+v", after.Synced)
+	}
+	if got := readFile(t, app.Paths.MiseGlobalFragmentFile()); got != fragmentBefore {
+		t.Fatal("an unsuccessful atomic fragment regeneration changed the prior fragment")
+	}
+}
+
+func TestSyncedFragmentFailureReportsRollbackFailure(t *testing.T) {
+	previous, next := state.New(), state.New()
+	next.Synced = map[string]string{"claude": "main"}
+	saves := 0
+	err := saveSyncedStateAndFragment(previous, next, func(*state.State) error {
+		saves++
+		if saves == 2 {
+			return errors.New("injected rollback failure")
+		}
+		return nil
+	}, func(map[string]string) error {
+		return errors.New("injected fragment failure")
+	})
+	if err == nil || !strings.Contains(err.Error(), "injected fragment failure") ||
+		!strings.Contains(err.Error(), "injected rollback failure") {
+		t.Fatalf("combined failure lost one cause: %v", err)
 	}
 }

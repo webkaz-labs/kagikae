@@ -40,6 +40,11 @@ type App struct {
 	// test seam (App is constructed directly in tests; see app.go newApp doc);
 	// nil in production, so secretBackend resolves from config as usual.
 	backendForTest secret.Backend
+	// Test seams for failures and pre-lock races that cannot be scheduled
+	// deterministically around non-blocking flock acquisition. Both are nil in
+	// production.
+	regenGlobalFragmentForTest      func(map[string]string) error
+	beforeAccountRenameLocksForTest func()
 	// refusalReported holds the per-directory stores whose un-harvested credential the
 	// pin-level pass has already reported, so writeDirCredential's backstop does not say
 	// it twice (markRefusalReported; docs/CLI.md § kae pin). Scoped to **one bind**: the
@@ -325,29 +330,83 @@ func (app *App) inspectState(inspect func(*state.State) error) error {
 	return inspect(st)
 }
 
-// mutateSyncedAndFragment keeps the state record and the fragment generated from
-// it in one state critical section. The files cannot be one atomic filesystem
-// write, but a concurrent tool update can no longer save state B and then have
-// operation A overwrite its fragment with the older state A.
-func (app *App) mutateSyncedAndFragment(mutate func(*state.State)) (*state.State, error) {
+// mutateSyncedAndFragment keeps preparation, the state record, and the fragment
+// generated from it in one state critical section. prepare may be nil. Holding
+// the lock before prepare ensures a busy state writer cannot be discovered only
+// after prepare has materialized an isolated home or refreshed a snapshot.
+//
+// State and fragment cannot be one filesystem transaction. If fragment
+// regeneration returns an error, this restores the pre-mutation state while the
+// same lock is held; both individual file writes are atomic. A process crash
+// between the two writes remains detectable as a derived-fragment mismatch.
+func (app *App) mutateSyncedAndFragment(prepare func() error, mutate func(*state.State) bool) (*state.State, error) {
 	l, err := app.acquireNamedLock(lockNameState, "another kae process is recording state; retry shortly")
 	if err != nil {
 		return nil, err
 	}
 	defer l.Release()
-	st, err := app.loadState()
+	previous, err := app.loadState()
 	if err != nil {
 		return nil, err
 	}
-	mutate(st)
-	st.UpdatedAt = app.Now().UTC()
-	if err := state.Save(app.Paths.StateFile(), st); err != nil {
-		return nil, err
+	if prepare != nil {
+		if err := prepare(); err != nil {
+			return nil, err
+		}
 	}
-	if err := app.regenGlobalFragment(st.Synced); err != nil {
+	st := cloneState(previous)
+	regen := app.regenGlobalFragment
+	if app.regenGlobalFragmentForTest != nil {
+		regen = app.regenGlobalFragmentForTest
+	}
+	changed := mutate(st)
+	if !changed {
+		consistent, _ := app.globalFragmentConsistent(st.Synced)
+		if consistent {
+			return st, nil
+		}
+		if err := regen(st.Synced); err != nil {
+			return nil, fmt.Errorf("reconcile global mise fragment: %w", err)
+		}
+		return st, nil
+	}
+	st.UpdatedAt = app.Now().UTC()
+	if err := saveSyncedStateAndFragment(previous, st,
+		func(value *state.State) error { return state.Save(app.Paths.StateFile(), value) }, regen); err != nil {
 		return nil, err
 	}
 	return st, nil
+}
+
+func cloneState(src *state.State) *state.State {
+	dst := *src
+	dst.Active = make(map[string]string, len(src.Active))
+	for tool, accountName := range src.Active {
+		dst.Active[tool] = accountName
+	}
+	dst.Synced = make(map[string]string, len(src.Synced))
+	for tool, accountName := range src.Synced {
+		dst.Synced[tool] = accountName
+	}
+	return &dst
+}
+
+// saveSyncedStateAndFragment is split out so the double-failure branch is
+// deterministic to test. The production caller supplies atomic state and
+// fragment writers and holds state.lock for the whole call.
+func saveSyncedStateAndFragment(previous, next *state.State,
+	save func(*state.State) error, regenerate func(map[string]string) error,
+) error {
+	if err := save(next); err != nil {
+		return err
+	}
+	if err := regenerate(next.Synced); err != nil {
+		if restoreErr := save(previous); restoreErr != nil {
+			return fmt.Errorf("regenerate global mise fragment: %w; restoring previous state also failed: %v", err, restoreErr)
+		}
+		return fmt.Errorf("regenerate global mise fragment (previous state restored): %w", err)
+	}
+	return nil
 }
 
 // editConfig applies mutate to config.toml through the comment-preserving

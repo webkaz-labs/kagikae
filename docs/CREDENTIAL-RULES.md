@@ -243,8 +243,10 @@ home with no binding at all, which a walk of the bound directories does not reac
 `TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads` re-run the pair). A rename
 while `state.synced` still selects that home is refused; after the documented
 shared-mode teardown, the retained home must remain a reader **from disk**, not from
-`state.synced`, so the retried rename can still attribute and harvest it. Changing that
-enumeration to the state map would make following kae's own remedy lose the newest copy.
+`state.synced`, so the retried rename can still attribute and harvest it for claude —
+currently the only tool whose rotating credential harvest is enabled. Changing that
+enumeration to the state map would make following kae's own remedy lose claude's newest
+copy. Other tools retain the home but do not harvest it.
 A payload kae could not read or date is deleted by `--purge` too, for the first exception's
 reason rather than as a rule of its own: keeping it strands a secret **nothing kae offers
 can remove**, since a per-directory item is addressable only from the string kae hashes

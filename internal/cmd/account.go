@@ -254,10 +254,17 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		ActiveUpdated: activeUpdate,
 	}
 	if opts.DryRun {
+		consistent, fragmentErr := app.globalFragmentConsistent(st.Synced)
+		if fragmentErr != nil || !consistent {
+			return nil, accountRenameGlobalIsolationMismatchError(tool, oldName, newName, fragmentErr)
+		}
 		if st.Synced[tool] == oldName {
 			return nil, accountRenameGloballyIsolatedError(tool, oldName, newName)
 		}
 		return report, nil
+	}
+	if app.beforeAccountRenameLocksForTest != nil {
+		app.beforeAccountRenameLocksForTest()
 	}
 
 	// Isolation lifecycle is outermost: run-i holds its shared side for the child,
@@ -279,10 +286,45 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		return nil, err
 	}
 	defer cfgLock.Release()
+
+	// The optimistic reads above make dry-run and the common error paths cheap,
+	// but they cannot authorize a mutation: a capture or another rename may have
+	// changed either name before these locks were acquired. Re-read both before
+	// harvest or secret copying starts.
+	lockedAcc, found, err := account.Load(app.Paths.AccountDir(tool, oldName))
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, oldName)
+	}
+	if _, exists, err := account.Load(app.Paths.AccountDir(tool, newName)); err != nil {
+		return nil, err
+	} else if exists {
+		return nil, errf(constants.ExitUnsafeRefused, "account %s/%s already exists", tool, newName)
+	}
+	acc = lockedAcc
+
+	// Profile references are mutable independently of this App's in-memory
+	// config. Reload and recompute while config.lock is held so stage 2 edits
+	// exactly the references present at commit time and preserves concurrent
+	// additions/removals.
+	lockedConfig, _, err := config.Load(app.ConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("reload config before rename: %w", err)
+	}
+	profiles = profilesReferencing(lockedConfig, tool, oldName)
+	report.ProfilesUpdated = profiles
+	report.SecretsMoved = len(acc.ArtifactNames())
+
 	// Re-read under the state lock while the tool lock excludes a shared teardown
 	// and the exclusive lifecycle lock excludes `use -i` and every `run -i` child.
 	// This is a precondition, not a state mutation: a refused rename writes nothing.
 	if err := app.inspectState(func(st *state.State) error {
+		consistent, fragmentErr := app.globalFragmentConsistent(st.Synced)
+		if fragmentErr != nil || !consistent {
+			return accountRenameGlobalIsolationMismatchError(tool, oldName, newName, fragmentErr)
+		}
 		if st.Synced[tool] == oldName {
 			return accountRenameGloballyIsolatedError(tool, oldName, newName)
 		}
@@ -413,6 +455,17 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	return report, nil
 }
 
+func accountRenameGlobalIsolationMismatchError(tool, oldName, newName string, cause error) error {
+	reason := "does not match state.synced"
+	if cause != nil {
+		reason = fmt.Sprintf("cannot be read: %v", cause)
+	}
+	return errf(constants.ExitUnsafeRefused,
+		"the global isolated fragment %s, so account paths cannot be changed safely; stop every process using isolated homes, "+
+			"run `kae use -s %s %s` to regenerate it from state, then retry `kae account rename %s %s %s`",
+		reason, tool, oldName, tool, oldName, newName)
+}
+
 func accountRenameGloballyIsolatedError(tool, oldName, newName string) error {
 	return errf(constants.ExitUnsafeRefused,
 		"account %s/%s is selected by global isolated mode; stop every process using that isolated home "+
@@ -526,8 +579,12 @@ func printAccountSetIdentity(r *accountSetIdentityReport) {
 // profilesReferencing returns the config profiles whose accounts map points at
 // account for tool, in sorted order.
 func (app *App) profilesReferencing(tool, accountName string) []string {
+	return profilesReferencing(app.Config, tool, accountName)
+}
+
+func profilesReferencing(cfg *config.Config, tool, accountName string) []string {
 	names := []string{}
-	for name, profile := range app.Config.Profiles {
+	for name, profile := range cfg.Profiles {
 		if profile.Accounts[tool] == accountName {
 			names = append(names, name)
 		}

@@ -410,7 +410,17 @@ cover a mistake here — it restores credentials, not this file.
 update keeps the state lock through both the atomic state save and fragment
 regeneration. They cannot be one filesystem transaction, but this prevents a
 concurrent operation from saving newer state and then having an older operation
-overwrite the fragment after releasing the lock.
+overwrite the fragment after releasing the lock. `use -i` acquires that state lock
+before materializing any home or refreshing any snapshot. If fragment regeneration
+returns an error after the state save, kae restores the pre-mutation state while the
+lock is still held; each individual write is atomic. A process crash between the two
+writes remains a filesystem boundary no rollback handler can run across, so this is
+not a claim of cross-file atomicity. Account rename therefore verifies the raw global
+fragment against `renderGlobalFragment(state.synced)` under the state lock (an empty
+map requires an absent fragment) and refuses an unreadable or mismatched fragment.
+The documented `use -s` remedy checks the same invariant and regenerates the fragment
+from current state under that lock even when its target has no `synced` entry, closing
+the crash state before rename is retried.
 
 ## Caching
 

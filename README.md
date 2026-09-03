@@ -415,7 +415,10 @@ exit code — see [docs/CLI.md](docs/CLI.md).
   into the name it renames *from*, so the renamed account carries the live login rather
   than the older snapshot. When global isolation still selects that name, rename first
   refuses and tells you to stop its isolated processes, return it to shared mode, and
-  retry; the retained old home is then harvested before the rename. Re-bind a directory
+  retry. The same shared-mode step repairs a crash-left mismatch between global-isolation
+  state and its generated fragment before rename proceeds. For claude (the only tool
+  with credential harvest enabled), the retained old
+  home is then harvested before the rename. Re-bind a directory
   afterwards, as the rename tells you to, and it gets that copy. It warns on stderr, before applying, when the account you are switching
   to needs a re-login (expired with no usable refresh token, or emptied by the tool
   after a failed refresh) and names the tool's login command; `kae doctor` flags

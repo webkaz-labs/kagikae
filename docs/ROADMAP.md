@@ -1163,7 +1163,8 @@ alternative exists (`secret-tool`).
   `unsafe_refused` before the first rename mutation. Tell the user to stop every process
   using the old isolated home, run `kae use -s <tool> <old>` to return that tool to shared
   mode, then retry the rename. The shared switch does not harvest the isolated store, but
-  it leaves the old home and credential store in place; the retried rename's existing
+  it leaves the old home and credential store in place; for claude — currently the only
+  tool with rotating credential harvest enabled — the retried rename's existing
   disk-reader harvest captures that copy before changing the account.
   The check and rename commit must also be interlocked with the `kae use -i` operation and
   with the full lifetime of `kae run -i`. Checking `state.synced` under a separate lock

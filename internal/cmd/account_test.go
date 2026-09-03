@@ -12,6 +12,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/secret"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 // captureClaude seeds and captures a claude account, leaving it active.
@@ -179,6 +180,42 @@ func TestAccountRenameRefusesExistingTarget(t *testing.T) {
 	}
 }
 
+func TestAccountRenameRechecksDestinationAfterTakingLocks(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	app.beforeAccountRenameLocksForTest = func() {
+		captureClaude(t, app, "side", sideToken)
+	}
+
+	_, err := buildAccountRename(ctx, app, commonOpts{Format: formatText}, "claude", "main", "side")
+	if exitOf(err) != constants.ExitUnsafeRefused || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("concurrent destination capture was not refused: exit=%d err=%v", exitOf(err), err)
+	}
+	if acc, found, loadErr := account.Load(app.Paths.AccountDir("claude", "side")); loadErr != nil || !found || acc.Name != "side" {
+		t.Fatalf("concurrently captured destination was changed: found=%v account=%+v err=%v", found, acc, loadErr)
+	}
+}
+
+func TestAccountRenameRechecksSourceAfterTakingLocks(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	app.beforeAccountRenameLocksForTest = func() {
+		if err := os.RemoveAll(app.Paths.AccountDir("claude", "main")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err := buildAccountRename(ctx, app, commonOpts{Format: formatText}, "claude", "main", "side")
+	if exitOf(err) != constants.ExitNotFound {
+		t.Fatalf("concurrently removed source was not rechecked: exit=%d err=%v", exitOf(err), err)
+	}
+	if _, statErr := os.Stat(app.Paths.AccountDir("claude", "side")); !os.IsNotExist(statErr) {
+		t.Fatalf("rename wrote a destination after source disappeared: %v", statErr)
+	}
+}
+
 func TestAccountRenameUnknownOldExitsNotFound(t *testing.T) {
 	app := testApp(t, nil)
 	if _, err := buildAccountRename(context.Background(), app, commonOpts{Format: formatText}, "claude", "ghost", "new"); exitOf(err) != constants.ExitNotFound {
@@ -262,12 +299,97 @@ func TestAccountRenameGlobalIsolationRefusalUsesTheJSONErrorContract(t *testing.
 	}
 }
 
+func TestAccountRenameRefusesCrashMismatchUntilUseSharedReconcilesIt(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	captureClaude(t, app, "main", mainToken)
+	code, out := captureStdout(t, func() int {
+		return runUseIsolated(ctx, app, opts, "claude", "main")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	fragmentBefore := readFile(t, app.Paths.MiseGlobalFragmentFile())
+
+	// Model a process death after state was saved but before the atomic fragment
+	// replacement: state no longer selects the account, while the old fragment
+	// still exports its paths.
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(st.Synced, constants.ToolClaude)
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, app.Paths.MiseGlobalFragmentFile()); got != fragmentBefore {
+		t.Fatal("crash fixture did not retain the old fragment")
+	}
+
+	for _, dryRun := range []bool{true, false} {
+		_, renameErr := buildAccountRename(ctx, app,
+			commonOpts{Format: formatText, DryRun: dryRun}, "claude", "main", "side")
+		if exitOf(renameErr) != constants.ExitUnsafeRefused ||
+			!strings.Contains(renameErr.Error(), "kae use -s claude main") {
+			t.Fatalf("dry_run=%v: mismatched fragment was not refused with recovery guidance: exit=%d err=%v",
+				dryRun, exitOf(renameErr), renameErr)
+		}
+	}
+	if _, err := os.Stat(app.Paths.AccountDir("claude", "side")); !os.IsNotExist(err) {
+		t.Fatalf("refused rename wrote its destination: %v", err)
+	}
+
+	code, out = captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, out)
+	if _, err := os.Stat(app.Paths.MiseGlobalFragmentFile()); !os.IsNotExist(err) {
+		t.Fatalf("use -s did not reconcile the stale fragment from empty synced state: %v", err)
+	}
+	if _, err := buildAccountRename(ctx, app, opts, "claude", "main", "side"); err != nil {
+		t.Fatalf("rename remained blocked after use -s reconciliation: %v", err)
+	}
+}
+
+func TestAccountRenameRefusesUnreadableGlobalFragment(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Synced = map[string]string{"claude": "main"}
+	if err := state.Save(app.Paths.StateFile(), st); err != nil {
+		t.Fatal(err)
+	}
+	path := app.Paths.MiseGlobalFragmentFile()
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = buildAccountRename(ctx, app,
+		commonOpts{Format: formatText, DryRun: true}, "claude", "main", "side")
+	if exitOf(err) != constants.ExitUnsafeRefused || !strings.Contains(err.Error(), "cannot be read") {
+		t.Fatalf("unreadable fragment was not refused: exit=%d err=%v", exitOf(err), err)
+	}
+}
+
 // setFailBackend wraps a real backend and refuses every Set of a key naming one
 // account, which is how a test stops `kae account rename` inside its copy stage
 // — the failure a secret backend can genuinely produce there.
 type setFailBackend struct {
 	secret.Backend
 	failFor string
+}
+
+type deleteFailBackend struct {
+	secret.Backend
+	failFor string
+}
+
+func (b deleteFailBackend) Delete(ctx context.Context, key string) error {
+	if strings.Contains(key, b.failFor) {
+		return fmt.Errorf("backend refused %s", key)
+	}
+	return b.Backend.Delete(ctx, key)
 }
 
 func (b setFailBackend) Set(ctx context.Context, key string, value []byte) error {
@@ -305,6 +427,35 @@ func TestAccountRenameCopyFailureLeavesOldAccountActive(t *testing.T) {
 	mustExit(t, constants.ExitOK, code, out)
 }
 
+func TestAccountRenameCleanupFailureLeavesRecoverableOldAccount(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	realBackend := testBackend(t, app)
+	app.backendForTest = deleteFailBackend{Backend: realBackend, failFor: "/main/"}
+
+	if _, err := buildAccountRename(ctx, app, commonOpts{Format: formatText}, "claude", "main", "side"); err == nil {
+		t.Fatal("rename reported success even though old-secret cleanup failed")
+	}
+	st, err := app.loadState()
+	if err != nil || st.Active["claude"] != "side" {
+		t.Fatalf("stage 2 pointer did not remain on the complete new account: state=%+v err=%v", st, err)
+	}
+	for _, name := range []string{"main", "side"} {
+		if _, found, loadErr := account.Load(app.Paths.AccountDir("claude", name)); loadErr != nil || !found {
+			t.Fatalf("%s snapshot absent after cleanup failure: found=%v err=%v", name, found, loadErr)
+		}
+	}
+	if _, retryErr := buildAccountRename(ctx, app, commonOpts{Format: formatText}, "claude", "main", "side"); exitOf(retryErr) != constants.ExitUnsafeRefused {
+		t.Fatalf("rerun should refuse the existing destination: exit=%d err=%v", exitOf(retryErr), retryErr)
+	}
+
+	app.backendForTest = realBackend
+	if _, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, "claude", "main", false); err != nil {
+		t.Fatalf("documented cleanup of the old remnant failed: %v", err)
+	}
+}
+
 func TestAccountRenameRewritesProfileReference(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
@@ -321,6 +472,52 @@ func TestAccountRenameRewritesProfileReference(t *testing.T) {
 	cfg, _, _ := config.Load(app.ConfigPath)
 	if cfg.Profiles["alt"].Accounts["claude"] != "main2" {
 		t.Fatalf("profile reference not rewritten: %+v", cfg.Profiles["alt"])
+	}
+}
+
+func TestAccountRenameRecomputesProfileReferencesUnderConfigLock(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		initial    string
+		concurrent string
+		want       string
+		wantReport bool
+	}{
+		{
+			name:       "new reference is included",
+			initial:    "version = 1\n[security]\nsecret_backend = \"file\"\n",
+			concurrent: "version = 1\n[security]\nsecret_backend = \"file\"\n[profiles.alt.accounts]\nclaude = \"main\"\n",
+			want:       "side",
+			wantReport: true,
+		},
+		{
+			name:       "removed reference is not recreated",
+			initial:    "version = 1\n[security]\nsecret_backend = \"file\"\n[profiles.alt.accounts]\nclaude = \"main\"\n",
+			concurrent: "version = 1\n[security]\nsecret_backend = \"file\"\n[profiles.alt.accounts]\nclaude = \"alt\"\n",
+			want:       "alt",
+			wantReport: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			captureClaude(t, app, "main", mainToken)
+			writeConfigFile(t, app, tc.initial)
+			// Write as a separate process would: leave this App's cached config stale.
+			app.beforeAccountRenameLocksForTest = func() { writeFile(t, app.ConfigPath, tc.concurrent) }
+
+			report, err := buildAccountRename(ctx, app, commonOpts{Format: formatText}, "claude", "main", "side")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := len(report.ProfilesUpdated) == 1 && report.ProfilesUpdated[0] == "alt"; got != tc.wantReport {
+				t.Fatalf("reported profiles=%v want alt=%v", report.ProfilesUpdated, tc.wantReport)
+			}
+			cfg, _, err := config.Load(app.ConfigPath)
+			if err != nil || cfg.Profiles["alt"].Accounts["claude"] != tc.want {
+				t.Fatalf("profile value=%q want %q err=%v", cfg.Profiles["alt"].Accounts["claude"], tc.want, err)
+			}
+		})
 	}
 }
 

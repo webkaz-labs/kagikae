@@ -83,39 +83,47 @@ func (app *App) regenGlobalFragment(synced map[string]string) error {
 	return writeMiseFragment(path, app.renderGlobalFragment(synced))
 }
 
+// globalFragmentConsistent compares the derived fragment byte-for-byte with
+// the current state. Atomic fragment writes make raw equality sufficient. An
+// empty synced map is consistent only when the fragment is absent.
+func (app *App) globalFragmentConsistent(synced map[string]string) (bool, error) {
+	path := app.Paths.MiseGlobalFragmentFile()
+	if len(synced) == 0 {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return true, nil
+		} else if err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	return string(data) == app.renderGlobalFragment(synced), nil
+}
+
 // teardownSynced drops the given tools from state.synced and regenerates (or
 // deletes) the global mise fragment — the documented teardown of kae use -i,
 // run by kae use -s / bare kae use after it switches the real home in place. A
-// no-op (no state write) when none of the tools is globally isolated.
+// no-op (no state write) when none of the tools is globally isolated and the
+// derived fragment already agrees with state. A stale/crash-left fragment is
+// regenerated from current state under the same lock even on that fast path.
 func (app *App) teardownSynced(tools []string) error {
-	// Fast path, so bare `kae use` on an installation that never ran `kae use -i`
-	// takes no state lock and writes nothing: the common case is that none of
-	// these tools is globally isolated. The decision that matters is still the
-	// one made under the lock below.
-	if st, err := app.loadState(); err != nil {
-		return err
-	} else if !anySynced(st, tools) {
-		return nil
-	}
-	_, err := app.mutateSyncedAndFragment(func(st *state.State) {
+	_, err := app.mutateSyncedAndFragment(nil, func(st *state.State) bool {
+		changed := false
 		for _, tool := range tools {
-			delete(st.Synced, tool)
+			if _, ok := st.Synced[tool]; ok {
+				delete(st.Synced, tool)
+				changed = true
+			}
 		}
+		return changed
 	})
 	if err != nil {
 		return err
 	}
 	return nil
-}
-
-// anySynced reports whether any of tools is globally isolated in st.
-func anySynced(st *state.State, tools []string) bool {
-	for _, tool := range tools {
-		if _, ok := st.Synced[tool]; ok {
-			return true
-		}
-	}
-	return false
 }
 
 // globalExportFallback renders the `export VAR=value` lines reproducing the

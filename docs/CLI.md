@@ -405,21 +405,31 @@ If global isolated mode currently selects `<old>` in `state.json synced`, rename
 refuses before its first mutation with exit `10` (`unsafe_refused`), including
 under `--dry-run`. Stop every process using the old isolated home (both `run -i`
 children and terminals activated by `use -i`), run
-`kae use -s <tool> <old>`, then retry the rename. The retried rename harvests a
-newer attributable credential from the retained old home before copying the
-account. It does not migrate or delete that old home, its sessions, or its
+`kae use -s <tool> <old>`, then retry the rename. For claude — currently the
+only tool whose rotating credential harvest is enabled — the retried rename
+harvests a newer attributable credential from the retained old home before
+copying the account. Other tools still retain the home, but do not harvest it.
+Rename does not migrate or delete that old home, its sessions, or its
 path-derived keychain item.
+
+Rename also refuses if the global fragment cannot be read or does not exactly
+match the fragment derived from `state.json synced`. This is the crash boundary
+between the two atomic file writes: state may have been saved while the previous
+fragment remains. The same `kae use -s <tool> <old>` remedy regenerates the
+fragment from current state while holding the state lock, even when `<tool>` is
+already absent from `synced`; retry rename after it succeeds.
 
 The order is three stages, and it is a contract rather than an implementation
 detail, because it is what an interrupted rename leaves behind: **(1)** copy every
 payload to the new refs and complete the new snapshot dir, **(2)** move the
 logical pointers (`[profiles]` references, then `state.json`), **(3)** delete the
-old refs and remove the old snapshot dir. So a rename that dies leaves either the
-old account intact and still pointed at, or both accounts present with the pointer
-on a complete one — never a pointer at a snapshot that does not exist.
+old refs and remove the old snapshot dir. Thus the logical pointers never name an
+incomplete snapshot. An interruption in stage 3 can leave both directories after
+some old refs were already deleted; the new snapshot and its copied refs remain
+complete, while doctor can report the old snapshot's missing refs.
 
-The one state that needs a manual step: a crash between stages 1 and 2 leaves
-**both** snapshots present, and re-running the same rename then refuses with exit
+An interruption after stage 1 leaves **both** snapshots present, and re-running
+the same rename then refuses with exit
 `10` (`<new>` already exists). That refusal is deliberately not relaxed — a
 half-written rename target is indistinguishable from a name that is genuinely
 taken, so tolerating it would mean guessing. Recover by choosing which copy to
@@ -432,6 +442,12 @@ keep — `kae ls` shows both:
   `kae account rm <tool> <old>`. The order matters — until the pointer moves,
   `<old>` is still the active account and `kae account rm` refuses it with exit
   `10` unless you pass `--force`.
+
+If the pointers already select `<new>`, stage 2 completed and `<old>` is a cleanup
+remnant, possibly with some missing secret refs from a partial stage 3. Resolve
+the backend or filesystem error reported by rename, then run
+`kae account rm <tool> <old>`; no `--force` is needed. Re-running rename cannot
+perform this cleanup because the existing-target guard still applies.
 
 Both hold the per-tool lock plus the config lock, and edit `config.toml`
 through a comment-preserving writer (comments, field order, and unrelated keys

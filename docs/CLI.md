@@ -364,8 +364,9 @@ each binds a different account. Read-only, no locks, and `--json` publishes
 fragment to read: `kae unpin` deliberately keeps the store so a re-pin restores
 the directory's sessions, and a single-tool re-bind leaves the previously bound
 tools' stores behind, so listing stores would name directories that are not bound
-and re-binds that land where nothing reads. A directory that was deleted or moved
-is likewise absent here — its orphaned store is `kae doctor`'s `pin_stale`.
+and re-binds that land where nothing reads. A directory whose recorded path is absent
+is likewise left out here — `kae doctor`'s `pin_stale` reports that it may have been
+deleted or moved and leaves its store untouched.
 
 An **unreadable** fragment is a different case from an absent one and is not
 silently dropped: the directory is left out of the listing with a stderr warning
@@ -1428,15 +1429,17 @@ Credential-health checks (warn-level):
 
 Bound-directory checks (warn-level, unfiltered like the companion ones — a
 binding is a property of the directory, not of one tool):
-- `pin_stale`: a directory bound with `kae pin` either no longer exists — its
-  per-directory store is then orphaned, since the store is named by a hash of the
-  path and nothing else records it — or it is still pinned to an account that is
-  no longer captured, which is what `kae account rm`/`rename` and
+- `pin_stale`: a directory bound with `kae pin` either no longer exists at its
+  recorded path — it may have been deleted or moved — or it is still pinned to
+  an account that is no longer captured, which is what `kae account rm`/`rename` and
   `kae profile rm` leave behind. Names the directory and the `kae pin` that
-  re-binds it. Offline: it reads the breadcrumb each store carries, the fragment
-  in the directory it names, and the account snapshots. A directory that was
-  simply `kae unpin`-ed is **not** reported: unpin keeps the store on purpose so
-  a re-pin restores its sessions and settings.
+  re-binds it for the missing-account case. For an absent recorded path it reports
+  the ambiguity and leaves the per-directory store untouched; it never recommends
+  reclaiming that store, because a moved directory's fragment may still point at it.
+  Offline: it reads the breadcrumb each store carries, the fragment in the directory
+  it names, and the account snapshots. A directory that was simply `kae unpin`-ed is
+  **not** reported: unpin keeps the store on purpose so a re-pin restores its sessions
+  and settings.
 
 **Bound-directory credentials** (reported under `credential_stale` /
 `credential_expiring`, also unfiltered): a bound directory reads a **live copy** of
@@ -1470,8 +1473,8 @@ first signal was the tool refusing to start in that directory.
   re-binding one tool of a profile leaves the previous tools' stores in place — so a
   walk of it returns stores nothing points at any more. A check that says "bound to"
   has to mean it, or its remedy sends the user to a login the tool will not read.
-- Silent, therefore, for a directory that is **gone** (`pin_stale` already reports
-  its orphaned store; naming it twice would be one problem reported as two), for one
+- Silent, therefore, for a directory whose recorded path is **gone** (`pin_stale`
+  already reports the ambiguity; naming it twice would be one problem reported as two), for one
   that was `kae unpin`-ed, for a tool the directory **no longer binds**, and for a
   store whose tool has never been started in it (no credential there yet).
 - These checks do not recapture — they report. That is a property of *doctor*, not

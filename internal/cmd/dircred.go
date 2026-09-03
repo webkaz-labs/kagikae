@@ -1629,9 +1629,11 @@ func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, stor
 // fragment counts as what it actually says), and `state.synced`, which is how a
 // globally isolated home reads the same store without any fragment naming it.
 //
-// A pin whose directory is gone is not a reference: nothing can run there, and
-// `pinChecks` already reports the orphaned store. A fragment that exists and cannot
-// be parsed is the unknown case, not the zero case.
+// A pin whose recorded directory is gone is not counted as a reference. That is exact
+// for a deleted directory; a moved directory may still read the store through the
+// fragment that moved with it, but this index cannot locate it. `pinChecks` reports
+// that ambiguity without recommending deletion. A fragment that exists and cannot be
+// parsed is the unknown case, not the zero case.
 func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 	pins, complete, err := app.pinnedDirsComplete()
 	if err != nil || !complete {
@@ -3017,8 +3019,9 @@ func (s boundDirStore) store() dirStore {
 // right).
 //
 // Silent skips, each for a reason a caller must not second-guess:
-//   - a directory that is **gone**: `pinChecks` reports its orphaned store, and
-//     naming it here too would report one problem as two.
+//   - a directory whose recorded path is **gone**: `pinChecks` reports that it may
+//     have been deleted or moved, and naming it here too would report one problem as
+//     two.
 //   - a fragment that cannot be read: `pinChecks` reports that as well.
 //   - a directory that was `kae unpin`-ed. Its store is kept on purpose so a re-pin
 //     restores the sessions, but nothing there points at it any more, so a finding

@@ -266,9 +266,9 @@ func TestUnboundToolsStoreInABoundDirectoryIsNotReported(t *testing.T) {
 	}
 }
 
-// A directory that no longer exists is pinChecks' orphaned-store finding. Naming
-// it again here would report one problem twice, and the credential of a store
-// nothing can reach is moot.
+// A directory that no longer exists at its recorded path is pinChecks' finding.
+// Naming it again here would report one problem twice; pinChecks leaves its store
+// untouched because the directory may have moved and may still read that store.
 func TestDeletedBoundDirectoryCredentialIsNotReportedTwice(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
@@ -284,7 +284,7 @@ func TestDeletedBoundDirectoryCredentialIsNotReportedTwice(t *testing.T) {
 		t.Fatalf("a deleted directory is pinChecks' finding only, got %+v", checks)
 	}
 	if _, ok := findCheck(buildDoctor(ctx, app, "", false), constants.CheckPinStale); !ok {
-		t.Fatal("pinChecks must still report the orphaned store")
+		t.Fatal("pinChecks must still report the absent recorded path")
 	}
 }
 

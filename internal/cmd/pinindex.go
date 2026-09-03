@@ -191,17 +191,16 @@ func (app *App) pinChecks() []adapter.Check {
 	checks := []adapter.Check{}
 	for _, pin := range pins {
 		// "Gone" is decided by the directory, never by a failed read of the
-		// fragment inside it: this branch tells the user to delete a store, so a
-		// permission error or an I/O blip on a live directory must not reach it.
+		// fragment inside it: a permission error or an I/O blip on a live
+		// directory must not be reported as an absent path.
 		if !dirExists(pin.Dir) {
-			// Deleted or moved. Nothing can reach its store again — the store is
-			// named by a hash of the path, and the breadcrumb is the only thing
-			// left that can still name it.
+			// Deleted or moved. A moved directory's fragment can still point at
+			// this store, so absence is reportable but never grounds for reclaiming it.
 			checks = append(checks, adapter.Check{
 				Code: constants.CheckPinStale, Status: constants.StatusWarn,
 				Message: fmt.Sprintf(
-					"%s was bound with kae pin but is gone; its per-directory store is orphaned (remove %s to reclaim it)",
-					pin.Dir, app.displayPath(app.Paths.PinDir(pin.PinID)),
+					"%s was bound with kae pin but its recorded path is gone; it may have been deleted or moved, so kae left its per-directory store untouched",
+					pin.Dir,
 				),
 			})
 			continue

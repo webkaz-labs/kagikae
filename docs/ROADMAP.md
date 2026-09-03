@@ -56,18 +56,15 @@ What is queued below came from the entries the 2026-08-16 session filed, each
 re-checked in code on 2026-08-17 before being placed. What decided the order is **what
 a user loses and whether closing it needs a mechanism**, not severity alone.
 
-1. **§ `pinChecks` tells the user to delete a store a moved directory is still using.**
-   First because it is the only one of the three whose output instructs a destruction,
-   its trigger is an ordinary move, and the entry already names the first step.
-2. **§ `kae account rename` leaves `state.synced` and the global fragment on the old
-   name.** Second because it is the other ordinary command with a silent loss, and
-   because the entry has already drawn the line between its cheap half and the
+1. **§ `kae account rename` leaves `state.synced` and the global fragment on the old
+   name.** It remains because it is an ordinary command with a silent loss, and
+   because its entry has already drawn the line between its cheap half and the
    migration behind it — including that the cheap half is wrong alone.
 
 **§ Attribution reads a label kae may have written itself takes no place here**, in
 the state the last item ended in: waiting on a mechanism rather than on a turn.
 It is the worse failure *kind* and that is not enough — ordering a missing design above
-two everyday losses would put a place in the order where a design is what is absent.
+the queued everyday loss would put a place in the order where a design is what is absent.
 
 The last item did not land: § `kae relogin` declines to capture a login
 it watched happen was measured, the fix it prescribed was built, and the measurement
@@ -875,35 +872,10 @@ alternative exists (`secret-tool`).
   a harvest it would have disagreed with. What would settle it is a reader set that does
   not depend on the recorded path, or a breadcrumb that `unpin` removes so absence can
   mean incompleteness again.
-  **This entry used to offer a consolation and it is unsound** — that `pinChecks`
-  reports the orphaned store, so the user is told something is wrong. It is the entry
-  below, because what it prints is a remedy rather than a report and the remedy
-  destroys; the two share this entry's predicate and nothing else.
-
-- **`pinChecks` tells the user to delete a store a moved directory is still using**
-  (measured 2026-08-16, **not fixed**). It reaches a moved directory through the same
-  `!dirExists(pin.Dir)` test as the entry above — `git grep -n 'dirExists(pin\.Dir)'`
-  is the caller list, and none of them can tell a moved directory from a deleted one —
-  but where the reader walks answer by staying quiet, this one prints
-  `<dir> was bound with kae pin but is gone; its per-directory store is orphaned
-  (remove <isolation/pin-id> to reclaim it)`. For a moved directory that store is the
-  one it is still exporting, out of the fragment that travelled with it, so a user who
-  follows the remedy deletes a live store. `paths.PinDir` is the parent of every tool's
-  `shared/` and `isolated/` store for that directory, so what goes is the sessions and
-  settings of each, and for any tool whose credential is not split per account the
-  credential with them. **Mode is not the condition and a first draft of this said it
-  was**: only claude has a per-account credential variable
-  ([ADAPTERS.md](ADAPTERS.md) § Per-account credential store), so `credStoreDir` is
-  empty for every other tool and its credential materializes under the config dir —
-  inside `PinDir` — in shared and isolated mode alike, while claude's sits outside
-  `PinDir` in both.
-  What has to be corrected first is not the predicate but kae's own account of it: the
-  comment on that branch says `Deleted or moved. Nothing can reach its store again`,
-  and the moved half of that is false. A remedy that cannot tell the two apart may not
-  advise a deletion — withholding the remedy while still reporting the orphan costs
-  nothing here, since the reclaim is a convenience and the deletion is not reversible.
-  That is available without settling the reader-set question the entry above asks, and
-  it is why the two are filed apart.
+  `pinChecks` still reports that the recorded path is absent, but no longer calls the
+  store orphaned or recommends reclaiming it: the command cannot distinguish these two
+  cases, and a moved directory's fragment may still point at that store. That removes
+  the destructive advice without settling the reader-set question this entry asks.
 
 - **A relogin's pre-flight refusal owes a backup it cannot safely take yet** (recorded
   2026-08-08 by an independent review of the pre-flight itself, **not fixed**).
@@ -1279,8 +1251,9 @@ alternative exists (`secret-tool`).
   with no resolved counterpart, sweep its items *before* renaming the directory,
   and say so. Note that codex parity is **not** a reason to hurry — `codex.storeKey`
   already resolves symlinks itself, so kae's keyring account matches whatever shape
-  `PinID` takes. `doctor`'s `pin_stale` now makes an orphaned store visible, which
-  was the part that used to be silent. **Worktrees add nothing to this** (checked
+  `PinID` takes. `doctor`'s `pin_stale` now makes an absent recorded path visible,
+  while deliberately not calling its store orphaned because the directory may have
+  moved. **Worktrees add nothing to this** (checked
   2026-08-04): a linked worktree is an ordinary directory with its own real path, so
   it gets its own pin-id by the same rule as any other directory, and the only way a
   worktree meets this entry is the way any directory does — by being reached through

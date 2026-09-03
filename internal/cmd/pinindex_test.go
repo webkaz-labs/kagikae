@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,8 +176,8 @@ func TestPinRecordsTheBoundDirectory(t *testing.T) {
 
 // TestPinChecksReportStaleBindings covers both ways a binding stops being
 // honorable: the account it names is gone (what `kae account rm`/`rename` and
-// `kae profile rm` used to do in silence), and the directory itself is gone
-// (which strands the store forever, since only the breadcrumb can still name it).
+// `kae profile rm` used to do in silence), and the recorded directory path is
+// gone (which can mean either deletion or a move).
 func TestPinChecksReportStaleBindings(t *testing.T) {
 	app := overlayTestApp(t)
 	cwd := pinHere(t, app, modeShared)
@@ -189,15 +190,15 @@ func TestPinChecksReportStaleBindings(t *testing.T) {
 
 	checks := app.pinChecks()
 	if len(checks) != 2 {
-		t.Fatalf("pinChecks() = %+v, want one dangling-account and one orphaned-store check", checks)
+		t.Fatalf("pinChecks() = %+v, want one dangling-account and one absent-path check", checks)
 	}
-	var dangling, orphan string
+	var dangling, absent string
 	for _, c := range checks {
 		if c.Code != constants.CheckPinStale || c.Status != constants.StatusWarn {
 			t.Fatalf("unexpected check %+v", c)
 		}
 		if strings.Contains(c.Message, gone) {
-			orphan = c.Message
+			absent = c.Message
 		}
 		if strings.Contains(c.Message, cwd) {
 			dangling = c.Message
@@ -206,8 +207,12 @@ func TestPinChecksReportStaleBindings(t *testing.T) {
 	if !strings.Contains(dangling, "claude/main") || !strings.Contains(dangling, "kae pin claude") {
 		t.Fatalf("the dangling-account check must name the binding and the fix: %q", dangling)
 	}
-	if !strings.Contains(orphan, "orphaned") {
-		t.Fatalf("the deleted directory's store must be reported as orphaned: %q", orphan)
+	wantAbsent := fmt.Sprintf(
+		"%s was bound with kae pin but its recorded path is gone; it may have been deleted or moved, so kae left its per-directory store untouched",
+		gone,
+	)
+	if absent != wantAbsent {
+		t.Fatalf("the absent path check must report only the ambiguity and preservation decision:\n got %q\nwant %q", absent, wantAbsent)
 	}
 
 	// Capturing the account it binds silences the dangling half, so the check
@@ -236,13 +241,11 @@ func TestUnpinnedDirectoryIsNotReportedStale(t *testing.T) {
 	}
 }
 
-// TestPinCheckDoesNotCallALiveDirectoryOrphaned pins the distinction the
-// orphaned branch depends on. It tells the user to delete a per-directory store
-// — sessions, settings and a credential — so it must fire only when the bound
-// directory is confirmed gone, never when the fragment inside a live directory
-// merely could not be read (a permission change, an I/O error on a network
-// mount).
-func TestPinCheckDoesNotCallALiveDirectoryOrphaned(t *testing.T) {
+// TestPinCheckDoesNotCallALiveDirectoryAbsent pins the distinction the
+// absent-path branch depends on. It must fire only when the recorded directory
+// path is confirmed gone, never when the fragment inside a live directory merely
+// could not be read (a permission change, an I/O error on a network mount).
+func TestPinCheckDoesNotCallALiveDirectoryAbsent(t *testing.T) {
 	app := overlayTestApp(t)
 	cwd := pinHere(t, app, modeShared)
 	// A fragment that exists but cannot be read: a directory in its place makes
@@ -258,8 +261,8 @@ func TestPinCheckDoesNotCallALiveDirectoryOrphaned(t *testing.T) {
 	if len(checks) != 1 {
 		t.Fatalf("pinChecks() = %+v, want one unreadable-fragment check", checks)
 	}
-	if strings.Contains(checks[0].Message, "orphaned") {
-		t.Fatalf("a live directory must never be reported as orphaned: %q", checks[0].Message)
+	if strings.Contains(checks[0].Message, "recorded path is gone") {
+		t.Fatalf("a live directory must never be reported as absent: %q", checks[0].Message)
 	}
 	if !strings.Contains(checks[0].Message, cwd) || !strings.Contains(checks[0].Message, "could not be read") {
 		t.Fatalf("the check must name the directory and say the fragment was unreadable: %q", checks[0].Message)

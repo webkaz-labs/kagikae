@@ -93,8 +93,9 @@ func runLsPins(app *App, opts commonOpts) int {
 // at any more — `kae unpin` keeps one so a re-pin restores its sessions, and a
 // single-tool re-bind leaves the previously bound tools' stores behind — so a
 // directory is listed only when it still has a fragment to read (AGENTS.md; the
-// leftovers are pinChecks' business). A directory that is gone is skipped for the
-// same reason, and `kae doctor` is where its orphaned store is reported.
+// leftovers are pinChecks' business). A directory whose recorded path is gone is
+// skipped for the same reason, and `kae doctor` reports that it may have been deleted
+// or moved while leaving its store untouched.
 //
 // It reads no config, and so deliberately skips requireConfig: the bindings live
 // in the data dir and the fragments live in the directories, so a malformed

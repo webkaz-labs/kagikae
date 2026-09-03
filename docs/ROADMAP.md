@@ -29,24 +29,17 @@ stage 3 of the docs scan, filed below.
 ## Current work order — batches first, release after
 
 This is the executable queue. Each step names the existing entry or document that owns
-the detail; it does not restate that contract. [RELEASE.md](RELEASE.md) keeps no active
-target until the implementation steps below have landed.
+the detail; it does not restate that contract. The implementation work for this candidate
+has landed; [RELEASE.md](RELEASE.md) owns the remaining freeze and release procedure.
 
-1. **Use the settled fail-closed contract** in **`kae account rename` leaves
-   `state.synced` and the global fragment on the old name**. Refuse while global isolation
-   selects the old account; tell the user to stop processes using that home, return the
-   tool to shared mode, and retry. Interlock the rename with `kae use -i` and `kae run -i`,
-   and retain the old home rather than migrating or deleting it.
-2. **Implement and verify that contract**, including command output, JSON/exit behaviour,
-   tests, completion impact, and every documentation surface the changed contract owns.
-3. **Freeze the release candidate.** Choose the version only after reviewing the complete
+1. **Freeze the release candidate.** Choose the version only after reviewing the complete
    diff, including the minimum Go version change; resolve generated-lockfile status, install
    the exact candidate, and run the release checks in [RELEASE.md](RELEASE.md).
-4. **Run the full real-machine acceptance as one batch**, following
+2. **Run the full real-machine acceptance as one batch**, following
    [ACCEPTANCE.md](ACCEPTANCE.md), then pay its § Open gates together. The
    `refreshTokenExpiresAt` gate remains a non-blocking observation unless its measured
    result changes a shipped claim.
-5. **Release only after explicit approval** for the main push and CI result, followed by
+3. **Release only after explicit approval** for the main push and CI result, followed by
    separate approval for the tag and public release. Verify the published artifacts as
    [RELEASE.md](RELEASE.md) requires.
 
@@ -1151,14 +1144,15 @@ alternative exists (`secret-tool`).
   kae's label is broken, so the reporting belongs on the label, not on the comparison.
 
 - **`kae account rename` leaves `state.synced` and the global fragment on the old
-  name** (measured 2026-08-16, **not fixed**). The rename updates `state.Active` and the
-  profile references and now harvests the credential, but it never touches `st.Synced`
-  or re-runs `regenGlobalFragment`. After `kae use -i <tool> <old>` then a rename, the
-  kae-owned global fragment keeps exporting `isolation/global/<tool>/<old>` and
+  name** (measured 2026-08-16, **fixed in the next release candidate; not yet shipped**).
+  Before the fix, rename updated `state.Active` and the profile references and harvested
+  the credential, but never touched `st.Synced` or re-ran `regenGlobalFragment`. After
+  `kae use -i <tool> <old>` then a rename, the
+  kae-owned global fragment kept exporting `isolation/global/<tool>/<old>` and
   `credstore/<tool>/<old>` — an account no longer captured — so a refresh the tool
-  performs afterwards lands in a store nothing will harvest.
-  `TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads` asserts the snapshot and
-  deliberately stops short of this. The settled contract is **fail closed rather than
+  performed afterwards landed in a store nothing would harvest.
+  `TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads` asserted the snapshot and
+  deliberately stopped short of this. The settled contract is **fail closed rather than
   migrate paths live**: if any `st.Synced[tool]` selects `<old>`, reject with
   `unsafe_refused` before the first rename mutation. Tell the user to stop every process
   using the old isolated home, run `kae use -s <tool> <old>` to return that tool to shared
@@ -1166,38 +1160,40 @@ alternative exists (`secret-tool`).
   it leaves the old home and credential store in place; for claude — currently the only
   tool with rotating credential harvest enabled — the retried rename's existing
   disk-reader harvest captures that copy before changing the account.
-  The check and rename commit must also be interlocked with the `kae use -i` operation and
-  with the full lifetime of `kae run -i`. Checking `state.synced` under a separate lock
+  The check and rename commit are interlocked with the `kae use -i` operation and with the
+  full lifetime of `kae run -i`. Checking `state.synced` under a separate lock
   lifetime leaves a race that can recreate the old-name fragment, while `run -i` never
   records `state.synced` and can refresh the old store until its child exits. A dedicated
-  per-tool isolation-path lock may preserve concurrent isolated runs; reusing the existing
-  exclusive tool lock may not serialize unrelated shared switches or two `run -i` calls.
+  per-tool isolation-path reader/writer lock preserves concurrent isolated runs; reusing
+  the existing exclusive tool lock would unnecessarily serialize unrelated shared
+  switches or two `run -i` calls.
   Pointing the fragment at `<new>` instead is not the small fix it appears to be: it also
   requires moving the isolated home and re-keying the credential store while processes may
   still hold the old paths. That migration remains a separate product decision; do not
   smuggle it into the refusal implementation. The old home, session files, and keychain
   item remain recoverable after rename. Remapping `st.Synced` alone is still wrong,
   because it would point the fragment at a home that does not exist.
-  **For claude this loses a login rather than leaving a leftover, and the wording above
+  **Before the fix, for claude this lost a login rather than leaving a leftover, and the
+  wording above
   ("a store nothing will harvest") is too mild for it** (measured 2026-08-16). The
-  rename does harvest the copy that is live at the time, into the snapshot under the
-  new name. What happens next is the rotation row: the tool keeps running against the
-  fragment's old-name store, refreshes there, and that refresh invalidates the copy the
-  rename just preserved. So the snapshot under the new name holds a credential that can
-  no longer refresh, and the copy that can is in a store no kae command names any more —
-  `credStoreRefs` counts `st.Synced`, so even `kae unpin --purge` keeps it, and nothing
-  offers it back. The user sees nothing until the next `kae use -i` / `kae run -i` /
-  `kae pin` materializes the snapshot, at which point claude asks for a login: the
+  rename did harvest the copy that was live at the time, into the snapshot under the
+  new name. What happened next was the rotation row: the tool kept running against the
+  fragment's old-name store, refreshed there, and that refresh invalidated the copy the
+  rename had preserved. So the snapshot under the new name held a credential that could
+  no longer refresh, and the copy that could was in a store no kae command named any more —
+  `credStoreRefs` counted `st.Synced`, so even `kae unpin --purge` kept it, and nothing
+  offered it back. The user saw nothing until the next `kae use -i` / `kae run -i` /
+  `kae pin` materialized the snapshot, at which point claude asked for a login: the
   symptom [ACCEPTANCE.md](ACCEPTANCE.md) § Real-machine gate — does
   `refreshTokenExpiresAt` predict the login's death? asks to be read before logging back
-  in. Two asymmetries make it quiet. `warnPinnedAccountGone` matches directories that
-  have a fragment, and a globally isolated home has none, so the pinned case warns on
-  exactly this and the `-i` case does not. And `kae doctor` never reads `st.Synced` at
-  all, while `kae status` prints it — so after a rename `status` names an account
-  `kae ls` does not have, and nothing calls that a finding.
+  in. Two asymmetries made it quiet. `warnPinnedAccountGone` matched directories that
+  had a fragment, and a globally isolated home had none, so the pinned case warned on
+  exactly this and the `-i` case did not. And `kae doctor` did not read `st.Synced`,
+  while `kae status` printed it — so in the defective sequence `status` named an account
+  `kae ls` did not have, and nothing called that a finding.
   Scope: `isolationEnvVar` covers claude and codex, and codex takes the
-  `!rotatesSingleUse` early return in the rename harvest, so the lost-login half is
-  claude's and the leftover half is everyone's. The refusal therefore applies to the
+  `!rotatesSingleUse` early return in the rename harvest, so the lost-login half was
+  claude's and the leftover half was everyone's. The refusal therefore applies to the
   shared `state.synced` condition rather than to a tool-specific rotation rule.
 
 - **`kae account rm` can remove an account while an isolated process still uses its

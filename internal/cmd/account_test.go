@@ -521,6 +521,55 @@ func TestAccountRenameRecomputesProfileReferencesUnderConfigLock(t *testing.T) {
 	}
 }
 
+func TestAccountRenameMatchesActiveProfileAgainstLockedConfig(t *testing.T) {
+	base := "version = 1\n[security]\nsecret_backend = \"file\"\n"
+	matchingNew := base + "[profiles.alt.accounts]\nclaude = \"side\"\n"
+	for _, tc := range []struct {
+		name              string
+		initial           string
+		concurrent        string
+		wantActiveProfile string
+	}{
+		{
+			name:              "concurrent matching profile is selected",
+			initial:           base,
+			concurrent:        matchingNew,
+			wantActiveProfile: "alt",
+		},
+		{
+			name:              "concurrently removed profile is cleared",
+			initial:           matchingNew,
+			concurrent:        base,
+			wantActiveProfile: "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := testApp(t, nil)
+			ctx := context.Background()
+			captureClaude(t, app, "main", mainToken)
+			writeConfigFile(t, app, tc.initial)
+			// This profile never references the old account, so the config editor is
+			// skipped. Only the under-lock reload can make ActiveProfile current.
+			app.beforeAccountRenameLocksForTest = func() { writeFile(t, app.ConfigPath, tc.concurrent) }
+
+			report, err := buildAccountRename(ctx, app, commonOpts{Format: formatText}, "claude", "main", "side")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(report.ProfilesUpdated) != 0 {
+				t.Fatalf("fixture unexpectedly referenced the old account: %v", report.ProfilesUpdated)
+			}
+			st, err := app.loadState()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st.ActiveProfile != tc.wantActiveProfile {
+				t.Fatalf("active_profile=%q want %q", st.ActiveProfile, tc.wantActiveProfile)
+			}
+		})
+	}
+}
+
 func TestAccountSetIdentityRecordsValue(t *testing.T) {
 	app := testApp(t, nil)
 	captureClaude(t, app, "main", mainToken)

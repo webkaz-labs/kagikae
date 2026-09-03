@@ -316,6 +316,7 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	profiles = profilesReferencing(lockedConfig, tool, oldName)
 	report.ProfilesUpdated = profiles
 	report.SecretsMoved = len(acc.ArtifactNames())
+	matchConfig := lockedConfig
 
 	// Re-read under the state lock while the tool lock excludes a shared teardown
 	// and the exclusive lifecycle lock excludes `use -i` and every `run -i` child.
@@ -415,6 +416,9 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		}); err != nil {
 			return nil, err
 		}
+		// editConfig reloads the post-rename config. That is the version whose
+		// account mappings state.ActiveProfile must match.
+		matchConfig = app.Config
 	}
 	// Re-decided under the state lock, for the reason `kae account rm` gives:
 	// the pre-lock copy can be older than a concurrent switch, and renaming on
@@ -425,7 +429,7 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 			return
 		}
 		st.Active[tool] = newName
-		st.ActiveProfile = app.Config.MatchProfile(st.Active)
+		st.ActiveProfile = matchConfig.MatchProfile(st.Active)
 	}); err != nil {
 		return nil, err
 	}

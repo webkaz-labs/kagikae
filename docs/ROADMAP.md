@@ -28,81 +28,69 @@ stage 3 of the docs scan, filed below.
 
 ## Current work order — batches first, release after
 
-**An ordering decision, not a record** (2026-08-15). A release was planned and
-deliberately deferred. What decided it is reproducible rather than quoted:
+This is the executable queue. Each step names the existing entry or document that owns
+the detail; it does not restate that contract. [RELEASE.md](RELEASE.md) keeps no active
+target until the implementation steps below have landed.
 
-```bash
-git diff v0.17.0..HEAD -- 'internal/**/*.go' 'main.go' go.mod go.sum ':!**/*_test.go' \
-  | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | grep -vE '^[+-]\s*//' | grep -vE '^[+-]\s*$'
-```
+1. **Settle the fail-closed contract** in **`kae account rename` leaves `state.synced`
+   and the global fragment on the old name**. It must preserve the newest isolated-store
+   credential before teardown and interlock rename with a concurrent `kae use -i`; that
+   entry owns the boundary between this fix and a future path migration.
+2. **Implement and verify that contract**, including command output, JSON/exit behaviour,
+   tests, completion impact, and every documentation surface the changed contract owns.
+3. **Freeze the release candidate.** Choose the version only after reviewing the complete
+   diff, including the minimum Go version change; resolve generated-lockfile status, install
+   the exact candidate, and run the release checks in [RELEASE.md](RELEASE.md).
+4. **Run the full real-machine acceptance as one batch**, following
+   [ACCEPTANCE.md](ACCEPTANCE.md), then pay its § Open gates together. The
+   `refreshTokenExpiresAt` gate remains a non-blocking observation unless its measured
+   result changes a shipped claim.
+5. **Release only after explicit approval** for the main push and CI result, followed by
+   separate approval for the tag and public release. Verify the published artifacts as
+   [RELEASE.md](RELEASE.md) requires.
 
-On any tree where that prints only a rename and a docs pointer inside an error
-string, a tag ships the rename — while [ACCEPTANCE.md](ACCEPTANCE.md) § Open gates
-is the cost every release carries whatever it contains, and it is a cost only a
-human can pay. Deferring spends that cost on a tree worth spending it on. Cut a
-release when the list below has landed, not on a schedule — which is what this
-section's own title says, and it binds again the moment anything is queued.
+An item that fails its measurement returns to the backlog entry that owns the evidence;
+its absence from this queue never means it shipped. This section goes when the queue has
+landed, together with the citations that route here.
 
-`go.mod` and `go.sum` are in that pathspec deliberately. A dependency bump with no
-`internal/` change — the shape a `mise run audit` finding produces — would otherwise
-print nothing and read as "there is nothing here to ship", which is how this command
-could re-affirm the deferral over a fix that ought to go out.
+## Work order after the next release
 
-Each names a section or an entry in this file and gives **only its place in the
-order and what that place turns on**. What the item *is* stays where it is: a second
-copy here is the duplication `mise run docs-scan` reports.
+Work these lanes in order. Within a lane, the named entries carry their own prerequisites
+and may still refuse implementation when evidence or a mechanism is missing. Entries not
+named here retain their recorded gate; this index does not silently promote or close them.
 
-What is queued below came from the entries the 2026-08-16 session filed, each
-re-checked in code on 2026-08-17 before being placed. What decided the order is **what
-a user loses and whether closing it needs a mechanism**, not severity alone.
-
-1. **§ `kae account rename` leaves `state.synced` and the global fragment on the old
-   name.** It remains because it is an ordinary command with a silent loss, and
-   because its entry has already drawn the line between its cheap half and the
-   migration behind it — including that the cheap half is wrong alone.
-
-**§ Attribution reads a label kae may have written itself takes no place here**, in
-the state the last item ended in: waiting on a mechanism rather than on a turn.
-It is the worse failure *kind* and that is not enough — ordering a missing design above
-the queued everyday loss would put a place in the order where a design is what is absent.
-
-The last item did not land: § `kae relogin` declines to capture a login
-it watched happen was measured, the fix it prescribed was built, and the measurement
-refused it — so the entry went back to the backlog carrying what that cost, and what it
-now waits on is a mechanism nobody has designed rather than a place in an order. That
-is a call for a human to make, not a step to take from reading this —
-[ACCEPTANCE.md](ACCEPTANCE.md) § Open gates is the cost it carries, and only a human
-can pay it. Re-run the command above on the current
-tree before treating any of this as still true.
-
-An item leaves this list two ways, and only one of them is landing: it can also be
-measured and returned to the backlog, which is what once emptied the list above. So what is
-here is what was placed plus what was left, rather than what was planned, and an
-item's absence is not a claim
-that it shipped — git log holds the order things were worked in, and the entry itself
-holds what was learned.
-
-What stays out does so for unlike reasons. The freshness surfaces' wording waits on a
-**result**: [ACCEPTANCE.md](ACCEPTANCE.md) § Real-machine gate — does
-`refreshTokenExpiresAt` predict the login's death? is what decides whether kae
-over-warns, and wording written first would be the unmeasured claim
-[AGENTS.md](../AGENTS.md) refuses. So this wording waits on a result with no date on
-it: [ACCEPTANCE.md](ACCEPTANCE.md) records that gate as an observation rather than a
-run, and says why.
-Before treating that as a permanent block:
-the deferral covers two claims, and only one of them is that gate's. That the surfaces
-do not detect a copy another copy invalidated is already measured on the rotation row
-in [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions; only the accuracy
-of the deadline itself is unmeasured. Declaring
-codex's `KeychainDirBindable` waits on [ACCEPTANCE.md](ACCEPTANCE.md) § Open gates
-the same way, and this file's § Hardening backlog entry for codex's keyring store
-says what the result unblocks.
-
-This section goes when the list above has landed, and the sentences naming it go too.
-Removing it turns `docs-check` red on [RELEASE.md](RELEASE.md)'s citation, so that
-one announces itself — measured by renaming this heading and reading the failure.
-The other does not: this file's own opening names this section in the bare form no
-citation grep reads. What each item cost stays with its entry.
+1. **Safety batch** — close the test and validation holes described by **A test that
+   forgets to install a runner is silent, and it writes to the machine it runs on**,
+   **Two assertions in the harvest block still pass when the thing that reads the
+   snapshot is broken**, **The smoke guards have no test, and four changes switched one
+   off without anything noticing**, and **`derived_cleared` reads the whole file, so a
+   comment can satisfy it**. The first entry also owns the unscoped-delete hole in
+   `keychainSim` and the `TMPDIR` boundary; treat those as part of the same containment
+   batch rather than as ride-alongs to product work.
+2. **Diagnostics batch** — add the missing signals or correct bounded wording from **The
+   pin index can be incomplete with nothing saying so**, **A recorded identity that is
+   not an account record silently disables attribution for that account**, **`kae
+   relogin`'s success line reports a login for a store somebody else refreshed**, **A
+   directory-scoped keychain item keeps a stale account attribute**, and **`kae account
+   rename` / `kae account rm` delete a recorded `SecretRef` verbatim**.
+3. **Research only** — do not schedule implementation for **A moved bound directory does
+   not count as a reader, and its absence does not make the reader set incomplete**,
+   **Attribution reads a label kae may have written itself**, **A relogin's pre-flight
+   refusal owes a backup it cannot safely take yet**, **Every credential copy kae keeps
+   can be killed by another copy refreshing, and four kae commands do the killing**, **A
+   payload kae can neither read nor date is still overwritten by a bind, and that is a
+   decision rather than an oversight**, or **`PinID` does not resolve symlinks, and
+   changing that needs a migration** until the mechanism or measurement named by each
+   entry exists.
+4. **Drift automation** — first close **The fingerprint arm reads whatever the table's
+   path resolves to, and a stale path resolves fine**, then build **The shim harness** and
+   **Behaviour-site hashes** in § Upstream-drift automation — what is left, and widen CI
+   only through the per-step decisions in **CI runs a subset of the gate; `docs-check` was
+   the one step whose price fell**.
+5. **Demand and platform work** — take § Command-system expansion, § Platform coverage,
+   **TUI**, **Remote share-list definitions (ship)**, **cursor off macOS is unblocked but
+   unimplemented**, and § Tier-2 tools — described, not queued only when their own demand
+   or evidence gate opens. Tier 2 is not a parity backlog.
 
 ## Upstream-drift automation — what is left
 
@@ -1169,12 +1157,19 @@ alternative exists (`secret-tool`).
   `credstore/<tool>/<old>` — an account no longer captured — so a refresh the tool
   performs afterwards lands in a store nothing will harvest.
   `TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads` asserts the snapshot and
-  deliberately stops short of this. Not folded into that fix because the honest version
-  is not a map edit: pointing the fragment at the new name means **moving** the isolated
-  home and re-keying the credential store, which is the migration shape
-  § `PinID` does not resolve symlinks records the cost of. The cheap half — remapping
-  `st.Synced` inside the rename's existing `mutateState` closure — is wrong on its own,
-  because it would point the fragment at a home that does not exist yet.
+  deliberately stops short of this. The next design is **fail closed rather than migrate
+  paths live**: if any `st.Synced[tool]` selects `<old>`, the rename cannot proceed until
+  processes using that isolated home have stopped and the newest credential in its store
+  has been safely attributed and captured before teardown. The preflight also has to be
+  interlocked with `kae use -i` from its check through the rename commit; checking
+  `state.synced` and renaming under separate lock lifetimes leaves a race that can recreate
+  the old-name fragment. The existing `kae use -s` path is not the remedy by itself: it
+  recaptures the real store, not the isolated store being retired.
+  Pointing the fragment at `<new>` instead is not the small fix it appears to be: it also
+  requires moving the isolated home and re-keying the credential store while processes may
+  still hold the old paths. That migration remains a separate product decision; do not
+  smuggle it into the refusal implementation. Remapping `st.Synced` alone is still wrong,
+  because it would point the fragment at a home that does not exist.
   **For claude this loses a login rather than leaving a leftover, and the wording above
   ("a store nothing will harvest") is too mild for it** (measured 2026-08-16). The
   rename does harvest the copy that is live at the time, into the snapshot under the
@@ -1194,7 +1189,8 @@ alternative exists (`secret-tool`).
   `kae ls` does not have, and nothing calls that a finding.
   Scope: `isolationEnvVar` covers claude and codex, and codex takes the
   `!rotatesSingleUse` early return in the rename harvest, so the lost-login half is
-  claude's and the leftover half is everyone's.
+  claude's and the leftover half is everyone's. The refusal therefore applies to the
+  shared `state.synced` condition rather than to a tool-specific rotation rule.
 
 - **`kae account rename` / `kae account rm` delete a recorded `SecretRef`
   verbatim** (recorded 2026-07-31, **deliberately not fixed**). Both delete the ref
@@ -1467,8 +1463,6 @@ completion surface those verbs are reached through, and two unbuilt candidates:
   `flagSetFor` uses, with each script consuming it in its positional loop. Doing
   it per script without that backend would re-create the drift the dynamic backend
   exists to prevent.
-- **`kae profile save <name>`**: snapshot the current active set into a
-  named profile, instead of hand-editing config via `kae edit`.
 - **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`
   tasks (and their dynamic completion) into the project's `.mise.toml` only, so
   they exist where the tasks live. A `--global` option emitting them into the

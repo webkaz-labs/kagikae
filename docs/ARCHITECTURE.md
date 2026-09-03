@@ -396,8 +396,10 @@ through an `App` state seam: normally `mutateState`, with the synced-and-fragmen
 variant described below. Each takes this lock, **re-reads the file**, applies
 the mutation and saves — the re-read is what makes the update lost-free, the
 lock is what makes the re-read atomic. Two consequences for callers: the state
-lock is always innermost (isolation lifecycle → tool → config → state) and is held
-only for the read plus the write except for that generated-fragment variant, and
+lock is always innermost (isolation lifecycle → tool → config → state), and the
+ordinary seam holds it only for the read plus the write. The longer-lived exceptions
+are the generated-fragment transaction below and account removal's config/state
+transaction described here. In every variant,
 **a decision about the state must be made
 inside the mutation, not from a copy read earlier** — `kae account rm` re-checks
 under the lock whether the account it removes is active or globally isolated and

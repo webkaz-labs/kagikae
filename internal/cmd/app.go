@@ -41,10 +41,11 @@ type App struct {
 	// nil in production, so secretBackend resolves from config as usual.
 	backendForTest secret.Backend
 	// Test seams for failures and pre-lock races that cannot be scheduled
-	// deterministically around non-blocking flock acquisition. Both are nil in
+	// deterministically around non-blocking flock acquisition. All are nil in
 	// production.
 	regenGlobalFragmentForTest        func(map[string]string) error
 	beforeAccountMutationLocksForTest func()
+	afterAccountRmConfigEditForTest   func()
 	// refusalReported holds the per-directory stores whose un-harvested credential the
 	// pin-level pass has already reported, so writeDirCredential's backstop does not say
 	// it twice (markRefusalReported; docs/CLI.md § kae pin). Scoped to **one bind**: the
@@ -299,6 +300,17 @@ func (app *App) acquireConfigLock() (*lock.Lock, error) {
 // safe here because the critical section is one read plus one atomic write and
 // a switch that reaches it has a backup to restore from.
 func (app *App) mutateState(mutate func(*state.State)) (*state.State, error) {
+	return app.mutateStateChecked(func(st *state.State) error {
+		mutate(st)
+		return nil
+	})
+}
+
+// mutateStateChecked is mutateState's error-returning form. The callback runs
+// while state.lock is held; returning an error skips the state save. It exists
+// for account removal, whose config edit must stay between its state preflight
+// and state save without releasing and reacquiring the state lock.
+func (app *App) mutateStateChecked(mutate func(*state.State) error) (*state.State, error) {
 	l, err := app.acquireNamedLock(lockNameState, "another kae process is recording state; retry shortly")
 	if err != nil {
 		return nil, err
@@ -308,7 +320,9 @@ func (app *App) mutateState(mutate func(*state.State)) (*state.State, error) {
 	if err != nil {
 		return nil, err
 	}
-	mutate(st)
+	if err := mutate(st); err != nil {
+		return nil, err
+	}
 	st.UpdatedAt = app.Now().UTC()
 	if err := state.Save(app.Paths.StateFile(), st); err != nil {
 		return nil, err

@@ -160,9 +160,12 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 	matchConfig := lockedConfig
 
 	// The lifecycle lock excludes use-i and every run-i child for this tool;
-	// the tool lock excludes shared switches. The state decision is made under
-	// state.lock before the first mutation, and --force exempts only active.
-	if err := app.inspectState(func(st *state.State) error {
+	// the tool lock excludes shared switches. Keep one state-lock lifetime from
+	// the authoritative preflight through the config edit and state save. A busy
+	// state writer is therefore discovered before the first mutation, never
+	// after config.toml has already changed.
+	var be secret.Backend
+	if _, err := app.mutateStateChecked(func(st *state.State) error {
 		if err := app.accountRmIsolationPreflight(st, tool, accountName); err != nil {
 			return err
 		}
@@ -171,46 +174,39 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 		if active && !force {
 			return accountRmActiveError(tool, accountName)
 		}
+		// Resolve only after config and state have been re-read under their
+		// locks; a refusal must not touch the secret backend.
+		be, err = app.secretBackendForConfig(lockedConfig)
+		if err != nil {
+			return err
+		}
+		if len(profiles) > 0 {
+			if err := app.editConfig(func(e *config.Editor) {
+				for _, name := range profiles {
+					e.RemoveProfileAccount(name, tool)
+				}
+			}); err != nil {
+				return err
+			}
+			matchConfig = app.Config
+			if app.afterAccountRmConfigEditForTest != nil {
+				app.afterAccountRmConfigEditForTest()
+			}
+		}
+		report.ActiveCleared = st.Active[tool] == accountName
+		if !report.ActiveCleared {
+			return nil
+		}
+		delete(st.Active, tool)
+		st.ActiveProfile = matchConfig.MatchProfile(st.Active)
 		return nil
 	}); err != nil {
 		return nil, err
 	}
 
-	// Resolve only after config and state have been re-read under their locks;
-	// a refusal must not touch the secret backend.
-	be, err := app.secretBackendForConfig(lockedConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	// Logical removal first (config + state), then physical cleanup (snapshot
-	// secrets, dir). Secret refs go before the dir so a partial backend failure
-	// leaves the metadata needed to retry; missing ref deletion is idempotent.
-	if len(profiles) > 0 {
-		if err := app.editConfig(func(e *config.Editor) {
-			for _, name := range profiles {
-				e.RemoveProfileAccount(name, tool)
-			}
-		}); err != nil {
-			return nil, err
-		}
-		matchConfig = app.Config
-	}
-	// Whether this account is still the active one is decided *inside* the state
-	// lock, not from the copy read above the tool lock: a switch that completed
-	// in between makes another account active, and clearing on the stale answer
-	// would drop a binding this command was never asked to touch. The report
-	// follows what the locked decision did.
-	if _, err := app.mutateState(func(st *state.State) {
-		report.ActiveCleared = st.Active[tool] == accountName
-		if !report.ActiveCleared {
-			return
-		}
-		delete(st.Active, tool)
-		st.ActiveProfile = matchConfig.MatchProfile(st.Active)
-	}); err != nil {
-		return nil, err
-	}
+	// Logical removal above precedes physical cleanup (snapshot secrets, dir).
+	// Secret refs go before the dir so a partial backend failure leaves the
+	// metadata needed to retry; missing ref deletion is idempotent.
 	for _, name := range acc.ArtifactNames() {
 		if err := be.Delete(ctx, acc.Artifacts[name].SecretRef); err != nil {
 			return nil, fmt.Errorf("delete secret %s: %w", acc.Artifacts[name].SecretRef, err)

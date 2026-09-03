@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -254,6 +255,64 @@ func TestAccountRmRechecksActiveAfterTakingLocks(t *testing.T) {
 	}
 	if _, found, loadErr := account.Load(app.Paths.AccountDir("claude", "main")); loadErr != nil || !found {
 		t.Fatalf("active refusal removed snapshot: found=%v err=%v", found, loadErr)
+	}
+}
+
+func TestAccountRmStateBusyHappensBeforeConfigMutation(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	captureClaude(t, app, "side", sideToken)
+	const configText = "version = 1\n[security]\nsecret_backend = \"file\"\n[profiles.alt.accounts]\nclaude = \"main\"\n"
+	writeConfigFile(t, app, configText)
+	held, err := lock.Acquire(app.Paths.LocksDir(), lockNameState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+
+	_, err = buildAccountRm(ctx, app, commonOpts{Format: formatText}, "claude", "main", false)
+	if exitOf(err) != constants.ExitLockBusy {
+		t.Fatalf("state contention exit=%d err=%v", exitOf(err), err)
+	}
+	if got := readFile(t, app.ConfigPath); got != configText {
+		t.Fatal("config changed before the busy state lock was reported")
+	}
+	if _, found, loadErr := account.Load(app.Paths.AccountDir("claude", "main")); loadErr != nil || !found {
+		t.Fatalf("state contention removed snapshot: found=%v err=%v", found, loadErr)
+	}
+}
+
+func TestAccountRmKeepsStateLockAcrossConfigEditAndSave(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	captureClaude(t, app, "main", mainToken)
+	captureClaude(t, app, "side", sideToken)
+	writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n[profiles.alt.accounts]\nclaude = \"main\"\n")
+	sawBusy := false
+	app.afterAccountRmConfigEditForTest = func() {
+		other, err := lock.Acquire(app.Paths.LocksDir(), lockNameState)
+		if other != nil {
+			other.Release()
+		}
+		if !errors.Is(err, lock.ErrBusy) {
+			t.Fatalf("state lock became available between config edit and state save: lock=%v err=%v", other, err)
+		}
+		sawBusy = true
+	}
+
+	if _, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, "claude", "main", false); err != nil {
+		t.Fatal(err)
+	}
+	if !sawBusy {
+		t.Fatal("post-config state-lock probe did not run")
+	}
+	cfg, _, err := config.Load(app.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := cfg.Profiles["alt"].Accounts["claude"]; exists {
+		t.Fatal("profile reference was not removed")
 	}
 }
 

@@ -402,7 +402,10 @@ only for the read plus the write except for that generated-fragment variant, and
 inside the mutation, not from a copy read earlier** — `kae account rm` re-checks
 under the lock whether the account it removes is active or globally isolated and
 whether the generated fragment matches state, because a switch can have completed
-in between. `TestStateWritesGoThroughTheSeam` keeps the
+in between. Removal keeps that one state-lock lifetime across its config edit and
+state save, so state contention is reported before either file changes rather than
+after config alone has been updated. The outer order remains config → state.
+`TestStateWritesGoThroughTheSeam` keeps the
 seam from being bypassed from the rest of `internal/cmd`, which is as far as it
 globs: `state.Save` stays exported, so nothing else stops a direct write that
 compiles, passes review and fails only under concurrency. `kae rollback` does not

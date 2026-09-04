@@ -26,13 +26,35 @@ document, an acceptance log, a user-facing error message and code comments. A ne
 not a proof — a reference that defers a question here without naming the file is
 stage 3 of the docs scan, filed below.
 
-## Current work order — batches first, release after
+## Current work order — v0.18.1 safety patch
 
 This is the executable queue. Each step names the existing entry or document that owns
-the detail; it does not restate that contract. The v0.18.0 candidate is frozen and
-installed locally; [RELEASE.md](RELEASE.md) owns the remaining release procedure.
+the detail; it does not restate that contract. v0.18.1 is a patch release: it closes
+credential-safety and mandatory-gate false-green defects without adding a command,
+provider, mode, JSON surface, tier promotion or platform.
 
-1. **Release only after explicit approval** for the main push and CI result, followed by
+1. **Contain the test process** — complete **A test that forgets to install a runner is
+   silent, and it writes to the machine it runs on**, including its `TMPDIR`, all three
+   runner seams and `keychainSim`'s unscoped-delete hole.
+2. **Refuse an inconsistent account snapshot before mutation** — complete **`kae account
+   rename` / `kae account rm` delete a recorded `SecretRef` verbatim**. This is safety
+   work, not diagnostics: a foreign recorded reference can delete another account's
+   payload.
+3. **Make the release evidence bite** — complete **Two assertions in the harvest block
+   still pass when the thing that reads the snapshot is broken**, **The smoke guards have
+   no test, and four changes switched one off without anything noticing**,
+   **[ACCEPTANCE.md](ACCEPTANCE.md)'s `## Real-…` headings confirm each other's
+   citations**, and **`derived_cleared` reads the whole file, so a comment can satisfy
+   it**. Keep a bounded fast mutation set in the commit gate and run the full recorded
+   set at release time; do not build a general mutation framework.
+4. **Integrate the patch** — pass [AGENTS.md](../AGENTS.md) § Validation, correctness
+   review, then quality review; make the tracked-document decisions under
+   [AGENTS.md](../AGENTS.md) § Documentation Update Checklist and the required memory
+   decision; and follow
+   [RELEASE.md](RELEASE.md)'s release procedure, including the acceptance it routes to.
+   Install the candidate locally. Pure diagnostics and every research, tier-2, TUI and
+   platform item remain out of scope.
+5. **Release only after explicit approval** for the main push and CI result, followed by
    separate approval for the tag and public release. Verify the published artifacts as
    [RELEASE.md](RELEASE.md) requires.
 
@@ -40,27 +62,18 @@ An item that fails its measurement returns to the backlog entry that owns the ev
 its absence from this queue never means it shipped. This section goes when the queue has
 landed, together with the citations that route here.
 
-## Work order after the next release
+## Work order after v0.18.1
 
 Work these lanes in order. Within a lane, the named entries carry their own prerequisites
 and may still refuse implementation when evidence or a mechanism is missing. Entries not
 named here retain their recorded gate; this index does not silently promote or close them.
 
-1. **Safety batch** — close the test and validation holes described by **A test that
-   forgets to install a runner is silent, and it writes to the machine it runs on**,
-   **Two assertions in the harvest block still pass when the thing that reads the
-   snapshot is broken**, **The smoke guards have no test, and four changes switched one
-   off without anything noticing**, and **`derived_cleared` reads the whole file, so a
-   comment can satisfy it**. The first entry also owns the unscoped-delete hole in
-   `keychainSim` and the `TMPDIR` boundary; treat those as part of the same containment
-   batch rather than as ride-alongs to product work.
-2. **Diagnostics batch** — add the missing signals or correct bounded wording from **The
+1. **Diagnostics batch** — add the missing signals or correct bounded wording from **The
    pin index can be incomplete with nothing saying so**, **A recorded identity that is
    not an account record silently disables attribution for that account**, **`kae
    relogin`'s success line reports a login for a store somebody else refreshed**, **A
-   directory-scoped keychain item keeps a stale account attribute**, and **`kae account
-   rename` / `kae account rm` delete a recorded `SecretRef` verbatim**.
-3. **Research only** — do not schedule implementation for **A moved bound directory does
+   directory-scoped keychain item keeps a stale account attribute**.
+2. **Research only** — do not schedule implementation for **A moved bound directory does
    not count as a reader, and its absence does not make the reader set incomplete**,
    **Attribution reads a label kae may have written itself**, **A relogin's pre-flight
    refusal owes a backup it cannot safely take yet**, **Every credential copy kae keeps
@@ -69,11 +82,11 @@ named here retain their recorded gate; this index does not silently promote or c
    decision rather than an oversight**, or **`PinID` does not resolve symlinks, and
    changing that needs a migration** until the mechanism or measurement named by each
    entry exists.
-4. **Drift automation** — build **The shim harness** and **Behaviour-site hashes** in
+3. **Drift automation** — build **The shim harness** and **Behaviour-site hashes** in
    § Upstream-drift automation — what is left, and widen CI
    only through the per-step decisions in **CI runs a subset of the gate; `docs-check` was
    the one step whose price fell**.
-5. **Demand and platform work** — take § Command-system expansion, § Platform coverage,
+4. **Demand and platform work** — take § Command-system expansion, § Platform coverage,
    **TUI**, **Remote share-list definitions (ship)**, **cursor off macOS is unblocked but
    unimplemented**, and § Tier-2 tools — described, not queued only when their own demand
    or evidence gate opens. Tier 2 is not a parity backlog.
@@ -1201,7 +1214,7 @@ alternative exists (`secret-tool`).
   of the code before the fix lands.
 
 - **`kae account rename` / `kae account rm` delete a recorded `SecretRef`
-  verbatim** (recorded 2026-07-31, **deliberately not fixed**). Both delete the ref
+  verbatim** (recorded 2026-07-31, **queued for v0.18.1**). Both delete the ref
   the snapshot's metadata names, without checking it is the ref this account would
   produce (`account.SecretRef(tool, name, artifact)`). A snapshot dir whose metadata
   names *another* account's ref — reachable by hand-copying an account directory,

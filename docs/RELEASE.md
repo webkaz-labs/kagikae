@@ -36,6 +36,7 @@ tag: its forward pointers were not maintained forward, so an item it defers to
 [ROADMAP.md](ROADMAP.md) may have shipped since — that file and `git log` are
 where to check.
 
-**The active release target is v0.18.0.** Its current state and remaining order are
+**The active release target is v0.18.1.** It is a patch release limited to credential
+safety and mandatory-gate integrity; its current state and remaining order are
 the executable list in
 [ROADMAP.md](ROADMAP.md) § Current work order.

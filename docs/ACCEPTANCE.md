@@ -193,6 +193,14 @@ the leading comments and all values outside that pointer, and did not rewrite th
 per-account keychain item. A fresh non-interactive prompt returned a reply. The
 optional two-account switch remains unmeasured.
 
+Reconfirmed 2026-09-05 on the installed v0.18.0 candidate at `9360bed`, after the
+JSON/JSONC pointer rewrite at `31e3594`. A freshly captured same-account apply
+changed only the representation of `/lastLoggedInUser`; every byte outside that
+pointer and the leading comments remained unchanged. The keychain item's attributes
+were unchanged, a fresh non-interactive prompt returned the requested reply, and
+rollback preserved the comments and restored the same pointer value. The optional
+two-account switch remains unmeasured.
+
 ### Bound-directory credential store (macOS, no login needed)
 
 kae and claude must agree on the keychain service name for a bound directory; a

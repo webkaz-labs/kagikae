@@ -32,8 +32,10 @@ This is the executable queue. Each step names the existing entry or document tha
 the detail; it does not restate that contract. The v0.18.0 candidate is frozen and
 installed locally; [RELEASE.md](RELEASE.md) owns the remaining release procedure.
 
-1. **Run the full real-machine acceptance as one batch**, following
-   [ACCEPTANCE.md](ACCEPTANCE.md), then pay its § Open gates together. The
+1. **Resolve the remaining real-machine acceptance**, following
+   [ACCEPTANCE.md](ACCEPTANCE.md): the Copilot two-account switch in § Real-Machine
+   Acceptance, then the incomplete checks in § Open gates. That document owns the
+   recorded coverage and unavailable account combinations. The
    `refreshTokenExpiresAt` gate remains a non-blocking observation unless its measured
    result changes a shipped claim.
 2. **Release only after explicit approval** for the main push and CI result, followed by

@@ -9,9 +9,10 @@ but an observation rather than a run, so a release owes it nothing. Read
 [VALIDATION.md](VALIDATION.md) for what a commit owes; two release-only smokes
 stayed there, beside the surfaces they check.
 
-**Every result is recorded here, under the check it settles, naming the tag it was
-run against.** This document owns the gates, so a result recorded anywhere else is
-one § Open gates cannot read.
+**Every result is recorded here, under the check it settles, naming the exact
+candidate revision it was run against and the release tag when one exists.** This
+document owns the gates, so a result recorded anywhere else is one § Open gates
+cannot read.
 
 ## Real-machine gate — does `refreshTokenExpiresAt` predict the login's death? (**open**)
 
@@ -155,6 +156,13 @@ a process outside the item's ACL, makes Claude Code report "not logged in"
 despite an intact token). A past acceptance pass that skipped the fresh-process
 check missed exactly this class of bug.
 
+Confirmed 2026-09-05 on the v0.18.0 candidate at `31e3594`, with Claude Code
+2.1.260 and two freshly captured accounts. Both switch directions preserved every
+byte outside the `oauthAccount` value, including the trailing-newline state. After
+each switch a fresh prompt authenticated and the identity cache matched the official
+profile endpoint; rollback returned to `side`. The run then applied `main` again,
+where a fresh prompt and profile comparison passed.
+
 For copilot (active-account pointer, all platforms — kae never touches the
 per-account keychain tokens, only `~/.copilot/config.json` `/lastLoggedInUser`,
 so it is safe on macOS):
@@ -175,6 +183,12 @@ emits ANSI/spinner control codes, so strip them
 (`sed 's/\033\[[0-9;]*[a-zA-Z]//g'`) before asserting on the output. Switching
 between two accounts is a v0.7.0 acceptance item; with a single account this
 verifies the verbatim round-trip and comment preservation only.
+
+Partially confirmed 2026-09-05 on the v0.18.0 candidate at `4d78206` with the one
+available account: a same-account apply changed only `/lastLoggedInUser`, preserved
+the leading comments and all values outside that pointer, and did not rewrite the
+per-account keychain item. A fresh non-interactive prompt returned a reply. The
+two-account switch remains unmeasured.
 
 ### Bound-directory credential store (macOS, no login needed)
 
@@ -221,10 +235,17 @@ separate verbatim/ACL assumption in [VALIDATION.md](VALIDATION.md)
 account — so a release still runs the two-account pin: re-bind in a pinned
 directory, then launch claude there and confirm it reports the account kae bound.
 
+Confirmed 2026-09-05 on the v0.18.0 candidate at `4d78206` with two real accounts.
+A scratch directory was bound to `side`, then rebound to `main`; a fresh Claude
+process authenticated as the bound account after each operation, and neither
+isolated store contained a plaintext `.credentials.json`. `kae unpin --purge`
+removed the binding and isolated credential, while the global `main` login remained
+authenticated.
+
 ### Open gates (a release still owes these)
 
-Three gates with no recorded result; one that passes is struck from this list in
-the same commit that records it. What puts them here is
+The gates below lack complete passing results; one that passes is struck from this
+list in the same commit that records it. What puts them here is
 that each is a check a release owes a result for — not that they are the
 complete set of what is open (see the fourth below), and
 not their preconditions. Each does need a real keychain **and** two real
@@ -280,6 +301,15 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
       needs the prompt documented or an ACL fix.
 - [ ] No token value ever appeared in `kae` output, `--json`, or `account.toml`.
 
+Partially measured 2026-09-05 on the v0.18.0 candidate at `4d78206`, using one
+account and an isolated temporary `CODEX_HOME` because the normal config is
+host-managed. The isolated home used the keyring store, captured without payload in
+`account.toml`, authenticated in a fresh `codex login status`, and held no plaintext
+`auth.json`. The normal home remained authenticated before and after the isolated
+home logged out, and that logout removed only the isolated keychain item. This does
+not settle the two-account switch, item-attribute stability across accounts, or the
+per-directory gate below.
+
 **Cursor full credential set** (macOS, two live `cursor-agent` logins):
 
 - [ ] `kae add cursor <name>` records `access_token` and `refresh_token` present;
@@ -288,13 +318,22 @@ Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
       `authenticated` (not `partially-authenticated`) **and** the other account,
       and `security find-generic-password -s cursor-refresh-token` (attributes
       only) shows an `mdat` newer than the switch.
-- [ ] A snapshot captured before the set was switched (no `refresh_token` entry,
+- [x] A snapshot captured before the set was switched (no `refresh_token` entry,
       e.g. by deleting that key from `account.toml`) refuses the
       switch naming `kae add --no-login cursor <account>`, and the live items are
       unchanged afterwards.
 - [ ] With an api key configured on one account only: after switching to the
       account **without** one, `cursor-api-key` is absent (kae removed it) rather
       than still holding the other account's key.
+
+Partially measured 2026-09-05 with the one available no-API-key account. On
+`4d78206`, a normal apply restored the access and refresh items, kept the API-key
+item absent, advanced the refresh item's modification time, and left
+`cursor-agent status` authenticated. At `807ea5b`, an incomplete-snapshot preflight
+refused with exit 10 before mutation; the snapshot, state, backup count, credential
+digests, and keychain modification times all remained unchanged. The account stayed
+authenticated after the fixture was restored. A second account and the API-key
+removal direction remain unmeasured.
 
 **codex per-directory keyring bind** (macOS, two codex homes; this is the
 gate that must pass **before** codex is dropped from `bindableNotYetDeclared` in

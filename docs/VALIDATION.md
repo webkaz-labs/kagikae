@@ -26,6 +26,14 @@ first run downloads them.
 
 Run `go mod tidy` before committing dependency changes.
 
+The `internal/cmd` package's `TestMain` is a process boundary as well as a test
+entrypoint. It refuses a `TMPDIR` inside a Git worktree before tests can append to that
+repository's common exclude file, and it installs fail-loud defaults for all three
+runner seams so an unstubbed credential command cannot fall through to the machine.
+`TestTMPDIRGuardRejectsAWorktreeBeforeTestsRun` and
+`TestRunnerGuardRefusesCredentialProgramsWithoutLeakingPayloads` keep those two
+properties, including redaction of credential-bearing diagnostics.
+
 ## Smoke Checks (built binary, isolated env)
 
 **Every code block in this file assumes `. scripts/smoke-env.sh` is already in

@@ -33,8 +33,8 @@ the detail; it does not restate that contract. v0.18.1 is a patch release: it cl
 credential-safety and mandatory-gate false-green defects without adding a command,
 provider, mode, JSON surface, tier promotion or platform.
 
-1. **Contain the test process** — complete **A test that forgets to install a runner is
-   silent, and it writes to the machine it runs on**, including its `TMPDIR`, all three
+1. **Contain the test process — done** — closed **A test that forgets to install a runner
+   must fail before it reaches a credential program**, including its `TMPDIR`, all three
    runner seams and `keychainSim`'s unscoped-delete hole.
 2. **Refuse an inconsistent account snapshot before mutation** — complete **`kae account
    rename` / `kae account rm` delete a recorded `SecretRef` verbatim**. This is safety
@@ -143,8 +143,9 @@ alternative exists (`secret-tool`).
 
 ## Hardening backlog — daily-use robustness
 
-- **A test that forgets to install a runner is silent, and it writes to the machine
-  it runs on** (recorded 2026-08-09, **not fixed**). `runner.Default` falls back to
+- **A test that forgets to install a runner must fail before it reaches a credential
+  program** (recorded 2026-08-09, closed for `internal/cmd` in v0.18.1).
+  `runner.Default` otherwise falls back to
   `OSRunner`, so a test that never calls `runner.With` executes the real program and
   passes on a developer's laptop. Two live instances were found the day CI first ran
   on the v0.17.0 branch, and only one of them failed anything: `pinHereAs` ran the
@@ -156,10 +157,12 @@ alternative exists (`secret-tool`).
   tools the guard inspected.
   Both are fixed at their call sites, and that is what makes this worth recording:
   **a per-site fix does not close the class**, because the next omission is just as
-  quiet. The seam that would is a `TestMain` in `internal/cmd` installing a runner
-  that fails loudly, with the argv, on any command a test did not opt into. It is not
-  the ten lines it looks like, and three measurements bound what it would actually
-  take.
+  quiet. `internal/cmd` therefore installs a process-wide baseline in `TestMain`:
+  unstubbed credential programs fail loudly at `runner.Default`, and the independent
+  `RunInteractive` and `RunWithEnv` seams reject every unstubbed call. Diagnostics name
+  the seam and redacted argv without stdin or extra environment values;
+  `TestRunnerGuardRefusesCredentialProgramsWithoutLeakingPayloads` keeps that boundary.
+  Three measurements explain why the baseline has this shape.
   First, `go test ./...` issues **171** real `git rev-parse --git-common-dir
   --show-prefix` calls through the seam, all legitimate — `ensureGitExcluded` needs a
   real repository layout — so the guard has to name the credential programs
@@ -183,17 +186,23 @@ alternative exists (`secret-tool`).
   instrumenting all three seams shows no live instance of either today (the only
   non-git execs through `runner.Default` are `cat` and `false`, from
   `internal/runner`'s own tests).
-  Deliberately not done at a release boundary; the two call-site fixes hold until then.
-  A **separate** gap surfaced by the same review and older than it: `keychainSim` can
+  `TestTMPDIRGuardRejectsAWorktreeBeforeTestsRun` keeps the separate half: the package
+  refuses to start when `os.TempDir()` is inside a Git worktree, before any test can
+  append to that worktree's common exclude file. It ignores inherited `GIT_DIR` and
+  `GIT_WORK_TREE`, which describe a caller-selected repository rather than the temp
+  directory; `TestTMPDIRGuardIgnoresInheritedGitRepositoryOverrides` is the positive
+  control.
+  A **separate** gap surfaced by the same review and older than it: `keychainSim` could
   catch a keychain item deleted under the *wrong* account but not one deleted with **no
-  account scoping at all**. Its delete arm is
-  `want := valueAfter(args, "-a"); want != "" && …`, so dropping `-a` short-circuits to
-  a match, the delete is recorded, and `TestUnpinPurgeRemovesACredentialNothingElseBinds`
-  — which asserts only that a delete happened — passes. Measured: replacing
+  account scoping at all**. Dropping `-a` used to short-circuit to a match, record the
+  delete, and let `TestUnpinPurgeRemovesACredentialNothingElseBinds` pass. Measured:
+  replacing
   `DeleteItemForAccount(…, sp.KeychainAccount)` with `DeleteItem(ctx, sp.Target)`
-  survives the whole suite, identically before and after the fixture work. That is the
-  v0.12.0 defect's own shape (an item addressed by service alone), so the sim should
-  refuse an un-scoped delete outright rather than treat it as a wildcard.
+  survived the whole suite, identically before and after the fixture work. That is the
+  v0.12.0 defect's own shape (an item addressed by service alone). The simulator now
+  refuses that unscoped delete without changing its item or operation log;
+  `TestKeychainSimRejectsUnscopedDelete` keeps both the refusal and an account-scoped
+  positive control.
 
 - **Two assertions in the harvest block still pass when the thing that reads the
   snapshot is broken** (recorded 2026-08-09, **not fixed**). In

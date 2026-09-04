@@ -50,7 +50,7 @@ func pinHereAs(t *testing.T, app *App, profile, mode string) string {
 	// the exact direction this fixture exists to prevent. A nil `Default` is left to
 	// panic: that is a broken setup, and installing a fixture over it would hide it.
 	switch runner.Default.(type) {
-	case runner.OSRunner, *runner.OSRunner:
+	case runner.OSRunner, *runner.OSRunner, cmdTestRunnerGuard, *cmdTestRunnerGuard:
 		runner.With(pinFixtureRunner{next: runner.Default}, pin)
 	default:
 		pin()

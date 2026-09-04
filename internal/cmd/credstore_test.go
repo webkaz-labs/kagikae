@@ -128,6 +128,9 @@ func TestUnpinPurgeRemovesACredentialNothingElseBinds(t *testing.T) {
 		if code != constants.ExitOK {
 			t.Fatalf("unpin --purge exit %d: %s", code, out)
 		}
+		// keychainSim refuses a delete without -a. This assertion therefore kills
+		// replacing artifact's account-scoped delete with its service-only sibling,
+		// rather than merely proving that some delete-shaped call happened.
 		if !strings.Contains(strings.Join(sim.ops, ","), "delete") {
 			t.Fatalf("the last binding's purge must remove the credential: %v", sim.ops)
 		}

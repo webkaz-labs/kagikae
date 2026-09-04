@@ -705,6 +705,14 @@ func TestKaeManagedHomeKindClassifiesSegments(t *testing.T) {
 
 func TestUnpinDeletesFragment(t *testing.T) {
 	app := overlayTestApp(t)
+	// CmdUnpin constructs its own App, so isolate the process environment as well
+	// as the App used to create the fixture. A temp App alone left unpin taking a
+	// lock below the operator's real XDG_STATE_HOME.
+	t.Setenv("HOME", app.Env.Home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(app.Paths.ConfigDir))
+	t.Setenv("XDG_DATA_HOME", filepath.Dir(app.Paths.DataDir))
+	t.Setenv("XDG_STATE_HOME", filepath.Dir(app.Paths.StateDir))
+	t.Setenv("XDG_RUNTIME_DIR", filepath.Dir(app.Paths.RuntimeDir))
 	chdirTemp(t)
 	if code := runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared); code != constants.ExitOK {
 		t.Fatalf("runPin exit %d", code)

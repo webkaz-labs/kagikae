@@ -14,6 +14,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter/cursor"
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/testutil/secrettest"
@@ -72,7 +73,11 @@ func (k *keychainSim) Run(_ context.Context, _ string, args ...string) (string, 
 		k.ops = append(k.ops, "add")
 		return "", "", 0
 	case "delete-generic-password":
-		if want := valueAfter(args, "-a"); want != "" && k.account != "" && want != k.account {
+		want := valueAfter(args, "-a")
+		if want == "" {
+			return "", "keychainSim: refusing delete-generic-password without -a", 2
+		}
+		if k.account != "" && want != k.account {
 			return "", "security: could not be found", 44
 		}
 		k.present = false
@@ -84,6 +89,24 @@ func (k *keychainSim) Run(_ context.Context, _ string, args ...string) (string, 
 
 func (k *keychainSim) RunInput(ctx context.Context, _ string, name string, args ...string) (string, string, int) {
 	return k.Run(ctx, name, args...)
+}
+
+func TestKeychainSimRejectsUnscopedDelete(t *testing.T) {
+	sim := &keychainSim{payload: "fixture-payload", account: "main", present: true}
+	runner.With(sim, func() {
+		if err := keychain.DeleteItem(context.Background(), "service"); err == nil {
+			t.Fatal("service-only delete succeeded against an account-scoped simulator")
+		}
+		if !sim.present || len(sim.ops) != 0 {
+			t.Fatalf("refused delete changed the simulated item: present=%v ops=%v", sim.present, sim.ops)
+		}
+		if err := keychain.DeleteItemForAccount(context.Background(), "service", "main"); err != nil {
+			t.Fatalf("account-scoped delete failed: %v", err)
+		}
+	})
+	if sim.present || len(sim.ops) != 1 || sim.ops[0] != "delete" {
+		t.Fatalf("scoped positive control did not delete exactly once: present=%v ops=%v", sim.present, sim.ops)
+	}
 }
 
 // cursorKeychainSim holds cursor's service-keyed credential set. Its mutation

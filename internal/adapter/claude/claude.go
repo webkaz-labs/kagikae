@@ -227,10 +227,10 @@ func (Claude) Binary() string { return "claude" }
 // assumptions hang on a version whose only offline signal is this string, so a
 // newer minor is worth re-measuring, and the procedures that need no login at all
 // are marked as such there.
-func (Claude) VerifiedVersion() string { return "2.1.233" }
+func (Claude) VerifiedVersion() string { return "2.1.246" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Claude) VerifiedOn() string { return "2026-08-16" }
+func (Claude) VerifiedOn() string { return "2026-09-04" }
 
 // configDir honors CLAUDE_CONFIG_DIR as the live base path when already set.
 // Auth mode never sets it.

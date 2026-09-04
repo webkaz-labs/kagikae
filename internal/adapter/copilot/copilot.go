@@ -65,14 +65,14 @@ func (Copilot) Binary() string { return binaryName }
 
 // VerifiedVersion is the GitHub Copilot CLI release kae's behaviour assumptions
 // were last checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions").
-func (Copilot) VerifiedVersion() string { return "1.0.79" }
+func (Copilot) VerifiedVersion() string { return "1.0.82" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Copilot) VerifiedOn() string { return "2026-08-17" }
+func (Copilot) VerifiedOn() string { return "2026-09-04" }
 
 // configHome resolves the directory holding config.json. COPILOT_HOME is
 // honored verbatim, the way copilot itself uses it (`t?.configDir ??
-// process.env.COPILOT_HOME ?? join(homedir(), ".copilot")`, re-measured on 1.0.79):
+// process.env.COPILOT_HOME ?? join(homedir(), ".copilot")`, re-measured on 1.0.82):
 // no normalization, no absolute-path check. Modelling it as $HOME/.copilot made
 // every switch in a directory with COPILOT_HOME set patch a config.json copilot
 // never reads.
@@ -85,7 +85,7 @@ func configHome(env adapter.Env) string {
 
 // configJSONPath is the config file copilot's own login was measured writing
 // (`writeKey("lastLoggedInUser", ...)` into config.json, read from the 1.0.61
-// bundle; not re-established on 1.0.79, where that key name is no longer in
+// bundle; not re-established through 1.0.82, where that key name is no longer in
 // app.js). The settings-migration loader additionally falls back to a bare
 // `config` in the same directory when config.json is absent, and no auth path was
 // seen writing there, so kae targets config.json as an upstream login did.

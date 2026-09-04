@@ -76,9 +76,8 @@ named here retain their recorded gate; this index does not silently promote or c
    decision rather than an oversight**, or **`PinID` does not resolve symlinks, and
    changing that needs a migration** until the mechanism or measurement named by each
    entry exists.
-4. **Drift automation** — first close **The fingerprint arm reads whatever the table's
-   path resolves to, and a stale path resolves fine**, then build **The shim harness** and
-   **Behaviour-site hashes** in § Upstream-drift automation — what is left, and widen CI
+4. **Drift automation** — build **The shim harness** and **Behaviour-site hashes** in
+   § Upstream-drift automation — what is left, and widen CI
    only through the per-step decisions in **CI runs a subset of the gate; `docs-check` was
    the one step whose price fell**.
 5. **Demand and platform work** — take § Command-system expansion, § Platform coverage,
@@ -137,27 +136,6 @@ already accepted in [SECURITY.md](SECURITY.md), and kae uses stdin wherever an
 alternative exists (`secret-tool`).
 
 ## Hardening backlog — daily-use robustness
-
-- **The fingerprint arm reads whatever the table's path resolves to, and a stale
-  path resolves fine** (recorded 2026-08-17, **path corrected, class open**). Both
-  agy's and copilot's artifacts had been pointing at builds that were still on disk
-  and no longer running — `/usr/local/bin/agy` answering `--version` with `1.0.10`,
-  and `~/.copilot/pkg/universal/`, which the launcher now searches **last**. `mise
-  run audit` passed on both while six counts had moved on the installed builds.
-  Repointing them fixes today and not the class: the check compares counts against a
-  path it is told, and nothing compares that path's build against the installed one.
-  A tool that keeps old versions can always hand back a recorded version that still
-  resolves — `internal/adapter/fingerprint_test.go`'s header has the claude
-  measurement of exactly that, and mise keeps old installs, which is why agy's entry
-  now goes through `latest` rather than a pinned version.
-  **The obvious closing move does not work**, and writing it down is the point of
-  this entry: comparing `<binary> --version` against the artifact table's version
-  cell would fail permanently for any tool whose path is version-independent, since
-  those two are then answering different questions. What the check has to compare is
-  **identity** — whether the file the table's path resolves to is the file
-  `command -v <binary>` resolves to — which needs no version at all and works for
-  cursor, whose date version is exactly what the version form cannot use. Not built:
-  it is a new check, and the paths were the bleeding half.
 
 - **A test that forgets to install a runner is silent, and it writes to the machine
   it runs on** (recorded 2026-08-09, **not fixed**). `runner.Default` falls back to
@@ -1535,8 +1513,8 @@ is anywhere near that, and only by demand.
   copilot's own hidden `--config-dir` can defeat it, which nothing in the
   environment reveals — has to be established first. **Demand-gated**: build it
   when someone needs a per-directory copilot account, not for parity.
-- **agy's file store on macOS** (recorded gap, 2026-07-31; re-read on 1.1.13,
-  2026-08-17): agy skips the keychain under ssh/wsl/container/dbus detection, on a
+- **agy's file store on macOS** (recorded gap, 2026-07-31; re-read on 1.1.23,
+  2026-09-04): agy skips the keychain under ssh/wsl/container/dbus detection, on a
   keyring timeout, on any keyring failure, and — new since 1.0.10 — for a window
   after a timeout it *persists*, so the file store is reachable on macOS too and a
   bypass can outlive one run. The fallback file's path is still not derivable from

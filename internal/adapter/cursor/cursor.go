@@ -46,7 +46,7 @@ func (Cursor) ID() string { return constants.ToolCursor }
 func (Cursor) Binary() string { return binaryName }
 
 // VerifiedVersion is empty for cursor, so doctor never reports upstream_version
-// for it. cursor-agent is date-versioned (`2026.06.16-20-30-07-<sha>`), so the
+// for it. cursor-agent is date-versioned (`2026.09.02-<sha>`), so the
 // major/minor comparison reads the *month* as the minor: the first build of any
 // new month is "past" the verified one, and doctor would then warn every month
 // until a human edited a constant. A monthly nag about a daily-built tool is the
@@ -57,7 +57,7 @@ func (Cursor) Binary() string { return binaryName }
 func (Cursor) VerifiedVersion() string { return "" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Cursor) VerifiedOn() string { return "2026-07-30" }
+func (Cursor) VerifiedOn() string { return "2026-09-04" }
 
 // driver maps the platform to the cursor driver, refusing the platforms whose
 // credential storage is undocumented (only macOS Keychain is known). Mirrors
@@ -164,7 +164,7 @@ func (Cursor) Identity(ctx context.Context, _ adapter.Env) (string, error) {
 // /auth/exchange_user_api_key; with no API key an expiring token is returned
 // as-is and the request fails. The `grant_type=refresh_token` code in the bundle
 // belongs to the MCP client's own OAuth, not to cursor's login. Measured against
-// cursor-agent 2026.06.16 (docs/VALIDATION.md § Upstream Behaviour Assumptions);
+// cursor-agent 2026.09.02-c22c1a3 (docs/VALIDATION.md § Upstream Behaviour Assumptions);
 // if a release starts redeeming it, this becomes "refreshable" and the warning has
 // to learn about the refresh token.
 //

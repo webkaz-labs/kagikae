@@ -1291,12 +1291,12 @@ half-done. Do not reformat the rows without updating that test.
 
 | Tool | `VerifiedVersion()` | `VerifiedOn()` | `--version` output shape |
 |------|---------------------|----------------|--------------------------|
-| claude | `2.1.233` | `2026-08-16` | `2.1.233 (Claude Code)` |
+| claude | `2.1.246` | `2026-09-04` | `2.1.246 (Claude Code)` |
 | codex | `0.147.0` | `2026-08-16` | `codex-cli 0.147.0` |
-| agy | `1.1.13` | `2026-08-17` | `1.1.13` |
+| agy | `1.1.23` | `2026-09-04` | `1.1.23` |
 | opencode | `1.18.16` | `2026-08-16` | `1.18.16` |
-| cursor | `""` (no signal — see below) | `2026-07-30` | `2026.06.16-20-30-07-<sha>` (date-versioned) |
-| copilot | `1.0.79` | `2026-08-17` | `GitHub Copilot CLI 1.0.79.` (note the trailing period; an advisory line followed it when measured) |
+| cursor | `""` (no signal — see below) | `2026-09-04` | `2026.09.02-c22c1a3` (date-versioned) |
+| copilot | `1.0.82` | `2026-09-04` | `GitHub Copilot CLI 1.0.82.` (note the trailing period; an advisory line followed it when measured) |
 
 `VerifiedOn()` is the half the version cannot supply. `upstream_version` only
 fires when the installed tool moves past the verified release, so a user who

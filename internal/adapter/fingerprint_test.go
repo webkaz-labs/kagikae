@@ -10,7 +10,6 @@ import (
 	"slices"
 	"sort"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
@@ -27,6 +26,10 @@ var fingerprintRow = regexp.MustCompile("(?m)^\\| (\\w+) \\| `([^`]+)` \\| (\\d+
 // cell is a bare number) and off the assumption tables (whose last cell is prose).
 var artifactRow = regexp.MustCompile("(?m)^\\| (\\w+) \\| `[^`]+`[^|]*\\| `([^`]+)` \\|$")
 
+// artifactDigestRow binds a content digest to the version in the same artifact
+// row. agy needs this because its install-directory name can survive self-update.
+var artifactDigestRow = regexp.MustCompile("(?m)^\\| (\\w+) \\| [^|]*SHA-256 `([0-9a-f]{64})`[^|]*\\| `([^`]+)` \\|$")
+
 // fingerprintExclusions names every tool with no fingerprintable artifact, and why.
 // A tool that is in neither this map nor the table fails the parse half, so a new
 // adapter cannot arrive without either fingerprints or a recorded reason.
@@ -35,70 +38,6 @@ var fingerprintExclusions = map[string]string{
 		"symbol grep finds the MCP-OAuth one first; its instrument is the public source at " +
 		"tag rust-v<VerifiedVersion()>",
 }
-
-// fingerprintArtifacts is a tool's artifact path, with versionToken standing in for
-// the version the table records. Relative paths resolve against $HOME. Mirrors the
-// artifact table in docs/VALIDATION.md § "Upstream Literal Fingerprints".
-//
-// The version is **pinned from the table, never guessed** — picking the newest match
-// instead was tried and read the wrong build for two tools (docs/VALIDATION.md
-// § "Upstream Literal Fingerprints" records what it did).
-//
-// This header used to say an upgrade therefore shows up here as "not installed"
-// against the recorded version. **It does not, for any tool that keeps its old
-// builds** — measured 2026-08-16, when the machine had been running claude 2.1.233
-// for some time while the table said 2.1.220: `~/.local/share/claude/versions/` held
-// 2.1.220, 2.1.221, 2.1.228 and 2.1.233 together, so this test opened the recorded
-// one, found it, and passed. A green run therefore means "the recorded build still
-// says what the table says", never "the installed tools agree with the table", and
-// the two stop being the same answer the moment a version sits. That an old bundle
-// survives is also what makes a version bump cheap to investigate
-// (.claude/skills/upstream-auth-drift/references/measuring.md calls the pair on disk
-// the highest-yield moment), so this is a property to know rather than one to fix
-// here. `doctor`'s upstream_version check is what watches for the upgrade itself —
-// and it compares major and minor only, so it is silent across exactly the range
-// this defeat was measured in.
-//
-// The `.local/share` prefixes are written as measured, not resolved through
-// XDG_DATA_HOME: whether these installers honour that variable for their own install
-// location is unmeasured, and this file is the wrong place to guess.
-var fingerprintArtifacts = map[string]string{
-	constants.ToolClaude: ".local/share/claude/versions/" + versionToken,
-	constants.ToolCursor: ".local/share/cursor-agent/versions/" + versionToken,
-	// Through `latest` for the same reason agy is, below: mise keeps old installs
-	// (1.17.4 and 1.18.11 were still there when this was measured), so a pinned
-	// version would go on resolving after the next upgrade. Nothing was stale here
-	// yet — `latest` and the pinned path gave identical counts — which is the point
-	// of changing it before it is.
-	constants.ToolOpencode: ".local/share/mise/installs/opencode/latest/opencode",
-	// In the search list read out of copilot's 1.0.79 launcher, ~/.copilot/pkg — the
-	// path this map used to hold — is the **last** root, and on 2026-08-17 it held
-	// nothing newer than 1.0.61 while 1.0.79 ran (docs/VALIDATION.md § Upstream
-	// Behaviour Assumptions has the list as read). This is the first root instead, a
-	// package tree rather than one app.js, because the literals are spread across it.
-	// The arch segment is written as measured: another arch fails naming the path,
-	// which is the honest outcome.
-	constants.ToolCopilot: "Library/Caches/copilot/pkg/darwin-x64/" + versionToken,
-	// What this map held until 2026-08-17 was /usr/local/bin/agy, which on that day
-	// answered `--version` with 1.0.10 while `command -v agy` resolved into mise's
-	// tree — a leftover, read green for as long as it sat there.
-	//
-	// This goes through mise's **version-independent** symlink on purpose. Writing
-	// versionToken here would rebuild that defect one upgrade later: mise keeps old
-	// installs (1.0.9 was still there, binary and all, when this was measured), so a
-	// pinned version goes on resolving to a build nobody runs. `latest` follows the
-	// upgrade, so a bump lands as moved counts instead.
-	//
-	// It names the `agy` file and not its directory because the previous build sits
-	// beside it (`antigravity`, plus an `agy.<digits>.old` symlink to it), so a
-	// directory walk would add that build's literals to every count. It also lets the
-	// recorded version be the binary's: the probe on 2026-08-17 left a directory named
-	// 1.1.12 holding a binary answering 1.1.13, so a path pinned to the directory name
-	// could not have recorded the build its counts came from.
-	constants.ToolAgy: ".local/share/mise/installs/antigravity-cli/latest/agy",
-}
-
-const versionToken = "<version>"
 
 // fingerprintEnv opts into the half that reads upstream binaries. `mise run audit`
 // sets it; `mise run check` does not, so a commit never waits on a 266 MB read and
@@ -182,6 +121,31 @@ func TestUpstreamLiteralFingerprints(t *testing.T) {
 			"fingerprinted tool needs the version its counts were measured on "+
 			"(artifact table: %v)", len(versions), len(documented), versions)
 	}
+	digests := map[string][2]string{}
+	for _, m := range artifactDigestRow.FindAllStringSubmatch(string(data), -1) {
+		if _, ok := digests[m[1]]; ok {
+			t.Errorf("the artifact table has two content digests for %s", m[1])
+		}
+		digests[m[1]] = [2]string{m[2], m[3]}
+	}
+	for tool, spec := range fingerprintArtifacts {
+		documentedDigest, ok := digests[tool]
+		if spec.sha256 == "" {
+			if ok {
+				t.Errorf("%s documents SHA-256 %s but its artifact resolver does not verify it",
+					tool, documentedDigest[0])
+			}
+			continue
+		}
+		if !ok {
+			t.Errorf("%s verifies a content digest but its artifact row does not document it", tool)
+			continue
+		}
+		if documentedDigest != [2]string{spec.sha256, spec.sha256Version} {
+			t.Errorf("%s content identity differs between resolver and artifact row: resolver %s/%s, docs %s/%s",
+				tool, spec.sha256Version, spec.sha256, documentedDigest[1], documentedDigest[0])
+		}
+	}
 
 	tools := make([]string, 0, len(documented))
 	for tool := range documented {
@@ -215,31 +179,6 @@ func TestUpstreamLiteralFingerprints(t *testing.T) {
 			}
 		}
 	}
-}
-
-// artifactPath fills the recorded version into the tool's path. The error names the
-// exact path, because the caller turns it into a failure and that path is where the
-// operator looks — an upgraded tool is the expected reason for it to be gone.
-func artifactPath(pattern, version string) (string, error) {
-	if pattern == "" {
-		return "", fmt.Errorf("no artifact path is recorded in fingerprintArtifacts")
-	}
-	if version == "" {
-		return "", fmt.Errorf("no version recorded in the artifact table")
-	}
-	path := strings.ReplaceAll(pattern, versionToken, version)
-	if !filepath.IsAbs(path) {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		path = filepath.Join(home, path)
-	}
-	if _, err := os.Stat(path); err != nil {
-		return "", fmt.Errorf("not installed: %s — if the tool was upgraded, re-measure "+
-			"the literals against the installed build and update both tables", path)
-	}
-	return path, nil
 }
 
 // countAll returns one count per literal, reading the artifact once — a file whole,

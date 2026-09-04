@@ -30,7 +30,7 @@ consulted".
 | Tool | Shells out | Shim reaches it | Evidence |
 |---|---|---|---|
 | claude | **yes** | **yes** | the shim log fills with `find-generic-password` argv |
-| agy | **yes** | **no** | zalando/go-keyring: `find`/`add`/`delete-generic-password` and `keyring_darwin.go` in the binary, `SecItemAdd` and `SecItemCopyMatching` zero times, `go-keyring-base64:` prefix — all measured 2026-08-17 on 1.0.10, 1.1.12 and 1.1.13 alike. **What decides the second column is that the binary also spells `/usr/bin/security` out** (once in each of the three), an absolute path no `PATH` entry precedes. A shim run on 1.1.12 left the log empty, which by the paragraph above proves nothing on its own — that run's own agy log said `You are not logged into Antigravity`, which the never-reached-the-keyring hypothesis predicts just as well, and as of 2026-08-17 no positive discriminator like codex's had been found for agy |
+| agy | **yes** | **no** | zalando/go-keyring: `find`/`add`/`delete-generic-password` and `keyring_darwin.go` in the binary, `SecItemAdd` and `SecItemCopyMatching` zero times, `go-keyring-base64:` prefix — measured 2026-08-17 on 1.0.10, 1.1.12 and 1.1.13, then re-read unchanged on 1.1.22 and 1.1.23 on 2026-09-04. **What decides the second column is that the binary also spells `/usr/bin/security` out** (once in every one of those builds), an absolute path no `PATH` entry precedes. A shim run on 1.1.12 left the log empty, which by the paragraph above proves nothing on its own — that run's own agy log said `You are not logged into Antigravity`, which the never-reached-the-keyring hypothesis predicts just as well, and as of 2026-08-17 no positive discriminator like codex's had been found for agy |
 | codex | **no** | n/a | the Rust `keyring` crate calls Security.framework directly; with a shim on PATH the log stays empty and codex fails with "Platform secure storage failure: A default keychain could not be found" |
 | cursor | unverified | unverified | |
 
@@ -54,14 +54,29 @@ is now the *last* candidate, so it keeps answering with a stale package while a
 newer one runs; docs/VALIDATION.md § Upstream Behaviour Assumptions has the list as
 read. Two traps in reading it: a path assembled from `join("Library","Caches",…)`
 greps as **0**, so search an env-var name and read the function around it; and the
-launcher auto-updates the package, so pass `--no-auto-update` or
-`--prefer-version <v>`, or set `COPILOT_AUTO_UPDATE=false`, before measuring
-anything.
+launcher auto-updates the package, so a behavioural run against an already identified
+package needs `--no-auto-update`, `--prefer-version <v>`, or
+`COPILOT_AUTO_UPDATE=false`. **That disabled-auto-update probe does not prove normal local selection**:
+in 1.0.82, `COPILOT_AUTO_UPDATE=false` makes `Ir()` false and skips `lh()`, the branch
+that looks for a newer installed package. Reproduce `lh()` from the launcher source
+without executing it: collect readable `index.js` packages under `universal` and the
+measured architecture for every `ui()` root, sort them by `fi()`'s descending semver
+order (path ascending on a tie), skip the directory exactly equal to the launcher's
+embedded version, and select the first other version only when it is not older. If
+none qualifies, use the built-in version under the primary cache root only when
+`ch()` / `Js()` can read `index.js`, `app.js`,
+`prebuilds/darwin-arm64/runtime.node`, and `.extraction-complete`; fail rather than
+letting the audit extract it when any is absent. Do not impose that marker on a newer
+installed package: `lh()` selects those from readable `index.js`, after which the
+audit separately validates the three payload files. Reject `COPILOT_CLI_DIST_DIR`,
+which bypasses this selection, and duplicate selected-version trees whose
+locale-dependent path tie-break cannot be reproduced safely. Count only that selected
+tree; do not run the launcher.
 
 **JS inlined in a single Mach-O** (claude, ~266 MB):
 
 ```sh
-B=~/.local/share/claude/versions/<ver>
+B=$(realpath "$(command -v claude)")
 grep -oab -- '<literal>' "$B" | cut -d: -f1                       # offsets
 dd if="$B" bs=1 skip=$((off-330)) count=700 2>/dev/null \
   | LC_ALL=C tr -c '\11\12\15\40-\176' '.'                        # window
@@ -75,6 +90,14 @@ Traps, all hit for real:
 - The constant-pool region (low offsets) is not readable as text; the JS body is
   far in. A literal that appears both in the pool and in code will give you
   several useless hits before a useful one — read them all.
+
+**Resolve a bundled CLI from the command the shell will run before counting it.**
+For cursor, `dirname(realpath(command -v cursor-agent))` is the package tree, but
+first require regular-file siblings `node` and `index.js`. mise 2026.9.0's
+brew-cask installer copied only `cursor-agent` and discarded those siblings; that
+launcher-only tree was an incomplete installation, not evidence that the upstream
+literals disappeared. mise 2026.9.1 repaired the installer. A count over an
+incomplete tree is not a moved fingerprint — fail before counting.
 
 **Go binary** (agy): symbol names survive. Extract printable runs
 (`re.finditer(rb'[\x20-\x7e]{6,}')`) and grep those — you get package paths like
@@ -95,9 +118,26 @@ what contradicted the "storage layer deleted" reading here.
 `agy models` run on 2026-08-17 sits in the same minute as a new binary appearing in
 agy's mise install directory, and `agy --version` moved 1.1.12 → 1.1.13 across it.
 The previous build survives beside it as `agy.<digits>.old`, which is what made the
-pair diff still possible. Copy the binary out before probing, and read `--version`
-rather than the install directory's name — that directory keeps the version it was
-installed as.
+pair diff still possible. Copy the binary out before any behavioural probe.
+
+**A copied `agy --version` does not identify the bytes selected by another execution
+environment.** On 2026-09-04 the interactive shell selected mise's retained 1.1.22,
+while `mise exec` and `mise run audit` selected the already-installed 1.1.23. The
+apparently inconsistent version outputs came from those two PATHs, not an update of
+the 1.1.22 source: its before/after hash and metadata were unchanged, and the retained
+probe copy stayed byte-identical. Resolve the command inside the environment that will
+run the audit; a `command -v` in the surrounding shell is evidence only for that
+shell.
+
+For a fingerprint whose version-to-bytes pair is already known, compare the selected
+real file to its recorded SHA-256 and count only an exact match; do not execute it or
+a copy. The 1.1.22 and 1.1.23 artifacts' Go build info names only their compiler
+build. Their bytes contain their respective exact version, but 1.1.23 also contains
+1.1.22 in its changelog, so those strings are corroboration, not a general version
+parser. For a new pair, package materialization needs explicit user approval: retain
+both artifacts, record their hashes and metadata, and compare them read-only. An
+install directory's version is also corroboration rather than identity, because agy
+can replace itself without renaming it.
 
 **Two-modules red herring.** A symbol can exist twice: codex has
 `compute_store_key` in both `codex_login::auth::storage` (the CLI credential,

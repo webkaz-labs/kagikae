@@ -4,13 +4,18 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
+	"github.com/webkaz-labs/kagikae/internal/adapter/cursor"
+	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/testutil/secrettest"
 )
 
@@ -81,6 +86,57 @@ func (k *keychainSim) RunInput(ctx context.Context, _ string, name string, args 
 	return k.Run(ctx, name, args...)
 }
 
+// cursorKeychainSim holds cursor's service-keyed credential set. Its mutation
+// log is the unit-test equivalent of the real keychain item's mdat: an upsert of
+// identical bytes still changes mdat, so value equality alone cannot prove a
+// refused switch left the live items unchanged.
+type cursorKeychainSim struct {
+	items     map[string]string
+	mutations []string
+}
+
+func (k *cursorKeychainSim) Run(_ context.Context, name string, args ...string) (string, string, int) {
+	if name == "cursor-agent" {
+		return "Logged in as you@example.com\n", "", 0
+	}
+	if name != "security" || len(args) == 0 {
+		return "", "", 0
+	}
+	service := valueAfter(args, "-s")
+	switch args[0] {
+	case "find-generic-password":
+		payload, ok := k.items[service]
+		if !ok {
+			return "", "security: could not be found", 44
+		}
+		withPayload := false
+		for _, arg := range args {
+			if arg == "-w" {
+				withPayload = true
+				break
+			}
+		}
+		if !withPayload {
+			return "keychain: \"login\"\nattributes:\n    \"acct\"<blob>=\"cursor-user\"\n", "", 0
+		}
+		return payload, "", 0
+	case "add-generic-password":
+		k.items[service] = valueAfter(args, "-w")
+		k.mutations = append(k.mutations, "add "+service)
+		return "", "", 0
+	case "delete-generic-password":
+		delete(k.items, service)
+		k.mutations = append(k.mutations, "delete "+service)
+		return "", "", 0
+	default:
+		return "", "", 0
+	}
+}
+
+func (k *cursorKeychainSim) RunInput(ctx context.Context, _ string, name string, args ...string) (string, string, int) {
+	return k.Run(ctx, name, args...)
+}
+
 // Acceptance: a single switch performs at most one keychain payload read for
 // the recapture decision (Detect, backup, and recapture share the coalesced
 // read via keychain.WithReadCache).
@@ -119,6 +175,131 @@ func TestSwitchCoalescesKeychainReads(t *testing.T) {
 			t.Fatalf("switch did not apply side token: %s", sim.payload)
 		}
 	})
+}
+
+// A corrupt snapshot must be rejected before switch-away recapture. active and
+// target deliberately name the same account: that is the real-machine path that
+// used to rewrite account.toml from the live set, then apply the stale in-memory
+// metadata, fail, and restore identical keychain bytes with a newer mdat.
+func TestSwitchRefusesMissingCursorArtifactBeforeAnyMutation(t *testing.T) {
+	access := jwtWithExp(time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC))
+	sim := &cursorKeychainSim{items: map[string]string{
+		cursor.KeychainService:        access,
+		cursor.KeychainServiceRefresh: "refresh-token",
+	}}
+	runner.With(sim, func() {
+		app := testApp(t, nil)
+		app.Env.GOOS = "darwin"
+		ctx := context.Background()
+		opts := commonOpts{Format: formatText}
+
+		if code, out := captureStdout(t, func() int {
+			return runCapture(ctx, app, opts, constants.ToolCursor, "main")
+		}); code != constants.ExitOK {
+			t.Fatalf("capture cursor/main: exit %d: %s", code, out)
+		}
+
+		accountDir := app.Paths.AccountDir(constants.ToolCursor, "main")
+		acc, found, err := account.Load(accountDir)
+		if err != nil || !found {
+			t.Fatalf("load cursor/main: found=%v err=%v", found, err)
+		}
+		delete(acc.Artifacts, "refresh_token")
+		if err := account.Save(accountDir, acc); err != nil {
+			t.Fatal(err)
+		}
+
+		accountFile := filepath.Join(accountDir, "account.toml")
+		accountBefore, err := os.ReadFile(accountFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stateBefore, err := os.ReadFile(app.Paths.StateFile())
+		if err != nil {
+			t.Fatal(err)
+		}
+		sim.mutations = nil
+
+		dryOpts := opts
+		dryOpts.DryRun = true
+		dryCode, _, dryStderr := captureBoth(t, func() int {
+			return runSwitch(ctx, app, dryOpts, constants.ToolCursor, "main")
+		})
+		if dryCode != constants.ExitUnsafeRefused {
+			t.Fatalf("dry-run exit code = %d, want %d: %s", dryCode, constants.ExitUnsafeRefused, dryStderr)
+		}
+		if len(sim.mutations) != 0 {
+			t.Fatalf("refused dry-run mutated the keychain: %v", sim.mutations)
+		}
+		assertSwitchFilesUnchanged(t, app, accountFile, accountBefore, stateBefore)
+		assertNoSwitchBackups(t, app)
+
+		// Backend resolution failure retains the diagnostic-preview exception: dry-run
+		// can still show the plan because it has no backend with which to validate it.
+		app.Config.Security.SecretBackend = "unavailable-for-test"
+		previewCode, previewStdout, _ := captureBoth(t, func() int {
+			return runSwitch(ctx, app, dryOpts, constants.ToolCursor, "main")
+		})
+		if previewCode != constants.ExitOK || !strings.Contains(previewStdout, "cursor -> main") {
+			t.Fatalf("backend-unavailable dry-run lost its preview: exit %d: %q", previewCode, previewStdout)
+		}
+		if len(sim.mutations) != 0 {
+			t.Fatalf("backend-unavailable dry-run mutated the keychain: %v", sim.mutations)
+		}
+		assertSwitchFilesUnchanged(t, app, accountFile, accountBefore, stateBefore)
+		assertNoSwitchBackups(t, app)
+		app.Config.Security.SecretBackend = secret.BackendFile
+
+		code, _, stderr := captureBoth(t, func() int {
+			return runSwitch(ctx, app, opts, constants.ToolCursor, "main")
+		})
+		if code != constants.ExitUnsafeRefused {
+			t.Fatalf("exit code = %d, want %d: %s", code, constants.ExitUnsafeRefused, stderr)
+		}
+		for _, want := range []string{"refresh_token", "kae add --no-login cursor main"} {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("refusal missing %q: %q", want, stderr)
+			}
+		}
+		if strings.Contains(stderr, "refreshed cursor/main snapshot") {
+			t.Errorf("refusal ran switch-away recapture: %q", stderr)
+		}
+		if len(sim.mutations) != 0 {
+			t.Fatalf("refused switch mutated the keychain (and would change mdat): %v", sim.mutations)
+		}
+
+		assertSwitchFilesUnchanged(t, app, accountFile, accountBefore, stateBefore)
+		assertNoSwitchBackups(t, app)
+	})
+}
+
+func assertSwitchFilesUnchanged(t *testing.T, app *App, accountFile string, accountBefore, stateBefore []byte) {
+	t.Helper()
+	accountAfter, err := os.ReadFile(accountFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(accountAfter) != string(accountBefore) {
+		t.Fatal("refused switch changed the corrupt snapshot")
+	}
+	stateAfter, err := os.ReadFile(app.Paths.StateFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(stateAfter) != string(stateBefore) {
+		t.Fatal("refused switch changed state.json")
+	}
+}
+
+func assertNoSwitchBackups(t *testing.T, app *App) {
+	t.Helper()
+	backups, err := backup.List(app.Paths.BackupsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backups) != 0 {
+		t.Fatalf("refused switch created backups before preflight: %+v", backups)
+	}
 }
 
 // cursor's three artifacts are all opaque tokens, and Freshness cannot tell an

@@ -112,9 +112,9 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	// a stale live credential.
 	ctx = keychain.WithReadCache(ctx)
 	// Coalesce kae's own secret-store reads too: each target snapshot payload is
-	// read once for the stale warning (accountFreshness) and again in
-	// applySnapshot. secret.Cached + this cache collapse them to one backend hit.
-	// Like the keychain cache, it never spans a child run.
+	// read for the stale warning (accountFreshness), the transaction preflight,
+	// and applySnapshot. secret.Cached + this cache collapse them to one backend
+	// hit. Like the keychain cache, it never spans a child run.
 	ctx = secret.WithReadCache(ctx)
 	app.pinnedGlobalScope()
 
@@ -166,6 +166,17 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		report.Results = append(report.Results, res)
 	}
 	if opts.DryRun {
+		// A dry-run validates the snapshot whenever the backend is available: it
+		// must not report an inapplicable plan as valid. Keep the existing degraded
+		// preview when backend resolution itself fails; dry-run is the diagnostic
+		// path for seeing that plan without requiring the live secret store.
+		if beErr == nil {
+			for _, plan := range plans {
+				if _, err := snapshotValues(ctx, be, plan); err != nil {
+					return nil, err
+				}
+			}
+		}
 		return report, nil
 	}
 	if beErr != nil {
@@ -182,6 +193,21 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 		return nil, err
 	}
 	defer releaseLocks(locks)
+
+	// Validate every target before the transaction's first write. In particular,
+	// recaptureActiveBeforeSwitch can rewrite the active account's snapshot; when
+	// active is also the target, doing that before validating the already-loaded
+	// plan would repair account.toml on disk while leaving plan.Meta stale, then
+	// fail apply and needlessly rewrite the live keychain during restore.
+	//
+	// Do not retain these values for apply: a valid active==target recapture may
+	// refresh the snapshot, and apply must read that refreshed copy. The cached
+	// backend coalesces the ordinary no-recapture case and invalidates on a write.
+	for _, plan := range plans {
+		if _, err := snapshotValues(ctx, be, plan); err != nil {
+			return nil, err
+		}
+	}
 
 	st, err := app.loadState()
 	if err != nil {

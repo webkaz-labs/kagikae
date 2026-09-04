@@ -107,6 +107,41 @@ func TestApplySnapshotRefusesMissingArtifactBeforeAnyWrite(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "refresh_token") {
 		t.Fatalf("err = %v, want a refusal naming the missing artifact", err)
 	}
+	if code := exitOf(err); code != constants.ExitUnsafeRefused {
+		t.Fatalf("exit code = %d, want %d", code, constants.ExitUnsafeRefused)
+	}
+	if fake.Name != "" {
+		t.Fatalf("the refusal must precede every write, ran %q %v", fake.Name, fake.Args)
+	}
+}
+
+func TestApplySnapshotRefusesMissingStoredPayloadBeforeAnyWrite(t *testing.T) {
+	plan := toolPlan{
+		Tool: constants.ToolCursor, Account: "main",
+		Specs: []artifact.Spec{{
+			Name: "access_token", Kind: constants.KindKeychain,
+			Target: cursor.KeychainService, KeychainAccount: cursor.KeychainAccount,
+		}},
+		Meta: account.Account{
+			Tool: constants.ToolCursor, Name: "main",
+			Artifacts: map[string]account.Artifact{"access_token": {
+				Kind: constants.KindKeychain, Target: cursor.KeychainService,
+				SecretRef: account.SecretRef(constants.ToolCursor, "main", "access_token"),
+				Present:   true,
+			}},
+		},
+	}
+	fake := &runnertest.Fake{Code: 0}
+	var err error
+	runner.With(fake, func() {
+		err = applySnapshot(context.Background(), secrettest.NewMem(), plan)
+	})
+	if err == nil || !strings.Contains(err.Error(), "snapshot payload") {
+		t.Fatalf("err = %v, want a refusal naming the missing stored payload", err)
+	}
+	if code := exitOf(err); code != constants.ExitUnsafeRefused {
+		t.Fatalf("exit code = %d, want %d", code, constants.ExitUnsafeRefused)
+	}
 	if fake.Name != "" {
 		t.Fatalf("the refusal must precede every write, ran %q %v", fake.Name, fake.Args)
 	}

@@ -6,12 +6,11 @@ import (
 )
 
 // readCache coalesces repeated Get calls for the same key within one command.
-// The switch path reads each target account's snapshot payload twice from
-// kae's own secret store — once for the switch-time stale warning
-// (accountFreshness) and again in applySnapshot. keychain.WithReadCache
-// coalesces the *upstream* tool keychain, not this store, so without this cache
-// the second read issues a second backend hit. A cache scoped to one command
-// collapses them to a single read.
+// The switch path reads each target account's snapshot payload for the
+// switch-time stale warning (accountFreshness), the transaction preflight, and
+// applySnapshot. keychain.WithReadCache coalesces the *upstream* tool keychain,
+// not this store, so without this cache those reads issue repeated backend hits.
+// A cache scoped to one command collapses them to a single read.
 //
 // Reads populate the cache; writes (Set/Delete) invalidate the key so a later
 // read reflects the new value. The cache lives in the context, so it is

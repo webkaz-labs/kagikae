@@ -63,7 +63,7 @@ const EnvSecureStorageDir = "CLAUDE_SECURESTORAGE_CONFIG_DIR"
 // "-custom-oauth", and that suffix sits inside the keychain service name
 // ("Claude Code" + suffix + "-credentials" + the per-config-dir suffix) *and*
 // inside the identity file name (".claude-custom-oauth.json", in the same config
-// dir claudeJSONPath resolves). Measured on 2.1.220 from the bundle: the suffix
+// dir claudeJSONPath resolves). The bundle shows that the suffix
 // comes from one function whose only environment-visible input is this variable,
 // and claude enumerates all four suffixes ("", "-staging-oauth", "-local-oauth",
 // "-custom-oauth") when it looks for its own identity files. docs/VALIDATION.md
@@ -88,7 +88,7 @@ const fallbackKeychainAccount = "claude-code-user"
 
 // A **relative** CLAUDE_CONFIG_DIR resolves against whichever process reads it,
 // and kae is invoked from anywhere in the project while claude runs from the
-// user's shell. claude uses the value verbatim — at 2.1.220 the resolver is
+// user's shell. claude uses the value verbatim — the resolver is
 // `(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude")).normalize("NFC")`,
 // Unicode normalization and nothing else — so the two read different directories
 // whenever their working directories differ. There is no default to fall back to
@@ -197,7 +197,7 @@ func keychainAccount(env adapter.Env) string {
 
 // envConflicts override subscription login inside Claude Code.
 //
-// The host-managed entries are a third credential source, measured on 2.1.220:
+// The host-managed entries are a third credential source: the bundle shows that
 // with CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST truthy, claude reads the JSON file
 // CLAUDE_CODE_HOST_CREDS_FILE names and injects its token into the variable
 // CLAUDE_CODE_HOST_AUTH_ENV_VAR names — default ANTHROPIC_AUTH_TOKEN, but the
@@ -227,7 +227,7 @@ func (Claude) Binary() string { return "claude" }
 // assumptions hang on a version whose only offline signal is this string, so a
 // newer minor is worth re-measuring, and the procedures that need no login at all
 // are marked as such there.
-func (Claude) VerifiedVersion() string { return "2.1.246" }
+func (Claude) VerifiedVersion() string { return "2.1.260" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
 func (Claude) VerifiedOn() string { return "2026-09-04" }

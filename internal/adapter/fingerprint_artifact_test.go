@@ -574,6 +574,12 @@ func TestArtifactPathRejectsRetainedCopilotPackageTheLauncherSelects(t *testing.
 	}
 	writePackage(newerRoot, "1.0.83")
 	t.Setenv("PATH", binDir)
+	// Keep every lower-priority launcher search root under this fixture. Otherwise
+	// a package retained in the operator's real cache can tie the synthetic newer
+	// package and make this resolver test depend on what happens to be installed.
+	t.Setenv("HOME", filepath.Join(root, "home"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "xdg-cache"))
+	t.Setenv("COPILOT_HOME", filepath.Join(root, "copilot-home"))
 	t.Setenv("COPILOT_PKG_CACHE_HOME", cacheRoot)
 	t.Setenv("COPILOT_CACHE_HOME", newerRoot)
 	// The old resolver set this value and therefore took Ir()'s branch which skips

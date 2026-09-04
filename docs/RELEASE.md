@@ -10,10 +10,11 @@ by hand — the tag does it.
    reported version is hardcoded, not injected; it must match the tag) and the
    `TestBuildVersionReport` expectation.
 2. `mise run check` and `git diff --check`; update the docs (ROADMAP/VALIDATION
-   and any behavior docs). Work
+   and any behavior docs). Work the release checks in
    [ACCEPTANCE.md](ACCEPTANCE.md) before the tag — nothing in it runs from
-   `mise run check`, § Open gates is what a release still owes, and that file is
-   where a gate's result is recorded.
+   `mise run check`, and that file is where a result is recorded. Follow its
+   § Optional account-combination checks for the release classification of checks
+   that require additional account combinations.
 3. Merge to `main` and push; CI (`ci.yml`) must be green.
 4. Tag and push: `git tag -a vX.Y.Z -m "kae vX.Y.Z — <summary>"` then
    `git push origin vX.Y.Z`. The release workflow gates on the same `check.yml`

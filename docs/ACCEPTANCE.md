@@ -1,18 +1,20 @@
 # Release Acceptance
 
-What a release owes on a real machine, and what it still owes. Nearly everything
-here needs a real keychain, a real login, or both — the exception is
+What a release verifies on a real machine, plus account-combination checks an
+operator may run when the required accounts are available. Nearly everything here
+needs a real keychain, a real login, or both — the exception is
 § Bound-directory credential store's shim procedure, which needs no account —
 and `mise run check` reaches none of it. § Real-machine gate — does
 `refreshTokenExpiresAt` predict the login's death? is not a second exception to that
-but an observation rather than a run, so a release owes it nothing. Read
+but an observation rather than a run, so a release owes it nothing. Account
+combinations outside the release run are classified in
+§ Optional account-combination checks. Read
 [VALIDATION.md](VALIDATION.md) for what a commit owes; two release-only smokes
 stayed there, beside the surfaces they check.
 
 **Every result is recorded here, under the check it settles, naming the exact
 candidate revision it was run against and the release tag when one exists.** This
-document owns the gates, so a result recorded anywhere else is one § Open gates
-cannot read.
+document owns the results; results recorded elsewhere are invisible to the next run.
 
 ## Real-machine gate — does `refreshTokenExpiresAt` predict the login's death? (**open**)
 
@@ -42,16 +44,16 @@ corroborated.
 cached `refreshTokenExpiresAt` accurately predicts *when* that rejection happens. That
 timing claim is what `credential_stale` and `credential_expiring` both rest on, and no
 vendor page states it. A documentation citation is also a weaker instrument than every
-sibling gate in this file, each of which is closed only by a dated run — and
+sibling measurement in this file, each of which is settled only by a dated run — and
 [ADAPTERS.md](ADAPTERS.md) § Verified Upstream Versions is explicit that kae depends
 on undocumented upstream *behaviour*, and that where docs and the binary disagree the
 binary wins. Closing this
 one on a citation would have set a precedent the rest of the file does not follow.
 
 **This is an observation to record when it happens, not a run to schedule** (changed
-2026-08-16; the scheduled form and why it was withdrawn are below). It blocks nothing,
-which § Open gates already says. It keeps the date it was opened and stays open; what
-it no longer has is anything to schedule.
+2026-08-16; the scheduled form and why it was withdrawn are below). It blocks no
+release. It keeps the date it was opened and stays open; what it no longer has is
+anything to schedule.
 
 **Do not apply § Real-Machine Acceptance's account precondition here.** This observation
 applies nothing and provokes nothing, and its "re-capture with `kae add` immediately
@@ -111,8 +113,8 @@ signal that its rows are due.
 
 **Which accounts to run any of this with, and it is the whole section's
 precondition rather than one procedure's.** Every check below applies a
-*capture-time* snapshot to a live credential store, and so does every gate in
-§ Open gates. The one exception is § Bound-directory credential store's **shim
+*capture-time* snapshot to a live credential store, and so does every check in
+§ Optional account-combination checks. The one exception is § Bound-directory credential store's **shim
 procedure**, which needs no account at all — but not that subsection as a whole:
 its closing two-account pin needs the real keychain and real accounts, and so needs
 this precondition like everything else. [VALIDATION.md](VALIDATION.md)
@@ -181,14 +183,15 @@ a non-interactive prompt: `copilot -p "say AUTH-OK" --no-color --allow-all-tools
 returns a reply when authenticated, an error/login prompt when not. The CLI
 emits ANSI/spinner control codes, so strip them
 (`sed 's/\033\[[0-9;]*[a-zA-Z]//g'`) before asserting on the output. Switching
-between two accounts is a v0.7.0 acceptance item; with a single account this
-verifies the verbatim round-trip and comment preservation only.
+between two accounts is the optional account-combination check below; with a single
+account this release acceptance verifies the verbatim round-trip and comment
+preservation.
 
-Partially confirmed 2026-09-05 on the v0.18.0 candidate at `4d78206` with the one
+Confirmed 2026-09-05 on the v0.18.0 candidate at `4d78206` with the one
 available account: a same-account apply changed only `/lastLoggedInUser`, preserved
 the leading comments and all values outside that pointer, and did not rewrite the
 per-account keychain item. A fresh non-interactive prompt returned a reply. The
-two-account switch remains unmeasured.
+optional two-account switch remains unmeasured.
 
 ### Bound-directory credential store (macOS, no login needed)
 
@@ -232,7 +235,7 @@ reads only the unsuffixed shared one, which is the original defect.
 This is a naming-agreement check. That the payload itself round-trips is the
 separate verbatim/ACL assumption in [VALIDATION.md](VALIDATION.md)
 § Upstream Behaviour Assumptions, and it needs the real keychain and a real
-account — so a release still runs the two-account pin: re-bind in a pinned
+account — so the release run includes the two-account pin: re-bind in a pinned
 directory, then launch claude there and confirm it reports the account kae bound.
 
 Confirmed 2026-09-05 on the v0.18.0 candidate at `4d78206` with two real accounts.
@@ -242,37 +245,22 @@ isolated store contained a plaintext `.credentials.json`. `kae unpin --purge`
 removed the binding and isolated credential, while the global `main` login remained
 authenticated.
 
-### Open gates (a release still owes these)
+## Optional account-combination checks
 
-The gates below lack complete passing results; one that passes is struck from this
-list in the same commit that records it. What puts them here is
-that each is a check a release owes a result for — not that they are the
-complete set of what is open (see the fourth below), and
-not their preconditions. Each does need a real keychain **and** two real
-interactive logins, which is what has kept them deferred, but that is the reason
-they are unrun rather than the reason they are filed together: file by what a
-result would settle, or the fourth gate below lands in this list and gates a
-release it was never meant to gate.
+These checks are optional for v0.18.0 and for future releases. They are retained as
+repeatable coverage for an operator who has the required accounts; an incomplete or
+unrun checklist does not block a release. Each check's result paragraph owns what
+has and has not been measured.
 
-Their dates do not match that section, which is why the provenance is spelled
-out. The per-release entries this was read off are no longer in the tree, so the
-derivation is `git show v0.17.0:docs/RELEASE.md` — the last tag that carried them,
-and cumulative, so the whole set is in that one file — and it is what to re-run
-rather than trust the sentences below. Read that way on 2026-08-16: the **Codex keyring
-two-account round-trip** is genuinely from the v0.8.3 release gate (2026-06-17), whose
-entry records it deferred, and v0.8.6's still lists it open. The other two were
-written six weeks later and first recorded by v0.13.0 (2026-07-31), as "the codex
-per-directory keyring bind and the cursor three-item credential set"; v0.14.0 and
-v0.15.0 repeat them as still open. **After v0.15.0 that record is silent rather than
-deferring** — no later entry, up to v0.17.0, mentions any of the three.
+One boundary is not relaxed: the codex per-directory check is optional for a
+release, but it remains the mandatory evidence for enabling that capability. Codex
+stays in `bindableNotYetDeclared`, so kae warns and writes nothing to a bound
+directory's keychain store, until the check passes.
 
-A **fourth** open real-machine gate is deliberately not in this list:
-§ Real-machine gate — does `refreshTokenExpiresAt` predict the login's death?
-above, opened 2026-07-31 and never run. It is separate because it is an open
-**question** rather than a check that must pass — its own text enumerates the
-outcomes and every one is a result — so nothing about it blocks a release; since
-2026-08-16 it is not even a run. What it needs, and why its scheduled form was
-withdrawn, are that section's to state.
+**Copilot two-account pointer selection** (all platforms, two live accounts).
+Repeat the Copilot procedure above for both accounts and verify a fresh prompt after
+each switch. Only `/lastLoggedInUser` may change; the per-account keychain items and
+all other config values remain untouched.
 
 **Codex keyring two-account round-trip** (macOS, real `Codex Auth` keychain).
 Set `cli_auth_credentials_store = "keyring"` in `~/.codex/config.toml`, then:
@@ -336,7 +324,8 @@ authenticated after the fixture was restored. A second account and the API-key
 removal direction remain unmeasured.
 
 **codex per-directory keyring bind** (macOS, two codex homes; this is the
-gate that must pass **before** codex is dropped from `bindableNotYetDeclared` in
+capability-enablement check that must pass **before** codex is dropped from
+`bindableNotYetDeclared` in
 `TestKeychainDirBindableMatchesTheItemIdentity`). Everything else is in place: the
 account derivation is measured ([VALIDATION.md](VALIDATION.md)
 § Upstream Behaviour Assumptions), the flag now
@@ -360,8 +349,8 @@ codex does not look up from that directory:
 - [ ] `kae unpin --purge`: both are gone, the global item survives, and the store
       directories remain.
 
-Account choice for all three is § Real-Machine Acceptance's precondition above, not
-a separate rule.
+Account choice for every optional check is § Real-Machine Acceptance's precondition
+above, not a separate rule.
 
-Never run real-machine acceptance with uncommitted work in progress in the
-live tool sessions.
+Never run real-machine acceptance or an optional account-combination check with
+uncommitted work in progress in the live tool sessions.

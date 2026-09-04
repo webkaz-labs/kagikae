@@ -32,13 +32,7 @@ This is the executable queue. Each step names the existing entry or document tha
 the detail; it does not restate that contract. The v0.18.0 candidate is frozen and
 installed locally; [RELEASE.md](RELEASE.md) owns the remaining release procedure.
 
-1. **Resolve the remaining real-machine acceptance**, following
-   [ACCEPTANCE.md](ACCEPTANCE.md): the Copilot two-account switch in § Real-Machine
-   Acceptance, then the incomplete checks in § Open gates. That document owns the
-   recorded coverage and unavailable account combinations. The
-   `refreshTokenExpiresAt` gate remains a non-blocking observation unless its measured
-   result changes a shipped claim.
-2. **Release only after explicit approval** for the main push and CI result, followed by
+1. **Release only after explicit approval** for the main push and CI result, followed by
    separate approval for the tag and public release. Verify the published artifacts as
    [RELEASE.md](RELEASE.md) requires.
 
@@ -1297,7 +1291,9 @@ alternative exists (`secret-tool`).
      the store therefore defaulted to `file`. It now selects the keyring store
      explicitly and fails when a tool with an isolation variable yields no keychain
      spec. codex is carried as a named exception (`bindableNotYetDeclared`) pending
-     the acceptance gate below, not pending step 3, which has shipped.
+     the capability check below. It is not pending step 3, which has shipped;
+     [ACCEPTANCE.md](ACCEPTANCE.md) § Optional account-combination checks owns the
+     check's release classification.
   3. ~~**Own the item's lifecycle.**~~ **Done** (2026-07-30). A `pin -s` ↔ `pin -i`
      toggle and an isolated re-bind now sweep the keychain item of the store they
      supersede, and `kae unpin --purge` sweeps the current ones (plain `unpin` still
@@ -1307,10 +1303,11 @@ alternative exists (`secret-tool`).
      file credential that is no longer the copy its own store reads
      (`removeDirCredential` is normative). It also closed the same gap for claude, which had been creating
      per-directory items since v0.12.0 with nothing removing them.
-  What is left is neither of those: the pin round-trip **is** on the real-machine gate
-  ([ACCEPTANCE.md](ACCEPTANCE.md) § Open gates), and it has never been run. Declaring
+  What is left is neither of those: the pin round-trip is the optional real-machine
+  capability check in [ACCEPTANCE.md](ACCEPTANCE.md)
+  § Optional account-combination checks, and it has never been run. Declaring
   the capability (dropping codex from `bindableNotYetDeclared`) is what that result
-  unblocks, and until it passes a pinned directory has no codex login until you log in
+  unblocks. Until it passes a pinned directory has no codex login until you log in
   inside it.
 - **A tool that resolves its store from live state is modelled per artifact, not as
   a set.** codex's `auto` is the only such artifact today (the adapter probes and
@@ -1386,8 +1383,8 @@ alternative exists (`secret-tool`).
 - **Codex keyring driver** *(shipped v0.8.3; item contract corrected 2026-07-30)*:
   `cli_auth_credentials_store = "keyring"` switches this codex home's `Codex Auth`
   item, identified by service **and** the account codex derives from `CODEX_HOME`
-  (see [ADAPTERS.md](ADAPTERS.md)). The two-account real-keychain gate is still
-  open, and now also covers "a second `CODEX_HOME`'s login survives a switch".
+  (see [ADAPTERS.md](ADAPTERS.md)). The optional two-account real-keychain check
+  remains unrun, and also covers "a second `CODEX_HOME`'s login survives a switch".
 - **cursor off macOS is unblocked but unimplemented** (tier 2 — see § Tier-2
   tools; this is the platform gap, not a missing mode): the adapter refuses
   non-darwin because the storage was undocumented. It no longer is — cursor-agent

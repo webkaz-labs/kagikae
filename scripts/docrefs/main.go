@@ -155,8 +155,9 @@
 // # The citation ceilings, so a clean run is not read as more than it is
 //
 //   - Only the *first word* of the cited name is compared. `§ Tier-1 tools` is caught
-//     because no name in that file begins `Tier-1`; `§ Open gate` for `Open gates` is
-//     not. A two-word form was measured at three failures, and all three are correct
+//     because no name in that file begins `Tier-1`; `§ Optional check` for
+//     `Optional account-combination checks` is not. A two-word form was measured at
+//     three failures, and all three are correct
 //     prose: the idiom lets a citation name a *one-word* fragment of a multi-word
 //     heading (`§ Cursor` for `## Cursor CLI (cursor-agent)`) or an *interior* one
 //     (`§ kae pin` for a heading reading `## Semantics of kae pin`, illustrated rather

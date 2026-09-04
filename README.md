@@ -505,7 +505,7 @@ subset.
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Later phases, and the near-term work order. |
 | [docs/RELEASE.md](docs/RELEASE.md) | The release process, and where a shipped release's record is. |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | Pre-commit checks, the smoke blocks that run from them, and two release-only smokes. |
-| [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | What a release owes on a real machine, what it still owes, where a gate's result is recorded, and the observation to record when claude asks for a login it did not ask for before. |
+| [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | Real-machine release checks, optional account-combination checks, where their results are recorded, and the observation to record when claude asks for a login it did not ask for before. |
 
 ## License
 

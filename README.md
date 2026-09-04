@@ -316,7 +316,8 @@ install` and `scripts/install.sh` run `kae completion --refresh`, which rewrites
 already-registered files from the new binary (it never creates one, so the
 initial `--install` above is still required). A plain `go build` skips this — run
 `kae completion --refresh` yourself in that case. The mise-hook registration
-self-sources, so it is always current.
+loads the script in the active shell, so it is always current; refresh also
+migrates the exact older kae-owned hook form that mise ran through `sh`.
 
 > **zsh: completion installed but not showing?** zsh caches its completion
 > index in a *compdump*; a newly added function will not load until that cache

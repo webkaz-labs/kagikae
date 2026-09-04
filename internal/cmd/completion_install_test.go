@@ -642,6 +642,88 @@ func TestCompletionInstallMiseHook(t *testing.T) {
 	}
 }
 
+func TestMiseHookBlockUsesCurrentShellSemantics(t *testing.T) {
+	for _, tc := range []struct {
+		shell  string
+		script string
+	}{
+		{shell: "bash", script: `eval "$(kae completion bash)"`},
+		{shell: "zsh", script: `eval "$(kae completion zsh)"`},
+		{shell: "fish", script: "kae completion fish | source"},
+	} {
+		t.Run(tc.shell, func(t *testing.T) {
+			block := miseHookBlock(tc.shell)
+			want := fmt.Sprintf("[hooks.enter]\nshell = %q\nscript = %q\n", tc.shell, tc.script)
+			if !strings.Contains(block, want) {
+				t.Fatalf("mise hook must target the active shell and run in it:\n%s", block)
+			}
+			if strings.Contains(block, "source <(") || strings.Contains(block, "\nrun = ") {
+				t.Fatalf("completion hook must not use a spawned-shell command:\n%s", block)
+			}
+			var parsed map[string]any
+			if _, err := toml.Decode(block, &parsed); err != nil {
+				t.Fatalf("mise hook does not parse as TOML: %v\n%s", err, block)
+			}
+		})
+	}
+}
+
+func TestCompletionRefreshMigratesExactLegacyMiseHook(t *testing.T) {
+	app := testApp(t, nil)
+	path := globalMiseConfigPath(app.Env)
+	const before = "experimental = true\n"
+	const after = "[tools]\nnode = \"24\"\n"
+	const legacy = `# >>> kagikae >>>
+# kae shell completion via mise (opt-in, experimental). Needs ` + "`mise activate`" + `,
+# a trusted config, and ` + "`mise settings experimental=true`" + `. Fires on directory
+# entry. Non-mise users register via the fpath file or
+# eval "$(kae completion <shell>)" (docs/CLI.md).
+[hooks.enter]
+script = "source <(kae completion zsh)"
+# <<< kagikae <<<
+`
+	writeFile(t, path, before+legacy+after)
+
+	code, out := captureStdout(t, func() int {
+		return runCompletionRefresh(app, commonOpts{Format: formatText})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(out, "Refreshed kae zsh completion mise hook") {
+		t.Fatalf("legacy hook migration was not reported: %s", out)
+	}
+	want := before + miseHookBlock("zsh") + after
+	if got := readFile(t, path); got != want {
+		t.Fatalf("legacy hook migration changed the wrong bytes:\ngot:\n%s\nwant:\n%s", got, want)
+	}
+
+	// The migrated current block is a registered no-op on the next refresh.
+	code, out = captureStdout(t, func() int {
+		return runCompletionRefresh(app, commonOpts{Format: formatText})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if strings.Contains(out, "Refreshed") || strings.Contains(out, "No registered") {
+		t.Fatalf("current mise hook must be recognized as an unchanged registration: %s", out)
+	}
+	if got := readFile(t, path); got != want {
+		t.Fatalf("idempotent refresh changed the current hook:\n%s", got)
+	}
+}
+
+func TestCompletionRefreshLeavesNonLegacyMiseBlockUntouched(t *testing.T) {
+	app := testApp(t, nil)
+	path := globalMiseConfigPath(app.Env)
+	const custom = "# >>> kagikae >>>\n[hooks.enter]\nscript = \"echo manually edited\"\n# <<< kagikae <<<\n"
+	writeFile(t, path, custom)
+
+	code, out := captureStdout(t, func() int {
+		return runCompletionRefresh(app, commonOpts{Format: formatText})
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if got := readFile(t, path); got != custom {
+		t.Fatalf("refresh must not infer a migration for a non-legacy block:\n%s", got)
+	}
+}
+
 func TestCompletionInstallMiseHookRefusesForeignHook(t *testing.T) {
 	app := testApp(t, nil)
 	path := globalMiseConfigPath(app.Env)
@@ -658,6 +740,11 @@ func TestCompletionInstallMiseHookRefusesForeignHook(t *testing.T) {
 	// The user's hook is left intact.
 	if got := readFile(t, path); !strings.Contains(got, "echo hi") || strings.Contains(got, miseBlockStart) {
 		t.Fatalf("foreign hook must be untouched:\n%s", got)
+	}
+	_, _, err := installMiseGlobalHook(app.Env, "bash")
+	if err == nil || !strings.Contains(err.Error(), `shell = "bash"`) ||
+		!strings.Contains(err.Error(), `script = "eval \"$(kae completion bash)\""`) {
+		t.Fatalf("manual merge guidance must describe a current-shell hook, got: %v", err)
 	}
 }
 

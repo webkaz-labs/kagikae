@@ -987,8 +987,12 @@ profile, account, companion) appear with no action. Only a **structural** change
 — a new command/subcommand `case` or a new `__complete` kind — alters the script
 body, and that is refreshed automatically:
 
-- The **mise-hook** registration self-sources from the binary on directory
-  entry, so it is always current — nothing to do.
+- The **mise-hook** registration sources from the binary in the active shell on
+  directory entry, so its completion script is always current. The hook uses
+  mise's current-shell `shell` + `script` form; a spawned `run` cannot retain the
+  function it defines. `kae completion --refresh` also migrates the exact legacy
+  marker block that kae generated without the `shell` selector; foreign or edited
+  hooks are never inferred to be that block.
 - For the **fpath/completions-file** registration, `kae completion --refresh`
   rewrites every already-registered file from the current binary (it never
   creates a new one). The installers run it for you: `mise run install` and
@@ -1047,7 +1051,9 @@ out by directory). Three registration paths, non-mise first:
    mise `[hooks.enter]` that sources the script (opt-in), or (3) print-only. The
    install is idempotent and **never** mutates the global mise config unless you
    pick option 2; a global config that already defines `[hooks.enter]` outside
-   kae's marker block is refused (exit `10`) with manual guidance.
+   kae's marker block is refused (exit `10`) with manual guidance. The owned hook
+   names the selected shell and runs its `script` in that current shell; this is
+   what makes the registered completion function survive the hook.
 
 The mise enter-hook path is an opt-in convenience, not the primary route: mise
 hooks are experimental and need `mise activate`, a trusted config, and

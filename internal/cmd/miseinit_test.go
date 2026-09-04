@@ -31,10 +31,13 @@ func TestMiseInitAutoRendersEnterHook(t *testing.T) {
 		return runMiseInit(ctx, app, opts, "main", constants.ModeAuth, true, false)
 	})
 	mustExit(t, constants.ExitOK, code, out)
-	for _, want := range []string{"[hooks.enter]", `script = "kae use --quiet"`, "[tasks.ai-use]"} {
+	for _, want := range []string{"[hooks.enter]", `run = "kae use --quiet"`, "[tasks.ai-use]"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("auto block missing %q: %s", want, out)
 		}
+	}
+	if strings.Contains(out, `script = "kae use --quiet"`) {
+		t.Fatalf("auto hook must use mise's spawned run form, not deprecated script: %s", out)
 	}
 
 	// Without --auto no hook is rendered.

@@ -160,7 +160,7 @@ func (app *App) miseBlock(profileName string, auto bool) string {
 		fmt.Fprintln(&b, "# mutates the global live auth state shared by every terminal, not just")
 		fmt.Fprintln(&b, "# this directory. Firing requires `mise activate`, a trusted config,")
 		fmt.Fprintln(&b, "# and `mise settings experimental=true` (mise hooks are experimental).")
-		fmt.Fprintln(&b, `script = "kae use --quiet"`)
+		fmt.Fprintln(&b, `run = "kae use --quiet"`)
 		fmt.Fprintln(&b)
 	}
 	fmt.Fprintln(&b, "[tasks.ai-use]")

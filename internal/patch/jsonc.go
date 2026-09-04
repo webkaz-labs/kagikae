@@ -15,16 +15,18 @@ import (
 // only the targeted value.
 
 // GetPointerJSONC returns the raw JSON value at pointer and whether it exists.
-// Comments are irrelevant to a read, so the document is standardized first and
-// the value is extracted with the plain GetPointer.
+// Comments are irrelevant to a read, so a standardized clone supplies the same
+// decoded traversal used for plain JSON while the original AST stays untouched.
 func GetPointerJSONC(doc []byte, pointer string) (json.RawMessage, bool, error) {
-	// Standardize rewrites its argument in place (it blanks comments to keep
-	// byte offsets), so pass a copy to leave the caller's slice intact.
-	std, err := hujson.Standardize(append([]byte(nil), doc...))
+	tokens, err := splitPointer(pointer)
 	if err != nil {
-		return nil, false, fmt.Errorf("parse jsonc: %w", err)
+		return nil, false, err
 	}
-	return GetPointer(std, pointer)
+	_, root, err := parseJSONC(doc)
+	if err != nil {
+		return nil, false, err
+	}
+	return getDecodedPointer(root, tokens)
 }
 
 // SetPointerJSONC returns the document with the value at pointer replaced or
@@ -34,7 +36,22 @@ func GetPointerJSONC(doc []byte, pointer string) (json.RawMessage, bool, error) 
 // operation: for an existing object member that replaces it, otherwise it
 // creates the member (RFC 6902 §4.1).
 func SetPointerJSONC(doc []byte, pointer string, value json.RawMessage) ([]byte, error) {
-	return patchAndPack(doc, map[string]any{"op": "add", "path": pointer, "value": value}, pointer)
+	tokens, err := splitPointer(pointer)
+	if err != nil {
+		return nil, err
+	}
+	parsed, root, err := parseJSONC(doc)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := decodeDoc(value); err != nil {
+		return nil, fmt.Errorf("pointer value: %w", err)
+	}
+	operations, _, err := planPointerRewrite(root, tokens, pointer, value, false, false)
+	if err != nil {
+		return nil, err
+	}
+	return patchAndPack(parsed, operations, pointer)
 }
 
 // DeletePointerJSONC returns the document with the member at pointer removed,
@@ -42,33 +59,54 @@ func SetPointerJSONC(doc []byte, pointer string, value json.RawMessage) ([]byte,
 // (matching DeletePointer), so an absent pointer returns the document
 // unchanged.
 func DeletePointerJSONC(doc []byte, pointer string) ([]byte, error) {
-	v, err := hujson.Parse(doc)
-	if err != nil {
-		return nil, fmt.Errorf("parse jsonc: %w", err)
-	}
-	if v.Find(pointer) == nil {
-		return doc, nil
-	}
-	return patchAndPack(doc, map[string]any{"op": "remove", "path": pointer}, pointer)
-}
-
-// patchAndPack applies a single RFC 6902 operation to a JSONC document and
-// repacks it, preserving the document's surrounding extra. Adding, replacing,
-// or removing a top-level member can reset that extra (the leading // comments
-// live in BeforeExtra), so it is saved and restored around the patch.
-func patchAndPack(doc []byte, op map[string]any, pointer string) ([]byte, error) {
-	v, err := hujson.Parse(doc)
-	if err != nil {
-		return nil, fmt.Errorf("parse jsonc: %w", err)
-	}
-	ops, err := json.Marshal([]map[string]any{op})
+	tokens, err := splitPointer(pointer)
 	if err != nil {
 		return nil, err
 	}
-	before, after := v.BeforeExtra, v.AfterExtra
-	if err := v.Patch(ops); err != nil {
-		return nil, fmt.Errorf("patch jsonc pointer %s: %w", pointer, err)
+	parsed, root, err := parseJSONC(doc)
+	if err != nil {
+		return nil, err
 	}
-	v.BeforeExtra, v.AfterExtra = before, after
-	return v.Pack(), nil
+	operations, changed, err := planPointerRewrite(root, tokens, pointer, nil, true, false)
+	if err != nil {
+		return nil, err
+	}
+	if !changed {
+		return append([]byte(nil), doc...), nil
+	}
+	return patchAndPack(parsed, operations, pointer)
+}
+
+func parseJSONC(doc []byte) (*hujson.Value, any, error) {
+	parsed, err := hujson.Parse(doc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse jsonc: %w", err)
+	}
+	// Standardize only the clone: decodeDoc then supplies strict semantic
+	// validation (including duplicate-member rejection), while parsed retains
+	// every comment, trailing comma, and formatting byte needed for a write.
+	standard := parsed.Clone()
+	standard.Standardize()
+	root, err := decodeDoc(standard.Pack())
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse jsonc: %w", err)
+	}
+	return &parsed, root, nil
+}
+
+// patchAndPack applies RFC 6902 operations to a parsed JSON or JSONC document
+// and repacks it, preserving the document's surrounding extra. Adding,
+// replacing, or removing a top-level member can reset that extra (leading
+// comments live in BeforeExtra), so it is saved and restored around the patch.
+func patchAndPack(parsed *hujson.Value, operations []pointerOperation, pointer string) ([]byte, error) {
+	ops, err := json.Marshal(operations)
+	if err != nil {
+		return nil, err
+	}
+	before, after := parsed.BeforeExtra, parsed.AfterExtra
+	if err := parsed.Patch(ops); err != nil {
+		return nil, fmt.Errorf("patch json pointer %s: %w", pointer, err)
+	}
+	parsed.BeforeExtra, parsed.AfterExtra = before, after
+	return parsed.Pack(), nil
 }

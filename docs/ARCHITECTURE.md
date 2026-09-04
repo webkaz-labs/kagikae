@@ -469,10 +469,14 @@ source and backend-read error policy.
 
 ## Known Traps
 
-- JSON pointer patching re-encodes the whole document (sorted keys, 2-space
-  indent, `json.Number` for exact numeric round-trip). Sibling values are
-  preserved exactly, but byte-level formatting is normalized — never promise
-  byte-identical output for patched files.
+- JSON pointer patching validates the whole semantic document before applying a
+  local patch that preserves the bytes outside the targeted member. Plain JSON
+  is decoded strictly; JSONC is parsed once, then a standardized AST clone is
+  decoded with the same strict semantics while the original AST retains comments
+  and trailing commas. The byte-preservation tests for plain JSON and JSONC
+  protect field order, spacing, comments, trailing commas, and the original
+  trailing-newline state; duplicate-member tests keep reads and patches from
+  choosing different values.
 - `~/.claude.json` can be large and is rewritten by Claude Code itself; always
   re-read immediately before patching inside the lock, never reuse a value
   read earlier in the process.

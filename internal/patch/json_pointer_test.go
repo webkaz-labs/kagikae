@@ -1,6 +1,7 @@
 package patch
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -42,6 +43,64 @@ func TestGetPointerMissing(t *testing.T) {
 	}
 }
 
+func TestStrictJSONRejectsTrailingInputBeforeAnyOperation(t *testing.T) {
+	documents := []string{
+		`{"a":1} {"b":2}`,
+		`{"a":1} trailing`,
+		"{\"a\":1 // comment\n}",
+		`{"a":1,}`,
+	}
+	for _, doc := range documents {
+		t.Run(doc, func(t *testing.T) {
+			if _, _, err := GetPointer([]byte(doc), "/a"); err == nil {
+				t.Fatal("GetPointer accepted invalid strict JSON")
+			}
+			if _, err := SetPointer([]byte(doc), "/a", json.RawMessage(`2`)); err == nil {
+				t.Fatal("SetPointer accepted invalid strict JSON")
+			}
+			if _, err := DeletePointer([]byte(doc), "/missing"); err == nil {
+				t.Fatal("DeletePointer accepted invalid strict JSON on a no-op path")
+			}
+		})
+	}
+}
+
+func TestStrictJSONRejectsDuplicateMembersAtAnyDepth(t *testing.T) {
+	documents := []string{
+		`{"a":1,"a":2}`,
+		`{"outer":{"a":1,"a":2}}`,
+	}
+	for _, doc := range documents {
+		t.Run(doc, func(t *testing.T) {
+			if _, _, err := GetPointer([]byte(doc), "/a"); err == nil {
+				t.Fatal("GetPointer accepted duplicate object members")
+			}
+			if _, err := SetPointer([]byte(doc), "/x", json.RawMessage(`1`)); err == nil {
+				t.Fatal("SetPointer accepted duplicate object members")
+			}
+			if _, err := DeletePointer([]byte(doc), "/missing"); err == nil {
+				t.Fatal("DeletePointer accepted duplicate object members on a no-op path")
+			}
+		})
+	}
+}
+
+func TestSetPointerRejectsInvalidStrictJSONValue(t *testing.T) {
+	values := []string{
+		`1 2`,
+		`{"a":1,"a":2}`,
+		`{"outer":{"a":1,"a":2}}`,
+		"{\"a\":1 // comment\n}",
+	}
+	for _, value := range values {
+		t.Run(value, func(t *testing.T) {
+			if _, err := SetPointer([]byte(`{"a":1}`), "/a", json.RawMessage(value)); err == nil {
+				t.Fatal("SetPointer accepted an invalid strict JSON pointer value")
+			}
+		})
+	}
+}
+
 func TestSetPointerPreservesSiblings(t *testing.T) {
 	out, err := SetPointer([]byte(mixedDoc), "/oauthAccount", json.RawMessage(`{"accountUuid":"new"}`))
 	if err != nil {
@@ -69,6 +128,26 @@ func TestSetPointerPreservesSiblings(t *testing.T) {
 	}
 }
 
+func TestSetPointerPreservesBytesOutsideTarget(t *testing.T) {
+	doc := []byte("{\n" +
+		"  \"zCache\" : [ 1,  2 ],\n" +
+		"  \"oauthAccount\": {\"accountUuid\":\"old\"},\n" +
+		"  \"projects\":{\"/repo\" : {\"enabled\":true}},\n" +
+		"  \"mcpServers\" : { }\n" +
+		"}") // Deliberately no trailing newline.
+	oldValue := []byte(`{"accountUuid":"old"}`)
+	newValue := []byte(`{"accountUuid":"new"}`)
+
+	out, err := SetPointer(doc, "/oauthAccount", newValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := bytes.Replace(doc, oldValue, newValue, 1)
+	if !bytes.Equal(out, want) {
+		t.Fatalf("bytes outside pointer changed:\nwant: %q\n got: %q", want, out)
+	}
+}
+
 func TestSetPointerCreatesMissingKey(t *testing.T) {
 	out, err := SetPointer([]byte(`{"keep": 1}`), "/oauthAccount", json.RawMessage(`"x"`))
 	if err != nil {
@@ -79,6 +158,20 @@ func TestSetPointerCreatesMissingKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	if v["oauthAccount"] != "x" || v["keep"] == nil {
+		t.Fatalf("unexpected: %s", out)
+	}
+}
+
+func TestSetPointerCreatesEscapedMissingObjectPath(t *testing.T) {
+	out, err := SetPointer([]byte(`{"keep": 1}`), "/a~1b/c~0d", json.RawMessage(`"x"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v map[string]any
+	if err := json.Unmarshal(out, &v); err != nil {
+		t.Fatal(err)
+	}
+	if v["a/b"].(map[string]any)["c~d"] != "x" || v["keep"] == nil {
 		t.Fatalf("unexpected: %s", out)
 	}
 }
@@ -98,9 +191,14 @@ func TestDeletePointer(t *testing.T) {
 	if _, ok := v["projects"]; !ok {
 		t.Fatal("sibling lost")
 	}
-	// deleting a missing key is not an error
-	if _, err := DeletePointer([]byte(mixedDoc), "/nope"); err != nil {
+	// Deleting a missing key is an exact no-op, including formatting and the
+	// absence of a trailing newline.
+	unchanged, err := DeletePointer([]byte(mixedDoc), "/nope")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !bytes.Equal(unchanged, []byte(mixedDoc)) {
+		t.Fatalf("missing delete rewrote document:\n%s", unchanged)
 	}
 }
 
@@ -113,6 +211,31 @@ func TestSetPointerRejectsNonObjectRoot(t *testing.T) {
 func TestInvalidPointer(t *testing.T) {
 	if _, _, err := GetPointer([]byte(`{}`), "noSlash"); err == nil {
 		t.Fatal("expected invalid pointer error")
+	}
+}
+
+func TestPointerEscapes(t *testing.T) {
+	doc := []byte(`{"~":1,"/":2,"~1":3}`)
+	for pointer, want := range map[string]string{
+		"/~0":  `1`,
+		"/~1":  `2`,
+		"/~01": `3`,
+	} {
+		raw, found, err := GetPointer(doc, pointer)
+		if err != nil || !found || string(raw) != want {
+			t.Errorf("GetPointer(%q) = %s, %v, %v; want %s, true, nil", pointer, raw, found, err, want)
+		}
+	}
+	for _, pointer := range []string{"/~2", "/a~"} {
+		if _, _, err := GetPointer(doc, pointer); err == nil {
+			t.Errorf("GetPointer accepted malformed escape in %q", pointer)
+		}
+		if _, err := SetPointer(doc, pointer, json.RawMessage(`4`)); err == nil {
+			t.Errorf("SetPointer accepted malformed escape in %q", pointer)
+		}
+		if _, err := DeletePointer(doc, pointer); err == nil {
+			t.Errorf("DeletePointer accepted malformed escape in %q", pointer)
+		}
 	}
 }
 

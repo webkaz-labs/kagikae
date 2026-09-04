@@ -7,20 +7,86 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
+
+	"github.com/tailscale/hujson"
 )
 
-// decodeDoc parses a JSON document preserving number formatting via
+// decodeDoc parses exactly one strict JSON value, rejects duplicate object
+// members at every nesting level, and preserves number formatting via
 // json.Number so re-encoding cannot corrupt large integers or floats.
 func decodeDoc(doc []byte) (any, error) {
 	dec := json.NewDecoder(bytes.NewReader(doc))
 	dec.UseNumber()
-	var v any
-	if err := dec.Decode(&v); err != nil {
+	v, err := decodeValue(dec)
+	if err != nil {
+		return nil, fmt.Errorf("parse json: %w", err)
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		if err == nil {
+			err = fmt.Errorf("unexpected value after top-level value")
+		}
 		return nil, fmt.Errorf("parse json: %w", err)
 	}
 	return v, nil
+}
+
+func decodeValue(dec *json.Decoder) (any, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	delim, isDelim := tok.(json.Delim)
+	if !isDelim {
+		return tok, nil
+	}
+	switch delim {
+	case '{':
+		object := make(map[string]any)
+		for dec.More() {
+			keyToken, err := dec.Token()
+			if err != nil {
+				return nil, err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return nil, fmt.Errorf("object member name is not a string")
+			}
+			if _, exists := object[key]; exists {
+				return nil, fmt.Errorf("duplicate object member %q", key)
+			}
+			value, err := decodeValue(dec)
+			if err != nil {
+				return nil, err
+			}
+			object[key] = value
+		}
+		if closeToken, err := dec.Token(); err != nil {
+			return nil, err
+		} else if closeToken != json.Delim('}') {
+			return nil, fmt.Errorf("object closed by %q", closeToken)
+		}
+		return object, nil
+	case '[':
+		array := make([]any, 0)
+		for dec.More() {
+			value, err := decodeValue(dec)
+			if err != nil {
+				return nil, err
+			}
+			array = append(array, value)
+		}
+		if closeToken, err := dec.Token(); err != nil {
+			return nil, err
+		} else if closeToken != json.Delim(']') {
+			return nil, fmt.Errorf("array closed by %q", closeToken)
+		}
+		return array, nil
+	default:
+		return nil, fmt.Errorf("unexpected delimiter %q", delim)
+	}
 }
 
 // EncodeJSON is the single JSON-file encoding policy (2-space indent, no
@@ -44,9 +110,23 @@ func splitPointer(pointer string) ([]string, error) {
 	raw := strings.Split(pointer[1:], "/")
 	tokens := make([]string, len(raw))
 	for i, t := range raw {
-		t = strings.ReplaceAll(t, "~1", "/")
-		t = strings.ReplaceAll(t, "~0", "~")
-		tokens[i] = t
+		var decoded strings.Builder
+		for j := 0; j < len(t); j++ {
+			if t[j] != '~' {
+				decoded.WriteByte(t[j])
+				continue
+			}
+			if j+1 >= len(t) || (t[j+1] != '0' && t[j+1] != '1') {
+				return nil, fmt.Errorf("invalid json pointer escape in %q", pointer)
+			}
+			if t[j+1] == '0' {
+				decoded.WriteByte('~')
+			} else {
+				decoded.WriteByte('/')
+			}
+			j++
+		}
+		tokens[i] = decoded.String()
 	}
 	return tokens, nil
 }
@@ -61,6 +141,10 @@ func GetPointer(doc []byte, pointer string) (json.RawMessage, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	return getDecodedPointer(v, tokens)
+}
+
+func getDecodedPointer(v any, tokens []string) (json.RawMessage, bool, error) {
 	for _, tok := range tokens {
 		switch node := v.(type) {
 		case map[string]any:
@@ -97,7 +181,7 @@ func encodeRaw(v any) (json.RawMessage, error) {
 }
 
 // SetPointer returns the document with the value at pointer replaced (or
-// created). All sibling keys are preserved; only single-level-missing object
+// created). All bytes outside the patched member are preserved; missing object
 // paths are created. Array index creation is not supported.
 func SetPointer(doc []byte, pointer string, value json.RawMessage) ([]byte, error) {
 	return rewritePointer(doc, pointer, value, false)
@@ -118,36 +202,91 @@ func rewritePointer(doc []byte, pointer string, value json.RawMessage, remove bo
 	if err != nil {
 		return nil, err
 	}
+	if !remove {
+		if _, err := decodeDoc(value); err != nil {
+			return nil, fmt.Errorf("pointer value: %w", err)
+		}
+	}
+	operations, changed, err := planPointerRewrite(root, tokens, pointer, value, remove, true)
+	if err != nil {
+		return nil, err
+	}
+	if !changed {
+		return append([]byte(nil), doc...), nil
+	}
+	parsed, err := hujson.Parse(doc)
+	if err != nil {
+		return nil, fmt.Errorf("parse json: %w", err)
+	}
+	return patchAndPack(&parsed, operations, pointer)
+}
+
+type pointerOperation struct {
+	Op    string          `json:"op"`
+	Path  string          `json:"path"`
+	Value json.RawMessage `json:"value,omitempty"`
+}
+
+func addPointerOperation(path string, value json.RawMessage) pointerOperation {
+	return pointerOperation{Op: "add", Path: path, Value: value}
+}
+
+func removePointerOperation(path string) pointerOperation {
+	return pointerOperation{Op: "remove", Path: path}
+}
+
+func planPointerRewrite(
+	root any,
+	tokens []string,
+	pointer string,
+	value json.RawMessage,
+	remove bool,
+	createParents bool,
+) ([]pointerOperation, bool, error) {
 	node, ok := root.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("document root is not a json object")
+		return nil, false, fmt.Errorf("document root is not a json object")
 	}
-	for _, tok := range tokens[:len(tokens)-1] {
+	operations := make([]pointerOperation, 0, len(tokens))
+	for i, tok := range tokens[:len(tokens)-1] {
 		child, exists := node[tok]
 		if !exists {
 			if remove {
-				return EncodeJSON(root) // nothing to remove
+				return nil, false, nil
+			}
+			if !createParents {
+				return nil, false, fmt.Errorf("pointer %s parent does not exist", pointer)
 			}
 			created := map[string]any{}
+			operations = append(operations,
+				addPointerOperation(joinPointer(tokens[:i+1]), json.RawMessage(`{}`)))
 			node[tok] = created
 			node = created
 			continue
 		}
 		childObj, isObj := child.(map[string]any)
 		if !isObj {
-			return nil, fmt.Errorf("pointer %s traverses a non-object", pointer)
+			return nil, false, fmt.Errorf("pointer %s traverses a non-object", pointer)
 		}
 		node = childObj
 	}
 	leaf := tokens[len(tokens)-1]
 	if remove {
-		delete(node, leaf)
-	} else {
-		parsed, err := decodeDoc(value)
-		if err != nil {
-			return nil, fmt.Errorf("pointer value: %w", err)
+		if _, exists := node[leaf]; !exists {
+			return nil, false, nil
 		}
-		node[leaf] = parsed
+		operations = append(operations, removePointerOperation(pointer))
+	} else {
+		operations = append(operations, addPointerOperation(pointer, value))
 	}
-	return EncodeJSON(root)
+	return operations, true, nil
+}
+
+func joinPointer(tokens []string) string {
+	escaped := make([]string, len(tokens))
+	for i, token := range tokens {
+		token = strings.ReplaceAll(token, "~", "~0")
+		escaped[i] = strings.ReplaceAll(token, "/", "~1")
+	}
+	return "/" + strings.Join(escaped, "/")
 }

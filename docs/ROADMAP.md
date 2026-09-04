@@ -36,10 +36,8 @@ provider, mode, JSON surface, tier promotion or platform.
 1. **Contain the test process — done** — closed **A test that forgets to install a runner
    must fail before it reaches a credential program**, including its `TMPDIR`, all three
    runner seams and `keychainSim`'s unscoped-delete hole.
-2. **Refuse an inconsistent account snapshot before mutation** — complete **`kae account
-   rename` / `kae account rm` delete a recorded `SecretRef` verbatim**. This is safety
-   work, not diagnostics: a foreign recorded reference can delete another account's
-   payload.
+2. **Refuse an inconsistent account snapshot before mutation — done** — closed **An
+   account lifecycle command must not trust a recorded `SecretRef` as an address**.
 3. **Make the release evidence bite** — complete **Two assertions in the harvest block
    still pass when the thing that reads the snapshot is broken**, **The smoke guards have
    no test, and four changes switched one off without anything noticing**,
@@ -1222,18 +1220,20 @@ alternative exists (`secret-tool`).
   will find it free. These boundaries are the implementation contract, not a description
   of the code before the fix lands.
 
-- **`kae account rename` / `kae account rm` delete a recorded `SecretRef`
-  verbatim** (recorded 2026-07-31, **queued for v0.18.1**). Both delete the ref
-  the snapshot's metadata names, without checking it is the ref this account would
-  produce (`account.SecretRef(tool, name, artifact)`). A snapshot dir whose metadata
-  names *another* account's ref — reachable by hand-copying an account directory,
-  which is a plausible way to try to duplicate an account — therefore has that other
-  account's payload deleted by a command that was not asked to touch it. Not a
-  regression from the v0.16.0 restaging (the single pass did the same, and
-  `account rm` shares the flaw), and it needs someone to have edited kae's data dir
-  by hand, which is why it is recorded rather than fixed inside a release about
-  something else. The fix is a comparison at both delete sites, and it belongs with
-  whatever else next audits "does this snapshot describe itself".
+- **An account lifecycle command must not trust a recorded `SecretRef` as an
+  address** (recorded 2026-07-31, closed in v0.18.1). `kae account rm` and
+  `kae account rename` derive the only valid ref for every artifact from the command's
+  canonical tool/account and the artifact map key, then require the recorded value to
+  equal it. A foreign or malformed ref is `unsafe_refused` before secret-backend,
+  config or state mutation. Real runs repeat the check on the snapshot re-read after
+  taking the lifecycle, tool and config locks; the earlier check supplies the same
+  refusal to dry-run and the common error path. This closes the case reachable by
+  hand-copying an account directory, where the copied metadata used to redirect
+  deletion into the source account's payload.
+  `TestAccountMutationsRefuseInconsistentSecretRefsBeforeMutation` and
+  `TestAccountMutationsRecheckSecretRefsAfterTakingLocks` keep the refusal and its
+  no-mutation boundary; the paired `AcceptsConsistentSecretRefs` tests keep the normal
+  remove and copy-then-delete paths live.
 
 - **`applySnapshot`'s refusals could be raised one step earlier, in
   `loadPlansWithSnapshots`** (recorded 2026-07-31, deliberately not done). Both

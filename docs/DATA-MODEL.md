@@ -307,6 +307,13 @@ be prefixed and registered there — a key parsed as `<tool>/<account>` by mista
 is reported as an orphaned account by `doctor` — which is what happened to every
 companion binding and env-profile variable while the check split the key itself.
 
+An account snapshot's `secret_ref` is derived metadata, not an authority for which
+backend item an account lifecycle command may touch. `kae account rm` and
+`kae account rename` recompute `<tool>/<account>/<artifact>` from the canonical command
+arguments and artifact map key, and refuse the whole operation if any recorded value
+differs. They repeat the check after locking and re-reading the snapshot so a concurrent
+replacement cannot redirect a later backend operation.
+
 Backends:
 
 | Backend | Platform | Mechanism |

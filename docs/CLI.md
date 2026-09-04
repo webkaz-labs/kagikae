@@ -410,6 +410,10 @@ global-isolation homes, credential stores, or their path-derived keychain
 items. After logical config/state removal it deletes the snapshot's recorded
 secret refs before removing the snapshot directory. If backend deletion fails,
 the metadata remains so the same command can be retried after recovery.
+Before any of those mutations, removal requires every recorded `secret_ref` to
+equal the value derived from `<tool>`, `<account>`, and its artifact name. A
+foreign or malformed value is refused with `unsafe_refused` (exit `10`), including
+under `--dry-run`; `--force` does not bypass this metadata-integrity guard.
 
 `kae account rename <tool> <old> <new>` renames a captured account: it
 copy-then-deletes each secret item (backend keys cannot be renamed in place),
@@ -436,6 +440,12 @@ between the two atomic file writes: state may have been saved while the previous
 fragment remains. The same `kae use -s <tool> <old>` remedy regenerates the
 fragment from current state while holding the state lock, even when `<tool>` is
 already absent from `synced`; retry rename after it succeeds.
+
+Rename likewise requires every old snapshot `secret_ref` to equal the value derived
+from `<tool>`, `<old>`, and its artifact name. A foreign or malformed value is
+`unsafe_refused` (exit `10`) before harvest, backend copy/delete, destination snapshot,
+profile, or state mutation. A real run repeats this check after taking its locks and
+re-reading the old snapshot; dry-run performs the initial check without locking.
 
 The order is three stages, and it is a contract rather than an implementation
 detail, because it is what an interrupted rename leaves behind: **(1)** copy every

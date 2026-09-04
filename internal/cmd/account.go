@@ -87,6 +87,9 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 	if !found {
 		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, accountName)
 	}
+	if err := validateAccountSecretRefs(acc, tool, accountName); err != nil {
+		return nil, err
+	}
 
 	st, err := app.loadState()
 	if err != nil {
@@ -142,6 +145,9 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, accountName)
 	}
 	acc = lockedAcc
+	if err := validateAccountSecretRefs(acc, tool, accountName); err != nil {
+		return nil, err
+	}
 	report.SecretsRemoved = len(acc.ArtifactNames())
 
 	lockedConfig, _, err := config.Load(app.ConfigPath)
@@ -222,6 +228,22 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 func accountRmActiveError(tool, accountName string) error {
 	return errf(constants.ExitUnsafeRefused,
 		"%s/%s is the active account; switch away first or rerun with --force", tool, accountName)
+}
+
+// validateAccountSecretRefs refuses metadata that could redirect an account
+// lifecycle operation into another account's secret namespace. The command's
+// tool/account arguments and the artifact map key are the authority; SecretRef
+// is derived metadata and is never trusted as a backend address.
+func validateAccountSecretRefs(acc account.Account, tool, accountName string) error {
+	for _, artifactName := range acc.ArtifactNames() {
+		got := acc.Artifacts[artifactName].SecretRef
+		want := account.SecretRef(tool, accountName, artifactName)
+		if got != want {
+			return errf(constants.ExitUnsafeRefused,
+				"account %s/%s has inconsistent secret_ref metadata", tool, accountName)
+		}
+	}
+	return nil
 }
 
 func (app *App) accountRmIsolationPreflight(st *state.State, tool, accountName string) error {
@@ -317,6 +339,9 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	if !found {
 		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, oldName)
 	}
+	if err := validateAccountSecretRefs(acc, tool, oldName); err != nil {
+		return nil, err
+	}
 	if _, exists, err := account.Load(app.Paths.AccountDir(tool, newName)); err != nil {
 		return nil, err
 	} else if exists {
@@ -387,6 +412,9 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		return nil, errf(constants.ExitUnsafeRefused, "account %s/%s already exists", tool, newName)
 	}
 	acc = lockedAcc
+	if err := validateAccountSecretRefs(acc, tool, oldName); err != nil {
+		return nil, err
+	}
 
 	// Profile references are mutable independently of this App's in-memory
 	// config. Reload and recompute while config.lock is held so stage 2 edits

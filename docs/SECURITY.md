@@ -16,6 +16,9 @@ here are part of the command contract.
   mode `0600` for credential files.
 - Validate structure before writing; refuse with `unsafe_refused` (exit 10)
   when the live layout is unrecognized.
+- Treat an account snapshot's `secret_ref` as derived metadata: account removal and
+  rename recompute every ref from the named account and artifact, then refuse the whole
+  operation before any mutation if one differs.
 - Support `--dry-run` on every mutating command.
 
 ## Secret Handling

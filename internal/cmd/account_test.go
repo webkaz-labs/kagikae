@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
+	"github.com/webkaz-labs/kagikae/internal/testutil/secrettest"
 )
 
 // captureClaude seeds and captures a claude account, leaving it active.
@@ -40,6 +43,71 @@ func writeConfigFile(t *testing.T, app *App, content string) {
 	// focuses on profiles, not the security section.
 	cfg.Security.SecretBackend = secret.BackendFile
 	app.Config = cfg
+}
+
+type accountOperationBackend struct {
+	secret.Backend
+	ops []string
+}
+
+func (b *accountOperationBackend) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	b.ops = append(b.ops, "get "+key)
+	return b.Backend.Get(ctx, key)
+}
+
+func (b *accountOperationBackend) Set(ctx context.Context, key string, value []byte) error {
+	b.ops = append(b.ops, "set "+key)
+	return b.Backend.Set(ctx, key, value)
+}
+
+func (b *accountOperationBackend) Delete(ctx context.Context, key string) error {
+	b.ops = append(b.ops, "delete "+key)
+	return b.Backend.Delete(ctx, key)
+}
+
+func accountBackendFixture(t *testing.T, app *App, tool, accountName string) (account.Account, *secrettest.MemBackend, *accountOperationBackend) {
+	t.Helper()
+	acc, found, err := account.Load(app.Paths.AccountDir(tool, accountName))
+	if err != nil || !found {
+		t.Fatalf("load account backend fixture: found=%v err=%v", found, err)
+	}
+	source := testBackend(t, app)
+	mem := secrettest.NewMem()
+	for _, name := range acc.ArtifactNames() {
+		art := acc.Artifacts[name]
+		if !art.Present {
+			continue
+		}
+		payload, found, err := source.Get(context.Background(), art.SecretRef)
+		if err != nil || !found {
+			t.Fatalf("load fixture payload %s: found=%v err=%v", art.SecretRef, found, err)
+		}
+		mem.Values[art.SecretRef] = append([]byte(nil), payload...)
+	}
+	recorder := &accountOperationBackend{Backend: mem}
+	app.backendForTest = recorder
+	return acc, mem, recorder
+}
+
+func accountSecretValues(values map[string][]byte) map[string]string {
+	got := make(map[string]string, len(values))
+	for key, value := range values {
+		got[key] = string(value)
+	}
+	return got
+}
+
+func assertAccountRefusalLeftFilesUnchanged(t *testing.T, app *App, accountDir, configBefore, stateBefore, accountBefore string) {
+	t.Helper()
+	if got := readFile(t, app.ConfigPath); got != configBefore {
+		t.Fatalf("refusal changed config.toml:\n%s", got)
+	}
+	if got := readFile(t, app.Paths.StateFile()); got != stateBefore {
+		t.Fatalf("refusal changed state.json:\n%s", got)
+	}
+	if got := readFile(t, filepath.Join(accountDir, "account.toml")); got != accountBefore {
+		t.Fatalf("refusal changed account.toml:\n%s", got)
+	}
 }
 
 func TestAccountRmRemovesSnapshotAndSecrets(t *testing.T) {
@@ -141,6 +209,219 @@ func TestAccountRmDryRunWritesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(app.Paths.AccountDir("claude", "side")); err != nil {
 		t.Fatalf("dry-run removed the snapshot dir: %v", err)
+	}
+}
+
+func TestAccountMutationsRefuseInconsistentSecretRefsBeforeMutation(t *testing.T) {
+	corruptions := []struct {
+		name string
+		ref  func(string) string
+	}{
+		{name: "foreign", ref: func(artifactName string) string {
+			return account.SecretRef(constants.ToolClaude, "side", artifactName)
+		}},
+		{name: "malformed", ref: func(string) string { return "malformed" }},
+	}
+	operations := []struct {
+		name          string
+		run           func(context.Context, *App) error
+		assertRefusal func(*testing.T, *App)
+	}{
+		{
+			name: "remove",
+			run: func(ctx context.Context, app *App) error {
+				_, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "main", true)
+				return err
+			},
+		},
+		{
+			name: "rename",
+			run: func(ctx context.Context, app *App) error {
+				_, err := buildAccountRename(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "main", "side")
+				return err
+			},
+			assertRefusal: func(t *testing.T, app *App) {
+				t.Helper()
+				if _, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "side")); err != nil || found {
+					t.Fatalf("refusal created the destination snapshot: found=%v err=%v", found, err)
+				}
+			},
+		},
+	}
+
+	for _, operation := range operations {
+		t.Run(operation.name, func(t *testing.T) {
+			for _, corruption := range corruptions {
+				t.Run(corruption.name, func(t *testing.T) {
+					app := testApp(t, nil)
+					captureClaude(t, app, "main", mainToken)
+					writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n[profiles.alt.accounts]\nclaude = \"main\"\n")
+					acc, mem, recorder := accountBackendFixture(t, app, constants.ToolClaude, "main")
+
+					// Corrupt the last artifact so the validator must inspect the whole set,
+					// not just the credential-first entry.
+					names := acc.ArtifactNames()
+					artifactName := names[len(names)-1]
+					art := acc.Artifacts[artifactName]
+					art.SecretRef = corruption.ref(artifactName)
+					acc.Artifacts[artifactName] = art
+					mem.Values[art.SecretRef] = []byte("foreign-fixture-payload")
+					accountDir := app.Paths.AccountDir(constants.ToolClaude, "main")
+					if err := account.Save(accountDir, acc); err != nil {
+						t.Fatal(err)
+					}
+
+					configBefore := readFile(t, app.ConfigPath)
+					stateBefore := readFile(t, app.Paths.StateFile())
+					accountBefore := readFile(t, filepath.Join(accountDir, "account.toml"))
+					secretsBefore := accountSecretValues(mem.Values)
+
+					err := operation.run(context.Background(), app)
+					if exitOf(err) != constants.ExitUnsafeRefused || !strings.Contains(err.Error(), "inconsistent secret_ref") {
+						t.Fatalf("inconsistent ref was not refused: exit=%d err=%v", exitOf(err), err)
+					}
+					if len(recorder.ops) != 0 {
+						t.Fatalf("refusal reached the credential backend: %v", recorder.ops)
+					}
+					if got := accountSecretValues(mem.Values); !reflect.DeepEqual(got, secretsBefore) {
+						t.Fatalf("refusal changed secrets: got=%v want=%v", got, secretsBefore)
+					}
+					assertAccountRefusalLeftFilesUnchanged(t, app, accountDir, configBefore, stateBefore, accountBefore)
+					if operation.assertRefusal != nil {
+						operation.assertRefusal(t, app)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestAccountRmAcceptsConsistentSecretRefs(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	acc, mem, recorder := accountBackendFixture(t, app, constants.ToolClaude, "main")
+
+	if _, err := buildAccountRm(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main", true); err != nil {
+		t.Fatalf("remove with consistent refs: %v", err)
+	}
+	if len(recorder.ops) == 0 {
+		t.Fatal("positive control never reached the credential backend")
+	}
+	for _, name := range acc.ArtifactNames() {
+		if _, found := mem.Values[account.SecretRef(constants.ToolClaude, "main", name)]; found {
+			t.Fatalf("positive control left secret %s", name)
+		}
+	}
+}
+
+func TestAccountSecretRefRefusalDoesNotLeakMetadata(t *testing.T) {
+	const (
+		artifactCanary  = "fixture-artifact-canary"
+		secretRefCanary = "fixture-secret-ref-canary"
+	)
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	acc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
+	if err != nil || !found {
+		t.Fatalf("load account: found=%v err=%v", found, err)
+	}
+	names := acc.ArtifactNames()
+	art := acc.Artifacts[names[0]]
+	delete(acc.Artifacts, names[0])
+	art.SecretRef = secretRefCanary
+	acc.Artifacts[artifactCanary] = art
+	if err := account.Save(app.Paths.AccountDir(constants.ToolClaude, "main"), acc); err != nil {
+		t.Fatal(err)
+	}
+
+	_, refusal := buildAccountRm(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main", true)
+	if exitOf(refusal) != constants.ExitUnsafeRefused {
+		t.Fatalf("inconsistent ref was not refused: exit=%d err=%v", exitOf(refusal), refusal)
+	}
+	for _, format := range []string{formatText, formatJSON} {
+		t.Run(format, func(t *testing.T) {
+			var code int
+			var output string
+			if format == formatText {
+				code, output = captureStderr(t, func() int { return finish(commonOpts{Format: format}, refusal) })
+			} else {
+				code, output = captureStdout(t, func() int { return finish(commonOpts{Format: format}, refusal) })
+			}
+			if code != constants.ExitUnsafeRefused {
+				t.Fatalf("exit=%d output=%s", code, output)
+			}
+			if strings.Contains(output, artifactCanary) || strings.Contains(output, secretRefCanary) {
+				t.Fatalf("refusal leaked untrusted account metadata: %s", output)
+			}
+		})
+	}
+}
+
+func TestAccountMutationsRecheckSecretRefsAfterTakingLocks(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func(context.Context, *App) error
+	}{
+		{
+			name: "remove",
+			run: func(ctx context.Context, app *App) error {
+				_, err := buildAccountRm(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "main", true)
+				return err
+			},
+		},
+		{
+			name: "rename",
+			run: func(ctx context.Context, app *App) error {
+				_, err := buildAccountRename(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "main", "side")
+				return err
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := testApp(t, nil)
+			captureClaude(t, app, "main", mainToken)
+			writeConfigFile(t, app, "version = 1\n[security]\nsecret_backend = \"file\"\n[profiles.alt.accounts]\nclaude = \"main\"\n")
+			_, mem, recorder := accountBackendFixture(t, app, constants.ToolClaude, "main")
+			foreignRef := account.SecretRef(constants.ToolClaude, "side", "oauth_account")
+			mem.Values[foreignRef] = []byte("foreign-fixture-payload")
+			app.beforeAccountMutationLocksForTest = func() {
+				acc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
+				if err != nil || !found {
+					t.Fatalf("load racing account fixture: found=%v err=%v", found, err)
+				}
+				art := acc.Artifacts["oauth_account"]
+				art.SecretRef = foreignRef
+				acc.Artifacts["oauth_account"] = art
+				if err := account.Save(app.Paths.AccountDir(constants.ToolClaude, "main"), acc); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			configBefore := readFile(t, app.ConfigPath)
+			stateBefore := readFile(t, app.Paths.StateFile())
+			secretsBefore := accountSecretValues(mem.Values)
+			err := tc.run(context.Background(), app)
+			if exitOf(err) != constants.ExitUnsafeRefused || !strings.Contains(err.Error(), "inconsistent secret_ref") {
+				t.Fatalf("racing inconsistent ref was not refused: exit=%d err=%v", exitOf(err), err)
+			}
+			if len(recorder.ops) != 0 {
+				t.Fatalf("refusal reached the credential backend: %v", recorder.ops)
+			}
+			if got := accountSecretValues(mem.Values); !reflect.DeepEqual(got, secretsBefore) {
+				t.Fatalf("refusal changed secrets: got=%v want=%v", got, secretsBefore)
+			}
+			if got := readFile(t, app.ConfigPath); got != configBefore {
+				t.Fatalf("refusal changed config.toml:\n%s", got)
+			}
+			if got := readFile(t, app.Paths.StateFile()); got != stateBefore {
+				t.Fatalf("refusal changed state.json:\n%s", got)
+			}
+			if tc.name == "rename" {
+				if _, found, loadErr := account.Load(app.Paths.AccountDir(constants.ToolClaude, "side")); loadErr != nil || found {
+					t.Fatalf("refusal created the destination snapshot: found=%v err=%v", found, loadErr)
+				}
+			}
+		})
 	}
 }
 
@@ -510,6 +791,37 @@ func TestAccountRenameRoundTripAndResolves(t *testing.T) {
 	// The renamed account must resolve through kae use.
 	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, commonOpts{Format: formatText}, "claude", "main2") })
 	mustExit(t, constants.ExitOK, code, out)
+}
+
+func TestAccountRenameAcceptsConsistentSecretRefs(t *testing.T) {
+	app := testApp(t, nil)
+	captureClaude(t, app, "main", mainToken)
+	oldAcc, mem, recorder := accountBackendFixture(t, app, constants.ToolClaude, "main")
+	oldValues := accountSecretValues(mem.Values)
+
+	if _, err := buildAccountRename(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main", "side"); err != nil {
+		t.Fatalf("rename with consistent refs: %v", err)
+	}
+	if len(recorder.ops) == 0 {
+		t.Fatal("positive control never reached the credential backend")
+	}
+	newAcc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "side"))
+	if err != nil || !found {
+		t.Fatalf("load renamed account: found=%v err=%v", found, err)
+	}
+	for _, name := range oldAcc.ArtifactNames() {
+		oldRef := account.SecretRef(constants.ToolClaude, "main", name)
+		newRef := account.SecretRef(constants.ToolClaude, "side", name)
+		if newAcc.Artifacts[name].SecretRef != newRef {
+			t.Fatalf("artifact %s ref=%q want %q", name, newAcc.Artifacts[name].SecretRef, newRef)
+		}
+		if _, found := mem.Values[oldRef]; found {
+			t.Fatalf("old ref survived positive-control rename: %s", oldRef)
+		}
+		if got := string(mem.Values[newRef]); got != oldValues[oldRef] {
+			t.Fatalf("payload for %s=%q want %q", newRef, got, oldValues[oldRef])
+		}
+	}
 }
 
 func TestAccountRenameRefusesExistingTarget(t *testing.T) {

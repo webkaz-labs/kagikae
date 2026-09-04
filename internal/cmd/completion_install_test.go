@@ -682,8 +682,12 @@ func TestCompletionRefreshMigratesExactLegacyMiseHook(t *testing.T) {
 script = "source <(kae completion zsh)"
 # <<< kagikae <<<
 `
-	writeFile(t, path, before+legacy+after)
-	if err := os.Chmod(path, 0o600); err != nil {
+	target := filepath.Join(filepath.Dir(path), "actual-config.toml")
+	writeFile(t, target, before+legacy+after)
+	if err := os.Chmod(target, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Base(target), path); err != nil {
 		t.Fatal(err)
 	}
 
@@ -695,10 +699,15 @@ script = "source <(kae completion zsh)"
 		t.Fatalf("legacy hook migration was not reported: %s", out)
 	}
 	want := before + miseHookBlock("zsh") + after
-	if got := readFile(t, path); got != want {
+	if got := readFile(t, target); got != want {
 		t.Fatalf("legacy hook migration changed the wrong bytes:\ngot:\n%s\nwant:\n%s", got, want)
 	}
-	if info, err := os.Stat(path); err != nil {
+	if linkInfo, err := os.Lstat(path); err != nil {
+		t.Fatal(err)
+	} else if linkInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("legacy migration replaced the logical config symlink")
+	}
+	if info, err := os.Stat(target); err != nil {
 		t.Fatal(err)
 	} else if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("legacy hook migration changed config mode to %o, want 600", got)
@@ -716,7 +725,7 @@ script = "source <(kae completion zsh)"
 	if strings.Contains(out, "Refreshed") || strings.Contains(out, "No registered") {
 		t.Fatalf("current mise hook must be recognized as an unchanged registration: %s", out)
 	}
-	if got := readFile(t, path); got != want {
+	if got := readFile(t, target); got != want {
 		t.Fatalf("idempotent refresh changed the current hook:\n%s", got)
 	}
 }
@@ -756,8 +765,12 @@ func TestCompletionRefreshRefusesLegacyBlockWhoseTableContinuesAfterMarker(t *te
 func TestCompletionInstallMiseHookUpdatePreservesMode(t *testing.T) {
 	app := testApp(t, nil)
 	path := globalMiseConfigPath(app.Env)
-	writeFile(t, path, miseHookBlock("bash"))
-	if err := os.Chmod(path, 0o600); err != nil {
+	target := filepath.Join(filepath.Dir(path), "actual-config.toml")
+	writeFile(t, target, miseHookBlock("bash"))
+	if err := os.Chmod(target, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Base(target), path); err != nil {
 		t.Fatal(err)
 	}
 
@@ -768,10 +781,45 @@ func TestCompletionInstallMiseHookUpdatePreservesMode(t *testing.T) {
 	if !changed {
 		t.Fatal("changing the registered shell must update the owned block")
 	}
-	if info, err := os.Stat(path); err != nil {
+	if linkInfo, err := os.Lstat(path); err != nil {
+		t.Fatal(err)
+	} else if linkInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("owned block update replaced the logical config symlink")
+	}
+	if info, err := os.Stat(target); err != nil {
 		t.Fatal(err)
 	} else if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("owned block update changed config mode to %o, want 600", got)
+	}
+	if got := readFile(t, target); got != miseHookBlock("zsh") {
+		t.Fatalf("owned block update did not update the symlink target:\n%s", got)
+	}
+}
+
+func TestCompletionMiseHookRefusesDanglingSymlink(t *testing.T) {
+	app := testApp(t, nil)
+	path := globalMiseConfigPath(app.Env)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const missing = "missing-config.toml"
+	if err := os.Symlink(missing, path); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := installMiseGlobalHook(app.Env, "zsh"); err == nil {
+		t.Fatal("explicit install must refuse a dangling global config symlink")
+	}
+	if _, _, _, _, err := refreshLegacyMiseGlobalHook(app.Env); err == nil {
+		t.Fatal("automatic refresh must refuse a dangling global config symlink")
+	}
+	if linkInfo, err := os.Lstat(path); err != nil {
+		t.Fatal(err)
+	} else if linkInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("dangling global config symlink was replaced")
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(path), missing)); !os.IsNotExist(err) {
+		t.Fatalf("dangling symlink target must not be created (err=%v)", err)
 	}
 }
 

@@ -271,20 +271,20 @@ func writeCompletionFile(path, script string) (bool, error) {
 // never clobbers a hook it does not own.
 func installMiseGlobalHook(env adapter.Env, shell string) (path string, changed bool, err error) {
 	path = globalMiseConfigPath(env)
+	writePath, info, exists, resolveErr := resolveMiseConfigTarget(path)
+	if resolveErr != nil {
+		return path, false, resolveErr
+	}
 	block := miseHookBlock(shell)
-	data, readErr := os.ReadFile(path)
-	if os.IsNotExist(readErr) {
-		if mkErr := os.MkdirAll(filepath.Dir(path), 0o755); mkErr != nil {
+	if !exists {
+		if mkErr := os.MkdirAll(filepath.Dir(writePath), 0o755); mkErr != nil {
 			return path, false, mkErr
 		}
-		return path, true, patch.WriteFileAtomic(path, []byte(block), 0o644)
+		return path, true, patch.WriteFileAtomic(writePath, []byte(block), 0o644)
 	}
+	data, readErr := os.ReadFile(writePath)
 	if readErr != nil {
 		return path, false, readErr
-	}
-	info, statErr := os.Stat(path)
-	if statErr != nil {
-		return path, false, statErr
 	}
 	mode := info.Mode().Perm()
 	content := string(data)
@@ -298,7 +298,7 @@ func installMiseGlobalHook(env adapter.Env, shell string) (path string, changed 
 		if updated == content {
 			return path, false, nil
 		}
-		return path, true, patch.WriteFileAtomic(path, []byte(updated), mode)
+		return path, true, patch.WriteFileAtomic(writePath, []byte(updated), mode)
 	}
 	if strings.Contains(content, "[hooks.enter]") {
 		return path, false, errf(constants.ExitUnsafeRefused,
@@ -309,7 +309,48 @@ func installMiseGlobalHook(env adapter.Env, shell string) (path string, changed 
 	if content != "" && !strings.HasSuffix(content, "\n") {
 		sep = "\n"
 	}
-	return path, true, patch.WriteFileAtomic(path, []byte(content+sep+block), mode)
+	return path, true, patch.WriteFileAtomic(writePath, []byte(content+sep+block), mode)
+}
+
+// resolveMiseConfigTarget fixes the path that may be atomically replaced. An
+// atomic rename against a symlink path replaces the link itself, so an existing
+// link is fully resolved first and only its regular-file target may be written.
+// Missing ordinary paths are returned for creation; dangling links and
+// non-regular files are refused rather than mistaken for a missing config.
+func resolveMiseConfigTarget(path string) (writePath string, info os.FileInfo, exists bool, err error) {
+	linkInfo, lstatErr := os.Lstat(path)
+	if os.IsNotExist(lstatErr) {
+		return path, nil, false, nil
+	}
+	if lstatErr != nil {
+		return "", nil, false, lstatErr
+	}
+	if linkInfo.Mode()&os.ModeSymlink == 0 {
+		if !linkInfo.Mode().IsRegular() {
+			return "", nil, false, errf(constants.ExitUnsafeRefused,
+				"%s is not a regular file; refusing to replace it", path)
+		}
+		return path, linkInfo, true, nil
+	}
+	resolved, evalErr := filepath.EvalSymlinks(path)
+	if evalErr != nil {
+		return "", nil, false, errf(constants.ExitUnsafeRefused,
+			"%s is a dangling or unresolvable symlink; refusing to replace it", path)
+	}
+	resolved, absErr := filepath.Abs(resolved)
+	if absErr != nil {
+		return "", nil, false, absErr
+	}
+	targetInfo, statErr := os.Stat(resolved)
+	if statErr != nil {
+		return "", nil, false, errf(constants.ExitUnsafeRefused,
+			"%s does not resolve to a readable regular file; refusing to replace the symlink", path)
+	}
+	if !targetInfo.Mode().IsRegular() {
+		return "", nil, false, errf(constants.ExitUnsafeRefused,
+			"%s resolves to a non-regular file; refusing to replace the symlink", path)
+	}
+	return resolved, targetInfo, true, nil
 }
 
 // globalMiseConfigPath resolves the user's global mise config file
@@ -373,10 +414,14 @@ func legacyMiseHookScriptLine(shell string) string {
 // a current block is recognized as an existing registration and is a no-op.
 func refreshLegacyMiseGlobalHook(env adapter.Env) (path, shell string, registered, changed bool, err error) {
 	path = globalMiseConfigPath(env)
-	data, readErr := os.ReadFile(path)
-	if os.IsNotExist(readErr) {
+	writePath, info, exists, resolveErr := resolveMiseConfigTarget(path)
+	if resolveErr != nil {
+		return path, "", false, false, resolveErr
+	}
+	if !exists {
 		return path, "", false, false, nil
 	}
+	data, readErr := os.ReadFile(writePath)
 	if readErr != nil {
 		return path, "", false, false, readErr
 	}
@@ -397,11 +442,7 @@ func refreshLegacyMiseGlobalHook(env adapter.Env) (path, shell string, registere
 			if _, parseErr := toml.Decode(updated, &parsed); parseErr != nil {
 				return path, candidate, true, false, fmt.Errorf("validate migrated mise config: %w", parseErr)
 			}
-			info, statErr := os.Stat(path)
-			if statErr != nil {
-				return path, candidate, true, false, statErr
-			}
-			if writeErr := patch.WriteFileAtomic(path, []byte(updated), info.Mode().Perm()); writeErr != nil {
+			if writeErr := patch.WriteFileAtomic(writePath, []byte(updated), info.Mode().Perm()); writeErr != nil {
 				return path, candidate, true, false, writeErr
 			}
 			return path, candidate, true, true, nil

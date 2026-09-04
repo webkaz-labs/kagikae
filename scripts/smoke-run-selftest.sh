@@ -101,7 +101,8 @@ norm() { printf '%s\n' $1 | sort -u | tr '\n' ' ' | sed 's/ $//'; }
 # Every assignment in the prefix, not only the ones pointing at $safe.
 derived_all=$(norm "$(grep -oE '^  [A-Z_]+=' "$runner" | tr -d ' =')")
 derived_roots=$(norm "$(grep -oE '^  [A-Z_]+="\$safe' "$runner" | tr -d ' ="$' | sed 's/safe//')")
-derived_cleared=$(norm "$(grep -oE '\-u [A-Z_]+' "$runner" | sed 's/-u //')")
+derived_cleared=$(norm "$(sed -n '/^env -u /,/^  HOME=/p' "$runner" |
+  grep -oE -- '-u [A-Z_]+' | sed 's/-u //')")
 want_all=$(norm "$EXPECTED_ROOTS $EXPECTED_OTHER")
 want_roots=$(norm "$EXPECTED_ROOTS")
 want_cleared=$(norm "$EXPECTED_CLEARED")
@@ -287,7 +288,8 @@ run "$f" '## Last'; check 'a failing LAST line fails the run' 1 $?
 # = 44); 256 is safe by construction and is also the cheapest.
 lines=(); for _ in $(seq 256); do lines+=('false'); done
 f=$(doc many '## Many' "${lines[@]}")
-run "$f" '## Many'; check '256 failing lines do not wrap to exit 0' 1 $?
+run "$f" '## Many'; check '256 failing lines do not wrap to exit 0' 1 $? \
+  '256 lines extracted' "$tmp/out"
 
 # 6. Whole-file mode must not claim a per-line verdict it does not have.
 f=$(doc whole '## Whole' 'echo first' 'false' 'echo last')

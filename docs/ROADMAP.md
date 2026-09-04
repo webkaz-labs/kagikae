@@ -38,13 +38,13 @@ provider, mode, JSON surface, tier promotion or platform.
    runner seams and `keychainSim`'s unscoped-delete hole.
 2. **Refuse an inconsistent account snapshot before mutation — done** — closed **An
    account lifecycle command must not trust a recorded `SecretRef` as an address**.
-3. **Make the release evidence bite** — complete **Two assertions in the harvest block
+3. **Make the release evidence bite — done** — completed **Two assertions in the harvest block
    still pass when the thing that reads the snapshot is broken**, **The smoke guards have
    no test, and four changes switched one off without anything noticing**,
    **[ACCEPTANCE.md](ACCEPTANCE.md)'s `## Real-…` headings confirm each other's
    citations**, and **`derived_cleared` reads the whole file, so a comment can satisfy
    it**. Keep a bounded fast mutation set in the commit gate and run the full recorded
-   set at release time; do not build a general mutation framework.
+   set at release time without building a general mutation framework.
 4. **Integrate the patch** — pass [AGENTS.md](../AGENTS.md) § Validation, correctness
    review, then quality review; make the tracked-document decisions under
    [AGENTS.md](../AGENTS.md) § Documentation Update Checklist and the required memory
@@ -203,119 +203,33 @@ alternative exists (`secret-tool`).
   positive control.
 
 - **Two assertions in the harvest block still pass when the thing that reads the
-  snapshot is broken** (recorded 2026-08-09, **not fixed**). In
-  [VALIDATION.md](VALIDATION.md) § Harvesting a credential, cases `B2` and `B3`
-  pair `snap main | grep -c FOREIGN` with a positive line on the **store**
-  (`grep FOREIGN "$(accstore main)"`) rather than on `snap()` — so a `snap()` that
-  returns nothing at all prints `0` and reads as a pass. That is the defect the block's
-  own closing prose records fixing once already, for `B1` on 2026-08-07; it was fixed
-  where it was found and not as a class. Re-measured 2026-08-09, two more are partial
-  rather than absent, which is why the earlier record of this ("`A3`, `B2`, `B3` and `E`
-  do not [have one]") was too strong: `A3` carries an explicitly labelled control
-  (`test -d "$(store)"`) for its `test ! -e` line but none for its `snap` line, and `E`'s
-  `snap main | grep MAIN-NEW` immediately above its negative *is* a real control on
-  `snap()`, weakened only by naming a different account than the negative does.
-  Not fixed here because the edit and the evidence are not the same size: one positive
-  line per case, but verifying it means extracting the whole 398-line block, running it,
-  and then breaking `snap()` on purpose to prove each new control bites. An unverified
-  edit to the block a release is accepted against is worse than a recorded gap: this block
-  spent 2026-08-07 to 2026-08-08 sending every credential fixture to the config dir after
-  the credential had moved to the account store, and went green throughout by asserting
-  nothing about its own subject. (The long-accumulation claim belongs to § Smoke Checks,
-  whose checks stayed *comments* from the initial commit until 2026-08-09; this block was
-  added 2026-08-04 and has only ever shipped in v0.17.0. Conflating the two is the same
-  misattribution this entry is named after, made while writing the entry. Two release
-  counts were attached to that claim and both were withdrawn — "eight versions", which
-  was sourceable nowhere, and "14 releases", which counts releases since the initial
-  commit rather than anything about the block: that is byte-identical to v0.9.0's for
-  only six tags, and was edited at v0.13.0 and v0.15.3 as well as repeatedly earlier.)
+  snapshot is broken** (recorded 2026-08-09, **fixed 2026-09-05**). In
+  [VALIDATION.md](VALIDATION.md) § Harvesting a credential, A3, B3, B2 and E now pair
+  each negative `snap … | grep -c …` with a tagged positive consumer of the same
+  account's snapshot. `scripts/harvest-smoke-selftest.sh` replaces that section's
+  `snap()` with an empty reader, runs the block through `smoke-run.sh`, and requires all
+  four tagged lines to fail. `mise run release-evidence` runs that bounded mutation.
 
 - **The smoke guards have no test, and four changes switched one off without
-  anything noticing** (recorded 2026-08-09, **not fixed**).
-  `scripts/smoke-run-selftest.sh` checks `scripts/smoke-run.sh`; nothing checks
-  the selftest. **There are two selftests now** — `scripts/check-docs-selftest.sh`
-  arrived 2026-08-11 for `scripts/check-docs.sh` — and this entry covers both: neither
-  is checked by anything. The docs selftest reaches every floor in the script it tests
-  **except the Map's table-row count**, via degenerate input — an empty `docs/`, an
-  extractor emitting nothing, and a renamed Documentation Map heading — and each was
-  verified to fail when its floor is deleted. Renaming that heading trips two floors with
-  one mutation but asserts one of them, which is why it is one case. That one exception is
-  hand-verified in a commit message rather than by any check here, which is the state
-  described below. It used to be two: the other was the derived required set, and the
-  floor over it is gone with the derivation itself, which went when this repository
-  stopped carrying a copy of the standard to derive it from ([AGENTS.md](../AGENTS.md)
-  says why). Its replacement is not a floor and needs none, because a floor bounds a walk and
-  these are single tests: a three-sided predicate — missing, empty, or not a regular file —
-  over the root documents `README.md`, `AGENTS.md` and `CLAUDE.md`, each arm reached by its
-  own case. Do not read this as one file and one dimension; the derivation of which documents
-  belong there, and why the link walk cannot vouch for them, is in `scripts/check-docs.sh`
-  above that predicate. Across six review rounds, four separate edits made for unrelated
-  reasons left a guard passing unconditionally while the suite reported every
-  guard holding: a variable list derived from the file it was testing (deleting
-  from the subject deleted the test); a containment check weakened to a proxy
-  ("not the value I planted" rather than "inside the sandbox"); a fixture count
-  shortened from 300 to 257 for speed, where `257 % 256 = 1` is exactly the exit
-  status a working runner returns; and a guard whose empty input fell into its
-  own success branch. Every one was found by a reviewer mutating the guard by
-  hand, and none by any check in the repository.
-  The fix is a committed mutation table — roughly 30 lines plus the ~39
-  substitutions already used across those rounds, each paired with the guard name
-  it must trip, asserting every one is caught. It would have caught all four,
-  including the `257`, which no structural rule catches because the table does not
-  reason about the value, it only checks that the guard still fires.
-  Deliberately not built now: the scripts are closing and stable, so it would be
-  machinery with no near-term change to protect, and it costs a full selftest run
-  per mutation. Two partial rules are cheaper and are worth applying at review
-  time instead — **no guard's pass condition may be satisfiable by an empty or
-  degenerate input** (that covers three of the four), and **state a fixture
-  value's requirement as a property, not a number** (the only defence against the
-  fourth, and it works by making the next editor's mistake visible rather than by
-  detecting it). Until the table exists, the header of
-  `scripts/smoke-run-selftest.sh` is normative: any change to either script has to
-  be mutation-tested by hand.
-  Three rounds of review on the assert-marker guard (2026-08-10) put a sharper
-  version of those two rules on the record, because each round's survivor sat on the
-  guard the round before had added: check that a guard fires **before** the thing it
-  protects (move it later and see if anything notices); assert the **diagnostic**, not
-  only the verdict; try a **proper subset** of any enumeration, not just its collapse;
-  ask **where in the file** a derived expectation reads from; and pin a character class
-  with two members and a count, since one example pins one example. Every one of those
-  was a live false green here, found by a reviewer and not by the author.
+  anything noticing** (recorded 2026-08-09, **fixed 2026-09-05**).
+  `scripts/smoke-run-mutations.sh` is a closed table pairing each current guard with a
+  bounded mutation and the exact failure diagnostic it must produce. The four historical
+  defect shapes run in the commit gate through `smoke-selftest-mutations-fast`; the full
+  table has one pair for each current guard and runs at release time through
+  `mise run release-evidence`. The runner's own baseline is required to pass before
+  either set mutates it.
 
 - **[ACCEPTANCE.md](ACCEPTANCE.md)'s `## Real-…` headings confirm each other's
-  citations** (measured 2026-08-16, **not fixed**). `scripts/docrefs`' package comment
-  owns *why* only the cited name's first word is compared and why widening it is a
-  different predicate rather than a stricter one; what is recorded here is a live
-  instance, because a ceiling stated in the abstract does not tell the next reader that
-  **this** file is one where deleting a section stays green. They normalize to the same
-  first word, so either can be renamed and every citation of both still resolves.
-  Two-sided, so neither half is a guess: rename `## Real-machine gate — …` alone and
-  `bash scripts/check-docs.sh` prints `ok` with the section-citation count unchanged;
-  rename `## Real-Machine Acceptance …` as well and it exits 1 naming the citations in
-  [ROADMAP.md](ROADMAP.md) and [VALIDATION.md](VALIDATION.md). So the gate is working —
-  it is the pair that hides the one.
-  **What it costs to close is smaller than it reads**, and the first draft of this entry
-  priced it against files that do not cite either heading at all. The gate-checked
-  citations are the two that failing run named and nothing else; the rest are bare
-  `§ Name` forms inside [ACCEPTANCE.md](ACCEPTANCE.md) itself, which the walk cannot see
-  either way. So: rename one heading, repoint those, and give the result the guard that
-  already exists — `TestTheCitedSkillSectionHasNoFirstWordRival` in
-  `scripts/docrefs/main_test.go` is this exact check with the file and the word as
-  constants. That guard cannot go in first: it asserts the rival's absence, so it is red
-  until the rename lands, and its second arm is why the rename alone is not durable — a
-  line-opening bold label is a declared name too, so `**Real-machine …**` added later
-  re-opens this silently.
+  citations** (measured 2026-08-16, **fixed 2026-09-05**). The expiry-observation
+  heading now starts with `Credential-expiry`, leaving one declared `Real-machine` name.
+  `TestTheCitedAcceptanceSectionsHaveNoFirstWordRival` keeps both citation words unique
+  across headings and line-opening bold labels.
 
 - **`derived_cleared` reads the whole file, so a comment can satisfy it** (recorded
-  2026-08-10, **not fixed**). `scripts/smoke-run-selftest.sh`'s
-  `grep -oE '\-u [A-Z_]+' "$runner"` is unanchored, so a `-u NAME` written in a comment
-  counts as the runner clearing that variable. Its sibling `derived_all` is anchored at
-  the prefix's indentation, and `derived_words` was anchored at `^markers=` after
-  exactly this defect was measured on it: a comment quoting the retired pattern let the
-  code be narrowed while 35 guards reported holding. The remaining instance is the
-  weakest of the three because a stray `-u NAME` in a comment is less idiomatic here
-  than quoting a retired pattern, which the runner's header does three times — but it
-  is the same hole. Anchor it at the `env -u …` continuation lines.
+  2026-08-10, **fixed 2026-09-05**). The derivation is limited to the runner's `env -u`
+  stanza, from its opening through the following `HOME=` assignment. The fast
+  `drop-cleared` mutation removes one real unset while leaving the header's mention in
+  place and requires the disagreement guard to fail.
 
 - **CI runs a subset of the gate; `docs-check` was the one step whose price fell**
   (recorded 2026-08-11, `docs-check` **added 2026-08-14**, every other step still
@@ -1175,7 +1089,7 @@ alternative exists (`secret-tool`).
   `credStoreRefs` counted `st.Synced`, so even `kae unpin --purge` kept it, and nothing
   offered it back. The user saw nothing until the next `kae use -i` / `kae run -i` /
   `kae pin` materialized the snapshot, at which point claude asked for a login: the
-  symptom [ACCEPTANCE.md](ACCEPTANCE.md) § Real-machine gate — does
+  symptom [ACCEPTANCE.md](ACCEPTANCE.md) § Credential-expiry observation — does
   `refreshTokenExpiresAt` predict the login's death? asks to be read before logging back
   in. Two asymmetries made it quiet. `warnPinnedAccountGone` matched directories that
   had a fragment, and a globally isolated home had none, so the pinned case warned on

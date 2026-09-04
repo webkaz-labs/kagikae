@@ -20,9 +20,14 @@ under the paragraph above making the same point about the local gate's own list
 it further would cost, and `check.yml`'s header why the docs selftest stayed out while
 its check went in).
 
-Slower release-time checks live in `mise run audit` (govulncheck) and
-`mise run goreleaser-check`. Lint tools run via `go run <tool>@<pinned version>`; the
-first run downloads them.
+Slower release-time checks live in `mise run audit` (govulncheck and installed-tool
+fingerprints), `mise run goreleaser-check`, and `mise run release-evidence`. The last
+task runs one bounded mutation for each current smoke-run guard and proves that an empty
+`snap()` makes all four tagged consumers in § Harvesting a credential fail. The commit
+gate keeps the four historical smoke-run defect shapes live through
+`smoke-selftest-mutations-fast`; the full table stays release-only because it runs the
+selftest once per guard. Lint tools run via `go run <tool>@<pinned version>`; the first
+run downloads them.
 
 Run `go mod tidy` before committing dependency changes.
 
@@ -613,6 +618,9 @@ nothing — and `kae pin` would still report success, with the fragment sitting 
 
 **Run this section with `bash scripts/smoke-run.sh '## Harvesting a credential'`,
 like every other section**, and a correct run exits `0` with every line exiting 0.
+`mise run harvest-smoke-selftest` makes this block's `snap()` return nothing and requires
+the four explicitly tagged positive consumers in A3, B3, B2 and E to fail; this keeps
+their adjacent negative `grep -c` assertions from passing on an empty reader.
 
 Read the transcript anyway when something fails. This section has the worst history of
 green runs that proved nothing — fixtures written to a directory kae had stopped
@@ -793,6 +801,8 @@ test "$(snap solo | grep -c SOLO-NEW)" -eq 0
                                         # assert: 0 — kept is not harvested. kae could not
                                         #         tell whose the copy is, so it neither
                                         #         destroys it nor files it under this account
+snap solo | grep SOLO-OLD                # assert: positive control for the negative above;
+                                        #         snap() itself read this account's snapshot
 test -d "$(store)"                       # assert: positive control for the line below. An
                                         #         empty expansion makes it `test ! -e
                                         #         "/.claude.json"`, which passes for a
@@ -858,6 +868,7 @@ grep FOREIGN "$(accstore main)"         # assert: the sibling's live login survi
                                         #         the same fixture with the bind run *in* a
                                         #         reader, and there it is replaced — the
                                         #         pair is the whole condition
+snap main | grep MAIN-OLD               # assert: positive control for the negative below
 test "$(snap main | grep -c FOREIGN)" -eq 0   # assert: 0 — kept is not harvested
 cd "$P"
 
@@ -883,6 +894,7 @@ test "$(grep -c 'kept it rather than replacing it' "$HOME/B2.err")" -eq 0
 grep FOREIGN "$(accstore main)"         # assert: the live copy survives. This is the half
                                         #         that inverts: a refusal here would be a
                                         #         deletion, not a conservative choice
+snap main | grep MAIN-OLD               # assert: positive control for the negative below
 test "$(snap main | grep -c FOREIGN)" -eq 0   # assert: 0 — kept is not harvested
 ident main > "$SP2/.claude.json"        # put P2 back so the cases below start agreed
 
@@ -983,6 +995,7 @@ test "$(grep -c 'into snapshot claude/side' "$HOME/E.err")" -eq 0
 #           said "the write path then notes that the copy in the store is not side's",
 #           which was true while both accounts' copies shared one per-directory store
 snap main | grep MAIN-NEW               # assert: main's login survived the re-bind
+snap side | grep SIDE-OLD               # assert: positive control for side's negative below
 test "$(snap side | grep -c MAIN-NEW)" -eq 0   # assert: 0 — not filed under side
 grep SIDE-OLD "$(cstore)/.credentials.json"  # assert: the account store now runs side
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -370,21 +371,7 @@ func TestTheCitedSkillSectionHasNoFirstWordRival(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading %s, which is cited as normative from outside the skill: %v", rel, err)
 	}
-	var declared []string
-	for _, name := range sectionNames(string(raw)) {
-		if name[0] == word {
-			declared = append(declared, strings.Join(name, " "))
-		}
-	}
-	// headingNames rather than a second walk of its own: headings are a subset of the names
-	// above, so this arm is a lower bound only — a rival heading is arm one's to report, and
-	// asserting a count here would print two messages for one defect.
-	var headings []string
-	for _, name := range headingNames(stripFences(string(raw))) {
-		if name[0] == word {
-			headings = append(headings, strings.Join(name, " "))
-		}
-	}
+	declared, headings := firstWordDeclaredAndHeadings(string(raw), word)
 	if len(declared) != 1 {
 		t.Errorf("%s declares %d names beginning `%s`, want exactly 1 — every `§ Re-record` "+
 			"citation resolves on that first word alone, so none breaks them loudly and a "+
@@ -397,6 +384,61 @@ func TestTheCitedSkillSectionHasNoFirstWordRival(t *testing.T) {
 			"from here with every gate green. Declared names beginning it:\n%s",
 			rel, word, strings.Join(declared, "\n"))
 	}
+}
+
+// ACCEPTANCE.md has two externally cited release surfaces. check-docs can only compare
+// the first word of each cited name, so a shared first word lets either heading disappear
+// while citations resolve against the other. Keep both words unique among every declared
+// name, including line-opening bold labels, and require the declaration to stay a heading.
+func TestTheCitedAcceptanceSectionsHaveNoFirstWordRival(t *testing.T) {
+	root := repositoryRoot(t)
+	const rel = "docs/ACCEPTANCE.md"
+	raw, err := os.ReadFile(filepath.Join(root, rel))
+	if err != nil {
+		t.Fatalf("reading %s: %v", rel, err)
+	}
+	if defects := acceptanceSectionNameDefects(string(raw)); len(defects) != 0 {
+		t.Fatalf("%s:\n%s", rel, strings.Join(defects, "\n"))
+	}
+	// Original broken shape: another declared name beginning Real-machine lets the
+	// cited heading disappear while the first-word citation still resolves.
+	mutant := string(raw) + "\n**Real-machine rival.** This line deliberately collides.\n"
+	if defects := acceptanceSectionNameDefects(mutant); len(defects) == 0 {
+		t.Fatal("a line-opening bold rival must make the uniqueness guard fail")
+	}
+}
+
+func acceptanceSectionNameDefects(doc string) []string {
+	var defects []string
+	for _, word := range []string{"credential-expiry", "real-machine"} {
+		declared, headings := firstWordDeclaredAndHeadings(doc, word)
+		if len(declared) != 1 {
+			defects = append(defects, fmt.Sprintf("declares %d names beginning `%s`, want exactly 1:\n%s",
+				len(declared), word, strings.Join(declared, "\n")))
+		}
+		if len(headings) == 0 {
+			defects = append(defects, fmt.Sprintf("declares no heading beginning `%s`; declared names:\n%s",
+				word, strings.Join(declared, "\n")))
+		}
+	}
+	return defects
+}
+
+// firstWordDeclaredAndHeadings returns every declared name beginning with word and the
+// subset that remains a heading. The heading arm is intentionally only a lower bound: a
+// rival heading is reported by the declared-name count, while absence means a citation
+// resolves to a bold label or list item instead of a section.
+func firstWordDeclaredAndHeadings(doc, word string) ([]string, []string) {
+	matching := func(names [][]string) []string {
+		var matches []string
+		for _, name := range names {
+			if name[0] == word {
+				matches = append(matches, strings.Join(name, " "))
+			}
+		}
+		return matches
+	}
+	return matching(sectionNames(doc)), matching(headingNames(stripFences(doc)))
 }
 
 // repositoryRoot is two levels up from this package, asserted rather than assumed: `go test`

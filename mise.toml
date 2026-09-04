@@ -96,6 +96,22 @@ run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go build ./..."
 description = "Check the guards in scripts/smoke-run.sh (no kae build, no network)"
 run = "bash scripts/smoke-run-selftest.sh"
 
+[tasks.smoke-selftest-mutations-fast]
+description = "Make four bounded historical smoke-run defects trip their guards"
+run = "bash scripts/smoke-run-mutations.sh fast"
+
+[tasks.smoke-selftest-mutations]
+description = "Make one bounded mutation trip each current smoke-run guard"
+run = "bash scripts/smoke-run-mutations.sh full"
+
+[tasks.harvest-smoke-selftest]
+description = "Prove the Harvesting smoke's four snap-consumer controls reject an empty reader"
+run = "bash scripts/harvest-smoke-selftest.sh"
+
+[tasks.release-evidence]
+description = "Run the release-only mutation evidence for smoke guards and credential harvesting"
+depends = ["smoke-selftest-mutations", "harvest-smoke-selftest"]
+
 [tasks.docs-check]
 description = "Reject a broken markdown link, a section citation naming a section its target declares nowhere, a docs/ file the Documentation Map omits, or a root document that is missing, empty or not a regular file"
 run = "bash scripts/check-docs.sh"
@@ -106,7 +122,7 @@ run = "bash scripts/check-docs-selftest.sh"
 
 [tasks.check]
 description = "Run the standard local validation suite"
-depends = ["lint", "test", "vet", "mod-verify", "build", "smoke-selftest", "docs-check", "docs-check-selftest"]
+depends = ["lint", "test", "vet", "mod-verify", "build", "smoke-selftest", "smoke-selftest-mutations-fast", "docs-check", "docs-check-selftest"]
 
 # Deliberately not a dependency of `check`. What a report does and does not mean is
 # scripts/docscan/main.go's header, which is the one copy of it.

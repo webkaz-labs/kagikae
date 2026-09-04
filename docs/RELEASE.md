@@ -9,8 +9,10 @@ by hand — the tag does it.
 1. Bump `toolVersion` in `internal/cmd/cmd.go` to the new `vX.Y.Z` (the binary's
    reported version is hardcoded, not injected; it must match the tag) and the
    `TestBuildVersionReport` expectation.
-2. `mise run check` and `git diff --check`; update the docs (ROADMAP/VALIDATION
-   and any behavior docs). Work the release checks in
+2. Follow [VALIDATION.md](VALIDATION.md) § Standard Suite: run its commit gate and
+   **every slower release-time check it names**, including `release-evidence`, before
+   the tag. Update the docs (ROADMAP/VALIDATION and any behavior docs). Work the
+   release checks in
    [ACCEPTANCE.md](ACCEPTANCE.md) before the tag — nothing in it runs from
    `mise run check`, and that file is where a result is recorded. Follow its
    § Optional account-combination checks for the release classification of checks

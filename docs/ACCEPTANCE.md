@@ -4,7 +4,7 @@ What a release verifies on a real machine, plus account-combination checks an
 operator may run when the required accounts are available. Nearly everything here
 needs a real keychain, a real login, or both — the exception is
 § Bound-directory credential store's shim procedure, which needs no account —
-and `mise run check` reaches none of it. § Real-machine gate — does
+and `mise run check` reaches none of it. § Credential-expiry observation — does
 `refreshTokenExpiresAt` predict the login's death? is not a second exception to that
 but an observation rather than a run, so a release owes it nothing. Account
 combinations outside the release run are classified in
@@ -16,7 +16,7 @@ stayed there, beside the surfaces they check.
 candidate revision it was run against and the release tag when one exists.** This
 document owns the results; results recorded elsewhere are invisible to the next run.
 
-## Real-machine gate — does `refreshTokenExpiresAt` predict the login's death? (**open**)
+## Credential-expiry observation — does `refreshTokenExpiresAt` predict the login's death? (**open**)
 
 **If claude has just asked for a login it did not ask for before: read that account's
 `relogin_by` out of `kae ls --json` before you log back in** ([CLI.md](CLI.md)

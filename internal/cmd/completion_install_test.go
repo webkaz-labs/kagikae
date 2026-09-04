@@ -683,6 +683,9 @@ script = "source <(kae completion zsh)"
 # <<< kagikae <<<
 `
 	writeFile(t, path, before+legacy+after)
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	code, out := captureStdout(t, func() int {
 		return runCompletionRefresh(app, commonOpts{Format: formatText})
@@ -695,6 +698,15 @@ script = "source <(kae completion zsh)"
 	if got := readFile(t, path); got != want {
 		t.Fatalf("legacy hook migration changed the wrong bytes:\ngot:\n%s\nwant:\n%s", got, want)
 	}
+	if info, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	} else if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("legacy hook migration changed config mode to %o, want 600", got)
+	}
+	var parsed map[string]any
+	if _, err := toml.Decode(want, &parsed); err != nil {
+		t.Fatalf("migrated config is invalid TOML: %v\n%s", err, want)
+	}
 
 	// The migrated current block is a registered no-op on the next refresh.
 	code, out = captureStdout(t, func() int {
@@ -706,6 +718,60 @@ script = "source <(kae completion zsh)"
 	}
 	if got := readFile(t, path); got != want {
 		t.Fatalf("idempotent refresh changed the current hook:\n%s", got)
+	}
+}
+
+func TestCompletionRefreshRefusesLegacyBlockWhoseTableContinuesAfterMarker(t *testing.T) {
+	for _, trailing := range []string{
+		`shell = "zsh"`,
+		`run = "echo manually extended"`,
+	} {
+		t.Run(trailing, func(t *testing.T) {
+			app := testApp(t, nil)
+			path := globalMiseConfigPath(app.Env)
+			content := legacyMiseHookBlock("zsh") + "# retained comment\n\n" + trailing + "\n"
+			writeFile(t, path, content)
+
+			code, out := captureStdout(t, func() int {
+				return runCompletionRefresh(app, commonOpts{Format: formatText})
+			})
+			mustExit(t, constants.ExitOK, code, out)
+			if got := readFile(t, path); got != content {
+				t.Fatalf("refresh changed a legacy-looking block whose table continues after its marker:\ngot:\n%s\nwant:\n%s", got, content)
+			}
+			if strings.Contains(out, "Refreshed") {
+				t.Fatalf("unsafe migration was reported as completed: %s", out)
+			}
+
+			if _, _, err := installMiseGlobalHook(app.Env, "zsh"); err == nil {
+				t.Fatal("explicit reinstall must also refuse a marker whose table continues outside it")
+			}
+			if got := readFile(t, path); got != content {
+				t.Fatalf("explicit reinstall changed a continued hook table:\n%s", got)
+			}
+		})
+	}
+}
+
+func TestCompletionInstallMiseHookUpdatePreservesMode(t *testing.T) {
+	app := testApp(t, nil)
+	path := globalMiseConfigPath(app.Env)
+	writeFile(t, path, miseHookBlock("bash"))
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, changed, err := installMiseGlobalHook(app.Env, "zsh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("changing the registered shell must update the owned block")
+	}
+	if info, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	} else if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("owned block update changed config mode to %o, want 600", got)
 	}
 }
 

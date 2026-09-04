@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/patch"
@@ -280,13 +282,23 @@ func installMiseGlobalHook(env adapter.Env, shell string) (path string, changed 
 	if readErr != nil {
 		return path, false, readErr
 	}
+	info, statErr := os.Stat(path)
+	if statErr != nil {
+		return path, false, statErr
+	}
+	mode := info.Mode().Perm()
 	content := string(data)
 	if before, after, ok := cutMiseBlock(content); ok {
+		if !miseTableEndsBeforeContent(after) {
+			return path, false, errf(constants.ExitUnsafeRefused,
+				"%s has settings after the kagikae marker that still belong to [hooks.enter]; move them inside the marker or start a new TOML table before reinstalling completion",
+				path)
+		}
 		updated := before + block + after
 		if updated == content {
 			return path, false, nil
 		}
-		return path, true, patch.WriteFileAtomic(path, []byte(updated), 0o644)
+		return path, true, patch.WriteFileAtomic(path, []byte(updated), mode)
 	}
 	if strings.Contains(content, "[hooks.enter]") {
 		return path, false, errf(constants.ExitUnsafeRefused,
@@ -297,7 +309,7 @@ func installMiseGlobalHook(env adapter.Env, shell string) (path string, changed 
 	if content != "" && !strings.HasSuffix(content, "\n") {
 		sep = "\n"
 	}
-	return path, true, patch.WriteFileAtomic(path, []byte(content+sep+block), 0o644)
+	return path, true, patch.WriteFileAtomic(path, []byte(content+sep+block), mode)
 }
 
 // globalMiseConfigPath resolves the user's global mise config file
@@ -371,17 +383,79 @@ func refreshLegacyMiseGlobalHook(env adapter.Env) (path, shell string, registere
 	content := string(data)
 	for _, candidate := range []string{"bash", "zsh", "fish"} {
 		current := miseHookBlock(candidate)
-		if strings.Contains(content, current) {
+		if strings.Contains(content, current) && miseEnterHookMatches(content, candidate, true) {
 			return path, candidate, true, false, nil
 		}
 		legacy := legacyMiseHookBlock(candidate)
-		if strings.Contains(content, legacy) {
-			updated := strings.Replace(content, legacy, current, 1)
-			if writeErr := patch.WriteFileAtomic(path, []byte(updated), 0o644); writeErr != nil {
+		if legacyStart := strings.Index(content, legacy); legacyStart >= 0 {
+			afterLegacy := content[legacyStart+len(legacy):]
+			if !miseTableEndsBeforeContent(afterLegacy) || !miseEnterHookMatches(content, candidate, false) {
+				return path, "", false, false, nil
+			}
+			updated := content[:legacyStart] + current + afterLegacy
+			var parsed map[string]any
+			if _, parseErr := toml.Decode(updated, &parsed); parseErr != nil {
+				return path, candidate, true, false, fmt.Errorf("validate migrated mise config: %w", parseErr)
+			}
+			info, statErr := os.Stat(path)
+			if statErr != nil {
+				return path, candidate, true, false, statErr
+			}
+			if writeErr := patch.WriteFileAtomic(path, []byte(updated), info.Mode().Perm()); writeErr != nil {
 				return path, candidate, true, false, writeErr
 			}
 			return path, candidate, true, true, nil
 		}
 	}
 	return path, "", false, false, nil
+}
+
+// miseEnterHookMatches verifies the decoded [hooks.enter] table as well as the
+// marker bytes. This catches keys that continue after the marker and any other
+// table extension that a substring match cannot see.
+func miseEnterHookMatches(content, shell string, current bool) bool {
+	var parsed map[string]any
+	if _, err := toml.Decode(content, &parsed); err != nil {
+		return false
+	}
+	hooks, ok := parsed["hooks"].(map[string]any)
+	if !ok {
+		return false
+	}
+	enter, ok := hooks["enter"].(map[string]any)
+	if !ok {
+		return false
+	}
+	expectedScript := legacyMiseHookScriptLine(shell)
+	if current {
+		expectedScript = miseHookScriptLine(shell)
+	}
+	if script, ok := enter["script"].(string); !ok || script != expectedScript {
+		return false
+	}
+	if !current {
+		return len(enter) == 1
+	}
+	selectedShell, ok := enter["shell"].(string)
+	return ok && selectedShell == shell && len(enter) == 2
+}
+
+// miseTableEndsBeforeContent reports whether the table opened inside a marker
+// block is followed only by blank/comment lines before EOF or the next TOML
+// table header. Any key after the marker still belongs to [hooks.enter], so it
+// makes replacing the block unsafe (the replacement could introduce a duplicate
+// shell or script key).
+func miseTableEndsBeforeContent(after string) bool {
+	for _, line := range strings.Split(after, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case trimmed == "", strings.HasPrefix(trimmed, "#"):
+			continue
+		case strings.HasPrefix(trimmed, "["):
+			return true
+		default:
+			return false
+		}
+	}
+	return true
 }

@@ -29,17 +29,14 @@ stage 3 of the docs scan, filed below.
 ## Current work order — batches first, release after
 
 This is the executable queue. Each step names the existing entry or document that owns
-the detail; it does not restate that contract. The implementation work for this candidate
-has landed; [RELEASE.md](RELEASE.md) owns the remaining freeze and release procedure.
+the detail; it does not restate that contract. The v0.18.0 candidate is frozen and
+installed locally; [RELEASE.md](RELEASE.md) owns the remaining release procedure.
 
-1. **Freeze the v0.18.0 release candidate.** Review the complete diff, including the
-   minimum Go version change; resolve generated-lockfile status, install the exact
-   candidate, and run the release checks in [RELEASE.md](RELEASE.md).
-2. **Run the full real-machine acceptance as one batch**, following
+1. **Run the full real-machine acceptance as one batch**, following
    [ACCEPTANCE.md](ACCEPTANCE.md), then pay its § Open gates together. The
    `refreshTokenExpiresAt` gate remains a non-blocking observation unless its measured
    result changes a shipped claim.
-3. **Release only after explicit approval** for the main push and CI result, followed by
+2. **Release only after explicit approval** for the main push and CI result, followed by
    separate approval for the tag and public release. Verify the published artifacts as
    [RELEASE.md](RELEASE.md) requires.
 

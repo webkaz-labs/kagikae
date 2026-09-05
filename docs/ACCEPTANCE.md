@@ -173,6 +173,13 @@ official flow and immediately recaptured before the measured run. `side` → `ma
 fresh prompt and matched the official profile endpoint. Every transition preserved
 every byte outside the `oauthAccount` value; the final active account was `side`.
 
+Reconfirmed 2026-09-06 (JST) on the v0.18.2 implementation candidate at
+`67b6ff2`, tested from `3269b67` with the same executable code, with Claude Code
+2.1.261 and two freshly captured accounts. `main` → `side` → `main` and an
+explicit rollback to `side` each authenticated in a fresh process and matched the
+identity cache against the official profile endpoint. Every kae mutation preserved
+every byte outside `/oauthAccount`; the accounts had distinct identities.
+
 For copilot (active-account pointer, all platforms — kae never touches the
 per-account keychain tokens, only `~/.copilot/config.json` `/lastLoggedInUser`,
 so it is safe on macOS):
@@ -213,6 +220,14 @@ Reconfirmed 2026-09-05 on the installed v0.18.1 candidate at `b5e5815`, with the
 one available Copilot account. Capture, apply, fresh non-interactive prompt and
 rollback passed; the leading JSONC comments and every value outside
 `/lastLoggedInUser` survived, and the per-account keychain item was not rewritten.
+The optional two-account switch remains unmeasured.
+
+Reconfirmed 2026-09-06 (JST) on the v0.18.2 implementation candidate at
+`67b6ff2`, tested from `3269b67` with the same executable code, with Copilot
+1.0.83 and one account captured immediately before the run. Same-account apply and
+explicit rollback preserved every byte outside `/lastLoggedInUser`, including the
+leading JSONC comments, and the addressed keychain item's attributes were unchanged.
+A fresh non-interactive prompt returned the requested reply with no tools enabled.
 The optional two-account switch remains unmeasured.
 
 ### Bound-directory credential store (macOS, no login needed)
@@ -284,8 +299,18 @@ plaintext credential file before or after Claude ran. The shim handled the
 interactive stdin form of `security` as well as its ordinary argument form;
 refusing that write in an earlier fixture caused Claude to fall back to plaintext.
 Claude exited 1 with the synthetic credential. This result establishes naming
-agreement only; the real-account bind/rebind and global-login preservation checks
-for v0.18.2 remain pending.
+agreement only; the real-account run below supplies the authentication evidence.
+
+Reconfirmed 2026-09-06 (JST) on the v0.18.2 implementation candidate at
+`67b6ff2`, tested from `3269b67` with the same executable code, with Claude Code
+2.1.261. A separate scratch inventory captured both live accounts through
+`kae add --no-login`. Binding `side` and rebinding `main` each authenticated in a
+fresh process using both generated Claude environment variables; the cache matched
+the official profile endpoint and neither store contained plaintext credentials.
+Purging the `main` binding removed its keychain item. The earlier `side` item
+remained, so it was rebound and purged separately; its subsequent lookup returned
+exit 44. The resulting account captures were returned through normal CLI operations,
+with global `side` active and authenticated.
 
 ## Optional account-combination checks
 

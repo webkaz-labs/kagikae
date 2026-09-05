@@ -41,11 +41,21 @@ in [VALIDATION.md](VALIDATION.md) passed through the isolated smoke harness; tha
 document records the additional completion and per-account-store results beside
 their procedures.
 
-Required real-account acceptance remains pending: confirm accounts that meet
-[ACCEPTANCE.md](ACCEPTANCE.md) § Real-Machine Acceptance's precondition, then run
-and record the Claude switch/rollback, bound-directory and Copilot checks there.
-The login-free naming check establishes neither authentication nor keychain ACLs.
-Do not publish the tag before this acceptance is complete. Main integration, push,
+Required real-account acceptance passed on 2026-09-06 (JST), tested from
+`3269b67` with the implementation candidate's executable code: Claude Code 2.1.261
+switch/rollback and bound-directory authentication, plus Copilot 1.0.83 same-account
+apply/rollback. [ACCEPTANCE.md](ACCEPTANCE.md) records the measured results and their
+limits. Global Claude ended on `side`.
+
+Full upstream-assumption re-verification for Claude Code 2.1.261 remains pending:
+the earlier release-time checks used 2.1.260, and the new authentication results do
+not re-verify every assumption in [VALIDATION.md](VALIDATION.md) § Upstream Behaviour
+Assumptions. The declared verified version remains unchanged. The installed-tool
+fingerprint gate also failed: Claude 2.1.261 and opencode 1.18.26 differ from the
+recorded 2.1.260 and 1.18.25 artifacts, and agy 1.1.23 has a digest mismatch.
+Re-measure those artifacts through the upstream verification procedure rather than
+updating their recorded identities alone. Complete that pass and the final
+commit/release gates before publication. Main integration, push,
 tag publication and branch cleanup have not been performed; external publication
 requires the operator's explicit approval.
 

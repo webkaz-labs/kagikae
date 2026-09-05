@@ -849,10 +849,12 @@ Contract:
   not be reported as a login, because the reason to run this is that the directory
   was already stale.
 - **The success line claims only what kae observed**, and there are two of them:
-  - `Logged <tool> in for <tool>/<account> in this directory` — printed only when
+  - `Captured the changed <tool> credential for <tool>/<account> from this directory's store` — printed only when
     all three of: kae read the store on both sides and the bytes differ; what is
     there now is something kae read as a login; and the capture back *confirmed*
-    the login is that account's.
+    the login is that account's. These observations establish a capture of changed
+    bytes, not its cause: a sibling can refresh the shared store while this flow
+    runs, including when the flow exits non-zero.
   - `Ran the <tool> login flow in this directory` — every other case, each with its
     own stderr line saying which:
     - kae could not read the store on one side or both, so it cannot tell whether

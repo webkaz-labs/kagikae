@@ -220,8 +220,9 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 			"kae: warning: kae could not read this directory's %s credential, so it cannot tell whether the "+
 				"login flow changed anything\n", tool)
 	}
-	// "A login happened, for this account" is three separate observations, and the
-	// strong wording may only be printed when kae made all three. They fail
+	// A changed credential captured for this account requires three observations.
+	// They do not establish that the login flow caused the change: a sibling may
+	// refresh the shared store while the flow runs. The observations fail
 	// independently, which is why one gate cannot stand for the others. The wording and
 	// the rule that picks between the two lines are a user-visible contract, and
 	// docs/CLI.md § kae relogin Semantics is normative for them; what is here is why
@@ -269,7 +270,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// are the ones that decide that. Only the wording depends on both answers.
 	attributed := app.captureBackAfterRelogin(ctx, be, specs, tool, accountName, dirs)
 	if changed && attributed {
-		fmt.Printf("Logged %s in for %s/%s in this directory\n", tool, tool, accountName)
+		fmt.Printf("Captured the changed %s credential for %s/%s from this directory's store\n", tool, tool, accountName)
 	} else {
 		fmt.Printf("Ran the %s login flow in this directory\n", tool)
 	}

@@ -1350,7 +1350,7 @@ test "$(grep -n 'harvested the newer claude credential' "$HOME/L.err" | head -1 
                                         #   Semantics). One occurrence is a regression even
                                         #   though the capture-back assertions below still
                                         #   pass, which is why this counts and orders
-test "$(cat "$HOME/L.out")" = "Logged claude in for claude/main in this directory"
+test "$(cat "$HOME/L.out")" = "Captured the changed claude credential for claude/main from this directory's store"
                                         # assert: the strong wording, which kae prints only
                                         #   when it observed all three of: the store
                                         #   changed, what is there now is not a tombstone,

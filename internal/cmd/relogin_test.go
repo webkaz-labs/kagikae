@@ -100,11 +100,62 @@ func TestReloginLogsIntoTheBoundStoreAndCapturesItBack(t *testing.T) {
 	// store changed, what is there now is not a tombstone, and the harvest attributed
 	// it to this account. Without this assertion every gate below could be inverted
 	// into always printing the weak line and nothing would fail.
-	if !strings.Contains(out, "Logged claude in for claude/main in this directory") {
-		t.Errorf("a login kae observed end to end must be reported as one: %q", out)
+	if !strings.Contains(out, "Captured the changed claude credential for claude/main from this directory's store") {
+		t.Errorf("the changed credential capture must be reported: %q", out)
 	}
 	if strings.Contains(stderr, refreshed) {
 		t.Fatalf("a credential must never reach a message: %q", stderr)
+	}
+}
+
+// A sibling can refresh the shared store while this directory's login flow fails.
+// The capture is attributable to main, but its cause is not the failed login flow.
+func TestReloginReportsCaptureWhenASiblingRefreshesDuringFailedFlow(t *testing.T) {
+	app := overlayTestApp(t)
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	dir, storeDir, credFile := boundStoreForClaudeMain(t, app)
+	_, _, siblingCred := boundStoreForClaudeMain(t, app)
+	if siblingCred != credFile {
+		t.Fatalf("the bindings must share a credential store: %s vs %s", siblingCred, credFile)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	identityBefore := readFile(t, filepath.Join(storeDir, ".claude.json"))
+	const refreshed = "sk-ant-oat01-SIBLING-REFRESHED-aaaa"
+	withInteractive(t, func(_ context.Context, extraEnv []string, name string, args ...string) (int, error) {
+		if name != "claude" || !slices.Equal(args, []string{"/login"}) {
+			t.Fatalf("unexpected login command: %s %v", name, args)
+		}
+		if !slices.Contains(extraEnv, isolationEnvVar(constants.ToolClaude)+"="+storeDir) {
+			t.Fatalf("the flow must target this directory: %v", extraEnv)
+		}
+		// The sibling writes its shared credential; this flow changes no identity.
+		writeFile(t, siblingCred, claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+		return 1, nil
+	})
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(context.Background(), app, commonOpts{Format: formatText}, "")
+	})
+	mustExit(t, constants.ExitOK, code, stderr)
+	if !strings.Contains(stderr, "claude exited with 1") || !strings.Contains(stderr, "harvested") {
+		t.Errorf("the failed flow and capture must both be reported: %q", stderr)
+	}
+	if got := snapshotPayload(t, app, testBackend(t, app), constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
+		t.Fatal("the sibling's refreshed credential was not captured")
+	}
+	if got := readFile(t, filepath.Join(storeDir, ".claude.json")); got != identityBefore {
+		t.Fatal("this directory's identity must remain unchanged")
+	}
+	if out != "Captured the changed claude credential for claude/main from this directory's store\n" {
+		t.Errorf("report the observed capture: %q", out)
+	}
+	if strings.Contains(out, "Logged claude in") {
+		t.Errorf("the sibling's refresh must not be reported as a login: %q", out)
+	}
+	if strings.Contains(out+stderr, refreshed) || strings.Contains(out+stderr, "main-uuid") {
+		t.Error("credential and identity values must not reach output")
 	}
 }
 
@@ -368,7 +419,7 @@ func TestReloginSaysSoWhenItCannotTellWhetherAnythingChanged(t *testing.T) {
 	// And the stdout line must not contradict the warning two lines above it. The
 	// warning alone is not the fix: it was added first and the success line still
 	// claimed a login underneath it.
-	if strings.Contains(out, "Logged claude in") {
+	if strings.Contains(out, "Captured the changed claude credential") {
 		t.Errorf("no login may be claimed on a comparison that never happened: %q", out)
 	}
 }
@@ -467,7 +518,7 @@ func TestReloginDoesNotCallAnEmptiedStoreALogin(t *testing.T) {
 			if code == constants.ExitAuthUnchanged {
 				t.Fatalf("the store did change; this is a different failure: %s", stderr)
 			}
-			if strings.Contains(out, "Logged claude in") {
+			if strings.Contains(out, "Captured the changed claude credential") {
 				t.Errorf("a store with nothing usable in it is not a login: %q", out)
 			}
 			if !strings.Contains(stderr, tc.wantSaid) {
@@ -592,7 +643,7 @@ func TestReloginWillNotClaimALoginItCouldNotCompareAgainst(t *testing.T) {
 	// …and a perfectly good login after it. Everything except the comparison succeeds:
 	// the harvest reads the new copy, orders it ahead of the snapshot and attributes
 	// it, so `attributed` is true and only the missing before-read holds the wording
-	// back. Drop `comparable` from that gate and this prints "Logged claude in".
+	// back. Drop `comparable` from that gate and this claims a changed credential capture.
 	withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
 		for _, entry := range extraEnv {
 			if dir, ok := strings.CutPrefix(entry, credentialEnvVar(constants.ToolClaude)+"="); ok {
@@ -612,7 +663,7 @@ func TestReloginWillNotClaimALoginItCouldNotCompareAgainst(t *testing.T) {
 	})
 	mustExit(t, constants.ExitOK, code, stderr)
 
-	if strings.Contains(out, "Logged claude in") {
+	if strings.Contains(out, "Captured the changed claude credential") {
 		t.Errorf("kae never read the store before the flow, so it cannot say the flow changed it: %q", out)
 	}
 	if !strings.Contains(stderr, "cannot tell whether the login flow changed anything") {
@@ -1048,7 +1099,7 @@ func TestReloginDeclinesALoginItWatchedWhenASiblingHasDrifted(t *testing.T) {
 	if !strings.Contains(stderr, "another account's name in "+siblingDir) {
 		t.Errorf("the directory a user has to go and fix must be named: %q", stderr)
 	}
-	if strings.Contains(out, "Logged claude in") {
+	if strings.Contains(out, "Captured the changed claude credential") {
 		t.Errorf("the success line may not claim an account kae did not attribute: %q", out)
 	}
 	if strings.Contains(stderr, refreshed) || strings.Contains(out, refreshed) {
@@ -1113,7 +1164,7 @@ func TestReloginDeclinesALoginItWatchedWhenAnIsolatedHomeHasDrifted(t *testing.T
 	if !strings.Contains(stderr, "another account's name in "+app.displayPath(home)) {
 		t.Errorf("the isolated home must be named: %q", stderr)
 	}
-	if strings.Contains(out, "Logged claude in") {
+	if strings.Contains(out, "Captured the changed claude credential") {
 		t.Errorf("the success line may not claim an account kae did not attribute: %q", out)
 	}
 }
@@ -1177,7 +1228,7 @@ func TestReloginDoesNotCaptureASiblingsRefreshedCopy(t *testing.T) {
 	if !strings.Contains(stderr, "disagree about whose login it is") {
 		t.Errorf("the refusal must still be the reader disagreement: %q", stderr)
 	}
-	if strings.Contains(out, "Logged claude in") {
+	if strings.Contains(out, "Captured the changed claude credential") {
 		t.Errorf("the success line may not claim an account kae did not attribute: %q", out)
 	}
 }
@@ -1222,7 +1273,7 @@ func TestReloginDoesNotCaptureAForeignLoginItWatched(t *testing.T) {
 	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
 		t.Fatalf("another account's login must not reach this snapshot: %s", got)
 	}
-	if strings.Contains(out, "Logged claude in") {
+	if strings.Contains(out, "Captured the changed claude credential") {
 		t.Errorf("the success line may not claim an account kae did not attribute: %q", out)
 	}
 	// **The directory the user is standing in is not somewhere to send them.** It is one of

@@ -1652,10 +1652,10 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   date kae cannot parse is reported as such rather than skipped, because a typo
   would otherwise read as "nothing to report".
 
-  `kae doctor <tool>` runs only the per-tool checks. The companion and
-  pinned-directory checks are not per-tool, so they are skipped — and a note on
-  stderr says so, since a filtered run that prints nothing about them otherwise
-  reads as "they are fine".
+  `kae doctor <tool>` runs the per-tool checks plus the machine-wide
+  `pin_index_incomplete` check. Companion and individual bound-directory checks
+  are skipped, and a note on stderr says so: silence about those filtered checks
+  must not read as "they are fine".
 
 Companion-binding checks (warn-level, unfiltered report only):
 - `companion_missing`: a bound token knob has no stored secret, so the mise

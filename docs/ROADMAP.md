@@ -32,11 +32,10 @@ and may still refuse implementation when evidence or a mechanism is missing. Ent
 named here retain their recorded gate; this index does not silently promote or close them.
 
 1. **Diagnostics batch — kae v0.18.2, Diagnostic Trust** — the active scope is in
-   [RELEASE.md](RELEASE.md) § kae v0.18.2 — Diagnostic Trust. Add the missing signals or
-   correct bounded wording from **The pin index can be incomplete with nothing saying
-   so**, **A recorded identity that is
-   not an account record silently disables attribution for that account**, **`kae
-   relogin`'s success line reports a login for a store somebody else refreshed**.
+   [RELEASE.md](RELEASE.md) § kae v0.18.2 — Diagnostic Trust. The diagnostic and
+   wording changes are implemented; finish the release validation and acceptance
+   recorded there before publication. The entries below retain the refusal and
+   observation boundaries for subsequent work.
 2. **Research only** — do not schedule implementation for **A moved bound directory does
    not count as a reader, and its absence does not make the reader set incomplete**,
    **Attribution reads a label kae may have written itself**, **A relogin's pre-flight

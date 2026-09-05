@@ -32,6 +32,23 @@ Release readiness requires the procedure below, including release-time validatio
 and required real-machine acceptance. Additional account combinations remain
 optional under [ACCEPTANCE.md](ACCEPTANCE.md) § Optional account-combination checks.
 
+### Candidate readiness
+
+The implementation candidate is `67b6ff2`. Its local commit gate, vulnerability
+audit, installed-tool fingerprints, GoReleaser configuration check, release mutation
+evidence and snapshot archive build passed on 2026-09-05. The executable smoke blocks
+in [VALIDATION.md](VALIDATION.md) passed through the isolated smoke harness; that
+document records the additional completion and per-account-store results beside
+their procedures.
+
+Required real-account acceptance remains pending: confirm accounts that meet
+[ACCEPTANCE.md](ACCEPTANCE.md) § Real-Machine Acceptance's precondition, then run
+and record the Claude switch/rollback, bound-directory and Copilot checks there.
+The login-free naming check establishes neither authentication nor keychain ACLs.
+Do not publish the tag before this acceptance is complete. Main integration, push,
+tag publication and branch cleanup have not been performed; external publication
+requires the operator's explicit approval.
+
 ## Release procedure
 
 Releases are cut by pushing a `vX.Y.Z` tag; GitHub Actions

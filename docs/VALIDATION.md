@@ -1512,6 +1512,13 @@ required candidate above, the no-argument branch stayed empty, and the isolated
 mise hook loaded the zsh function without the deprecated spawned-hook warning or a
 `sh` process-substitution error.
 
+Reconfirmed 2026-09-05 on the v0.18.2 candidate at `67b6ff2`, with temporary
+registration and refresh paths under the smoke harness. Fresh bash and zsh
+processes invoked the registered completion functions and returned the required
+candidates; `env list` returned none. The generated current-shell mise hook loaded
+`_kae` and registered it without stderr output. This checked the shell functions,
+not a physical TAB-key interaction.
+
 ## Switching a per-account credential store
 
 The credential moved out of the bound directory's store and into
@@ -1582,6 +1589,12 @@ file secret backend and all HOME/XDG/application roots isolated by the smoke har
 Both directories shared one account credential store, the migration finding appeared
 and cleared at the documented points, the reference-counted purge kept then removed
 the credential, and the shared-mode rebind changed only the credential-store entry.
+
+Reconfirmed 2026-09-05 on the v0.18.2 candidate at `67b6ff2`, with the file driver
+and file secret backend under the smoke harness. Shared credential paths, distinct
+config paths, migration warning/repair, reference-counted purge and shared-mode
+rebind passed. The purge assertions inspect `/claudeAiOauth`: the file driver
+removes that member and may leave the surrounding JSON file in place.
 
 ## Upstream Behaviour Assumptions
 

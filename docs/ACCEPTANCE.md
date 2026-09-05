@@ -275,6 +275,18 @@ the official profile endpoint, neither store contained plaintext credentials, an
 `kae unpin --purge` removed the isolated credential. The global `side` login remained
 authenticated and active afterwards.
 
+The login-free naming procedure passed 2026-09-05 on the v0.18.2 candidate at
+`67b6ff2`, with Claude Code 2.1.260. In a temporary HOME with a file secret backend
+and simulated `security` commands, kae's write and a fresh Claude process's read
+matched the independently computed credential-directory service name. Both
+generated Claude variables were supplied, and neither directory contained a
+plaintext credential file before or after Claude ran. The shim handled the
+interactive stdin form of `security` as well as its ordinary argument form;
+refusing that write in an earlier fixture caused Claude to fall back to plaintext.
+Claude exited 1 with the synthetic credential. This result establishes naming
+agreement only; the real-account bind/rebind and global-login preservation checks
+for v0.18.2 remain pending.
+
 ## Optional account-combination checks
 
 These checks are optional for v0.18.0 and for future releases. They are retained as

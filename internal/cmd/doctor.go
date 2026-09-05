@@ -51,8 +51,8 @@ func CmdDoctor(ctx context.Context, args []string) int {
 func runDoctor(ctx context.Context, app *App, opts commonOpts, toolFilter string) int {
 	report := buildDoctor(ctx, app, toolFilter, app.resolveTokenDriftOptIn(opts, toolFilter))
 	if toolFilter != "" {
-		// Naming a tool skips every check that is not per-tool — the companion
-		// bindings and the bound directories. Say so: a filtered run that prints
+		// Naming a tool skips companion bindings and individual bound directories.
+		// The machine-wide pin-index completeness check still runs. A filtered run that prints
 		// nothing about them reads as "they are fine". stderr, not a check, so the
 		// JSON contract does not grow a row for something the caller filtered out.
 		fmt.Fprintf(os.Stderr,
@@ -204,6 +204,10 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 		report.Checks = append(report.Checks, app.identityDriftChecks(ctx, be, toolFilter)...)
 	}
 
+	// An incomplete index affects shared credential attribution machine-wide,
+	// including when a tool filter omits the per-directory findings.
+	report.Checks = append(report.Checks, app.pinChecks(toolFilter)...)
+
 	// bound-directory health: a pinned directory that is gone, or that binds an
 	// account that is. Offline and backend-free; unfiltered, like the companion
 	// checks, because a stale binding is a property of the directory.
@@ -216,7 +220,6 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 		// Walked once for both halves: it is a read of the pin index plus a fragment per
 		// bound directory, and the two must agree on what is bound anyway.
 		stores := app.boundDirStores()
-		report.Checks = append(report.Checks, app.pinChecks()...)
 		report.Checks = append(report.Checks, app.pinCredentialChecks(ctx, stores)...)
 		report.Checks = append(report.Checks, pinUnsplitChecks(stores)...)
 		if err == nil {

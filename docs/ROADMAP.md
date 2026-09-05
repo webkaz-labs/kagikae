@@ -679,23 +679,11 @@ alternative exists (`secret-tool`).
   fragment — refuse-versus-skip, the seam where this area's defects live — so it wants its
   own change and its own review rather than a ride-along.
 
-- **The pin index can be incomplete with nothing saying so** (recorded 2026-08-16, **not
-  fixed**). `pinnedDirsComplete` answers `complete=false` when a directory under the
-  isolation root has a pin record kae cannot read, or one that is empty. The consumers
-  that read that flag refuse on it: `credStoreRefs`, where refusing keeps a credential,
-  and `credStoreReaders`, where since `credential_superseded` began attributing a shared
-  store by its readers refusing means `kae doctor` says nothing about **any** shared
-  store on the machine — including for accounts that record has nothing to do with.
-  Nothing reports the condition itself. `pinChecks` takes its pins through `pinnedDirs`,
-  which drops the flag, so an unreadable pin record produces no `pin_stale` and no other
-  signal, and the directory it names is simply absent from every walk. The silence is
-  pinned by `TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated`.
-  Refusing is the right direction in both consumers — attribution needs positive
-  evidence, and a reader kae could not enumerate is the one that might disagree — so what
-  is owed here is the **signal**, not a weakening: a doctor check on that flag, which is a
-  new code and its own change. Recorded rather than taken because the trigger is a pin
-  record written from outside kae (`recordPinnedDir` writes atomically; `pinnedDirsComplete`
-  carries why that branch is unkillable).
+- **The pin index can be incomplete with nothing saying so** — implemented for the
+  v0.18.2 target as `pin_index_incomplete`; [CLI.md](CLI.md) § `kae doctor --json`
+  owns the finding. `TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated`
+  keeps the attribution refusal in place while checking that doctor reports the
+  incomplete index. Pin-walker consolidation remains a separate change above.
 
 - **A mode toggle and a same-mode re-pin answer a poisoned store differently** (recorded
   2026-08-08 by a reading-type review, **not fixed, and deliberately so**). `Conflicting`

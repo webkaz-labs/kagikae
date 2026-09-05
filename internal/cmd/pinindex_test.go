@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,101 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 )
+
+func TestPinIndexIncompleteChecks(t *testing.T) {
+	for _, shape := range []string{"missing", "empty", "unreadable", "root-unreadable"} {
+		t.Run(shape, func(t *testing.T) {
+			app := testApp(t, nil)
+			if checks := app.pinChecks(""); len(checks) != 0 {
+				t.Fatalf("an absent index is complete: %+v", checks)
+			}
+			if shape == "root-unreadable" {
+				writeFile(t, app.Paths.IsolationDir(), "not a directory")
+			} else {
+				// A valid record remains diagnosable alongside both broken records.
+				if err := app.recordPinnedDir("main", filepath.Join(t.TempDir(), "gone")); err != nil {
+					t.Fatal(err)
+				}
+				for _, id := range []string{"side", "alt"} {
+					record := app.Paths.PinRecordFile(id)
+					if err := os.MkdirAll(app.Paths.PinDir(id), 0o700); err != nil {
+						t.Fatal(err)
+					}
+					switch shape {
+					case "empty":
+						writeFile(t, record, " \n\t")
+					case "unreadable":
+						// A directory yields a deterministic read error, even as root.
+						if err := os.Mkdir(record, 0o700); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+			}
+			for _, filter := range []string{"", constants.ToolClaude, constants.ToolCodex} {
+				checks := app.pinChecks(filter)
+				incomplete, stale := 0, 0
+				for _, check := range checks {
+					switch check.Code {
+					case constants.CheckPinIndexIncomplete:
+						incomplete++
+						if check.Tool != "" || check.Status != constants.StatusWarn {
+							t.Fatalf("expected machine-wide warn: %+v", check)
+						}
+					case constants.CheckPinStale:
+						stale++
+					}
+				}
+				wantStale := 0
+				if filter == "" && shape != "root-unreadable" {
+					wantStale = 1
+				}
+				if incomplete != 1 || stale != wantStale || len(checks) != 1+wantStale {
+					t.Fatalf("filter %q: incomplete=%d stale=%d checks=%+v", filter, incomplete, stale, checks)
+				}
+			}
+		})
+	}
+}
+
+func TestDoctorPinIndexIncompleteOutput(t *testing.T) {
+	app := testApp(t, nil)
+	seedClaude(t, app, mainToken, "main-uuid")
+	for _, id := range []string{"side", "alt"} {
+		if err := os.MkdirAll(app.Paths.PinDir(id), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, filter := range []string{"", constants.ToolClaude} {
+		report := buildDoctor(context.Background(), app, filter, false)
+		if msgs := findChecks(report, constants.CheckPinIndexIncomplete); len(msgs) != 1 {
+			t.Fatalf("filter %q must retain exactly one index finding: %+v", filter, report.Checks)
+		}
+	}
+	for _, format := range []string{formatText, formatJSON} {
+		code, out := captureStdout(t, func() int {
+			return runDoctor(context.Background(), app, commonOpts{Format: format, NoColor: true}, constants.ToolClaude)
+		})
+		mustExit(t, constants.ExitOK, code, out)
+		if !strings.Contains(out, "pin index could not be read completely") {
+			t.Fatalf("%s output omitted the finding: %s", format, out)
+		}
+		for _, sensitive := range []string{mainToken, "main-uuid", "you@example.com"} {
+			if strings.Contains(out, sensitive) {
+				t.Fatalf("%s output leaked %q: %s", format, sensitive, out)
+			}
+		}
+		if format == formatJSON {
+			var report doctorReport
+			if err := json.Unmarshal([]byte(out), &report); err != nil {
+				t.Fatal(err)
+			}
+			if report.SchemaVersion != 1 || !report.OK {
+				t.Fatalf("warning changed the report contract: %+v", report)
+			}
+		}
+	}
+}
 
 // pinHere binds a temp cwd with overlayTestApp's profile (claude/main, never
 // captured) and returns the bound directory.
@@ -188,7 +284,7 @@ func TestPinChecksReportStaleBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	checks := app.pinChecks()
+	checks := app.pinChecks("")
 	if len(checks) != 2 {
 		t.Fatalf("pinChecks() = %+v, want one dangling-account and one absent-path check", checks)
 	}
@@ -218,7 +314,7 @@ func TestPinChecksReportStaleBindings(t *testing.T) {
 	// Capturing the account it binds silences the dangling half, so the check
 	// tracks the binding rather than merely the existence of a pin.
 	seedAccountMeta(t, app, constants.ToolClaude, "main")
-	for _, c := range app.pinChecks() {
+	for _, c := range app.pinChecks("") {
 		if strings.Contains(c.Message, cwd) {
 			t.Fatalf("a captured account must not warn: %q", c.Message)
 		}
@@ -236,7 +332,7 @@ func TestUnpinnedDirectoryIsNotReportedStale(t *testing.T) {
 	}); code != constants.ExitOK {
 		t.Fatalf("unpin exit %d (%s)", code, out)
 	}
-	if checks := app.pinChecks(); len(checks) != 0 {
+	if checks := app.pinChecks(""); len(checks) != 0 {
 		t.Fatalf("an unpinned directory must not warn: %+v", checks)
 	}
 }
@@ -257,7 +353,7 @@ func TestPinCheckDoesNotCallALiveDirectoryAbsent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	checks := app.pinChecks()
+	checks := app.pinChecks("")
 	if len(checks) != 1 {
 		t.Fatalf("pinChecks() = %+v, want one unreadable-fragment check", checks)
 	}

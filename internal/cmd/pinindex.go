@@ -181,14 +181,19 @@ func (app *App) warnPinnedDirs(match func(fragmentInfo) bool, message func(dir s
 // pinChecks reports bound directories whose binding kae can no longer honor.
 // Offline: it reads the breadcrumbs, the fragments they name, and the account
 // snapshots on disk.
-func (app *App) pinChecks() []adapter.Check {
-	pins, err := app.pinnedDirs()
-	if err != nil {
-		return []adapter.Check{{
-			Code: constants.CheckPinStale, Status: constants.StatusWarn, Message: err.Error(),
-		}}
-	}
+func (app *App) pinChecks(toolFilter string) []adapter.Check {
+	pins, complete, err := app.pinnedDirsComplete()
 	checks := []adapter.Check{}
+	if !complete {
+		checks = append(checks, adapter.Check{
+			Code: constants.CheckPinIndexIncomplete, Status: constants.StatusWarn,
+			Message: "the pin index could not be read completely; some bound-directory checks could not run " +
+				"and shared credential attribution is unavailable; restore readable pin records before retrying",
+		})
+	}
+	if err != nil || toolFilter != "" {
+		return checks
+	}
 	for _, pin := range pins {
 		// "Gone" is decided by the directory, never by a failed read of the
 		// fragment inside it: a permission error or an I/O blip on a live

@@ -473,9 +473,8 @@ func TestSupersededStaysSilentWhenNoHandleCanAttributeTheCopy(t *testing.T) {
 // store goes — including for accounts and directories that record has nothing to do
 // with.
 //
-// docs/ROADMAP.md § The pin index can be incomplete with nothing saying so owns why that
-// is the conservative direction and what is owed instead; docs/CLI.md § `kae doctor
-// --json` states the silence as part of the check's contract.
+// docs/CLI.md § `kae doctor --json` owns both the attribution silence and the
+// machine-wide pin_index_incomplete finding that explains it.
 func TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
@@ -497,6 +496,9 @@ func TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated(t *testing.T) {
 	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 0 {
 		t.Fatalf("an unenumerable pin index is missing evidence, so the group is silent: %v", msgs)
 	}
+	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckPinIndexIncomplete); len(msgs) != 1 {
+		t.Fatalf("the incomplete index must explain the attribution silence: %v", msgs)
+	}
 	if err := os.Remove(stray); err != nil {
 		t.Fatal(err)
 	}
@@ -505,6 +507,9 @@ func TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated(t *testing.T) {
 	// bindings.
 	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckCredentialSuperseded); len(msgs) != 1 {
 		t.Fatalf("with the index readable again the same copy is reported: %v", msgs)
+	}
+	if msgs := findChecks(buildDoctor(ctx, app, "", false), constants.CheckPinIndexIncomplete); len(msgs) != 0 {
+		t.Fatalf("the repaired index must no longer warn: %v", msgs)
 	}
 }
 

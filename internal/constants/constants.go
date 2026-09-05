@@ -234,6 +234,9 @@ const (
 	// CheckPinStale: a directory bound with `kae pin` no longer exists, or binds
 	// an account that no longer does.
 	CheckPinStale = "pin_stale"
+	// CheckPinIndexIncomplete: one or more bound directories could not be
+	// enumerated, so absence from the index is not evidence of no readers.
+	CheckPinIndexIncomplete = "pin_index_incomplete"
 	// CheckActiveOrphan: kae cannot confirm the account state.json records as
 	// active — no snapshot by that name, one whose metadata will not parse, or a
 	// state file it cannot read at all.

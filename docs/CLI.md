@@ -1331,7 +1331,7 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `credential_superseded`, `secret_orphan`, `secret_missing`,
 `companion_missing`, `companion_binary`, `companion_drift`,
 `companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`,
-`active_orphan`, `credential_unsplit`.
+`active_orphan`, `credential_unsplit`, `pin_index_incomplete`.
 
 A `(tool, code)` pair is **not** unique in one report: a code is emitted per subject,
 and several subjects can share a tool. `credential_stale` is reported once per account
@@ -1451,10 +1451,9 @@ Credential-health checks (warn-level):
     normative for that taxonomy.
   - Naming those readers means enumerating kae's pin index, which is **machine-wide**:
     one directory under the isolation root whose pin record kae cannot read makes the
-    enumeration incomplete, and then no shared store is attributed and no finding about
-    one is reported, for any account. That is missing evidence like any other, and
-    docs/ROADMAP.md § The pin index can be incomplete with nothing saying so carries
-    what it costs.
+    enumeration incomplete, and then no shared store is attributed and no superseded
+    finding about one is reported, for any account. `pin_index_incomplete` reports
+    that missing evidence without relaxing attribution.
   - Equal deadlines are not overtaken, so a directory pinned moments ago — whose
     store holds exactly what the snapshot does — reports nothing.
   - A tombstoned or unreadable bound copy is left to `credential_stale`, which
@@ -1499,6 +1498,10 @@ Credential-health checks (warn-level):
 
 Bound-directory checks (warn-level, unfiltered like the companion ones — a
 binding is a property of the directory, not of one tool):
+- `pin_index_incomplete`: kae could not enumerate the complete pin index. Report
+  this machine-wide warning once, including with a tool filter, and continue
+  diagnosing readable pins. Attribution and credential reference-counting retain
+  their existing refusals when enumeration is incomplete.
 - `pin_stale`: a directory bound with `kae pin` either no longer exists at its
   recorded path — it may have been deleted or moved — or it is still pinned to
   an account that is no longer captured, which is what `kae account rm`/`rename` and

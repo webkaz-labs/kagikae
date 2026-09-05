@@ -23,7 +23,8 @@ by hand — the tag does it.
    CI runs — a **subset** of `mise run check`, and that workflow's own steps are
    the copy of it to read — then GoReleaser builds darwin/linux × amd64/arm64
    (`kae_<version>_<os>_<arch>.tar.gz` + `checksums.txt`), creates the release
-   with a grouped changelog, and attests the release checksum manifest.
+   with a grouped changelog, and attests the archives named by the release
+   checksum manifest.
 5. Verify the published assets and `scripts/install.sh` against the new tag.
 
 GoReleaser auto-generates the changelog from commits; edit the release body
@@ -37,8 +38,3 @@ every version through v0.17.0, and the file was cumulative, so
 tag: its forward pointers were not maintained forward, so an item it defers to
 [ROADMAP.md](ROADMAP.md) may have shipped since — that file and `git log` are
 where to check.
-
-**The active release target is v0.18.1.** It is a patch release limited to credential
-safety and mandatory-gate integrity; its current state and remaining order are
-the executable list in
-[ROADMAP.md](ROADMAP.md) § Current work order.

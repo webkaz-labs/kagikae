@@ -1,8 +1,7 @@
 # Roadmap
 
-Long-term ordering beyond the active release ([RELEASE.md](RELEASE.md)), ordered
-by user impact. § Current work order, for as long as it is there, carries the
-near-term order and the release position that order is set against.
+Long-term work, ordered by user impact. [RELEASE.md](RELEASE.md) owns the release
+procedure; § Current work order carries the near-term order.
 
 An entry goes once it is *only* a record of what happened: what shipped is
 recorded in the release tags and in git log, not here. **Being labelled
@@ -26,39 +25,7 @@ document, an acceptance log, a user-facing error message and code comments. A ne
 not a proof — a reference that defers a question here without naming the file is
 stage 3 of the docs scan, filed below.
 
-## Current work order — v0.18.1 safety patch
-
-This is the executable queue. Each step names the existing entry or document that owns
-the detail; it does not restate that contract. v0.18.1 is a patch release: it closes
-credential-safety and mandatory-gate false-green defects without adding a command,
-provider, mode, JSON surface, tier promotion or platform.
-
-1. **Contain the test process — done** — closed **A test that forgets to install a runner
-   must fail before it reaches a credential program**, including its `TMPDIR`, all three
-   runner seams and `keychainSim`'s unscoped-delete hole.
-2. **Refuse an inconsistent account snapshot before mutation — done** — closed **An
-   account lifecycle command must not trust a recorded `SecretRef` as an address**.
-3. **Make the release evidence bite — done** — completed **Two assertions in the harvest block
-   still pass when the thing that reads the snapshot is broken**, **The smoke guards have
-   no test, and four changes switched one off without anything noticing**,
-   **[ACCEPTANCE.md](ACCEPTANCE.md)'s `## Real-…` headings confirm each other's
-   citations**, and **`derived_cleared` reads the whole file, so a comment can satisfy
-   it**. Keep a bounded fast mutation set in the commit gate and run the full recorded
-   set at release time without building a general mutation framework.
-4. **Integrate the patch — done** — passed [AGENTS.md](../AGENTS.md) § Validation,
-   correctness review, quality review, the tracked-document and memory decisions, the
-   release checks, and the real-machine acceptance routed through
-   [RELEASE.md](RELEASE.md). The candidate is installed locally. Pure diagnostics and
-   every research, tier-2, TUI and platform item remain out of scope.
-5. **Release only after explicit approval** for the main push and CI result, followed by
-   separate approval for the tag and public release. Verify the published artifacts as
-   [RELEASE.md](RELEASE.md) requires.
-
-An item that fails its measurement returns to the backlog entry that owns the evidence;
-its absence from this queue never means it shipped. This section goes when the queue has
-landed, together with the citations that route here.
-
-## Work order after v0.18.1
+## Current work order
 
 Work these lanes in order. Within a lane, the named entries carry their own prerequisites
 and may still refuse implementation when evidence or a mechanism is missing. Entries not

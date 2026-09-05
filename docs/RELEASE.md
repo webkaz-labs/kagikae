@@ -1,65 +1,22 @@
 # Release Process
 
-## kae v0.18.2 — Diagnostic Trust
+## Active planning target
 
-Active target: correct diagnostic silence and bound the `kae relogin` success
-message to what kae observed. This is a patch release adding missing findings to
-an existing doctor report; JSON `schema_version` remains `1`.
+The next milestone completes a bounded part of existing-function reliability and
+repeatable verification. [The execution plan](plans/core-reliability.md) owns its
+scope, task dependencies and completion criteria; [ROADMAP.md](ROADMAP.md)
+§ Current work order places it among the longer-term work.
 
-- Report an incomplete pin index once as the machine-wide `pin_index_incomplete`
-  warning, including when doctor is filtered by tool. Continue diagnosing readable
-  pins and preserve the attribution and refcount refusals.
-- Report an existing recorded identity payload that cannot serve as an account
-  record as `identity_record_invalid`, a warning scoped to its tool and account.
-  Output must not include the payload, identity values or secrets. Missing payloads
-  remain `secret_missing`; unrecorded identities keep their existing behavior, and
-  comparisons remain `identity_drift`. Do not report the same fact twice or relax
-  attribution refusals.
-- Change the strong relogin success line to
-  `Captured the changed <tool> credential for <tool>/<account> from this directory's store`.
-  Preserve harvest behavior, child exit codes, refusal conditions and the fallback
-  line.
+Refactoring the bound-directory index is part of that reliability work, together
+with automating credential-store agreement checks and fixing the selected help and
+completion defects. It is not a separate prerequisite to implement every proposed
+architecture change. The milestone's version is chosen from the final external
+contract before its release preparation, rather than reserved during planning.
 
-Do not add commands, reports, fields or policy. Keep pin-walker consolidation and
-bound-directory index module work after this release. An identity helper may stay
-inside the existing identity module if it avoids duplicate classification; do not
-replace harvest or restore paths. A relogin observation interface and keychain item
-identity refactor are outside this target. The research-only lane, upstream-drift
-automation, Codex per-directory keyring enablement, Tier-2 expansion, TUI, Windows
-and command-system expansion retain their [ROADMAP.md](ROADMAP.md) gates.
-
-Release readiness requires the procedure below, including release-time validation
-and required real-machine acceptance. Additional account combinations remain
-optional under [ACCEPTANCE.md](ACCEPTANCE.md) § Optional account-combination checks.
-
-### Candidate readiness
-
-The implementation candidate is `67b6ff2`. Its local commit gate, vulnerability
-audit, installed-tool fingerprints, GoReleaser configuration check, release mutation
-evidence and snapshot archive build passed on 2026-09-05. The executable smoke blocks
-in [VALIDATION.md](VALIDATION.md) passed through the isolated smoke harness; that
-document records the additional completion and per-account-store results beside
-their procedures.
-
-Required real-account acceptance passed on 2026-09-06 (JST), tested from
-`3269b67` with the implementation candidate's executable code: Claude Code 2.1.261
-switch/rollback and bound-directory authentication, plus Copilot 1.0.83 same-account
-apply/rollback. [ACCEPTANCE.md](ACCEPTANCE.md) records the measured results and their
-limits. Global Claude ended on `side`.
-
-Upstream re-verification on 2026-09-06 covered Claude Code 2.1.261's login-free
-credential resolution and selected bundle paths, OpenCode 1.18.26's live auth store
-and environment overrides, and agy 1.1.24's binary storage anchors. The agy digest
-mismatch was resolved by matching the installed bytes to the official 1.1.24 release
-archive. Re-measured literal counts for these artifacts matched the recorded counts;
-the recorded versions and agy digest now identify the measured artifacts.
-[VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions records the bounded
-coverage: this pass does not re-prove every authentication assumption, and unmeasured
-login/refresh rows retain their older provenance.
-
-The updated tree passed `mise run audit` and `mise run check` on 2026-09-06.
-Publication follows the release procedure below; pushing and tag publication require
-the operator's explicit approval.
+The v0.18.2 release record is its tag and
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.18.2).
+Read its former active scope and readiness with `git show v0.18.2:docs/RELEASE.md`;
+[ACCEPTANCE.md](ACCEPTANCE.md) retains the bounded real-machine measurements.
 
 ## Release procedure
 

@@ -67,16 +67,15 @@ var fingerprintArtifacts = map[string]fingerprintArtifact{
 	// Resolve the selected agy file rather than walking its install directory: the
 	// previous build can sit beside it, and a directory walk would add that build's
 	// literals to every count. agy may replace itself without renaming the containing
-	// install directory. The shell which launched the first audit selected mise's
-	// 1.1.23 artifact while
-	// the surrounding interactive shell still selected 1.1.22. An artifact digest,
-	// bound to its measured version, identifies the selected bytes without executing
-	// either retained build and closes both stale-PATH and in-place-update cases.
+	// install directory. On 2026-09-06, the selected bytes matched the antigravity
+	// member of the official 1.1.24 mac-arm64 archive, whose SHA-256 matched the
+	// release asset metadata. The binary was not executed. Binding that digest to
+	// its release detects both stale-PATH and in-place-update cases.
 	constants.ToolAgy: {
 		binary:            "agy",
 		commandIsArtifact: true,
-		sha256:            "dea6443f3167d0ff1af9adf0bc9f96f13be85c8206a399bd33e2de87fdc39f7a",
-		sha256Version:     "1.1.23",
+		sha256:            "4d1138b2dbde56127969fd307281494d4a7dcc22759ce9adb44d36247df86151",
+		sha256Version:     "1.1.24",
 	},
 }
 

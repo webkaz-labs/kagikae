@@ -47,17 +47,19 @@ switch/rollback and bound-directory authentication, plus Copilot 1.0.83 same-acc
 apply/rollback. [ACCEPTANCE.md](ACCEPTANCE.md) records the measured results and their
 limits. Global Claude ended on `side`.
 
-Full upstream-assumption re-verification for Claude Code 2.1.261 remains pending:
-the earlier release-time checks used 2.1.260, and the new authentication results do
-not re-verify every assumption in [VALIDATION.md](VALIDATION.md) § Upstream Behaviour
-Assumptions. The declared verified version remains unchanged. The installed-tool
-fingerprint gate also failed: Claude 2.1.261 and opencode 1.18.26 differ from the
-recorded 2.1.260 and 1.18.25 artifacts, and agy 1.1.23 has a digest mismatch.
-Re-measure those artifacts through the upstream verification procedure rather than
-updating their recorded identities alone. Complete that pass and the final
-commit/release gates before publication. Main integration, push,
-tag publication and branch cleanup have not been performed; external publication
-requires the operator's explicit approval.
+Upstream re-verification on 2026-09-06 covered Claude Code 2.1.261's login-free
+credential resolution and selected bundle paths, OpenCode 1.18.26's live auth store
+and environment overrides, and agy 1.1.24's binary storage anchors. The agy digest
+mismatch was resolved by matching the installed bytes to the official 1.1.24 release
+archive. Re-measured literal counts for these artifacts matched the recorded counts;
+the recorded versions and agy digest now identify the measured artifacts.
+[VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions records the bounded
+coverage: this pass does not re-prove every authentication assumption, and unmeasured
+login/refresh rows retain their older provenance.
+
+The updated tree passed `mise run audit` and `mise run check` on 2026-09-06.
+Publication follows the release procedure below; pushing and tag publication require
+the operator's explicit approval.
 
 ## Release procedure
 

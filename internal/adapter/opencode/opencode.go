@@ -64,10 +64,10 @@ func (Opencode) Binary() string { return "opencode" }
 // checked on (docs/VALIDATION.md "Upstream Behaviour Assumptions"). As on claude,
 // it is not evidence that every row there was re-run on it, and for opencode most
 // were not; the rows say which.
-func (Opencode) VerifiedVersion() string { return "1.18.16" }
+func (Opencode) VerifiedVersion() string { return "1.18.26" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Opencode) VerifiedOn() string { return "2026-08-16" }
+func (Opencode) VerifiedOn() string { return "2026-09-06" }
 
 // authJSONPath resolves opencode's credential file, honoring XDG_DATA_HOME
 // as the live base path when already set (absolute values only, as

@@ -1291,10 +1291,10 @@ half-done. Do not reformat the rows without updating that test.
 
 | Tool | `VerifiedVersion()` | `VerifiedOn()` | `--version` output shape |
 |------|---------------------|----------------|--------------------------|
-| claude | `2.1.260` | `2026-09-04` | `2.1.260 (Claude Code)` |
+| claude | `2.1.261` | `2026-09-06` | `2.1.261 (Claude Code)` |
 | codex | `0.147.0` | `2026-08-16` | `codex-cli 0.147.0` |
-| agy | `1.1.23` | `2026-09-04` | `1.1.23` |
-| opencode | `1.18.16` | `2026-08-16` | `1.18.16` |
+| agy | `1.1.24` | `2026-09-06` | `1.1.24` |
+| opencode | `1.18.26` | `2026-09-06` | `1.18.26` |
 | cursor | `""` (no signal — see below) | `2026-09-04` | `2026.09.02-c22c1a3` (date-versioned) |
 | copilot | `1.0.83` | `2026-09-05` | `GitHub Copilot CLI 1.0.83.` (note the trailing period; an advisory line followed it when measured) |
 

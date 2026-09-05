@@ -1506,6 +1506,12 @@ completion registered **and refreshed**:
       `_kae` in the activated zsh without the spawned-hook deprecation warning or
       the `sh` process-substitution syntax error (2026-09-05).
 
+Reconfirmed 2026-09-05 on the installed v0.18.1 candidate at `b5e5815`, using
+temporary completion registration and refresh paths. Bash and zsh offered every
+required candidate above, the no-argument branch stayed empty, and the isolated
+mise hook loaded the zsh function without the deprecated spawned-hook warning or a
+`sh` process-substitution error.
+
 ## Switching a per-account credential store
 
 The credential moved out of the bound directory's store and into
@@ -1570,6 +1576,12 @@ account:
 - [x] `kae pin claude <other-account>` in a shared-mode directory rewrites the
       credential entry to the other account's store while leaving `CLAUDE_CONFIG_DIR`
       unchanged.
+
+Reconfirmed 2026-09-05 on the v0.18.1 candidate at `b5e5815`, with the file driver,
+file secret backend and all HOME/XDG/application roots isolated by the smoke harness.
+Both directories shared one account credential store, the migration finding appeared
+and cleared at the documented points, the reference-counted purge kept then removed
+the credential, and the shared-mode rebind changed only the credential-store entry.
 
 ## Upstream Behaviour Assumptions
 

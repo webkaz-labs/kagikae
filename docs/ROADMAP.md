@@ -45,13 +45,11 @@ provider, mode, JSON surface, tier promotion or platform.
    citations**, and **`derived_cleared` reads the whole file, so a comment can satisfy
    it**. Keep a bounded fast mutation set in the commit gate and run the full recorded
    set at release time without building a general mutation framework.
-4. **Integrate the patch** — pass [AGENTS.md](../AGENTS.md) § Validation, correctness
-   review, then quality review; make the tracked-document decisions under
-   [AGENTS.md](../AGENTS.md) § Documentation Update Checklist and the required memory
-   decision; and follow
-   [RELEASE.md](RELEASE.md)'s release procedure, including the acceptance it routes to.
-   Install the candidate locally. Pure diagnostics and every research, tier-2, TUI and
-   platform item remain out of scope.
+4. **Integrate the patch — done** — passed [AGENTS.md](../AGENTS.md) § Validation,
+   correctness review, quality review, the tracked-document and memory decisions, the
+   release checks, and the real-machine acceptance routed through
+   [RELEASE.md](RELEASE.md). The candidate is installed locally. Pure diagnostics and
+   every research, tier-2, TUI and platform item remain out of scope.
 5. **Release only after explicit approval** for the main push and CI result, followed by
    separate approval for the tag and public release. Verify the published artifacts as
    [RELEASE.md](RELEASE.md) requires.

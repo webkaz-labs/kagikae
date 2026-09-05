@@ -165,6 +165,14 @@ each switch a fresh prompt authenticated and the identity cache matched the offi
 profile endpoint; rollback returned to `side`. The run then applied `main` again,
 where a fresh prompt and profile comparison passed.
 
+Reconfirmed 2026-09-05 on the installed v0.18.1 candidate at `b5e5815`, with
+Claude Code 2.1.260 and two freshly captured accounts. A stale `side` snapshot first
+failed the required fresh-process check, so the account was logged in through the
+official flow and immediately recaptured before the measured run. `side` → `main` →
+`side`, rollback to `main`, and the final apply of `side` each authenticated in a
+fresh prompt and matched the official profile endpoint. Every transition preserved
+every byte outside the `oauthAccount` value; the final active account was `side`.
+
 For copilot (active-account pointer, all platforms — kae never touches the
 per-account keychain tokens, only `~/.copilot/config.json` `/lastLoggedInUser`,
 so it is safe on macOS):
@@ -200,6 +208,12 @@ pointer and the leading comments remained unchanged. The keychain item's attribu
 were unchanged, a fresh non-interactive prompt returned the requested reply, and
 rollback preserved the comments and restored the same pointer value. The optional
 two-account switch remains unmeasured.
+
+Reconfirmed 2026-09-05 on the installed v0.18.1 candidate at `b5e5815`, with the
+one available Copilot account. Capture, apply, fresh non-interactive prompt and
+rollback passed; the leading JSONC comments and every value outside
+`/lastLoggedInUser` survived, and the per-account keychain item was not rewritten.
+The optional two-account switch remains unmeasured.
 
 ### Bound-directory credential store (macOS, no login needed)
 
@@ -253,12 +267,26 @@ isolated store contained a plaintext `.credentials.json`. `kae unpin --purge`
 removed the binding and isolated credential, while the global `main` login remained
 authenticated.
 
+Reconfirmed 2026-09-05 on the installed v0.18.1 candidate at `b5e5815`. The
+login-free security shim produced the same independently derived service name for
+kae and Claude. In a separate real-keychain scratch directory, `side` was bound and
+then rebound to `main`; each fresh Claude process authenticated and its cache matched
+the official profile endpoint, neither store contained plaintext credentials, and
+`kae unpin --purge` removed the isolated credential. The global `side` login remained
+authenticated and active afterwards.
+
 ## Optional account-combination checks
 
 These checks are optional for v0.18.0 and for future releases. They are retained as
 repeatable coverage for an operator who has the required accounts; an incomplete or
 unrun checklist does not block a release. Each check's result paragraph owns what
 has and has not been measured.
+
+For the v0.18.1 candidate at `b5e5815`, the Copilot two-account switch, Codex
+two-account keyring round-trip, Cursor two-account/API-key directions, and Codex
+per-directory keyring check were not run. Their existing partial results below remain
+the available evidence. The last check is optional only as release evidence: Codex
+per-directory keyring support remains fail-closed and is not enabled.
 
 One boundary is not relaxed: the codex per-directory check is optional for a
 release, but it remains the mandatory evidence for enabling that capability. Codex

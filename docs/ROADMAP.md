@@ -31,11 +31,12 @@ Work these lanes in order. Within a lane, the named entries carry their own prer
 and may still refuse implementation when evidence or a mechanism is missing. Entries not
 named here retain their recorded gate; this index does not silently promote or close them.
 
-1. **Diagnostics batch** — add the missing signals or correct bounded wording from **The
-   pin index can be incomplete with nothing saying so**, **A recorded identity that is
+1. **Diagnostics batch — kae v0.18.2, Diagnostic Trust** — the active scope is in
+   [RELEASE.md](RELEASE.md) § kae v0.18.2 — Diagnostic Trust. Add the missing signals or
+   correct bounded wording from **The pin index can be incomplete with nothing saying
+   so**, **A recorded identity that is
    not an account record silently disables attribution for that account**, **`kae
-   relogin`'s success line reports a login for a store somebody else refreshed**, **A
-   directory-scoped keychain item keeps a stale account attribute**.
+   relogin`'s success line reports a login for a store somebody else refreshed**.
 2. **Research only** — do not schedule implementation for **A moved bound directory does
    not count as a reader, and its absence does not make the reader set incomplete**,
    **Attribution reads a label kae may have written itself**, **A relogin's pre-flight
@@ -1014,7 +1015,7 @@ alternative exists (`secret-tool`).
   kae's label is broken, so the reporting belongs on the label, not on the comparison.
 
 - **`kae account rename` leaves `state.synced` and the global fragment on the old
-  name** (measured 2026-08-16, **fixed in the next release candidate; not yet shipped**).
+  name** (measured 2026-08-16, **shipped in v0.18.0**).
   Before the fix, rename updated `state.Active` and the profile references and harvested
   the credential, but never touched `st.Synced` or re-ran `regenGlobalFragment`. After
   `kae use -i <tool> <old>` then a rename, the
@@ -1067,14 +1068,14 @@ alternative exists (`secret-tool`).
   shared `state.synced` condition rather than to a tool-specific rotation rule.
 
 - **`kae account rm` can remove an account while an isolated process still uses its
-  path** (measured from the command and lock paths 2026-09-04, **fixed in the next release
-  candidate; not yet shipped**). Before the fix, `buildAccountRm` refused only when
+  path** (measured from the command and lock paths 2026-09-04, **shipped in v0.18.0**).
+  Before the fix, `buildAccountRm` refused only when
   `state.active[tool]` named the account (unless `--force`), then took the ordinary tool
   and config locks. It neither checked `state.synced` nor took the
   `isolation-<tool>` lifecycle lock. `kae use -i` can select an account different from
   `state.active`, and `kae run -i` records no `state.synced` entry at all; the latter
-  holds only the shared lifecycle lock while its child runs. Therefore `account rm` can
-  delete the snapshot and its secret-backend refs while the global fragment or a child
+  holds only the shared lifecycle lock while its child runs. Therefore the old
+  `account rm` could delete the snapshot and its secret-backend refs while the global fragment or a child
   still names the account-derived home and credential store. A later refresh can leave
   the only usable copy under a name kae no longer captures, while the persistent fragment
   can keep exporting that removed name.
@@ -1165,14 +1166,13 @@ alternative exists (`secret-tool`).
   a path alias. Deleting a worktree is the "bound directory is gone" case, which the
   breadcrumb plus `pin_stale` already report.
 
-- **A directory-scoped keychain item keeps a stale account attribute**: `ApplyLive`
-  reuses an existing item's account attribute so a re-login that changed it is
-  honored, which is right for the single global item but not for a per-directory
-  one. If `$USER` changed since the item was created, kae updates the item under
-  the *old* account while claude looks it up under the new one, and the directory
-  reports "not logged in" (an honest failure, not a wrong credential — which is
-  why this is not a release gate). A directory-scoped spec should write under the
-  adapter-resolved account instead.
+- **A directory-scoped keychain item keeps a stale account attribute** — closed;
+  `TestKeychainKindRoundTrip` guards the adapter-resolved account taking precedence
+  over a stale live item's account in `ApplyLive`. Before scheduling this again,
+  read that test: the old prescription to change the write precedence describes
+  the behavior it already guards. The publication boundary can be checked with
+  `git tag --contains 4dbbdac`: the local tags checked on 2026-09-05 include
+  v0.14.0 through v0.18.1.
 - **codex's keyring store is not yet isolated per directory** — a *capability gap*
   now, not an upstream limitation. codex scopes the `Codex Auth` item by an account
   derived from the canonical `CODEX_HOME` (see [ADAPTERS.md](ADAPTERS.md)), so a

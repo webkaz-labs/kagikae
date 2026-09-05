@@ -1,5 +1,39 @@
 # Release Process
 
+## kae v0.18.2 — Diagnostic Trust
+
+Active target: correct diagnostic silence and bound the `kae relogin` success
+message to what kae observed. This is a patch release adding missing findings to
+an existing doctor report; JSON `schema_version` remains `1`.
+
+- Report an incomplete pin index once as the machine-wide `pin_index_incomplete`
+  warning, including when doctor is filtered by tool. Continue diagnosing readable
+  pins and preserve the attribution and refcount refusals.
+- Report an existing recorded identity payload that cannot serve as an account
+  record as `identity_record_invalid`, a warning scoped to its tool and account.
+  Output must not include the payload, identity values or secrets. Missing payloads
+  remain `secret_missing`; unrecorded identities keep their existing behavior, and
+  comparisons remain `identity_drift`. Do not report the same fact twice or relax
+  attribution refusals.
+- Change the strong relogin success line to
+  `Captured the changed <tool> credential for <tool>/<account> from this directory's store`.
+  Preserve harvest behavior, child exit codes, refusal conditions and the fallback
+  line.
+
+Do not add commands, reports, fields or policy. Keep pin-walker consolidation and
+bound-directory index module work after this release. An identity helper may stay
+inside the existing identity module if it avoids duplicate classification; do not
+replace harvest or restore paths. A relogin observation interface and keychain item
+identity refactor are outside this target. The research-only lane, upstream-drift
+automation, Codex per-directory keyring enablement, Tier-2 expansion, TUI, Windows
+and command-system expansion retain their [ROADMAP.md](ROADMAP.md) gates.
+
+Release readiness requires the procedure below, including release-time validation
+and required real-machine acceptance. Additional account combinations remain
+optional under [ACCEPTANCE.md](ACCEPTANCE.md) § Optional account-combination checks.
+
+## Release procedure
+
 Releases are cut by pushing a `vX.Y.Z` tag; GitHub Actions
 ([.github/workflows/release.yml](../.github/workflows/release.yml)) runs
 [GoReleaser](https://goreleaser.com) ([.goreleaser.yaml](../.goreleaser.yaml))
@@ -31,8 +65,8 @@ GoReleaser auto-generates the changelog from commits; edit the release body
 afterward for curated highlights when useful. Windows is not built
 ([ROADMAP.md](ROADMAP.md): `internal/lock` is Unix-only).
 
-**This file carries the procedure and not the history.** What shipped is the tag,
-the GitHub release it created, and `git log`. A per-release entry lived here for
+**This file carries the active target and procedure, not the history.** What shipped
+is the tag, the GitHub release it created, and `git log`. A per-release entry lived here for
 every version through v0.17.0, and the file was cumulative, so
 `git show v0.17.0:docs/RELEASE.md` is the whole set. Read an entry as of its own
 tag: its forward pointers were not maintained forward, so an item it defers to

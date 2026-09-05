@@ -2,14 +2,18 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/state"
+	"github.com/webkaz-labs/kagikae/internal/testutil/secrettest"
 )
 
 // identityDriftApp captures claude/main from a seeded login (credential plus the
@@ -290,5 +294,192 @@ func TestIdentityDriftNeverPrintsTheIdentity(t *testing.T) {
 		if strings.Contains(msg, secret) {
 			t.Errorf("the identity %q reached the doctor message: %q", secret, msg)
 		}
+	}
+}
+
+// A recorded payload is classified before comparing it with live identity. Each
+// bad shape must produce one account finding even when the live cache is absent.
+func TestDoctorIdentityRecordInvalidClassification(t *testing.T) {
+	cases := []struct {
+		name, payload string
+		invalid       bool
+	}{
+		{"malformed", `{"emailAddress":"you@example.com",`, true},
+		{"null", `null`, true},
+		{"string", `"you@example.com"`, true},
+		{"number", `42`, true},
+		{"boolean", `true`, true},
+		{"array", `["you@example.com"]`, true},
+		{"empty object", `{}`, false},
+		{"object", `{"accountUuid":"main-uuid"}`, false},
+	}
+	for _, tc := range cases {
+		for _, liveAbsent := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/liveAbsent=%t", tc.name, liveAbsent), func(t *testing.T) {
+				app := identityDriftApp(t)
+				ctx := context.Background()
+				be := testBackend(t, app)
+				if err := be.Set(ctx, account.SecretRef(constants.ToolClaude, "main", "oauth_account"), []byte(tc.payload)); err != nil {
+					t.Fatal(err)
+				}
+				if liveAbsent {
+					claudeJSON(t, app, `{"projects":{}}`)
+				}
+				report := buildDoctor(ctx, app, constants.ToolClaude, false)
+				count := 0
+				for _, c := range report.Checks {
+					if c.Code == constants.CheckIdentityRecordInvalid {
+						count++
+						if c.Tool != constants.ToolClaude || c.Status != constants.StatusWarn || !strings.Contains(c.Message, "claude/main") {
+							t.Errorf("invalid record must name tool/account and warn: %+v", c)
+						}
+					}
+					if tc.invalid && (c.Code == constants.CheckIdentityDrift || c.Code == constants.CheckSecretMissing) {
+						t.Errorf("invalid record was reported twice: %+v", c)
+					}
+				}
+				want := 0
+				if tc.invalid {
+					want = 1
+				}
+				if count != want {
+					t.Fatalf("invalid findings = %d, want %d", count, want)
+				}
+				encoded, err := json.Marshal(report)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, human := captureStdout(t, func() int {
+					printDoctorReport(report, commonOpts{Format: formatText})
+					return 0
+				})
+				for _, private := range []string{"you@example.com", "main-uuid", mainToken} {
+					if strings.Contains(string(encoded)+human, private) {
+						t.Errorf("identity or credential value leaked: %q", private)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestDoctorIdentityRecordChecksInactiveAccountsAndFilter(t *testing.T) {
+	app := identityDriftApp(t)
+	ctx := context.Background()
+	code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "side")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	be := testBackend(t, app)
+	if err := be.Set(ctx, account.SecretRef(constants.ToolClaude, "main", "oauth_account"), []byte(`null`)); err != nil {
+		t.Fatal(err)
+	}
+	st, err := app.loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Active[constants.ToolClaude] != "side" {
+		t.Fatal("main must be inactive")
+	}
+	for _, filter := range []string{"", constants.ToolClaude, constants.ToolCodex} {
+		report := buildDoctor(ctx, app, filter, false)
+		count := 0
+		for _, c := range report.Checks {
+			if c.Code == constants.CheckIdentityRecordInvalid {
+				count++
+				if !strings.Contains(c.Message, "claude/main") {
+					t.Errorf("wrong account: %+v", c)
+				}
+			}
+		}
+		want := 1
+		if filter == constants.ToolCodex {
+			want = 0
+		}
+		if count != want {
+			t.Errorf("filter %q: invalid findings = %d, want %d", filter, count, want)
+		}
+	}
+}
+
+func TestDoctorIdentityRecordMissingIsNotInvalidOrDrift(t *testing.T) {
+	for _, liveAbsent := range []bool{false, true} {
+		t.Run(fmt.Sprint(liveAbsent), func(t *testing.T) {
+			app := identityDriftApp(t)
+			ctx := context.Background()
+			if err := testBackend(t, app).Delete(ctx, account.SecretRef(constants.ToolClaude, "main", "oauth_account")); err != nil {
+				t.Fatal(err)
+			}
+			if liveAbsent {
+				claudeJSON(t, app, `{"projects":{}}`)
+			}
+			report := buildDoctor(ctx, app, constants.ToolClaude, false)
+			if _, found := findCheck(report, constants.CheckSecretMissing); !found {
+				t.Fatal("missing payload must retain secret_missing")
+			}
+			for _, code := range []string{constants.CheckIdentityRecordInvalid, constants.CheckIdentityDrift} {
+				if msg, found := findCheck(report, code); found {
+					t.Errorf("missing payload duplicated as %s: %s", code, msg)
+				}
+			}
+		})
+	}
+}
+
+func TestDoctorIdentityRecordUntrackedAndUnreadableAreNotInvalid(t *testing.T) {
+	app := identityDriftApp(t)
+	ctx := context.Background()
+	// Reuse the existing failing backend: a read error does not prove malformed data.
+	if checks := app.identityRecordChecks(ctx, erroringBackend{secrettest.NewMem()}, ""); len(checks) != 0 {
+		t.Fatalf("backend error classified as invalid: %+v", checks)
+	}
+	for _, live := range []artifact.Value{{}, {Present: true, Data: []byte(`{}`)}} {
+		if differs, err := identityArtifactDiffers(ctx, erroringBackend{secrettest.NewMem()}, "ref", true, artifact.Spec{}, live); err == nil || differs {
+			t.Fatalf("backend error must suppress drift and propagate: differs=%t err=%v", differs, err)
+		}
+	}
+	acc, found, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
+	if err != nil || !found {
+		t.Fatalf("load account: found=%t err=%v", found, err)
+	}
+	art := acc.Artifacts["oauth_account"]
+	art.Present = false
+	acc.Artifacts["oauth_account"] = art
+	if err := account.Save(app.Paths.AccountDir(constants.ToolClaude, "main"), acc); err != nil {
+		t.Fatal(err)
+	}
+	if err := testBackend(t, app).Set(ctx, art.SecretRef, []byte(`null`)); err != nil {
+		t.Fatal(err)
+	}
+	report := buildDoctor(ctx, app, constants.ToolClaude, false)
+	if msg, found := findCheck(report, constants.CheckIdentityRecordInvalid); found {
+		t.Errorf("unrecorded identity is not invalid: %s", msg)
+	}
+	if msg, found := findCheck(report, constants.CheckIdentityDrift); !found || !strings.Contains(msg, "no oauth_account identity recorded yet") {
+		t.Errorf("unrecorded identity must retain existing guidance: %s", msg)
+	}
+}
+
+func TestDoctorIdentityRecordInvalidReportedOnceAcrossBindings(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	boundStoreForClaudeMain(t, app)
+	boundStoreForClaudeMain(t, app)
+	if err := testBackend(t, app).Set(ctx, account.SecretRef(constants.ToolClaude, "main", "oauth_account"), []byte(`null`)); err != nil {
+		t.Fatal(err)
+	}
+	report := buildDoctor(ctx, app, "", false)
+	count := 0
+	for _, c := range report.Checks {
+		if c.Code == constants.CheckIdentityRecordInvalid {
+			count++
+		}
+		if c.Code == constants.CheckIdentityDrift {
+			t.Errorf("invalid recorded label must not become bound-store drift: %+v", c)
+		}
+	}
+	if count != 1 {
+		t.Fatalf("invalid record across two bindings: %d findings, want 1", count)
 	}
 }

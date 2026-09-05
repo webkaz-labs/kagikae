@@ -1331,7 +1331,7 @@ Stable check codes include: `binary_present`, `auth_present`, `driver`,
 `credential_superseded`, `secret_orphan`, `secret_missing`,
 `companion_missing`, `companion_binary`, `companion_drift`,
 `companion_token_drift`, `identity_drift`, `upstream_version`, `pin_stale`,
-`active_orphan`, `credential_unsplit`, `pin_index_incomplete`.
+`active_orphan`, `credential_unsplit`, `pin_index_incomplete`, `identity_record_invalid`.
 
 A `(tool, code)` pair is **not** unique in one report: a code is emitted per subject,
 and several subjects can share a tool. `credential_stale` is reported once per account
@@ -1495,6 +1495,14 @@ Credential-health checks (warn-level):
   no payload for it to be missing. A backend that errors on the read is not
   reported here either; `secret_backend` already reports an unusable store, and
   blaming every account for one broken backend would bury it.
+- `identity_record_invalid`: a snapshot's recorded identity payload exists and is
+  readable, but cannot be decoded as an account record (a JSON object). Warn once
+  per tool/account, including inactive snapshots, and honor the tool filter.
+  Name the account and a recapture remedy without including payload or identity
+  values. Unrecorded identities retain their existing behavior; missing payloads
+  belong to `secret_missing`. Do not also report the invalid recorded side as
+  `identity_drift`: comparisons need a usable recorded side, and attribution
+  continues to refuse an unusable one.
 
 Bound-directory checks (warn-level, unfiltered like the companion ones — a
 binding is a property of the directory, not of one tool):

@@ -199,8 +199,9 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// backend resolved above; skip when it is unavailable.
 	if err == nil {
 		report.Checks = append(report.Checks, app.credentialHealthChecks(ctx, be, toolFilter)...)
-		// live identity drift: an identity artifact rewritten outside kae. Needs
-		// the backend to read the applied payload; per-tool, so it honors the filter.
+		// Recorded identity validity and live identity drift both need the backend
+		// and honor the tool filter; validity includes inactive accounts.
+		report.Checks = append(report.Checks, app.identityRecordChecks(ctx, be, toolFilter)...)
 		report.Checks = append(report.Checks, app.identityDriftChecks(ctx, be, toolFilter)...)
 	}
 

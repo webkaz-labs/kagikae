@@ -13,6 +13,61 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
+// identityRecordChecks validates recorded identity payloads independently of active
+// state or live stores. An unusable recorded label cannot attribute any copy, so
+// report the account once and leave comparisons to identityDriftChecks.
+func (app *App) identityRecordChecks(ctx context.Context, be secret.Backend, toolFilter string) []adapter.Check {
+	accounts, err := account.List(app.Paths.AccountsDir())
+	if err != nil {
+		return nil // no inventory to classify
+	}
+	checks := []adapter.Check{}
+	specsByTool := map[string][]artifact.Spec{}
+	for _, acc := range accounts {
+		if toolFilter != "" && acc.Tool != toolFilter {
+			continue
+		}
+		specs, resolved := specsByTool[acc.Tool]
+		if !resolved {
+			// Resolve once per tool, including failures: every snapshot uses the
+			// same adapter and environment in this diagnostic frame.
+			specsByTool[acc.Tool] = nil
+			ad, err := adapter.ForTool(acc.Tool)
+			if err != nil {
+				continue
+			}
+			specs, err = ad.Artifacts(ctx, app.Env)
+			if err != nil {
+				continue
+			}
+			specsByTool[acc.Tool] = specs
+		}
+		for _, sp := range specs {
+			if !sp.IdentityOnly {
+				continue
+			}
+			art, ok := acc.Artifacts[sp.Name]
+			if !ok || !art.Present {
+				continue
+			}
+			stored, found, err := be.Get(ctx, art.SecretRef)
+			if err != nil || !found {
+				continue // missing or unreadable payloads are not invalid records
+			}
+			if _, valid := freshness.DecodeObject(stored); valid {
+				continue
+			}
+			checks = append(checks, adapter.Check{
+				Tool: acc.Tool, Code: constants.CheckIdentityRecordInvalid, Status: constants.StatusWarn,
+				Message: fmt.Sprintf("%s/%s: recorded identity is not an account record; kae cannot use it to attribute credentials; after verifying the tool's account, record it with `kae add --no-login %s %s`",
+					acc.Tool, acc.Name, acc.Tool, acc.Name),
+			})
+			break // one finding per account, even with several identity artifacts
+		}
+	}
+	return checks
+}
+
 // identityDriftChecks compares each tool's live identity-only artifacts against
 // what the active account's snapshot holds. kae applies the identity artifact
 // together with the credential, so the live value is expected to still be the one
@@ -114,28 +169,25 @@ func (app *App) identityDriftChecks(ctx context.Context, be secret.Backend, tool
 	return checks
 }
 
-// identityArtifactDiffers reports whether a live identity-only artifact still
-// names the account the snapshot recorded. It is the identity counterpart of
-// snapshotArtifactDiffers and treats presence the same way, but two present
-// payloads are compared through identityDiffers instead of byte-for-byte. err is
-// the backend read error; the caller chooses whether to propagate it.
-//
-// A stored payload that has gone **missing** is not a difference here, unlike for
-// a credential: there is nothing to compare against, and `secret_missing` reports
-// exactly that state with the remedy that fits it (`kae add --no-login`, which
-// records the payload again). Calling it drift produced two warnings for one fact,
-// the second of them recommending `kae use` — a switch that would apply the
-// identity as *absent*, so it cannot restore what the message says is missing.
+// identityArtifactDiffers compares a live identity with a usable recorded object
+// for doctor's global frame. Missing stored payloads belong to secret_missing;
+// invalid objects belong to identity_record_invalid. An unreadable stored payload
+// skips comparison and returns its error. Read that side before comparing presence,
+// so a missing live cache cannot duplicate either finding. This diagnostic gate
+// does not change identityDiffers or attribution.
 func identityArtifactDiffers(ctx context.Context, be secret.Backend, storedRef string, storedPresent bool, sp artifact.Spec, live artifact.Value) (bool, error) {
-	if storedPresent != live.Present {
-		return true, nil
-	}
-	if !live.Present {
-		return false, nil
+	if !storedPresent {
+		return live.Present, nil
 	}
 	stored, found, err := be.Get(ctx, storedRef)
 	if err != nil || !found {
 		return false, err
+	}
+	if _, valid := freshness.DecodeObject(stored); !valid {
+		return false, nil
+	}
+	if !live.Present {
+		return true, nil
 	}
 	return identityDiffers(sp, stored, live.Data), nil
 }

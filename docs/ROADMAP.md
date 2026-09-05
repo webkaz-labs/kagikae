@@ -983,24 +983,11 @@ alternative exists (`secret-tool`).
   logins rather than only within one.
 
 - **A recorded identity that is not an account record silently disables attribution
-  for that account** (measured 2026-08-05 while reviewing the bound-directory
-  `identity_drift`, **not fixed**). An identity payload that is well-formed JSON but not
-  an object — `/oauthAccount` being `null` is the reachable shape — names no account, so
-  it is refused as missing evidence in both directions ([ADAPTERS.md](ADAPTERS.md)
-  § Per-directory credential store, which is normative). That refusal is right; what is
-  wrong is that nothing tells the user their *recorded* label is unusable, and one bad
-  capture propagates: `writeDirIdentity` applies whatever the snapshot holds, so every
-  bound store of that account gets the non-record too, and each of them is then
-  permanently silent on identity and unharvestable.
-  It is not completely unreported today — the **global** `identity_drift` frame fires for
-  it, because a non-object recorded side against a readable live one falls to the byte
-  comparison and differs — but only while that account is the globally active one. For a
-  non-active account nothing in any frame says so. The fix is a check of kae's own
-  recorded payload rather than of a comparison: `secret_missing` is the nearest existing
-  shape (a snapshot declaring a payload the backend lacks), and this is the same class
-  one step further in — a payload that is there and cannot serve its purpose. Note the
-  refusals must not be relaxed to close it: silence about the *store* is correct when
-  kae's label is broken, so the reporting belongs on the label, not on the comparison.
+  for that account** — implemented for the v0.18.2 target as
+  `identity_record_invalid`; [CLI.md](CLI.md) § `kae doctor --json` owns the finding.
+  Attribution still requires an account record. The diagnostic belongs to the
+  snapshot, including when inactive, rather than to each bound store that carries
+  its unusable identity.
 
 - **`kae account rename` leaves `state.synced` and the global fragment on the old
   name** (measured 2026-08-16, **shipped in v0.18.0**).

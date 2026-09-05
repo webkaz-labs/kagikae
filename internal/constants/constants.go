@@ -228,6 +228,8 @@ const (
 	// stored against live, compared on the spec's IdentityKeys (the keys that name
 	// the account) and not byte-wise, since the tool renews the rest on its own.
 	CheckIdentityDrift = "identity_drift"
+	// CheckIdentityRecordInvalid: a recorded identity payload is not an account record.
+	CheckIdentityRecordInvalid = "identity_record_invalid"
 	// CheckUpstreamVersion: the installed tool is a newer major/minor than the
 	// version its adapter's behaviour assumptions were verified against.
 	CheckUpstreamVersion = "upstream_version"

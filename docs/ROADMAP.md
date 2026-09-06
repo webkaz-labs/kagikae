@@ -37,6 +37,11 @@ measured decision against command-wide index memoization. The completed
 check-retention and account-lifecycle decisions. Neither authorizes
 implementation of the research lanes below.
 
+Before the research lanes, complete the bounded
+[release-verifier lifecycle plan](plans/release-verifier-lifecycle.md). Its synthetic
+timeout and parent-exit reproduction supplies the implementation prerequisite;
+it does not open the authentication research entries below.
+
 1. **Research only** — do not schedule implementation for **A moved bound directory does
    not count as a reader, and its absence does not make the reader set incomplete**,
    **Attribution reads a label kae may have written itself**, **A relogin's pre-flight

@@ -18,6 +18,12 @@ as described below.
 
 ## Release procedure
 
+The next patch candidate follows the
+[release-verifier lifecycle plan](plans/release-verifier-lifecycle.md): terminate
+owned command descendants and reclaim installer-smoke temporary roots on failure
+or interruption. Application authentication behavior is outside this change.
+The version is selected when the implementation and acceptance are ready.
+
 Releases are cut by pushing a `vX.Y.Z` tag; GitHub Actions
 ([.github/workflows/release.yml](../.github/workflows/release.yml)) runs
 [GoReleaser](https://goreleaser.com) ([.goreleaser.yaml](../.goreleaser.yaml))

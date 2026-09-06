@@ -141,3 +141,16 @@ func flagCompletions(cmd string) []string {
 	})
 	return out
 }
+
+// valuedFlagCompletions lists both dash spellings accepted by flag.FlagSet.
+// Shells use these tokens only to consume values, not as display candidates.
+func valuedFlagCompletions(cmd string) []string {
+	var out []string
+	flagSetFor(cmd).VisitAll(func(f *flag.Flag) {
+		if value, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && value.IsBoolFlag() {
+			return
+		}
+		out = append(out, "-"+f.Name, "--"+f.Name)
+	})
+	return out
+}

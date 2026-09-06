@@ -105,30 +105,93 @@ func completionScript(shell string) (string, bool) {
 
 const bashCompletionScript = `# kae bash completion — eval "$(kae completion bash)"
 # Dynamic: candidates come from ` + "`kae __complete`" + `, so they track live state.
+# Reconstruct arguments without evaluation: COMP_WORDS loses whether '=' was
+# adjacent to a flag, separated by whitespace, or part of a longer value.
+_kae_bash_words() {
+  # Readline's cursor offset is bytes, including in a multibyte locale.
+  local LC_ALL=C
+  local line="${COMP_LINE:0:COMP_POINT}" ch quote='' token='' started=0 escaped=0 j
+  kae_words=()
+  for (( j=0; j<${#line}; j++ )); do
+    ch="${line:j:1}"
+    if [ "$escaped" -eq 1 ]; then
+      escaped=0
+      if [ "$ch" != $'\n' ]; then token+="$ch"; started=1; fi
+      continue
+    fi
+    if [ "$quote" = "'" ]; then
+      if [ "$ch" = "'" ]; then quote=''; else token+="$ch"; fi
+      continue
+    fi
+    if [ "$ch" = '\' ]; then
+      if [ "$quote" = '"' ]; then
+        case "${line:j+1:1}" in
+          '$'|` + "'`'" + `|'"'|'\'|$'\n') escaped=1 ;;
+          *) token+="$ch" ;;
+        esac
+      else
+        escaped=1
+      fi
+      continue
+    fi
+    if [ "$quote" = '"' ]; then
+      if [ "$ch" = '"' ]; then quote=''; else token+="$ch"; fi
+      continue
+    fi
+    case "$ch" in
+      "'"|'"') quote="$ch"; started=1 ;;
+      ' '|$'\t'|$'\n')
+        if [ "$started" -eq 1 ]; then kae_words+=("$token"); token=''; started=0; fi
+        ;;
+      ';'|'|'|'&') kae_words=(); token=''; started=0 ;;
+      *) token+="$ch"; started=1 ;;
+    esac
+  done
+  # The last element is always the current argument, including an empty slot.
+  kae_words+=("$token")
+}
 _kae() {
   local cur cmd i
-  cur="${COMP_WORDS[COMP_CWORD]}"
-  if [ "$COMP_CWORD" -eq 1 ]; then
+  local -a kae_words
+  local cursor=$COMP_CWORD
+  kae_words=("${COMP_WORDS[@]}")
+  if [ -n "${COMP_LINE-}" ]; then
+    _kae_bash_words
+    cursor=$((${#kae_words[@]} - 1))
+  fi
+  cur="${kae_words[cursor]}"
+  if [ "$cursor" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "$(kae __complete commands)" -- "$cur") )
     return
   fi
-  cmd="${COMP_WORDS[1]}"
-  # Typing a flag: complete this command's flag names.
+  cmd="${kae_words[1]}"
+  COMPREPLY=()
+  # Consume registered flag values before routing positionals. Like splitArgs,
+  # a bare -- is a flag token; it does not change the parsing mode.
+  local valued=" $(kae __complete valued-flags "$cmd" | tr '\n' ' ') "
+  local pending=0 word
+  local -a pos=()
+  for (( i=2; i<cursor; i++ )); do
+    word="${kae_words[i]}"
+    if [ "$pending" -eq 1 ]; then
+      pending=0
+      continue
+    fi
+    case "$word" in
+      -*=*) ;;
+      -*)
+        case "$valued" in *" $word "*) pending=1 ;; esac
+        ;;
+      *) pos+=("$word") ;;
+    esac
+  done
+  if [ "$pending" -eq 1 ]; then return; fi
+  # An attached value is not a flag-name completion request.
+  case "$cur" in -*=*) return ;; esac
   if [[ "$cur" == -* ]]; then
     COMPREPLY=( $(compgen -W "$(kae __complete flags "$cmd")" -- "$cur") )
     return
   fi
-  # Positional args after the command, excluding flags, up to the cursor — so a
-  # boolean flag like --no-login / -i before the positionals does not shift the
-  # completion (np is the positional slot the cursor is at). A flag that takes a
-  # value still does: its value is not a flag word (docs/ROADMAP.md).
-  local -a pos=()
-  for (( i=2; i<COMP_CWORD; i++ )); do
-    case "${COMP_WORDS[i]}" in
-      -*) ;;
-      *) pos+=("${COMP_WORDS[i]}") ;;
-    esac
-  done
   local np=${#pos[@]}
   case "$cmd" in
     use|u|pin|p|run|r)
@@ -219,17 +282,29 @@ _kae() {
     return
   fi
   cmd="${words[2]}"
-  # Typing a flag: complete this command's flag names.
+  local -a valued
+  valued=(${(f)"$(kae __complete valued-flags "$cmd")"})
+  local pending=0 word
+  for (( i=3; i<CURRENT; i++ )); do
+    word="${words[i]}"
+    if (( pending )); then
+      pending=0
+      continue
+    fi
+    case "$word" in
+      -*=*) ;;
+      -*)
+        if (( ${valued[(Ie)$word]} )); then pending=1; fi
+        ;;
+      *) pos+=("$word") ;;
+    esac
+  done
+  if (( pending )); then return; fi
+  case "${words[CURRENT]}" in -*=*) return ;; esac
   if [[ "${words[CURRENT]}" == -* ]]; then
     compadd -- ${(f)"$(kae __complete flags $cmd)"}
     return
   fi
-  # Positional args after the command, excluding flags, up to the cursor, so a
-  # boolean flag (--no-login / -i) before the positionals does not shift
-  # completion. A flag that takes a value still does (docs/ROADMAP.md).
-  for (( i=3; i<CURRENT; i++ )); do
-    [[ "${words[i]}" == -* ]] || pos+=("${words[i]}")
-  done
   local np=${#pos[@]}
   case "$cmd" in
     use|u|pin|p|run|r)
@@ -319,19 +394,34 @@ function __kae_complete
         return
     end
     set -l cmd $tokens[2]
-    # Typing a flag: complete this command's flag names.
+    set -l valued (kae __complete valued-flags $cmd)
+    set -l pending 0
+    set -l pos
+    for i in (seq 3 $n)
+        set -l word $tokens[$i]
+        if test $pending -eq 1
+            set pending 0
+            continue
+        end
+        if string match -q -- '-*=*' $word
+            continue
+        else if string match -q -- '-*' $word
+            if contains -- $word $valued
+                set pending 1
+            end
+        else
+            set -a pos $word
+        end
+    end
+    if test $pending -eq 1
+        return
+    end
+    if string match -q -- '-*=*' (commandline -ct)
+        return
+    end
     if string match -q -- '-*' (commandline -ct)
         kae __complete flags $cmd
         return
-    end
-    # Positional args after the command, excluding flags, so a boolean flag
-    # (--no-login / -i) before the positionals does not shift completion. A flag
-    # that takes a value still does (docs/ROADMAP.md).
-    set -l pos
-    for i in (seq 3 $n)
-        if not string match -q -- '-*' $tokens[$i]
-            set -a pos $tokens[$i]
-        end
     end
     set -l np (count $pos)
     switch $cmd

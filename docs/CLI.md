@@ -969,20 +969,20 @@ and that companion's knob names (`kae companion add main git <TAB>` →
 `kae env <TAB>` → `set`/`unset`/`list`, then — after `set` or `unset` only — a
 tool and that tool's accounts, since `env list` takes no arguments and offering
 one would suggest a word the command rejects. `kae backup <TAB>` → `list`.
-Positions are computed from the **flag-filtered** argument list, so a **boolean**
-flag before the positionals does not shift completion (`kae add --no-login
-<TAB>` still completes tools; `kae use -i claude <TAB>` completes claude's
-accounts). A flag that takes a *value* still shifts them, which costs candidates
-and never an action ([ROADMAP.md](ROADMAP.md) § Command-system expansion owns
-why, and what the fix would be).
+Positions are computed after excluding flags and the values consumed by the
+command's registered valued flags. Thus `kae env --config /p set <TAB>` still
+completes tools, and `kae use -i claude <TAB>` completes claude's accounts.
+An attached `=` value is excluded too. While a valued flag's argument is being
+entered, the scripts do not offer unrelated positional or flag-name candidates.
 When the current word starts with `-`, the command's **flag names** are
 completed (`kae add --<TAB>` → `--no-login` / `--restore`; `kae run -<TAB>` →
 `-s` / `-i` / `--env` / `-P`).
 
-`kae __complete <commands|tools|companions|companion-knobs <id>|profiles|accounts [<tool>]|flags <command>>`
+`kae __complete <commands|tools|companions|companion-knobs <id>|profiles|accounts [<tool>]|flags <command>|valued-flags <command>>`
 is read-only, takes no locks, prints one candidate per line, and is
 intentionally hidden from `kae help`. The `flags` kind lists a command's flags from the same
-per-command registrars the parser uses, so the completion set never drifts. Its
+per-command registrars the parser uses. `valued-flags` reads their arity and
+returns the accepted dash spellings for the scripts to consume values. Its
 line-oriented output is an internal contract consumed by the generated scripts
 and the `kae mise init` task `complete` directives — it is not the JSON contract
 (`schema_version` is unaffected).

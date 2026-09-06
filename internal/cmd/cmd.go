@@ -30,7 +30,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.18.2"
+	toolVersion = "v0.18.3"
 )
 
 // Root dispatches the command line.
@@ -226,7 +226,7 @@ Usage:
   kae init                             create config and directories
   kae edit                             open the config in $VISUAL / $EDITOR
   kae doctor [tool] [--json]           environment / auth health checks (alias: kae d)
-  kae add <tool> <account>             register an account (official login
+  kae add <tool> [<account>]           register an account (official login
                                        flow + snapshot; --no-login snapshots
                                        the current login instead)
   kae use [-s|-i] [-P <profile>]       bare: resolve the profile and apply it

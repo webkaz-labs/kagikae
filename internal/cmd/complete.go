@@ -32,6 +32,7 @@ import (
 //   - companion-knobs <id> — the named companion's knob names (its Spec)
 //   - profiles         — config profile names
 //   - accounts [<tool>]— captured account names, optionally scoped to one tool
+//   - valued-flags <command> — flags whose following word is a value
 //   - flags <command>  — a command's flags (--name / -n), from the same
 //     registrars the parser uses (flagspec.go), so the list never drifts
 func CmdComplete(_ context.Context, args []string) int {
@@ -58,14 +59,18 @@ func CmdComplete(_ context.Context, args []string) int {
 			}
 			printCompletionLines(companionKnobNames(id))
 			return constants.ExitOK
-		case "flags":
+		case "flags", "valued-flags":
 			// A command's flags are compile-time, so flag completion (the current
 			// word starts with -) skips newApp's config load like commands/tools.
 			cmd := ""
 			if len(args) > 1 {
 				cmd = args[1]
 			}
-			printCompletionLines(flagCompletions(cmd))
+			if args[0] == "valued-flags" {
+				printCompletionLines(valuedFlagCompletions(cmd))
+			} else {
+				printCompletionLines(flagCompletions(cmd))
+			}
 			return constants.ExitOK
 		}
 	}
@@ -92,12 +97,16 @@ func runComplete(app *App, args []string) int {
 			id = args[1]
 		}
 		printCompletionLines(companionKnobNames(id))
-	case "flags":
+	case "flags", "valued-flags":
 		cmd := ""
 		if len(args) > 1 {
 			cmd = args[1]
 		}
-		printCompletionLines(flagCompletions(cmd))
+		if args[0] == "valued-flags" {
+			printCompletionLines(valuedFlagCompletions(cmd))
+		} else {
+			printCompletionLines(flagCompletions(cmd))
+		}
 	case "profiles":
 		printCompletionLines(app.Config.ProfileNames())
 	case "accounts":

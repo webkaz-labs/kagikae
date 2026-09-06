@@ -901,13 +901,13 @@ func TestCompletionPositionalRouting(t *testing.T) {
 		flagSkip string              // the construct that drops flag tokens from positionals
 		want     map[string][]string // case label -> literals its branch must contain
 	}{
-		{"bash", `-*) ;;`, map[string][]string{
+		{"bash", `__complete valued-flags`, map[string][]string{
 			"use":     {`accounts "${pos[0]}"`},
 			"account": {`"$np" -eq 1`, `__complete tools`, `"$np" -eq 2`, `accounts "${pos[1]}"`},
 			"env":     {`"${pos[0]}" != "list"`, `"$np" -eq 1`, `__complete tools`, `"$np" -eq 2`, `accounts "${pos[1]}"`},
 			"backup":  {`"$np" -eq 0`, `compgen -W "list"`},
 		}},
-		{"zsh", `== -* ]] || pos`, map[string][]string{
+		{"zsh", `__complete valued-flags`, map[string][]string{
 			"use":     {`accounts ${pos[1]}`},
 			"account": {`np == 1`, `__complete tools`, `np == 2`, `accounts ${pos[2]}`},
 			"env":     {`"${pos[1]}" != list`, `np == 1`, `__complete tools`, `np == 2`, `accounts ${pos[2]}`},

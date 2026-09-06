@@ -3,21 +3,13 @@
 # `mise run smoke-selftest` (which `mise run check` includes).
 #
 # The fixtures are committed and cheap on purpose — no `kae` build, no network — so a
-# guard's claim is checked on every commit rather than vouched for in prose and re-run
-# by hand when somebody remembers.
+# guard's claim is checked by the full gate.
 #
-# READ THIS BEFORE EDITING EITHER SCRIPT. **The guards in these two files have no
-# tests of their own** (`EXPECTED_GUARDS` at the bottom is the one place that counts
-# them; this sentence deliberately does not repeat the number, because the two drifted
-# apart the moment a guard was added). Four separate times a change made for an unrelated
-# reason switched a guard off while the suite went on reporting every guard
-# holding: a list derived from its own subject, a containment check weakened to a
-# proxy, a fixture count shortened to the one value that equals the pass status,
-# and a guard whose empty input was its success branch. Nothing here would have
-# noticed any of them. So: **any change to `smoke-run.sh` or this file must be
-# mutation-tested by hand** — break the thing the guard protects and confirm the
-# guard fails — because no automated check will. `docs/ROADMAP.md` carries the
-# committed-mutation-table proposal that would close this properly.
+# READ THIS BEFORE EDITING EITHER SCRIPT. `smoke-run-mutations.sh` pairs the
+# guards with concrete failing mutations; its full mode checks the table against
+# this selftest's actual verdicts. Add a mutation when adding a guard, and run
+# full mode when changing these scripts. `EXPECTED_GUARDS` below catches a guard
+# being removed, not a predicate being weakened in place.
 
 set -u
 
@@ -217,6 +209,38 @@ check 'an append to info/exclude is caught' 1 "$rc" 'LEAK' "$tmp/out"
 #     function reads, so this perturbs nothing and is deterministic everywhere.
 ( excl="$tmp/fake-excl"; excl_existed=0; : > "$excl"; restore_excl; [ ! -e "$excl" ] )
 check 'restore_excl removes a file that did not exist before' 0 $?
+
+# Sourcing the preamble must not escape the runner's cleanup, including when a
+# block fails or changes HOME afterwards. The outside sentinel and the mutant's
+# unowned allocation both live inside this selftest's own temporary parent.
+mkdir -p "$tmp/outside-keep" "$tmp/unowned"
+printf 'keep\n' > "$tmp/outside-keep/sentinel"
+cleanup_failed=0
+for ending in true false; do
+  f=$(doc "nested-$ending" '## NestedHome' '. scripts/smoke-env.sh' \
+    'printf "NESTED_HOME=%s\n" "$HOME"' ': > "$HOME/fixture-credential"' \
+    'HOME="$SMOKE_OUTSIDE_KEEP"' "$ending")
+  SMOKE_OUTSIDE_KEEP="$tmp/outside-keep" SMOKE_UNOWNED_PARENT="$tmp/unowned" run "$f" '## NestedHome'; rc=$?
+  want=0; if [ "$ending" = false ]; then want=1; fi
+  tr=$(transcript)
+  nested=$(sed -n 's/^NESTED_HOME=//p' "$tr")
+  if [ "$rc" -ne "$want" ] || [ -z "$nested" ] || [ -e "$nested" ] ||
+    [ "$(cat "$tmp/outside-keep/sentinel" 2>/dev/null)" != keep ]; then
+    cleanup_failed=1
+  fi
+done
+check 'sourced HOME is reclaimed on success and failure without deleting outside files' 0 "$cleanup_failed"
+
+# Allocation failure is a source failure, not permission to export empty roots.
+# The failing allocator performs no IO, so even a broken preamble stays isolated.
+( HOME="$tmp/caller"; XDG_CONFIG_HOME=before-config; XDG_DATA_HOME=before-data; \
+  XDG_STATE_HOME=before-state; XDG_RUNTIME_DIR=before-runtime; NO_COLOR=before-color; \
+  mktemp() { return 1; }; \
+  if . scripts/smoke-env.sh; then exit 1; fi; \
+  test "$HOME" = "$tmp/caller" && test "$XDG_CONFIG_HOME" = before-config && \
+  test "$XDG_DATA_HOME" = before-data && test "$XDG_STATE_HOME" = before-state && \
+  test "$XDG_RUNTIME_DIR" = before-runtime && test "$NO_COLOR" = before-color )
+check 'failed preamble allocation preserves the caller environment' 0 $?
 
 # 2. Every root must land INSIDE the sandbox. Asserting only "not the value I
 #    planted" is a weaker thing that reads the same: pointing a root at some
@@ -594,8 +618,8 @@ printf '\n'
 # condition *in place* (`-eq` → `-ge`) is undetectable here, as it is in any test
 # suite. Four more limits of the same kind:
 #   * a root escaping via a symlink rather than via `..` is not refused;
-#   * `TMPDIR` in ROOTS proves the runner sets it, not that it has any effect
-#     (darwin's `mktemp` ignores TMPDIR entirely, so there it sandboxes nothing);
+#   * `TMPDIR` in ROOTS does not prove arbitrary child programs respect it; the
+#     sourced preamble's explicit template and reclamation are checked above;
 #   * guard 0b is one-directional by design — it catches a root the preamble has
 #     and the runner lacks, not one *missing from the preamble*, which is what
 #     the 2026-07-31 incident actually was. The reverse check needs an exception
@@ -604,7 +628,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=35
+EXPECTED_GUARDS=37
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

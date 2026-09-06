@@ -43,8 +43,8 @@ def isolated_env(repo):
     # Only this independently owned parent is ever recursively removed, even if
     # the sourced preamble fails or returns a malformed HOME.
     with tempfile.TemporaryDirectory(prefix="kae-naming-") as owned:
-        p = subprocess.run(["/bin/sh", "-eu", "-c", 'mktemp() { /usr/bin/mktemp -d "$NAMING_PARENT/home.XXXXXXXX"; }; . "$1"; env -0', "sh", str(repo / "scripts/smoke-env.sh")],
-                           env={"PATH": "/usr/bin:/bin", "TMPDIR": owned, "NAMING_PARENT": owned}, check=True, capture_output=True)
+        p = subprocess.run(["/bin/sh", "-eu", "-c", '. "$1"; env -0', "sh", str(repo / "scripts/smoke-env.sh")],
+                           env={"PATH": "/usr/bin:/bin", "TMPDIR": owned}, check=True, capture_output=True)
         env = dict(item.decode().split("=", 1) for item in p.stdout.split(b"\0") if item)
         home = Path(env.get("HOME", ""))
         if not home.is_absolute() or not home.is_dir() or home.resolve().parent != Path(owned).resolve():

@@ -16,6 +16,24 @@ stayed there, beside the surfaces they check.
 candidate revision it was run against and the release tag when one exists.** This
 document owns the results; results recorded elsewhere are invisible to the next run.
 
+## Applicability for a maintainer-only release
+
+A release that changes only maintainer tooling may reuse recorded live-account
+acceptance for unchanged application behavior. Compare the candidate with the
+accepted revision: relevant application sources, dependencies and build inputs
+must be unchanged, apart from the reviewed version literal and its report test.
+Confirm the reviewed upstream version and driver mechanism, and run the installed
+behavior audit. Compare artifact digests when the earlier record contains them;
+without an earlier digest, record version-level agreement rather than claiming
+identical bytes. A contrary incident, relevant drift, changed assertion or unclear
+impact requires the affected live check again, with the session protections below.
+
+Record which original results are reused, their original revision/date, the
+comparison and its limits. Reuse is not a new live run or assurance that a current
+login is healthy. Re-run affected maintainer checks and isolated smokes; verify the
+newly published artifacts and installer. Application changes still require the
+affected live acceptance before release.
+
 ## Credential-expiry observation — does `refreshTokenExpiresAt` predict the login's death? (**open**)
 
 **If claude has just asked for a login it did not ask for before: read that account's

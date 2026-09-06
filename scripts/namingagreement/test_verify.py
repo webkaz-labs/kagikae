@@ -51,6 +51,8 @@ class VerificationTests(unittest.TestCase):
             (root / "shim/security").unlink()
             with self.assertRaises(verify.Refused):
                 verify.preflight(env, root / "shim/security")
+        self.assertFalse(root.exists())
+        self.assertFalse(root.parent.exists())
 
     def test_failed_preamble_never_yields_unowned_home(self):
         repo = Path(__file__).resolve().parents[2]
@@ -60,6 +62,27 @@ class VerificationTests(unittest.TestCase):
                 with self.subTest(output=output), self.assertRaises(verify.Refused):
                     with verify.isolated_env(repo):
                         self.fail("invalid preamble yielded an environment")
+
+    def test_preamble_failure_reclaims_only_its_owned_parent(self):
+        repo = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as outside:
+            sentinel = Path(outside) / "keep"
+            sentinel.write_text("keep")
+            with patch("verify.subprocess.run") as command:
+                command.return_value.stdout = ("HOME=" + outside + "\0").encode()
+                with self.assertRaises(verify.Refused):
+                    with verify.isolated_env(repo):
+                        self.fail("unowned HOME was accepted")
+                owned = Path(command.call_args.kwargs["env"]["TMPDIR"])
+                self.assertFalse(owned.exists())
+                self.assertEqual(sentinel.read_text(), "keep")
+            with patch("verify.subprocess.run", side_effect=verify.subprocess.CalledProcessError(1, "preamble")) as command:
+                with self.assertRaises(verify.subprocess.CalledProcessError):
+                    with verify.isolated_env(repo):
+                        self.fail("failed preamble yielded an environment")
+                owned = Path(command.call_args.kwargs["env"]["TMPDIR"])
+                self.assertFalse(owned.exists())
+                self.assertEqual(sentinel.read_text(), "keep")
 
 
 if __name__ == "__main__":

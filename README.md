@@ -476,7 +476,8 @@ mise run check        # see mise.toml [tasks.check] for what it depends on
 git diff --check
 ```
 
-`mise run check` is the authoritative pre-commit gate. CI
+Choose the pre-commit gate using [AGENTS.md](AGENTS.md) § Validation.
+`mise run check` remains the full authoritative gate. CI
 ([.github/workflows/ci.yml](.github/workflows/ci.yml), which calls `check.yml`) runs a
 **subset** of it, so most of the gate — the formatter that actually gates locally
 (gofumpt/goimports), the static analysers, `shellcheck`, `build` and the selftests among

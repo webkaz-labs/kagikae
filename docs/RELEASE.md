@@ -13,26 +13,22 @@ Published archives, SHA-256 checksums, GitHub provenance attestations and the
 installer were verified on 2026-09-06 for v0.18.3. The macOS arm64 archive and
 isolated installer both reported `kae v0.18.3`.
 
-## Next release — necessary verification and delivery efficiency
+## Next release — kae v0.18.4
 
-The next release follows the agreed
-[verification-efficiency plan](plans/verification-efficiency.md). It first audits
-which checks and work are necessary, then removes demonstrated duplication and
-adjusts execution timing, optimizes retained checks, and delivers reusable
-release verification and selected CI checks. Account mutation lifecycle
-refactoring belongs to this release when the plan's characterization and depth
-decision support it; it is not an unconditional rewrite.
+This patch release follows the
+[verification-efficiency plan](plans/verification-efficiency.md): verification by
+change impact, faster docs selftests, owned smoke HOME cleanup, saved release
+smokes and a Go published-artifact verifier. Account lifecycle refactoring was not
+adopted after comparing its differing lock lifetimes and failure recovery; the
+plan retains the decision. Application behavior is unchanged apart from the
+reported version, so this is a patch release rather than a new command surface.
 
-The plan owns task status, dependencies and acceptance evidence. Before tagging,
-resolve each candidate as implemented or not adopted with a reason, verify the
-retained checks' required failure detection, and complete the applicable release
-procedure below. Existing validation rules remain effective until their
-replacements are recorded and verified. Publication and published-asset checks
-remain part of completing this release.
-
-Choose the version from the accepted changes during the plan's integration step;
-no version bump or release date is set yet. The v0.18.3 record above describes the
-published baseline, not completion of this work.
+The plan owns progress and evidence. Resolve each candidate as implemented or
+not adopted with a reason, verify required failure detection, and complete the
+procedure below. Live acceptance applicability and any reuse of prior evidence
+are recorded in [ACCEPTANCE.md](ACCEPTANCE.md). Publication and verification of the
+new assets remain part of completing this release; the v0.18.3 record above is
+its published baseline.
 
 ## Release procedure
 
@@ -61,7 +57,15 @@ by hand — the tag does it.
    (`kae_<version>_<os>_<arch>.tar.gz` + `checksums.txt`), creates the release
    with a grouped changelog, and attests the archives named by the release
    checksum manifest.
-5. Verify the published assets and `scripts/install.sh` against the new tag.
+5. Run `mise run release-verify -- vX.Y.Z` from the repository root, alone while
+   no other task edits the checkout. It downloads through `gh`, verifies the
+   manifest, archive contents and provenance attestations, then checks the native
+   version and installer in isolated environments. The installer receives only
+   the verified assets through a non-forwarding curl fixture; its HTTP transport
+   is not tested by this command. JSON `status` is `success`, `failed`, or
+   `unavailable`. Success exits zero; the other statuses exit nonzero through
+   `go run`, so use the JSON status to distinguish them. A missing prerequisite
+   is not a passing check.
 
 GoReleaser auto-generates the changelog from commits; edit the release body
 afterward for curated highlights when useful. Windows is not built

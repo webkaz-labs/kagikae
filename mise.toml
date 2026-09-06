@@ -121,6 +121,17 @@ description = "Compare production Claude credential write addressing with a revi
 depends = ["naming-agreement-selftest"]
 run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} python3 -B scripts/namingagreement/verify.py"
 
+[tasks.release-verify]
+description = "Verify an explicit published vX.Y.Z tag, provenance and isolated installer"
+run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go run ./scripts/releaseverify"
+
+[tasks.release-smoke]
+description = "Run saved completion and per-account store smoke checks serially"
+run = """
+bash scripts/smoke-run.sh '## Shell completion for'
+bash scripts/smoke-run.sh '## Switching a per-account credential store'
+"""
+
 [tasks.docs-check]
 description = "Reject a broken markdown link, a section citation naming a section its target declares nowhere, a docs/ file the Documentation Map omits, or a root document that is missing, empty or not a regular file"
 run = "bash scripts/check-docs.sh"

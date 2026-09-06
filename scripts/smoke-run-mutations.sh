@@ -45,10 +45,12 @@ subst_once() {
 }
 
 mutate() {
-  dir=$1 id=$2 runner=$dir/scripts/smoke-run.sh self=$dir/scripts/smoke-run-selftest.sh
+  dir=$1 id=$2 runner=$dir/scripts/smoke-run.sh self=$dir/scripts/smoke-run-selftest.sh preamble=$dir/scripts/smoke-env.sh
   case $id in
     drop-cleared) subst_once "$runner" '-u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME' '-u CLAUDE_CONFIG_DIR -u COPILOT_HOME' ;;
     empty-preamble) subst_once "$self" "grep -oE '^export [A-Z_]+' scripts/smoke-env.sh" "grep -oE '^zzexport [A-Z_]+' scripts/smoke-env.sh" ;;
+    unowned-preamble) subst_once "$preamble" '"${TMPDIR:-/tmp}/kae-smoke.XXXXXXXX"' '"${SMOKE_UNOWNED_PARENT:-${TMPDIR:-/tmp}}/kae-smoke.XXXXXXXX"' ;;
+    failed-allocation) subst_once "$preamble" ' || { unset kae_smoke_home; return 1; }' '' ;;
     checkout-leak) subst_once "$runner" 'if [ "$status_before" != "$status_after" ]; then' 'if [ "$status_before" = "$status_after" ]; then' ;;
     exclude-leak) subst_once "$runner" 'if [ "$excl_before" != "$excl_after" ]; then' 'if [ "$excl_before" = "$excl_after" ]; then' ;;
     restore-missing) subst_once "$self" 'else rm -f "$excl"; fi' 'else :; fi' ;;
@@ -139,6 +141,8 @@ fast|many-257|256 failing lines do not wrap to exit 0
 full|checkout-leak|a block touching the checkout is caught
 full|exclude-leak|an append to info/exclude is caught
 full|restore-missing|restore_excl removes a file that did not exist before
+full|unowned-preamble|sourced HOME is reclaimed on success and failure without deleting outside files
+full|failed-allocation|failed preamble allocation preserves the caller environment
 full|drop-cleared|only 7 of 8 tool variables cleared|all 8 inherited tool variables are cleared
 full|driver|claude is forced onto the file driver
 full|ignore-failures|a failing line in the middle fails the run

@@ -43,6 +43,8 @@ kagikae/
                           #   `X.md § Name` citation, one stream with a kind column
     docscan/              # `mise run docs-scan`: reports prose two documents carry
                           #   twice
+    releaseverify/        # published artifact verification; stdlib Go command
+    release-smoke/        # shell fixtures and fixed store assertions for release smoke
     namingagreement/      # login-free production writer/upstream read comparison
                           # Go script packages are outside the released binary
                           #   (.goreleaser.yaml builds `.` only), so the dispatch-only
@@ -66,6 +68,10 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
 - `artifact` is the single place that knows how to capture/apply the three
   artifact kinds. Adapters declare *which* artifacts exist for a tool and
   platform; they do not duplicate IO logic.
+- The maintainer-only `scripts/releaseverify` command owns a context-limited
+  subprocess seam for explicit child environments and working directories. Its
+  tests replace that seam; it is outside the released binary. Application
+  subprocesses continue to use `internal/runner` as below.
 - All subprocess calls (`security`, `secret-tool`, binary detection) go
   through `internal/runner`. Production code never calls `exec.Command`
   directly.

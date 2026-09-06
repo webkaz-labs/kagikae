@@ -326,24 +326,16 @@ alternative exists (`secret-tool`).
   `witness` → `reader`, is done (`credStoreReaders`), and it is the reason this one is
   visible.
 
-- **`scripts/smoke-env.sh` leaks a temp HOME every time it is sourced** (recorded
-  2026-08-09, **not fixed**). It does `HOME=$(mktemp -d)` and nothing ever removes
-  the directory, so each direct run of a block in [VALIDATION.md](VALIDATION.md)
-  leaves one behind under the system temp dir, holding that run's fixtures.
-  Harmless — the contents are placeholders (`tok-A`, `you@example.com`) and the OS
-  reclaims the directory eventually — and deliberately left alone, because the
-  preamble is sourced *into the caller's shell* and has no place to hang a trap
-  that would not also fire on the caller's own exit.
-  **Running blocks through `scripts/smoke-run.sh` does not fix it, and the first
-  version of this entry said it did.** The runner cleans up its own sandbox and
-  sets `TMPDIR` inside it so a nested `mktemp` would land there — but darwin's
-  `mktemp` ignores `TMPDIR` entirely, and the block's *own* `. scripts/smoke-env.sh`
-  is what allocates the leaked directory. Measured on darwin 24.6.0: one full run
-  of § Smoke Checks through the runner took the system temp dir from 1239 to 1240
-  entries, exactly as a direct run does. On linux the `TMPDIR` would take effect and
-  the claim would hold, which is why it read as true.
-  Recorded because it is invisible: the directories are indistinguishable from every
-  other `mktemp -d` on the machine, so nothing counts them and no run reports one.
+- **A sourced smoke HOME needs an owner**. `scripts/smoke-env.sh` now uses an
+  explicit template under `TMPDIR`, so a block run through `scripts/smoke-run.sh`
+  allocates inside the runner's cleanup tree on macOS as well as Linux.
+  `smoke-run-selftest.sh` checks source success/failure, preservation of an outside
+  sentinel, and unchanged caller roots when allocation fails; the mutation table
+  checks that those controls reject the corresponding broken implementations.
+  Standalone sourcing still installs no exit trap: its caller owns the allocation
+  and cleanup. This distinction matters because a bare macOS `mktemp -d` ignored
+  `TMPDIR` in the recorded reproduction, so merely assigning that variable did
+  not put a nested HOME under the runner's ownership.
 
 - **Upstream now documents parallel sessions racing on one credential store**
   (recorded 2026-07-31). Claude Code v2.1.211: *"Fixed parallel Claude Code sessions

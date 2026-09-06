@@ -15,7 +15,14 @@
 #     and XDG_DATA_HOME wrote a fixture account into the operator's live
 #     state.json (2026-07-31). Three copies of these exports is three chances to
 #     omit one; this is the only copy.
-HOME=$(mktemp -d)
+# The explicit template places allocation under TMPDIR on macOS too. Under
+# smoke-run, that is inside the runner-owned HOME; smoke-run-selftest's sourced
+# HOME control checks that the child is reclaimed on success and failure.
+# Standalone callers still own the HOME they create; sourcing installs no trap.
+# Keep the caller's roots intact if allocation fails.
+kae_smoke_home=$(mktemp -d "${TMPDIR:-/tmp}/kae-smoke.XXXXXXXX") || { unset kae_smoke_home; return 1; }
+HOME=$kae_smoke_home
+unset kae_smoke_home
 export HOME
 export XDG_CONFIG_HOME="$HOME/.config"
 export XDG_DATA_HOME="$HOME/.local/share"

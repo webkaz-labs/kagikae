@@ -84,7 +84,10 @@ fixture() {
 # anchor guard is needed here, unlike drop_map_row's — a mistyped path leaves the real
 # script in place, the check passes, and the case fails loudly.
 run_check() {
-  (cd "$1" && bash scripts/check-docs.sh 2>&1) || true
+  # Each fixture has its own absolute path. Trim it from Go's build inputs so
+  # unchanged extractor sources share the Go cache; mutated sources still build
+  # independently. Keep caller flags, and scope this to the selftest's checker.
+  (cd "$1" && GOFLAGS="${GOFLAGS:+$GOFLAGS }-trimpath" bash scripts/check-docs.sh 2>&1) || true
 }
 
 # check <name> <wanted message> <output> [message that must be absent]

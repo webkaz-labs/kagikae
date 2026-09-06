@@ -15,8 +15,8 @@ directory、fragment、credential store の観測をまとめ、呼び出し側�
 
 この計画のタスク状態は下表だけで管理する。[ROADMAP.md](../ROADMAP.md) は
 この milestone と、今回含めない研究・需要待ち項目への索引とする。
-実装とリリースは承認済み。選定したバージョンとその理由は
-[RELEASE.md](../RELEASE.md) の active release target に記載する。
+この milestone は v0.18.3 として完了した。公開記録と検証結果への入口は
+[RELEASE.md](../RELEASE.md) に記載する。
 
 ## 完了条件
 
@@ -57,7 +57,7 @@ directory、fragment、credential store の観測をまとめ、呼び出し側�
 | B3 完了 | **失敗対照と maintainer command**。命名不一致・観測不能を区別し、保守作業の実行入口に結ぶ。 | B2 | 命名検証の selftest、`mise.toml` の対象 task | 正常対照が通り、意図的な命名差分を検出し、観測できなかった実行を成功扱いにしない。一つの maintainer command で再実行できる。CI への追加は別判断とする。 |
 | C1 完了 | **Help の引数表記**。`kae add` の既存 parser が受け取る引数と root help を合わせる。 | なし。実装枠が空いた時 | `internal/cmd/cmd.go`、help の既存テスト | account の省略可能性を正しく表示する。parser の受理範囲は変えず、help と既存構文の一致を確認する。 |
 | C2 完了 | **Valued-flag completion**。既存 flag registrar と completion backend を使って、flag の値を positional と誤認しないようにする。 | C1 と独立。実装枠が空いた時 | `internal/cmd/flagspec.go`、`internal/cmd/complete.go`、`internal/cmd/completion.go`、既存 completion テスト | bash/zsh/fish で値を別 word とする形、`=` 形、boolean flag、既存 subcommand の補完位置を確認する。flag 一覧の手コピーや generator 全面書き換えはしない。 |
-| I1 公開待ち | **統合とリリース判断**。各系列の evidence を受理し、共有文書と最終 scope を整える。 | A4、B3、C1、C2 | この計画、`docs/`、`README.md`、`AGENTS.md` などの共有文書は統合担当が所有 | 必須ゲートと二種のレビューを完了し、追跡 Markdown ごとに変更要否を判定する。必要な実機検証を直列実行し、残存 blocker、最終 scope、バージョン判断を記録する。push・公開は今回の実行依頼で承認済み。候補 `64c4ec3` の必須ゲート、audit、release-evidence、GoReleaser snapshot、命名一致、隔離補完・store smoke は成功。main・side の利用停止後、Claude の切り替え・rollback・bind と Copilot の同一アカウント round-trip が成功。実測は [ACCEPTANCE.md](../ACCEPTANCE.md)。global は side、検証用 inventory と keychain item は削除済み。残るのは最終文書ゲート、main 反映、タグ公開と配布物検証。 |
+| I1 完了 | **統合とリリース判断**。各系列の evidence を受理し、共有文書と最終 scope を整える。 | A4、B3、C1、C2 | この計画と共有文書 | 必須ゲート、正確性・品質レビュー、追跡 Markdown ごとの更新要否判定を完了。audit、release-evidence、GoReleaser snapshot、命名一致、隔離補完・store smoke と、[ACCEPTANCE.md](../ACCEPTANCE.md) の実機検証が成功。v0.18.3 を公開し、配布物の checksum・provenance attestation・隔離 installer を検証済み。公開記録は [RELEASE.md](../RELEASE.md)。 |
 
 ## 並行運用
 

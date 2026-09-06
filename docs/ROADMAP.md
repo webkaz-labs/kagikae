@@ -31,13 +31,11 @@ Work these lanes in order. Within a lane, the named entries carry their own prer
 and may still refuse implementation when evidence or a mechanism is missing. Entries not
 named here retain their recorded gate; this index does not silently promote or close them.
 
-1. **Core reliability and repeatable verification** — the agreed scope and task
-   dependencies are in [the execution plan](plans/core-reliability.md). The
-   implementation and acceptance are complete; finish its release and published
-   artifact verification.
-   The plan owns task progress. Entries below retain their contracts and research
-   gates; the plan does not authorize their wholesale implementation.
-2. **Research only** — do not schedule implementation for **A moved bound directory does
+The completed [core reliability plan](plans/core-reliability.md) retains the
+measured decision against command-wide index memoization. It does not authorize
+implementation of the research lanes below.
+
+1. **Research only** — do not schedule implementation for **A moved bound directory does
    not count as a reader, and its absence does not make the reader set incomplete**,
    **Attribution reads a label kae may have written itself**, **A relogin's pre-flight
    refusal owes a backup it cannot safely take yet**, **Every credential copy kae keeps
@@ -46,11 +44,11 @@ named here retain their recorded gate; this index does not silently promote or c
    decision rather than an oversight**, or **`PinID` does not resolve symlinks, and
    changing that needs a migration** until the mechanism or measurement named by each
    entry exists.
-3. **Drift automation** — investigate **Behaviour-site hashes** in
+2. **Drift automation** — investigate **Behaviour-site hashes** in
    § Upstream-drift automation — what is left, and widen CI
    only through the per-step decisions in **CI runs a subset of the gate; `docs-check` was
    the one step whose price fell**.
-4. **Demand and platform work** — take § Command-system expansion, § Platform coverage,
+3. **Demand and platform work** — take § Command-system expansion, § Platform coverage,
    **TUI**, **Remote share-list definitions (ship)**, **cursor off macOS is unblocked but
    unimplemented**, and § Tier-2 tools — described, not queued only when their own demand
    or evidence gate opens. Tier 2 is not a parity backlog.

@@ -1,21 +1,17 @@
 # Release Process
 
-## Active release target — kae v0.18.3
+## Current release — kae v0.18.3
 
-This patch release completes [the bounded reliability plan](plans/core-reliability.md):
-operation-local bound-directory observations, the login-free Claude naming
-agreement command, optional-account help and valued-flag completion fixes.
-The command/config/JSON contracts retain their compatibility; the added completion
-kind is hidden and the naming command is maintainer tooling. This scope fits a
-patch release under the shared Go CLI release standard.
+The release record is the tag and
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.18.3).
+Read its scope and patch-version rationale with
+`git show v0.18.3:docs/RELEASE.md`. The completed
+[reliability plan](plans/core-reliability.md) retains the index-reuse decision;
+[ACCEPTANCE.md](ACCEPTANCE.md) owns the bounded real-machine measurements.
 
-The plan owns task completion. [ACCEPTANCE.md](ACCEPTANCE.md) owns the release's
-real-machine results; the checks below must finish before the tag.
-
-The v0.18.2 release record is its tag and
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.18.2).
-Read its former active scope and readiness with `git show v0.18.2:docs/RELEASE.md`;
-[ACCEPTANCE.md](ACCEPTANCE.md) retains the bounded real-machine measurements.
+Published archives, SHA-256 checksums, GitHub provenance attestations and the
+installer were verified on 2026-09-06 for v0.18.3. The macOS arm64 archive and
+isolated installer both reported `kae v0.18.3`.
 
 ## Release procedure
 
@@ -50,7 +46,7 @@ GoReleaser auto-generates the changelog from commits; edit the release body
 afterward for curated highlights when useful. Windows is not built
 ([ROADMAP.md](ROADMAP.md): `internal/lock` is Unix-only).
 
-**This file carries the active target and procedure, not the history.** What shipped
+**This file carries the current release pointer and procedure, not the history.** What shipped
 is the tag, the GitHub release it created, and `git log`. A per-release entry lived here for
 every version through v0.17.0, and the file was cumulative, so
 `git show v0.17.0:docs/RELEASE.md` is the whole set. Read an entry as of its own

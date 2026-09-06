@@ -1378,9 +1378,9 @@ Repoint to a form the gate does resolve whenever one exists.
 
 Rules adopted with it, from the branch that closed `adapter.VersionVerifier`:
 
-- **Two rounds, then land** — one correctness, one quality. A finding in material
-  the review loop itself added is fixed inline without re-opening a round, unless it
-  changes product behaviour.
+- **Review the affected scope** — [AGENTS.md](../AGENTS.md) § Review scope owns
+  the correctness and independent quality stages and their targeted fix verification.
+  Unchanged material does not require a new full review round.
 - **No new prose-verifier** unless the defect it catches has a product consumer.
   `docs-check`'s link and citation resolution stays; it is decidable and cheap.
 

@@ -69,12 +69,27 @@ comes to be maintained in a router file.
 
 ## Validation
 
+Full gate:
+
 ```bash
 mise run check
 git diff --check
 ```
 
-`mise run check` is the authoritative gate; it must pass before every commit.
+Choose the pre-commit gate by the change's effect:
+
+- Implementation, dependencies, build/CI configuration and executable scripts:
+  `mise run check` plus `git diff --check`.
+- Only explanatory prose, status or measurement results: `mise run docs-check`
+  plus `git diff --check`, and verify the evidence for added or changed claims.
+- Executable Markdown blocks, parsed tables, rules or verification procedures:
+  `mise run docs-check` plus `git diff --check` and the checks of the affected
+  consumers. If the effects are unclear, run `mise run check`.
+
+Markdown extensions do not determine the category. A mixed change takes the union
+of the required checks. Report which gate ran and why; an unchanged implementation
+needs no new implementation test merely because its evidence was recorded in prose.
+`mise run check` remains the full authoritative gate.
 **Its steps are not listed here** — `mise.toml`'s `[tasks.check]` is the one copy, and
 three hand copies of it had already drifted apart. Some are worth a word about what they
 do rather than that they exist: `smoke-selftest`
@@ -100,7 +115,8 @@ While editing (this is a Go module — the LSP is `gopls`):
   hover). Grep is for text/string matches, not for "where is this symbol used".
 - **Read LSP diagnostics after each edit** — clear errors and warnings as you
   go. The LSP is the fast inner loop; it does not replace `mise run check`,
-  which stays the pre-commit gate (a clean LSP does not imply green tests).
+  which remains required for implementation changes (a clean LSP does not imply
+  green tests).
 
 Never run tests or smoke checks against the real `$HOME`; every test uses
 `t.TempDir()` HOME/XDG roots, and smoke checks export a temp HOME
@@ -245,22 +261,31 @@ that frame one person's own multiple accounts:
 
 Never use a real login handle.
 
+## Review scope
+
+Perform correctness review, then independent quality review. Confirm each finding's
+fix in the changed material and its affected consumers; do not repeat a full review
+of unchanged material. After a quality fix, return to correctness review for the
+affected scope before accepting the quality result. New behavior or
+newly discovered impact widens the scope; a passing test alone does not close a
+review finding. Report both verdicts and the disposition of findings.
+
 ## Documentation Update Checklist
 
-For every change, decide and report "changed / no change needed" for **each tracked
-markdown file this repository owns** — derive the set rather than trusting a list:
-`git ls-files '*.md'`. It covers `README.md`, `AGENTS.md`, `CLAUDE.md`,
-everything under `docs/`, and the repo-local `upstream-auth-drift` skill, which the
-Documentation Map cites as normative and which a `docs/`-only list cannot reach — that
-is how a rule that had moved kept naming `AGENTS.md` as its authority. Every tracked
-markdown file is now one this repository owns; the command used to filter out
-`.claude/skills/go-cli-tooling/`, a generated export of the shared standard where an
-edit was lost on the next re-sync, and this file's opening says why that export is gone.
+Once per work scope, derive the owned Markdown set with `git ls-files '*.md'`
+and decide "changed / no change needed" for each file. Report the decisions in
+changed, related-but-unchanged, and remaining-unchanged groups, with a reason for
+each group; list files individually where their reasons differ. The remaining
+group means the derived set minus the explicitly named files, so it must not hide
+an unexamined target. Include the repo-local skill and `CLAUDE.md`, not just `docs/`.
+Reuse these decisions during the same work; reassess affected files when new changes
+alter the scope. Keep the decision in the work report rather than creating a tracker.
+Persistent memory still receives its explicit change/no-change decision.
 
-`mise run docs-scan` belongs to this sweep and to nothing else — it reports prose two
-documents carry twice, and it can fail nothing, so it is not a check and is not in
-`mise run check`. `scripts/docscan/main.go`'s header is normative for what a report
-does and does not mean; read it before acting on one.
+Run `mise run docs-scan` when moving, splitting or consolidating prose, rather than
+on every change. It reports prose two documents carry twice and fails nothing;
+`scripts/docscan/main.go`'s header defines the report's limits. Read it before acting
+on a report. Inbound-reference checks below still apply to content moves and deletions.
 
 **A citation that names a `§` names a target that has to exist**, and it quotes the
 section name verbatim — so grep the name, not the sigil. Before renaming or moving a
@@ -298,8 +323,9 @@ in `scripts/smoke-run-selftest.sh`'s header, which deliberately does not repeat 
 because the two drifted apart the moment a guard was added. A quantity never written
 cannot go stale. What follows is only the net for the ones already there.
 
-For the ones already there, run `bash scripts/sweep-quantities.sh` and read every record it
-returns. It is report-only and deliberately outside `mise run check`, because deciding a
+When adding a quantity claim or changing content that an existing quantity counts,
+run `bash scripts/sweep-quantities.sh` and read every record it returns. It is
+report-only and deliberately outside `mise run check`, because deciding a
 hit needs a reader: **triage by whether the quantity can go stale, not by which file it
 points at.** Its header is normative for everything else — the pattern, the fixtures and
 the positive control it runs before each sweep, and the classes it cannot reach, one of

@@ -17,16 +17,16 @@
 
 | ID・状態 | 作業 | 依存 | 完了の証拠 |
 |---|---|---|---|
-| N1 初期監査済み | 検査と作業工程の必要性を棚卸しする | なし | 下表の各候補について、検出する故障、固有の価値、代替可能性、実行条件を判定。残す・統合・移動・削除の根拠を記録する。初期候補の発見を削除の証拠とはしない。 |
-| N2 未着手 | 編集時・コミット前・関連変更時・リリース時の実行条件とレビュー範囲を整理する | N1 の対象別判断 | 純粋な説明変更と実行される文書を区別。正確性・独立品質の二段階と指摘解消確認を維持し、未変更部分の全面再確認を減らす。PJ 内の規約と手順を同期する。 |
-| N3 未着手 | 重複する実行を統合する | N1 の対象別判断 | analyzer の版・設定・検出範囲や fixture の違いを確認し、残した経路が必要な失敗対照を検出する。共通部分と固有部分を混同しない。 |
+| N1 完了 | 検査と作業工程の必要性を棚卸しする | なし | 下表の各候補について、検出する故障、固有の価値、代替可能性、実行条件を判定。残す・統合・移動・削除の根拠を記録する。初期候補の発見を削除の証拠とはしない。 |
+| N2 レビュー中 | 編集時・コミット前・関連変更時・リリース時の実行条件とレビュー範囲を整理する | N1 の対象別判断 | 純粋な説明変更と実行される文書を区別。正確性・独立品質の二段階と指摘解消確認を維持し、未変更部分の全面再確認を減らす。PJ 内の規約と手順を同期する。 |
+| N3 完了（維持） | 重複する実行を統合する | N1 の対象別判断 | analyzer の版・設定・検出範囲や fixture の違いを確認し、残した経路が必要な失敗対照を検出する。共通部分と固有部分を混同しない。 |
 | P1 未着手 | 残る検証を計測し、時間が集中する処理を改善する | N2、N3 | 各 subtask を単独で測定し、上位二つの内訳を調べる。前後で同条件の時間と検出能力を比較。無効な最適化は数値と不採用理由をこの台帳に残す。 |
 | A1 未着手 | smoke の一時 HOME 所有と回収を整理する | N1、P1 の対象判断 | 既存 harness と naming 検証の知識を再利用。成功・失敗時の回収、所有外を削除しない対照、従来の隔離を確認する。caller shell に終了 trap を追加しない。 |
 | A2 未着手 | 毎回組み直す配布物・installer 検証を保存する | P1。既存成果物の棚卸しは N1 後に先行可 | 既存の取得・checksum・attestation・native version・隔離 installer 検証を再利用。不足、破損、証明失敗、未実行を成功と区別する。公開操作とは分ける。 |
 | A3 未着手 | completion・store の隔離検証を再実行可能にする | N1、A1 | 既存の normative block とテストにない実行経路だけを保存。既存 smoke-run を使い、利用できない shell を成功扱いしない。実機認証の代替とはしない。 |
 | C1 未着手 | CI に置く検査を工程別に選定する | N2、N3、P1 | 時間、cache、network、書込先、検出範囲を比較。採用工程だけを追加し、据置にも根拠を残す。ローカル gate の無条件コピーはしない。 |
-| R1 未着手 | account mutation lifecycle の characterization と設計判断 | N1 と並行可 | rm と rename の lock、再読、secret-ref 検証、config/state 更新、途中失敗と再試行の違いを固定。単なる移動や lock helper なら不採用。 |
-| R2 条件付き | account mutation lifecycle を深める | R1 で利益を確認 | 既存の拒否・更新順序・回復動作を保ち、既存の競合・失敗対照が command と同じ seam を通る。新しい lock や rollback policy は加えない。 |
+| R1 完了 | account mutation lifecycle の characterization と設計判断 | N1 と並行可 | rm と rename の lock、再読、secret-ref 検証、config/state 更新、途中失敗と再試行の違いを固定。単なる移動や lock helper なら不採用。 |
+| R2 完了（不採用） | account mutation lifecycle を深める | R1 で利益を確認 | 既存の拒否・更新順序・回復動作を保ち、既存の競合・失敗対照が command と同じ seam を通る。新しい lock や rollback policy は加えない。 |
 | I1 未着手 | 統合・文書更新・リリース判断 | 採用した上記作業 | 残した検査の検出範囲、変更前後の実行回数・時間、二種のレビュー結果を確認。実装に対応する必須 release 検証を実行し、scope と版を決める。 |
 
 ## 初期監査と判断に必要な証拠
@@ -49,6 +49,27 @@
 Go product tests、検査器の selftest、mutation、upstream 実測は違う失敗を検出する。
 名前や似た出力だけでは重複と判定しない。テストを残すためだけの新しいテストや、
 実装の書き写しになる assertion を増やさない。
+
+## 採否の記録
+
+- **N1 / N3 — analyzer と build を維持（2026-09-07）。** 隔離した不正
+  format fixture は vet と standalone Staticcheck の両方が拒否した一方、
+  boolean 比較の S1002 は現行 golangci-lint が独自に検出した。golangci 側は
+  honnef v0.7.0、standalone は v0.8.1 の SA 系であり、同じ集合ではない。
+  govet も embedded と Go toolchain で analyzer 集合が異なる。
+  main 関数のない package main は `go test ./...` が成功し `go build ./...`
+  が失敗したため、build も残す。重なる例一つを根拠に経路全体を削除しない。
+- **N1 — verifier の対照は維持。** docs-check は現在の tree、その selftest は
+  検査器の故障を検出する。fast mutation 内の baseline は fixture 上であり、
+  実 checkout の selftest と同等と確認できていない。認証の保護を担う product
+  tests と、実機への漏れ・false-green を検出する verifier tests は代替しない。
+- **R1 / R2 — account lifecycle 共通化を不採用（2026-09-07）。**
+  removal は preflight から config edit / state save まで state lock を保持し、
+  rename は preflight 後に解放して copy 後に再取得する。config 不在時の扱いと
+  cleanup 失敗後の再試行も異なる。既存 report builder を通る競合・途中失敗の
+  tests があり、共通 lifecycle は callback / 例外設定か lock 寿命変更を要する。
+  lock / reload だけの helper は caller の順序知識を減らさない。現状維持、
+  共通 lifecycle、小さな helper の案を比較し、現状維持を選んだ。
 
 ## 計測と並行運用
 

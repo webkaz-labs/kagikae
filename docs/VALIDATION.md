@@ -1,6 +1,9 @@
 # Validation
 
-## Standard Suite (before every commit)
+## Standard Suite
+
+Choose the pre-commit checks using [AGENTS.md](../AGENTS.md) § Validation.
+The full gate for implementation changes is:
 
 ```bash
 mise run check     # see mise.toml [tasks.check] for what it depends on
@@ -1808,7 +1811,7 @@ Unlike the AI-tool rows above, these are **guarded by a test rather than by a
 release run**: `TestEnsureGitExcludedLeavesEveryWorktreeClean` (`internal/cmd`)
 builds a real repository with a linked worktree, records one entry from the main
 checkout, and fails if either checkout is dirty afterwards — so `mise run check`
-re-measures them on every commit. It then records a second entry from a **nested
+re-measures them in the full gate. It then records a second entry from a **nested
 subdirectory** and asserts that one reads `/nested/…`, which is what re-measures
 the anchoring row specifically: at the repository root the prefix is empty, so a
 root-only check cannot tell whether `--show-prefix` is being used at all. It skips
@@ -1909,7 +1912,7 @@ what every codex row in the table above already does.
 
 `TestUpstreamLiteralFingerprints` has two halves:
 
-- The **table parse** runs in `mise run check`, on every commit, with no tool
+- The **table parse** runs in the full `mise run check` gate, with no tool
   installed: it fails on a malformed row, a count that is not a number, a tool
   outside `constants.Tools`, and on a tool that is neither in the table nor in the
   test's named exclusion list. A new adapter therefore cannot be added without

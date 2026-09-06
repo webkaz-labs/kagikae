@@ -1,8 +1,8 @@
 # 配布物検証の終了と回収
 
-## 到達点
+## 到達点（実装完了）
 
-次回 patch リリースの対象は maintainer 用 `scripts/releaseverify` のプロセス所有。
+v0.18.5 向けの対象は maintainer 用 `scripts/releaseverify` のプロセス所有。
 検証の終了後に同じ process group の子孫が動き続け、一時領域への書込や領域の
 残留が起きる問題を修正する。認証動作や `internal/runner` には広げない。
 
@@ -26,11 +26,22 @@
 | 作業 | 状態 | 完了条件 |
 |---|---|---|
 | 再現・比較 | 完了 | timeout と shell 先行終了で遅延書込を観測。実認証は使用しない |
-| command の所有と中断 | 未着手 | darwin/linux の owned process group を終了時に停止。通常出力・エラーと時間制限を保持。割込時も回収へ進む |
-| installer 一時領域 | 未着手 | canonical smoke runner を再利用し、所有する親の外を削除しない |
-| 検証・レビュー | 未着手 | 正常・失敗・timeout・shell 先行終了・割込、所有外 sentinel、既存の証明先行順序。full gate と二段階レビュー |
+| command の所有と中断 | 完了 | darwin/linux の owned process group を終了時に停止。通常出力・エラーと時間制限を保持。割込時も回収へ進む |
+| installer 一時領域 | 完了 | canonical smoke runner を再利用し、所有する親の外を削除しない |
+| 検証・レビュー | 完了 | 正常・失敗・timeout・shell 先行終了・割込、所有外 sentinel、既存の証明先行順序。full gate と二段階レビュー |
 
 意図的に別 process group/session へ離脱した子孫や、検証器自体への SIGKILL の
 回収は保証しない。外部プロセスを探索して無差別に停止しない。新しい dependency、
 汎用プロセス管理 framework、アカウント切替、Windows/TUI/Tier 拡張は対象外。
 検査の追加はこの終了契約を確かめるものに限り、変更のない実機認証を繰り返さない。
+
+## 検証結果と次の工程
+
+2026-09-07、実装 `b93d16c` で full gate、smoke guards の全 mutation、
+正確性レビューと独立品質レビューが通過した。公開済み v0.18.4 に対する
+`mise run release-verify -- v0.18.4` も成功し、archive・checksum・attestation・
+native version・verified-asset fixture を使う installer の正常経路を確認した。
+これは新しい版の公開記録ではない。
+
+次の工程は [RELEASE.md](../RELEASE.md) の v0.18.5 公開手順。版番号の更新と
+release acceptance の適用判断を行ってからタグ付けし、新配布物を検証する。

@@ -16,13 +16,16 @@ installer were verified on 2026-09-07 (JST) for v0.18.4 with
 installer both reported `kae v0.18.4`; the installer used verified-asset fixtures
 as described below.
 
-## Release procedure
+## Next release — kae v0.18.5
 
 The next patch candidate follows the
 [release-verifier lifecycle plan](plans/release-verifier-lifecycle.md): terminate
 owned command descendants and reclaim installer-smoke temporary roots on failure
 or interruption. Application authentication behavior is outside this change.
-The version is selected when the implementation and acceptance are ready.
+The implementation and targeted validation are complete. The version bump and
+the release acceptance, tag and publication procedure below remain release work.
+
+## Release procedure
 
 Releases are cut by pushing a `vX.Y.Z` tag; GitHub Actions
 ([.github/workflows/release.yml](../.github/workflows/release.yml)) runs

@@ -13,6 +13,27 @@ Published archives, SHA-256 checksums, GitHub provenance attestations and the
 installer were verified on 2026-09-06 for v0.18.3. The macOS arm64 archive and
 isolated installer both reported `kae v0.18.3`.
 
+## Next release — necessary verification and delivery efficiency
+
+The next release follows the agreed
+[verification-efficiency plan](plans/verification-efficiency.md). It first audits
+which checks and work are necessary, then removes demonstrated duplication and
+adjusts execution timing, optimizes retained checks, and delivers reusable
+release verification and selected CI checks. Account mutation lifecycle
+refactoring belongs to this release when the plan's characterization and depth
+decision support it; it is not an unconditional rewrite.
+
+The plan owns task status, dependencies and acceptance evidence. Before tagging,
+resolve each candidate as implemented or not adopted with a reason, verify the
+retained checks' required failure detection, and complete the applicable release
+procedure below. Existing validation rules remain effective until their
+replacements are recorded and verified. Publication and published-asset checks
+remain part of completing this release.
+
+Choose the version from the accepted changes during the plan's integration step;
+no version bump or release date is set yet. The v0.18.3 record above describes the
+published baseline, not completion of this work.
+
 ## Release procedure
 
 Releases are cut by pushing a `vX.Y.Z` tag; GitHub Actions
@@ -46,7 +67,7 @@ GoReleaser auto-generates the changelog from commits; edit the release body
 afterward for curated highlights when useful. Windows is not built
 ([ROADMAP.md](ROADMAP.md): `internal/lock` is Unix-only).
 
-**This file carries the current release pointer and procedure, not the history.** What shipped
+**This file carries the current release pointer, next target and procedure, not the history.** What shipped
 is the tag, the GitHub release it created, and `git log`. A per-release entry lived here for
 every version through v0.17.0, and the file was cumulative, so
 `git show v0.17.0:docs/RELEASE.md` is the whole set. Read an entry as of its own

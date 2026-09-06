@@ -10,6 +10,7 @@
 調査を並行し、実装は入口判断を経て行う。
 
 このファイルがタスク状態と判断の台帳。[ROADMAP.md](../ROADMAP.md) は索引を持つ。
+次回リリースの対象と公開条件は [RELEASE.md](../RELEASE.md) に位置付ける。
 新しい tracker、変更分類器、汎用 mutation framework は追加しない。
 
 ## 作業順と完了条件

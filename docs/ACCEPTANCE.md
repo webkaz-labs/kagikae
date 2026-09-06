@@ -232,35 +232,27 @@ The optional two-account switch remains unmeasured.
 
 ### Bound-directory credential store (macOS, no login needed)
 
-kae and claude must agree on the keychain service name for a bound directory; a
-disagreement is silent, because kae's write succeeds and claude simply reads a
-different item. Shim `security` for **both** processes and compare, which needs
-no real account and touches neither the real `$HOME` nor the real keychain:
+kae and claude must agree on the keychain service and account for a bound directory.
+Run `mise run naming-agreement` from the repository with Go, Python 3.11 or newer,
+and the reviewed macOS Claude binary installed. The task runs its refusal and
+mismatch controls before comparing independently observed addresses.
 
-1. Temp `HOME` plus temp `XDG_*`, and a `security` shim first on `PATH` that logs
-   `"$*"`, prints a canned `{"claudeAiOauth":{…}}` for `find-generic-password`,
-   and exits 0 otherwise.
-2. `kae init`, a config with `secret_backend = "file"` and a one-account profile,
-   then `kae add --no-login claude main` (the capture reads the canned payload).
-3. `kae pin -i main` in a temp project dir. Read both `CLAUDE_CONFIG_DIR` and
-   `CLAUDE_SECURESTORAGE_CONFIG_DIR` out of
-   `.config/mise/conf.d/kagikae.toml`, and the `-s <service>` kae passed to
-   `add-generic-password` out of the shim log.
-4. Run the real binary against that same directory —
-   `env -i HOME=<temp> PATH=<shim>:/usr/bin:/bin USER="$USER"
-   CLAUDE_CONFIG_DIR=<config-dir>
-   CLAUDE_SECURESTORAGE_CONFIG_DIR=<securestorage-dir>
-   claude -p hi </dev/null` — and read the `-s <service>` it passed to
-   `find-generic-password`.
+The harness in `scripts/namingagreement/` reuses `scripts/smoke-env.sh` inside an
+owned temporary directory. It intercepts the production adapter/artifact writer
+through `internal/runner`, and observes Claude's reads through a non-forwarding
+`security` shim. It refuses missing or unreviewed Claude bytes before launching
+them, checks the shim and isolated roots before each case, and rejects missing
+observations, mismatches and plaintext credential files. The digest and its
+reachability provenance live beside the executable check; updating them requires
+the [upstream measuring procedure](../.claude/skills/upstream-auth-drift/references/measuring.md).
+An empty log does not establish containment.
 
-The two service names must be identical and equal
-`Claude Code-credentials-<sha8>`, where `<sha8>` is the first eight hexadecimal
-characters of the SHA-256 of `<securestorage-dir>`; that variable, not the session
-config directory, selects the credential store. Neither directory may contain
-`.credentials.json` (the superseded plaintext copy is removed). Passing only
-`CLAUDE_CONFIG_DIR` did not test this candidate's binding: its generated fragment gave
-the credential store a different value, so claude derived a service from the config
-directory while kae wrote the service derived from the secure-storage directory.
+This checks the production credential writer, not the full `kae pin` command or
+its generated environment. The real-account bind below supplies that wiring and
+payload/ACL evidence. Supply **both** `CLAUDE_CONFIG_DIR` and
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` from the generated fragment there: passing only
+the former asks Claude about a different credential store. The harness does not
+relax `smoke-run.sh`'s file-driver guard and is not an OS network sandbox.
 
 Confirmed 2026-09-04 on the v0.18.0 candidate at `495141f`, with Claude Code
 2.1.246: the production-equivalent two-variable path matched the independently

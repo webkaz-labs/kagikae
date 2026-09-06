@@ -40,6 +40,12 @@ and exits non-zero, then
 the log is the name the tool actually asks for. This replaced a recipe that
 needed a real account and a token refresh.
 
+For the reviewed Claude build, `mise run naming-agreement` supplies the repeatable
+writer/read comparison and its refusal controls. See
+[ACCEPTANCE.md](../../../../docs/ACCEPTANCE.md) § Bound-directory credential store
+for its scope. A new digest must first earn the PATH-reachability evidence above;
+changing the allowlist merely to make an unknown build run is not re-verification.
+
 ## Reading a bundle
 
 **Node CLI shipped as a launcher + package** (copilot): the binary on `PATH` is a

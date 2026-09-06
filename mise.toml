@@ -112,6 +112,15 @@ run = "bash scripts/harvest-smoke-selftest.sh"
 description = "Run the release-only mutation evidence for smoke guards and credential harvesting"
 depends = ["smoke-selftest-mutations", "harvest-smoke-selftest"]
 
+[tasks.naming-agreement-selftest]
+description = "Check Claude naming-harness refusal and mismatch controls without upstream access"
+run = "python3 -B -m unittest discover -s scripts/namingagreement -p 'test_*.py'"
+
+[tasks.naming-agreement]
+description = "Compare production Claude credential write addressing with a reviewed upstream binary's shim reads"
+depends = ["naming-agreement-selftest"]
+run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} python3 -B scripts/namingagreement/verify.py"
+
 [tasks.docs-check]
 description = "Reject a broken markdown link, a section citation naming a section its target declares nowhere, a docs/ file the Documentation Map omits, or a root document that is missing, empty or not a regular file"
 run = "bash scripts/check-docs.sh"

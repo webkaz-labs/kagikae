@@ -29,6 +29,13 @@ gate keeps the four historical smoke-run defect shapes live through
 selftest once per guard. Lint tools run via `go run <tool>@<pinned version>`; the first
 run downloads them.
 
+`mise run naming-agreement` is the login-free release naming check described in
+[ACCEPTANCE.md](ACCEPTANCE.md) § Bound-directory credential store. Its Python
+refusal/mismatch selftest runs first; `mise run naming-agreement-selftest` runs
+those controls alone without launching an upstream tool. The Go writer-observer
+tests are part of `go test ./...`. The actual upstream comparison stays outside
+the commit gate and CI because it requires an explicitly reviewed macOS binary.
+
 Run `go mod tidy` before committing dependency changes.
 
 The `internal/cmd` package's `TestMain` is a process boundary as well as a test

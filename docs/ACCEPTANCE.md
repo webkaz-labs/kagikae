@@ -180,6 +180,14 @@ explicit rollback to `side` each authenticated in a fresh process and matched th
 identity cache against the official profile endpoint. Every kae mutation preserved
 every byte outside `/oauthAccount`; the accounts had distinct identities.
 
+Reconfirmed 2026-09-06 on the v0.18.3 executable candidate at `64c4ec3`,
+with Claude Code 2.1.261 after the operator stopped the active `side` session.
+`side` → `main` → `side` → `main`, then an explicit rollback to `side`, each
+passed a fresh-process prompt and profile/cache identity comparison. The measured
+global switches and rollback preserved every byte outside `/oauthAccount`.
+Captures were updated after fresh authentication rather than rejecting a stored
+access token before the CLI could refresh it.
+
 For copilot (active-account pointer, all platforms — kae never touches the
 per-account keychain tokens, only `~/.copilot/config.json` `/lastLoggedInUser`,
 so it is safe on macOS):
@@ -229,6 +237,12 @@ explicit rollback preserved every byte outside `/lastLoggedInUser`, including th
 leading JSONC comments, and the addressed keychain item's attributes were unchanged.
 A fresh non-interactive prompt returned the requested reply with no tools enabled.
 The optional two-account switch remains unmeasured.
+
+Reconfirmed 2026-09-06 on the v0.18.3 executable candidate at `64c4ec3`,
+with Copilot 1.0.83 and one freshly captured account. Same-account apply, a fresh
+prompt with no tools enabled, and explicit rollback passed. Bytes outside
+`/lastLoggedInUser`, leading JSONC comments and keychain item attributes were
+unchanged. The optional two-account Copilot switch remains unmeasured.
 
 ### Bound-directory credential store (macOS, no login needed)
 
@@ -311,6 +325,18 @@ Purging the `main` binding removed its keychain item. The earlier `side` item
 remained, so it was rebound and purged separately; its subsequent lookup returned
 exit 44. The resulting account captures were returned through normal CLI operations,
 with global `side` active and authenticated.
+
+Reconfirmed 2026-09-06 on the v0.18.3 executable candidate at `64c4ec3`,
+with Claude Code 2.1.261 and a temporary file-backend inventory. An isolated
+`side` binding and its rebind to `main` each authenticated in a fresh process using
+both generated environment variables; profile/cache identities matched and no
+plaintext credential file was observed in either bound store. Purge removed the
+`main` keychain item. Cleanup recreated a profile binding for the retained `side`
+item and purged it too; both removed-item lookups returned exit 44. The latest
+accounts were captured back through normal CLI operations, global `side` was
+authenticated, and the temporary file-backend inventory was removed. A cleanup
+attempt to use the one-tool rebind form after purge was refused because the
+fragment was already gone; the profile form recreated the binding as required.
 
 ## Optional account-combination checks
 

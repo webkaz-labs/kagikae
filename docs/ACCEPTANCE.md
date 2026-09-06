@@ -55,8 +55,12 @@ substitutes for the reused live-account results.
 
 The new Go verifier passed against published v0.18.3, checking its archive
 manifest, checksums, attestations, native version and isolated installer with
-verified assets. Verification of the new v0.18.4 assets follows publication;
-the existing release's result is only the verifier's pre-release baseline.
+verified assets; that result is the verifier's pre-release baseline.
+After publication on 2026-09-07 (JST), `mise run release-verify -- v0.18.4`
+returned `status: success` for the darwin/linux × amd64/arm64 archives,
+checksums and attestations. The native macOS arm64 binary and isolated installer
+reported `kae v0.18.4`. The installer used verified-asset fixtures, so this did
+not exercise its HTTP transport.
 
 ## Credential-expiry observation — does `refreshTokenExpiresAt` predict the login's death? (**open**)
 

@@ -1,34 +1,20 @@
 # Release Process
 
-## Current release — kae v0.18.3
+## Current release — kae v0.18.4
 
 The release record is the tag and
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.18.3).
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.18.4).
 Read its scope and patch-version rationale with
-`git show v0.18.3:docs/RELEASE.md`. The completed
-[reliability plan](plans/core-reliability.md) retains the index-reuse decision;
+`git show v0.18.4:docs/RELEASE.md`. The completed
+[verification-efficiency plan](plans/verification-efficiency.md) retains the
+check-retention and account-lifecycle decisions;
 [ACCEPTANCE.md](ACCEPTANCE.md) owns the bounded real-machine measurements.
 
 Published archives, SHA-256 checksums, GitHub provenance attestations and the
-installer were verified on 2026-09-06 for v0.18.3. The macOS arm64 archive and
-isolated installer both reported `kae v0.18.3`.
-
-## Next release — kae v0.18.4
-
-This patch release follows the
-[verification-efficiency plan](plans/verification-efficiency.md): verification by
-change impact, faster docs selftests, owned smoke HOME cleanup, saved release
-smokes and a Go published-artifact verifier. Account lifecycle refactoring was not
-adopted after comparing its differing lock lifetimes and failure recovery; the
-plan retains the decision. Application behavior is unchanged apart from the
-reported version, so this is a patch release rather than a new command surface.
-
-The plan owns progress and evidence. Resolve each candidate as implemented or
-not adopted with a reason, verify required failure detection, and complete the
-procedure below. Live acceptance applicability and any reuse of prior evidence
-are recorded in [ACCEPTANCE.md](ACCEPTANCE.md). Publication and verification of the
-new assets remain part of completing this release; the v0.18.3 record above is
-its published baseline.
+installer were verified on 2026-09-07 (JST) for v0.18.4 with
+`mise run release-verify -- v0.18.4`. The macOS arm64 archive and isolated
+installer both reported `kae v0.18.4`; the installer used verified-asset fixtures
+as described below.
 
 ## Release procedure
 

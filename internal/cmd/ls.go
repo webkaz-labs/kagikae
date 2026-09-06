@@ -89,7 +89,7 @@ func runLsPins(app *App, opts commonOpts) int {
 }
 
 // buildLsPins reports what is bound *now*, which is a different question from
-// what pinnedDirs answers. That walk deliberately returns stores nothing points
+// what the breadcrumb index answers. That walk deliberately returns stores nothing points
 // at any more — `kae unpin` keeps one so a re-pin restores its sessions, and a
 // single-tool re-bind leaves the previously bound tools' stores behind — so a
 // directory is listed only when it still has a fragment to read (AGENTS.md; the
@@ -102,16 +102,16 @@ func runLsPins(app *App, opts commonOpts) int {
 // config.toml is not a reason to refuse the one command that says which accounts
 // the directories are currently running.
 func buildLsPins(app *App) (*pinsReport, error) {
-	pins, err := app.pinnedDirs()
-	if err != nil {
-		return nil, err
+	index := app.boundDirectoryIndex()
+	if index.err != nil {
+		return nil, index.err
 	}
 	// A failure to learn the cwd only costs the "current" marker, so it must not
 	// fail the listing — which is most useful from outside every bound directory.
 	cwd, _ := cwdAbs()
 	dirs := []boundDir{}
-	for _, pin := range pins {
-		info, exists, ferr := readFragmentAt(pin.Dir)
+	for _, pin := range index.directories {
+		info, exists, ferr := pin.readFragment()
 		// An unreadable fragment is not an unbound directory, and the two must not
 		// collapse into the same silent skip — pinChecks splits them for the same
 		// reason. A live, genuinely bound directory vanishing from the one command
@@ -133,7 +133,7 @@ func buildLsPins(app *App) (*pinsReport, error) {
 			Current:   cwd != "" && pin.Dir == cwd,
 		})
 	}
-	// pinnedDirs is ordered by pin-id (a path hash), which is meaningless to a
+	// The breadcrumb index is ordered by pin-id (a path hash), which is meaningless to a
 	// reader; sibling worktrees sort next to each other by path.
 	sort.Slice(dirs, func(i, j int) bool { return dirs[i].Directory < dirs[j].Directory })
 	return &pinsReport{SchemaVersion: constants.SchemaVersion, BoundDirectories: dirs}, nil

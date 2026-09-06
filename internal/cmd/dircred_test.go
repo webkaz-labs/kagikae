@@ -3451,8 +3451,8 @@ func TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads(t *testing.T) {
 		t.Fatalf("the isolated home must read a materialized credential at %s", live)
 	}
 	// Nothing is bound: this is the state the pin walk cannot see.
-	if pins, err := app.pinnedDirs(); err != nil || len(pins) != 0 {
-		t.Fatalf("this test is only about the unpinned case: pins=%v err=%v", pins, err)
+	if index := app.boundDirectoryIndex(); index.err != nil || !index.complete || len(index.directories) != 0 {
+		t.Fatalf("this test is only about the unpinned case: index=%+v", index)
 	}
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
 	writeFile(t, live, claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))

@@ -1635,13 +1635,13 @@ func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, stor
 // that ambiguity without recommending deletion. A fragment that exists and cannot be
 // parsed is the unknown case, not the zero case.
 func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
-	pins, complete, err := app.pinnedDirsComplete()
-	if err != nil || !complete {
+	index := app.boundDirectoryIndex()
+	if index.err != nil || !index.complete {
 		// A store whose breadcrumb could not be read names a directory kae cannot
 		// reach — and that directory may be one that reads this credential.
 		return 0, false
 	}
-	for _, pin := range pins {
+	for _, pin := range index.directories {
 		// Equivalent to the !exists branch below rather than merely stricter, and worth
 		// saying so: readFragmentAt on a missing directory returns exists=false with no
 		// error, so both arms continue identically (measured 2026-08-07). The one case
@@ -1649,10 +1649,10 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 		// this gate yields ENOTDIR — which os.IsNotExist does not match, so it degrades
 		// to known=false. Deleting it on the grounds that it "cannot fail" would change
 		// that case silently.
-		if !dirExists(pin.Dir) {
+		if !pin.directoryExists() {
 			continue
 		}
-		fragment, exists, ferr := readFragmentAt(pin.Dir)
+		fragment, exists, ferr := pin.readFragment()
 		if ferr != nil {
 			return 0, false
 		}
@@ -1684,10 +1684,9 @@ func (app *App) credStoreRefs(credDir string) (refs int, known bool) {
 // no user can tell which worktree that is — and for a globally isolated home the two are
 // the same path, because that home is where the tool actually runs.
 //
-// Not `boundDirStore`, which carries the same pair and more: that one is built from
-// `pinnedDirs()`, which drops the completeness flag this walk's whole answer turns on, and
-// it skips a store directory that is not there. Folding the two would trade a
-// machine-wide "kae could not look" for a silent "nobody reads it".
+// Not `boundDirStore`, which answers a reporting question and skips an absent
+// store directory. Both consume boundDirectoryIndex observations, but readers
+// require completeness; a report can retain the readable subset.
 type credStoreReader struct {
 	Config string
 	Dir    string
@@ -1720,34 +1719,24 @@ type credStoreReader struct {
 // fragment test, because a nil `CredDirs` map already fails the comparison beside it; the
 // `dirExists` arm, which converges with `!exists` for the same reason `boundDirStores`
 // records; and the `syncedTool == tool` shape the global walk replaced, since the store
-// path embeds the tool. Two more are killable in principle and untested, and worth knowing
-// for what they would cost rather than for the mutation: an unparseable fragment (`ferr`)
-// must make the set incomplete rather than skip a reader, and dropping the `bound` check
+// path embeds the tool. TestBoundDirectoryConsumerPolicies covers unreadable
+// fragments making the set incomplete. Dropping the `bound` check
 // would append `""` — which `dirSpecs` resolves to the **real home**, so a future third
 // per-directory mechanism would silently attribute the account's store from the real home's
 // identity cache. That last one belongs in the same lockstep list `dirCredentialStores`
 // carries.
-// ponytail: walks every pinned directory system-wide (one ReadDir of the isolation root,
-// then a breadcrumb read, a stat and a fragment read per pin, plus a second ReadDir for the
-// global isolated homes) and does it **twice** per
-// `kae pin` — once from the pin-level pass and once from the write, with nothing between
-// them that changes what it reads. It is behind the `supersedes` gate, so it costs nothing
-// unless there is a copy worth harvesting; the case where it is worth caring about is
-// `kae run -i`, which the mise hook makes per-invocation. `kae doctor` reaches it too,
-// through storeHoldsAccount, and is gated the same way in effect — supersededChecksFor
-// asks only once a finding is otherwise ready, and memoizes per group. Memoize per
-// command if that shows up — but not on App without a per-operation reset, which is the
-// shape that already made a test pass for the wrong reason here
-// (docs/ROADMAP.md § The reader walk runs twice).
+// Each call obtains a fresh boundDirectoryIndex and then reads global homes. The
+// supersedes gate decides whether attribution calls it at all; a bind must not
+// retain those observations through its later fragment write and teardown.
 func (app *App) credStoreReaders(credDir, tool string) (readers []credStoreReader, complete bool) {
 	if credDir == "" {
 		return nil, false
 	}
-	pins, ok, err := app.pinnedDirsComplete()
-	if err != nil || !ok {
+	index := app.boundDirectoryIndex()
+	if index.err != nil || !index.complete {
 		return nil, false
 	}
-	for _, pin := range pins {
+	for _, pin := range index.directories {
 		// A recorded directory that is gone is skipped, and deliberately **without**
 		// making the set incomplete — which is the opposite of what "kae could not look"
 		// usually earns here. `kae unpin` never removes the breadcrumb (only the
@@ -1758,10 +1747,10 @@ func (app *App) credStoreReaders(credDir, tool string) (readers []credStoreReade
 		// directory — a directory that was *moved* rather than deleted still exports the
 		// old store from the fragment that travelled with it, and kae cannot read it at the
 		// recorded path.
-		if !dirExists(pin.Dir) {
+		if !pin.directoryExists() {
 			continue
 		}
-		fragment, exists, ferr := readFragmentAt(pin.Dir)
+		fragment, exists, ferr := pin.readFragment()
 		if ferr != nil {
 			return nil, false
 		}
@@ -2222,13 +2211,13 @@ func (app *App) harvestRenamedAccountCredentials(ctx context.Context, be secret.
 		}
 	}
 	// A copy inside a per-directory store, which only the bound directories have.
-	pins, err := app.pinnedDirs()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", err)
+	index := app.boundDirectoryIndex()
+	if index.err != nil {
+		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", index.err)
 		return
 	}
-	for _, pin := range pins {
-		info, exists, ferr := readFragmentAt(pin.Dir)
+	for _, pin := range index.directories {
+		info, exists, ferr := pin.readFragment()
 		if ferr != nil || !exists || info.Accounts[tool] != accountName {
 			continue
 		}
@@ -3041,16 +3030,16 @@ func (s boundDirStore) store() dirStore {
 // Tools are walked in canonical order, so a JSON report cannot reorder with a map
 // iteration.
 func (app *App) boundDirStores() []boundDirStore {
-	pins, err := app.pinnedDirs()
-	if err != nil {
+	index := app.boundDirectoryIndex()
+	if index.err != nil {
 		return nil // pinChecks already reports an unreadable store root; not twice
 	}
 	stores := []boundDirStore{}
-	for _, pin := range pins {
-		if !dirExists(pin.Dir) {
+	for _, pin := range index.directories {
+		if !pin.directoryExists() {
 			continue
 		}
-		fragment, exists, ferr := readFragmentAt(pin.Dir)
+		fragment, exists, ferr := pin.readFragment()
 		if ferr != nil || !exists {
 			continue
 		}

@@ -62,6 +62,62 @@ type pinnedDir struct {
 	Dir   string // the absolute path recorded when the directory was bound
 }
 
+// boundDirectoryIndex separates finding breadcrumbs from observing the directories
+// they name. A filtered doctor needs only the former. Consumers keep the latter's
+// errors and absence distinct: an unreadable fragment is grounds for refusing
+// attribution, but a report can still describe the other directories.
+//
+// This is an operation-local view, not a registry or an App cache. Construct it
+// again after a binding changes; observations never read credentials or identity
+// caches, whose lifetimes and attribution rules belong to their consumers.
+type boundDirectoryIndex struct {
+	directories []*boundDirectoryObservation
+	complete    bool
+	err         error
+}
+
+type boundDirectoryObservation struct {
+	pinnedDir
+	directory *bool
+	fragment  *boundFragmentObservation
+}
+
+type boundFragmentObservation struct {
+	info   fragmentInfo
+	exists bool
+	err    error
+}
+
+func (app *App) boundDirectoryIndex() boundDirectoryIndex {
+	pins, complete, err := app.pinnedDirsComplete()
+	index := boundDirectoryIndex{complete: complete, err: err}
+	for _, pin := range pins {
+		index.directories = append(index.directories, &boundDirectoryObservation{pinnedDir: pin})
+	}
+	return index
+}
+
+func (pin *boundDirectoryObservation) directoryExists() bool {
+	if pin.directory == nil {
+		present := dirExists(pin.Dir)
+		pin.directory = &present
+	}
+	return *pin.directory
+}
+
+// Each result is observed once within this index, including errors and absence.
+// Stat and fragment reads stay separately lazy: credential consumers skip a
+// recorded non-directory before reading, while listing can report its fragment
+// read error. A new index is required after a mutation; neither result is an
+// atomic snapshot of the other, or protected by a machine-wide binding lock.
+func (pin *boundDirectoryObservation) readFragment() (fragmentInfo, bool, error) {
+	if pin.fragment == nil {
+		info, exists, err := readFragmentAt(pin.Dir)
+		pin.fragment = &boundFragmentObservation{info: info, exists: exists, err: err}
+	}
+	return pin.fragment.info, pin.fragment.exists, pin.fragment.err
+}
+
 // recordPinnedDir writes the breadcrumb naming absDir inside that directory's
 // own store root. Idempotent; called by every path that binds a directory.
 //
@@ -80,7 +136,8 @@ func (app *App) recordPinnedDir(pinID, absDir string) error {
 	return patch.WriteFileAtomic(record, want, 0o600)
 }
 
-// pinnedDirs lists the bound directories kae has a store for. A store without
+// pinnedDirsComplete reads the breadcrumbs, retaining incompleteness beside the
+// records it can name. A store without
 // a breadcrumb is skipped rather than reported: it was bound by a kae older
 // than the record, and inventing a path for it would be a guess.
 //
@@ -89,11 +146,6 @@ func (app *App) recordPinnedDir(pinID, absDir string) error {
 // binding does, because a skipped store is "kae could not look", not "nothing is
 // there" — credStoreRefs is the one that must tell those apart before deleting a
 // credential its siblings read.
-func (app *App) pinnedDirs() ([]pinnedDir, error) {
-	pins, _, err := app.pinnedDirsComplete()
-	return pins, err
-}
-
 func (app *App) pinnedDirsComplete() ([]pinnedDir, bool, error) {
 	entries, err := os.ReadDir(app.Paths.IsolationDir())
 	if os.IsNotExist(err) {
@@ -134,14 +186,14 @@ func (app *App) pinnedDirsComplete() ([]pinnedDir, bool, error) {
 // keeps the store on purpose, so its leftovers are doctor's business
 // (pinChecks), not this warning's.
 func (app *App) pinnedDirsMatching(match func(fragmentInfo) bool) []string {
-	pins, err := app.pinnedDirs()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", err)
+	index := app.boundDirectoryIndex()
+	if index.err != nil {
+		fmt.Fprintf(os.Stderr, "kae: warning: %v\n", index.err)
 		return nil
 	}
 	matched := []string{}
-	for _, pin := range pins {
-		info, exists, err := readFragmentAt(pin.Dir)
+	for _, pin := range index.directories {
+		info, exists, err := pin.readFragment()
 		if err != nil || !exists {
 			continue
 		}
@@ -182,23 +234,23 @@ func (app *App) warnPinnedDirs(match func(fragmentInfo) bool, message func(dir s
 // Offline: it reads the breadcrumbs, the fragments they name, and the account
 // snapshots on disk.
 func (app *App) pinChecks(toolFilter string) []adapter.Check {
-	pins, complete, err := app.pinnedDirsComplete()
+	index := app.boundDirectoryIndex()
 	checks := []adapter.Check{}
-	if !complete {
+	if !index.complete {
 		checks = append(checks, adapter.Check{
 			Code: constants.CheckPinIndexIncomplete, Status: constants.StatusWarn,
 			Message: "the pin index could not be read completely; some bound-directory checks could not run " +
 				"and shared credential attribution is unavailable; restore readable pin records before retrying",
 		})
 	}
-	if err != nil || toolFilter != "" {
+	if index.err != nil || toolFilter != "" {
 		return checks
 	}
-	for _, pin := range pins {
+	for _, pin := range index.directories {
 		// "Gone" is decided by the directory, never by a failed read of the
 		// fragment inside it: a permission error or an I/O blip on a live
 		// directory must not be reported as an absent path.
-		if !dirExists(pin.Dir) {
+		if !pin.directoryExists() {
 			// Deleted or moved. A moved directory's fragment can still point at
 			// this store, so absence is reportable but never grounds for reclaiming it.
 			checks = append(checks, adapter.Check{
@@ -210,7 +262,7 @@ func (app *App) pinChecks(toolFilter string) []adapter.Check {
 			})
 			continue
 		}
-		info, exists, ferr := readFragmentAt(pin.Dir)
+		info, exists, ferr := pin.readFragment()
 		if ferr != nil {
 			checks = append(checks, adapter.Check{
 				Code: constants.CheckPinStale, Status: constants.StatusWarn,

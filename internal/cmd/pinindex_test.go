@@ -13,7 +13,219 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
+
+// These consumers ask different questions of the same directory. Keep their
+// answers together so moving the observation seam cannot turn a report's skip
+// into a deletion's claim that nothing reads a credential.
+func TestBoundDirectoryConsumerPolicies(t *testing.T) {
+	for _, shape := range []string{"bound", "unbound", "gone", "not-directory", "unreadable-fragment", "incomplete-index", "missing-store"} {
+		t.Run(shape, func(t *testing.T) {
+			app := overlayTestApp(t)
+			dir := pinHere(t, app, modeShared)
+			seedAccountMeta(t, app, constants.ToolClaude, "main")
+			cred := app.credStoreDir(constants.ToolClaude, "main")
+			store, _ := app.boundStoreDir(paths.PinID(dir), constants.ToolClaude, mustFragmentAt(t, dir))
+			switch shape {
+			case "unbound", "unreadable-fragment":
+				if err := os.Remove(filepath.Join(dir, fragmentRelPath)); err != nil {
+					t.Fatal(err)
+				}
+				if shape == "unreadable-fragment" {
+					mkdirs(t, filepath.Join(dir, fragmentRelPath))
+				}
+			case "gone", "not-directory":
+				if err := os.Chdir(t.TempDir()); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.RemoveAll(dir); err != nil {
+					t.Fatal(err)
+				}
+				if shape == "not-directory" {
+					writeFile(t, dir, "file")
+				}
+			case "incomplete-index":
+				mkdirs(t, app.Paths.PinDir("side"))
+			case "missing-store":
+				if err := os.RemoveAll(store); err != nil {
+					t.Fatal(err)
+				}
+			}
+			wantKnown := shape != "unreadable-fragment" && shape != "incomplete-index"
+			wantCount := 0
+			if shape == "bound" || shape == "missing-store" {
+				wantCount = 1
+			}
+			if refs, known := app.credStoreRefs(cred); refs != wantCount || known != wantKnown {
+				t.Fatalf("refs = %d,%v; want %d,%v", refs, known, wantCount, wantKnown)
+			}
+			readers, complete := app.credStoreReaders(cred, constants.ToolClaude)
+			if len(readers) != wantCount || complete != wantKnown {
+				t.Fatalf("readers = %+v,%v; want count %d,%v", readers, complete, wantCount, wantKnown)
+			}
+			if len(readers) == 1 && readers[0] != (credStoreReader{Config: store, Dir: dir}) {
+				t.Fatalf("reader must resolve config and message paths separately: %+v", readers[0])
+			}
+			wantStores := 0
+			if shape == "bound" || shape == "incomplete-index" {
+				wantStores = 1
+			}
+			stores := app.boundDirStores()
+			if len(stores) != wantStores {
+				t.Fatalf("stores = %+v; want count %d", stores, wantStores)
+			}
+			if len(stores) == 1 && stores[0] != (boundDirStore{Dir: dir, Tool: constants.ToolClaude, Account: "main", StoreDir: store, CredDir: cred}) {
+				t.Fatalf("store must describe the fragment's current binding: %+v", stores[0])
+			}
+			wantChecks := 0
+			if shape == "gone" || shape == "not-directory" || shape == "unreadable-fragment" || shape == "incomplete-index" {
+				wantChecks = 1
+			}
+			checks := app.pinChecks("")
+			if len(checks) != wantChecks {
+				t.Fatalf("checks = %+v; want count %d", checks, wantChecks)
+			}
+			if len(checks) == 1 {
+				wantCode, marker := constants.CheckPinStale, "recorded path is gone"
+				if shape == "unreadable-fragment" {
+					marker = "fragment could not be read"
+				}
+				if shape == "incomplete-index" {
+					wantCode, marker = constants.CheckPinIndexIncomplete, "pin index could not be read completely"
+				}
+				if checks[0].Code != wantCode || checks[0].Status != constants.StatusWarn || !strings.Contains(checks[0].Message, marker) {
+					t.Fatalf("diagnostic must distinguish missing paths from unreadable fragments: %+v", checks[0])
+				}
+			}
+			index := app.boundDirectoryIndex()
+			if index.err != nil || index.complete != (shape != "incomplete-index") {
+				t.Fatalf("breadcrumb completeness: %+v", index)
+			}
+			observations := index.directories
+			if len(observations) != 1 || observations[0].Dir != dir || observations[0].PinID != paths.PinID(dir) {
+				t.Fatalf("index lost a readable breadcrumb: %+v", observations)
+			}
+			observation := observations[0]
+			wantDirectory := shape != "gone" && shape != "not-directory"
+			if observation.directoryExists() != wantDirectory {
+				t.Fatalf("directory presence: %+v", observation)
+			}
+			fragment, exists, err := observation.readFragment()
+			wantError := shape == "unreadable-fragment" || shape == "not-directory"
+			wantFragment := shape == "bound" || shape == "incomplete-index" || shape == "missing-store"
+			if exists != wantFragment || (err != nil) != wantError {
+				t.Fatalf("fragment observation: exists=%v err=%v", exists, err)
+			}
+			if exists && (fragment.Accounts[constants.ToolClaude] != "main" || fragment.CredDirs[constants.ToolClaude] != cred) {
+				t.Fatalf("fragment observation changed binding: %+v", fragment)
+			}
+		})
+	}
+}
+
+func TestBoundDirectoryGlobalReaderAndReferenceSources(t *testing.T) {
+	app := testApp(t, nil)
+	tool := constants.ToolClaude
+	cred := app.credStoreDir(tool, "main")
+	home := app.Paths.GlobalIsolatedHomeDir(tool, "main")
+	mkdirs(t, home, app.Paths.GlobalIsolatedHomeDir(tool, "side"))
+	readers, complete := app.credStoreReaders(cred, tool)
+	if !complete || len(readers) != 1 || readers[0].Config != home || readers[0].Dir != home {
+		t.Fatalf("disk homes: %+v,%v", readers, complete)
+	}
+	if refs, known := app.credStoreRefs(cred); refs != 0 || !known {
+		t.Fatalf("unselected home references = %d,%v", refs, known)
+	}
+	if _, err := app.mutateState(func(st *state.State) { st.Synced = map[string]string{tool: "main"} }); err != nil {
+		t.Fatal(err)
+	}
+	if refs, known := app.credStoreRefs(cred); refs != 1 || !known {
+		t.Fatalf("selected home references = %d,%v", refs, known)
+	}
+	if err := os.RemoveAll(home); err != nil {
+		t.Fatal(err)
+	}
+	if readers, complete := app.credStoreReaders(cred, tool); len(readers) != 0 || !complete {
+		t.Fatalf("removed home readers = %+v,%v", readers, complete)
+	}
+	if refs, known := app.credStoreRefs(cred); refs != 1 || !known {
+		t.Fatalf("state reference survives absent home = %d,%v", refs, known)
+	}
+}
+
+func TestBoundDirectoryIndexObservesDirectoryLazily(t *testing.T) {
+	app := testApp(t, nil)
+	dir := filepath.Join(t.TempDir(), "main-app")
+	if err := app.recordPinnedDir(paths.PinID(dir), dir); err != nil {
+		t.Fatal(err)
+	}
+	index := app.boundDirectoryIndex()
+	if index.err != nil || !index.complete || len(index.directories) != 1 {
+		t.Fatalf("index: %+v", index)
+	}
+	// Constructing an index reads breadcrumbs only. A filtered doctor can stop
+	// there; directory IO is deferred until a consumer needs it.
+	mkdirs(t, dir)
+	observation := index.directories[0]
+	if !observation.directoryExists() {
+		t.Fatal("construction eagerly observed the missing directory")
+	}
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	if !observation.directoryExists() {
+		t.Fatal("one index must retain its directory observation")
+	}
+	fresh := app.boundDirectoryIndex()
+	if len(fresh.directories) != 1 || fresh.directories[0].directoryExists() {
+		t.Fatal("a new index must observe the directory removal")
+	}
+}
+
+func TestBoundDirectoryIndexRetainsFragmentEvidence(t *testing.T) {
+	for _, shape := range []string{"present", "absent", "unreadable"} {
+		t.Run(shape, func(t *testing.T) {
+			app := testApp(t, nil)
+			dir := t.TempDir()
+			if err := app.recordPinnedDir(paths.PinID(dir), dir); err != nil {
+				t.Fatal(err)
+			}
+			index := app.boundDirectoryIndex()
+			if index.err != nil || !index.complete || len(index.directories) != 1 {
+				t.Fatalf("index: %+v", index)
+			}
+			fragmentPath := filepath.Join(dir, fragmentRelPath)
+			switch shape {
+			case "present":
+				writeFile(t, fragmentPath, fragAccountPrefix+constants.ToolClaude+"=main\n")
+			case "unreadable":
+				mkdirs(t, fragmentPath)
+			}
+			observation := index.directories[0]
+			first, exists, err := observation.readFragment()
+			if exists != (shape == "present") || (err != nil) != (shape == "unreadable") {
+				t.Fatalf("first read: exists=%v err=%v", exists, err)
+			}
+			if exists && first.Accounts[constants.ToolClaude] != "main" {
+				t.Fatal("construction eagerly observed the fragment before it was written")
+			}
+			if err := os.RemoveAll(fragmentPath); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, fragmentPath, fragAccountPrefix+constants.ToolClaude+"=side\n")
+			again, againExists, againErr := observation.readFragment()
+			if againExists != exists || againErr != err || again.Accounts[constants.ToolClaude] != first.Accounts[constants.ToolClaude] {
+				t.Fatal("an index must retain presence, errors and contents from its first read")
+			}
+			fresh := app.boundDirectoryIndex()
+			changed, changedExists, changedErr := fresh.directories[0].readFragment()
+			if changedErr != nil || !changedExists || changed.Accounts[constants.ToolClaude] != "side" {
+				t.Fatalf("new index must observe the replacement: %+v,%v,%v", changed, changedExists, changedErr)
+			}
+		})
+	}
+}
 
 func TestPinIndexIncompleteChecks(t *testing.T) {
 	for _, shape := range []string{"missing", "empty", "unreadable", "root-unreadable"} {
@@ -244,15 +456,16 @@ func TestPinRecordsTheBoundDirectory(t *testing.T) {
 	app := overlayTestApp(t)
 	cwd := pinHere(t, app, modeShared)
 
-	pins, err := app.pinnedDirs()
-	if err != nil {
-		t.Fatal(err)
+	index := app.boundDirectoryIndex()
+	if index.err != nil || !index.complete {
+		t.Fatalf("index = %+v", index)
 	}
+	pins := index.directories
 	if len(pins) != 1 {
-		t.Fatalf("pinnedDirs() = %v, want exactly the directory just bound", pins)
+		t.Fatalf("boundDirectoryIndex records = %v, want exactly the directory just bound", pins)
 	}
 	if pins[0].Dir != cwd || pins[0].PinID != paths.PinID(cwd) {
-		t.Fatalf("pinnedDirs() = %+v, want {PinID: %s, Dir: %s}", pins[0], paths.PinID(cwd), cwd)
+		t.Fatalf("boundDirectoryIndex records = %+v, want {PinID: %s, Dir: %s}", pins[0], paths.PinID(cwd), cwd)
 	}
 
 	// The record is what makes the directory reachable by what it binds.

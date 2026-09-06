@@ -156,7 +156,7 @@ if [ "$count" -gt 1 ]; then
   exit 2
 fi
 
-block=$(mktemp)
+block=$(mktemp "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2
 awk -v h="$heading" '
   index($0, h) == 1 && /^## / { insec = 1; next }
   insec && /^## /             { insec = 0 }
@@ -249,11 +249,13 @@ excl="$gitdir/info/exclude"
 status_before=$(git status --porcelain 2>/dev/null)
 excl_before=$([ -f "$excl" ] && cat "$excl" || echo missing)
 
+# Explicit templates respect TMPDIR on darwin and GNU mktemp; a caller owning
+# that parent also owns retained transcripts and allocations after interruption.
 # --- run, pre-isolated ------------------------------------------------------
-safe=$(mktemp -d)
-log=$(mktemp)
-transcript=$(mktemp)
-consumed=$(mktemp)
+safe=$(mktemp -d "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2
+log=$(mktemp "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2
+transcript=$(mktemp "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2
+consumed=$(mktemp "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2
 
 # Line by line, joining backslash continuations, because the exit status has to
 # mean something. Sourcing the whole file reports only its *last* command: a
@@ -279,12 +281,10 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
   MISE_CEILING_PATHS="$(pwd -P):$(cd "$HOME" && pwd -P)" \
   SMOKE_WHOLE_FILE="${SMOKE_WHOLE_FILE:-0}" \
   bash -c '
-  # Before anything else: GNU `mktemp` honours TMPDIR and fails on a missing
-  # directory, so `out=$(mktemp)` above this line yields an empty path on linux
-  # and every subsequent redirect fails. (darwin mktemp ignores TMPDIR, which is
-  # why the wrong order was invisible here.)
-  mkdir -p "$TMPDIR"
-  block=$1; log=$2; tr=$3; lines=$4; out=$(mktemp); acc=""; start=0; n=0; failed=0
+  # Explicit templates honour the owned TMPDIR on both darwin and GNU mktemp.
+  # Create the directory before allocating the per-command output file.
+  mkdir -p "$TMPDIR" || exit 2
+  block=$1; log=$2; tr=$3; lines=$4; out=$(mktemp "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2; acc=""; start=0; n=0; failed=0
   printf "smoke-run transcript: HOME=%s\n\n" "$HOME" >"$tr"
   if [ "$SMOKE_WHOLE_FILE" = 1 ]; then
     # shellcheck disable=SC1090

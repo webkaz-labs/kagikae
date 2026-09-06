@@ -144,7 +144,7 @@ ROOTS=(); CLEARED=()
 for v in $EXPECTED_ROOTS; do ROOTS+=("$v"); done
 for v in $EXPECTED_CLEARED; do CLEARED+=("$v"); done
 
-# Point every name at /real/<name> and run: a variable the runner forgot comes
+# Plant hostile values beneath an owned parent and run: a forgotten variable comes
 # back verbatim, and one it merely points somewhere *else* fails the containment
 # half below. `grep -c` prints its count and exits 1 when that count is zero, so
 # `|| true` is the only safe tail — `|| echo <n>` appends a second line and the
@@ -152,9 +152,10 @@ for v in $EXPECTED_CLEARED; do CLEARED+=("$v"); done
 probe() { # probe <heading> <var...> -> fills $tmp/out, echoes the transcript path
   local h=$1; shift
   local lines=() envs=() v
+  mkdir -p "$tmp/hostile/TMPDIR" "$tmp/hostile/HOME"
   for v in "$@"; do
     lines+=("printf '$v=%s\\n' \"\${$v-unset}\"")
-    envs+=("$v=/real/$v")
+    envs+=("$v=$tmp/hostile/$v")
   done
   # The heading is sanitised into the fixture filename; two headings differing
   # only in punctuation or digits would collide. Two callers today.
@@ -210,6 +211,33 @@ check 'an append to info/exclude is caught' 1 "$rc" 'LEAK' "$tmp/out"
 ( excl="$tmp/fake-excl"; excl_existed=0; : > "$excl"; restore_excl; [ ! -e "$excl" ] )
 check 'restore_excl removes a file that did not exist before' 0 $?
 
+# Fail after creating a usable fixture path: without the guard the block can
+# execute, so failure is not accidentally supplied by a later missing-file error.
+allocation_failed=0
+f=$(doc allocation-failure '## AllocationFailure' ': > "$SMOKE_ALLOCATION_MARKER"')
+for allocation_site in safe output mkdir; do
+  mkdir -p "$tmp/allocation-parent"
+  rm -f "$tmp/allocation-marker"
+  (
+    mktemp() {
+      command mktemp "$@" || return
+      case "$SMOKE_ALLOCATION_SITE:$*" in
+        safe:-d*) return 1 ;;
+        output:*'/tmp/kae-smoke-run.'*) return 1 ;;
+      esac
+    }
+    mkdir() {
+      command mkdir "$@" || return
+      if [ "$SMOKE_ALLOCATION_SITE" = mkdir ] && [ "$*" = "-p $TMPDIR" ]; then return 1; fi
+    }
+    export -f mktemp mkdir
+    SMOKE_ALLOCATION_SITE=$allocation_site SMOKE_ALLOCATION_MARKER="$tmp/allocation-marker" \
+      TMPDIR="$tmp/allocation-parent" SMOKE_DOC="$f" bash "$runner" '## AllocationFailure' > "$tmp/allocation-out" 2>&1
+  ); allocation_rc=$?
+  if [ "$allocation_rc" -eq 0 ] || [ -e "$tmp/allocation-marker" ]; then allocation_failed=1; fi
+done
+check 'allocation failures stop before executing the block' 0 "$allocation_failed"
+
 # Sourcing the preamble must not escape the runner's cleanup, including when a
 # block fails or changes HOME afterwards. The outside sentinel and the mutant's
 # unowned allocation both live inside this selftest's own temporary parent.
@@ -247,10 +275,9 @@ check 'failed preamble allocation preserves the caller environment' 0 $?
 #    third wrong place (or HOME at "$safe/.." — the shared user temp dir, which
 #    cleanup then never reclaims) passed that version while credentials were
 #    written outside the sandbox. Containment is what the runner promises, so it
-#    is what is checked; the /real/ count stays as the second half.
+#    is what is checked.
 tr=$(probe Roots "${ROOTS[@]}")
 sandbox=$(sed -n '1s/^smoke-run transcript: HOME=//p' "$tr" 2>/dev/null)
-leaked=$(grep -c '=/real/' "$tr" 2>/dev/null || true)
 inside=0
 # Only the fixture's own `NAME=value` output lines: the transcript's first line
 # is `smoke-run transcript: HOME=<sandbox>`, which a bare count of "=<sandbox>"
@@ -263,15 +290,12 @@ inside=0
 # runner's `rm -rf "$safe"` instead of going with it. `HOME` is immune because it
 # is what defines $sandbox; every other root was not. Measured 2026-08-09.
 escaped=$(grep -E '^[A-Z_]+=' "$tr" 2>/dev/null | grep -c '\.\.' || true)
-# `leaked` is kept for the diagnostic only: a root pointed at the planted
-# value is not inside the sandbox either, so containment already covers it,
-# and gating on both leaves a term that can be weakened to a tautology.
 if [ -n "$sandbox" ] && [ "$inside" -eq "${#ROOTS[@]}" ] && [ "$escaped" -eq 0 ]; then
   printf 'ok    all %s roots land inside the sandbox\n' "${#ROOTS[@]}"
   ok=$((ok + 1))
 else
-  printf 'FAIL  a root escaped the sandbox (%s of %s inside, %s planted values seen)\n' \
-    "$inside" "${#ROOTS[@]}" "$leaked"
+  printf 'FAIL  a root escaped the sandbox (%s of %s inside)\n' \
+    "$inside" "${#ROOTS[@]}"
   grep -E '^[A-Z_]+=' "$tr" 2>/dev/null | grep -vF "=$sandbox" | sed 's/^/        /'
   fails=$((fails + 1))
 fi
@@ -284,7 +308,7 @@ if [ "$got" -eq "${#CLEARED[@]}" ]; then
   ok=$((ok + 1))
 else
   printf 'FAIL  only %s of %s tool variables cleared:\n' "$got" "${#CLEARED[@]}"
-  grep '=/real/' "$tr" 2>/dev/null | sed 's/^/        /'
+  grep -F "=$tmp/hostile/" "$tr" 2>/dev/null | sed 's/^/        /'
   fails=$((fails + 1))
 fi
 
@@ -628,7 +652,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=37
+EXPECTED_GUARDS=38
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

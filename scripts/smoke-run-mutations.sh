@@ -50,6 +50,7 @@ mutate() {
     drop-cleared) subst_once "$runner" '-u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME' '-u CLAUDE_CONFIG_DIR -u COPILOT_HOME' ;;
     empty-preamble) subst_once "$self" "grep -oE '^export [A-Z_]+' scripts/smoke-env.sh" "grep -oE '^zzexport [A-Z_]+' scripts/smoke-env.sh" ;;
     unowned-preamble) subst_once "$preamble" '"${TMPDIR:-/tmp}/kae-smoke.XXXXXXXX"' '"${SMOKE_UNOWNED_PARENT:-${TMPDIR:-/tmp}}/kae-smoke.XXXXXXXX"' ;;
+    runner-allocation) subst_once "$runner" 'safe=$(mktemp -d "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2' 'safe=$(mktemp -d "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX")' ;;
     failed-allocation) subst_once "$preamble" ' || { unset kae_smoke_home; return 1; }' '' ;;
     checkout-leak) subst_once "$runner" 'if [ "$status_before" != "$status_after" ]; then' 'if [ "$status_before" = "$status_after" ]; then' ;;
     exclude-leak) subst_once "$runner" 'if [ "$excl_before" != "$excl_after" ]; then' 'if [ "$excl_before" = "$excl_after" ]; then' ;;
@@ -142,6 +143,7 @@ full|checkout-leak|a block touching the checkout is caught
 full|exclude-leak|an append to info/exclude is caught
 full|restore-missing|restore_excl removes a file that did not exist before
 full|unowned-preamble|sourced HOME is reclaimed on success and failure without deleting outside files
+full|runner-allocation|allocation failures stop before executing the block
 full|failed-allocation|failed preamble allocation preserves the caller environment
 full|drop-cleared|only 7 of 8 tool variables cleared|all 8 inherited tool variables are cleared
 full|driver|claude is forced onto the file driver

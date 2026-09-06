@@ -72,6 +72,12 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   subprocess seam for explicit child environments and working directories. Its
   tests replace that seam; it is outside the released binary. Application
   subprocesses continue to use `internal/runner` as below.
+  On darwin/linux the verifier owns each command's process group, stops remaining
+  members before returning, and handles interruption through cancellation so its
+  owned temporary parent can be reclaimed. This does not cover a process that
+  leaves the group or the verifier receiving SIGKILL. Installer-smoke temporary
+  files are placed beneath that parent; the smoke runner's header owns allocation
+  and isolation details.
 - All subprocess calls (`security`, `secret-tool`, binary detection) go
   through `internal/runner`. Production code never calls `exec.Command`
   directly.

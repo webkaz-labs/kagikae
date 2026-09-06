@@ -120,6 +120,7 @@ func TestArchiveControls(t *testing.T) {
 
 func TestVerificationStageOrder(t *testing.T) {
 	t.Setenv("SMOKE_WHOLE_FILE", "1")
+	t.Setenv("TMPDIR", t.TempDir())
 	for _, failure := range []string{"", "attestation", "version", "installer"} {
 		t.Run(failure, func(t *testing.T) {
 			dir := t.TempDir()
@@ -172,13 +173,23 @@ func TestVerificationStageOrder(t *testing.T) {
 				}
 				if name == "bash" {
 					wholeModes := 0
+					tempRoots := 0
 					for _, entry := range env {
+						if strings.HasPrefix(entry, "TMPDIR=") {
+							tempRoots++
+							if entry != "TMPDIR="+dir {
+								t.Fatal("installer temp allocation escapes owned parent")
+							}
+						}
 						if strings.HasPrefix(entry, "SMOKE_WHOLE_FILE=") {
 							wholeModes++
 							if entry != "SMOKE_WHOLE_FILE=0" {
 								t.Fatal("installer inherited whole-file mode")
 							}
 						}
+					}
+					if tempRoots != 1 {
+						t.Fatal("installer must own its temp root")
 					}
 					if wholeModes != 1 {
 						t.Fatal("installer must force per-line verdicts")

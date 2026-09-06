@@ -16,11 +16,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -44,14 +46,37 @@ type (
 )
 
 func command(name string, args, env []string, cwd string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	return commandContext(context.Background(), name, args, env, cwd)
+}
+
+// commandContext owns only the new process group. Detached descendants are outside
+// this boundary; stop the group even when its original parent exits successfully.
+func commandContext(parent context.Context, name string, args, env []string, cwd string) (output string, commandErr error) {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Minute)
 	defer cancel()
 	c := exec.CommandContext(ctx, name, args...)
 	c.WaitDelay = 5 * time.Second
+	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	stop := func() error {
+		err := syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	c.Cancel = stop
 	c.Dir = cwd
 	if env != nil {
 		c.Env = env
 	}
+	// Output owns the pipe collection; cleanup must also run after a successful Wait.
+	defer func() {
+		if c.Process != nil {
+			if err := stop(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				commandErr = errors.Join(commandErr, fmt.Errorf("%s process group cleanup failed: %w", filepath.Base(name), err))
+			}
+		}
+	}()
 	out, err := c.Output()
 	if err != nil {
 		return "", fmt.Errorf("%s failed: %w", filepath.Base(name), err)
@@ -193,11 +218,11 @@ func installerSmoke(repo, dir, tag, native string, run commandFunc) error {
 	}
 	env := []string{}
 	for _, entry := range os.Environ() {
-		if !strings.HasPrefix(entry, "SMOKE_DOC=") && !strings.HasPrefix(entry, "SMOKE_WHOLE_FILE=") {
+		if !strings.HasPrefix(entry, "SMOKE_DOC=") && !strings.HasPrefix(entry, "SMOKE_WHOLE_FILE=") && !strings.HasPrefix(entry, "TMPDIR=") {
 			env = append(env, entry)
 		}
 	}
-	env = append(env, "SMOKE_DOC="+docPath, "SMOKE_WHOLE_FILE=0")
+	env = append(env, "SMOKE_DOC="+docPath, "SMOKE_WHOLE_FILE=0", "TMPDIR="+dir)
 	_, err := run("bash", []string{"scripts/smoke-run.sh", "## Published installer"}, env, repo)
 	return err
 }
@@ -246,7 +271,25 @@ func verify(tag, repo, dir, system, arch string, run commandFunc) (result, error
 	return result{Status: "success", Tag: tag, Archives: names, NativeVersion: strings.TrimSpace(version), Installer: "verified-assets fixture"}, nil
 }
 
-func mainResult() (result, int) {
+// removeWorkdir restores owner access to directories a killed smoke may have
+// made read-only. WalkDir does not follow symlinks outside this owned root.
+func removeWorkdir(root string) error {
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return os.Chmod(path, 0o700)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(root)
+}
+
+func mainResult(ctx context.Context) (got result, code int) {
 	if len(os.Args) != 2 {
 		return result{Status: "failed", Reason: "usage: releaseverify vX.Y.Z (from repository root)"}, 1
 	}
@@ -275,8 +318,16 @@ func mainResult() (result, int) {
 	if err != nil {
 		return result{Status: "failed", Reason: err.Error()}, 1
 	}
-	defer os.RemoveAll(dir)
-	got, err := verify(tag, repo, dir, runtime.GOOS, runtime.GOARCH, command)
+	defer func() {
+		if err := removeWorkdir(dir); err != nil {
+			got = result{Status: "failed", Tag: tag, Reason: "temporary directory cleanup failed: " + err.Error()}
+			code = 1
+		}
+	}()
+	run := func(name string, args, env []string, cwd string) (string, error) {
+		return commandContext(ctx, name, args, env, cwd)
+	}
+	got, err = verify(tag, repo, dir, runtime.GOOS, runtime.GOARCH, run)
 	if err != nil {
 		return result{Status: "failed", Tag: tag, Reason: err.Error()}, 1
 	}
@@ -284,7 +335,9 @@ func mainResult() (result, int) {
 }
 
 func main() {
-	got, code := mainResult()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	got, code := mainResult(ctx)
+	stop()
 	if err := json.NewEncoder(os.Stdout).Encode(got); err != nil {
 		os.Exit(1)
 	}

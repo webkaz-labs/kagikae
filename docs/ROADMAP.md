@@ -46,7 +46,7 @@ named here retain their recorded gate; this index does not silently promote or c
    decision rather than an oversight**, or **`PinID` does not resolve symlinks, and
    changing that needs a migration** until the mechanism or measurement named by each
    entry exists.
-3. **Drift automation** — build **The shim harness** and **Behaviour-site hashes** in
+3. **Drift automation** — investigate **Behaviour-site hashes** in
    § Upstream-drift automation — what is left, and widen CI
    only through the per-step decisions in **CI runs a subset of the gate; `docs-check` was
    the one step whose price fell**.
@@ -57,36 +57,16 @@ named here retain their recorded gate; this index does not silently promote or c
 
 ## Upstream-drift automation — what is left
 
-The post-v0.12.0 audit and its follow-up are finished; the response workflow
-lives in the `upstream-auth-drift` skill
-(`.claude/skills/upstream-auth-drift/`), and the assumptions themselves in
-[VALIDATION.md](VALIDATION.md). Three of the five automation ideas are done: two
-shipped in a release — version/date agreement with a doc-parsing test plus a
-six-month age check, and the offline contradiction check for codex's store — and the
-literal-count fingerprints are **on `main` without a release of their own**, because
-they change no shipped binary (a test, a `mise run audit` task, and the table in
-[VALIDATION.md](VALIDATION.md) § "Upstream Literal Fingerprints"). The stability the
-idea rested on reproduced — every count identical across claude 2.1.218/219/220 while
-the bundle grew 1.8 MB — and measuring turned up three things the design had wrong,
-all recorded there. **Do not read that as counts holding in general**: re-measured on
-2026-08-16 across the wider 2.1.220 → 2.1.233 span, claude's counts had moved and
-opencode's had too, so the stability is a property of adjacent releases rather than of
-the literals. Which ones, and by how much, is [VALIDATION.md](VALIDATION.md)
-§ Upstream Literal Fingerprints and is deliberately not restated here. That is the
-check working as designed — a moved count is an instruction to work the tool's rows,
-and [VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions is where the
-result of working them is recorded — but it does mean the cost of a re-measure scales
-with how long a version sits. The remaining two, in the order each pays for itself:
+The response workflow lives in the `upstream-auth-drift` skill. Version/date
+agreement, age checks, offline store contradictions and literal fingerprints have
+executable checks routed from [VALIDATION.md](VALIDATION.md). The login-free Claude
+naming comparison is `mise run naming-agreement`; its scope and digest update
+precondition are in [ACCEPTANCE.md](ACCEPTANCE.md) § Bound-directory credential store.
+It does not establish PATH-shim reachability for other tools.
 
-4. **The shim harness**, table-driven and gated on the per-tool "does a `PATH`
-   shim reach this tool" answer, which is **not** the question this entry used to
-   gate on ("does it shell out") and does not have the same answers —
-   [measuring.md](../.claude/skills/upstream-auth-drift/references/measuring.md)
-   § Does a `PATH` shim reach this tool? is the one copy of both columns and of
-   why they differ. It should diff *the tool's* argv log against *kae's*,
-   which turns the naming-agreement check in [ACCEPTANCE.md](ACCEPTANCE.md)
-   § Bound-directory credential store into a script.
-5. **Behaviour-site hashes** for the three or four sites that encode real
+The remaining investigation is:
+
+- **Behaviour-site hashes** for the sites that encode real
    behaviour, then a bundle-pair diff on upgrade. The
    `oauthAccount?.profileFetchedAt` site hash was identical across three claude
    releases even though the TTL identifier went `TSg` → `sxg`, so the hash sees
@@ -650,40 +630,12 @@ alternative exists (`secret-tool`).
   swept unchanged is the per-directory item a **pre-split** binding left behind,
   which is what makes re-running `kae pin` a migration rather than a leak.
 
-- **The reader walk runs twice per bind, and a third walk of live bindings now exists**
-  (recorded 2026-08-08 by a quality pass, **not fixed**). `credStoreReaders` reads the pin
-  index and every bound directory's fragment, and both the pin-level pass and the write call
-  it — with nothing between them that changes the answer. On those two it sits behind the
-  `supersedes`
-  gate, so it costs nothing unless there is a copy worth harvesting; where that stops being
-  true is `kae run -i`, which the mise hook makes a per-invocation path, and where the
-  per-reader `dirSpecs` resolution stops being free is the day a second tool's rotation is
-  measured (codex's `Artifacts` can probe the keychain). `kae doctor` became a caller when
-  `credential_superseded` started attributing a shared store by its readers; it is gated
-  the same way in effect, asking only once a finding is otherwise ready and memoizing
-  within an account's group — but not across groups, so an account whose bound copy really
-  was overtaken pays one walk each. `kae account rename`'s harvest is a **fourth** walker
-  and the least gated of them (2026-08-16): it asks `credStoreReaders` for the account's own
-  store and then walks the pins again itself for the per-directory shape, so a rename costs
-  two `ReadDir`s and two reads of every bound directory's fragment where one would do.
-  Filesystem only, no subprocess, and a rename is typed by a human — which is why it was
-  filed here rather than deduped, and deduping it properly needs `credStoreReaders` to
-  return the pins it walked. The fix is a per-command memo, and
-  the reason it is not an `App` field is that this package has already had one of those make
-  a test pass for the wrong reason without a per-operation reset.
-  Separately, that walk is the **third** written over the same source: `credStoreRefs` shares
-  its mechanics exactly (including the `dirExists` gate whose only consequence is the ENOTDIR
-  case, documented on one of them and not the other), and `boundDirStores` shares them with a
-  different error policy. Sharing them means giving `boundDirStores` the completeness signal
-  it currently swallows, which changes what every doctor consumer sees on an unreadable
-  fragment — refuse-versus-skip, the seam where this area's defects live — so it wants its
-  own change and its own review rather than a ride-along.
-
 - **The pin index can be incomplete with nothing saying so** — implemented for the
   v0.18.2 target as `pin_index_incomplete`; [CLI.md](CLI.md) § `kae doctor --json`
   owns the finding. `TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated`
   keeps the attribution refusal in place while checking that doctor reports the
-  incomplete index. Pin-walker consolidation remains a separate change above.
+  incomplete index. The shared observation lifetime is described in [ARCHITECTURE.md](ARCHITECTURE.md)
+  § Caching; the scoped reuse decision is in [the execution plan](plans/core-reliability.md).
 
 - **A mode toggle and a same-mode re-pin answer a poisoned store differently** (recorded
   2026-08-08 by a reading-type review, **not fixed, and deliberately so**). `Conflicting`
@@ -1319,28 +1271,6 @@ completion surface those verbs are reached through, and two unbuilt candidates:
   magnitude more than the change that raised it, and their current output has
   real-machine acceptance behind it. Worth doing when the next command lands or a
   fourth shell is added — not on its own.
-- **`printHelp` and docs/CLI.md disagree about `kae add`** (found 2026-08-07 while
-  classifying commands for completion, **not fixed**). `printHelp` (`cmd.go`) says
-  `kae add <tool> <account>`; `CmdAdd` accepts one or two positionals, so the
-  account is optional and `docs/CLI.md`'s `kae add <tool> [<account>]` is the
-  correct one. Nothing checks either against the parser, which is the same gap
-  the entry above names for `completionCommands`. Left alone deliberately: it is
-  unrelated surface, and the completion change is not where an unrelated
-  usage-string fix belongs.
-- **A flag that takes a *value* shifts every completion slot** (found 2026-08-07 by
-  review of the entry above, **not fixed**). The generated scripts build their
-  positional list by dropping words that start with `-`, which is enough for a
-  boolean flag and wrong for a valued one: in `kae env --config /p set <TAB>` the
-  path `/p` survives the filter and becomes the first positional, so the tool slot
-  is asked to complete accounts of `set`, and `kae env --config /p list <TAB>`
-  walks past the `list` gate the same way. `kae use --config /p claude <TAB>`
-  simply goes quiet. Go's `splitArgs` knows which flags consume the next word and
-  the shell does not, and the two are hand-kept in step. Not urgent — the cost is
-  wrong or missing candidates, never a wrong action — but the fix is one place: a
-  `kae __complete valued-flags <command>` kind fed from the same registrars
-  `flagSetFor` uses, with each script consuming it in its positional loop. Doing
-  it per script without that backend would re-create the drift the dynamic backend
-  exists to prevent.
 - **Global mise tasks**: `kae mise init` writes the `ai-switch` / `ai-switch-tool`
   tasks (and their dynamic completion) into the project's `.mise.toml` only, so
   they exist where the tasks live. A `--global` option emitting them into the

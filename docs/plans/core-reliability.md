@@ -15,8 +15,8 @@ directory、fragment、credential store の観測をまとめ、呼び出し側�
 
 この計画のタスク状態は下表だけで管理する。[ROADMAP.md](../ROADMAP.md) は
 この milestone と、今回含めない研究・需要待ち項目への索引とする。
-現時点は計画確定の段階であり、実装は開始していない。バージョン番号は、
-統合した差分の最終 scope を確認して決める。
+実装とリリースは承認済み。選定したバージョンとその理由は
+[RELEASE.md](../RELEASE.md) の active release target に記載する。
 
 ## 完了条件
 
@@ -40,7 +40,7 @@ directory、fragment、credential store の観測をまとめ、呼び出し側�
 
 ## タスクと依存関係
 
-すべて未着手。ファイル欄は所有する作業領域を示す。新しいファイルの最終配置は
+ファイル欄は所有する作業領域を示す。新しいファイルの最終配置は
 各タスクの入口で既存構造を確認して決め、共有文書は統合担当だけが編集する。
 各行の検証に加えて、各コミット前に [AGENTS.md](../../AGENTS.md) の必須ゲートを
 通す。テスト環境と実機検証の境界は [VALIDATION.md](../VALIDATION.md) と
@@ -48,16 +48,16 @@ directory、fragment、credential store の観測をまとめ、呼び出し側�
 
 | ID・状態 | 作業と入口の条件 | 依存 | 所有するファイル・領域 | done と固有の検証 |
 |---|---|---|---|---|
-| A1 未着手 | **Index characterization**。既存 walker と consumer の観測・error policy・mutation 境界を表にする。 | なし | `internal/cmd/pinindex_test.go`、`internal/cmd/dircred_test.go`、関連既存テスト | 読める fragment、不完全な index、存在しない directory、共有 store、global isolated home の現行判断を区別して再現できる。拒否する対照と通常成功する対照を両方持つ。 |
-| A2 未着手 | **共有する観測の seam**。A1 を根拠に index の観測を内部で扱うdeep module を設計・実装する。新たな attribution policy を持ち込まない。 | A1 | `internal/cmd/pinindex.go` と index の実装・テスト領域 | consumer が必要とする観測と completeness を表せる。入口レビューで責務・interface・観測の寿命を確認し、A1 の各形を同じ interface から検証する。 |
-| A3 未着手 | **Consumer migration**。reader、refcount、report、rename の利用箇所を移す。移行順は A1 の依存表で決める。 | A2 | `internal/cmd/dircred.go`、`internal/cmd/doctor.go`、関連 consumer・テスト | 各 consumer の拒否と skip の違いを維持する。移行前後で A1 の結果、diagnostic、credential を保持・削除する境界が一致する。共通化の都合で completeness を失わせない。 |
-| A4 未着手 | **Command 内の再利用判断**。重複読取を測定し、mutation 後に何を再取得するか決めてから memo の採否を判断する。 | A3 | index と利用 command の実装・テスト | 採用時は command をまたがず、変更後の観測を再取得する対照が通る。`App` field に持たせない。不採用時は測定結果と理由をこの行に記録する。 |
-| B1 未着手 | **Shim の封じ込め**。既存の隔離 harness を使い、Claude の起動が実 credential program に到達しない構成を作る。 | なし | `scripts/` の命名検証用領域。既存 smoke harness を変更する必要があれば統合担当と調整 | HOME/XDG と credential program の境界を実行前に検証する。欠けた shim や隔離条件を与えた対照が upstream 起動前に失敗する。実ログインや実 credential store を使わない。 |
-| B2 未着手 | **Claude 命名一致**。PATH shim が届くという測定を確認し、Claude と kae の argv を独立に取得して比較する。 | B1 | B1 と同じ script・fixture 領域 | 対象を Claude に限定し、選んだ config/credential directory のケースで両者が同じ item を指すことを示す。kae の期待値だけを再計算する検査にしない。 |
-| B3 未着手 | **失敗対照と maintainer command**。命名不一致・観測不能を区別し、保守作業の実行入口に結ぶ。 | B2 | 命名検証の selftest、`mise.toml` の対象 task | 正常対照が通り、意図的な命名差分を検出し、観測できなかった実行を成功扱いにしない。一つの maintainer command で再実行できる。CI への追加は別判断とする。 |
-| C1 未着手 | **Help の引数表記**。`kae add` の既存 parser が受け取る引数と root help を合わせる。 | なし。実装枠が空いた時 | `internal/cmd/cmd.go`、help の既存テスト | account の省略可能性を正しく表示する。parser の受理範囲は変えず、help と既存構文の一致を確認する。 |
-| C2 未着手 | **Valued-flag completion**。既存 flag registrar と completion backend を使って、flag の値を positional と誤認しないようにする。 | C1 と独立。実装枠が空いた時 | `internal/cmd/flagspec.go`、`internal/cmd/complete.go`、`internal/cmd/completion.go`、既存 completion テスト | bash/zsh/fish で値を別 word とする形、`=` 形、boolean flag、既存 subcommand の補完位置を確認する。flag 一覧の手コピーや generator 全面書き換えはしない。 |
-| I1 未着手 | **統合とリリース判断**。各系列の evidence を受理し、共有文書と最終 scope を整える。 | A4、B3、C1、C2 | この計画、`docs/`、`README.md`、`AGENTS.md` などの共有文書は統合担当が所有 | 必須ゲートと二種のレビューを完了し、追跡 Markdown ごとに変更要否を判定する。必要な実機検証を直列実行し、残存 blocker、最終 scope、バージョン判断を記録する。push・公開は別途承認後。 |
+| A1 完了 | **Index characterization**。既存 walker と consumer の観測・error policy・mutation 境界を表にする。 | なし | `internal/cmd/pinindex_test.go`、`internal/cmd/dircred_test.go`、関連既存テスト | 読める fragment、不完全な index、存在しない directory、共有 store、global isolated home の現行判断を区別して再現できる。拒否する対照と通常成功する対照を両方持つ。 |
+| A2 完了 | **共有する観測の seam**。A1 を根拠に index の観測を内部で扱うdeep module を設計・実装する。新たな attribution policy を持ち込まない。 | A1 | `internal/cmd/pinindex.go` と index の実装・テスト領域 | consumer が必要とする観測と completeness を表せる。入口レビューで責務・interface・観測の寿命を確認し、A1 の各形を同じ interface から検証する。 |
+| A3 完了 | **Consumer migration**。reader、refcount、report、rename の利用箇所を移す。移行順は A1 の依存表で決める。 | A2 | `internal/cmd/dircred.go`、`internal/cmd/doctor.go`、関連 consumer・テスト | 各 consumer の拒否と skip の違いを維持する。移行前後で A1 の結果、diagnostic、credential を保持・削除する境界が一致する。共通化の都合で completeness を失わせない。 |
+| A4 完了 | **Command 内の再利用判断**。重複読取を測定し、mutation 後に何を再取得するか決めてから memo の採否を判断する。 | A3 | index と利用 command の実装・テスト | 採用時は command をまたがず、変更後の観測を再取得する対照が通る。`App` field に持たせない。command 全体の memo は不採用。2026-09-06 の一つの bound directory を持つ回帰 fixture の一時計測では、re-pin は index/fragment 各 1 回、rename harvest は各 3 回、doctor は各 2 回。rename harvest 全体は約 7 ms。mutation 後の無効化と観測寿命を広げる追加コストに対し、この fixture の重複削減の利益は小さい。index 内の遅延観測保持とは別の判断であり、規模を変えた性能保証ではない。 |
+| B1 完了 | **Shim の封じ込め**。既存の隔離 harness を使い、Claude の起動が実 credential program に到達しない構成を作る。 | なし | `scripts/` の命名検証用領域。既存 smoke harness を変更する必要があれば統合担当と調整 | HOME/XDG と credential program の境界を実行前に検証する。欠けた shim や隔離条件を与えた対照が upstream 起動前に失敗する。実ログインや実 credential store を使わない。 |
+| B2 完了 | **Claude 命名一致**。PATH shim が届くという測定を確認し、Claude と kae の argv を独立に取得して比較する。 | B1 | B1 と同じ script・fixture 領域 | 対象を Claude に限定し、選んだ config/credential directory のケースで両者が同じ item を指すことを示す。kae の期待値だけを再計算する検査にしない。 |
+| B3 完了 | **失敗対照と maintainer command**。命名不一致・観測不能を区別し、保守作業の実行入口に結ぶ。 | B2 | 命名検証の selftest、`mise.toml` の対象 task | 正常対照が通り、意図的な命名差分を検出し、観測できなかった実行を成功扱いにしない。一つの maintainer command で再実行できる。CI への追加は別判断とする。 |
+| C1 完了 | **Help の引数表記**。`kae add` の既存 parser が受け取る引数と root help を合わせる。 | なし。実装枠が空いた時 | `internal/cmd/cmd.go`、help の既存テスト | account の省略可能性を正しく表示する。parser の受理範囲は変えず、help と既存構文の一致を確認する。 |
+| C2 完了 | **Valued-flag completion**。既存 flag registrar と completion backend を使って、flag の値を positional と誤認しないようにする。 | C1 と独立。実装枠が空いた時 | `internal/cmd/flagspec.go`、`internal/cmd/complete.go`、`internal/cmd/completion.go`、既存 completion テスト | bash/zsh/fish で値を別 word とする形、`=` 形、boolean flag、既存 subcommand の補完位置を確認する。flag 一覧の手コピーや generator 全面書き換えはしない。 |
+| I1 実機検証待ち | **統合とリリース判断**。各系列の evidence を受理し、共有文書と最終 scope を整える。 | A4、B3、C1、C2 | この計画、`docs/`、`README.md`、`AGENTS.md` などの共有文書は統合担当が所有 | 必須ゲートと二種のレビューを完了し、追跡 Markdown ごとに変更要否を判定する。必要な実機検証を直列実行し、残存 blocker、最終 scope、バージョン判断を記録する。push・公開は今回の実行依頼で承認済み。候補 `64c4ec3` の必須ゲート、audit、release-evidence、GoReleaser snapshot、命名一致、隔離補完・store smoke は成功。実 Claude process が動作中のため、main・side の並行利用がないことの確認後に実機切り替えを行い、結果記録と公開へ進む。 |
 
 ## 並行運用
 

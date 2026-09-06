@@ -254,6 +254,14 @@ payload/ACL evidence. Supply **both** `CLAUDE_CONFIG_DIR` and
 the former asks Claude about a different credential store. The harness does not
 relax `smoke-run.sh`'s file-driver guard and is not an OS network sandbox.
 
+Confirmed 2026-09-06 on the v0.18.3 candidate at `64c4ec3` with
+`mise run naming-agreement`: the production writer and Claude 2.1.261 read
+addresses matched for the default, explicit config, trailing slash, decomposed
+Unicode, separate credential directory, relative directory and invalid-USER cases.
+The task's refusal/mismatch controls passed first; no plaintext credential fallback
+was observed. This is the harness's adapter/artifact observation, not a fresh
+real-account authentication or a generated-fragment wiring result.
+
 Confirmed 2026-09-04 on the v0.18.0 candidate at `495141f`, with Claude Code
 2.1.246: the production-equivalent two-variable path matched the independently
 derived service and left no plaintext credential file. The run used a temp file

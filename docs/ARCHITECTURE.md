@@ -43,7 +43,8 @@ kagikae/
                           #   `X.md § Name` citation, one stream with a kind column
     docscan/              # `mise run docs-scan`: reports prose two documents carry
                           #   twice
-                          # Both are package main outside the released binary
+    namingagreement/      # login-free production writer/upstream read comparison
+                          # Go script packages are outside the released binary
                           #   (.goreleaser.yaml builds `.` only), so the dispatch-only
                           #   rule above is about kae's main.go. This listing named one
                           #   of them and called it "a second package main" while a
@@ -75,11 +76,9 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   task `complete "<arg>" run="kae __complete …"` directives (`cmd/miseinit.go`) —
   so candidate lists never drift from the real surface. The `flags <command>`
   kind lists a command's flags from the same per-command registrars the parser
-  uses (`cmd/flagspec.go`, also called by `parseCommon`), so flag completion
-  tracks the real flag set. The shell scripts route by the flag-filtered
-  positional index (a **boolean** flag before the positionals does not shift
-  completion; one that takes a value does — [ROADMAP.md](ROADMAP.md) §
-  Command-system expansion owns why). Read-only,
+  uses (`cmd/flagspec.go`, also called by `parseCommon`); `valued-flags` derives
+  which ones consume a value from those same registrations. The shell scripts
+  exclude the flag and its value before routing by positional index. Read-only,
   no locks; its line-oriented output is an internal contract, not the JSON contract.
 - **Did-you-mean hints** (`cmd/suggest.go`): the unknown-command, unknown-tool,
   and unknown-profile usage errors append a single hand-rolled Levenshtein
@@ -431,8 +430,7 @@ the crash state before rename is retried.
 
 ## Caching
 
-Commands are short-lived and re-read live state, with two request-scoped
-exceptions, both carried in the context and absent unless opted in:
+Commands are short-lived. Credential read caches opt in through the context:
 
 - `keychain.WithReadCache(ctx)` coalesces repeated
   `security find-generic-password` reads of the same **upstream** tool service.
@@ -446,7 +444,23 @@ exceptions, both carried in the context and absent unless opted in:
   does not forward `Enumerator`, so `doctor` orphan detection uses the raw
   backend.)
 
-Neither cache is ever open **across** a child run (`run -s`, `kae add`'s login
+Bound-directory consumers use an operation-local `boundDirectoryIndex`. It retains
+breadcrumb completeness and observes each directory's existence and fragment
+lazily, retaining absence and read errors as well as successful reads. Stat and
+fragment reads are separate so a reference count can skip a non-directory while
+a listing can report its fragment error. Each consumer keeps its own refusal,
+skip and reporting policy; global-home and `state.Synced` observations remain
+with the consumers that need them.
+
+Create a new index after a binding mutation. It is not an atomic filesystem
+snapshot or an `App` cache, and is not shared across a command's separate passes.
+`TestBoundDirectoryIndexObservesDirectoryLazily` and
+`TestBoundDirectoryIndexRetainsFragmentEvidence` exercise retained evidence and
+fresh observations after mutation; `TestBoundDirectoryConsumerPolicies` and
+`TestBoundDirectoryGlobalReaderAndReferenceSources` keep the consumer distinctions
+visible through the same seam.
+
+Neither credential cache is ever open **across** a child run (`run -s`, `kae add`'s login
 flow), where the child can rotate the live credential behind kae's back and a cached
 value would be stale. `run -s` opens the keychain cache once the child has **exited**
 and while it still holds the per-tool locks, so its re-resolution, recapture, restore

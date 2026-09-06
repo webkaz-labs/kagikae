@@ -1467,6 +1467,11 @@ current owns how).
 
 Unit-covered, in `internal/cmd`:
 
+- `TestValuedFlagBackend` and `TestCompletionFlagValueRouting` — registrar-derived
+  arity and generated shell functions with separated/attached values, boolean
+  flags, aliases and subcommands. Bash controls also cover split `=`, quoted
+  values, escaped-newline continuation and a UTF-8 byte cursor before a suffix.
+  Shell availability follows the syntax test below.
 - `TestCompletionPositionalRouting` — each branch's slots and array indices,
   asserted **inside that branch and in order** rather than anywhere in the script,
   per shell. Both are load-bearing: the constructs recur across branches, and one
@@ -1525,6 +1530,13 @@ processes invoked the registered completion functions and returned the required
 candidates; `env list` returned none. The generated current-shell mise hook loaded
 `_kae` and registered it without stderr output. This checked the shell functions,
 not a physical TAB-key interaction.
+
+Reconfirmed 2026-09-06 on the v0.18.3 candidate at `64c4ec3`, using
+registered completion files refreshed by that binary under the smoke harness.
+Fresh bash/zsh processes returned tools and accounts after valued flags, while
+`env list` stayed empty. The generated mise current-shell hook defined `_kae`
+and registered it without stderr output. The run exercised completion functions,
+not a physical TAB key; fish was unavailable and remains best-effort.
 
 ## Switching a per-account credential store
 
@@ -1602,6 +1614,14 @@ and file secret backend under the smoke harness. Shared credential paths, distin
 config paths, migration warning/repair, reference-counted purge and shared-mode
 rebind passed. The purge assertions inspect `/claudeAiOauth`: the file driver
 removes that member and may leave the surrounding JSON file in place.
+
+Reconfirmed 2026-09-06 on the v0.18.3 candidate at `64c4ec3`, with synthetic
+accounts, the file driver and file secret backend under the smoke harness.
+The shared credential/distinct config paths, migration finding and repair,
+reference-counted purge and its account-wide wording, and shared-mode rebind all
+passed. Credential-program interceptors recorded no calls. This verifies the
+file-driver flow; real-keychain acceptance remains separately recorded in
+[ACCEPTANCE.md](ACCEPTANCE.md).
 
 ## Upstream Behaviour Assumptions
 

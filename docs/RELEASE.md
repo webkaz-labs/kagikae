@@ -1,17 +1,16 @@
 # Release Process
 
-## Active planning target
+## Active release target — kae v0.18.3
 
-The next milestone completes a bounded part of existing-function reliability and
-repeatable verification. [The execution plan](plans/core-reliability.md) owns its
-scope, task dependencies and completion criteria; [ROADMAP.md](ROADMAP.md)
-§ Current work order places it among the longer-term work.
+This patch release completes [the bounded reliability plan](plans/core-reliability.md):
+operation-local bound-directory observations, the login-free Claude naming
+agreement command, optional-account help and valued-flag completion fixes.
+The command/config/JSON contracts retain their compatibility; the added completion
+kind is hidden and the naming command is maintainer tooling. This scope fits a
+patch release under the shared Go CLI release standard.
 
-Refactoring the bound-directory index is part of that reliability work, together
-with automating credential-store agreement checks and fixing the selected help and
-completion defects. It is not a separate prerequisite to implement every proposed
-architecture change. The milestone's version is chosen from the final external
-contract before its release preparation, rather than reserved during planning.
+The plan owns task completion. [ACCEPTANCE.md](ACCEPTANCE.md) owns the release's
+real-machine results; the checks below must finish before the tag.
 
 The v0.18.2 release record is its tag and
 [GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.18.2).

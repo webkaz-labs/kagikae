@@ -34,6 +34,30 @@ login is healthy. Re-run affected maintainer checks and isolated smokes; verify 
 newly published artifacts and installer. Application changes still require the
 affected live acceptance before release.
 
+### v0.18.4 applicability result
+
+Assessed on 2026-09-07 for candidate `fe5e3c1`. Comparing application sources,
+dependencies and GoReleaser inputs with accepted candidate `64c4ec3` found only
+the version literal and its report-test expectation changed. The 2026-09-06
+Claude global switch/rollback, Copilot same-account apply/rollback and Claude
+bound-directory isolation results below are reused for that unchanged behavior.
+This is not a new live-account run or a current-login health check; the optional
+two-account Copilot case remains unmeasured.
+
+The installed behavior audit passed with Claude 2.1.261 and Copilot 1.0.83.
+Claude's digest matched the reviewed binary used by the naming harness; the
+earlier Copilot record has no digest, so its agreement is version-level only.
+No contrary incident was identified in this release's assessment.
+The updated `mise run naming-agreement` passed its controls and address cases
+against the installed Claude binary. `mise run release-smoke` passed both saved
+completion and credential-store blocks in isolated environments. Neither command
+substitutes for the reused live-account results.
+
+The new Go verifier passed against published v0.18.3, checking its archive
+manifest, checksums, attestations, native version and isolated installer with
+verified assets. Verification of the new v0.18.4 assets follows publication;
+the existing release's result is only the verifier's pre-release baseline.
+
 ## Credential-expiry observation — does `refreshTokenExpiresAt` predict the login's death? (**open**)
 
 **If claude has just asked for a login it did not ask for before: read that account's

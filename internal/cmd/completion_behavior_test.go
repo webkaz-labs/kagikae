@@ -60,6 +60,11 @@ func TestCompletionFlagValueRouting(t *testing.T) {
 		{"companion", []string{"companion", "add", "main", "--config", "/p", "git", ""}, []string{"email", "name"}},
 		{"no-positionals", []string{"env", "--config", "/p", "list", ""}, nil},
 		{"bare-dash-parser-policy", []string{"env", "--", "--config", "/p", "set", ""}, []string{"claude", "codex"}},
+		{"preservation-verbs", []string{"preservation", ""}, []string{"list", "restore", "rm"}},
+		{"preservation-restore", []string{"preservation", "restore", ""}, []string{"0123456789abcdef0123456789abcdef"}},
+		{"preservation-rm", []string{"preservation", "rm", ""}, []string{"0123456789abcdef0123456789abcdef"}},
+		{"preservation-list", []string{"preservation", "list", ""}, nil},
+		{"preservation-finished", []string{"preservation", "restore", "0123456789abcdef0123456789abcdef", ""}, nil},
 		{"flag-candidates", []string{"add", "--"}, []string{"--no-login"}},
 	}
 	for _, shell := range []string{"bash", "zsh", "fish"} {
@@ -115,6 +120,7 @@ func runCompletionCase(t *testing.T, bin, shell string, words, want []string, so
  case "$2" in
  valued-flags) printf '%s\n' ` + valued + ` ;;
  tools) printf '%s\n' claude codex ;;
+ preservations) printf '%s\n' 0123456789abcdef0123456789abcdef ;;
  profiles) printf '%s\n' main ;;
  accounts) if [ "$3" = claude ]; then printf '%s\n' main side; fi ;;
  companion-knobs) if [ "$3" = git ]; then printf '%s\n' email name; fi ;;
@@ -148,6 +154,8 @@ func runCompletionCase(t *testing.T, bin, shell string, words, want []string, so
  printf '%s\n' ` + valued + `
  case tools
  printf '%s\n' claude codex
+ case preservations
+ printf '%s\n' 0123456789abcdef0123456789abcdef
  case profiles
  printf '%s\n' main
  case accounts

@@ -31,10 +31,11 @@ func TestAccountKey(t *testing.T) {
 	}{
 		{key: "claude/main/claude_ai_oauth", tool: "claude", acct: "main", wantAccount: true},
 		{key: "codex/side/auth", tool: "codex", acct: "side", wantAccount: true},
-		// The three prefixed namespaces: no snapshot dir behind any of them.
+		// The prefixed namespaces: no snapshot dir behind any of them.
 		{key: "backup/20260101T000000Z/claude/claude_ai_oauth"},
 		{key: "companion/main/git/email"},
 		{key: "env/claude/main/API_KEY"},
+		{key: "preservation/0123456789abcdef0123456789abcdef/payload"},
 		// Malformed.
 		{key: ""},
 		{key: "claude/main"},
@@ -57,7 +58,7 @@ func TestAccountKey(t *testing.T) {
 // prefix would make its own keys unreadable as accounts (and a prefixed
 // namespace's keys readable as that tool's).
 func TestToolIDsDoNotCollideWithKeyNamespaces(t *testing.T) {
-	reserved := map[string]bool{NSBackup: true, NSCompanion: true, NSEnv: true}
+	reserved := map[string]bool{NSBackup: true, NSCompanion: true, NSEnv: true, NSPreservation: true}
 	for _, tool := range constants.Tools {
 		if reserved[tool] {
 			t.Errorf("tool id %q collides with a reserved secret-key namespace", tool)

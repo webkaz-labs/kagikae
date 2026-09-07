@@ -49,14 +49,13 @@ type Enumerator interface {
 
 // Reserved first segments of a stored key. Every namespace but the account one
 // prefixes its keys with one of these, so an account key is recognized by the
-// absence of a prefix. The three builders that own those namespaces
-// (backup.SecretRef, companion.SecretRef, envprofile.SecretRef) compose their
-// keys from these constants, so this list cannot drift away from the key shapes
-// it describes.
+// absence of a prefix. Namespace builders compose keys from these constants;
+// AccountKey excludes them even when their keys also have three segments.
 const (
-	NSBackup    = "backup"
-	NSCompanion = "companion"
-	NSEnv       = "env"
+	NSPreservation = "preservation"
+	NSBackup       = "backup"
+	NSCompanion    = "companion"
+	NSEnv          = "env"
 )
 
 // AccountKey reports whether key belongs to the account namespace
@@ -66,16 +65,15 @@ const (
 // doctor's orphan check warn forever on every companion binding and every
 // env-profile variable.
 //
-// A namespace added later must be listed above *and* in the switch below. Today's
-// three are excluded twice over — none of them has three segments — but a new
-// three-segment namespace would be read as an account with nothing failing.
+// A namespace added later must be listed above and in the switch below.
+// Preservation keys have three segments, just like account keys.
 func AccountKey(key string) (tool, account string, ok bool) {
 	parts := strings.Split(key, "/")
 	if len(parts) != 3 {
-		return "", "", false // backup/companion/env keys carry four segments
+		return "", "", false
 	}
 	switch parts[0] {
-	case NSBackup, NSCompanion, NSEnv:
+	case NSBackup, NSCompanion, NSEnv, NSPreservation:
 		return "", "", false
 	}
 	if parts[0] == "" || parts[1] == "" || parts[2] == "" {

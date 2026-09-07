@@ -210,7 +210,7 @@ complete and passed its tests.
 
 ## Never harvest a copy you cannot attribute
 
-**Never harvest a copy you cannot attribute.** A `-s` store is account-agnostic, so
+**Never harvest an unattributed copy into an account snapshot.** A `-s` store is account-agnostic, so
 a re-bind finds the previous account's (usually newer) credential there, and filing
 it under this account's name is undetectable afterwards — the token is opaque, so
 live, snapshot and doctor all agree on a label that is simply wrong. The evidence is
@@ -255,6 +255,12 @@ sweep reaches (`removeDirCredential`'s kinds), and a file still sitting in a sto
 keeps needs no escape because the user can name its path. Both exceptions say what they
 are destroying — and the second says kae could not tell **whose** it was, since it runs
 before any attribution. Neither lets a housekeeping bind do it.
+
+An independent preservation record is not account adoption. It may retain
+unattributed bytes under an original-store record and restore only through
+[CLI.md](CLI.md) § kae preservation Semantics. Its approved latest-three retention
+uses capture history, not token expiry or an inferred credential owner. These
+records do not relax the account-harvest attribution rules above.
 
 ## Ordering two copies of one credential
 

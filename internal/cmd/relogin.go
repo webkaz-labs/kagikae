@@ -127,12 +127,46 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	}
 	defer pinLock.Release()
 
-	// Resolved before the flow, because the credential in the store has to be read
-	// on both sides of it. A store kae cannot resolve is not fatal: the login is
-	// still the useful half, and everything that needs the spec degrades to saying
-	// so (reloginCredentialSpec). Quiet here — the post-flow resolution is the one
-	// that decides whether the capture back can happen, so warning now would both
-	// repeat itself and claim something about a step that has not run.
+	// Preserve raw bytes independently of snapshot attribution before the upstream
+	// can replace them. Reconfirm the mapping under the pin lock: the initial
+	// fragment read occurred before another bind could have finished.
+	var recheckPreserved func() error
+	if tool == constants.ToolClaude || tool == constants.ToolCodex {
+		origin, preservedSpec, err := app.preservationOrigin(ctx, absDir, tool)
+		if err != nil {
+			return finish(opts, err)
+		}
+		if origin.BoundAccount != accountName || origin.Mode != fragment.Mode || origin.ConfigDir != dirs.Config || origin.CredDir != dirs.Cred {
+			return finish(opts, errf(constants.ExitUnsafeRefused, "the binding changed before login; retry after confirming the bound account"))
+		}
+		live, err := artifact.ReadLive(ctx, preservedSpec)
+		if err != nil {
+			return finish(opts, errf(constants.ExitUnsafeRefused, "cannot preserve the existing credential; the login flow was not started"))
+		}
+		recheckPreserved = func() error {
+			current, _, err := app.preservationOrigin(ctx, absDir, tool)
+			if err != nil || current != origin {
+				return errf(constants.ExitUnsafeRefused, "the binding changed before login; the login flow was not started")
+			}
+			latest, err := artifact.ReadLive(ctx, preservedSpec)
+			if err != nil || latest.Present != live.Present || !bytes.Equal(latest.Data, live.Data) {
+				return errf(constants.ExitUnsafeRefused, "the credential changed after preservation; the login flow was not started")
+			}
+			return nil
+		}
+		if live.Present {
+			saved, err := app.preservationStore(be).Save(ctx, origin, live.Data, "")
+			if err != nil {
+				return finish(opts, preservationError(err))
+			}
+			fmt.Fprintf(os.Stderr, "kae: preserved the existing credential as %s; its account ownership is unknown (list with: kae preservation list)\n", saved.Record.ID)
+		}
+	}
+
+	// Resolve again for snapshot harvesting and the before/after comparison.
+	// Claude/Codex already passed independent preservation and are rechecked before
+	// login; other tools retain this helper's best-effort observation behavior.
+	// Keep this resolution quiet because the post-flow pass reports capture limits.
 	preSpecs, sp, haveSpec := app.reloginCredentialSpec(ctx, tool, dirs, quiet)
 	before, comparable := storeCredential(ctx, sp, haveSpec)
 	// The last point at which the copy already in that store can be kept, because the
@@ -148,6 +182,11 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	if credVar := credentialEnvVar(tool); credVar != "" && dirs.Cred != "" {
 		loginEnv = append(loginEnv, credVar+"="+dirs.Cred)
 		shown = append(shown, credVar+"="+app.displayPath(dirs.Cred))
+	}
+	if recheckPreserved != nil {
+		if err := recheckPreserved(); err != nil {
+			return finish(opts, err)
+		}
 	}
 	fmt.Fprintf(os.Stderr,
 		"kae: complete the %s login flow; kae is running it against this directory's own store (%s), "+
@@ -277,15 +316,10 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	return constants.ExitOK
 }
 
-// reloginCredentialSpec resolves the store's artifact specs and the credential one
-// among them. It reports haveSpec=false — rather than failing — for a tool kae
-// materializes no per-directory credential for, and for a store it cannot resolve:
-// the login is worth running either way, and the two things that need the spec (the
-// did-anything-change comparison and the capture back) each say what their absence
-// costs instead of blocking it.
-//
-// report exists because runRelogin resolves twice, before and after the flow, and a
-// failure that does not clear would otherwise print the identical line at both.
+// reloginCredentialSpec resolves the artifact set and its credential spec for
+// harvesting and comparison. Missing or unresolved specs produce haveSpec=false;
+// report controls whether the observation failure is printed. Claude/Codex's
+// mandatory pre-login preservation is enforced separately by runRelogin.
 const (
 	quiet = false
 	speak = true
@@ -398,46 +432,14 @@ func boundToolList(fragment fragmentInfo) string {
 	return strings.Join(bound, ", ")
 }
 
-// preserveBeforeRelogin harvests whatever the store holds *before* the login flow
-// replaces it, and says so when it could not.
+// preserveBeforeRelogin offers the pre-login copy to the existing attribution
+// and freshness guards before the upstream can replace it. A successful harvest
+// keeps the account snapshot current; an independent preservation record does
+// not establish that account ownership and cannot substitute for this check.
 //
-// The capture back runs after the flow, so the only copy it can ever see is the one
-// the login wrote; the copy the login destroyed is invisible to it. Since the
-// credential split that copy is the **account's**, read by every directory bound to
-// it, so it can be a live login this directory's binding says nothing about — the
-// ordinary way to get there is somebody running the tool's own `/login` inside a bound
-// directory as another account. `kae pin` declines to overwrite exactly that copy in
-// order to preserve it and then names this command as the remedy, so without this pass
-// the remedy kae prints is what destroys what the refusal kept (measured 2026-08-08,
-// end to end: the store's only refreshable copy of the other account was gone from
-// every store and every snapshot afterwards).
-//
-// A warning and not a refusal, and the asymmetry is the one AGENTS.md settles: the
-// login is what the user asked for, refusing it would leave the directory stale with
-// no way forward, and a warning never changes the exit code. What it may claim is only
-// what kae observed — the harvest's own reason — never that the copy is another
-// account's, which on the arm that matters most is precisely what kae could not
-// establish.
-//
-// **What it does not do is back the copy up, and that is a decision rather than an
-// oversight** (docs/ROADMAP.md § A relogin's pre-flight refusal owes a backup it cannot
-// safely take yet). AGENTS.md's rule is that a refusal which cannot preserve is a
-// deletion and owes a backup, the way `kae run -s` answers its own with
-// `run-unattributable` — and by that rule this owes one. It was built and withdrawn
-// before v0.17.0 shipped, so what stops it is now measured rather than predicted, and
-// **this paragraph used to predict it wrong**: the blocker is not where a restore of
-// such a backup would land — a recorded flag on the meta gated that in one predicate —
-// but that kae's backup subsystem rests on an unstated *a backup records the tool's
-// global live state*, which most of its consumers had encoded. Read the withdrawal
-// paragraph in that ROADMAP section before rebuilding this. The warning is the part
-// that is safe today, and it reaches the user while the action that prevents the loss —
-// not completing the flow — is still available.
-//
-// Every guard is harvestDirCredential's, unchanged, so this is silent in the ordinary
-// case: a store holding nothing newer than the snapshot returns preserved with no
-// output, and one holding this account's own refreshed copy is harvested (which is
-// worth doing here for its own sake — until now that copy was only picked up by the
-// next bind).
+// runRelogin already saved the scoped Claude/Codex artifact independently. This
+// helper's warning concerns snapshot adoption only; it neither creates nor prunes
+// preservation records and does not relax the harvest's attribution guards.
 func (app *App) preserveBeforeRelogin(ctx context.Context, be secret.Backend,
 	specs []artifact.Spec, tool, accountName string, dirs bindDirs,
 ) {

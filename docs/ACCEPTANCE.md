@@ -524,3 +524,31 @@ above, not a separate rule.
 
 Never run real-machine acceptance or an optional account-combination check with
 uncommitted work in progress in the live tool sessions.
+
+## Original-store preservation
+
+Use the session protections in § Real-Machine Acceptance (release only). For an
+application change to preservation, test the candidate against a bound Claude
+credential on macOS after the relevant sessions have stopped. Keep secret bytes
+out of transcripts and repository files; compare payloads privately or by digest.
+
+1. Record the original binding, addressed keychain item and credential digest.
+   Run the candidate's `kae relogin claude` in that bound directory. Confirm that
+   its preservation record exists before the upstream login can replace the item.
+2. Complete the login or abort it deliberately, recording which case was exercised.
+   Compare the stored pre-login copy with the original digest. An unchanged retry
+   must reuse the matching record rather than consume another generation.
+3. If login changed the credential, restore the original record without launching
+   the upstream tool against it, confirm the original bytes are in the original
+   store, then restore the displaced current copy. Leave the latest login in place.
+   If login was aborted without a change, a same-copy restore checks addressing
+   without replacing the credential with another generation.
+4. Check list JSON for non-secret metadata and unknown ownership, preview deletion,
+   and verify non-interactive deletion requires explicit acknowledgment. Do not
+   delete the only record needed to return the operator to the pre-test state.
+5. Record the candidate revision, upstream version, backend, exercised login outcome
+   and restoration result here. Failed/preflight-refused paths, history pruning,
+   quota and interrupted persistence also have isolated synthetic tests; do not
+   describe those as a live upstream login. Codex's dynamic store resolution is
+   covered by its synthetic adapter/command controls unless a live Codex run is
+   explicitly recorded.

@@ -7,6 +7,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/companion"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/preservation"
 )
 
 // CmdComplete is the hidden shell-completion backend:
@@ -32,6 +33,7 @@ import (
 //   - companion-knobs <id> — the named companion's knob names (its Spec)
 //   - profiles         — config profile names
 //   - accounts [<tool>]— captured account names, optionally scoped to one tool
+//   - preservations <restore|rm> — preserved record IDs (metadata only)
 //   - valued-flags <command> — flags whose following word is a value
 //   - flags <command>  — a command's flags (--name / -n), from the same
 //     registrars the parser uses (flagspec.go), so the list never drifts
@@ -107,6 +109,21 @@ func runComplete(app *App, args []string) int {
 		} else {
 			printCompletionLines(flagCompletions(cmd))
 		}
+	case "preservations":
+		if len(args) != 2 || (args[1] != "restore" && args[1] != "rm") {
+			return constants.ExitUsage
+		}
+		records, err := preservation.ListRecords(app.Paths.PreservationsDir())
+		if err != nil {
+			return constants.ExitError
+		}
+		ids := make([]string, 0, len(records))
+		for _, record := range records {
+			if args[1] == "rm" || record.State == constants.PreservationStateReady {
+				ids = append(ids, record.ID)
+			}
+		}
+		printCompletionLines(ids)
 	case "profiles":
 		printCompletionLines(app.Config.ProfileNames())
 	case "accounts":

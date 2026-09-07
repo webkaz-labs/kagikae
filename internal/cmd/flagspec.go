@@ -95,8 +95,9 @@ var commandFlagSpecs = map[string]commandFlagSpec{
 	"mise": {extra: func(fs *flag.FlagSet) {
 		registerMiseInitFlags(fs, new(string), new(string), new(bool), new(bool))
 	}},
-	"completion": {extra: func(fs *flag.FlagSet) { registerCompletionFlags(fs, new(bool), new(bool)) }},
-	"rollback":   {dryRun: true, extra: func(fs *flag.FlagSet) { registerRollbackFlags(fs, new(string)) }},
+	"completion":   {extra: func(fs *flag.FlagSet) { registerCompletionFlags(fs, new(bool), new(bool)) }},
+	"preservation": {dryRun: true},
+	"rollback":     {dryRun: true, extra: func(fs *flag.FlagSet) { registerRollbackFlags(fs, new(string)) }},
 	"account": {dryRun: true, extra: func(fs *flag.FlagSet) {
 		registerAccountRmFlags(fs, new(bool)) // account rm --force
 	}},

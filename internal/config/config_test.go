@@ -36,7 +36,7 @@ func TestLoadMissingFileYieldsDefaults(t *testing.T) {
 	if err != nil || len(warnings) != 0 {
 		t.Fatalf("unexpected: %v %v", warnings, err)
 	}
-	if cfg.Security.SecretBackend != "auto" || cfg.Security.BackupKeep != DefaultBackupKeep {
+	if cfg.Security.SecretBackend != "auto" || cfg.Security.BackupKeep != DefaultBackupKeep || cfg.Security.PreservationMaxBytes != DefaultPreservationMaxBytes {
 		t.Fatalf("unexpected defaults: %+v", cfg.Security)
 	}
 	if !cfg.ToolEnabled("claude") {
@@ -245,5 +245,29 @@ func TestRenamedConfigKeysFailAtLoad(t *testing.T) {
 		if _, _, err := Load(writeConfig(t, removed)); err == nil {
 			t.Fatalf("removed key must fail at load: %s", removed)
 		}
+	}
+}
+
+func TestPreservationBudgetConfig(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  int64
+		valid bool
+	}{
+		{"1", 1, true}, {"2048", 2048, true}, {"0", 0, false}, {"-1", 0, false}, {"9223372036854775808", 0, false},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			cfg, warnings, err := Load(writeConfig(t, "[security]\npreservation_max_bytes = "+tc.value+"\n"))
+			if (err == nil) != tc.valid {
+				t.Fatalf("value %s: %v", tc.value, err)
+			}
+			if err == nil && (cfg.Security.PreservationMaxBytes != tc.want || len(warnings) != 0) {
+				t.Fatalf("budget=%d warnings=%v", cfg.Security.PreservationMaxBytes, warnings)
+			}
+		})
+	}
+	cfg, warnings, err := Load(writeConfig(t, InitialContent("")))
+	if err != nil || len(warnings) != 0 || cfg.Security.PreservationMaxBytes != DefaultPreservationMaxBytes {
+		t.Fatalf("initial config: %#v %v %v", cfg, warnings, err)
 	}
 }

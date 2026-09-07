@@ -41,6 +41,9 @@ func TestResolveXDGOverrides(t *testing.T) {
 	if p.ConfigDir != "/x/cfg/kagikae" || p.RuntimeDir != "/run/u/kagikae" {
 		t.Fatalf("XDG not honored: %+v", p)
 	}
+	if p.PreservationsDir() != filepath.Join("/x/state/kagikae", "preservations") {
+		t.Fatalf("preservation dir: %s", p.PreservationsDir())
+	}
 	if p.LocksDir() != filepath.Join("/run/u/kagikae", "locks") {
 		t.Fatalf("locks dir: %s", p.LocksDir())
 	}

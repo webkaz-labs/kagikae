@@ -101,6 +101,9 @@ func (p Paths) StateFile() string { return filepath.Join(p.StateDir, "state.json
 // BackupsDir returns the backup metadata directory.
 func (p Paths) BackupsDir() string { return filepath.Join(p.StateDir, "backups") }
 
+// PreservationsDir returns the original-store credential preservation metadata directory.
+func (p Paths) PreservationsDir() string { return filepath.Join(p.StateDir, "preservations") }
+
 // LocksDir returns the per-tool lock directory.
 func (p Paths) LocksDir() string { return filepath.Join(p.RuntimeDir, "locks") }
 

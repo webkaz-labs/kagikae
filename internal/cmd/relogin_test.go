@@ -380,10 +380,8 @@ func TestReloginRefusesWhenTheFlowChangedNothing(t *testing.T) {
 	mustExit(t, constants.ExitOK, code, out)
 }
 
-// H1's shape: kae could not read the store, so it cannot tell whether the flow
-// changed anything — and the one thing it must not do then is fall through to a
-// line claiming a login. Reporting a login that did not happen sends the user away
-// believing a stale directory is fixed, which is the whole reason they ran this.
+// An unreadable existing credential must stop the flow before it can destroy a
+// copy that preservation could not save.
 func TestReloginSaysSoWhenItCannotTellWhetherAnythingChanged(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
@@ -407,20 +405,12 @@ func TestReloginSaysSoWhenItCannotTellWhetherAnythingChanged(t *testing.T) {
 	code, out, stderr := captureBoth(t, func() int {
 		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
 	})
-	if !ran {
-		t.Fatal("the login flow must still be launched")
+	if ran {
+		t.Fatal("an unreadable credential must prevent login")
 	}
-	if code == constants.ExitAuthUnchanged {
-		t.Fatalf("two failed reads are not proof that nothing changed: %s", stderr)
-	}
-	if !strings.Contains(stderr, "cannot tell whether the login flow changed anything") {
-		t.Errorf("kae must say it could not compare: %q / %q", stderr, out)
-	}
-	// And the stdout line must not contradict the warning two lines above it. The
-	// warning alone is not the fix: it was added first and the success line still
-	// claimed a login underneath it.
-	if strings.Contains(out, "Captured the changed claude credential") {
-		t.Errorf("no login may be claimed on a comparison that never happened: %q", out)
+	mustExit(t, constants.ExitUnsafeRefused, code, stderr)
+	if !strings.Contains(stderr, "cannot preserve") || strings.Contains(out, "Captured") {
+		t.Fatalf("refusal must describe preservation failure: %q / %q", stderr, out)
 	}
 }
 
@@ -622,62 +612,32 @@ func mustFragment(t *testing.T) fragmentInfo {
 	return info
 }
 
-// The two reads are separate observations and each can fail alone, which the
-// existing un-comparable test cannot show: it makes the credential path a directory,
-// so *both* reads fail and either flag alone still evaluates false. An asymmetric
-// fixture is what distinguishes them — and the harm the pair prevents is the
-// contradicting-lines defect: stderr saying kae cannot tell, stdout claiming a login.
+// Even a flow capable of repairing an unreadable store must not run without
+// preserving the preexisting state; the snapshot must remain untouched too.
 func TestReloginWillNotClaimALoginItCouldNotCompareAgainst(t *testing.T) {
 	app := overlayTestApp(t)
 	ctx := context.Background()
 	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
 	_, _, credFile := boundStoreForClaudeMain(t, app)
-	// Unreadable *before*: a path that is a directory errors rather than reading as
-	// absent, so kae has no pre-flow bytes to compare against.
+	be := testBackend(t, app)
+	before := snapshotPayload(t, app, be, constants.ToolClaude, "main")
 	if err := os.Remove(credFile); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(credFile, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	// …and a perfectly good login after it. Everything except the comparison succeeds:
-	// the harvest reads the new copy, orders it ahead of the snapshot and attributes
-	// it, so `attributed` is true and only the missing before-read holds the wording
-	// back. Drop `comparable` from that gate and this claims a changed credential capture.
-	withInteractive(t, func(_ context.Context, extraEnv []string, _ string, _ ...string) (int, error) {
-		for _, entry := range extraEnv {
-			if dir, ok := strings.CutPrefix(entry, credentialEnvVar(constants.ToolClaude)+"="); ok {
-				cred := filepath.Join(dir, ".credentials.json")
-				if err := os.RemoveAll(cred); err != nil {
-					t.Fatal(err)
-				}
-				writeFile(t, cred, claudeOAuthPayload("sk-ant-oat01-AFTERONLY-mmmm", app.Now().Add(8*time.Hour)))
-				writeFile(t, filepath.Join(dir, ".claude.json"), claudeIdentityFile("main-uuid"))
-			}
-		}
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		t.Fatal("unpreserved flow launched")
 		return 0, nil
 	})
-
-	code, out, stderr := captureBoth(t, func() int {
-		return runRelogin(ctx, app, commonOpts{Format: formatText}, "")
-	})
-	mustExit(t, constants.ExitOK, code, stderr)
-
-	if strings.Contains(out, "Captured the changed claude credential") {
-		t.Errorf("kae never read the store before the flow, so it cannot say the flow changed it: %q", out)
+	code, out, stderr := captureBoth(t, func() int { return runRelogin(ctx, app, commonOpts{Format: formatText}, "") })
+	mustExit(t, constants.ExitUnsafeRefused, code, stderr)
+	if strings.Contains(out, "Captured") {
+		t.Fatal("refused login reported capture")
 	}
-	if !strings.Contains(stderr, "cannot tell whether the login flow changed anything") {
-		t.Errorf("kae must say which observation it is missing: %q", stderr)
-	}
-	// The positive control that keeps this from passing for the wrong reason: the
-	// login itself worked and *was* harvested, so the weak wording is the missing
-	// before-read and not a flow that failed.
-	if !strings.Contains(stderr, "harvested") {
-		t.Fatalf("the capture back must still have happened: %q", stderr)
-	}
-	be := testBackend(t, app)
-	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, "AFTERONLY-mmmm") {
-		t.Fatalf("the new login must reach the snapshot even when kae cannot compare: %s", got)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); got != before {
+		t.Fatal("refusal changed snapshot")
 	}
 }
 

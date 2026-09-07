@@ -376,7 +376,7 @@ isolation alone does not yet solve — see "One account per worktree".
 | `kae use <profile\|tool account>` (`kae u`) | Switch globally (`-i` isolated, `--quiet` for hooks). |
 | `kae pin [<profile>]` (`kae p`) | Bind the current directory (`-i` isolated). |
 | `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials, harvesting each into its account snapshot first and keeping any it could not (sessions and settings are kept). One copy it deletes without keeping: one whose account no longer exists, because there is no snapshot to keep it in — it says so, and [docs/CLI.md](docs/CLI.md) § kae pin says why. |
-| `kae relogin [<tool>]` | Run the tool's login flow into *this directory's* bound store — kae exports the isolation variable itself, so it lands there whether or not the pin is active in this shell — then capture the new login back into the account snapshot. It also harvests what the store already held **before** starting the flow, since the login is a write kae does not perform, and says so on stderr when that copy could not be kept. |
+| `kae relogin [<tool>]` | Run the tool's login flow into *this directory's* bound store — kae exports the isolation variable itself, so it lands there whether or not the pin is active in this shell — then capture the new login back into the account snapshot. Before starting, it preserves the current credential for original-store recovery, then attempts the existing account harvest. If preservation fails, login does not start. |
 | `kae run <tool> <account> [-- <cmd>]` (`kae r`) | Run one process under an account (`-s`/`-i`/`--env`). |
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
 | `kae ls` | List accounts and profiles in one view, with each snapshot's credential freshness. |
@@ -384,6 +384,7 @@ isolation alone does not yet solve — see "One account per worktree".
 | `kae account rm\|rename` | Delete or rename a captured account. Both refuse while the account is selected by global isolation and print the safe teardown-and-retry sequence; `--force` on removal permits only the active-account case. |
 | `kae profile save\|set\|unset\|rm\|default` | Manage profiles without editing TOML. |
 | `kae env set\|...` | Manage API-key env profiles for `run --env`. |
+| `kae preservation list / restore / rm` | List preserved credentials, restore an explicit record to its original store, or remove a record with confirmation. Same-origin history retains the latest three distinct copies; see [CLI.md](docs/CLI.md) § kae preservation Semantics. |
 | `kae rollback` | Undo the last switch from its backup. |
 | `kae doctor` (`kae d`) | Check environment, live auth, and credential health. |
 | `kae completion <shell>` | Print or `--install` shell completion. |

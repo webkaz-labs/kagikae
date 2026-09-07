@@ -9,9 +9,12 @@ here are part of the command contract.
   (`~/.claude.json`) are patched only through the JSON Pointer allowlist
   defined in [ADAPTERS.md](ADAPTERS.md).
 - Never delete unknown keys; preserve everything outside the allowlist.
-- Back up the live artifacts before every write; rollback must always be
-  possible (`kae rollback`).
-- Hold the per-tool lock for the entire read-modify-write window.
+- Preserve the live artifacts before a write. Global transactions use
+  `kae rollback`; original-store preservation uses `kae preservation restore`
+  with the mapping and retention conditions in [CLI.md](CLI.md) § kae preservation Semantics.
+- Hold the applicable locks for the read-modify-write window: per-tool locks
+  for global transactions, and pin plus preservation locks for original-store
+  restore ([ARCHITECTURE.md](ARCHITECTURE.md) § Locking).
 - All file writes are atomic (temp file + rename, same directory) and set
   mode `0600` for credential files.
 - Validate structure before writing; refuse with `unsafe_refused` (exit 10)
@@ -36,7 +39,7 @@ here are part of the command contract.
   reporting path, and the token's env var is added to the fragment's mise
   `redactions` so task logs mask it. `kae companion list` shows knob names and
   non-secret values only; token values are never printed.
-- Account snapshot payloads and backup payloads are stored in the secret
+- Account snapshot, backup and preservation payloads are stored in the secret
   backend (OS credential store by default; see
   [DATA-MODEL.md](DATA-MODEL.md#secret-references)).
 - The plaintext `file` backend requires explicit
@@ -262,6 +265,12 @@ with no live-store tool lock and no live mutation. It is safe to run concurrentl
 with shared `kae use` in other terminals — the real home is never touched. Its
 shared path-lifecycle lock permits another `run -i`, but excludes account rename
 until the child exits.
+
+Original-store preservation uses a pin lock plus the preservation inventory lock.
+The latter stays held during explicit restore but not during interactive login.
+These locks do not stop a sibling directory or upstream process from changing a shared
+credential store; stop sessions using that credential before relogin or restore.
+Preservation records are not a guarantee that a copied rotating token remains usable.
 
 ## Isolation Safety
 

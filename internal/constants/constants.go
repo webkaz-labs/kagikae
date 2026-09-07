@@ -368,3 +368,11 @@ func IsCompanion(name string) bool {
 	}
 	return false
 }
+
+// Preservation record states describe persistence, not credential validity.
+const (
+	PreservationStatePending    = "pending"
+	PreservationStateReady      = "ready"
+	PreservationStateDeleting   = "deleting"
+	PreservationIdentityUnknown = "unknown"
+)

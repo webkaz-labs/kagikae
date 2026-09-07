@@ -63,6 +63,7 @@ change a name.
 | **snapshot** | kae's own stored copy of one account's artifacts | |
 | **identity cache** | the tool's own record of which account is logged in (claude's `/oauthAccount`) | Evidence *about* an account, never a credential — and the two are compared by different predicates, which [ARCHITECTURE.md](ARCHITECTURE.md) § Adapter Interface owns |
 | **harvest** | copying an existing credential somewhere it survives, before a write or a delete would lose it | |
+| **preservation record** | credential bytes retained with original-store and binding evidence, without account adoption | Recovery and retention are defined in [CLI.md](CLI.md) § kae preservation Semantics |
 | **capture back** | **narrower than harvest**: the single harvest `kae relogin` runs after the tool's own login flow ([CLI.md](CLI.md) § kae relogin Semantics) | Not a synonym for harvest, and the only place the phrase is correct |
 | **tombstone** | a credential the tool itself overwrote to record that its own login is dead | What kae may conclude from one is [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § What kae observed is not what the tool can do |
 | **supersedes**, **orderable** | the two predicates deciding whether one copy of a credential is newer than another (`internal/cmd/freshness.go`) | `orderable` is `supersedes`'s precondition. The normative text is [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Ordering two copies of one credential; do not restate either predicate as a word-list here, because a *subset* of one of them is this repository's most-repeated defect |

@@ -21,6 +21,7 @@ vocabulary for `kae`.
 | global-isolated (`use -i` / `run -i`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/global/<tool>/<account>/` (a kae-owned mise fragment points `CLAUDE_CONFIG_DIR` / `CODEX_HOME` here; the real `~/.<tool>` is never touched) |
 | file-backend secrets (opt-in) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/secrets/...` |
 | state | `${XDG_STATE_HOME:-~/.local/state}/kagikae/state.json` |
+| preservation records (metadata) | `${XDG_STATE_HOME:-~/.local/state}/kagikae/preservations/<id>.json` |
 | backups (metadata) | `${XDG_STATE_HOME:-~/.local/state}/kagikae/backups/<id>.json` |
 | locks | `${XDG_RUNTIME_DIR}/kagikae/locks/` (per-tool `<tool>.lock`, isolation lifecycle `isolation-<tool>.lock`, plus state/config/pin locks), falling back to `${XDG_STATE_HOME:-~/.local/state}/kagikae/locks/` when `XDG_RUNTIME_DIR` is unset |
 | completion script (`completion --install`, default) | bash: `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/kae`; zsh: the first existing user `fpath` dir (`${XDG_CONFIG_HOME:-~/.config}/zsh/completions`, `~/.zsh/completions`, `~/.zfunc`), else `${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions/_kae`; fish: `${XDG_CONFIG_HOME:-~/.config}/fish/completions/kae.fish` (the dynamic script; calls `kae __complete` at completion time) |
@@ -41,6 +42,7 @@ default_profile = "side"   # optional
 [security]
 secret_backend = "auto"        # auto | keychain | libsecret | file
 backup_keep = 30               # backups retained per pruning pass
+preservation_max_bytes = 10485760 # logical preservation payload budget (10 MiB)
 
 [tools.claude]
 enabled = true
@@ -294,13 +296,15 @@ Secret payloads live in the secret backend, keyed by:
 service: kagikae
 key:     <tool>/<account>/<artifact>          # account snapshots
 key:     backup/<backup-id>/<tool>/<artifact> # backups
+key:     preservation/<id>/payload            # original-store preservation
 key:     env/<tool>/<account>/<VAR>           # env-profile variables
 key:     companion/<profile>/<id>/<knob>      # companion token knobs
 ```
 
 The account namespace is the **un-prefixed** one, so `secret.AccountKey` tells the
-four apart by the absence of a reserved first segment (`secret.NSBackup` /
-`NSCompanion` / `NSEnv`, which the other three builders compose their keys from).
+namespaces apart by the absence of a reserved first segment. The reserved
+prefixes and account-key classification are defined together in `internal/secret`;
+`TestToolIDsDoNotCollideWithKeyNamespaces` checks them against tool IDs.
 Two consequences: a tool id must never equal one of those prefixes
 (`TestToolIDsDoNotCollideWithKeyNamespaces` guards it), and a new namespace must
 be prefixed and registered there — a key parsed as `<tool>/<account>` by mistake
@@ -326,6 +330,35 @@ Backends:
 `secret-tool` is available, otherwise the command fails with exit code 9 and
 guidance to either install libsecret tools or opt in to the file backend with
 `secret_backend = "file"`.
+
+## Preservation records
+
+Preservation is independent of global backup history. Each record describes the
+original bound-directory mapping and adapter-resolved credential locator, together
+with creation order, payload size, digest and persistence state. An account label
+is binding evidence, not a verified owner of the bytes. Secret references are derived
+from the record ID; record metadata must not redirect reads or deletion to arbitrary
+backend keys. Payloads use the configured secret backend.
+
+`security.preservation_max_bytes` is a positive integer limiting the aggregate
+credential payload bytes, including incomplete storage/deletion records until they
+are reconciled. It does not include metadata, backend encoding or filesystem
+allocation. Lowering the value below existing usage preserves existing records and
+blocks new distinct copies. History keeps the latest three distinct copies per
+credential locator and configured binding account, including sibling directories
+that share them; [CLI.md](CLI.md) § kae preservation Semantics owns the
+save-before-prune order, exact-copy reuse and protected-source refusal.
+
+Record state tokens are `pending`, `ready` and `deleting`, defined by
+`internal/constants`. They describe persistence, not credential validity. List JSON
+uses `schema_version` and an always-present `preservations` array; each item reports
+`id`, `created_at`, `tool`, `directory`, `bound_account`, `state`, `identity` and
+`size_bytes`. `identity` is `unknown`, including when the binding account is known.
+Mutation reports carry `schema_version`, `ok`, `dry_run` and `preservation_id`.
+
+Global `backup_keep` and `kae rollback` do not consume these records. Their recovery
+path is explicit original-store restore; no driver migration, global active-state
+restore or identity-cache sweep is applied to them.
 
 ## State
 

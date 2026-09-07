@@ -15,7 +15,7 @@ import (
 var completionCommands = []string{
 	"init", "edit", "doctor", "add", "use", "pin", "unpin", "relogin", "run", "env",
 	"companion", "mise", "accounts", "ls", "account", "profile", "status",
-	"backup", "rollback", "completion", "version", "help",
+	"backup", "preservation", "rollback", "completion", "version", "help",
 }
 
 // completionCommandAliases are the one-letter command aliases Root() routes
@@ -251,6 +251,13 @@ _kae() {
         fi
       fi
       ;;
+    preservation)
+      if [ "$np" -eq 0 ]; then
+        COMPREPLY=( $(compgen -W "list restore rm" -- "$cur") )
+      elif [ "$np" -eq 1 ] && { [ "${pos[0]}" = restore ] || [ "${pos[0]}" = rm ]; }; then
+        COMPREPLY=( $(compgen -W "$(kae __complete preservations "${pos[0]}")" -- "$cur") )
+      fi
+      ;;
     backup)
       if [ "$np" -eq 0 ]; then
         COMPREPLY=( $(compgen -W "list" -- "$cur") )
@@ -364,6 +371,13 @@ _kae() {
         fi
       fi
       ;;
+    preservation)
+      if (( np == 0 )); then
+        compadd -- list restore rm
+      elif (( np == 1 )) && [[ "${pos[1]}" == restore || "${pos[1]}" == rm ]]; then
+        compadd -- ${(f)"$(kae __complete preservations ${pos[1]})"}
+      fi
+      ;;
     backup)
       if (( np == 0 )); then
         compadd -- list
@@ -475,6 +489,12 @@ function __kae_complete
                 else if test $np -eq 2
                     kae __complete accounts $pos[2]
                 end
+            end
+        case preservation
+            if test $np -eq 0
+                printf '%s\n' list restore rm
+            else if test $np -eq 1; and contains -- "$pos[1]" restore rm
+                kae __complete preservations $pos[1]
             end
         case backup
             if test $np -eq 0

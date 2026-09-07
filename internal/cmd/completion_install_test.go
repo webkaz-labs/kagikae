@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,11 +11,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/preservation"
 )
 
 // seedAccountMeta writes a minimal account.toml under the temp-HOME accounts
@@ -202,28 +205,29 @@ func TestCompletionScriptsCompleteCompanion(t *testing.T) {
 // the branch exists and emits candidates; whether the slots and array indices in
 // it are right is TestCompletionPositionalRouting's question, per command.
 var positionalCommands = map[string]bool{
-	"init":       false,
-	"edit":       false,
-	"doctor":     true, // [<tool>]
-	"add":        true, // <tool> [<account>]
-	"use":        true, // [<profile> | <tool> <account>]
-	"pin":        true, // [<profile> | <tool> <account>]
-	"unpin":      false,
-	"relogin":    true, // [<tool>]
-	"run":        true, // [<profile> | <tool> <account>] -- <cmd>
-	"env":        true, // <set|unset|list> ...
-	"companion":  true, // <add|rm|list> ...
-	"mise":       true, // init
-	"accounts":   false,
-	"ls":         false,
-	"account":    true, // <rm|rename|set-identity> ...
-	"profile":    true, // <save|set|unset|rm|default> ...
-	"status":     false,
-	"backup":     true,  // list
-	"rollback":   false, // the backup id is --to's value, not a positional
-	"completion": true,  // <bash|zsh|fish>
-	"version":    false,
-	"help":       false,
+	"init":         false,
+	"edit":         false,
+	"doctor":       true, // [<tool>]
+	"add":          true, // <tool> [<account>]
+	"use":          true, // [<profile> | <tool> <account>]
+	"pin":          true, // [<profile> | <tool> <account>]
+	"unpin":        false,
+	"relogin":      true, // [<tool>]
+	"run":          true, // [<profile> | <tool> <account>] -- <cmd>
+	"env":          true, // <set|unset|list> ...
+	"companion":    true, // <add|rm|list> ...
+	"mise":         true, // init
+	"accounts":     false,
+	"ls":           false,
+	"account":      true, // <rm|rename|set-identity> ...
+	"profile":      true, // <save|set|unset|rm|default> ...
+	"status":       false,
+	"preservation": true,  // list/restore/rm
+	"backup":       true,  // list
+	"rollback":     false, // the backup id is --to's value, not a positional
+	"completion":   true,  // <bash|zsh|fish>
+	"version":      false,
+	"help":         false,
 }
 
 // TestEveryPositionalCommandCompletes: every command that takes a positional has
@@ -353,12 +357,13 @@ func completionCaseBlocks(t *testing.T, shell, script string) map[string]string 
 // and TestCompletionPositionalRouting still checks the slots of the groups it
 // names — but what the sub-verbs *are* is asserted here and nowhere else.
 var subcommandVerbs = map[string][]string{
-	"account":   {"rm", "rename", "set-identity"},
-	"profile":   {"save", "set", "unset", "rm", "default"},
-	"companion": {"add", "rm", "list"},
-	"env":       {"set", "unset", "list"},
-	"backup":    {"list"},
-	"mise":      {"init"},
+	"account":      {"rm", "rename", "set-identity"},
+	"profile":      {"save", "set", "unset", "rm", "default"},
+	"companion":    {"add", "rm", "list"},
+	"env":          {"set", "unset", "list"},
+	"preservation": {"list", "restore", "rm"},
+	"backup":       {"list"},
+	"mise":         {"init"},
 	// Not sub-verbs but the same thing structurally: a fixed run inlined at the
 	// np==0 slot, which nothing else asserts. Left out, `kae completion <TAB>`
 	// could offer anything at all with every test green.
@@ -1080,5 +1085,54 @@ func TestRootDispatchesRelogin(t *testing.T) {
 	}
 	if !strings.Contains(out, "not-a-flag-kae-defines") {
 		t.Fatalf("expected the flag parser to answer, so nothing further ran: %q", out)
+	}
+}
+
+// Completion reads metadata even when the secret backend is unavailable; it must
+// neither reconcile interrupted records nor offer them as restoration targets.
+func TestCompletePreservationIDs(t *testing.T) {
+	app := testApp(t, nil)
+	code, out := captureStdout(t, func() int { return runComplete(app, []string{"preservations", "restore"}) })
+	if code != constants.ExitOK || out != "" {
+		t.Fatalf("empty inventory: %d %q", code, out)
+	}
+	if _, err := os.Stat(app.Paths.PreservationsDir()); !os.IsNotExist(err) {
+		t.Fatalf("completion created metadata: %v", err)
+	}
+	if err := os.MkdirAll(app.Paths.PreservationsDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	states := []string{constants.PreservationStateReady, constants.PreservationStatePending, constants.PreservationStateDeleting}
+	var ids []string
+	for i, state := range states {
+		id := fmt.Sprintf("%032x", i+1)
+		ids = append(ids, id)
+		record := preservation.Record{
+			SchemaVersion: constants.SchemaVersion, ID: id, CreatedAt: time.Unix(int64(i+1), 0), State: state, Size: 10, Digest: strings.Repeat("a", 64),
+			Origin: preservation.Origin{
+				Directory: app.Env.Home, Tool: constants.ToolClaude, BoundAccount: "main", Mode: constants.ModeShared, ConfigDir: app.Env.Home,
+				Locator: preservation.Locator{Name: "credential", Kind: constants.KindFile, Target: filepath.Join(app.Env.Home, "credential")},
+			},
+		}
+		data, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(app.Paths.PreservationsDir(), id+".json"), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct{ verb, want string }{{"restore", ids[0] + "\n"}, {"rm", ids[2] + "\n" + ids[1] + "\n" + ids[0] + "\n"}} {
+		code, out := captureStdout(t, func() int { return runComplete(app, []string{"preservations", tc.verb}) })
+		if code != constants.ExitOK || out != tc.want {
+			t.Fatalf("%s: %d %q", tc.verb, code, out)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(app.Paths.PreservationsDir(), "invalid.json"), []byte("synthetic-secret-must-not-print"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out = captureStdout(t, func() int { return runComplete(app, []string{"preservations", "rm"}) })
+	if code != constants.ExitError || out != "" {
+		t.Fatalf("invalid metadata leaked: %d %q", code, out)
 	}
 }

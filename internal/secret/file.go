@@ -15,6 +15,8 @@ import (
 // 0700 directories; doctor warns permanently while this backend is active.
 type fileBackend struct {
 	dir string
+	// syncDir is an optional test seam for errors after a filesystem mutation.
+	syncDir func(string) error
 }
 
 func (fileBackend) Name() string { return BackendFile }
@@ -46,21 +48,42 @@ func (b fileBackend) Set(_ context.Context, key string, value []byte) error {
 		return err
 	}
 	path := b.path(key)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := patch.MkdirAllDurable(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create secret dir: %w", err)
 	}
-	return patch.WriteFileAtomic(path, []byte(encodePayload(value)), 0o600)
+	if err := patch.WriteFileAtomic(path, []byte(encodePayload(value)), 0o600); err != nil {
+		return err
+	}
+	return b.syncParents(path)
 }
 
 func (b fileBackend) Delete(_ context.Context, key string) error {
 	if err := validateKey(key); err != nil {
 		return err
 	}
-	err := os.Remove(b.path(key))
+	path := b.path(key)
+	err := os.Remove(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	return nil
+	// An absent file can be a retry after an unlink whose directory sync failed.
+	return b.syncParents(path)
+}
+
+// syncParents acknowledges the containing directory mutation, including an
+// idempotent retry after an unlink whose sync failed.
+func (b fileBackend) syncParents(path string) error {
+	dir := filepath.Dir(path)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	sync := b.syncDir
+	if sync == nil {
+		sync = patch.SyncDir
+	}
+	return sync(dir)
 }
 
 // Keys lists every stored key by walking the secrets dir for *.secret files and

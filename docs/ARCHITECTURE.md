@@ -34,6 +34,7 @@ kagikae/
     patch/                # JSON Pointer get/set + atomic file writes
     lock/                 # per-tool advisory file locks
     backup/               # backup create/list/prune/restore
+    preservation/         # original-store credential records, budget and retention
     envprofile/           # env-mode profiles (var names; values in secret backend)
     state/                # state.json load/save
     runner/               # subprocess seam (template standard)
@@ -59,7 +60,7 @@ kagikae/
 
 ```text
 main -> cmd -> adapter -> artifact -> {patch, secret, runner}
-              \-> {config, state, backup, lock, paths}
+              \-> {config, state, backup, preservation, lock, paths}
 ```
 
 - `cmd` owns flag parsing, report construction, and output. Nothing below
@@ -321,7 +322,23 @@ build child environment entries (`internal/cmd/run.go`). Interactive children ru
   so the owning tool can still read the item without a keychain prompt.
 - Structure guards refuse (exit 10) rather than "best effort" write.
 
+## Credential preservation
+
+`internal/preservation` owns record persistence, exact-copy deduplication, logical
+payload accounting and history retention. `cmd` owns adapter resolution and verifies
+the original binding before relogin or explicit restore. Payloads use `secret.Backend`;
+restoration uses the current matching artifact spec, never global backup restoration.
+[CLI.md](CLI.md) § kae preservation Semantics owns admission and refusal behavior.
+
 ## Locking
+
+The `preservation` lock serializes inventory, payload admission, retention and
+explicit deletion. Bound operations take their pin lock before this lock. Restore
+holds it through selected-record load, current-copy preservation and the live write;
+relogin releases it before the interactive upstream process. It does not serialize
+other directories' binding writes or upstream refreshes. The command rechecks the
+relevant mapping and destination before mutation; the remaining concurrency boundary
+is in [SECURITY.md](SECURITY.md) § Concurrency.
 
 Advisory `flock`-based locks per tool under the runtime dir. Lock acquisition
 is non-blocking; a busy lock fails with `lock_busy` (exit 4) instead of
@@ -354,7 +371,7 @@ deliberately does **not** take — the store it touches is this directory's, and
 blocking every `kae use <tool>` for the length of a human login would be the cost
 of covering only the snapshot write its harvest ends with (the same window the
 next paragraph describes).
-There is deliberately no backup of the previous per-directory credential, and what
+Ordinary binding writes rely on harvest rather than preservation records; what
 makes that safe is the **harvest**: the copy in the store can be newer than the
 snapshot (the tool refreshes it in place), so before overwriting or deleting one kae
 copies a newer usable copy into the account snapshot — which is what keeps

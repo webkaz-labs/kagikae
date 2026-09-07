@@ -21,6 +21,9 @@ const SupportedVersion = 1
 // DefaultBackupKeep is the default backup retention count.
 const DefaultBackupKeep = 30
 
+// DefaultPreservationMaxBytes bounds stored preservation payload bytes.
+const DefaultPreservationMaxBytes int64 = 10 * 1024 * 1024
+
 var nameRE = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
 
 // ValidName reports whether s is a safe account/profile name.
@@ -50,8 +53,9 @@ type Config struct {
 
 // Security holds the secret backend and retention policy.
 type Security struct {
-	SecretBackend string `toml:"secret_backend"`
-	BackupKeep    int    `toml:"backup_keep"`
+	SecretBackend        string `toml:"secret_backend"`
+	BackupKeep           int    `toml:"backup_keep"`
+	PreservationMaxBytes int64  `toml:"preservation_max_bytes"`
 }
 
 // Tool holds per-tool settings. Pointers distinguish "unset" from "false".
@@ -93,7 +97,7 @@ type CompanionData map[string]string
 func Default() *Config {
 	return &Config{
 		Version:  SupportedVersion,
-		Security: Security{SecretBackend: secret.BackendAuto, BackupKeep: DefaultBackupKeep},
+		Security: Security{SecretBackend: secret.BackendAuto, BackupKeep: DefaultBackupKeep, PreservationMaxBytes: DefaultPreservationMaxBytes},
 		Tools:    map[string]Tool{},
 		Profiles: map[string]Profile{},
 	}
@@ -140,6 +144,9 @@ func Load(path string) (*Config, []string, error) {
 func (c *Config) validate() error {
 	if c.Version > SupportedVersion {
 		return fmt.Errorf("config version %d is newer than supported %d", c.Version, SupportedVersion)
+	}
+	if c.Security.PreservationMaxBytes < 1 {
+		return fmt.Errorf("security.preservation_max_bytes must be >= 1")
 	}
 	if c.Security.BackupKeep < 1 {
 		return fmt.Errorf("security.backup_keep must be >= 1")
@@ -325,6 +332,8 @@ func InitialContent(defaultProfile string) string {
 # auto | keychain | libsecret | file (file stores plaintext; explicit opt-in)
 secret_backend = "auto"
 backup_keep = 30
+# Logical credential payload bytes; backend overhead is additional.
+preservation_max_bytes = 10485760
 
 [tools.claude]
 enabled = true

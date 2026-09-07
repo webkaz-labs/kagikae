@@ -48,8 +48,7 @@ the authentication research entries below.
 
 1. **Research only** — do not schedule implementation for **A moved bound directory does
    not count as a reader, and its absence does not make the reader set incomplete**,
-   **Attribution reads a label kae may have written itself**, **A relogin's pre-flight
-   refusal owes a backup it cannot safely take yet**, **Every credential copy kae keeps
+   **Attribution reads a label kae may have written itself**, **Every credential copy kae keeps
    can be killed by another copy refreshing, and four kae commands do the killing**, **A
    payload kae can neither read nor date is still overwritten by a bind, and that is a
    decision rather than an oversight**, or **`PinID` does not resolve symlinks, and
@@ -661,28 +660,12 @@ alternative exists (`secret-tool`).
   cases, and a moved directory's fragment may still point at that store. That removes
   the destructive advice without settling the reader-set question this entry asks.
 
-- **A relogin's pre-flight refusal owes a backup it cannot safely take yet** (recorded
-  2026-08-08 by an independent review of the pre-flight itself, **not fixed**).
-  [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § When a refusal destroys instead of
-  preserving states the rule the pre-flight falls under: a refusal that
-  cannot preserve is a deletion, so it owes a backup the way `kae run -s`'s recapture
-  answers its own with reason `run-unattributable`. `preserveBeforeRelogin` refuses on
-  exactly the copy `kae pin` kept and pointed at this command — the two route through one
-  `harvestDirCredential`, so a copy the bind could not attribute is a copy the relogin
-  cannot attribute either — and then the tool's login replaces it. Today that is loud
-  rather than silent, and the action that prevents it (not completing the flow) is still
-  available when the warning prints; it is not recoverable.
-  What stops the backup being a ride-along is **where a restore of one would land**, which
-  is the half a reading of `createBackup` alone does not reach: `createBackup` records the
-  spec it is handed, but `applyBackup` re-resolves today's specs **globally**, and
-  `restoreSpec` prefers the live spec whenever its `Kind` differs from the record's. A
-  bound store's backup taken under one credential driver and restored under another
-  therefore writes into the **real home** — a global logout in place of a local one, which
-  is worse than the loss it insures against, and the same "a record from one environment
-  applied in another" shape the `keychain_account` removal in v0.16.0 turned on. So the
-  backup wants the restore path to understand a bound-store record first (or an explicit
-  `--to`-only class of backup that is never redirected), which is its own change and its
-  own review. Nothing about it is urgent while the refusal is loud and pre-flight.
+- **Why preservation is separate from global backup**
+  ([multi-theme plan](plans/reliability-ci-terminology.md)). Independent preservation
+  addresses the pre-login loss without treating a bound copy as global backup state.
+  [CLI.md](CLI.md) § kae preservation Semantics owns the accepted recovery and
+  retention policy. The earlier failed approach remains relevant to future backup
+  changes because its global-state assumptions must not be reintroduced.
   **It was built and then withdrawn before v0.17.0 shipped** (2026-08-09), and what the
   attempt measured is worth more than the entry above. The restore-landing hazard is *not*
   what stopped it: a recorded `BoundStore` field on the meta, read at one predicate, gated
@@ -694,15 +677,16 @@ alternative exists (`secret-tool`).
   active account, a superseded-credential warning that ordered two unrelated chains, and a
   producer handing a global record to a meta marked not-global). Two of those compose into
   filing one account's token under another's name.
-  One question the attempt never settled, and a retry must settle **first**: what a bounded
-  preserved side should evict. Bounding it made an aborted `kae relogin` — a run that
+  One question the withdrawn attempt never settled was what a bounded preserved
+  side should evict. Bounding it made an aborted `kae relogin` — a run that
   changed nothing — evict the previous run's preserved copy, and eviction is purely
   positional, so it took the *irreplaceable* copy (another account's only login) and kept
   one still live in the store. Retention has no notion that a preserved copy whose payload
   is still live is worth less.
-  So a retry starts by enumerating that invariant's consumers and deciding the eviction
-  rule, not by writing the backup. The warning half shipped and is unaffected: it produced
-  zero findings across all four rounds, and it is what turned this from silent to loud.
+  The replacement keeps separate original-store records, deduplicates exact captures
+  and applies the user's latest-three history rule only after durable admission.
+  That is an explicit retention tradeoff, not a proof that an evicted copy is invalid.
+  Attribution and moved-reader questions remain separate research items above.
 
 - **`kae relogin` declines to capture a login it watched happen when a *sibling* directory
   has drifted** (recorded 2026-08-08 by a reading-type review; **measured, and the fix it

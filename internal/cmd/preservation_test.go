@@ -1,0 +1,367 @@
+package cmd
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/webkaz-labs/kagikae/internal/artifact"
+	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/lock"
+	"github.com/webkaz-labs/kagikae/internal/preservation"
+	"github.com/webkaz-labs/kagikae/internal/secret"
+)
+
+func preservationFixture(t *testing.T) (*App, preservation.Store, preservation.Record, string) {
+	t.Helper()
+	app := overlayTestApp(t)
+	captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
+	dir, _, credFile := boundStoreForClaudeMain(t, app)
+	origin, sp, err := app.preservationOrigin(context.Background(), dir, constants.ToolClaude)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := app.preservationStore(testBackend(t, app))
+	live, err := artifact.ReadLive(context.Background(), sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.Save(context.Background(), origin, live.Data, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return app, store, saved.Record, credFile
+}
+
+func TestPreservationRestoreKeepsDisplacedCopyWithoutSnapshotAdoption(t *testing.T) {
+	app, store, saved, credFile := preservationFixture(t)
+	ctx := context.Background()
+	original := readFile(t, credFile)
+	displaced := claudeOAuthPayload("sk-ant-oat01-preservation-side", app.Now().Add(9*time.Hour))
+	writeFile(t, credFile, displaced)
+	be := testBackend(t, app)
+	snapshot := snapshotPayload(t, app, be, constants.ToolClaude, "main")
+	code, out := captureStdout(t, func() int { return runPreservation(ctx, app, commonOpts{Format: formatJSON}, "restore", saved.ID) })
+	mustExit(t, constants.ExitOK, code, out)
+	if readFile(t, credFile) != original {
+		t.Fatal("original bytes not restored")
+	}
+	if snapshotPayload(t, app, be, constants.ToolClaude, "main") != snapshot {
+		t.Fatal("restore adopted an account snapshot")
+	}
+	records, err := store.List(ctx)
+	if err != nil || len(records) != 2 {
+		t.Fatalf("displaced copy missing: %v %v", records, err)
+	}
+	found := false
+	for _, r := range records {
+		_, data, err := store.Load(ctx, r.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "sk-ant-oat01-preservation-side") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("destination bytes not preserved")
+	}
+	if strings.Contains(out, "sk-ant-") {
+		t.Fatal("restore output leaked credential")
+	}
+}
+
+func TestPreservationRestoreRefusesMappingChanges(t *testing.T) {
+	for _, change := range []string{"account", "config", "credential", "dynamic", "missing", "driver", "irrelevant"} {
+		t.Run(change, func(t *testing.T) {
+			app, store, saved, credFile := preservationFixture(t)
+			before := readFile(t, credFile)
+			path := filepath.Join(saved.Origin.Directory, fragmentRelPath)
+			fragment := readFile(t, path)
+			switch change {
+			case "account":
+				fragment = strings.ReplaceAll(fragment, "# kae:account:claude=main", "# kae:account:claude=side")
+			case "config":
+				fragment = strings.ReplaceAll(fragment, saved.Origin.ConfigDir, t.TempDir())
+			case "credential":
+				fragment = strings.ReplaceAll(fragment, saved.Origin.CredDir, t.TempDir())
+			case "dynamic":
+				fragment = strings.ReplaceAll(fragment, saved.Origin.ConfigDir, "{{env.HOME}}")
+			case "missing":
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			case "driver":
+				previous := app.Env.Getenv
+				app.Env.Getenv = func(key string) string {
+					if key == "KAE_CLAUDE_DRIVER" {
+						return "keychain"
+					}
+					return previous(key)
+				}
+			case "irrelevant":
+				fragment += "\n# an unrelated comment\n"
+			}
+			if change != "missing" {
+				writeFile(t, path, fragment)
+			}
+			code, out, stderr := captureBoth(t, func() int {
+				return runPreservation(context.Background(), app, commonOpts{Format: formatJSON}, "restore", saved.ID)
+			})
+			want := constants.ExitUnsafeRefused
+			if change == "irrelevant" {
+				want = constants.ExitOK
+			}
+			mustExit(t, want, code, out+stderr)
+			if readFile(t, credFile) != before {
+				t.Fatal("mapping test altered store")
+			}
+			records, err := store.List(context.Background())
+			if err != nil || len(records) != 1 {
+				t.Fatalf("refusal added record: %v %v", records, err)
+			}
+		})
+	}
+}
+
+func TestPreservationDryRunAndConfirmedDelete(t *testing.T) {
+	app, store, saved, credFile := preservationFixture(t)
+	ctx := context.Background()
+	writeFile(t, credFile, `{"claudeAiOauth":{"unrecognized":"payload"}}`)
+	for _, action := range []string{"restore", "rm"} {
+		code, out := captureStdout(t, func() int {
+			return runPreservation(ctx, app, commonOpts{Format: formatJSON, DryRun: true}, action, saved.ID)
+		})
+		mustExit(t, constants.ExitOK, code, out)
+		if readFile(t, credFile) != `{"claudeAiOauth":{"unrecognized":"payload"}}` {
+			t.Fatal("dry run wrote destination")
+		}
+		if records, err := store.List(ctx); err != nil || len(records) != 1 {
+			t.Fatalf("dry run changed records: %v %v", records, err)
+		}
+	}
+	code, out, stderr := captureBoth(t, func() int { return runPreservation(ctx, app, commonOpts{Format: formatJSON}, "rm", saved.ID) })
+	mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+	code, out = captureStdout(t, func() int {
+		return runPreservation(ctx, app, commonOpts{Format: formatJSON, Yes: true}, "rm", saved.ID)
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if records, err := store.List(ctx); err != nil || len(records) != 0 {
+		t.Fatalf("explicit deletion failed: %v %v", records, err)
+	}
+	if readFile(t, credFile) != `{"claudeAiOauth":{"unrecognized":"payload"}}` {
+		t.Fatal("delete changed live credential")
+	}
+}
+
+func TestPreservationListDoesNotClaimIdentityOrExposePayload(t *testing.T) {
+	app, _, saved, _ := preservationFixture(t)
+	code, out := captureStdout(t, func() int {
+		return runPreservation(context.Background(), app, commonOpts{Format: formatJSON}, "list", "")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	var report preservationListReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Preservations) != 1 || report.Preservations[0].ID != saved.ID || report.Preservations[0].Identity != "unknown" || report.Preservations[0].BoundAccount != "main" {
+		t.Fatalf("wrong list %s", out)
+	}
+	if strings.Contains(out, mainToken) || strings.Contains(out, "refreshToken") {
+		t.Fatal("list exposed payload")
+	}
+}
+
+func TestReloginPreservationCapacityRefusesBeforeFlow(t *testing.T) {
+	app, store, _, credFile := preservationFixture(t)
+	original := claudeOAuthPayload("sk-ant-oat01-full-new", app.Now().Add(9*time.Hour))
+	writeFile(t, credFile, original)
+	app.Config.Security.PreservationMaxBytes = 1
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		t.Fatal("full capacity launched login")
+		return 0, nil
+	})
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(context.Background(), app, commonOpts{Format: formatJSON}, constants.ToolClaude)
+	})
+	mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+	records, err := store.List(context.Background())
+	if err != nil || len(records) != 1 {
+		t.Fatal("full capacity evicted old copy")
+	}
+	if readFile(t, credFile) != original {
+		t.Fatal("full capacity touched live store")
+	}
+}
+
+func TestPreservationRestoreAdmissionMatchesDryRun(t *testing.T) {
+	for _, reason := range []string{"quota", "selected-oldest"} {
+		for _, dry := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/dry=%v", reason, dry), func(t *testing.T) {
+				app, store, saved, credFile := preservationFixture(t)
+				ctx := context.Background()
+				if reason == "quota" {
+					app.Config.Security.PreservationMaxBytes = 1
+				} else {
+					for _, payload := range []string{"second", "third"} {
+						if _, err := store.Save(ctx, saved.Origin, []byte(payload), ""); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				live := claudeOAuthPayload("sk-ant-oat01-fourth", app.Now().Add(8*time.Hour))
+				writeFile(t, credFile, live)
+				before, err := store.List(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				code, out, stderr := captureBoth(t, func() int {
+					return runPreservation(ctx, app, commonOpts{Format: formatJSON, DryRun: dry}, "restore", saved.ID)
+				})
+				mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+				if readFile(t, credFile) != live {
+					t.Fatal("refused restore wrote credential")
+				}
+				after, err := store.List(ctx)
+				if err != nil || !reflect.DeepEqual(before, after) {
+					t.Fatal("refused restore changed history")
+				}
+			})
+		}
+	}
+}
+
+type preservationWriteObserver struct {
+	secret.Backend
+	observe func()
+}
+
+func (b preservationWriteObserver) Set(ctx context.Context, key string, data []byte) error {
+	if strings.HasPrefix(key, secret.NSPreservation+"/") {
+		b.observe()
+	}
+	return b.Backend.Set(ctx, key, data)
+}
+
+func TestPreservationRestoreRechecksAndHoldsInventoryLock(t *testing.T) {
+	for _, change := range []string{"credential", "mapping"} {
+		t.Run(change, func(t *testing.T) {
+			app, store, saved, credFile := preservationFixture(t)
+			ctx := context.Background()
+			live := claudeOAuthPayload("sk-ant-oat01-displaced", app.Now().Add(8*time.Hour))
+			writeFile(t, credFile, live)
+			raced := claudeOAuthPayload("sk-ant-oat01-raced", app.Now().Add(9*time.Hour))
+			observed := false
+			app.backendForTest = preservationWriteObserver{Backend: store.Backend, observe: func() {
+				observed = true
+				if err := store.Remove(ctx, saved.ID); !errors.Is(err, lock.ErrBusy) {
+					t.Fatalf("restore did not own inventory lock: %v", err)
+				}
+				if change == "credential" {
+					writeFile(t, credFile, raced)
+				} else {
+					fragment := filepath.Join(saved.Origin.Directory, fragmentRelPath)
+					writeFile(t, fragment, strings.ReplaceAll(readFile(t, fragment), "# kae:account:claude=main", "# kae:account:claude=side"))
+				}
+			}}
+			code, out, stderr := captureBoth(t, func() int { return runPreservation(ctx, app, commonOpts{Format: formatJSON}, "restore", saved.ID) })
+			mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+			if !observed {
+				t.Fatal("displaced copy was not preserved")
+			}
+			want := live
+			if change == "credential" {
+				want = raced
+			}
+			if readFile(t, credFile) != want {
+				t.Fatal("restore overwrote concurrent change")
+			}
+			records, err := store.List(ctx)
+			if err != nil || len(records) != 2 {
+				t.Fatalf("failed restoration lost preserved copies: %v %v", records, err)
+			}
+		})
+	}
+}
+
+func TestReloginRefusesChangesDuringPreservation(t *testing.T) {
+	for _, change := range []string{"credential", "mapping"} {
+		t.Run(change, func(t *testing.T) {
+			app, store, saved, credFile := preservationFixture(t)
+			ctx := context.Background()
+			live := claudeOAuthPayload("sk-ant-oat01-before-preservation", app.Now().Add(8*time.Hour))
+			writeFile(t, credFile, live)
+			raced := claudeOAuthPayload("sk-ant-oat01-after-preservation", app.Now().Add(9*time.Hour))
+			observed := false
+			app.backendForTest = preservationWriteObserver{Backend: store.Backend, observe: func() {
+				observed = true
+				if change == "credential" {
+					writeFile(t, credFile, raced)
+				} else {
+					path := filepath.Join(saved.Origin.Directory, fragmentRelPath)
+					writeFile(t, path, strings.ReplaceAll(readFile(t, path), "# kae:account:claude=main", "# kae:account:claude=side"))
+				}
+			}}
+			withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+				t.Fatal("flow overwrites unpreserved change")
+				return 0, nil
+			})
+			code, out, stderr := captureBoth(t, func() int { return runRelogin(ctx, app, commonOpts{Format: formatJSON}, constants.ToolClaude) })
+			mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+			if !observed {
+				t.Fatal("preservation hook not exercised")
+			}
+			want := live
+			if change == "credential" {
+				want = raced
+			}
+			if readFile(t, credFile) != want {
+				t.Fatal("refusal changed live store")
+			}
+		})
+	}
+}
+
+func TestPreservationRestoreRefusesSymlinkRetarget(t *testing.T) {
+	for _, ancestor := range []bool{false, true} {
+		t.Run(fmt.Sprint(ancestor), func(t *testing.T) {
+			app, _, saved, credFile := preservationFixture(t)
+			// Replace the original path by a symlink to a separate existing store. The
+			// metadata binding and lexical adapter target stay unchanged.
+			original := readFile(t, credFile)
+			outside := t.TempDir()
+			other := filepath.Join(outside, filepath.Base(credFile))
+			writeFile(t, other, original)
+			if ancestor {
+				dir := filepath.Dir(credFile)
+				if err := os.Rename(dir, dir+"-old"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(outside, dir); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := os.Remove(credFile); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(other, credFile); err != nil {
+					t.Fatal(err)
+				}
+			}
+			code, out, stderr := captureBoth(t, func() int {
+				return runPreservation(context.Background(), app, commonOpts{Format: formatJSON}, "restore", saved.ID)
+			})
+			mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+			if readFile(t, other) != original {
+				t.Fatal("restore touched substituted store")
+			}
+		})
+	}
+}

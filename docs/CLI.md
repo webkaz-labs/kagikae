@@ -878,7 +878,7 @@ Contract:
     the day kae's parser is the stale thing (§ `kae rollback --json` is normative for
     this family of wordings).
 
-  Exit stays `0` in all of them: the login flow ran, and only `auth_unchanged` above
+  After the flow has run, exit stays `0` in these cases; `auth_unchanged` above
   is a refusal.
 - **A harvest runs before the flow as well, and that is the one with something to
   lose.** The login is a write kae does not perform, so whatever the store held is
@@ -892,9 +892,10 @@ Contract:
   as new. When it cannot keep the copy it says so on stderr **before the flow is
   launched**, carrying the harvest's own reason and that completing the login replaces
   it; it may not say whose the copy is, which on the arm that matters is exactly what
-  kae could not establish. It does not refuse — the login is what was asked for, and
-  declining it would leave the directory stale with nothing to do about it — so the
-  exit code is unaffected.
+  kae could not establish. Before this harvest, an independent preservation record
+  keeps the existing credential without assigning ownership (§ kae preservation
+  Semantics). Failure to resolve, read or preserve that copy stops the login; the
+  harvest's own refusal after successful preservation remains a warning.
 - The capture back is `harvestDirCredential` with every guard it already has: it
   declines a copy that does not supersede the snapshot, and one it cannot attribute
   to this account. It runs whatever the comparison said — a flow kae could not
@@ -921,6 +922,54 @@ Contract:
   older is invalidated by it.
 - Holds the **pin** lock across the flow, so a re-bind of this directory cannot
   overwrite the store mid-login.
+
+## kae preservation Semantics
+
+Preservation records keep a credential's bytes without adopting them as an account
+snapshot. `kae relogin` creates a record before starting the bound Claude or Codex
+login flow when the resolved credential exists. Absence creates no record; an
+unreadable credential or unverified destination stops the flow. Preservation does
+not establish the owner, validity or refreshability of the saved bytes.
+
+```text
+kae preservation list [--json]
+kae preservation restore <id> [--dry-run] [--json]
+kae preservation rm <id> [--dry-run] [--yes] [--json]
+```
+
+The list contains non-secret record metadata. A binding's account label describes
+its configuration, not verified ownership of the credential. Restore and removal
+require an explicit full ID; there is no implicit latest record or alternate
+restore destination. Removal warns that the record may be the only surviving
+copy and requires confirmation; `--yes` explicitly acknowledges that warning.
+Non-interactive removal without that acknowledgment refuses. Dry-run does not
+write a credential, create a record, prune history or delete a record.
+
+Restore rechecks the original directory's current binding and adapter-resolved
+artifact address. A missing directory, changed mapping, changed driver/address,
+or a mapping kae cannot verify causes refusal. This compares the current mapping;
+it does not track an intervening change that was later undone. Restoration never
+redirects to the global home, changes the active account, adopts a snapshot, or
+restores an identity cache. The destination's different current credential is
+preserved before writing the selected copy. If that preservation fails, restoration
+does not start. The selected source record is protected during the operation.
+
+Identical bytes with identical original-store and mapping evidence reuse a record.
+Distinct captures share a latest-three history when their credential locator and
+configured binding account match, even across sibling directories. New copies
+must fit `security.preservation_max_bytes` before any older copy is removed; the
+initial logical payload budget is 10 MiB. Only after the new record is saved does
+history pruning remove excess older generations. This is a user-selected history
+policy, not a claim that older credentials are invalid. If retaining the destination
+before a restore would prune the selected source, restore refuses before mutation;
+explicitly remove an unwanted record or choose another source before retrying.
+
+Partial storage/cleanup failures stop the operation and remain charged against the
+budget until reconciled or explicitly removed. Increasing the limit permits more
+payload bytes; lowering it does not delete existing records. Record and backend
+metadata overhead is outside this logical budget. `backup_keep` controls a different
+history and does not apply here. Stop other sessions using the affected credential
+before relogin or restore; kae's locks do not stop an upstream refresh.
 
 ## kae companion Semantics
 

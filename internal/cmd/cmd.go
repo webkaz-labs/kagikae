@@ -30,7 +30,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.18.6"
+	toolVersion = "v0.19.0"
 )
 
 // Root dispatches the command line.
@@ -103,6 +103,8 @@ func Root(args []string) int {
 		return CmdProfile(ctx, args[1:])
 	case "status", "s":
 		return CmdStatus(ctx, args[1:])
+	case "preservation":
+		return CmdPreservation(ctx, args[1:])
 	case "backup":
 		return CmdBackup(ctx, args[1:])
 	case "rollback":
@@ -257,6 +259,9 @@ Usage:
   kae accounts [--json]                registered accounts
   kae ls [--json]                      accounts and profiles in one view
   kae status [--json]                  full status report (alias: kae s)
+  kae preservation list [--json]       list preserved credential records
+  kae preservation restore <id>        restore to the original credential store
+  kae preservation rm <id>             delete a preserved record with confirmation
   kae backup list [--json]             list switch backups
   kae rollback [--to <backup-id>]      restore a backup
   kae completion <bash|zsh|fish>       print a shell completion script

@@ -835,9 +835,9 @@ say "the store", read it as whichever of the two that tool resolves:
   sweep, where a delete is final (docs/CLI.md § kae pin, docs/DATA-MODEL.md).
   And on **both** sides of `kae relogin`'s flow, which is the one site where the write
   that replaces the copy is the *tool's* rather than kae's: the pass after it can only
-  see what the login wrote, so a pass before it is what gives the copy the login is
-  about to replace any chance at all, and where that pass refuses it says so before the
-  flow starts (docs/CLI.md § kae relogin Semantics);
+  see what the login wrote. A separate original-store preservation record precedes
+  this harvest; a harvest refusal remains a warning after preservation succeeds
+  (docs/CLI.md § kae relogin Semantics and § kae preservation Semantics);
 - and it **refuses rather than guesses**, in every one of these places. An unusable
   copy is not harvested — the tombstone a failed refresh leaves behind is a
   fully-formed payload, so presence proves nothing. A copy kae cannot *attribute* is
@@ -946,10 +946,11 @@ say "the store", read it as whichever of the two that tool resolves:
   and the next bind harvests it — **unless the readers disagree**, which no bind resolves
   and `kae relogin` in the drifted directory does, at a price the command now states
   rather than implies: the login replaces whatever is in the store, and the copy the
-  disagreement is about is precisely the one kae could not keep, so relogin harvests
-  before the flow and warns where it could not (measured 2026-08-08 — following that
-  remedy left the other account's only refreshable copy in no store and no snapshot)
-  — and the last binding's `kae unpin
+  disagreement is about is precisely the one kae could not attribute. Relogin
+  preserves it independently before the harvest and refuses to launch if preservation
+  fails (docs/CLI.md § kae preservation Semantics). This addresses the 2026-08-08
+  measurement where the remedy lost the other account's only refreshable copy.
+  The last binding's `kae unpin
   --purge` harvests before it deletes — measured 2026-08-08, end to end, keep → purge a sibling (kept, with the
   refcount named) → purge the last one (harvested into the snapshot, then removed);
 - the pair kae holds to: never file a copy it cannot attribute under an account, and never

@@ -346,6 +346,9 @@ queueing, because a queued switch could interleave with the other process's
 restore step. A separate `config` lock (same mechanism, name `config`) guards
 `config.toml` edits; commands that mutate both per-tool state and config
 (`account rm`/`rename`) take the tool lock first, then the config lock.
+Profile edits decide profile existence, last-mapping removal and default protection
+from the current config read under that lock. Dry-run reads current config without
+creating a lock or writing it.
 
 A per-tool reader/writer lock named `isolation-<tool>` guards account-keyed
 global-isolation paths. `run -i` takes the shared side before materializing the

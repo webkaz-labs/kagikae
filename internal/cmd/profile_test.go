@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/config"
@@ -157,5 +159,93 @@ func TestProfileDefaultSetClearAndUnknown(t *testing.T) {
 	report, err := buildProfileDefault(ctx, app, commonOpts{Format: formatText}, "", false)
 	if err != nil || report.Action != "default" {
 		t.Fatalf("bare default read failed: %v %+v", err, report)
+	}
+}
+
+func TestProfileUnsetUsesCurrentMappings(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		t.Run(fmt.Sprint(dryRun), func(t *testing.T) {
+			app := testApp(t, nil)
+			writeConfigFile(t, app, "version = 1\n[profiles.main.accounts]\nclaude = \"main\"\n")
+			current := "version = 1\n# preserve this comment\n[profiles.main.accounts]\nclaude = \"main\"\ncodex = \"side\"\n"
+			writeFile(t, app.ConfigPath, current)
+			if _, err := buildProfileUnset(context.Background(), app, commonOpts{DryRun: dryRun}, "main", "claude"); err != nil {
+				t.Fatal(err)
+			}
+			cfg := reloadConfig(t, app)
+			if cfg.Profiles["main"].Accounts["codex"] != "side" {
+				t.Fatal("concurrent mapping lost")
+			}
+			if dryRun {
+				if readFile(t, app.ConfigPath) != current {
+					t.Fatal("dry-run wrote config")
+				}
+			} else if _, exists := cfg.Profiles["main"].Accounts["claude"]; exists {
+				t.Fatal("requested mapping retained")
+			}
+			if !strings.Contains(readFile(t, app.ConfigPath), "# preserve this comment") {
+				t.Fatal("comment lost")
+			}
+		})
+	}
+}
+
+func TestProfileRemoveUsesCurrentDefault(t *testing.T) {
+	for _, force := range []bool{false, true} {
+		for _, dryRun := range []bool{false, true} {
+			t.Run(fmt.Sprintf("force=%v/dry=%v", force, dryRun), func(t *testing.T) {
+				app := testApp(t, nil)
+				writeConfigFile(t, app, "version = 1\n[profiles.main.accounts]\nclaude = \"main\"\n")
+				current := "version = 1\ndefault_profile = \"main\"\n[profiles.main.accounts]\nclaude = \"main\"\n"
+				writeFile(t, app.ConfigPath, current)
+				_, err := buildProfileRm(context.Background(), app, commonOpts{DryRun: dryRun}, "main", force)
+				if !force {
+					if exitOf(err) != constants.ExitUnsafeRefused {
+						t.Fatalf("expected refusal: %v", err)
+					}
+				} else if err != nil {
+					t.Fatal(err)
+				}
+				if !force || dryRun {
+					if readFile(t, app.ConfigPath) != current {
+						t.Fatal("refusal/preview wrote config")
+					}
+				} else {
+					cfg := reloadConfig(t, app)
+					if cfg.DefaultProfile != "" {
+						t.Fatal("dangling default")
+					}
+					if _, exists := cfg.Profiles["main"]; exists {
+						t.Fatal("profile retained")
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestProfileDecisionsRejectConcurrentlyRemovedProfile(t *testing.T) {
+	for _, operation := range []string{"unset", "rm", "default"} {
+		t.Run(operation, func(t *testing.T) {
+			app := testApp(t, nil)
+			writeConfigFile(t, app, "version = 1\n[profiles.main.accounts]\nclaude = \"main\"\n")
+			current := "version = 1\n# profile removed\n"
+			writeFile(t, app.ConfigPath, current)
+			var err error
+			switch operation {
+			case "unset":
+				_, err = buildProfileUnset(context.Background(), app, commonOpts{}, "main", "claude")
+			case "rm":
+				_, err = buildProfileRm(context.Background(), app, commonOpts{}, "main", false)
+			case "default":
+				_, err = buildProfileDefault(context.Background(), app, commonOpts{}, "main", false)
+			}
+			if exitOf(err) != constants.ExitNotFound {
+				t.Fatalf("expected not found: %v", err)
+			}
+			if readFile(t, app.ConfigPath) != current {
+				t.Fatal("refusal wrote config")
+			}
+		})
 	}
 }

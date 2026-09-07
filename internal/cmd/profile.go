@@ -154,6 +154,13 @@ func buildProfileSet(_ context.Context, app *App, opts commonOpts, name, tool, a
 	if err := app.requireConfigFile(); err != nil {
 		return nil, err
 	}
+	if !opts.DryRun {
+		cfgLock, err := app.acquireConfigLock()
+		if err != nil {
+			return nil, err
+		}
+		defer cfgLock.Release()
+	}
 	if _, found, err := account.Load(app.Paths.AccountDir(tool, accountName)); err != nil {
 		return nil, err
 	} else if !found {
@@ -167,11 +174,6 @@ func buildProfileSet(_ context.Context, app *App, opts commonOpts, name, tool, a
 	if opts.DryRun {
 		return report, nil
 	}
-	cfgLock, err := app.acquireConfigLock()
-	if err != nil {
-		return nil, err
-	}
-	defer cfgLock.Release()
 	if err := app.editConfig(func(e *config.Editor) {
 		e.SetProfileAccount(name, tool, accountName)
 	}); err != nil {
@@ -201,7 +203,18 @@ func buildProfileUnset(_ context.Context, app *App, opts commonOpts, name, tool 
 	if err := app.requireConfigFile(); err != nil {
 		return nil, err
 	}
-	profile, ok := app.Config.Profiles[name]
+	if !opts.DryRun {
+		cfgLock, err := app.acquireConfigLock()
+		if err != nil {
+			return nil, err
+		}
+		defer cfgLock.Release()
+	}
+	cfg, _, err := config.Load(app.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	profile, ok := cfg.Profiles[name]
 	if !ok {
 		return nil, errf(constants.ExitNotFound, "profile %q is not defined", name)
 	}
@@ -213,7 +226,7 @@ func buildProfileUnset(_ context.Context, app *App, opts commonOpts, name, tool 
 	// otherwise the reload validation rejects the dangling reference and the
 	// file is left invalid.
 	lastMapping := len(profile.Accounts) == 1
-	clearsDefault := lastMapping && app.Config.DefaultProfile == name
+	clearsDefault := lastMapping && cfg.DefaultProfile == name
 	report := &profileReport{
 		SchemaVersion: constants.SchemaVersion, OK: true, DryRun: opts.DryRun,
 		Action: "unset", Profile: name, Accounts: map[string]string{tool: profile.Accounts[tool]},
@@ -221,11 +234,6 @@ func buildProfileUnset(_ context.Context, app *App, opts commonOpts, name, tool 
 	if opts.DryRun {
 		return report, nil
 	}
-	cfgLock, err := app.acquireConfigLock()
-	if err != nil {
-		return nil, err
-	}
-	defer cfgLock.Release()
 	if err := app.editConfig(func(e *config.Editor) {
 		if lastMapping {
 			e.RemoveProfile(name)
@@ -282,10 +290,21 @@ func buildProfileRm(_ context.Context, app *App, opts commonOpts, name string, f
 	if err := app.requireConfigFile(); err != nil {
 		return nil, err
 	}
-	if _, ok := app.Config.Profiles[name]; !ok {
+	if !opts.DryRun {
+		cfgLock, err := app.acquireConfigLock()
+		if err != nil {
+			return nil, err
+		}
+		defer cfgLock.Release()
+	}
+	cfg, _, err := config.Load(app.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := cfg.Profiles[name]; !ok {
 		return nil, errf(constants.ExitNotFound, "profile %q is not defined", name)
 	}
-	clearsDefault := app.Config.DefaultProfile == name
+	clearsDefault := cfg.DefaultProfile == name
 	if clearsDefault && !force {
 		return nil, errf(constants.ExitUnsafeRefused,
 			"profile %q is the default_profile; rerun with --force to remove it and clear the default", name)
@@ -297,11 +316,6 @@ func buildProfileRm(_ context.Context, app *App, opts commonOpts, name string, f
 	if opts.DryRun {
 		return report, nil
 	}
-	cfgLock, err := app.acquireConfigLock()
-	if err != nil {
-		return nil, err
-	}
-	defer cfgLock.Release()
 	if err := app.editConfig(func(e *config.Editor) {
 		e.RemoveProfile(name)
 		if clearsDefault {
@@ -360,8 +374,19 @@ func buildProfileDefault(_ context.Context, app *App, opts commonOpts, name stri
 			Action: "default", DefaultProfile: app.Config.DefaultProfile,
 		}, nil
 	}
+	if !opts.DryRun {
+		cfgLock, err := app.acquireConfigLock()
+		if err != nil {
+			return nil, err
+		}
+		defer cfgLock.Release()
+	}
+	cfg, _, err := config.Load(app.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
 	if !clear {
-		if _, ok := app.Config.Profiles[name]; !ok {
+		if _, ok := cfg.Profiles[name]; !ok {
 			return nil, errf(constants.ExitNotFound, "profile %q is not defined", name)
 		}
 	}
@@ -372,11 +397,6 @@ func buildProfileDefault(_ context.Context, app *App, opts commonOpts, name stri
 	if opts.DryRun {
 		return report, nil
 	}
-	cfgLock, err := app.acquireConfigLock()
-	if err != nil {
-		return nil, err
-	}
-	defer cfgLock.Release()
 	if err := app.editConfig(func(e *config.Editor) {
 		e.SetDefaultProfile(name)
 	}); err != nil {

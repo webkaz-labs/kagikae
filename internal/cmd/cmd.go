@@ -30,7 +30,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.19.2"
+	toolVersion = "v0.20.0"
 )
 
 // Root dispatches the command line.
@@ -232,8 +232,9 @@ Usage:
                                        flow + snapshot; --no-login snapshots
                                        the current login instead)
   kae use [-s|-i] [-P <profile>]       bare: resolve the profile and apply it
-                                       idempotently (--quiet for hooks; folds
-                                       the former kae apply)
+                                       idempotently (the former kae apply)
+  kae use --auto [-P <profile>]       automatic apply; retain global isolation
+                                       (--quiet suppresses success output)
   kae use [-s|-i] <profile>            switch every tool now (alias: kae u)
   kae use <tool> <account>             switch one tool now
   kae pin [-s|-i] [<profile>]          bind this directory (alias: kae p);

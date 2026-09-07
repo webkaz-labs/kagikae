@@ -11,16 +11,25 @@
 | 作業 | 状態 | 採用・完了条件 | 依存 |
 |---|---|---|---|
 | リリース範囲 | 承認済み | 本表の必須・条件付き項目を対象に実装・公開する | なし |
-| README の保証範囲 | 範囲確定後に必須 | 認証の保存と有効性、global rollback と original-store preservation を混同させない説明にする。冒頭と安全性の紹介に限定し、詳細は既存契約へ参照する | 範囲確定 |
-| formatter の CI 差 | 調査後に採否 | gofmt が通り既存 fmt-check が拒否する対照、Linux の取得・cache・実行費用を確認する。採用時はローカルと CI が同じ検査定義を使い、既存 job の gofmt を置換する。新しい runtime 導入が必要なら再判断する | 範囲確定 |
-| docs selftest の CI 配置 | 条件付き | 改善済み selftest の Linux cold/warm 費用と故障対照を確認し、増分が利益に見合う場合だけ既存 job に追加する。formatter の採否とは独立 | 範囲確定 |
-| credential の観測・再確認 | 局所 module を採用 | mapping 再解決・存在・raw bytes 比較を cmd 内の非公開 module にまとめる。初回の期待値照合・lock・保存・操作の位置と操作別エラーは caller に残し、既存の command controls で検証する | 方針コミット後に実装 |
-| build cache の分離費用 | 予備枠 | 最初の必須 gate のログが compilation 重複を疑う根拠になった場合だけ、同一条件で現状と共用を比較する。全体時間が改善せず、または結果の分離を損なう場合は変更しない | 必須 gate の測定 |
-| 統合検証・レビュー | 未着手 | 採用差分に対応する gate、正確性レビュー、独立品質レビュー、文書判定が完了する | 採用実装 |
-| リリース受入・公開 | 未着手 | 影響する受入と公開前検査、main CI、公開、配布物検証を完了する | 統合検証・公開指示 |
+| README の保証範囲 | 完了 | 認証の保存と有効性、global rollback と original-store preservation を混同させない説明にする。冒頭と安全性の紹介に限定し、詳細は既存契約へ参照する | 範囲確定 |
+| formatter の CI 差 | 検出目的で採用 | Linux の故障対照を確認し、既存 job の gofmt をローカルの formatter 検査へ置換する。速度改善とは扱わない | 範囲確定 |
+| docs selftest の CI 配置 | 検出目的で採用 | Linux の故障対照を確認し、既存 job に追加する。formatter の採否とは独立で、速度改善とは扱わない | 範囲確定 |
+| credential の観測・再確認 | 実装・レビュー完了 | mapping 再解決・存在・raw bytes 比較を cmd 内の非公開 module にまとめる。初回の期待値照合・lock・保存・操作の位置と操作別エラーは caller に残し、既存の command controls で検証する | 方針コミット後に実装 |
+| build cache の分離費用 | 今回見送り | gate に共用を導入する根拠となる compilation 重複の測定がないため変更しない。再開条件は同一条件で重複と全体時間を測定できること | 必須 gate の測定 |
+| 統合検証・レビュー | 完了 | 採用差分に対応する gate、正確性レビュー、独立品質レビュー、文書判定が完了する | 採用実装 |
+| リリース受入・公開 | 実機受入済み・公開待ち | 影響する受入と公開前検査、main CI、公開、配布物検証を完了する | 統合検証・公開指示 |
 
 条件付き項目の不採用は、根拠と再開条件をその行に残して閉じる。
 作業数を増やすために新しい抽象化や検査を追加しない。
+
+2026-09-07 の Linux workflow（candidate `e158087`）で、formatter は初回
+13.16 秒、同一 job の再実行は 0.74 秒、cache は 136872 KiB だった。docs
+selftest は 10.51 秒、5.62 秒、cache は 46048 KiB で、24 ケースを
+`GOPROXY=off` と空の module cache で実行した。両方とも速度改善ではなく検出目的で
+採用する。再実行は同一 job 内であり、job 間の cache 復元効果は測定していない。
+formatter の対照は unused import と空行の検出を示し、local import grouping は
+検証していない。これらは gate 全体の速度比較ではない。CI 費用が検出利益に
+見合わなくなった場合は採否を再検討する。測定記録: [Linux workflow run](https://github.com/webkaz-labs/kagikae/actions/runs/34085892981)。
 
 ## 候補の根拠と停止条件
 

@@ -17,11 +17,8 @@ and `AGENTS.md` and `README.md` each carried a third version. Read the task.
 
 CI is a **subset**, not a mirror: `.github/workflows/check.yml`'s own steps are the one
 copy of which of those steps run there, and everything else is enforced on a developer's
-machine only. This line carried a second copy of that list until 2026-08-14, directly
-under the paragraph above making the same point about the local gate's own list
-([ROADMAP.md](ROADMAP.md) carries what widening
-it further would cost, and `check.yml`'s header why the docs selftest stayed out while
-its check went in).
+machine only. [ROADMAP.md](ROADMAP.md) routes to per-step admission decisions;
+the workflow steps own their environment constraints.
 
 Slower release-time checks live in `mise run audit` (govulncheck and installed-tool
 fingerprints), `mise run goreleaser-check`, and `mise run release-evidence`. The last

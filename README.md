@@ -488,13 +488,9 @@ git diff --check
 Choose the pre-commit gate using [AGENTS.md](AGENTS.md) § Validation.
 `mise run check` remains the full authoritative gate. CI
 ([.github/workflows/ci.yml](.github/workflows/ci.yml), which calls `check.yml`) runs a
-**subset** of it, so most of the gate — the formatter that actually gates locally
-(gofumpt/goimports), the static analysers, `shellcheck` and the selftests among
-them — passes or fails on your machine only. Which step is in which half is
-`check.yml`'s own list read against `mise.toml`'s `[tasks.check]`; this line still
-carries an informal half of it, and the enumeration it used to carry named the docs
-*selftest* while `docs-check` itself was local-only and unnamed, from the day the line
-was written until this step went into CI.
+**subset** of it. Static analysers, `shellcheck` and smoke selftests remain in the
+local gate. Compare `check.yml`'s steps with `mise.toml`'s `[tasks.check]` for the
+current coverage.
 Tagging `vX.Y.Z`
 runs [GoReleaser](https://goreleaser.com) to publish the binaries, behind that same
 subset.

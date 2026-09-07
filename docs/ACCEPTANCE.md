@@ -586,3 +586,28 @@ returned `status: success` for the darwin/linux × amd64/arm64 archives,
 checksums and attestations. The macOS arm64 binary and isolated installer both
 reported `kae v0.19.0`. The installer used verified-asset fixtures; this result
 does not exercise its HTTP transport.
+
+### v0.19.1 candidate preservation result
+
+Run on 2026-09-07 (JST) against candidate `e158087`, using Claude Code 2.1.261
+and the macOS Keychain backend. Both Claude sessions were confirmed stopped. The
+`side` credential was recaptured with `--no-login` immediately before creating a
+temporary isolated pin.
+
+The candidate's `relogin` flow preserved the same record across two attempts before
+the initial setup. The upstream process was deliberately terminated on both attempts;
+kae returned exit `11` (`auth_unchanged`) and the terminated process returned `143`.
+The pre-login and preserved raw SHA-256 digests matched, and the preserved and restored
+digests matched after restore. Restore dry-run and real restore returned `0`; removal
+dry-run returned `0`. Non-interactive removal with stdin closed and without `--yes`
+returned `10` and retained the record; explicit `--yes` returned `0` and the list
+became empty. `unpin` returned `0`.
+
+This is bounded same-copy preservation evidence. It does not establish a new login or
+refresh-token result; Codex was not run live. Secret bytes, private paths and private
+identifiers were not recorded.
+
+The final CI/documentation tree passed the full commit gate and both saved release
+smokes. Release-evidence, the installed-tool/vulnerability audit, GoReleaser
+configuration check and naming agreement passed for the same implementation.
+The authentication source remains unchanged from the live candidate above.

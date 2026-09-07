@@ -16,6 +16,16 @@ installer were verified on 2026-09-07 (JST) for v0.19.0 with
 installer both reported `kae v0.19.0`; the installer used verified-asset fixtures
 as described below.
 
+## Next candidate — kae v0.19.1
+
+The next candidate is `v0.19.1`, pending main CI, publication and distribution verification. Its patch scope is the
+credential observation/recheck module, the README guarantee clarification, and
+CI admission of formatter and docs-selftest detection. The Linux comparison
+admitted the two CI checks for detection; it did not establish a speed gain or
+justify shared build-cache changes. The bounded macOS result is recorded in
+[ACCEPTANCE.md](ACCEPTANCE.md). This section does not change the current release
+pointer until `v0.19.1` is published.
+
 ## Release procedure
 
 Releases are cut by pushing a `vX.Y.Z` tag; GitHub Actions

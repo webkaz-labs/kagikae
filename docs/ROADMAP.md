@@ -27,10 +27,10 @@ stage 3 of the docs scan, filed below.
 
 ## Current work order
 
-The proposed [safety and maintenance plan](plans/safety-maintenance.md) groups
+The approved [safety and maintenance plan](plans/safety-maintenance.md) groups
 credential observation/recheck, CI admission decisions and README guarantee scope
-for the next release. Its conditional tasks require their stated evidence before
-implementation; it does not widen authentication policy.
+for v0.19.1. Its ledger records the CI admission evidence and remaining release gates;
+it does not widen authentication policy.
 
 The completed [multi-theme release plan](plans/reliability-ci-terminology.md)
 retains the original-store preservation policy, CI build decision and
@@ -190,43 +190,14 @@ alternative exists (`secret-tool`).
   `drop-cleared` mutation removes one real unset while leaving the header's mention in
   place and requires the disagreement guard to fail.
 
-- **CI runs a subset of the gate; `docs-check` was the one step whose price fell**
-  (recorded 2026-08-11, `docs-check` **added 2026-08-14**, build admitted 2026-09-07;
-  remaining steps need individual decisions). `README.md` said CI "mirrors it"
-  and `check.yml`'s own header said it
-  mirrored the local gate; both have said subset since 2026-08-11, which was the half
-  that could be fixed without deciding anything. Derive the two step lists rather than
-  reading one written here — `mise.toml`'s `[tasks.check]`, through `lint`, which fans
-  out again, against `check.yml`'s own steps — because hand copies of the local list had
-  already drifted apart, which is what `[tasks.check]` is the one copy of and which
-  [VALIDATION.md](VALIDATION.md) names.
-  The argument for widening is the entry above about the real `security` binary: that
-  defect passed on darwin, failed on linux, and a single-environment gate could not see
-  the difference. Against it, and per step rather than in general:
-  `docs-check-selftest` copies the tracked tree once per case and runs the whole check on
-  each, `smoke-selftest` perturbs `.git/info/exclude`, and the lint tools resolve pinned
-  versions over the network on first use — so each needs a decision about caching and
-  about what a CI runner is allowed to touch, not just a line in a YAML file.
-  **`docs-check` stopped being in that list**, which is what changed and why it went in
-  alone; its selftest is the only objection above that touches it at all, and it stayed
-  out. `check.yml`'s header owns what the step costs and is the copy to read. The one
-  thing that belongs here rather than there: the first draft of that header claimed the
-  step "writes nothing outside the checkout", and a review measured it false — the
-  argument for admitting a step is exactly where an absolute is worth least.
-  **No timing is quoted here on purpose**: every absolute measured while this was written
-  disagreed with every other, because the machine was running several agents at once —
-  one reviewer had the compiled extractor at 727ms and another had `go run` at 150ms in
-  the same session.
-  Build's missing-main control and incremental-cost decision are recorded in the
-  [multi-theme plan](plans/reliability-ci-terminology.md); its implementation is in
-  the existing workflow job. Nothing else should be widened silently. Every place
-  that describes **CI** has to say
-  the gap — a place that describes only the local gate, as `AGENTS.md` § Validation does,
-  owes nothing — and there is no list of them here on purpose: the commit that added this step
-  repointed every such place it found, and a review then found one it had missed —
-  `RELEASE.md`'s live release procedure, which enumerated part of CI's step set inside an
-  instruction rather than in a frozen release entry. `check.yml`'s own header owns why
-  the selftest stayed out; it is the copy to repoint the others at.
+- **CI runs a subset of the gate; `docs-check` was the one step whose price fell**.
+  Compare `mise.toml`'s local gate with `check.yml`'s steps for current coverage.
+  Further admission requires per-step detection controls, Linux cost measurements
+  and a decision about cache and runner writes. The
+  [safety and maintenance plan](plans/safety-maintenance.md) records formatter
+  and docs-selftest admission; the [multi-theme plan](plans/reliability-ci-terminology.md)
+  records build admission. These decisions do not admit the remaining local checks.
+  Descriptions of CI, including release procedures, must preserve the subset distinction.
 
 - ~~**One paragraph in `PRODUCT.md` is architecture**~~ (recorded 2026-08-11, **fixed
   2026-08-14**). The `**Mechanisms.**` paragraph is now

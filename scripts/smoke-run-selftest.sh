@@ -241,23 +241,27 @@ check 'allocation failures stop before executing the block' 0 "$allocation_faile
 # Sourcing the preamble must not escape the runner's cleanup, including when a
 # block fails or changes HOME afterwards. The outside sentinel and the mutant's
 # unowned allocation both live inside this selftest's own temporary parent.
-mkdir -p "$tmp/outside-keep" "$tmp/unowned"
+# A trailing slash in the caller TMPDIR must not produce doubled HOME separators.
+mkdir -p "$tmp/outside-keep" "$tmp/unowned" "$tmp/runner-parent"
 printf 'keep\n' > "$tmp/outside-keep/sentinel"
 cleanup_failed=0
+normalization_failed=0
 for ending in true false; do
   f=$(doc "nested-$ending" '## NestedHome' '. scripts/smoke-env.sh' \
     'printf "NESTED_HOME=%s\n" "$HOME"' ': > "$HOME/fixture-credential"' \
     'HOME="$SMOKE_OUTSIDE_KEEP"' "$ending")
-  SMOKE_OUTSIDE_KEEP="$tmp/outside-keep" SMOKE_UNOWNED_PARENT="$tmp/unowned" run "$f" '## NestedHome'; rc=$?
+  TMPDIR="$tmp/runner-parent/" SMOKE_OUTSIDE_KEEP="$tmp/outside-keep" SMOKE_UNOWNED_PARENT="$tmp/unowned" run "$f" '## NestedHome'; rc=$?
   want=0; if [ "$ending" = false ]; then want=1; fi
   tr=$(transcript)
   nested=$(sed -n 's/^NESTED_HOME=//p' "$tr")
+  case "$nested" in ""|*//*) normalization_failed=1 ;; esac
   if [ "$rc" -ne "$want" ] || [ -z "$nested" ] || [ -e "$nested" ] ||
     [ "$(cat "$tmp/outside-keep/sentinel" 2>/dev/null)" != keep ]; then
     cleanup_failed=1
   fi
 done
 check 'sourced HOME is reclaimed on success and failure without deleting outside files' 0 "$cleanup_failed"
+check 'trailing TMPDIR separators are normalized in sourced HOME' 0 "$normalization_failed"
 
 # Allocation failure is a source failure, not permission to export empty roots.
 # The failing allocator performs no IO, so even a broken preamble stays isolated.
@@ -652,7 +656,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=38
+EXPECTED_GUARDS=39
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

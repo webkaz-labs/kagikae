@@ -156,7 +156,11 @@ if [ "$count" -gt 1 ]; then
   exit 2
 fi
 
-block=$(mktemp "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2
+# Strip trailing separators before adding the template; an all-slash parent
+# becomes empty here so the template still starts at the filesystem root.
+temp_parent=${TMPDIR:-/tmp}
+while [ "${temp_parent%/}" != "$temp_parent" ]; do temp_parent=${temp_parent%/}; done
+block=$(mktemp "$temp_parent/kae-smoke-run.XXXXXXXX") || exit 2
 awk -v h="$heading" '
   index($0, h) == 1 && /^## / { insec = 1; next }
   insec && /^## /             { insec = 0 }
@@ -252,10 +256,10 @@ excl_before=$([ -f "$excl" ] && cat "$excl" || echo missing)
 # Explicit templates respect TMPDIR on darwin and GNU mktemp; a caller owning
 # that parent also owns retained transcripts and allocations after interruption.
 # --- run, pre-isolated ------------------------------------------------------
-safe=$(mktemp -d "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2
-log=$(mktemp "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2
-transcript=$(mktemp "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2
-consumed=$(mktemp "${TMPDIR:-/tmp}/kae-smoke-run.XXXXXXXX") || exit 2
+safe=$(mktemp -d "$temp_parent/kae-smoke-run.XXXXXXXX") || exit 2
+log=$(mktemp "$temp_parent/kae-smoke-run.XXXXXXXX") || exit 2
+transcript=$(mktemp "$temp_parent/kae-smoke-run.XXXXXXXX") || exit 2
+consumed=$(mktemp "$temp_parent/kae-smoke-run.XXXXXXXX") || exit 2
 
 # Line by line, joining backslash continuations, because the exit status has to
 # mean something. Sourcing the whole file reports only its *last* command: a

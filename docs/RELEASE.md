@@ -16,14 +16,14 @@ installer were verified on 2026-09-07 (JST) for v0.18.5 with
 installer both reported `kae v0.18.5`; the installer used verified-asset fixtures
 as described below.
 
-## Next release — kae v0.18.6
+## Next release — kae v0.19.0
 
 The approved [multi-theme plan](plans/reliability-ci-terminology.md) combines
-authentication preservation/repair investigation, CI build admission and
-bound-directory terminology convergence. CI build and terminology convergence
-are the accepted implementation scope.
-Authentication behavior changes remain deferred for the prerequisites recorded
-in the plan. This is a patch release: it adds no command, config or JSON contract.
+CI build, bound-directory terminology convergence and credential preservation.
+Preservation adds original-store recovery, a configurable logical payload budget
+and latest-three history with explicit record deletion. This is a minor release
+because it adds commands and configuration. Authentication acceptance must be
+rerun for the affected behavior before publication.
 
 ## Release procedure
 

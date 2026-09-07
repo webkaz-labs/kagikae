@@ -34,12 +34,13 @@
 
 ## 状態
 
-計画を承認済み。調査を終え、CI build と用語統一を v0.18.6 向けに実装済み。
-新しい command・config・JSON 契約を追加しないため patch release とする。公開手順は [RELEASE.md](../RELEASE.md) に従う。
+CI build と用語統一の実装・検証は完了。公開前にユーザーが認証保全の方針決定を
+希望したため、認証テーマの設計を再開した。版番号は追加する command・config 契約を
+確定してから更新する。公開手順は [RELEASE.md](../RELEASE.md) に従う。
 
 ## 調査結果と採否
 
-2026-09-07、認証の挙動変更は今回保留する。既存の
+当初の調査では認証の挙動変更を保留と判断した。既存の
 `TestReloginSaysWhatTheLoginFlowIsAboutToReplace`、
 `TestReloginDeclinesALoginItWatchedWhenASiblingHasDrifted`、
 `TestRestoreSpecFollowsAMovedStore`、`TestPlansFromBackupMetaCapturesWhatTheRollbackWrites`
@@ -68,3 +69,40 @@ CI build は採用する。Go 1.27.1 の合成 main package から main 関数�
 full gate、正確性レビュー、独立品質レビュー、release-evidence、隔離 release smoke、
 上流挙動・脆弱性の audit、GoReleaser 設定検査、naming agreement が通過した。
 公開と配布物検証は未完了。実機受入の適用結果は [ACCEPTANCE.md](../ACCEPTANCE.md) に記録する。
+
+## 認証保全の確定方針
+
+ユーザーが採用した復元先は採取元の credential store のみ。現在の割当が採取時と
+異なる場合、保存先や割当を確認できない場合は復元を拒否する。global rollback へ
+転用せず、帰属不明の bytes を特定 account の snapshot として扱わない。
+
+保全領域が満杯で安全に削除できるコピーがない場合、既存コピーを残して
+保全が必要な操作を開始前に停止する。容量確保のための先行削除は行わない。
+保存する credential payload の合計は初期値 10 MiB、設定で変更可能とする。
+backend overhead を含む物理使用量の上限ではない。保全レコードの一覧と、ID 指定・
+明示確認付き削除を用意する。唯一のコピーである可能性を削除確認時に示す。
+復元先の現在のコピーも保全してから復元し、その容量が足りなければ復元を開始しない。
+
+同じ採取元・割当・内容は重複保存しない。異なる内容は同じ採取元・割当ごとに
+最新3世代を残し、新しいコピーの保存成功後に古い世代を自動削除する。
+これは有効性の判定ではなく、ユーザーが承認した履歴上限による整理である。
+新しいコピーを保存できる空きがない場合は、古いコピーを消して空けず操作を停止する。
+復元で使用中のレコードは処理中に削除しない。復元前の保全によってそのレコードが
+保持上限の削除対象になる場合は、変更前に復元を拒否し、明示整理を案内する。
+
+`kae preservation list`、`restore <id>`、`rm <id>` を提供する。
+復元先は記録から現在の adapter を通して再解決し、現在の binding・driver・artifact
+address が一致する場合に限定する。過去の変更履歴まで判定する世代管理は追加しない。
+保存する bytes の所有者は推定せず、account snapshot・global active state・identity
+cache を復元対象にしない。現行の bound relogin 対象である Claude と Codex を扱う。
+保存先の解決や既存コピーの読取・保全に失敗した場合、login を開始しない。
+
+保全 module が記録、重複判定、容量、保持、削除を所有し、既存 secret backend と
+artifact IO を再利用する。quota と記録操作はロックで直列化し、対話 login の間は
+quota lock を保持しない。kae のロックは upstream 自身の refresh を止めない。
+合成テストで失敗順序・中断・容量・重複・復元先変化を確認し、実機受入前には
+使用中のセッションが停止していることを改めて確認する。
+
+新しい command と設定を追加するため公開対象は v0.19.0 とする。
+CI・用語統一の検証結果はその差分の証拠として保持するが、認証実装後に必要な
+検証と実機受入を行う。以前の maintainer-only 適用判断はこのリリースには使用しない。

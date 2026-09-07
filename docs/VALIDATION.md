@@ -115,6 +115,9 @@ printf '// managed automatically\n{\n  "trustedFolders": ["/w"],\n  "lastLoggedI
 
 # --- capture and switch, one tool at a time -------------------------------
 /tmp/kae add --no-login claude main             # reports "driver: claude-file-patch"
+/tmp/kae profile set main claude main           # README: register -> profile -> first switch
+/tmp/kae use main --json
+grep -q '"active_profile": "main"' "$XDG_STATE_HOME/kagikae/state.json" # assert: profile selected
 /tmp/kae use claude main --dry-run              # both output forms of the preview
 /tmp/kae use claude main --dry-run --json       # json-pointer action, no keychain
 /tmp/kae use claude main --json
@@ -150,7 +153,6 @@ test "$(env | grep -c '^ANTHROPIC_API_KEY=')" -eq 0   # assert: the child saw it
 /tmp/kae run -i claude main -- /usr/bin/true    # global isolated home, no live-store lock or mutation
 
 # --- profiles, and what a bare `kae use` resolves --------------------------
-/tmp/kae profile set main claude main
 /tmp/kae profile set side claude main
 /tmp/kae profile set side codex main
 /tmp/kae use main --json                        # profile form

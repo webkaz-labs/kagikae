@@ -123,6 +123,22 @@ From source with Go (builds the binary as `kagikae`; alias it to `kae`):
 go install github.com/webkaz-labs/kagikae@latest
 ```
 
+To update an existing install, repeat the corresponding source-specific command
+with the desired release version (the shell installer accepts `--version`; mise
+accepts a new `@vX.Y.Z` tag). After installing, check which binary the shell will
+run:
+
+```bash
+command -v kae
+kae version
+```
+
+If the installer placed `kae` in `~/.local/bin` and that directory is not on
+`PATH`, add it to the shell configuration before running the check. The shell
+installer refreshes already-registered completion files; after a mise-managed
+update or a local build, run `kae completion --refresh` if registered files need
+refreshing.
+
 Prebuilt archives and `checksums.txt` for macOS and Linux (amd64/arm64) are on
 [GitHub Releases](https://github.com/webkaz-labs/kagikae/releases); release
 assets carry build-provenance attestations. Windows is not built yet
@@ -130,6 +146,15 @@ assets carry build-provenance attestations. Windows is not built yet
 
 `kae` needs the official tool CLIs themselves for logging in — it snapshots and
 restores what they create.
+
+There is no `kae uninstall` command. Before removing the binary, remove or
+disable shell and mise hooks that invoke `kae`; otherwise a new shell or
+directory entry can report `kae` as missing. Removing the binary then removes
+the executable only: bindings, shell completion files, config, snapshots,
+backups, and preserved credentials remain in place. `kae unpin` removes one
+directory binding, not the installation. The completion registration guidance
+below covers the shell-owned files and hooks; do not treat binary removal as a
+request to delete all user data.
 
 ## Quick Start
 
@@ -139,17 +164,17 @@ directory. Add **`-i`** for an isolated (private) home, or keep the default
 
 ```bash
 kae init                       # create config
-kae edit                       # open it in $EDITOR (profiles live here)
-kae profile save main          # or manage profiles without hand-editing TOML:
-                               # save / set / unset / rm / default
 kae doctor                     # check environment and live auth
 
 # register accounts (official login flow + snapshot; or --no-login to snapshot
 # the login you are already on). The account name is optional — kae auto-detects
 # it from the live login identity:
-kae add claude                 # name auto-detected (e.g. your login email)
-kae add claude side            # or name it explicitly
-kae add --no-login codex main
+kae add claude main            # register the first account explicitly
+kae add claude side            # register a second account explicitly
+
+# build profiles after accounts are registered:
+kae profile set main claude main
+kae profile set side claude side
 
 # switch now (global):
 kae use main                   # every tool in the "main" profile (alias: kae u)
@@ -160,12 +185,22 @@ kae                            # what is active
 kae rollback                   # undo the last switch
 ```
 
+To add another tool, capture it separately (for example, `kae add --no-login
+codex main`) and add that tool to the profile with `kae profile set main codex
+main`.
+
 `kae use` backs up the live artifacts it is about to change; `kae rollback`
 restores a selected restorable global backup. `--dry-run` previews exactly what
 would be patched. A rollback goes back
 even when the credential it restores has since been superseded — claude invalidates
 older copies of a login when it refreshes — but it says so first, and names where the
 newer copy still is ([docs/CLI.md](docs/CLI.md) § `kae rollback --json`).
+
+If the default rollback has no target, inspect `kae backup list` and use
+`kae rollback --to <backup-id>` for an explicit global backup. A preservation
+record is a separate original-store recovery path: use `kae preservation list`
+then `kae preservation restore <id>`; it never redirects to the global home
+([docs/CLI.md](docs/CLI.md) § kae preservation Semantics).
 
 ## Pin a Directory
 
@@ -338,6 +373,24 @@ migrates the exact older kae-owned hook form that mise ran through `sh`.
 `kae mise init` separately generates project-scoped completion for
 `mise run <task> <TAB>` in the directory's `.mise.toml` — distinct from this
 binary-scoped shell completion.
+
+## Troubleshooting and reporting
+
+Start with the unfiltered health report so bound directories and their bindings
+are included:
+
+```bash
+kae doctor --json
+kae status --json
+kae version
+```
+
+Keep the exit code and relevant stderr with the report. Before sharing anything,
+redact identity or email values, account and preservation IDs, absolute paths
+(including preservation directories), and other private metadata; do not attach
+raw JSON or credential output. For a reproducible failure, include the command,
+platform, install source, version, and whether the scope was global or pinned.
+Report issues at [GitHub Issues](https://github.com/webkaz-labs/kagikae/issues).
 
 ## Tool Support
 

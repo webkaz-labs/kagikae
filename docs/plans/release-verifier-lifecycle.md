@@ -43,5 +43,7 @@ v0.18.5 向けの対象は maintainer 用 `scripts/releaseverify` のプロセ�
 native version・verified-asset fixture を使う installer の正常経路を確認した。
 これは新しい版の公開記録ではない。
 
-次の工程は [RELEASE.md](../RELEASE.md) の v0.18.5 公開手順。版番号の更新と
-release acceptance の適用判断を行ってからタグ付けし、新配布物を検証する。
+リリース候補 `a2ad1c0` では版番号の更新と release acceptance の適用判断、
+公開前の必須検証を完了した。末尾にスラッシュを持つ TMPDIR の smoke パスも
+正規化し、失敗していた store smoke と対応する mutation が通過した。
+次の工程は [RELEASE.md](../RELEASE.md) のタグ付けと新配布物の公開後検証。

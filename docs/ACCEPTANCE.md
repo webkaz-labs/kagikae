@@ -34,6 +34,25 @@ login is healthy. Re-run affected maintainer checks and isolated smokes; verify 
 newly published artifacts and installer. Application changes still require the
 affected live acceptance before release.
 
+### v0.18.5 applicability result
+
+Assessed on 2026-09-07 for candidate `a2ad1c0`. Comparison with accepted
+candidate `64c4ec3` found only the version literal and its report test changed
+in application sources, dependencies and GoReleaser inputs. The 2026-09-06
+Claude global switch/rollback, Copilot same-account apply/rollback and Claude
+bound-directory results below are reused under the applicability rule above.
+This is not a new live run or a statement about current login health; optional
+account combinations retain their recorded limits.
+
+The installed behavior and vulnerability audit, GoReleaser configuration check,
+and naming agreement passed. Claude remains 2.1.261 with the naming harness's
+reviewed digest; Copilot remains 1.0.83, with version-level agreement because
+its earlier record has no digest. No contrary authentication incident was
+identified in this assessment. Full commit checks, release-evidence and both
+saved release smokes passed. The store smoke exposed doubled separators from a
+trailing-slash TMPDIR; the candidate normalizes the allocation prefix and the
+same smoke passed afterward. Published v0.18.5 assets are verified after the tag.
+
 ### v0.18.4 applicability result
 
 Assessed on 2026-09-07 for candidate `fe5e3c1`. Comparing application sources,

@@ -22,8 +22,10 @@ The next patch candidate follows the
 [release-verifier lifecycle plan](plans/release-verifier-lifecycle.md): terminate
 owned command descendants and reclaim installer-smoke temporary roots on failure
 or interruption. Application authentication behavior is outside this change.
-The implementation and targeted validation are complete. The version bump and
-the release acceptance, tag and publication procedure below remain release work.
+The version bump and pre-publication checks are complete; acceptance applicability
+is recorded in [ACCEPTANCE.md](ACCEPTANCE.md). The release also normalizes trailing
+TMPDIR separators in smoke allocations. Tagging, publication and verification of
+the new assets remain to complete the procedure below.
 
 ## Release procedure
 

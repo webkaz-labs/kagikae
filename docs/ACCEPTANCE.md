@@ -552,3 +552,31 @@ out of transcripts and repository files; compare payloads privately or by digest
    describe those as a live upstream login. Codex's dynamic store resolution is
    covered by its synthetic adapter/command controls unless a live Codex run is
    explicitly recorded.
+
+### v0.19.0 preservation result
+
+Run on 2026-09-07 (JST) against candidate `1a9b4d6`, using Claude Code
+2.1.261 and the macOS Keychain backend. The operator confirmed both Claude
+account sessions were stopped. The current `side` credential was recaptured
+immediately before creating a temporary isolated binding.
+
+The candidate saved a ready record before starting the installed Claude login
+process. Login was deliberately aborted at its initial setup screen: the child
+was terminated after Ctrl-C left it running, and kae returned `11`
+(`auth_unchanged`). A repeated run reused the same record ID and again returned
+`11`. The preserved credential subtree matched the pre-login digest; the whole
+preserved payload matched the addressed live keychain item after the abort.
+Both restore dry-run and same-copy restore succeeded, and the restored whole
+payload matched the preserved digest. No fresh login or token rotation was tested.
+
+List JSON reported one ready record with `identity: unknown`. Deletion dry-run
+succeeded; non-interactive deletion without acknowledgment returned `10` and
+retained the record. After confirming that the restored live copy matched, explicit
+`--yes` deletion removed only the test record and the list became empty.
+Secret bytes were neither printed nor added to the repository.
+
+The full commit gate, release-evidence, both saved release smokes, installed
+behavior/vulnerability audit, GoReleaser configuration check and naming agreement
+passed for this candidate. History pruning, quota, persistence failures and Codex
+store resolution retain their isolated synthetic coverage; no live Codex account
+was available for this run. These results do not establish current token validity.

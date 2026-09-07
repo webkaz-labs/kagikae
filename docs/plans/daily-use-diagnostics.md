@@ -2,19 +2,21 @@
 
 ## 到達点と状態
 
-計画の製品方針は合意済み、実装は未着手。手動で選んだ global isolated の
+計画の製品方針に沿った A/B/C の実装と fixture 検証は完了。
+`v0.20.0` の公開前実機確認と公開・配布物検証が残る。手動で選んだ global isolated の
 mode と account を自動 hook が保持し、設定や一覧 metadata に問題があっても
 復旧判断に必要な情報を読めることを目指す。README の利用例もこの契約に合わせる。
-実装開始・リリース番号の決定・公開は、この計画の記録とは別の段階とする。
+リリース状況は [RELEASE.md](../RELEASE.md)、検証結果は
+[ACCEPTANCE.md](../ACCEPTANCE.md) に記録する。
 
 ## 対象と順序
 
 | ID | 対象・状態 | 到達点 | 順序 |
 |---|---|---|---|
-| A | 自動 hook と手動切替（未着手） | 自動実行の意図を明示し、tool ごとの global isolated mode/account を保持する。手動の shared 指定では確実に解除する | 最優先。B 系列と調査・実装を分担可能 |
-| B1 | backup / preservation の診断一覧（未着手） | 正常 metadata と分類した問題を併記し、一覧の不完全性を示して非ゼロで終了する | B2 と一覧契約を一緒に決める |
-| B2 | 不正 config からの一覧独立（未着手） | config の問題を警告しつつ metadata を列挙する。一覧が完全なら成功可能とする | B1 と同じ一覧経路で扱う |
-| C | 利用案内（未着手） | hook 移行・前提、並行利用の mode、dry-run の範囲を入口で説明する | A/B の契約に依存する説明は契約確定後 |
+| A | 自動 hook と手動切替（実装・fixture 検証済み） | 自動実行の意図を明示し、tool ごとの global isolated mode/account を保持する。手動の shared 指定では確実に解除する | 最優先。B 系列と調査・実装を分担可能 |
+| B1 | backup / preservation の診断一覧（実装・fixture 検証済み） | 正常 metadata と分類した問題を併記し、一覧の不完全性を示して非ゼロで終了する | B2 と一覧契約を一緒に決める |
+| B2 | 不正 config からの一覧独立（実装・fixture 検証済み） | config の問題を警告しつつ metadata を列挙する。一覧が完全なら成功可能とする | B1 と同じ一覧経路で扱う |
+| C | 利用案内（更新済み） | hook 移行・前提、並行利用の mode、dry-run の範囲を入口で説明する | A/B の契約に依存する説明は契約確定後 |
 
 A と B 系列は独立して進められるが、`App` の設定読込みや共通報告経路を
 同時編集しない。共有箇所への変更が必要なら担当と順序を先に調整する。
@@ -22,9 +24,9 @@ A と B 系列は独立して進められるが、`App` の設定読込みや共
 ## A: 自動実行は手動の isolated 選択を保持する
 
 自動 hook と通常の `use` の意味を分け、既存 hook は移行する。
-既存 `use` への自動実行フラグを第一案とする（仮称 `--auto`）。名称と引数の
-組合せは実装前に確定する。`--quiet` は出力抑制だけに使い、動作を分けない。
-新しい command や手動選択の永続記録は第一案に含めず、既存の `state.synced`
+既存 `use` への自動実行フラグ `--auto` を採用する。引数の
+組合せは § 採用した技術契約に記録する。`--quiet` は出力抑制だけに使い、動作を分けない。
+新しい command や手動選択の永続記録は追加せず、既存の `state.synced`
 を使う。通常の手動 `use` の既定 shared と profile 選択の意味を保つ。
 
 | 利用場面 | 期待する動作 |
@@ -113,10 +115,10 @@ fixture と backend nil の一覧対照を使い、実保存領域を使わな�
 
 ## 実装前の技術ゲートと受入
 
-未確定なのは合意済みの利用方針を安全に実装するための契約であり、ユーザー方針を
-再選択する項目ではない。自動実行フラグの引数排他、mixed profile の対象絞込み後の
-lock と部分失敗、問題記録の安全な識別子、JSON field/token と終了コードの優先順位を
-実装前に設計・レビューする。正常行の既存契約を読み、追加 field の互換性を確認する。
+自動実行フラグの引数排他、mixed profile の対象絞込み後の lock と部分失敗、
+問題記録の識別子、JSON field/token と終了コードは、下の「採用した技術契約」に
+記載する。受入条件の fixture 検証結果と残る実機確認は
+[ACCEPTANCE.md](../ACCEPTANCE.md) の v0.20.0 assessment を参照する。
 
 | 対象 | 受入条件 |
 |---|---|
@@ -133,6 +135,16 @@ lock と部分失敗、問題記録の安全な識別子、JSON field/token と�
 品質修正があれば影響範囲の正確性へ戻る。ドキュメントと永続メモリは対象ごとに
 変更要否を判定する。公開の段階では [RELEASE.md](../RELEASE.md) と
 [ACCEPTANCE.md](../ACCEPTANCE.md) に従って影響範囲を評価する。
+
+## 採用した技術契約
+
+`--auto` は bare use の profile 解決に限定し、明示 scope flag と位置引数を拒否する。
+保持選択は `preserved`、共有適用は `results` で区別する。対象の lifecycle reader を
+保持し、mixed profile の共有部分には既存の一括 transaction を使う。
+診断一覧は `complete` / `issues` / `warnings` を追加し、問題 entry はファイル名の
+SHA-256 で識別する。不完全一覧は exit `1`、config 警告だけなら exit `0` とする。
+詳細契約と移行手順は [CLI.md](../CLI.md)、built-binary fixture は
+[VALIDATION.md](../VALIDATION.md) § Automatic selection and diagnostic lists にある。
 
 ## 今回含めないもの
 

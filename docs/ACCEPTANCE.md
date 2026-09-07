@@ -646,3 +646,35 @@ returned `status: success` for the darwin/linux × amd64/arm64 archives,
 checksums and attestations. The macOS arm64 binary and isolated installer both
 reported `kae v0.19.2`. The installer used verified-asset fixtures, so this
 result does not exercise its HTTP transport.
+
+### v0.20.0 automatic selection and diagnostic-list assessment
+
+Assessed on 2026-09-07–08 (JST) for candidate `5cec709`. Application changes affect
+profile target selection, manual global-isolation teardown and metadata-only
+listing. They do not change adapter credential addressing or preservation
+restore/removal validation. This is an application release; affected live
+acceptance remains pending under the session protections above.
+
+Fixture checks on the candidate's application sources passed: retained isolated
+selection without a backup, mixed-profile shared-only backup, restoration after
+a mixed apply's state-recording failure, explicit shared teardown even when the
+active account matches, lock-busy and missing-store/fragment refusals, quiet and
+preview output, parser exclusions, owned-hook migration and separate local/global
+binding fragments. The directory fixture observes environment values and fragment
+contents; it does not constitute a real interactive mise shell session.
+
+Diagnostic controls passed for readable rows with broken metadata, unreadable
+metadata, an unenumerable directory, unexpected symlinks, empty inventories and
+invalid TOML. Backend-incompatible fixtures still listed metadata. Diagnostics
+kept raw parse errors and private entry names out of JSON and text; mutation controls kept
+invalid-config refusal and prevented automatic rollback past a broken backup.
+Pending/deleting preservation metadata remains visible and explicitly removable.
+
+The full commit gate, audit, naming agreement, GoReleaser configuration and snapshot
+build, release-evidence, and both saved release smokes passed. The additional
+[VALIDATION.md](VALIDATION.md) § Automatic selection and diagnostic lists block
+passed against the built candidate with synthetic credentials and a file backend.
+One parallel run overlapped the smoke selftest's deliberate checkout mutation and
+was discarded by the leak guard; its subsequent standalone run passed. These
+results do not establish the health of a current upstream login. Publication and
+published-asset verification have not been performed.

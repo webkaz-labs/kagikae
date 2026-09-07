@@ -1,5 +1,14 @@
 # Release Process
 
+## Next release — kae v0.20.0
+
+The [daily-use diagnostics plan](plans/daily-use-diagnostics.md) adds automatic
+profile application that retains global isolation, diagnostic metadata lists and
+hook migration guidance. A minor release reflects the new `--auto` flag and
+additive report fields. Existing normal list rows and mutation refusal contracts
+are retained. Affected live acceptance and publication remain pending; results
+belong in [ACCEPTANCE.md](ACCEPTANCE.md).
+
 ## Current release — kae v0.19.2
 
 The release record is the tag and

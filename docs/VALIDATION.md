@@ -161,11 +161,11 @@ test "$(env | grep -c '^ANTHROPIC_API_KEY=')" -eq 0   # assert: the child saw it
 /tmp/kae profile default main
 /tmp/kae use --json                             # now resolves; re-run: "changed": false
 KAE_PROFILE=side /tmp/kae use --json            # env resolution
-/tmp/kae use --quiet                            # prints nothing on success
+/tmp/kae use --auto --quiet                            # prints nothing on success
 /tmp/kae profile default                        # prints the current default
 /tmp/kae profile save snapshot                  # from the active accounts
 /tmp/kae mise init --profile main               # preview, no write
-/tmp/kae mise init --profile main --auto        # preview: [hooks.enter] kae use --quiet
+/tmp/kae mise init --profile main --auto        # preview: [hooks.enter] kae use --auto --quiet
 
 # --- pin: binds the CURRENT directory, so run it inside the temp HOME ------
 # `kae pin` also writes a $GIT_COMMON_DIR/info/exclude entry, which is why this is a
@@ -297,7 +297,46 @@ this writes must itself be `mise trust`-ed), `mise trust` on the project
 `ZDOTDIR` at a temp dir whose `.zshrc` exports PATH and evals
 `mise activate zsh`, then run `zsh -i -c 'cd <project> && true'` from a
 neutral directory (the repo's own untrusted mise.toml otherwise aborts
-hook-env) and assert `kae use --quiet` fired and that re-entry adds no backup.
+hook-env) and assert `kae use --auto --quiet` fired and that re-entry adds no backup.
+
+## Automatic selection and diagnostic lists
+
+Run through `bash scripts/smoke-run.sh '## Automatic selection and diagnostic lists'`.
+This exercises the built parser, retained selection, explicit teardown and mixed
+metadata/config diagnostics with file-backed synthetic credentials.
+
+```bash
+go build -o /tmp/kae .
+. scripts/smoke-env.sh
+export KAE_CLAUDE_DRIVER=file
+unset CLAUDE_CONFIG_DIR CLAUDE_SECURESTORAGE_CONFIG_DIR CODEX_HOME KAE_PROFILE
+mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
+printf 'version = 1\n[security]\nsecret_backend = "file"\n' > "$XDG_CONFIG_HOME/kagikae/config.toml"
+printf '{"claudeAiOauth":{"accessToken":"main-token","refreshToken":"main-refresh","expiresAt":9999999999999}}' > "$HOME/.claude/.credentials.json"
+printf '{"oauthAccount":{"emailAddress":"you@example.com","accountUuid":"main"}}' > "$HOME/.claude.json"
+/tmp/kae add --no-login claude main
+printf '{"claudeAiOauth":{"accessToken":"side-token","refreshToken":"side-refresh","expiresAt":9999999999999}}' > "$HOME/.claude/.credentials.json"
+printf '{"oauthAccount":{"emailAddress":"you@example.com","accountUuid":"side"}}' > "$HOME/.claude.json"
+/tmp/kae add --no-login claude side
+/tmp/kae profile set main claude main
+/tmp/kae profile default main
+/tmp/kae use -i claude side
+/tmp/kae use --auto --json > "$HOME/auto.json"
+python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert not r["changed"] and r["preserved"]==[{"tool":"claude","account":"side"}] and r["results"]==[]' "$HOME/auto.json"
+/tmp/kae use --auto --quiet
+/tmp/kae use -s -P main
+ test ! -e "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml"
+/tmp/kae backup list --json > "$HOME/list.json"
+python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["complete"] and r["backups"] and r["issues"]==[]' "$HOME/list.json"
+printf '[broken' > "$XDG_CONFIG_HOME/kagikae/config.toml"
+/tmp/kae backup list --json > "$HOME/config-warning.json"
+python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["complete"] and r["warnings"]==["config_invalid"]' "$HOME/config-warning.json"
+printf 'invalid secret-sentinel' > "$XDG_STATE_HOME/kagikae/backups/secret-sentinel.json"
+rc=0; /tmp/kae backup list --json > "$HOME/incomplete.json" || rc=$?; test "$rc" -eq 1
+python3 -c 'import json,sys; text=open(sys.argv[1]).read(); r=json.loads(text); assert not r["complete"] and r["backups"] and r["issues"][0]["code"]=="metadata_invalid" and "secret-sentinel" not in text' "$HOME/incomplete.json"
+/tmp/kae preservation list --json > "$HOME/preservations.json"
+python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["complete"] and r["preservations"]==[] and r["warnings"]==["config_invalid"]' "$HOME/preservations.json"
+```
 
 ## Lead time, inventory freshness and bound directories
 

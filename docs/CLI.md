@@ -101,10 +101,11 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--yes` | all | non-interactive confirmation (reserved; no prompts exist yet) |
 | `--no-color` | all | disable color in human text output |
 | `--config <path>` | all | explicit config file path (overrides XDG lookup) |
+| `--auto` | bare `use` | preserve global isolated selections when applying a resolved profile |
 | `--quiet` | bare `use` | suppress the success report (for hooks); errors still reported |
 | `--profile <name>` / `-P <name>` | bare `use`, `run`, `mise init` | resolve a named profile instead of the default; `-P` is the short form |
 | `--restore` / `--no-login` | `add` | restore the previous login after capturing (login flow only); snapshot without a login flow |
-| `--auto` / `--write` | `mise init` | add the enter hook (`kae use --quiet`); write/update `.mise.toml` |
+| `--auto` / `--write` | `mise init` | add the enter hook (`kae use --auto --quiet`); write/update `.mise.toml` |
 | `--to <backup-id>` | `rollback` | backup to restore (default: the most recent **restorable** one — the newest that records a state kae was about to change. A `run-unattributable` backup is skipped by the default because it records a state kae *declined to adopt*, not one it changed; `--to` still reaches it, which is what the refusal that created it tells you to type) |
 
 ## kae use Semantics
@@ -118,12 +119,30 @@ its binding; re-bind it with `kae pin`).
 profile from `--profile`/`-P`, then `$KAE_PROFILE`, then config
 `default_profile` (none of them set is a usage error), and applies it
 **idempotently**. When kae's recorded active state (`state.json active`) already
-matches, it exits `0` with `"changed": false`, taking no locks and writing no
+matches and no target has global isolation selected, it exits `0` with
+`"changed": false`, taking no locks and writing no
 backups; external drift is neither verified nor repaired. Otherwise it performs a
 full apply. `--quiet` suppresses the human success report (for enter hooks);
 with `--json` the report is still emitted so a script can read `changed`.
-Errors are still reported. This is the safe form for hooks and scripts (the
-former `kae apply`).
+Errors are still reported. Manual shared use clears the target tools' global
+isolation even when their recorded active accounts match.
+
+**`kae use --auto [-P <profile>]`** uses the same profile resolution, but preserves
+the mode and account of each target recorded in `state.synced`. It accepts
+`--quiet`, `--json` and `--dry-run`; positional arguments and explicit `-s`/`-i`
+are rejected. Quiet changes output only. A retained tool receives no credential
+write or backup. Other profile tools retain the shared application behavior and
+are applied together in one transaction; tools outside the profile are untouched.
+A missing retained account/store or inconsistent global fragment refuses with
+exit `10` and explicit-operation guidance, without reconstructing credentials.
+The report describes recorded selections, not verified upstream identity.
+
+Auto retains isolation lifecycle readers through inspection and application, so
+an overlapping `use -i` or account mutation returns lock-busy rather than changing
+the inspected selection. Existing `run -i` readers may coexist. The ordinary
+shared no-op stays lock-free; dry-run creates no locks or writes. A directory's
+binding still supplies its environment and profile independently of the global
+selection; leaving the directory exposes the retained global fragment again.
 
 **`kae use [-s|-i] <profile>`** or **`kae use [-s|-i] <tool> <account>`**
 (explicit positional): always applies, even when the recorded state already
@@ -132,8 +151,8 @@ matches.
 - `--shared` / `-s` (default): patch the credential in place; skills, hooks,
   memory, MCP, and trust stay shared with the real home. Same JSON report shape,
   exit codes, and backups as the removed `switch`. This is also the teardown of
-  `kae use -i`: it drops the tool from `state.json synced`, regenerates or
-  deletes the global mise fragment, and then patches the real home in place.
+  `kae use -i`: after patching the real home in place, it drops the tool from
+  `state.json synced` and regenerates or deletes the global mise fragment.
 
   Before overwriting the live store, a shared switch **recaptures the
   currently-active account** when its live credential diverges from its snapshot
@@ -762,7 +781,10 @@ kae keeps a credential because bindings still use it, it prints how many.
 the opt-in enter hook into a marker-delimited block in `.mise.toml`. Default
 prints the snippet to stdout; `--write` creates `.mise.toml` or replaces an
 existing kagikae block. `--auto` adds a `[hooks.enter]` entry running
-`kae use --quiet`. `-P` selects the profile (falls back to `default_profile`).
+`kae use --auto --quiet`. Re-run `kae mise init --auto --write` (with `-P`
+when needed) to migrate a kae-owned marker block. Update handwritten hook lines
+explicitly; initialization does not search other files. `-P` selects the profile
+(falls back to `default_profile`).
 
 The block carries the fixed-profile tasks (`ai-use`, `ai-current`, and a per-
 enabled-tool `run` task) plus two argument-taking tasks with dynamic
@@ -938,7 +960,8 @@ kae preservation rm <id> [--dry-run] [--yes] [--json]
 ```
 
 The list reads non-secret record metadata without selecting a secret backend or
-reading payloads; it does not verify payload availability. A binding's account label describes
+reading payloads; it does not verify payload availability. Diagnostic completeness
+and config warnings follow § `kae backup list --json`. A binding's account label describes
 its configuration, not verified ownership of the credential. Restore and removal
 require an explicit full ID; there is no implicit latest record or alternate
 restore destination. Removal warns that the record may be the only surviving
@@ -1768,9 +1791,16 @@ The switch report plus a `changed` boolean (no `dry_run`):
   "ok": true,
   "changed": false,
   "profile": "main",
-  "results": []
+  "results": [],
+  "preserved": []
 }
 ```
+
+With `--auto`, `preserved` contains `{ "tool": "claude", "account": "side" }`
+for each retained selection, in canonical tool order. `profile` names the requested
+profile, while `results` covers only shared application targets. A mixed result
+does not claim that the requested profile was fully applied. An all-retained run
+has `changed: false` and no `backup_id`.
 
 When the profile is applied, `changed` is `true` and `backup_id` / `results`
 carry the same per-tool shape as explicit `kae use`. `--quiet` suppresses the
@@ -1781,6 +1811,9 @@ human (text) report only; `--json` still emits the report shown above.
 ```json
 {
   "schema_version": 1,
+  "complete": true,
+  "issues": [],
+  "warnings": [],
   "backups": [
     {
       "id": "20260611T012345Z",
@@ -1792,7 +1825,22 @@ human (text) report only; `--json` still emits the report shown above.
 }
 ```
 
-Ordering: newest first.
+Ordering: newest first. Both `backup list` and `preservation list` include
+`complete`, `issues` and `warnings`; the existing normal-row fields are retained.
+An invalid or unreadable config adds `config_invalid` to `warnings` but does not
+change the exit code. Metadata locations come from HOME/XDG path resolution,
+independent of config; lists neither select a backend nor read credential payloads.
+
+An incomplete enumeration exits `1`, retaining readable rows and setting
+`complete: false`. Issues contain `code` and, for a particular entry, `entry`:
+a `sha256:` digest of the filename, never its raw bytes or a parser error.
+Codes are `enumeration_failed`, `metadata_unreadable`, `metadata_invalid` and
+`unexpected_entry`. Arrays are `[]` when empty. Human output shows normal rows,
+with warnings and incomplete-list diagnostics on stderr. Completeness refers to
+metadata enumeration, not payload availability or a concurrent snapshot guarantee.
+Pending/deleting preservation records remain normal metadata rows. Rollback,
+restore, removal and retention keep their strict checks; a broken newest backup
+does not cause rollback to silently select an older one.
 
 ### `kae rollback --json`
 

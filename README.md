@@ -175,6 +175,7 @@ kae add claude side            # register a second account explicitly
 # build profiles after accounts are registered:
 kae profile set main claude main
 kae profile set side claude side
+kae profile default main       # default used by automatic hooks
 
 # switch now (global):
 kae use main                   # every tool in the "main" profile (alias: kae u)
@@ -190,8 +191,11 @@ codex main`) and add that tool to the profile with `kae profile set main codex
 main`.
 
 `kae use` backs up the live artifacts it is about to change; `kae rollback`
-restores a selected restorable global backup. `--dry-run` previews exactly what
-would be patched. A rollback goes back
+restores a selected restorable global backup. `kae use --dry-run` previews its
+planned artifact changes.
+`kae rollback --dry-run` reports the backup ID and artifact counts before checking
+the backend, current store or superseded credentials; it does not establish that
+restoration can succeed. A rollback goes back
 even when the credential it restores has since been superseded — claude invalidates
 older copies of a login when it refreshes — but it says so first, and names where the
 newer copy still is ([docs/CLI.md](docs/CLI.md) § `kae rollback --json`).
@@ -251,7 +255,7 @@ view across all of them (directory, profile, mode, bound account per tool, and a
 keeps its store so a re-pin restores its sessions, but it is not a binding and is
 not listed.
 
-**Two worktrees can run the same account at the same time**, which needed one
+**Two Claude worktrees can run the same account at the same time**, which needed one
 credential copy per account rather than one per directory: claude's refresh token is
 single-use, so whichever session refreshed first used to invalidate the other
 directory's copy, and that one then failed up to eight hours later, mid-session. The
@@ -279,9 +283,22 @@ kae run codex main -- codex exec "go test ./..."
 kae env set claude ci ANTHROPIC_API_KEY      # value read from stdin
 kae run --env claude ci -- claude -p "review this"
 
-# idempotent apply for your own hooks/scripts (no-op when already active):
-kae use --quiet
+# automatic apply preserves each tool's global isolated account:
+kae use --auto --quiet
 ```
+
+For concurrent sessions, use `kae run -i` or bind each directory with `kae pin`.
+The default `kae run -s` holds the tool's shared-store lock for the child lifetime,
+so another shared switch of that tool exits lock-busy; retry after the child exits.
+
+Automatic hooks need a profile: set `kae profile default main`, or use
+`kae use --auto -P main --quiet`. Creating a profile with `profile set` alone
+sets no default. `--auto` preserves a manually selected global isolated account;
+manual `kae use -s -P main` returns the profile's tools to shared mode.
+Regenerate an existing kae-owned hook block with
+`kae mise init --auto --write -P main`. For a handwritten hook, replace its
+`kae use --quiet` line with `kae use --auto --quiet`. Mise activation and trust
+are required; see [docs/CLI.md](docs/CLI.md) § kae pin and mise init Semantics.
 
 ## Companion Auth
 
@@ -384,6 +401,12 @@ kae doctor --json
 kae status --json
 kae version
 ```
+
+`kae backup list --json` and `kae preservation list --json` also work with
+an invalid config: they report a warning and list metadata from the resolved
+state directory. A partial list retains readable rows, reports `complete: false`
+and classified `issues`, and exits nonzero. Problem-entry names are hashed;
+ordinary metadata still needs redaction before sharing.
 
 Keep the exit code and relevant stderr with the report. Before sharing anything,
 redact identity or email values, account and preservation IDs, absolute paths

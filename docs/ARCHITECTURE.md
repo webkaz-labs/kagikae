@@ -362,6 +362,12 @@ guard and never skips this lock. The global acquisition order is isolation
 lifecycle → tool → config → state; commands that do not need an outer lock skip
 it without reversing the order.
 
+Automatic use holds lifecycle readers for its profile targets while inspecting
+state/fragment consistency under the state lock and applying the shared subset.
+It uses the existing switch transaction for that subset; retained tools never
+enter the credential plans or backup. The lock order remains lifecycle → tool →
+state. An ordinary shared no-op and dry-run perform no lock writes.
+
 A fourth, `pin-<pin-id>`, serializes the commands that bind one directory
 (`kae pin`, `kae pin <tool> <account>`, `kae unpin`): they write the credential,
 the companion files and the fragment as separate steps, so two at once in the

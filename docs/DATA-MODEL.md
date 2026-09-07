@@ -393,7 +393,9 @@ kae-owned fragment from `synced`; it is absent/empty when no tool is globally
 isolated. `kae use -s` clears the tool's entry and regenerates or deletes the
 fragment. The real `~/.<tool>` is never modified. `kae status` surfaces
 `synced` as a `global_isolated` array of `{tool, account, home}` so the shared
-state between `use -i` and `run -i` is always visible.
+state between `use -i` and `run -i` is always visible. `kae use --auto` reads this
+selection to retain its mode/account; it introduces no additional persisted
+selection field.
 
 ## Backups
 
@@ -530,6 +532,8 @@ still restored, and `kae use <tool> <account>` sets the pointer again.
 
 Defined in `internal/constants`; JSON uses exactly these tokens:
 
+- metadata-list diagnostics and warnings: `ListIssue*` and `ListWarning*` in
+  `internal/constants`; report fields are defined in [CLI.md](CLI.md) § `kae backup list --json`
 - check status: `ok`, `warn`, `error`, `skipped`
 - error codes: `ok`, `error`, `invalid_config`, `auth_missing`, `lock_busy`,
   `unsupported`, `cli_missing`, `not_found`, `permission`, `secret_store`,

@@ -109,6 +109,12 @@ account), per-directory shared (`pin -s`), per-directory isolated (`pin -i`).
 What each cell does internally is
 [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Mechanisms.
 
+Automatic profile application (`kae use --auto`) preserves each tool's manually
+selected global isolated mode and account. Manual shared use clears the selected
+tools' global isolation. Recovery metadata lists remain available when config is
+invalid and distinguish readable records from an incomplete enumeration; the
+command and report contracts are in [CLI.md](CLI.md).
+
 ## Tool Tiers
 
 Six tools, two tiers. A tier says **how much surface kae pursues** for a tool. It
@@ -284,7 +290,7 @@ can:
 
 The whole switching surface described above is implemented: the two-verb ×
 two-flag matrix (`use` / `pin` with `-s` / `-i`), bare `kae use` for idempotent
-hook-driven application (`--quiet`), `kae run` with `-s` / `-i` / `--env`, `kae env`
+manual profile application and automatic hook application (`--auto --quiet`), `kae run` with `-s` / `-i` / `--env`, `kae env`
 profiles, companion-auth lockstep, account and profile lifecycle, shell completion,
 `kae doctor`, `kae backup` / `kae rollback`, and adapters for all six tools.
 Keychain items are captured and restored verbatim; a file-driver override keeps

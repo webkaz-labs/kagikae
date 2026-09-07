@@ -1,28 +1,20 @@
 # Release Process
 
-## Next release — kae v0.20.0
-
-The [daily-use diagnostics plan](plans/daily-use-diagnostics.md) adds automatic
-profile application that retains global isolation, diagnostic metadata lists and
-hook migration guidance. A minor release reflects the new `--auto` flag and
-additive report fields. Existing normal list rows and mutation refusal contracts
-are retained. Affected live acceptance passed; publication remains pending. Results
-belong in [ACCEPTANCE.md](ACCEPTANCE.md).
-
-## Current release — kae v0.19.2
+## Current release — kae v0.20.0
 
 The release record is the tag and
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.19.2).
-Read its scope and patch-version rationale with
-`git show v0.19.2:docs/RELEASE.md`. The completed
-[daily-use and recovery plan](plans/daily-use-recovery.md) retains the bounded
-profile-edit and metadata-list scope; [ACCEPTANCE.md](ACCEPTANCE.md) owns the
-affected-surface assessment and verification results.
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.20.0).
+Read its scope and minor-version rationale with
+`git show v0.20.0:docs/RELEASE.md`. The completed
+[daily-use diagnostics plan](plans/daily-use-diagnostics.md) covers automatic
+profile application that retains global isolation, diagnostic metadata lists and
+hook migration guidance. [ACCEPTANCE.md](ACCEPTANCE.md) owns the affected-surface
+assessment and verification results.
 
 Published archives, SHA-256 checksums, GitHub provenance attestations and the
-installer were verified on 2026-09-07 (JST) for v0.19.2 with
-`mise run release-verify -- v0.19.2`. The macOS arm64 archive and isolated
-installer both reported `kae v0.19.2`; the installer used verified-asset fixtures
+installer were verified on 2026-09-08 (JST) for v0.20.0 with
+`mise run release-verify -- v0.20.0`. The macOS arm64 archive and isolated
+installer both reported `kae v0.20.0`; the installer used verified-asset fixtures
 as described below.
 
 ## Release procedure

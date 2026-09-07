@@ -2,10 +2,9 @@
 
 ## 到達点と状態
 
-計画の製品方針に沿った A/B/C の実装と fixture 検証は完了。
-公開前実機確認も完了し、`v0.20.0` の公開・配布物検証が残る。手動で選んだ global isolated の
-mode と account を自動 hook が保持し、設定や一覧 metadata に問題があっても
-復旧判断に必要な情報を読めることを目指す。README の利用例もこの契約に合わせる。
+計画の製品方針に沿った A/B/C の実装、fixture・実機確認、`v0.20.0` の公開・配布物検証は完了。
+手動で選んだ global isolated の mode と account を自動 hook が保持し、設定や一覧
+metadata に問題があっても復旧判断に必要な情報を読める。README の利用例もこの契約に沿う。
 リリース状況は [RELEASE.md](../RELEASE.md)、検証結果は
 [ACCEPTANCE.md](../ACCEPTANCE.md) に記録する。
 
@@ -117,7 +116,7 @@ fixture と backend nil の一覧対照を使い、実保存領域を使わな�
 
 自動実行フラグの引数排他、mixed profile の対象絞込み後の lock と部分失敗、
 問題記録の識別子、JSON field/token と終了コードは、下の「採用した技術契約」に
-記載する。受入条件の fixture 検証結果と残る実機確認は
+記載する。受入条件の fixture・実機検証結果は
 [ACCEPTANCE.md](../ACCEPTANCE.md) の v0.20.0 assessment を参照する。
 
 | 対象 | 受入条件 |

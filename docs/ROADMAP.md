@@ -27,11 +27,11 @@ stage 3 of the docs scan, filed below.
 
 ## Current work order
 
-The agreed [daily-use and diagnostic-list plan](plans/daily-use-diagnostics.md)
+The completed [daily-use and diagnostic-list plan](plans/daily-use-diagnostics.md)
 covers hook isolation/account preservation, resilient metadata listings and their
-user guidance. Implementation, fixture verification and affected live acceptance are complete;
-v0.20.0 awaits publication. The plan owns its acceptance and
-ordering, while the authentication research prerequisites below remain in force.
+user guidance in v0.20.0. [ACCEPTANCE.md](ACCEPTANCE.md) records fixture, affected
+live and published-asset verification. The authentication research prerequisites
+below remain in force.
 
 The completed [daily-use and recovery plan](plans/daily-use-recovery.md) retains
 the onboarding and recovery scope, profile-edit concurrency controls and

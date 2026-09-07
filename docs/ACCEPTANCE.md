@@ -676,8 +676,8 @@ build, release-evidence, and both saved release smokes passed. The additional
 passed against the built candidate with synthetic credentials and a file backend.
 One parallel run overlapped the smoke selftest's deliberate checkout mutation and
 was discarded by the leak guard; its subsequent standalone run passed. These
-results do not establish the health of a current upstream login. Publication and
-published-asset verification have not been performed.
+results do not establish the health of a current upstream login. Live acceptance
+and published-asset verification are recorded below.
 
 
 Live acceptance on 2026-09-08 (JST) used candidate `a9f6619` and Claude Code
@@ -698,3 +698,11 @@ reported complete inventories without issues or warnings. Corruption controls
 remain fixture-only; no live metadata was deliberately damaged. The hook's
 rendering/migration remains covered by fixtures, while this live run exercised
 its command under mise rather than an interactive directory-enter event.
+
+
+After publication on 2026-09-08 (JST), `mise run release-verify -- v0.20.0`
+returned `status: success` for the darwin/linux × amd64/arm64 archives,
+checksums and attestations. The release workflow passed for tagged revision
+`b8376f1`. The macOS arm64 binary and isolated installer both reported
+`kae v0.20.0`. The installer used verified-asset fixtures, so this result does
+not exercise its HTTP transport.

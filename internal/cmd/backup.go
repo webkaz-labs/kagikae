@@ -21,6 +21,7 @@ type backupItem struct {
 }
 
 type backupListReport struct {
+	listDiagnostics
 	SchemaVersion int          `json:"schema_version"`
 	Backups       []backupItem `json:"backups"`
 }
@@ -42,14 +43,11 @@ func CmdBackup(ctx context.Context, args []string) int {
 }
 
 func runBackupList(_ context.Context, app *App, opts commonOpts) int {
-	if err := app.requireConfig(); err != nil {
-		return finish(opts, err)
+	metas, issues := backup.Inspect(app.Paths.BackupsDir())
+	report := backupListReport{listDiagnostics: newListDiagnostics(app), SchemaVersion: constants.SchemaVersion, Backups: []backupItem{}}
+	for _, issue := range issues {
+		report.add(issue.Entry, issue.Code)
 	}
-	metas, err := backup.List(app.Paths.BackupsDir())
-	if err != nil {
-		return finish(opts, err)
-	}
-	report := backupListReport{SchemaVersion: constants.SchemaVersion, Backups: []backupItem{}}
 	for _, meta := range metas {
 		tools := meta.Tools
 		if tools == nil {
@@ -63,18 +61,22 @@ func runBackupList(_ context.Context, app *App, opts commonOpts) int {
 		})
 	}
 	if opts.Format == formatJSON {
-		return encodeJSON(report)
+		if code := encodeJSON(report); code != constants.ExitOK {
+			return code
+		}
+		return report.exitCode()
 	}
-	if len(report.Backups) == 0 {
+	report.print()
+	if len(report.Backups) == 0 && report.Complete {
 		fmt.Println("no backups yet (backups are created automatically before each switch)")
-		return constants.ExitOK
+		return report.exitCode()
 	}
 	rows := [][]string{}
 	for _, item := range report.Backups {
 		rows = append(rows, []string{item.ID, item.CreatedAt, item.Reason, fmt.Sprint(item.Tools)})
 	}
 	printTable([]string{"ID", "Created", "Reason", "Tools"}, rows)
-	return constants.ExitOK
+	return report.exitCode()
 }
 
 type restoredItem struct {

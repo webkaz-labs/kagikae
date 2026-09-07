@@ -376,3 +376,12 @@ const (
 	PreservationStateDeleting   = "deleting"
 	PreservationIdentityUnknown = "unknown"
 )
+
+// Metadata-list diagnostics describe enumeration only, never payload validity.
+const (
+	ListIssueEnumeration = "enumeration_failed"
+	ListIssueRead        = "metadata_unreadable"
+	ListIssueInvalid     = "metadata_invalid"
+	ListIssueEntry       = "unexpected_entry"
+	ListWarningConfig    = "config_invalid"
+)

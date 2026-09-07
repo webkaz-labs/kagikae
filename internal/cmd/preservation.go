@@ -95,6 +95,7 @@ type preservationReport struct {
 }
 
 type preservationListReport struct {
+	listDiagnostics
 	SchemaVersion int                `json:"schema_version"`
 	Preservations []preservationItem `json:"preservations"`
 }
@@ -129,29 +130,33 @@ func preservationError(err error) error {
 }
 
 func runPreservation(ctx context.Context, app *App, opts commonOpts, action, id string) int {
-	if err := app.requireConfig(); err != nil {
-		return finish(opts, err)
-	}
-	store := app.preservationStore(nil)
 	if action == "list" {
-		records, err := store.List(ctx)
-		if err != nil {
-			return finish(opts, preservationError(err))
+		records, issues := preservation.Inspect(app.Paths.PreservationsDir())
+		listing := preservationListReport{listDiagnostics: newListDiagnostics(app), SchemaVersion: constants.SchemaVersion, Preservations: []preservationItem{}}
+		for _, issue := range issues {
+			listing.add(issue.Entry, issue.Code)
 		}
-		listing := preservationListReport{SchemaVersion: constants.SchemaVersion, Preservations: []preservationItem{}}
 		for _, r := range records {
 			listing.Preservations = append(listing.Preservations, preservationItem{ID: r.ID, CreatedAt: r.CreatedAt.UTC().Format(time.RFC3339Nano), Tool: r.Origin.Tool, Directory: r.Origin.Directory, BoundAccount: r.Origin.BoundAccount, State: r.State, Identity: constants.PreservationIdentityUnknown, SizeBytes: r.Size})
 		}
 		if opts.Format == formatJSON {
-			return encodeJSON(listing)
+			if code := encodeJSON(listing); code != constants.ExitOK {
+				return code
+			}
+			return listing.exitCode()
 		}
+		listing.print()
 		rows := [][]string{}
 		for _, r := range listing.Preservations {
 			rows = append(rows, []string{r.ID, r.Tool, app.displayPath(r.Directory), r.BoundAccount, r.State, fmt.Sprint(r.SizeBytes)})
 		}
 		printTable([]string{"ID", "Tool", "Directory", "Binding account (owner unknown)", "State", "Bytes"}, rows)
-		return constants.ExitOK
+		return listing.exitCode()
 	}
+	if err := app.requireConfig(); err != nil {
+		return finish(opts, err)
+	}
+	store := app.preservationStore(nil)
 	be, err := app.secretBackend()
 	if err != nil {
 		return finish(opts, err)

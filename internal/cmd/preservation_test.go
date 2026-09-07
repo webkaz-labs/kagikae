@@ -218,7 +218,7 @@ func TestPreservationListDoesNotClaimIdentityOrExposePayload(t *testing.T) {
 	code, out = captureStdout(t, func() int {
 		return runPreservation(context.Background(), app, commonOpts{Format: formatJSON}, "list", "")
 	})
-	mustExit(t, constants.ExitUnsafeRefused, code, out)
+	mustExit(t, constants.ExitError, code, out)
 	if strings.Contains(out, mainToken) {
 		t.Fatal("metadata error exposed payload")
 	}

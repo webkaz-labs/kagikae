@@ -55,7 +55,8 @@ type App struct {
 }
 
 // newApp resolves the live environment and loads config. A config problem is
-// recorded in ConfigErr; commands other than doctor fail on it.
+// recorded in ConfigErr; diagnostic metadata listings and doctor can report it
+// without requiring a usable config.
 func newApp(configPath string) *App {
 	home, err := os.UserHomeDir()
 	if err != nil {

@@ -16,6 +16,13 @@ installer were verified on 2026-09-07 (JST) for v0.18.5 with
 installer both reported `kae v0.18.5`; the installer used verified-asset fixtures
 as described below.
 
+## Next release
+
+The approved [multi-theme plan](plans/reliability-ci-terminology.md) combines
+authentication preservation/repair investigation, CI build admission and
+bound-directory terminology convergence. The version and final scope follow
+the accepted changes; unresolved authentication mechanisms remain deferred.
+
 ## Release procedure
 
 Releases are cut by pushing a `vX.Y.Z` tag; GitHub Actions

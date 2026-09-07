@@ -640,3 +640,9 @@ release-evidence and both saved release smokes passed. The onboarding smoke pass
 the registration → profile mapping → first switch sequence with synthetic auth
 and a preconfigured file backend; it does not claim a fresh official login or
 exercise the default OS backend.
+
+After publication on 2026-09-07 (JST), `mise run release-verify -- v0.19.2`
+returned `status: success` for the darwin/linux × amd64/arm64 archives,
+checksums and attestations. The macOS arm64 binary and isolated installer both
+reported `kae v0.19.2`. The installer used verified-asset fixtures, so this
+result does not exercise its HTTP transport.

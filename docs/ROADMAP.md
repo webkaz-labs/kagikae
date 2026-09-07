@@ -27,10 +27,10 @@ stage 3 of the docs scan, filed below.
 
 ## Current work order
 
-The approved [daily-use and recovery plan](plans/daily-use-recovery.md) prioritizes
-initial setup, updates and recovery guidance, together with reproduced profile-edit
-and preservation-list defects. Its ledger tracks implementation and release; the
-authentication research lanes below retain their own prerequisites.
+The completed [daily-use and recovery plan](plans/daily-use-recovery.md) retains
+the onboarding and recovery scope, profile-edit concurrency controls and
+metadata-only listing decision for v0.19.2. The authentication research lanes
+below retain their own prerequisites.
 
 The completed [safety and maintenance plan](plans/safety-maintenance.md) retains
 the credential observation/recheck scope, CI admission evidence and cache decision

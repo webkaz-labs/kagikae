@@ -2,9 +2,8 @@
 
 ## 到達点
 
-v0.19.2 の候補として、日常利用で不足する説明と、既存 command の信頼性を
-小さな差分で改善する。新しい JSON field・command・認証 policy は追加しない。
-3テーマの実装から公開まで承認済み。
+v0.19.2 として実装・公開・配布物検証まで完了。以下に対象範囲と再開条件を残す。
+新しい JSON field・command・認証 policy は対象外。
 
 この計画の判断入口はこの表とする。ROADMAP には索引だけを置き、別の issue
 階層や新しい glossary/ADR は作らない。候補版に新しい契約が必要になったら、
@@ -28,7 +27,7 @@ C の順で進める。
 |---|---|---|
 | 実装・文書・両レビュー | 完了 | 指摘解消、対象対照・full gate・変更した smoke が成功 |
 | 公開前検査 | 完了 | audit、naming-agreement、goreleaser-check、release-evidence、release-smoke が成功。実機適用判断は ACCEPTANCE に記録 |
-| main CI・公開・配布物検証 | 未完了 | main CI 成功後に v0.19.2 を公開し release-verify の success を確認 |
+| main CI・公開・配布物検証 | 完了 | main CI 成功後に v0.19.2 を公開し release-verify の success を確認 |
 
 ## A: README の利用導線
 

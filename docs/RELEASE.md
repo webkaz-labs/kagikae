@@ -1,28 +1,20 @@
 # Release Process
 
-## Current release — kae v0.19.1
+## Current release — kae v0.19.2
 
 The release record is the tag and
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.19.1).
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.19.2).
 Read its scope and patch-version rationale with
-`git show v0.19.1:docs/RELEASE.md`. The completed
-[safety and maintenance plan](plans/safety-maintenance.md) retains the CI
-admission and cache decisions; [ACCEPTANCE.md](ACCEPTANCE.md) owns the bounded
-real-machine measurements.
+`git show v0.19.2:docs/RELEASE.md`. The completed
+[daily-use and recovery plan](plans/daily-use-recovery.md) retains the bounded
+profile-edit and metadata-list scope; [ACCEPTANCE.md](ACCEPTANCE.md) owns the
+affected-surface assessment and verification results.
 
 Published archives, SHA-256 checksums, GitHub provenance attestations and the
-installer were verified on 2026-09-07 (JST) for v0.19.1 with
-`mise run release-verify -- v0.19.1`. The macOS arm64 archive and isolated
-installer both reported `kae v0.19.1`; the installer used verified-asset fixtures
+installer were verified on 2026-09-07 (JST) for v0.19.2 with
+`mise run release-verify -- v0.19.2`. The macOS arm64 archive and isolated
+installer both reported `kae v0.19.2`; the installer used verified-asset fixtures
 as described below.
-
-## Next release — kae v0.19.2
-
-The [daily-use and recovery plan](plans/daily-use-recovery.md) covers profile-edit
-concurrency fixes, metadata-only preservation listing, and initial setup, update
-and recovery guidance. Implementation and publication are approved. The patch candidate assumes
-existing commands and JSON shapes; a wider interface change requires a new version
-decision. The plan owns acceptance conditions and deferred alternatives.
 
 ## Release procedure
 

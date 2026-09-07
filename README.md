@@ -7,8 +7,10 @@ CLI.
 The official CLIs log you in as one account at a time. Using a second account
 means logging out and re-running the browser OAuth flow on every switch — and
 that flow discards the first account's session, so switching back means logging
-in yet again. `kae` **captures each account once and swaps it in under a
-second**, with no re-authentication, keeping every account's credential live:
+in yet again. `kae` **captures each account once and swaps the captured
+credential back in under a second**, with no re-authentication. The snapshot
+preserves the credential bytes for switching; it does not guarantee that the
+upstream service will still accept or refresh them:
 
 ```text
 main Claude account    <->  side Claude account     (e.g. a second org you own)
@@ -54,7 +56,11 @@ the tool set up**:
 - it switches only the credential (an allowlisted token / keychain item / JSON
   pointer) — in a mixed-state file like `~/.claude.json`, only claude's
   `/oauthAccount` identity field, by pointer, never the whole file;
-- it backs up live state before every write and restores it on `kae rollback`;
+- it backs up live artifacts before global switch operations and restores a
+  selected restorable global backup with `kae rollback`; separate preservation
+  records keep credential bytes without asserting ownership or validity and
+  restore only to their original store ([docs/CLI.md](docs/CLI.md) § kae
+  preservation Semantics);
 - it keeps one consistent surface across six different tools that each store
   auth differently (file, macOS Keychain, libsecret, JSON pointer);
 - it offers per-directory and per-process scopes, so a single machine can run
@@ -74,7 +80,8 @@ the tool set up**:
   same profile, so a bare `git commit` or `gh pr create` in a bound directory
   acts as the right account — and `kae doctor` flags when the live git identity
   drifts from the binding.
-- **Safe by construction.** Atomic writes, per-tool locks, pre-write backups,
+- **Safe by construction.** Atomic writes, per-tool locks, backups for global
+  switch operations,
   structure guards that refuse unknown credential layouts, and full secret
   redaction in every output path.
 - **Built for humans and agents.** Readable text by default; deterministic exit
@@ -153,8 +160,9 @@ kae                            # what is active
 kae rollback                   # undo the last switch
 ```
 
-`kae use` backs up the live state before every write and `kae rollback`
-restores it. `--dry-run` previews exactly what would be patched. A rollback goes back
+`kae use` backs up the live artifacts it is about to change; `kae rollback`
+restores a selected restorable global backup. `--dry-run` previews exactly what
+would be patched. A rollback goes back
 even when the credential it restores has since been superseded — claude invalidates
 older copies of a login when it refreshes — but it says so first, and names where the
 newer copy still is ([docs/CLI.md](docs/CLI.md) § `kae rollback --json`).

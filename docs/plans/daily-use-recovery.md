@@ -14,13 +14,21 @@ v0.19.2 の候補として、日常利用で不足する説明と、既存 comma
 
 | ID | テーマ・状態 | 既存機構と最小差分 | 完了条件・依存 |
 |---|---|---|---|
-| A | README 導線（承認済み） | README の初回導入、更新、診断、復旧、削除説明を補う。既存の `init`、`add`、`profile set/save`、`doctor`、`backup`、`preservation`、completion、install script を再利用する | README の実行例が fresh state で順序どおり動く説明になり、秘密・identity・絶対パスを公開しない診断手順を示す。B/C と独立して着手可 |
-| B | profile 設定競合（承認済み・第一優先） | `profile.go:206`/`:285` のキャッシュ済み profile 判定と `app.go:434` の config 編集 seam を、既存 `config.Editor` の lock 内最新再読に合わせる。全 account lifecycle の共通化はしない | stale な `App` を二つ使う interleaving で、新しい mapping/default を消さず、通常更新と no-write refusal、`--force`、`--dry-run` を保つ。B/C は App/config seam が重なるため担当を調整 |
-| C | preservation list の診断可用性（承認済み） | backend 選択から独立して既存 `preservation.Store.List` を使う。既存の metadata 表示を保ち、restore/rm の順序・契約は変更しない | backend 選択が失敗する環境でも一覧が成功し、payload を読まない。空一覧・不完全 metadata の既存扱いと JSON shape を維持する。B と編集先を調整 |
+| A | README 導線（完了） | README の初回導入、更新、診断、復旧、削除説明を補う。既存の `init`、`add`、`profile set/save`、`doctor`、`backup`、`preservation`、completion、install script を再利用する | README の実行例が fresh state で順序どおり動く説明になり、秘密・identity・絶対パスを公開しない診断手順を示す。B/C と独立して着手可 |
+| B | profile 設定競合（完了） | `profile.go:206`/`:285` のキャッシュ済み profile 判定と `app.go:434` の config 編集 seam を、既存 `config.Editor` の lock 内最新再読に合わせる。全 account lifecycle の共通化はしない | stale な `App` を二つ使う interleaving で、新しい mapping/default を消さず、通常更新と no-write refusal、`--force`、`--dry-run` を保つ。B/C は App/config seam が重なるため担当を調整 |
+| C | preservation list の診断可用性（完了） | backend 選択から独立して既存 `preservation.Store.List` を使う。既存の metadata 表示を保ち、restore/rm の順序・契約は変更しない | backend 選択が失敗する環境でも一覧が成功し、payload を読まない。空一覧・不完全 metadata の既存扱いと JSON shape を維持する。B と編集先を調整 |
 
 実装系列は A と B/C の最大二系列とする。A は README のみ、B/C は担当を
 分けるが、同じ `App` seam を触る変更を並行編集しない。第一優先は B、次に A、
 C の順で進める。
+
+## 公開ゲート
+
+| 作業 | 状態 | 完了条件 |
+|---|---|---|
+| 実装・文書・両レビュー | 完了 | 指摘解消、対象対照・full gate・変更した smoke が成功 |
+| 公開前検査 | 完了 | audit、naming-agreement、goreleaser-check、release-evidence、release-smoke が成功。実機適用判断は ACCEPTANCE に記録 |
+| main CI・公開・配布物検証 | 未完了 | main CI 成功後に v0.19.2 を公開し release-verify の success を確認 |
 
 ## A: README の利用導線
 
@@ -63,8 +71,7 @@ account lifecycle redesign、別の config writer、広い retry policy は含�
 
 ## C: preservation list
 
-`Store.List` は record metadata を読めるが、現在の `runPreservation` は backend
-選択を先に行う（`internal/cmd/preservation.go`）。Go overlay の
+計画時の `runPreservation` は metadata 一覧より先に backend を選択していた。Go overlay の
 `TestPlanningPreservationListBackendSelectionFailure` を commit `0f61c78` の
 Linux を模した fixture で確認した結果、configured keychain の選択が不整合でも
 `Store.List` は backend nil のまま metadata を 1 件返せる一方、CLI の list は

@@ -617,3 +617,26 @@ returned `status: success` for the darwin/linux × amd64/arm64 archives,
 checksums and attestations. The macOS arm64 binary and isolated installer both
 reported `kae v0.19.1`. The installer used verified-asset fixtures, so this
 result does not exercise its HTTP transport.
+
+### v0.19.2 profile and metadata assessment
+
+Assessed on 2026-09-07 (JST) for candidate `a91e519` against v0.19.1.
+The application changes affect profile configuration decisions and metadata listing;
+this is not a maintainer-only release. Review confirmed that the preservation
+list returns before backend selection, while restore/removal retain their backend
+selection and ID-validation order. Relogin, preservation saving, credential IO,
+adapters and dependencies are unchanged in this comparison.
+
+Under the approved [daily-use and recovery plan](plans/daily-use-recovery.md),
+the affected surfaces were checked with isolated fixtures instead of repeating
+the unchanged live login/restore sequence recorded for v0.19.1 above. Profile
+controls cover concurrent mappings, default protection, refusal, force and dry-run.
+The metadata-list control simulates incompatible backend selection, with empty,
+incomplete and malformed inventories; it does not simulate a locked macOS keychain.
+These results do not establish the health of a current upstream login.
+
+The full commit gate, audit, naming agreement, GoReleaser configuration check,
+release-evidence and both saved release smokes passed. The onboarding smoke passed
+the registration → profile mapping → first switch sequence with synthetic auth
+and a preconfigured file backend; it does not claim a fresh official login or
+exercise the default OS backend.

@@ -109,7 +109,7 @@ func (app *App) identityDriftChecks(ctx context.Context, be secret.Backend, tool
 		// state is not what a global switch applied, so the two sides of this
 		// comparison are different frames: the live identity is the *bound*
 		// directory's, and state.Active names the *global* account. Comparing them
-		// would warn on every pinned directory whose binding is not also the global
+		// would warn on every bound directory whose binding is not also the global
 		// selection, which is the normal case.
 		//
 		// Note what is no longer a reason: the per-directory materializers do apply

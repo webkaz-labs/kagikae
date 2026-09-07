@@ -151,7 +151,7 @@ var keychainAccountPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 // Normalization applies to the hash input only; the path itself stays byte-exact
 // so it still resolves on disk, which is what claude does too.
 //
-// Modelling this as a constant is what made a pinned directory silently drift out
+// Modelling this as a constant is what made a bound directory silently drift out
 // of kae's control: kae wrote `<pinDir>/.credentials.json`, claude read the
 // per-directory keychain item instead (reads are keychain-first and its first
 // token refresh creates that item and deletes the file), and every offline guard

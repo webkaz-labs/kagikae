@@ -434,7 +434,7 @@ func TestClaudeKeychainAccountMirrorsUpstream(t *testing.T) {
 // TestClaudeRefusesEmptySecureStorageConfigDir pins the one value of that
 // variable kae still refuses. An empty value removes the per-config-dir suffix
 // entirely, so every bound directory collapses onto claude's one global item and
-// `kae use` silently changes what a pinned directory runs. It is visible only
+// `kae use` silently changes what a bound directory runs. It is visible only
 // through LookupEnv, which is why Env carries one — a non-empty value is a
 // different mechanism and is honored (the test below).
 func TestClaudeRefusesEmptySecureStorageConfigDir(t *testing.T) {

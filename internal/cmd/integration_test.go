@@ -630,7 +630,7 @@ func TestRollbackIgnoresPinnedConfigDir(t *testing.T) {
 	mustExit(t, constants.ExitOK, code, out)
 
 	// Rewrite the backup as an older kae did (credential only), then run the
-	// rollback as if the shell were inside a pinned directory.
+	// rollback as if the shell were inside a bound directory.
 	meta, found, err := backup.Latest(app.Paths.BackupsDir())
 	if err != nil || !found {
 		t.Fatalf("latest backup: %v %v", found, err)

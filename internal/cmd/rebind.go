@@ -10,7 +10,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
-// runRebind re-binds one tool's credential inside a pinned directory to a
+// runRebind re-binds one tool's credential inside a bound directory to a
 // different account without changing the sharing set:
 //
 //	kae pin <tool> <account>

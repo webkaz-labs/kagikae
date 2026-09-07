@@ -110,7 +110,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 ## kae use Semantics
 
 `kae use` switches in global scope (alias `kae u`). It always acts on the real
-home — inside a pinned directory it ignores the directory's isolation env vars
+home — inside a bound directory it ignores the directory's isolation env vars
 and prints a one-line warning that the change is global (the directory keeps
 its binding; re-bind it with `kae pin`).
 
@@ -946,7 +946,7 @@ carries no companions, since it has no single profile.
 `kae doctor` reports companion binding health on the unfiltered report: a bound
 token knob with no stored secret (`companion_missing` — the binding would fail
 at mise eval) and a bound companion whose CLI is absent from PATH
-(`companion_binary` — the binding has no effect). Inside a pinned directory that
+(`companion_binary` — the binding has no effect). Inside a bound directory that
 binds git it also runs the live commit-misidentity guard: it shells out to
 `git config` and compares the identity git would actually commit with against the
 profile's bound `user.email`/`name`/`signingkey`, flagging a repo-local override
@@ -1592,7 +1592,7 @@ Upstream-assumption checks (warn-level, per-tool so they honor `kae doctor
   has no active account, and inside a kae-owned isolated home (`kae pin`,
   `kae use -i`) — there the live identity is the **bound directory's** while
   `state.Active` names the **global** account, so the two sides are different
-  frames and comparing them would warn on every pinned directory whose binding is
+  frames and comparing them would warn on every bound directory whose binding is
   not also the global selection, which is the normal case. (Not because kae writes
   no identity there: it has since v0.16.0. That frame is a separate check, below.)
 
@@ -1663,7 +1663,7 @@ Companion-binding checks (warn-level, unfiltered report only):
 - `companion_binary`: a bound companion's CLI is absent from PATH, so the
   binding has no effect until it is installed.
 - `companion_drift`: the live git commit identity differs from the bound one.
-  Only inside a pinned directory binding git, and only when `git` is on PATH; it
+  Only inside a bound directory binding git, and only when `git` is on PATH; it
   shells out to `git config --get user.<knob>` (offline, non-secret) and compares
   the effective value against the profile's `email`/`name`/`signingkey`. Flags a
   repo-local override (`git config --local`) or an inactive/untrusted pin — both

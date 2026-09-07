@@ -27,7 +27,7 @@ adapter may evaluate it. claude derives its keychain service name from
 different item, and a decomposed non-ASCII component must be normalized before
 hashing or kae writes an item claude never reads), and kae's own isolation modes
 are what set that variable. Modelling the name as a
-constant made every pinned directory on macOS run the previous account with
+constant made every bound directory on macOS run the previous account with
 every offline guard green, because the tool reads the keychain first and its
 first token refresh creates the per-directory item and deletes the file kae
 wrote. So: resolve a credential's location by asking the adapter with an env

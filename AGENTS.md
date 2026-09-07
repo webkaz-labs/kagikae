@@ -318,7 +318,7 @@ stays green through every heading-fragment grep once the count is wrong, because
 section still exists. Only reading the sentence finds it.
 
 **The fix that holds is not to write the number — write the derivation**, the way
-[docs/CONTEXT.md](docs/CONTEXT.md) § Not converged does, and the `EXPECTED_GUARDS` note
+[docs/CONTEXT.md](docs/CONTEXT.md) § Naming audit does, and the `EXPECTED_GUARDS` note
 in `scripts/smoke-run-selftest.sh`'s header, which deliberately does not repeat a count
 because the two drifted apart the moment a guard was added. A quantity never written
 cannot go stale. What follows is only the net for the ones already there.

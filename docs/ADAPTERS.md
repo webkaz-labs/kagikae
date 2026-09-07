@@ -766,7 +766,7 @@ build it, not the mechanism.
 
 When resolving the **real** home for shared-bind linking, an isolation env var
 that points inside kae's own isolation data dirs is ignored (that is kae's own
-redirection — e.g. exported by a pinned directory's mise fragment). Honoring
+redirection — e.g. exported by a bound directory's mise fragment). Honoring
 it would create self-referential symlinks (ELOOP); re-running `kae pin` repairs
 any such stale links. A global command run inside a bound directory (`kae use`
 / `kae add`) resolves the real home automatically — it ignores **every** variable

@@ -131,7 +131,7 @@ func TestDoctorIdentityDriftReportsUntrackedSnapshot(t *testing.T) {
 
 // Inside a kae-owned isolated home the identity kae applied is the *bound*
 // directory's while state.Active names the global account, so comparing the two
-// would warn in every pinned directory. The bound frame has its own pass,
+// would warn in every bound directory. The bound frame has its own pass,
 // `pinIdentityChecks`.
 func TestDoctorIdentityDriftSkipsInsideKaeIsolation(t *testing.T) {
 	app := identityDriftApp(t)

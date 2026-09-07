@@ -32,7 +32,7 @@ func TestGlobalCommandsActOnRealHomeInsidePinnedDir(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	// use is inherently global: inside a kae-pinned directory it no longer
+	// use is inherently global: inside a kae-bound directory it no longer
 	// refuses. It warns (on stderr) that global state is changing, hides the
 	// kae-managed isolation env, and switches the real home instead.
 	app := pinnedEnvApp(t)

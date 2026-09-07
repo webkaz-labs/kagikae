@@ -126,7 +126,7 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		Tools:          []toolStatus{},
 		Profiles:       []profileStatus{},
 	}
-	// Inside a pinned directory the real per-tool account is the one the
+	// Inside a bound directory the real per-tool account is the one the
 	// kae-owned fragment bound (it may diverge from the global state and from
 	// the KAE_PROFILE label after a single-tool re-bind); the fragment is the
 	// source of truth. Tools it does not bind keep their global account.

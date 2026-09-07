@@ -27,7 +27,7 @@ import (
 // expected identity to compare against (only their secret token), and a live
 // check would require a network call, so they are out of scope here.
 //
-// The probe runs only inside a pinned directory whose profile binds git, with
+// The probe runs only inside a bound directory whose profile binds git, with
 // git on PATH; companion_binary already warns when git is missing, so the probe
 // skips rather than emitting a confusing error.
 func (app *App) companionDriftChecks(ctx context.Context) []adapter.Check {

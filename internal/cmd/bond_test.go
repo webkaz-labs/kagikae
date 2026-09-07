@@ -485,7 +485,7 @@ func TestPrepareBondFailsWhenAccountNotCaptured(t *testing.T) {
 // regression test. claude namespaces its keychain service by the config dir and
 // reads the keychain before the file, so the credential for a bound directory
 // belongs in *that directory's* item; writing the file instead is what let a
-// pinned directory keep running the previous account.
+// bound directory keep running the previous account.
 func TestPrepareBondDarwinWritesPerDirKeychainItem(t *testing.T) {
 	app := testApp(t, nil)
 	app.Env.GOOS = "darwin"

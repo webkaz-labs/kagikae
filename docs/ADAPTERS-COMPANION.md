@@ -17,7 +17,7 @@ each companion at the profile's identity. The binding is:
 - **auth-only** — kae never reimplements git/gh/cloud behaviour, only sets the
   env/config those tools already read;
 - **per-directory and reversible** — the binding is delivered through the
-  kae-owned mise fragment (`kae pin`), scoped to the pinned directory, and
+  kae-owned mise fragment (`kae pin`), scoped to the bound directory, and
   removed by `kae unpin`.
 
 ## Override kinds
@@ -59,7 +59,7 @@ already grants the pin.
 
 `kae doctor` (unfiltered) reports companion binding health. The first two are
 config-level and deterministic; the last two are live misidentity guards that
-shell out only inside a pinned directory (`companion_drift` is offline and
+shell out only inside a bound directory (`companion_drift` is offline and
 always runs; `companion_token_drift` makes a network call and is opt-in):
 
 | Check | Meaning |
@@ -95,7 +95,7 @@ Delivered by pointing `GIT_CONFIG_GLOBAL` at a kae-owned file under
 - `~/.gitconfig` is **never modified**. The kae-owned file `[include]`s it, so
   aliases, `core.*`, and every other global setting survive in the bound
   directory.
-- Outside the pinned directory `GIT_CONFIG_GLOBAL` is unset, so git reads the
+- Outside the bound directory `GIT_CONFIG_GLOBAL` is unset, so git reads the
   real `~/.gitconfig` unchanged. `kae unpin` removes the fragment and reverts.
 - Repository-local config (`.git/config`) and any `GIT_CONFIG_*` the user sets
   themselves take precedence as git defines; when that precedence makes the

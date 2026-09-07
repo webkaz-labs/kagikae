@@ -51,7 +51,7 @@ change a name.
 
 | term | names | naming note |
 |------|-------|-------------|
-| **bound directory** | a directory `kae pin` has bound, so that working in it selects the accounts the binding names | Preferred over **pinned directory**, which this repository also uses and has *not* converged (see § Not converged) |
+| **bound directory** | a directory `kae pin` has bound, so that working in it selects the accounts the binding names | Preferred over **pinned directory**; § Naming audit distinguishes references to that spelling from names for the concept |
 | **binding** | what a bound directory records: which tool gets which account, in which mode | |
 | **pin-id** | the name kae files a bound directory's state under — `paths.PinID`, a hex prefix of the sha256 of the absolute path. Not user-facing, and not stable across a move | |
 | **breadcrumb** | the file recording which absolute path a pin-id hashes from; [DATA-MODEL.md](DATA-MODEL.md) § Directory Layout (XDG) calls it the bound-directory record | Not the **fragment** below, which is the other file a bound directory has; what each of the two settles, and what removes which, is [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § A store tree is history; a fragment is the binding |
@@ -67,16 +67,16 @@ change a name.
 | **tombstone** | a credential the tool itself overwrote to record that its own login is dead | What kae may conclude from one is [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § What kae observed is not what the tool can do |
 | **supersedes**, **orderable** | the two predicates deciding whether one copy of a credential is newer than another (`internal/cmd/freshness.go`) | `orderable` is `supersedes`'s precondition. The normative text is [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) § Ordering two copies of one credential; do not restate either predicate as a word-list here, because a *subset* of one of them is this repository's most-repeated defect |
 
-## Not converged
+## Naming audit
 
-A preference above is a rule for new prose, not a claim about the tree — and one
-of them is measurably not met today: **pinned directory** is still used alongside
-**bound directory**. Why it is filed rather than done is
-[ROADMAP.md](ROADMAP.md)'s to state, and it does; this section exists so a reader
-of the table above is not told a name has settled when it has not.
-
-Count both words in one derivation rather than trusting a number quoted here:
+Count both spellings with this derivation rather than recording a total:
 
 ```bash
 git ls-files | xargs grep -oihE '(bound|pinned) director[a-z]*' | sort | uniq -c
 ```
+
+The result is an inventory of text matches, not a count of naming violations.
+Read each match in context: the naming note above mentions the older spelling,
+`docscan` tests use it as a synthetic input, and “freshly pinned directory” names
+the operation just performed. The pattern also matches inside “unpinned directory”,
+which describes a directory without a binding.

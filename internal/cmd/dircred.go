@@ -69,7 +69,7 @@ func warnUnisolatableCredential(err error, tool, account string) bool {
 // identity leaves the directory displaying the previous account, which is the
 // defect writeDirIdentity exists to close.
 //
-// It is the single answer to "where does a pinned directory's credential go",
+// It is the single answer to "where does a bound directory's credential go",
 // and it has to be single: that copy used to be written in three places (both
 // `kae pin` materializers and the re-bind path), which is how two defects lived
 // here at once. Two of the three read the *live* store instead of the account's
@@ -2557,7 +2557,7 @@ func (app *App) pinCredentialChecks(ctx context.Context, stores []boundDirStore)
 // call pinCredentialChecks makes), the snapshot once per account, and the adapter
 // resolution plus identity reads **only** for a finding that is otherwise ready. A
 // healthy machine pays no attribution at all — and since attribution for the account's
-// own credential store walks every pinned directory on the machine, "otherwise ready"
+// own credential store walks every bound directory on the machine, "otherwise ready"
 // is load-bearing rather than a nicety: it is what the winner-side guard is asked
 // inside the loop for.
 //
@@ -2687,7 +2687,7 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 	// memoized on the same key and it is unkillable for the same reason: a shared store's
 	// answer comes from its readers and cannot vary between two handles on it, and a
 	// per-directory store is the only handle on its own key. What differs from the read
-	// above is the cost — the reader walk visits every pinned directory on the machine —
+	// above is the cost — the reader walk visits every bound directory on the machine —
 	// which is why the loser loop asks through this rather than directly.
 	attributed := map[string]bool{}
 	holdsAccount := func(store boundDirStore) bool {
@@ -2737,7 +2737,7 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 		}
 		// The winner, asked here rather than hoisted above the loop. Attribution is the
 		// most expensive thing this check does — for the account's own credential store
-		// it walks every pinned directory on the machine — and hoisted it was paid on
+		// it walks every bound directory on the machine — and hoisted it was paid on
 		// every machine where any bound copy is newer than the snapshot, which is what a
 		// refresh in a bound directory produces. Down here it is paid only once a finding
 		// is otherwise ready, and `holdsAccount` memoizes, so a group with several losers
@@ -3111,7 +3111,7 @@ func pinLoginRemedy(tool, dir string) string {
 // The location comes from dirCredentialSpec — the adapter's answer for an
 // environment pointed at this store — never from a path or a service name rebuilt
 // here. That is the same rule writeDirCredential and removeDirCredential follow,
-// and breaking it is the defect that made every pinned directory on macOS run the
+// and breaking it is the defect that made every bound directory on macOS run the
 // previous account with all offline guards green.
 //
 // The KeychainDirBindable gate mirrors the write gate exactly. Without it, a tool

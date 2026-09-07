@@ -187,8 +187,9 @@ alternative exists (`secret-tool`).
   place and requires the disagreement guard to fail.
 
 - **CI runs a subset of the gate; `docs-check` was the one step whose price fell**
-  (recorded 2026-08-11, `docs-check` **added 2026-08-14**, every other step still
-  undecided). `README.md` said CI "mirrors it" and `check.yml`'s own header said it
+  (recorded 2026-08-11, `docs-check` **added 2026-08-14**, build admitted 2026-09-07;
+  remaining steps need individual decisions). `README.md` said CI "mirrors it"
+  and `check.yml`'s own header said it
   mirrored the local gate; both have said subset since 2026-08-11, which was the half
   that could be fixed without deciding anything. Derive the two step lists rather than
   reading one written here — `mise.toml`'s `[tasks.check]`, through `lint`, which fans
@@ -212,7 +213,10 @@ alternative exists (`secret-tool`).
   disagreed with every other, because the machine was running several agents at once —
   one reviewer had the compiled extractor at 727ms and another had `go run` at 150ms in
   the same session.
-  Nothing else should be widened silently. Every place that describes **CI** has to say
+  Build's missing-main control and incremental-cost decision are recorded in the
+  [multi-theme plan](plans/reliability-ci-terminology.md); its implementation is in
+  the existing workflow job. Nothing else should be widened silently. Every place
+  that describes **CI** has to say
   the gap — a place that describes only the local gate, as `AGENTS.md` § Validation does,
   owes nothing — and there is no list of them here on purpose: the commit that added this step
   repointed every such place it found, and a review then found one it had missed —
@@ -317,20 +321,6 @@ alternative exists (`secret-tool`).
   where the yield argument is normative rather than here: every release-breaking docs
   defect so far came from stage 4, running the executable blocks.
 
-- **One directory has two names, and the glossary states a preference the tree does
-  not meet** (recorded 2026-08-10, **not fixed**). [CONTEXT.md](CONTEXT.md) names
-  **bound directory** as the term and **pinned directory** as the one to avoid, and
-  both are still in use — in the user-facing docs and under `internal/` alike, so
-  neither is a register the other stays out of. It is filed rather than done because
-  it is a rewording of a few dozen sites with no behaviour attached, and nothing about
-  it needs to ride with a code change. What it costs meanwhile is a grep: a reader who
-  searches for either word finds part of the subject and cannot tell that from all of
-  it. Derive the split with the command in CONTEXT.md § Not converged rather than
-  from a number quoted anywhere, including this entry — the definition of what counts
-  is the whole disagreement in figures like this one. The sibling convergence,
-  `witness` → `reader`, is done (`credStoreReaders`), and it is the reason this one is
-  visible.
-
 - **A sourced smoke HOME needs an owner**. `scripts/smoke-env.sh` now uses an
   explicit template under `TMPDIR`, so a block run through `scripts/smoke-run.sh`
   allocates inside the runner's cleanup tree on macOS as well as Linux.
@@ -410,7 +400,7 @@ alternative exists (`secret-tool`).
   `[hooks.enter]` runs bare `kae use --quiet` on every directory change — the exact
   moment a human arrives in the worktree — and `--quiet` suppresses success reports
   but never warnings. Today that path does not look at the bound credential's
-  freshness at all; inside a pinned directory it instead warns about *itself*
+  freshness at all; inside a bound directory it instead warns about *itself*
   (`pinnedGlobalScope`: "you are changing GLOBAL state, which this directory will
   not see"). Surfacing an expiring bound credential there would tell the user at the
   only moment they do not have to remember anything — but it runs on every `cd`, so
@@ -1059,7 +1049,7 @@ alternative exists (`secret-tool`).
   sync. Coupling them would tie two deliberately independent mechanisms together
   for a combination that is a mistake to begin with (`kae run` with no `-i` uses
   the directory's binding, which is what the user wants there). If it turns out to
-  bite in practice, the answer is a warning at `run -i` inside a pinned directory,
+  bite in practice, the answer is a warning at `run -i` inside a bound directory,
   not synchronization.
 
 - **`PinID` does not resolve symlinks, and changing that needs a migration**
@@ -1127,7 +1117,7 @@ alternative exists (`secret-tool`).
   capability check in [ACCEPTANCE.md](ACCEPTANCE.md)
   § Optional account-combination checks, and it has never been run. Declaring
   the capability (dropping codex from `bindableNotYetDeclared`) is what that result
-  unblocks. Until it passes a pinned directory has no codex login until you log in
+  unblocks. Until it passes a bound directory has no codex login until you log in
   inside it.
 - **A tool that resolves its store from live state is modelled per artifact, not as
   a set.** codex's `auto` is the only such artifact today (the adapter probes and
@@ -1169,7 +1159,7 @@ alternative exists (`secret-tool`).
   items of a *deleted* bound directory are still unreachable — they are named by
   the path that no longer exists — so the store can be removed but its items
   cannot; `kae unpin --purge` before deleting a directory is the way to avoid it.
-- **Pinned directories never refresh their snapshot** *(detection shipped; the
+- **Bound directories never refresh their snapshot** *(detection shipped; the
   recapture is deliberately still open)*: a bound directory's tool refreshes its own
   token in place, so kae's snapshot for that account ages and the directory's own
   copy ages independently of it.

@@ -58,7 +58,7 @@ func TestRemoveLegacyMiseBlockKeepsTheRest(t *testing.T) {
 }
 
 // TestRealToolHomeIgnoresKaeManagedEnv reproduces the v0.5.0 acceptance bug:
-// inside a pinned directory the isolation env var points into kae's own store,
+// inside a bound directory the isolation env var points into kae's own store,
 // and treating it as the real home would create self-referential symlinks
 // (ELOOP). realToolHome must ignore a kae-managed isolation env value.
 func TestRealToolHomeIgnoresKaeManagedEnv(t *testing.T) {

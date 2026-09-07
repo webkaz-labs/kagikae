@@ -209,7 +209,7 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	// including when a tool filter omits the per-directory findings.
 	report.Checks = append(report.Checks, app.pinChecks(toolFilter)...)
 
-	// bound-directory health: a pinned directory that is gone, or that binds an
+	// bound-directory health: a bound directory that is gone, or that binds an
 	// account that is. Offline and backend-free; unfiltered, like the companion
 	// checks, because a stale binding is a property of the directory.
 	//

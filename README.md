@@ -71,7 +71,7 @@ the tool set up**:
   home (`kae use -i`), and per-directory binding (`kae pin`) via kae-owned mise
   fragments — your real `~/.claude` and your `mise.toml` are never touched.
 - **Companion auth in lockstep.** Bind `git`, `gh`, and cloud-CLI identity to the
-  same profile, so a bare `git commit` or `gh pr create` in a pinned directory
+  same profile, so a bare `git commit` or `gh pr create` in a bound directory
   acts as the right account — and `kae doctor` flags when the live git identity
   drifts from the binding.
 - **Safe by construction.** Atomic writes, per-tool locks, pre-write backups,
@@ -170,7 +170,7 @@ mise trust                     # mise refuses untrusted configs; its error
                                # between pin and trust is expected
 ```
 
-Inside the pinned directory (with [mise](https://mise.jdx.dev) activated) claude
+Inside the bound directory (with [mise](https://mise.jdx.dev) activated) claude
 and codex run as the `side` accounts. `kae pin` writes a kae-owned mise
 fragment (`.config/mise/conf.d/kagikae.toml`); your `mise.toml` is never touched.
 The fragment is machine-specific, so kae keeps it out of `git status` through the
@@ -248,7 +248,7 @@ the account you pinned, without capturing their credentials:
 
 - **git** — drives `GIT_CONFIG_GLOBAL` to a kae-owned file that `[include]`s your
   `~/.gitconfig` and overrides only `user.email`/`name`/`signingkey`; your
-  gitconfig is never modified and the override is scoped to the pinned directory.
+  gitconfig is never modified and the override is scoped to the bound directory.
 - **gh / cloudflare** — set `GH_TOKEN` / `CLOUDFLARE_API_TOKEN` from the secret
   store, resolved at mise eval time so the token never lands on disk.
 - **kubectl** — points `KUBECONFIG` at a path you supply.
@@ -274,7 +274,7 @@ one logged out hours later" case, and it had no visible cause before. All three 
 directory whose store names a *different* account than the one it binds, which
 usually means something logged in inside that directory. `kae doctor` reports
 binding health and,
-inside a pinned directory, flags when the identity git would actually commit
+inside a bound directory, flags when the identity git would actually commit
 with has drifted from the binding — a stray `git config --local` or an inactive
 pin — the silent wrong-author commit this exists to prevent. With `--yes` (or
 when you answer its prompt) it also makes the network call to check a token
@@ -480,7 +480,7 @@ Choose the pre-commit gate using [AGENTS.md](AGENTS.md) § Validation.
 `mise run check` remains the full authoritative gate. CI
 ([.github/workflows/ci.yml](.github/workflows/ci.yml), which calls `check.yml`) runs a
 **subset** of it, so most of the gate — the formatter that actually gates locally
-(gofumpt/goimports), the static analysers, `shellcheck`, `build` and the selftests among
+(gofumpt/goimports), the static analysers, `shellcheck` and the selftests among
 them — passes or fails on your machine only. Which step is in which half is
 `check.yml`'s own list read against `mise.toml`'s `[tasks.check]`; this line still
 carries an informal half of it, and the enumeration it used to carry named the docs

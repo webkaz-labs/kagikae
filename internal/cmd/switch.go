@@ -41,7 +41,7 @@ type switchReport struct {
 // With an explicit positional it always applies, even when the recorded state
 // already matches; bare use (no positional) resolves the profile and is
 // idempotent (the folded `apply`, with --quiet for hooks). use is inherently
-// global, so it always acts on the real home; inside a pinned directory it
+// global, so it always acts on the real home; inside a bound directory it
 // warns that it is changing global state (pinnedGlobalScope). --shared/-s (the
 // default) switches the real home in place; --isolated/-i points every terminal
 // at a per-account private home via a kae-owned global mise fragment.

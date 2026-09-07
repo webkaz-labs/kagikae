@@ -6,7 +6,7 @@ name: Check
 #
 # It is a SUBSET of the local `mise run check`, not a mirror of it, and this comment
 # claimed to mirror it until the gap was measured: the local gate also runs gofumpt and
-# goimports (not plain gofmt), staticcheck, golangci-lint, shellcheck, build, the smoke
+# goimports (not plain gofmt), staticcheck, golangci-lint, shellcheck, the smoke
 # selftest and the docs selftest. Anything only in the local gate is enforced on a
 # developer's machine and nowhere else, and this repository has already paid for that:
 # the test that ran the real `security` binary and wrote items into the operator's login
@@ -63,6 +63,14 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+      # The missing-main control in docs/plans/verification-efficiency.md passes
+      # go test and fails go build. Reuse Setup Go's cache to check linking too;
+      # keep the executables in runner temp.
+      - name: Build
+        run: |
+          mkdir -p "$RUNNER_TEMP/kae-build"
+          go build -o "$RUNNER_TEMP/kae-build/" ./...
 
       - name: Module verify
         run: go mod verify

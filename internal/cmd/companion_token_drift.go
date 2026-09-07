@@ -19,7 +19,7 @@ type tokenDriftCandidate struct {
 }
 
 // tokenDriftCandidates returns the bound profile name and the token companions
-// in it eligible for a live drift check: a pinned directory, a named profile,
+// in it eligible for a live drift check: a bound directory, a named profile,
 // and a token companion that both declares a LoginProbe and has a recorded
 // expected_login. It is the shared gate for the opt-in prompt (skip when none)
 // and for companionTokenDriftChecks.

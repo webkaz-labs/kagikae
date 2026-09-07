@@ -135,7 +135,7 @@ func TestDoctorGitDriftSkippedWhenNotPinned(t *testing.T) {
 	runner.With(fake, func() { report = buildDoctor(context.Background(), app, "", false) })
 
 	if _, ok := findCheck(report, constants.CheckCompanionDrift); ok {
-		t.Error("drift must not run outside a pinned directory")
+		t.Error("drift must not run outside a bound directory")
 	}
 }
 

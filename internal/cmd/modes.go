@@ -85,7 +85,7 @@ func (app *App) isKaeManagedCredStore(dir string) bool {
 
 // realToolHome resolves the tool's live home directory for per-directory shared
 // linking. An isolation env var pointing into kae's own isolation data dirs is
-// ignored: that is kae's own redirection (e.g. exported by a pinned directory's
+// ignored: that is kae's own redirection (e.g. exported by a bound directory's
 // mise fragment), and treating it as the real home would make a shared bind link
 // from itself — self-referential symlinks, ELOOP at runtime (found in v0.5.0
 // real-machine acceptance).
@@ -193,7 +193,7 @@ func pathWithin(dir, root string) bool {
 // pinnedGlobalScope puts the global-scope commands (use / add) on the real home:
 // they are inherently global, so kae-managed isolation env values are hidden
 // (applyGlobalScope) and the adapters resolve the real base paths; genuinely
-// user-set custom homes stay honored. Inside a kae-pinned directory it first
+// user-set custom homes stay honored. Inside a kae-bound directory it first
 // warns that global state is changing and this directory will not see it —
 // re-bind with `kae pin`. Idempotent (one warning per command path): the warning
 // detection must run before applyGlobalScope hides the env values, and bare use

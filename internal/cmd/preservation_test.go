@@ -162,7 +162,14 @@ func TestPreservationDryRunAndConfirmedDelete(t *testing.T) {
 }
 
 func TestPreservationListDoesNotClaimIdentityOrExposePayload(t *testing.T) {
-	app, _, saved, _ := preservationFixture(t)
+	app, store, saved, _ := preservationFixture(t)
+	// A platform-incompatible selection must not block metadata-only recovery.
+	app.backendForTest = nil
+	app.Env.GOOS = "linux"
+	app.Config.Security.SecretBackend = secret.BackendKeychain
+	if _, err := app.secretBackend(); err == nil {
+		t.Fatal("expected unavailable backend selection")
+	}
 	code, out := captureStdout(t, func() int {
 		return runPreservation(context.Background(), app, commonOpts{Format: formatJSON}, "list", "")
 	})
@@ -176,6 +183,62 @@ func TestPreservationListDoesNotClaimIdentityOrExposePayload(t *testing.T) {
 	}
 	if strings.Contains(out, mainToken) || strings.Contains(out, "refreshToken") {
 		t.Fatal("list exposed payload")
+	}
+	if report.SchemaVersion != constants.SchemaVersion {
+		t.Fatalf("wrong schema: %d", report.SchemaVersion)
+	}
+	for _, action := range []string{"restore", "rm"} {
+		for _, id := range []string{saved.ID, "invalid"} {
+			code, out := captureStdout(t, func() int {
+				return runPreservation(context.Background(), app, commonOpts{Format: formatJSON}, action, id)
+			})
+			mustExit(t, constants.ExitSecretStore, code, out)
+		}
+	}
+	metadataPath := filepath.Join(store.Dir, saved.ID+".json")
+	for _, state := range []string{constants.PreservationStatePending, constants.PreservationStateDeleting} {
+		saved.State = state
+		data, err := json.Marshal(saved)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, metadataPath, string(data))
+		code, out := captureStdout(t, func() int {
+			return runPreservation(context.Background(), app, commonOpts{Format: formatJSON}, "list", "")
+		})
+		mustExit(t, constants.ExitOK, code, out)
+		if err := json.Unmarshal([]byte(out), &report); err != nil {
+			t.Fatal(err)
+		}
+		if len(report.Preservations) != 1 || report.Preservations[0].State != state {
+			t.Fatalf("incomplete record disappeared: %s", out)
+		}
+	}
+	writeFile(t, metadataPath, "invalid metadata "+mainToken)
+	code, out = captureStdout(t, func() int {
+		return runPreservation(context.Background(), app, commonOpts{Format: formatJSON}, "list", "")
+	})
+	mustExit(t, constants.ExitUnsafeRefused, code, out)
+	if strings.Contains(out, mainToken) {
+		t.Fatal("metadata error exposed payload")
+	}
+	data, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, metadataPath, string(data))
+	if err := store.Remove(context.Background(), saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	code, out = captureStdout(t, func() int {
+		return runPreservation(context.Background(), app, commonOpts{Format: formatJSON}, "list", "")
+	})
+	mustExit(t, constants.ExitOK, code, out)
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Preservations == nil || len(report.Preservations) != 0 {
+		t.Fatalf("empty list must be an array: %s", out)
 	}
 }
 

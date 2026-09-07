@@ -132,15 +132,7 @@ func runPreservation(ctx context.Context, app *App, opts commonOpts, action, id 
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
 	}
-	be, err := app.secretBackend()
-	if err != nil {
-		return finish(opts, err)
-	}
-	store := app.preservationStore(be)
-	if action != "list" && !preservation.ValidID(id) {
-		return finish(opts, preservationError(preservation.ErrInvalidID))
-	}
-	report := preservationReport{SchemaVersion: constants.SchemaVersion, OK: true, DryRun: opts.DryRun, PreservationID: id}
+	store := app.preservationStore(nil)
 	if action == "list" {
 		records, err := store.List(ctx)
 		if err != nil {
@@ -160,6 +152,15 @@ func runPreservation(ctx context.Context, app *App, opts commonOpts, action, id 
 		printTable([]string{"ID", "Tool", "Directory", "Binding account (owner unknown)", "State", "Bytes"}, rows)
 		return constants.ExitOK
 	}
+	be, err := app.secretBackend()
+	if err != nil {
+		return finish(opts, err)
+	}
+	store.Backend = be
+	if !preservation.ValidID(id) {
+		return finish(opts, preservationError(preservation.ErrInvalidID))
+	}
+	report := preservationReport{SchemaVersion: constants.SchemaVersion, OK: true, DryRun: opts.DryRun, PreservationID: id}
 	if action == "rm" {
 		// List rather than Load: incomplete records must also be removable explicitly.
 		records, err := store.List(ctx)

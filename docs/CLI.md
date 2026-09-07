@@ -937,7 +937,8 @@ kae preservation restore <id> [--dry-run] [--json]
 kae preservation rm <id> [--dry-run] [--yes] [--json]
 ```
 
-The list contains non-secret record metadata. A binding's account label describes
+The list reads non-secret record metadata without selecting a secret backend or
+reading payloads; it does not verify payload availability. A binding's account label describes
 its configuration, not verified ownership of the credential. Restore and removal
 require an explicit full ID; there is no implicit latest record or alternate
 restore destination. Removal warns that the record may be the only surviving

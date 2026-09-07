@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -130,7 +131,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// Preserve raw bytes independently of snapshot attribution before the upstream
 	// can replace them. Reconfirm the mapping under the pin lock: the initial
 	// fragment read occurred before another bind could have finished.
-	var recheckPreserved func() error
+	var preserved *preservationObservation
 	if tool == constants.ToolClaude || tool == constants.ToolCodex {
 		origin, preservedSpec, err := app.preservationOrigin(ctx, absDir, tool)
 		if err != nil {
@@ -139,23 +140,13 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 		if origin.BoundAccount != accountName || origin.Mode != fragment.Mode || origin.ConfigDir != dirs.Config || origin.CredDir != dirs.Cred {
 			return finish(opts, errf(constants.ExitUnsafeRefused, "the binding changed before login; retry after confirming the bound account"))
 		}
-		live, err := artifact.ReadLive(ctx, preservedSpec)
+		observed, err := readPreservationObservation(ctx, origin, preservedSpec)
 		if err != nil {
 			return finish(opts, errf(constants.ExitUnsafeRefused, "cannot preserve the existing credential; the login flow was not started"))
 		}
-		recheckPreserved = func() error {
-			current, _, err := app.preservationOrigin(ctx, absDir, tool)
-			if err != nil || current != origin {
-				return errf(constants.ExitUnsafeRefused, "the binding changed before login; the login flow was not started")
-			}
-			latest, err := artifact.ReadLive(ctx, preservedSpec)
-			if err != nil || latest.Present != live.Present || !bytes.Equal(latest.Data, live.Data) {
-				return errf(constants.ExitUnsafeRefused, "the credential changed after preservation; the login flow was not started")
-			}
-			return nil
-		}
-		if live.Present {
-			saved, err := app.preservationStore(be).Save(ctx, origin, live.Data, "")
+		preserved = &observed
+		if observed.live.Present {
+			saved, err := app.preservationStore(be).Save(ctx, origin, observed.live.Data, "")
 			if err != nil {
 				return finish(opts, preservationError(err))
 			}
@@ -183,11 +174,15 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 		loginEnv = append(loginEnv, credVar+"="+dirs.Cred)
 		shown = append(shown, credVar+"="+app.displayPath(dirs.Cred))
 	}
-	if recheckPreserved != nil {
-		if err := recheckPreserved(); err != nil {
-			return finish(opts, err)
+	if preserved != nil {
+		if err := app.recheckPreservationObservation(ctx, *preserved); err != nil {
+			if errors.Is(err, errPreservationMappingChanged) {
+				return finish(opts, errf(constants.ExitUnsafeRefused, "the binding changed before login; the login flow was not started"))
+			}
+			return finish(opts, errf(constants.ExitUnsafeRefused, "the credential changed after preservation; the login flow was not started"))
 		}
 	}
+
 	fmt.Fprintf(os.Stderr,
 		"kae: complete the %s login flow; kae is running it against this directory's own store (%s), "+
 			"so it refreshes %s/%s and not the real home\n",

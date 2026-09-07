@@ -251,7 +251,7 @@ func (b preservationWriteObserver) Set(ctx context.Context, key string, data []b
 }
 
 func TestPreservationRestoreRechecksAndHoldsInventoryLock(t *testing.T) {
-	for _, change := range []string{"credential", "mapping"} {
+	for _, change := range []string{"credential", "mapping", "absent", "unreadable"} {
 		t.Run(change, func(t *testing.T) {
 			app, store, saved, credFile := preservationFixture(t)
 			ctx := context.Background()
@@ -264,11 +264,21 @@ func TestPreservationRestoreRechecksAndHoldsInventoryLock(t *testing.T) {
 				if err := store.Remove(ctx, saved.ID); !errors.Is(err, lock.ErrBusy) {
 					t.Fatalf("restore did not own inventory lock: %v", err)
 				}
-				if change == "credential" {
+				switch change {
+				case "credential":
 					writeFile(t, credFile, raced)
-				} else {
+				case "mapping":
 					fragment := filepath.Join(saved.Origin.Directory, fragmentRelPath)
 					writeFile(t, fragment, strings.ReplaceAll(readFile(t, fragment), "# kae:account:claude=main", "# kae:account:claude=side"))
+				default:
+					if err := os.Remove(credFile); err != nil {
+						t.Fatal(err)
+					}
+					if change == "unreadable" {
+						if err := os.Mkdir(credFile, 0o700); err != nil {
+							t.Fatal(err)
+						}
+					}
 				}
 			}}
 			code, out, stderr := captureBoth(t, func() int { return runPreservation(ctx, app, commonOpts{Format: formatJSON}, "restore", saved.ID) })
@@ -280,7 +290,15 @@ func TestPreservationRestoreRechecksAndHoldsInventoryLock(t *testing.T) {
 			if change == "credential" {
 				want = raced
 			}
-			if readFile(t, credFile) != want {
+			if change == "absent" {
+				if _, err := os.Lstat(credFile); !os.IsNotExist(err) {
+					t.Fatalf("refusal recreated credential: %v", err)
+				}
+			} else if change == "unreadable" {
+				if info, err := os.Stat(credFile); err != nil || !info.IsDir() {
+					t.Fatalf("refusal replaced unreadable destination: %v", err)
+				}
+			} else if readFile(t, credFile) != want {
 				t.Fatal("restore overwrote concurrent change")
 			}
 			records, err := store.List(ctx)
@@ -292,7 +310,7 @@ func TestPreservationRestoreRechecksAndHoldsInventoryLock(t *testing.T) {
 }
 
 func TestReloginRefusesChangesDuringPreservation(t *testing.T) {
-	for _, change := range []string{"credential", "mapping"} {
+	for _, change := range []string{"credential", "mapping", "absent", "unreadable"} {
 		t.Run(change, func(t *testing.T) {
 			app, store, saved, credFile := preservationFixture(t)
 			ctx := context.Background()
@@ -302,11 +320,21 @@ func TestReloginRefusesChangesDuringPreservation(t *testing.T) {
 			observed := false
 			app.backendForTest = preservationWriteObserver{Backend: store.Backend, observe: func() {
 				observed = true
-				if change == "credential" {
+				switch change {
+				case "credential":
 					writeFile(t, credFile, raced)
-				} else {
+				case "mapping":
 					path := filepath.Join(saved.Origin.Directory, fragmentRelPath)
 					writeFile(t, path, strings.ReplaceAll(readFile(t, path), "# kae:account:claude=main", "# kae:account:claude=side"))
+				default:
+					if err := os.Remove(credFile); err != nil {
+						t.Fatal(err)
+					}
+					if change == "unreadable" {
+						if err := os.Mkdir(credFile, 0o700); err != nil {
+							t.Fatal(err)
+						}
+					}
 				}
 			}}
 			withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
@@ -322,7 +350,15 @@ func TestReloginRefusesChangesDuringPreservation(t *testing.T) {
 			if change == "credential" {
 				want = raced
 			}
-			if readFile(t, credFile) != want {
+			if change == "absent" {
+				if _, err := os.Lstat(credFile); !os.IsNotExist(err) {
+					t.Fatalf("refusal recreated credential: %v", err)
+				}
+			} else if change == "unreadable" {
+				if info, err := os.Stat(credFile); err != nil || !info.IsDir() {
+					t.Fatalf("refusal replaced unreadable destination: %v", err)
+				}
+			} else if readFile(t, credFile) != want {
 				t.Fatal("refusal changed live store")
 			}
 		})

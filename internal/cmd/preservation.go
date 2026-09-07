@@ -21,6 +21,36 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
+var (
+	errPreservationMappingChanged    = errors.New("preservation mapping changed")
+	errPreservationCredentialChanged = errors.New("preservation credential changed")
+)
+
+type preservationObservation struct {
+	origin preservation.Origin
+	spec   artifact.Spec
+	live   artifact.Value
+}
+
+func readPreservationObservation(ctx context.Context, origin preservation.Origin, spec artifact.Spec) (preservationObservation, error) {
+	live, err := artifact.ReadLive(ctx, spec)
+	return preservationObservation{origin: origin, spec: spec, live: live}, err
+}
+
+// Recheck the resolved mapping and raw observation without inferring ownership or
+// freshness. Callers keep this immediately before their irreversible operation.
+func (app *App) recheckPreservationObservation(ctx context.Context, observed preservationObservation) error {
+	current, _, err := app.preservationOrigin(ctx, observed.origin.Directory, observed.origin.Tool)
+	if err != nil || current != observed.origin {
+		return errPreservationMappingChanged
+	}
+	latest, err := artifact.ReadLive(ctx, observed.spec)
+	if err != nil || latest.Present != observed.live.Present || !bytes.Equal(latest.Data, observed.live.Data) {
+		return errPreservationCredentialChanged
+	}
+	return nil
+}
+
 // CmdPreservation manages independently retained credential copies. Account
 // labels describe bindings, never an attribution of the preserved payload.
 func CmdPreservation(ctx context.Context, args []string) int {
@@ -172,29 +202,27 @@ func runPreservation(ctx context.Context, app *App, opts commonOpts, action, id 
 			if err != nil || current != record.Origin || session.Record.Origin != record.Origin {
 				return errf(constants.ExitUnsafeRefused, "the original binding or credential location changed or cannot be confirmed; no credential was restored")
 			}
-			live, err := artifact.ReadLive(ctx, sp)
+			observed, err := readPreservationObservation(ctx, current, sp)
 			if err != nil {
 				return errf(constants.ExitUnsafeRefused, "cannot read the destination credential; no credential was restored")
 			}
 			if opts.DryRun {
-				if live.Present {
-					return session.CheckCurrent(live.Data)
+				if observed.live.Present {
+					return session.CheckCurrent(observed.live.Data)
 				}
 				return nil
 			}
-			if live.Present {
-				if _, err := session.SaveCurrent(live.Data); err != nil {
+			if observed.live.Present {
+				if _, err := session.SaveCurrent(observed.live.Data); err != nil {
 					return err
 				}
 			}
 			// Pin/global preservation locks exclude kae writers in those scopes, not an
 			// upstream refresh. Recheck observations immediately before the live write.
-			confirmed, _, err := app.preservationOrigin(ctx, record.Origin.Directory, record.Origin.Tool)
-			if err != nil || confirmed != current {
-				return errf(constants.ExitUnsafeRefused, "the binding changed during restoration; no credential was restored")
-			}
-			latest, err := artifact.ReadLive(ctx, sp)
-			if err != nil || latest.Present != live.Present || !bytes.Equal(latest.Data, live.Data) {
+			if err := app.recheckPreservationObservation(ctx, observed); err != nil {
+				if errors.Is(err, errPreservationMappingChanged) {
+					return errf(constants.ExitUnsafeRefused, "the binding changed during restoration; no credential was restored")
+				}
 				return errf(constants.ExitUnsafeRefused, "the destination credential changed during restoration; no credential was restored")
 			}
 			if err := artifact.ApplyLive(ctx, sp, artifact.Value{Present: true, Data: session.Payload}); err != nil {

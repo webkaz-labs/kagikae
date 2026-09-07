@@ -27,10 +27,9 @@ stage 3 of the docs scan, filed below.
 
 ## Current work order
 
-The approved [safety and maintenance plan](plans/safety-maintenance.md) groups
-credential observation/recheck, CI admission decisions and README guarantee scope
-for v0.19.1. Its ledger records the CI admission evidence and remaining release gates;
-it does not widen authentication policy.
+The completed [safety and maintenance plan](plans/safety-maintenance.md) retains
+the credential observation/recheck scope, CI admission evidence and cache decision
+for v0.19.1. It does not widen authentication policy.
 
 The completed [multi-theme release plan](plans/reliability-ci-terminology.md)
 retains the original-store preservation policy, CI build decision and

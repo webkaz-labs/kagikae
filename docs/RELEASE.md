@@ -1,30 +1,20 @@
 # Release Process
 
-## Current release — kae v0.19.0
+## Current release — kae v0.19.1
 
 The release record is the tag and
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.19.0).
-Read its scope and minor-version rationale with
-`git show v0.19.0:docs/RELEASE.md`. The completed
-[multi-theme plan](plans/reliability-ci-terminology.md) retains
-the preservation policy, CI build decision and terminology scope;
-[ACCEPTANCE.md](ACCEPTANCE.md) owns the bounded real-machine measurements.
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.19.1).
+Read its scope and patch-version rationale with
+`git show v0.19.1:docs/RELEASE.md`. The completed
+[safety and maintenance plan](plans/safety-maintenance.md) retains the CI
+admission and cache decisions; [ACCEPTANCE.md](ACCEPTANCE.md) owns the bounded
+real-machine measurements.
 
 Published archives, SHA-256 checksums, GitHub provenance attestations and the
-installer were verified on 2026-09-07 (JST) for v0.19.0 with
-`mise run release-verify -- v0.19.0`. The macOS arm64 archive and isolated
-installer both reported `kae v0.19.0`; the installer used verified-asset fixtures
+installer were verified on 2026-09-07 (JST) for v0.19.1 with
+`mise run release-verify -- v0.19.1`. The macOS arm64 archive and isolated
+installer both reported `kae v0.19.1`; the installer used verified-asset fixtures
 as described below.
-
-## Next candidate — kae v0.19.1
-
-The next candidate is `v0.19.1`, pending main CI, publication and distribution verification. Its patch scope is the
-credential observation/recheck module, the README guarantee clarification, and
-CI admission of formatter and docs-selftest detection. The Linux comparison
-admitted the two CI checks for detection; it did not establish a speed gain or
-justify shared build-cache changes. The bounded macOS result is recorded in
-[ACCEPTANCE.md](ACCEPTANCE.md). This section does not change the current release
-pointer until `v0.19.1` is published.
 
 ## Release procedure
 

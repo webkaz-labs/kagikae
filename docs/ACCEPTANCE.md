@@ -611,3 +611,9 @@ The final CI/documentation tree passed the full commit gate and both saved relea
 smokes. Release-evidence, the installed-tool/vulnerability audit, GoReleaser
 configuration check and naming agreement passed for the same implementation.
 The authentication source remains unchanged from the live candidate above.
+
+After publication on 2026-09-07 (JST), `mise run release-verify -- v0.19.1`
+returned `status: success` for the darwin/linux × amd64/arm64 archives,
+checksums and attestations. The macOS arm64 binary and isolated installer both
+reported `kae v0.19.1`. The installer used verified-asset fixtures, so this
+result does not exercise its HTTP transport.

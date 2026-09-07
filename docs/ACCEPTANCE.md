@@ -653,7 +653,7 @@ Assessed on 2026-09-07–08 (JST) for candidate `5cec709`. Application changes a
 profile target selection, manual global-isolation teardown and metadata-only
 listing. They do not change adapter credential addressing or preservation
 restore/removal validation. This is an application release; affected live
-acceptance remains pending under the session protections above.
+acceptance is recorded below under the session protections above.
 
 Fixture checks on the candidate's application sources passed: retained isolated
 selection without a backup, mixed-profile shared-only backup, restoration after
@@ -678,3 +678,23 @@ One parallel run overlapped the smoke selftest's deliberate checkout mutation an
 was discarded by the leak guard; its subsequent standalone run passed. These
 results do not establish the health of a current upstream login. Publication and
 published-asset verification have not been performed.
+
+
+Live acceptance on 2026-09-08 (JST) used candidate `a9f6619` and Claude Code
+2.1.261 after the operator confirmed related sessions were stopped. The current
+`side` login authenticated in a fresh process and was immediately recaptured.
+`use -i claude side` selected its isolated home; `use --auto -P main` reported
+`changed: false`, retained `side` and returned no shared results. Quiet mode
+succeeded. The same command inside `mise exec` preserved the global fragment bytes
+and backup inventory. A fresh Claude process under mise authenticated successfully.
+
+Explicit `use -s -P side` removed the global fragment and its mise environment
+entries even though the active account already matched. A controlled repeat
+confirmed byte identity outside `oauthAccount` and equal identity values inside
+it; whole-file bytes differed because that permitted member was reformatted.
+Fresh-process authentication passed after returning to shared mode. The final
+selection is the original shared `side`. Live backup and preservation lists both
+reported complete inventories without issues or warnings. Corruption controls
+remain fixture-only; no live metadata was deliberately damaged. The hook's
+rendering/migration remains covered by fixtures, while this live run exercised
+its command under mise rather than an interactive directory-enter event.

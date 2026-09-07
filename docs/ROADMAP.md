@@ -29,8 +29,8 @@ stage 3 of the docs scan, filed below.
 
 The agreed [daily-use and diagnostic-list plan](plans/daily-use-diagnostics.md)
 covers hook isolation/account preservation, resilient metadata listings and their
-user guidance. Implementation and fixture verification are complete; v0.20.0 awaits
-affected live acceptance and publication. The plan owns its acceptance and
+user guidance. Implementation, fixture verification and affected live acceptance are complete;
+v0.20.0 awaits publication. The plan owns its acceptance and
 ordering, while the authentication research prerequisites below remain in force.
 
 The completed [daily-use and recovery plan](plans/daily-use-recovery.md) retains

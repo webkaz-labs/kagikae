@@ -6,7 +6,7 @@ The [daily-use diagnostics plan](plans/daily-use-diagnostics.md) adds automatic
 profile application that retains global isolation, diagnostic metadata lists and
 hook migration guidance. A minor release reflects the new `--auto` flag and
 additive report fields. Existing normal list rows and mutation refusal contracts
-are retained. Affected live acceptance and publication remain pending; results
+are retained. Affected live acceptance passed; publication remains pending. Results
 belong in [ACCEPTANCE.md](ACCEPTANCE.md).
 
 ## Current release — kae v0.19.2

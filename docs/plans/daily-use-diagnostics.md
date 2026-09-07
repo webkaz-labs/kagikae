@@ -3,7 +3,7 @@
 ## 到達点と状態
 
 計画の製品方針に沿った A/B/C の実装と fixture 検証は完了。
-`v0.20.0` の公開前実機確認と公開・配布物検証が残る。手動で選んだ global isolated の
+公開前実機確認も完了し、`v0.20.0` の公開・配布物検証が残る。手動で選んだ global isolated の
 mode と account を自動 hook が保持し、設定や一覧 metadata に問題があっても
 復旧判断に必要な情報を読めることを目指す。README の利用例もこの契約に合わせる。
 リリース状況は [RELEASE.md](../RELEASE.md)、検証結果は

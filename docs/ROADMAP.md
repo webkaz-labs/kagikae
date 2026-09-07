@@ -27,6 +27,11 @@ stage 3 of the docs scan, filed below.
 
 ## Current work order
 
+The proposed [daily-use and recovery plan](plans/daily-use-recovery.md) prioritizes
+initial setup, updates and recovery guidance, together with reproduced profile-edit
+and preservation-list defects. Implementation awaits approval of that plan; the
+authentication research lanes below retain their own prerequisites.
+
 The completed [safety and maintenance plan](plans/safety-maintenance.md) retains
 the credential observation/recheck scope, CI admission evidence and cache decision
 for v0.19.1. It does not widen authentication policy.

@@ -27,6 +27,11 @@ stage 3 of the docs scan, filed below.
 
 ## Current work order
 
+The agreed [daily-use and diagnostic-list plan](plans/daily-use-diagnostics.md)
+queues hook isolation/account preservation, resilient metadata listings and their
+user guidance. Implementation is not started; the plan owns its acceptance and
+ordering, while the authentication research prerequisites below remain in force.
+
 The completed [daily-use and recovery plan](plans/daily-use-recovery.md) retains
 the onboarding and recovery scope, profile-edit concurrency controls and
 metadata-only listing decision for v0.19.2. The authentication research lanes

@@ -51,7 +51,13 @@ its earlier record has no digest. No contrary authentication incident was
 identified in this assessment. Full commit checks, release-evidence and both
 saved release smokes passed. The store smoke exposed doubled separators from a
 trailing-slash TMPDIR; the candidate normalizes the allocation prefix and the
-same smoke passed afterward. Published v0.18.5 assets are verified after the tag.
+same smoke passed afterward.
+
+After publication on 2026-09-07 (JST), `mise run release-verify -- v0.18.5`
+returned `status: success` for the darwin/linux × amd64/arm64 archives,
+checksums and attestations. The macOS arm64 binary and isolated installer both
+reported `kae v0.18.5`. The installer used verified-asset fixtures rather than
+exercising its HTTP transport.
 
 ### v0.18.4 applicability result
 

@@ -1,6 +1,6 @@
 # 配布物検証の終了と回収
 
-## 到達点（実装完了）
+## 到達点（v0.18.5 で完了）
 
 v0.18.5 向けの対象は maintainer 用 `scripts/releaseverify` のプロセス所有。
 検証の終了後に同じ process group の子孫が動き続け、一時領域への書込や領域の
@@ -35,7 +35,7 @@ v0.18.5 向けの対象は maintainer 用 `scripts/releaseverify` のプロセ�
 汎用プロセス管理 framework、アカウント切替、Windows/TUI/Tier 拡張は対象外。
 検査の追加はこの終了契約を確かめるものに限り、変更のない実機認証を繰り返さない。
 
-## 検証結果と次の工程
+## 検証結果
 
 2026-09-07、実装 `b93d16c` で full gate、smoke guards の全 mutation、
 正確性レビューと独立品質レビューが通過した。公開済み v0.18.4 に対する
@@ -46,4 +46,6 @@ native version・verified-asset fixture を使う installer の正常経路を�
 リリース候補 `a2ad1c0` では版番号の更新と release acceptance の適用判断、
 公開前の必須検証を完了した。末尾にスラッシュを持つ TMPDIR の smoke パスも
 正規化し、失敗していた store smoke と対応する mutation が通過した。
-次の工程は [RELEASE.md](../RELEASE.md) のタグ付けと新配布物の公開後検証。
+v0.18.5 の公開と新配布物の検証も完了した。結果と適用範囲は
+[ACCEPTANCE.md](../ACCEPTANCE.md) に、現在の公開版は
+[RELEASE.md](../RELEASE.md) に記録する。

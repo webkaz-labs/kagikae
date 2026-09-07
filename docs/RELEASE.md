@@ -1,31 +1,20 @@
 # Release Process
 
-## Current release — kae v0.18.4
+## Current release — kae v0.18.5
 
 The release record is the tag and
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.18.4).
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.18.5).
 Read its scope and patch-version rationale with
-`git show v0.18.4:docs/RELEASE.md`. The completed
-[verification-efficiency plan](plans/verification-efficiency.md) retains the
-check-retention and account-lifecycle decisions;
+`git show v0.18.5:docs/RELEASE.md`. The completed
+[release-verifier lifecycle plan](plans/release-verifier-lifecycle.md) retains
+the process-ownership scope and deferred alternatives;
 [ACCEPTANCE.md](ACCEPTANCE.md) owns the bounded real-machine measurements.
 
 Published archives, SHA-256 checksums, GitHub provenance attestations and the
-installer were verified on 2026-09-07 (JST) for v0.18.4 with
-`mise run release-verify -- v0.18.4`. The macOS arm64 archive and isolated
-installer both reported `kae v0.18.4`; the installer used verified-asset fixtures
+installer were verified on 2026-09-07 (JST) for v0.18.5 with
+`mise run release-verify -- v0.18.5`. The macOS arm64 archive and isolated
+installer both reported `kae v0.18.5`; the installer used verified-asset fixtures
 as described below.
-
-## Next release — kae v0.18.5
-
-The next patch candidate follows the
-[release-verifier lifecycle plan](plans/release-verifier-lifecycle.md): terminate
-owned command descendants and reclaim installer-smoke temporary roots on failure
-or interruption. Application authentication behavior is outside this change.
-The version bump and pre-publication checks are complete; acceptance applicability
-is recorded in [ACCEPTANCE.md](ACCEPTANCE.md). The release also normalizes trailing
-TMPDIR separators in smoke allocations. Tagging, publication and verification of
-the new assets remain to complete the procedure below.
 
 ## Release procedure
 

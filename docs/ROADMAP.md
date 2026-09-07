@@ -37,10 +37,9 @@ measured decision against command-wide index memoization. The completed
 check-retention and account-lifecycle decisions. Neither authorizes
 implementation of the research lanes below.
 
-The [release-verifier lifecycle plan](plans/release-verifier-lifecycle.md) is
-implemented and validated for the next patch; [RELEASE.md](RELEASE.md) owns its
-remaining publication steps. This does not open the authentication research
-entries below.
+The completed [release-verifier lifecycle plan](plans/release-verifier-lifecycle.md)
+retains the process-ownership scope and deferred alternatives. This does not open
+the authentication research entries below.
 
 1. **Research only** — do not schedule implementation for **A moved bound directory does
    not count as a reader, and its absence does not make the reader set incomplete**,

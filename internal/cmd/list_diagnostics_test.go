@@ -73,6 +73,28 @@ func TestDiagnosticListsSeparateConfigFromCompleteness(t *testing.T) {
 				if strings.Contains(out, mainToken) || strings.Contains(out, "invalid metadata") {
 					t.Fatal("diagnostics exposed raw private data")
 				}
+				var diagnostics string
+				code, out = captureStdout(t, func() int {
+					var exit int
+					exit, diagnostics = captureStderr(t, func() int {
+						if kind == "backup" {
+							return runBackupList(context.Background(), app, commonOpts{Format: formatText})
+						}
+						return runPreservation(context.Background(), app, commonOpts{Format: formatText}, "list", "")
+					})
+					return exit
+				})
+				mustExit(t, want, code, out)
+				visibleID := id
+				if kind == "preservation" {
+					visibleID = saved.ID
+				}
+				if !strings.Contains(out, visibleID) || !strings.Contains(diagnostics, "config is invalid or unreadable") || strings.Contains(out+diagnostics, mainToken) {
+					t.Fatalf("unsafe or missing text diagnostics: %s %s", out, diagnostics)
+				}
+				if broken && (!strings.Contains(diagnostics, "listing is incomplete") || !strings.Contains(diagnostics, constants.ListIssueInvalid)) {
+					t.Fatalf("text did not disclose incomplete inventory: %s", diagnostics)
+				}
 				code, out = captureStdout(t, func() int {
 					if kind == "backup" {
 						return runRollback(context.Background(), app, commonOpts{Format: formatJSON}, id)

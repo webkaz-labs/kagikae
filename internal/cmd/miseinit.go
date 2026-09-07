@@ -25,7 +25,7 @@ const (
 //
 // Default prints the snippet; --write creates .mise.toml or replaces the
 // marker-delimited kagikae block. An existing file without markers is never
-// modified. --auto adds a [hooks.enter] entry running `kae use --quiet`. The
+// modified. --auto adds a [hooks.enter] entry running `kae use --auto --quiet`. The
 // former isolation modes (home/overlay/bond/pin) are gone: bind a directory
 // with `kae pin -s|-i`, which owns its own mise fragment.
 func CmdMise(ctx context.Context, args []string) int {
@@ -160,7 +160,7 @@ func (app *App) miseBlock(profileName string, auto bool) string {
 		fmt.Fprintln(&b, "# mutates the global live auth state shared by every terminal, not just")
 		fmt.Fprintln(&b, "# this directory. Firing requires `mise activate`, a trusted config,")
 		fmt.Fprintln(&b, "# and `mise settings experimental=true` (mise hooks are experimental).")
-		fmt.Fprintln(&b, `run = "kae use --quiet"`)
+		fmt.Fprintln(&b, `run = "kae use --auto --quiet"`)
 		fmt.Fprintln(&b)
 	}
 	fmt.Fprintln(&b, "[tasks.ai-use]")

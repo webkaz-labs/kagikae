@@ -18,8 +18,9 @@ func registerAddFlags(fs *flag.FlagSet, restore, noLogin *bool, identity *string
 	fs.StringVar(identity, "identity", "", "record this login identity for the account when auto-detection is unavailable (e.g. agy on current Antigravity)")
 }
 
-func registerUseFlags(fs *flag.FlagSet, shared, isolated, quiet *bool, profile *string) {
+func registerUseFlags(fs *flag.FlagSet, shared, isolated, quiet, auto *bool, profile *string) {
 	registerScopeFlags(fs, shared, isolated)
+	fs.BoolVar(auto, "auto", false, "apply a resolved profile while preserving global isolated selections")
 	fs.BoolVar(quiet, "quiet", false, "suppress the success report (for hooks; bare use)")
 	registerProfileFlag(fs, profile)
 }
@@ -43,7 +44,7 @@ func registerMiseInitFlags(fs *flag.FlagSet, profile, mode *string, auto, write 
 	// --mode is still parsed so an old `--mode bond|pin|home|overlay` invocation
 	// gets a clear rejection rather than "flag not defined".
 	fs.StringVar(mode, "mode", constants.ModeAuth, "rendered integration (auth only; bind directories with kae pin)")
-	fs.BoolVar(auto, "auto", false, "add a [hooks.enter] running `kae use --quiet`")
+	fs.BoolVar(auto, "auto", false, "add a [hooks.enter] running `kae use --auto --quiet`")
 	fs.BoolVar(write, "write", false, "write/update .mise.toml in the current directory")
 }
 
@@ -87,7 +88,7 @@ type commandFlagSpec struct {
 // `kae account --<TAB>` / `kae profile --<TAB>` still offer them.
 var commandFlagSpecs = map[string]commandFlagSpec{
 	"add":   {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
-	"use":   {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
+	"use":   {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(bool), new(string)) }},
 	"ls":    {extra: func(fs *flag.FlagSet) { registerLsFlags(fs, new(bool)) }},
 	"pin":   {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool)) }},
 	"unpin": {extra: func(fs *flag.FlagSet) { registerUnpinFlags(fs, new(bool)) }},

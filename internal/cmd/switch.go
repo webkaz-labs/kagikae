@@ -47,10 +47,12 @@ type switchReport struct {
 // at a per-account private home via a kae-owned global mise fragment.
 func CmdUse(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args, "--profile", "P")
-	var shared, isolated, quiet bool
+	var shared, isolated, quiet, auto bool
 	var profileFlag string
+	var useFlags *flag.FlagSet
 	opts, ok := parseCommon("use", flags, true, func(fs *flag.FlagSet) {
-		registerUseFlags(fs, &shared, &isolated, &quiet, &profileFlag)
+		useFlags = fs
+		registerUseFlags(fs, &shared, &isolated, &quiet, &auto, &profileFlag)
 	})
 	if !ok {
 		return constants.ExitUsage
@@ -62,7 +64,19 @@ func CmdUse(ctx context.Context, args []string) int {
 	if len(positionals) > 2 {
 		return usageError("usage: %s use [-s|-i] [-P <profile>] | %s use [-s|-i] <profile> | %s use [-s|-i] <tool> <account>", toolName, toolName, toolName)
 	}
+	scopeExplicit := false
+	useFlags.Visit(func(f *flag.Flag) {
+		if f.Name == "s" || f.Name == "shared" || f.Name == "i" || f.Name == "isolated" {
+			scopeExplicit = true
+		}
+	})
+	if auto && (scopeExplicit || len(positionals) != 0) {
+		return usageError("--auto accepts only a resolved profile (-P); do not combine it with positional arguments or -s/-i")
+	}
 	app := newApp(opts.ConfigPath)
+	if auto {
+		return runUseAuto(ctx, app, opts, profileFlag, quiet)
+	}
 	if len(positionals) == 0 {
 		return runUseBare(ctx, app, opts, isolatedMode, profileFlag, quiet)
 	}
@@ -104,6 +118,15 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	if err := app.requireConfig(); err != nil {
 		return nil, err
 	}
+	app.pinnedGlobalScope()
+	targets, profileName, err := app.resolveTargets(target, name)
+	if err != nil {
+		return nil, err
+	}
+	return buildSwitchTargets(ctx, app, opts, targets, profileName)
+}
+
+func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets []runTarget, profileName string) (*switchReport, error) {
 	// Coalesce the `security` reads a single switch makes of each tool's
 	// account-agnostic keychain service: Detect, the backup, and the switch-away
 	// recapture all read it, so without a cache the recapture would multiply the
@@ -116,12 +139,6 @@ func buildSwitch(ctx context.Context, app *App, opts commonOpts, target, name st
 	// and applySnapshot. secret.Cached + this cache collapse them to one backend
 	// hit. Like the keychain cache, it never spans a child run.
 	ctx = secret.WithReadCache(ctx)
-	app.pinnedGlobalScope()
-
-	targets, profileName, err := app.resolveTargets(target, name)
-	if err != nil {
-		return nil, err
-	}
 	// Plans include each captured snapshot; uncaptured targets fail before
 	// anything is written.
 	plans, err := app.loadPlansWithSnapshots(ctx, targets)

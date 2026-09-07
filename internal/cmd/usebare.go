@@ -11,12 +11,14 @@ import (
 // the switch report plus a changed marker so hooks can tell a no-op from an
 // applied switch.
 type bareUseReport struct {
-	SchemaVersion int            `json:"schema_version"`
-	OK            bool           `json:"ok"`
-	Changed       bool           `json:"changed"`
-	Profile       *string        `json:"profile"`
-	BackupID      string         `json:"backup_id,omitempty"`
-	Results       []switchResult `json:"results"`
+	DryRun        bool                 `json:"-"`
+	SchemaVersion int                  `json:"schema_version"`
+	OK            bool                 `json:"ok"`
+	Changed       bool                 `json:"changed"`
+	Profile       *string              `json:"profile"`
+	BackupID      string               `json:"backup_id,omitempty"`
+	Results       []switchResult       `json:"results"`
+	Preserved     []preservedSelection `json:"preserved"`
 }
 
 // CmdApply is a removed-command pointer: `apply` folded into bare `kae use` in
@@ -69,11 +71,19 @@ func buildUseBare(ctx context.Context, app *App, opts commonOpts, profileName st
 	}
 	report := &bareUseReport{
 		SchemaVersion: constants.SchemaVersion,
+		DryRun:        opts.DryRun,
 		OK:            true,
 		Profile:       &profileName,
 		Results:       []switchResult{},
+		Preserved:     []preservedSelection{},
 	}
-	if recordedMatch(st.Active, targets) {
+	isolatedTarget := false
+	for _, tgt := range targets {
+		if _, ok := st.Synced[tgt.Tool]; ok {
+			isolatedTarget = true
+		}
+	}
+	if recordedMatch(st.Active, targets) && !isolatedTarget {
 		return report, nil
 	}
 	sw, err := buildSwitch(ctx, app, opts, "all", profileName)
@@ -130,6 +140,7 @@ func printBareUseReport(report *bareUseReport) {
 		return
 	}
 	printSwitchReport(&switchReport{
+		DryRun:   report.DryRun,
 		Profile:  report.Profile,
 		BackupID: report.BackupID,
 		Results:  report.Results,

@@ -1,0 +1,78 @@
+name: Measure maintenance
+
+on:
+  push:
+    branches: ['codex/plan-safety-maintenance']
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Formatter first and repeat
+        env:
+          GOCLI_LINT_CACHE_DIR: ${{ runner.temp }}/formatter-measure
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/maintenance-results"
+          go version
+          for run in first repeat; do
+            /usr/bin/time -v bash scripts/check-go-format.sh 2>&1 | \
+              tee "$RUNNER_TEMP/maintenance-results/formatter-$run.log"
+          done
+          du -sk "$GOCLI_LINT_CACHE_DIR"
+      - name: Formatter controls
+        env:
+          GOCLI_LINT_CACHE_DIR: ${{ runner.temp }}/formatter-measure
+        shell: bash
+        run: |
+          set -euo pipefail
+          checker="$GITHUB_WORKSPACE/scripts/check-go-format.sh"
+          fixture=$(mktemp -d "$RUNNER_TEMP/formatter-control.XXXXXXXX")
+          trap 'rm -rf "$fixture"' EXIT
+          export TMPDIR="$fixture"
+          . "$GITHUB_WORKSPACE/scripts/smoke-env.sh"
+          cd "$fixture"
+          printf '%s\n' 'module example.com/formatcontrol' > go.mod
+          printf '%s\n' 'package main' '' 'import "fmt"' '' 'func main() {}' > main.go
+          gofmt -w main.go
+          test -z "$(gofmt -l main.go)"
+          rc=0
+          bash "$checker" > "$RUNNER_TEMP/maintenance-results/import-control.log" 2>&1 || rc=$?
+          test "$rc" -eq 1
+          grep -F 'go import check failed' "$RUNNER_TEMP/maintenance-results/import-control.log"
+          grep -F 'main.go' "$RUNNER_TEMP/maintenance-results/import-control.log"
+          printf '%s\n' 'package main' '' 'func main() {' '' 'println("fixture")' '}' > main.go
+          gofmt -w main.go
+          test -z "$(gofmt -l main.go)"
+          rc=0
+          bash "$checker" > "$RUNNER_TEMP/maintenance-results/format-control.log" 2>&1 || rc=$?
+          test "$rc" -eq 1
+          grep -F 'go format check failed' "$RUNNER_TEMP/maintenance-results/format-control.log"
+          grep -F 'main.go' "$RUNNER_TEMP/maintenance-results/format-control.log"
+          printf '%s\n' 'package main' '' 'func main() {}' > main.go
+          bash "$checker"
+      - name: Docs selftest first and repeat
+        shell: bash
+        env:
+          GOCACHE: ${{ runner.temp }}/docs-selftest-gocache
+          GOMODCACHE: ${{ runner.temp }}/docs-selftest-modcache
+          GOPROXY: off
+        run: |
+          set -euo pipefail
+          mkdir -p "$GOCACHE" "$GOMODCACHE"
+          for run in first repeat; do
+            /usr/bin/time -v bash scripts/check-docs-selftest.sh 2>&1 | \
+              tee "$RUNNER_TEMP/maintenance-results/docs-selftest-$run.log"
+          done
+          du -sk "$GOCACHE" "$GOMODCACHE"

@@ -27,9 +27,9 @@ stage 3 of the docs scan, filed below.
 
 ## Current work order
 
-The proposed [daily-use and recovery plan](plans/daily-use-recovery.md) prioritizes
+The approved [daily-use and recovery plan](plans/daily-use-recovery.md) prioritizes
 initial setup, updates and recovery guidance, together with reproduced profile-edit
-and preservation-list defects. Implementation awaits approval of that plan; the
+and preservation-list defects. Its ledger tracks implementation and release; the
 authentication research lanes below retain their own prerequisites.
 
 The completed [safety and maintenance plan](plans/safety-maintenance.md) retains

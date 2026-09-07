@@ -16,11 +16,11 @@ installer were verified on 2026-09-07 (JST) for v0.19.1 with
 installer both reported `kae v0.19.1`; the installer used verified-asset fixtures
 as described below.
 
-## Proposed next release — kae v0.19.2
+## Next release — kae v0.19.2
 
-The [daily-use and recovery plan](plans/daily-use-recovery.md) proposes profile-edit
+The [daily-use and recovery plan](plans/daily-use-recovery.md) covers profile-edit
 concurrency fixes, metadata-only preservation listing, and initial setup, update
-and recovery guidance. It awaits scope approval. The patch candidate assumes
+and recovery guidance. Implementation and publication are approved. The patch candidate assumes
 existing commands and JSON shapes; a wider interface change requires a new version
 decision. The plan owns acceptance conditions and deferred alternatives.
 

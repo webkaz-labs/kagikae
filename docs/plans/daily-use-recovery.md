@@ -4,7 +4,7 @@
 
 v0.19.2 の候補として、日常利用で不足する説明と、既存 command の信頼性を
 小さな差分で改善する。新しい JSON field・command・認証 policy は追加しない。
-候補の判断と実装はユーザー承認後に開始する。
+3テーマの実装から公開まで承認済み。
 
 この計画の判断入口はこの表とする。ROADMAP には索引だけを置き、別の issue
 階層や新しい glossary/ADR は作らない。候補版に新しい契約が必要になったら、
@@ -14,13 +14,13 @@ v0.19.2 の候補として、日常利用で不足する説明と、既存 comma
 
 | ID | テーマ・状態 | 既存機構と最小差分 | 完了条件・依存 |
 |---|---|---|---|
-| A | README 導線（提案） | README の初回導入、更新、診断、復旧、削除説明を補う。既存の `init`、`add`、`profile set/save`、`doctor`、`backup`、`preservation`、completion、install script を再利用する | README の実行例が fresh state で順序どおり動く説明になり、秘密・identity・絶対パスを公開しない診断手順を示す。B/C と独立して着手可 |
-| B | profile 設定競合（提案・第一優先） | `profile.go:206`/`:285` のキャッシュ済み profile 判定と `app.go:434` の config 編集 seam を、既存 `config.Editor` の lock 内最新再読に合わせる。全 account lifecycle の共通化はしない | stale な `App` を二つ使う interleaving で、新しい mapping/default を消さず、通常更新と no-write refusal、`--force`、`--dry-run` を保つ。B/C は App/config seam が重なるため担当を調整 |
-| C | preservation list の診断可用性（提案） | backend 選択から独立して既存 `preservation.Store.List` を使う。既存の metadata 表示を保ち、restore/rm の順序・契約は変更しない | backend 選択が失敗する環境でも一覧が成功し、payload を読まない。空一覧・不完全 metadata の既存扱いと JSON shape を維持する。B と編集先を調整 |
+| A | README 導線（承認済み） | README の初回導入、更新、診断、復旧、削除説明を補う。既存の `init`、`add`、`profile set/save`、`doctor`、`backup`、`preservation`、completion、install script を再利用する | README の実行例が fresh state で順序どおり動く説明になり、秘密・identity・絶対パスを公開しない診断手順を示す。B/C と独立して着手可 |
+| B | profile 設定競合（承認済み・第一優先） | `profile.go:206`/`:285` のキャッシュ済み profile 判定と `app.go:434` の config 編集 seam を、既存 `config.Editor` の lock 内最新再読に合わせる。全 account lifecycle の共通化はしない | stale な `App` を二つ使う interleaving で、新しい mapping/default を消さず、通常更新と no-write refusal、`--force`、`--dry-run` を保つ。B/C は App/config seam が重なるため担当を調整 |
+| C | preservation list の診断可用性（承認済み） | backend 選択から独立して既存 `preservation.Store.List` を使う。既存の metadata 表示を保ち、restore/rm の順序・契約は変更しない | backend 選択が失敗する環境でも一覧が成功し、payload を読まない。空一覧・不完全 metadata の既存扱いと JSON shape を維持する。B と編集先を調整 |
 
 実装系列は A と B/C の最大二系列とする。A は README のみ、B/C は担当を
 分けるが、同じ `App` seam を触る変更を並行編集しない。第一優先は B、次に A、
-C の順で判断する。C は runtime proof を確認済みだが、実装採用はユーザー承認後に判断する。
+C の順で進める。
 
 ## A: README の利用導線
 
@@ -69,7 +69,7 @@ account lifecycle redesign、別の config writer、広い retry policy は含�
 Linux を模した fixture で確認した結果、configured keychain の選択が不整合でも
 `Store.List` は backend nil のまま metadata を 1 件返せる一方、CLI の list は
 exit `9` になった。この証拠は backend 選択失敗に限り、macOS の locked keychain
-全般を示さない。実装採用はユーザー承認後に行い、現状の JSON shape と
+全般を示さない。現状の JSON shape と
 restore/rm を維持する。
 
 ## 検証とリリース境界

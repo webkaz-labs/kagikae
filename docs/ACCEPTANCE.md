@@ -580,3 +580,9 @@ behavior/vulnerability audit, GoReleaser configuration check and naming agreemen
 passed for this candidate. History pruning, quota, persistence failures and Codex
 store resolution retain their isolated synthetic coverage; no live Codex account
 was available for this run. These results do not establish current token validity.
+
+After publication on 2026-09-07 (JST), `mise run release-verify -- v0.19.0`
+returned `status: success` for the darwin/linux × amd64/arm64 archives,
+checksums and attestations. The macOS arm64 binary and isolated installer both
+reported `kae v0.19.0`. The installer used verified-asset fixtures; this result
+does not exercise its HTTP transport.

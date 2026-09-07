@@ -27,10 +27,10 @@ stage 3 of the docs scan, filed below.
 
 ## Current work order
 
-The approved [multi-theme release plan](plans/reliability-ci-terminology.md)
-coordinates authentication preservation research, CI build admission and
-bound-directory terminology convergence. Its adoption gates govern which
-research findings become implementation; the prerequisites below still apply.
+The completed [multi-theme release plan](plans/reliability-ci-terminology.md)
+retains the original-store preservation policy, CI build decision and
+bound-directory terminology scope. Its implementation does not close the
+authentication research entries below; their prerequisites still apply.
 
 Work these lanes in order. Within a lane, the named entries carry their own prerequisites
 and may still refuse implementation when evidence or a mechanism is missing. Entries not

@@ -1,29 +1,20 @@
 # Release Process
 
-## Current release — kae v0.18.5
+## Current release — kae v0.19.0
 
 The release record is the tag and
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.18.5).
-Read its scope and patch-version rationale with
-`git show v0.18.5:docs/RELEASE.md`. The completed
-[release-verifier lifecycle plan](plans/release-verifier-lifecycle.md) retains
-the process-ownership scope and deferred alternatives;
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.19.0).
+Read its scope and minor-version rationale with
+`git show v0.19.0:docs/RELEASE.md`. The completed
+[multi-theme plan](plans/reliability-ci-terminology.md) retains
+the preservation policy, CI build decision and terminology scope;
 [ACCEPTANCE.md](ACCEPTANCE.md) owns the bounded real-machine measurements.
 
 Published archives, SHA-256 checksums, GitHub provenance attestations and the
-installer were verified on 2026-09-07 (JST) for v0.18.5 with
-`mise run release-verify -- v0.18.5`. The macOS arm64 archive and isolated
-installer both reported `kae v0.18.5`; the installer used verified-asset fixtures
+installer were verified on 2026-09-07 (JST) for v0.19.0 with
+`mise run release-verify -- v0.19.0`. The macOS arm64 archive and isolated
+installer both reported `kae v0.19.0`; the installer used verified-asset fixtures
 as described below.
-
-## Next release — kae v0.19.0
-
-The approved [multi-theme plan](plans/reliability-ci-terminology.md) combines
-CI build, bound-directory terminology convergence and credential preservation.
-Preservation adds original-store recovery, a configurable logical payload budget
-and latest-three history with explicit record deletion. This is a minor release
-because it adds commands and configuration. Authentication acceptance must be
-rerun for the affected behavior before publication.
 
 ## Release procedure
 

@@ -646,8 +646,8 @@ func (app *App) loadPlansWithSnapshots(ctx context.Context, targets []runTarget)
 		}
 		if !found {
 			return nil, errf(constants.ExitNotFound,
-				"account %s/%s is not captured yet (run: kae add --no-login %s %s)",
-				tgt.Tool, tgt.Account, tgt.Tool, tgt.Account)
+				"account %s/%s is not captured yet; %s",
+				tgt.Tool, tgt.Account, verifiedCaptureRemedy(tgt.Tool, tgt.Account))
 		}
 		plan.Meta = acc
 		plans = append(plans, plan)
@@ -685,9 +685,8 @@ func checkPayloadShape(tool, accountName, artName, storedKind, destKind string) 
 	}
 	return errf(constants.ExitUnsafeRefused,
 		"account %s/%s captured %s as %q but this environment resolves it as %q, "+
-			"and the two payload shapes are not interchangeable; recapture with "+
-			"`kae add --no-login %s %s` under the current driver",
-		tool, accountName, artName, storedKind, destKind, tool, accountName)
+			"and the two payload shapes are not interchangeable; under the current driver, %s",
+		tool, accountName, artName, storedKind, destKind, verifiedCaptureRemedy(tool, accountName))
 }
 
 // snapshotValues resolves every stored payload and raises every snapshot-level
@@ -701,8 +700,8 @@ func snapshotValues(ctx context.Context, be secret.Backend, plan toolPlan) ([]ar
 		metaArt, ok := plan.Meta.Artifacts[sp.Name]
 		if !ok && !sp.IdentityOnly {
 			return nil, errf(constants.ExitUnsafeRefused,
-				"snapshot %s/%s lacks artifact %s; re-run kae add --no-login %s %s",
-				plan.Tool, plan.Account, sp.Name, plan.Tool, plan.Account)
+				"snapshot %s/%s lacks artifact %s; %s",
+				plan.Tool, plan.Account, sp.Name, verifiedCaptureRemedy(plan.Tool, plan.Account))
 		}
 		// An identity-only artifact missing from an older snapshot applies as absent:
 		// metaArt is the zero value, so Present=false removes it live (claude's
@@ -725,8 +724,8 @@ func snapshotValues(ctx context.Context, be secret.Backend, plan toolPlan) ([]ar
 		}
 		value, err := storedValue(ctx, be, metaArt.SecretRef, metaArt.Present, sp.IdentityOnly, func() error {
 			return errf(constants.ExitUnsafeRefused,
-				"snapshot payload %s is missing; re-run kae add --no-login %s %s",
-				metaArt.SecretRef, plan.Tool, plan.Account)
+				"snapshot payload %s is missing; %s",
+				metaArt.SecretRef, verifiedCaptureRemedy(plan.Tool, plan.Account))
 		})
 		if err != nil {
 			return nil, err

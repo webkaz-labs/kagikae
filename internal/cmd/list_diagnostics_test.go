@@ -214,3 +214,70 @@ func TestBackupDiagnosticDoesNotChangeRollbackSelection(t *testing.T) {
 		t.Fatal("rollback changed live store")
 	}
 }
+
+func TestDiagnosticListRecoveryGuidance(t *testing.T) {
+	for _, kind := range []string{"backup", "preservation"} {
+		for _, problem := range []struct{ code, advice string }{
+			{constants.ListIssueEnumeration, "resolved state directory"},
+			{constants.ListIssueRead, "parent-directory permissions"},
+			{constants.ListIssueInvalid, "docs/DATA-MODEL.md"},
+			{constants.ListIssueEntry, "without following symlinks"},
+		} {
+			t.Run(kind+"/"+problem.code, func(t *testing.T) {
+				app := testApp(t, nil)
+				app.Config.Security.SecretBackend = "unavailable"
+				dir := app.Paths.BackupsDir()
+				if kind == "preservation" {
+					dir = app.Paths.PreservationsDir()
+				}
+				path := filepath.Join(dir, mainToken+".json")
+				switch problem.code {
+				case constants.ListIssueEnumeration:
+					writeFile(t, dir, mainToken)
+				case constants.ListIssueRead:
+					writeFile(t, path, mainToken)
+					if err := os.Chmod(path, 0); err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+					if _, err := os.ReadFile(path); err == nil {
+						t.Skip("OS permits reading mode-000 file")
+					}
+				case constants.ListIssueInvalid:
+					writeFile(t, path, mainToken)
+				case constants.ListIssueEntry:
+					writeFile(t, path, mainToken)
+					if err := os.Symlink(path, filepath.Join(dir, "link.json")); err != nil {
+						t.Fatal(err)
+					}
+				}
+				for _, format := range []string{formatText, formatJSON} {
+					code, out, diagnostic := captureBoth(t, func() int {
+						opts := commonOpts{Format: format}
+						if kind == "backup" {
+							return runBackupList(context.Background(), app, opts)
+						}
+						return runPreservation(context.Background(), app, opts, "list", "")
+					})
+					mustExit(t, constants.ExitError, code, out)
+					if strings.Contains(out+diagnostic, mainToken) {
+						t.Fatal("secret-bearing entry leaked")
+					}
+					if format == formatText {
+						if !strings.Contains(diagnostic, problem.advice) || strings.Contains(out, problem.advice) {
+							t.Fatalf("guidance delivery: %q %q", out, diagnostic)
+						}
+					} else {
+						var report map[string]json.RawMessage
+						if err := json.Unmarshal([]byte(out), &report); err != nil {
+							t.Fatal(err)
+						}
+						if len(report) != 5 || diagnostic != "" || !strings.Contains(out, problem.code) {
+							t.Fatalf("JSON contract changed: %s %s", out, diagnostic)
+						}
+					}
+				}
+			})
+		}
+	}
+}

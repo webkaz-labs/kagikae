@@ -518,8 +518,8 @@ func (app *App) secretMissingChecks(ctx context.Context, be secret.Backend, tool
 				Status: constants.StatusWarn,
 				Message: fmt.Sprintf(
 					"snapshot %q declares a stored %s payload the secret backend does not have, so applying "+
-						"it cannot restore that artifact; re-capture with: kae add --no-login %s %s",
-					acc.Name, name, acc.Tool, acc.Name,
+						"it cannot restore that artifact; %s",
+					acc.Name, name, verifiedCaptureRemedy(acc.Tool, acc.Name),
 				),
 			})
 		}

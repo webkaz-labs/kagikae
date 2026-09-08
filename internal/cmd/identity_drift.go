@@ -59,8 +59,8 @@ func (app *App) identityRecordChecks(ctx context.Context, be secret.Backend, too
 			}
 			checks = append(checks, adapter.Check{
 				Tool: acc.Tool, Code: constants.CheckIdentityRecordInvalid, Status: constants.StatusWarn,
-				Message: fmt.Sprintf("%s/%s: recorded identity is not an account record; kae cannot use it to attribute credentials; after verifying the tool's account, record it with `kae add --no-login %s %s`",
-					acc.Tool, acc.Name, acc.Tool, acc.Name),
+				Message: fmt.Sprintf("%s/%s: recorded identity is not an account record; kae cannot use it to attribute credentials; %s",
+					acc.Tool, acc.Name, verifiedCaptureRemedy(acc.Tool, acc.Name)),
 			})
 			break // one finding per account, even with several identity artifacts
 		}
@@ -246,19 +246,10 @@ func identityComparable(stored, live []byte) bool {
 	return storedIsRecord && liveIsRecord
 }
 
-// identityUntrackedMessage frames an account whose snapshot has no identity yet:
-// captured before kae switched identities. Deliberately not a warning — the
-// display still ends up right, because a switch clears the stale cache and the
-// tool refetches it. What is missing is only kae's copy, which matters when the
-// tool cannot refetch (offline) and for the moment right after a switch. Recording
-// it is a one-time step per account, so this states it once and moves on.
+// identityUntrackedMessage asks the user to verify the live account before
+// filling a snapshot's missing identity; a missing cache does not establish it.
 func identityUntrackedMessage(tool, accountName, artifactName string) string {
-	return fmt.Sprintf(
-		"account %s: no %s identity recorded yet (captured before kae switched it); %s refetches it on "+
-			"its next start, so the account still shows correctly — to record it here, start %s once, "+
-			"then: kae add --no-login %s %s",
-		accountName, artifactName, tool, tool, tool, accountName,
-	)
+	return fmt.Sprintf("account %s: no %s identity recorded yet; start %s only after verifying its account and global store, then %s", accountName, artifactName, tool, verifiedCaptureRemedy(tool, accountName))
 }
 
 // identityDriftMessage frames a live identity artifact that no longer matches the

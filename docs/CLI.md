@@ -371,6 +371,38 @@ blank until re-captured (`kae add --no-login <tool> <name>` while logged into
 that account backfills it). `kae ls` / `kae accounts` / `kae status` show it (an
 `Identity` column; an additive `identity` field in `--json`).
 
+## Recovery guidance
+
+Choose the destination before changing authentication. Check `kae status` in the
+intended directory and `kae ls --pins` for bindings. A snapshot name is not proof
+that the current live login belongs to it. If the account or store is uncertain,
+verify both in the tool and its environment before login or capture.
+
+| Situation | Next step |
+|---|---|
+| Global snapshot stale or expiring | Confirm the account and intended global store outside a bound directory, stop other sessions using its credential, then use `kae add --restore <tool> <account>`. Select that account in the official login flow; kae captures it and restores the previous live state. |
+| Snapshot, payload or recorded identity missing/invalid | Verify that the live tool is logged into the intended account in the global store before `kae add --no-login <tool> <account>`. Capture records that login; it does not renew expired authentication. If logged out, first take the login path above. |
+| Bound-directory credential needs login | Check the bound account with `kae status` there, stop other sessions using its credential, then run `kae relogin <tool>` in that directory and select the bound account. It selects the bound store itself and retains its attribution/refusal checks. |
+| Tool has no kae-driven login | For global recovery, log into that account through the tool first, then verify the global store and capture with `--no-login`. Before manual bound-directory login, verify mise activation, trust and the effective tool environment select the bound store; changing directory alone is insufficient. See § kae add Semantics and § kae relogin Semantics for supported flows. |
+
+`kae backup list` supports choosing an explicit global rollback target;
+`kae preservation list` supports choosing an explicit original-store restore.
+Neither list establishes credential ownership, payload availability or successful
+restoration, and neither restoration path renews an expired login. Read
+§ `kae rollback --json` and § kae preservation Semantics before restoring.
+
+For list diagnostics, use the HOME/XDG locations in
+[DATA-MODEL.md](DATA-MODEL.md) § Directory Layout (XDG), preserving the environment
+used for the failed command. `config_invalid` calls for checking the selected
+config and permissions with `kae doctor`; `enumeration_failed` calls for checking
+that the resolved state directory is a directory and accessible.
+`metadata_unreadable` calls for checking file and parent-directory permissions;
+`metadata_invalid` calls for comparing metadata format with the data model;
+`unexpected_entry` calls for inspecting the entry type without following symlinks.
+Keep damaged or unexpected entries while investigating, rather than deleting them
+to clear a warning. An entry digest is an anonymous filename reference, not an
+account or a restore ID. Human list guidance remains on stderr; JSON retains the diagnostic codes without adding action fields.
+
 ## kae ls Semantics
 
 `kae ls` lists every captured account (with its detected `identity`, blank when
@@ -1423,9 +1455,8 @@ Credential-health checks (warn-level):
 - `credential_stale`: a captured snapshot cannot open a session again without an
   interactive re-login — its access token expired and no **usable** refresh token
   is left (absent, or itself past `refreshTokenExpiresAt`), or the tool emptied
-  the credential itself after a failed refresh. Names the tool's own login
-  command *and* `kae add --no-login`, in that order: re-capturing first would only
-  freeze the dead credential back into the snapshot. Uses the same freshness
+  the credential itself after a failed refresh. Names the global login path and
+  its verification prerequisites in § Recovery guidance. Uses the same freshness
   predicate as the switch-time warning. An expired snapshot whose refresh token
   is still usable is not flagged (the tool refreshes it).
 
@@ -1565,7 +1596,7 @@ Credential-health checks (warn-level):
 - `secret_missing`: the mirror of `secret_orphan` — a snapshot declares a stored
   payload (an artifact recorded `present`) that the secret backend does not have,
   so applying that account cannot restore the artifact. Names the snapshot, the
-  artifact, and `kae add --no-login` to re-capture. Unlike `secret_orphan` it
+  artifact, and the verified-capture prerequisites in § Recovery guidance. Unlike `secret_orphan` it
   needs no enumeration — it looks up the refs the snapshots themselves name — so
   it works on the darwin keychain, where it is the only one of the two that
   reports anything. An artifact captured as **absent** is never reported: there is

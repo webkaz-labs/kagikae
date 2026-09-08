@@ -119,7 +119,7 @@ func TestDoctorIdentityDriftReportsUntrackedSnapshot(t *testing.T) {
 			t.Fatalf("an untracked identity must be status ok, got %q", c.Status)
 		}
 	}
-	for _, want := range []string{"no oauth_account identity recorded yet", "refetches it", "kae add --no-login claude main"} {
+	for _, want := range []string{"no oauth_account identity recorded yet", "verify the live claude login belongs to account main", "kae add --no-login claude main"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("message missing %q: %s", want, msg)
 		}

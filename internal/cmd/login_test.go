@@ -106,3 +106,26 @@ func TestLoginRestorePutsPreviousLoginBack(t *testing.T) {
 		t.Fatalf("account must be captured (found=%v err=%v)", found, err)
 	}
 }
+
+func TestRecoveryWithoutLoginSupport(t *testing.T) {
+	app := testApp(t, nil)
+	code, out := captureStdout(t, func() int {
+		return runLogin(context.Background(), app, commonOpts{Format: formatJSON}, constants.ToolAgy, "main", true)
+	})
+	mustExit(t, constants.ExitUnsupported, code, out)
+	global := globalLoginRemedy(constants.ToolAgy, "main")
+	bound := pinLoginRemedy(constants.ToolAgy, "~/code/side-project")
+	for _, want := range []string{"kae cannot launch a login", "verify the live agy login belongs to account main", "kae add --no-login agy main"} {
+		if !strings.Contains(global, want) {
+			t.Fatalf("missing %q: %s", want, global)
+		}
+	}
+	for _, want := range []string{"kae cannot launch a login", "mise activation, trust", "bound store"} {
+		if !strings.Contains(bound, want) {
+			t.Fatalf("missing %q: %s", want, bound)
+		}
+	}
+	if strings.Contains(global+bound, "kae add --restore") || strings.Contains(bound, "kae relogin") {
+		t.Fatal("recommended unsupported login")
+	}
+}

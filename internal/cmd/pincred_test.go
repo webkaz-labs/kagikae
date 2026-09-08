@@ -141,7 +141,7 @@ func TestDoctorReportsStaleBoundDirectoryCredential(t *testing.T) {
 	// The remedy is `kae relogin` and not the tool's own login command: that one is
 	// right only in a shell where the pin is active, and in any other it refreshes
 	// the real home instead (pinLoginRemedy).
-	for _, want := range []string{"bound to " + dir, "refresh token expired", "cd " + dir, "kae relogin claude"} {
+	for _, want := range []string{"bound to " + dir, "refresh token expired", "cd " + dir, "kae relogin claude", "verify the bound account with kae status", "stop other sessions"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message missing %q: %q", want, msg)
 		}

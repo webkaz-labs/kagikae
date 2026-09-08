@@ -52,8 +52,8 @@ func warnUnisolatableCredential(err error, tool, account string) bool {
 	case exitOf(err) == constants.ExitNotFound || exitOf(err) == constants.ExitAuthMissing:
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: %s/%s has no captured credential, so this directory binds %s without one; "+
-				"capture it with `kae add --no-login %s %s` and re-run\n",
-			tool, account, tool, tool, account)
+				"%s; then re-run the binding command\n",
+			tool, account, tool, verifiedCaptureRemedy(tool, account))
 		return true
 	}
 	return false
@@ -1183,14 +1183,14 @@ func (app *App) snapshotCredential(ctx context.Context, be secret.Backend, tool,
 	}
 	if !found {
 		return account.Account{}, nil, "", errf(constants.ExitNotFound,
-			"account %s/%s is not captured yet (run: kae add --no-login %s %s)",
-			tool, accountName, tool, accountName)
+			"account %s/%s is not captured yet; %s",
+			tool, accountName, verifiedCaptureRemedy(tool, accountName))
 	}
 	metaArt, ok := acc.Artifacts[artName]
 	if !ok || !metaArt.Present {
 		return account.Account{}, nil, "", errf(constants.ExitAuthMissing,
-			"account %s/%s has no credential snapshot; re-run kae add --no-login %s %s",
-			tool, accountName, tool, accountName)
+			"account %s/%s has no credential snapshot; %s",
+			tool, accountName, verifiedCaptureRemedy(tool, accountName))
 	}
 	data, found, err := be.Get(ctx, metaArt.SecretRef)
 	if err != nil {
@@ -1198,7 +1198,7 @@ func (app *App) snapshotCredential(ctx context.Context, be secret.Backend, tool,
 	}
 	if !found {
 		return account.Account{}, nil, "", errf(constants.ExitError,
-			"snapshot payload missing; re-run kae add --no-login %s %s", tool, accountName)
+			"snapshot payload missing; %s", verifiedCaptureRemedy(tool, accountName))
 	}
 	return acc, data, metaArt.Kind, nil
 }
@@ -3100,9 +3100,9 @@ func (app *App) boundStoreDir(pinID, tool string, fragment fragmentInfo) (dir st
 // that would refuse.
 func pinLoginRemedy(tool, dir string) string {
 	if loginCommand(tool) != nil {
-		return fmt.Sprintf("log in inside that directory: cd %s && %s relogin %s", dir, toolName, tool)
+		return fmt.Sprintf("verify the bound account with kae status in that directory and stop other sessions using its credential; log in inside that directory as the bound account: cd %s && %s relogin %s", dir, toolName, tool)
 	}
-	return fmt.Sprintf("log in again in %s from inside that directory (cd %s)", tool, dir)
+	return fmt.Sprintf("kae cannot launch a login for %s; before manual login in %s, verify the bound account and that mise activation, trust and the tool environment select its bound store; see docs/CLI.md Recovery guidance", tool, dir)
 }
 
 // dirCredentialFreshness reads one per-directory store's credential and parses it,

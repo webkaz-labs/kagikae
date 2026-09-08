@@ -182,7 +182,7 @@ func TestSwitchToExpiredRefreshTokenWarns(t *testing.T) {
 		t.Fatalf("switch to stale must proceed, got error: %v", err)
 	}
 	warnings := strings.Join(report.Results[0].Warnings, " | ")
-	for _, want := range []string{"refresh token expired", "claude /login", "kae add --no-login claude stale"} {
+	for _, want := range []string{"refresh token expired", "kae add --restore claude", "kae add --restore claude stale"} {
 		if !strings.Contains(warnings, want) {
 			t.Errorf("stale warning should contain %q, got: %q", want, warnings)
 		}
@@ -208,7 +208,7 @@ func TestSwitchToTombstonedSnapshotWarns(t *testing.T) {
 		t.Fatal(err)
 	}
 	warnings := strings.Join(report.Results[0].Warnings, " | ")
-	if !strings.Contains(warnings, "failed token refresh") || !strings.Contains(warnings, "claude /login") {
+	if !strings.Contains(warnings, "failed token refresh") || !strings.Contains(warnings, "kae add --restore claude") {
 		t.Fatalf("expected a tombstone warning naming the login flow, got: %q", warnings)
 	}
 	if strings.Contains(warnings, "0001-01-01") {
@@ -746,5 +746,25 @@ func TestSwitchAwayNamesABackupForACopyItCannotOrder(t *testing.T) {
 	be := testBackend(t, app)
 	if got := snapshotPayload(t, app, be, "claude", "main"); !strings.Contains(got, "MAIN-T0") {
 		t.Errorf("the snapshot's dated copy must survive: %s", got)
+	}
+}
+
+func TestMissingSnapshotRecoveryVerifiesBeforeCapture(t *testing.T) {
+	app := testApp(t, nil)
+	seedClaude(t, app, sideToken, "side-uuid")
+	before := claudeCreds(t, app)
+	for _, format := range []string{formatText, formatJSON} {
+		code, out, diagnostic := captureBoth(t, func() int {
+			return runSwitch(context.Background(), app, commonOpts{Format: format}, "claude", "main")
+		})
+		mustExit(t, constants.ExitNotFound, code, out+diagnostic)
+		for _, want := range []string{"verify the live claude login belongs to account main", "only then re-capture", "if logged out or uncertain"} {
+			if !strings.Contains(out+diagnostic, want) {
+				t.Fatalf("missing %q: %s %s", want, out, diagnostic)
+			}
+		}
+		if strings.Contains(out+diagnostic, sideToken) || claudeCreds(t, app) != before {
+			t.Fatal("refusal leaked or changed live credential")
+		}
 	}
 }

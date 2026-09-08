@@ -319,19 +319,10 @@ func needsRelogin(info freshness.Info, now time.Time) bool {
 	return ok && !deadline.After(now)
 }
 
-// staleCredentialDetail explains why a credential needs a re-login and how to
-// recover. Callers only reach it for a needsRelogin credential, so the dated
-// branches always have the timestamp they print. The recovery is two steps: the
-// tool's own login flow, *then* a re-capture — naming only `kae add --no-login`
-// (as both messages used to) sends the user to freeze the same dead credential
-// back into the snapshot.
+// staleCredentialDetail combines the observed deadline with global login guidance.
 func staleCredentialDetail(info freshness.Info, tool, accountName string) string {
 	reason := staleCredentialReason(info, tool)
-	capture := fmt.Sprintf("re-capture with: kae add --no-login %s %s", tool, accountName)
-	if login := loginCommand(tool); login != nil {
-		return fmt.Sprintf("%s; log in again with: %s, then %s", reason, strings.Join(login, " "), capture)
-	}
-	return fmt.Sprintf("%s; log in again in %s, then %s", reason, tool, capture)
+	return fmt.Sprintf("%s; %s", reason, globalLoginRemedy(tool, accountName))
 }
 
 // staleCredentialReason states why a credential can no longer open a session,
@@ -355,26 +346,11 @@ func staleCredentialReason(info freshness.Info, tool string) string {
 	}
 }
 
-// expiringCredentialDetail explains that a credential is still good but will need
-// an interactive re-login soon, and names the one command that refreshes it.
-//
-// `kae add --restore` rather than the two steps the stale message names, because
-// this credential still works and that is what makes the difference: --restore
-// backs up the login that is live right now, runs the tool's own login flow for
-// this account, captures it, and puts the previous login back — so the account
-// that needs attention is refreshed without disturbing whichever one you are
-// currently using. That is the whole point of warning ahead of the deadline
-// instead of after it. A tool kae cannot drive a login for (agy) falls back to
-// naming the manual pair.
+// expiringCredentialDetail uses the same target and login prerequisites as a stale snapshot.
 func expiringCredentialDetail(deadline, now time.Time, tool, accountName string) string {
 	when := fmt.Sprintf("needs an interactive re-login in %s (%s)",
 		roundDays(deadline.Sub(now)), utcStamp(deadline))
-	if loginCommand(tool) != nil {
-		return fmt.Sprintf("%s; refresh it now without disturbing the active login: kae add --restore %s %s",
-			when, tool, accountName)
-	}
-	return fmt.Sprintf("%s; log in again in %s, then re-capture with: kae add --no-login %s %s",
-		when, tool, tool, accountName)
+	return fmt.Sprintf("%s; %s", when, globalLoginRemedy(tool, accountName))
 }
 
 // roundDays renders a lead time the way a human reads a deadline. Under a day it
@@ -824,4 +800,17 @@ func valuesDiverge(ctx context.Context, be secret.Backend, specs []artifact.Spec
 		}
 	}
 	return false
+}
+
+// verifiedCaptureRemedy qualifies capture when the live account needs verification.
+// A snapshot name alone does not establish which account the live store contains.
+func verifiedCaptureRemedy(tool, accountName string) string {
+	return fmt.Sprintf("first verify the live %s login belongs to account %s and uses the intended global store; only then re-capture with: kae add --no-login %s %s; if logged out or uncertain, see docs/CLI.md Recovery guidance before capture", tool, accountName, tool, accountName)
+}
+
+func globalLoginRemedy(tool, accountName string) string {
+	if loginCommand(tool) != nil {
+		return fmt.Sprintf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then log in as that account with: kae add --restore %s %s (captures the new login and restores the previous live state)", accountName, tool, accountName)
+	}
+	return fmt.Sprintf("kae cannot launch a login for %s; log in again in %s as account %s using the intended global store outside a bound directory; %s", tool, tool, accountName, verifiedCaptureRemedy(tool, accountName))
 }

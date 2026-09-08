@@ -45,12 +45,27 @@ func (d listDiagnostics) exitCode() int {
 
 func (d listDiagnostics) print() {
 	for range d.Warnings {
-		fmt.Fprintln(os.Stderr, "kae: warning: config is invalid or unreadable; listing metadata from the resolved state directory")
+		fmt.Fprintln(os.Stderr, "kae: warning: config is invalid or unreadable; listing metadata from the resolved state directory; check the selected config file and its permissions with kae doctor before recovery")
 	}
 	if !d.Complete {
 		fmt.Fprintln(os.Stderr, "kae: metadata listing is incomplete; readable records are shown")
 	}
 	for _, issue := range d.Issues {
-		fmt.Fprintf(os.Stderr, "kae: %s %s\n", issue.Code, issue.Entry)
+		fmt.Fprintf(os.Stderr, "kae: %s %s; %s\n", issue.Code, issue.Entry, listIssueGuidance(issue.Code))
+	}
+}
+
+func listIssueGuidance(code string) string {
+	switch code {
+	case constants.ListIssueEnumeration:
+		return "check the resolved state directory exists as a directory and is accessible; see docs/CLI.md Recovery guidance"
+	case constants.ListIssueRead:
+		return "check metadata file and parent-directory permissions; keep the entry while investigating"
+	case constants.ListIssueInvalid:
+		return "check metadata format against docs/DATA-MODEL.md; do not infer an account or delete the entry to clear this warning"
+	case constants.ListIssueEntry:
+		return "inspect the entry type without following symlinks; keep unexpected entries until their purpose is verified"
+	default:
+		return "see docs/CLI.md Recovery guidance before recovery"
 	}
 }

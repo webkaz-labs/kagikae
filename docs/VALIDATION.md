@@ -328,6 +328,18 @@ Run through `bash scripts/smoke-run.sh '## Automatic selection and diagnostic li
 This exercises the built parser, retained selection, explicit teardown and mixed
 metadata/config diagnostics with file-backed synthetic credentials.
 
+Command-handler acceptance controls: `TestDiagnosticListRecoveryGuidance` checks
+problem-specific stderr advice, JSON shape and secret-bearing entries for both
+lists; `TestDiagnosticListsSeparateConfigFromCompleteness` retains readable rows
+with an unavailable backend. `TestDoctorRecoveryGuidanceDelivery` checks global
+stale/expiring advice in text and JSON; `TestDoctorReportsStaleBoundDirectoryCredential`
+checks the bound target. `TestRecoveryWithoutLoginSupport` retains the unsupported
+login refusal and checks manual-login prerequisites. The wrong/unknown-account
+controls remain `TestReloginDoesNotFileAnotherAccountsLoginUnderThisAccount` and
+`TestReloginDoesNotClaimAnAccountItNeverAttributed`; `TestQuietBareUseStillWarns`
+checks warning delivery under quiet mode. These use temporary HOME/XDG fixtures
+and the guarded subprocess seams described in § Standard Suite.
+
 ```bash
 go build -o /tmp/kae .
 . scripts/smoke-env.sh
@@ -361,6 +373,17 @@ rc=0; /tmp/kae backup list --json > "$HOME/incomplete.json" || rc=$?; test "$rc"
 python3 -c 'import json,sys; text=open(sys.argv[1]).read(); r=json.loads(text); assert not r["complete"] and r["backups"] and r["issues"][0]["code"]=="metadata_invalid" and "secret-sentinel" not in text' "$HOME/incomplete.json"
 /tmp/kae preservation list --json > "$HOME/preservations.json"
 python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["complete"] and r["preservations"]==[] and r["warnings"]==["config_invalid"]' "$HOME/preservations.json"
+rc=0; /tmp/kae backup list > "$HOME/list.txt" 2> "$HOME/list.err" || rc=$?; test "$rc" -eq 1
+test -s "$HOME/list.txt"
+grep -q 'check the selected config file' "$HOME/list.err"
+grep -q 'docs/DATA-MODEL.md' "$HOME/list.err"
+! grep -q 'secret-sentinel' "$HOME/list.txt" "$HOME/list.err"
+mkdir -p "$XDG_STATE_HOME/kagikae/preservations"
+printf 'invalid secret-sentinel' > "$XDG_STATE_HOME/kagikae/preservations/secret-sentinel.json"
+rc=0; /tmp/kae preservation list > "$HOME/preservation.txt" 2> "$HOME/preservation.err" || rc=$?; test "$rc" -eq 1
+grep -q 'docs/DATA-MODEL.md' "$HOME/preservation.err"
+! grep -q 'secret-sentinel' "$HOME/preservation.txt" "$HOME/preservation.err"
+
 ```
 
 ## Lead time, inventory freshness and bound directories

@@ -70,7 +70,7 @@ func TestDoctorReportsTombstonedSnapshot(t *testing.T) {
 	if !ok {
 		t.Fatal("a tombstoned snapshot must be reported stale")
 	}
-	if !strings.Contains(msg, "failed token refresh") || !strings.Contains(msg, "claude /login") {
+	if !strings.Contains(msg, "failed token refresh") || !strings.Contains(msg, "kae add --restore claude") {
 		t.Fatalf("stale message should explain the tombstone and name the login flow: %q", msg)
 	}
 }
@@ -433,4 +433,32 @@ func TestActiveOrphanReportsUnreadableStateAndSnapshot(t *testing.T) {
 			t.Fatalf("message should name the account and the failure: %q", msg)
 		}
 	})
+}
+
+func TestDoctorRecoveryGuidanceDelivery(t *testing.T) {
+	for _, expiring := range []bool{false, true} {
+		t.Run(fmt.Sprint(expiring), func(t *testing.T) {
+			app := testApp(t, nil)
+			lifetime := -time.Hour
+			if expiring {
+				lifetime = 24 * time.Hour
+			}
+			seedClaudeOAuth(t, app, endOfLifeClaudeCred(app.Now(), lifetime, mainToken))
+			code, out := captureStdout(t, func() int {
+				return runCapture(context.Background(), app, commonOpts{Format: formatJSON}, "claude", "main")
+			})
+			mustExit(t, constants.ExitOK, code, out)
+			for _, format := range []string{formatText, formatJSON} {
+				_, out, diagnostic := captureBoth(t, func() int { return runDoctor(context.Background(), app, commonOpts{Format: format}, "claude") })
+				for _, want := range []string{"confirm account main", "intended global store", "kae add --restore claude main"} {
+					if !strings.Contains(out, want) {
+						t.Fatalf("missing %q in %s", want, out)
+					}
+				}
+				if strings.Contains(out+diagnostic, mainToken) {
+					t.Fatal("credential leaked")
+				}
+			}
+		})
+	}
 }

@@ -206,6 +206,15 @@ record is a separate original-store recovery path: use `kae preservation list`
 then `kae preservation restore <id>`; it never redirects to the global home
 ([docs/CLI.md](docs/CLI.md) § kae preservation Semantics).
 
+For expired authentication, first confirm which account and store need attention.
+Use `kae add --restore <tool> <account>` for a fresh global login with a supported
+tool, or `kae relogin <tool>` inside a bound directory for its bound account.
+Use `kae add --no-login` only after verifying the existing live login belongs to
+the account being captured. Stop other sessions using the credential before login.
+Rollback and preservation restore recover saved bytes; they do not renew a login.
+For incomplete lists, unavailable login flows and uncertain destinations, follow
+[Recovery guidance](docs/CLI.md#recovery-guidance).
+
 ## Pin a Directory
 
 ```bash

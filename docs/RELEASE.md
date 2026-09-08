@@ -147,6 +147,20 @@ locking and recovery separately in shell. Keep checksum verification before that
 invocation, and preserve release verification's isolated transport. Do not add an
 installer downloader, privilege elevation or package-manager invocation to uninstall.
 
+Preserve `install.sh --version` for releases predating the receipt operation.
+Define the first receipt-capable release explicitly and select compatibility by
+validated release version before invocation, never by falling back after an
+arbitrary failure of the new operation. For known legacy releases, retain the
+verified regular-file copy path and report that the result has no supported
+automatic removal. Do not fabricate a receipt on behalf of a legacy binary.
+The compatibility writer must participate in the same installation lock protocol;
+settle and test how shell and Go acquire it before implementing either writer.
+For a destination with a receipt or pending installation recovery, refuse the
+legacy replacement before writing and give an explicit removal/reinstall procedure.
+This bounded downgrade restriction avoids leaving a prior receipt claiming the
+replacement. Unknown version formats and unsupported receipt schemas must refuse,
+not guess which compatibility path to use.
+
 The receipt is local bookkeeping, not an authenticated provenance statement or a
 permission grant for arbitrary deletion. Validate its schema, filename/path binding,
 source, ownership and permissions; check the executable's module identity, digest,
@@ -162,7 +176,7 @@ malicious process with the same user's write access merely from a receipt hash.
 Both supported installers and uninstall must use the same installation lock. Hold
 it across binary/receipt transitions, and revalidate before the final unlink.
 External installers do not honor that lock: a stale or changed receipt must refuse
-automatic removal. Installation succeeds only with a matching receipt; if a receipt
+automatic removal. A receipt-capable installation succeeds only with a matching receipt; if a receipt
 write fails after replacement, report partial installation and leave automatic
 removal disabled until an explicit supported reinstall repairs it. Never delete a
 newly replaced binary as an unconditional rollback of a failed receipt write.
@@ -199,6 +213,9 @@ listed explicitly and remain outside credential purge.
    self replacement, symlinks/hard links, paths with spaces, changed XDG roots, multiple
    installations and package-manager-owned paths. Stub package managers; never remove
    the operator's binary. Cover macOS/Linux file semantics through the supported gates.
+   Include legacy-version first install and downgrade without a receipt, refusal
+   before replacement when a receipt or recovery record exists, and failure of a
+   receipt-capable operation without compatibility fallback.
 6. Verify that retained credential payloads and stores remain byte-identical, no
    unrelated file changes, and nothing reports whole removal when work remains.
    Run the full gate and an isolated uninstall smoke, update English/Japanese user
@@ -231,7 +248,7 @@ floating `@v1` example without resolving its commit.
 | Area | Implementation and acceptance |
 |---|---|
 | Manifest | Describe the existing GoReleaser archives, project `github.com/webkaz-labs/kagikae`, normalized release version, exact source commit, supported OS/architecture and executable `kae`. Validate architecture normalization from Go names and the actual archive layout; do not infer the mapping only from a filename. |
-| Publication | Add a full-commit-pinned Packslip Action after the final archives and GitHub release exist in `.github/workflows/release.yml`. Select only installable archives from `dist`, preserve the existing checksums/provenance verification, and publish the signed bundle. Keep the signing workflow identity stable. Review the Action's CLI download verification and minimal permissions before adoption. |
+| Publication | Add a full-commit-pinned Packslip Action in a separate job after the final archives, GitHub release and provenance exist in `.github/workflows/release.yml`. Select only verified installable published archives and publish the signed bundle. Keep the signing workflow identity stable. Review the Action's CLI download verification and minimal permissions before adoption. |
 | Verification | Extend `scripts/releaseverify` to require the new bundle for releases that advertise Packslip, while retaining verification of older releases. Verify signature/repository/workflow identity, project/version/source, subject digests, archive selection and executable path. Keep provenance verification separate where required. Never treat manifest inspection as signature verification. |
 | Consumer test | Add an isolated mise Packslip install/version/removal smoke for the published tag, with empty owned HOME/XDG/mise roots. Check tampered manifest/archive, wrong signer/project, unsupported platform and missing asset failures through fixtures. Pin the tested mise version and document its minimum supported version; keep the user's release-age and trust policies intact. Signed publication and real backend consumption are release-time checks, not additional live authentication tests. |
 | Documentation | Update README in both languages and GUIDE.ja.md with the tested pinned installation command, backend prerequisites, update/removal steps and the first supporting release. Do not present the command as available before its signed asset is published. |
@@ -253,7 +270,7 @@ to the pinned-consumer verification above.
 | Stage | Selected scope and acceptance |
 |---|---|
 | Completion | Generate static bash, zsh and fish resources using the release build's existing completion generator, publish them with verified digests, and declare them in the manifest. Test command and dynamic account completion against the active binary, including a project/version switch. Prefer static resources over install-time execution or a second CLI specification. |
-| Initial setup | Provide an opt-in tool-level mise `postinstall` recipe calling the newly installed executable's `init` by its installation path, not an older executable found through PATH. Keep it in the user's selected `conf.d/kagikae.toml` configuration where supported. Verify quoting, config-root selection and the native archive layout. The ordinary Packslip installation must also work without the recipe; show explicit `kae init` as the equivalent setup. |
+| Initial setup | Provide an opt-in tool-level mise `postinstall` recipe calling the newly installed executable's `init` by its installation path, not an older executable found through PATH. Use a separate user-managed fragment such as `conf.d/kagikae-install.toml` where supported. Never put `[tools]` or this recipe in `conf.d/kagikae.toml`, which is reserved for kae's generated isolation/completion content. Do not widen that parser's ownership. Verify quoting, config-root selection and the native archive layout. The ordinary Packslip installation must also work without the recipe; show explicit `kae init` as the equivalent setup. |
 | Repeated setup | Harden the existing `init` operation before advertising automation: use the shared config mutation lock, preserve existing content, report unreadable or invalid config honestly, and test concurrent first initialization and repeated execution after an upgrade. Do not automatically log in, capture credentials, choose an account or enable a binding. Do not add a general first-run wizard or schema migration framework for this purpose. |
 | Upgrade and version selection | Document the owning configuration, exact-version versus range updates, lockfile handling and selecting a previously installed version. Exercise the optional setup hook on a new installation, and verify the already-installed-version path without relying on a hook running again. Version selection alone must not reset configuration or migrate credentials. State which prior version/data combinations were tested; package rollback is not a promise to undo application data changes. |
 | Existing installation migration | Supply a deliberate GitHub-backend-to-Packslip migration recipe, preserving the selected version and user data where a signed release exists. Inventory conflicting kae completion files/hooks before activation. Remove only recognized kae-owned registrations under the same confirmation and locking rules as teardown; do not overwrite custom or mise-owned files to make a demo pass. Avoid leaving competing backend requests for `kae`. |
@@ -297,10 +314,21 @@ Check retained configuration/credential bytes, multiple projects sharing a versi
 custom completion conflicts, partial hook failure, offline reuse and a changed
 signer. No live account login is needed. Documentation must distinguish fixture
 coverage from the published-tag smoke and state platform limitations.
+Exercise the separate install fragment alongside existing global isolation and
+completion through init, upgrade and teardown; preserve both unrelated user
+configuration and the generated fragment's established ownership checks.
 
 A failure after archive publication but before the Packslip bundle is uploaded leaves
 a partially delivered release: report it as incomplete and rerun the bounded signing/
-upload step against the same verified bytes. Do not silently switch the consumer to
+upload job against the same verified bytes. Implement signing/upload as a separate
+job dependent on successful archive publication and provenance, fetching the
+published assets for the exact tag/commit and verifying their expected digests.
+Pin and validate the chosen Action's published-asset input rather than depending
+on `dist` surviving between jobs. Retry only this job and its consumer verification;
+do not rerun GoReleaser to repair missing Packslip metadata. Test an interrupted
+upload and an existing matching or conflicting bundle: accept verified matching
+metadata, and refuse conflicting metadata instead of silently replacing it.
+Do not silently switch the consumer to
 an unsigned backend, recreate archives under an existing signed manifest, or rewrite
 older releases as part of this scope. The release is complete only after the published
 bundle and the native consumer smoke pass; report other platform checks separately.

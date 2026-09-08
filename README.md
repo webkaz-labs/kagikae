@@ -45,15 +45,21 @@ curl -fsSL https://raw.githubusercontent.com/webkaz-labs/kagikae/main/scripts/in
   sh -s -- --version vX.Y.Z --install-dir ~/.local/bin
 ```
 
-Managed with [mise](https://mise.jdx.dev):
+Managed with [mise](https://mise.jdx.dev), using the signed Packslip distribution
+from v0.21.0 (minimum tested mise: 2026.9.3):
 
 ```bash
-mise use -g github:webkaz-labs/kagikae@vX.Y.Z   # the binary is `kae`
+mise use -g packslip:github.com/webkaz-labs/kagikae@0.21.0
 kae version
+kae init
 ```
 
-This downloads the release archive for your platform (the executable inside is
-`kae`). Pin a tag rather than `latest`.
+Mise verifies the signed manifest and selected archive. Inspect accepted signers
+with `mise packslip pins`; investigate verification failures without forgetting
+pins or changing release-age/lockfile policies. Earlier releases use
+`mise use -g github:webkaz-labs/kagikae@vX.Y.Z`; they have no Packslip bundle.
+The Packslip manifest selects macOS and GNU/Linux on amd64/arm64. Its Linux
+selection does not cover musl; direct archives remain a separate installation path.
 
 From source with Go (builds the binary as `kagikae`; alias it to `kae`):
 
@@ -63,7 +69,7 @@ go install github.com/webkaz-labs/kagikae@latest
 
 To update an existing install, repeat the corresponding source-specific command
 with the desired release version (the shell installer accepts `--version`; mise
-accepts a new `@vX.Y.Z` tag). After installing, check which binary the shell will
+accepts a new exact version). After installing, check which binary the shell will
 run:
 
 ```bash
@@ -74,8 +80,65 @@ kae version
 If the installer placed `kae` in `~/.local/bin` and that directory is not on
 `PATH`, add it to the shell configuration before running the check. The shell
 installer refreshes already-registered completion files; after a mise-managed
-update or a local build, run `kae completion --refresh` if registered files need
-refreshing.
+update or a local build, run `kae completion --refresh` if kae-managed files need
+refreshing. Packslip users can instead source the selected installation's resource;
+do not retain a competing static kae completion registration:
+
+```bash
+# bash; for zsh use `zsh` in the same expression
+source <(mise completion bash --tool kae)
+```
+
+For fish use `mise completion fish --tool kae | source`. The shipped resource
+calls the active `kae __complete` for dynamic candidates; project selection must
+also be active in the shell (`mise activate`) or explicit through `mise exec`.
+
+### Mise lifecycle
+
+Initialization is explicit by default. For opt-in automatic setup, put this in
+the user-owned `conf.d/kagikae-install.toml` beside the global mise `config.toml`
+(honor `MISE_CONFIG_DIR` or your XDG config root):
+
+```toml
+[tools]
+"packslip:github.com/webkaz-labs/kagikae" = { version = "0.21.0", postinstall = '"$MISE_TOOL_INSTALL_PATH/kae" init' }
+```
+
+Keep only one request for this tool in that scope. Never put `[tools]` or this
+recipe in `conf.d/kagikae.toml`: that file belongs to kae's generated isolation
+and completion settings. Run `mise install` after saving the recipe. A tool-level
+postinstall runs for an actual install; adding it to an already installed version
+does not run setup retroactively. Run `kae init` explicitly in that case. Init
+preserves valid existing config and refuses malformed config; a failed hook does
+not authorize deleting that config or reinstalling credentials.
+
+Preview only this tool's updates with
+`mise upgrade --dry-run packslip:github.com/webkaz-labs/kagikae`. Ordinary upgrade
+keeps the configured range; `--bump` changes it. For a deliberate exact version,
+use `mise use --dry-run --path <owning-config> packslip:github.com/webkaz-labs/kagikae@X.Y.Z`,
+inspect the write target, then repeat without `--dry-run`. Preserve any postinstall
+options in that request, and retain your pruning and lockfile choices. Project
+requests may select different versions; do not globally remove a version another
+project still uses.
+
+To migrate from the GitHub backend, first use that backend to install v0.21.0,
+then inspect `kae uninstall --dry-run` for old registrations. Apply only after
+reviewing its scope: it also removes recognized directory/global integrations,
+which you can reapply afterward using retained account data. Customized content
+needs manual resolution. Identify the old request with `mise config ls --tracked-configs`,
+then remove its exact request using
+`mise unuse --path <owning-config> --no-prune github:webkaz-labs/kagikae` and add
+the Packslip request for the same signed version to that file (or the separate
+install fragment above). Avoid competing backend requests. If verification fails,
+restore the old request and investigate; do not silently fall back to unsigned
+distribution. This retains the old installed version for deliberate recovery.
+
+For removal, clean up with `kae uninstall` before using the reported
+`mise unuse --path` step. `--no-prune` retains installed versions; removing a
+specific installed version is a separate `mise uninstall <tool>@<version>` action.
+If the binary is already gone, reinstall through the same manager and run the
+cleanup. Remove an unwanted postinstall recipe deliberately, so later installs
+cannot re-enable setup. Config, credentials and accepted signer records are retained.
 
 Prebuilt archives and `checksums.txt` for macOS and Linux (amd64/arm64) are on
 [GitHub Releases](https://github.com/webkaz-labs/kagikae/releases); release

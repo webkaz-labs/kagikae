@@ -41,6 +41,8 @@ type (
 		Archives      []string `json:"archives,omitempty"`
 		NativeVersion string   `json:"native_version,omitempty"`
 		Installer     string   `json:"installer,omitempty"`
+		Packslip      string   `json:"packslip,omitempty"`
+		Consumer      string   `json:"consumer,omitempty"`
 		Reason        string   `json:"reason,omitempty"`
 	}
 )
@@ -99,6 +101,17 @@ func archivesFor(tag string) ([]string, error) {
 }
 
 func readArchive(path string, binary bool) ([]byte, error) {
+	modern := false
+	parts := strings.Split(filepath.Base(path), "_")
+	if len(parts) == 4 {
+		modern = packslipRelease("v" + parts[1])
+	}
+	members := map[string]bool{"kae": true, "LICENSE": true, "README.md": true}
+	if modern {
+		for _, shell := range []string{"bash", "zsh", "fish"} {
+			members["completions/kae."+shell] = true
+		}
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -120,7 +133,7 @@ func readArchive(path string, binary bool) ([]byte, error) {
 		if e != nil {
 			return nil, e
 		}
-		if seen[h.Name] || (h.Name != "kae" && h.Name != "LICENSE" && h.Name != "README.md") || h.Typeflag != tar.TypeReg {
+		if seen[h.Name] || !members[h.Name] || h.Typeflag != tar.TypeReg {
 			return nil, fmt.Errorf("unexpected, duplicate or nonregular archive member: %s", h.Name)
 		}
 		seen[h.Name] = true
@@ -131,7 +144,7 @@ func readArchive(path string, binary bool) ([]byte, error) {
 			}
 		}
 	}
-	if len(seen) != 3 {
+	if len(seen) != len(members) {
 		return nil, errors.New("missing archive member")
 	}
 	// Consume the gzip trailer too, so truncated/compressed corruption fails.
@@ -213,6 +226,10 @@ func installerSmoke(repo, dir, tag, native string, run commandFunc) error {
 	}
 	doc := "## Published installer\n\n```bash\nPATH=" + shellQuote(dir) + ":\"$PATH\" KAE_REPO=" + repository + " sh scripts/install.sh --version " + tag + " --install-dir \"$HOME/bin\"\ntest \"$(\"$HOME/bin/kae\" version)\" = 'kae " + tag + "'\n```\n"
 	docPath := filepath.Join(dir, "installer.md")
+	return runSmokeDocument(repo, dir, docPath, "## Published installer", doc, run)
+}
+
+func runSmokeDocument(repo, dir, docPath, heading, doc string, run commandFunc) error {
 	if err := os.WriteFile(docPath, []byte(doc), 0o600); err != nil {
 		return err
 	}
@@ -223,7 +240,7 @@ func installerSmoke(repo, dir, tag, native string, run commandFunc) error {
 		}
 	}
 	env = append(env, "SMOKE_DOC="+docPath, "SMOKE_WHOLE_FILE=0", "TMPDIR="+dir)
-	_, err := run("bash", []string{"scripts/smoke-run.sh", "## Published installer"}, env, repo)
+	_, err := run("bash", []string{"scripts/smoke-run.sh", heading}, env, repo)
 	return err
 }
 
@@ -242,9 +259,28 @@ func verify(tag, repo, dir, system, arch string, run commandFunc) (result, error
 	if err := verifyArchives(dir, names); err != nil {
 		return result{}, err
 	}
-	for _, name := range names {
-		if _, err := run("gh", []string{"attestation", "verify", filepath.Join(dir, name), "--repo", repository}, nil, repo); err != nil {
+	packslip := ""
+	if packslipRelease(tag) {
+		commit, err := run("git", []string{"rev-parse", tag + "^{commit}"}, nil, repo)
+		commit = strings.TrimSpace(commit)
+		if err != nil || !commitPattern.MatchString(commit) {
+			return result{}, errors.New("fetch the explicit release tag before verification")
+		}
+		if err := verifySource(tag, commit, dir, names, repo, run); err != nil {
 			return result{}, err
+		}
+		if _, err := run("gh", []string{"release", "download", tag, "--repo", repository, "--dir", dir, "--pattern", packslipAsset}, nil, repo); err != nil {
+			return result{}, err
+		}
+		if err := verifyPackslip(filepath.Join(dir, packslipAsset), tag, commit, dir, repo, run); err != nil {
+			return result{}, err
+		}
+		packslip = "signature, source, archives and completion resources verified"
+	} else {
+		for _, name := range names {
+			if _, err := run("gh", []string{"attestation", "verify", filepath.Join(dir, name), "--repo", repository}, nil, repo); err != nil {
+				return result{}, err
+			}
 		}
 	}
 	payload, err := readArchive(filepath.Join(dir, native), true)
@@ -268,7 +304,16 @@ func verify(tag, repo, dir, system, arch string, run commandFunc) (result, error
 	if err := installerSmoke(repo, dir, tag, native, run); err != nil {
 		return result{}, err
 	}
-	return result{Status: "success", Tag: tag, Archives: names, NativeVersion: strings.TrimSpace(version), Installer: "verified-assets fixture"}, nil
+	consumer := ""
+	if packslipRelease(tag) {
+		heading := "## Published Packslip consumer"
+		doc := heading + "\n\n```bash\npython3 -B scripts/packslipverify/published.py " + tag + "\n```\n"
+		if err := runSmokeDocument(repo, dir, filepath.Join(dir, "consumer.md"), heading, doc, run); err != nil {
+			return result{}, fmt.Errorf("published mise consumer: %w", err)
+		}
+		consumer = "native mise backend and completion verified"
+	}
+	return result{Status: "success", Tag: tag, Archives: names, NativeVersion: strings.TrimSpace(version), Installer: "verified-assets fixture", Packslip: packslip, Consumer: consumer}, nil
 }
 
 // removeWorkdir restores owner access to directories a killed smoke may have
@@ -290,6 +335,9 @@ func removeWorkdir(root string) error {
 }
 
 func mainResult(ctx context.Context) (got result, code int) {
+	if len(os.Args) > 1 && strings.HasPrefix(os.Args[1], "--packslip-") {
+		return packslipJob(ctx, os.Args[1:])
+	}
 	if len(os.Args) != 2 {
 		return result{Status: "failed", Reason: "usage: releaseverify vX.Y.Z (from repository root)"}, 1
 	}
@@ -300,7 +348,11 @@ func mainResult(ctx context.Context) (got result, code int) {
 	if (runtime.GOOS != "darwin" && runtime.GOOS != "linux") || (runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64") {
 		return result{Status: "unavailable", Reason: "native platform unavailable"}, 2
 	}
-	for _, tool := range []string{"gh", "bash", "git"} {
+	requiredTools := []string{"gh", "bash", "git"}
+	if packslipRelease(tag) {
+		requiredTools = append(requiredTools, "packslip", "mise", "python3")
+	}
+	for _, tool := range requiredTools {
 		if _, err := exec.LookPath(tool); err != nil {
 			return result{Status: "unavailable", Reason: "required tool unavailable: " + tool}, 2
 		}

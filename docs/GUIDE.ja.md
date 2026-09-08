@@ -103,6 +103,50 @@ kae completion --refresh
 補完キャッシュを確認します。再生成例は [README.md](../README.md#shell-completion)
 にあります。
 
+## mise での導入・更新・移行
+
+Packslip 配布は v0.21.0 から利用でき、mise 2026.9.3 で検証しています。
+通常の導入後は `kae init` を明示的に実行します。自動化したい場合だけ、
+グローバル mise の `config.toml` と同じ設定ディレクトリ配下にある
+ユーザー管理の `conf.d/kagikae-install.toml` に次を保存します。
+`MISE_CONFIG_DIR` や XDG による設定先の変更も反映してください。
+
+```toml
+[tools]
+"packslip:github.com/webkaz-labs/kagikae" = { version = "0.21.0", postinstall = '"$MISE_TOOL_INSTALL_PATH/kae" init' }
+```
+
+同じ範囲に競合するツール指定を残さず、`mise install` で適用します。
+`conf.d/kagikae.toml` は kae の生成物なので、この指定を入れてはいけません。
+フックは新しく導入したバイナリを絶対パスで呼び、実際のインストール時だけ
+実行されます。導入済み版に後からフックを付けても実行されないため、その場合は
+`kae init` を明示実行します。壊れた設定で失敗したら内容を修復し、設定や認証を
+削除して処理を通そうとしないでください。
+
+更新確認は `mise upgrade --dry-run packslip:github.com/webkaz-labs/kagikae` のように
+対象を限定します。通常は設定済み範囲内の更新で、`--bump` は指定を書き換えます。
+正確な版を選ぶなら
+`mise use --dry-run --path <設定ファイル> packslip:github.com/webkaz-labs/kagikae@X.Y.Z`
+で対象を確認し、`--dry-run` を外して適用します。既存の postinstall 指定、
+公開後待機、lockfile、旧版保持方針を維持してください。プロジェクトごとの版指定や
+他プロジェクトが使う版を消さないことも確認します。
+
+GitHub バックエンドから移る場合は、まず旧バックエンドで v0.21.0 を導入し、
+`kae uninstall --dry-run` で競合する補完・フックを確認します。適用すると認識済みの
+ディレクトリ固定やグローバル連携も解除されるため、範囲を確認してから実行し、
+必要な固定は移行後に再登録します。独自変更は手動で解決します。
+`mise config ls --tracked-configs` で旧指定の場所を確認し、
+`mise unuse --path <設定ファイル> --no-prune github:webkaz-labs/kagikae` でその指定だけを
+外して、同じ署名付きバージョンの Packslip 指定を追加します。旧バイナリは保持される
+ので、検証失敗時は旧指定を戻して調査できます。署名なし経路への自動切替や
+`mise packslip forget` による信頼記録の解除で問題を隠さないでください。
+
+選択中の版の補完は `mise completion <shell> --tool kae` から読み込みます。
+その補完が動的候補を問い合わせる `kae` も同じ版になるよう、シェルで mise を
+有効化するか `mise exec` を使います。不要な旧補完登録と併用しないでください。
+削除は次節の連携解除後に、報告された設定元の `mise unuse --path` を実行します。
+再導入で初期化を走らせたくない場合は、ユーザー管理の postinstall 指定も外します。
+
 ## アンインストールと再導入
 
 最初に対象を確認し、追加で調べるプロジェクトを `--dir` で指定します。

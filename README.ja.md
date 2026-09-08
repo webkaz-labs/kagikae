@@ -30,12 +30,23 @@ curl -fsSL https://raw.githubusercontent.com/webkaz-labs/kagikae/main/scripts/in
   sh -s -- --version vX.Y.Z --install-dir ~/.local/bin
 ```
 
-[mise](https://mise.jdx.dev) で管理する場合も、タグを指定します。
+[mise](https://mise.jdx.dev) では v0.21.0 から署名付き Packslip 配布を使えます。
+検証済みの最小 mise バージョンは 2026.9.3 です。
 
 ```bash
-mise use -g github:webkaz-labs/kagikae@vX.Y.Z
+mise use -g packslip:github.com/webkaz-labs/kagikae@0.21.0
 kae version
+kae init
 ```
+
+mise が署名とアーカイブを検証します。`mise packslip pins` で受理済みの署名者を
+確認でき、検証エラー時に信頼記録や公開後待機・lockfile の方針を緩める必要は
+ありません。旧リリースには Packslip がないため、
+`mise use -g github:webkaz-labs/kagikae@vX.Y.Z` を使います。
+Packslip の選択対象は macOS と GNU/Linux の amd64/arm64 です。musl 環境は
+この選択対象に含めず、直接アーカイブを使う導入経路とは区別します。
+任意の自動初期化、更新、バックエンド移行、削除は
+[利用ガイド](docs/GUIDE.ja.md#mise-での導入更新移行) を参照してください。
 
 Go からビルドする場合は次のとおりです。実行ファイル名は `kagikae` になるので、
 以下の利用例に合わせるには `kae` のエイリアスなどを用意してください。
@@ -54,7 +65,11 @@ kae version
 
 `~/.local/bin` を使う場合は、そのディレクトリを `PATH` に追加してください。
 シェルインストーラーは登録済みの補完ファイルも更新します。mise 経由の更新や
-ローカルビルドでは、必要に応じて `kae completion --refresh` を実行します。
+ローカルビルドでは、kae 管理の補完ファイルに必要な場合だけ
+`kae completion --refresh` を実行します。Packslip の選択中バージョンの補完を
+使う場合は、既存の競合する登録を整理してから、bash/zsh では
+`source <(mise completion bash --tool kae)`（zsh は `bash` を `zsh` に変更）、
+fish では `mise completion fish --tool kae | source` を使います。
 
 macOS と Linux の amd64/arm64 向けバイナリ、チェックサム、ビルド来歴の証明は
 [GitHub Releases](https://github.com/webkaz-labs/kagikae/releases) にあります。

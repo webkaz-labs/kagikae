@@ -13,11 +13,15 @@ import (
 	"testing"
 )
 
-const testTag = "v1.2.3"
+const testTag = "v0.20.3"
 
 func fixture(t *testing.T, dir, defect string) []string {
+	return fixtureForTag(t, dir, testTag, defect)
+}
+
+func fixtureForTag(t *testing.T, dir, tag, defect string) []string {
 	t.Helper()
-	names, _ := archivesFor(testTag)
+	names, _ := archivesFor(tag)
 	var manifest strings.Builder
 	for _, name := range names {
 		path := filepath.Join(dir, name)
@@ -28,6 +32,9 @@ func fixture(t *testing.T, dir, defect string) []string {
 		z := gzip.NewWriter(f)
 		w := tar.NewWriter(z)
 		members := []string{"kae", "LICENSE", "README.md"}
+		if packslipRelease(tag) {
+			members = append(members, "completions/kae.bash", "completions/kae.zsh", "completions/kae.fish")
+		}
 		switch defect {
 		case "extra":
 			members = append(members, "extra")

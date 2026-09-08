@@ -69,6 +69,18 @@ Reconsider admission if CI cost no longer justifies detection; compare total gat
 time under the same conditions before claiming a speed improvement. Further
 admission and shared-cache work remain in [ROADMAP.md](ROADMAP.md).
 
+## Packslip consumer smoke
+
+Requires mise 2026.9.3 and a provenance-verified Packslip 1.1.1 executable on PATH
+or in `PACKSLIP_BIN`. The fixture runner builds temporary application versions and
+uses ephemeral key/unlogged trust only inside the smoke HOME. Its HTTP server does
+not forward requests. This checks the actual mise backend; production publication
+also needs `mise run release-verify -- vX.Y.Z` with the GitHub OIDC signature.
+
+```bash
+python3 -B scripts/packslipverify/consumer.py
+```
+
 ## Installer compatibility smoke
 
 The real shell installer consumes synthetic archives through a non-forwarding curl

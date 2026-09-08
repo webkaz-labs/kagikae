@@ -6,6 +6,10 @@ version: 2
 
 project_name: kae
 
+before:
+  hooks:
+    - bash scripts/release-completions.sh
+
 builds:
   - id: kae
     binary: kae
@@ -36,6 +40,15 @@ archives:
     files:
       - README.md
       - LICENSE
+      - src: .release-completions/kae.bash
+        dst: completions
+        strip_parent: true
+      - src: .release-completions/kae.zsh
+        dst: completions
+        strip_parent: true
+      - src: .release-completions/kae.fish
+        dst: completions
+        strip_parent: true
 
 checksum:
   name_template: "checksums.txt"

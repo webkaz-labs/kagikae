@@ -30,6 +30,23 @@ mutation was performed for this work; this is not a new live-account acceptance
 result or release certification. A future release still follows
 [RELEASE.md](RELEASE.md) § Release procedure.
 
+### v0.20.2 release assessment
+
+Assessed on 2026-09-09 (JST) against implementation candidate `a4daa3d` and
+its acceptance record at `deb1d97`. The release preparation changes only the
+version literal and report expectation in application code. Recovery advice
+changes are covered by the isolated acceptance above; credential mutation and
+attribution behavior are not changed by this release. No additional live login
+or credential write was performed, and no current login validity is claimed.
+
+The release candidate passed the full commit gate, audit, GoReleaser configuration
+check and snapshot, login-free naming agreement, release-evidence mutations,
+saved completion/store smokes and the automatic-selection/diagnostic-list smoke.
+The initial sandboxed gate could not exercise the intentional info/exclude write;
+the full gate passed when rerun with that filesystem permission. Correctness and
+quality reviews passed without subagents, following the user's prohibition.
+Publication and published-asset verification remain pending.
+
 ## Applicability for a maintainer-only release
 
 A release that changes only maintainer tooling may reuse recorded live-account

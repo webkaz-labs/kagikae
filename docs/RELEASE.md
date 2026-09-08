@@ -1,19 +1,13 @@
 # Release Process
 
-## Current release — kae v0.20.1
+## Release candidate — kae v0.20.2
 
-The release record is the tag and
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.20.1).
-Read its patch-version rationale with `git show v0.20.1:docs/RELEASE.md`.
-[CLI.md](CLI.md) owns completion/isolation coexistence and migration from global
-config.
-[ACCEPTANCE.md](ACCEPTANCE.md) owns the affected live and distribution results.
-
-Published archives, SHA-256 checksums, GitHub provenance attestations and the
-installer were verified on 2026-09-08 (JST) with
-`mise run release-verify -- v0.20.1`. The macOS arm64 archive and isolated
-installer reported `kae v0.20.1`; the installer used verified-asset fixtures
-as described below.
+Recovery guidance clarifies the account and store prerequisites for existing
+login/capture operations and the next checks for incomplete metadata lists.
+This is a patch release: command syntax, JSON structure, diagnostic codes, exit
+codes and credential mutation policy remain unchanged. The affected validation
+is recorded in [ACCEPTANCE.md](ACCEPTANCE.md) § Recovery guidance validation boundary.
+Publication and published-artifact verification are pending.
 
 ## Release procedure
 

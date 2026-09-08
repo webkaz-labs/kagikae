@@ -19,8 +19,8 @@ The operator's local installation was not changed.
 
 ## Proposed next release — uninstall and upstream drift re-verification
 
-Keep v0.20.3 as the current release while evaluating uninstall usability first
-and a bounded upstream re-verification improvement second. This is a planning
+Keep v0.20.3 as the current release while preparing uninstall usability and
+Packslip distribution, with upstream re-verification as a separate conditional lane. This is a planning
 proposal, not a commitment to a new version or release date, and does not declare
 the pre-stable CLI contract frozen.
 
@@ -128,7 +128,7 @@ support matrix for the first implementation:
 |---|---|
 | Official shell installer, direct regular-file destination | Record installation after verified download; automatically remove the recorded executable as the final uninstall step when ownership and content still match. |
 | Repository `mise run install`, direct local build | Use the same install/receipt operation after building; label the source as a local build rather than claiming release provenance. |
-| `mise use` managed tool | Remove kae-owned integrations, then identify the owning config and provide a mise removal step. A receipt must not turn a managed executable or shim into a direct installation. |
+| `mise use` managed tool (GitHub or Packslip backend) | Remove kae-owned integrations, then identify the owning config and provide a mise removal step. A receipt must not turn a managed executable or shim into a direct installation. |
 | Plain `go install`, manual copy, or legacy install without a receipt | Remove recognized integrations and give the exact supported next step where identifiable. Reinstall through a supported direct installer to obtain a receipt; do not infer one from PATH or a module name. |
 
 Proposed receipt storage is a versioned, non-secret record under the resolved kae
@@ -211,6 +211,51 @@ describes configuration removal with pruning, and points to `mise uninstall` for
 installation-only removal. Confirm the installed mise version's help and the exact
 owning config before displaying a command; do not assume the global config or
 unlink a mise shim. This investigation executed help only, not either removal.
+
+### Packslip distribution
+
+Add Packslip installation support to this release. The intended user entrypoint is
+`mise use -g packslip:github.com/webkaz-labs/kagikae@<version>`, with the verified
+version syntax documented after testing. Keep existing GitHub-backend and direct
+installation paths working; registry registration is not a prerequisite.
+
+The [introduction](https://jdx.dev/posts/2026-09-05-introducing-packslip/) describes
+adding a signed `packslip.sigstore.json` alongside existing release archives.
+The [publisher guide](https://packslip.dev/docs/publishing/) routes generation and
+Sigstore signing through the release workflow. As read on 2026-09-09, that guide
+still uses v0/draft language while the introduction announces stable v1. Resolve
+the supported Action/CLI/schema and minimum mise version against pinned upstream
+sources and an installation test before fixing the implementation; do not copy a
+floating `@v1` example without resolving its commit.
+
+| Area | Implementation and acceptance |
+|---|---|
+| Manifest | Describe the existing GoReleaser archives, project `github.com/webkaz-labs/kagikae`, normalized release version, exact source commit, supported OS/architecture and executable `kae`. Validate architecture normalization from Go names and the actual archive layout; do not infer the mapping only from a filename. |
+| Publication | Add a full-commit-pinned Packslip Action after the final archives and GitHub release exist in `.github/workflows/release.yml`. Select only installable archives from `dist`, preserve the existing checksums/provenance verification, and publish the signed bundle. Keep the signing workflow identity stable. Review the Action's CLI download verification and minimal permissions before adoption. |
+| Verification | Extend `scripts/releaseverify` to require the new bundle for releases that advertise Packslip, while retaining verification of older releases. Verify signature/repository/workflow identity, project/version/source, subject digests, archive selection and executable path. Keep provenance verification separate where required. Never treat manifest inspection as signature verification. |
+| Consumer test | Add an isolated mise Packslip install/version/removal smoke for the published tag, with empty owned HOME/XDG/mise roots. Check tampered manifest/archive, wrong signer/project, unsupported platform and missing asset failures through fixtures. Pin the tested mise version and document its minimum supported version; keep the user's release-age and trust policies intact. Signed publication and real backend consumption are release-time checks, not additional live authentication tests. |
+| Documentation | Update README in both languages and GUIDE.ja.md with the tested pinned installation command, backend prerequisites, update/removal steps and the first supporting release. Do not present the command as available before its signed asset is published. |
+
+Packslip-managed installations are mise-managed installations in the uninstall
+support matrix. They must not acquire a direct-install receipt or have their binary
+unlinked by kae. Preserve backend identity when reporting the owning configuration
+and its removal command. A signed distribution manifest and a local installation
+receipt solve different problems; neither substitutes for the other's checks.
+
+Keep the first increment focused on installation. Version-aware completion resource
+publication can reuse `kae completion <shell>` after confirming the resource format
+and testing ownership interaction, but is not required for initial support. Do not
+publish the maintainer-only upstream-auth-drift skill as an end-user skill or enable
+automatic skill synchronization. Mise-owned completion stubs must remain outside
+kae's owned-file deletion set. The [mise backend documentation](https://mise.jdx.dev/dev-tools/backends/packslip.html)
+is the reference for consumer behavior and trust configuration.
+
+A failure after archive publication but before the Packslip bundle is uploaded leaves
+a partially delivered release: report it as incomplete and rerun the bounded signing/
+upload step against the same verified bytes. Do not silently switch the consumer to
+an unsigned backend, recreate archives under an existing signed manifest, or rewrite
+older releases as part of this scope. The release is complete only after the published
+bundle and the native consumer smoke pass; report other platform checks separately.
 
 ### Upstream drift re-verification
 

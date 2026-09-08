@@ -242,13 +242,61 @@ unlinked by kae. Preserve backend identity when reporting the owning configurati
 and its removal command. A signed distribution manifest and a local installation
 receipt solve different problems; neither substitutes for the other's checks.
 
-Keep the first increment focused on installation. Version-aware completion resource
-publication can reuse `kae completion <shell>` after confirming the resource format
-and testing ownership interaction, but is not required for initial support. Do not
-publish the maintainer-only upstream-auth-drift skill as an end-user skill or enable
-automatic skill synchronization. Mise-owned completion stubs must remain outside
-kae's owned-file deletion set. The [mise backend documentation](https://mise.jdx.dev/dev-tools/backends/packslip.html)
-is the reference for consumer behavior and trust configuration.
+#### Lifecycle adoption
+
+Include version-aware completion and installation lifecycle guidance in the first
+Packslip release. Keep download, version selection and managed binary removal in
+mise; kae owns its configuration and integration teardown. Do not build another
+package manager inside kae. The following are implementation requirements, subject
+to the pinned-consumer verification above.
+
+| Stage | Selected scope and acceptance |
+|---|---|
+| Completion | Generate static bash, zsh and fish resources using the release build's existing completion generator, publish them with verified digests, and declare them in the manifest. Test command and dynamic account completion against the active binary, including a project/version switch. Prefer static resources over install-time execution or a second CLI specification. |
+| Initial setup | Provide an opt-in tool-level mise `postinstall` recipe calling the newly installed executable's `init` by its installation path, not an older executable found through PATH. Keep it in the user's selected `conf.d/kagikae.toml` configuration where supported. Verify quoting, config-root selection and the native archive layout. The ordinary Packslip installation must also work without the recipe; show explicit `kae init` as the equivalent setup. |
+| Repeated setup | Harden the existing `init` operation before advertising automation: use the shared config mutation lock, preserve existing content, report unreadable or invalid config honestly, and test concurrent first initialization and repeated execution after an upgrade. Do not automatically log in, capture credentials, choose an account or enable a binding. Do not add a general first-run wizard or schema migration framework for this purpose. |
+| Upgrade and version selection | Document the owning configuration, exact-version versus range updates, lockfile handling and selecting a previously installed version. Exercise the optional setup hook on a new installation, and verify the already-installed-version path without relying on a hook running again. Version selection alone must not reset configuration or migrate credentials. State which prior version/data combinations were tested; package rollback is not a promise to undo application data changes. |
+| Existing installation migration | Supply a deliberate GitHub-backend-to-Packslip migration recipe, preserving the selected version and user data where a signed release exists. Inventory conflicting kae completion files/hooks before activation. Remove only recognized kae-owned registrations under the same confirmation and locking rules as teardown; do not overwrite custom or mise-owned files to make a demo pass. Avoid leaving competing backend requests for `kae`. |
+| Removal | Guide users through kae integration cleanup before removing the owning mise request. Include the opted-in init hook in cleanup or pending actions, so a retained install recipe cannot silently recreate setup. Preserve unrelated tools sharing a config fragment. Distinguish active-shell completion registration from a manually installed mise loader; verify the supported manager cleanup procedure and report any remaining manual step. Keep mise-owned files outside kae's deletion set. Other projects may still require the installation. |
+
+The [resource guide](https://mise.jdx.dev/dev-tools/packslip-resources.html), read on
+2026-09-09, describes automatic completion registration in an activated shell and
+manual loaders otherwise. Verify both paths on the supported mise version before
+publishing instructions; do not require a duplicate kae refresh hook. The same
+guide describes agent-skill distribution. Do not publish the maintainer-only
+upstream-auth-drift skill as an end-user skill or enable automatic synchronization:
+a user-facing skill needs its own demonstrated use case and maintained contract.
+
+The [hook reference](https://mise.jdx.dev/hooks.html#tool-level-postinstall)
+documents tool-level setup after installation. Treat that as user configuration,
+not a lifecycle command supplied by the Packslip manifest. The
+[release specification](https://packslip.dev/release/v1/) describes resource
+generators; do not use their execution as a hidden setup or teardown channel.
+Before depending on a package removal callback, require an upstream API and a
+consumer fixture that actually invokes it. The planned removal flow must work
+without such a callback, including when the user removed the binary first:
+document recovery through a supported reinstall followed by integration cleanup.
+
+The [upgrade reference](https://mise.jdx.dev/cli/upgrade.html) distinguishes updates
+within the configured range from `--bump`, which rewrites the request. Document a
+tool-specific preview before an update and verify the configuration write target;
+do not suggest an unqualified upgrade that changes every installed tool. Retain
+the operator's pruning, release-age and lockfile choices. The
+[verification guide](https://mise.jdx.dev/dev-tools/packslip-verification.html)
+provides signer inspection and policy handling. Preserve accepted signer state
+across updates and removal; do not automatically forget trust pins or weaken a
+policy after a verification error. Domain hosting and a signed release-list service
+are outside this GitHub release integration unless a concrete discovery need arises.
+
+Extend the consumer test above with isolated install, repeated init, upgrade,
+project/version switching, completion, teardown, manager removal and reinstall.
+Use distinct-version fixtures for transitions unavailable in published history;
+keep fixture trust separate from production verification. The first Packslip
+release cannot use an older unsigned release as proof of a signed upgrade path.
+Check retained configuration/credential bytes, multiple projects sharing a version,
+custom completion conflicts, partial hook failure, offline reuse and a changed
+signer. No live account login is needed. Documentation must distinguish fixture
+coverage from the published-tag smoke and state platform limitations.
 
 A failure after archive publication but before the Packslip bundle is uploaded leaves
 a partially delivered release: report it as incomplete and rerun the bounded signing/

@@ -50,8 +50,9 @@ authentication/recovery data by default, and add installation receipts for autom
 removal of supported direct installs. Managed or unrecorded binaries receive
 source-specific guidance. The proposal owns its scope and acceptance conditions;
 `kae uninstall` is not yet a shipped command.
-Packslip distribution is also in the next-release scope; its publication, verification
-and mise-owned uninstall boundary are defined in [RELEASE.md](RELEASE.md#packslip-distribution).
+Packslip distribution is also in the next-release scope, including version-aware
+completion, optional automatic initialization, updates and removal. Its lifecycle
+ownership and acceptance are defined in [RELEASE.md](RELEASE.md#packslip-distribution).
 The upstream detector remains conditional and does not block these delivery improvements.
 
 The offline-recovery candidates have their accepted/deferred verdicts in the

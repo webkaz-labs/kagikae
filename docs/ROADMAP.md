@@ -46,8 +46,9 @@ Do not widen those mutation paths without affected acceptance.
 
 The next-release proposal is [uninstall and upstream drift re-verification](RELEASE.md#proposed-next-release--uninstall-and-upstream-drift-re-verification).
 Prioritize uninstall usability: preview and remove owned integrations, retain
-authentication/recovery data by default, and guide executable removal according
-to its installation source. The proposal owns its scope and acceptance conditions;
+authentication/recovery data by default, and add installation receipts for automatic
+removal of supported direct installs. Managed or unrecorded binaries receive
+source-specific guidance. The proposal owns its scope and acceptance conditions;
 `kae uninstall` is not yet a shipped command.
 
 The offline-recovery candidates have their accepted/deferred verdicts in the

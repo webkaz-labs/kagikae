@@ -466,6 +466,17 @@ The documented `use -s` remedy checks the same invariant and regenerates the fra
 from current state under that lock even when its target has no `synced` entry, closing
 the crash state before rename is retried.
 
+## Account lifecycle boundaries
+
+Keep account removal and rename orchestration separate. The 2026-09-07 comparison
+found different lock lifetimes (removal holds the state lock across preflight and
+updates; rename releases it before copying and reacquires it), config-absence handling
+and cleanup retry behavior. A common lifecycle would need callbacks or exception
+settings, or change lock lifetime. A lock/reload wrapper alone would leave the
+ordering knowledge in callers. Reconsider common orchestration only when it can
+reduce that knowledge while preserving the competing-update and partial-failure
+controls.
+
 ## Caching
 
 Commands are short-lived. Credential read caches opt in through the context:
@@ -497,6 +508,12 @@ snapshot or an `App` cache, and is not shared across a command's separate passes
 fresh observations after mutation; `TestBoundDirectoryConsumerPolicies` and
 `TestBoundDirectoryGlobalReaderAndReferenceSources` keep the consumer distinctions
 visible through the same seam.
+
+Command-wide index memoization was rejected in the 2026-09-06 single-bound-directory
+fixture: the observed duplicate reads did not justify extending observation lifetimes
+and adding invalidation across mutations. Reconsider only with a workload that shows
+material benefit and controls for fresh observations after writes; this measurement
+is not a performance guarantee for larger inventories.
 
 Neither credential cache is ever open **across** a child run (`run -s`, `kae add`'s login
 flow), where the child can rotate the live credential behind kae's back and a cached

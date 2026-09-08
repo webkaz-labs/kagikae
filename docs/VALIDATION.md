@@ -46,6 +46,29 @@ runner seams so an unstubbed credential command cannot fall through to the machi
 `TestRunnerGuardRefusesCredentialProgramsWithoutLeakingPayloads` keep those two
 properties, including redaction of credential-bearing diagnostics.
 
+### Check retention and CI admission
+
+The 2026-09-07 check-retention comparison retained standalone vet, Staticcheck,
+lint and build. The compared analyzers differed in versions and enabled checks;
+overlap on one invalid-format fixture did not establish equivalence. A synthetic
+main package without a main function passed Go tests and failed build, so tests
+alone did not establish that the executable could link. Reconsider removal only
+after comparing the selected versions and rules with failure controls for each
+path's distinct coverage.
+
+Keep product tests, verifier selftests and upstream observations distinct.
+`docs-check` checks the current tree; its selftest checks the checker. A mutation
+baseline on a fixture is not evidence that a checkout selftest is redundant.
+
+Build, formatter and docs-selftest CI admission was for detection, not a claim of
+faster gates. The 2026-09-07 build cost observation used a local macOS cache, not
+an Ubuntu runner. The [Linux formatter and docs-selftest measurement](https://github.com/webkaz-labs/kagikae/actions/runs/34085892981)
+used repeat execution within one job, not cache restoration between jobs. Formatter
+controls covered unused imports and blank lines, not local import grouping.
+Reconsider admission if CI cost no longer justifies detection; compare total gate
+time under the same conditions before claiming a speed improvement. Further
+admission and shared-cache work remain in [ROADMAP.md](ROADMAP.md).
+
 ## Smoke Checks (built binary, isolated env)
 
 **Every code block in this file assumes `. scripts/smoke-env.sh` is already in

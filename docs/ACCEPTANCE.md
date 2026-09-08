@@ -627,8 +627,7 @@ list returns before backend selection, while restore/removal retain their backen
 selection and ID-validation order. Relogin, preservation saving, credential IO,
 adapters and dependencies are unchanged in this comparison.
 
-Under the approved [daily-use and recovery plan](plans/daily-use-recovery.md),
-the affected surfaces were checked with isolated fixtures instead of repeating
+The affected surfaces were checked with isolated fixtures instead of repeating
 the unchanged live login/restore sequence recorded for v0.19.1 above. Profile
 controls cover concurrent mappings, default protection, refusal, force and dry-run.
 The metadata-list control simulates incompatible backend selection, with empty,

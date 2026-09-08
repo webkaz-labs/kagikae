@@ -36,7 +36,7 @@ jobs:
       - name: Test
         run: go test ./...
 
-      # The missing-main control in docs/plans/verification-efficiency.md passes
+      # The missing-main control in docs/VALIDATION.md passes
       # go test and fails go build. Reuse Setup Go's cache to check linking too;
       # keep the executables in runner temp.
       - name: Build

@@ -5,8 +5,8 @@
 The release record is the tag and
 [GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.20.1).
 Read its patch-version rationale with `git show v0.20.1:docs/RELEASE.md`.
-The completed [global mise integration plan](plans/mise-global-integration.md)
-covers completion/isolation coexistence and migration from global config.
+[CLI.md](CLI.md) owns completion/isolation coexistence and migration from global
+config.
 [ACCEPTANCE.md](ACCEPTANCE.md) owns the affected live and distribution results.
 
 Published archives, SHA-256 checksums, GitHub provenance attestations and the
@@ -51,6 +51,12 @@ by hand — the tag does it.
    `unavailable`. Success exits zero; the other statuses exit nonzero through
    `go run`, so use the JSON status to distinguish them. A missing prerequisite
    is not a passing check.
+
+The verifier owns its command process groups and installer temporary parent.
+Waiting for a shell to exit does not by itself stop its descendants; the lifecycle
+controls in `scripts/releaseverify/lifecycle_test.go` cover that boundary. Detached
+process groups and cleanup after SIGKILL of the verifier itself are outside the
+cleanup guarantee. Do not broaden cleanup to unrelated processes or directories.
 
 GoReleaser auto-generates the changelog from commits; edit the release body
 afterward for curated highlights when useful. Windows is not built

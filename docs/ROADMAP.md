@@ -27,45 +27,18 @@ stage 3 of the docs scan, filed below.
 
 ## Current work order
 
-The agreed [medium-term plan](plans/medium-term.md) prioritizes bounded daily-use
-improvements alongside separate authentication research.
-[Global mise integration](plans/mise-global-integration.md) is released in v0.20.1.
-The next candidate is recovery guidance, whose scope still needs agreement; global
-mise tasks are excluded from priority work.
+Prioritize bounded daily-use improvements while investigating authentication
+questions in parallel. Research findings may change later scope; they do not
+by themselves authorize credential policy changes. This ordering promises no
+release dates or later version numbers.
 
-The completed [daily-use and diagnostic-list plan](plans/daily-use-diagnostics.md)
-covers hook isolation/account preservation, resilient metadata listings and their
-user guidance in v0.20.0. [ACCEPTANCE.md](ACCEPTANCE.md) records fixture, affected
-live and published-asset verification. The authentication research prerequisites
-below remain in force.
+The next release candidate is **recovery guidance**: compare global login/capture
+advice and metadata-list recovery journeys, then agree the scope before adding
+commands or automatic repair. Global mise tasks are excluded from priority work;
+direct `kae` commands and completion serve the agreed usage.
 
-The completed [daily-use and recovery plan](plans/daily-use-recovery.md) retains
-the onboarding and recovery scope, profile-edit concurrency controls and
-metadata-only listing decision for v0.19.2. The authentication research lanes
-below retain their own prerequisites.
-
-The completed [safety and maintenance plan](plans/safety-maintenance.md) retains
-the credential observation/recheck scope, CI admission evidence and cache decision
-for v0.19.1. It does not widen authentication policy.
-
-The completed [multi-theme release plan](plans/reliability-ci-terminology.md)
-retains the original-store preservation policy, CI build decision and
-bound-directory terminology scope. Its implementation does not close the
-authentication research entries below; their prerequisites still apply.
-
-Work these lanes in order. Within a lane, the named entries carry their own prerequisites
-and may still refuse implementation when evidence or a mechanism is missing. Entries not
-named here retain their recorded gate; this index does not silently promote or close them.
-
-The completed [core reliability plan](plans/core-reliability.md) retains the
-measured decision against command-wide index memoization. The completed
-[verification-efficiency plan](plans/verification-efficiency.md) retains the
-check-retention and account-lifecycle decisions. Neither authorizes
-implementation of the research lanes below.
-
-The completed [release-verifier lifecycle plan](plans/release-verifier-lifecycle.md)
-retains the process-ownership scope and deferred alternatives. This does not open
-the authentication research entries below.
+The remaining lanes follow in this order. Each named entry retains its own
+prerequisites; entries not named here retain their recorded gate.
 
 1. **Research only** — do not schedule implementation for **A moved bound directory does
    not count as a reader, and its absence does not make the reader set incomplete**,
@@ -99,7 +72,9 @@ The remaining investigation is:
    behaviour, then a bundle-pair diff on upgrade. The
    `oauthAccount?.profileFetchedAt` site hash was identical across three claude
    releases even though the TTL identifier went `TSg` → `sxg`, so the hash sees
-   through minification where a name grep does not.
+   through minification where a name grep does not. Before implementation, obtain
+   reproducible old/new artifacts and compare detection and cost with the existing
+   fingerprints; a current-version artifact alone is insufficient.
 
 **Confirmed clean, recorded so nobody re-audits** (four read-only audits,
 2026-07-30): backup-before-write ordering in the switch/run transaction
@@ -210,9 +185,11 @@ alternative exists (`secret-tool`).
   Compare `mise.toml`'s local gate with `check.yml`'s steps for current coverage.
   Further admission requires per-step detection controls, Linux cost measurements
   and a decision about cache and runner writes. The
-  [safety and maintenance plan](plans/safety-maintenance.md) records formatter
-  and docs-selftest admission; the [multi-theme plan](plans/reliability-ci-terminology.md)
-  records build admission. These decisions do not admit the remaining local checks.
+  [validation rationale](VALIDATION.md#check-retention-and-ci-admission) covers
+  formatter, docs-selftest and build admission. Those decisions do not admit the
+  remaining local checks. Shared build-cache changes remain deferred until a
+  same-condition measurement establishes duplicate compilation and its effect on
+  total gate time.
   Descriptions of CI, including release procedures, must preserve the subset distinction.
 
 - ~~**One paragraph in `PRODUCT.md` is architecture**~~ (recorded 2026-08-11, **fixed
@@ -617,7 +594,7 @@ alternative exists (`secret-tool`).
   owns the finding. `TestSupersededGoesSilentWhenThePinIndexCannotBeEnumerated`
   keeps the attribution refusal in place while checking that doctor reports the
   incomplete index. The shared observation lifetime is described in [ARCHITECTURE.md](ARCHITECTURE.md)
-  § Caching; the scoped reuse decision is in [the execution plan](plans/core-reliability.md).
+  § Caching, including the decision against command-wide memoization.
 
 - **A mode toggle and a same-mode re-pin answer a poisoned store differently** (recorded
   2026-08-08 by a reading-type review, **not fixed, and deliberately so**). `Conflicting`
@@ -652,8 +629,7 @@ alternative exists (`secret-tool`).
   cases, and a moved directory's fragment may still point at that store. That removes
   the destructive advice without settling the reader-set question this entry asks.
 
-- **Why preservation is separate from global backup**
-  ([multi-theme plan](plans/reliability-ci-terminology.md)). Independent preservation
+- **Why preservation is separate from global backup**. Independent preservation
   addresses the pre-login loss without treating a bound copy as global backup state.
   [CLI.md](CLI.md) § kae preservation Semantics owns the accepted recovery and
   retention policy. The earlier failed approach remains relevant to future backup

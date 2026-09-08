@@ -16,6 +16,36 @@ stayed there, beside the surfaces they check.
 candidate revision it was run against and the release tag when one exists.** This
 document owns the results; results recorded elsewhere are invisible to the next run.
 
+## Offline recovery and validation assessment
+
+Assessed on 2026-09-09 (JST) against the v0.20.2 application baseline.
+The candidate adds synthetic regression controls and corrects Cursor's unsupported
+platform explanation; credential IO, attribution, preservation admission, deadline
+classification and capability gates are unchanged. The affected diagnostic is
+checked with a Linux-shaped fixture. The existing v0.19.1 preservation live result
+and v0.20.0/v0.20.1 application results below remain the evidence for unchanged
+mutation paths; this is not a new live-account acceptance or a claim about current
+login health. No additional real login or live credential investigation was used.
+
+| Candidate | Verdict and evidence |
+|---|---|
+| Unknown-format preservation and explicit recovery | Accepted command regressions and recovery documentation. `TestPreservationUnknownFormatInterruptedLoginAndRecovery` covers unfamiliar objects and missing/nonnumeric deadlines, interrupted retries, displaced-copy retention, unchanged snapshots and redaction. `TestReloginRefusesUnreadableAndMalformedCredentialBeforeFlow` separates malformed containing JSON from readable unknown members and unreadable files. Whole-document rescue remains deferred: the file driver's declared unit is a JSON pointer, and bypassing that read would change the restoration contract. |
+| Failure and retry safety | Accepted `TestReloginPreservationWriteFailureAndExplicitRetry`, covering backend write failure, visible pending metadata, refused automatic retry, explicit removal and retried flow with source intact. Existing capacity, protected-source, concurrent credential/mapping changes and interrupted-storage controls were included in the focused run. No automatic incomplete-record repair was added. |
+| State-specific diagnostics | Accepted the observation/recovery table in CLI and the Cursor verification-boundary message. Existing `unsafe_refused`, `auth_unchanged`, metadata diagnostics and preservation states remain the contract; no new JSON tokens or validity claims were added. |
+| Numeric zero versus unknown deadline | Accepted conservative characterization in `TestClaudeFreshnessDeadlineUncertaintyDoesNotRevokeTokens`: missing, null, nonnumeric, zero, negative and positive deadlines with populated tokens. Representation change deferred because preservation admission uses artifact bytes, not deadline ordering; a separate field currently has no accepted new consumer. Revocation/deletion changes need separate tool evidence. |
+| Upstream behaviour-site detection | Deferred implementation. The installed Homebrew Claude directory and its download-cache filename search provided no old/new pair for this run; the installed 2.1.261 artifact matched the existing reviewed naming digest. A read-only scan found the `profileFetchedAt` anchor, but a single artifact cannot measure identifier-normalized detection against literal-count controls across upgrades. Reuse the existing fingerprint audit; obtain a reproducible pair before designing another checker. |
+| Moved directories and aliases | Accepted temporary-fixture controls for refusal while the original directory is missing, recovery after the original path returns, and distinct pin IDs for symlink aliases. Existing symlink-retarget refusal controls were rerun. Migration deferred: neither restoring the old path in a fixture nor canonicalizing an ID establishes a complete reader set or migrates credential/session stores. |
+| Codex per-directory keyring preparation | Accepted a teardown continuation in `TestKeychainCodexHomesCoexist`: removing the selected item leaves the other home's bytes intact. Existing canonical-path addressing and capability-refusal controls were rerun. The per-directory capability remains disabled pending the optional live capability check below. |
+| Cursor Linux preparation | Accepted `TestCursorLinuxFixtureDoesNotEnableCredentialAccess`, with access/refresh/API-key and preserved Bedrock fields at the documented XDG path. Adapter artifacts remain unsupported and the fixture remains untouched. Linux enablement is deferred pending the actual file-store round trip; synthetic storage is not upstream compatibility evidence. |
+| CI placement and delivery | Accepted reuse of the existing `go test ./...` step for the new regressions. No workflow steps or cache policy were added; additional CI admission still requires the Linux cost and distinct-control evidence in ROADMAP. |
+
+The focused Go JSON report contained passing test events and no failed or skipped
+test events for preservation/relogin, capability, addressing, deadline and alias
+controls. The full `mise run check` passed after correcting an extra blank line
+reported by the formatter. The fixture tests do not reproduce OS keychain failures,
+real login interruption or upstream refresh validity; their failed writes and
+interrupted flows are injected at existing seams.
+
 ## Recovery guidance validation boundary
 
 Assessed on 2026-09-09 (JST) for implementation candidate `a4daa3d` against

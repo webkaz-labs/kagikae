@@ -36,10 +36,13 @@ Daily recovery guidance is documented in [CLI.md](CLI.md) § Recovery guidance.
 Global mise tasks are excluded from priority work; direct `kae` commands and
 completion serve the agreed usage.
 
-The next-release [credential recovery and offline validation scope](RELEASE.md#next-release--credential-recovery-and-offline-validation)
-includes bounded investigation of the candidates below without additional
-real-machine acceptance. Its admission gates preserve this file's research and
-capability prerequisites; inclusion is not automatic implementation approval.
+The offline recovery assessment is recorded in [ACCEPTANCE.md](ACCEPTANCE.md)
+§ Offline recovery and validation assessment. The remaining recovery work is
+raw-artifact preservation when an adapter cannot read its declared unit: decide
+whether a separate explicit rescue can retain a malformed containing document
+without enabling whole-document writes or account adoption. Existing relogin and
+original-store restore are described in [CLI.md](CLI.md) § kae preservation Semantics.
+Do not widen those mutation paths without affected acceptance.
 
 The remaining lanes follow in this order. Each named entry retains its own
 prerequisites; entries not named here retain their recorded gate.
@@ -852,11 +855,11 @@ alternative exists (`secret-tool`).
   token still in it is now retained rather than swept. The claude adapter's `Freshness`
   comment asserted that the zero was "translated here into `Revoked`" — it is not; the blank
   tokens are what set `Revoked` — and that comment is corrected, since the line it described
-  is now load-bearing. Closing it means teaching `internal/freshness` to distinguish a JSON
-  number from a non-number, which is the only real work in it, and then folding a numeric
-  `expiresAt <= 0` into `Revoked` so death certificates sweep again. Not done here because
-  the retained item is a spent secret rather than a lost login, `kae unpin --purge` now
-  removes it, and the change reaches every `Fresher` rather than one call site.
+  is now load-bearing. Representing numeric zero separately requires an accepted consumer of the
+  distinction before changing `freshness.Info`. Revocation and deletion remain a
+  separate decision requiring tool-specific evidence; a numeric non-positive
+  deadline alone is not permission to sweep. The synthetic control
+  `TestClaudeFreshnessDeadlineUncertaintyDoesNotRevokeTokens` retains that boundary.
 
 - **Rotation is measured for claude only** (recorded 2026-08-04). codex, cursor,
   copilot, opencode and agy have not been measured, so none of the copy-safety work

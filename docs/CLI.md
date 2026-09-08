@@ -986,6 +986,22 @@ login flow when the resolved credential exists. Absence creates no record; an
 unreadable credential or unverified destination stops the flow. Preservation does
 not establish the owner, validity or refreshability of the saved bytes.
 
+The preserved unit is the adapter's artifact, not necessarily the containing
+file. Claude's file driver selects `/claudeAiOauth`: an unfamiliar object or
+unknown deadline inside that member can be retained, but malformed containing
+JSON fails the read and stops login. This does not provide raw-file recovery for
+a broken mixed-state document. `TestPreservationUnknownFormatInterruptedLoginAndRecovery`
+and `TestReloginRefusesUnreadableAndMalformedCredentialBeforeFlow` exercise that
+boundary with synthetic files.
+
+| Observation | Recovery boundary |
+|---|---|
+| Credential cannot be read or its containing JSON cannot be parsed | Login is refused before replacement. Keep the source while investigating its readability/format; this refusal does not pronounce its login invalid. |
+| Readable artifact has an unfamiliar shape or unknown deadline | Preservation does not require account adoption or freshness ordering. An explicit restore still needs the original matching binding and readable destination. |
+| Login is interrupted with unchanged bytes | `auth_unchanged` describes the observed bytes. Retrying the same copy and mapping reuses its preservation ID; it does not establish a successful login. |
+| Record state is `pending` or `deleting` | The metadata remains visible, but is not a ready restore source. Inspect before explicit removal; clearing a record may discard the only surviving copy. Repeating login does not repair incomplete inventory. |
+| Original directory moved, or credential path was retargeted | Restore refuses when its original mapping/address cannot be confirmed. There is no alternate-destination restore or automatic migration. |
+
 ```text
 kae preservation list [--json]
 kae preservation restore <id> [--dry-run] [--json]

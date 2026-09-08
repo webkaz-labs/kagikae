@@ -740,4 +740,10 @@ A fresh process under mise authenticated. Explicit `use -s -P side` removed only
 the isolated settings; completion remained, and fresh-process shared authentication
 passed. The final account selection is the original shared `side`.
 
-Publication and published-asset verification remain pending.
+After publication on 2026-09-08 (JST), `mise run release-verify -- v0.20.1`
+returned `status: success` for the darwin/linux × amd64/arm64 archives, checksums
+and attestations. The tag points to `3130aae`; its release workflow passed.
+The native archive and isolated installer reported `kae v0.20.1`. The installer
+used verified-asset fixtures, so its HTTP transport was not exercised.
+`mise run install` then installed the candidate locally; `kae version` reported
+`kae v0.20.1` and the migrated completion-only fragment remained intact.

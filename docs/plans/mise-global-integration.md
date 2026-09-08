@@ -5,8 +5,8 @@
 Agreed release scope: move opt-in global completion into the same
 `conf.d/kagikae.toml` used by global isolated selection. Implement and release a
 patch because existing commands and selection semantics remain. Implementation,
-fixture checks and affected live acceptance are complete; publication and
-published-asset verification remain. The ordering is owned by
+fixture checks, affected live acceptance, v0.20.1 publication, published-asset
+verification and local installation are complete. The ordering is owned by
 [medium-term.md](medium-term.md).
 
 ## Contract

@@ -28,9 +28,10 @@ stage 3 of the docs scan, filed below.
 ## Current work order
 
 The agreed [medium-term plan](plans/medium-term.md) prioritizes bounded daily-use
-improvements alongside separate authentication research. The next release is
-[global mise integration](plans/mise-global-integration.md); global mise tasks
-are excluded from priority work.
+improvements alongside separate authentication research.
+[Global mise integration](plans/mise-global-integration.md) is released in v0.20.1.
+The next candidate is recovery guidance, whose scope still needs agreement; global
+mise tasks are excluded from priority work.
 
 The completed [daily-use and diagnostic-list plan](plans/daily-use-diagnostics.md)
 covers hook isolation/account preservation, resilient metadata listings and their

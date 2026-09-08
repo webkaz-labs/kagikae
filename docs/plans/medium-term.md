@@ -8,7 +8,7 @@ credential policy changes by themselves.
 
 | Order | Destination | Admission and completion |
 |---|---|---|
-| First release | One owned global mise integration file | [mise-global-integration.md](mise-global-integration.md) owns implementation and acceptance |
+| v0.20.1 — released and verified | One owned global mise integration file | [mise-global-integration.md](mise-global-integration.md) owns implementation and acceptance |
 | Following release candidate | Make diagnostic findings lead to appropriate explicit recovery | Compare global login/capture guidance and metadata-list recovery journeys; agree scope before adding commands or automatic repair |
 | Parallel research | Credential attribution, refresh races and moved bound directories | Reproduce the ROADMAP counterexamples and establish observable evidence before choosing a new policy; no implementation scheduled yet |
 | Later research | Behaviour-site comparisons for upstream drift | Demonstrate detection and cost alongside existing fingerprints before automating |

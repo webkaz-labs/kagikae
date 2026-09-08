@@ -1,28 +1,18 @@
 # Release Process
 
-## Next release — kae v0.20.1
-
-[Global mise integration](plans/mise-global-integration.md) unifies completion
-and isolated settings in the owned fragment and migrates existing registrations.
-This is a patch release: existing commands and account selection remain; file
-ownership, migration and coexistence are corrected. Affected live acceptance
-passed; publication and published-asset verification remain pending.
-
-## Current release — kae v0.20.0
+## Current release — kae v0.20.1
 
 The release record is the tag and
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.20.0).
-Read its scope and minor-version rationale with
-`git show v0.20.0:docs/RELEASE.md`. The completed
-[daily-use diagnostics plan](plans/daily-use-diagnostics.md) covers automatic
-profile application that retains global isolation, diagnostic metadata lists and
-hook migration guidance. [ACCEPTANCE.md](ACCEPTANCE.md) owns the affected-surface
-assessment and verification results.
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.20.1).
+Read its patch-version rationale with `git show v0.20.1:docs/RELEASE.md`.
+The completed [global mise integration plan](plans/mise-global-integration.md)
+covers completion/isolation coexistence and migration from global config.
+[ACCEPTANCE.md](ACCEPTANCE.md) owns the affected live and distribution results.
 
 Published archives, SHA-256 checksums, GitHub provenance attestations and the
-installer were verified on 2026-09-08 (JST) for v0.20.0 with
-`mise run release-verify -- v0.20.0`. The macOS arm64 archive and isolated
-installer both reported `kae v0.20.0`; the installer used verified-asset fixtures
+installer were verified on 2026-09-08 (JST) with
+`mise run release-verify -- v0.20.1`. The macOS arm64 archive and isolated
+installer reported `kae v0.20.1`; the installer used verified-asset fixtures
 as described below.
 
 ## Release procedure

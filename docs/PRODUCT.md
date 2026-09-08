@@ -87,11 +87,13 @@ serves a global switch and an isolated project home. Inside a bound directory,
 re-running `kae pin <tool> <account>` changes that one tool's account without
 disturbing the others or the sharing set.
 
-**Bare `kae use` (no positional argument)** resolves the active profile
-(`$KAE_PROFILE`, then `default_profile`, then `-P <name>`) and applies it
-idempotently — a no-op (exit `0`, no lock, no backup) when the active account
-already matches. `--quiet` suppresses the success report; `--json` keeps the
-`changed` field. This is the form used in hook scripts (`kae use --quiet`).
+**Bare `kae use` (no positional argument)** resolves the profile from explicit
+`-P`, then `$KAE_PROFILE`, then `default_profile`. It applies the profile using
+kae's recorded state; a matching active account alone does not establish live
+credential health. Manual shared use clears the target tools' global isolation.
+Enter hooks use `kae use --auto --quiet` to preserve manually selected global
+isolation. [CLI.md](CLI.md) § kae use Semantics owns argument combinations,
+no-op conditions and output behavior.
 
 **`kae run`** applies a switch to one spawned child process only:
 

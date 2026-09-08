@@ -44,6 +44,13 @@ without enabling whole-document writes or account adoption. Existing relogin and
 original-store restore are described in [CLI.md](CLI.md) § kae preservation Semantics.
 Do not widen those mutation paths without affected acceptance.
 
+The next-release proposal is [upstream drift re-verification](RELEASE.md#proposed-next-release--upstream-drift-re-verification).
+The offline-recovery candidates have their accepted/deferred verdicts in the
+assessment linked above; they are not a fresh implementation queue. Evaluate
+reproducible upgrade inputs and the existing-check workflow before adding another
+detector. Continue to maintain the current release if no bounded improvement
+qualifies; the proposal does not relax the research gates below.
+
 The remaining lanes follow in this order. Each named entry retains its own
 prerequisites; entries not named here retain their recorded gate.
 

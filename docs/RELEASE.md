@@ -17,6 +17,33 @@ checksums, provenance and isolated installer. The native binary reported
 `kae v0.20.3`; installer transport used verified assets, not live HTTP.
 The operator's local installation was not changed.
 
+## Proposed next release — upstream drift re-verification
+
+Keep v0.20.3 as the current release while evaluating a bounded maintainer
+improvement. This is a planning proposal, not a commitment to a new version or
+release date, and does not declare the pre-stable CLI contract frozen.
+
+| Stage | Candidate and completion condition |
+|---|---|
+| Baseline | Map existing version/date checks, literal fingerprints and login-free naming checks to their observed properties and blind spots. Identify concrete missed-change or repeated-manual-work cases before adding a check. |
+| Reproducible inputs | Establish how to retain or locate reviewed old/new upstream artifacts, with version, source and digest. Keep credentials and user config out of the comparison inputs. Prefer existing artifact locations; decide storage, size limits and retrieval policy before creating a cache or downloader. |
+| Bounded report | Compare an existing-task wrapper/report with direct use of current commands. Implement only if it reduces repeated investigation: distinguish changed, unchanged within checked properties, unavailable and not checked, and route findings to the existing upstream-auth-drift procedure. No automatic update of verified versions or dates. |
+| Conditional detector | Add a behaviour-site comparison only if an actual artifact pair and positive/negative controls demonstrate value beyond literal fingerprints, including identifier-only changes, missing/ambiguous anchors and unavailable inputs. Otherwise defer it with the missing evidence stated. |
+| Delivery decision | Use isolated fixtures and existing reviewed artifacts, with no additional live login or credential mutation. Run applicable gates and measure added cost. Ship only an accepted improvement; if none qualifies, retain the current release. |
+
+Start with the Claude checks for which a reviewed naming harness already exists;
+add other tools only for a demonstrated gap with suitable evidence. This work
+changes neither credential policy nor platform capabilities. Scheduling, upgrade
+hooks, background monitoring, external notifications and package installation are
+not authorized by this proposal. Review the delivery surface and evidence-storage
+choice with the operator before fixing the implementation scope.
+
+Reopen product work on a reproduced wrong-account or credential-loss incident,
+a documented upstream incompatibility, or concrete unmet daily-use demand.
+Unchanged existing regression coverage is not by itself a reason for another
+release. [ROADMAP.md](ROADMAP.md) retains deferred research and capability gates.
+Remove this proposal after its outcome is recorded in the owned documents.
+
 ## Release procedure
 
 Releases are cut by pushing a `vX.Y.Z` tag; GitHub Actions

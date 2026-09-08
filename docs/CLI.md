@@ -314,6 +314,17 @@ The former `--mode` flag and its values (`auth|env|home|overlay|bond|pin`) are
 `overlay` and per-directory `bond`/`pin` via `run` are retired; bind a
 directory with `kae pin -s|-i` instead.
 
+## kae init Semantics
+
+`kae init` takes the shared config mutation lock before inspecting or creating
+configuration. A concurrent config writer returns `lock_busy` (exit 4); retry
+after it finishes. Repeated initialization validates the existing config and
+preserves its bytes. Invalid config returns `invalid_config` (exit 2), and an
+unreadable path, dangling symlink or non-regular file fails instead of reporting
+successful setup. A readable symlink to valid configuration is retained.
+Initialization creates missing kae directories and initial configuration; it
+does not register accounts or select credentials.
+
 ## kae edit Semantics
 
 `kae edit` opens the config file in `$VISUAL`, then `$EDITOR`, then `vi`

@@ -44,7 +44,12 @@ without enabling whole-document writes or account adoption. Existing relogin and
 original-store restore are described in [CLI.md](CLI.md) § kae preservation Semantics.
 Do not widen those mutation paths without affected acceptance.
 
-The next-release proposal is [upstream drift re-verification](RELEASE.md#proposed-next-release--upstream-drift-re-verification).
+The next-release proposal is [uninstall and upstream drift re-verification](RELEASE.md#proposed-next-release--uninstall-and-upstream-drift-re-verification).
+Prioritize uninstall usability: preview and remove owned integrations, retain
+authentication/recovery data by default, and guide executable removal according
+to its installation source. The proposal owns its scope and acceptance conditions;
+`kae uninstall` is not yet a shipped command.
+
 The offline-recovery candidates have their accepted/deferred verdicts in the
 assessment linked above; they are not a fresh implementation queue. Evaluate
 reproducible upgrade inputs and the existing-check workflow before adding another

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/installation"
 	"github.com/webkaz-labs/kagikae/internal/integration"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
@@ -224,5 +225,25 @@ func TestUninstallManagedGuidanceUsesExactRequest(t *testing.T) {
 	}
 	if got := readFile(t, path); !strings.Contains(got, "0.21.0") {
 		t.Fatal("manager config changed during discovery")
+	}
+}
+
+func TestUninstallInvalidReceiptHasActionableDiagnosis(t *testing.T) {
+	app := testApp(t, nil)
+	executable := filepath.Join(app.Env.Home, "kae")
+	receipt := installation.ReceiptPath(app.Paths.InstallationsDir(), executable)
+	writeFile(t, receipt, `{"schema_version":999}`)
+	if err := os.Chmod(app.Paths.InstallationsDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(receipt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan := app.planUninstall(commonOpts{DryRun: true}, nil, executable)
+	binary := plan.report.Items[len(plan.report.Items)-1]
+	guidance := strings.Join(plan.report.Manual, "\n")
+	if binary.Reason != constants.UninstallInvalidReceipt || strings.Contains(guidance, "Unrecorded executable") ||
+		!strings.Contains(guidance, "compatible installer") || !strings.Contains(guidance, "also refuses") {
+		t.Fatalf("invalid receipt recovery misreported: %+v %s", binary, guidance)
 	}
 }

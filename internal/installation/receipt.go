@@ -20,6 +20,12 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/patch"
 )
 
+var (
+	ErrReceiptInvalid    = errors.New("installation receipt is invalid or unsupported")
+	ErrReceiptIncomplete = errors.New("installation receipt is incomplete")
+	ErrImageMismatch     = errors.New("installed image no longer matches its receipt")
+)
+
 // Receipt is local bookkeeping, not cryptographic provenance or deletion consent.
 type Receipt struct {
 	SchemaVersion int    `json:"schema_version"`
@@ -282,23 +288,29 @@ func historyDir(root, destination string) string {
 func InspectRemoval(root, destination string) (Receipt, error) {
 	r, err := Load(root, destination)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			return r, errors.Join(ErrUnsafe, ErrReceiptInvalid, err)
+		}
 		return r, err
 	}
 	if r.Status != constants.InstallActive && r.Status != constants.InstallRemoving {
-		return r, ErrUnsafe
+		return r, errors.Join(ErrUnsafe, ErrReceiptIncomplete)
 	}
 	dev, ino, err := parentIdentity(destination)
 	if err != nil || dev != r.ParentDevice || ino != r.ParentInode {
-		return r, ErrUnsafe
+		return r, errors.Join(ErrUnsafe, ErrImageMismatch)
 	}
 	digest, image, err := binaryDigest(destination)
 	if err != nil {
-		return r, err
+		return r, errors.Join(ErrUnsafe, ErrImageMismatch, err)
 	}
 	if digest != r.SHA256 {
-		return r, ErrUnsafe
+		return r, errors.Join(ErrUnsafe, ErrImageMismatch)
 	}
-	return r, VerifyRunningImage(image)
+	if err := VerifyRunningImage(image); err != nil {
+		return r, errors.Join(ErrUnsafe, ErrImageMismatch, err)
+	}
+	return r, nil
 }
 
 // Remove rechecks the confirmed receipt under the shared installation lock and

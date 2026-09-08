@@ -345,7 +345,9 @@ Direct installation and final executable removal share an atomic-mkdir lock,
 used by the legacy POSIX-shell installer, which cannot assume a `flock` command
 on macOS. A killed writer leaves the directory for explicit inspection and
 recovery; retry does not steal it based on a PID. Keep this lock protocol in sync
-with `scripts/install.sh`; `TestInstallationLockProtocol` exercises both sides.
+with `scripts/install.sh`. The
+[VALIDATION.md](VALIDATION.md) § Installer compatibility smoke runs the real shell
+installer while Go holds the lock and probes Go acquisition while the shell holds it.
 
 The `preservation` lock serializes inventory, payload admission, retention and
 explicit deletion. Bound operations take their pin lock before this lock. Restore

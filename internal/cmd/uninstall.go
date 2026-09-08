@@ -260,7 +260,22 @@ func (app *App) planUninstall(opts commonOpts, dirs []string, executable string)
 		p.receipt = &receipt
 		binary.Action, binary.Outcome, binary.Reason = constants.UninstallRemove, constants.UninstallPlanned, constants.UninstallReceipt
 	} else {
-		p.report.Manual = append(p.report.Manual, app.managedUninstallGuidance(executable, p.dirs)...)
+		switch {
+		case errors.Is(err, installation.ErrReceiptInvalid):
+			binary.Reason = constants.UninstallInvalidReceipt
+			p.report.Manual = append(p.report.Manual, "Retain and inspect the installation receipt at "+installation.ReceiptPath(app.Paths.InstallationsDir(), executable)+". An unsupported schema requires a compatible installer; repair invalid metadata explicitly before retrying. Reinstalling with this version also refuses an invalid receipt.")
+		case errors.Is(err, installation.ErrReceiptIncomplete):
+			binary.Reason = constants.UninstallPendingReceipt
+			p.report.Manual = append(p.report.Manual, "The retained receipt records an incomplete or removed installation. Reinstall the same direct destination with the supported installer to establish a new active receipt, then preview again.")
+		case errors.Is(err, installation.ErrImageMismatch):
+			binary.Reason = constants.UninstallImageMismatch
+			p.report.Manual = append(p.report.Manual, "The executable or its directory differs from the retained receipt. Inspect the current file, links and owner before choosing its installation manager; automatic removal is refused.")
+		case os.IsNotExist(err):
+			p.report.Manual = append(p.report.Manual, app.managedUninstallGuidance(executable, p.dirs)...)
+		default:
+			binary.Reason = constants.UninstallUnreadable
+			p.report.Manual = append(p.report.Manual, "Installation ownership could not be inspected. Resolve access to the retained receipt and executable before retrying.")
+		}
 	}
 	p.report.Items = append(p.report.Items, binary)
 	return p

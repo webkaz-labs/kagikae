@@ -69,6 +69,17 @@ Reconsider admission if CI cost no longer justifies detection; compare total gat
 time under the same conditions before claiming a speed improvement. Further
 admission and shared-cache work remain in [ROADMAP.md](ROADMAP.md).
 
+## Installer compatibility smoke
+
+The real shell installer consumes synthetic archives through a non-forwarding curl
+fixture. `scripts/installverify` checks legacy first install and downgrade, both
+directions of the shell/Go installation lock, receipt/history refusal, and a failing
+receipt-capable binary without legacy fallback. It does not test release transport.
+
+```bash
+go run ./scripts/installverify
+```
+
 ## Direct installation receipt smoke
 
 This fixture exercises the staged binary's direct-install operation. Its HOME/XDG

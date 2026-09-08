@@ -356,6 +356,11 @@ Keep other projects' requests and the operator's pruning policy intact.
 If the executable was removed first, reinstall through its existing management
 method and run integration cleanup. A failed receipt finalization after replacement
 requires a supported direct reinstall; it must not delete the replacement as rollback.
+An invalid or unsupported receipt is reported separately from a missing record;
+the installer also refuses it. Preserve the record and inspect its schema/content,
+using a compatible installer or explicit metadata repair before retrying. An image
+mismatch requires checking the current file, links and owner before selecting its
+installation manager.
 If deletion succeeded but metadata finalization failed, the report says the binary
 was removed and directs inspection of retained metadata rather than retrying it.
 Legacy installer versions are selected before execution. They refuse a destination

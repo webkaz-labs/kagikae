@@ -212,6 +212,7 @@ var positionalCommands = map[string]bool{
 	"use":          true, // [<profile> | <tool> <account>]
 	"pin":          true, // [<profile> | <tool> <account>]
 	"unpin":        false,
+	"uninstall":    false,
 	"relogin":      true, // [<tool>]
 	"run":          true, // [<profile> | <tool> <account>] -- <cmd>
 	"env":          true, // <set|unset|list> ...

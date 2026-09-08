@@ -103,6 +103,11 @@ func applyCompletionInstall(app *App, opts commonOpts, shell, script string, cho
 		}
 		return constants.ExitOK
 	case installFpath:
+		l, err := app.acquireNamedLock("completion", "another kae process is updating completion files; retry shortly")
+		if err != nil {
+			return finish(opts, err)
+		}
+		defer l.Release()
 		path, autoLoaded, err := completionTarget(app.Env, shell)
 		if err != nil {
 			return finish(opts, err)
@@ -138,6 +143,11 @@ const zshCompdumpRebuild = `  rm -f "${ZSH_COMPDUMP:-$HOME/.zcompdump}" && autol
 // its script body needs no refresh. Refresh also moves recognized registrations
 // from global config into the shared fragment and resumes interrupted migrations.
 func runCompletionRefresh(app *App, opts commonOpts) int {
+	l, err := app.acquireNamedLock("completion", "another kae process is updating completion files; retry shortly")
+	if err != nil {
+		return finish(opts, err)
+	}
+	defer l.Release()
 	var anyRegistered, zshChanged bool
 	misePath, miseShell, miseRegistered, miseChanged, err := refreshLegacyMiseGlobalHook(app.Env)
 	if err != nil {

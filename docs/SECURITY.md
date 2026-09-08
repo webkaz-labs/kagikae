@@ -24,6 +24,18 @@ here are part of the command contract.
   operation before any mutation if one differs.
 - Support `--dry-run` on every mutating command.
 
+## Direct executable removal
+
+Receipt-backed removal checks schema/path binding, owner and permissions, module
+identity, binary digest, regular-file type, link count and parent identity. Managed
+locations and changed images are refused. The kernel identity comes from
+`/proc/self/exe` on Linux and the executing code region's vnode on macOS;
+`TestRunningImageIdentity` replaces a running temporary binary with identical
+bytes in a new inode to check that pathname/hash equality does not authorize it.
+The shared installer lock excludes cooperating writers. Rechecks are not an
+atomic conditional unlink against arbitrary external writers, nor a defense
+against a malicious process with the same user's write access.
+
 ## Secret Handling
 
 - Secret values never enter stdout, stderr, logs, JSON reports, error

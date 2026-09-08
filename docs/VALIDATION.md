@@ -69,6 +69,42 @@ Reconsider admission if CI cost no longer justifies detection; compare total gat
 time under the same conditions before claiming a speed improvement. Further
 admission and shared-cache work remain in [ROADMAP.md](ROADMAP.md).
 
+## Direct installation receipt smoke
+
+This fixture exercises the staged binary's direct-install operation. Its HOME/XDG
+roots come from the smoke runner; it does not install into the operator's PATH.
+
+```bash
+go build -o "$HOME/kae-stage" .
+mkdir -p "$HOME/.local/bin"
+kae_install_destination="$(cd "$HOME/.local/bin" && pwd -P)/kae"
+"$HOME/kae-stage" __install --yes --source-kind local_build --destination "$kae_install_destination" --json > "$HOME/install-report.json"
+test -x "$kae_install_destination"
+test "$(jq -r '.status' "$HOME/install-report.json")" = active
+test "$(jq -r '.source' "$HOME/install-report.json")" = local_build
+"$kae_install_destination" version
+"$kae_install_destination" init --json > "$HOME/init-report.json"
+test "$(jq -r '.created' "$HOME/init-report.json")" = true
+cp "$XDG_CONFIG_HOME/kagikae/config.toml" "$HOME/config-before"
+"$HOME/kae-stage" __install --yes --source-kind local_build --destination "$kae_install_destination" --json > "$HOME/reinstall-report.json"
+"$kae_install_destination" init --json > "$HOME/reinit-report.json"
+test "$(jq -r '.created' "$HOME/reinit-report.json")" = false
+cmp "$HOME/config-before" "$XDG_CONFIG_HOME/kagikae/config.toml"
+"$kae_install_destination" uninstall --dry-run --json > "$HOME/uninstall-preview.json"
+test "$(jq -r '.items[-1].action' "$HOME/uninstall-preview.json")" = remove
+test -x "$kae_install_destination"
+"$kae_install_destination" uninstall --yes --json > "$HOME/uninstall-report.json"
+test "$(jq -r '.ok' "$HOME/uninstall-report.json")" = true
+test "$(jq -r '.binary' "$HOME/uninstall-report.json")" = removed
+test ! -e "$kae_install_destination"
+cmp "$HOME/config-before" "$XDG_CONFIG_HOME/kagikae/config.toml"
+"$HOME/kae-stage" __install --yes --source-kind local_build --destination "$kae_install_destination" --json > "$HOME/reinstall-after-removal.json"
+test "$(jq -r '.status' "$HOME/reinstall-after-removal.json")" = active
+test -d "$XDG_STATE_HOME/kagikae/installations/history"
+"$kae_install_destination" uninstall --yes --json > "$HOME/second-removal.json"
+test "$(jq -r '.ok' "$HOME/second-removal.json")" = true
+```
+
 ## Smoke Checks (built binary, isolated env)
 
 **Every code block in this file assumes `. scripts/smoke-env.sh` is already in

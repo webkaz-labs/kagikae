@@ -30,6 +30,7 @@ kae pin [-s|-i] <tool> <account>     # re-bind one tool in this directory
 kae unpin [--purge]                  # delete the kae-owned mise fragment
                                      # --purge: also delete this directory's
                                      # per-directory keychain credentials
+kae uninstall [--dry-run] [--yes] [--dir <path> ...] # remove owned integrations, then an owned direct binary
 kae relogin [<tool>]                 # run the tool's login flow into this directory's
                                      # bound store, then capture it back into the snapshot
 kae run [-s|-i|--env] [-P <profile>] <tool|all> <name> -- <cmd...>
@@ -313,6 +314,53 @@ The former `--mode` flag and its values (`auth|env|home|overlay|bond|pin`) are
 **removed** in v0.8.0. A command using `--mode` exits `64` with a usage error.
 `overlay` and per-directory `bond`/`pin` via `run` are retired; bind a
 directory with `kae pin -s|-i` instead.
+
+## kae uninstall Semantics
+
+`kae uninstall` previews generated integration removal and the selected executable
+before asking for confirmation. `--dry-run` only inspects; `--json` does not imply
+consent. Non-interactive mutation requires `--yes`. Repeat `--dir` to include
+project paths beyond the retained bound-directory breadcrumbs.
+
+Discovery covers those directories, the supported completion locations, the
+global mise config and `conf.d/kagikae.toml`. Exact generated content is eligible
+for removal; modified, symlinked, missing-directory or inaccessible targets remain
+unresolved. Unregistered projects and custom shell rc code require manual inspection.
+The user-owned `conf.d/kagikae-install.toml` recipe is reported for manual removal
+so reinstall cannot silently recreate setup. An outstanding completion migration
+must be resolved first; uninstall does not run refresh as cleanup.
+
+The JSON report separates `discovery`, `integrations` and `binary`. Each `items`
+entry carries `kind`, `path`, `action`, `outcome` and `reason`; `retained` names
+data roots and `manual_actions` gives the remaining instructions. A successful
+preview means inspection completed within the reported scope, not that removal
+occurred. Applied `ok: true` requires completed in-scope cleanup and executable
+removal. A managed or unrecorded executable remains `pending`, with exit 10;
+partial file failures use the existing error/permission/lock categories.
+Changed targets need another preview; completed and remaining targets are reported.
+
+Removal retains config, credentials, snapshots, backups, preservation records,
+working stores, breadcrumbs and installation history. It clears global isolated
+selection without switching credentials into the real home. Git exclude entries
+and parent directories remain. Close existing tool processes and start a new
+shell: teardown cannot replace current-shell exports, functions or completion caches.
+
+Official direct installs from v0.21.0 and repository local installs record a
+receipt. Automatic removal requires a matching record, safe destination and kernel
+identity for the running image. Mise-owned binaries/shims and plain `go install`
+outputs are not inferred to be direct installs. Follow the reported manager
+configuration; `mise unuse --path <config> <tool>` removes the configured request
+and may prune versions, while `mise uninstall` only removes an installed version.
+Keep other projects' requests and the operator's pruning policy intact.
+
+If the executable was removed first, reinstall through its existing management
+method and run integration cleanup. A failed receipt finalization after replacement
+requires a supported direct reinstall; it must not delete the replacement as rollback.
+If deletion succeeded but metadata finalization failed, the report says the binary
+was removed and directs inspection of retained metadata rather than retrying it.
+Legacy installer versions are selected before execution. They refuse a destination
+with receipt/recovery history; use another destination or explicitly remove the old
+installation and its non-secret records before a deliberate legacy reinstall.
 
 ## kae init Semantics
 

@@ -1,0 +1,35 @@
+package constants
+
+const (
+	UninstallBounded    = "bounded"
+	UninstallIncomplete = "incomplete"
+	UninstallPending    = "pending"
+	UninstallComplete   = "complete"
+	UninstallUnresolved = "unresolved"
+	UninstallPlanned    = "planned"
+	UninstallRemoved    = "removed"
+	UninstallFailed     = "failed"
+	UninstallRemove     = "remove"
+	UninstallEdit       = "edit"
+	UninstallManual     = "manual"
+	UninstallAbsent     = "absent"
+
+	UninstallDirectory  = "directory_binding"
+	UninstallProject    = "project_hook"
+	UninstallCompletion = "completion_file"
+	UninstallGlobal     = "global_integration"
+	UninstallLegacy     = "legacy_completion"
+	UninstallRecipe     = "install_recipe"
+	UninstallBinary     = "executable"
+	UninstallDiscovery  = "discovery"
+
+	UninstallOwned       = "recognized_generated_content"
+	UninstallCustom      = "custom_or_unrecognized_content"
+	UninstallUnreadable  = "unreadable_or_unsupported_path"
+	UninstallChanged     = "changed_since_preview"
+	UninstallMigration   = "pending_migration"
+	UninstallNoReceipt   = "unrecorded_or_managed_installation"
+	UninstallReceipt     = "matching_direct_installation_receipt"
+	UninstallInvalidData = "invalid_config_or_state"
+	UninstallWriteFailed = "write_failed"
+)

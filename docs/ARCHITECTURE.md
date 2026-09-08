@@ -33,6 +33,8 @@ kagikae/
                           #   (incl. a per-command read cache, WithReadCache + Cached)
     patch/                # JSON Pointer get/set + atomic file writes
     lock/                 # per-tool advisory file locks
+    installation/         # direct binary replacement, receipts, kernel image identity
+    integration/          # content and inode rechecks for owned integration files
     backup/               # backup create/list/prune/restore
     preservation/         # original-store credential records, budget and retention
     envprofile/           # env-mode profiles (var names; values in secret backend)
@@ -331,6 +333,19 @@ restoration uses the current matching artifact spec, never global backup restora
 [CLI.md](CLI.md) § kae preservation Semantics owns admission and refusal behavior.
 
 ## Locking
+
+Completion file installation, refresh and uninstall share `completion.lock`.
+Project task generation and removal share the directory's pin lock. Global
+uninstall takes isolation lifecycle → tool → state locks and uses the existing
+state/fragment transition with a removal regenerator. It does not acquire a tool
+lock from inside a pin lock.
+
+Direct installation and final executable removal share an atomic-mkdir lock,
+`.<binary-name>.kae-install-lock` beside the destination. This protocol is also
+used by the legacy POSIX-shell installer, which cannot assume a `flock` command
+on macOS. A killed writer leaves the directory for explicit inspection and
+recovery; retry does not steal it based on a PID. Keep this lock protocol in sync
+with `scripts/install.sh`; `TestInstallationLockProtocol` exercises both sides.
 
 The `preservation` lock serializes inventory, payload admission, retention and
 explicit deletion. Bound operations take their pin lock before this lock. Restore

@@ -85,14 +85,16 @@ assets carry build-provenance attestations. Windows is not built yet
 `kae` needs the official tool CLIs themselves for logging in — it snapshots and
 restores what they create.
 
-There is no `kae uninstall` command. Before removing the binary, remove or
-disable shell and mise hooks that invoke `kae`; otherwise a new shell or
-directory entry can report `kae` as missing. Removing the binary then removes
-the executable only: bindings, shell completion files, config, snapshots,
-backups, and preserved credentials remain in place. `kae unpin` removes one
-directory binding, not the installation. The completion registration guidance
-below covers the shell-owned files and hooks; do not treat binary removal as a
-request to delete all user data.
+Preview removal with `kae uninstall --dry-run`; use `--dir ~/code/side-project`
+for additional project locations. Apply the confirmed plan interactively, or use
+`kae uninstall --yes`. It removes recognized generated integrations and, last,
+the running direct-install binary when its installation receipt still matches.
+The official installer and `mise run install` record receipts from v0.21.0.
+Mise-managed and unrecorded executables receive manual removal guidance; a
+pending binary step or customized integration keeps the result incomplete.
+Configuration, credentials, snapshots, backups, working stores and removal
+history remain. Inspect custom shell code and open a new shell afterward.
+See [docs/CLI.md](docs/CLI.md) § kae uninstall Semantics for recovery and scope.
 
 ## Quick Start
 

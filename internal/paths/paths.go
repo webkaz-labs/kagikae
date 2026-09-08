@@ -101,6 +101,9 @@ func (p Paths) CompanionConfigFile(profile, companionID string) string {
 // StateFile returns the state.json path.
 func (p Paths) StateFile() string { return filepath.Join(p.StateDir, "state.json") }
 
+// InstallationsDir contains direct-install receipts and retained removal records.
+func (p Paths) InstallationsDir() string { return filepath.Join(p.StateDir, "installations") }
+
 // BackupsDir returns the backup metadata directory.
 func (p Paths) BackupsDir() string { return filepath.Join(p.StateDir, "backups") }
 

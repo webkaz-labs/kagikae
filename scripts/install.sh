@@ -95,6 +95,13 @@ case "$version" in
     ;;
 esac
 
+# The first receipt-capable release is v0.21.0. Select the protocol before
+# executing a binary; a failed receipt operation must never fall back to copy.
+protocol=$(printf '%s\n' "$version" | awk '/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/ { split(substr($0, 2), v, "."); print (v[1] > 0 || v[2] >= 21) ? "receipt" : "legacy"; found=1 } END { if (!found) exit 1 }') || {
+  echo "install.sh: unsupported release version format" >&2
+  exit 2
+}
+
 case "$(uname -s)" in
   Darwin) os="darwin" ;;
   Linux) os="linux" ;;
@@ -120,7 +127,9 @@ base_url="https://github.com/${repo}/releases/download/${version}"
 tmp_parent="${TMPDIR:-/tmp}"
 tmp_parent="${tmp_parent%/}"
 tmpdir=$(mktemp -d "${tmp_parent}/kae-install.XXXXXX")
+installation_lock=""
 cleanup() {
+  if [ -n "$installation_lock" ]; then rmdir "$installation_lock"; fi
   rm -rf "$tmpdir"
 }
 trap cleanup EXIT
@@ -159,7 +168,47 @@ if [ ! -f "$binary_path" ] || [ -L "$binary_path" ]; then
 fi
 
 mkdir -p "$install_dir"
-install -m 0755 "$binary_path" "${install_dir}/kae"
+install_dir=$(cd "$install_dir" && pwd -P)
+if [ "$protocol" = receipt ]; then
+  "$binary_path" __install --yes --source-kind release --expected-version "$version" --destination "${install_dir}/kae"
+else
+  # Atomic mkdir is the same protocol as installation.Acquire. A stale lock
+  # requires explicit recovery; do not infer that it is safe from a missing PID.
+  lock_path="${install_dir}/.kae.kae-install-lock"
+  if ! mkdir -m 700 "$lock_path"; then
+    echo "install.sh: installation lock busy; retry after the writer finishes, or inspect an interrupted installation" >&2
+    exit 4
+  fi
+  installation_lock="$lock_path"
+  case "${XDG_STATE_HOME:-}" in
+    /*) state_root="$XDG_STATE_HOME/kagikae" ;;
+    *) state_root="$HOME/.local/state/kagikae" ;;
+  esac
+  inspect_dir="$state_root/installations"
+  while [ ! -d "$inspect_dir" ] && [ "$inspect_dir" != / ]; do inspect_dir=$(dirname "$inspect_dir"); done
+  if [ ! -r "$inspect_dir" ] || [ ! -x "$inspect_dir" ]; then
+    echo "install.sh: cannot inspect installation receipt directory" >&2
+    exit 10
+  fi
+  if [ "$checksum_tool" = shasum ]; then
+    path_digest=$(printf '%s' "${install_dir}/kae" | shasum -a 256 | awk '{print $1}')
+  else
+    path_digest=$(printf '%s' "${install_dir}/kae" | sha256sum | awk '{print $1}')
+  fi
+  receipt_path="$state_root/installations/$path_digest.json"
+  if [ -e "$receipt_path" ] || [ -L "$receipt_path" ] || [ -e "$state_root/installations/history/$path_digest" ] || [ -L "$state_root/installations/history/$path_digest" ]; then
+    echo "install.sh: legacy replacement refused: installation receipt or recovery history exists; use a separate direct destination, or explicitly remove the installation and its non-secret receipt before reinstalling" >&2
+    exit 10
+  fi
+  if [ -L "${install_dir}/kae" ] || { [ -e "${install_dir}/kae" ] && [ ! -f "${install_dir}/kae" ]; }; then
+    echo "install.sh: destination is not a regular file" >&2
+    exit 10
+  fi
+  install -m 0755 "$binary_path" "${install_dir}/kae"
+  rmdir "$installation_lock"
+  installation_lock=""
+  echo "install.sh: legacy release installed without a removal receipt"
+fi
 
 echo "installed kae ${version} to ${install_dir}/kae"
 "${install_dir}/kae" version

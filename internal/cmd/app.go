@@ -14,6 +14,8 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/installation"
+	"github.com/webkaz-labs/kagikae/internal/integration"
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -359,6 +361,14 @@ func (app *App) inspectState(inspect func(*state.State) error) error {
 // same lock is held; both individual file writes are atomic. A process crash
 // between the two writes remains detectable as a derived-fragment mismatch.
 func (app *App) mutateSyncedAndFragment(prepare func() error, mutate func(*state.State) bool) (*state.State, error) {
+	regen := app.regenGlobalFragment
+	if app.regenGlobalFragmentForTest != nil {
+		regen = app.regenGlobalFragmentForTest
+	}
+	return app.mutateSyncedWithRegenerator(prepare, mutate, regen)
+}
+
+func (app *App) mutateSyncedWithRegenerator(prepare func() error, mutate func(*state.State) bool, regen func(map[string]string) error) (*state.State, error) {
 	l, err := app.acquireNamedLock(lockNameState, "another kae process is recording state; retry shortly")
 	if err != nil {
 		return nil, err
@@ -377,10 +387,6 @@ func (app *App) mutateSyncedAndFragment(prepare func() error, mutate func(*state
 		}
 	}
 	st := cloneState(previous)
-	regen := app.regenGlobalFragment
-	if app.regenGlobalFragmentForTest != nil {
-		regen = app.regenGlobalFragmentForTest
-	}
 	changed := mutate(st)
 	if !changed {
 		consistent, _ := app.globalFragmentConsistent(st.Synced)
@@ -481,6 +487,8 @@ func exitOf(err error) int {
 	case errors.As(err, &ce):
 		return ce.exit
 	case errors.Is(err, artifact.ErrUnsafe):
+		return constants.ExitUnsafeRefused
+	case errors.Is(err, installation.ErrUnsafe), errors.Is(err, integration.ErrUnsafe), errors.Is(err, integration.ErrChanged):
 		return constants.ExitUnsafeRefused
 	case errors.Is(err, adapter.ErrUnsupported):
 		return constants.ExitUnsupported

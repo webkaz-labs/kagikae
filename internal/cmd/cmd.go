@@ -30,7 +30,7 @@ const (
 	formatJSON = "json"
 
 	toolName    = "kae"
-	toolVersion = "v0.20.3"
+	toolVersion = "v0.21.0"
 )
 
 // Root dispatches the command line.
@@ -50,6 +50,8 @@ func Root(args []string) int {
 		return CmdStatus(ctx, args)
 	}
 	switch args[0] {
+	case "__install":
+		return CmdInstall(args[1:])
 	case "init":
 		return CmdInit(ctx, args[1:])
 	case "edit":
@@ -64,6 +66,8 @@ func Root(args []string) int {
 		return CmdPin(ctx, args[1:])
 	case "unpin":
 		return CmdUnpin(ctx, args[1:])
+	case "uninstall":
+		return CmdUninstall(ctx, args[1:])
 	case "relogin":
 		return CmdRelogin(ctx, args[1:])
 	case "apply":
@@ -242,6 +246,7 @@ Usage:
                                        home (credential private), -i isolates
   kae pin <tool> <account>             re-bind one tool inside a pinned dir
   kae unpin                            remove the binding from .mise.toml
+  kae uninstall [--dry-run] [--yes]    remove owned integrations and a recorded direct binary
   kae relogin [<tool>]                 run the tool's login flow into this
                                        directory's bound store, then capture the
                                        result back into that account's snapshot

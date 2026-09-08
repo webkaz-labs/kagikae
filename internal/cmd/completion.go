@@ -13,7 +13,7 @@ import (
 // omitted to keep the list tidy). Surfaced through `kae __complete commands`.
 // Keep in lockstep with Root().
 var completionCommands = []string{
-	"init", "edit", "doctor", "add", "use", "pin", "unpin", "relogin", "run", "env",
+	"init", "edit", "doctor", "add", "use", "pin", "unpin", "uninstall", "relogin", "run", "env",
 	"companion", "mise", "accounts", "ls", "account", "profile", "status",
 	"backup", "preservation", "rollback", "completion", "version", "help",
 }

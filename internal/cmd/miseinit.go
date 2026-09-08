@@ -74,6 +74,15 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 		fmt.Fprintln(os.Stderr, "\nkae: preview only; apply with: "+hint+" --write")
 		return constants.ExitOK
 	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return finish(opts, err)
+	}
+	l, err := app.acquirePinLock(dir)
+	if err != nil {
+		return finish(opts, err)
+	}
+	defer l.Release()
 	if err := writeMiseBlock(".mise.toml", block); err != nil {
 		return finish(opts, err)
 	}

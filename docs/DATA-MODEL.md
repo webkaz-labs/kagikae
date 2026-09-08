@@ -21,6 +21,7 @@ vocabulary for `kae`.
 | global-isolated (`use -i` / `run -i`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/global/<tool>/<account>/` (a kae-owned mise fragment points `CLAUDE_CONFIG_DIR` / `CODEX_HOME` here; the real `~/.<tool>` is never touched) |
 | file-backend secrets (opt-in) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/secrets/...` |
 | state | `${XDG_STATE_HOME:-~/.local/state}/kagikae/state.json` |
+| direct installation receipt | state directory `installations/<path-sha256>.json`; previous records under `installations/history/<path-sha256>/<record-sha256>.json` |
 | preservation records (metadata) | `${XDG_STATE_HOME:-~/.local/state}/kagikae/preservations/<id>.json` |
 | backups (metadata) | `${XDG_STATE_HOME:-~/.local/state}/kagikae/backups/<id>.json` |
 | locks | `${XDG_RUNTIME_DIR}/kagikae/locks/` (per-tool `<tool>.lock`, isolation lifecycle `isolation-<tool>.lock`, plus state/config/pin locks), falling back to `${XDG_STATE_HOME:-~/.local/state}/kagikae/locks/` when `XDG_RUNTIME_DIR` is unset |
@@ -31,6 +32,21 @@ vocabulary for `kae`.
 Directories holding metadata or secrets are created `0700`; secret and
 metadata files are written `0600`. Windows paths are defined in the design
 but Windows release support remains deferred; see [ROADMAP.md](ROADMAP.md).
+
+## Installation receipts
+
+`internal/installation.Receipt` owns schema version 1. The record contains the
+canonical absolute `destination`, `source` (`release` or `local_build`), `version`,
+executable `sha256`, `os`, `arch`, `status`, and the parent directory's
+`parent_device`/`parent_inode`. Its filename is SHA-256 of the destination bytes.
+Records are owner-only regular files (0600) in private directories (0700).
+
+`installing` precedes replacement and `active` follows successful receipt
+finalization. Removal writes `removing` before unlink and `removed` afterward.
+A supported reinstall retains the preceding record in content-addressed history,
+including a removed or interrupted record. Multiple destinations have independent
+records; changing the state root does not rediscover receipts in another root.
+These records are bookkeeping, not authenticated provenance or deletion consent.
 
 ## Config Schema
 

@@ -396,6 +396,20 @@ func TestKeychainCodexHomesCoexist(t *testing.T) {
 			t.Fatalf("a codex switch must not delete any item: %v", fake.writes)
 		}
 	}
+	// Teardown uses the same address boundary as upsert. The surviving home is
+	// the positive control against a fake that silently deletes by service.
+	runner.With(fake, func() {
+		if err := ApplyLive(ctx, sp, Value{Present: false}); err != nil {
+			t.Fatal(err)
+		}
+		v, err := ReadLive(ctx, sp)
+		if err != nil || v.Present {
+			t.Fatal("teardown retained the selected home's item")
+		}
+	})
+	if fake.items[acctKey("Codex Auth", other)] != otherItem {
+		t.Fatal("teardown removed another home's credential")
+	}
 }
 
 // A spec that says its item is identified by service+account but carries no

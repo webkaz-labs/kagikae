@@ -80,3 +80,23 @@ func TestClaudeFreshnessUnparseable(t *testing.T) {
 		t.Fatalf("Freshness on garbage = %+v (want Known=false)", info)
 	}
 }
+
+// Non-positive and unrecognized deadlines must not alone authorize revocation.
+func TestClaudeFreshnessDeadlineUncertaintyDoesNotRevokeTokens(t *testing.T) {
+	for _, value := range []string{"", "null", `"unknown"`, "0", "-1", "1735689600000"} {
+		t.Run("expiry="+value, func(t *testing.T) {
+			field := ""
+			if value != "" {
+				field = `,"expiresAt":` + value
+			}
+			payload := []byte(`{"accessToken":"synthetic-access","refreshToken":"synthetic-refresh"` + field + `}`)
+			info := (Claude{}).Freshness(payload)
+			if info.Revoked {
+				t.Fatal("deadline uncertainty revoked populated tokens")
+			}
+			if info.Known != (value != "") || info.ExpiresAt.IsZero() != (value != "1735689600000") {
+				t.Fatalf("unexpected deadline observation: %+v", info)
+			}
+		})
+	}
+}

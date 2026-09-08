@@ -464,3 +464,206 @@ func TestPreservationRestoreRefusesSymlinkRetarget(t *testing.T) {
 		})
 	}
 }
+
+func TestPreservationUnknownFormatInterruptedLoginAndRecovery(t *testing.T) {
+	for name, payload := range map[string]string{
+		"unknown shape":       `{"futureCredential":"synthetic-secret"}`,
+		"missing deadline":    `{"accessToken":"synthetic-secret","refreshToken":"synthetic-refresh"}`,
+		"nonnumeric deadline": `{"accessToken":"synthetic-secret","expiresAt":"unknown","refreshToken":"synthetic-refresh"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			app, store, _, credFile := preservationFixture(t)
+			ctx := context.Background()
+			document := `{"claudeAiOauth":` + payload + `,"unrelated":"keep"}`
+			writeFile(t, credFile, document)
+			snapshot := snapshotPayload(t, app, store.Backend, constants.ToolClaude, "main")
+			calls := 0
+			withInteractive(t, func(_ context.Context, env []string, name string, args ...string) (int, error) {
+				calls++
+				if name != "claude" || !reflect.DeepEqual(args, []string{"/login"}) {
+					t.Fatalf("unexpected login command: %s %v", name, args)
+				}
+				if !strings.Contains(strings.Join(env, "\n"), "CLAUDE_SECURESTORAGE_CONFIG_DIR="+filepath.Dir(credFile)) {
+					t.Fatal("login destination differs from the preserved store")
+				}
+				return 130, nil
+			})
+			var selected string
+			for attempt := 0; attempt < 2; attempt++ {
+				code, out, stderr := captureBoth(t, func() int {
+					return runRelogin(ctx, app, commonOpts{Format: formatJSON}, constants.ToolClaude)
+				})
+				mustExit(t, constants.ExitAuthUnchanged, code, out+stderr)
+				if strings.Contains(out+stderr, "synthetic-secret") || strings.Contains(out+stderr, payload) {
+					t.Fatal("relogin exposed raw credential")
+				}
+				records, err := store.List(ctx)
+				if err != nil || len(records) != 2 {
+					t.Fatalf("retry did not deduplicate: %v", err)
+				}
+				for _, r := range records {
+					_, raw, err := store.Load(ctx, r.ID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if string(raw) == payload {
+						if selected != "" && selected != r.ID {
+							t.Fatal("retry replaced preservation ID")
+						}
+						selected = r.ID
+					}
+				}
+			}
+			if calls != 2 || selected == "" || readFile(t, credFile) != document {
+				t.Fatal("interruption did not retain original bytes")
+			}
+			displaced := `{"futureCredential":"displaced-secret"}`
+			writeFile(t, credFile, `{"claudeAiOauth":`+displaced+`,"unrelated":"keep"}`)
+			code, out, stderr := captureBoth(t, func() int {
+				return runPreservation(ctx, app, commonOpts{Format: formatJSON}, "restore", selected)
+			})
+			mustExit(t, constants.ExitOK, code, out+stderr)
+			if readFile(t, credFile) != document || snapshotPayload(t, app, store.Backend, constants.ToolClaude, "main") != snapshot {
+				t.Fatal("recovery lost raw bytes or adopted a snapshot")
+			}
+			records, err := store.List(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, r := range records {
+				_, raw, err := store.Load(ctx, r.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				found = found || string(raw) == displaced
+			}
+			if !found || strings.Contains(out+stderr, payload) || strings.Contains(out+stderr, displaced) {
+				t.Fatal("restore lost displaced bytes or exposed a payload")
+			}
+		})
+	}
+}
+
+func TestReloginPreservationWriteFailureAndExplicitRetry(t *testing.T) {
+	app, store, _, credFile := preservationFixture(t)
+	ctx := context.Background()
+	original := `{"claudeAiOauth":{"futureCredential":"synthetic-secret"}}`
+	writeFile(t, credFile, original)
+	app.backendForTest = setFailBackend{Backend: store.Backend, failFor: secret.NSPreservation + "/"}
+	calls := 0
+	withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+		calls++
+		return 130, nil
+	})
+	code, out, stderr := captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatJSON}, constants.ToolClaude)
+	})
+	mustExit(t, constants.ExitSecretStore, code, out+stderr)
+	if calls != 0 || readFile(t, credFile) != original {
+		t.Fatal("preservation failure started login or touched original")
+	}
+	app.backendForTest = store.Backend
+	code, out, stderr = captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatJSON}, constants.ToolClaude)
+	})
+	mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+	if calls != 0 || !strings.Contains(out+stderr, "inventory is incomplete") {
+		t.Fatal("retry bypassed incomplete inventory")
+	}
+	records, err := store.List(ctx)
+	if err != nil || len(records) != 2 {
+		t.Fatalf("pending record not visible: %v", err)
+	}
+	var pending string
+	for _, r := range records {
+		if r.State == constants.PreservationStatePending {
+			pending = r.ID
+		}
+	}
+	if pending == "" {
+		t.Fatal("failed write has no pending record")
+	}
+	code, out, stderr = captureBoth(t, func() int {
+		return runPreservation(ctx, app, commonOpts{Format: formatJSON, Yes: true}, "rm", pending)
+	})
+	mustExit(t, constants.ExitOK, code, out+stderr)
+	code, out, stderr = captureBoth(t, func() int {
+		return runRelogin(ctx, app, commonOpts{Format: formatJSON}, constants.ToolClaude)
+	})
+	mustExit(t, constants.ExitAuthUnchanged, code, out+stderr)
+	if calls != 1 || readFile(t, credFile) != original {
+		t.Fatal("retry did not reach the interrupted flow with original intact")
+	}
+}
+
+func TestReloginRefusesUnreadableAndMalformedCredentialBeforeFlow(t *testing.T) {
+	for _, kind := range []string{"malformed", "unreadable"} {
+		t.Run(kind, func(t *testing.T) {
+			app, store, _, credFile := preservationFixture(t)
+			before, err := store.List(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kind == "malformed" {
+				writeFile(t, credFile, "malformed-synthetic-secret")
+			} else {
+				if err := os.Remove(credFile); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Mkdir(credFile, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			withInteractive(t, func(context.Context, []string, string, ...string) (int, error) {
+				t.Fatal("unpreservable input launched login")
+				return 0, nil
+			})
+			code, out, stderr := captureBoth(t, func() int {
+				return runRelogin(context.Background(), app, commonOpts{Format: formatJSON}, constants.ToolClaude)
+			})
+			mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+			if !strings.Contains(out+stderr, "cannot preserve") || strings.Contains(out+stderr, "malformed-synthetic-secret") {
+				t.Fatal("refusal lost its observation or exposed input")
+			}
+			after, err := store.List(context.Background())
+			if err != nil || !reflect.DeepEqual(before, after) {
+				t.Fatal("unreadable input changed preservation history")
+			}
+			if kind == "malformed" {
+				if readFile(t, credFile) != "malformed-synthetic-secret" {
+					t.Fatal("malformed input was rewritten")
+				}
+			} else if info, err := os.Stat(credFile); err != nil || !info.IsDir() {
+				t.Fatal("unreadable destination was replaced")
+			}
+		})
+	}
+}
+
+func TestPreservationRestoreRefusesMovedDirectoryUntilOriginalPathReturns(t *testing.T) {
+	app, _, saved, credFile := preservationFixture(t)
+	ctx := context.Background()
+	original := readFile(t, credFile)
+	moved := saved.Origin.Directory + "-moved"
+	if err := os.Rename(saved.Origin.Directory, moved); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Rename(moved, saved.Origin.Directory) })
+	for _, dry := range []bool{true, false} {
+		code, out, stderr := captureBoth(t, func() int {
+			return runPreservation(ctx, app, commonOpts{Format: formatJSON, DryRun: dry}, "restore", saved.ID)
+		})
+		mustExit(t, constants.ExitUnsafeRefused, code, out+stderr)
+		if readFile(t, credFile) != original {
+			t.Fatal("moved-directory refusal wrote credential")
+		}
+	}
+	if err := os.Rename(moved, saved.Origin.Directory); err != nil {
+		t.Fatal(err)
+	}
+	code, out, stderr := captureBoth(t, func() int {
+		return runPreservation(ctx, app, commonOpts{Format: formatJSON}, "restore", saved.ID)
+	})
+	mustExit(t, constants.ExitOK, code, out+stderr)
+}

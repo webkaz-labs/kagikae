@@ -60,13 +60,13 @@ func (Cursor) VerifiedVersion() string { return "" }
 func (Cursor) VerifiedOn() string { return "2026-09-04" }
 
 // driver maps the platform to the cursor driver, refusing the platforms whose
-// credential storage is undocumented (only macOS Keychain is known). Mirrors
+// credential storage has not been verified on that platform. Mirrors
 // claude's driver() so Artifacts/Doctor share one platform gate.
 func driver(env adapter.Env) (string, error) {
 	if env.GOOS == "darwin" {
 		return constants.DriverCursorKeychain, nil
 	}
-	return "", fmt.Errorf("%w: cursor auth switching is not supported on %s yet (only macOS Keychain storage is known)",
+	return "", fmt.Errorf("%w: cursor auth switching is not supported on %s yet (credential switching is verified on macOS only)",
 		adapter.ErrUnsupported, env.GOOS)
 }
 

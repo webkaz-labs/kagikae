@@ -1,6 +1,7 @@
 package paths
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -102,5 +103,28 @@ func TestIsolationPaths(t *testing.T) {
 		if tc.got != tc.want {
 			t.Errorf("%s: got %q, want %q", tc.name, tc.got, tc.want)
 		}
+	}
+}
+
+func TestPinIDPathAliasesRemainDistinct(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "main-app")
+	alias := filepath.Join(root, "side-project")
+	if err := os.Mkdir(real, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, alias); err != nil {
+		t.Fatal(err)
+	}
+	resolvedReal, err := filepath.EvalSymlinks(real)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedAlias, err := filepath.EvalSymlinks(alias)
+	if err != nil || resolvedAlias != resolvedReal {
+		t.Fatalf("fixture paths do not resolve together: %v", err)
+	}
+	if PinID(real) == PinID(alias) {
+		t.Fatal("path canonicalization needs a store migration before changing pin IDs")
 	}
 }

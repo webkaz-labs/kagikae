@@ -3,7 +3,11 @@ package cursor
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,5 +68,36 @@ func TestCursorFreshnessOpaqueJWT(t *testing.T) {
 func TestCursorFreshnessNonJWT(t *testing.T) {
 	if info := (Cursor{}).Freshness([]byte("not-a-jwt")); info.Known {
 		t.Fatalf("Freshness on non-JWT = %+v (want Known=false)", info)
+	}
+}
+
+func TestCursorLinuxFixtureDoesNotEnableCredentialAccess(t *testing.T) {
+	home := t.TempDir()
+	config := filepath.Join(home, "config")
+	dir := filepath.Join(config, "cursor")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "auth.json")
+	const raw = `{"accessToken":"synthetic-access","refreshToken":"synthetic-refresh","apiKey":"synthetic-key","bedrockCredentials":{"secretAccessKey":"synthetic-bedrock"}}`
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := adapter.Env{GOOS: "linux", Home: home, Getenv: func(key string) string {
+		if key == "XDG_CONFIG_HOME" {
+			return config
+		}
+		return ""
+	}}
+	if specs, err := (Cursor{}).Artifacts(context.Background(), env); !errors.Is(err, adapter.ErrUnsupported) || len(specs) != 0 {
+		t.Fatal("synthetic file enabled an unverified platform")
+	}
+	checks := (Cursor{}).Doctor(context.Background(), env)
+	if len(checks) != 1 || !strings.Contains(checks[0].Message, "verified on macOS only") {
+		t.Fatalf("diagnostic must name verification boundary: %+v", checks)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != raw {
+		t.Fatal("unsupported adapter touched Linux fixture")
 	}
 }

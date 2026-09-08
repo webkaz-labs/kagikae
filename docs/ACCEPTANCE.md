@@ -45,7 +45,13 @@ saved completion/store smokes and the automatic-selection/diagnostic-list smoke.
 The initial sandboxed gate could not exercise the intentional info/exclude write;
 the full gate passed when rerun with that filesystem permission. Correctness and
 quality reviews passed without subagents, following the user's prohibition.
-Publication and published-asset verification remain pending.
+Release tag `v0.20.2` points to candidate `0a95a08`. Main CI and the release
+workflow succeeded. On 2026-09-09 (JST), `mise run release-verify -- v0.20.2`
+returned `status: success` for the darwin/linux × amd64/arm64 archives, checksums
+and provenance attestations. The native archive and isolated installer reported
+`kae v0.20.2`; the installer used verified-asset fixtures, not live HTTP transport.
+The local `mise run install` and completion refresh succeeded, and the installed
+binary reported `kae v0.20.2`.
 
 ## Applicability for a maintainer-only release
 

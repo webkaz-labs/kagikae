@@ -1,13 +1,17 @@
 # Release Process
 
-## Release candidate — kae v0.20.2
+## Current release — kae v0.20.2
 
 Recovery guidance clarifies the account and store prerequisites for existing
 login/capture operations and the next checks for incomplete metadata lists.
 This is a patch release: command syntax, JSON structure, diagnostic codes, exit
 codes and credential mutation policy remain unchanged. The affected validation
 is recorded in [ACCEPTANCE.md](ACCEPTANCE.md) § Recovery guidance validation boundary.
-Publication and published-artifact verification are pending.
+The release record is the tag and
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.20.2).
+On 2026-09-09 (JST), `mise run release-verify -- v0.20.2` verified the archives,
+checksums, provenance and isolated installer; the native binary reported
+`kae v0.20.2`. The installer used verified assets rather than live HTTP transport.
 
 ## Release procedure
 

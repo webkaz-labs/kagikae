@@ -55,6 +55,10 @@ completion, optional automatic initialization, updates and removal. Its lifecycl
 ownership and acceptance are defined in [RELEASE.md](RELEASE.md#packslip-distribution).
 The upstream detector remains conditional and does not block these delivery improvements.
 
+After that release is complete, revisit the ideas in
+§ Agent orchestration and remote authentication — deferred exploration.
+They are an exploration queue, not additions to the next-release implementation.
+
 The offline-recovery candidates have their accepted/deferred verdicts in the
 assessment linked above; they are not a fresh implementation queue. Evaluate
 reproducible upgrade inputs and the existing-check workflow before adding another
@@ -80,6 +84,39 @@ prerequisites; entries not named here retain their recorded gate.
    **TUI**, **Remote share-list definitions (ship)**, **cursor off macOS is unblocked but
    unimplemented**, and § Tier-2 tools — described, not queued only when their own demand
    or evidence gate opens. Tier 2 is not a parity backlog.
+
+## Agent orchestration and remote authentication — deferred exploration
+
+Resume after the uninstall/Packslip release described in [RELEASE.md](RELEASE.md)
+has shipped. The operator requested preserving these ideas for later investigation;
+no new command, integration or credential-transfer mechanism is selected yet.
+
+| Idea | Scenario and potential benefit to investigate |
+|---|---|
+| Account-aware Herdr launch | Start an agent with the requested account and isolation mode for its working directory. Evaluate composition of existing `run -i` and directory bindings before adding a launch interface; test compatibility with Herdr's agent recognition and process lifecycle. |
+| Machine-readable preflight | Let an orchestrator distinguish missing setup, unsupported isolation, observable conflicts and required human action before launching work. Separate local configuration readiness from verified upstream authentication; inspect existing JSON reports before defining another contract. |
+| Session-to-account visibility | Show the intended account and credential-store scope associated with an agent, with evidence and freshness limits. Investigate whether this helps operators assess the impact of relogin or configuration changes without implying that a running process changed accounts. |
+| Execution where authentication resides | Explore local-to-remote and remote-to-local job dispatch using credentials already held at the execution destination. Compare this with moving credentials, including reconnect, interruption and authorization behavior. |
+| Container and remote credential access | Assess Git/SSH helper or forwarding mechanisms separately from AI-tool OAuth stores. Consider both directions of access; investigate storage compatibility, token refresh ownership and concurrent use before proposing copying or synchronization. |
+| Agent-facing usage skill | If the workflows establish a concrete need, assess a user-facing kae skill distributed through Packslip. Keep its scope distinct from the repository's maintainer-only upstream investigation skill. |
+
+At that time, use Matt's Wayfinder, Finder and Grilling skills as requested, plus
+relevant architecture skills. Resolve the exact installed skill names and read
+their instructions before use; these names record the operator's requested
+workflow, not an assertion that every skill is currently available. Explore real
+user scenarios and alternatives, challenge the need for new features, and compare
+composition with extending kae or Herdr. Do not start agents or remote sessions
+merely to record or discuss these ideas.
+
+The output of that investigation is an explicit adopt/defer/reject decision per
+candidate, followed by an implementation plan for accepted work: ownership between
+kae and Herdr, credential and process lifetimes, platform scope, acceptance evidence
+and release ordering. Consult [PRODUCT.md](PRODUCT.md) for current product limits
+and [ADAPTERS.md](ADAPTERS.md) for per-tool storage and refresh contracts. Decide
+which additional real-machine checks are necessary before scheduling them.
+Close this entry by transferring accepted work to the release plan and retaining
+only deferred questions with their reopening conditions; do not leave a second
+implementation backlog here.
 
 ## Upstream-drift automation — what is left
 

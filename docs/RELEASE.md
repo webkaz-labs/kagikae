@@ -15,45 +15,6 @@ installer were verified on 2026-09-08 (JST) with
 installer reported `kae v0.20.1`; the installer used verified-asset fixtures
 as described below.
 
-## Next release — recovery guidance
-
-Scope agreed; implementation has not started. Help users choose an existing
-explicit recovery operation through human-readable output and documentation.
-Prioritize metadata-list guidance, then align authentication guidance. Choose the
-version after the implementation scope is verified.
-
-| Order / status | Work | Acceptance |
-|---|---|---|
-| First / planned | Explain the next check for invalid config, enumeration failure, unreadable or invalid metadata, and unexpected entries in backup/preservation lists | Preserve readable rows, anonymity and completeness. Give an actionable check or documentation route without inferring a damaged entry's identity, recommending blind deletion, or presenting metadata readability as proof of restorability. |
-| Second / planned | Align global login/capture and bound-directory login advice | Distinguish fresh login from capture of an already verified login. State the target and prerequisites; when the account or destination cannot be established, guide verification before mutation. Cover stale/expiring snapshots, missing snapshots or payloads, and identity-related recapture advice. Preserve tool-specific login support and existing refusals. |
-| After both / planned | Update README and CLI guidance and validate delivery | Explain when global rollback and original-store preservation apply, without implying either repairs expired authentication. Command-level controls cover both lists and affected authentication messages, including wrong/unknown account, unavailable login support and secret-bearing input. Complete the applicable validation and review gates below. |
-
-Use the existing `listDiagnostics` module and compare the existing freshness,
-identity and bound-directory guidance helpers before introducing another one.
-Concentrate repeated guidance decisions only where this removes knowledge from
-callers; do not add a generic recovery framework or redesign account lifecycle.
-Tests exercise the command interface and retain refusal and redaction controls.
-
-Keep JSON structure, diagnostic codes and exit codes stable. Add no structured
-recovery fields. Existing human-readable strings carried inside JSON may receive
-the same wording correction as text output; they must not become machine action
-instructions. Keep list stdout/stderr responsibilities and quiet behavior intact.
-Lists remain metadata-only and independent of credential backend selection.
-
-Do not add commands, automatic repair, credential reads for richer list advice,
-or changes to capture, attribution, refresh, restoration, retention, quota or
-locking policy. The research prerequisites in [ROADMAP.md](ROADMAP.md) remain.
-A discovered defect requiring such a change is a separate scope decision.
-
-Implementation uses [AGENTS.md](../AGENTS.md) § Validation and the applicable
-isolated command controls. Assess affected live acceptance under
-[ACCEPTANCE.md](ACCEPTANCE.md); wording-only changes do not by themselves establish
-a need to repeat credential mutations on a real machine. Publication follows
-§ Release procedure when implementation and release are requested.
-
-On completion, remove this next-release section after current contracts and
-acceptance evidence have their canonical homes. Keep historical scope in git.
-
 ## Release procedure
 
 Releases are cut by pushing a `vX.Y.Z` tag; GitHub Actions

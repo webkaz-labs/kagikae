@@ -32,7 +32,7 @@ questions in parallel. Research findings may change later scope; they do not
 by themselves authorize credential policy changes. This ordering promises no
 release dates or later version numbers.
 
-The next release scope is [recovery guidance](RELEASE.md#next-release--recovery-guidance).
+Daily recovery guidance is documented in [CLI.md](CLI.md) § Recovery guidance.
 Global mise tasks are excluded from priority work; direct `kae` commands and
 completion serve the agreed usage.
 

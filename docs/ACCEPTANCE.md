@@ -16,6 +16,20 @@ stayed there, beside the surfaces they check.
 candidate revision it was run against and the release tag when one exists.** This
 document owns the results; results recorded elsewhere are invisible to the next run.
 
+## Recovery guidance validation boundary
+
+Assessed on 2026-09-09 (JST) for implementation candidate `a4daa3d` against
+`dd8bc69`. The full `mise run check` gate and the built-binary block in
+[VALIDATION.md](VALIDATION.md) § Automatic selection and diagnostic lists passed.
+The focused command acceptance run reported passing tests with no skips, including
+unreadable metadata. These results use isolated synthetic credentials.
+
+Review of this candidate's application diff found advice changes, with credential
+mutation and attribution predicates unchanged. No new live login or credential
+mutation was performed for this work; this is not a new live-account acceptance
+result or release certification. A future release still follows
+[RELEASE.md](RELEASE.md) § Release procedure.
+
 ## Applicability for a maintainer-only release
 
 A release that changes only maintainer tooling may reuse recorded live-account

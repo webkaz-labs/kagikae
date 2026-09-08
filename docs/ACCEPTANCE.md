@@ -1,20 +1,40 @@
 # Release Acceptance
 
-What a release verifies on a real machine, plus account-combination checks an
-operator may run when the required accounts are available. Nearly everything here
-needs a real keychain, a real login, or both — the exception is
-§ Bound-directory credential store's shim procedure, which needs no account —
-and `mise run check` reaches none of it. § Credential-expiry observation — does
-`refreshTokenExpiresAt` predict the login's death? is not a second exception to that
-but an observation rather than a run, so a release owes it nothing. Account
+Release-specific assessments distinguish isolated fixtures, installed-tool
+observations and live account checks. Read the applicable section before running
+it: a fixture result does not establish live credential health. Account
 combinations outside the release run are classified in
-§ Optional account-combination checks. Read
-[VALIDATION.md](VALIDATION.md) for what a commit owes; two release-only smokes
-stayed there, beside the surfaces they check.
+§ Optional account-combination checks. [VALIDATION.md](VALIDATION.md) owns the
+commit gate and the smoke procedures beside the surfaces they check.
 
 **Every result is recorded here, under the check it settles, naming the exact
 candidate revision it was run against and the release tag when one exists.** This
 document owns the results; results recorded elsewhere are invisible to the next run.
+
+## Uninstall and Packslip assessment
+
+Assessed on 2026-09-09 (JST) for candidate `c99ccc5`, including the implementation
+commits `f71d4d6`, `e5c64a2`, `7fa65ac` and `342140f`. These checks used isolated
+HOME/XDG roots or fake credential runners; no live login or operator uninstall
+was part of acceptance. The credential-switching contract is unchanged by this
+scope, so additional account-combination runs are not required for these delivery
+changes.
+
+| Surface | Evidence and boundary |
+|---|---|
+| Initialization and teardown | `mise run check` passed on `c99ccc5`. Command tests cover shared initialization locking, existing configuration preservation, bounded ownership, customized/unreadable content, partial reports and retained data. The tests exercise fake credential runners rather than live credentials. |
+| Direct installation | [VALIDATION.md](VALIDATION.md) § Direct installation receipt smoke passed against `e5c64a2`: staged native install, reinstall, teardown, self-removal and retained configuration. Receipt tests in the full gate cover invalid metadata, image replacement, permissions and interrupted states. Native self-image validation ran on macOS arm64; other release targets were cross-compiled, not executed on this machine. |
+| Legacy installer and locks | [VALIDATION.md](VALIDATION.md) § Installer compatibility smoke passed against `7fa65ac`, using the real shell installer with synthetic archives. Both shell/Go lock directions, receipt/history refusal, legacy downgrade and new-protocol failure without fallback passed. Transport is fixture-only. |
+| Signed backend lifecycle | [VALIDATION.md](VALIDATION.md) § Packslip consumer smoke passed on `c99ccc5` with mise 2026.9.3 and Packslip 1.1.1 on macOS arm64. Temporary v0.21.0/v0.21.1 binaries and ephemeral key/unlogged trust exercise actual backend install, opt-in postinstall, no-op/repeated init, upgrade preview/apply, project selection, offline reuse, teardown, manager removal and reinstall. Configuration and dummy credential bytes remain unchanged. Wrong key/project/digest/platform and missing assets are refused. This is not a published-history upgrade test. |
+| Completion registration | The same fixture runs real Bash 3.2 and Zsh shells across a project/version switch. Distinct fixture-only static candidates expose stale registration; logged executable versions prove dynamic profile queries use the selected binary. Automatic mise loading restores a prior custom registration on deactivation. Manual loading stays stale until repeated, as documented. Zsh captures `compadd` without driving an interactive TTY. Fish resources are retrieved and compared, but no fish runtime was available for a shell check. |
+| Packaging and publication checks | `mise run goreleaser-check` and a GoReleaser snapshot passed on the `342140f` implementation scope; archive inspection found the binary, documentation and generated static completion resources. Verifier unit tests cover exact source/signer/metadata checks and bounded matching/conflicting/interrupted upload paths. Packslip 1.1.1's generated Linux selector is GNU/Linux; musl selection is outside this backend coverage. Published-tag verification and the production-trust native consumer remain pending until release. |
+| Existing release gates | `mise run audit`, `mise run release-evidence` and `mise run naming-agreement` passed on the `342140f` implementation scope. `mise run release-smoke` passed on `c99ccc5`, including the saved completion and per-account store fixtures. These results do not extend live account acceptance. |
+| Conditional upstream lane | Installed fingerprints passed with the existing Codex exclusion. The reviewed Claude 2.1.261 naming comparison passed. The inspected installed-artifact location provided no reviewed old/new pair, so no new detector, artifact cache or verified-version/date change was accepted. [ROADMAP.md](ROADMAP.md) § Upstream-drift automation — what is left retains the reopening conditions. |
+
+The native published consumer is a separate release gate, with GitHub OIDC trust
+and no fixture key, unlogged option, release-age override or URL redirection.
+Record its exact tag/source and result here after publication. Platform and fish
+runtime limitations above are not converted into passing coverage by that run.
 
 ## Offline recovery and validation assessment
 

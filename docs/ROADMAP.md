@@ -44,16 +44,11 @@ without enabling whole-document writes or account adoption. Existing relogin and
 original-store restore are described in [CLI.md](CLI.md) § kae preservation Semantics.
 Do not widen those mutation paths without affected acceptance.
 
-The next-release proposal is [uninstall and upstream drift re-verification](RELEASE.md#proposed-next-release--uninstall-and-upstream-drift-re-verification).
-Prioritize uninstall usability: preview and remove owned integrations, retain
-authentication/recovery data by default, and add installation receipts for automatic
-removal of supported direct installs. Managed or unrecorded binaries receive
-source-specific guidance. The proposal owns its scope and acceptance conditions;
-`kae uninstall` is not yet a shipped command.
-Packslip distribution is also in the next-release scope, including version-aware
-completion, optional automatic initialization, updates and removal. Its lifecycle
-ownership and acceptance are defined in [RELEASE.md](RELEASE.md#packslip-distribution).
-The upstream detector remains conditional and does not block these delivery improvements.
+The v0.21.0 candidate implements uninstall and Packslip delivery; its remaining
+publication gate is in [RELEASE.md](RELEASE.md) § Candidate — kae v0.21.0.
+The lifecycle evidence and limitations are in [ACCEPTANCE.md](ACCEPTANCE.md)
+§ Uninstall and Packslip assessment. The upstream detector remains conditional
+on reviewed artifact pairs under § Upstream-drift automation — what is left.
 
 After that release is complete, revisit the ideas in
 § Agent orchestration and remote authentication — deferred exploration.
@@ -63,7 +58,7 @@ The offline-recovery candidates have their accepted/deferred verdicts in the
 assessment linked above; they are not a fresh implementation queue. Evaluate
 reproducible upgrade inputs and the existing-check workflow before adding another
 detector. Continue to maintain the current release if no bounded improvement
-qualifies; the proposal does not relax the research gates below.
+qualifies; this ordering does not relax the research gates below.
 
 The remaining lanes follow in this order. Each named entry retains its own
 prerequisites; entries not named here retain their recorded gate.
@@ -126,6 +121,14 @@ executable checks routed from [VALIDATION.md](VALIDATION.md). The login-free Cla
 naming comparison is `mise run naming-agreement`; its scope and digest update
 precondition are in [ACCEPTANCE.md](ACCEPTANCE.md) § Bound-directory credential store.
 It does not establish PATH-shim reachability for other tools.
+
+The 2026-09-09 candidate assessment in [ACCEPTANCE.md](ACCEPTANCE.md)
+§ Uninstall and Packslip assessment established no reviewed old/new Claude pair.
+Start with explicit existing artifact paths and recorded source/version/digest.
+Compare a maintainer-only structured report at the existing fingerprint/naming
+seams with direct command use before retaining a wrapper. Do not add an automatic
+cache/downloader, infer unchanged authentication from a green fingerprint, or
+update verified versions/dates without the upstream re-verification procedure.
 
 The remaining investigation is:
 

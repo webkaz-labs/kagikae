@@ -30,6 +30,9 @@ check here can notice that the standard changed.
 | Document | When To Read |
 |----------|--------------|
 | [README.md](README.md) | user-facing command or setup changes |
+| [README.ja.md](README.ja.md) | Japanese setup and user-facing changes; update alongside the English entrypoint |
+| [docs/PRODUCT.ja.md](docs/PRODUCT.ja.md) | Japanese product overview when scope or capability boundaries change; PRODUCT.md remains normative |
+| [docs/GUIDE.ja.md](docs/GUIDE.ja.md) | Japanese daily use, configuration, recovery and safety guidance; CLI.md owns the detailed contract |
 | [docs/CONTEXT.md](docs/CONTEXT.md) | before naming anything, and whenever a word for an existing thing has to be chosen — it is the authority on the vocabulary it holds, the user-facing terms and the mechanism vocabulary alike. Not for a JSON contract token, which is an enum owned by `internal/constants`; its own routing table says so. It is a glossary and states no rule: an entry that names something a predicate decides says which predicate and stops, so a question about *behaviour* is never answered here |
 | [docs/PRODUCT.md](docs/PRODUCT.md) | mission, modes, boundary changes — and **§ Tool Tiers before adding or widening surface for any tool**. A tier decides which *modes* a tool gets and never which guards apply; that section is the only place that says which tool is in which tier, so do not copy the mapping here or anywhere else |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | anything that touches what a tool adapter switches or preserves — and **docs/ADAPTERS.md § Verified Upstream Versions before bumping a `VerifiedVersion()` or `VerifiedOn()`**, which owns what re-verification means and where every copy of the pair lives |

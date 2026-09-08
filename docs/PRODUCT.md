@@ -1,12 +1,8 @@
 # kagikae Product
 
-This was `docs/DESIGN.md` until 2026-08-11. The shared Go CLI standard reserves
-`DESIGN.md` for a *visual* design system — semantic tokens, component appearance,
-visual baseline IDs, following the Google Labs DESIGN.md specification — and says in
-as many words that it is "not the product or software design document". This file has
-always been the latter, so it carries the name the standard gives that content, and
-kae has no `DESIGN.md`: it is a plain CLI with no TTY surface, which the standard says
-should omit one.
+[日本語の製品概要](PRODUCT.ja.md) · [User entrypoint](../README.md)
+
+Product scope, supported modes and capability boundaries.
 
 ## Mission
 
@@ -20,7 +16,7 @@ execution environments for AI coding CLIs:
 - Cursor CLI (`cursor-agent`)
 - GitHub Copilot CLI (`copilot`)
 
-How much surface each one gets is a tier: tier 1 gets every mode, tier 2 gets
+How much surface each one gets is a tier: tier 1 targets every mode subject to capability guards, tier 2 gets
 credential switching, and both get the same refusals. **§ Tool Tiers below is the
 normative statement of which tool is in which tier** — prefer a pointer to it over
 a fresh copy, and if a document does state the mapping (today `SCOPE-MODEL.md` §7
@@ -126,7 +122,7 @@ close.
 
 | Tier | Tools | Surface kae commits to |
 |------|-------|------------------------|
-| **1 — full surface** | claude, codex | every mode: global shared (`use`), global isolated (`use -i` / `run -i`), both per-directory binds (`pin -s` / `pin -i`), identity switching and drift detection, per-directory credential stores, and the per-directory login flow (`kae relogin`). Where the tool can address its credential separately from its home, a **per-account** credential store as well, so two directories on one account run at once (claude only — [ADAPTERS.md](ADAPTERS.md) § Per-account credential store). Gaps here are debt with a plan (see [ROADMAP.md](ROADMAP.md)) |
+| **1 — full surface** | claude, codex | target modes: global shared (`use`), global isolated (`use -i` / `run -i`), both per-directory binds (`pin -s` / `pin -i`), identity switching and drift detection, per-directory credential stores, and the per-directory login flow (`kae relogin`). Where the tool can address its credential separately from its home, a **per-account** credential store as well, so two directories on one account run at once (claude only — [ADAPTERS.md](ADAPTERS.md) § Per-account credential store). Gaps here are debt with a plan (see [ROADMAP.md](ROADMAP.md)) |
 | **2 — credential switching** | agy, opencode, cursor, copilot | global shared (`kae use`), `kae run --env`, capture / apply / backup / `kae rollback`, `kae doctor`, and identity detection as far as the tool exposes one. Nothing else, and that is the specification — not a backlog |
 
 What Tier 2 does **not** get, deliberately: `kae pin` in either mode, and
@@ -278,41 +274,20 @@ The others are what `kae` will not do:
 
 ## Completion Goal
 
-A developer with more than one account (a main and a side) for several AI CLIs
-can:
-
-1. `kae add <tool> [<account>]` once per account (the name is auto-detected
-   from the live login when omitted; or `--no-login` while logged in);
-2. `kae use main` / `kae use side` daily, in under a second,
-   without losing any working context;
-3. trust that a failed or interrupted switch is recoverable via `kae rollback`;
-4. script everything via stable `--json` output and deterministic exit codes.
+A developer can register accounts, switch profiles, choose an appropriate
+isolation mode, and diagnose or recover a failed operation through the documented
+commands. Recovery retains its store, attribution and freshness conditions;
+this goal does not promise permanent authentication or recovery from every failure.
+Machine-readable consumers use the versioned contracts in [CLI.md](CLI.md).
 
 ## Current State
 
-The whole switching surface described above is implemented: the two-verb ×
-two-flag matrix (`use` / `pin` with `-s` / `-i`), bare `kae use` for idempotent
-manual profile application and automatic hook application (`--auto --quiet`), `kae run` with `-s` / `-i` / `--env`, `kae env`
-profiles, companion-auth lockstep, account and profile lifecycle, shell completion,
-`kae doctor`, `kae backup` / `kae rollback`, and adapters for all six tools.
-Keychain items are captured and restored verbatim; a file-driver override keeps
-macOS smoke checks off the real login keychain.
+Use the command contracts in [CLI.md](CLI.md) and the per-tool allowlists in
+[ADAPTERS.md](ADAPTERS.md) to determine the available workflow. The tier table
+above sets scope; it does not override a disabled capability.
 
-Where the tools differ is § Tool Tiers, which is the normative statement: claude
-and codex get every mode, the other four get global shared switching and
-`kae run --env`. The one tier-1 capability still open is codex's **per-directory
-keyring** bind — the code is in place and the store's account rule is measured, but
-the real-machine round trip has not been run, so kae warns and writes nothing there
-rather than assuming ([VALIDATION.md](VALIDATION.md), [ROADMAP.md](ROADMAP.md)).
-
-A binding belongs to a directory, so a `git worktree` is a first-class unit: each
-worktree of a repository can bind a different account, `kae pin` keeps its fragment
-out of every worktree's `git status` through the repository's shared exclude file,
-and `kae ls --pins` lists every bound directory from anywhere
-([CLI.md](CLI.md)).
-
-Windows remains unimplemented and is tracked in [ROADMAP.md](ROADMAP.md) (v0.6.0
-removed the gemini adapter after upstream retired Gemini CLI for Antigravity on
-2026-05-19). What shipped when is the release tags and the GitHub releases they
-created ([RELEASE.md](RELEASE.md) for how a past release's own entry is read out of
-git); `git log` is the per-commit source of truth.
+Codex per-directory keyring binding is disabled pending the capability check in
+[ACCEPTANCE.md](ACCEPTANCE.md) § Optional account-combination checks. Cursor Linux
+support and Windows release binaries are not enabled. Deferred work and its
+prerequisites live in [ROADMAP.md](ROADMAP.md); the current release and proposed
+next work live in [RELEASE.md](RELEASE.md).

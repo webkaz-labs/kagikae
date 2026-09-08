@@ -1,95 +1,33 @@
 # kagikae
 
-`kae` switches **subscription accounts** for AI coding CLIs — Claude Code,
-Codex CLI, Antigravity CLI, OpenCode, the Cursor CLI, and the GitHub Copilot
-CLI.
+English | [日本語](README.ja.md)
 
-The official CLIs log you in as one account at a time. Using a second account
-means logging out and re-running the browser OAuth flow on every switch — and
-that flow discards the first account's session, so switching back means logging
-in yet again. `kae` **captures each account once and swaps the captured
-credential back in under a second**, with no re-authentication. The snapshot
-preserves the credential bytes for switching; it does not guarantee that the
-upstream service will still accept or refresh them:
+`kae` switches saved accounts for AI coding CLIs while keeping the working
+setup shared by default. Use a profile to switch several tools together, or bind
+a project directory to an account where the tool supports isolation.
 
-```text
-main Claude account    <->  side Claude account     (e.g. a second org you own)
-main ChatGPT Codex     <->  side ChatGPT Codex
-main Google account    <->  side Google account      (Antigravity)
-main ChatGPT           <->  side ChatGPT             (OpenCode)
-main Cursor            <->  side Cursor              (Cursor CLI)
-```
-
-That alone replaces the slow logout/login dance. On top of it, `kae` does what
-a re-login cannot:
-
-- **Run several accounts at once.** Per-directory and per-process scopes drive
-  different accounts of the *same* tool in parallel; the global `/login` is
-  single-account by nature.
-- **Bind a directory to an account.** `kae pin` makes a project always use a
-  given account — `cd` in and the switch is already done, with no command to
-  remember.
-- **Switch every tool with one command.** A *profile* bundles one account per
-  tool, so `kae use main` moves Claude, Codex, Antigravity, and the rest
-  together instead of six separate logins.
-
-By default a switch touches **only the credential** — plus, for claude, the one
-identity field it shows in the UI — so your skills, hooks, memory, MCP servers,
-project trust, and session history stay shared and intact.
-When you *do* want separation, the same commands isolate the whole config
-directory — a private home per directory (`kae pin -i`) or per account
-(`kae use -i`) — so sessions, skills, and settings are kept apart too. Shared
-by default, isolated on demand.
-
-`kae` never reimplements a login flow — it snapshots and restores what the
-official CLIs create — and it never sends your credentials anywhere. Secrets
-stay in the OS credential store; switching is a local, reversible, audited
-operation.
+Supported adapters cover Claude Code, Codex CLI, Antigravity, OpenCode, Cursor CLI
+and GitHub Copilot CLI. Available modes and platforms differ; see
+[Tool Support](#tool-support) before choosing a workflow.
 
 ## Why kae?
 
-Switching accounts and keeping your setup are different concerns, but the tools
-conflate them: one home directory per CLI, and the only built-in lever is the
-login itself. `kae` separates **who you are logged in as** from **how you have
-the tool set up**:
+Keep skills, hooks, memory, MCP configuration and sessions while changing the
+allowlisted authentication artifacts. Explicit isolated modes provide private
+homes when you need separate working environments.
 
-- it switches only the credential (an allowlisted token / keychain item / JSON
-  pointer) — in a mixed-state file like `~/.claude.json`, only claude's
-  `/oauthAccount` identity field, by pointer, never the whole file;
-- it backs up live artifacts before global switch operations and restores a
-  selected restorable global backup with `kae rollback`; separate preservation
-  records keep credential bytes without asserting ownership or validity and
-  restore only to their original store ([docs/CLI.md](docs/CLI.md) § kae
-  preservation Semantics);
-- it keeps one consistent surface across six different tools that each store
-  auth differently (file, macOS Keychain, libsecret, JSON pointer);
-- it offers per-directory and per-process scopes, so a single machine can run
-  different accounts of the same tool at once.
+A saved credential can be reused only while the upstream service accepts it.
+Capture is not a promise of permanent login: expiry, revocation and refresh can
+require a new login. Backups recover saved bytes, not upstream token validity.
 
 ## What stands out
 
-- **Auth-only by default.** A shared switch changes the credential — plus, for
-  claude, the one identity field it shows in the UI — and nothing else.
-- **Six tools, one grammar.** `use` / `pin` × `-s` (shared) / `-i` (isolated),
-  plus `run`, `add`, `ls`, `doctor` — the same verbs regardless of how the tool
-  stores its credential.
-- **Three isolation scopes.** Global in-place (`kae use`), per-account private
-  home (`kae use -i`), and per-directory binding (`kae pin`) via kae-owned mise
-  fragments — your real `~/.claude` and your `mise.toml` are never touched.
-- **Companion auth in lockstep.** Bind `git`, `gh`, and cloud-CLI identity to the
-  same profile, so a bare `git commit` or `gh pr create` in a bound directory
-  acts as the right account — and `kae doctor` flags when the live git identity
-  drifts from the binding.
-- **Safe by construction.** Atomic writes, per-tool locks, backups for global
-  switch operations,
-  structure guards that refuse unknown credential layouts, and full secret
-  redaction in every output path.
-- **Built for humans and agents.** Readable text by default; deterministic exit
-  codes and stable `--json` reports for scripting; dynamic shell completion and
-  a "did you mean?" hint for typos.
-- **One small binary.** A single static Go executable — no runtime, no daemon,
-  no background app. Fast enough to run in shell hooks and on every `cd`;
-  install with `curl | sh`, mise, or `go install`.
+- Global account switching with `kae use` and multi-tool profiles.
+- Directory bindings and isolated processes for supported tools.
+- Opt-in git, gh and cloud companion configuration for a bound directory.
+- Backups, original-store preservation, diagnostic reports and dynamic completion.
+- A Go executable with no background daemon. Official CLIs and the selected
+  secret backend are still required for the workflows that use them.
 
 ## Install
 
@@ -264,17 +202,12 @@ view across all of them (directory, profile, mode, bound account per tool, and a
 keeps its store so a re-pin restores its sessions, but it is not a binding and is
 not listed.
 
-**Two Claude worktrees can run the same account at the same time**, which needed one
-credential copy per account rather than one per directory: claude's refresh token is
-single-use, so whichever session refreshed first used to invalidate the other
-directory's copy, and that one then failed up to eight hours later, mid-session. The
-credential is now the account's — one store every directory bound to it reads —
-while sessions, settings and memory stay per directory, because claude has a second
-variable that moves the credential alone
-([docs/ADAPTERS.md](docs/ADAPTERS.md) § Per-account credential store).
-
-A directory bound by an earlier version keeps its own copy until you re-run
-`kae pin` there; `kae doctor` names the ones that still need it.
+Claude bindings for the same account share its credential store, while their
+working homes follow the chosen shared/isolated mode. This avoids independent
+copies of the rotating credential in each directory; it does not serialize
+upstream processes or guarantee that a session stays logged in.
+[ADAPTERS.md](docs/ADAPTERS.md) § Per-account credential store owns the mechanism.
+Re-run `kae pin` when `kae doctor` reports a legacy per-directory copy.
 
 ## Beyond Switching
 
@@ -328,27 +261,11 @@ kae companion add main gh GH_TOKEN     # value read from stdin (kept in the secr
 kae pin main                           # the bound directory now commits and gh's as `main`
 ```
 
-Bindings are opt-in per profile, delivered through the per-directory `kae pin`
-fragment, and reverted by `kae unpin`. A bound directory records which directory
-it belongs to, so `kae account rm` / `rename` and `kae profile rm` name the
-directories they just invalidated instead of leaving them dangling, and
-`kae doctor` reports a bound directory that has been deleted or that binds an
-account you no longer have — and, since a bound directory keeps its own copy of
-the credential which the tool refreshes in place, one whose login has expired or is
-about to — and one whose copy a *newer* copy of the same account has overtaken,
-which for claude means it can no longer refresh at all even though every expiry
-still reads fine. That last one is the "I used claude in the other worktree and this
-one logged out hours later" case, and it had no visible cause before. All three name
-`kae relogin` in that directory. It also reports a bound
-directory whose store names a *different* account than the one it binds, which
-usually means something logged in inside that directory. `kae doctor` reports
-binding health and,
-inside a bound directory, flags when the identity git would actually commit
-with has drifted from the binding — a stray `git config --local` or an inactive
-pin — the silent wrong-author commit this exists to prevent. With `--yes` (or
-when you answer its prompt) it also makes the network call to check a token
-companion's live login against the account it was bound to (gh today). See
-[docs/ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md).
+Companion settings are opt-in per profile, delivered through `kae pin`, and
+removed from the directory on `kae unpin`. Run unfiltered `kae doctor` for binding
+health and git identity drift. A token companion's live identity check may require
+a network call and confirmation (`--yes` accepts that check).
+See [ADAPTERS-COMPANION.md](docs/ADAPTERS-COMPANION.md) for each companion's scope.
 
 ## Shell Completion
 
@@ -438,7 +355,7 @@ in which tier — with the rationale and the promotion criteria — is normative
 [docs/PRODUCT.md](docs/PRODUCT.md) § Tool Tiers**; this file deliberately does not
 repeat the mapping:
 
-- **Tier 1** gets every mode: global switching, global isolated homes, both
+- **Tier 1** targets the full surface, subject to capability guards: global switching, global isolated homes, both
   per-directory binds, identity switching and drift detection.
 - **Tier 2** gets global switching (`kae use`), `kae run --env`, backup/rollback,
   `kae doctor`, and identity detection where the tool exposes one. No `kae pin` and
@@ -462,14 +379,17 @@ One account per tool at a time globally: a shared switch (`kae use`) changes the
 live credential store, so running different accounts of the same tool at once
 needs an isolated environment — `kae pin` per directory, or `kae use -i`
 globally. Two directories bound to the *same* account is a different case that
-isolation alone does not yet solve — see "One account per worktree".
+must follow the tool's credential-store model — see [One account per worktree](#one-account-per-worktree).
+Codex per-directory keyring binding remains disabled pending its live capability
+check. Cursor's adapter remains unsupported on Linux; Linux support for the
+binary does not imply support for every adapter.
 
 ## Common Commands
 
 | Command | Purpose |
 |---------|---------|
 | `kae` / `kae status` (`kae s`) | Show what is active per tool. |
-| `kae use <profile\|tool account>` (`kae u`) | Switch globally (`-i` isolated, `--quiet` for hooks). |
+| `kae use <profile\|tool account>` (`kae u`) | Switch globally (`-i` isolated; automatic hooks use `--auto --quiet`). |
 | `kae pin [<profile>]` (`kae p`) | Bind the current directory (`-i` isolated). |
 | `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials, harvesting each into its account snapshot first and keeping any it could not (sessions and settings are kept). One copy it deletes without keeping: one whose account no longer exists, because there is no snapshot to keep it in — it says so, and [docs/CLI.md](docs/CLI.md) § kae pin says why. |
 | `kae relogin [<tool>]` | Run the tool's login flow into *this directory's* bound store — kae exports the isolation variable itself, so it lands there whether or not the pin is active in this shell — then capture the new login back into the account snapshot. Before starting, it preserves the current credential for original-store recovery, then attempts the existing account harvest. If preservation fails, login does not start. |
@@ -487,52 +407,28 @@ isolation alone does not yet solve — see "One account per worktree".
 | `kae mise init` | Generate mise tasks / completion for a project. |
 | `kae version` (`kae -v`) | Print the CLI version. |
 
-Every command takes `--json` for a stable, versioned report and a deterministic
-exit code — see [docs/CLI.md](docs/CLI.md).
+Commands that return reports support `--json`; completion scripts, interactive
+flows and passthrough child output have their own contracts. See
+[docs/CLI.md](docs/CLI.md) for report schemas and exit codes. The version report
+labels v0.x as `pre_stable`; deterministic output is not a promise of a frozen v1 API.
 
 ## Safety Model
 
-- **Auth-only by default.** Only the credential is switched (claude's token,
-  codex's `auth.json` or `Codex Auth` keyring item, agy's opaque token, …). In a
-  mixed-state file like `~/.claude.json`, nothing is replaced and only an
-  allowlisted pointer is written — today just claude's `/oauthAccount`, the one
-  field it shows for the logged-in account.
-- **Secrets in the OS store.** macOS Keychain / Linux libsecret; a plaintext
-  file backend is explicit opt-in. Secret values never reach
-  stdout/JSON/logs/metadata.
-- **Reversible and guarded.** Atomic writes, per-tool locks, pre-write backups,
-  and structure guards that refuse unknown credential layouts (exit `10`).
-- **Credential freshness.** `kae use` recaptures the account it switches away
-  from when its live token changed (so a switch back applies a live token) — but
-  never overwrites a usable snapshot with a live credential that has stopped
-  working. A bound directory gets the same treatment in the other direction: the
-  tool refreshes the credential *inside* that directory, and for claude the older
-  copy is then rejected rather than merely older — so re-binding, re-materializing
-  or purging a directory harvests the newer copy into the account snapshot first,
-  instead of logging the directory out hours later. `kae account rename` harvests too,
-  into the name it renames *from*, so the renamed account carries the live login rather
-  than the older snapshot. When global isolation still selects that name, rename first
-  refuses and tells you to stop its isolated processes, return it to shared mode, and
-  retry. The same shared-mode step repairs a crash-left mismatch between global-isolation
-  state and its generated fragment before rename proceeds. For claude (the only tool
-  with credential harvest enabled), the retained old
-  home is then harvested before the rename. Re-bind a directory
-  afterwards, as the rename tells you to, and it gets that copy. It warns on stderr, before applying, when the account you are switching
-  to needs a re-login (expired with no usable refresh token, or emptied by the tool
-  after a failed refresh) and names the tool's login command; `kae doctor` flags
-  the same snapshots and orphaned secret items.
+- Shared switching patches only the declared authentication artifacts. Mixed-state
+  files use allowlisted JSON pointers rather than whole-file replacement.
+- Secrets use macOS Keychain or Linux libsecret, or an explicitly selected file
+  backend. Normal reports redact credential bytes; account names, identities and
+  paths still need review before sharing.
+- Global switches take backups; original-store preservation is a separate recovery
+  mechanism. Both have admission and restoration conditions.
+- Locks coordinate kae operations, not an upstream process's own refresh.
+  Concurrent sessions should use the documented isolation workflow.
+- Freshness reports describe what kae can observe. Unknown does not mean invalid,
+  and a saved or restored credential is not guaranteed to remain usable.
 
-  It also warns **seven days before the login itself expires**, so a re-login is a
-  choice rather than an interruption, and names `kae add --restore <tool> <account>`:
-  the one command that logs that account in and puts your currently-live login back
-  afterwards. Claude Code warns you shortly before expiry about the account you are
-  *using*;
-  kae's job is the accounts you are not, which nothing else shows you. `kae ls`, `kae accounts` and `kae status` carry the same state in a
-  `Credential` column (`ok`, `3 day(s) left`, `re-login now`, or `-` when the
-  deadline is not knowable), so the inventory itself shows what needs attention
-  instead of only `kae doctor`.
-
-See [docs/SECURITY.md](docs/SECURITY.md).
+Read [Recovery guidance](docs/CLI.md#recovery-guidance) before recapturing or
+restoring uncertain credentials, and [SECURITY.md](docs/SECURITY.md) for the
+mutation, subprocess and concurrency boundaries.
 
 ## Configuration
 
@@ -562,8 +458,8 @@ schema: [docs/DATA-MODEL.md](docs/DATA-MODEL.md).
 
 | Platform | Status |
 |----------|--------|
-| macOS | Supported (credentials via Keychain). |
-| Linux | Supported (libsecret, or the file backend). |
+| macOS | Release binaries available; adapter-specific capability guards apply. |
+| Linux | Release binaries available; libsecret or file backend, with adapter-specific limitations. |
 | Windows | Planned ([docs/ROADMAP.md](docs/ROADMAP.md)); not built yet. |
 
 ## Development
@@ -584,6 +480,11 @@ runs [GoReleaser](https://goreleaser.com) to publish the binaries, behind that s
 subset.
 
 ## Documentation
+
+日本語: [README](README.ja.md) · [製品概要](docs/PRODUCT.ja.md) ·
+[利用ガイド](docs/GUIDE.ja.md)。These are localized user-facing guides; the English
+contract documents below own detailed behavior and verification procedures.
+
 
 | Document | Purpose |
 |----------|---------|

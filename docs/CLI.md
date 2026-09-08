@@ -1,8 +1,9 @@
 # CLI Contract
 
 Command surface, flags, exit codes, and output contracts for `kae`.
-All commands are non-interactive in v0.1.0; `--yes` is accepted everywhere for
-forward compatibility and currently changes nothing.
+Login, editing, completion installation and some confirmation flows are interactive.
+`--yes` behavior is command-specific; it does not bypass credential safety guards.
+For Japanese usage and recovery guidance, see [GUIDE.ja.md](GUIDE.ja.md).
 
 ## Commands
 
@@ -1998,12 +1999,15 @@ Template-standard shape: `schema_version`, `tool`, `version`, `major`,
   patched targets and an explicit `preserved` reminder line.
 - Color is semantic only (ok green, warn yellow, error red) and disabled for
   non-TTY or `--no-color` / `NO_COLOR`.
-- East Asian width is not specially handled in v0.1.0 (ASCII table output).
 
 ## Localization
 
-Human messages are English in v0.1.0. JSON tokens are stable English
-regardless of locale.
+Runtime human messages and JSON tokens are English. Japanese documentation is
+available in [README.ja.md](../README.ja.md), [PRODUCT.ja.md](PRODUCT.ja.md) and
+[GUIDE.ja.md](GUIDE.ja.md); it does not change runtime locale behavior.
+The English contract documents own detailed behavior. Update affected Japanese
+usage guidance in the same change as its English source, retaining commands,
+flags and JSON tokens verbatim.
 
 
 ## Global mise integration ownership

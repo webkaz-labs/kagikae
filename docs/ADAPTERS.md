@@ -1,6 +1,6 @@
 # Tool Adapters
 
-This document defines, per upstream tool, what `auth` mode switches and what it
+This document defines, per upstream tool, what shared switching changes and what it
 must preserve. The allowlists here are the normative contract; the adapters
 implement exactly this and refuse anything outside it.
 
@@ -24,7 +24,7 @@ recorded against a tier-2 tool here is a description of that tool, not a task.
 |----------|--------------------|
 | macOS | Keychain generic password, service `Claude Code-credentials`; payload is JSON containing `claudeAiOauth` |
 | Linux | `~/.claude/.credentials.json` (mode `0600`), key `claudeAiOauth` |
-| Windows | `%USERPROFILE%\.claude\.credentials.json` (not supported in v0.1.0) |
+| Windows | `%USERPROFILE%\.claude\.credentials.json` (Windows is not a supported release platform) |
 
 `~/.claude.json` is **mixed state**: it contains `projects`, `mcpServers`,
 onboarding, cache keys, and `oauthAccount`. kae switches `/oauthAccount` — the
@@ -100,7 +100,7 @@ If `CLAUDE_CONFIG_DIR` is already set in the environment, the adapter uses it
 as the live base path — for `.credentials.json`, for `.claude.json`, **and for
 the keychain service name**, which claude namespaces as
 `Claude Code-credentials-<sha8>` over the raw value of that variable (see
-"Credential storage resolution" below). `auth` mode never sets or changes
+"Credential storage resolution" below). Global shared switching never sets or changes
 `CLAUDE_CONFIG_DIR` itself.
 
 `CLAUDE_SECURESTORAGE_CONFIG_DIR` displaces `CLAUDE_CONFIG_DIR` for both
@@ -302,7 +302,7 @@ live in `~/.codex/auth.json` or in the OS credential store, selected by
 (tokens, account id, last refresh), so unlike `~/.claude.json` it may be
 swapped as a whole file.
 
-`auth` mode never sets or changes `CODEX_HOME`. If it is already set in the
+Global shared switching never sets or changes `CODEX_HOME`. If it is already set in the
 environment, the adapter uses it as the live base path.
 
 ### Drivers
@@ -499,7 +499,7 @@ only, never replaced.
 
 If `XDG_DATA_HOME` is already set in the environment, the adapter uses it as
 the live base path (absolute values only — a relative value is ignored per
-the XDG spec, as everywhere in kae). `auth` mode never sets or changes it.
+the XDG spec, as everywhere in kae). Global shared switching never sets or changes it.
 
 Two ways that file stops being what opencode reads, both **warned** on
 (`kae doctor`, `env_conflict`) rather than followed:
@@ -733,9 +733,8 @@ of scope.
 ## Isolation
 
 `kae` provides two isolation scopes: **per-directory** (`kae pin -s|-i`) and
-**global** (`kae use -i` / `kae run -i`). Overlay and home modes are retired
-as of v0.8.0. `kae mise init` renders auth mode only; bind a directory with
-`kae pin -s|-i`.
+**global** (`kae use -i` / `kae run -i`). `kae mise init` generates project tasks and an optional automatic profile hook;
+use `kae pin -s|-i` for a directory binding.
 
 ### Isolation env vars
 

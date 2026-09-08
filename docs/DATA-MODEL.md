@@ -30,7 +30,7 @@ vocabulary for `kae`.
 
 Directories holding metadata or secrets are created `0700`; secret and
 metadata files are written `0600`. Windows paths are defined in the design
-but not implemented in v0.1.0.
+but Windows release support remains deferred; see [ROADMAP.md](ROADMAP.md).
 
 ## Config Schema
 

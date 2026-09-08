@@ -354,4 +354,4 @@ credential it holds, and a mislabelled token is undetectable afterwards
 |------|-----|----------------|
 | `security` (macOS) | keychain read/write | output of `-w` is secret |
 | `secret-tool` (Linux) | libsecret read/write | stdin used for store; output of lookup is secret |
-| upstream CLIs | binary presence detection only in v0.1.0 | never invoked with credentials |
+| upstream CLIs | detection, official login flows and `kae run` child execution | inherited stdio and command-specific store/environment; `run --env` exposes selected secrets to the child |

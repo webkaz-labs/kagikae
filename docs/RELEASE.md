@@ -1,6 +1,6 @@
 # Release Process
 
-## Release candidate — kae v0.20.3
+## Current release — kae v0.20.3
 
 Offline recovery regression coverage and state-specific recovery guidance, plus a
 correction to Cursor's unsupported-platform explanation. This patch adds no
@@ -9,8 +9,13 @@ command, JSON token or capability and changes no credential mutation policy.
 the candidate decisions and validation boundary; [ROADMAP.md](ROADMAP.md) retains
 raw-document rescue, deadline representation, drift-pair and platform prerequisites.
 
-The prior published baseline is
-[v0.20.2](https://github.com/webkaz-labs/kagikae/releases/tag/v0.20.2).
+The release record is tag `v0.20.3` at `d52573c` and the
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.20.3).
+On 2026-09-09 (JST), the main CI and release workflow succeeded, and
+`mise run release-verify -- v0.20.3` returned `status: success` for the archives,
+checksums, provenance and isolated installer. The native binary reported
+`kae v0.20.3`; installer transport used verified assets, not live HTTP.
+The operator's local installation was not changed.
 
 ## Release procedure
 

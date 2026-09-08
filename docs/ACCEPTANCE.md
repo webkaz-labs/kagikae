@@ -56,6 +56,16 @@ the quality fix tightened the test's login environment assertion to exact elemen
 matching and passed targeted verification and correctness re-review. Both reviews
 were performed by the same agent under the user's no-subagent instruction.
 
+Release tag `v0.20.3` points to `d52573c`. Its
+[main CI](https://github.com/webkaz-labs/kagikae/actions/runs/34249532520) and
+[release workflow](https://github.com/webkaz-labs/kagikae/actions/runs/34249730538)
+succeeded, including the Linux test step. On 2026-09-09 (JST), the formal
+`mise run release-verify -- v0.20.3` run returned structured `status: success`
+for the darwin/linux × amd64/arm64 archives, checksums and provenance. Its native
+binary reported `kae v0.20.3`; installer verification used a verified-assets
+fixture, not live HTTP transport. No local installation was performed; the
+operator's installed binary still reported `kae v0.20.2`.
+
 ## Recovery guidance validation boundary
 
 Assessed on 2026-09-09 (JST) for implementation candidate `a4daa3d` against

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -483,7 +484,7 @@ func TestPreservationUnknownFormatInterruptedLoginAndRecovery(t *testing.T) {
 				if name != "claude" || !reflect.DeepEqual(args, []string{"/login"}) {
 					t.Fatalf("unexpected login command: %s %v", name, args)
 				}
-				if !strings.Contains(strings.Join(env, "\n"), "CLAUDE_SECURESTORAGE_CONFIG_DIR="+filepath.Dir(credFile)) {
+				if !slices.Contains(env, "CLAUDE_SECURESTORAGE_CONFIG_DIR="+filepath.Dir(credFile)) {
 					t.Fatal("login destination differs from the preserved store")
 				}
 				return 130, nil

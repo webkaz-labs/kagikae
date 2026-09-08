@@ -81,17 +81,20 @@ If the installer placed `kae` in `~/.local/bin` and that directory is not on
 `PATH`, add it to the shell configuration before running the check. The shell
 installer refreshes already-registered completion files; after a mise-managed
 update or a local build, run `kae completion --refresh` if kae-managed files need
-refreshing. Packslip users can instead source the selected installation's resource;
-do not retain a competing static kae completion registration:
+refreshing. With mise 2026.9.3 activated, Packslip completion loaders follow the
+selected installation. Remove competing kae refresh hooks or static registrations.
+For manual loading in bash/zsh:
 
 ```bash
 # bash; for zsh use `zsh` in the same expression
-source <(mise completion bash --tool kae)
+eval "$(mise completion bash --tool kae)"
 ```
 
-For fish use `mise completion fish --tool kae | source`. The shipped resource
-calls the active `kae __complete` for dynamic candidates; project selection must
-also be active in the shell (`mise activate`) or explicit through `mise exec`.
+For fish use `mise completion fish --tool kae | source`. These manual commands
+load a snapshot: repeat them after changing the selected version. Dynamic
+candidates call `kae` on PATH, so activate mise's selected environment as well.
+The isolated acceptance runs exercise Bash and Zsh registration and switching;
+fish coverage is resource retrieval, without a fish runtime check.
 
 ### Mise lifecycle
 

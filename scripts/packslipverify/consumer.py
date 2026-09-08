@@ -128,7 +128,21 @@ def main():
                 completions = stage / "completions"
                 completions.mkdir()
                 for shell in ("bash", "zsh", "fish"):
-                    (completions / f"kae.{shell}").write_text(run([binary, "completion", shell], stage))
+                    script = run([binary, "completion", shell], stage)
+                    # Only fixture resources differ: a stale registration must
+                    # fail even when both binaries expose the same commands.
+                    marker = "fixture-static-" + version
+                    if shell == "bash":
+                        needle = 'compgen -W "$(kae __complete commands)"'
+                        assert needle in script
+                        script = script.replace(needle, f'compgen -W "{marker} $(kae __complete commands)"', 1)
+                    elif shell == "zsh":
+                        needle = 'compadd -- ${(f)"$(kae __complete commands)"}'
+                        assert needle in script
+                        script = script.replace(needle, 'compadd -- ' + marker + ' ${(f)"$(kae __complete commands)"}', 1)
+                    else:
+                        script += f'\ncomplete -c kae -f -a {marker}\n'
+                    (completions / f"kae.{shell}").write_text(script)
                 system = "windows" if defect == "platform" else native_os
                 name = f"kae_{version}_{system}_{native_arch}.tar.gz"
                 archive = stage / name
@@ -230,6 +244,8 @@ def main():
             assert "custom" in custom_completion.read_text(), "custom completion was removed"
             assert recipe.exists(), "user-owned install recipe was removed"
             assert config.read_bytes() == saved and credential.read_bytes() == b"fixture credential bytes"
+            from shells import verify_shells
+            results.extend(verify_shells(run, root, project_dir, home, mise))
             run([mise, "unuse", "--path", recipe, "--no-prune", TOOL], home)
             run([mise, "uninstall", TOOL + "@0.21.1"], home)
             assert run([mise, "exec", "--", "kae", "version"], project_dir).strip() == "kae v0.21.0"

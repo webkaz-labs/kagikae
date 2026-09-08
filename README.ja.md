@@ -66,10 +66,14 @@ kae version
 `~/.local/bin` を使う場合は、そのディレクトリを `PATH` に追加してください。
 シェルインストーラーは登録済みの補完ファイルも更新します。mise 経由の更新や
 ローカルビルドでは、kae 管理の補完ファイルに必要な場合だけ
-`kae completion --refresh` を実行します。Packslip の選択中バージョンの補完を
-使う場合は、既存の競合する登録を整理してから、bash/zsh では
-`source <(mise completion bash --tool kae)`（zsh は `bash` を `zsh` に変更）、
-fish では `mise completion fish --tool kae | source` を使います。
+`kae completion --refresh` を実行します。mise 2026.9.3 を有効化したシェルでは、
+Packslip の補完ローダーが選択中の版に追従します。競合する kae の更新フックや
+静的登録は整理してください。手動で読む場合は bash/zsh で
+`eval "$(mise completion bash --tool kae)"`（zsh は `bash` を `zsh` に変更）、
+fish で `mise completion fish --tool kae | source` を使い、版変更後に再実行します。
+動的候補も選択中の `kae` を使うよう、mise の環境を有効化してください。
+隔離検証では Bash・Zsh の登録と版切り替えを実行しています。fish は資材取得までで、
+実シェルでの検証は未実施です。
 
 macOS と Linux の amd64/arm64 向けバイナリ、チェックサム、ビルド来歴の証明は
 [GitHub Releases](https://github.com/webkaz-labs/kagikae/releases) にあります。

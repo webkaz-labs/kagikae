@@ -32,10 +32,9 @@ questions in parallel. Research findings may change later scope; they do not
 by themselves authorize credential policy changes. This ordering promises no
 release dates or later version numbers.
 
-The next release candidate is **recovery guidance**: compare global login/capture
-advice and metadata-list recovery journeys, then agree the scope before adding
-commands or automatic repair. Global mise tasks are excluded from priority work;
-direct `kae` commands and completion serve the agreed usage.
+The next release scope is [recovery guidance](RELEASE.md#next-release--recovery-guidance).
+Global mise tasks are excluded from priority work; direct `kae` commands and
+completion serve the agreed usage.
 
 The remaining lanes follow in this order. Each named entry retains its own
 prerequisites; entries not named here retain their recorded gate.

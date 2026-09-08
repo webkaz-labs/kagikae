@@ -706,3 +706,38 @@ checksums and attestations. The release workflow passed for tagged revision
 `b8376f1`. The macOS arm64 binary and isolated installer both reported
 `kae v0.20.0`. The installer used verified-asset fixtures, so this result does
 not exercise its HTTP transport.
+
+
+### v0.20.1 global mise integration assessment
+
+Assessed on 2026-09-08 (JST) for candidate `25a8026`. The changes cover global
+mise file ownership, pre-preparation validation, completion migration and shared
+teardown. Credential storage/attribution and command selection contracts are
+unchanged; this application change received affected live acceptance below.
+
+The full commit gate passed after review fixes and their controls. Audit,
+naming agreement, GoReleaser configuration/snapshot, release-evidence and the
+saved completion, per-account-store and automatic-selection smokes passed.
+Fixtures cover registration ordering, combined-file auto no-op, shared teardown,
+account lifecycle refusals and subsequent rename, source symlink/mode retention,
+foreign content, marker text inside a string, custom mise directory, state-lock
+contention, destination-write failure/source restoration, interrupted migration
+resumption, incomplete-journal refusal and previous isolated-header compatibility.
+
+The live global config was symlink-backed and already had a generated zsh
+registration. Completion refresh moved that exact block to `conf.d/kagikae.toml`,
+retaining every source byte outside the block, its symlink and target permissions.
+Repeating refresh left the fragment unchanged. A fresh zsh loaded `_kae` and its
+command registration through mise. This machine's `experimental` setting was
+false: that hook check enabled `MISE_EXPERIMENTAL=1` for its process only. Normal
+shells still need the documented hook prerequisites; no global setting was enabled.
+
+With related sessions confirmed stopped, Claude Code 2.1.261 authenticated in a
+fresh process under shared `side`, which was immediately recaptured. `use -i`
+retained completion alongside isolated settings. `use --auto -P main` preserved
+`side`; completion refresh and auto both retained the combined file byte-for-byte.
+A fresh process under mise authenticated. Explicit `use -s -P side` removed only
+the isolated settings; completion remained, and fresh-process shared authentication
+passed. The final account selection is the original shared `side`.
+
+Publication and published-asset verification remain pending.

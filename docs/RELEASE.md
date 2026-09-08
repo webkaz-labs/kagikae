@@ -5,8 +5,8 @@
 [Global mise integration](plans/mise-global-integration.md) unifies completion
 and isolated settings in the owned fragment and migrates existing registrations.
 This is a patch release: existing commands and account selection remain; file
-ownership, migration and coexistence are corrected. Acceptance and publication
-are pending.
+ownership, migration and coexistence are corrected. Affected live acceptance
+passed; publication and published-asset verification remain pending.
 
 ## Current release — kae v0.20.0
 

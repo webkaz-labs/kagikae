@@ -18,7 +18,8 @@ document owns the results; results recorded elsewhere are invisible to the next 
 
 ## Offline recovery and validation assessment
 
-Assessed on 2026-09-09 (JST) against the v0.20.2 application baseline.
+Assessed on 2026-09-09 (JST) for candidate `b0dd08c` against the v0.20.2
+application baseline.
 The candidate adds synthetic regression controls and corrects Cursor's unsupported
 platform explanation; credential IO, attribution, preservation admission, deadline
 classification and capability gates are unchanged. The affected diagnostic is
@@ -45,6 +46,15 @@ controls. The full `mise run check` passed after correcting an extra blank line
 reported by the formatter. The fixture tests do not reproduce OS keychain failures,
 real login interruption or upstream refresh validity; their failed writes and
 interrupted flows are injected at existing seams.
+
+The v0.20.3 preparation changes only the version literal and report expectation
+relative to `b0dd08c` in application code. Its full commit gate passed, along with
+the audit, GoReleaser configuration/snapshot build, login-free naming agreement,
+release-evidence and saved completion/per-account-store smokes. The native snapshot
+binary reported `kae v0.20.3`. Correctness and quality reviews passed in that order;
+the quality fix tightened the test's login environment assertion to exact element
+matching and passed targeted verification and correctness re-review. Both reviews
+were performed by the same agent under the user's no-subagent instruction.
 
 ## Recovery guidance validation boundary
 

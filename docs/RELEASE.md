@@ -1,60 +1,16 @@
 # Release Process
 
-## Current release — kae v0.20.2
+## Release candidate — kae v0.20.3
 
-Recovery guidance clarifies the account and store prerequisites for existing
-login/capture operations and the next checks for incomplete metadata lists.
-This is a patch release: command syntax, JSON structure, diagnostic codes, exit
-codes and credential mutation policy remain unchanged. The affected validation
-is recorded in [ACCEPTANCE.md](ACCEPTANCE.md) § Recovery guidance validation boundary.
-The release record is the tag and
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.20.2).
-On 2026-09-09 (JST), `mise run release-verify -- v0.20.2` verified the archives,
-checksums, provenance and isolated installer; the native binary reported
-`kae v0.20.2`. The installer used verified assets rather than live HTTP transport.
+Offline recovery regression coverage and state-specific recovery guidance, plus a
+correction to Cursor's unsupported-platform explanation. This patch adds no
+command, JSON token or capability and changes no credential mutation policy.
+[ACCEPTANCE.md](ACCEPTANCE.md) § Offline recovery and validation assessment records
+the candidate decisions and validation boundary; [ROADMAP.md](ROADMAP.md) retains
+raw-document rescue, deadline representation, drift-pair and platform prerequisites.
 
-## Next release — credential recovery and offline validation
-
-Scope agreed; implementation has not started. Consider all candidates below within
-the constraint of no additional real-machine acceptance. Use isolated synthetic
-credentials, existing reviewed upstream evidence and CI. This admits investigation
-and evidence-backed changes, not unconditional capability enablement or a waiver
-of [ACCEPTANCE.md](ACCEPTANCE.md). Choose the version from the accepted changes.
-
-| Priority / status | Candidate | Deliverable and admission gate |
-|---|---|---|
-| Primary / planned | Preserve unknown-format credentials and provide explicit recovery | Reproduce unreadable, unparseable and undated cases separately. Compare existing preservation and relogin mechanisms. Admit a behavior change only after preservation, attribution, destination and recovery prerequisites are settled and the applicable acceptance can be satisfied without another live run. Otherwise retain the reproduction and a concrete deferred decision. |
-| Primary / planned | Failure and retry safety | Exercise capacity exhaustion, preservation failure, interrupted login, competing changes and retry through the affected command interface. Require preservation before destructive writes and verify original bytes survive failure; tests use synthetic data and existing isolation harnesses. |
-| Primary / planned | State-specific diagnostics | Distinguish observations users can act on without declaring unreadable or unfamiliar credentials invalid. Preserve redaction and avoid automatic deletion or unverified recovery promises. Agree any new JSON contract tokens before implementation. |
-| Conditional / planned | Numeric zero versus unknown deadline | Characterize missing, nonnumeric, zero and negative values and their consumers. Preserve the distinction only where it informs an accepted decision. Treat revocation and deletion policy as a separate decision requiring tool-specific evidence. |
-| Conditional / planned | Upstream behaviour-site detection | Establish reproducible old/new artifacts and compare detection controls and cost against existing fingerprints. Build only the bounded check justified by that comparison; record missing inputs rather than invent a generic hash framework. No upstream login or live credential access. |
-| Conditional / planned | Moved directories and path aliases | Use temporary directory/symlink fixtures to characterize lost readers, duplicate pin IDs and migration failure modes. Compare a recoverable migration with diagnostic-only handling. No PinID rekeying, credential-store migration or changed attribution until its existing ROADMAP prerequisites and acceptance are met. |
-| Conditional / planned | Codex per-directory keyring preparation | Review and strengthen synthetic item-addressing, coexistence and teardown controls where a concrete gap exists. Keep capability disabled: synthetic controls cannot replace the mandatory live capability check. Do not create an unverified enabled path. |
-| Conditional / planned | Cursor Linux preparation | Compare the documented file-store contract with Linux fixtures and identify adapter gaps. Do not enable platform support or claim upstream compatibility on the strength of simulated credentials alone. No new live-account validation. |
-| After accepted changes / planned | CI placement and delivery | Reuse existing CI for new regressions; add checks only with distinct failure controls and Linux cost evidence. Run the applicable commit and release gates, record exact coverage and deferred candidates, and finish correctness and quality reviews. |
-
-The primary lane is credential preservation/recovery. Independent characterization
-and offline drift comparisons may proceed alongside it; shared files and
-credential-policy decisions remain sequential. Follow the user's prohibition on
-subagents. Reuse existing modules before introducing abstractions, and do not
-repeat successful unchanged checks solely to accumulate evidence.
-
-All candidates receive an explicit accepted/deferred verdict with its reason.
-A candidate requiring new live acceptance stays disabled or research-only and does
-not block independently releasable work. Do not label an application behavior
-change maintainer-only to reuse acceptance that does not cover it. If no candidate
-meets its gate, record that outcome rather than cut a release without a justified
-change. No release date is promised.
-
-Codex refresh/rotation research, broad attribution redesign, new shells, TUI,
-Windows, global mise tasks and unrelated refactoring are outside this scope.
-This plan authorizes no real login, live credential mutation, package installation
-or public posting as a research shortcut. Publication is a separate execution step
-under § Release procedure.
-
-On completion, move current contracts to their owned documents, results to
-[ACCEPTANCE.md](ACCEPTANCE.md), remaining work to [ROADMAP.md](ROADMAP.md), and
-remove this next-release section. Historical planning stays in git.
+The prior published baseline is
+[v0.20.2](https://github.com/webkaz-labs/kagikae/releases/tag/v0.20.2).
 
 ## Release procedure
 

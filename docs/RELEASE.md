@@ -1,5 +1,13 @@
 # Release Process
 
+## Next release — kae v0.20.1
+
+[Global mise integration](plans/mise-global-integration.md) unifies completion
+and isolated settings in the owned fragment and migrates existing registrations.
+This is a patch release: existing commands and account selection remain; file
+ownership, migration and coexistence are corrected. Acceptance and publication
+are pending.
+
 ## Current release — kae v0.20.0
 
 The release record is the tag and

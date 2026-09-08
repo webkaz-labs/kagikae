@@ -626,7 +626,7 @@ func TestCompletionInstallMiseHook(t *testing.T) {
 	})
 	mustExit(t, constants.ExitOK, code, out)
 
-	path := globalMiseConfigPath(app.Env)
+	path := app.Paths.MiseGlobalFragmentFile()
 	content := readFile(t, path)
 	if !strings.Contains(content, "[hooks.enter]") || !strings.Contains(content, "kae completion zsh") {
 		t.Fatalf("mise hook not written:\n%s", content)
@@ -703,7 +703,10 @@ script = "source <(kae completion zsh)"
 	if !strings.Contains(out, "Refreshed kae zsh completion mise hook") {
 		t.Fatalf("legacy hook migration was not reported: %s", out)
 	}
-	want := before + miseHookBlock("zsh") + after
+	want := before + after
+	if got := readFile(t, app.Paths.MiseGlobalFragmentFile()); got != miseHookBlock("zsh") {
+		t.Fatalf("missing migrated hook: %s", got)
+	}
 	if got := readFile(t, target); got != want {
 		t.Fatalf("legacy hook migration changed the wrong bytes:\ngot:\n%s\nwant:\n%s", got, want)
 	}
@@ -796,7 +799,7 @@ func TestCompletionInstallMiseHookUpdatePreservesMode(t *testing.T) {
 	} else if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("owned block update changed config mode to %o, want 600", got)
 	}
-	if got := readFile(t, target); got != miseHookBlock("zsh") {
+	if got := readFile(t, target); got != "" {
 		t.Fatalf("owned block update did not update the symlink target:\n%s", got)
 	}
 }
@@ -843,27 +846,19 @@ func TestCompletionRefreshLeavesNonLegacyMiseBlockUntouched(t *testing.T) {
 	}
 }
 
-func TestCompletionInstallMiseHookRefusesForeignHook(t *testing.T) {
+func TestCompletionInstallMiseHookCoexistsWithForeignHook(t *testing.T) {
 	app := testApp(t, nil)
 	path := globalMiseConfigPath(app.Env)
-	writeFile(t, path, "[hooks.enter]\nscript = \"echo hi\"\n")
-	script, _ := completionScript("bash")
-	opts := commonOpts{Format: formatText}
-
-	code, _ := captureStdout(t, func() int {
-		return applyCompletionInstall(app, opts, "bash", script, installMiseHook)
-	})
-	if code != constants.ExitUnsafeRefused {
-		t.Fatalf("a foreign [hooks.enter] must be refused, got exit %d", code)
+	original := "[hooks.enter]\nscript = \"echo hi\"\n"
+	writeFile(t, path, original)
+	if _, _, err := installMiseGlobalHook(app.Env, "bash"); err != nil {
+		t.Fatal(err)
 	}
-	// The user's hook is left intact.
-	if got := readFile(t, path); !strings.Contains(got, "echo hi") || strings.Contains(got, miseBlockStart) {
-		t.Fatalf("foreign hook must be untouched:\n%s", got)
+	if got := readFile(t, path); got != original {
+		t.Fatal("foreign hook changed")
 	}
-	_, _, err := installMiseGlobalHook(app.Env, "bash")
-	if err == nil || !strings.Contains(err.Error(), `shell = "bash"`) ||
-		!strings.Contains(err.Error(), `script = "eval \"$(kae completion bash)\""`) {
-		t.Fatalf("manual merge guidance must describe a current-shell hook, got: %v", err)
+	if got := readFile(t, app.Paths.MiseGlobalFragmentFile()); got != miseHookBlock("bash") {
+		t.Fatal("completion not registered separately")
 	}
 }
 

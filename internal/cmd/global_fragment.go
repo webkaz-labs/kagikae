@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -59,7 +58,7 @@ func (app *App) iterSynced(synced map[string]string) []syncedEntry {
 func (app *App) renderGlobalFragment(synced map[string]string) string {
 	var b strings.Builder
 	fmt.Fprintln(&b, "# kagikae-managed mise fragment — do not edit by hand.")
-	fmt.Fprintln(&b, "# Written by `kae use -i`, removed by `kae use -s`; regenerated from kae state.")
+	fmt.Fprintln(&b, globalIsolatedOwnershipLine)
 	fmt.Fprintln(&b, "# Your mise.toml is never touched.")
 	fmt.Fprintln(&b, "[env]")
 	for _, e := range app.iterSynced(synced) {
@@ -68,39 +67,41 @@ func (app *App) renderGlobalFragment(synced map[string]string) string {
 	return b.String()
 }
 
-// regenGlobalFragment rewrites the kae-owned global mise fragment from the
-// current `synced` map, creating ~/.config/mise/conf.d/ as needed. When no
-// tool is globally isolated it deletes the fragment instead (a missing file is
-// not an error), so an empty `synced` leaves no stale [env] block behind.
+// regenGlobalFragment replaces the isolated settings while retaining recognized
+// completion. An empty regular file is removed; an existing symlink stays intact.
 func (app *App) regenGlobalFragment(synced map[string]string) error {
-	path := app.Paths.MiseGlobalFragmentFile()
-	if len(synced) == 0 {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove global mise fragment: %w", err)
-		}
-		return nil
+	f, err := readGlobalMiseFile(app.Paths.MiseGlobalFragmentFile())
+	if err != nil {
+		return err
 	}
-	return writeMiseFragment(path, app.renderGlobalFragment(synced))
+	_, hook, _, err := splitGlobalMise(f.content)
+	if err != nil {
+		return err
+	}
+	isolated := ""
+	if len(synced) > 0 {
+		isolated = app.renderGlobalFragment(synced)
+	}
+	return f.write(isolated + hook)
 }
 
-// globalFragmentConsistent compares the derived fragment byte-for-byte with
-// the current state. Atomic fragment writes make raw equality sufficient. An
-// empty synced map is consistent only when the fragment is absent.
+// globalFragmentConsistent compares only the isolated portion with synced state.
+// A recognized completion registration remains valid when isolation is empty.
 func (app *App) globalFragmentConsistent(synced map[string]string) (bool, error) {
-	path := app.Paths.MiseGlobalFragmentFile()
-	if len(synced) == 0 {
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			return true, nil
-		} else if err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-	data, err := os.ReadFile(path)
+	f, err := readGlobalMiseFile(app.Paths.MiseGlobalFragmentFile())
 	if err != nil {
 		return false, err
 	}
-	return string(data) == app.renderGlobalFragment(synced), nil
+	isolated, _, _, err := splitGlobalMise(f.content)
+	if err != nil {
+		return false, err
+	}
+	expected := ""
+	if len(synced) > 0 {
+		expected = app.renderGlobalFragment(synced)
+	}
+	isolated = strings.Replace(isolated, legacyGlobalIsolatedOwnershipLine, globalIsolatedOwnershipLine, 1)
+	return isolated == expected, nil
 }
 
 // teardownSynced drops the given tools from state.synced and regenerates (or

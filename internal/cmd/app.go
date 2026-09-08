@@ -368,6 +368,9 @@ func (app *App) mutateSyncedAndFragment(prepare func() error, mutate func(*state
 	if err != nil {
 		return nil, err
 	}
+	if _, err := app.globalFragmentConsistent(previous.Synced); err != nil {
+		return nil, err
+	}
 	if prepare != nil {
 		if err := prepare(); err != nil {
 			return nil, err

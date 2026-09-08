@@ -152,7 +152,8 @@ matches.
   memory, MCP, and trust stay shared with the real home. Same JSON report shape,
   exit codes, and backups as the removed `switch`. This is also the teardown of
   `kae use -i`: after patching the real home in place, it drops the tool from
-  `state.json synced` and regenerates or deletes the global mise fragment.
+  `state.json synced` and regenerates the isolated portion of the global mise
+  fragment, preserving completion.
 
   Before overwriting the live store, a shared switch **recaptures the
   currently-active account** when its live credential diverges from its snapshot
@@ -1076,8 +1077,8 @@ body, and that is refreshed automatically:
   directory entry, so its completion script is always current. The hook uses
   mise's current-shell `shell` + `script` form; a spawned `run` cannot retain the
   function it defines. `kae completion --refresh` also migrates the exact legacy
-  marker block that kae generated without the `shell` selector; foreign or edited
-  hooks are never inferred to be that block.
+  current or legacy marker block from the global config into
+  `conf.d/kagikae.toml`; foreign or edited blocks are left for manual migration.
 - For the **fpath/completions-file** registration, `kae completion --refresh`
   rewrites every already-registered file from the current binary (it never
   creates a new one). The installers run it for you: `mise run install` and
@@ -1135,8 +1136,9 @@ out by directory). Three registration paths, non-mise first:
    is active, then offers (1) the completions-dir file [default], (2) a global
    mise `[hooks.enter]` that sources the script (opt-in), or (3) print-only. The
    install is idempotent and **never** mutates the global mise config unless you
-   pick option 2; a global config that already defines `[hooks.enter]` outside
-   kae's marker block is refused (exit `10`) with manual guidance. The owned hook
+   pick option 2. Completion lives in the kae-owned `conf.d/kagikae.toml`,
+   alongside global isolated settings; unrelated hooks in global config coexist.
+   A customized kae marker block requires manual migration. The owned hook
    names the selected shell and runs its `script` in that current shell; this is
    what makes the registered completion function survive the hook.
 
@@ -1955,3 +1957,27 @@ Template-standard shape: `schema_version`, `tool`, `version`, `major`,
 
 Human messages are English in v0.1.0. JSON tokens are stable English
 regardless of locale.
+
+
+## Global mise integration ownership
+
+The global `conf.d/kagikae.toml` holds recognized completion and isolated
+settings together. Completion updates preserve isolated settings; shared teardown
+removes isolated settings and keeps completion. Auto and account lifecycle checks
+compare the isolated portion against `state.synced`. Unknown owned-file content
+is refused before isolated preparation rather than silently replaced.
+
+The directory is `MISE_CONFIG_DIR`, falling back to the XDG mise directory.
+Migration reads `MISE_GLOBAL_CONFIG_FILE` when set, otherwise that directory's
+`config.toml`. Completion refresh/install moves exact generated current or legacy
+blocks, preserving other source bytes, permissions and symlinks. A customized
+source block is untouched by refresh and refused by explicit installation.
+
+Writers share the state lock. Migration records shell and source/destination paths
+under the state directory before removing the old block, then writes the combined
+fragment. Ordinary destination failure attempts to restore an unchanged source;
+the journal remains for retry. A crash between writes can temporarily leave
+completion absent; `kae completion --refresh` resumes the recorded migration.
+It reports success only after removing the journal. Conflicting registrations,
+invalid journals and changed paths require explicit resolution. Migration does
+not contain credential payloads or copy global config content into its journal.

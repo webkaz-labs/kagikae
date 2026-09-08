@@ -366,7 +366,7 @@ kae completion zsh --install
 
 `--install` is interactive: it writes a completion file to your shell's standard
 dir (the default), registers a global [mise](https://mise.jdx.dev)
-`[hooks.enter]` (opt-in), or prints the script. For **zsh** it prefers an
+`[hooks.enter]` in `conf.d/kagikae.toml` (opt-in), or prints the script. For **zsh** it prefers an
 existing directory already on your `fpath` (`~/.config/zsh/completions`,
 `~/.zsh/completions`, `~/.zfunc`) so the file auto-loads in a new shell.
 
@@ -377,7 +377,10 @@ already-registered files from the new binary (it never creates one, so the
 initial `--install` above is still required). A plain `go build` skips this — run
 `kae completion --refresh` yourself in that case. The mise-hook registration
 loads the script in the active shell, so it is always current; refresh also
-migrates the exact older kae-owned hook form that mise ran through `sh`.
+moves exact kae-owned current/legacy blocks from global config into that fragment.
+The fragment also holds global isolated settings; returning to shared mode keeps
+the completion hook. Customized blocks need manual migration; see
+[docs/CLI.md](docs/CLI.md) § Global mise integration ownership.
 
 > **zsh: completion installed but not showing?** zsh caches its completion
 > index in a *compdump*; a newly added function will not load until that cache

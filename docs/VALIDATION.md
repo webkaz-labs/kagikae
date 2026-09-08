@@ -320,12 +320,14 @@ printf '{"oauthAccount":{"emailAddress":"you@example.com","accountUuid":"side"}}
 /tmp/kae add --no-login claude side
 /tmp/kae profile set main claude main
 /tmp/kae profile default main
+printf '2\n' | /tmp/kae completion zsh --install
+cp "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml" "$HOME/completion-before"
 /tmp/kae use -i claude side
 /tmp/kae use --auto --json > "$HOME/auto.json"
 python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert not r["changed"] and r["preserved"]==[{"tool":"claude","account":"side"}] and r["results"]==[]' "$HOME/auto.json"
 /tmp/kae use --auto --quiet
 /tmp/kae use -s -P main
- test ! -e "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml"
+cmp "$HOME/completion-before" "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml"
 /tmp/kae backup list --json > "$HOME/list.json"
 python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["complete"] and r["backups"] and r["issues"]==[]' "$HOME/list.json"
 printf '[broken' > "$XDG_CONFIG_HOME/kagikae/config.toml"
@@ -1565,7 +1567,14 @@ cp scripts/release-smoke/completion.zsh "$HOME/check-zsh"
 zsh -f "$HOME/check-zsh"
 cd "$HOME"
 printf '2\n' | kae completion zsh --install
-mise trust "$XDG_CONFIG_HOME/mise/config.toml"
+cp "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml" "$HOME/completion-before"
+printf '[settings]\nexperimental = true\n' > "$XDG_CONFIG_HOME/mise/config.toml"
+cat "$HOME/completion-before" >> "$XDG_CONFIG_HOME/mise/config.toml"
+rm "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml"
+kae completion --refresh
+cmp "$HOME/completion-before" "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml"
+python3 -c 'import sys; assert "kagikae" not in open(sys.argv[1]).read()' "$XDG_CONFIG_HOME/mise/config.toml"
+mise trust "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml"
 export MISE_EXPERIMENTAL=1
 zsh -f "$HOME/check-mise-hook" 2> "$HOME/hook-stderr"
 test ! -s "$HOME/hook-stderr"

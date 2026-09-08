@@ -10,6 +10,8 @@ import (
 
 // Paths holds the resolved kagikae base directories.
 type Paths struct {
+	MiseDir string // global mise config directory; empty uses the XDG sibling
+
 	ConfigDir  string // $XDG_CONFIG_HOME/kagikae
 	DataDir    string // $XDG_DATA_HOME/kagikae
 	StateDir   string // $XDG_STATE_HOME/kagikae
@@ -36,6 +38,7 @@ func Resolve(getenv func(string) string, home string) Paths {
 	} else {
 		p.RuntimeDir = p.StateDir
 	}
+	p.MiseDir = getenv("MISE_CONFIG_DIR")
 	return p
 }
 
@@ -202,11 +205,12 @@ func (p Paths) CredStoreDir(tool, account string) string {
 // sweeps that walk them.
 func (p Paths) CredStoreRoot() string { return filepath.Join(p.DataDir, "credstore") }
 
-// MiseGlobalFragmentFile returns the kae-owned global mise fragment path
-// (~/.config/mise/conf.d/kagikae.toml), a sibling of kagikae's own config dir
-// under the XDG config home. mise loads and merges conf.d/*.toml, so it reaches
-// every globally activated terminal; kae regenerates it from state.json
-// `synced` and deletes it when no tool is globally isolated.
+// MiseGlobalFragmentFile returns the shared global completion/isolation fragment
+// under MISE_CONFIG_DIR, falling back to the XDG mise directory.
 func (p Paths) MiseGlobalFragmentFile() string {
-	return filepath.Join(filepath.Dir(p.ConfigDir), "mise", "conf.d", "kagikae.toml")
+	dir := p.MiseDir
+	if dir == "" {
+		dir = filepath.Join(filepath.Dir(p.ConfigDir), "mise")
+	}
+	return filepath.Join(dir, "conf.d", "kagikae.toml")
 }

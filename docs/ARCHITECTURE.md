@@ -459,9 +459,9 @@ before materializing any home or refreshing any snapshot. If fragment regenerati
 returns an error after the state save, kae restores the pre-mutation state while the
 lock is still held; each individual write is atomic. A process crash between the two
 writes remains a filesystem boundary no rollback handler can run across, so this is
-not a claim of cross-file atomicity. Account rename therefore verifies the raw global
-fragment against `renderGlobalFragment(state.synced)` under the state lock (an empty
-map requires an absent fragment) and refuses an unreadable or mismatched fragment.
+not a claim of cross-file atomicity. Account rename therefore verifies the isolated
+portion against `renderGlobalFragment(state.synced)` under the state lock, allowing
+recognized completion, and refuses an unreadable or mismatched fragment.
 The documented `use -s` remedy checks the same invariant and regenerates the fragment
 from current state under that lock even when its target has no `synced` entry, closing
 the crash state before rename is retried.
@@ -552,3 +552,14 @@ source and backend-read error policy.
   the Editor, never a decode-then-encode round-trip, or user comments are
   silently lost. After writing, `editConfig` reloads `app.Config` so the
   in-memory view matches disk.
+
+
+## Shared global mise file
+
+`mise_global.go` owns recognition, file replacement and completion migration;
+`global_fragment.go` supplies the isolated settings derived from state. Both
+writers hold the existing state lock. Recognition separates the generated hook
+from the isolated portion, so lifecycle validation does not treat completion as
+state drift. `mutateSyncedAndFragment` validates ownership before preparation.
+The migration's interruption and retry contract is in
+[CLI.md](CLI.md) § Global mise integration ownership.

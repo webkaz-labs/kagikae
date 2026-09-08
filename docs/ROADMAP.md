@@ -36,6 +36,11 @@ Daily recovery guidance is documented in [CLI.md](CLI.md) § Recovery guidance.
 Global mise tasks are excluded from priority work; direct `kae` commands and
 completion serve the agreed usage.
 
+The next-release [credential recovery and offline validation scope](RELEASE.md#next-release--credential-recovery-and-offline-validation)
+includes bounded investigation of the candidates below without additional
+real-machine acceptance. Its admission gates preserve this file's research and
+capability prerequisites; inclusion is not automatic implementation approval.
+
 The remaining lanes follow in this order. Each named entry retains its own
 prerequisites; entries not named here retain their recorded gate.
 

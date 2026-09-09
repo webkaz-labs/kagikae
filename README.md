@@ -388,7 +388,7 @@ the completion hook. Customized blocks need manual migration; see
 `mise run <task> <TAB>` in the directory's `.mise.toml` — distinct from this
 binary-scoped shell completion.
 
-## Troubleshooting and reporting
+## Troubleshooting
 
 Start with the unfiltered health report so bound directories and their bindings
 are included:
@@ -405,12 +405,9 @@ state directory. A partial list retains readable rows, reports `complete: false`
 and classified `issues`, and exits nonzero. Problem-entry names are hashed;
 ordinary metadata still needs redaction before sharing.
 
-Keep the exit code and relevant stderr with the report. Before sharing anything,
-redact identity or email values, account and preservation IDs, absolute paths
+Before sharing output, redact identity or email values, account and preservation IDs, absolute paths
 (including preservation directories), and other private metadata; do not attach
-raw JSON or credential output. For a reproducible failure, include the command,
-platform, install source, version, and whether the scope was global or pinned.
-Report issues at [GitHub Issues](https://github.com/webkaz-labs/kagikae/issues).
+raw JSON or credential output.
 
 ## Tool Support
 
@@ -528,7 +525,7 @@ schema: [docs/DATA-MODEL.md](docs/DATA-MODEL.md).
 |----------|--------|
 | macOS | Release binaries available; adapter-specific capability guards apply. |
 | Linux | Release binaries available; libsecret or file backend, with adapter-specific limitations. |
-| Windows | Planned ([docs/ROADMAP.md](docs/ROADMAP.md)); not built yet. |
+| Windows | No release binaries; see [docs/ROADMAP.md](docs/ROADMAP.md) for deferred platform work. |
 
 ## Development
 

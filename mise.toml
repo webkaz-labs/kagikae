@@ -8,18 +8,22 @@ description = "Run Go tests with cache and wall time"
 run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} /usr/bin/time -p go test ./..."
 
 [tasks.test-fresh]
+hide = true
 description = "Run Go tests without cache and show wall time"
 run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} /usr/bin/time -p go test -count=1 ./..."
 
 [tasks.vet]
+hide = true
 description = "Run Go vet"
 run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go vet ./..."
 
 [tasks.fmt-check]
+hide = true
 description = "Check Go formatting and import grouping"
 run = "bash scripts/check-go-format.sh"
 
 [tasks.staticcheck]
+hide = true
 description = "Run bug-class Staticcheck analyzers"
 run = """
 set -eu
@@ -33,6 +37,7 @@ go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 '-checks=SA*' ./...
 """
 
 [tasks.golangci-lint]
+hide = true
 description = "Run curated golangci-lint checks"
 run = """
 set -eu
@@ -46,6 +51,7 @@ go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run ./...
 """
 
 [tasks.shellcheck]
+hide = true
 description = "Run ShellCheck on repository shell scripts"
 run = """
 set -eu
@@ -66,6 +72,7 @@ description = "Run low-noise local lint checks"
 depends = ["fmt-check", "staticcheck", "golangci-lint", "shellcheck"]
 
 [tasks.mod-verify]
+hide = true
 description = "Verify downloaded Go modules"
 run = "go mod verify"
 
@@ -74,18 +81,22 @@ description = "Build packages"
 run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go build ./..."
 
 [tasks.smoke-selftest]
+hide = true
 description = "Check the guards in scripts/smoke-run.sh (no kae build, no network)"
 run = "bash scripts/smoke-run-selftest.sh"
 
 [tasks.smoke-selftest-mutations-fast]
+hide = true
 description = "Make four bounded historical smoke-run defects trip their guards"
 run = "bash scripts/smoke-run-mutations.sh fast"
 
 [tasks.smoke-selftest-mutations]
+hide = true
 description = "Make one bounded mutation trip each current smoke-run guard"
 run = "bash scripts/smoke-run-mutations.sh full"
 
 [tasks.harvest-smoke-selftest]
+hide = true
 description = "Prove the Harvesting smoke's four snap-consumer controls reject an empty reader"
 run = "bash scripts/harvest-smoke-selftest.sh"
 
@@ -93,14 +104,12 @@ run = "bash scripts/harvest-smoke-selftest.sh"
 description = "Run the release-only mutation evidence for smoke guards and credential harvesting"
 depends = ["smoke-selftest-mutations", "harvest-smoke-selftest"]
 
-[tasks.naming-agreement-selftest]
-description = "Check Claude naming-harness refusal and mismatch controls without upstream access"
-run = "python3 -B -m unittest discover -s scripts/namingagreement -p 'test_*.py'"
-
 [tasks.naming-agreement]
 description = "Compare production Claude credential write addressing with a reviewed upstream binary's shim reads"
-depends = ["naming-agreement-selftest"]
-run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} python3 -B scripts/namingagreement/verify.py"
+run = [
+  "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go test -count=1 ./scripts/namingagreement",
+  "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go run ./scripts/namingagreement verify",
+]
 
 [tasks.release-verify]
 description = "Verify an explicit published vX.Y.Z tag, provenance and isolated installer"
@@ -118,6 +127,7 @@ description = "Reject a broken markdown link, a section citation naming a sectio
 run = "bash scripts/check-docs.sh"
 
 [tasks.docs-check-selftest]
+hide = true
 description = "Check that scripts/check-docs.sh still detects what it exists to detect"
 run = "bash scripts/check-docs-selftest.sh"
 
@@ -132,6 +142,7 @@ description = "Report prose two documents carry twice, anchored on declared iden
 run = "go run ./scripts/docscan"
 
 [tasks.vuln]
+hide = true
 description = "Run Go vulnerability audit"
 run = """
 set -eu
@@ -144,6 +155,7 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
 """
 
 [tasks.fingerprint]
+hide = true
 description = "Count the upstream literals kae depends on against the installed tools"
 # -count=1 defeats the test cache: a cached pass would report that today's installed
 # tools still agree with the table when it never opened them.

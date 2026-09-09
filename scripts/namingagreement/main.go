@@ -1,5 +1,5 @@
 // Command namingagreement observes the production credential write argv without
-// executing a subprocess. The upstream half lives in verify.py. This observer
+// executing a subprocess. Explicit verify runs the reviewed upstream comparison. The observer
 // exercises the adapter/artifact boundary; it does not test CLI orchestration.
 package main
 
@@ -8,6 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
@@ -67,7 +70,7 @@ func observe(env adapter.Env) ([]string, error) {
 	return o.writes[0], nil
 }
 
-func main() {
+func observeMain() {
 	env := adapter.Env{GOOS: "darwin", Home: os.Getenv("HOME"), Getenv: os.Getenv, LookupEnv: os.LookupEnv, Username: "main"}
 	args, err := observe(env)
 	if err == nil {
@@ -75,6 +78,34 @@ func main() {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func main() {
+	if filepath.Base(os.Args[0]) == "security" {
+		os.Exit(securityMode(os.Args[1:]))
+	}
+	if len(os.Args) == 2 && os.Args[1] == "observe" {
+		observeMain()
+		return
+	}
+	if len(os.Args) != 2 || os.Args[1] != "verify" {
+		fmt.Fprintln(os.Stderr, "usage: namingagreement verify | observe")
+		os.Exit(2)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	repo, err := os.Getwd()
+	if err == nil {
+		var self string
+		self, err = os.Executable()
+		if err == nil {
+			err = verify(ctx, repo, self, runCommand, os.Stdout)
+		}
+	}
+	stop()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "naming agreement failed: "+err.Error())
 		os.Exit(1)
 	}
 }

@@ -28,6 +28,12 @@ func check(args []string) error {
 	if err != nil {
 		return err
 	}
+	if strings.HasSuffix(kind, "-report") {
+		if len(args) != 2 {
+			return fmt.Errorf("expected report path")
+		}
+		return reportCheck(kind, data)
+	}
 	switch kind {
 	case "fragment":
 		if len(args) != 3 {

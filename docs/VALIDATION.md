@@ -30,11 +30,13 @@ selftest once per guard. Lint tools run via `go run <tool>@<pinned version>`; th
 run downloads them.
 
 `mise run naming-agreement` is the login-free release naming check described in
-[ACCEPTANCE.md](ACCEPTANCE.md) § Bound-directory credential store. Its Python
-refusal/mismatch selftest runs first; `mise run naming-agreement-selftest` runs
-those controls alone without launching an upstream tool. The Go writer-observer
-tests are part of `go test ./...`. The actual upstream comparison stays outside
-the commit gate and CI because it requires an explicitly reviewed macOS binary.
+[ACCEPTANCE.md](ACCEPTANCE.md) § Bound-directory credential store. Its Go
+refusal/mismatch and writer-observer controls run in `go test ./...`; use
+`go test ./scripts/namingagreement` for those controls alone. The explicit mise
+task reruns these tests without cache before starting verification. Verification
+also retains a shim preflight before each upstream invocation.
+The actual upstream comparison stays outside the commit gate and CI because it
+requires an explicitly reviewed macOS binary.
 
 Run `go mod tidy` before committing dependency changes.
 
@@ -418,20 +420,20 @@ printf '2\n' | /tmp/kae completion zsh --install
 cp "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml" "$HOME/completion-before"
 /tmp/kae use -i claude side
 /tmp/kae use --auto --json > "$HOME/auto.json"
-python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert not r["changed"] and r["preserved"]==[{"tool":"claude","account":"side"}] and r["results"]==[]' "$HOME/auto.json"
+go run ./scripts/release-smoke/storecheck auto-report "$HOME/auto.json"
 /tmp/kae use --auto --quiet
 /tmp/kae use -s -P main
 cmp "$HOME/completion-before" "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml"
 /tmp/kae backup list --json > "$HOME/list.json"
-python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["complete"] and r["backups"] and r["issues"]==[]' "$HOME/list.json"
+go run ./scripts/release-smoke/storecheck backup-report "$HOME/list.json"
 printf '[broken' > "$XDG_CONFIG_HOME/kagikae/config.toml"
 /tmp/kae backup list --json > "$HOME/config-warning.json"
-python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["complete"] and r["warnings"]==["config_invalid"]' "$HOME/config-warning.json"
+go run ./scripts/release-smoke/storecheck config-warning-report "$HOME/config-warning.json"
 printf 'invalid secret-sentinel' > "$XDG_STATE_HOME/kagikae/backups/secret-sentinel.json"
 rc=0; /tmp/kae backup list --json > "$HOME/incomplete.json" || rc=$?; test "$rc" -eq 1
-python3 -c 'import json,sys; text=open(sys.argv[1]).read(); r=json.loads(text); assert not r["complete"] and r["backups"] and r["issues"][0]["code"]=="metadata_invalid" and "secret-sentinel" not in text' "$HOME/incomplete.json"
+go run ./scripts/release-smoke/storecheck incomplete-report "$HOME/incomplete.json"
 /tmp/kae preservation list --json > "$HOME/preservations.json"
-python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["complete"] and r["preservations"]==[] and r["warnings"]==["config_invalid"]' "$HOME/preservations.json"
+go run ./scripts/release-smoke/storecheck preservation-report "$HOME/preservations.json"
 rc=0; /tmp/kae backup list > "$HOME/list.txt" 2> "$HOME/list.err" || rc=$?; test "$rc" -eq 1
 test -s "$HOME/list.txt"
 grep -q 'check the selected config file' "$HOME/list.err"
@@ -1678,7 +1680,7 @@ cat "$HOME/completion-before" >> "$XDG_CONFIG_HOME/mise/config.toml"
 rm "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml"
 kae completion --refresh
 cmp "$HOME/completion-before" "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml"
-python3 -c 'import sys; assert "kagikae" not in open(sys.argv[1]).read()' "$XDG_CONFIG_HOME/mise/config.toml"
+if grep -q kagikae "$XDG_CONFIG_HOME/mise/config.toml"; then exit 1; else test "$?" -eq 1; fi
 mise trust "$XDG_CONFIG_HOME/mise/conf.d/kagikae.toml"
 export MISE_EXPERIMENTAL=1
 zsh -f "$HOME/check-mise-hook" 2> "$HOME/hook-stderr"

@@ -278,7 +278,7 @@ alternative exists (`secret-tool`).
   One thing the entry never mentioned and the fix had to carry: `PRODUCT.md`'s own
   opening still said both sections read as architecture and were queued for a move, a
   claim this entry had already withdrawn above. That is the instance;
-  [AGENTS.md](../AGENTS.md) § Documentation Update Checklist states the rule it produced.
+  [DOCUMENTATION.md](DOCUMENTATION.md) § References and content moves owns the resulting check.
 
 - **The standard's own docs check cannot run clean, and this repository forked it instead
   of fixing it** (recorded 2026-08-11, **not fixed here** — the fix belongs upstream; the
@@ -291,8 +291,8 @@ alternative exists (`secret-tool`).
   asserts only the files under `docs/`, while its own § Required Files also names
   `README.md`, `AGENTS.md` and `CLAUDE.md` — described and then checked by nothing.
   Second: its link extractor is a bare `grep -Eo` with no fence or code-span stripping, so
-  it reports the bracketed example inside `` `[X.md](X.md)` `` in `AGENTS.md`'s citation
-  rule as a broken target — **the standard's script cannot pass on a repository that uses
+  it reported the bracketed example inside `` `[X.md](X.md)` `` formerly used in
+  `AGENTS.md` as a broken target — **the standard's script cannot pass on a repository that uses
   the citation idiom the standard itself teaches**, and since the template wires it into
   `mise run check` the symptom is a gate blocking a commit on correct prose.
   Both fixes are properties of markdown rather than of kae, so they belong in the chezmoi
@@ -324,7 +324,7 @@ alternative exists (`secret-tool`).
   tree has. What that slice does **not** touch is the shape the rest of this
   entry describes: whether the content under a name that does exist still says what the
   citation claims.
-  `AGENTS.md § Documentation Update Checklist` covers one shape
+  [DOCUMENTATION.md](DOCUMENTATION.md) § Evidence and mutable claims covers one shape
   of it: a quantity written beside a `§` citation, swept for by
   `scripts/sweep-quantities.sh` over the diff's added lines and triaged by hand. That sweep
   is a net rather than a proof by its own admission, and what it still misses is the

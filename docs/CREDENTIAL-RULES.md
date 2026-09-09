@@ -10,8 +10,8 @@ adapter-level code is silently missing without it.
 
 **This is not every credential rule.** They live here rather than in
 [AGENTS.md](../AGENTS.md) — the one document loaded into every session — because
-none of them is consulted in *every* task. Its § Implementation Boundaries keeps one
-routing line per rule and deliberately states none of them, so **this file is the
+none of them is consulted in *every* task. Its § Implementation Boundaries routes
+credential work here, so **this file is the
 normative text** and a code comment citing `AGENTS.md` for one of these rules means
 the section here. That section also keeps the credential rules an ordinary task does
 consult, so a question this file does not answer may still have an answer there.

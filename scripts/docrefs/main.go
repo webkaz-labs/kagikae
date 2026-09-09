@@ -337,9 +337,9 @@ func unwrap(text string) string {
 // in the file. Measured: a triple run and single backticks survive gofmt byte-identically, so
 // the hazard is the pair and nothing else. The two strips already differ on this tree — the way to
 // see where is to run both over every line that reaches them, and the differing lines include
-// the bracketed illustration AGENTS.md's citation rule carries and docs/ROADMAP.md's
-// quotation of it — so byte-identical *output* today is an accident of where those sentences
-// wrap rather than a property.
+// a bracketed illustration formerly in AGENTS.md and quoted in docs/ROADMAP.md
+// during that measurement. Output agreement depends on line wrapping, not only
+// on whether the stripping algorithms agree.
 //
 // Kept rather than reverted to the Python's shape, and not on the direction argument alone,
 // which covers half the class: for an odd unmatched run this exposes a link the Python hid,

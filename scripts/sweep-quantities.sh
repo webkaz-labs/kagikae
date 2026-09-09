@@ -16,7 +16,7 @@
 # entries in docs/ROADMAP.md while writing "all ten" of them in the same diff. The
 # `++ b/...` lines are kept so you can tell which file a hit came from.
 #
-# AGENTS.md § Documentation Update Checklist is normative for the rule this serves: the fix
+# docs/DOCUMENTATION.md § Evidence and mutable claims owns the rule this serves: the fix
 # that holds is not to write the number, it is to write the derivation. This is only the
 # net for the ones already there.
 #
@@ -73,8 +73,8 @@
 #
 # # The sibling net that was refused, so it is not re-proposed
 #
-# AGENTS.md's closure rule — an absolute about what *is* must be written as its derivation
-# or deleted — looks like it wants a net of this shape too. It cannot have one, and that
+# The absolute-claim rule in docs/DOCUMENTATION.md — evidence must accompany the claim
+# or it must be deleted — looks like it wants a net of this shape too. It cannot have one, and that
 # is the difference worth keeping. Here, the written number is itself
 # the artifact that goes stale, so the defect and the vocabulary coincide. There, a closure
 # word is ordinary vocabulary in this tree, and what goes stale is a measurement that was

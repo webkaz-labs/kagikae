@@ -27,14 +27,35 @@ changes.
 | Legacy installer and locks | [VALIDATION.md](VALIDATION.md) § Installer compatibility smoke passed against `7fa65ac`, using the real shell installer with synthetic archives. Both shell/Go lock directions, receipt/history refusal, legacy downgrade and new-protocol failure without fallback passed. Transport is fixture-only. |
 | Signed backend lifecycle | [VALIDATION.md](VALIDATION.md) § Packslip consumer smoke passed on `c99ccc5` with mise 2026.9.3 and Packslip 1.1.1 on macOS arm64. Temporary v0.21.0/v0.21.1 binaries and ephemeral key/unlogged trust exercise actual backend install, opt-in postinstall, no-op/repeated init, upgrade preview/apply, project selection, offline reuse, teardown, manager removal and reinstall. Configuration and dummy credential bytes remain unchanged. Wrong key/project/digest/platform and missing assets are refused. This is not a published-history upgrade test. |
 | Completion registration | The same fixture runs real Bash 3.2 and Zsh shells across a project/version switch. Distinct fixture-only static candidates expose stale registration; logged executable versions prove dynamic profile queries use the selected binary. Automatic mise loading restores a prior custom registration on deactivation. Manual loading stays stale until repeated, as documented. Zsh captures `compadd` without driving an interactive TTY. Fish resources are retrieved and compared, but no fish runtime was available for a shell check. |
-| Packaging and publication checks | `mise run goreleaser-check` and a GoReleaser snapshot passed on the `342140f` implementation scope; archive inspection found the binary, documentation and generated static completion resources. Verifier unit tests cover exact source/signer/metadata checks and bounded matching/conflicting/interrupted upload paths. Packslip 1.1.1's generated Linux selector is GNU/Linux; musl selection is outside this backend coverage. Published-tag verification and the production-trust native consumer remain pending until release. |
+| Packaging and publication checks | `mise run goreleaser-check` and a GoReleaser snapshot passed on the `342140f` implementation scope; archive inspection found the binary, documentation and generated static completion resources. Verifier unit tests cover exact source/signer/metadata checks and bounded matching/conflicting/interrupted upload paths. Packslip 1.1.1's generated Linux selector is GNU/Linux; musl selection is outside this backend coverage. Published-tag and native consumer results are recorded below. |
 | Existing release gates | `mise run audit`, `mise run release-evidence` and `mise run naming-agreement` passed on the `342140f` implementation scope. `mise run release-smoke` passed on `c99ccc5`, including the saved completion and per-account store fixtures. These results do not extend live account acceptance. |
 | Conditional upstream lane | Installed fingerprints passed with the existing Codex exclusion. The reviewed Claude 2.1.261 naming comparison passed. The inspected installed-artifact location provided no reviewed old/new pair, so no new detector, artifact cache or verified-version/date change was accepted. [ROADMAP.md](ROADMAP.md) § Upstream-drift automation — what is left retains the reopening conditions. |
 
-The native published consumer is a separate release gate, with GitHub OIDC trust
-and no fixture key, unlogged option, release-age override or URL redirection.
-Record its exact tag/source and result here after publication. Platform and fish
-runtime limitations above are not converted into passing coverage by that run.
+### v0.21.0 publication result
+
+On 2026-09-09 (JST), [main CI](https://github.com/webkaz-labs/kagikae/actions/runs/34302652241)
+and the [release workflow](https://github.com/webkaz-labs/kagikae/actions/runs/34302756917)
+succeeded at tag source `0295772e451393ac66e781cc2d67316aa9ab3a86`, including the
+separate job signing verified published archives. Linux tests ran in these jobs;
+that is separate from the native macOS lifecycle runs above.
+
+The published consumer refused installation under mise 2026.9.3's
+default minimum age: the error dated the transparency-log record
+`2026-09-09T02:22:10Z`, after its allowed cutoff
+`2026-09-08T02:23:35.350584Z`. The operator then explicitly approved zero minimum
+age in the isolated consumer HOME only. With `KAE_RELEASE_VERIFY_FRESH=1`,
+`mise run release-verify -- v0.21.0` returned `status: success`: archive contents,
+checksums, exact GitHub OIDC signer/source, Packslip resources, native version,
+verified-assets installer and actual mise consumer passed. Signature checks stayed
+enabled, with no fixture key, unlogged option or URL redirection. This result is
+not a pass under the default age policy; the verifier reports the exception.
+Fish and non-native lifecycle limits above remain unchanged.
+
+The approved direct local installation then used the published v0.21.0 archive
+and checksum through `scripts/install.sh`. PATH resolved the regular file
+`~/.local/bin/kae`, which reported `kae v0.21.0`; an installation receipt was
+recorded. Existing configuration and state files compared byte-identical before
+and after the install. No live login or credential migration was performed.
 
 ## Offline recovery and validation assessment
 

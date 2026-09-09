@@ -1,36 +1,20 @@
 # Release Process
 
-## Current release — kae v0.20.3
+## Current release — kae v0.21.0
 
-Offline recovery regression coverage and state-specific recovery guidance, plus a
-correction to Cursor's unsupported-platform explanation. This patch adds no
-command, JSON token or capability and changes no credential mutation policy.
-[ACCEPTANCE.md](ACCEPTANCE.md) § Offline recovery and validation assessment records
-the candidate decisions and validation boundary; [ROADMAP.md](ROADMAP.md) retains
-raw-document rescue, deadline representation, drift-pair and platform prerequisites.
+Bounded integration teardown, receipt-backed direct binary removal, serialized
+initialization and signed Packslip distribution. The release is tag `v0.21.0` at
+`0295772e451393ac66e781cc2d67316aa9ab3a86` and the
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.21.0).
 
-The release record is tag `v0.20.3` at `d52573c` and the
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.20.3).
-On 2026-09-09 (JST), the main CI and release workflow succeeded, and
-`mise run release-verify -- v0.20.3` returned `status: success` for the archives,
-checksums, provenance and isolated installer. The native binary reported
-`kae v0.20.3`; installer transport used verified assets, not live HTTP.
-The operator's local installation was not changed.
-
-## Candidate — kae v0.21.0
-
-The candidate adds bounded integration teardown, receipt-backed direct binary
-removal, serialized initialization and signed Packslip distribution. Command and
-ownership contracts live in [CLI.md](CLI.md) § kae uninstall Semantics and
-[DATA-MODEL.md](DATA-MODEL.md); install and migration instructions are in the
-English/Japanese README and [GUIDE.ja.md](GUIDE.ja.md).
-
-[ACCEPTANCE.md](ACCEPTANCE.md) § Uninstall and Packslip assessment records the
-isolated lifecycle evidence and platform limits. Publication remains incomplete
-until the tag's archive provenance, Packslip bundle and native published consumer
-pass the verifier below. The conditional upstream detector is deferred to
-[ROADMAP.md](ROADMAP.md) § Upstream-drift automation — what is left; it does not
-change this candidate's credential contracts.
+[ACCEPTANCE.md](ACCEPTANCE.md) § Uninstall and Packslip assessment records CI,
+published archive/signature verification, native consumer acceptance and local
+installation. The fresh-release consumer used an explicitly approved isolated
+release-age exception; the default policy refused the newly published signature.
+Command ownership lives in [CLI.md](CLI.md) § kae uninstall Semantics; install,
+update and migration guidance is in the English/Japanese README and
+[GUIDE.ja.md](GUIDE.ja.md). [ROADMAP.md](ROADMAP.md) retains conditional upstream
+research and the later orchestration/remote exploration queue.
 
 ## Release procedure
 
@@ -76,6 +60,14 @@ by hand — the tag does it.
    `unavailable`. Success exits zero; the other statuses exit nonzero through
    `go run`, so use the JSON status to distinguish them. A missing prerequisite
    is not a passing check.
+
+The consumer normally retains mise's default release-age policy. A fresh tag may
+be refused even when its signature verifies. Wait for that policy's cutoff, or,
+only with explicit operator approval for the isolated check, run
+`KAE_RELEASE_VERIFY_FRESH=1 mise run release-verify -- vX.Y.Z`. This sets the
+temporary consumer configuration's minimum age to zero; it changes neither the
+operator's configuration nor the signature requirements. Record the exception
+in the acceptance result; it is not a default-policy pass.
 
 If archives exist but the Packslip job fails, the release is incomplete. Retry
 only the failed signing job against the same published bytes, then rerun the

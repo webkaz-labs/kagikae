@@ -44,15 +44,13 @@ without enabling whole-document writes or account adoption. Existing relogin and
 original-store restore are described in [CLI.md](CLI.md) § kae preservation Semantics.
 Do not widen those mutation paths without affected acceptance.
 
-The v0.21.0 candidate implements uninstall and Packslip delivery; its remaining
-publication gate is in [RELEASE.md](RELEASE.md) § Candidate — kae v0.21.0.
-The lifecycle evidence and limitations are in [ACCEPTANCE.md](ACCEPTANCE.md)
-§ Uninstall and Packslip assessment. The upstream detector remains conditional
-on reviewed artifact pairs under § Upstream-drift automation — what is left.
-
-After that release is complete, revisit the ideas in
-§ Agent orchestration and remote authentication — deferred exploration.
-They are an exploration queue, not additions to the next-release implementation.
+The uninstall/Packslip release is recorded in [RELEASE.md](RELEASE.md), with
+lifecycle evidence and limitations in [ACCEPTANCE.md](ACCEPTANCE.md)
+§ Uninstall and Packslip assessment. Revisit the ideas in
+§ Agent orchestration and remote authentication — deferred exploration next;
+they still require investigation and an explicit implementation decision.
+The upstream detector remains conditional on reviewed artifact pairs under
+§ Upstream-drift automation — what is left.
 
 The offline-recovery candidates have their accepted/deferred verdicts in the
 assessment linked above; they are not a fresh implementation queue. Evaluate
@@ -82,8 +80,8 @@ prerequisites; entries not named here retain their recorded gate.
 
 ## Agent orchestration and remote authentication — deferred exploration
 
-Resume after the uninstall/Packslip release described in [RELEASE.md](RELEASE.md)
-has shipped. The operator requested preserving these ideas for later investigation;
+The uninstall/Packslip release prerequisite is recorded in [RELEASE.md](RELEASE.md).
+The operator requested preserving these ideas for later investigation;
 no new command, integration or credential-transfer mechanism is selected yet.
 
 | Idea | Scenario and potential benefit to investigate |

@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 # Check the current Go module with the pinned formatters shared by mise and CI.
+# Usage: check-go-format.sh [--portable ROOT]. Explicit targets are single modules;
+# ignore inherited workspace/Go flags and require their own go.mod.
 set -eu
+if [ "${1:-}" = --portable ] && [ "$#" -eq 2 ]; then
+  cd -- "$2"
+  if [ ! -f go.mod ]; then
+    printf 'go format check: target must contain go.mod\n' >&2
+    exit 1
+  fi
+  export GOWORK=off
+  export GOFLAGS=''
+elif [ "$#" -ne 0 ]; then
+  printf 'usage: check-go-format.sh [--portable ROOT]\n' >&2
+  exit 2
+fi
 cache_root="${GOCLI_LINT_CACHE_DIR:-${TMPDIR:-/tmp}/kae-lint}"
 mkdir -p "$cache_root"
 export GOPATH="$cache_root/gopath"

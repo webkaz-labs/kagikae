@@ -152,3 +152,11 @@ kagikae adapters use the shared verification implementations.
 
 Product receipt, credential and lifecycle rules require their own adapter and
 acceptance. The selftests remain beside the checks they exercise.
+
+## Maintainer task selection
+
+Keep routine validation, installation and release entrypoints visible in mise.
+Implementation checks stay individually callable but use `hide = true` when they
+are components of those entrypoints. Preserve their dependency ordering. Harness
+refusal controls belong in Go tests; an installed upstream program is inspected
+only through an explicit, reviewed-artifact verification command.

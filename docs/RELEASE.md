@@ -51,7 +51,7 @@ by hand — the tag does it.
    no other task edits the checkout. It downloads through `gh`, verifies the
    manifest, archive contents and provenance attestations, then checks the native
    version and installer in isolated environments. For v0.21.0 onward, it also
-   requires the local tag, Packslip 1.1.1, mise 2026.9.3 and Python 3; validates
+   requires the local tag, Packslip 1.1.1, mise 2026.9.3 and Go; validates
    the exact GitHub OIDC signer, source commit, archive metadata and static
    resources; then installs the published version through the real native mise
    consumer with production trust settings. The installer receives only

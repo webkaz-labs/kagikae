@@ -78,7 +78,7 @@ not forward requests. This checks the actual mise backend; production publicatio
 also needs `mise run release-verify -- vX.Y.Z` with the GitHub OIDC signature.
 
 ```bash
-python3 -B scripts/packslipverify/consumer.py
+go run ./scripts/packslipverify fixture
 ```
 
 ## Installer compatibility smoke

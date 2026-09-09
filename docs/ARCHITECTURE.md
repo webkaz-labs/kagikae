@@ -47,6 +47,8 @@ kagikae/
     docscan/              # `mise run docs-scan`: reports prose two documents carry
                           #   twice
     releaseverify/        # published artifact verification; stdlib Go command
+    packslipverify/        # isolated mise consumer and signed fixture lifecycles
+    internal/commandrun/   # maintainer subprocess input/env and process-group lifetime
     release-smoke/        # shell fixtures and fixed store assertions for release smoke
     namingagreement/      # login-free production writer/upstream read comparison
                           # Go script packages are outside the released binary
@@ -71,10 +73,11 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
 - `artifact` is the single place that knows how to capture/apply the three
   artifact kinds. Adapters declare *which* artifacts exist for a tool and
   platform; they do not duplicate IO logic.
-- The maintainer-only `scripts/releaseverify` command owns a context-limited
-  subprocess seam for explicit child environments and working directories. Its
-  tests replace that seam; it is outside the released binary. Application
-  subprocesses continue to use `internal/runner` as below.
+- The maintainer-only `scripts/releaseverify` and `scripts/packslipverify` commands
+  share `scripts/internal/commandrun` for bounded child processes with explicit
+  input, environments and working directories. Release verification retains its
+  replaceable command seam; these packages are outside the released binary.
+  Application subprocesses continue to use `internal/runner` as below.
   On darwin/linux the verifier owns each command's process group, stops remaining
   members before returning, and handles interruption through cancellation so its
   owned temporary parent can be reclaimed. This does not cover a process that

@@ -24,6 +24,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
 )
 
 const repository = "webkaz-labs/kagikae"
@@ -51,39 +53,15 @@ func command(name string, args, env []string, cwd string) (string, error) {
 	return commandContext(context.Background(), name, args, env, cwd)
 }
 
-// commandContext owns only the new process group. Detached descendants are outside
-// this boundary; stop the group even when its original parent exits successfully.
-func commandContext(parent context.Context, name string, args, env []string, cwd string) (output string, commandErr error) {
-	ctx, cancel := context.WithTimeout(parent, 5*time.Minute)
-	defer cancel()
-	c := exec.CommandContext(ctx, name, args...)
-	c.WaitDelay = 5 * time.Second
-	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	stop := func() error {
-		err := syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
-		if errors.Is(err, syscall.ESRCH) {
-			return os.ErrProcessDone
-		}
-		return err
-	}
-	c.Cancel = stop
-	c.Dir = cwd
-	if env != nil {
-		c.Env = env
-	}
-	// Output owns the pipe collection; cleanup must also run after a successful Wait.
-	defer func() {
-		if c.Process != nil {
-			if err := stop(); err != nil && !errors.Is(err, os.ErrProcessDone) {
-				commandErr = errors.Join(commandErr, fmt.Errorf("%s process group cleanup failed: %w", filepath.Base(name), err))
-			}
-		}
-	}()
-	out, err := c.Output()
+func commandContext(parent context.Context, name string, args, env []string, cwd string) (string, error) {
+	result, err := (commandrun.Command{Name: name, Args: args, Env: env, Dir: cwd, Timeout: 5 * time.Minute}).Run(parent)
 	if err != nil {
 		return "", fmt.Errorf("%s failed: %w", filepath.Base(name), err)
 	}
-	return string(out), nil
+	if result.ExitCode != 0 {
+		return "", fmt.Errorf("%s failed: exit status %d", filepath.Base(name), result.ExitCode)
+	}
+	return result.Stdout, nil
 }
 
 func archivesFor(tag string) ([]string, error) {
@@ -307,7 +285,7 @@ func verify(tag, repo, dir, system, arch string, run commandFunc) (result, error
 	consumer := ""
 	if packslipRelease(tag) {
 		heading := "## Published Packslip consumer"
-		doc := heading + "\n\n```bash\npython3 -B scripts/packslipverify/published.py " + tag + "\n```\n"
+		doc := heading + "\n\n```bash\ngo run ./scripts/packslipverify published " + tag + "\n```\n"
 		if err := runSmokeDocument(repo, dir, filepath.Join(dir, "consumer.md"), heading, doc, run); err != nil {
 			return result{}, fmt.Errorf("published mise consumer: %w", err)
 		}
@@ -353,7 +331,7 @@ func mainResult(ctx context.Context) (got result, code int) {
 	}
 	requiredTools := []string{"gh", "bash", "git"}
 	if packslipRelease(tag) {
-		requiredTools = append(requiredTools, "packslip", "mise", "python3")
+		requiredTools = append(requiredTools, "packslip", "mise", "go")
 	}
 	for _, tool := range requiredTools {
 		if _, err := exec.LookPath(tool); err != nil {

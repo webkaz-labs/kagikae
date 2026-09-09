@@ -57,6 +57,21 @@ and checksum through `scripts/install.sh`. PATH resolved the regular file
 recorded. Existing configuration and state files compared byte-identical before
 and after the install. No live login or credential migration was performed.
 
+### Go consumer verification
+
+On 2026-09-09 (JST), maintainer revision `6c08b89` replaced the Packslip Python
+consumers with Go. The full commit gate and the isolated Packslip fixture smoke
+passed, including Bash/Zsh version transitions, retained data, expected backend
+refusals and shared subprocess lifecycle tests. The default published consumer
+still refused v0.21.0 under mise's minimum-release-age policy.
+
+With the previously approved isolated `KAE_RELEASE_VERIFY_FRESH=1` exception,
+`mise run release-verify -- v0.21.0` returned `status: success` using the Go
+consumer: published archives, provenance, exact Packslip signer/source, native
+version, installer and completion checks passed. This changes the maintainer
+verification runtime, not the signed v0.21.0 assets or the operator's installation.
+The native-platform and fish-runtime coverage limits above remain in force.
+
 ## Offline recovery and validation assessment
 
 Assessed on 2026-09-09 (JST) for candidate `b0dd08c` against the v0.20.2

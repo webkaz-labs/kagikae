@@ -29,6 +29,7 @@ check here can notice that the standard changed.
 
 | Document | When To Read |
 |----------|--------------|
+| [docs/memories.md](docs/memories.md) | before adding maintenance or verification tooling; durable working preferences |
 | [README.md](README.md) | user-facing command or setup changes |
 | [README.ja.md](README.ja.md) | Japanese setup and user-facing changes; update alongside the English entrypoint |
 | [docs/PRODUCT.ja.md](docs/PRODUCT.ja.md) | Japanese product overview when scope or capability boundaries change; PRODUCT.md remains normative |

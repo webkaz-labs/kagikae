@@ -44,10 +44,23 @@
 # merely that the exit status was non-zero — a silent death also exits non-zero, and it
 # was passing for that reason. Every `grep` whose zero-match case is legitimate is
 # therefore wrapped in `|| true`.
+# Usage: check-docs.sh [--portable ROOT]. Portable checks references only;
+# it omits kagikae document layout and count floors, and accepts directory links.
+# Extractor syntax limitations still apply (see scripts/docrefs/main.go).
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-cd -- "$root"
+portable=0
+if [ "${1:-}" = --portable ] && [ "$#" -eq 2 ]; then
+  portable=1
+  target=$(cd -- "$2" && pwd -P)
+elif [ "$#" -eq 0 ]; then
+  target=$root
+else
+  printf 'usage: check-docs.sh [--portable ROOT]\n' >&2
+  exit 2
+fi
+cd -- "$target"
 
 failures=0
 fail() {
@@ -87,6 +100,8 @@ fail() {
 # CLAUDE.md alone. Empty is as bad as absent because CLAUDE.md is what loads AGENTS.md for
 # Claude Code: truncating it removes every project rule with no error anywhere. This is the
 # one copy of that reasoning — the selftest cases point here rather than restating it.
+docs_checked=0
+if [ "$portable" -eq 0 ]; then
 for required in README.md AGENTS.md CLAUDE.md; do
   if [ ! -f "$required" ] || [ ! -s "$required" ]; then
     fail "$required is missing, empty, or not a regular file — the root documents are asserted here because no link walk can vouch for all of them"
@@ -182,6 +197,8 @@ if [ "$docs_checked" -lt 10 ]; then
   fail "walked only $docs_checked files under docs/, which is fewer than this repository has"
 fi
 
+fi
+
 # --- every link resolves, and every citation names a section its target declares ---
 # One producer for both, because a link and a `§` citation are the same thing at this
 # level — a reference from one document into another — so the walk, the pruned
@@ -196,8 +213,13 @@ fi
 # catching. The `|| fail` keeps that loud rather than letting `set -e` kill the script with
 # no message, which is indistinguishable from a clean run to anything reading only the
 # status.
-refs=$(GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go run ./scripts/docrefs) ||
-  fail "the reference extractor exited non-zero, so the walks below are truncated and their counts mean nothing"
+if [ "$portable" -eq 1 ]; then
+  refs=$(cd -- "$root" && GOWORK=off GOFLAGS='' GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go run ./scripts/docrefs "$target") ||
+    fail "the reference extractor exited non-zero, so the walk is incomplete"
+else
+  refs=$(GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go run ./scripts/docrefs) ||
+    fail "the reference extractor exited non-zero, so the walks below are truncated and their counts mean nothing"
+fi
 
 links_checked=0
 sections_checked=0
@@ -233,6 +255,9 @@ while IFS=$'\t' read -r kind citing target verdict name; do
     # today (measured over all of them, none resolving to a directory or a symlink to one),
     # so the narrowing costs nothing; a link deliberately pointing at a directory would fail
     # loudly here and is the case to revisit this line for.
+    if [ "$portable" -eq 1 ] && [ -d "$md_dir/$dest" ]; then
+      continue
+    fi
     if [ ! -f "$md_dir/$dest" ]; then
       fail "$citing link target does not exist: $target"
     fi
@@ -269,6 +294,7 @@ while IFS=$'\t' read -r kind citing target verdict name; do
 done <<REFS
 $refs
 REFS
+if [ "$portable" -eq 0 ]; then
 if [ "$links_checked" -lt 50 ]; then
   fail "resolved only $links_checked relative links, which is fewer than this repository has"
 fi
@@ -286,10 +312,19 @@ if [ "$sections_md" -eq 0 ] || [ "$sections_go" -eq 0 ]; then
   fail "section citations were found in markdown ($sections_md) and Go ($sections_go), and this repository has both"
 fi
 
+fi
+
 if [ "$failures" -gt 0 ]; then
   printf 'check-docs: %s problem(s)\n' "$failures" >&2
   exit 1
 fi
 
+if [ "$portable" -eq 1 ]; then
+  printf 'check-docs: portable — %s links, %s section citations checked; repository policy checks not applied\n' "$links_checked" "$sections_checked"
+  if [ "$links_checked" -eq 0 ] && [ "$sections_checked" -eq 0 ]; then
+    printf 'check-docs: no checkable references found; this is not evidence of reference coverage\n'
+  fi
+  exit 0
+fi
 printf 'check-docs: ok — %s docs in the Map, %s links resolved, %s section citations resolved\n' \
   "$docs_checked" "$links_checked" "$sections_checked"

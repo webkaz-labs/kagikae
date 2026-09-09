@@ -72,9 +72,30 @@ type paragraph struct {
 func main() {
 	minScore := flag.Float64("min", 0.25, "report pairs at or above this Jaccard score")
 	top := flag.Int("top", 40, "print at most this many pairs")
+	root := flag.String("root", ".", "project directory to inspect")
+	portable := flag.Bool("portable", false, "do not require the kagikae glossary")
+	glossary := flag.String("glossary", "", "optional glossary path, relative to the inspected root")
+	sections := flag.String("glossary-sections", "Surface terms,Mechanism terms", "comma-separated glossary H2 headings")
 	flag.Parse()
+	if flag.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "docscan: unexpected positional arguments")
+		os.Exit(2)
+	}
+	if err := os.Chdir(*root); err != nil {
+		fmt.Fprintln(os.Stderr, "docscan:", err)
+		os.Exit(1)
+	}
+	if *glossary == "" && !*portable {
+		*glossary = filepath.Join("docs", "CONTEXT.md")
+	}
+	selected := map[string]bool{}
+	for _, section := range strings.Split(*sections, ",") {
+		if heading := strings.TrimSpace(section); heading != "" {
+			selected[heading] = true
+		}
+	}
 
-	anchors, err := collectAnchors()
+	anchors, err := collectAnchors(*glossary, selected)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "docscan:", err)
 		os.Exit(1)
@@ -102,8 +123,12 @@ func main() {
 		}
 	}
 
+	if len(anchors) == 0 {
+		fmt.Println("docscan: no anchors; comparison unavailable (provide Go sources or a glossary)")
+	}
 	buckets := indexAnchors(paras, anchors)
 	pairs := comparePairs(paras, buckets)
+	fmt.Printf("docscan: %d candidate pairs compared\n", len(pairs))
 
 	// comparePairs returns them sorted descending, so the reportable ones are a
 	// prefix. Slicing rather than counting while printing is deliberate: the first
@@ -154,7 +179,7 @@ func prepare(p paragraph) paragraph {
 
 // collectAnchors returns the identifiers to bucket paragraphs on: every name the
 // Go sources declare, unioned with the terms docs/CONTEXT.md names.
-func collectAnchors() (map[string]bool, error) {
+func collectAnchors(glossary string, sections map[string]bool) (map[string]bool, error) {
 	anchors := map[string]bool{}
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
@@ -179,7 +204,10 @@ func collectAnchors() (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	terms, err := contextTerms(filepath.Join("docs", "CONTEXT.md"))
+	if glossary == "" {
+		return anchors, nil
+	}
+	terms, err := contextTermsSections(glossary, sections)
 	if err != nil {
 		return nil, err
 	}
@@ -273,6 +301,10 @@ var (
 // AST, so nothing looked wrong, and the first glossary-only term to acquire a
 // parenthetical would have vanished with no signal.
 func contextTerms(path string) ([]string, error) {
+	return contextTermsSections(path, termSections)
+}
+
+func contextTermsSections(path string, sections map[string]bool) ([]string, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -284,7 +316,7 @@ func contextTerms(path string) ([]string, error) {
 			section = m[1]
 			continue
 		}
-		if !termSections[section] || !strings.HasPrefix(strings.TrimSpace(line), "|") {
+		if !sections[section] || !strings.HasPrefix(strings.TrimSpace(line), "|") {
 			continue
 		}
 		cells := strings.Split(strings.TrimSpace(line), "|")

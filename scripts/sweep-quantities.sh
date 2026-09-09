@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Report every quantity a change writes next to a claim, so each can be triaged by hand.
 #
-# Usage: bash scripts/sweep-quantities.sh [<base>]
+# Usage: bash scripts/sweep-quantities.sh [--portable] [<base>]
+# Portable mode uses self-contained controls rather than kagikae git history.
+# Run from the target git working tree; specify its base if it is not main.
 #   <base> defaults to `main`. The diff runs from the merge base to the working tree, so
 #   committed and uncommitted changes are both swept — untracked files are not, because
 #   `git diff` does not see them, and a brand-new document is therefore invisible here.
@@ -83,6 +85,15 @@
 
 set -euo pipefail
 
+portable=0
+if [ "${1:-}" = --portable ]; then
+  portable=1
+  shift
+fi
+if [ "$#" -gt 1 ]; then
+  printf 'usage: sweep-quantities.sh [--portable] [BASE]\n' >&2
+  exit 2
+fi
 BASE=${1:-main}
 
 # The commit whose docs/ROADMAP.md line says "the two commands in CONTEXT.md § Not
@@ -150,6 +161,10 @@ controls() {
   # mutation of this constant to a commit that does not exist then produced a warning and a
   # clean sweep — a typo and a shallow clone are indistinguishable here, so the arm that
   # tolerates one tolerates the other, and the positive control silently stops running.
+  if [ "$portable" -eq 1 ]; then
+    fixture 'historical-shape' 1 '+the two commands in CONTEXT.md § Not converged\n'
+    return
+  fi
   if ! git cat-file -e "$POSITIVE_CONTROL_COMMIT^{commit}" 2>/dev/null; then
     fail "the positive control $POSITIVE_CONTROL_COMMIT is not in this clone, so a clean sweep would prove nothing"
   fi

@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
 )
 
 // Run the public commands against a foreign tree, including a deliberately
 // unusable Go workspace. Source lookup must not follow the inspected project.
 func TestForeignProject(t *testing.T) {
-	source, err := filepath.Abs("../..")
+	source, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestForeignProject(t *testing.T) {
 		}
 	}
 	check := func() commandrun.Result {
-		return run(root, "bash", filepath.Join(source, "scripts/check-docs.sh"), "--portable", root)
+		return run(root, "bash", filepath.Join(source, "tools/devtools/shell/check-docs.sh"), "--portable", root)
 	}
 	write("go.mod", "not a module\n")
 	write("go.work", "not a workspace\n")
@@ -62,10 +62,10 @@ func TestForeignProject(t *testing.T) {
 	assert(check(), false, "declares no section")
 	write("README.md", "# Plain document\n")
 	assert(check(), true, "no checkable references")
-	assert(run(root, "bash", filepath.Join(source, "scripts/check-docs.sh"), "--portable", filepath.Join(root, "missing")), false, "")
+	assert(run(root, "bash", filepath.Join(source, "tools/devtools/shell/check-docs.sh"), "--portable", filepath.Join(root, "missing")), false, "")
 
 	binary := filepath.Join(t.TempDir(), "docscan")
-	assert(run(source, "go", "build", "-o", binary, "./scripts/docscan"), true, "")
+	assert(run(source, "go", "build", "-o", binary, "./tools/devtools/cmd/docscan"), true, "")
 	assert(run(root, binary, "-portable", "-root", root), true, "no anchors; comparison unavailable")
 	paragraph := "Widget preserves the selected configuration across every operation and keeps the original value available for later inspection while another command reads the same stable configuration without changing any part of it.\n"
 	write("README.md", paragraph)
@@ -78,6 +78,6 @@ func TestForeignProject(t *testing.T) {
 	assert(run(root, "git", "add", "."), true, "")
 	assert(run(root, "git", "-c", "user.name=Fixture", "-c", "user.email=you@example.com", "-c", "commit.gpgsign=false", "commit", "-m", "fixture"), true, "")
 	write("README.md", "the two commands in this document\n")
-	assert(run(root, "bash", filepath.Join(source, "scripts/sweep-quantities.sh"), "--portable", "trunk"), true, "two commands")
-	assert(run(root, "bash", filepath.Join(source, "scripts/sweep-quantities.sh"), "--portable", "missing"), false, "no commit named")
+	assert(run(root, "bash", filepath.Join(source, "tools/devtools/shell/sweep-quantities.sh"), "--portable", "trunk"), true, "two commands")
+	assert(run(root, "bash", filepath.Join(source, "tools/devtools/shell/sweep-quantities.sh"), "--portable", "missing"), false, "no commit named")
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"strings"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
+	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 )
 
 // Historical archive policy stays in the product adapter.

@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
 )
 
 // The fake validates cwd, environment and argv without downloading analyzers.
 // Actual formatter behavior remains owned by the pinned tools.
 func TestForeignFormatter(t *testing.T) {
-	source, err := filepath.Abs("../..")
+	source, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ esac
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("FORMAT_CASE", tc.name)
-			result, err := (commandrun.Command{Name: "bash", Args: []string{filepath.Join(source, "scripts/check-go-format.sh"), "--portable", target}, Dir: root, Timeout: time.Minute}).Run(context.Background())
+			result, err := (commandrun.Command{Name: "bash", Args: []string{filepath.Join(source, "tools/devtools/shell/check-go-format.sh"), "--portable", target}, Dir: root, Timeout: time.Minute}).Run(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -76,7 +76,7 @@ esac
 	if err := os.Remove(filepath.Join(target, "go.mod")); err != nil {
 		t.Fatal(err)
 	}
-	result, err := (commandrun.Command{Name: "bash", Args: []string{filepath.Join(source, "scripts/check-go-format.sh"), "--portable", target}, Dir: root, Timeout: time.Minute}).Run(context.Background())
+	result, err := (commandrun.Command{Name: "bash", Args: []string{filepath.Join(source, "tools/devtools/shell/check-go-format.sh"), "--portable", target}, Dir: root, Timeout: time.Minute}).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

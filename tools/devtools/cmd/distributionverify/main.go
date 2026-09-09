@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
-	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
+	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 )
 
 func check(ctx context.Context, args []string) error { _, err := checkMode(ctx, args); return err }

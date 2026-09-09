@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
+	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 )
 
 const packslipAsset = "packslip.sigstore.json"

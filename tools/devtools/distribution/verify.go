@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
 )
 
 type Command func(string, []string, []string, string) (string, error)

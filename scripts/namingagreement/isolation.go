@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
-	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
+	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 )
 
 type execute func(context.Context, commandrun.Command) (commandrun.Result, error)

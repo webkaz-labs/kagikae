@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
 )
 
 // Claude 2.1.261, measured 2026-09-06: eleven shim cases reached both service

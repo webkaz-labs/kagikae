@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
 )
 
 func fixtureSpec() Spec {

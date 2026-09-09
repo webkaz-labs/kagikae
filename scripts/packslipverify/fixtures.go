@@ -18,7 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
+	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 )
 
 const fixtureCommit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

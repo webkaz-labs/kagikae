@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
 )
 
 func (v Verified) RunInstaller(ctx context.Context, installer Installer) (err error) {

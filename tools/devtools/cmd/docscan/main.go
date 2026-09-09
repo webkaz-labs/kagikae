@@ -1,5 +1,5 @@
-// Command docscan reports prose that two of this repository's documents carry
-// twice, anchored on the identifiers the code actually declares.
+// Command docscan reports duplicate prose in an explicitly selected tree, anchored
+// on Go identifiers and optional terms from explicitly selected glossary headings.
 //
 // It is stage 2 of the four-stage docs scan used here — (1) an identifier index,
 // (2) duplication, (3) claim reconciliation, (4) running the executable blocks
@@ -25,7 +25,7 @@
 // Anchors come from the Go AST rather than a regex because this repository's
 // decision vocabulary lives in struct fields (Ordered, Conflicting,
 // Unattributed) as much as in function names, and they are unioned with
-// docs/CONTEXT.md's terms because the prose about a concept outnumbers the
+// explicit glossary terms because the prose about a concept outnumbers the
 // mentions of the symbol implementing it. Measured 2026-08-10 over the units this
 // tool compares: the ones naming `credStoreReaders` are under a fifth of the ones
 // using the word *reader*, so a symbol-only anchor set reaches under a fifth of the
@@ -50,6 +50,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	glossaryparse "github.com/webkaz-labs/kagikae/tools/devtools/glossary"
 )
 
 const (
@@ -73,9 +75,9 @@ func main() {
 	minScore := flag.Float64("min", 0.25, "report pairs at or above this Jaccard score")
 	top := flag.Int("top", 40, "print at most this many pairs")
 	root := flag.String("root", ".", "project directory to inspect")
-	portable := flag.Bool("portable", false, "do not require the kagikae glossary")
+	flag.Bool("portable", false, "compatibility flag; glossary is always explicit")
 	glossary := flag.String("glossary", "", "optional glossary path, relative to the inspected root")
-	sections := flag.String("glossary-sections", "Surface terms,Mechanism terms", "comma-separated glossary H2 headings")
+	sections := flag.String("glossary-sections", "", "comma-separated glossary H2 headings")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "docscan: unexpected positional arguments")
@@ -84,9 +86,6 @@ func main() {
 	if err := os.Chdir(*root); err != nil {
 		fmt.Fprintln(os.Stderr, "docscan:", err)
 		os.Exit(1)
-	}
-	if *glossary == "" && !*portable {
-		*glossary = filepath.Join("docs", "CONTEXT.md")
 	}
 	selected := map[string]bool{}
 	for _, section := range strings.Split(*sections, ",") {
@@ -178,7 +177,7 @@ func prepare(p paragraph) paragraph {
 }
 
 // collectAnchors returns the identifiers to bucket paragraphs on: every name the
-// Go sources declare, unioned with the terms docs/CONTEXT.md names.
+// Go sources declare, unioned with the explicitly selected glossary terms.
 func collectAnchors(glossary string, sections map[string]bool) (map[string]bool, error) {
 	anchors := map[string]bool{}
 	fset := token.NewFileSet()
@@ -207,7 +206,7 @@ func collectAnchors(glossary string, sections map[string]bool) (map[string]bool,
 	if glossary == "" {
 		return anchors, nil
 	}
-	terms, err := contextTermsSections(glossary, sections)
+	terms, err := glossaryparse.Read(glossary, sections)
 	if err != nil {
 		return nil, err
 	}
@@ -276,62 +275,6 @@ func declaredNames(f *ast.File) []string {
 		return true
 	})
 	return out
-}
-
-// termSections are the two headings in docs/CONTEXT.md whose tables define terms.
-// The section check is load-bearing rather than tidy: the glossary opens with a
-// routing table whose first column is a *question* ("what a decision does"), and a
-// row-shape-only reader harvested all five of those as vocabulary.
-var termSections = map[string]bool{"Surface terms": true, "Mechanism terms": true}
-
-var (
-	sectionLine   = regexp.MustCompile(`^##\s+(.*?)\s*$`)
-	parenthetical = regexp.MustCompile(`\([^)]*\)`)
-	termShape     = regexp.MustCompile(`^[A-Za-z][A-Za-z ._-]*$`)
-)
-
-// contextTerms reads the terms out of the glossary's own term tables: the first
-// cell of each row, with emphasis and backticks stripped, parentheticals dropped,
-// and a comma-separated cell read as the several terms it is. It stays ignorant of
-// the rest of the row on purpose — this reads names, not rules.
-//
-// Requiring the whole cell to be one bare name is what the first version did, and
-// it silently skipped `**mode** (`shared`, `isolated`)` and `**supersedes**,
-// **orderable**`. Silently is the problem: they were still reachable from the Go
-// AST, so nothing looked wrong, and the first glossary-only term to acquire a
-// parenthetical would have vanished with no signal.
-func contextTerms(path string) ([]string, error) {
-	return contextTermsSections(path, termSections)
-}
-
-func contextTermsSections(path string, sections map[string]bool) ([]string, error) {
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var out []string
-	section := ""
-	for _, line := range strings.Split(string(body), "\n") {
-		if m := sectionLine.FindStringSubmatch(line); m != nil {
-			section = m[1]
-			continue
-		}
-		if !sections[section] || !strings.HasPrefix(strings.TrimSpace(line), "|") {
-			continue
-		}
-		cells := strings.Split(strings.TrimSpace(line), "|")
-		if len(cells) < 2 {
-			continue
-		}
-		cell := parenthetical.ReplaceAllString(cells[1], " ")
-		for _, piece := range strings.Split(cell, ",") {
-			term := strings.TrimSpace(strings.Trim(strings.TrimSpace(piece), "*`"))
-			if len(term) >= 4 && term != "term" && termShape.MatchString(term) {
-				out = append(out, term)
-			}
-		}
-	}
-	return out, nil
 }
 
 // markdownFiles returns the same set AGENTS.md's documentation checklist derives:
@@ -437,7 +380,7 @@ func jaccard(a, b map[string]bool) float64 {
 // tree, an exact 1.00 match, because the anchors that pair shared were `account`
 // and the tool names. There is no cost argument for the filter either: keeping
 // every anchor costs a few seconds over the whole corpus — measure it rather than
-// trusting a figure that rots, with `time go run ./scripts/docscan`.
+// trusting a figure that rots, with `time go run ./tools/devtools/cmd/docscan`.
 //
 // ponytail: O(bucket²) per anchor, and the biggest bucket is most of the corpus.
 // If this ever gets slow, band the shingle sets (minhash) rather than throwing

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
-	"github.com/webkaz-labs/kagikae/scripts/internal/completioncheck"
-	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
+	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/completioncheck"
+	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 )
 
 func TestBuiltCLIFromForeignDirectory(t *testing.T) {

@@ -204,7 +204,7 @@ drop_map_row() {
 # well — while the kind case below asserts an OUTCOME and kills both, measured. An outcome
 # assertion covers what a precondition cannot.
 stub_extractor() {
-  local target="$1/scripts/docrefs/main.go"
+  local target="$1/tools/devtools/cmd/docrefs/main.go"
   if [ ! -f "$target" ]; then
     fixture_anchor_miss "no $target to replace"
   fi
@@ -470,7 +470,7 @@ check 'a section verdict the gate does not know is named' \
 #     not count), and it cannot express the state at all when the citation is in a
 #     top-level Go file, which has no directory to prune. The suffix has neither problem.
 dir=$(fixture prunedgo)
-subst_once "$dir/scripts/docrefs/main.go" \
+subst_once "$dir/tools/devtools/docrefs/parser.go" \
   'var suffixes = []string{".md", ".go"}' \
   'var suffixes = []string{".md"}'
 out=$(run_check "$dir")

@@ -20,7 +20,7 @@ run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go vet ./..."
 [tasks.fmt-check]
 hide = true
 description = "Check Go formatting and import grouping"
-run = "bash scripts/check-go-format.sh"
+run = "bash tools/devtools/shell/check-go-format.sh"
 
 [tasks.staticcheck]
 hide = true
@@ -59,7 +59,7 @@ if [ ! -d scripts ]; then
   printf 'shellcheck: no scripts directory\\n'
   exit 0
 fi
-files="$(find scripts -type f -name '*.sh' -print)"
+files="$(find scripts tools/devtools -type f -name '*.sh' -print)"
 if [ -z "$files" ]; then
   printf 'shellcheck: no shell scripts\\n'
   exit 0
@@ -136,10 +136,10 @@ description = "Run the standard local validation suite"
 depends = ["lint", "test", "vet", "mod-verify", "build", "smoke-selftest", "smoke-selftest-mutations-fast", "docs-check", "docs-check-selftest"]
 
 # Deliberately not a dependency of `check`. What a report does and does not mean is
-# scripts/docscan/main.go's header, which is the one copy of it.
+# tools/devtools/cmd/docscan/main.go's header, which is the one copy of it.
 [tasks.docs-scan]
 description = "Report prose two documents carry twice, anchored on declared identifiers"
-run = "go run ./scripts/docscan"
+run = "go run ./tools/devtools/cmd/docscan -glossary docs/CONTEXT.md -glossary-sections 'Surface terms,Mechanism terms'"
 
 [tasks.vuln]
 hide = true

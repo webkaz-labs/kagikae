@@ -2,7 +2,7 @@ name: Check
 
 # Shared by ci.yml and release.yml. This workflow is a subset of the local
 # mise run check; compare these steps with mise.toml for the current gap.
-# Formatter behavior is owned by scripts/check-go-format.sh. Docs module-resolution
+# Formatter behavior is owned by tools/devtools/shell/check-go-format.sh. Docs module-resolution
 # constraints are set on their steps below. Further admission decisions live in
 # docs/ROADMAP.md.
 on:
@@ -29,7 +29,7 @@ jobs:
         run: go vet ./...
 
       - name: Format
-        run: bash scripts/check-go-format.sh
+        run: bash tools/devtools/shell/check-go-format.sh
         env:
           GOCLI_LINT_CACHE_DIR: ${{ runner.temp }}/formatter-cache
 

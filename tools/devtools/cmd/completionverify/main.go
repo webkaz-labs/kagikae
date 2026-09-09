@@ -12,7 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/completioncheck"
+	"github.com/webkaz-labs/kagikae/tools/devtools/completioncheck"
 )
 
 func check(ctx context.Context, args []string) error {

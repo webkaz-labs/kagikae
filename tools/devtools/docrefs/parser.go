@@ -183,7 +183,7 @@
 //     counting, so it can never fail. A citation naming a file that does not exist is
 //     therefore silent here; the link walk catches it only when it is written as a
 //     markdown link, and most citations in Go comments are not.
-package main
+package docrefs
 
 import (
 	"bufio"
@@ -232,7 +232,7 @@ var (
 	// case guarantees: the column-0 form fails that case and nothing else. Named rather than
 	// numbered, because the numbers move. Three copies of this model had
 	// three dialects; merging the two here leaves two copies of the model and one dialect,
-	// and scripts/docscan/main.go still carries the third (no `~~~`). That was the argument
+	// and tools/devtools/cmd/docscan/main.go still carries the third (no `~~~`). That was the argument
 	// for matching a sibling rather than for the strictness.
 	fenceRe = regexp.MustCompile("(?ms)^" + fenceMarker + ".*?^" + fenceMarker + "[^\n]*\n?")
 	// The link half's fence, built from the same fenceMarker as the block form above so the
@@ -639,7 +639,7 @@ func docFiles(root string) ([]string, error) {
 	return files, nil
 }
 
-func main() {
+func Main() {
 	root := "."
 	if len(os.Args) > 1 {
 		root = os.Args[1]

@@ -20,8 +20,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
-	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
+	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 )
 
 const repository = "webkaz-labs/kagikae"

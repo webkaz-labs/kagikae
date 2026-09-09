@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
+	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 
 	"github.com/webkaz-labs/kagikae/internal/installation"
 	"github.com/webkaz-labs/kagikae/internal/lock"

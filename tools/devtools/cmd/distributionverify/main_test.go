@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
-	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
+	"github.com/webkaz-labs/kagikae/tools/devtools/commandrun"
+	"github.com/webkaz-labs/kagikae/tools/devtools/distribution"
 )
 
 func TestSignedForeignCLI(t *testing.T) {

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/webkaz-labs/kagikae/tools/devtools/glossary"
 )
 
 func TestJaccardScoresIdenticalAndDisjointText(t *testing.T) {
@@ -281,7 +283,7 @@ func TestContextTermsReadsTheTermTablesAndOnlyThose(t *testing.T) {
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	got, err := contextTerms(path)
+	got, err := glossary.Read(path, map[string]bool{"Surface terms": true, "Mechanism terms": true})
 	if err != nil {
 		t.Fatalf("contextTerms: %v", err)
 	}
@@ -352,35 +354,6 @@ func TestAUbiquitousAnchorStillBuckets(t *testing.T) {
 	}
 	if got := comparePairs(paras, buckets); len(got) != 3 {
 		t.Fatalf("three identical paragraphs must produce three pairs, got %d", len(got))
-	}
-}
-
-// termSections names two headings of docs/CONTEXT.md inside this program, and the
-// fixture test above repeats those same two strings — so renaming a heading in the
-// glossary would drop half the anchor set with every test still green and the report
-// still printing a healthy anchor count. This reads the real file instead, which
-// turns that rename into a red test.
-func TestTheRealGlossaryYieldsTermsFromBothTables(t *testing.T) {
-	got, err := contextTerms(filepath.Join("..", "..", "docs", "CONTEXT.md"))
-	if err != nil {
-		t.Fatalf("contextTerms on the real glossary: %v", err)
-	}
-	have := map[string]bool{}
-	for _, g := range got {
-		have[g] = true
-	}
-	// One term from each table, so a rename of either heading fails here.
-	if !have["account"] {
-		t.Errorf("no surface term found — has § Surface terms been renamed? got %v", got)
-	}
-	if !have["bound directory"] {
-		t.Errorf("no mechanism term found — has § Mechanism terms been renamed? got %v", got)
-	}
-	// And the routing table's questions are not vocabulary.
-	for _, g := range got {
-		if strings.HasPrefix(g, "what ") {
-			t.Errorf("contextTerms harvested a routing question: %q", g)
-		}
 	}
 }
 

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/webkaz-labs/kagikae/scripts/internal/completioncheck"
+	"github.com/webkaz-labs/kagikae/tools/devtools/completioncheck"
 )
 
 func (s *scenario) section(text, start, end string) string {

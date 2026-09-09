@@ -46,6 +46,10 @@ kagikae/
                           #   `X.md § Name` citation, one stream with a kind column
     docscan/              # `mise run docs-scan`: reports prose two documents carry
                           #   twice
+    distributionverify/   # portable trusted-spec distribution verification
+    completionverify/     # portable Bash/Zsh candidate and registration checks
+    internal/distribution/ # archive/signature/source order and owned fixture transport
+    internal/completioncheck/ # candidate checks and same-shell mise lifecycle
     releaseverify/        # published artifact verification; stdlib Go command
     packslipverify/        # isolated mise consumer and signed fixture lifecycles
     internal/commandrun/   # maintainer subprocess input/env and process-group lifetime

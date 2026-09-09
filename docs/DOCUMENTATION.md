@@ -130,17 +130,25 @@ arguments, the existing current-directory behavior is retained for mise and CI.
 Analyzer versions are pinned in the script. Go may download those analyzers and
 populate caches; `GOCLI_LINT_CACHE_DIR` selects their cache root.
 
+## Reuse distribution and completion verification
+
+[Distribution verification](DISTRIBUTION-VERIFY.md) describes the portable
+`distributionverify` and `completionverify` commands, trusted product specs,
+synthetic versus published trust, dependencies and coverage limits. The existing
+kagikae adapters use the shared verification implementations.
+
 ## Scope of the remaining scripts
 
 | Scripts | Reuse boundary |
 |---|---|
 | `docrefs` | Reference extractor used by portable `check-docs.sh`; use that wrapper for a pass/fail check |
-| `smoke-run.sh`, `smoke-env.sh` and smoke selftests | Coupled to kagikae's validation blocks, credential isolation and leak guards; not a general shell sandbox |
-| `install.sh`, `install-local.sh`, `installverify` | Coupled to kae archives, installation receipts and lifecycle commands |
-| `releaseverify`, `packslipverify`, `release-completions.sh`, `release-smoke/` | Coupled to kagikae release identity, completion registry and acceptance behavior |
-| `namingagreement`, `harvest-smoke-selftest.sh` | Check kagikae credential behavior and upstream authentication assumptions |
-| `internal/commandrun` | Shared subprocess helper for these Go tools; an internal package, not a separately installable library |
+| `smoke-run.sh`, `smoke-env.sh` and smoke selftests | Coupled to kagikae validation blocks, credential isolation and leak guards; not a general shell sandbox |
+| `distributionverify` | Go, gh and Packslip; trusted product spec; native/installer modes execute in temporary HOME/XDG roots; synthetic mode explicitly omits provenance |
+| `completionverify` | Go plus real Bash and Zsh; trusted scripts, binary directory and candidate cases; no fish/interactive-TTY claim |
+| `install.sh`, `install-local.sh`, `installverify` | Product installation/receipt/lock adapters; shared fixture transport in `internal/distribution` |
+| `releaseverify`, `packslipverify`, `release-completions.sh`, `release-smoke/` | kagikae identity, historical release policy and lifecycle adapters; shared distribution/completion engines |
+| `namingagreement`, `harvest-smoke-selftest.sh` | kagikae credential behavior and upstream authentication assumptions |
+| `internal/commandrun`, `internal/distribution`, `internal/completioncheck` | Internal maintainer libraries consumed through portable commands, not separately installable modules |
 
-These product-specific commands need a separate design and verification scope
-before reuse. Changing their names or repository constants alone does not adapt
-their contracts. The selftests remain beside the checks they exercise.
+Product receipt, credential and lifecycle rules require their own adapter and
+acceptance. The selftests remain beside the checks they exercise.

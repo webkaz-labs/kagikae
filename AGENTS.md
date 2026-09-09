@@ -14,6 +14,7 @@ for always-needed rules and routing; put detailed contracts in their owning docs
 | Document | When To Read |
 |----------|--------------|
 | [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) | document edits, moves, deletions and evidence checks |
+| [docs/DISTRIBUTION-VERIFY.md](docs/DISTRIBUTION-VERIFY.md) | reusing distribution, installer and shell completion verification |
 | [docs/memories.md](docs/memories.md)  | maintenance/verification tooling; durable working preferences |
 | [README.md](README.md)  | user-facing commands and setup |
 | [README.ja.md](README.ja.md)  | Japanese setup; update with English guidance |

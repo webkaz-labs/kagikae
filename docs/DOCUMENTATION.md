@@ -160,3 +160,12 @@ Implementation checks stay individually callable but use `hide = true` when they
 are components of those entrypoints. Preserve their dependency ordering. Harness
 refusal controls belong in Go tests; an installed upstream program is inspected
 only through an explicit, reviewed-artifact verification command.
+
+## Shared tooling boundary
+
+Place reusable development commands, shell entrypoints and libraries under
+`tools/devtools` within the repository's existing Go module. Keep product-specific
+validation policy and release adapters under `scripts`; pass glossary and other
+product expectations explicitly. Shared libraries must not import application
+packages. Their directory must remain importable by those adapters, rather than
+using a Go `internal` boundary that excludes `scripts`.

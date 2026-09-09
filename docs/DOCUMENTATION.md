@@ -27,11 +27,11 @@ the file's own opening also need review. Update affected callers and links.
 
 Section citations must quote the target heading verbatim. Do not rely on a search
 for the section sign or Markdown extension to find all references. Read
-`scripts/docrefs/main.go` and `scripts/check-docs.sh` headers for what the automated
+`tools/devtools/docrefs/parser.go` and `scripts/check-docs.sh` headers for what the automated
 checks can and cannot see; a passing link check is not evidence of correct prose.
 
 When moving, splitting or consolidating prose, run `mise run docs-scan` and assess
-its results after reading `scripts/docscan/main.go`'s header. It reports duplication,
+its results after reading `tools/devtools/cmd/docscan/main.go`'s header. It reports duplication,
 not correctness, and fails nothing. It does not replace inbound-reference review.
 
 ## Evidence and mutable claims
@@ -55,52 +55,54 @@ not correctness, and fails nothing. It does not replace inbound-reference review
   cannot detect all stale assertions in untouched prose.
 
 Examples and checker limitations are maintained beside their consumers:
-`scripts/sweep-quantities.sh`, `scripts/docscan/main.go`, `scripts/docrefs/main.go`
+`scripts/sweep-quantities.sh`, `tools/devtools/cmd/docscan/main.go`, `tools/devtools/docrefs/parser.go`
 and `scripts/check-docs.sh`. Consult those headers before interpreting results.
 
 ## Reuse in another project
 
+Start at [tools/devtools](../tools/devtools/README.md) for the shared entrypoints.
 Use a trusted, revision-pinned checkout of kagikae as the tool source; keep the
 inspected project separate. No files need to be copied into that project. Go and
 Bash are prerequisites. The portable checks use the same implementations as this
 repository's checks; they do not install kagikae or execute the inspected project's
-programs. `scripts/portable` tests the commands against a foreign fixture project.
+programs. `tools/devtools/portable` tests the commands against a foreign fixture project.
 
 From the kagikae checkout, inspect another project's relative Markdown links and
 named section citations:
 
 ```bash
-bash scripts/check-docs.sh --portable /absolute/path/to/project
+bash tools/devtools/shell/check-docs.sh /absolute/path/to/project
 ```
 
 Portable mode accepts directory links and omits kagikae's required documents,
 Documentation Map, domain layout and count floors. Broken recognized references
 and extractor failures still fail. A report with no checkable references explicitly
 states its coverage limit; success does not establish complete Markdown coverage.
-The syntax exclusions in `scripts/docrefs/main.go` still apply, including external
+The syntax exclusions in `tools/devtools/docrefs/parser.go` still apply, including external
 URLs and unsupported citation/link forms. The target need not be a Go module;
 the extractor runs from the tool source with workspace overrides disabled.
-Calling `check-docs.sh` without arguments retains kagikae's full document policy.
+Calling `scripts/check-docs.sh` without arguments retains kagikae's full document policy.
 
 Compare prose using Go identifiers from the target, optionally supplemented by
 terms in the first column of Markdown tables under selected H2 headings:
 
 ```bash
-GOWORK=off go run ./scripts/docscan -portable -root /absolute/path/to/project
-GOWORK=off go run ./scripts/docscan -portable -root /absolute/path/to/project -glossary docs/TERMS.md -glossary-sections 'Vocabulary,Domain terms'
+GOWORK=off go run ./tools/devtools/cmd/docscan -portable -root /absolute/path/to/project
+GOWORK=off go run ./tools/devtools/cmd/docscan -portable -root /absolute/path/to/project -glossary docs/TERMS.md -glossary-sections 'Vocabulary,Domain terms'
 ```
 
 The glossary path is relative to the target. An explicitly requested missing file
 fails. Without Go identifiers or glossary terms there are no anchors to compare;
 the report distinguishes that case and prints the number of candidate pairs. A
 zero finding count is not a statement about correctness or exhaustive duplication.
-Without `-portable`, the existing kagikae glossary defaults remain in effect.
+Glossary input is always explicit. `mise run docs-scan` supplies kagikae's glossary
+and heading selection; the common command has no product glossary default.
 
 For quantity wording in a Git diff, run from the inspected Git working tree and
 point at the trusted tool checkout:
 
 ```bash
-bash /absolute/path/to/kagikae/scripts/sweep-quantities.sh --portable trunk
+bash /absolute/path/to/kagikae/tools/devtools/shell/sweep-quantities.sh trunk
 ```
 
 Supply the base branch/ref (`main` is the default). Portable mode uses embedded
@@ -119,7 +121,7 @@ apply portable mode to weaken this repository's normal commit gate.
 Run the pinned gofumpt and goimports checks against a trusted Go module:
 
 ```bash
-bash /absolute/path/to/kagikae/scripts/check-go-format.sh --portable /absolute/path/to/project
+bash /absolute/path/to/kagikae/tools/devtools/shell/check-go-format.sh --portable /absolute/path/to/project
 ```
 
 The target must contain its own `go.mod`. Portable mode disables inherited Go

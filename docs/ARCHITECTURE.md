@@ -41,18 +41,17 @@ kagikae/
     state/                # state.json load/save
     runner/               # subprocess seam (template standard)
     testutil/runnertest/  # shared canned-response runner fake for tests
+  tools/devtools/         # common commands, shell entrypoints and libraries; same module
+    cmd/                  # docrefs, docscan, distributionverify, completionverify
+    commandrun/           # bounded subprocess ownership
+    distribution/         # signed distribution and fixture checks
+    completioncheck/      # actual shell candidate/lifecycle checks
+    docrefs/ glossary/    # reference and explicit glossary parsers
+    shell/ portable/      # common shell entrypoints and foreign-project tests
   scripts/
-    docrefs/              # `docs-check`'s extractor: every markdown link and every
-                          #   `X.md § Name` citation, one stream with a kind column
-    docscan/              # `mise run docs-scan`: reports prose two documents carry
-                          #   twice
-    distributionverify/   # portable trusted-spec distribution verification
-    completionverify/     # portable Bash/Zsh candidate and registration checks
-    internal/distribution/ # archive/signature/source order and owned fixture transport
-    internal/completioncheck/ # candidate checks and same-shell mise lifecycle
+    devtoolspolicy/       # kagikae's real-document checks using common parsers
     releaseverify/        # published artifact verification; stdlib Go command
     packslipverify/        # isolated mise consumer and signed fixture lifecycles
-    internal/commandrun/   # maintainer subprocess input/env and process-group lifetime
     release-smoke/        # shell fixtures and fixed store assertions for release smoke
     namingagreement/      # login-free production writer/upstream read comparison
                           # Go script packages are outside the released binary
@@ -78,7 +77,7 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   artifact kinds. Adapters declare *which* artifacts exist for a tool and
   platform; they do not duplicate IO logic.
 - The maintainer-only `scripts/releaseverify` and `scripts/packslipverify` commands
-  share `scripts/internal/commandrun` for bounded child processes with explicit
+  share `tools/devtools/commandrun` for bounded child processes with explicit
   input, environments and working directories. Release verification retains its
   replaceable command seam; these packages are outside the released binary.
   Application subprocesses continue to use `internal/runner` as below.

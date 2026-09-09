@@ -9,7 +9,7 @@ product only inside their temporary directory.
 
 ## Staged release verification
 
-`go run ./scripts/distributionverify -spec /absolute/spec.json -dir /absolute/assets -bundle /absolute/packslip.sigstore.json`
+`go run ./tools/devtools/cmd/distributionverify -spec /absolute/spec.json -dir /absolute/assets -bundle /absolute/packslip.sigstore.json`
 
 The spec is strict JSON with `schema_version: 1`, `repository`, `project`, `tag`,
 `version`, `commit`, `workflow`, `identity`, `issuer`, `artifacts` and `resources`.
@@ -56,7 +56,7 @@ provenance is not verified in this mode and the report says so. It never relaxes
 the production mode. A checksum alone does not authorize native/installer execution.
 The fixture source metadata is an asserted fixture expectation, not build evidence.
 
-`PACKSLIP_BIN=/absolute/verified/packslip go test -count=1 ./scripts/distributionverify`
+`PACKSLIP_BIN=/absolute/verified/packslip go test -count=1 ./tools/devtools/cmd/distributionverify`
 runs the real key-generation/signing and wrong-key control using a differently
 named fixture product. Without that variable the signature acceptance test is
 explicitly skipped. Ordinary shared tests still check order, archive faults,
@@ -65,7 +65,7 @@ seams are not evidence of a real cryptographic verification.
 
 ## Completion verification
 
-`go run ./scripts/completionverify /absolute/completion-spec.json`
+`go run ./tools/devtools/cmd/completionverify /absolute/completion-spec.json`
 
 The strict JSON spec contains `schema_version: 1`, `tool`, `function`, absolute
 `bash` and `zsh` script paths, absolute `binary_dir`, and `cases`. Each case has
@@ -91,7 +91,7 @@ version-log contract is `TOOL vVERSION`. It is used by kagikae's Packslip smoke.
 
 `releaseverify` supplies kagikae's historical archive policy and release identity;
 `packslipverify` supplies product lifecycle/setup; `installverify` supplies lock and
-receipt checks. They use `scripts/internal/distribution`, `completioncheck` and
+receipt checks. They use `tools/devtools/distribution`, `completioncheck` and
 `commandrun`. Product branches and loops do not become a lifecycle DSL. Fixture
 HTTP routes are fixed and non-forwarding; unexpected paths and authorization
 headers fail the final verdict. Declared missing-asset routes are explicit negative

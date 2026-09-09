@@ -107,7 +107,7 @@ silently.
 ## Re-record, in the same commit (Phase 4)
 
 This section is cited as normative from outside the skill, and a citation resolves
-on its **first word** alone — `scripts/docrefs/main.go`'s package comment owns why,
+on its **first word** alone — `tools/devtools/docrefs/parser.go`'s package comment owns why,
 under its citation ceilings. So keep that word distinctive in this file, heading and
 bold label alike; `TestTheCitedSkillSectionHasNoFirstWordRival` is what fails if it
 stops being.

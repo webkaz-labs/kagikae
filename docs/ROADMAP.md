@@ -269,7 +269,7 @@ alternative exists (`secret-tool`).
   [ARCHITECTURE.md](ARCHITECTURE.md) § Locking with no overlap. So the work was a
   paragraph move plus a same-file fold, and it cost nothing in citations: everything
   `git grep 'Switching Surface'` finds names the heading, or the table under it that
-  `scripts/docscan/main.go`'s calibration note recorded pairing against a `RELEASE.md`
+  `tools/devtools/cmd/docscan/main.go`'s calibration note recorded pairing against a `RELEASE.md`
   entry since deleted, and the move leaves both in place — while no citation anywhere resolved to § Concurrency Boundary,
   which is why folding it repointed nothing. Derive both rather than reading a count
   here; what counts as a citation is where the figures in this tree disagree. Both greps
@@ -312,11 +312,11 @@ alternative exists (`secret-tool`).
 
 - **The claim-reconciliation stage has one slice in the gate and no general
   implementation** (recorded 2026-08-10 as unbuilt, **partly built** 2026-08-13).
-  `scripts/docscan/main.go`'s header names a
+  `tools/devtools/cmd/docscan/main.go`'s header names a
   four-stage docs scan; stage 2 (duplication) is what that program does, and stage 3 —
   reconciling a claim one document makes *about another* against what the other one says
   — has no general implementation. One slice of it is now in the gate:
-  `scripts/docrefs` refuses a citation naming a section its target declares
+  `tools/devtools/cmd/docrefs` refuses a citation naming a section its target declares
   nowhere, which is the narrowest claim-about-another-document there is — the target's
   own headings answer it, with no reading needed. **Read its header for what it does not
   reach before trusting a clean run**; the list is there rather than here because it has

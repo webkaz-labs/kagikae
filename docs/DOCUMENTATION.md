@@ -113,3 +113,34 @@ Japanese prose checker. Existing repository mode keeps its historical control.
 These commands read the target; Go may populate its build/module caches. Existing
 walk exclusions and parser limits remain part of each command's contract. Do not
 apply portable mode to weaken this repository's normal commit gate.
+
+## Reuse Go formatting checks
+
+Run the pinned gofumpt and goimports checks against a trusted Go module:
+
+```bash
+bash /absolute/path/to/kagikae/scripts/check-go-format.sh --portable /absolute/path/to/project
+```
+
+The target must contain its own `go.mod`. Portable mode disables inherited Go
+workspace settings and `GOFLAGS`; goimports derives the local import prefix from
+the target module. The formatters report files without rewriting them. Missing
+modules, formatter errors and formatting findings fail the command. Without
+arguments, the existing current-directory behavior is retained for mise and CI.
+Analyzer versions are pinned in the script. Go may download those analyzers and
+populate caches; `GOCLI_LINT_CACHE_DIR` selects their cache root.
+
+## Scope of the remaining scripts
+
+| Scripts | Reuse boundary |
+|---|---|
+| `docrefs` | Reference extractor used by portable `check-docs.sh`; use that wrapper for a pass/fail check |
+| `smoke-run.sh`, `smoke-env.sh` and smoke selftests | Coupled to kagikae's validation blocks, credential isolation and leak guards; not a general shell sandbox |
+| `install.sh`, `install-local.sh`, `installverify` | Coupled to kae archives, installation receipts and lifecycle commands |
+| `releaseverify`, `packslipverify`, `release-completions.sh`, `release-smoke/` | Coupled to kagikae release identity, completion registry and acceptance behavior |
+| `namingagreement`, `harvest-smoke-selftest.sh` | Check kagikae credential behavior and upstream authentication assumptions |
+| `internal/commandrun` | Shared subprocess helper for these Go tools; an internal package, not a separately installable library |
+
+These product-specific commands need a separate design and verification scope
+before reuse. Changing their names or repository constants alone does not adapt
+their contracts. The selftests remain beside the checks they exercise.

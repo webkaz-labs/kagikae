@@ -30,8 +30,11 @@ def main():
     identity = "https://github.com/webkaz-labs/kagikae/.github/workflows/release.yml@refs/tags/" + tag
     config = Path(env["XDG_CONFIG_HOME"]) / "mise/config.toml"
     config.parent.mkdir(parents=True, exist_ok=True)
-    # No fixture key, unlogged override, age override or URL replacement.
-    config.write_text("[tools]\n" + json.dumps(tool) + " = { version = " + json.dumps(tag[1:]) +
+    # The fresh-release exception is opt-in and changes only this smoke HOME.
+    fresh = os.environ.get("KAE_RELEASE_VERIFY_FRESH") == "1"
+    settings = '[settings]\nminimum_release_age = "0"\n' if fresh else ""
+    # No fixture key, unlogged override or URL replacement.
+    config.write_text(settings + "[tools]\n" + json.dumps(tool) + " = { version = " + json.dumps(tag[1:]) +
                       ", identity = " + json.dumps(identity) + ', issuer = "https://token.actions.githubusercontent.com" }\n')
     run([mise, "install"], home, env)
     installed = Path(run([mise, "where", tool], home, env).strip())
@@ -45,7 +48,7 @@ def main():
     if "uninstall" not in run([mise, "exec", "--", "kae", "__complete", "commands"], home, env).splitlines():
         raise RuntimeError("published dynamic command completion is stale")
     print(json.dumps({"status": "success", "tag": tag, "mise": version, "native_version": reported,
-                      "trust": "GitHub OIDC exact workflow/tag; default age policy"}))
+                      "trust": "GitHub OIDC exact workflow/tag", "release_age": "explicit isolated zero-age exception" if fresh else "default policy"}))
 
 
 if __name__ == "__main__":

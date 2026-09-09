@@ -312,6 +312,9 @@ func verify(tag, repo, dir, system, arch string, run commandFunc) (result, error
 			return result{}, fmt.Errorf("published mise consumer: %w", err)
 		}
 		consumer = "native mise backend and completion verified"
+		if os.Getenv("KAE_RELEASE_VERIFY_FRESH") == "1" {
+			consumer += "; explicit isolated zero-age exception"
+		}
 	}
 	return result{Status: "success", Tag: tag, Archives: names, NativeVersion: strings.TrimSpace(version), Installer: "verified-assets fixture", Packslip: packslip, Consumer: consumer}, nil
 }

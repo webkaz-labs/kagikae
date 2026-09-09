@@ -57,3 +57,59 @@ not correctness, and fails nothing. It does not replace inbound-reference review
 Examples and checker limitations are maintained beside their consumers:
 `scripts/sweep-quantities.sh`, `scripts/docscan/main.go`, `scripts/docrefs/main.go`
 and `scripts/check-docs.sh`. Consult those headers before interpreting results.
+
+## Reuse in another project
+
+Use a trusted, revision-pinned checkout of kagikae as the tool source; keep the
+inspected project separate. No files need to be copied into that project. Go and
+Bash are prerequisites. The portable checks use the same implementations as this
+repository's checks; they do not install kagikae or execute the inspected project's
+programs. `scripts/portable` tests the commands against a foreign fixture project.
+
+From the kagikae checkout, inspect another project's relative Markdown links and
+named section citations:
+
+```bash
+bash scripts/check-docs.sh --portable /absolute/path/to/project
+```
+
+Portable mode accepts directory links and omits kagikae's required documents,
+Documentation Map, domain layout and count floors. Broken recognized references
+and extractor failures still fail. A report with no checkable references explicitly
+states its coverage limit; success does not establish complete Markdown coverage.
+The syntax exclusions in `scripts/docrefs/main.go` still apply, including external
+URLs and unsupported citation/link forms. The target need not be a Go module;
+the extractor runs from the tool source with workspace overrides disabled.
+Calling `check-docs.sh` without arguments retains kagikae's full document policy.
+
+Compare prose using Go identifiers from the target, optionally supplemented by
+terms in the first column of Markdown tables under selected H2 headings:
+
+```bash
+GOWORK=off go run ./scripts/docscan -portable -root /absolute/path/to/project
+GOWORK=off go run ./scripts/docscan -portable -root /absolute/path/to/project -glossary docs/TERMS.md -glossary-sections 'Vocabulary,Domain terms'
+```
+
+The glossary path is relative to the target. An explicitly requested missing file
+fails. Without Go identifiers or glossary terms there are no anchors to compare;
+the report distinguishes that case and prints the number of candidate pairs. A
+zero finding count is not a statement about correctness or exhaustive duplication.
+Without `-portable`, the existing kagikae glossary defaults remain in effect.
+
+For quantity wording in a Git diff, run from the inspected Git working tree and
+point at the trusted tool checkout:
+
+```bash
+bash /absolute/path/to/kagikae/scripts/sweep-quantities.sh --portable trunk
+```
+
+Supply the base branch/ref (`main` is the default). Portable mode uses embedded
+positive controls through the same matcher instead of kagikae's historical commit.
+The merge-base-to-working-tree diff includes tracked committed and uncommitted
+changes, but not untracked files. Stage new documents before inspecting them.
+This is an English wording report for human triage, not a correctness gate or a
+Japanese prose checker. Existing repository mode keeps its historical control.
+
+These commands read the target; Go may populate its build/module caches. Existing
+walk exclusions and parser limits remain part of each command's contract. Do not
+apply portable mode to weaken this repository's normal commit gate.

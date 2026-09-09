@@ -5,15 +5,10 @@
 package main
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -26,6 +21,7 @@ import (
 	"time"
 
 	"github.com/webkaz-labs/kagikae/scripts/internal/commandrun"
+	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
 )
 
 const repository = "webkaz-labs/kagikae"
@@ -90,115 +86,40 @@ func readArchive(path string, binary bool) ([]byte, error) {
 			members["completions/kae."+shell] = true
 		}
 	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
+	selected := ""
+	if binary {
+		selected = "kae"
 	}
-	defer f.Close()
-	z, err := gzip.NewReader(f)
-	if err != nil {
-		return nil, err
-	}
-	defer z.Close()
-	t := tar.NewReader(z)
-	seen := map[string]bool{}
-	var payload []byte
-	for {
-		h, e := t.Next()
-		if e == io.EOF {
-			break
-		}
-		if e != nil {
-			return nil, e
-		}
-		if seen[h.Name] || !members[h.Name] || h.Typeflag != tar.TypeReg {
-			return nil, fmt.Errorf("unexpected, duplicate or nonregular archive member: %s", h.Name)
-		}
-		seen[h.Name] = true
-		if h.Name == "kae" && binary {
-			payload, err = io.ReadAll(t)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-	if len(seen) != len(members) {
-		return nil, errors.New("missing archive member")
-	}
-	// Consume the gzip trailer too, so truncated/compressed corruption fails.
-	if _, err = io.Copy(io.Discard, z); err != nil {
-		return nil, err
-	}
-	return payload, nil
+	return distribution.ReadArchive(path, members, selected)
 }
 
 func verifyArchives(dir string, names []string) error {
-	data, err := os.ReadFile(filepath.Join(dir, "checksums.txt"))
-	if err != nil {
-		return err
-	}
-	manifest := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
-		m := checksumPattern.FindStringSubmatch(line)
-		if m == nil || manifest[m[2]] != "" {
-			return errors.New("malformed or duplicate checksum entry")
-		}
-		manifest[m[2]] = strings.ToLower(m[1])
-	}
-	if len(manifest) != len(names) {
-		return errors.New("unexpected checksum manifest set")
-	}
-	files, err := filepath.Glob(filepath.Join(dir, "*.tar.gz"))
-	if err != nil {
-		return err
-	}
-	if len(files) != len(names) {
-		return errors.New("unexpected downloaded archive set")
-	}
+	artifacts := make([]distribution.Artifact, 0, len(names))
 	for _, name := range names {
-		if manifest[name] == "" {
-			return errors.New("missing checksum entry")
+		parts := strings.Split(name, "_")
+		members := []string{"kae", "LICENSE", "README.md"}
+		if len(parts) == 4 && packslipRelease("v"+parts[1]) {
+			for _, shell := range []string{"bash", "zsh", "fish"} {
+				members = append(members, "completions/kae."+shell)
+			}
 		}
-		path := filepath.Join(dir, name)
-		info, err := os.Lstat(path)
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return errors.New("archive is not a regular file")
-		}
-		f, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		h := sha256.New()
-		_, err = io.Copy(h, f)
-		closeErr := f.Close()
-		if err != nil {
-			return err
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		if hex.EncodeToString(h.Sum(nil)) != manifest[name] {
-			return fmt.Errorf("checksum mismatch: %s", name)
-		}
-		if _, err := readArchive(path, false); err != nil {
-			return err
-		}
+		artifacts = append(artifacts, distribution.Artifact{Name: name, Members: members})
 	}
-	return nil
+	return distribution.VerifyArchives(dir, artifacts)
 }
 
 func shellQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'" }
 
 func installerSmoke(repo, dir, tag, native string, run commandFunc) error {
 	base := "https://github.com/" + repository + "/releases/download/" + tag + "/"
-	shim := "#!/bin/sh\nset -eu\n[ \"$#\" -eq 7 ] || exit 2\n[ \"$1\" = --fail ] && [ \"$2\" = --location ] && [ \"$3\" = --silent ] && [ \"$4\" = --show-error ] && [ \"$5\" = --output ] || exit 2\ncase \"$7\" in\n"
+	files := map[string]string{}
 	for _, name := range []string{native, "checksums.txt"} {
-		shim += shellQuote(base+name) + ") cp " + shellQuote(filepath.Join(dir, name)) + " \"$6\" ;;\n"
+		files[base+name] = filepath.Join(dir, name)
 	}
-	shim += "*) exit 2 ;;\nesac\n"
+	shim, err := distribution.CurlFixture(files)
+	if err != nil {
+		return err
+	}
 	if err := os.WriteFile(filepath.Join(dir, "curl"), []byte(shim), 0o700); err != nil {
 		return err
 	}

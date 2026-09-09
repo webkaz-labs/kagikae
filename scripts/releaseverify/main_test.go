@@ -248,6 +248,9 @@ func TestPreconditions(t *testing.T) {
 func TestCurlFixtureRejectsUnknownURL(t *testing.T) {
 	dir := t.TempDir()
 	native := "archive.tar.gz"
+	if err := os.WriteFile(filepath.Join(dir, "checksums.txt"), []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, native), []byte("verified"), 0o600); err != nil {
 		t.Fatal(err)
 	}

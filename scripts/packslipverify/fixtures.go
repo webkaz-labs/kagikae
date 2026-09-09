@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
 )
 
 const fixtureCommit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -24,46 +27,45 @@ type fixtureServer struct {
 	releases map[string]map[string]any
 	files    map[string][]byte
 	requests atomic.Int64
+	missing  map[string]bool
+	shared   *distribution.Fixture
+}
+
+func (f *fixtureServer) handler() *distribution.Fixture {
+	routes := map[string]distribution.Response{
+		// This fixture publishes release assets, without a repository discovery file.
+		"/api.github.com/repos/webkaz-labs/kagikae/contents/.well-known/packslip.json": {Status: 404},
+	}
+	for path, body := range f.files {
+		routes[path] = distribution.Response{Body: body}
+	}
+	prefix := "/api.github.com/repos/webkaz-labs/kagikae/releases"
+	releases := []map[string]any{}
+	tags := make([]string, 0, len(f.releases))
+	for tag := range f.releases {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	for _, tag := range tags {
+		r := f.releases[tag]
+		releases = append(releases, r)
+		b, _ := json.Marshal(r)
+		routes[prefix+"/tags/"+tag] = distribution.Response{Body: b}
+	}
+	b, _ := json.Marshal(releases)
+	routes[prefix] = distribution.Response{Body: b}
+	for path := range f.missing {
+		routes[path] = distribution.Response{Status: 404}
+	}
+	return distribution.NewFixture(routes)
 }
 
 func (f *fixtureServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if f.shared == nil {
+		f.shared = f.handler()
+	}
+	f.shared.ServeHTTP(w, r)
 	f.requests.Add(1)
-	if _, ok := r.Header["Authorization"]; ok {
-		http.Error(w, "fixture received an authorization header", http.StatusBadRequest)
-		return
-	}
-	prefix := "/api.github.com/repos/webkaz-labs/kagikae/releases"
-	var payload []byte
-	switch {
-	case r.URL.Path == prefix:
-		releases := []map[string]any{}
-		// Publication finishes before the first consumer request.
-		tags := make([]string, 0, len(f.releases))
-		for tag := range f.releases {
-			tags = append(tags, tag)
-		}
-		sort.Strings(tags)
-		for _, tag := range tags {
-			releases = append(releases, f.releases[tag])
-		}
-		payload, _ = json.Marshal(releases)
-	case strings.HasPrefix(r.URL.Path, prefix+"/tags/"):
-		release, ok := f.releases[strings.TrimPrefix(r.URL.Path, prefix+"/tags/")]
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-		payload, _ = json.Marshal(release)
-	default:
-		var ok bool
-		payload, ok = f.files[r.URL.Path]
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-	}
-	w.Header().Set("Content-Length", fmt.Sprint(len(payload)))
-	_, _ = w.Write(payload)
 }
 
 func (s *scenario) archive(stage, path string) {
@@ -190,6 +192,11 @@ func (s *scenario) publish(root, source, original, packslip, key, otherKey, vers
 		assets = append(assets, map[string]any{"id": len(backend.files) + 1, "name": filepath.Base(asset), "size": len(data), "browser_download_url": url, "url": url, "content_type": "application/octet-stream"})
 		if defect != "missing" || asset != archive {
 			backend.files[strings.TrimPrefix(url, "https:/")] = data
+		} else {
+			if backend.missing == nil {
+				backend.missing = map[string]bool{}
+			}
+			backend.missing[strings.TrimPrefix(url, "https:/")] = true
 		}
 	}
 	backend.releases[tag] = map[string]any{"id": len(backend.releases) + 1, "tag_name": tag, "name": tag, "draft": false, "prerelease": false, "created_at": "2026-09-01T00:00:00Z", "published_at": "2026-09-01T00:00:00Z", "assets": assets}
@@ -239,10 +246,14 @@ func (s *scenario) fixture() (result any, err error) {
 	if s.err != nil {
 		return nil, s.err
 	}
+	backend.shared = backend.handler()
 	server := httptest.NewUnstartedServer(backend)
 	server.Config.ReadHeaderTimeout = 5 * time.Second
 	server.Start()
-	defer server.Close()
+	defer func() {
+		server.Close()
+		err = errors.Join(err, backend.shared.Verdict())
+	}()
 	global := filepath.Join(s.env["XDG_CONFIG_HOME"], "mise")
 	settings := "[settings]\nminimum_release_age = \"0\"\nlockfile = true\n[settings.url_replacements]\n'regex:^https?://([^/]+)/(.*)$' = " + quote(server.URL+"/$1/$2") + "\n"
 	s.write(filepath.Join(global, "config.toml"), settings, 0o600)

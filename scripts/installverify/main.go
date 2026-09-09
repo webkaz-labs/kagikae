@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
+
 	"github.com/webkaz-labs/kagikae/internal/installation"
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -92,10 +94,6 @@ func check() error {
 	if err := os.MkdirAll(assetDir, 0o700); err != nil {
 		return err
 	}
-	curl := "#!/bin/sh\nset -eu\n[ \"$#\" -eq 7 ] || exit 90\ncase \"$7\" in https://github.com/webkaz-labs/kagikae/releases/download/v*/checksums.txt|https://github.com/webkaz-labs/kagikae/releases/download/v*/kae_*.tar.gz) cp " + quote(assetDir) + "/\"${7##*/}\" \"$6\";; *) exit 90;; esac\n"
-	if err := write(filepath.Join(shim, "curl"), curl, 0o700); err != nil {
-		return err
-	}
 	destination := filepath.Join(root, "direct", "kae")
 	// This shim runs only after the real installer has acquired its lock. It
 	// asks the Go implementation to acquire that same destination before copying.
@@ -111,6 +109,22 @@ func check() error {
 	}
 	env = append(env, "PATH="+shim+":"+os.Getenv("PATH"), "KAE_REPO=webkaz-labs/kagikae")
 	run := func(tag string, want int) error {
+		files := map[string]string{}
+		for _, name := range []string{"checksums.txt", fmt.Sprintf("kae_%s_%s_%s.tar.gz", strings.TrimPrefix(tag, "v"), runtime.GOOS, runtime.GOARCH)} {
+			asset := filepath.Join(assetDir, name)
+			// Invalid-version controls are refused before the transport is used.
+			if _, err := os.Stat(asset); err == nil {
+				files["https://github.com/webkaz-labs/kagikae/releases/download/"+tag+"/"+name] = asset
+			}
+		}
+		curl, err := distribution.CurlFixture(files)
+		if err != nil {
+			return err
+		}
+		if err := write(filepath.Join(shim, "curl"), curl, 0o700); err != nil {
+			return err
+		}
+
 		out, stderr, code := runner.RunWithEnv(context.Background(), env, "sh", filepath.Join(repo, "scripts/install.sh"), "--version", tag, "--install-dir", filepath.Dir(destination))
 		if code != want {
 			return fmt.Errorf("installer %s returned %d, want %d: %s %s", tag, code, want, out, stderr)

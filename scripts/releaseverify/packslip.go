@@ -2,17 +2,16 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/webkaz-labs/kagikae/scripts/internal/distribution"
 )
 
 const packslipAsset = "packslip.sigstore.json"
@@ -57,138 +56,18 @@ func preparePackslip(tag, commit, dir, repo string, run commandFunc) error {
 }
 
 func verifySource(tag, commit, dir string, names []string, repo string, run commandFunc) error {
-	for _, name := range names {
-		args := []string{
-			"attestation", "verify", filepath.Join(dir, name), "--repo", repository,
-			"--source-digest", commit, "--source-ref", "refs/tags/" + tag,
-			"--signer-workflow", repository + "/.github/workflows/release.yml",
-		}
-		if _, err := run("gh", args, nil, repo); err != nil {
-			return err
-		}
-	}
-	return nil
+	return releaseSpec(tag, commit).VerifySource(dir, repo, distribution.Command(run))
 }
 
 func verifyPackslip(bundle, tag, commit, dir, repo string, run commandFunc) error {
 	if !packslipRelease(tag) || !commitPattern.MatchString(commit) {
 		return errors.New("invalid signed release identity")
 	}
-	names, _ := archivesFor(tag)
-	args := []string{"verify", bundle, "--identity", packslipIdentity(tag), "--issuer", "https://token.actions.githubusercontent.com"}
-	for _, name := range names {
-		args = append(args, "--artifact", filepath.Join(dir, name))
-	}
-	if _, err := run("packslip", args, nil, repo); err != nil {
-		return fmt.Errorf("packslip signature/artifact verification: %w", err)
-	}
-	raw, err := run("packslip", []string{"show", "--raw", bundle}, nil, repo)
-	if err != nil {
-		return err
-	}
-	return validatePackslip([]byte(raw), tag, commit, dir)
+	return releaseSpec(tag, commit).VerifyPackslip(bundle, dir, repo, distribution.Command(run))
 }
 
 func validatePackslip(raw []byte, tag, commit, dir string) error {
-	var statement struct {
-		Type          string `json:"_type"`
-		PredicateType string `json:"predicateType"`
-		Subject       []struct {
-			Name   string            `json:"name"`
-			Digest map[string]string `json:"digest"`
-		} `json:"subject"`
-		Predicate struct {
-			Project string `json:"project"`
-			Version string `json:"version"`
-			Source  struct {
-				Repo   string `json:"repo"`
-				Commit string `json:"commit"`
-				Tag    string `json:"tag"`
-			} `json:"source"`
-			Artifacts []map[string]json.RawMessage `json:"artifacts"`
-			Resources []map[string]string          `json:"resources"`
-		} `json:"predicate"`
-	}
-	if len(raw) > 1024*1024 || json.Unmarshal(raw, &statement) != nil {
-		return errors.New("invalid packslip statement")
-	}
-	p := statement.Predicate
-	base := "https://github.com/" + repository
-	if statement.Type != "https://in-toto.io/Statement/v1" || statement.PredicateType != "https://packslip.dev/release/v1" ||
-		p.Project != "github.com/"+repository || p.Version != strings.TrimPrefix(tag, "v") ||
-		p.Source.Repo != base || p.Source.Tag != tag || p.Source.Commit != commit {
-		return errors.New("packslip project/version/source mismatch")
-	}
-	names, err := archivesFor(tag)
-	if err != nil {
-		return err
-	}
-	if len(statement.Subject) != len(names) || len(p.Artifacts) != len(names) {
-		return errors.New("packslip archive set mismatch")
-	}
-	for _, name := range names {
-		data, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			return err
-		}
-		digest := sha256.Sum256(data)
-		subjects, artifacts := 0, 0
-		for _, subject := range statement.Subject {
-			if subject.Name == name {
-				subjects++
-				if subject.Digest["sha256"] != hex.EncodeToString(digest[:]) {
-					return errors.New("packslip subject digest mismatch")
-				}
-			}
-		}
-		parts := strings.Split(name, "_")
-		arch := "x86_64"
-		if strings.HasPrefix(parts[3], "arm64") {
-			arch = "aarch64"
-		}
-		for _, artifact := range p.Artifacts {
-			var gotName string
-			if json.Unmarshal(artifact["name"], &gotName) != nil || gotName != name {
-				continue
-			}
-			artifacts++
-			want := map[string]any{
-				"name": name, "os": parts[2], "arch": arch, "size": float64(len(data)),
-				"url": base + "/releases/download/" + tag + "/" + name, "format": "tar.gz", "bin": []any{"kae"},
-				"provenance": []any{"https://api.github.com/repos/" + repository + "/attestations/sha256:" + hex.EncodeToString(digest[:])},
-			}
-			if parts[2] == "linux" {
-				want["libc"] = "gnu"
-			}
-			for key, value := range want {
-				var got any
-				if json.Unmarshal(artifact[key], &got) != nil || !reflect.DeepEqual(got, value) {
-					return fmt.Errorf("packslip artifact %s mismatch: %s", name, key)
-				}
-			}
-			for key := range artifact {
-				if _, known := want[key]; !known && key != "requires" {
-					return fmt.Errorf("unexpected packslip artifact field: %s", key)
-				}
-			}
-		}
-		if subjects != 1 || artifacts != 1 {
-			return errors.New("packslip duplicate or missing archive")
-		}
-	}
-	wantedResources := map[string]string{"bash": "completions/kae.bash", "zsh": "completions/kae.zsh", "fish": "completions/kae.fish"}
-	if len(p.Resources) != len(wantedResources) {
-		return errors.New("packslip completion resource set mismatch")
-	}
-	for _, resource := range p.Resources {
-		shell := resource["shell"]
-		path, exists := wantedResources[shell]
-		if !exists || !reflect.DeepEqual(resource, map[string]string{"kind": "completion", "shell": shell, "archive": path}) {
-			return errors.New("packslip completion resource mismatch")
-		}
-		delete(wantedResources, shell)
-	}
-	return nil
+	return releaseSpec(tag, commit).ValidateStatement(raw, dir)
 }
 
 // publishPackslip never clobbers an asset. After an uncertain upload, inspect the

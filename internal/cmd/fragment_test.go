@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,29 @@ import (
 // overlayTestApp (pin_test.go) defines profile "main" = {claude:main, agy:main}
 // with a real ~/.claude. agy has no isolation env var, so it exercises the
 // warning path while claude exercises the env-entry path.
+
+// fragmentEnvValue returns the value a bound directory's fragment exports for
+// one [env] variable, read out of the file kae wrote as text rather than
+// through readFragmentAt. Its callers compare a store path against this: the
+// claim is that two things name the *same* store, and a test deriving both
+// sides from one expression cannot fail when they disagree.
+func fragmentEnvValue(t *testing.T, dir, envVar string) string {
+	t.Helper()
+	body := readFile(t, filepath.Join(dir, fragmentRelPath))
+	for _, line := range strings.Split(body, "\n") {
+		name, value, ok := strings.Cut(line, " = ")
+		if !ok || name != envVar {
+			continue
+		}
+		unquoted, err := strconv.Unquote(value)
+		if err != nil {
+			t.Fatalf("%s exports %s as %q, which is not a quoted path: %v", dir, envVar, value, err)
+		}
+		return unquoted
+	}
+	t.Fatalf("%s exports no %s:\n%s", dir, envVar, body)
+	return ""
+}
 
 func TestRunPinSharedWritesFragment(t *testing.T) {
 	app := overlayTestApp(t)

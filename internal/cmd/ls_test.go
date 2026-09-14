@@ -542,3 +542,91 @@ func TestBoundToolsKeepsRetiredToolsAfterTheCanonicalOnes(t *testing.T) {
 		t.Errorf("boundToolList(empty) = %q, want %q", got, "no tools")
 	}
 }
+
+// A row names the accounts a directory binds; the store those accounts actually
+// live in is under a directory named after a hash of the bound directory's
+// absolute path (paths.PinID), so a reader that has not reimplemented that hash
+// could not get from a row to the store. `stores` publishes the path the
+// binding names, per tool and per mode — the two layouts differ (SharedDir is
+// per pin×tool, IsolatedConfigDir is per account as well), and each row must
+// carry its own directory's, not a sibling's.
+//
+// The expectation is read back out of each fragment's [env] block as text, not
+// recomputed from modeStoreDir: deriving both sides from one expression would
+// leave the pin-id mix-up this is here for invisible.
+func TestLsPinsPublishesTheStoreEachBindingNames(t *testing.T) {
+	app := overlayTestApp(t)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	// Two tools with a store, so a row that resolves only the first fails here.
+	// agy — overlayTestApp's other tool — has no isolation env var and so has no
+	// per-directory store at all, which is a different case from this one.
+	app.Config.Profiles["main"] = config.Profile{Accounts: map[string]string{
+		constants.ToolClaude: "main", constants.ToolCodex: "main",
+	}}
+	captureClaude(t, app, "main", mainToken)
+	seedCodex(t, app, "codex-token")
+	if code, out := captureStdout(t, func() int {
+		return runCapture(ctx, app, opts, constants.ToolCodex, "main")
+	}); code != constants.ExitOK {
+		t.Fatalf("capture codex/main: %s", out)
+	}
+
+	// One bound directory per mode, so both branches of the store layout are
+	// published from the same listing. Through pinHere, which is where a pin in
+	// a test gets the empty-keychain runner.
+	modes := []string{modeShared, modeIsolated}
+	dirs := map[string]string{}
+	for _, mode := range modes {
+		dirs[mode] = pinHere(t, app, mode)
+	}
+	// Listed from a directory that is bound to nothing: `--pins` answers from
+	// anywhere, and neither row may depend on being the cwd.
+	chdirTemp(t)
+
+	code, out := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatJSON}) })
+	mustExit(t, constants.ExitOK, code, out)
+	var report pinsReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("invalid ls --pins JSON: %v: %s", err, out)
+	}
+	// Additive field: the contract version does not move.
+	if report.SchemaVersion != constants.SchemaVersion {
+		t.Fatalf("schema_version = %d, want %d", report.SchemaVersion, constants.SchemaVersion)
+	}
+	rows := map[string]boundDir{}
+	for _, row := range report.BoundDirectories {
+		rows[row.Directory] = row
+	}
+	if len(rows) != len(modes) {
+		t.Fatalf("expected one row per bound directory, got %d: %s", len(rows), out)
+	}
+	for _, mode := range modes {
+		row, ok := rows[dirs[mode]]
+		if !ok {
+			t.Fatalf("%s is bound but was not listed: %s", dirs[mode], out)
+		}
+		if len(row.Stores) != 2 {
+			t.Fatalf("%s binds two tools; stores = %v", dirs[mode], row.Stores)
+		}
+		for _, tool := range []string{constants.ToolClaude, constants.ToolCodex} {
+			want := fragmentEnvValue(t, dirs[mode], isolationEnvVar(tool))
+			if got := row.Stores[tool]; got != want {
+				t.Errorf("%s (%s) stores[%s] = %q, want the store its fragment exports (%q)",
+					dirs[mode], mode, tool, got, want)
+			}
+		}
+	}
+	// The sibling check the per-row comparison above already implies, stated
+	// directly: two directories bound the same way must not share a store.
+	if a, b := rows[dirs[modeShared]], rows[dirs[modeIsolated]]; a.Stores[constants.ToolClaude] == b.Stores[constants.ToolClaude] {
+		t.Fatalf("each bound directory has its own store, got %q twice", a.Stores[constants.ToolClaude])
+	}
+
+	// JSON only: the table has its five columns, and a machine-specific path is
+	// not one a human reading the listing asked for.
+	_, text := captureStdout(t, func() int { return runLsPins(app, commonOpts{Format: formatText}) })
+	if strings.Contains(text, rows[dirs[modeShared]].Stores[constants.ToolClaude]) {
+		t.Fatalf("the store path belongs to --json, not the table:\n%s", text)
+	}
+}

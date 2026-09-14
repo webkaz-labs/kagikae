@@ -39,22 +39,6 @@ func storeLinkTestApp(t *testing.T) *App {
 	return app
 }
 
-// fragmentEnvDir returns the directory the fragment's [env] block points one
-// variable at. The link tests compare against this rather than against a path
-// they compose themselves: the claim is that the link and the tool's environment
-// name the *same* store, and a test that derives both from the same formula
-// cannot fail when they disagree.
-func fragmentEnvDir(t *testing.T, envVar string) string {
-	t.Helper()
-	for _, line := range strings.Split(readFile(t, fragmentRelPath), "\n") {
-		if value, ok := strings.CutPrefix(line, envVar+" = "); ok {
-			return strings.Trim(value, `"`)
-		}
-	}
-	t.Fatalf("fragment has no %s entry:\n%s", envVar, readFile(t, fragmentRelPath))
-	return ""
-}
-
 func mustReadlink(t *testing.T, path string) string {
 	t.Helper()
 	target, err := os.Readlink(path)
@@ -76,7 +60,7 @@ func TestRunPinLinksEachStoreWhereTheFragmentPointsIt(t *testing.T) {
 
 			for _, tool := range []string{constants.ToolClaude, constants.ToolCodex} {
 				path := storeLinkRelPath(tool)
-				want := fragmentEnvDir(t, isolationEnvVar(tool))
+				want := fragmentEnvValue(t, ".", isolationEnvVar(tool))
 				if got := mustReadlink(t, path); got != want {
 					t.Fatalf("%s points at %q; the fragment exports %q", path, got, want)
 				}
@@ -120,7 +104,7 @@ func TestRunPinNoLinkMakesNoneAndRetractsKaesOwn(t *testing.T) {
 	}
 	// The binding itself is unaffected: --no-link withholds the pointer, not the
 	// store the fragment exports.
-	if dir := fragmentEnvDir(t, isolationEnvVar(constants.ToolClaude)); dir == "" {
+	if dir := fragmentEnvValue(t, ".", isolationEnvVar(constants.ToolClaude)); dir == "" {
 		t.Fatal("--no-link must not disturb the fragment's env entry")
 	}
 }
@@ -170,7 +154,7 @@ func TestRunRebindMovesOnlyTheRetargetedToolsLink(t *testing.T) {
 	if after == before {
 		t.Fatalf("the re-bound tool's link must follow the account, still %q", after)
 	}
-	if want := fragmentEnvDir(t, isolationEnvVar(constants.ToolClaude)); after != want {
+	if want := fragmentEnvValue(t, ".", isolationEnvVar(constants.ToolClaude)); after != want {
 		t.Fatalf("%s points at %q; the fragment exports %q", storeLinkRelPath(constants.ToolClaude), after, want)
 	}
 	if got := mustReadlink(t, storeLinkRelPath(constants.ToolCodex)); got != codexBefore {

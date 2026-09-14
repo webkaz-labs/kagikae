@@ -494,7 +494,9 @@ the directory's sessions, and a single-tool re-bind leaves the previously bound
 tools' stores behind, so listing stores would name directories that are not bound
 and re-binds that land where nothing reads. A directory whose recorded path is absent
 is likewise left out here — `kae doctor`'s `pin_stale` reports that it may have been
-deleted or moved and leaves its store untouched.
+deleted or moved and leaves its store untouched. `--json` does publish the store
+path each listed binding names (`stores`, below), which is still the fragment's
+reading: a path there is where the tool is pointed, not a directory kae looked for.
 
 An **unreadable** fragment is a different case from an absent one and is not
 silently dropped: the directory is left out of the listing with a stderr warning
@@ -1511,9 +1513,13 @@ empty.
   "schema_version": 1,
   "bound_directories": [
     {"directory": "/Users/you/code/main-app", "profile": "main",
-     "mode": "shared", "accounts": {"claude": "main"}, "current": true},
+     "mode": "shared", "accounts": {"claude": "main"},
+     "stores": {"claude": "/Users/you/.local/share/kagikae/isolation/0f2a1c9b4d7e6a83/claude/shared"},
+     "current": true},
     {"directory": "/Users/you/code/main-app-wt1", "profile": "side",
-     "mode": "isolated", "accounts": {"claude": "side"}, "current": false}
+     "mode": "isolated", "accounts": {"claude": "side"},
+     "stores": {"claude": "/Users/you/.local/share/kagikae/isolation/9c4b2e57a01d3f68/claude/isolated/side/config"},
+     "current": false}
   ]
 }
 ```
@@ -1521,6 +1527,19 @@ empty.
 `bound_directories` is ordered by `directory` ascending (so sibling worktrees sort
 together) and is `[]` when nothing is bound. `profile` is empty for an ad-hoc
 account set; `accounts` covers every tool the directory binds, in either mode.
+
+`stores` maps each of those tools to the config store its binding names — the
+path that directory's fragment exports in its `[env]` block, laid out as
+[DATA-MODEL.md](DATA-MODEL.md) § Directory Layout (XDG) describes. It is additive
+and `omitempty`, like `identity` in § `kae accounts --json`, and `schema_version`
+stays `1`; the human table does not carry it. It is published because a store sits
+under a directory named after a hash of the bound directory's absolute path, so a
+consumer reading a row cannot derive one from `directory`; `kae status --json`
+publishes the globally isolated homes the same way. A tool the fragment binds in a
+mode kae does not recognize is left out rather than given a guessed path.
+
+This listing stats nothing, so **a row keeps naming its store after that store has
+been removed.**
 
 ### `kae doctor --json`
 

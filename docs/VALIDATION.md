@@ -746,6 +746,15 @@ test "$(grep -c '\*' "$HOME/E2.txt")" -eq 1   # assert: ... and only there
 grep -q '"schema_version": 1' "$HOME/E3.json"
 test "$(grep -c '"directory"' "$HOME/E3.json")" -eq 4   # assert: bound_directories[]
 WTSTORE=$(readlink "$W/wt1/.config/claude")
+test "$(grep -c '"stores"' "$HOME/E3.json")" -eq 4
+                                       # assert: every row publishes its store map
+test "$(grep -c "\"claude\": \"$WTSTORE\"" "$HOME/E3.json")" -eq 1
+                                       # assert: and exactly one of them names the
+                                       #   store THIS directory's link resolves to —
+                                       #   read back off the disk, so the path is not
+                                       #   derived from the same expression the JSON
+                                       #   is. A count, so a store repeated across
+                                       #   rows (one pin-id for all) fails here
 /tmp/kae unpin && /tmp/kae ls --pins > "$HOME/E4.txt"
 test ! -e "$W/wt1/.config/claude"      # assert: the link goes with the binding ...
 test -d "$WTSTORE"                     # assert: ... and the store it named stays,
@@ -786,15 +795,15 @@ chmod u+w "$W/main/.git/info/exclude"
 ```
 
 **PASSED 2026-09-15** on a `/tmp/kae` built from the working tree, through
-`scripts/smoke-run.sh` on this section: A–F including the store-link cases, every
-line exited 0 and the checkout was unchanged. Before the store links it passed
-2026-08-08 on the release tree, 31/31 (`/tmp/kae` = v0.17.0), and 2026-08-04 on
-the pre-release binary. Run it through that
-harness rather than by hand: it checks each line **at its own point in the block**
-rather than from the end state, and two earlier hand runs of this block completed
-without erroring while assertions inside it were false (a row count changed by a case
-inserted above it, and a `chmod` that did not make anything unwritable). "The block
-ran" is not evidence; "this assertion held here" is.
+`scripts/smoke-run.sh` on this section: A–F including the store-link cases and E's
+`stores` assertions, every line exited 0 and the checkout was unchanged. Before
+the store links it passed 2026-08-08 on the release tree, 31/31 (`/tmp/kae` =
+v0.17.0), and 2026-08-04 on the pre-release binary. Run it through that harness
+rather than by hand: it checks each line **at its own point in the block** rather
+than from the end state, and two earlier hand runs of this block completed without
+erroring while assertions inside it were false (a row count changed by a case
+inserted above it, and a `chmod` that did not make anything unwritable). "The
+block ran" is not evidence; "this assertion held here" is.
 
 The one that looks like success when it is wrong is **C**. `info/exclude` is
 anchored at the repository root while a `.gitignore` entry is anchored at its own

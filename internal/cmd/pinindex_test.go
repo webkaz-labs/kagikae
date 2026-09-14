@@ -120,6 +120,14 @@ func TestBoundDirectoryConsumerPolicies(t *testing.T) {
 			if exists && (fragment.Accounts[constants.ToolClaude] != "main" || fragment.CredDirs[constants.ToolClaude] != cred) {
 				t.Fatalf("fragment observation changed binding: %+v", fragment)
 			}
+			// `kae ls --pins --json` resolves the same binding without the
+			// dirExists gate boundDirStores applies, so it is the one consumer
+			// that still names the store through missing-store.
+			if exists {
+				if stores := app.bindingConfigStores(paths.PinID(dir), fragment); stores[constants.ToolClaude] != store {
+					t.Fatalf("the listing must publish the store the fragment names: %+v", stores)
+				}
+			}
 		})
 	}
 }

@@ -31,7 +31,13 @@ type boundDir struct {
 	Mode      string `json:"mode"`    // shared | isolated
 	// Accounts is every tool the directory binds, in either mode (fragmentInfo).
 	Accounts map[string]string `json:"accounts"`
-	Current  bool              `json:"current"` // this is the current directory
+	// Stores maps each bound tool to the config store this directory's binding
+	// names for it, so a reader can reach it without deriving a pin-id from the
+	// path. JSON only (docs/CLI.md § `kae ls --pins --json`) — the human table
+	// keeps its columns, and a machine-specific path is not one a reader of it
+	// asked for.
+	Stores  map[string]string `json:"stores,omitempty"`
+	Current bool              `json:"current"` // this is the current directory
 }
 
 // pinsReport is the JSON contract of `kae ls --pins`: every directory bound
@@ -130,6 +136,7 @@ func buildLsPins(app *App) (*pinsReport, error) {
 			Profile:   info.Profile,
 			Mode:      info.Mode,
 			Accounts:  info.Accounts,
+			Stores:    app.bindingConfigStores(pin.PinID, info),
 			Current:   cwd != "" && pin.Dir == cwd,
 		})
 	}
@@ -137,6 +144,31 @@ func buildLsPins(app *App) (*pinsReport, error) {
 	// reader; sibling worktrees sort next to each other by path.
 	sort.Slice(dirs, func(i, j int) bool { return dirs[i].Directory < dirs[j].Directory })
 	return &pinsReport{SchemaVersion: constants.SchemaVersion, BoundDirectories: dirs}, nil
+}
+
+// bindingConfigStores resolves the config store one binding names for each tool
+// it binds, for the listing's JSON. The store is named after a hash of the
+// directory's absolute path, so a reader that has not reimplemented that hash
+// cannot get there from a row; the paths are already kae's to publish
+// (`kae status --json` carries the globally isolated homes the same way).
+//
+// It stays the fragment's reading, like every other field of the row: a path
+// here is what the binding points at, not a directory this walk observed —
+// nothing in buildLsPins stats a store. `boundDirStores` is the walk for a
+// caller that needs the store to be there, and it requires exactly that.
+//
+// Over the fragment's own account map rather than constants.Tools, so a tool an
+// older kae bound and this one has retired keeps the store its row already
+// names. A mode kae does not recognize leaves the tool out instead of naming a
+// guessed path, which is boundStoreDir's contract.
+func (app *App) bindingConfigStores(pinID string, info fragmentInfo) map[string]string {
+	stores := make(map[string]string, len(info.Accounts))
+	for tool := range info.Accounts {
+		if dir, bound := app.boundStoreDir(pinID, tool, info); bound {
+			stores[tool] = dir
+		}
+	}
+	return stores
 }
 
 func printPinsReport(app *App, report *pinsReport) {

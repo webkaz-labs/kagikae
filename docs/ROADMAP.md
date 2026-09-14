@@ -172,8 +172,10 @@ alternative exists (`secret-tool`).
   `RunInteractive` and `RunWithEnv` seams reject every unstubbed call. Diagnostics name
   the seam and redacted argv without stdin or extra environment values;
   `TestRunnerGuardRefusesCredentialProgramsWithoutLeakingPayloads` keeps that boundary.
-  Three measurements explain why the baseline has this shape.
-  First, `go test ./...` issues **171** real `git rev-parse --git-common-dir
+  Three measurements explain why the baseline has this shape. All three are from
+  the 2026-08-09 recording above and move with the suite — they are why the
+  baseline is shaped this way, not counts anything keeps current.
+  First, `go test ./...` issued **171** real `git rev-parse --git-common-dir
   --show-prefix` calls through the seam, all legitimate — `ensureGitExcluded` needs a
   real repository layout — so the guard has to name the credential programs
   (`security`, `secret-tool`) rather than refuse everything, or it fails the wrong

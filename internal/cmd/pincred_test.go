@@ -250,7 +250,7 @@ func TestUnboundToolsStoreInABoundDirectoryIsNotReported(t *testing.T) {
 		"main": {Accounts: map[string]string{constants.ToolCodex: "main"}},
 	}
 	if code, out := captureStdout(t, func() int {
-		return runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared)
+		return runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared, false)
 	}); code != constants.ExitOK {
 		t.Fatalf("re-pin to codex only: %s", out)
 	}
@@ -599,7 +599,7 @@ func TestBoundDirectoryIdentityNamesTheAccountTheFragmentBinds(t *testing.T) {
 	if code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "side") }); code != constants.ExitOK {
 		t.Fatalf("capture claude/side: %s", out)
 	}
-	if code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "side") }); code != constants.ExitOK {
+	if code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "side", false) }); code != constants.ExitOK {
 		t.Fatalf("re-bind to claude/side: %s", out)
 	}
 	if got := readFile(t, identityFile); !strings.Contains(got, "side-uuid") {
@@ -698,7 +698,7 @@ func TestSnapshotIdentityThatIsNotARecordIsMissingEvidence(t *testing.T) {
 	}
 
 	_, _, stderr := captureBoth(t, func() int {
-		return runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared)
+		return runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared, false)
 	})
 	if !strings.Contains(stderr, "kae cannot read the identity records it would compare") {
 		t.Fatalf("the refusal must name its own reason: %q", stderr)

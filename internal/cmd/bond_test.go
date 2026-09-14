@@ -574,7 +574,7 @@ func TestSharedRebindRepairsAWipedBondDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out = captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared)
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared, false)
 	})
 	mustExit(t, constants.ExitOK, code, out)
 
@@ -588,7 +588,7 @@ func TestSharedRebindRepairsAWipedBondDir(t *testing.T) {
 	}
 
 	code, out = captureStdout(t, func() int {
-		return runRebind(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main")
+		return runRebind(context.Background(), app, commonOpts{Format: formatText}, constants.ToolClaude, "main", false)
 	})
 	mustExit(t, constants.ExitOK, code, out)
 	if _, err := os.Lstat(linked); err != nil {

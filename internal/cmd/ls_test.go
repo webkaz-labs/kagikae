@@ -142,7 +142,7 @@ func TestLsPinsListsOnlyLiveBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	if code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated)
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated, false)
 	}); code != constants.ExitOK {
 		t.Fatalf("runPin second: %s", out)
 	}
@@ -154,7 +154,7 @@ func TestLsPinsListsOnlyLiveBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	if code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated)
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated, false)
 	}); code != constants.ExitOK {
 		t.Fatalf("runPin: %s", out)
 	}
@@ -278,7 +278,7 @@ func TestLsPinsNeverCarriesACredential(t *testing.T) {
 	// and the fixture cannot pass vacuously.
 	captureClaude(t, app, "main", canary)
 	if code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated)
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated, false)
 	}); code != constants.ExitOK {
 		t.Fatalf("runPin: %s", out)
 	}

@@ -27,6 +27,8 @@ kae use [-s|-i] <profile>            # switch every enabled tool now, global (al
 kae use [-s|-i] <tool> <account>     # switch one tool now, global
 kae pin [-s|-i] [<profile>]          # bind this directory (alias: kae p; default shared)
 kae pin [-s|-i] <tool> <account>     # re-bind one tool in this directory
+kae pin [...] --no-link              # leave no ./.config/<tool> store links here
+                                     # (and remove the ones kae made)
 kae unpin [--purge]                  # delete the kae-owned mise fragment
                                      # --purge: also delete this directory's
                                      # per-directory keychain credentials
@@ -99,6 +101,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--shared` / `-s` | `use`, `pin`, `run` | share the real home (default); credential private |
 | `--isolated` / `-i` | `use`, `pin`, `run` | private home via a kae-owned mise fragment (global: `~/.config/mise/conf.d/kagikae.toml`; per-dir: `./.config/mise/conf.d/kagikae.toml`) |
 | `--env` | `run` | inject env-profile vars only (no home redirect, no lock) |
+| `--no-link` | `pin` | leave no `./.config/<tool>` links to this directory's stores, and remove the ones kae made here |
 | `--dry-run` | `add --no-login`, `use`, `pin`, `rollback` | print planned actions, write nothing |
 | `--yes` | all | non-interactive confirmation (reserved; no prompts exist yet) |
 | `--no-color` | all | disable color in human text output |
@@ -657,6 +660,36 @@ A directory name is interpolated into a *pattern*, not a path, so kae escapes th
 wildmatch metacharacters (`\ * ? [ ]`) in it. Without that, pinning a
 subdirectory called `[wip]-feature` writes a rule git reads as a character class,
 which matches nothing — while `kae pin` reports the fragment as ignored.
+
+**Store links.** A bind also leaves one symlink per tool in the bound directory:
+`./.config/<tool>` → the store that tool's isolation variable is pointed at, the
+same absolute directory the fragment's `[env]` block exports (shared or isolated
+by mode). A store is named after a hash of the directory's absolute path, so
+without the link the only thing here that names it is the fragment's `[env]`
+line — a path to read out and retype rather than one to open. The links are
+recorded in the exclude file exactly as the fragment is.
+
+- **They are pointers; the store is never moved into the directory.** What that
+  does and does not expose — and the one setting where it is a real hazard — is in
+  [SECURITY.md](SECURITY.md) § Store links in a bound directory.
+- **`--no-link` leaves none here**, and removes the ones kae already made: it is a
+  statement about the directory rather than about this run, so an earlier pin's
+  link does not survive it still naming a store. On `kae pin <tool> <account>` it
+  therefore covers the whole directory, not only the re-bound tool.
+- **Anything kae did not write is left alone.** A real directory, a real file, or
+  a symlink aimed outside kae's isolation root at `./.config/<tool>` stays exactly
+  as it is: kae warns on stderr, names the store there instead, skips that one
+  link, and the bind still succeeds with exit `0`.
+- **A bind converges on the tools it binds.** A tool dropped from the profile has
+  its link retracted rather than left naming a store this directory no longer
+  binds, and a re-bind moves only the re-bound tool's. A tool with no store — one
+  that keeps its real home, an uncaptured account, a credential that cannot be
+  isolated — gets no link, because a link must not name a directory that does not
+  exist.
+- **`kae unpin` removes them and keeps the stores.** The link belongs to the
+  binding, not to the store: a kept store a re-pin restores from is not a reason
+  to keep a pointer to it in a directory that is no longer bound. Only kae's own
+  links are removed.
 
 `kae unpin` leaves the exclude entry in place, symmetrically with the store it
 keeps for a re-pin. A `./.gitignore` line written by an older kae is also left

@@ -313,6 +313,43 @@ is logged in as. Both keys read one table (`constants.PrivateBindItems`), which 
 also what the shared bind builds its symlink denylist from, so a name cannot be
 denied in one place and permitted in another; a guard test pins that wiring.
 
+### Store links in a bound directory
+
+`kae pin` leaves `./.config/<tool>` pointing at the store above
+([CLI.md](CLI.md) § kae pin and mise init Semantics owns the behavior). A symlink
+is a pointer, so the store is not copied into the working tree and the usual
+working-tree hazards reach the pointer only: removing the link (`git clean -xdf`
+and friends) removes a pointer a re-pin restores, and committing one commits the
+target path — a pin id and an account name, which is why `kae pin` records the
+link in the exclude file rather than relying on nobody running `git add -A`.
+
+**The hazard is a program that follows the link while copying.** Dereferenced,
+the link is the store, and two things about the store make that sharper than it
+first looks: for a tool that cannot address its credential separately from its
+home the store *is* the credential store (the table above), and a **shared**
+store is itself built from symlinks into the real home, so a follower that
+dereferences twice reaches the real tool home as well.
+
+kae has measured none of the programs below; this is the class to check, not a
+finding, and each tool's own documentation for the current version is the answer:
+
+- File-sync clients that replicate a folder (Dropbox, iCloud Drive, OneDrive,
+  Google Drive) are the case worth checking first. A bound directory inside a
+  synced tree, with a client that follows the link, uploads the store's contents —
+  a credential, not a path.
+- Copying, archiving and search tools each document a flag for following a
+  symlink (`tar -h`, `rsync -L`, `rg -L`; `cp` differs between implementations in
+  what `-r` does with one), so the question for each is whether the invocation
+  that reads your project tree passes it. The setting this section is about is a
+  tree something copies *through*, not an ordinary checkout.
+
+**kae does not detect sync roots, deliberately.** A detector that misses one
+would be worse than none: it would make "kae did not warn" read as "this location
+is safe", which is a claim nothing can support across products, versions and
+per-folder settings. The rule is stated here instead, and `--no-link` is the
+control — bind with it in a directory you sync, or in any tree something else
+copies by following links.
+
 **A per-directory credential is removed once nothing points at it.** Two kinds,
 two rules, stated once in `removeDirCredential` and summarized here because this
 section owns what kae deletes: a **keychain item** where the adapter declares it

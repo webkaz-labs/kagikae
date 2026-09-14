@@ -130,9 +130,19 @@ mise が未信頼の設定を拒否することがあります。
 利用者の `mise.toml` は編集しません。このフラグメントはマシン固有なので、
 Git リポジトリ内では共通の exclude ファイルを使って追跡対象から除外します。
 
+あわせて `./.config/<tool>` から、そのツールのストア
+（`~/.local/share/kagikae/isolation/<pin-id>/` 以下）への symlink を張ります。
+ストアの場所はディレクトリのパスのハッシュで決まるため、リンクがないと、ここから
+ストアを名指すのはフラグメントの `[env]` 行だけになります。リンクも同じ仕組みで
+除外します。実体のコピーではありませんが、symlink を辿ってコピーするプログラムは
+ストアそのものを読みます。同期フォルダ配下に固定する前に
+[docs/SECURITY.md](docs/SECURITY.md) § Store links in a bound directory を
+参照してください。
+
 ```bash
 kae pin -i side          # 設定やセッションも独立させる
 kae pin claude main      # このディレクトリの Claude だけ変更
+kae pin side --no-link   # このディレクトリにストアへのリンクを置かない
 kae ls --pins            # ディレクトリをまたいで固定状態を一覧
 kae unpin               # 現在のディレクトリの固定を解除
 ```

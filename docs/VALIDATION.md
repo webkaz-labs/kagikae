@@ -648,10 +648,11 @@ then in the pinned dir `mise exec -- kae doctor --yes` reports a match, and
 
 ## per-worktree surfaces — the exclude file and `kae ls --pins`
 
-Two changes, both read-only outside the fragment write: `kae pin` records its
-ignore rule in the repository's shared exclude file instead of a tracked
-`./.gitignore`, and `kae ls --pins` lists every bound directory. Temp HOME, file
-driver, file backend — no real `$HOME`, no real keychain. The repositories are
+What a bind leaves in a repository, and what lists it: `kae pin` records its
+ignore rules in the repository's shared exclude file instead of a tracked
+`./.gitignore` — for the fragment and for the `./.config/<tool>` store links —
+and `kae ls --pins` lists every bound directory. Nothing here writes a tracked
+file. Temp HOME, file driver, file backend — no real `$HOME`, no real keychain. The repositories are
 built **inside the temp HOME**, so nothing here can dirty a real checkout.
 
 ```bash
@@ -674,7 +675,17 @@ mkdir -p "$W/main/nested"
 cd "$W/main" && /tmp/kae pin main > "$HOME/A.out" 2>&1
 grep -q 'ignored via ~/work/main/.git/info/exclude' "$HOME/A.out"
                                        # assert: the report names the exclude file
-test -z "$(git status --porcelain)"    # assert: empty
+grep -q 'Linked .config/claude' "$HOME/A.out"
+                                       # assert: and the store link it left
+readlink "$W/main/.config/claude" | grep -q '/kagikae/isolation/'
+test -d "$W/main/.config/claude"       # assert: the link resolves to a real store
+test "$(grep -c '^# kagikae per-directory files' "$W/main/.git/info/exclude")" -eq 1
+                                       # assert: ONE banner — the fragment and the link
+                                       #   are recorded in a single call, so a pin asks
+                                       #   git once and appends one block. Checked here,
+                                       #   before C adds this repository's second pin
+test -z "$(git status --porcelain)"    # assert: empty — the link is excluded too,
+                                       #   which is the whole reason it is recorded
 test -z "$(git -C "$W/wt1" status --porcelain)"
                                        # assert: empty — one entry already covers it
 test ! -e "$W/main/.gitignore"         # assert: no tracked .gitignore was created
@@ -693,6 +704,8 @@ test -z "$(git status --porcelain)"
 # --- C. a nested directory: the entry is anchored at the repository root ---
 cd "$W/main/nested" && /tmp/kae pin main
 grep -q '^/nested/\.config/mise/conf\.d/kagikae\.toml$' "$W/main/.git/info/exclude"
+grep -q '^/nested/\.config/claude$' "$W/main/.git/info/exclude"
+                                       # assert: the store link is anchored the same way
                                        # assert: anchored at the repository root, not at
                                        #   its own directory — without --show-prefix this
                                        #   would read `/.config/…` and ignore nothing
@@ -705,6 +718,19 @@ test "$(grep -c 'ignored via' "$HOME/D.out")" -eq 0
                                        # assert: and claims no ignore rule. The line
                                        #   above is this one's positive control
 test ! -e "$HOME/norepo/.gitignore"
+
+# --- D2. --no-link: none left here, and the one kae made is retracted ---
+cd "$W/main" && test -L .config/claude  # positive control: A left one here
+/tmp/kae pin main --no-link > "$HOME/D2.out" 2>&1
+test ! -e "$W/main/.config/claude"     # assert: --no-link retracts an earlier pin's
+                                       #   link rather than only withholding a new one
+grep -q 'Removed the store link .config/claude\.' "$HOME/D2.out"
+                                       # assert: reported on one line, ending the
+                                       #   sentence — a retraction of several links
+                                       #   names them all in one `links` line
+test -z "$(git status --porcelain)"    # assert: and leaves the tree clean
+/tmp/kae pin main                      # restore it: E asserts on this directory
+test -L "$W/main/.config/claude"
 
 # --- E. kae ls --pins, from outside every bound directory ---
 cd "$HOME" && /tmp/kae ls --pins > "$HOME/E1.txt"
@@ -719,7 +745,11 @@ test "$(grep -c '\*' "$HOME/E2.txt")" -eq 1   # assert: ... and only there
 /tmp/kae ls --pins --json > "$HOME/E3.json"
 grep -q '"schema_version": 1' "$HOME/E3.json"
 test "$(grep -c '"directory"' "$HOME/E3.json")" -eq 4   # assert: bound_directories[]
+WTSTORE=$(readlink "$W/wt1/.config/claude")
 /tmp/kae unpin && /tmp/kae ls --pins > "$HOME/E4.txt"
+test ! -e "$W/wt1/.config/claude"      # assert: the link goes with the binding ...
+test -d "$WTSTORE"                     # assert: ... and the store it named stays,
+                                       #   which is what a re-pin restores from
 test "$(grep -c 'work/wt1' "$HOME/E4.txt")" -eq 0
 test "$(grep -c '^~/' "$HOME/E4.txt")" -eq 3
                                        # assert: work/wt1 is GONE — unpin keeps the store
@@ -755,13 +785,14 @@ grep -q '^?? locked/$' "$HOME/F.status"
 chmod u+w "$W/main/.git/info/exclude"
 ```
 
-**PASSED 2026-08-08 on the release tree, 31/31** (`/tmp/kae` = v0.17.0), and before that
-2026-08-04 on the pre-release binary: A–F, each assertion checked
-individually **at its own point in the block** rather than from the end state. Unlike the
-two credential blocks below, this one needed no correction to run on the final tree —
-it touches the fragment and git, neither of which the credential split moved. That
-distinction is not pedantry — two earlier runs of this block completed without
-erroring while assertions inside it were false (a row count changed by a case
+**PASSED 2026-09-15** on a `/tmp/kae` built from the working tree, through
+`scripts/smoke-run.sh` on this section: A–F including the store-link cases, every
+line exited 0 and the checkout was unchanged. Before the store links it passed
+2026-08-08 on the release tree, 31/31 (`/tmp/kae` = v0.17.0), and 2026-08-04 on
+the pre-release binary. Run it through that
+harness rather than by hand: it checks each line **at its own point in the block**
+rather than from the end state, and two earlier hand runs of this block completed
+without erroring while assertions inside it were false (a row count changed by a case
 inserted above it, and a `chmod` that did not make anything unwritable). "The block
 ran" is not evidence; "this assertion held here" is.
 

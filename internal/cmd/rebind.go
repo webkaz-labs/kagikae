@@ -26,7 +26,7 @@ import (
 // fragment's account record and KAE_PROFILE are recomputed (the latter goes
 // empty when the new account set matches no named profile). Sessions and
 // settings are never disturbed.
-func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName string) int {
+func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName string, noLink bool) int {
 	tool, err := canonicalToolAccount(tool, accountName, "account")
 	if err != nil {
 		return finish(opts, err)
@@ -179,7 +179,26 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// shared store's credential belongs to (storeAccount) — read before
 	// rebindFragment rewrote it.
 	reportPruned(app.pruneDirCredentials(ctx, be, pinID, tool, map[string]bool{boundDir: true}, info, false))
+	// Only this tool's link moves, matching what the re-bind moved — except under
+	// --no-link, which is a statement about the directory rather than about one
+	// tool, so it retracts every link kae left here.
+	var tools []string
+	var want map[string]string
+	if noLink {
+		// Every linkable tool, wanting none of them: the flag retracts what kae
+		// left here rather than only withholding this tool's link.
+		tools = linkableTools()
+	} else {
+		tools = []string{tool}
+		// dirExists for the reason wantedStoreLinks has it: a link must resolve to
+		// an existing store directory.
+		if dirExists(boundDir) {
+			want = map[string]string{tool: boundDir}
+		}
+	}
+	linked, removed := app.syncStoreLinks(tools, want)
 	fmt.Printf("Re-bound %s to account %s (%s; sessions/settings unchanged)\n", tool, accountName, info.Mode)
+	app.reportStoreLinks(linked, removed, ensureGitExcluded(ctx, linked...))
 	return constants.ExitOK
 }
 

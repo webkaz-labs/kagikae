@@ -31,7 +31,7 @@ func TestRunPinSharedWritesFragment(t *testing.T) {
 	pinID := paths.PinID(cwd)
 
 	code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared)
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared, false)
 	})
 	mustExit(t, constants.ExitOK, code, out)
 
@@ -448,7 +448,7 @@ func TestRunPinIsolatedEncodesAccountInPath(t *testing.T) {
 	pinID := paths.PinID(cwd)
 
 	code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated)
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeIsolated, false)
 	})
 	mustExit(t, constants.ExitOK, code, out)
 
@@ -472,7 +472,7 @@ func TestRunPinMiseActivatedMessage(t *testing.T) {
 	}
 	chdirTemp(t)
 	code, out := captureStdout(t, func() int {
-		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared)
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared, false)
 	})
 	mustExit(t, constants.ExitOK, code, out)
 	if !strings.Contains(out, "mise applies it on the next prompt") {
@@ -496,11 +496,11 @@ func TestPinRebindIsolatedRepointsFragment(t *testing.T) {
 	captureClaude(t, app, "main", mainToken)
 	captureClaude(t, app, "beta", sideToken)
 
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 		t.Fatalf("runPin isolated exit %d", code)
 	}
 	// Re-bind claude to a different account; only claude changes.
-	code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "beta") })
+	code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "beta", false) })
 	mustExit(t, constants.ExitOK, code, out)
 
 	frag := readFile(t, fragmentRelPath)
@@ -551,7 +551,7 @@ func TestPinRebindRepointsCompanionsToNewProfile(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 		t.Fatalf("runPin main exit %d", code)
 	}
 	mainGit := app.Paths.CompanionConfigFile("main", constants.CompanionGit)
@@ -561,7 +561,7 @@ func TestPinRebindRepointsCompanionsToNewProfile(t *testing.T) {
 
 	// Re-bind claude main→side: the account set now matches profile "side", so
 	// its companion block must replace main's.
-	code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "side") })
+	code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "side", false) })
 	mustExit(t, constants.ExitOK, code, out)
 
 	frag := readFile(t, fragmentRelPath)
@@ -595,11 +595,11 @@ func TestPinRebindToAdHocClearsCompanions(t *testing.T) {
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
 
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 		t.Fatalf("runPin main exit %d", code)
 	}
 	// Re-bind claude to an account in no profile → ad-hoc; companions clear.
-	code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "zeta") })
+	code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "zeta", false) })
 	mustExit(t, constants.ExitOK, code, out)
 
 	frag := readFile(t, fragmentRelPath)
@@ -640,11 +640,11 @@ func TestPinRebindRefusesUnboundTool(t *testing.T) {
 	chdirTemp(t)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 		t.Fatalf("runPin exit %d", code)
 	}
 	// codex is not bound in this directory (the profile binds only claude).
-	code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "codex", "main") })
+	code, out := captureStdout(t, func() int { return runRebind(ctx, app, opts, "codex", "main", false) })
 	mustExit(t, constants.ExitNotFound, code, out)
 }
 
@@ -657,7 +657,7 @@ func TestStatusReportsSharedModeAndBoundAccount(t *testing.T) {
 	}
 	pinID := paths.PinID(cwd)
 	ctx := context.Background()
-	if code := runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared); code != constants.ExitOK {
+	if code := runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared, false); code != constants.ExitOK {
 		t.Fatalf("runPin exit %d", code)
 	}
 	// Simulate a mise-active shell: the fragment's [env] is exported.
@@ -714,7 +714,7 @@ func TestUnpinDeletesFragment(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", filepath.Dir(app.Paths.StateDir))
 	t.Setenv("XDG_RUNTIME_DIR", filepath.Dir(app.Paths.RuntimeDir))
 	chdirTemp(t)
-	if code := runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared); code != constants.ExitOK {
+	if code := runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared, false); code != constants.ExitOK {
 		t.Fatalf("runPin exit %d", code)
 	}
 	if _, err := os.Stat(fragmentRelPath); err != nil {
@@ -759,7 +759,7 @@ func TestRunPinModeToggleRemovesTheOldModesItem(t *testing.T) {
 
 	isolatedDir := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
 	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
-		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+		if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 			t.Fatalf("pin --isolated exit %d", code)
 		}
 	})
@@ -774,7 +774,7 @@ func TestRunPinModeToggleRemovesTheOldModesItem(t *testing.T) {
 	var out string
 	runner.With(fake, func() {
 		var code int
-		code, out = captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+		code, out = captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) })
 		mustExit(t, constants.ExitOK, code, out)
 	})
 	if !strings.Contains(out, isolatedDir) {
@@ -802,7 +802,7 @@ func TestUnpinPurgeDeletesALostAccountsCredential(t *testing.T) {
 		ctx := context.Background()
 		opts := commonOpts{Format: formatText}
 		captureClaudeFromKeychain(t, app, sim, "main", mainToken, app.Now().Add(time.Hour))
-		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+		if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 			t.Fatalf("pin --isolated exit %d", code)
 		}
 		if err := os.RemoveAll(app.Paths.AccountDir(constants.ToolClaude, "main")); err != nil {
@@ -836,7 +836,7 @@ func TestUnpinPurgeRemovesTheItemAndPlainUnpinDoesNot(t *testing.T) {
 			payload := claudeOAuthPayload(mainToken, time.Date(2026, 6, 11, 9, 0, 0, 0, time.UTC))
 			runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
 				captureClaude(t, app, "main", mainToken)
-				if code := runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared); code != constants.ExitOK {
+				if code := runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared, false); code != constants.ExitOK {
 					t.Fatal("pin failed")
 				}
 			})
@@ -883,7 +883,7 @@ func TestPinRebindIsolatedRemovesThePreviousAccountsItem(t *testing.T) {
 	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
 		captureClaude(t, app, "main", mainToken)
 		captureClaude(t, app, "beta", sideToken)
-		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+		if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 			t.Fatal("pin --isolated failed")
 		}
 	})
@@ -900,7 +900,7 @@ func TestPinRebindIsolatedRemovesThePreviousAccountsItem(t *testing.T) {
 	var out string
 	runner.With(fake, func() {
 		var code int
-		code, out = captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "beta") })
+		code, out = captureStdout(t, func() int { return runRebind(ctx, app, opts, "claude", "beta", false) })
 		mustExit(t, constants.ExitOK, code, out)
 	})
 	if !strings.Contains(out, oldDir) {

@@ -580,6 +580,13 @@ source and backend-read error policy.
   of a backup whose record predates the account field is the one path that still
   reads the live item, and `internal/artifact/artifact.go` says why.
   [ADAPTERS.md](ADAPTERS.md) § Keyring item contract states the rule in full.
+- A path kae writes **inside the user's working tree** (the store links) is
+  classified with `os.Lstat` plus `os.Readlink`, never `os.Stat`: a kae link whose
+  store was deleted is broken, and `Stat` reports it as absent, so kae would try to
+  create a link over a name that already exists and leave the stale one behind.
+  Only a symlink whose target is inside the isolation root (`kaeManagedHomeKind`)
+  is kae's to re-aim or remove; everything else there is the user's and is left
+  alone with a warning.
 - `secret-tool` returns exit code 1 both for "not found" and some errors;
   treat stderr content as the discriminator.
 - Codex `auto` credential store resolves to keyring only when the keyring is

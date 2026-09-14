@@ -683,7 +683,7 @@ func TestRunPinRebindBetweenAccountsPreservesTheTargetsLiveCredential(t *testing
 	writeFile(t, mainCopy, claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 
 	if code, out := captureStdout(t, func() int {
-		return runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared)
+		return runPin(ctx, app, commonOpts{Format: formatText}, "main", modeShared, false)
 	}); code != constants.ExitOK {
 		t.Fatalf("re-bind to main exit %d: %s", code, out)
 	}
@@ -854,7 +854,7 @@ func TestRunPinTwiceKeepsTheSameCopyBothTimes(t *testing.T) {
 
 	opts := commonOpts{Format: formatText}
 	for i, want := range []string{"first bind", "second bind"} {
-		if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+		if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) }); code != constants.ExitOK {
 			t.Fatalf("%s: pin exit %d: %s", want, code, out)
 		}
 		if got := readFile(t, mainCopy); !strings.Contains(got, live) {
@@ -887,7 +887,7 @@ func TestRunPinKeepsAndRetractsEvenWhenTheWalkIsIncomplete(t *testing.T) {
 	mkdirs(t, leftover)
 
 	opts := commonOpts{Format: formatText}
-	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) }); code != constants.ExitOK {
 		t.Fatalf("pin 1 exit %d: %s", code, out)
 	}
 	if got := readFile(t, mainCopy); !strings.Contains(got, live) {
@@ -899,7 +899,7 @@ func TestRunPinKeepsAndRetractsEvenWhenTheWalkIsIncomplete(t *testing.T) {
 	if err := os.RemoveAll(leftover); err != nil {
 		t.Fatal(err)
 	}
-	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) }); code != constants.ExitOK {
 		t.Fatalf("pin 2 exit %d: %s", code, out)
 	}
 	if got := readFile(t, mainCopy); !strings.Contains(got, live) {
@@ -920,7 +920,7 @@ func TestRunRebindIsolatedToTheSameAccountActsUnderItsOwnDir(t *testing.T) {
 	opts := commonOpts{Format: formatText}
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 		t.Fatalf("pin --isolated exit %d", code)
 	}
 	cwd, err := os.Getwd()
@@ -934,7 +934,7 @@ func TestRunRebindIsolatedToTheSameAccountActsUnderItsOwnDir(t *testing.T) {
 	credFile := dirCredFile(app, constants.ToolClaude, "main", config)
 	writeFile(t, credFile, claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
 
-	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "main") })
+	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "main", false) })
 
 	// This directory *is* the conflicting reader and the write targets this very store, so
 	// the copy is replaced — and the message has to say that rather than promise a keep.
@@ -971,7 +971,7 @@ func TestRunRebindKeepAlsoRetractsTheStaleLabel(t *testing.T) {
 
 	for run := 1; run <= 2; run++ {
 		if code, out := captureStdout(t, func() int {
-			return runRebind(ctx, app, opts, constants.ToolClaude, "main")
+			return runRebind(ctx, app, opts, constants.ToolClaude, "main", false)
 		}); code != constants.ExitOK {
 			t.Fatalf("run %d: re-bind exit %d: %s", run, code, out)
 		}
@@ -1003,7 +1003,7 @@ func TestRunRebindToTheSameAccountKeepsTheLiveLabel(t *testing.T) {
 	writeFile(t, credFile, claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
 
 	if code, out := captureStdout(t, func() int {
-		return runRebind(ctx, app, opts, constants.ToolClaude, "main")
+		return runRebind(ctx, app, opts, constants.ToolClaude, "main", false)
 	}); code != constants.ExitOK {
 		t.Fatalf("same-account re-bind exit %d: %s", code, out)
 	}
@@ -1046,10 +1046,10 @@ func TestAnIsolatedRebindBackKeepsTheLiveLabelInThatAccountsDir(t *testing.T) {
 		back func(t *testing.T, app *App, ctx context.Context, opts commonOpts) int
 	}{
 		{"kae pin <tool> <account>", func(t *testing.T, app *App, ctx context.Context, opts commonOpts) int {
-			return runRebind(ctx, app, opts, constants.ToolClaude, "main")
+			return runRebind(ctx, app, opts, constants.ToolClaude, "main", false)
 		}},
 		{"kae pin -i <profile>", func(t *testing.T, app *App, ctx context.Context, opts commonOpts) int {
-			return runPin(ctx, app, opts, "main", modeIsolated)
+			return runPin(ctx, app, opts, "main", modeIsolated, false)
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1063,7 +1063,7 @@ func TestAnIsolatedRebindBackKeepsTheLiveLabelInThatAccountsDir(t *testing.T) {
 			now := app.Now()
 			captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 			captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
-			if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+			if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 				t.Fatalf("pin -i main exit %d", code)
 			}
 			cwd, err := os.Getwd()
@@ -1079,7 +1079,7 @@ func TestAnIsolatedRebindBackKeepsTheLiveLabelInThatAccountsDir(t *testing.T) {
 				claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
 
 			// Away, then back.
-			if code := runRebind(ctx, app, opts, constants.ToolClaude, "side"); code != constants.ExitOK {
+			if code := runRebind(ctx, app, opts, constants.ToolClaude, "side", false); code != constants.ExitOK {
 				t.Fatalf("re-bind to side exit %d", code)
 			}
 			if code, out := captureStdout(t, func() int { return tc.back(t, app, ctx, opts) }); code != constants.ExitOK {
@@ -1131,7 +1131,7 @@ func TestAnUnreadableOwnFragmentDoesNotRetractALiveLabel(t *testing.T) {
 	}
 
 	opts := commonOpts{Format: formatText}
-	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) }); code != constants.ExitOK {
 		t.Fatalf("pin exit %d: %s", code, out)
 	}
 	if got := readFile(t, label); !strings.Contains(got, "side-uuid") {
@@ -1202,7 +1202,7 @@ func TestAnIncompleteWalkDoesNotMakeALiveLabelStale(t *testing.T) {
 	mkdirs(t, filepath.Join(app.Paths.IsolationDir(), "0123456789abcdef"))
 
 	opts := commonOpts{Format: formatText}
-	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) }); code != constants.ExitOK {
 		t.Fatalf("pin exit %d: %s", code, out)
 	}
 	if got := readFile(t, label); !strings.Contains(got, "side-uuid") {
@@ -1229,7 +1229,7 @@ func TestRunPinKeepsALabelThatAgreesEvenFromAStranger(t *testing.T) {
 	writeFile(t, mainCopy, claudeOAuthPayload(live, now.Add(8*time.Hour)))
 
 	opts := commonOpts{Format: formatText}
-	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) }); code != constants.ExitOK {
 		t.Fatalf("pin exit %d: %s", code, out)
 	}
 	if got := readFile(t, label); !strings.Contains(got, "main-uuid") {
@@ -1263,7 +1263,7 @@ func TestRunPinTwiceKeepsALiveLabelThatDisagrees(t *testing.T) {
 	be := testBackend(t, app)
 	opts := commonOpts{Format: formatText}
 	for run := 1; run <= 2; run++ {
-		if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+		if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) }); code != constants.ExitOK {
 			t.Fatalf("run %d: pin exit %d: %s", run, code, out)
 		}
 		if got := readFile(t, label); !strings.Contains(got, "side-uuid") {
@@ -1291,7 +1291,7 @@ func TestRunRebindIsolatedActsUnderTheNewAccountsConfigDir(t *testing.T) {
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 		t.Fatalf("pin --isolated exit %d", code)
 	}
 	cwd, err := os.Getwd()
@@ -1306,7 +1306,7 @@ func TestRunRebindIsolatedActsUnderTheNewAccountsConfigDir(t *testing.T) {
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", mainConfig),
 		claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
 
-	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "side") })
+	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "side", false) })
 
 	// The directory the re-bind acts for is claude/side's isolated config dir, which reads
 	// nothing yet — so this is missing evidence with a login remedy, not a conflict.
@@ -1336,7 +1336,7 @@ func TestRunPinModeToggleReportsWhatTheWriteActuallyDid(t *testing.T) {
 	writeFile(t, credFile, claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
 
 	opts := commonOpts{Format: formatText}
-	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeIsolated) })
+	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeIsolated, false) })
 
 	if got := readFile(t, credFile); !strings.Contains(got, sideLive) {
 		t.Fatalf("the toggle kept the copy in earlier versions too; it must still: %s", got)
@@ -1714,7 +1714,7 @@ func TestRunPinModeToggleHarvestsTheSupersededStoreFirst(t *testing.T) {
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 
-	if code := runPin(ctx, app, opts, "main", modeShared); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeShared, false); code != constants.ExitOK {
 		t.Fatalf("pin --shared exit %d", code)
 	}
 	cwd, err := os.Getwd()
@@ -1727,7 +1727,7 @@ func TestRunPinModeToggleHarvestsTheSupersededStoreFirst(t *testing.T) {
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", shared), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 		t.Fatalf("pin --isolated exit %d", code)
 	}
 
@@ -1771,7 +1771,7 @@ func TestRunPinReportsOneRefusalPerStoreWithTheRightRemedy(t *testing.T) {
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 
-	if code := runPin(ctx, app, opts, "main", modeShared); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeShared, false); code != constants.ExitOK {
 		t.Fatalf("pin --shared exit %d", code)
 	}
 	cwd, err := os.Getwd()
@@ -1794,7 +1794,7 @@ func TestRunPinReportsOneRefusalPerStoreWithTheRightRemedy(t *testing.T) {
 	if err := os.Remove(filepath.Join(shared, ".claude.json")); err != nil {
 		t.Fatal(err)
 	}
-	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) })
 
 	// Counted per line, not per phrase: one message carries several of these markers, and
 	// counting phrases made this assertion fail on correct output.
@@ -1831,7 +1831,7 @@ func TestRunPinReportsOneRefusalPerStoreWithTheRightRemedy(t *testing.T) {
 	writeFile(t, filepath.Join(shared, ".claude.json"), claudeIdentityFile("side-uuid"))
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", shared),
 		claudeOAuthPayload(sideToken, now.Add(10*time.Hour)))
-	_, stderr = captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+	_, stderr = captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) })
 
 	if n := refusalLines(stderr); n != 1 {
 		t.Fatalf("one refused store must produce one message, got %d:\n%s", n, stderr)
@@ -1864,12 +1864,12 @@ func TestRunPinCoalescesTheHarvestKeychainReads(t *testing.T) {
 		ctx := context.Background()
 		opts := commonOpts{Format: formatText}
 		captureClaudeFromKeychain(t, app, sim, "main", mainToken, app.Now().Add(time.Hour))
-		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+		if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 			t.Fatalf("pin --isolated exit %d", code)
 		}
 
 		sim.readW = 0
-		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+		if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 			t.Fatalf("re-pin exit %d", code)
 		}
 
@@ -1892,7 +1892,7 @@ func TestRunPinReportsARefusalThePinLevelPassCannotAttribute(t *testing.T) {
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 
-	if code := runPin(ctx, app, opts, "main", modeShared); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeShared, false); code != constants.ExitOK {
 		t.Fatalf("pin --shared exit %d", code)
 	}
 	cwd, err := os.Getwd()
@@ -1909,7 +1909,7 @@ func TestRunPinReportsARefusalThePinLevelPassCannotAttribute(t *testing.T) {
 	if err := os.Remove(filepath.Join(shared, ".claude.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); refusalLines(stderr) != 1 {
+	if _, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) }); refusalLines(stderr) != 1 {
 		t.Fatalf("setup expected one reported refusal:\n%s", stderr)
 	}
 
@@ -1921,7 +1921,7 @@ func TestRunPinReportsARefusalThePinLevelPassCannotAttribute(t *testing.T) {
 		t.Fatalf("unpin exit %d", code)
 	}
 
-	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) })
 
 	if n := refusalLines(stderr); n != 1 {
 		t.Fatalf("overwriting a copy nobody could attribute must be reported exactly once, got %d:\n%s",
@@ -1948,7 +1948,7 @@ func TestRunPinReportsARefusalForAnIsolatedStoreThePassSkips(t *testing.T) {
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 		t.Fatalf("pin --isolated exit %d", code)
 	}
 	cwd, err := os.Getwd()
@@ -1965,7 +1965,7 @@ func TestRunPinReportsARefusalForAnIsolatedStoreThePassSkips(t *testing.T) {
 		t.Fatalf("unpin exit %d", code)
 	}
 
-	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeIsolated) })
+	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeIsolated, false) })
 
 	if n := refusalLines(stderr); n != 1 {
 		t.Fatalf("overwriting a copy the pass skipped must be reported exactly once, got %d:\n%s", n, stderr)
@@ -1985,7 +1985,7 @@ func TestRunRebindIsolatedReportsTheStoreItLeaves(t *testing.T) {
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 		t.Fatalf("pin --isolated exit %d", code)
 	}
 	cwd, err := os.Getwd()
@@ -2007,7 +2007,7 @@ func TestRunRebindIsolatedReportsTheStoreItLeaves(t *testing.T) {
 	writeFile(t, filepath.Join(shared, ".credentials.json"),
 		claudeOAuthPayload("sk-ant-oat01-LEFTOVER-eeee", now.Add(9*time.Hour)))
 
-	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "side") })
+	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "side", false) })
 
 	// The message names the **account** whose copy could not be kept and the bound
 	// directory to log in to — not the store path, deliberately, since a store path is
@@ -2106,7 +2106,7 @@ func TestRunRebindSweepKeepsALostAccountsCredential(t *testing.T) {
 		opts := commonOpts{Format: formatText}
 		captureClaudeFromKeychain(t, app, sim, "main", mainToken, app.Now().Add(time.Hour))
 		captureClaudeFromKeychain(t, app, sim, "side", sideToken, app.Now().Add(time.Hour))
-		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+		if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 			t.Fatalf("pin --isolated exit %d", code)
 		}
 		// Pre-split: since the credential became the account's rather than the
@@ -2126,7 +2126,7 @@ func TestRunRebindSweepKeepsALostAccountsCredential(t *testing.T) {
 		sim.ops = nil
 
 		_, stderr := captureStderr(t, func() int {
-			return runRebind(ctx, app, opts, constants.ToolClaude, "side")
+			return runRebind(ctx, app, opts, constants.ToolClaude, "side", false)
 		})
 
 		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
@@ -2192,7 +2192,7 @@ func TestAccountRenameHarvestsWhatTheBoundDirectoryIsReading(t *testing.T) {
 
 	// The payoff a user sees: kae's own remedy now lands on a snapshot that has the live
 	// token, so the directory keeps working instead of asking for a login.
-	if code := runRebind(ctx, app, opts, constants.ToolClaude, "side"); code != constants.ExitOK {
+	if code := runRebind(ctx, app, opts, constants.ToolClaude, "side", false); code != constants.ExitOK {
 		t.Fatalf("the re-bind kae recommends exit %d", code)
 	}
 	rebound := dirCredFile(app, constants.ToolClaude, "side", "")
@@ -2283,7 +2283,7 @@ func TestRunRebindRefusesAnUnknownModeWithoutHarvesting(t *testing.T) {
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 		t.Fatalf("pin --isolated exit %d", code)
 	}
 	cwd, err := os.Getwd()
@@ -2299,7 +2299,7 @@ func TestRunRebindRefusesAnUnknownModeWithoutHarvesting(t *testing.T) {
 
 	be := testBackend(t, app)
 	before := snapshotPayload(t, app, be, constants.ToolClaude, "main")
-	code := runRebind(ctx, app, opts, constants.ToolClaude, "side")
+	code := runRebind(ctx, app, opts, constants.ToolClaude, "side", false)
 
 	if code == constants.ExitOK {
 		t.Fatalf("an unrecognized mode must be refused, got exit %d", code)
@@ -2322,7 +2322,7 @@ func TestRunPinSweepKeepsALostAccountsCredential(t *testing.T) {
 		ctx := context.Background()
 		opts := commonOpts{Format: formatText}
 		captureClaudeFromKeychain(t, app, sim, "main", mainToken, app.Now().Add(time.Hour))
-		if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+		if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 			t.Fatalf("pin --isolated exit %d", code)
 		}
 		// Pre-split, for the reason the sibling test above gives: a bind leaves an
@@ -2344,7 +2344,7 @@ func TestRunPinSweepKeepsALostAccountsCredential(t *testing.T) {
 		sim.payload = claudeOAuthPayload("sk-ant-oat01-MAIN-REFRESHED-cccc", app.Now().Add(8*time.Hour))
 		sim.ops = nil
 
-		_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeIsolated) })
+		_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeIsolated, false) })
 
 		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
 			t.Fatalf("a bind must not delete the credential of an account it cannot harvest into: %v", sim.ops)
@@ -2374,7 +2374,7 @@ func TestRunRebindIsolatedHarvestsThePreviousAccount(t *testing.T) {
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 
-	if code := runPin(ctx, app, opts, "main", modeIsolated); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
 		t.Fatalf("pin --isolated exit %d", code)
 	}
 	cwd, err := os.Getwd()
@@ -2385,7 +2385,7 @@ func TestRunRebindIsolatedHarvestsThePreviousAccount(t *testing.T) {
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", old), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 
-	if code := runRebind(ctx, app, opts, constants.ToolClaude, "side"); code != constants.ExitOK {
+	if code := runRebind(ctx, app, opts, constants.ToolClaude, "side", false); code != constants.ExitOK {
 		t.Fatalf("re-bind exit %d", code)
 	}
 
@@ -2423,7 +2423,7 @@ func TestRunRebindConflictingCopyIsLeftBehindNotReplaced(t *testing.T) {
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 
-	if code := runPin(ctx, app, opts, "main", modeShared); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeShared, false); code != constants.ExitOK {
 		t.Fatalf("pin --shared exit %d", code)
 	}
 	cwd, err := os.Getwd()
@@ -2439,7 +2439,7 @@ func TestRunRebindConflictingCopyIsLeftBehindNotReplaced(t *testing.T) {
 	const sideLive = "sk-ant-oat01-SIDE-LIVE-eeee"
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", shared), claudeOAuthPayload(sideLive, now.Add(8*time.Hour)))
 
-	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "side") })
+	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "side", false) })
 
 	if !strings.Contains(stderr, "belongs to an account other than claude/main") {
 		t.Fatalf("the refusal itself must still be reported: %q", stderr)
@@ -2474,7 +2474,7 @@ func TestRunRebindSharedHarvestsThePreviousAccount(t *testing.T) {
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
 	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
 
-	if code := runPin(ctx, app, opts, "main", modeShared); code != constants.ExitOK {
+	if code := runPin(ctx, app, opts, "main", modeShared, false); code != constants.ExitOK {
 		t.Fatalf("pin --shared exit %d", code)
 	}
 	cwd, err := os.Getwd()
@@ -2485,7 +2485,7 @@ func TestRunRebindSharedHarvestsThePreviousAccount(t *testing.T) {
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
 	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", shared), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
 
-	if code := runRebind(ctx, app, opts, constants.ToolClaude, "side"); code != constants.ExitOK {
+	if code := runRebind(ctx, app, opts, constants.ToolClaude, "side", false); code != constants.ExitOK {
 		t.Fatalf("re-bind exit %d", code)
 	}
 

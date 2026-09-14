@@ -204,7 +204,7 @@ func TestRePinMigrationRemovesThePreSplitItem(t *testing.T) {
 	var out string
 	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
 		var code int
-		code, out = captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+		code, out = captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) })
 		mustExit(t, constants.ExitOK, code, out)
 	})
 
@@ -236,7 +236,7 @@ func TestRePinMigrationRemovesThePreSplitFile(t *testing.T) {
 		t.Fatal("the fixture must leave a pre-split copy for this test to mean anything")
 	}
 
-	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared) }); code != constants.ExitOK {
+	if code, out := captureStdout(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) }); code != constants.ExitOK {
 		t.Fatalf("re-pin exit %d: %s", code, out)
 	}
 
@@ -276,7 +276,7 @@ func TestAPlainRebindDoesNotDeleteTheAccountCredential(t *testing.T) {
 	runner.With(&runnertest.Fake{Stdout: payload, Code: 0}, func() {
 		var code int
 		code, out = captureStdout(t, func() int {
-			return runRebind(ctx, app, opts, constants.ToolClaude, "side")
+			return runRebind(ctx, app, opts, constants.ToolClaude, "side", false)
 		})
 		mustExit(t, constants.ExitOK, code, out)
 	})
@@ -488,7 +488,7 @@ func TestTheSweepDoesNotHarvestOnEvidenceTheBindJustWrote(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) })
 
 	// The pass says it could not preserve it. The sweep must not then say it did.
 	if !strings.Contains(stderr, "could not preserve") {
@@ -526,7 +526,7 @@ func TestTheSweepDoesNotFileAnotherAccountsCopyUnderThisAccount(t *testing.T) {
 		claudeOAuthPayload(sideRefreshed, now.Add(8*time.Hour)))
 	writeFile(t, filepath.Join(storeDir, ".claude.json"), claudeIdentityFile("side-uuid"))
 
-	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+	_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) })
 
 	if !strings.Contains(stderr, "belongs to an account other than") {
 		t.Fatalf("the fixture must reach the pass's conflicting refusal: %q", stderr)
@@ -668,7 +668,7 @@ func TestAKeptStoreThePassSkippedIsStillKept(t *testing.T) {
 		app.Config.Profiles["main"] = config.Profile{Accounts: map[string]string{constants.ToolClaude: "side"}}
 		sim.ops = nil
 
-		_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared) })
+		_, stderr := captureStderr(t, func() int { return runPin(ctx, app, opts, "main", modeShared, false) })
 
 		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
 			t.Fatalf("a store the pass never judged must not be deleted on the sweep's own reading: %v", sim.ops)
@@ -1061,7 +1061,7 @@ func TestRebindMovesTheCredentialEntryInSharedMode(t *testing.T) {
 	dir := pinHere(t, app, modeShared)
 
 	if code, out := captureStdout(t, func() int {
-		return runRebind(ctx, app, opts, constants.ToolClaude, "side")
+		return runRebind(ctx, app, opts, constants.ToolClaude, "side", false)
 	}); code != constants.ExitOK {
 		t.Fatalf("re-bind exit %d: %s", code, out)
 	}
@@ -1095,7 +1095,7 @@ func TestRebindMovesTheCredentialEntryInIsolatedMode(t *testing.T) {
 	dir := pinHere(t, app, modeIsolated)
 
 	if code, out := captureStdout(t, func() int {
-		return runRebind(ctx, app, opts, constants.ToolClaude, "side")
+		return runRebind(ctx, app, opts, constants.ToolClaude, "side", false)
 	}); code != constants.ExitOK {
 		t.Fatalf("re-bind exit %d: %s", code, out)
 	}
@@ -1127,7 +1127,7 @@ func TestRebindAddsTheCredentialEntryToAPreSplitFragment(t *testing.T) {
 	makePreSplit(t, app, constants.ToolClaude, "main", dir, storeDir)
 
 	if code, out := captureStdout(t, func() int {
-		return runRebind(ctx, app, opts, constants.ToolClaude, "side")
+		return runRebind(ctx, app, opts, constants.ToolClaude, "side", false)
 	}); code != constants.ExitOK {
 		t.Fatalf("re-bind exit %d: %s", code, out)
 	}

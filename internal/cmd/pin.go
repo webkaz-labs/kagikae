@@ -27,9 +27,9 @@ import (
 // and the credential copy. kae unpin removes the block.
 func CmdPin(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	var shared, isolated bool
+	var shared, isolated, noLink bool
 	opts, ok := parseCommon("pin", flags, false, func(fs *flag.FlagSet) {
-		registerPinFlags(fs, &shared, &isolated)
+		registerPinFlags(fs, &shared, &isolated, &noLink)
 	})
 	if !ok {
 		return constants.ExitUsage
@@ -48,7 +48,7 @@ func CmdPin(ctx context.Context, args []string) int {
 		if shared || isolated {
 			return usageError("--shared/--isolated do not apply to `kae pin <tool> <account>`; the directory's existing mode is kept")
 		}
-		return runRebind(ctx, app, opts, positionals[0], positionals[1])
+		return runRebind(ctx, app, opts, positionals[0], positionals[1], noLink)
 	case 0, 1:
 		var profileName string
 		if len(positionals) == 1 {
@@ -61,7 +61,7 @@ func CmdPin(ctx context.Context, args []string) int {
 			mode = modeIsolated
 		}
 		warnIfLegacyPinBlock()
-		return runPin(ctx, app, opts, profileName, mode)
+		return runPin(ctx, app, opts, profileName, mode, noLink)
 	default:
 		return usageError("usage: %s pin [-s|-i] [<profile>] | %s pin <tool> <account>", toolName, toolName)
 	}
@@ -89,11 +89,12 @@ func warnIfLegacyPinBlock() {
 // runPin binds the current directory by writing the kae-owned mise fragment
 // (./.config/mise/conf.d/kagikae.toml): it prepares the isolation dirs first
 // (so the fragment never points at a missing dir), renders the fragment with
-// the kae: records `kae status` reads back, writes it, records an ignore rule for
-// it in the repository's shared exclude file (never a tracked ./.gitignore — see
+// the kae: records `kae status` reads back, writes it, converges this
+// directory's store links, records one ignore rule per kae-owned path in the
+// repository's shared exclude file (never a tracked ./.gitignore — see
 // ensureGitExcluded), and prints the export fallback when mise activation is not
 // detected.
-func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode string) int {
+func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode string, noLink bool) int {
 	if err := app.requireConfig(); err != nil {
 		return finish(opts, err)
 	}
@@ -182,8 +183,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	}
 	// mode is already the user-facing scope label (shared/isolated).
 	companionLines := companionFragmentLines(companionEntries)
-	excludeFile, err := writeDirFragment(ctx, renderDirFragment(profileName, mode, entries, companionLines, redactions))
-	if err != nil {
+	if err := writeDirFragment(renderDirFragment(profileName, mode, entries, companionLines, redactions)); err != nil {
 		return finish(opts, err)
 	}
 	// The binding is in place, so any store this directory used before and does not
@@ -197,6 +197,22 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// command the user ran to *bind* something (harvestBeforeDelete).
 	reportPruned(app.pruneDirCredentials(ctx, be, paths.PinID(absDir), "", boundDirs(entries), prevBinding, false))
 	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, mode)
+	// The stores are named by a hash of this directory's path, so nothing in the
+	// directory points at them without these links. Converged over every linkable
+	// tool, not only the bound ones: a tool dropped from the profile, and
+	// --no-link (which wants none here at all), both have to retract a link that
+	// would otherwise keep naming a store this directory no longer binds.
+	//
+	// Before the report rather than after it: the fragment and the links kae just
+	// made are one group of kae-owned paths in this directory, and recording them
+	// together is what keeps a pin to one `git rev-parse` and one comment line in
+	// the exclude file (ensureGitExcluded).
+	var want map[string]string
+	if !noLink {
+		want = wantedStoreLinks(entries)
+	}
+	linked, removed := app.syncStoreLinks(linkableTools(), want)
+	excludeFile := ensureGitExcluded(ctx, append([]string{fragmentRelPath}, linked...)...)
 	// The exclude file is named because it is not a place a user would look, and
 	// it is outside the working tree; when there was no repository to tell, say
 	// nothing about ignoring rather than claiming it.
@@ -206,6 +222,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	} else {
 		fmt.Printf("Wrote %s; your mise.toml is untouched.\n", fragmentRelPath)
 	}
+	app.reportStoreLinks(linked, removed, excludeFile)
 	if app.miseActivated() {
 		fmt.Println("mise applies it on the next prompt (or run `mise env`).")
 	} else {
@@ -291,6 +308,17 @@ func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
 		return finish(opts, errf(constants.ExitNotFound,
 			"this directory is not pinned (no %s and no kagikae block in .mise.toml)", fragmentRelPath))
 	}
+	// The links are pointers, so they go with the binding rather than with the
+	// store: `unpin` keeps the store on purpose, but a link left behind names one
+	// nothing in this directory binds any more. Only kae's own are removed, and
+	// only the links — everything they pointed at survives, which is what makes a
+	// re-pin restore the directory.
+	// Nothing is wanted here, so nothing is linked and the exclude call records
+	// nothing — it asks git nothing either (ensureGitExcluded), which is what keeps
+	// `kae unpin` from running a subprocess to record an empty set. The entries an
+	// earlier pin left are kept, like the fragment's own.
+	linked, removed := app.syncStoreLinks(linkableTools(), nil)
+	app.reportStoreLinks(linked, removed, ensureGitExcluded(ctx, linked...))
 	// After the fragment is gone: nothing points at any of this directory's stores
 	// now, so the sweep keeps none of them. Before it, a failure would leave a live
 	// binding whose credential kae had already deleted.

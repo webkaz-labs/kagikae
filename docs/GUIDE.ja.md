@@ -45,8 +45,16 @@ kae status
 kae ls --pins
 ```
 
+`kae pin` は `./.config/<tool>` から、そのツールのストアへの symlink も張ります。
+ストアの場所はディレクトリのパスのハッシュで決まるため、リンクがないと、ここから
+ストアを名指すのはフラグメントの `[env]` 行だけになります。`--no-link` を付けるとリンクを置かず、kae が作った既存の
+リンクも削除します。symlink を辿ってコピーするツール（同期クライアントなど）の
+配下に固定するときの注意は
+[SECURITY.md](SECURITY.md) § Store links in a bound directory にあります。
+
 同じディレクトリで `kae pin claude main` を実行すると、そのツールの固定先を
-変更します。`kae unpin` は固定を解除しますが、再固定に使う作業ストアは残ります。
+変更します。`kae unpin` は固定を解除しますが、再固定に使う作業ストアは残ります
+（リンクは固定とともに削除します）。
 `--purge` は認証コピーの削除を伴うため、通常の解除と区別してください。
 削除前の保全と例外は [CLI.md](CLI.md#kae-pin-and-mise-init-semantics) にあります。
 
@@ -78,6 +86,7 @@ kae use -s -P main
 | 場所・操作 | 用途 |
 |---|---|
 | プロジェクトの `.config/mise/conf.d/kagikae.toml` | `kae pin` が管理するディレクトリ固定 |
+| プロジェクトの `.config/<tool>` | `kae pin` が張るストアへのリンク（`--no-link` で抑止） |
 | グローバル mise 設定配下の `conf.d/kagikae.toml` | グローバル独立環境と、任意登録した補完フック |
 | `kae mise init` | プロジェクトのタスク・補完・任意の自動切替フックを生成 |
 

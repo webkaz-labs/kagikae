@@ -79,17 +79,14 @@ func writeMiseFragment(path, content string) error {
 	return patch.WriteFileAtomic(path, []byte(content), 0o644)
 }
 
-// writeDirFragment writes the kae-owned mise fragment in the current directory
-// (creating .config/mise/conf.d/ as needed) and tells git to ignore it. The
-// fragment holds machine-specific absolute paths and account names, so it must
-// never be committed. It reports the exclude file the rule was recorded in, empty
-// when none was — which is never an error, so only the fragment write can fail
-// here (see ensureGitExcluded for why an ignore rule must not).
-func writeDirFragment(ctx context.Context, content string) (string, error) {
-	if err := writeMiseFragment(fragmentRelPath, content); err != nil {
-		return "", err
-	}
-	return ensureGitExcluded(ctx, fragmentRelPath), nil
+// writeDirFragment writes the kae-owned mise fragment in the current directory,
+// creating .config/mise/conf.d/ as needed. The fragment holds machine-specific
+// absolute paths and account names, so it must never be committed — but telling
+// git to ignore it belongs to the caller (runPin, the only one): one
+// ensureGitExcluded call records the fragment and this directory's store links
+// together, and the links are not known until the fragment is written.
+func writeDirFragment(content string) error {
+	return writeMiseFragment(fragmentRelPath, content)
 }
 
 // removeDirFragment deletes the kae-owned mise fragment in the current
@@ -106,10 +103,24 @@ func removeDirFragment() (ok bool, err error) {
 	return true, nil
 }
 
-// ensureGitExcluded records an ignore rule for path (relative to the current
-// directory) in the repository's shared exclude file, so the kae-owned fragment
-// does not sit in `git status` as untracked. It returns the file it recorded the
-// rule in, or "" when it recorded none. Idempotent on the entry line.
+// excludeBannerLine heads the block of entries one ensureGitExcluded call
+// appends, so a reader of the exclude file can tell whose rules those are. One
+// per call, which is why a bind records the fragment and its store links
+// together.
+const excludeBannerLine = "# kagikae per-directory files (machine-specific; do not commit)"
+
+// ensureGitExcluded records an ignore rule for each path (relative to the
+// current directory) in the repository's shared exclude file, so the kae-owned
+// files a bind writes do not sit in `git status` as untracked. It returns the
+// file it recorded the rules in, or "" when it recorded none. Idempotent on the
+// entry line.
+//
+// It takes the whole set in one call rather than one path at a time because each
+// call asks git where the exclude file is and appends its own comment line: a
+// bind records the fragment and this directory's per-tool store links
+// (storeLinkRelPath) in one call, so both cost one `git rev-parse` and one
+// comment line between them. With no paths it asks git nothing — `kae unpin`
+// removes links and records none, and a removal needs no rule.
 //
 // **It never fails.** An ignore rule is cosmetic, and it is the last step of
 // `kae pin`: by the time it runs the stores are materialized, the credential is
@@ -145,7 +156,10 @@ func removeDirFragment() (ok bool, err error) {
 //     the directory being bound, which may be any depth below the root, so the
 //     entry needs --show-prefix in front of it. Without that, pinning a
 //     subdirectory writes a rule that matches nothing.
-func ensureGitExcluded(ctx context.Context, path string) string {
+func ensureGitExcluded(ctx context.Context, paths ...string) string {
+	if len(paths) == 0 {
+		return "" // nothing to record: do not even ask git where to record it
+	}
 	// One call for both values; the prefix keeps its trailing slash, and is
 	// empty at the repository root.
 	out, _, code := runner.Run(ctx, "git", "rev-parse", "--git-common-dir", "--show-prefix")
@@ -162,11 +176,11 @@ func ensureGitExcluded(ctx context.Context, path string) string {
 	// otherwise leave lines[0] truncated to `…/we`, and kae would create
 	// `…/we/info/exclude` somewhere unrelated while reporting the fragment ignored.
 	if len(lines) != 3 || strings.TrimRight(lines[0], "\r") == "" {
-		return warnGitExclude(fmt.Errorf("git rev-parse returned %q", out))
+		return warnGitExclude(paths, fmt.Errorf("git rev-parse returned %q", out))
 	}
 	commonDir, err := filepath.Abs(strings.TrimRight(lines[0], "\r"))
 	if err != nil {
-		return warnGitExclude(fmt.Errorf("resolve git common dir %q: %w", lines[0], err))
+		return warnGitExclude(paths, fmt.Errorf("resolve git common dir %q: %w", lines[0], err))
 	}
 	// The answer must name a directory that already exists. git just reported this
 	// as its own common dir, so it does — and requiring it keeps kae from acting on
@@ -178,23 +192,35 @@ func ensureGitExcluded(ctx context.Context, path string) string {
 	// `git status`. Never declare an artifact for a location you could not measure
 	// (AGENTS.md); failing closed here lands in the warning path above.
 	if info, serr := os.Stat(commonDir); serr != nil || !info.IsDir() {
-		return warnGitExclude(fmt.Errorf("git named %q as its common dir, but that is not an existing directory", commonDir))
+		return warnGitExclude(paths, fmt.Errorf("git named %q as its common dir, but that is not an existing directory", commonDir))
 	}
 	// ponytail: a bare repository answers this too (common dir ".", empty
 	// prefix), so the rule lands in its info/exclude with no worktree to apply
 	// to. Harmless — it is that repository's real exclude file — and reaching it
 	// means having pinned a bare repo, so it is not guarded.
 	excludeFile := filepath.Join(commonDir, "info", "exclude")
-	entry := "/" + escapeGitPattern(strings.TrimRight(lines[1], "\r")) + filepath.ToSlash(path)
+	prefix := "/" + escapeGitPattern(strings.TrimRight(lines[1], "\r"))
 	data, err := os.ReadFile(excludeFile)
 	if err != nil && !os.IsNotExist(err) {
 		// *PathError already names the operation and the file.
-		return warnGitExclude(err)
+		return warnGitExclude(paths, err)
 	}
+	recorded := map[string]bool{}
 	for _, line := range strings.Split(string(data), "\n") {
-		if strings.TrimSpace(line) == entry {
-			return excludeFile // already ignored
+		recorded[strings.TrimSpace(line)] = true
+	}
+	var missing []string
+	for _, path := range paths {
+		entry := prefix + filepath.ToSlash(path)
+		if !recorded[entry] {
+			// Marked as it is queued, so one call naming the same path twice
+			// appends it once.
+			recorded[entry] = true
+			missing = append(missing, entry)
 		}
+	}
+	if len(missing) == 0 {
+		return excludeFile // already ignored
 	}
 	// Append rather than rewrite. This file is the one thing kae writes that is
 	// shared by *sibling bindings* — every worktree of the repository records its
@@ -208,35 +234,41 @@ func ensureGitExcluded(ctx context.Context, path string) string {
 	if len(data) > 0 && !strings.HasSuffix(string(data), "\n") {
 		b.WriteByte('\n')
 	}
-	fmt.Fprintln(&b, "# kagikae per-directory mise fragment (machine-specific; do not commit)")
-	fmt.Fprintln(&b, entry)
+	fmt.Fprintln(&b, excludeBannerLine)
+	for _, entry := range missing {
+		fmt.Fprintln(&b, entry)
+	}
 	if err := os.MkdirAll(filepath.Dir(excludeFile), 0o755); err != nil {
-		return warnGitExclude(err)
+		return warnGitExclude(paths, err)
 	}
 	f, err := os.OpenFile(excludeFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return warnGitExclude(err)
+		return warnGitExclude(paths, err)
 	}
 	if _, err := f.WriteString(b.String()); err != nil {
 		f.Close()
-		return warnGitExclude(err)
+		return warnGitExclude(paths, err)
 	}
 	if err := f.Close(); err != nil {
-		return warnGitExclude(err)
+		return warnGitExclude(paths, err)
 	}
 	return excludeFile
 }
 
 // warnGitExclude reports why kae could not record the ignore rule, on stderr and
-// without changing the exit code (AGENTS.md). It names the remedy because the
-// fragment is machine-specific and must not be committed: the user has to ignore
-// it some other way, and kae will not silently leave that unsaid.
+// without changing the exit code (AGENTS.md). It names the remedy because what
+// it failed to ignore is machine-specific and must not be committed: the user
+// has to ignore it some other way, and kae will not silently leave that unsaid.
 //
 // It returns the empty string so every caller is one line — ensureGitExcluded has
 // many ways to give up and none of them may return an error.
-func warnGitExclude(err error) string {
-	fmt.Fprintf(os.Stderr, "kae: warning: could not tell git to ignore %s: %v\n", fragmentRelPath, err)
-	fmt.Fprintf(os.Stderr, "kae: the binding is in place; ignore %s yourself (it is machine-specific and must not be committed)\n", fragmentRelPath)
+func warnGitExclude(paths []string, err error) string {
+	// Name what was actually being ignored: the fragment, this directory's store
+	// links, or both. Naming the fragment unconditionally would send a user
+	// looking at a file that is already ignored when it is a link that is not.
+	what := strings.Join(paths, ", ")
+	fmt.Fprintf(os.Stderr, "kae: warning: could not tell git to ignore %s: %v\n", what, err)
+	fmt.Fprintf(os.Stderr, "kae: the binding is in place; ignore %s yourself (machine-specific; must not be committed)\n", what)
 	return ""
 }
 

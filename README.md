@@ -238,12 +238,19 @@ fragment (`.config/mise/conf.d/kagikae.toml`); your `mise.toml` is never touched
 The fragment is machine-specific, so kae keeps it out of `git status` through the
 repository's own exclude file (`$GIT_COMMON_DIR/info/exclude`) rather than through
 a tracked `.gitignore` — nothing to commit, and one entry covers the main checkout
-and every linked worktree. Variants:
+and every linked worktree. It also leaves `./.config/<tool>` pointing at that
+tool's store, so the directory can name the store kae keeps under
+`~/.local/share/kagikae/isolation/<pin-id>/`; the links are excluded the same way.
+They are pointers rather than copies, but a program that *follows* one while
+copying reads the store itself — see
+[docs/SECURITY.md](docs/SECURITY.md) § Store links in a bound directory before
+binding a directory that something else syncs. Variants:
 
 ```bash
 kae pin -i side                # isolated: nothing shared with the real home
                                # (opt in via isolated_shared_items)
 kae pin claude main            # re-bind one tool in this dir (sessions/settings kept)
+kae pin side --no-link         # no ./.config/<tool> store links here (removes kae's)
 kae unpin                      # remove the binding (deletes the kae-owned fragment)
 kae relogin                    # log this directory's account in again, into its own
                                # store, and capture the result back

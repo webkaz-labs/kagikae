@@ -282,7 +282,7 @@ func TestDoctorComparesOnlyCopiesOfTheSameAccountAndOnlyAttributedOnes(t *testin
 	// Re-bind that third directory to the other account, so one tool has two accounts
 	// bound across three directories.
 	code, out := captureStdout(t, func() int {
-		return runRebind(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "side")
+		return runRebind(ctx, app, commonOpts{Format: formatText}, constants.ToolClaude, "side", false)
 	})
 	mustExit(t, constants.ExitOK, code, out)
 

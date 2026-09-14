@@ -343,7 +343,7 @@ func pinHereAs(t *testing.T, app *App, profile, mode string) string {
 	var out string
 	pin := func() {
 		code, out = captureStdout(t, func() int {
-			return runPin(context.Background(), app, commonOpts{Format: formatText}, profile, mode)
+			return runPin(context.Background(), app, commonOpts{Format: formatText}, profile, mode, false)
 		})
 	}
 	// Only when the caller has installed nothing. 8 of this helper's call sites run

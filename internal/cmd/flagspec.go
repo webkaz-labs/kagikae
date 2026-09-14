@@ -29,8 +29,10 @@ func registerLsFlags(fs *flag.FlagSet, pins *bool) {
 	fs.BoolVar(pins, "pins", false, "list every directory bound with kae pin instead of accounts and profiles")
 }
 
-func registerPinFlags(fs *flag.FlagSet, shared, isolated *bool) {
+func registerPinFlags(fs *flag.FlagSet, shared, isolated, noLink *bool) {
 	registerScopeFlags(fs, shared, isolated)
+	fs.BoolVar(noLink, "no-link", false,
+		"do not leave ./.config/<tool> links to this directory's stores (and remove the ones kae made here)")
 }
 
 func registerRunFlags(fs *flag.FlagSet, shared, isolated, envMode *bool, profile *string) {
@@ -91,7 +93,7 @@ var commandFlagSpecs = map[string]commandFlagSpec{
 	"add":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
 	"use":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(bool), new(string)) }},
 	"ls":        {extra: func(fs *flag.FlagSet) { registerLsFlags(fs, new(bool)) }},
-	"pin":       {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool)) }},
+	"pin":       {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool), new(bool)) }},
 	"unpin":     {extra: func(fs *flag.FlagSet) { registerUnpinFlags(fs, new(bool)) }},
 	"run":       {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
 	"mise": {extra: func(fs *flag.FlagSet) {

@@ -1363,6 +1363,12 @@ in the same transaction.
   warnings: they must survive a piped stdout and `--quiet`, and they are emitted
   before the write they warn about, not after it.
 - JSON mode never emits color, progress, prompts, or localized text.
+- Human tables fit the terminal. When stdout is a terminal narrower than the
+  table, each row prints as a block instead: the first two cells as a title line,
+  then one indented `Header  value` line per remaining non-empty cell. Output
+  that is not a terminal keeps the table layout. Columns align by display width.
+  With color (not `--no-color`, `NO_COLOR` unset, stdout a terminal), headers and
+  titles are bold, `-` placeholders are dim, and an active `*` is green.
 - Secret values never appear in any output, log, error message or metadata file;
   artifacts
   are referenced by name and location only.
@@ -1497,10 +1503,13 @@ already names (the active account, or the bound one inside a pinned directory).
 `kae ls` and `kae accounts` show them for every captured account. `kae ls --pins`
 does not: a binding is not a usage reading.
 
-The human cell is compact: `5h 16% · 7d 95%`. `-` means kae has no reading, not
-that the account is under its limit. A window at 80% or more is a warning color;
-100% is an error color. Color follows the same `NO_COLOR` rule as the rest of
-the table.
+The human cell is compact: `5h 16% (2h13m) · 7d 95% (3d4h)`. The parenthesis is
+the time left until that window resets, truncated to its two largest units
+(`3d4h`, `2h13m`, `45m`; under a minute reads `1m`); it is absent when the window
+has no `resets_at`. `-` means kae has no reading, not that the account is under
+its limit. Each window's percent has its own color: green below 80%, a warning
+color from 80%, and an error color at 100%; the countdown is dim. Color follows
+the same `NO_COLOR` rule as the rest of the table.
 
 ```json
 "usage": {

@@ -23,8 +23,9 @@ stand without a re-run. No live login was part of this assessment.
 
 On `c2d8f59`: `mise run check` and `git diff --check` passed. `mise run audit`
 passed: govulncheck reported no vulnerabilities, and the fingerprint read matched
-the installed Claude 2.1.282, agy 1.2.10, OpenCode 1.18.32, Cursor and Copilot
-1.0.88 builds, with Codex excluded by design. `mise run naming-agreement` matched
+the installed Claude 2.1.282, agy 1.2.10, OpenCode 1.18.32 and Copilot 1.0.88
+builds and the installed Cursor bundle (the run named its path, not its build
+string), with Codex excluded by design. `mise run naming-agreement` matched
 every case. `mise run goreleaser-check`, `mise run release-evidence` and
 `mise run release-smoke` passed. A GoReleaser snapshot was not built for this
 patch.

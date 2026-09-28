@@ -50,7 +50,28 @@ cases. `mise run goreleaser-check`, `mise run release-evidence` and
 GoReleaser snapshot built darwin/linux × amd64/arm64 archives containing the
 binary, README, LICENSE and generated completions; the archive name stayed
 `0.21.0-SNAPSHOT` because tag `v0.22.0` does not exist yet, and the binary
-reported `kae v0.22.0`. Publication is recorded after `release-verify`.
+reported `kae v0.22.0`.
+
+### v0.22.0 publication result
+
+On 2026-09-29 (JST), [main CI](https://github.com/webkaz-labs/kagikae/actions/runs/36454876914)
+succeeded at tag source `23bda1b2a558d1cad76ef3a69a4dd8a9eee48df8`, and the
+[release workflow](https://github.com/webkaz-labs/kagikae/actions/runs/36455065063)
+succeeded for tag `v0.22.0`, including the job that signed the published
+archives. That tag contains the remeasure commit `43b0789` and the CI zsh
+install.
+
+The published consumer refused installation under mise 2026.9.3's default
+minimum age. The error dated the transparency-log record
+`2026-09-28T17:03:36Z`, after its allowed cutoff
+`2026-09-27T17:22:09.322994Z`. With `KAE_RELEASE_VERIFY_FRESH=1`,
+`go run ./scripts/releaseverify v0.22.0` returned `status: success`: archive
+contents, checksums, exact GitHub OIDC signer/source, Packslip resources,
+native version `kae v0.22.0`, the verified-assets installer and the mise
+consumer passed. Signature checks stayed enabled. This result is not a pass
+under the default age policy. The command used Packslip 1.1.1 and mise 2026.9.3
+placed first on `PATH`, because the operator mise was 2026.9.15 and `mise run`
+would have selected that one. No live login was part of this check.
 
 ## Uninstall and Packslip assessment
 

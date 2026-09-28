@@ -16,6 +16,17 @@ listings and [ADAPTERS.md](ADAPTERS.md) § Subscription windows.
 [ROADMAP.md](ROADMAP.md) retains conditional upstream research and the later
 orchestration/remote exploration queue.
 
+## Candidate — kae v0.22.1
+
+Patch release. The `Limit` cell shows the time left until each window resets
+(`5h 16% (2h13m) · 7d 95% (3d4h)`), and each window's percent has its own
+color. Human tables align by display width and, on a terminal narrower than the
+table, print each row as a block. JSON output is unchanged. Command ownership is
+[CLI.md](CLI.md) § Output Rules and § Subscription windows in listings.
+
+Publication is incomplete until tag `v0.22.1` exists and `mise run release-verify -- v0.22.1`
+passes. This section stays the candidate until that result is recorded.
+
 ## Release procedure
 
 Releases are cut by pushing a `vX.Y.Z` tag; GitHub Actions

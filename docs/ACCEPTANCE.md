@@ -11,6 +11,29 @@ commit gate and the smoke procedures beside the surfaces they check.
 candidate revision it was run against and the release tag when one exists.** This
 document owns the results; results recorded elsewhere are invisible to the next run.
 
+## v0.22.1 candidate
+
+Assessed on 2026-09-29 (JST). Application commits since published v0.22.0 are
+`50a11ff` and `a167ee4` (reset countdowns in the `Limit` cell, narrow-terminal
+stacked tables, display-width alignment and table emphasis) and `c2d8f59`
+(reported version `v0.22.1`). The change is human-text rendering only: JSON
+reports, credential IO, adapters and upstream verification metadata are
+unchanged, so the v0.22.0 upstream remeasure and credential-switching evidence
+stand without a re-run. No live login was part of this assessment.
+
+On `c2d8f59`: `mise run check` and `git diff --check` passed. `mise run audit`
+passed: govulncheck reported no vulnerabilities, and the fingerprint read matched
+the installed Claude 2.1.282, agy 1.2.10, OpenCode 1.18.32, Cursor and Copilot
+1.0.88 builds, with Codex excluded by design. `mise run naming-agreement` matched
+every case. `mise run goreleaser-check`, `mise run release-evidence` and
+`mise run release-smoke` passed. A GoReleaser snapshot was not built for this
+patch.
+
+The rendering was also run by hand in an isolated `scripts/smoke-env.sh` HOME
+with the file secret backend and a fixture `usage-exact.json`, under a
+pseudo-terminal: `kae ls` printed the stacked layout at 60 columns and the table
+at 200 columns, with the documented emphasis colors.
+
 ## v0.22.0 candidate
 
 Assessed on 2026-09-29 (JST). Application commits since published v0.21.0 are

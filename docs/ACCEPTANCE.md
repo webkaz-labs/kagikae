@@ -34,6 +34,31 @@ with the file secret backend and a fixture `usage-exact.json`, under a
 pseudo-terminal: `kae ls` printed the stacked layout at 60 columns and the table
 at 200 columns, with the documented emphasis colors.
 
+### v0.22.1 publication result
+
+On 2026-09-29 (JST), [main CI](https://github.com/webkaz-labs/kagikae/actions/runs/36462863879)
+succeeded at tag source `474896bc84a213f6c7c68f5c561d931c211ffb9c`, and the
+[release workflow](https://github.com/webkaz-labs/kagikae/actions/runs/36463150912)
+succeeded for tag `v0.22.1`, including the job that signed the published
+archives.
+
+With `KAE_RELEASE_VERIFY_FRESH=1`, `go run ./scripts/releaseverify v0.22.1`
+returned `status: success`: archive contents, checksums, signer/source, Packslip
+resources, native version `kae v0.22.1`, the verified-assets installer and the
+mise consumer passed. Signature checks stayed enabled. This result is not a pass
+under the default age policy; the default policy was not tried for this tag. The
+command used Packslip 1.1.1 and mise 2026.9.3, fetched into a temporary
+directory and placed first on `PATH` after their GitHub attestations verified.
+The first run failed because GitHub's unauthenticated API rate limit refused
+the consumer's release lookup; the run after the limit reset passed. No live
+login was part of this check.
+
+The direct local installation used the published v0.22.1 archive and checksum
+through `scripts/install.sh`, after `gh attestation verify` passed for the
+darwin/arm64 archive. PATH resolved `~/.local/bin/kae`, which reported
+`kae v0.22.1`. `config.toml` and `state.json` compared byte-identical before
+and after. No credential migration was performed.
+
 ## v0.22.0 candidate
 
 Assessed on 2026-09-29 (JST). Application commits since published v0.21.0 are

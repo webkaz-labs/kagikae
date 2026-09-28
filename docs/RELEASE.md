@@ -1,31 +1,19 @@
 # Release Process
 
-## Current release — kae v0.22.0
-
-`kae`, `kae ls` and `kae accounts` show each account's subscription windows
-from the tool's local record, then the usage cache, then at most one usage
-request. Bound directories publish their store path. The release is tag
-`v0.22.0` at `23bda1b2a558d1cad76ef3a69a4dd8a9eee48df8` and the
-[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.22.0).
-
-[ACCEPTANCE.md](ACCEPTANCE.md) § v0.22.0 candidate records the upstream
-remeasure and the publication result. The fresh-release consumer used an
-isolated release-age exception; the default policy refused the newly published
-signature. Command ownership is [CLI.md](CLI.md) § Subscription windows in
-listings and [ADAPTERS.md](ADAPTERS.md) § Subscription windows.
-[ROADMAP.md](ROADMAP.md) retains conditional upstream research and the later
-orchestration/remote exploration queue.
-
-## Candidate — kae v0.22.1
+## Current release — kae v0.22.1
 
 Patch release. The `Limit` cell shows the time left until each window resets
 (`5h 16% (2h13m) · 7d 95% (3d4h)`), and each window's percent has its own
 color. Human tables align by display width and, on a terminal narrower than the
-table, print each row as a block. JSON output is unchanged. Command ownership is
-[CLI.md](CLI.md) § Output Rules and § Subscription windows in listings.
+table, print each row as a block. JSON output is unchanged. The release is tag
+`v0.22.1` at `474896bc84a213f6c7c68f5c561d931c211ffb9c` and the
+[GitHub release](https://github.com/webkaz-labs/kagikae/releases/tag/v0.22.1).
 
-Publication is incomplete until tag `v0.22.1` exists and `mise run release-verify -- v0.22.1`
-passes. This section stays the candidate until that result is recorded.
+[ACCEPTANCE.md](ACCEPTANCE.md) § v0.22.1 candidate records the checks and the
+publication result. The fresh-release consumer used an isolated release-age
+exception. Command ownership is [CLI.md](CLI.md) § Output Rules and
+§ Subscription windows in listings. [ROADMAP.md](ROADMAP.md) retains conditional
+upstream research and the later orchestration/remote exploration queue.
 
 ## Release procedure
 

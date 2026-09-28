@@ -497,6 +497,7 @@ func limitCell(usage *usageJSON, now time.Time, color bool) string {
 		return "-"
 	}
 	texts := make([]string, len(parts))
+	countdown := func(s string) string { return dim(s, color) }
 	for i, p := range parts {
 		status := constants.StatusOK
 		switch p.Level {
@@ -505,11 +506,10 @@ func limitCell(usage *usageJSON, now time.Time, color bool) string {
 		case usagelimit.LevelHigh:
 			status = constants.StatusWarn
 		}
-		text := p.Label + " " + paint(status, p.Percent, color)
-		if p.Reset != "" {
-			text += " " + dim("("+p.Reset+")", color)
-		}
-		texts[i] = text
+		texts[i] = p.Render(
+			func(s string) string { return paint(status, s, color) },
+			countdown,
+		)
 	}
 	return strings.Join(texts, usagelimit.Separator)
 }

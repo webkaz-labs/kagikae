@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode"
 
 	"golang.org/x/text/width"
 
@@ -184,12 +185,17 @@ func printStacked(header []string, rows [][]string, color bool) {
 	}
 }
 
-// displayWidth is the number of terminal columns s occupies: SGR sequences
-// take none, East Asian wide and fullwidth runes take two, and every other
-// rune one. Byte length would over-count "·" and misalign the next column.
+// displayWidth is the number of terminal columns s occupies: SGR sequences,
+// combining marks (a macOS NFD path spells "プ" as two runes) and zero-width
+// joiners take none, East Asian wide and fullwidth runes take two, and every
+// other rune one. Byte length would over-count "·" and misalign the next
+// column.
 func displayWidth(s string) int {
 	n := 0
 	for _, r := range stripANSI(s) {
+		if unicode.In(r, unicode.Mn, unicode.Me) || r == '\u200d' {
+			continue
+		}
 		switch width.LookupRune(r).Kind() {
 		case width.EastAsianWide, width.EastAsianFullwidth:
 			n += 2

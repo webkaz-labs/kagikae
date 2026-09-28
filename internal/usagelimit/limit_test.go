@@ -15,12 +15,12 @@ func TestFormatOrdersTheShortWindowFirst(t *testing.T) {
 	if got, want := Format(windows), "5h 16% · 7d 95%"; got != want {
 		t.Fatalf("Format = %q, want %q", got, want)
 	}
-	if Level(windows) != LevelHigh {
-		t.Fatalf("95%% must read as high, got %d", Level(windows))
+	if windows[0].Level() != LevelHigh || windows[1].Level() != LevelOK {
+		t.Fatalf("levels = %d %d, want high and ok", windows[0].Level(), windows[1].Level())
 	}
-	windows[1].UsedPercent = 100
-	if Level(windows) != LevelFull {
-		t.Fatalf("100%% must read as full, got %d", Level(windows))
+	windows[0].UsedPercent = 100
+	if windows[0].Level() != LevelFull {
+		t.Fatalf("100%% must read as full, got %d", windows[0].Level())
 	}
 }
 

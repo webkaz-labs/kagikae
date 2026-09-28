@@ -1368,7 +1368,8 @@ in the same transaction.
   then one indented `Header  value` line per remaining non-empty cell. Output
   that is not a terminal keeps the table layout. Columns align by display width.
   With color (not `--no-color`, `NO_COLOR` unset, stdout a terminal), headers and
-  titles are bold, `-` placeholders are dim, and an active `*` is green.
+  row titles are bold, stacked labels and `-` placeholders are dim, and an
+  active `*` is green.
 - Secret values never appear in any output, log, error message or metadata file;
   artifacts
   are referenced by name and location only.

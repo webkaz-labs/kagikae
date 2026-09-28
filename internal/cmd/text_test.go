@@ -59,6 +59,9 @@ func TestDisplayWidthCountsWideRunesTwice(t *testing.T) {
 	if got := displayWidth("\x1b[33m日本·a\x1b[0m"); got != 6 {
 		t.Fatalf("displayWidth = %d, want 6", got)
 	}
+	if got := displayWidth("\u30d5\u309a e\u0301"); got != 4 {
+		t.Fatalf("combining marks take no column: displayWidth = %d, want 4", got)
+	}
 }
 
 func TestLimitCellColorsEachWindowAndDimsTheCountdown(t *testing.T) {
@@ -76,5 +79,17 @@ func TestLimitCellColorsEachWindowAndDimsTheCountdown(t *testing.T) {
 	}
 	if got := limitCell(nil, now, true); got != "-" {
 		t.Fatalf("missing = %q", got)
+	}
+}
+
+func TestPrintTableStackedWithColorDimsLabelsAndPlaceholders(t *testing.T) {
+	withTerminalColumns(t, 10)
+	_, out := captureStdout(t, func() int {
+		printTable([]string{"Tool", "Account", "Limit"}, [][]string{{"codex", "side", "-"}}, true)
+		return 0
+	})
+	want := "\x1b[1mcodex  side\x1b[0m\n  \x1b[2mLimit\x1b[0m  \x1b[2m-\x1b[0m\n"
+	if out != want {
+		t.Fatalf("stacked = %q, want %q", out, want)
 	}
 }

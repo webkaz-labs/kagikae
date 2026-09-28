@@ -83,15 +83,6 @@ func rank(w Window) int {
 	}
 }
 
-// Level is the strongest attention state among windows.
-func Level(windows []Window) int {
-	level := LevelOK
-	for _, w := range windows {
-		level = max(level, w.Level())
-	}
-	return level
-}
-
 // Level is this window's attention state.
 func (w Window) Level() int {
 	switch {
@@ -116,11 +107,19 @@ type Part struct {
 
 // Text is the part as plain text: "5h 16%" or "5h 16% (2h13m)".
 func (p Part) Text() string {
-	if p.Reset == "" {
-		return p.Label + " " + p.Percent
-	}
-	return p.Label + " " + p.Percent + " (" + p.Reset + ")"
+	return p.Render(plain, plain)
 }
+
+// Render is Text with the percent and the parenthesized countdown passed
+// through their own styling.
+func (p Part) Render(percent, reset func(string) string) string {
+	if p.Reset == "" {
+		return p.Label + " " + percent(p.Percent)
+	}
+	return p.Label + " " + percent(p.Percent) + " " + reset("("+p.Reset+")")
+}
+
+func plain(s string) string { return s }
 
 // Parts lists windows in display order. A zero now, a window without a reset,
 // or a reset that is not after now leaves Reset empty.

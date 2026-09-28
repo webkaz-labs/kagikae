@@ -25,6 +25,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # Completion tests invoke zsh. ubuntu-latest ships bash and not zsh.
+      - name: Install zsh
+        run: sudo apt-get update && sudo apt-get install -y zsh
+
       - name: Vet
         run: go vet ./...
 

@@ -150,7 +150,7 @@ func runPreservation(ctx context.Context, app *App, opts commonOpts, action, id 
 		for _, r := range listing.Preservations {
 			rows = append(rows, []string{r.ID, r.Tool, app.displayPath(r.Directory), r.BoundAccount, r.State, fmt.Sprint(r.SizeBytes)})
 		}
-		printTable([]string{"ID", "Tool", "Directory", "Binding account (owner unknown)", "State", "Bytes"}, rows)
+		printTable([]string{"ID", "Tool", "Directory", "Binding account (owner unknown)", "State", "Bytes"}, rows, colorEnabled(opts.NoColor))
 		return listing.exitCode()
 	}
 	if err := app.requireConfig(); err != nil {

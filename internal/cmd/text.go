@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	"golang.org/x/text/width"
+
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
@@ -39,6 +41,26 @@ func paint(status, s string, color bool) string {
 	default:
 		return s
 	}
+	return sgr(code, s)
+}
+
+// bold and dim are emphasis without a status meaning: table headers and row
+// titles stand out, labels and unknown cells recede.
+func bold(s string, color bool) string {
+	if !color {
+		return s
+	}
+	return sgr("1", s)
+}
+
+func dim(s string, color bool) string {
+	if !color {
+		return s
+	}
+	return sgr("2", s)
+}
+
+func sgr(code, s string) string {
 	return "\x1b[" + code + "m" + s + "\x1b[0m"
 }
 
@@ -83,34 +105,99 @@ func boundTools(accounts map[string]string) []string {
 	return append(ordered, unknown...)
 }
 
-// printTable renders rows with left-aligned, space-padded columns.
-func printTable(header []string, rows [][]string) {
+// terminalColumns is the width a human table must fit, or zero for no limit.
+// A variable so tests can pose as a narrow terminal.
+var terminalColumns = stdoutColumns
+
+// printTable renders rows with left-aligned, space-padded columns. When the
+// terminal is narrower than the table, a wrapped row would scatter its cells
+// across lines, so each row becomes a block instead: the first two cells as a
+// title line, then one indented "Header  value" line per remaining non-empty
+// cell. Output that is not a terminal keeps the table. With color, headers
+// and titles are bold and "-" cells are dim.
+func printTable(header []string, rows [][]string, color bool) {
 	widths := make([]int, len(header))
 	for i, h := range header {
-		widths[i] = len(h)
+		widths[i] = displayWidth(h)
 	}
 	for _, row := range rows {
 		for i, cell := range row {
-			if i < len(widths) && len(stripANSI(cell)) > widths[i] {
-				widths[i] = len(stripANSI(cell))
+			if i < len(widths) && displayWidth(cell) > widths[i] {
+				widths[i] = displayWidth(cell)
 			}
 		}
 	}
-	printRow := func(cells []string) {
+	total := 2 * (len(widths) - 1)
+	for _, w := range widths {
+		total += w
+	}
+	if limit := terminalColumns(); limit > 0 && total > limit && len(header) > 2 {
+		printStacked(header, rows, color)
+		return
+	}
+	printRow := func(cells []string, style func(string) string) {
 		parts := make([]string, len(cells))
 		for i, cell := range cells {
-			pad := widths[i] - len(stripANSI(cell))
+			pad := widths[i] - displayWidth(cell)
 			if pad < 0 {
 				pad = 0
 			}
-			parts[i] = cell + strings.Repeat(" ", pad)
+			parts[i] = style(cell) + strings.Repeat(" ", pad)
 		}
 		fmt.Println(strings.TrimRight(strings.Join(parts, "  "), " "))
 	}
-	printRow(header)
+	printRow(header, func(cell string) string { return bold(cell, color) })
 	for _, row := range rows {
-		printRow(row)
+		printRow(row, func(cell string) string { return dimUnknown(cell, color) })
 	}
+}
+
+// dimUnknown recedes the "-" placeholder so known values carry the eye.
+func dimUnknown(cell string, color bool) string {
+	if cell == "-" {
+		return dim(cell, color)
+	}
+	return cell
+}
+
+// printStacked is printTable's narrow layout.
+func printStacked(header []string, rows [][]string, color bool) {
+	label := 0
+	for _, h := range header[2:] {
+		label = max(label, displayWidth(h))
+	}
+	for _, row := range rows {
+		title := []string{}
+		for _, cell := range row[:min(2, len(row))] {
+			if cell != "" {
+				title = append(title, cell)
+			}
+		}
+		fmt.Println(bold(strings.Join(title, "  "), color))
+		for i := 2; i < len(row) && i < len(header); i++ {
+			if row[i] == "" {
+				continue
+			}
+			pad := strings.Repeat(" ", label-displayWidth(header[i]))
+			fmt.Println("  " + dim(header[i], color) + pad + "  " + dimUnknown(row[i], color))
+		}
+	}
+}
+
+// displayWidth is the number of terminal columns s occupies: SGR sequences
+// take none, East Asian wide and fullwidth runes take two, and every other
+// rune one. Byte length would over-count "·" and misalign the next column.
+func displayWidth(s string) int {
+	n := 0
+	for _, r := range stripANSI(s) {
+		switch width.LookupRune(r).Kind() {
+		case width.EastAsianWide, width.EastAsianFullwidth:
+			n += 2
+		default:
+			n++
+		}
+	}
+	return n
 }
 
 var sgrRE = regexp.MustCompile("\x1b\\[[0-9;]*m")

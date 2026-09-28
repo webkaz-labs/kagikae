@@ -90,7 +90,7 @@ func runLsPins(app *App, opts commonOpts) int {
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
-	printPinsReport(app, report)
+	printPinsReport(app, report, colorEnabled(opts.NoColor))
 	return constants.ExitOK
 }
 
@@ -171,7 +171,7 @@ func (app *App) bindingConfigStores(pinID string, info fragmentInfo) map[string]
 	return stores
 }
 
-func printPinsReport(app *App, report *pinsReport) {
+func printPinsReport(app *App, report *pinsReport, color bool) {
 	if len(report.BoundDirectories) == 0 {
 		fmt.Println("Bound directories: (none — bind one with: kae pin <profile>)")
 		return
@@ -179,10 +179,7 @@ func printPinsReport(app *App, report *pinsReport) {
 	fmt.Println("Bound directories:")
 	rows := [][]string{}
 	for _, dir := range report.BoundDirectories {
-		current := ""
-		if dir.Current {
-			current = "*"
-		}
+		current := activeMark(dir.Current, color)
 		profile := dir.Profile
 		if profile == "" {
 			profile = "(ad-hoc)"
@@ -192,7 +189,7 @@ func printPinsReport(app *App, report *pinsReport) {
 			toolAccountList(dir.Accounts),
 		})
 	}
-	printTable([]string{"Directory", "Current", "Profile", "Mode", "Accounts"}, rows)
+	printTable([]string{"Directory", "Current", "Profile", "Mode", "Accounts"}, rows, color)
 }
 
 func buildLs(ctx context.Context, app *App) (*lsReport, error) {
@@ -225,17 +222,14 @@ func printLsReport(app *App, report *lsReport, opts commonOpts) {
 		color := colorEnabled(opts.NoColor)
 		rows := [][]string{}
 		for _, item := range report.Accounts {
-			active := ""
-			if item.Active {
-				active = "*"
-			}
+			active := activeMark(item.Active, color)
 			rows = append(rows, []string{
 				item.Tool, item.Account, item.Identity, active, item.Driver,
 				credentialCell(item.Credential, item.ReloginBy, now),
-				limitCell(item.Usage, color),
+				limitCell(item.Usage, now, color),
 			})
 		}
-		printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Limit"}, rows)
+		printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Limit"}, rows, color)
 	}
 	fmt.Println()
 	if len(report.Profiles) == 0 {

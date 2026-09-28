@@ -6,6 +6,7 @@ package usagelimit
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -86,27 +87,90 @@ func rank(w Window) int {
 func Level(windows []Window) int {
 	level := LevelOK
 	for _, w := range windows {
-		switch {
-		case w.UsedPercent >= fullPercent:
-			return LevelFull
-		case w.UsedPercent >= highPercent:
-			level = LevelHigh
-		}
+		level = max(level, w.Level())
 	}
 	return level
+}
+
+// Level is this window's attention state.
+func (w Window) Level() int {
+	switch {
+	case w.UsedPercent >= fullPercent:
+		return LevelFull
+	case w.UsedPercent >= highPercent:
+		return LevelHigh
+	default:
+		return LevelOK
+	}
+}
+
+// Part is one window of a compact cell, split so a renderer can style the
+// percent and the time left separately. Reset is empty when there is no
+// deadline to count down to.
+type Part struct {
+	Label   string
+	Percent string
+	Reset   string
+	Level   int
+}
+
+// Text is the part as plain text: "5h 16%" or "5h 16% (2h13m)".
+func (p Part) Text() string {
+	if p.Reset == "" {
+		return p.Label + " " + p.Percent
+	}
+	return p.Label + " " + p.Percent + " (" + p.Reset + ")"
+}
+
+// Parts lists windows in display order. A zero now, a window without a reset,
+// or a reset that is not after now leaves Reset empty.
+func Parts(windows []Window, now time.Time) []Part {
+	parts := make([]Part, 0, len(windows))
+	for _, w := range Normalize(windows) {
+		part := Part{Label: label(w), Percent: percent(w.UsedPercent), Level: w.Level()}
+		if !now.IsZero() && w.ResetsAt.After(now) {
+			part.Reset = Remaining(w.ResetsAt.Sub(now))
+		}
+		parts = append(parts, part)
+	}
+	return parts
 }
 
 // Format renders a compact cell such as "5h 16% · 7d 95%". An empty result
 // means there is nothing to show; callers print their own placeholder.
 func Format(windows []Window) string {
-	if len(windows) == 0 {
-		return ""
+	return FormatAt(windows, time.Time{})
+}
+
+// FormatAt is Format with the time left until each window resets, as in
+// "5h 16% (2h13m) · 7d 95% (3d4h)".
+func FormatAt(windows []Window, now time.Time) string {
+	parts := Parts(windows, now)
+	texts := make([]string, len(parts))
+	for i, p := range parts {
+		texts[i] = p.Text()
 	}
-	parts := make([]string, 0, len(windows))
-	for _, w := range Normalize(windows) {
-		parts = append(parts, label(w)+" "+percent(w.UsedPercent))
+	return strings.Join(texts, Separator)
+}
+
+// Separator joins the parts of a compact cell.
+const Separator = " · "
+
+// Remaining renders a positive duration in the two largest units: "3d4h",
+// "2h13m", or "45m". It truncates like a countdown; a remainder under a
+// minute reads "1m", because a zero would look already reset.
+func Remaining(d time.Duration) string {
+	minutes := int(d / time.Minute)
+	switch {
+	case minutes < 1:
+		return "1m"
+	case minutes < 60:
+		return fmt.Sprintf("%dm", minutes)
+	case minutes < 1440:
+		return fmt.Sprintf("%dh%dm", minutes/60, minutes%60)
+	default:
+		return fmt.Sprintf("%dd%dh", minutes/1440, minutes%1440/60)
 	}
-	return joinDot(parts)
 }
 
 func label(w Window) string {
@@ -136,14 +200,6 @@ func percent(p float64) string {
 		p = fullPercent
 	}
 	return fmt.Sprintf("%.0f%%", p)
-}
-
-func joinDot(parts []string) string {
-	out := parts[0]
-	for _, p := range parts[1:] {
-		out += " · " + p
-	}
-	return out
 }
 
 // IDForMinutes maps a window length onto the contract id when the length is

@@ -75,7 +75,7 @@ func runBackupList(_ context.Context, app *App, opts commonOpts) int {
 	for _, item := range report.Backups {
 		rows = append(rows, []string{item.ID, item.CreatedAt, item.Reason, fmt.Sprint(item.Tools)})
 	}
-	printTable([]string{"ID", "Created", "Reason", "Tools"}, rows)
+	printTable([]string{"ID", "Created", "Reason", "Tools"}, rows, colorEnabled(opts.NoColor))
 	return report.exitCode()
 }
 

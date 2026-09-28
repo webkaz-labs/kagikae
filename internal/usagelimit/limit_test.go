@@ -35,3 +35,36 @@ func TestFreshDropsAWindowThatHasReset(t *testing.T) {
 		t.Fatalf("fresh windows = %+v", windows)
 	}
 }
+
+func TestFormatAtShowsTheTimeLeftUntilEachReset(t *testing.T) {
+	now := time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
+	windows := []Window{
+		{ID: constants.UsageWindowSevenDay, UsedPercent: 95, ResetsAt: now.Add(3*24*time.Hour + 4*time.Hour + 59*time.Minute)},
+		{ID: constants.UsageWindowFiveHour, UsedPercent: 16, ResetsAt: now.Add(2*time.Hour + 13*time.Minute + 30*time.Second)},
+		{ID: "window_60", UsedPercent: 1},
+	}
+	if got, want := FormatAt(windows, now), "5h 16% (2h13m) · 7d 95% (3d4h) · window_60 1%"; got != want {
+		t.Fatalf("FormatAt = %q, want %q", got, want)
+	}
+	if got, want := FormatAt(windows, time.Time{}), "5h 16% · 7d 95% · window_60 1%"; got != want {
+		t.Fatalf("FormatAt without now = %q, want %q", got, want)
+	}
+}
+
+func TestRemainingKeepsTheTwoLargestUnits(t *testing.T) {
+	for _, tc := range []struct {
+		d    time.Duration
+		want string
+	}{
+		{20 * time.Second, "1m"},
+		{45 * time.Minute, "45m"},
+		{time.Hour, "1h0m"},
+		{23*time.Hour + 59*time.Minute, "23h59m"},
+		{24 * time.Hour, "1d0h"},
+		{6*24*time.Hour + 23*time.Hour + 59*time.Minute, "6d23h"},
+	} {
+		if got := Remaining(tc.d); got != tc.want {
+			t.Errorf("Remaining(%s) = %q, want %q", tc.d, got, tc.want)
+		}
+	}
+}

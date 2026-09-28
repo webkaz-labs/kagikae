@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -363,9 +364,9 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		if ts.Credential == constants.CredentialStale || ts.Credential == constants.CredentialExpiring {
 			cred = paint(constants.StatusWarn, cred, color)
 		}
-		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, cred, limitCell(ts.Usage, color), notes})
+		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, cred, limitCell(ts.Usage, now, color), notes})
 	}
-	printTable([]string{"Tool", "Account", "Identity", "Driver", "Auth", "Credential", "Limit", "Notes"}, rows)
+	printTable([]string{"Tool", "Account", "Identity", "Driver", "Auth", "Credential", "Limit", "Notes"}, rows, color)
 	warned := false
 	for _, ts := range report.Tools {
 		for _, warning := range ts.Warnings {
@@ -461,17 +462,14 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 	color := colorEnabled(opts.NoColor)
 	rows := [][]string{}
 	for _, item := range report.Accounts {
-		active := ""
-		if item.Active {
-			active = "*"
-		}
+		active := activeMark(item.Active, color)
 		rows = append(rows, []string{
 			item.Tool, item.Account, orDash(item.Identity), active, item.Driver,
 			credentialCell(item.Credential, item.ReloginBy, now),
-			limitCell(item.Usage, color), item.CapturedAt,
+			limitCell(item.Usage, now, color), item.CapturedAt,
 		})
 	}
-	printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Limit", "Captured"}, rows)
+	printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Limit", "Captured"}, rows, color)
 	return constants.ExitOK
 }
 
@@ -486,22 +484,40 @@ func orDash(s string) string {
 }
 
 // limitCell renders subscription windows for a human table. The text is the
-// compact form ("5h 16% · 7d 95%"); color marks a window that is nearly or
-// fully used. A missing reading is the same "-" as every other unknown cell.
-func limitCell(usage *usageJSON, color bool) string {
+// compact form with the time left until each reset ("5h 16% (2h13m) · 7d 95%
+// (3d4h)"). With color, each window's percent carries its own state — green,
+// then warning at 80%, error at 100% — and the countdown is dim. A missing
+// reading is the same "-" as every other unknown cell.
+func limitCell(usage *usageJSON, now time.Time, color bool) string {
 	if usage == nil {
 		return "-"
 	}
-	text := usagelimit.Format(usage.Windows)
-	if text == "" {
+	parts := usagelimit.Parts(usage.Windows, now)
+	if len(parts) == 0 {
 		return "-"
 	}
-	switch usagelimit.Level(usage.Windows) {
-	case usagelimit.LevelFull:
-		return paint(constants.StatusError, text, color)
-	case usagelimit.LevelHigh:
-		return paint(constants.StatusWarn, text, color)
-	default:
-		return text
+	texts := make([]string, len(parts))
+	for i, p := range parts {
+		status := constants.StatusOK
+		switch p.Level {
+		case usagelimit.LevelFull:
+			status = constants.StatusError
+		case usagelimit.LevelHigh:
+			status = constants.StatusWarn
+		}
+		text := p.Label + " " + paint(status, p.Percent, color)
+		if p.Reset != "" {
+			text += " " + dim("("+p.Reset+")", color)
+		}
+		texts[i] = text
 	}
+	return strings.Join(texts, usagelimit.Separator)
+}
+
+// activeMark is the "*" of an Active or Current column.
+func activeMark(active, color bool) string {
+	if !active {
+		return ""
+	}
+	return paint(constants.StatusOK, "*", color)
 }

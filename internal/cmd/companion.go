@@ -323,7 +323,7 @@ func runCompanionList(_ context.Context, app *App, opts commonOpts) int {
 		}
 		rows = append(rows, []string{b.Profile, b.Companion, strings.Join(parts, ", ")})
 	}
-	printTable([]string{"Profile", "Companion", "Knobs"}, rows)
+	printTable([]string{"Profile", "Companion", "Knobs"}, rows, colorEnabled(opts.NoColor))
 	return constants.ExitOK
 }
 

@@ -136,7 +136,7 @@ func (s *scenario) publish(root, source, original, packslip, key, otherKey, vers
 	stage := filepath.Join(root, version)
 	binary := filepath.Join(root, "kae")
 	if build {
-		needle := `toolVersion = "v0.21.0"`
+		needle := `toolVersion = "v0.22.0"`
 		s.require(strings.Count(original, needle) == 1, "fixture version constant is missing or ambiguous")
 		s.write(filepath.Join(source, "internal/cmd/cmd.go"), strings.Replace(original, needle, `toolVersion = "`+tag+`"`, 1), 0o600)
 		s.run(source, "go", "build", "-o", binary, ".")

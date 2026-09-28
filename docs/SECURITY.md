@@ -199,6 +199,17 @@ child could rotate the live credential unseen — a cached value would be stale.
   the env var the pin already injects (at `kae companion add` time, through
   `internal/runner`'s env seam); it is never written to argv or stdout. The same
   recorded login (`expected_login`) is non-secret config.toml inline.
+- `kae`, `kae ls` and `kae accounts` may read subscription windows. The local
+  read (Claude's `usage-exact.json`, Codex session rollouts) is offline and
+  does not open the credential. The network read runs only when no local file
+  yields a window that has not reset, and the cache has neither a still-valid
+  local reading nor a remote reading younger than ten minutes. It sends the captured access
+  token in the `Authorization` header to `api.anthropic.com` or `chatgpt.com`
+  only, does not follow redirects, and times out after two seconds. The token
+  is not written to the usage cache, argv, stdout, or stderr. A redaction test
+  pins that. Claude's request uses the `User-Agent` of the verified Claude Code
+  release because that endpoint throttles other agents before it returns the
+  windows; the header is not a claim that kae is Claude Code.
 
 ## File Permissions
 

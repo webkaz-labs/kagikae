@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
@@ -42,6 +43,10 @@ type App struct {
 	// test seam (App is constructed directly in tests; see app.go newApp doc);
 	// nil in production, so secretBackend resolves from config as usual.
 	backendForTest secret.Backend
+	// usageClient fetches subscription windows when no local record and no
+	// fresh cache entry exist. Nil skips the network. Production sets it;
+	// tests leave it nil unless a case is about that fetch.
+	usageClient *http.Client
 	// Test seams for failures and pre-lock races that cannot be scheduled
 	// deterministically around non-blocking flock acquisition. All are nil in
 	// production.
@@ -86,7 +91,8 @@ func newApp(configPath string) *App {
 			LookupEnv: os.LookupEnv,
 			LookPath:  exec.LookPath,
 		},
-		Now: time.Now,
+		Now:         time.Now,
+		usageClient: newUsageClient(),
 	}
 }
 

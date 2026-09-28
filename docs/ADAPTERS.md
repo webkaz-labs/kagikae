@@ -1277,6 +1277,26 @@ claims decoder is `internal/jwt`).
 7. Add fake-runner / temp-HOME tests for capture, apply, missing-auth, and
    guard-refusal paths.
 
+## Subscription windows
+
+`kae`, `kae ls` and `kae accounts` show the windows a tool has already written.
+The listing rules, the cache, and the network fallback are in
+[CLI.md](CLI.md) § Subscription windows in listings. This section is only where
+each tool writes the local record, because that path is adapter knowledge.
+
+| Tool | Local record | What kae reads |
+|------|----------------|----------------|
+| claude | `<config dir>/usage-exact.json` | `fiveHour` and `sevenDay`: `usedPercent`, `resetsAt` (Unix seconds). The config dir is `configDir` (`CLAUDE_CONFIG_DIR`, otherwise `~/.claude`). Names like `usage-exact.json.<suffix>` are the tool's temp files and are ignored. |
+| codex | newest `sessions/**/*.jsonl` under `CODEX_HOME` | the last `payload.rate_limits` in the file's tail: `primary` / `secondary` with `used_percent`, `window_minutes`, `resets_at`. 300 minutes is `five_hour`; 10080 minutes is `seven_day`. |
+
+The shapes are what the parsers accept. They are not a claim that every
+installed build was re-measured. A tool with no row here has no window column.
+
+A shared home's file does not name an account. kae keeps it attributed to the
+account that owned that mtime, so a switch does not move the previous account's
+windows onto the new one until the tool rewrites the file. An isolated home
+belongs to the account in its path.
+
 ## Verified Upstream Versions
 
 Each adapter declares, via the `Adapter` method `VerifiedVersion()`, the upstream

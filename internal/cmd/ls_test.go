@@ -433,7 +433,7 @@ func TestAccountItemsToleratesNoCredentialStates(t *testing.T) {
 	st.Active[constants.ToolClaude] = "main"
 	items := accountItems(st, []account.Account{
 		{Tool: constants.ToolClaude, Name: "main", Driver: constants.DriverClaudeFilePatch},
-	}, nil)
+	}, nil, nil)
 	if len(items) != 1 {
 		t.Fatalf("expected the row to survive, got %d", len(items))
 	}

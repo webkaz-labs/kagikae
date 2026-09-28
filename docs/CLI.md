@@ -474,11 +474,13 @@ account or a restore ID. Human list guidance remains on stderr; JSON retains the
 ## kae ls Semantics
 
 `kae ls` lists every captured account (with its detected `identity`, blank when
-absent) and every defined profile in one read-only view (the data otherwise
-split across `kae accounts` and `kae status`), each with an active marker. It
-takes no locks and writes nothing. `--json` keeps `schema_version: 1` and `[]`
-arrays, reusing the `kae accounts` account rows and the `kae status` profile
-rows.
+absent) and every defined profile in one view (the data otherwise split across
+`kae accounts` and `kae status`), each with an active marker and, when kae has
+one, that account's subscription windows. It takes no locks and does not change
+accounts, credentials, or config. It may update the usage cache described in
+"Subscription windows in listings"; a failure to write that file does not change
+the exit code. `--json` keeps `schema_version: 1` and `[]` arrays, reusing the
+`kae accounts` account rows and the `kae status` profile rows.
 
 `kae ls --pins` swaps that view for every directory bound with `kae pin`, from
 anywhere: directory, a `*` for the current one, profile (`(ad-hoc)` when the
@@ -1417,7 +1419,9 @@ isolated path or the recorded shared-dir account), never a stale profile label.
 global isolated home by `kae use -i` or `kae run -i`, with its private home
 path; it is `[]` when no tool is globally isolated. `credential` / `relogin_by`
 describe the **active** account's snapshot freshness (see "Credential freshness
-in listings" below); both are absent when no account is active. The human text
+in listings" below); both are absent when no account is active. `usage`, when
+present, is that same account's subscription windows (see "Subscription windows
+in listings" below). The human text
 leads with the same data: the global-isolated homes (if any), the pin banner, the
 global active profile, the per-tool table, then the profiles list.
 
@@ -1484,6 +1488,62 @@ reading them is exactly as accurate and cannot fall out of step.
 The human tables render this as a `Credential` column, spelling out the time left
 (`3 day(s) left`) rather than repeating the state word, `re-login now` for a stale
 one, and `-` for one kae could not judge.
+
+#### Subscription windows in listings
+
+`kae`, `kae ls` and `kae accounts` add a `Limit` column, and the same rows add
+an optional `usage` object. `kae` shows the windows for the account that row
+already names (the active account, or the bound one inside a pinned directory).
+`kae ls` and `kae accounts` show them for every captured account. `kae ls --pins`
+does not: a binding is not a usage reading.
+
+The human cell is compact: `5h 16% · 7d 95%`. `-` means kae has no reading, not
+that the account is under its limit. A window at 80% or more is a warning color;
+100% is an error color. Color follows the same `NO_COLOR` rule as the rest of
+the table.
+
+```json
+"usage": {
+  "source": "local",
+  "observed_at": "2026-09-28T01:00:00Z",
+  "windows": [
+    {"id": "five_hour", "used_percent": 16, "resets_at": "2026-09-28T12:00:00Z", "minutes": 300},
+    {"id": "seven_day", "used_percent": 95, "resets_at": "2026-10-01T00:00:00Z", "minutes": 10080}
+  ]
+}
+```
+
+`source` is `local` when this process read a file the tool wrote, and `cache`
+when the number is a remembered reading. `observed_at` is when that reading was
+taken. `id` is `five_hour`, `seven_day`, or `window_<minutes>` when the length is
+neither. `minutes` is the length the tool stated, in minutes. A window whose
+`resets_at` is already past is dropped; a window with no `resets_at` is kept.
+The whole object is omitted when nothing remains. `schema_version` stays 1.
+
+Where the number comes from, in order:
+
+1. **The tool's own file.** Claude writes `<config dir>/usage-exact.json`
+   (`fiveHour` / `sevenDay`). Codex appends `rate_limits` to the newest session
+   rollout under `<CODEX_HOME>/sessions`. A shared home does not name an account.
+   kae keeps that file attributed to the account that owned it at that mtime, so
+   switching accounts does not relabel the previous windows onto the new account
+   until the tool rewrites the file. An isolated home belongs to the account in
+   its path.
+2. **The usage cache** (`usage-cache.json` next to `state.json`;
+   [DATA-MODEL.md](DATA-MODEL.md) § State). A local reading is remembered so the
+   account still shows it after the shared home moves on. A remembered local
+   reading is not refreshed over the network. A remembered remote reading is
+   asked again after ten minutes. Windows that have already reset are not shown.
+3. **One usage request**, when the cache cannot answer: it is missing, every
+   window in it has reset, or it is a remote reading older than ten minutes.
+   The request uses an access token that has not expired. kae does not refresh
+   a token to learn the windows. It is skipped when it would not be allowed
+   (see [SECURITY.md](SECURITY.md)); a failure, a timeout, or an offline
+   machine leaves the previous still-valid windows in place, or `-` when there
+   are none, and the exit code unchanged.
+
+The cache write is best-effort and takes no lock. `--pins` does not read or
+write it.
 
 ### `kae ls --json`
 

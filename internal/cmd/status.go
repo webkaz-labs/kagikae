@@ -11,6 +11,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/state"
+	"github.com/webkaz-labs/kagikae/internal/usagelimit"
 )
 
 type toolStatus struct {
@@ -30,6 +31,9 @@ type toolStatus struct {
 	// rule. Additive and omitempty; both absent when no account is active.
 	Credential string `json:"credential,omitempty"`
 	ReloginBy  string `json:"relogin_by,omitempty"`
+	// Usage is the active account's subscription windows. Same object as
+	// accountItem.Usage; absent when kae has no reading.
+	Usage *usageJSON `json:"usage,omitempty"`
 }
 
 // toolAccount is a (tool, account) map key for the captured-identity lookup.
@@ -137,6 +141,7 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 		}
 	}
 	credentials := app.capturedCredentialStates(ctx, captured)
+	usages := app.accountUsages(ctx, captured, st)
 	activeProfile := app.activeProfileName(st)
 	if activeProfile != "" {
 		report.ActiveProfile = &activeProfile
@@ -168,6 +173,7 @@ func buildStatus(ctx context.Context, app *App) (*statusReport, error) {
 			ts.Identity = identityByAccount[toolAccount{tool, *ts.Account}]
 			cred := credentials[toolAccount{tool, *ts.Account}]
 			ts.Credential, ts.ReloginBy = cred.State, stampOrEmpty(cred.ReloginBy)
+			ts.Usage = usages[toolAccount{tool, *ts.Account}].report()
 		}
 		if det := detections[i]; det.err != nil {
 			ts.Warnings = append(ts.Warnings, det.err.Error())
@@ -248,7 +254,7 @@ func (app *App) profileStatuses(activeProfile string) []profileStatus {
 // each account's snapshot freshness; an account absent from it (or a nil map, when
 // the secret backend was unavailable) reports no credential state at all rather
 // than a healthy-looking one.
-func accountItems(st *state.State, captured []account.Account, states map[toolAccount]credentialState) []accountItem {
+func accountItems(st *state.State, captured []account.Account, states map[toolAccount]credentialState, usages map[toolAccount]usageView) []accountItem {
 	items := []accountItem{}
 	for _, acc := range captured {
 		cred := states[toolAccount{acc.Tool, acc.Name}]
@@ -261,6 +267,7 @@ func accountItems(st *state.State, captured []account.Account, states map[toolAc
 			CapturedAt: acc.CapturedAt.UTC().Format(time.RFC3339),
 			Credential: cred.State,
 			ReloginBy:  stampOrEmpty(cred.ReloginBy),
+			Usage:      usages[toolAccount{acc.Tool, acc.Name}].report(),
 		})
 	}
 	return items
@@ -356,9 +363,9 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 		if ts.Credential == constants.CredentialStale || ts.Credential == constants.CredentialExpiring {
 			cred = paint(constants.StatusWarn, cred, color)
 		}
-		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, cred, notes})
+		rows = append(rows, []string{ts.Tool, accountName, orDash(ts.Identity), ts.Driver, auth, cred, limitCell(ts.Usage, color), notes})
 	}
-	printTable([]string{"Tool", "Account", "Identity", "Driver", "Auth", "Credential", "Notes"}, rows)
+	printTable([]string{"Tool", "Account", "Identity", "Driver", "Auth", "Credential", "Limit", "Notes"}, rows)
 	warned := false
 	for _, ts := range report.Tools {
 		for _, warning := range ts.Warnings {
@@ -400,6 +407,11 @@ type accountItem struct {
 	// store. Absent is never "fine".
 	Credential string `json:"credential,omitempty"`
 	ReloginBy  string `json:"relogin_by,omitempty"`
+	// Usage is this account's subscription windows. Additive and omitempty.
+	// Absent means kae has no reading, never that the account is under its
+	// limit. source is local when this process read the tool's own file, and
+	// cache when the number is a prior reading.
+	Usage *usageJSON `json:"usage,omitempty"`
 }
 
 type accountsReport struct {
@@ -432,9 +444,11 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 	if err != nil {
 		return finish(opts, err)
 	}
+	states := app.capturedCredentialStates(ctx, captured)
+	usages := app.accountUsages(ctx, captured, st)
 	report := accountsReport{
 		SchemaVersion: constants.SchemaVersion,
-		Accounts:      accountItems(st, captured, app.capturedCredentialStates(ctx, captured)),
+		Accounts:      accountItems(st, captured, states, usages),
 	}
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
@@ -444,6 +458,7 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 		return constants.ExitOK
 	}
 	now := app.Now()
+	color := colorEnabled(opts.NoColor)
 	rows := [][]string{}
 	for _, item := range report.Accounts {
 		active := ""
@@ -452,10 +467,11 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 		}
 		rows = append(rows, []string{
 			item.Tool, item.Account, orDash(item.Identity), active, item.Driver,
-			credentialCell(item.Credential, item.ReloginBy, now), item.CapturedAt,
+			credentialCell(item.Credential, item.ReloginBy, now),
+			limitCell(item.Usage, color), item.CapturedAt,
 		})
 	}
-	printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Captured"}, rows)
+	printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Limit", "Captured"}, rows)
 	return constants.ExitOK
 }
 
@@ -467,4 +483,25 @@ func orDash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// limitCell renders subscription windows for a human table. The text is the
+// compact form ("5h 16% · 7d 95%"); color marks a window that is nearly or
+// fully used. A missing reading is the same "-" as every other unknown cell.
+func limitCell(usage *usageJSON, color bool) string {
+	if usage == nil {
+		return "-"
+	}
+	text := usagelimit.Format(usage.Windows)
+	if text == "" {
+		return "-"
+	}
+	switch usagelimit.Level(usage.Windows) {
+	case usagelimit.LevelFull:
+		return paint(constants.StatusError, text, color)
+	case usagelimit.LevelHigh:
+		return paint(constants.StatusWarn, text, color)
+	default:
+		return text
+	}
 }

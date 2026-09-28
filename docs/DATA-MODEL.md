@@ -404,6 +404,13 @@ diverge from that profile's mapping. Bare `kae use` (no positional, idempotent
 apply) decides its no-op by comparing the target profile against `active`
 (belief only — external drift is neither verified nor repaired).
 
+`usage-cache.json` sits in the same directory. It remembers subscription windows
+per tool and account: `origin` (`local` or `remote`), the source path and mtime
+of a local file, `observed_at`, and the windows. It holds no credential.
+`kae`, `kae ls` and `kae accounts` write it when a reading is new; a failure to
+write does not change the exit code, and the file is not under the `state` lock.
+The listing rules are in [CLI.md](CLI.md) § Subscription windows in listings.
+
 `synced` records, per tool, the account whose private home the **global** mise
 fragment (`~/.config/mise/conf.d/kagikae.toml`) currently points the tool at
 (global isolated, `kae use -i` / `kae run -i`). kae regenerates that

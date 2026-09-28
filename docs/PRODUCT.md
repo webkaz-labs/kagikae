@@ -265,7 +265,9 @@ The others are what `kae` will not do:
 
 ## Non-Goals
 
-- Managing API usage, billing, or model selection.
+- Managing API usage, billing, or model selection. Showing the subscription
+  windows a tool has already recorded — or a cached reading when it has not —
+  is not that management: `kae` does not change a plan, a cap, or a model.
 - Proxying or wrapping the upstream CLIs' normal execution (except the
   `kae run` transaction).
 - Supporting simultaneous different accounts of one tool within a single global

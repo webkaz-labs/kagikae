@@ -263,6 +263,21 @@ const (
 	CredentialStale    = "stale"
 )
 
+// Subscription-window ids and where a listing's `usage` object came from.
+// Absent `usage` means kae has no reading for that account, never that the
+// account is under its limit.
+const (
+	UsageWindowFiveHour = "five_hour"
+	UsageWindowSevenDay = "seven_day"
+	UsageSourceLocal    = "local"
+	UsageSourceCache    = "cache"
+	// UsageOriginLocal / UsageOriginRemote are how a cache entry was filled.
+	// The listing reports UsageSourceCache for either once the file, not a
+	// fresh local read, is what answered.
+	UsageOriginLocal  = "local"
+	UsageOriginRemote = "remote"
+)
+
 // Backup reasons, the `reason` field of a backup's metadata and of every
 // `kae backup list --json` row. They are a JSON contract vocabulary, so they live
 // here rather than as literals at the five createBackup call sites — where they

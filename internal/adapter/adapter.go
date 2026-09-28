@@ -8,12 +8,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/freshness"
+	"github.com/webkaz-labs/kagikae/internal/usagelimit"
 )
 
 // ErrUnsupported means the tool/platform combination has no auth driver;
@@ -134,6 +137,30 @@ type Identifier interface {
 // Fresher (copilot pointer, agy blob) is treated as not-datable (Known=false).
 type Fresher interface {
 	Freshness(payload []byte) freshness.Info
+}
+
+// UsageHome is implemented by adapters that can point at the directory where
+// the tool writes its own subscription-window record. It is the live home for
+// this environment (CLAUDE_CONFIG_DIR / CODEX_HOME, or the tool's default).
+type UsageHome interface {
+	UsageHome(env Env) string
+}
+
+// LocalUsage reads subscription windows the tool has already written under
+// home. ok is false when that directory has nothing kae can parse. It does
+// not use the network and does not read the credential.
+type LocalUsage interface {
+	LocalUsage(home string) (usagelimit.Reading, bool)
+}
+
+// UsageProber builds a read of the subscription windows from a captured
+// credential payload, for an account whose tool home has no local record.
+// ProbeUsage returns ok=false when the payload has no unexpired access token.
+// The caller enforces the destination host; an adapter must not put the token
+// anywhere but the Authorization header.
+type UsageProber interface {
+	ProbeUsage(payload []byte, now time.Time) (*http.Request, bool)
+	ParseUsageBody(body []byte) (usagelimit.Reading, bool)
 }
 
 var registry = map[string]Adapter{}

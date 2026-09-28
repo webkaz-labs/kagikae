@@ -101,6 +101,12 @@ func (p Paths) CompanionConfigFile(profile, companionID string) string {
 // StateFile returns the state.json path.
 func (p Paths) StateFile() string { return filepath.Join(p.StateDir, "state.json") }
 
+// UsageCacheFile is the per-account subscription-window cache. It holds
+// percents and reset times, never a credential. Listings read a tool's own
+// local record first and use this file only for an account that record does
+// not currently describe.
+func (p Paths) UsageCacheFile() string { return filepath.Join(p.StateDir, "usage-cache.json") }
+
 // InstallationsDir contains direct-install receipts and retained removal records.
 func (p Paths) InstallationsDir() string { return filepath.Join(p.StateDir, "installations") }
 

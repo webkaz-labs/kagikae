@@ -23,6 +23,7 @@ kagikae/
       git/ gh/ cloudflare/ kubectl/   # one declarative Spec per companion
     artifact/             # artifact primitives: json-pointer / file / keychain
     freshness/            # pure per-tool credential expiry / refresh-token parser
+    usagelimit/           # subscription-window shape; adapters parse, cmd chooses
     jwt/                  # JWT claims-segment decode (freshness exp, codex identity)
     keychain/             # security-CLI access to upstream tools' keychain items
                           #   (incl. a per-command read cache, WithReadCache)

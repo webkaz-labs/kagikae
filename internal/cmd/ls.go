@@ -78,7 +78,7 @@ func runLs(ctx context.Context, app *App, opts commonOpts) int {
 	if opts.Format == formatJSON {
 		return encodeJSON(report)
 	}
-	printLsReport(app, report)
+	printLsReport(app, report, opts)
 	return constants.ExitOK
 }
 
@@ -207,19 +207,22 @@ func buildLs(ctx context.Context, app *App) (*lsReport, error) {
 	if err != nil {
 		return nil, err
 	}
+	states := app.capturedCredentialStates(ctx, captured)
+	usages := app.accountUsages(ctx, captured, st)
 	return &lsReport{
 		SchemaVersion: constants.SchemaVersion,
-		Accounts:      accountItems(st, captured, app.capturedCredentialStates(ctx, captured)),
+		Accounts:      accountItems(st, captured, states, usages),
 		Profiles:      app.profileStatuses(app.activeProfileName(st)),
 	}, nil
 }
 
-func printLsReport(app *App, report *lsReport) {
+func printLsReport(app *App, report *lsReport, opts commonOpts) {
 	if len(report.Accounts) == 0 {
 		fmt.Println("Accounts: (none — register one with: kae add <tool>)")
 	} else {
 		fmt.Println("Accounts:")
 		now := app.Now()
+		color := colorEnabled(opts.NoColor)
 		rows := [][]string{}
 		for _, item := range report.Accounts {
 			active := ""
@@ -229,9 +232,10 @@ func printLsReport(app *App, report *lsReport) {
 			rows = append(rows, []string{
 				item.Tool, item.Account, item.Identity, active, item.Driver,
 				credentialCell(item.Credential, item.ReloginBy, now),
+				limitCell(item.Usage, color),
 			})
 		}
-		printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential"}, rows)
+		printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Limit"}, rows)
 	}
 	fmt.Println()
 	if len(report.Profiles) == 0 {

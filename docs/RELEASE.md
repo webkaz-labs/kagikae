@@ -16,6 +16,18 @@ update and migration guidance is in the English/Japanese README and
 [GUIDE.ja.md](GUIDE.ja.md). [ROADMAP.md](ROADMAP.md) retains conditional upstream
 research and the later orchestration/remote exploration queue.
 
+## Candidate — kae v0.22.0
+
+`kae`, `kae ls` and `kae accounts` show each account's subscription windows.
+The reading is the tool's local record, then the usage cache, then at most one
+usage request. `kae ls --pins` does not show windows. Bound directories publish
+their store path. Command ownership is [CLI.md](CLI.md) § Subscription windows
+in listings; where each tool's record lives is [ADAPTERS.md](ADAPTERS.md)
+§ Subscription windows.
+
+Publication is incomplete until tag `v0.22.0` exists and `mise run release-verify -- v0.22.0`
+passes. This section stays the candidate until that result is recorded.
+
 ## Release procedure
 
 Releases are cut by pushing a `vX.Y.Z` tag; GitHub Actions

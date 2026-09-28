@@ -103,7 +103,10 @@ first require regular-file siblings `node` and `index.js`. mise 2026.9.0's
 brew-cask installer copied only `cursor-agent` and discarded those siblings; that
 launcher-only tree was an incomplete installation, not evidence that the upstream
 literals disappeared. mise 2026.9.1 repaired the installer. A count over an
-incomplete tree is not a moved fingerprint — fail before counting.
+incomplete tree is not a moved fingerprint — fail before counting. mise can
+also keep the version on the install symlink and the payload under a
+content-addressed directory: `realpath` then has no version component. Accept
+that layout only when `metadata.json` beside the payload contains `/<version>/`.
 
 **Go binary** (agy): symbol names survive. Extract printable runs
 (`re.finditer(rb'[\x20-\x7e]{6,}')`) and grep those — you get package paths like

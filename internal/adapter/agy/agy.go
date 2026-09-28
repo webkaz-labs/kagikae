@@ -44,7 +44,7 @@ var credentialFiles = []string{"credentials.enc", "credentials.json", "oauth_cre
 // not treat the keychain as unconditional on macOS — its auth package holds a
 // keyring store *and* a file store behind one chooser, which can pick the file — so
 // this list exists to warn where kae's keychain switch may not reach the tool.
-// Binary-read through 1.1.24; the mechanism, what each build showed and what nothing has
+// Binary-read through 1.2.10; the mechanism, what each build showed and what nothing has
 // observed are docs/VALIDATION.md § Upstream Behaviour Assumptions.
 //
 // Why exactly this set: it is the whole of that chooser kae can see in the
@@ -82,10 +82,10 @@ func (Agy) Binary() string { return "agy" }
 
 // VerifiedVersion is the Antigravity CLI release last checked by binary inspection.
 // Login-gated observations retain their own versions in docs/VALIDATION.md.
-func (Agy) VerifiedVersion() string { return "1.1.24" }
+func (Agy) VerifiedVersion() string { return "1.2.10" }
 
 // VerifiedOn is when those assumptions were last checked (docs/VALIDATION.md).
-func (Agy) VerifiedOn() string { return "2026-09-06" }
+func (Agy) VerifiedOn() string { return "2026-09-29" }
 
 // keychainDriver reports whether this platform uses the macOS Keychain item
 // (darwin) or the file-based snapshot (Linux/WSL headless).

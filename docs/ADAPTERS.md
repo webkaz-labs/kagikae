@@ -1311,12 +1311,12 @@ half-done. Do not reformat the rows without updating that test.
 
 | Tool | `VerifiedVersion()` | `VerifiedOn()` | `--version` output shape |
 |------|---------------------|----------------|--------------------------|
-| claude | `2.1.261` | `2026-09-06` | `2.1.261 (Claude Code)` |
-| codex | `0.147.0` | `2026-08-16` | `codex-cli 0.147.0` |
-| agy | `1.1.24` | `2026-09-06` | `1.1.24` |
-| opencode | `1.18.26` | `2026-09-06` | `1.18.26` |
-| cursor | `""` (no signal — see below) | `2026-09-04` | `2026.09.02-c22c1a3` (date-versioned) |
-| copilot | `1.0.83` | `2026-09-05` | `GitHub Copilot CLI 1.0.83.` (note the trailing period; an advisory line followed it when measured) |
+| claude | `2.1.282` | `2026-09-29` | `2.1.282 (Claude Code)` |
+| codex | `0.157.1` | `2026-09-29` | `codex-cli 0.157.1` |
+| agy | `1.2.10` | `2026-09-29` | not re-run; last executed shape was `1.1.24` |
+| opencode | `1.18.32` | `2026-09-29` | `1.18.32` |
+| cursor | `""` (no signal — see below) | `2026-09-29` | `2026.09.08-6caf4ff` (date-versioned) |
+| copilot | `1.0.88` | `2026-09-29` | `GitHub Copilot CLI 1.0.88.` (note the trailing period; an advisory line followed it when measured) |
 
 `VerifiedOn()` is the half the version cannot supply. `upstream_version` only
 fires when the installed tool moves past the verified release, so a user who

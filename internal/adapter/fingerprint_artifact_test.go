@@ -23,9 +23,12 @@ import (
 // table in docs/VALIDATION.md § "Upstream Literal Fingerprints".
 //
 // Every resolver starts at exec.LookPath and resolves symlinks, then proves the
-// selected command's real path contains the recorded version as a whole path
-// component. That prevents an old retained artifact from passing after PATH moved to
-// a newer build — the failure this check previously had for three tools.
+// recorded version is a whole path component of that real path. Cursor's mise
+// layout is the exception: the version stays on the unresolved install symlink
+// and the bytes sit in a content-addressed directory, so the unresolved path
+// counts only when metadata.json beside the payload names the same version.
+// That prevents an old retained artifact from passing after PATH moved to a
+// newer build — the failure this check previously had for three tools.
 //
 // Retained old bundles still make a version bump cheap to investigate
 // (.claude/skills/upstream-auth-drift/references/measuring.md calls the pair on disk
@@ -67,20 +70,20 @@ var fingerprintArtifacts = map[string]fingerprintArtifact{
 	// Resolve the selected agy file rather than walking its install directory: the
 	// previous build can sit beside it, and a directory walk would add that build's
 	// literals to every count. agy may replace itself without renaming the containing
-	// install directory. On 2026-09-06, the selected bytes matched the antigravity
-	// member of the official 1.1.24 mac-arm64 archive, whose SHA-256 matched the
-	// release asset metadata. The binary was not executed. Binding that digest to
-	// its release detects both stale-PATH and in-place-update cases.
+	// install directory. The 1.2.10 digest is the selected file, read on
+	// 2026-09-29 and not executed. The install path names that version; this
+	// pass did not re-fetch an official archive checksum. Binding the digest
+	// to the version still detects a stale PATH and an in-place replacement.
 	constants.ToolAgy: {
 		binary:            "agy",
 		commandIsArtifact: true,
-		sha256:            "4d1138b2dbde56127969fd307281494d4a7dcc22759ce9adb44d36247df86151",
-		sha256Version:     "1.1.24",
+		sha256:            "1e43262d55f69e20bf4ba4f087252d65dd4ed37c0a980fae50a6bd5bc3637650",
+		sha256Version:     "1.2.10",
 	},
 }
 
 // artifactPath resolves the command selected by PATH and refuses to inspect it unless
-// its real path proves it is the version recorded beside the counts. Cursor's command
+// versionSelected ties it to the version recorded beside the counts. Cursor's command
 // is one file in a relocatable package, so its sibling files are positive controls:
 // a launcher-only install must fail before a directory walk can report plausible but
 // incomplete counts.
@@ -114,7 +117,7 @@ func artifactPath(spec fingerprintArtifact, version string) (string, error) {
 		if err := verifyArtifactSHA256(realCommand, spec.binary, version, spec.sha256); err != nil {
 			return "", err
 		}
-	} else if !pathHasComponent(realCommand, version) {
+	} else if !versionSelected(command, realCommand, version) {
 		return "", fmt.Errorf("installed %s resolves to %s, which is not recorded version %s",
 			spec.binary, realCommand, version)
 	}
@@ -435,6 +438,26 @@ func compareCopilotPrerelease(left, right []string) int {
 	return len(left) - len(right)
 }
 
+// versionSelected is true when the resolved path names the recorded version, or
+// when only the path LookPath returned does and the payload's metadata.json
+// names that same version. mise keeps cursor's version on the install symlink
+// and the bytes in a content-addressed directory, so EvalSymlinks drops the
+// version; the download URL beside the payload is what ties those bytes to it.
+func versionSelected(command, realCommand, version string) bool {
+	if pathHasComponent(realCommand, version) {
+		return true
+	}
+	if !pathHasComponent(command, version) {
+		return false
+	}
+	meta := filepath.Join(filepath.Dir(filepath.Dir(realCommand)), "metadata.json")
+	data, err := os.ReadFile(meta)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "/"+version+"/")
+}
+
 func pathHasComponent(path, component string) bool {
 	for path != filepath.Dir(path) {
 		if filepath.Base(path) == component {
@@ -489,6 +512,50 @@ func TestArtifactPathFollowsSelectedCommandAndChecksCursorPayload(t *testing.T) 
 	}
 	if _, err := artifactPath(spec, version); err == nil || !strings.Contains(err.Error(), "required sibling") {
 		t.Fatalf("incomplete payload error = %v", err)
+	}
+}
+
+func TestArtifactPathAcceptsCursorVersionOnTheInstallSymlink(t *testing.T) {
+	root := t.TempDir()
+	version := "2026.09.08-6caf4ff"
+	store := filepath.Join(root, "store", "hash_strip_0")
+	payload := filepath.Join(store, "dist-package")
+	if err := os.MkdirAll(payload, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"cursor-agent", "node", "index.js"} {
+		if err := os.WriteFile(filepath.Join(payload, name), []byte(name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(store, "metadata.json"), []byte(`{"url":"https://downloads.cursor.com/lab/`+version+`/darwin/arm64/agent-cli-package.tar.gz"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "installs", "cursor-agent", version)
+	if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(store, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Join(link, "dist-package"))
+	spec := fingerprintArtifact{binary: "cursor-agent", requiredSiblings: []string{"node", "index.js"}}
+	got, err := artifactPath(spec, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("artifactPath = %q, want %q", got, want)
+	}
+	if err := os.WriteFile(filepath.Join(store, "metadata.json"), []byte(`{"url":"https://downloads.cursor.com/lab/other/darwin/arm64/agent-cli-package.tar.gz"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := artifactPath(spec, version); err == nil || !strings.Contains(err.Error(), "not recorded version") {
+		t.Fatalf("metadata for a different version error = %v", err)
 	}
 }
 

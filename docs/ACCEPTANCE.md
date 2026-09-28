@@ -11,6 +11,47 @@ commit gate and the smoke procedures beside the surfaces they check.
 candidate revision it was run against and the release tag when one exists.** This
 document owns the results; results recorded elsewhere are invisible to the next run.
 
+## v0.22.0 candidate
+
+Assessed on 2026-09-29 (JST). Application commits since published v0.21.0 are
+`d20d078` and `a7c02be` (a bound directory's store path), `8800ce8` (subscription
+windows on `kae`, `kae ls` and `kae accounts`) and `cd2c4a0` (reported version
+`v0.22.0`). The upstream remeasure is the commit that adds this section.
+
+Listings read a local usage file, then the usage cache, then at most one usage
+request. They do not refresh or rotate tokens. `kae ls --pins` does not show
+windows. The new pin field is the store path already used for that binding.
+
+Live switch, rollback and bind were not re-run. The 2026-09-06 Claude global
+switch/rollback and bound-directory results, and the Copilot same-account
+apply/rollback, remain the evidence for credential switching. That reuse is not
+a new live login and not a statement that a current login is healthy. Optional
+account-combination checks stay optional. Usage display and the pin store link
+were checked by the commit gate, not by a live account.
+
+Rows re-read on 2026-09-29, and only those rows: Claude 2.1.282 login-free shim
+and bundle reads; Codex 0.157.1 declarations from tag `rust-v0.147.0` to
+`rust-v0.157.1`; agy 1.2.10 binary read, not executed, and no official-archive
+checksum was re-fetched; OpenCode 1.18.32 temp-root auth probes; Cursor bundle
+`2026.09.08-6caf4ff` for the three-item write and the refresh helper; Copilot
+1.0.88 directory rule, including a temp-HOME package extract. Login-gated rows
+keep their earlier provenance. Claude's reviewed naming digest is the 2.1.282
+file hash after a PATH shim reached both service families. No behaviour-site
+hash checker was added.
+
+On this tree, before the commit that adds this section: `mise run check` and
+`git diff --check` passed. `mise run audit` passed: govulncheck reported no
+vulnerabilities, and the fingerprint read matched Claude 2.1.282, agy 1.2.10,
+OpenCode 1.18.32, Cursor `2026.09.08-6caf4ff` and Copilot package 1.0.88. Codex
+stays excluded. `mise run naming-agreement` matched the reviewed 2.1.282 digest
+for the default, config, trailing, unicode, secure, relative and invalid-user
+cases. `mise run goreleaser-check`, `mise run release-evidence` and
+`mise run release-smoke` (completion and per-account store) passed. A local
+GoReleaser snapshot built darwin/linux × amd64/arm64 archives containing the
+binary, README, LICENSE and generated completions; the archive name stayed
+`0.21.0-SNAPSHOT` because tag `v0.22.0` does not exist yet, and the binary
+reported `kae v0.22.0`. Publication is recorded after `release-verify`.
+
 ## Uninstall and Packslip assessment
 
 Assessed on 2026-09-09 (JST) for candidate `c99ccc5`, including the implementation

@@ -73,6 +73,13 @@ under the default age policy. The command used Packslip 1.1.1 and mise 2026.9.3
 placed first on `PATH`, because the operator mise was 2026.9.15 and `mise run`
 would have selected that one. No live login was part of this check.
 
+The direct local installation then used the published v0.22.0 archive and
+checksum through `scripts/install.sh`. PATH resolved the regular file
+`~/.local/bin/kae`, which reported `kae v0.22.0`. The removal receipt replaced
+the v0.21.0 receipt and kept that previous receipt in installation history.
+`config.toml` and `state.json` compared byte-identical before and after. No
+credential migration was performed.
+
 ## Uninstall and Packslip assessment
 
 Assessed on 2026-09-09 (JST) for candidate `c99ccc5`, including the implementation

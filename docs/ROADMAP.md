@@ -150,10 +150,11 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
    - **Explicit resolution** follows `use`'s `-s`/`-i` spelling: `-i <tool>
      <account>` is that account's global-isolated home, and `-s <tool>` the real
      home. `-i` takes no value, as in `use`; `-i <tool>` without an account is a
-     usage error. A shared home holds whichever account is active, so an account without
-     `-i` is a usage error. Without explicit arguments the nearest ancestor bound
-     directory's recorded binding applies (not the shell's environment), then what
-     applies globally. The credential store is not a place.
+     usage error. A shared home holds whichever account is active, so an
+     account without `-i` is a usage error. Without explicit arguments the
+     nearest ancestor bound directory's recorded binding applies (not the
+     shell's environment), then what applies globally. The credential store is
+     not a place.
    - **Selection.** Without a selector, `cd` and `open` take the current place:
      the effective user level for a tool, the bound directory governing the current
      directory for `pin`, the repository root for `repo`. A level selector without
@@ -173,12 +174,13 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
    - **`open` fallback**: `open` on macOS and `xdg-open` on Linux; without one,
      print the path and a warning and exit `0`.
    - **`cd`** is a `kae` shell function delivered through the paths that already
-     source `kae completion` from the binary (the mise hook and rc eval); it passes
-     every other command to the binary and changes directory only when a hidden entry the
-     function calls exits `0` with a path. It is the first of the wrappers named by the `kae shell init`
-     entry under § Exploratory. A mise `[shell_alias]` in the fragment was rejected
-     because an alias cannot place arguments inside `cd "$(…)"`. Without the
-     function, `kae cd` exits `64` and suggests `cd "$(kae ls … --current)"`.
+     source `kae completion` from the binary (the mise hook and rc eval); it
+     passes every other command to the binary and changes directory only when
+     a hidden entry the function calls exits `0` with a path. It is the first
+     of the wrappers named by the `kae shell init` entry under § Exploratory.
+     A mise `[shell_alias]` in the fragment was rejected because an alias
+     cannot place arguments inside `cd "$(…)"`. Without the function, `kae cd`
+     exits `64` and suggests `cd "$(kae ls … --current)"`.
    - **`--json`** reports each place's group, kind, path, existence, whether it is
      in effect, its source (pin, global or explicit) and mode. Bare `kae ls --json`
      keeps its `accounts` and `profiles` keys and adds the new groups beside them.

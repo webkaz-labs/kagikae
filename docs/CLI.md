@@ -57,6 +57,11 @@ kae ls <target> --current [--project|--below|--home] [--root] [--json]
 kae ls <target> --at N [--root] [--json]
                                      # print one place's path
 kae ls --pins [--json]               # alias of kae ls pin
+kae open [<target>] [--project|--below|--home] [--root] [--at N]
+                                     # open a place in the file manager
+                                     #   (the current place unless --at; no account)
+kae cd [<target>] [--project|--below|--home] [--root] [--at N]
+                                     # move the shell to a place (the kae shell function)
 kae account rm <tool> <account> [--force]      # delete a captured account
 kae account rename <tool> <old> <new>          # rename a captured account
 kae account set-identity <tool> <account> <value>  # set/replace a captured account's identity
@@ -68,7 +73,9 @@ kae profile default [<name>|--clear] # show or set default_profile
 kae status [--json]                  # full status report (alias: kae s)
 kae backup list [--json]             # list switch backups
 kae rollback [--to <backup-id>]      # restore the most recent restorable (or given) backup
-kae completion <bash|zsh|fish> [--install]     # print (or register) a dynamic completion script
+kae completion <bash|zsh|fish> [--install|--no-function]
+                                     # print (or register) a dynamic completion script;
+                                     #   printed, it also defines the kae shell function
 kae version | --version | -v
 kae help | --help | -h
 ```
@@ -645,6 +652,48 @@ silently dropped: the directory is left out of the listing with a stderr warning
 naming it and the error, and the exit code stays `0`. It reads no config either,
 so a malformed `config.toml` — which makes plain `kae ls` exit `2` — does not stop
 `kae ls --pins` answering which account each directory is running.
+
+## kae open and kae cd Semantics
+
+`kae open` opens one place in the platform file manager and `kae cd` moves the
+shell to one. Both take `kae ls`'s target words (without `account`, whose rows
+are not places), explicit resolution, level selectors, `--root` and `--at N`,
+with the rules and usage errors of § kae ls Semantics. They always choose one
+place, so they take no `--current` — it is their default — and no `--pins`; they
+print no report, so `--json` is a usage error (`kae ls <target> --current --json`
+publishes the path). Neither takes a lock or changes anything.
+
+**Selection.** Without `--at`, the target's current place is the one `kae ls
+<target> --current` prints, with the same selectors. A level selector without a
+target applies to the one tool kae resolves places for (claude, codex) that a
+governing binding binds here. A place whose directory does not exist — `kae ls`
+marks it `(missing)` — exits `7`, as does a target with no current place.
+
+**No single place.** No target; a level selector without a target when zero or
+several such tools are bound; or a selection that matches several places (`kae`,
+several `--below` levels). Until the picker exists ([ROADMAP.md](ROADMAP.md)
+§ Place navigation and the tree-shared mode), each prints a usage error on stderr followed by the
+candidates, one per line as the command that reaches it (`kae open claude --at 3`
+and the path), and exits `64`.
+
+**`open`** runs `open` on macOS and `xdg-open` on Linux, found on `PATH`, with the
+path as its one argument, and prints nothing on success. Without that opener, or
+on another platform, it prints the path on stdout and a warning on stderr and
+exits `0`. An opener that fails exits `1` with its stderr in the error.
+
+**`cd`** is the **kae shell function**, which `kae completion <shell>` prints after
+the completion script — so rc eval (`eval "$(kae completion zsh)"`), the mise
+enter hook and `--install`'s print-only choice define it, and a completion file
+does not (§ Shell completion). The function passes every command but `cd` to the
+binary (`command kae`). For `cd` it runs the hidden `kae __cd` with the same
+words, which resolves exactly as `kae open` does and prints the path on stdout,
+and changes directory (`builtin cd --`; fish: `builtin cd`) only when that exits
+`0` with a path. Otherwise it returns that exit code, and the entry's stderr
+reaches the terminal unchanged. `kae __cd` is internal to the function, like
+`kae __complete`, and hidden from `kae help`. Without the function, `kae cd`
+reaches the binary, which cannot move its parent shell: it exits `64` and
+suggests `cd "$(kae ls … --current)"` with the words it was given (`--at N` in
+place of `--current` when given).
 
 ## kae account Semantics
 
@@ -1332,6 +1381,8 @@ and that companion's knob names (`kae companion add main git <TAB>` →
 `email`/`name`/`signingkey`, via `kae __complete companion-knobs git`).
 `kae ls <TAB>` → the target words (`kae __complete ls-targets`); after `-s` or
 `-i` only tools, and a tool's accounts only after `-i` (`kae ls -i claude <TAB>`).
+`kae open <TAB>` and `kae cd <TAB>` complete the same positions, with the target
+words that name places (`kae __complete place-targets`: no `account`).
 `kae env <TAB>` → `set`/`unset`/`list`, then — after `set` or `unset` only — a
 tool and that tool's accounts, since `env list` takes no arguments and offering
 one would suggest a word the command rejects. `kae backup <TAB>` → `list`.
@@ -1344,7 +1395,7 @@ When the current word starts with `-`, the command's **flag names** are
 completed (`kae add --<TAB>` → `--no-login` / `--restore`; `kae run -<TAB>` →
 `-s` / `-i` / `--env` / `-P`).
 
-`kae __complete <commands|tools|ls-targets|companions|companion-knobs <id>|profiles|accounts [<tool>]|flags <command>|valued-flags <command>>`
+`kae __complete <commands|tools|ls-targets|place-targets|companions|companion-knobs <id>|profiles|accounts [<tool>]|flags <command>|valued-flags <command>>`
 is read-only, takes no locks, prints one candidate per line, and is
 intentionally hidden from `kae help`. The `flags` kind lists a command's flags from the same
 per-command registrars the parser uses. `valued-flags` reads their arity and
@@ -1352,6 +1403,14 @@ returns the accepted dash spellings for the scripts to consume values. Its
 line-oriented output is an internal contract consumed by the generated scripts
 and the `kae mise init` task `complete` directives — it is not the JSON contract
 (`schema_version` is unaffected).
+
+**The printed script defines the kae shell function** (§ kae open and kae cd
+Semantics) after the completion, because printing is what the paths that source
+it in the current shell use: rc eval and the mise enter hook. A completion file is
+the completion alone: `--install`'s completions-dir file, every `--refresh`
+rewrite, and `kae completion <shell> --no-function`, which the release archive's
+packaged completions are generated with. A shell loads such a file lazily, at the
+first completion, so a function in it would appear mid-session.
 
 **bash and zsh are the verified shells.** `kae completion fish` stays available
 as a best-effort generator — unit-tested, and parsed by `fish --no-execute` on any
@@ -1416,7 +1475,8 @@ per-directory (a per-directory registration would make `kae <TAB>` blink in and
 out by directory). Three registration paths, non-mise first:
 
 1. **rc eval** — add `eval "$(kae completion zsh)"` (bash/zsh) or
-   `kae completion fish | source` to your shell rc. No files written.
+   `kae completion fish | source` to your shell rc. No files written; this also
+   defines the kae shell function that `kae cd` needs.
 2. **completion file** — write the script to the shell's standard completions
    dir (bash-completion and fish auto-load it). For zsh, `--install` prefers an
    existing user completions dir already on `fpath` (`~/.config/zsh/completions`,
@@ -1428,7 +1488,8 @@ out by directory). Three registration paths, non-mise first:
    is active, then offers (1) the completions-dir file [default], (2) a global
    mise `[hooks.enter]` that sources the script (opt-in), or (3) print-only. The
    install is idempotent and **never** mutates the global mise config unless you
-   pick option 2. Completion lives in the kae-owned `conf.d/kagikae.toml`,
+   pick option 2. The file (1) holds the completion alone; the mise hook (2) and
+   print-only (3) carry the kae shell function too. Completion lives in the kae-owned `conf.d/kagikae.toml`,
    alongside global isolated settings; unrelated hooks in global config coexist.
    A customized kae marker block requires manual migration. The owned hook
    names the selected shell and runs its `script` in that current shell; this is

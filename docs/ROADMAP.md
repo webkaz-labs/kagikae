@@ -89,9 +89,10 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
    reach: where a tool reads its settings and sessions (not only what kae created),
    a bound directory, a repository root, or kae's own directories. Three verbs share
    one set of target words and selectors: `ls` shows, `cd` moves, `open` opens in
-   the platform file manager. The `ls` slice is implemented, and
-   [CLI.md](CLI.md) § kae ls Semantics is its contract; what follows is the design
-   `cd`, `open`, the picker and the session row still build on.
+   the platform file manager. The `ls` slice and the `open` and `cd` slice are
+   implemented; [CLI.md](CLI.md) § kae ls Semantics and § kae open and kae cd
+   Semantics are their contracts. What follows is the design the picker and the
+   session row still build on.
 
    ```
    kae ls                                 # groups: account, pin, each relevant tool, repo, kae
@@ -160,8 +161,9 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      cannot place arguments inside `cd "$(…)"`. Without the function, `kae cd`
      exits `64` and suggests `cd "$(kae ls … --current)"`.
 
-   Remaining slices, each merged on its own: `open` and the `cd` function; the
-   picker; the claude session row after its measurement. Each slice updates
+   Remaining slices, each merged on its own: the picker, which replaces the
+   candidate list `open` and `cd` print on stderr where it would open and adds
+   `--pick`; the claude session row after its measurement. Each slice updates
    completion for what it adds (CLI § Keeping completion current), CLI, CONTEXT
    when a term changes, README, README.ja and GUIDE.ja in the same commit. It comes
    first because it helps today's `-s` and `-i` binds and serves as the inspection

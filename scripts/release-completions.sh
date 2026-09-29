@@ -3,5 +3,6 @@
 set -euo pipefail
 mkdir -p .release-completions
 for shell in bash zsh fish; do
-  go run . completion "$shell" > ".release-completions/kae.$shell"
+  # A packaged completion is a completion file: without the kae shell function.
+  go run . completion "$shell" --no-function > ".release-completions/kae.$shell"
 done

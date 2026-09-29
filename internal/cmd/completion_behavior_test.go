@@ -73,6 +73,12 @@ func TestCompletionFlagValueRouting(t *testing.T) {
 		{"ls-isolated-long-account", []string{"ls", "claude", "--isolated", ""}, []string{"main", "side"}},
 		{"ls-shared-tools", []string{"ls", "-s", ""}, []string{"claude", "codex"}},
 		{"ls-shared-no-account", []string{"ls", "-s", "claude", ""}, nil},
+		{"open-targets", []string{"open", ""}, []string{"pin", "repo", "kae", "claude", "codex"}},
+		{"cd-targets", []string{"cd", ""}, []string{"pin", "repo", "kae", "claude", "codex"}},
+		{"cd-isolated-account", []string{"cd", "-i", "claude", ""}, []string{"main", "side"}},
+		{"open-shared-tools", []string{"open", "-s", ""}, []string{"claude", "codex"}},
+		{"open-no-account-without-i", []string{"open", "claude", ""}, nil},
+		{"cd-at-value", []string{"cd", "claude", "--at", ""}, nil},
 	}
 	for _, shell := range []string{"bash", "zsh", "fish"} {
 		t.Run(shell, func(t *testing.T) {
@@ -128,6 +134,7 @@ func runCompletionCase(t *testing.T, bin, shell string, words, want []string, so
  valued-flags) printf '%s\n' ` + valued + ` ;;
  tools) printf '%s\n' claude codex ;;
  ls-targets) printf '%s\n' account pin repo kae claude codex ;;
+ place-targets) printf '%s\n' pin repo kae claude codex ;;
  preservations) printf '%s\n' 0123456789abcdef0123456789abcdef ;;
  profiles) printf '%s\n' main ;;
  accounts) if [ "$3" = claude ]; then printf '%s\n' main side; fi ;;
@@ -164,6 +171,8 @@ func runCompletionCase(t *testing.T, bin, shell string, words, want []string, so
  printf '%s\n' claude codex
  case ls-targets
  printf '%s\n' account pin repo kae claude codex
+ case place-targets
+ printf '%s\n' pin repo kae claude codex
  case preservations
  printf '%s\n' 0123456789abcdef0123456789abcdef
  case profiles

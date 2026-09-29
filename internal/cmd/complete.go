@@ -30,6 +30,8 @@ import (
 //   - commands         — the router's public commands (completionCommands)
 //   - tools            — constants.Tools
 //   - ls-targets       — `kae ls` target words: the fixed groups, then the tools
+//   - place-targets    — `kae open` / `kae cd` target words: ls-targets without
+//     account, whose rows are not places
 //   - companions       — constants.Companions (companion ids: git, gh, …)
 //   - companion-knobs <id> — the named companion's knob names (its Spec)
 //   - profiles         — config profile names
@@ -51,6 +53,9 @@ func CmdComplete(_ context.Context, args []string) int {
 			return constants.ExitOK
 		case "ls-targets":
 			printCompletionLines(lsTargetWords())
+			return constants.ExitOK
+		case "place-targets":
+			printCompletionLines(placeTargetWords())
 			return constants.ExitOK
 		case "companions":
 			// Companion ids are compile-time constants, like tools.
@@ -97,6 +102,8 @@ func runComplete(app *App, args []string) int {
 		printCompletionLines(constants.Tools)
 	case "ls-targets":
 		printCompletionLines(lsTargetWords())
+	case "place-targets":
+		printCompletionLines(placeTargetWords())
 	case "companions":
 		printCompletionLines(constants.Companions)
 	case "companion-knobs":
@@ -215,4 +222,16 @@ func printCompletionLines(lines []string) {
 // tools — the same words resolveLsTarget matches exactly.
 func lsTargetWords() []string {
 	return append(append([]string{}, constants.PlaceGroups...), constants.Tools...)
+}
+
+// placeTargetWords is what `kae open <TAB>` and `kae cd <TAB>` offer: the ls
+// target words but account, which they refuse.
+func placeTargetWords() []string {
+	var out []string
+	for _, word := range lsTargetWords() {
+		if word != constants.PlaceGroupAccount {
+			out = append(out, word)
+		}
+	}
+	return out
 }

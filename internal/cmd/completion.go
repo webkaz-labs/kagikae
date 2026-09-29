@@ -14,7 +14,7 @@ import (
 // Keep in lockstep with Root().
 var completionCommands = []string{
 	"init", "edit", "doctor", "add", "use", "pin", "unpin", "uninstall", "relogin", "run", "env",
-	"companion", "mise", "accounts", "ls", "account", "profile", "status",
+	"companion", "mise", "accounts", "ls", "open", "cd", "account", "profile", "status",
 	"backup", "preservation", "rollback", "completion", "version", "help",
 }
 
@@ -38,18 +38,22 @@ func commandCandidates() []string {
 
 // CmdCompletion emits a shell completion script and optionally installs it:
 //
-//	kae completion <bash|zsh|fish> [--install]
+//	kae completion <bash|zsh|fish> [--install | --no-function]
 //
 // The emitted script is dynamic — it calls `kae __complete` (complete.go) at
 // completion time rather than baking a static word list, so candidates always
-// track the live router/config/state. With --install, the script is registered
-// interactively (completion_install.go): the shell's standard completions dir
-// (default), a global mise [hooks.enter] (opt-in), or print-only.
+// track the live router/config/state. Printed, it also defines the kae shell
+// function (shellFunctionScript), because printing is what the paths that source
+// it in the current shell use (rc eval, the mise hook); --no-function prints the
+// completion alone, the shape of a completion file. With --install, the script
+// is registered interactively (completion_install.go): the shell's standard
+// completions dir (default; the completion alone), a global mise [hooks.enter]
+// (opt-in), or print-only (what the bare command prints).
 func CmdCompletion(_ context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	var install, refresh bool
+	var install, refresh, noFunction bool
 	opts, ok := parseCommon("completion", flags, false, func(fs *flag.FlagSet) {
-		registerCompletionFlags(fs, &install, &refresh)
+		registerCompletionFlags(fs, &install, &refresh, &noFunction)
 	})
 	if !ok {
 		return constants.ExitUsage
@@ -57,13 +61,13 @@ func CmdCompletion(_ context.Context, args []string) int {
 	// --refresh rewrites whatever is already registered, across shells, so it
 	// takes no shell argument and does not combine with --install.
 	if refresh {
-		if install || len(positionals) != 0 {
+		if install || noFunction || len(positionals) != 0 {
 			return usageError("usage: %s completion --refresh", toolName)
 		}
 		return runCompletionRefresh(newApp(opts.ConfigPath), opts)
 	}
-	if len(positionals) != 1 {
-		return usageError("usage: %s completion <bash|zsh|fish> [--install] | %s completion --refresh", toolName, toolName)
+	if len(positionals) != 1 || (install && noFunction) {
+		return usageError("usage: %s completion <bash|zsh|fish> [--install | --no-function] | %s completion --refresh", toolName, toolName)
 	}
 	shell := positionals[0]
 	script, ok := completionScript(shell)
@@ -71,15 +75,20 @@ func CmdCompletion(_ context.Context, args []string) int {
 		return usageError("unsupported shell %q (supported: bash, zsh, fish)", shell)
 	}
 	if !install {
-		fmt.Print(script)
+		if noFunction {
+			fmt.Print(script)
+		} else {
+			fmt.Print(completionEvalScript(shell))
+		}
 		return constants.ExitOK
 	}
 	app := newApp(opts.ConfigPath)
 	return runCompletionInstall(app, opts, shell, script)
 }
 
-// completionScript returns the dynamic completion script for a shell; ok is
-// false for an unsupported shell.
+// completionScript returns the dynamic completion script for a shell — the
+// completion alone, which is what a completion file holds; ok is false for an
+// unsupported shell.
 func completionScript(shell string) (string, bool) {
 	switch shell {
 	case "bash":
@@ -92,6 +101,64 @@ func completionScript(shell string) (string, bool) {
 		return "", false
 	}
 }
+
+// completionEvalScript is what `kae completion <shell>` prints: the completion
+// script and then the kae shell function. Only the paths that source the output
+// in the current shell (rc eval, the mise enter hook) get the function; a
+// completion file is completionScript alone, since the shell loads it lazily, on
+// the first completion, which would define the function mid-session. shell must
+// be one completionScript accepts.
+func completionEvalScript(shell string) string {
+	script, _ := completionScript(shell)
+	return script + shellFunctionScript(shell)
+}
+
+// shellFunctionScript is the kae shell function (docs/CLI.md § kae open and kae
+// cd Semantics): it passes every command but cd to the binary, and for cd moves
+// the shell to the path the hidden `kae __cd` prints — only when that exits 0
+// with a path, otherwise returning its exit code with its stderr untouched.
+func shellFunctionScript(shell string) string {
+	if shell == "fish" {
+		return fishShellFunction
+	}
+	return posixShellFunction
+}
+
+// posixShellFunction serves bash and zsh. `command` skips the function itself;
+// `builtin cd --` keeps a path from being read as an option or a user's cd
+// wrapper, and the quotes keep a path with spaces one word.
+const posixShellFunction = `# kae shell function: kae cd moves this shell; every other command runs kae.
+kae() {
+  if [ "${1-}" = cd ]; then
+    shift
+    local kae_dir
+    kae_dir="$(command kae ` + cdPathCommand + ` "$@")" || return
+    if [ -n "$kae_dir" ]; then
+      builtin cd -- "$kae_dir"
+    fi
+  else
+    command kae "$@"
+  fi
+}
+`
+
+// fishShellFunction is the best-effort fish form (fish is not a verified shell,
+// docs/CLI.md § Shell completion). `set` returns the command substitution's
+// status, which `or return` passes on.
+const fishShellFunction = `# kae shell function: kae cd moves this shell; every other command runs kae.
+function kae
+    if test (count $argv) -gt 0; and test "$argv[1]" = cd
+        set -e argv[1]
+        set -l kae_dir (command kae ` + cdPathCommand + ` $argv)
+        or return
+        if test -n "$kae_dir"
+            builtin cd "$kae_dir"
+        end
+    else
+        command kae $argv
+    end
+end
+`
 
 // The generated scripts route by word position to a `kae __complete` kind:
 // word 1 → commands; the argument positions → tools/profiles/accounts/
@@ -214,9 +281,11 @@ _kae() {
         COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
       fi
       ;;
-    ls)
+    ls|open|cd)
       # <target>; after -s or -i only a tool, and an account only after -i.
-      local scope=""
+      # open and cd take every target but account, whose rows are not places.
+      local scope="" targets=ls-targets
+      if [ "$cmd" != ls ]; then targets=place-targets; fi
       for (( i=2; i<cursor; i++ )); do
         case "${kae_words[i]}" in
           -i|--isolated|-isolated) scope=i ;;
@@ -226,7 +295,7 @@ _kae() {
       if [ "$np" -eq 0 ] && [ -n "$scope" ]; then
         COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
       elif [ "$np" -eq 0 ]; then
-        COMPREPLY=( $(compgen -W "$(kae __complete ls-targets)" -- "$cur") )
+        COMPREPLY=( $(compgen -W "$(kae __complete "$targets")" -- "$cur") )
       elif [ "$np" -eq 1 ] && [ "$scope" = i ]; then
         COMPREPLY=( $(compgen -W "$(kae __complete accounts "${pos[0]}")" -- "$cur") )
       fi
@@ -351,9 +420,11 @@ _kae() {
         compadd -- ${(f)"$(kae __complete tools)"}
       fi
       ;;
-    ls)
+    ls|open|cd)
       # <target>; after -s or -i only a tool, and an account only after -i.
-      local scope=""
+      # open and cd take every target but account, whose rows are not places.
+      local scope="" targets=ls-targets
+      if [[ "$cmd" != ls ]]; then targets=place-targets; fi
       for (( i=3; i<CURRENT; i++ )); do
         case "${words[i]}" in
           -i|--isolated|-isolated) scope=i ;;
@@ -363,7 +434,7 @@ _kae() {
       if (( np == 0 )) && [[ -n "$scope" ]]; then
         compadd -- ${(f)"$(kae __complete tools)"}
       elif (( np == 0 )); then
-        compadd -- ${(f)"$(kae __complete ls-targets)"}
+        compadd -- ${(f)"$(kae __complete $targets)"}
       elif (( np == 1 )) && [[ "$scope" == i ]]; then
         compadd -- ${(f)"$(kae __complete accounts ${pos[1]})"}
       fi
@@ -491,8 +562,13 @@ function __kae_complete
             if test $np -eq 0
                 kae __complete tools
             end
-        case ls
+        case ls open cd
             # <target>; after -s or -i only a tool, and an account only after -i.
+            # open and cd take every target but account, whose rows are not places.
+            set -l targets ls-targets
+            if test $cmd != ls
+                set targets place-targets
+            end
             set -l isolated 0
             set -l scoped 0
             if contains -- -i $tokens; or contains -- --isolated $tokens; or contains -- -isolated $tokens
@@ -505,7 +581,7 @@ function __kae_complete
             if test $np -eq 0; and test $scoped -eq 1
                 kae __complete tools
             else if test $np -eq 0
-                kae __complete ls-targets
+                kae __complete $targets
             else if test $np -eq 1; and test $isolated -eq 1
                 kae __complete accounts $pos[1]
             end

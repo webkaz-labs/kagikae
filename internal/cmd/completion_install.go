@@ -87,7 +87,9 @@ func completionMiseDetected(env adapter.Env) bool {
 func applyCompletionInstall(app *App, opts commonOpts, shell, script string, choice completionInstallChoice) int {
 	switch choice {
 	case installPrintOnly:
-		fmt.Print(script)
+		// What `kae completion <shell>` prints, the kae shell function included:
+		// printing is for a shell that sources it (rc eval).
+		fmt.Print(completionEvalScript(shell))
 		return constants.ExitOK
 	case installMiseHook:
 		path, changed, err := installMiseGlobalHook(app.Env, shell)

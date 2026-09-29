@@ -101,6 +101,16 @@ func Root(args []string) int {
 		return CmdAccounts(ctx, args[1:])
 	case "ls":
 		return CmdLs(ctx, args[1:])
+	case "open":
+		return CmdOpen(ctx, args[1:])
+	// The kae shell function (completion.go) handles cd itself; the binary only
+	// sees it without the function.
+	case "cd":
+		return CmdCd(args[1:])
+	// Hidden: the path the kae shell function's cd moves to (open.go). Omitted
+	// from `kae help` and from completionCommands, like __complete.
+	case cdPathCommand:
+		return CmdCdPath(ctx, args[1:])
 	case "account":
 		return CmdAccount(ctx, args[1:])
 	case "profile":
@@ -269,13 +279,21 @@ Usage:
   kae ls <target> --current|--at N     print one place's path; a tool target
                                        takes -s <tool>, -i <tool> <account>,
                                        --project|--below|--home and --root
+  kae open [<target>] [--at N]         open a place in the file manager (the
+                                       current place unless --at; same targets
+                                       and selectors as kae ls, no account)
+  kae cd [<target>] [--at N]           move the shell to a place; needs the kae
+                                       shell function that eval "$(kae
+                                       completion zsh)" (or bash) defines
   kae status [--json]                  full status report (alias: kae s)
   kae preservation list [--json]       list preserved credential records
   kae preservation restore <id>        restore to the original credential store
   kae preservation rm <id>             delete a preserved record with confirmation
   kae backup list [--json]             list switch backups
   kae rollback [--to <backup-id>]      restore a backup
-  kae completion <bash|zsh|fish>       print a shell completion script
+  kae completion <bash|zsh|fish>       print a shell completion script and the
+                                       kae shell function (--no-function: the
+                                       completion alone, for a completion file)
   kae version | --version | -v
   kae help | --help | -h
 

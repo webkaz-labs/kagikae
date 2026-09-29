@@ -158,11 +158,18 @@ kae unpin               # 現在のディレクトリの固定を解除
 cd "$(kae ls claude --current)"                  # ここで claude が使うユーザーレベル
 cd "$(kae ls codex --current --project --root)"  # .codex/ を持つ最も近いプロジェクト
 kae ls claude --at 2                             # kae ls claude の 2 番目の場所
+kae cd claude                                    # 同じ移動を kae シェル関数で
+kae open repo                                    # リポジトリのルートをファイルマネージャーで開く
 ```
 
 ユーザーレベルはシェルの環境ではなく、そのツールを固定している最も近い固定ディレクトリに
 記録された固定から決まります。`.claude/` と `.codex/` の探索規則は
-[docs/CLI.md](docs/CLI.md) § kae ls Semantics にあります。
+[docs/CLI.md](docs/CLI.md) § kae ls Semantics にあります。`kae cd` と `kae open` は
+同じ対象と選択子を取り、既定は現在の場所です。対象がない場合や複数の場所に一致した
+場合は、候補を一覧して使い方エラーになります（[docs/CLI.md](docs/CLI.md) § kae open and
+kae cd Semantics）。`kae cd` には、`eval "$(kae completion zsh)"` などで補完スクリプトを
+読み込むと定義される kae シェル関数が必要です。関数がないと、代わりに実行する
+`cd "$(kae ls … --current)"` を表示します。
 
 worktree も別のディレクトリとして扱います。
 
@@ -222,8 +229,9 @@ kae completion zsh --install
 ```
 
 対話的に登録先を選びます。設定ファイルに直接読み込みを書く場合は、zsh なら
-`eval "$(kae completion zsh)"` を利用できます。登録済みファイルの更新は
-`kae completion --refresh` です。
+`eval "$(kae completion zsh)"` を利用できます。この読み込み（と mise フック）は
+`kae cd` を動かす kae シェル関数も定義しますが、補完ファイルには含まれません。
+登録済みファイルの更新は `kae completion --refresh` です。
 
 ## 対応範囲
 

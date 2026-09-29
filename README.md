@@ -278,17 +278,25 @@ directory you unpinned keeps its store so a re-pin restores its sessions, but it
 is not a binding and is not listed.
 
 To reach the directories a tool reads in this worktree, list its places and print
-one path:
+one path, move there, or open it:
 
 ```bash
 kae ls claude                          # its accounts, user level, project levels
 cd "$(kae ls claude --current)"        # the bound store claude uses here
 cd "$(kae ls codex --current --project --root)"   # the nearest project holding .codex/
+kae cd claude                          # the same move, through the kae shell function
+kae cd codex --project --root
+kae open repo                          # the repository root, in the file manager
 ```
 
 The user level follows the recorded binding of the nearest bound directory that
 binds that tool, not the shell's environment; [docs/CLI.md](docs/CLI.md) § kae ls Semantics has the
-discovery rules for `.claude/` and `.codex/`.
+discovery rules for `.claude/` and `.codex/`. `kae cd` and `kae open` take the same
+targets and selectors, default to the current place, and list the candidates with a
+usage error when a request names several places or none
+([docs/CLI.md](docs/CLI.md) § kae open and kae cd Semantics). `kae cd` needs the
+**kae shell function**, which sourcing `kae completion` defines (§ Shell Completion);
+without it, `kae cd` prints the `cd "$(kae ls … --current)"` to run instead.
 
 Claude bindings for the same account share its credential store, while their
 working homes follow the chosen shared/isolated mode. This avoids independent
@@ -371,6 +379,11 @@ Register it once. Either source it from your shell rc:
 # ~/.zshrc (or ~/.bashrc); fish: kae completion fish | source
 eval "$(kae completion zsh)"
 ```
+
+Sourcing it this way (or through the mise hook below) also defines the **kae shell
+function**, which runs `kae cd` in your shell and passes every other command to the
+binary. A completion file holds the completion alone, and so do the Packslip
+completion loaders above; add the rc line for `kae cd`.
 
 …or install a completion file:
 
@@ -484,6 +497,8 @@ binary does not imply support for every adapter.
 | `kae ls <target>` | One group: `account`, `pin`, `repo`, `kae` or a tool (a prefix of its name works). `-s <tool>` / `-i <tool> <account>` name the tool's user level explicitly. |
 | `kae ls <target> --current` / `--at N` | Print one place's path: the current one (with `--project`, `--below` or `--home` for a tool, and `--root` for the directory holding `.claude/`/`.codex/`), or the one numbered `N` in `kae ls <target>`. |
 | `kae ls --pins` | Alias of `kae ls pin`: every directory bound with `kae pin` — one row per bound directory or worktree. |
+| `kae open [<target>]` | Open a place in the file manager (`open` on macOS, `xdg-open` on Linux; without one, print the path): the current place, or `--at N`, with `kae ls`'s targets and selectors. |
+| `kae cd [<target>]` | Move the shell to a place, chosen as `kae open` chooses; needs the kae shell function that sourcing `kae completion <shell>` defines. |
 | `kae account rm\|rename` | Delete or rename a captured account. Both refuse while the account is selected by global isolation and print the safe teardown-and-retry sequence; `--force` on removal permits only the active-account case. |
 | `kae profile save\|set\|unset\|rm\|default` | Manage profiles without editing TOML. |
 | `kae env set\|...` | Manage API-key env profiles for `run --env`. |

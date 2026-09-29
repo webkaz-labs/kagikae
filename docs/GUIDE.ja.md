@@ -70,6 +70,30 @@ kae ls -i claude side --current        # side の独立ホーム
 場所の増減で変わるので、エージェントは `--json` のパスを使ってください。`.claude/` と
 `.codex/` の探索規則を含む正本は [CLI.md](CLI.md#kae-ls-semantics) § kae ls Semantics です。
 
+場所へ移動するには `kae cd`、ファイルマネージャーで開くには `kae open` を使います。
+対象・`-s`/`-i`・選択子・`--root`・`--at N` は `kae ls` と同じで、`--current` は
+付けません（既定が現在の場所です）。`account` は場所ではないため指定できません。
+
+```bash
+kae cd claude                          # ここで有効なユーザーレベルへ移動
+kae cd codex --project --root          # .codex/ を持つ最も近いプロジェクトへ
+kae cd --project                       # 固定しているツールが 1 つならその最も近いプロジェクトレベル
+kae open kae --at 2                    # kae のデータディレクトリを開く
+```
+
+対象がない場合、選択子に一致する場所が複数ある場合、ツールなしの選択子で固定している
+ツールが 0 個か複数の場合は、候補をそれぞれに届くコマンドとして stderr に一覧し、終了
+コード `64` になります。現在の場所がない場合と、ディレクトリが存在しない場合は `7` です。
+`kae open` は macOS で `open`、Linux で `xdg-open` を使い、見つからなければパスを表示して
+警告を出し、`0` で終了します。
+
+`kae cd` はシェル自体を移動させるため、`kae completion <shell>` の出力を読み込むと定義
+される kae シェル関数が処理します（rc の `eval "$(kae completion zsh)"`、または mise
+フック）。`--install` が書く補完ファイルや `--refresh` の書き直しには関数が含まれません。
+関数がないと `kae cd` は終了コード `64` で、代わりに実行する
+`cd "$(kae ls … --current)"` を表示します。正本は
+[CLI.md](CLI.md#kae-open-and-kae-cd-semantics) § kae open and kae cd Semantics です。
+
 `kae pin` は `./.config/<tool>` から、そのツールのストアへの symlink も張ります。
 ストアの場所はディレクトリのパスのハッシュで決まるため、リンクがないと、ここから
 ストアを名指すのはフラグメントの `[env]` 行だけになります。`--no-link` を付けるとリンクを置かず、kae が作った既存の

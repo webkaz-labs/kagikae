@@ -12,7 +12,8 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
-// lsFlags is every flag `kae ls` takes beyond the common ones.
+// lsFlags is every flag `kae ls` takes beyond the common ones; `kae open` and
+// `kae cd` take all of them but pins and current (registerPlaceFlags).
 type lsFlags struct {
 	pins, current              bool
 	at                         atFlag
@@ -44,6 +45,7 @@ func (a *atFlag) Set(value string) error {
 
 // lsRequest is a parsed `kae ls` command line.
 type lsRequest struct {
+	verb     string // the command parsed for: ls, open or cd
 	target   string // "" for bare ls; a PlaceGroup word or a tool
 	explicit *explicitUserLevel
 	current  bool
@@ -55,8 +57,8 @@ type lsRequest struct {
 const lsUsage = "usage: kae ls [account|pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--current [--project|--below|--home] [--root] | --at N] [--json]"
 
 // resolveLsTarget matches a target word: the exact words first, then a prefix
-// of a tool name (and only a tool name).
-func resolveLsTarget(word string) (string, int) {
+// of a tool name (and only a tool name). verb names the command in the error.
+func resolveLsTarget(verb, word string) (string, int) {
 	if slices.Contains(constants.PlaceGroups, word) || constants.IsTool(word) {
 		return word, constants.ExitOK
 	}
@@ -66,19 +68,34 @@ func resolveLsTarget(word string) (string, int) {
 		return matches[0], constants.ExitOK
 	case 0:
 		candidates := append(append([]string{}, constants.PlaceGroups...), constants.Tools...)
-		return "", usageError("unknown ls target: %s (targets: %s, or a tool: %s)%s", word,
+		return "", usageError("unknown %s target: %s (targets: %s, or a tool: %s)%s", verb, word,
 			strings.Join(constants.PlaceGroups, ", "), strings.Join(constants.Tools, ", "), didYouMean(word, candidates))
 	default:
-		return "", usageError("ambiguous ls target %q: matches %s", word, strings.Join(matches, ", "))
+		return "", usageError("ambiguous %s target %q: matches %s", verb, word, strings.Join(matches, ", "))
 	}
 }
 
 // parseLsRequest validates the command line against docs/CLI.md § kae ls
 // Semantics. Every refusal is a usage error, printed here.
 func parseLsRequest(f lsFlags, positionals []string) (lsRequest, int) {
-	req := lsRequest{current: f.current, root: f.root}
+	return parsePlaceArgs("ls", lsUsage, f, positionals)
+}
+
+// parsePlaceArgs is the target, explicit-resolution and selector grammar that
+// `kae ls`, `kae open` and `kae cd` share (docs/CLI.md § kae ls Semantics and
+// § kae open and kae cd Semantics). verb is the command it parses for. `ls`
+// chooses one place with --current or --at; `open` and `cd` always choose one,
+// so they take no --current (f.current is always false for them) and their
+// request is --current unless --at is given. For them a missing target and a
+// level selector without a tool are not usage errors here: resolution decides.
+func parsePlaceArgs(verb, usage string, f lsFlags, positionals []string) (lsRequest, int) {
+	navigate := verb != "ls"
+	req := lsRequest{verb: verb, current: f.current, root: f.root}
 	if f.at.set {
 		req.at = f.at.n
+	}
+	if navigate && !f.at.set {
+		req.current = true
 	}
 	if f.shared && f.isolated {
 		return req, usageError("-s and -i are mutually exclusive")
@@ -86,28 +103,28 @@ func parseLsRequest(f lsFlags, positionals []string) (lsRequest, int) {
 	switch {
 	case f.isolated:
 		if len(positionals) < 2 {
-			return req, usageError("-i names an account's isolated home: kae ls -i <tool> <account>")
+			return req, usageError("-i names an account's isolated home: kae %s -i <tool> <account>", verb)
 		}
 		if len(positionals) > 2 {
-			return req, usageError("%s", lsUsage)
+			return req, usageError("%s", usage)
 		}
 	case f.shared:
 		if len(positionals) == 2 {
-			return req, usageError("-s names the real home, which holds whichever account is active; name an account with -i: kae ls -i %s %s", positionals[0], positionals[1])
+			return req, usageError("-s names the real home, which holds whichever account is active; name an account with -i: kae %s -i %s %s", verb, positionals[0], positionals[1])
 		}
 		if len(positionals) != 1 {
-			return req, usageError("-s names a tool's real home: kae ls -s <tool>")
+			return req, usageError("-s names a tool's real home: kae %s -s <tool>", verb)
 		}
 	default:
 		if len(positionals) == 2 {
-			return req, usageError("a shared home holds whichever account is active, so an account needs -i: kae ls -i %s %s", positionals[0], positionals[1])
+			return req, usageError("a shared home holds whichever account is active, so an account needs -i: kae %s -i %s %s", verb, positionals[0], positionals[1])
 		}
 		if len(positionals) > 2 {
-			return req, usageError("%s", lsUsage)
+			return req, usageError("%s", usage)
 		}
 	}
 	if len(positionals) > 0 {
-		target, code := resolveLsTarget(positionals[0])
+		target, code := resolveLsTarget(verb, positionals[0])
 		if code != constants.ExitOK {
 			return req, code
 		}
@@ -150,6 +167,9 @@ func parseLsRequest(f lsFlags, positionals []string) (lsRequest, int) {
 		return req, usageError("--current and --at each choose one place; give one")
 	}
 	if req.level != "" && !req.current {
+		if navigate {
+			return req, usageError("--project, --below and --home choose a level and --at a place number; give one")
+		}
 		return req, usageError("--project, --below and --home select a place with --current")
 	}
 	if req.root && !req.current && req.at == 0 {
@@ -158,17 +178,22 @@ func parseLsRequest(f lsFlags, positionals []string) (lsRequest, int) {
 	if req.root && req.current && req.level != constants.PlaceKindProject && req.level != constants.PlaceKindBelow {
 		return req, usageError("--root applies to a project level: add --project or --below")
 	}
-	if req.level != "" && !constants.IsTool(req.target) {
+	if req.level != "" && !constants.IsTool(req.target) && (!navigate || req.target != "") {
+		if navigate {
+			return req, usageError("a level selector needs a tool target: kae %s <tool> %s", verb, "--"+req.level)
+		}
 		return req, usageError("a level selector needs a tool target: kae ls <tool> --current %s", "--"+req.level)
 	}
 	if req.explicit != nil && req.explicit.isolated && req.level == constants.PlaceKindHome {
 		return req, usageError("-i resolves the user level and --home selects the real home; give one")
 	}
 	if req.current || req.at != 0 {
-		switch req.target {
-		case "":
+		switch {
+		case req.target == "" && !navigate:
 			return req, usageError("--current and --at need a target: kae ls <target> --current")
-		case constants.PlaceGroupAccount:
+		case req.target == "" && req.at != 0:
+			return req, usageError("--at is the number kae ls <target> shows, so it needs a target: kae %s <target> --at N", verb)
+		case req.target == constants.PlaceGroupAccount:
 			return req, usageError("account rows are not places; choose pin, repo, kae or a tool")
 		}
 	}
@@ -285,49 +310,14 @@ func runLs(ctx context.Context, app *App, opts commonOpts) int {
 			fmt.Fprintf(os.Stderr, "kae: warning: the %s group is not listed: %v\n", group, err)
 		}
 	}
-	var (
-		pins     *pinsReport
-		tools    []string
-		toolRows = map[string][]placeRow{}
-		repo     []placeRow
-	)
-	if pc, err := app.newPlaceContextWith(ctx, nil, loaded); err != nil {
-		warnGroup("place", err)
-	} else {
-		if pins, err = buildLsPins(app, governingDir(pc.binding)); err != nil {
-			warnGroup(constants.PlaceGroupPin, err)
-			pins = nil
-		}
-		for _, tool := range placeTools() {
-			if !pc.toolRelevant(tool) {
-				continue
-			}
-			rows, err := app.toolPlaces(ctx, pc, tool)
-			if err != nil {
-				warnGroup(tool, err)
-				continue
-			}
-			tools = append(tools, tool)
-			toolRows[tool] = rows
-		}
-		repo = pc.repoPlaces()
-	}
-	kae := app.kaePlaces()
+	g := app.collectPlaceGroups(ctx, loaded, warnGroup)
 
 	if opts.Format == formatJSON {
-		places := []placeRow{}
-		if pins != nil {
-			places = append(places, pinPlaces(pins.BoundDirectories)...)
-		}
-		for _, tool := range tools {
-			places = append(places, toolRows[tool]...)
-		}
-		places = append(append(places, repo...), kae...)
 		return encodeJSON(bareLsReport{
 			SchemaVersion: constants.SchemaVersion,
 			Accounts:      report.Accounts,
 			Profiles:      report.Profiles,
-			Places:        places,
+			Places:        g.places(),
 		})
 	}
 	code := constants.ExitOK
@@ -338,16 +328,16 @@ func runLs(ctx context.Context, app *App, opts commonOpts) int {
 	} else {
 		groups = append(groups, func() { printLsReport(app, report, opts) })
 	}
-	if pins != nil {
-		groups = append(groups, func() { printPinsReport(app, pins, color) })
+	if g.pins != nil {
+		groups = append(groups, func() { printPinsReport(app, g.pins, color) })
 	}
-	for _, tool := range tools {
-		groups = append(groups, func() { printToolPlaces(app, tool, toolRows[tool], color) })
+	for _, tool := range g.tools {
+		groups = append(groups, func() { printToolPlaces(app, tool, g.toolRows[tool], color) })
 	}
-	if repo != nil {
-		groups = append(groups, func() { printRepoPlaces(app, repo, color) })
+	if g.repo != nil {
+		groups = append(groups, func() { printRepoPlaces(app, g.repo, color) })
 	}
-	groups = append(groups, func() { printKaePlaces(app, kae, color) })
+	groups = append(groups, func() { printKaePlaces(app, g.kae, color) })
 	for i, group := range groups {
 		if i > 0 {
 			fmt.Println()
@@ -355,6 +345,58 @@ func runLs(ctx context.Context, app *App, opts commonOpts) int {
 		group()
 	}
 	return code
+}
+
+// placeGroups is every place group bare `kae ls` shows, beside the account
+// group: pin, each relevant tool, repo and kae. A group that failed is absent
+// (pins nil, a tool left out of tools, repo nil); its warning has been given.
+type placeGroups struct {
+	pins     *pinsReport
+	tools    []string
+	toolRows map[string][]placeRow
+	repo     []placeRow
+	kae      []placeRow
+}
+
+// collectPlaceGroups resolves the place groups once, reporting each group that
+// fails through warnGroup and leaving it out.
+func (app *App) collectPlaceGroups(ctx context.Context, loaded loadedState, warnGroup func(group string, err error)) placeGroups {
+	g := placeGroups{toolRows: map[string][]placeRow{}}
+	if pc, err := app.newPlaceContextWith(ctx, nil, loaded); err != nil {
+		warnGroup("place", err)
+	} else {
+		if g.pins, err = buildLsPins(app, governingDir(pc.binding)); err != nil {
+			warnGroup(constants.PlaceGroupPin, err)
+			g.pins = nil
+		}
+		for _, tool := range placeTools() {
+			if !pc.toolRelevant(tool) {
+				continue
+			}
+			rows, err := app.toolPlaces(ctx, pc, tool)
+			if err != nil {
+				warnGroup(tool, err)
+				continue
+			}
+			g.tools = append(g.tools, tool)
+			g.toolRows[tool] = rows
+		}
+		g.repo = pc.repoPlaces()
+	}
+	g.kae = app.kaePlaces()
+	return g
+}
+
+// places is the groups' rows in bare `kae ls` order.
+func (g placeGroups) places() []placeRow {
+	places := []placeRow{}
+	if g.pins != nil {
+		places = append(places, pinPlaces(g.pins.BoundDirectories)...)
+	}
+	for _, tool := range g.tools {
+		places = append(places, g.toolRows[tool]...)
+	}
+	return append(append(places, g.repo...), g.kae...)
 }
 
 // runLsTool is `kae ls <tool>`: the tool's accounts, which need config, and its
@@ -443,16 +485,21 @@ func (app *App) groupPlaces(ctx context.Context, group string, explicit *explici
 
 // runLsPick is `--current` and `--at N`: one place's path on stdout.
 func runLsPick(ctx context.Context, app *App, opts commonOpts, req lsRequest) int {
-	row, code := app.pickPlace(ctx, opts, req)
+	row, several, code := app.pickPlace(ctx, opts, req)
+	if several != nil {
+		names := make([]string, 0, len(several))
+		for _, row := range several {
+			names = append(names, fmt.Sprintf("%d %s", row.Number, row.Path))
+		}
+		return usageError("kae ls %s --current matches %d places; choose one with --at N: %s",
+			req.target, len(several), strings.Join(names, ", "))
+	}
 	if code != constants.ExitOK {
 		return code
 	}
-	path := row.Path
-	if req.root {
-		if row.Root == "" {
-			return usageError("--root applies to a project level; place %d of kae ls %s is a %s place", row.Number, req.target, row.Kind)
-		}
-		path = row.Root
+	path, code := placePath(row, req)
+	if code != constants.ExitOK {
+		return code
 	}
 	if opts.Format == formatJSON {
 		return encodeJSON(placeReport{SchemaVersion: constants.SchemaVersion, Path: path, Place: row})
@@ -461,47 +508,74 @@ func runLsPick(ctx context.Context, app *App, opts commonOpts, req lsRequest) in
 	return constants.ExitOK
 }
 
+// placePath is the path a chosen place prints: the place itself, or with --root
+// the directory holding its project level.
+func placePath(row placeRow, req lsRequest) (string, int) {
+	if !req.root {
+		return row.Path, constants.ExitOK
+	}
+	if row.Root == "" {
+		return "", usageError("--root applies to a project level; place %d of kae ls %s is a %s place", row.Number, req.target, row.Kind)
+	}
+	return row.Root, constants.ExitOK
+}
+
 // pickPlace chooses the place --current or --at names. A failure has already
-// been reported; its exit code is returned.
-func (app *App) pickPlace(ctx context.Context, opts commonOpts, req lsRequest) (placeRow, int) {
+// been reported and its exit code is returned — except when the request matches
+// several places: those come back as several, unreported, with ExitUsage, for
+// the caller to present (ls names them in its usage error; open and cd list them
+// as the picker's candidates).
+func (app *App) pickPlace(ctx context.Context, opts commonOpts, req lsRequest) (placeRow, []placeRow, int) {
 	if req.target == constants.PlaceGroupPin && req.current {
-		cwd, err := cwdAbs()
-		if err != nil {
-			return placeRow{}, finish(opts, err)
-		}
-		binding := app.governingBindingAt(cwd)
-		if binding == nil {
-			return placeRow{}, finish(opts, errf(constants.ExitNotFound, "no bound directory governs %s", cwd))
-		}
-		rows, err := app.pinGroupPlaces(binding)
-		if err != nil {
-			return placeRow{}, finish(opts, err)
-		}
-		for _, row := range rows {
-			if samePath(row.Path, binding.dir) {
-				return row, constants.ExitOK
-			}
-		}
-		// Bound by a kae older than the breadcrumb, so not in the listing: no number.
-		return placeRow{
-			Group: constants.PlaceGroupPin, Kind: constants.PlaceKindBoundDirectory, Path: binding.dir,
-			Exists: true, InEffect: true, Source: constants.PlaceSourcePin, Mode: binding.info.Mode,
-		}, constants.ExitOK
+		row, code := app.currentPinPlace(opts)
+		return row, nil, code
 	}
 	rows, err := app.groupPlaces(ctx, req.target, req.explicit)
 	if err != nil {
+		return placeRow{}, nil, finish(opts, err)
+	}
+	return selectPlace(app, opts, req, rows)
+}
+
+// currentPinPlace is `pin --current`: the nearest ancestor bound directory.
+func (app *App) currentPinPlace(opts commonOpts) (placeRow, int) {
+	cwd, err := cwdAbs()
+	if err != nil {
 		return placeRow{}, finish(opts, err)
 	}
+	binding := app.governingBindingAt(cwd)
+	if binding == nil {
+		return placeRow{}, finish(opts, errf(constants.ExitNotFound, "no bound directory governs %s", cwd))
+	}
+	rows, err := app.pinGroupPlaces(binding)
+	if err != nil {
+		return placeRow{}, finish(opts, err)
+	}
+	for _, row := range rows {
+		if samePath(row.Path, binding.dir) {
+			return row, constants.ExitOK
+		}
+	}
+	// Bound by a kae older than the breadcrumb, so not in the listing: no number.
+	return placeRow{
+		Group: constants.PlaceGroupPin, Kind: constants.PlaceKindBoundDirectory, Path: binding.dir,
+		Exists: true, InEffect: true, Source: constants.PlaceSourcePin, Mode: binding.info.Mode,
+	}, constants.ExitOK
+}
+
+// selectPlace applies --at or --current and a level selector to the rows `kae ls
+// <target>` lists, with pickPlace's result contract.
+func selectPlace(app *App, opts commonOpts, req lsRequest, rows []placeRow) (placeRow, []placeRow, int) {
 	if req.at != 0 {
 		if req.at > len(rows) {
-			return placeRow{}, usageError("kae ls %s lists %d place(s); there is no place %d", req.target, len(rows), req.at)
+			return placeRow{}, nil, usageError("kae ls %s lists %d place(s); there is no place %d", req.target, len(rows), req.at)
 		}
-		return rows[req.at-1], constants.ExitOK
+		return rows[req.at-1], nil, constants.ExitOK
 	}
 	var matches []placeRow
 	switch {
 	case constants.IsTool(req.target) && projectLevelName(req.target) == "":
-		return placeRow{}, finish(opts, errf(constants.ExitNotFound, "kae resolves no places for %s", req.target))
+		return placeRow{}, nil, finish(opts, errf(constants.ExitNotFound, "kae resolves no places for %s", req.target))
 	case constants.IsTool(req.target) && req.level == "":
 		matches = rows[:1] // the effective user level is always first
 	case req.level == constants.PlaceKindProject:
@@ -535,16 +609,15 @@ func (app *App) pickPlace(ctx context.Context, opts commonOpts, req lsRequest) (
 		if req.level != "" {
 			what += " --" + req.level
 		}
-		return placeRow{}, finish(opts, errf(constants.ExitNotFound, "no current place for kae ls %s here", what))
+		verb := req.verb
+		if verb == "" {
+			verb = "ls"
+		}
+		return placeRow{}, nil, finish(opts, errf(constants.ExitNotFound, "no current place for kae %s %s here", verb, what))
 	case 1:
-		return matches[0], constants.ExitOK
+		return matches[0], nil, constants.ExitOK
 	}
-	names := make([]string, 0, len(matches))
-	for _, row := range matches {
-		names = append(names, fmt.Sprintf("%d %s", row.Number, row.Path))
-	}
-	return placeRow{}, usageError("kae ls %s --current matches %d places; choose one with --at N: %s",
-		req.target, len(matches), strings.Join(names, ", "))
+	return placeRow{}, matches, constants.ExitUsage
 }
 
 // placePathCell is a place's path for the human tables, marked when absent.

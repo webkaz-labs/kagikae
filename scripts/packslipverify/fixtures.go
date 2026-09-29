@@ -143,7 +143,7 @@ func (s *scenario) publish(root, source, original, packslip, key, otherKey, vers
 	}
 	s.copy(binary, filepath.Join(stage, "kae"), 0o755)
 	for _, shell := range []string{"bash", "zsh", "fish"} {
-		script := s.run(stage, binary, "completion", shell)
+		script := s.run(stage, binary, "completion", shell, "--no-function")
 		marker := "fixture-static-" + version
 		// These differences are confined to fixture resources, not shipped scripts.
 		switch shell {

@@ -28,10 +28,17 @@ func registerUseFlags(fs *flag.FlagSet, shared, isolated, quiet, auto *bool, pro
 func registerLsFlags(fs *flag.FlagSet, f *lsFlags) {
 	fs.BoolVar(&f.pins, "pins", false, "list every directory bound with kae pin (alias of kae ls pin)")
 	fs.BoolVar(&f.current, "current", false, "print the current place's path for the target")
-	fs.Var(&f.at, "at", "print the path of place number N of the target's listing")
-	fs.BoolVar(&f.project, "project", false, "with --current: the nearest effective ancestor project level")
-	fs.BoolVar(&f.below, "below", false, "with --current: a project level below the current directory")
-	fs.BoolVar(&f.home, "home", false, "with --current: the tool's real home")
+	registerPlaceFlags(fs, f)
+}
+
+// registerPlaceFlags is the place selection `kae ls`, `kae open` and `kae cd`
+// share. open and cd register it alone: they always choose one place, so they
+// take no --current (their default) and no --pins.
+func registerPlaceFlags(fs *flag.FlagSet, f *lsFlags) {
+	fs.Var(&f.at, "at", "the place number N of the target's kae ls listing")
+	fs.BoolVar(&f.project, "project", false, "the nearest effective ancestor project level")
+	fs.BoolVar(&f.below, "below", false, "a project level below the current directory")
+	fs.BoolVar(&f.home, "home", false, "the tool's real home")
 	fs.BoolVar(&f.root, "root", false, "the directory holding a project level's .claude/ or .codex/")
 	registerScopeFlags(fs, &f.shared, &f.isolated)
 }
@@ -79,8 +86,9 @@ func registerUnpinFlags(fs *flag.FlagSet, purge *bool) {
 	fs.BoolVar(purge, "purge", false, "also delete this directory's per-directory keychain credentials (sessions and settings are kept)")
 }
 
-func registerCompletionFlags(fs *flag.FlagSet, install, refresh *bool) {
+func registerCompletionFlags(fs *flag.FlagSet, install, refresh, noFunction *bool) {
 	fs.BoolVar(install, "install", false, "register the completion script interactively")
+	fs.BoolVar(noFunction, "no-function", false, "print the completion alone, without the kae shell function (the shape of a completion file)")
 	fs.BoolVar(refresh, "refresh", false, "rewrite already-registered completion files from this binary (no shell arg; never creates a new registration)")
 }
 
@@ -100,13 +108,15 @@ var commandFlagSpecs = map[string]commandFlagSpec{
 	"add":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
 	"use":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(bool), new(string)) }},
 	"ls":        {extra: func(fs *flag.FlagSet) { registerLsFlags(fs, new(lsFlags)) }},
+	"open":      {extra: func(fs *flag.FlagSet) { registerPlaceFlags(fs, new(lsFlags)) }},
+	"cd":        {extra: func(fs *flag.FlagSet) { registerPlaceFlags(fs, new(lsFlags)) }},
 	"pin":       {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool), new(bool)) }},
 	"unpin":     {extra: func(fs *flag.FlagSet) { registerUnpinFlags(fs, new(bool)) }},
 	"run":       {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
 	"mise": {extra: func(fs *flag.FlagSet) {
 		registerMiseInitFlags(fs, new(string), new(string), new(bool), new(bool))
 	}},
-	"completion":   {extra: func(fs *flag.FlagSet) { registerCompletionFlags(fs, new(bool), new(bool)) }},
+	"completion":   {extra: func(fs *flag.FlagSet) { registerCompletionFlags(fs, new(bool), new(bool), new(bool)) }},
 	"preservation": {dryRun: true},
 	"rollback":     {dryRun: true, extra: func(fs *flag.FlagSet) { registerRollbackFlags(fs, new(string)) }},
 	"account": {dryRun: true, extra: func(fs *flag.FlagSet) {

@@ -97,13 +97,13 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
    kae ls <target> … --current|--at N [--json]        # print one place's path
    kae cd   [<target> …] [--pick|--at N]  # move the shell
    kae open [<target> …] [--pick|--at N]  # open in the file manager
-   # a tool target also takes [-i <account>|-s] [--project|--below|--home] [--root]
+   # a tool target: [-i] <tool> <account> | [-s] <tool>, plus [--project|--below|--home] [--root]
    ```
 
    - **Targets** are singular: `account`, `pin`, `repo`, `kae`, and a tool name.
      Exact target words match first; prefixes resolve against tool names only.
-     `kae ls --pins` and `kae accounts` stay as aliases with their current output
-     and JSON. The `account` group is today's `kae ls` view, accounts and profiles;
+     `kae ls --pins` stays as an alias of `kae ls pin`, and `kae accounts` keeps its
+     current accounts-only output; both keep their JSON. The `account` group is today's `kae ls` view, accounts and profiles;
      its rows are shown but are not places, so `cd` and `open` do not take them.
      The `kae` group lists kae's config, data and state directories; the
      credential store and file-backend secrets get no row of their own.
@@ -113,7 +113,8 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      directory. When `config.toml` cannot be read, the groups that need it report
      the error on stderr, the other groups are still shown, and the exit code stays
      `2` as for today's `kae ls`; a request that needs no config, such as
-     `kae ls pin`, exits `0` as `kae ls --pins` does.
+     `kae ls pin`, exits `0` as `kae ls --pins` does. With `--json`, a config
+     error keeps today's JSON error object and exit `2` instead of a partial report.
    - **Tool levels**, nearest first: the effective user level (the bound directory's
      store, else the global-isolated home, else the real home), effective ancestor
      project levels, then project levels below the current directory and the real
@@ -143,10 +144,12 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      `cd` and `open` open the picker over them and `ls --current` is a usage error
      naming them. `--root` on a project or below place selects the directory
      holding `.claude/` or `.codex/`. `ls` takes the same selectors with
-     `--current`.
+     `--current`. Level selectors choose a level; `-s` and `-i` resolve the
+     user level, so `-i` with `--home` is a usage error.
    - **Explicit resolution** follows `use`'s `-s`/`-i` spelling: `-i <tool>
      <account>` is that account's global-isolated home, and `-s <tool>` the real
-     home. A shared home holds whichever account is active, so an account without
+     home. `-i` takes no value, as in `use`; `-i <tool>` without an account is a
+     usage error. A shared home holds whichever account is active, so an account without
      `-i` is a usage error. Without explicit arguments the nearest ancestor bound
      directory's recorded binding applies (not the shell's environment), then what
      applies globally. The credential store is not a place.
@@ -170,8 +173,8 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      print the path and a warning and exit `0`.
    - **`cd`** is a `kae` shell function delivered through the paths that already
      source `kae completion` from the binary (the mise hook and rc eval); it passes
-     every other command to the binary and changes directory only when the binary
-     exits `0` with a path. It is the first of the wrappers named by the `kae shell init`
+     every other command to the binary and changes directory only when a hidden entry the
+     function calls exits `0` with a path. It is the first of the wrappers named by the `kae shell init`
      entry under § Exploratory. A mise `[shell_alias]` in the fragment was rejected
      because an alias cannot place arguments inside `cd "$(…)"`. Without the
      function, `kae cd` exits `64` and suggests `cd "$(kae ls … --current)"`.

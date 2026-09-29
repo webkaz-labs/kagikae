@@ -115,9 +115,38 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      CLI § kae ls Semantics.
    - **Tool levels** and each tool's discovery rule are in CLI § kae ls
      Semantics. claude's user level also has a session row, the per-project
-     directory under `projects/`; measure its name encoding on a real install,
-     including `CLAUDE_CODE_PROJECT_DIR_NAME` and derivation from the repository,
-     before it ships. codex stores sessions by date, so it has no session row.
+     directory under `projects/`; it is not implemented. codex stores sessions
+     by date, so it has no session row. Measured with claude 2.1.284 on
+     2026-09-30 (`claude -p` under `env -i`, a scratch `HOME` and
+     `CLAUDE_CONFIG_DIR`, a bogus API key and a local listener answering 401; the
+     transcript and `memory/` appear at session start despite the 401, and a
+     `SessionStart` hook's `transcript_path` named the directory that appeared;
+     no mismatch over every case not using the variable):
+     - **Name**: for each UTF-16 code unit of the process's physical working
+       directory (symlinks resolved, so `/tmp` is `/private/tmp`; `PWD` unused;
+       on-disk case on a case-insensitive filesystem), keep `[A-Za-z0-9]` and
+       replace anything else with `-`. An astral character gives two dashes, and
+       CJK or accented letters are not alphanumeric. A converted name over 200
+       characters becomes its first 200 characters, `-`, and the base 36 of the
+       absolute value of Java's `String.hashCode` (`h = h*31 + unit`, int32) over
+       the raw path. The hash is undocumented and was matched against five
+       suffixes; a seven-character suffix was not observed.
+     - **Transcripts and memory differ**: transcripts sit in the directory named
+       for the working directory itself, so a subdirectory and a linked worktree
+       each have their own; `memory/` sits only under the repository root's name
+       (the main checkout for a linked worktree). An empty `.git` directory
+       counted as a root for `memory/`.
+     - **`CLAUDE_CODE_PROJECT_DIR_NAME`**: 1-64 of `[A-Za-z0-9_-]`, not a device
+       name such as `con`, replaces the name for transcripts and `memory/` from
+       every working directory, and only with `CLAUDE_CONFIG_DIR` in the
+       launching environment; an invalid value, one set only in a settings `env`
+       block, or one without `CLAUDE_CONFIG_DIR` is ignored and the derived name
+       is used.
+     - **Unmeasured**: decomposed (NFD) Unicode names, a seven-character hash
+       suffix, versions other than 2.1.284, and `/cd` or `EnterWorktree`
+       relocating a transcript. The session row waits on a design that either
+       derives this name or lists `projects/` and matches, and on re-verifying
+       the name on upgrade.
    - **Level selectors** apply to a tool target: `--project` is the nearest
      effective ancestor project level, `--below` a project level below the current
      directory, `--home` the real home. When a selector matches several places,
@@ -178,8 +207,10 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
    Whether two directories bound to one codex account can invalidate each other the
    way claude's copies do (the research entry **Every credential copy kae keeps can
    be killed by another copy refreshing, and four kae commands do the killing**)
-   depends on codex's refresh-token rotation, which is unmeasured (§ Hardening
-   backlog — daily-use robustness, **Rotation is measured for claude only**). A switch reaches the next launched process; making
+   depends on codex's refresh-token rotation, which is unmeasured; the source
+   reading in § Hardening backlog — daily-use robustness, **Rotation is measured
+   for claude only**, says separate copies are at risk and one shared file is
+   not, and a measurement must still settle the severity. A switch reaches the next launched process; making
    it reach running processes waits for a measurement showing that doing so does
    not reintroduce that copy failure. Acceptance includes a measured check that
    the fragment's `[env]` reaches nested directories: on 2026-09-29 a scratch
@@ -1045,6 +1076,31 @@ alternative exists (`secret-tool`).
   Also unmeasured, and cheap to fold in: whether a fresh login revokes the previous
   login's chain, which is what decides whether `expiresAt` can order copies **across**
   logins rather than only within one.
+
+  **codex source reading, not a measurement** (openai/codex `main` at 193632d and
+  tag `rust-v0.159.0`, `codex-rs/login/src/auth/manager.rs`, identical constants
+  and messages in both, line numbers from `main`; read 2026-09-30; codex was not
+  run). It shows a refresh response can replace the refresh token
+  (`RefreshResponse.refresh_token`, 1709-1714; `persist_tokens`, 1598-1621) and
+  that the server error `refresh_token_reused` is surfaced as "your refresh
+  token was already used" (207, 1687, 1701), so a copy holding a superseded
+  refresh token is expected to fail. Before refreshing, codex re-reads the
+  auth file and, when it changed for the same account, adopts it and skips the
+  network refresh (2848-2885, "Skipping token refresh because auth changed after
+  guarded reload", 2871), so processes sharing one file tolerate each other and
+  separate copies, whose files never change, do not; there is no cross-process
+  lock, only a per-process semaphore. A refresh is due when the access token's
+  `exp` is within 5 minutes (`should_refresh_proactively`, 3004-3026; 204), or,
+  only when `exp` cannot be parsed, when `last_refresh` is over 8 days old (203),
+  and it is checked when a request needs the token, not on a timer, so
+  `last_refresh` alone does not predict a refresh. OpenAI's CI guidance
+  (https://learn.chatgpt.com/docs/auth/ci-cd-auth, read 2026-09-30) advises not
+  sharing one file across concurrent jobs or machines.
+  **Still to measure before codex joins `rotatesSingleUse`**, with a throwaway
+  login and scratch `CODEX_HOME` copies: whether the old refresh token is
+  rejected immediately or within a grace window, whether presenting it revokes
+  the newer copy too (the cascade), whether a fresh login or logout revokes the
+  previous chain, and the access token's lifetime (`exp` minus `iat`).
 
 - **A recorded identity that is not an account record silently disables attribution
   for that account** — implemented for the v0.18.2 target as

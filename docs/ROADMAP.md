@@ -125,12 +125,25 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      codex, https://learn.chatgpt.com/docs/config-file/config-advanced (read
      2026-09-30): "Codex discovers project configuration (for example, `.codex/`
      layers and `AGENTS.md`) by walking up from the working directory until it
-     reaches a project root", a directory containing `.git` by default; where it
-     stops outside a repository is not documented. For claude,
+     reaches a project root", a directory containing `.git` by default. For claude,
      https://code.claude.com/docs/en/memory (read 2026-09-30) covers instruction
      files only: "Claude Code loads `CLAUDE.md` and `CLAUDE.local.md` from your
-     current working directory and every directory above it"; whether an ancestor's
-     `.claude/` settings apply is not documented. Measure both before implementing.
+     current working directory and every directory above it". Measured 2026-09-30
+     with `HOME`, `CODEX_HOME` and `CLAUDE_CONFIG_DIR` in a scratch directory,
+     each case beside a control with the level in the working directory itself:
+     codex 0.159.0, reading `[features] chronicle = true` through
+     `codex features list` with every directory trusted, applies `.codex/` from
+     the working directory up to the root of a `git init` repository and not above
+     it, and outside a repository only in the working directory (one and three
+     levels up, under and outside HOME, were not applied; an empty `.git`
+     directory did not count as a root). claude 2.1.283, `claude -p` with a
+     bogus API key and a `SessionStart` hook that touches a marker, applied
+     `.claude/settings.json` only in the working directory: not one or two levels
+     up, not at the repository root from a subdirectory, and not two levels up
+     outside HOME. Only settings were measured; other `.claude/` contents may be
+     discovered differently. So claude's only project level is the working
+     directory's, and codex's ancestor levels end at the repository root, or at
+     the working directory outside a repository.
      "Effective" means reachable by the measured rule; codex's project trust is not
      consulted. Below the current directory, search the repository's tracked and
      non-ignored tree, or a depth-limited walk outside a repository. Files such as

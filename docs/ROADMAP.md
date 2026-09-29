@@ -192,7 +192,7 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
 
    Remaining slices, each merged on its own: the picker, which replaces the
    candidate list `open` and `cd` print on stderr where it would open and adds
-   `--pick`; the claude session row after its measurement. Each slice updates
+   `--pick`; the claude session row, whose name rule is measured under **Tool levels**. Each slice updates
    completion for what it adds (CLI § Keeping completion current), CLI, CONTEXT
    when a term changes, README, README.ja and GUIDE.ja in the same commit. It comes
    first because it helps today's `-s` and `-i` binds and serves as the inspection

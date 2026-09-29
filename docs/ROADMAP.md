@@ -92,55 +92,75 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
    the platform file manager.
 
    ```
-   kae ls                               # groups: account, pin, each relevant tool, repo, kae
-   kae ls account|pin|repo|kae|<tool> … # one group; <tool> takes [<account>] [-s|-i]
-   kae ls … --current|--at N [--json]   # print one place's path
-   kae cd   [<target> …] [--pick|--at N] [--project|--below|--home] [--root]
-   kae open [<target> …] [--pick|--at N] [--project|--below|--home] [--root]
+   kae ls                                 # groups: account, pin, each relevant tool, repo, kae
+   kae ls account|pin|repo|kae|<tool> …   # one group
+   kae ls <target> … --current|--at N [--json]        # print one place's path
+   kae cd   [<target> …] [--pick|--at N]  # move the shell
+   kae open [<target> …] [--pick|--at N]  # open in the file manager
+   # a tool target also takes [-i <account>|-s] [--project|--below|--home] [--root]
    ```
 
    - **Targets** are singular: `account`, `pin`, `repo`, `kae`, and a tool name.
      Exact target words match first; prefixes resolve against tool names only.
-     `kae ls --pins` and `kae accounts` stay as aliases. `account` rows are shown
-     but are not places, so `cd` and `open` do not take them.
+     `kae ls --pins` and `kae accounts` stay as aliases with their current output
+     and JSON. The `account` group is today's `kae ls` view, accounts and profiles;
+     its rows are shown but are not places, so `cd` and `open` do not take them.
+     The `kae` group lists kae's config, data and state directories; the
+     credential store and file-backend secrets get no row of their own.
    - **`kae ls <tool>`** shows that tool's accounts and its places, so reading it as
      "claude's accounts" is not wrong. Bare `kae ls` shows the tool groups only for
      tools that are bound or have an effective project level at the current
-     directory. A group that cannot be read (a malformed `config.toml`) is
-     skipped with a warning; the others are still shown and the exit code follows
-     the existing `kae ls` rules.
+     directory. When `config.toml` cannot be read, the groups that need it report
+     the error on stderr, the other groups are still shown, and the exit code stays
+     `2` as for today's `kae ls`; a request that needs no config, such as
+     `kae ls pin`, exits `0` as `kae ls --pins` does.
    - **Tool levels**, nearest first: the effective user level (the bound directory's
      store, else the global-isolated home, else the real home), effective ancestor
      project levels, then project levels below the current directory and the real
      home when another level is in effect. Project levels are `.claude/` and
      `.codex/` in this item; other tools wait for a documented or measured
-     discovery rule. Ancestors follow each tool's rule and stop before HOME:
-     claude reads ancestors toward the filesystem root and codex stops at its
-     `project_root_markers` (default `.git`), per
-     https://code.claude.com/docs/en/memory and
-     https://learn.chatgpt.com/docs/config-file/config-advanced (read 2026-09-29).
-     Where codex stops outside a repository is not documented; measure it before
-     implementing. "Effective" means reachable by that rule; codex's project trust
-     is not consulted. Below the current directory, search the repository's
-     tracked and non-ignored tree, or a depth-limited walk outside a repository.
-     Files such as `CLAUDE.md` are not places. claude's user level also has a
-     session row, the per-project directory under `projects/`; its name encoding
-     must be measured on a real install before it ships. codex stores sessions by
-     date, so it has no session row.
-   - **Explicit resolution** mirrors `use`: `-i <tool> <account>` is the
-     global-isolated home and `-s <tool>` the real home; `-s` with an account is a
-     usage error. Without explicit arguments the nearest ancestor bound directory's
-     recorded binding applies (not the shell's environment), then what applies
-     globally. The credential store is not a place.
+     discovery rule. Ancestors follow each tool's rule and stop before HOME. For
+     codex, https://learn.chatgpt.com/docs/config-file/config-advanced (read
+     2026-09-30): "Codex discovers project configuration (for example, `.codex/`
+     layers and `AGENTS.md`) by walking up from the working directory until it
+     reaches a project root", a directory containing `.git` by default; where it
+     stops outside a repository is not documented. For claude,
+     https://code.claude.com/docs/en/memory (read 2026-09-30) covers instruction
+     files only: "Claude Code loads `CLAUDE.md` and `CLAUDE.local.md` from your
+     current working directory and every directory above it"; whether an ancestor's
+     `.claude/` settings apply is not documented. Measure both before implementing.
+     "Effective" means reachable by the measured rule; codex's project trust is not
+     consulted. Below the current directory, search the repository's tracked and
+     non-ignored tree, or a depth-limited walk outside a repository. Files such as
+     `CLAUDE.md` are not places. claude's user level also has a session row, the
+     per-project directory under `projects/`; measure its name encoding on a real
+     install, including `CLAUDE_CODE_PROJECT_DIR_NAME` and derivation from the
+     repository, before it ships. codex stores sessions by date, so it has no
+     session row.
+   - **Level selectors** apply to a tool target: `--project` is the nearest
+     effective ancestor project level, `--below` a project level below the current
+     directory, `--home` the real home. When a selector matches several places,
+     `cd` and `open` open the picker over them and `ls --current` is a usage error
+     naming them. `--root` on a project or below place selects the directory
+     holding `.claude/` or `.codex/`. `ls` takes the same selectors with
+     `--current`.
+   - **Explicit resolution** follows `use`'s `-s`/`-i` spelling: `-i <tool>
+     <account>` is that account's global-isolated home, and `-s <tool>` the real
+     home. A shared home holds whichever account is active, so an account without
+     `-i` is a usage error. Without explicit arguments the nearest ancestor bound
+     directory's recorded binding applies (not the shell's environment), then what
+     applies globally. The credential store is not a place.
    - **Selection.** Without a selector, `cd` and `open` take the current place:
      the effective user level for a tool, the bound directory governing the current
-     directory for `pin`, the repository root for `repo`. `--root` on a project or
-     below row selects the directory holding `.claude/`/`.codex/`. `kae cd` or
-     `kae open` with no target, or no current place, opens the built-in picker; a
-     non-terminal gets the list and a usage error. `--at N` uses the number shown
-     by `kae ls`; numbers change when places come and go, so agents use `--json`
-     paths. A tool is optional when exactly one is bound; otherwise the usage
-     error lists candidates.
+     directory for `pin`, the repository root for `repo`. A level selector without
+     a tool uses the one bound tool; with none or several bound, it opens the
+     picker over the tools. `kae cd` or `kae open` with no target, or with no
+     current place, opens the built-in picker. The terminal test uses the
+     controlling terminal, not stdout, because `cd` reads the path through
+     `$(…)`; without a terminal, the list and a usage error go to stderr. `--at N`
+     is the number `kae ls` shows for the same target: only place rows are
+     numbered, in list order. Numbers change when places come and go, so agents use
+     `--json` paths.
    - **Picker.** A tree under group headings: a project root row with its
      `.claude/` row beneath, the user level with its session row. Headings and
      account rows are not selectable. Rows relevant to the current directory come
@@ -150,19 +170,23 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      print the path and a warning and exit `0`.
    - **`cd`** is a `kae` shell function delivered through the paths that already
      source `kae completion` from the binary (the mise hook and rc eval); it passes
-     every other command to the binary. A mise `[shell_alias]` in the fragment was
-     rejected because an alias cannot place arguments inside `cd "$(…)"`. Without
-     the function, `kae cd` exits `64` and suggests `cd "$(kae ls … --current)"`.
+     every other command to the binary and changes directory only when the binary
+     exits `0` with a path. It is the first of the wrappers named by the `kae shell init`
+     entry under § Exploratory. A mise `[shell_alias]` in the fragment was rejected
+     because an alias cannot place arguments inside `cd "$(…)"`. Without the
+     function, `kae cd` exits `64` and suggests `cd "$(kae ls … --current)"`.
    - **`--json`** reports each place's group, kind, path, existence, whether it is
-     in effect, its source (pin, global or explicit) and mode. Its tokens do not
-     reuse the companion override kind `config-dir`.
+     in effect, its source (pin, global or explicit) and mode. Bare `kae ls --json`
+     keeps its `accounts` and `profiles` keys and adds the new groups beside them.
+     Its tokens do not reuse the companion override kind `config-dir`.
 
    Slices, each merged on its own: place resolution with `kae ls` groups,
-   `--current`, `--at` and `--json`; `open` and the `cd` function with
-   completion; the picker; the claude session row after its measurement. Each
-   slice updates CLI, CONTEXT (the term *place*), README and GUIDE.ja in the same
-   commit. It comes first because it helps today's `-s` and `-i` binds and serves
-   as the inspection tool for the next item.
+   `--current`, `--at` and `--json`; `open` and the `cd` function; the picker; the
+   claude session row after its measurement. Each slice updates completion for
+   what it adds (CLI § Keeping completion current), CLI, CONTEXT (the term
+   *place*), README, README.ja and GUIDE.ja in the same commit. It comes first
+   because it helps today's `-s` and `-i` binds and serves as the inspection tool
+   for the next item.
 2. **Tree-shared mode.** A third per-directory mode beside `-s` and `-i`: the bound
    directory and everything below it are isolated from the real home, and switching
    account keeps one config store — sessions, history, memory, settings — while

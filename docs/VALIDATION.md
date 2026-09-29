@@ -601,15 +601,21 @@ cd "$R/sub dir/deep"; command kae cd repo 2>"$HOME/nofn.err" >"$HOME/nofn.out"; 
 cd "$R"; rmdir "$R/.claude"; kae cd claude --project 2>"$HOME/gone.err"; test $? -eq 7; test "$PWD" = "$R"
 cd "$R/sub dir/deep"; PATH="$KB:$GB" kae open repo >"$HOME/open.out" 2>"$HOME/open.err"; test $? -eq 0; test "$(cat "$HOME/open.out")" = "$R"; test -s "$HOME/open.err"
 cd "$R/sub dir/deep"; PATH="$KB:$GB" command -v open xdg-open >/dev/null; test $? -ne 0
-kae completion bash --no-function >"$HOME/nofunc.bash"; test -s "$HOME/nofunc.bash"; test "$(grep -c '^kae()' "$HOME/nofunc.bash")" -eq 0
+kae completion bash >"$HOME/withfunc.bash"; test "$(grep -c '^function kae {' "$HOME/withfunc.bash")" -eq 1
+kae completion bash --no-function >"$HOME/nofunc.bash"; test -s "$HOME/nofunc.bash"; test "$(grep -c '^function kae {' "$HOME/nofunc.bash")" -eq 0
+printf '%s\n' 'shopt -s expand_aliases' "alias kae='kae --no-color'" 'eval "$(command kae completion bash)" || exit 9' 'complete -p kae >/dev/null || exit 8' 'cd "$1" && \kae cd repo && test "$PWD" = "$2"' >"$HOME/alias.bash"
+env -i HOME="$HOME" PATH="$KB:$GB:/bin" bash --noprofile --norc "$HOME/alias.bash" "$R/sub dir/deep" "$R"
 env -i HOME="$HOME" PATH="$KB:$GB:/bin" bash --noprofile --norc -c 'eval "$(kae completion bash --no-function)"; test "$(type -t kae)" != function; command kae cd repo >/dev/null 2>&1; test $? -eq 64'
 command -v zsh >/dev/null && env -i HOME="$HOME" PATH="$KB:$GB:/bin:/usr/bin" zsh -f -c "eval \"\$(kae completion zsh)\"; cd '$R/sub dir/deep'; kae cd repo && test \"\$PWD\" = '$R' && cd '$R/sub dir/deep' && kae cd pin 2>/dev/null; test \$? -eq 7 && test \"\$PWD\" = '$R/sub dir/deep'"
 ```
 
 The fixture directory has a space on purpose: the function quotes the path it
 receives, and an unquoted `builtin cd -- $path` would split it and fail (or move
-somewhere else). The opener check builds its `PATH` from `kae` and a `git` symlink so
-`open` and `xdg-open` are absent whatever the host, and never runs either.
+somewhere else). The alias line is there because the function is defined with
+`function kae {`: the `kae() {` form is alias-expanded, and a user's `alias kae=…`
+then breaks the whole eval. The opener check builds its `PATH` from `kae` and a
+`git` symlink so `open` and `xdg-open` are absent whatever the host, and never
+runs either.
 
 ## companion-auth surfaces
 

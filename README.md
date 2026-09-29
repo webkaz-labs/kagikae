@@ -383,7 +383,9 @@ eval "$(kae completion zsh)"
 Sourcing it this way (or through the mise hook below) also defines the **kae shell
 function**, which runs `kae cd` in your shell and passes every other command to the
 binary. A completion file holds the completion alone, and so do the Packslip
-completion loaders above; add the rc line for `kae cd`.
+completion loaders above; add the rc line for `kae cd`. To write a completion file
+by hand, use `kae completion zsh --no-function > ~/.zfunc/_kae` (the completion
+alone).
 
 …or install a completion file:
 

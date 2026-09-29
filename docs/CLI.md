@@ -677,23 +677,28 @@ candidates, one per line as the command that reaches it (`kae open claude --at 3
 and the path), and exits `64`.
 
 **`open`** runs `open` on macOS and `xdg-open` on Linux, found on `PATH`, with the
-path as its one argument, and prints nothing on success. Without that opener, or
-on another platform, it prints the path on stdout and a warning on stderr and
-exits `0`. An opener that fails exits `1` with its stderr in the error.
+path as its one argument, and prints nothing on success. kae waits for the opener
+process to exit, not for a file manager it starts: the opener's stdin and stdout
+are the null device and its stderr is kae's, none of them a pipe a lingering file
+manager could hold. Without that opener, or on another platform, it prints the
+path on stdout and a warning on stderr and exits `0`. An opener that exits
+non-zero exits `1`; its own error output has already reached stderr.
 
 **`cd`** is the **kae shell function**, which `kae completion <shell>` prints after
 the completion script — so rc eval (`eval "$(kae completion zsh)"`), the mise
 enter hook and `--install`'s print-only choice define it, and a completion file
 does not (§ Shell completion). The function passes every command but `cd` to the
-binary (`command kae`). For `cd` it runs the hidden `kae __cd` with the same
+binary (`command kae`). It is defined with the `function` keyword so that a
+user's `alias kae=…` does not break the eval. For `cd` it runs the hidden `kae __cd` with the same
 words, which resolves exactly as `kae open` does and prints the path on stdout,
-and changes directory (`builtin cd --`; fish: `builtin cd`) only when that exits
+and changes directory (`builtin cd --`; fish: its `cd` function, which keeps
+`$dirprev` and `cd -` working) only when that exits
 `0` with a path. Otherwise it returns that exit code, and the entry's stderr
 reaches the terminal unchanged. `kae __cd` is internal to the function, like
 `kae __complete`, and hidden from `kae help`. Without the function, `kae cd`
 reaches the binary, which cannot move its parent shell: it exits `64` and
 suggests `cd "$(kae ls … --current)"` with the words it was given (`--at N` in
-place of `--current` when given).
+place of `--current` when given; `--json` and `--format` left out).
 
 ## kae account Semantics
 

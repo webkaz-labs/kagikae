@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -68,25 +69,43 @@ func runCdPath(ctx context.Context, app *App, opts commonOpts, req lsRequest) in
 // in. It refuses and names the command that does the same without the function.
 func CmdCd(args []string) int {
 	return usageError("kae cd moves the shell only through the kae shell function, which "+
-		"eval \"$(kae completion zsh)\" (or bash, or the mise hook from kae completion --install) defines; without it run: cd \"$(kae ls %s)\"",
+		"eval \"$(kae completion zsh)\" (bash likewise; fish: kae completion fish | source) or the mise hook defines; without it run: cd \"$(kae ls %s)\"",
 		cdSuggestionWords(args))
 }
 
 // cdSuggestionWords echoes the words `kae cd` was given as `kae ls` arguments
 // that print the same path: --current unless --at chose a number, and a
-// placeholder when no target was typed.
+// placeholder when no target was typed. A valued flag keeps its value (the same
+// arity splitArgs and the completion scripts use), so `--at 2` is not a target;
+// --json and --format are dropped, since the suggestion prints a path.
 func cdSuggestionWords(args []string) string {
+	valued := valuedFlagCompletions("cd")
 	var words []string
 	hasTarget, chooses := false, false
-	for _, arg := range args {
-		name := strings.TrimLeft(strings.SplitN(arg, "=", 2)[0], "-")
-		if strings.HasPrefix(arg, "-") && (name == "at" || name == "current") {
-			chooses = true
-		}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if !strings.HasPrefix(arg, "-") {
 			hasTarget = true
+			words = append(words, shellWord(arg))
+			continue
+		}
+		flagName, _, attached := strings.Cut(arg, "=")
+		name := strings.TrimLeft(flagName, "-")
+		value := []string{}
+		if !attached && slices.Contains(valued, arg) && i+1 < len(args) {
+			i++
+			value = append(value, args[i])
+		}
+		switch name {
+		case "json", "format":
+			continue
+		case "at", "current":
+			chooses = true
 		}
 		words = append(words, shellWord(arg))
+		for _, v := range value {
+			words = append(words, shellWord(v))
+		}
 	}
 	if !hasTarget {
 		words = append([]string{"<target>"}, words...)
@@ -184,7 +203,11 @@ func (app *App) pickLevelOfBoundTool(ctx context.Context, opts commonOpts, req *
 		}
 		lines := make([]string, 0, len(candidates))
 		for _, tool := range candidates {
-			lines = append(lines, fmt.Sprintf("kae %s %s --%s", req.verb, tool, req.level))
+			line := fmt.Sprintf("kae %s %s --%s", req.verb, tool, req.level)
+			if req.root {
+				line += " --root"
+			}
+			lines = append(lines, line)
 		}
 		return placeRow{}, nil, reportChoices(reason+"; choose one", lines)
 	}
@@ -219,10 +242,14 @@ func reportCandidates(req lsRequest, reason string, rows []placeRow) int {
 			words = requestWords(req, true)
 		}
 		cmd := fmt.Sprintf("kae %s %s --at %d", req.verb, words, row.Number)
+		path := row.Path
 		if req.root {
 			cmd += " --root"
+			if row.Root != "" {
+				path = row.Root // what the command reaches
+			}
 		}
-		lines = append(lines, cmd+"  "+row.Path)
+		lines = append(lines, cmd+"  "+path)
 	}
 	return reportChoices(reason+"; choose one", lines)
 }
@@ -279,9 +306,11 @@ func (app *App) openPlace(ctx context.Context, opts commonOpts, path string) int
 		fmt.Println(path)
 		return constants.ExitOK
 	}
-	_, stderr, code := runner.Run(ctx, opener, path)
-	if code != 0 {
-		return finish(opts, errf(constants.ExitError, "%s %s exited %d: %s", opener, path, code, runner.Snippet(stderr)))
+	// Launched, not run: xdg-open can leave the file manager holding a captured
+	// pipe, and kae would wait for the file manager to exit. The opener's own
+	// error output reaches stderr directly.
+	if code := runner.Launch(ctx, opener, path); code != 0 {
+		return finish(opts, errf(constants.ExitError, "%s %s exited %d", opener, path, code))
 	}
 	return constants.ExitOK
 }

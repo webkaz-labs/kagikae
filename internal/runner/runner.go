@@ -6,6 +6,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -72,6 +73,43 @@ var RunWithEnv = func(ctx context.Context, extraEnv []string, name string, args 
 		return stdout.String(), stderr.String(), exitErr.ExitCode()
 	}
 	return stdout.String(), err.Error(), 1
+}
+
+// Launcher is the optional seam for a program kae starts and does not read:
+// Launch runs it with its output not captured and returns its exit code. A
+// captured pipe would be inherited by anything the program leaves running (a
+// file manager an opener starts), and Wait would not return until that exits.
+type Launcher interface {
+	Launch(ctx context.Context, name string, args ...string) int
+}
+
+// Launch runs name through Default: its Launch when Default has one, else its
+// Run with the output dropped, so a test runner that predates Launcher still
+// answers (and records) the call.
+func Launch(ctx context.Context, name string, args ...string) int {
+	if l, ok := Default.(Launcher); ok {
+		return l.Launch(ctx, name, args...)
+	}
+	_, _, code := Default.Run(ctx, name, args...)
+	return code
+}
+
+// Launch waits for the program itself only: stdin and stdout are the null
+// device and stderr is kae's own, all passed as files rather than pipes, so a
+// process it leaves behind holds nothing Wait waits on. Its error output
+// reaches the user directly.
+func (OSRunner) Launch(ctx context.Context, name string, args ...string) int {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stderr = os.Stderr // Stdin and Stdout nil: the null device
+	err := cmd.Run()
+	if err == nil {
+		return 0
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode()
+	}
+	fmt.Fprintf(os.Stderr, "kae: %s: %v\n", name, err)
+	return 1
 }
 
 // Snippet truncates subprocess stderr for safe inclusion in diagnostics.

@@ -113,7 +113,7 @@ func TestOpenWithoutAnOpenerPrintsThePath(t *testing.T) {
 			return runOpen(context.Background(), app, commonOpts{Format: formatText}, navRequest(t, "open", lsFlags{at: atFlag{n: 1, set: true}}, "kae"))
 		})
 	})
-	if code != constants.ExitError || !strings.Contains(stderr, "xdg-open") || !strings.Contains(stderr, "boom") {
+	if code != constants.ExitError || !strings.Contains(stderr, "xdg-open") || !strings.Contains(stderr, "exited 4") {
 		t.Fatalf("a failing opener = %d %q", code, stderr)
 	}
 }
@@ -190,6 +190,8 @@ func TestNavigateUsageErrors(t *testing.T) {
 		{"--at without a target", lsFlags{at: atFlag{n: 1, set: true}}, nil, "needs a target"},
 		{"ambiguous prefix", lsFlags{}, []string{"c"}, "ambiguous open target"},
 		{"unknown target", lsFlags{}, []string{"repos"}, "unknown open target"},
+		// account is refused, so a near miss of it suggests nothing.
+		{"no account suggestion", lsFlags{}, []string{"acount"}, "(targets: pin, repo, kae, or a tool"},
 		{"invalid account", lsFlags{isolated: true}, []string{"claude", "../x"}, "invalid account"},
 		{"too many words", lsFlags{}, []string{"claude", "a", "b"}, "usage"},
 	} {
@@ -202,7 +204,18 @@ func TestNavigateUsageErrors(t *testing.T) {
 			if code != constants.ExitUsage || !strings.Contains(stderr, tc.want) {
 				t.Fatalf("exit %d, stderr %q; want usage naming %q", code, stderr, tc.want)
 			}
+			if strings.Contains(stderr, `did you mean "account"`) {
+				t.Fatalf("open suggested account, which it refuses: %q", stderr)
+			}
 		})
+	}
+	// ls still suggests it.
+	_, stderr := captureStderr(t, func() int {
+		_, code := parseLsRequest(lsFlags{}, []string{"acount"})
+		return code
+	})
+	if !strings.Contains(stderr, `did you mean "account"`) {
+		t.Fatalf("ls acount: %q", stderr)
 	}
 	// No target and a level selector without a tool are resolution's to decide.
 	for _, f := range []lsFlags{{}, {project: true}, {below: true, root: true}} {
@@ -253,11 +266,15 @@ func TestNavigatePickerCasesListCandidates(t *testing.T) {
 			"kae cd claude --at 4  " + filepath.Join(cwd, "b", ".claude"),
 		}},
 		{"several below, explicit, root", "open", lsFlags{below: true, root: true, shared: true}, []string{"claude"}, []string{
-			"kae open -s claude --at 4 --root  " + filepath.Join(cwd, "b", ".claude"),
+			// The path is the one the command reaches: the directory holding .claude/.
+			"kae open -s claude --at 4 --root  " + filepath.Join(cwd, "b") + "\n",
 		}},
 		{"level without a bound tool", "cd", lsFlags{project: true}, nil, []string{
 			"kae cd --project needs a tool: no tool is bound here; choose one:",
 			"kae cd claude --project", "kae cd codex --project",
+		}},
+		{"level without a bound tool, root", "cd", lsFlags{project: true, root: true}, nil, []string{
+			"kae cd claude --project --root\n", "kae cd codex --project --root",
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -348,9 +365,15 @@ func TestCdWithoutTheShellFunction(t *testing.T) {
 		{[]string{"kae", "--at", "2"}, `cd "$(kae ls kae --at 2)"`},
 		{[]string{"--project"}, `cd "$(kae ls <target> --project --current)"`},
 		{[]string{"-i", "claude", "it's"}, `cd "$(kae ls -i claude 'it'\''s' --current)"`},
+		// A valued flag's value is not a target, and a format flag is not echoed.
+		{[]string{"--at", "2"}, `cd "$(kae ls <target> --at 2)"`},
+		{[]string{"kae", "-at=2"}, `cd "$(kae ls kae -at=2)"`},
+		{[]string{"claude", "--json"}, `cd "$(kae ls claude --current)"`},
+		{[]string{"--format", "json", "claude", "--config", "/p q"}, `cd "$(kae ls claude --config '/p q' --current)"`},
 	} {
 		code, stderr := captureStderr(t, func() int { return Root(append([]string{"cd"}, tc.args...)) })
-		if code != constants.ExitUsage || !strings.Contains(stderr, tc.want) || !strings.Contains(stderr, "kae shell function") {
+		if code != constants.ExitUsage || !strings.Contains(stderr, tc.want) || !strings.Contains(stderr, "kae shell function") ||
+			!strings.Contains(stderr, "kae completion fish | source") {
 			t.Fatalf("kae cd %v = %d %q; want usage suggesting %s", tc.args, code, stderr, tc.want)
 		}
 	}
@@ -436,7 +459,7 @@ printf 'binary:%s\n' "$*"
 `
 
 // The kae shell function, sourced as rc eval and the mise hook do: kae cd moves
-// the shell for a path with a space and a leading dash, passes its words intact;
+// the shell for a path with a space, passes its words intact;
 // a failing resolve leaves PWD, returns its code and keeps its stderr; every
 // other command reaches the binary. fish is best-effort and skipped without it.
 func TestShellFunctionBehaviour(t *testing.T) {
@@ -451,7 +474,9 @@ func TestShellFunctionBehaviour(t *testing.T) {
 			}
 			root := t.TempDir()
 			binDir := filepath.Join(root, "bin")
-			target := filepath.Join(root, "-dir with space")
+			// A path with a space. A path starting with `-` is not reachable: __cd
+			// prints absolute paths, so the function's `--` guard is defence only.
+			target := filepath.Join(root, "dir with space")
 			start := filepath.Join(root, "start")
 			mkdirs(t, binDir, target, start)
 			writeFile(t, filepath.Join(binDir, "kae"), shellFunctionFixture)
@@ -601,5 +626,71 @@ func TestCompletionFileHoldsNoShellFunction(t *testing.T) {
 		if code != constants.ExitUsage {
 			t.Fatalf("kae completion %v = %d, want usage", args, code)
 		}
+	}
+}
+
+// A user's `alias kae=…` must not break the eval: `kae() {` is alias-expanded
+// (zsh then rejects the whole script, completion included), `function kae {` is
+// not. bash reads its script as an interactive shell does its rc.
+func TestShellFunctionSurvivesAnAlias(t *testing.T) {
+	for _, shell := range []string{"bash", "zsh"} {
+		t.Run(shell, func(t *testing.T) {
+			bin, err := exec.LookPath(shell)
+			if err != nil {
+				if shell == "bash" {
+					t.Fatal(err)
+				}
+				t.Skipf("%s unavailable", shell)
+			}
+			root := t.TempDir()
+			binDir := filepath.Join(root, "bin")
+			target := filepath.Join(root, "dir with space")
+			mkdirs(t, binDir, target)
+			writeFile(t, filepath.Join(binDir, "kae"), shellFunctionFixture)
+			if err := os.Chmod(filepath.Join(binDir, "kae"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			evalFile := filepath.Join(root, "eval."+shell)
+			writeFile(t, evalFile, completionEvalScript(shell))
+			args := []string{"--noprofile", "--norc", "-i"}
+			registered := `complete -p kae >/dev/null && echo registered`
+			// -i alone does not make bash expand aliases in a script it reads
+			// (measured with bash 3.2: the kae() form passed with -i alone), so ask for it too.
+			body := "shopt -s expand_aliases\n"
+			if shell == "zsh" {
+				args = []string{"-f"}
+				registered = `(( $+functions[_kae] )) && echo registered`
+				body = "compdef() { :; }\n"
+			}
+			body += `alias kae='kae --no-color'
+eval "$(cat '` + evalFile + `')"
+echo "eval=$?"
+` + registered + `
+\kae cd ok
+echo "pwd=$PWD"
+`
+			script := filepath.Join(root, "alias."+shell)
+			writeFile(t, script, body)
+			cmd := exec.Command(bin, append(args, script)...)
+			cmd.Env = []string{
+				"PATH=" + binDir + ":" + os.Getenv("PATH"), "HOME=" + root, "TERM=dumb",
+				"KAE_TEST_DIR=" + target, "KAE_TEST_ARGS=" + filepath.Join(root, "args"),
+			}
+			var stderr strings.Builder
+			cmd.Stderr = &stderr
+			out, _ := cmd.Output()
+			realTarget, _ := filepath.EvalSymlinks(target)
+			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+			if len(lines) != 3 || lines[0] != "eval=0" || lines[1] != "registered" {
+				t.Fatalf("%s with an alias: eval or registration failed:\n%s\nstderr:\n%s", shell, out, stderr.String())
+			}
+			got := strings.TrimPrefix(lines[2], "pwd=")
+			if r, err := filepath.EvalSymlinks(got); err == nil {
+				got = r
+			}
+			if got != realTarget {
+				t.Fatalf("%s: \\kae cd left PWD at %q:\n%s\nstderr:\n%s", shell, got, out, stderr.String())
+			}
+		})
 	}
 }

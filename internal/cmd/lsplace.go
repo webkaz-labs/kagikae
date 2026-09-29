@@ -67,9 +67,14 @@ func resolveLsTarget(verb, word string) (string, int) {
 	case 1:
 		return matches[0], constants.ExitOK
 	case 0:
-		candidates := append(append([]string{}, constants.PlaceGroups...), constants.Tools...)
+		// open and cd refuse account, so they never suggest it.
+		groups := constants.PlaceGroups
+		if verb != "ls" {
+			groups = slices.DeleteFunc(slices.Clone(groups), func(g string) bool { return g == constants.PlaceGroupAccount })
+		}
+		candidates := append(append([]string{}, groups...), constants.Tools...)
 		return "", usageError("unknown %s target: %s (targets: %s, or a tool: %s)%s", verb, word,
-			strings.Join(constants.PlaceGroups, ", "), strings.Join(constants.Tools, ", "), didYouMean(word, candidates))
+			strings.Join(groups, ", "), strings.Join(constants.Tools, ", "), didYouMean(word, candidates))
 	default:
 		return "", usageError("ambiguous %s target %q: matches %s", verb, word, strings.Join(matches, ", "))
 	}

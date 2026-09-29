@@ -2,8 +2,10 @@ package runner
 
 import (
 	"context"
+	"os/exec"
 	"reflect"
 	"testing"
+	"time"
 )
 
 type fakeRunner struct {
@@ -54,5 +56,42 @@ func TestOSRunnerExitCode(t *testing.T) {
 	_, _, code := OSRunner{}.Run(context.Background(), "false")
 	if code != 1 {
 		t.Fatalf("expected exit 1, got %d", code)
+	}
+}
+
+// Launch does not wait for what the program leaves running: a child holding a
+// captured pipe would keep Run waiting for it, and here it holds only files.
+func TestOSRunnerLaunchWaitsForTheProgramOnly(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	start := time.Now()
+	// The child keeps the stdout Launch gave it; its stderr is redirected only so
+	// the test binary's own stderr pipe is not held after the test ends.
+	if code := (OSRunner{}).Launch(context.Background(), sh, "-c", "sleep 5 2>/dev/null & exit 0"); code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("Launch waited %v for the program's background child", elapsed)
+	}
+	// Control: Run captures the output, so the same program keeps it waiting.
+	start = time.Now()
+	(OSRunner{}).Run(context.Background(), sh, "-c", "sleep 1 & exit 0")
+	if time.Since(start) < 900*time.Millisecond {
+		t.Fatalf("control: Run returned before the child exited, so the Launch check proves nothing")
+	}
+	if code := (OSRunner{}).Launch(context.Background(), sh, "-c", "exit 3"); code != 3 {
+		t.Fatalf("exit code = %d, want 3", code)
+	}
+}
+
+// A runner without Launch still answers through Run.
+func TestLaunchFallsBackToRun(t *testing.T) {
+	fake := &fakeRunner{code: 4}
+	var code int
+	With(fake, func() { code = Launch(context.Background(), "opener", "/p") })
+	if code != 4 || fake.name != "opener" || !reflect.DeepEqual(fake.args, []string{"/p"}) {
+		t.Fatalf("code %d, ran %s %v", code, fake.name, fake.args)
 	}
 }

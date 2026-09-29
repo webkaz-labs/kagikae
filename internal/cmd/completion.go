@@ -124,11 +124,13 @@ func shellFunctionScript(shell string) string {
 	return posixShellFunction
 }
 
-// posixShellFunction serves bash and zsh. `command` skips the function itself;
-// `builtin cd --` keeps a path from being read as an option or a user's cd
-// wrapper, and the quotes keep a path with spaces one word.
+// posixShellFunction serves bash and zsh. The `function` keyword, not `kae()`,
+// because a user's `alias kae=…` is expanded in `kae() {` — zsh then fails the
+// whole eval, completion with it — and not after `function`. `command` skips the
+// function itself; `builtin cd --` keeps a user's cd wrapper out, and the quotes
+// keep a path with spaces one word.
 const posixShellFunction = `# kae shell function: kae cd moves this shell; every other command runs kae.
-kae() {
+function kae {
   if [ "${1-}" = cd ]; then
     shift
     local kae_dir
@@ -144,7 +146,8 @@ kae() {
 
 // fishShellFunction is the best-effort fish form (fish is not a verified shell,
 // docs/CLI.md § Shell completion). `set` returns the command substitution's
-// status, which `or return` passes on.
+// status, which `or return` passes on. It moves with fish's `cd` function, not
+// `builtin cd`, which would leave $dirprev and `cd -` behind.
 const fishShellFunction = `# kae shell function: kae cd moves this shell; every other command runs kae.
 function kae
     if test (count $argv) -gt 0; and test "$argv[1]" = cd
@@ -152,7 +155,7 @@ function kae
         set -l kae_dir (command kae ` + cdPathCommand + ` $argv)
         or return
         if test -n "$kae_dir"
-            builtin cd "$kae_dir"
+            cd "$kae_dir"
         end
     else
         command kae $argv

@@ -67,7 +67,9 @@ kae version
 シェルインストーラーは登録済みの補完ファイルも更新します。mise 経由の更新や
 ローカルビルドでは、kae 管理の補完ファイルに必要な場合だけ
 `kae completion --refresh` を実行します。mise 2026.9.3 を有効化したシェルでは、
-Packslip の補完ローダーが選択中の版に追従します。競合する kae の更新フックや
+Packslip の補完ローダーが選択中の版に追従します。このローダーは補完だけを読み込み、
+`kae cd` に必要な kae シェル関数は定義しません。`kae cd` を使う場合は rc に
+`eval "$(kae completion zsh)"` も追加してください。競合する kae の更新フックや
 静的登録は整理してください。手動で読む場合は bash/zsh で
 `eval "$(mise completion bash --tool kae)"`（zsh は `bash` を `zsh` に変更）、
 fish で `mise completion fish --tool kae | source` を使い、版変更後に再実行します。
@@ -231,7 +233,8 @@ kae completion zsh --install
 対話的に登録先を選びます。設定ファイルに直接読み込みを書く場合は、zsh なら
 `eval "$(kae completion zsh)"` を利用できます。この読み込み（と mise フック）は
 `kae cd` を動かす kae シェル関数も定義しますが、補完ファイルには含まれません。
-登録済みファイルの更新は `kae completion --refresh` です。
+補完ファイルを手で書く場合は `kae completion zsh --no-function > ~/.zfunc/_kae` の
+ように `--no-function` を付けます。登録済みファイルの更新は `kae completion --refresh` です。
 
 ## 対応範囲
 

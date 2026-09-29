@@ -47,7 +47,7 @@ Do not widen those mutation paths without affected acceptance.
 The uninstall/Packslip release is recorded in [RELEASE.md](RELEASE.md), with
 lifecycle evidence and limitations in [ACCEPTANCE.md](ACCEPTANCE.md)
 § Uninstall and Packslip assessment. Next come the two operator-requested
-features described in § Store navigation and the tree-shared mode, in the order given there;
+features described in § Place navigation and the tree-shared mode, in the order given there;
 § Agent orchestration and remote authentication — deferred exploration follows
 them and still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
@@ -79,23 +79,90 @@ prerequisites; entries not named here retain their recorded gate.
    unimplemented**, and § Tier-2 tools — described, not queued only when their own demand
    or evidence gate opens. Tier 2 is not a parity backlog.
 
-## Store navigation and the tree-shared mode
+## Place navigation and the tree-shared mode
 
-Requested by the operator on 2026-09-29 and settled in one design interview.
-Take them in this order; each still needs its own design before implementation,
-including the command names and the mode's term in [CONTEXT.md](CONTEXT.md).
+Requested by the operator on 2026-09-29. Take them in this order. The first item's
+design was settled with the operator on 2026-09-30; the second still needs its own
+design, including the mode's term in [CONTEXT.md](CONTEXT.md).
 
-1. **Open and move to a store.** Resolve the config store that applies at the
-   current directory — from anywhere below a bound directory, not only at the
-   `./.config/<tool>` store link — or the one named by an explicit account and mode.
-   Offer three uses: print the path, open it in the platform file manager, and move
-   the current shell there. The move is a shell function delivered through the paths
-   that already source `kae completion` from the binary (the mise hook and rc eval),
-   because it takes arguments; a mise `[shell_alias]` in the fragment was considered
-   and rejected since an alias cannot place arguments inside `cd "$(…)"`. A
-   completion-file registration gets no function; its users combine the printed
-   path with `cd`. It comes first because it helps today's `-s` and `-i` binds and
-   serves as the inspection tool for the next item.
+1. **List, open and move to places.** A *place* is a directory a user wants to
+   reach: where a tool reads its settings and sessions (not only what kae created),
+   a bound directory, a repository root, or kae's own directories. Three verbs share
+   one set of target words and selectors: `ls` shows, `cd` moves, `open` opens in
+   the platform file manager.
+
+   ```
+   kae ls                               # groups: account, pin, each relevant tool, repo, kae
+   kae ls account|pin|repo|kae|<tool> … # one group; <tool> takes [<account>] [-s|-i]
+   kae ls … --current|--at N [--json]   # print one place's path
+   kae cd   [<target> …] [--pick|--at N] [--project|--below|--home] [--root]
+   kae open [<target> …] [--pick|--at N] [--project|--below|--home] [--root]
+   ```
+
+   - **Targets** are singular: `account`, `pin`, `repo`, `kae`, and a tool name.
+     Exact target words match first; prefixes resolve against tool names only.
+     `kae ls --pins` and `kae accounts` stay as aliases. `account` rows are shown
+     but are not places, so `cd` and `open` do not take them.
+   - **`kae ls <tool>`** shows that tool's accounts and its places, so reading it as
+     "claude's accounts" is not wrong. Bare `kae ls` shows the tool groups only for
+     tools that are bound or have an effective project level at the current
+     directory. A group that cannot be read (a malformed `config.toml`) is
+     skipped with a warning; the others are still shown and the exit code follows
+     the existing `kae ls` rules.
+   - **Tool levels**, nearest first: the effective user level (the bound directory's
+     store, else the global-isolated home, else the real home), effective ancestor
+     project levels, then project levels below the current directory and the real
+     home when another level is in effect. Project levels are `.claude/` and
+     `.codex/` in this item; other tools wait for a documented or measured
+     discovery rule. Ancestors follow each tool's rule and stop before HOME:
+     claude reads ancestors toward the filesystem root and codex stops at its
+     `project_root_markers` (default `.git`), per
+     https://code.claude.com/docs/en/memory and
+     https://learn.chatgpt.com/docs/config-file/config-advanced (read 2026-09-29).
+     Where codex stops outside a repository is not documented; measure it before
+     implementing. "Effective" means reachable by that rule; codex's project trust
+     is not consulted. Below the current directory, search the repository's
+     tracked and non-ignored tree, or a depth-limited walk outside a repository.
+     Files such as `CLAUDE.md` are not places. claude's user level also has a
+     session row, the per-project directory under `projects/`; its name encoding
+     must be measured on a real install before it ships. codex stores sessions by
+     date, so it has no session row.
+   - **Explicit resolution** mirrors `use`: `-i <tool> <account>` is the
+     global-isolated home and `-s <tool>` the real home; `-s` with an account is a
+     usage error. Without explicit arguments the nearest ancestor bound directory's
+     recorded binding applies (not the shell's environment), then what applies
+     globally. The credential store is not a place.
+   - **Selection.** Without a selector, `cd` and `open` take the current place:
+     the effective user level for a tool, the bound directory governing the current
+     directory for `pin`, the repository root for `repo`. `--root` on a project or
+     below row selects the directory holding `.claude/`/`.codex/`. `kae cd` or
+     `kae open` with no target, or no current place, opens the built-in picker; a
+     non-terminal gets the list and a usage error. `--at N` uses the number shown
+     by `kae ls`; numbers change when places come and go, so agents use `--json`
+     paths. A tool is optional when exactly one is bound; otherwise the usage
+     error lists candidates.
+   - **Picker.** A tree under group headings: a project root row with its
+     `.claude/` row beneath, the user level with its session row. Headings and
+     account rows are not selectable. Rows relevant to the current directory come
+     first; typing filters by path and kind. The same path may appear under two
+     groups (a project root that is also the repository root).
+   - **`open` fallback**: `open` on macOS and `xdg-open` on Linux; without one,
+     print the path and a warning and exit `0`.
+   - **`cd`** is a `kae` shell function delivered through the paths that already
+     source `kae completion` from the binary (the mise hook and rc eval); it passes
+     every other command to the binary. A mise `[shell_alias]` in the fragment was
+     rejected because an alias cannot place arguments inside `cd "$(…)"`. Without
+     the function, `kae cd` exits `64` and suggests `cd "$(kae ls … --current)"`.
+   - **`--json`** reports each place's group, kind, path, existence, whether it is
+     in effect, its source (pin, global or explicit) and mode. Its tokens do not
+     reuse the companion override kind `config-dir`.
+
+   Slices, each merged on its own: place resolution with `kae ls` groups,
+   `--current`, `--at` and `--json`; `open` and the `cd` function with
+   completion; the picker; the claude session row after its measurement. Each
+   slice updates CLI, CONTEXT (the term *place*), README and GUIDE.ja in the same
+   commit. It comes first because it helps today's `-s` and `-i` binds and serves
+   as the inspection tool for the next item.
 2. **Tree-shared mode.** A third per-directory mode beside `-s` and `-i`: the bound
    directory and everything below it are isolated from the real home, and switching
    account keeps one config store — sessions, history, memory, settings — while
@@ -1388,6 +1455,9 @@ is anywhere near that, and only by demand.
 - richer TTY (routed review surface) if daily use shows the need
 - localized human output (Japanese)
 - `kae shell init` convenience wrappers
+- list and filter every tool project directory on the machine (every `.claude/`,
+  not only those around the current directory), after
+  § Place navigation and the tree-shared mode's first item
 
 ## Delete the prose that is not load-bearing
 

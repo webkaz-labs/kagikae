@@ -400,3 +400,49 @@ const (
 	ListIssueEntry       = "unexpected_entry"
 	ListWarningConfig    = "config_invalid"
 )
+
+// Place vocabulary: the rows `kae ls` lists as places (docs/CLI.md § kae ls
+// Semantics). A tool group is named by the tool itself, so only the fixed groups
+// have tokens here. The kinds deliberately do not reuse the companion override
+// kind OverrideConfigDir: a place is a directory a user reaches, not a delivery
+// mechanism.
+const (
+	PlaceGroupAccount = "account"
+	PlaceGroupPin     = "pin"
+	PlaceGroupRepo    = "repo"
+	PlaceGroupKae     = "kae"
+)
+
+// PlaceGroups are the fixed target words, in the order bare `kae ls` shows their
+// groups; the tool groups sit between pin and repo.
+var PlaceGroups = []string{PlaceGroupAccount, PlaceGroupPin, PlaceGroupRepo, PlaceGroupKae}
+
+// Place kinds. The four tool levels match the level selectors (`--project`,
+// `--below`, `--home`); `user` is the effective user level, which is also the
+// real home when nothing else applies.
+const (
+	PlaceKindUser           = "user"
+	PlaceKindProject        = "project"
+	PlaceKindBelow          = "below"
+	PlaceKindHome           = "home"
+	PlaceKindBoundDirectory = "bound-directory"
+	PlaceKindRepositoryRoot = "repository-root"
+	PlaceKindKaeConfig      = "config"
+	PlaceKindKaeData        = "data"
+	PlaceKindKaeState       = "state"
+)
+
+// Place sources: what decided a user level or bound-directory row.
+const (
+	PlaceSourcePin      = "pin"      // the nearest ancestor bound directory's binding
+	PlaceSourceGlobal   = "global"   // what applies globally (kae use -i, else the real home)
+	PlaceSourceExplicit = "explicit" // -s <tool> / -i <tool> <account> on the command line
+)
+
+// What claude reads from a project level `.claude/` (a place row's `applies`).
+const (
+	PlaceAppliesSettings      = "settings"       // settings.json
+	PlaceAppliesLocalSettings = "local-settings" // settings.local.json
+	PlaceAppliesSkillsAgents  = "skills-agents"  // skills/, agents/, commands/
+	PlaceAppliesInstructions  = "instructions"   // CLAUDE.md, AGENTS.md
+)

@@ -146,9 +146,23 @@ Git リポジトリ内では共通の exclude ファイルを使って追跡対�
 kae pin -i side          # 設定やセッションも独立させる
 kae pin claude main      # このディレクトリの Claude だけ変更
 kae pin side --no-link   # このディレクトリにストアへのリンクを置かない
-kae ls --pins            # ディレクトリをまたいで固定状態を一覧
+kae ls --pins            # ディレクトリをまたいで固定状態を一覧（kae ls pin と同じ）
 kae unpin               # 現在のディレクトリの固定を解除
 ```
+
+`kae ls` は、アカウントとプロファイルに続けて「場所」（ツールが設定を読むディレクトリ、
+固定したディレクトリ、リポジトリのルート、kae 自身のディレクトリ）を番号付きで一覧します。
+`kae ls claude` のように対象を 1 つ指定でき、パスは次のように取り出せます。
+
+```bash
+cd "$(kae ls claude --current)"                  # ここで claude が使うユーザーレベル
+cd "$(kae ls codex --current --project --root)"  # .codex/ を持つ最も近いプロジェクト
+kae ls claude --at 2                             # kae ls claude の 2 番目の場所
+```
+
+ユーザーレベルはシェルの環境ではなく、そのツールを固定している最も近い固定ディレクトリに
+記録された固定から決まります。`.claude/` と `.codex/` の探索規則は
+[docs/CLI.md](docs/CLI.md) § kae ls Semantics にあります。
 
 worktree も別のディレクトリとして扱います。
 

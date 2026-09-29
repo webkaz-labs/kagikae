@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/state"
 )
 
 // lsReport is the JSON contract of `kae ls`: the one view of captured accounts
@@ -38,6 +40,10 @@ type boundDir struct {
 	// asked for.
 	Stores  map[string]string `json:"stores,omitempty"`
 	Current bool              `json:"current"` // this is the current directory
+	// Governing marks the binding that applies at the current directory: the
+	// nearest ancestor bound directory, which Current (an exact match) misses from
+	// a subdirectory.
+	Governing bool `json:"governing"`
 }
 
 // pinsReport is the JSON contract of `kae ls --pins`: every directory bound
@@ -48,42 +54,27 @@ type pinsReport struct {
 	BoundDirectories []boundDir `json:"bound_directories"`
 }
 
-// CmdLs lists every captured account and every defined profile in one view
-// (alias-free), or with --pins every bound directory.
+// CmdLs lists places and accounts (docs/CLI.md § kae ls Semantics): bare, every
+// group; with a target, one group; with --current or --at, one place's path.
 // Read-only.
 func CmdLs(ctx context.Context, args []string) int {
-	flags, positionals := splitArgs(args)
-	var pins bool
+	flags, positionals := splitArgs(args, "--at")
+	var f lsFlags
 	opts, ok := parseCommon("ls", flags, false, func(fs *flag.FlagSet) {
-		registerLsFlags(fs, &pins)
+		registerLsFlags(fs, &f)
 	})
 	if !ok {
 		return constants.ExitUsage
 	}
-	if len(positionals) != 0 {
-		return usageError("usage: %s ls [--pins] [--json]", toolName)
+	req, code := parseLsRequest(f, positionals)
+	if code != constants.ExitOK {
+		return code
 	}
-	app := newApp(opts.ConfigPath)
-	if pins {
-		return runLsPins(app, opts)
-	}
-	return runLs(ctx, app, opts)
-}
-
-func runLs(ctx context.Context, app *App, opts commonOpts) int {
-	report, err := buildLs(ctx, app)
-	if err != nil {
-		return finish(opts, err)
-	}
-	if opts.Format == formatJSON {
-		return encodeJSON(report)
-	}
-	printLsReport(app, report, opts)
-	return constants.ExitOK
+	return runLsRequest(ctx, newApp(opts.ConfigPath), opts, req)
 }
 
 func runLsPins(app *App, opts commonOpts) int {
-	report, err := buildLsPins(app)
+	report, err := buildLsPins(app, governingDir(app.governingBindingNow()))
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -107,7 +98,10 @@ func runLsPins(app *App, opts commonOpts) int {
 // in the data dir and the fragments live in the directories, so a malformed
 // config.toml is not a reason to refuse the one command that says which accounts
 // the directories are currently running.
-func buildLsPins(app *App) (*pinsReport, error) {
+//
+// governing is the directory whose binding applies at the current directory (the
+// nearest ancestor bound directory, "" for none); its row is marked governing.
+func buildLsPins(app *App, governing string) (*pinsReport, error) {
 	index := app.boundDirectoryIndex()
 	if index.err != nil {
 		return nil, index.err
@@ -138,6 +132,7 @@ func buildLsPins(app *App) (*pinsReport, error) {
 			Accounts:  info.Accounts,
 			Stores:    app.bindingConfigStores(pin.PinID, info),
 			Current:   cwd != "" && pin.Dir == cwd,
+			Governing: governing != "" && samePath(pin.Dir, governing),
 		})
 	}
 	// The breadcrumb index is ordered by pin-id (a path hash), which is meaningless to a
@@ -178,59 +173,84 @@ func printPinsReport(app *App, report *pinsReport, color bool) {
 	}
 	fmt.Println("Bound directories:")
 	rows := [][]string{}
-	for _, dir := range report.BoundDirectories {
+	for i, dir := range report.BoundDirectories {
 		current := activeMark(dir.Current, color)
 		profile := dir.Profile
 		if profile == "" {
 			profile = "(ad-hoc)"
 		}
 		rows = append(rows, []string{
-			app.displayPath(dir.Directory), current, profile, dir.Mode,
+			strconv.Itoa(i + 1), app.displayPath(dir.Directory), current, profile, dir.Mode,
 			toolAccountList(dir.Accounts),
 		})
 	}
-	printTable([]string{"Directory", "Current", "Profile", "Mode", "Accounts"}, rows, color)
+	printTable([]string{"#", "Directory", "Current", "Profile", "Mode", "Accounts"}, rows, color)
 }
 
 func buildLs(ctx context.Context, app *App) (*lsReport, error) {
-	if err := app.requireConfig(); err != nil {
-		return nil, err
-	}
-	st, err := app.loadState()
+	return buildLsWith(ctx, app, app.readState())
+}
+
+// buildLsWith is buildLs over a state.json read the caller shares with the
+// place groups.
+func buildLsWith(ctx context.Context, app *App, loaded loadedState) (*lsReport, error) {
+	items, st, err := buildAccountItemsWith(ctx, app, "", loaded)
 	if err != nil {
 		return nil, err
 	}
-	captured, err := account.List(app.Paths.AccountsDir())
-	if err != nil {
-		return nil, err
-	}
-	states := app.capturedCredentialStates(ctx, captured)
-	usages := app.accountUsages(ctx, captured, st)
 	return &lsReport{
 		SchemaVersion: constants.SchemaVersion,
-		Accounts:      accountItems(st, captured, states, usages),
+		Accounts:      items,
 		Profiles:      app.profileStatuses(app.activeProfileName(st)),
 	}, nil
 }
 
-func printLsReport(app *App, report *lsReport, opts commonOpts) {
-	if len(report.Accounts) == 0 {
-		fmt.Println("Accounts: (none — register one with: kae add <tool>)")
-	} else {
-		fmt.Println("Accounts:")
-		now := app.Now()
-		color := colorEnabled(opts.NoColor)
-		rows := [][]string{}
-		for _, item := range report.Accounts {
-			active := activeMark(item.Active, color)
-			rows = append(rows, []string{
-				item.Tool, item.Account, item.Identity, active, item.Driver,
-				credentialCell(item.Credential, item.ReloginBy, now),
-				limitCell(item.Usage, now, color),
-			})
-		}
-		printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Limit"}, rows, color)
+// buildAccountItems is the account rows of the account group, or of one tool's
+// group when tool is set. It needs config, which is what makes a config error
+// reach these rows and not the places beside them.
+func buildAccountItems(ctx context.Context, app *App, tool string) ([]accountItem, *state.State, error) {
+	return buildAccountItemsWith(ctx, app, tool, app.readState())
+}
+
+// loadedState is one read of state.json, shared by the groups of one `kae ls`
+// so the file is read once; err is the read's error, surfaced by each consumer
+// that needs the state.
+type loadedState struct {
+	st  *state.State
+	err error
+}
+
+func (app *App) readState() loadedState {
+	st, err := app.loadState()
+	return loadedState{st: st, err: err}
+}
+
+// buildAccountItemsWith is buildAccountItems over a shared state read. The
+// config error still comes first, as it did when this read state itself.
+func buildAccountItemsWith(ctx context.Context, app *App, tool string, loaded loadedState) ([]accountItem, *state.State, error) {
+	if err := app.requireConfig(); err != nil {
+		return nil, nil, err
 	}
+	st, err := loaded.st, loaded.err
+	if err != nil {
+		return nil, nil, err
+	}
+	var captured []account.Account
+	if tool == "" {
+		captured, err = account.List(app.Paths.AccountsDir())
+	} else {
+		captured, err = account.ListForTool(app.Paths.AccountsDir(), tool)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	states := app.capturedCredentialStates(ctx, captured)
+	usages := app.accountUsages(ctx, captured, st)
+	return accountItems(st, captured, states, usages), st, nil
+}
+
+func printLsReport(app *App, report *lsReport, opts commonOpts) {
+	printAccountItems(app, report.Accounts, "kae add <tool>", opts)
 	fmt.Println()
 	if len(report.Profiles) == 0 {
 		fmt.Println("Profiles: (none defined — add them with: kae edit)")
@@ -244,4 +264,26 @@ func printLsReport(app *App, report *lsReport, opts commonOpts) {
 		}
 		fmt.Printf("  %-14s %s%s\n", profile.Name, toolAccountList(profile.Accounts), marker)
 	}
+}
+
+// printAccountItems is the Accounts table, shared by the account group and a tool
+// group; addHint is the command the empty case suggests.
+func printAccountItems(app *App, items []accountItem, addHint string, opts commonOpts) {
+	if len(items) == 0 {
+		fmt.Printf("Accounts: (none — register one with: %s)\n", addHint)
+		return
+	}
+	fmt.Println("Accounts:")
+	now := app.Now()
+	color := colorEnabled(opts.NoColor)
+	rows := [][]string{}
+	for _, item := range items {
+		active := activeMark(item.Active, color)
+		rows = append(rows, []string{
+			item.Tool, item.Account, item.Identity, active, item.Driver,
+			credentialCell(item.Credential, item.ReloginBy, now),
+			limitCell(item.Usage, now, color),
+		})
+	}
+	printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Limit"}, rows, color)
 }

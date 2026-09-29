@@ -48,8 +48,15 @@ kae companion list [--json]                        # bindings (knob names + non-
 kae mise init [-P <profile>] [--auto] [--write]    # auth-mode tasks + opt-in hook
                                                    # (bind directories with kae pin instead)
 kae accounts [--json]                # registered accounts, active markers
-kae ls [--json]                      # accounts and profiles in one view
-kae ls --pins [--json]               # every directory bound with kae pin
+kae ls [--json]                      # places and accounts: account, pin, relevant tools, repo, kae
+kae ls account|pin|repo|kae|<tool> [--json]
+                                     # one group; <tool> may be a prefix of a tool name
+kae ls -s <tool> | -i <tool> <account> [--json]
+                                     # a tool group with its user level named explicitly
+kae ls <target> --current [--project|--below|--home] [--root] [--json]
+kae ls <target> --at N [--root] [--json]
+                                     # print one place's path
+kae ls --pins [--json]               # alias of kae ls pin
 kae account rm <tool> <account> [--force]      # delete a captured account
 kae account rename <tool> <old> <new>          # rename a captured account
 kae account set-identity <tool> <account> <value>  # set/replace a captured account's identity
@@ -473,18 +480,151 @@ account or a restore ID. Human list guidance remains on stderr; JSON retains the
 
 ## kae ls Semantics
 
-`kae ls` lists every captured account (with its detected `identity`, blank when
-absent) and every defined profile in one view (the data otherwise split across
-`kae accounts` and `kae status`), each with an active marker and, when kae has
-one, that account's subscription windows. It takes no locks and does not change
-accounts, credentials, or config. It may update the usage cache described in
-"Subscription windows in listings"; a failure to write that file does not change
-the exit code. `--json` keeps `schema_version: 1` and `[]` arrays, reusing the
-`kae accounts` account rows and the `kae status` profile rows.
+`kae ls` lists **places** — directories a user wants to reach — beside the
+account view. Bare, it shows these groups in order: `account` (every captured
+account, with its detected `identity`, blank when absent, and every defined
+profile, each with an active marker and, when kae has one, that account's
+subscription windows — the data otherwise split across `kae accounts` and
+`kae status`), `pin` (every bound directory), a group for each **relevant** tool,
+`repo` (the Git repository root of the current directory) and `kae` (kae's
+config, data and state directories; the credential store and file-backend secrets
+live under data and get no row of their own). A tool is relevant when it has a
+governing binding (below) or an effective project level at the current
+directory. It takes no locks and does not change accounts, credentials,
+or config. It may update the usage cache described in "Subscription windows in
+listings"; a failure to write that file does not change the exit code.
 
-`kae ls --pins` swaps that view for every directory bound with `kae pin`, from
-anywhere: directory, a `*` for the current one, profile (`(ad-hoc)` when the
-account set matches no named profile), mode, and the bound account per tool. It
+**Targets.** `kae ls <target>` shows one group. The target words are `account`,
+`pin`, `repo`, `kae` and a tool name. Exact words match first; a prefix resolves
+against tool names only (`cl` is `claude`, `a` is `agy`, and `c` is an ambiguous
+usage error naming its matches). `kae ls <tool>` shows that tool's accounts and
+its places; `kae ls account` is the account group alone, and its JSON is the
+accounts-and-profiles report without `places`. `kae ls --pins` is an alias of
+`kae ls pin`, and `kae accounts` keeps its accounts-only output.
+
+**Places and numbers.** Only place rows are numbered, per group from `1` in list
+order; the text tables mark a path that does not exist `(missing)`. Account and
+profile rows are shown but are not places. `--at N` prints the
+path of the row `kae ls <target>` numbers `N` (a number past the end is a usage
+error). Numbers change as places come and go; agents read `--json` paths instead.
+`--current` prints the target's current place: for a tool its effective user
+level, for `pin` the nearest ancestor bound directory (binding any tool), for
+`repo` the repository root.
+No current place (no governing binding, no repository, no matching level) exits
+`7` (`not_found`); `kae` has three places and no current one, so `--current` on
+it is the several-matches usage error below. `--current` and `--at` need a
+target, and `account` rows are refused.
+
+**Tool levels**, in list order: the effective user level, the effective ancestor
+project levels (nearest first), the project levels below the current directory,
+and the real home when another user level is in effect. kae resolves places for
+claude and codex, whose project levels are `.claude/` and `.codex/`; the other
+tools list their accounts and no places until a documented or measured discovery
+rule exists. Ancestors stop before HOME, whose `.claude/` and `.codex/` are the
+real homes; when the repository root is HOME or above it, every ancestor below
+HOME is inside the repository. Ancestors are walked through the current
+directory's physical parents, so a directory reached through a symlink into a
+repository finds that repository's levels; a path keeps the spelling the current
+directory was reached by for as long as that spelling names the same directory.
+
+- **User level**: `-i <tool> <account>` names that account's global-isolated
+  home and `-s <tool>` the real home (source `explicit`). Without them, the
+  tool's **governing binding** decides — the recorded binding (fragment) of the
+  nearest ancestor bound directory whose fragment binds that tool, not the
+  shell's environment — giving that directory's store (source `pin`, and that
+  directory's mode `shared` or `isolated`). It is per tool because mise merges
+  nested fragments per variable: measured 2026-09-30 with mise 2026.9.17, an
+  outer fragment exporting `CLAUDE_CONFIG_DIR` and `CODEX_HOME` and an inner one
+  exporting `CODEX_HOME` only gave `mise env` in the inner directory's
+  subdirectory the outer `CLAUDE_CONFIG_DIR` and the inner `CODEX_HOME`, and a
+  fragment exports variables only for the tools it binds.
+  A bound directory reached under another spelling (a symlink, `/tmp` against
+  `/private/tmp`) is named by the path its breadcrumb records, so its store and
+  its `pin` row are the recorded ones.
+  Otherwise what applies globally: the `kae use -i` home recorded in state (source
+  `global`, mode `sync`), else the real home (source `global`, mode `auth`);
+  only this last step reads `state.json`, so an unreadable one fails a tool's
+  user level and not the `pin`, `repo` or `kae` groups. A
+  fragment that cannot be read is warned about on stderr and passed over, and
+  kae's global mise fragment — which the default XDG layout puts at HOME's
+  fragment path — is not a binding.
+- **codex** reads `.codex/` from the current directory up to the repository root,
+  and outside a repository only the current directory's. The documentation
+  (https://learn.chatgpt.com/docs/config-file/config-advanced, read 2026-09-30):
+  "Codex discovers project configuration (for example, `.codex/` layers and
+  `AGENTS.md`) by walking up from the working directory until it reaches a
+  project root". Measured with codex 0.159.0 on 2026-09-30, reading a
+  `[features]` key through `codex features list` with every directory trusted:
+  levels from the working directory up to a `git init` repository's root applied
+  and none above it; outside a repository only the working directory's; an empty
+  `.git` directory did not count as a root. The root is resolved through
+  `git rev-parse`, never from a `.git` layout. Project trust is not consulted.
+- **claude** counts the current directory's own `.claude/`, every `.claude/` from
+  the current directory up to the repository root (in a linked worktree, the
+  worktree root), and — above the root or outside any repository — an ancestor
+  `.claude/` only when it holds `CLAUDE.md` or `AGENTS.md`. Each claude project
+  row says what claude reads there (`applies`): `settings` (`settings.json`, the
+  current directory's only), `local-settings` (`settings.local.json`, the
+  repository root's when the current directory is inside a repository whose root
+  is not HOME, else the current directory's), `skills-agents` (`skills/`,
+  `agents/` or `commands/`, from the current directory up to the repository root,
+  or the current directory's alone outside a repository) and `instructions`
+  (`CLAUDE.md` or `AGENTS.md`, from the current directory and every directory
+  above). The two settings rules were measured with claude 2.1.283 on 2026-09-30
+  through `claude -p` with a bogus API key, a `SessionStart` hook that touches a
+  marker, and an `env` `ANTHROPIC_BASE_URL` pointed at a local listener; the
+  `skills-agents` and `instructions` rules are documented, not measured. Sources,
+  read 2026-09-30:
+  https://code.claude.com/docs/en/settings, https://code.claude.com/docs/en/skills,
+  https://code.claude.com/docs/en/sub-agents and
+  https://code.claude.com/docs/en/memory. The documented exception that keeps
+  `settings.local.json` in the current directory when the root or its `.git` or
+  `.claude` entry is not owned by the user is not modelled, and `applies` lists
+  only what exists.
+- **Below the current directory**, a repository's tracked and non-ignored files
+  under a `.claude/` or `.codex/` directory (`git ls-files --cached --others
+  --exclude-standard` with `:(glob)**/.claude/**` and `:(glob)**/.codex/**`
+  pathspecs) name the levels; outside a repository a walk finds them in
+  directories up to three levels down, following no symlink, entering no hidden
+  directory, visiting at most 5000 directories and never reporting the real
+  homes. A listing git refuses is warned about and leaves the below rows out.
+  Files such as `CLAUDE.md` are not places.
+
+**Selectors** apply to a tool target with `--current`: `--project` is the nearest
+effective ancestor project level, `--below` a project level below the current
+directory, and `--home` the real home. `--root` on a project or below place
+prints the directory holding its `.claude/` or `.codex/`, with `--current
+--project|--below` or with `--at N`. When a selector matches several places,
+`--current` is a usage error naming each with its number. Usage errors (`64`):
+`-s` with `-i`; `-i` without both a tool and an account; an account without `-i`
+(a shared home holds whichever account is active, so `kae ls claude side` and
+`kae ls -s claude side` are refused); `-s` or `-i` on a non-tool target; `-i`
+with `--home` (`-i` resolves the user level, `--home` selects the real home); two
+level selectors; a selector without `--current`; a selector on a non-tool target;
+`--current` with `--at`; `--pins` with another target.
+
+**Errors.** When `config.toml` cannot be read, the rows that need it — the
+account group and a tool group's accounts — report the error on stderr, the other
+groups are still shown, and the exit code is `2`. A request that needs no config
+(`kae ls pin`, `repo`, `kae`, `--current`, `--at`) exits `0`. With `--json`, a
+config error is the JSON error object with exit `2`, never a partial report. In
+bare `kae ls`, any other group that fails — the bound-directory index or the
+current directory — is left out with a warning on stderr, in human output and
+`--json` alike: `accounts`, `profiles` and the other groups are still emitted and
+the exit code does not change. The account group also reads `state.json`, so an
+unreadable one fails bare `kae ls` as a config error does — the error on stderr
+with its exit code in human output, the JSON error object with `--json` — and the
+tool groups are left out with it. A one-group request (`kae ls pin`,
+`kae ls repo`, `--current`, `--at`) whose own group fails still fails with that
+error.
+
+`--json` keeps `schema_version: 1` and `[]` arrays; the reports are in
+§ `kae ls --json`.
+
+`kae ls pin` (and its alias `kae ls --pins`) lists every directory bound with
+`kae pin`, from anywhere: its number, directory, a `*` for the current one,
+profile (`(ad-hoc)` when the account set matches no named profile), mode, and the
+bound account per tool. It
 is the answer `kae status` cannot give — `status` reports the directory it is run
 in, which is the wrong question once a repository has one worktree per agent and
 each binds a different account. Read-only, no locks, and `--json` publishes
@@ -1190,6 +1330,8 @@ Subcommand groups complete their sub-verbs and arguments too: `kae account
 `add`/`rm`/`list`, then a profile, a companion id (`kae __complete companions`),
 and that companion's knob names (`kae companion add main git <TAB>` →
 `email`/`name`/`signingkey`, via `kae __complete companion-knobs git`).
+`kae ls <TAB>` → the target words (`kae __complete ls-targets`); after `-s` or
+`-i` only tools, and a tool's accounts only after `-i` (`kae ls -i claude <TAB>`).
 `kae env <TAB>` → `set`/`unset`/`list`, then — after `set` or `unset` only — a
 tool and that tool's accounts, since `env list` takes no arguments and offering
 one would suggest a word the command rejects. `kae backup <TAB>` → `list`.
@@ -1202,7 +1344,7 @@ When the current word starts with `-`, the command's **flag names** are
 completed (`kae add --<TAB>` → `--no-login` / `--restore`; `kae run -<TAB>` →
 `-s` / `-i` / `--env` / `-P`).
 
-`kae __complete <commands|tools|companions|companion-knobs <id>|profiles|accounts [<tool>]|flags <command>|valued-flags <command>>`
+`kae __complete <commands|tools|ls-targets|companions|companion-knobs <id>|profiles|accounts [<tool>]|flags <command>|valued-flags <command>>`
 is read-only, takes no locks, prints one candidate per line, and is
 intentionally hidden from `kae help`. The `flags` kind lists a command's flags from the same
 per-command registrars the parser uses. `valued-flags` reads their arity and
@@ -1568,13 +1710,58 @@ write it.
   ],
   "profiles": [
     {"name": "main", "accounts": {"claude": "main"}, "active": true}
+  ],
+  "places": [
+    {"group": "pin", "number": 1, "kind": "bound-directory",
+     "path": "/Users/you/code/main-app", "exists": true, "in_effect": true,
+     "source": "pin", "mode": "isolated"},
+    {"group": "claude", "number": 1, "kind": "user",
+     "path": "/Users/you/.local/share/kagikae/isolation/0f2a1c9b4d7e6a83/claude/isolated/main/config",
+     "exists": true, "in_effect": true, "source": "pin", "mode": "isolated", "account": "main"},
+    {"group": "claude", "number": 2, "kind": "project",
+     "path": "/Users/you/code/main-app/.claude", "root": "/Users/you/code/main-app",
+     "exists": true, "in_effect": true, "applies": ["settings", "local-settings"]},
+    {"group": "claude", "number": 3, "kind": "home", "path": "/Users/you/.claude",
+     "exists": true, "in_effect": false},
+    {"group": "repo", "number": 1, "kind": "repository-root",
+     "path": "/Users/you/code/main-app", "exists": true, "in_effect": true},
+    {"group": "kae", "number": 1, "kind": "config",
+     "path": "/Users/you/.config/kagikae", "exists": true, "in_effect": true}
   ]
 }
 ```
 
 `accounts` reuses the `kae accounts` row shape (same ordering); `profiles`
 reuses the `kae status` profile row shape (name ascending). Both are `[]` when
-empty.
+empty, and `kae ls account --json` is exactly these three keys without `places`.
+
+`places` holds every other group's rows, in the order bare `kae ls` shows them
+(pin, the relevant tools, repo, kae), and is `[]` when empty. Each row has:
+
+- `group`: `pin`, `repo`, `kae` or the tool name; `number`: its `--at` number in
+  `kae ls <group>`.
+- `kind`: `bound-directory` (pin), `repository-root` (repo), `config`, `data` or
+  `state` (kae), and for a tool `user` (the effective user level), `project` (an
+  effective ancestor level), `below` (a level below the current directory, not in
+  effect) or `home` (the real home, listed when another user level is in effect).
+- `path`, `exists` (a directory is there now) and `in_effect` (the level applies
+  at the current directory; for `pin`, the governing binding).
+- `source` (`pin`, `global` or `explicit`) and `mode` (`shared`, `isolated`,
+  `sync` or `auth`) on a user level, and `source: "pin"` with the binding's mode
+  on a bound directory; `account` on a user level that names one.
+- `root` on `project` and `below` rows: the directory holding the level.
+- `applies` on claude `project` rows that have something claude reads:
+  `settings`, `local-settings`, `skills-agents`, `instructions`.
+
+The tokens are defined in `internal/constants`; no kind reuses the companion
+override kind `config-dir`.
+
+`kae ls <tool> --json` is `{"schema_version", "tool", "accounts", "places"}` with
+that tool's account rows and place rows; `kae ls repo|kae --json` is
+`{"schema_version", "group", "places"}`. `--current` and `--at` with `--json`
+print `{"schema_version": 1, "path": "…", "place": {…}}`: `path` is what the text
+form prints (the place's `root` with `--root`), and `place` is the row, whose
+`number` is `0` for a governing bound directory kae has no breadcrumb for.
 
 ### `kae ls --pins --json`
 
@@ -1585,17 +1772,20 @@ empty.
     {"directory": "/Users/you/code/main-app", "profile": "main",
      "mode": "shared", "accounts": {"claude": "main"},
      "stores": {"claude": "/Users/you/.local/share/kagikae/isolation/0f2a1c9b4d7e6a83/claude/shared"},
-     "current": true},
+     "current": true, "governing": true},
     {"directory": "/Users/you/code/main-app-wt1", "profile": "side",
      "mode": "isolated", "accounts": {"claude": "side"},
      "stores": {"claude": "/Users/you/.local/share/kagikae/isolation/9c4b2e57a01d3f68/claude/isolated/side/config"},
-     "current": false}
+     "current": false, "governing": false}
   ]
 }
 ```
 
 `bound_directories` is ordered by `directory` ascending (so sibling worktrees sort
-together) and is `[]` when nothing is bound. `profile` is empty for an ad-hoc
+together) and is `[]` when nothing is bound; that order is the pin group's `--at`
+numbering. `current` marks the directory `kae ls` runs in exactly; `governing`
+marks the binding that applies there — the nearest ancestor bound directory — so
+it is also set from a subdirectory. `profile` is empty for an ad-hoc
 account set; `accounts` covers every tool the directory binds, in either mode.
 
 `stores` maps each of those tools to the config store its binding names — the

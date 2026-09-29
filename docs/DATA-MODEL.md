@@ -572,6 +572,12 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
   global-isolated mechanism behind `kae use -i` / `kae run -i`, delivered as a
   kae-owned mise fragment)
 - status `pinned.mode` (user-facing environment): `shared`, `isolated`, `auth`
+- `kae ls` places: groups `account`, `pin`, `repo`, `kae` (a tool group is named
+  by the tool); kinds `user`, `project`, `below`, `home`, `bound-directory`,
+  `repository-root`, `config`, `data`, `state`; sources `pin`, `global`,
+  `explicit`; claude project `applies` `settings`, `local-settings`,
+  `skills-agents`, `instructions` (the `Place*` blocks; rows in [CLI.md](CLI.md)
+  § `kae ls --json`)
 - backup reasons: the `BackupReason*` block in `internal/constants` (five today, and one of them records a state kae *declined*, not one it is about to change — see § Backups)
 
 ## Env Profiles

@@ -263,7 +263,12 @@ Usage:
                                        render the auth-mode tasks + opt-in hook
                                        (bind directories with kae pin instead)
   kae accounts [--json]                registered accounts
-  kae ls [--json]                      accounts and profiles in one view
+  kae ls [<target>] [--json]           places and accounts: groups account, pin,
+                                       each relevant tool, repo, kae; a target
+                                       (account|pin|repo|kae|<tool>) shows one
+  kae ls <target> --current|--at N     print one place's path; a tool target
+                                       takes -s <tool>, -i <tool> <account>,
+                                       --project|--below|--home and --root
   kae status [--json]                  full status report (alias: kae s)
   kae preservation list [--json]       list preserved credential records
   kae preservation restore <id>        restore to the original credential store

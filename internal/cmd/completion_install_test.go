@@ -82,6 +82,17 @@ accounts = { claude = "bob" }
 		t.Fatalf("accounts codex must be scoped (no bob):\n%s", out)
 	}
 
+	// ls-targets lists the fixed group words, then every tool.
+	_, out = captureStdout(t, func() int { return runComplete(app, []string{"ls-targets"}) })
+	if want := strings.Join(lsTargetWords(), "\n") + "\n"; out != want {
+		t.Fatalf("ls-targets = %q, want %q", out, want)
+	}
+	for _, word := range []string{"account\n", "pin\n", "repo\n", "kae\n", "claude\n"} {
+		if !strings.Contains(out, word) {
+			t.Fatalf("ls-targets missing %q:\n%s", word, out)
+		}
+	}
+
 	// companions lists every canonical companion id, one per line.
 	_, out = captureStdout(t, func() int { return runComplete(app, []string{"companions"}) })
 	for _, id := range constants.Companions {
@@ -219,7 +230,7 @@ var positionalCommands = map[string]bool{
 	"companion":    true, // <add|rm|list> ...
 	"mise":         true, // init
 	"accounts":     false,
-	"ls":           false,
+	"ls":           true, // [<target> | -s <tool> | -i <tool> <account>]
 	"account":      true, // <rm|rename|set-identity> ...
 	"profile":      true, // <save|set|unset|rm|default> ...
 	"status":       false,
@@ -904,18 +915,21 @@ func TestCompletionPositionalRouting(t *testing.T) {
 	}{
 		{"bash", `__complete valued-flags`, map[string][]string{
 			"use":     {`accounts "${pos[0]}"`},
+			"ls":      {`-i|--isolated|-isolated) scope=i`, `-s|--shared|-shared) scope=s`, `"$np" -eq 0 ] && [ -n "$scope" ]`, `__complete tools`, `"$np" -eq 0 ]`, `__complete ls-targets`, `"$np" -eq 1 ] && [ "$scope" = i ]`, `accounts "${pos[0]}"`},
 			"account": {`"$np" -eq 1`, `__complete tools`, `"$np" -eq 2`, `accounts "${pos[1]}"`},
 			"env":     {`"${pos[0]}" != "list"`, `"$np" -eq 1`, `__complete tools`, `"$np" -eq 2`, `accounts "${pos[1]}"`},
 			"backup":  {`"$np" -eq 0`, `compgen -W "list"`},
 		}},
 		{"zsh", `__complete valued-flags`, map[string][]string{
 			"use":     {`accounts ${pos[1]}`},
+			"ls":      {`-i|--isolated|-isolated) scope=i`, `-s|--shared|-shared) scope=s`, `(( np == 0 )) && [[ -n "$scope" ]]`, `__complete tools`, `(( np == 0 ))`, `__complete ls-targets`, `(( np == 1 )) && [[ "$scope" == i ]]`, `accounts ${pos[1]}`},
 			"account": {`np == 1`, `__complete tools`, `np == 2`, `accounts ${pos[2]}`},
 			"env":     {`"${pos[1]}" != list`, `np == 1`, `__complete tools`, `np == 2`, `accounts ${pos[2]}`},
 			"backup":  {`np == 0`, `compadd -- list`},
 		}},
 		{"fish", `string match -q -- '-*'`, map[string][]string{
 			"use":     {`accounts $pos[1]`},
+			"ls":      {`contains -- -i $tokens`, `set isolated 1`, `contains -- -s $tokens`, `test $np -eq 0; and test $scoped -eq 1`, `__complete tools`, `test $np -eq 0`, `__complete ls-targets`, `test $np -eq 1; and test $isolated -eq 1`, `accounts $pos[1]`},
 			"account": {`$np -eq 1`, `__complete tools`, `$np -eq 2`, `accounts $pos[2]`},
 			"env":     {`"$pos[1]" != list`, `$np -eq 1`, `__complete tools`, `$np -eq 2`, `accounts $pos[2]`},
 			"backup":  {`$np -eq 0`, `printf '%s\n' list`},

@@ -18,6 +18,8 @@ import (
 )
 
 func TestLsListsAccountsAndProfiles(t *testing.T) {
+	// bare ls resolves places from cwd; keep it off the real checkout.
+	chdirTemp(t)
 	app := testApp(t, nil)
 	app.Config.Profiles = map[string]config.Profile{
 		"main": {Accounts: map[string]string{constants.ToolClaude: "main", constants.ToolCodex: "main"}},
@@ -320,6 +322,8 @@ func TestLsPinsEmpty(t *testing.T) {
 
 // Empty state lists nothing without error and keeps the [] JSON arrays.
 func TestLsEmpty(t *testing.T) {
+	// bare ls resolves places from cwd; keep it off the real checkout.
+	chdirTemp(t)
 	app := testApp(t, nil)
 	code, out := captureStdout(t, func() int { return runLs(context.Background(), app, commonOpts{Format: formatJSON}) })
 	mustExit(t, constants.ExitOK, code, out)
@@ -337,6 +341,8 @@ func TestLsEmpty(t *testing.T) {
 // account had died. Every listing surface now carries the same state, and the
 // text cell carries the number that decides whether to act.
 func TestInventoryCommandsReportCredentialFreshness(t *testing.T) {
+	// bare ls resolves places from cwd; keep it off the real checkout.
+	chdirTemp(t)
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
@@ -396,6 +402,8 @@ func TestInventoryCommandsReportCredentialFreshness(t *testing.T) {
 // expiry, and an auth.json holding only an API key has no expiry at all. Claiming
 // those are fine is the failure mode that makes a freshness column worse than none.
 func TestInventoryLeavesUndatableCredentialsUnjudged(t *testing.T) {
+	// bare ls resolves places from cwd; keep it off the real checkout.
+	chdirTemp(t)
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}
@@ -451,6 +459,8 @@ func TestAccountItemsToleratesNoCredentialStates(t *testing.T) {
 // The freshness column is built from a parsed credential, so it is a new output
 // path for a token. AGENTS.md requires a redaction test for each one.
 func TestInventoryFreshnessNeverCarriesTheToken(t *testing.T) {
+	// bare ls resolves places from cwd; keep it off the real checkout.
+	chdirTemp(t)
 	const canary = "sk-ant-oat01-LS-CANARY-hhhh"
 	app := testApp(t, nil)
 	ctx := context.Background()

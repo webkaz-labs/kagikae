@@ -70,6 +70,8 @@ func TestUsageStaysWithTheAccountThatWroteTheFile(t *testing.T) {
 }
 
 func TestLsAndStatusShowLocalUsage(t *testing.T) {
+	// bare ls resolves places from cwd; keep it off the real checkout.
+	chdirTemp(t)
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText, NoColor: true}
@@ -121,6 +123,8 @@ func TestUsageIsolatedHomeBelongsToThatAccount(t *testing.T) {
 }
 
 func TestUsageProbeDoesNotLeakTheTokenAndUsesTheCache(t *testing.T) {
+	// bare ls resolves places from cwd; keep it off the real checkout.
+	chdirTemp(t)
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText, NoColor: true}
@@ -214,6 +218,8 @@ func TestUsageResetFileDropsTheRememberedPercent(t *testing.T) {
 }
 
 func TestUsageResetFileProbesOnceThenUsesTheCache(t *testing.T) {
+	// bare ls resolves places from cwd; keep it off the real checkout.
+	chdirTemp(t)
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText, NoColor: true}

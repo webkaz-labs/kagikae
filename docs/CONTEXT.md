@@ -35,9 +35,9 @@ Where the answers live:
 
 ## Surface terms
 
-The words a user types or reads. They are the same five this file inherited from
-`PRODUCT.md § Terminology`, which now points here so that there is one place to
-change a name.
+The words a user types or reads. The first five are the ones this file inherited
+from `PRODUCT.md § Terminology`, which now points here so that there is one place
+to change a name.
 
 | term | names |
 |------|-------|
@@ -46,6 +46,7 @@ change a name.
 | `driver` | the platform/tool-specific mechanism that captures and applies auth artifacts |
 | `artifact` | one captured unit of authentication state (a JSON pointer value, a file, or a keychain item) |
 | `companion` | a non-AI tool (git, gh, a cloud CLI) whose auth kae binds to a profile by driving env/config — not captured like an account; see [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md) |
+| `place` | a directory a user wants to reach: where a tool reads its settings and sessions (not only what kae created), a bound directory, a repository root, or kae's own directories. `kae ls` lists them; which directories count is [CLI.md](CLI.md) § kae ls Semantics. Not an account row, and not a file such as `CLAUDE.md` |
 
 ## Mechanism terms
 

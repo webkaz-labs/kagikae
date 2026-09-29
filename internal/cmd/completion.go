@@ -214,6 +214,23 @@ _kae() {
         COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
       fi
       ;;
+    ls)
+      # <target>; after -s or -i only a tool, and an account only after -i.
+      local scope=""
+      for (( i=2; i<cursor; i++ )); do
+        case "${kae_words[i]}" in
+          -i|--isolated|-isolated) scope=i ;;
+          -s|--shared|-shared) scope=s ;;
+        esac
+      done
+      if [ "$np" -eq 0 ] && [ -n "$scope" ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete tools)" -- "$cur") )
+      elif [ "$np" -eq 0 ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete ls-targets)" -- "$cur") )
+      elif [ "$np" -eq 1 ] && [ "$scope" = i ]; then
+        COMPREPLY=( $(compgen -W "$(kae __complete accounts "${pos[0]}")" -- "$cur") )
+      fi
+      ;;
     account)
       if [ "$np" -eq 0 ]; then
         COMPREPLY=( $(compgen -W "rm rename set-identity" -- "$cur") )
@@ -332,6 +349,23 @@ _kae() {
       # Only a tool: the account comes from the binding, never from a word here.
       if (( np == 0 )); then
         compadd -- ${(f)"$(kae __complete tools)"}
+      fi
+      ;;
+    ls)
+      # <target>; after -s or -i only a tool, and an account only after -i.
+      local scope=""
+      for (( i=3; i<CURRENT; i++ )); do
+        case "${words[i]}" in
+          -i|--isolated|-isolated) scope=i ;;
+          -s|--shared|-shared) scope=s ;;
+        esac
+      done
+      if (( np == 0 )) && [[ -n "$scope" ]]; then
+        compadd -- ${(f)"$(kae __complete tools)"}
+      elif (( np == 0 )); then
+        compadd -- ${(f)"$(kae __complete ls-targets)"}
+      elif (( np == 1 )) && [[ "$scope" == i ]]; then
+        compadd -- ${(f)"$(kae __complete accounts ${pos[1]})"}
       fi
       ;;
     account)
@@ -456,6 +490,24 @@ function __kae_complete
             # Only a tool: the account comes from the binding, never from a word here.
             if test $np -eq 0
                 kae __complete tools
+            end
+        case ls
+            # <target>; after -s or -i only a tool, and an account only after -i.
+            set -l isolated 0
+            set -l scoped 0
+            if contains -- -i $tokens; or contains -- --isolated $tokens; or contains -- -isolated $tokens
+                set isolated 1
+                set scoped 1
+            end
+            if contains -- -s $tokens; or contains -- --shared $tokens; or contains -- -shared $tokens
+                set scoped 1
+            end
+            if test $np -eq 0; and test $scoped -eq 1
+                kae __complete tools
+            else if test $np -eq 0
+                kae __complete ls-targets
+            else if test $np -eq 1; and test $isolated -eq 1
+                kae __complete accounts $pos[1]
             end
         case account
             if test $np -eq 0

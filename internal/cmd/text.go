@@ -216,6 +216,9 @@ func stripANSI(s string) string {
 // displayPath shortens an absolute path under home to ~/... for output.
 func (app *App) displayPath(path string) string {
 	home := app.Env.Home
+	if home != "" && path == home {
+		return "~"
+	}
 	if home != "" && strings.HasPrefix(path, home+string(os.PathSeparator)) {
 		return "~" + path[len(home):]
 	}

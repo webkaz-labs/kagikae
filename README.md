@@ -187,7 +187,7 @@ kae profile default main       # default used by automatic hooks
 kae use main                   # every tool in the "main" profile (alias: kae u)
 kae use claude side            # one tool
 
-kae ls                         # accounts and profiles in one view
+kae ls                         # accounts, profiles and the places tools read here
 kae                            # what is active
 kae rollback                   # undo the last switch
 ```
@@ -271,11 +271,24 @@ cd ../main-app-review && kae pin side   # this worktree only
 kae ls --pins                           # every bound directory, from anywhere
 ```
 
-`kae status` answers for the directory you are standing in; `kae ls --pins` is the
-view across all of them (directory, profile, mode, bound account per tool, and a
-`*` on the current one). It lists what is bound **now**: a directory you unpinned
-keeps its store so a re-pin restores its sessions, but it is not a binding and is
-not listed.
+`kae status` answers for the directory you are standing in; `kae ls --pins` (or
+`kae ls pin`) is the view across all of them (directory, profile, mode, bound
+account per tool, and a `*` on the current one). It lists what is bound **now**: a
+directory you unpinned keeps its store so a re-pin restores its sessions, but it
+is not a binding and is not listed.
+
+To reach the directories a tool reads in this worktree, list its places and print
+one path:
+
+```bash
+kae ls claude                          # its accounts, user level, project levels
+cd "$(kae ls claude --current)"        # the bound store claude uses here
+cd "$(kae ls codex --current --project --root)"   # the nearest project holding .codex/
+```
+
+The user level follows the recorded binding of the nearest bound directory that
+binds that tool, not the shell's environment; [docs/CLI.md](docs/CLI.md) § kae ls Semantics has the
+discovery rules for `.claude/` and `.codex/`.
 
 Claude bindings for the same account share its credential store, while their
 working homes follow the chosen shared/isolated mode. This avoids independent
@@ -467,8 +480,10 @@ binary does not imply support for every adapter.
 | `kae relogin [<tool>]` | Run the tool's login flow into *this directory's* bound store — kae exports the isolation variable itself, so it lands there whether or not the pin is active in this shell — then capture the new login back into the account snapshot. Before starting, it preserves the current credential for original-store recovery, then attempts the existing account harvest. If preservation fails, login does not start. |
 | `kae run <tool> <account> [-- <cmd>]` (`kae r`) | Run one process under an account (`-s`/`-i`/`--env`). |
 | `kae add [<tool>] [<account>]` | Register an account (login flow, or `--no-login`). |
-| `kae ls` | List accounts and profiles in one view, with each snapshot's credential freshness and subscription windows. |
-| `kae ls --pins` | List every directory bound with `kae pin` — one row per bound directory or worktree. |
+| `kae ls` | List accounts and profiles, with each snapshot's credential freshness and subscription windows, then the places: bound directories, the directories each relevant tool reads settings from here, the repository root and kae's own directories. |
+| `kae ls <target>` | One group: `account`, `pin`, `repo`, `kae` or a tool (a prefix of its name works). `-s <tool>` / `-i <tool> <account>` name the tool's user level explicitly. |
+| `kae ls <target> --current` / `--at N` | Print one place's path: the current one (with `--project`, `--below` or `--home` for a tool, and `--root` for the directory holding `.claude/`/`.codex/`), or the one numbered `N` in `kae ls <target>`. |
+| `kae ls --pins` | Alias of `kae ls pin`: every directory bound with `kae pin` — one row per bound directory or worktree. |
 | `kae account rm\|rename` | Delete or rename a captured account. Both refuse while the account is selected by global isolation and print the safe teardown-and-retry sequence; `--force` on removal permits only the active-account case. |
 | `kae profile save\|set\|unset\|rm\|default` | Manage profiles without editing TOML. |
 | `kae env set\|...` | Manage API-key env profiles for `run --env`. |

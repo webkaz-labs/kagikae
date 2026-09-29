@@ -25,8 +25,15 @@ func registerUseFlags(fs *flag.FlagSet, shared, isolated, quiet, auto *bool, pro
 	registerProfileFlag(fs, profile)
 }
 
-func registerLsFlags(fs *flag.FlagSet, pins *bool) {
-	fs.BoolVar(pins, "pins", false, "list every directory bound with kae pin instead of accounts and profiles")
+func registerLsFlags(fs *flag.FlagSet, f *lsFlags) {
+	fs.BoolVar(&f.pins, "pins", false, "list every directory bound with kae pin (alias of kae ls pin)")
+	fs.BoolVar(&f.current, "current", false, "print the current place's path for the target")
+	fs.Var(&f.at, "at", "print the path of place number N of the target's listing")
+	fs.BoolVar(&f.project, "project", false, "with --current: the nearest effective ancestor project level")
+	fs.BoolVar(&f.below, "below", false, "with --current: a project level below the current directory")
+	fs.BoolVar(&f.home, "home", false, "with --current: the tool's real home")
+	fs.BoolVar(&f.root, "root", false, "the directory holding a project level's .claude/ or .codex/")
+	registerScopeFlags(fs, &f.shared, &f.isolated)
 }
 
 func registerPinFlags(fs *flag.FlagSet, shared, isolated, noLink *bool) {
@@ -92,7 +99,7 @@ var commandFlagSpecs = map[string]commandFlagSpec{
 	"uninstall": {dryRun: true, extra: func(fs *flag.FlagSet) { registerUninstallFlags(fs, new([]string)) }},
 	"add":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
 	"use":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(bool), new(string)) }},
-	"ls":        {extra: func(fs *flag.FlagSet) { registerLsFlags(fs, new(bool)) }},
+	"ls":        {extra: func(fs *flag.FlagSet) { registerLsFlags(fs, new(lsFlags)) }},
 	"pin":       {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool), new(bool)) }},
 	"unpin":     {extra: func(fs *flag.FlagSet) { registerUnpinFlags(fs, new(bool)) }},
 	"run":       {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},

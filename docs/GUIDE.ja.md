@@ -50,6 +50,26 @@ kae status
 kae ls --pins
 ```
 
+`kae ls --pins`（`kae ls pin` と同じ）は固定したディレクトリを一覧します。`kae ls` は
+それに加えて、関係するツールごとの「場所」、リポジトリのルート、kae 自身の設定・データ・
+状態ディレクトリを、グループごとの番号付きで出します。場所とは、ツールが設定や
+セッションを読むディレクトリなど、移動したい先のディレクトリです。
+
+```bash
+kae ls claude                          # claude のアカウントと場所
+kae ls claude --current                # ここで有効なユーザーレベルのパス
+kae ls codex --current --project       # 最も近い有効なプロジェクトレベル
+kae ls claude --current --below        # 現在より下のプロジェクトレベル（複数なら番号付きで一覧してエラー）
+kae ls claude --at 3                   # kae ls claude の 3 番目
+kae ls -i claude side --current        # side の独立ホーム
+```
+
+ユーザーレベルは、`-s`/`-i` を指定しない限り、そのツールを固定している最も近い固定
+ディレクトリに記録された固定から決まります（シェルの環境変数は見ません）。共有ホームは
+その時点で有効なアカウントを持つため、アカウント名を付けるには `-i` が必要です。番号は
+場所の増減で変わるので、エージェントは `--json` のパスを使ってください。`.claude/` と
+`.codex/` の探索規則を含む正本は [CLI.md](CLI.md#kae-ls-semantics) § kae ls Semantics です。
+
 `kae pin` は `./.config/<tool>` から、そのツールのストアへの symlink も張ります。
 ストアの場所はディレクトリのパスのハッシュで決まるため、リンクがないと、ここから
 ストアを名指すのはフラグメントの `[env]` 行だけになります。`--no-link` を付けるとリンクを置かず、kae が作った既存の

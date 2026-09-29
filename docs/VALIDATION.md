@@ -489,6 +489,7 @@ test "$(grep -c healthy "$HOME/A.json")" -eq 0              # assert: NO credent
                               #   satisfy a lone absence check
 
 # --- B. the inventory column (ls / accounts / status) ---
+cd "$HOME"                             # bare ls also lists places from cwd: not the checkout
 /tmp/kae ls --no-color > "$HOME/B.txt"
 grep -qE '^claude +dead .+re-login now$'          "$HOME/B.txt"   # assert: a Credential
 grep -qE '^claude +healthy .+ ok$'                "$HOME/B.txt"   #   column reading
@@ -734,13 +735,13 @@ test -L "$W/main/.config/claude"
 
 # --- E. kae ls --pins, from outside every bound directory ---
 cd "$HOME" && /tmp/kae ls --pins > "$HOME/E1.txt"
-test "$(grep -oE '^~[^ ]*' "$HOME/E1.txt" | tr '\n' ' ')" = "~/norepo ~/work/main ~/work/main/nested ~/work/wt1 "
+test "$(grep -oE '^[0-9]+ +~[^ ]*' "$HOME/E1.txt" | sed -E 's/^[0-9]+ +//' | tr '\n' ' ')" = "~/norepo ~/work/main ~/work/main/nested ~/work/wt1 "
                                        # assert: four rows, sorted by directory — one
                                        #   assertion so a missing row cannot pass as a
                                        #   reordering
 test "$(grep -c '\*' "$HOME/E1.txt")" -eq 0   # assert: Current blank for all of them
 cd "$W/wt1" && /tmp/kae ls --pins > "$HOME/E2.txt"
-grep -qE '^~/work/wt1 +\*' "$HOME/E2.txt"     # assert: `*` on work/wt1 ...
+grep -qE '^[0-9]+ +~/work/wt1 +\*' "$HOME/E2.txt"   # assert: `*` on work/wt1 ...
 test "$(grep -c '\*' "$HOME/E2.txt")" -eq 1   # assert: ... and only there
 /tmp/kae ls --pins --json > "$HOME/E3.json"
 grep -q '"schema_version": 1' "$HOME/E3.json"
@@ -760,7 +761,7 @@ test ! -e "$W/wt1/.config/claude"      # assert: the link goes with the binding 
 test -d "$WTSTORE"                     # assert: ... and the store it named stays,
                                        #   which is what a re-pin restores from
 test "$(grep -c 'work/wt1' "$HOME/E4.txt")" -eq 0
-test "$(grep -c '^~/' "$HOME/E4.txt")" -eq 3
+test "$(grep -cE '^[0-9]+ +~/' "$HOME/E4.txt")" -eq 3
                                        # assert: work/wt1 is GONE — unpin keeps the store
                                        #   on purpose, and a store is not a binding. The
                                        #   count of 3 is the absence check's control

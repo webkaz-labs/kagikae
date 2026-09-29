@@ -162,25 +162,18 @@ func ensureGitExcluded(ctx context.Context, paths ...string) string {
 	}
 	// One call for both values; the prefix keeps its trailing slash, and is
 	// empty at the repository root.
-	out, _, code := runner.Run(ctx, "git", "rev-parse", "--git-common-dir", "--show-prefix")
-	if code != 0 {
+	first, prefixLine, out, ran, ok := gitRevParsePair(ctx, "--git-common-dir", "--show-prefix")
+	if !ran {
 		return "" // no repository here, or no git to ask: nothing to tell
 	}
-	// Trim only the line ending. A leading space is a legal first character of a
-	// path component, on both lines, and TrimSpace would silently eat it.
-	lines := strings.Split(out, "\n")
-	// Exactly the measured shape: two values and the trailing newline's empty
-	// tail. Not "at least two" — `git rev-parse` prints both values raw, with no
-	// quoting and no -z, and a newline is a legal byte in a path component. A
-	// repository at `…/we<LF>ird/repo` reached through a linked worktree would
-	// otherwise leave lines[0] truncated to `…/we`, and kae would create
-	// `…/we/info/exclude` somewhere unrelated while reporting the fragment ignored.
-	if len(lines) != 3 || strings.TrimRight(lines[0], "\r") == "" {
+	if !ok {
+		// kae would otherwise create `…/we/info/exclude` somewhere unrelated for a
+		// repository at `…/we<LF>ird/repo`, while reporting the fragment ignored.
 		return warnGitExclude(paths, fmt.Errorf("git rev-parse returned %q", out))
 	}
-	commonDir, err := filepath.Abs(strings.TrimRight(lines[0], "\r"))
+	commonDir, err := filepath.Abs(first)
 	if err != nil {
-		return warnGitExclude(paths, fmt.Errorf("resolve git common dir %q: %w", lines[0], err))
+		return warnGitExclude(paths, fmt.Errorf("resolve git common dir %q: %w", first, err))
 	}
 	// The answer must name a directory that already exists. git just reported this
 	// as its own common dir, so it does — and requiring it keeps kae from acting on
@@ -199,7 +192,7 @@ func ensureGitExcluded(ctx context.Context, paths ...string) string {
 	// to. Harmless — it is that repository's real exclude file — and reaching it
 	// means having pinned a bare repo, so it is not guarded.
 	excludeFile := filepath.Join(commonDir, "info", "exclude")
-	prefix := "/" + escapeGitPattern(strings.TrimRight(lines[1], "\r"))
+	prefix := "/" + escapeGitPattern(prefixLine)
 	data, err := os.ReadFile(excludeFile)
 	if err != nil && !os.IsNotExist(err) {
 		// *PathError already names the operation and the file.
@@ -253,6 +246,27 @@ func ensureGitExcluded(ctx context.Context, paths ...string) string {
 		return warnGitExclude(paths, err)
 	}
 	return excludeFile
+}
+
+// gitRevParsePair runs `git rev-parse` for two values and parses them strictly.
+// ran is false when git exited non-zero (no repository, or no git); ok is false
+// when the answer is not exactly the measured shape — two values and the
+// trailing newline's empty tail, with a non-empty first value. Not "at least
+// two": `git rev-parse` prints both values raw, with no quoting and no -z, and a
+// newline is a legal byte in a path component, so a path containing one would
+// otherwise be read truncated. Only the line ending is trimmed: a leading space
+// is a legal first character of a path component, and TrimSpace would eat it.
+// out is git's raw answer, for a caller's diagnostic.
+func gitRevParsePair(ctx context.Context, flags ...string) (first, second, out string, ran, ok bool) {
+	out, _, code := runner.Run(ctx, "git", append([]string{"rev-parse"}, flags...)...)
+	if code != 0 {
+		return "", "", out, false, false
+	}
+	lines := strings.Split(out, "\n")
+	if len(lines) != 3 || strings.TrimRight(lines[0], "\r") == "" {
+		return "", "", out, true, false
+	}
+	return strings.TrimRight(lines[0], "\r"), strings.TrimRight(lines[1], "\r"), out, true, true
 }
 
 // warnGitExclude reports why kae could not record the ignore rule, on stderr and

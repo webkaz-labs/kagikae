@@ -29,6 +29,7 @@ import (
 // Kinds:
 //   - commands         — the router's public commands (completionCommands)
 //   - tools            — constants.Tools
+//   - ls-targets       — `kae ls` target words: the fixed groups, then the tools
 //   - companions       — constants.Companions (companion ids: git, gh, …)
 //   - companion-knobs <id> — the named companion's knob names (its Spec)
 //   - profiles         — config profile names
@@ -47,6 +48,9 @@ func CmdComplete(_ context.Context, args []string) int {
 			return constants.ExitOK
 		case "tools":
 			printCompletionLines(constants.Tools)
+			return constants.ExitOK
+		case "ls-targets":
+			printCompletionLines(lsTargetWords())
 			return constants.ExitOK
 		case "companions":
 			// Companion ids are compile-time constants, like tools.
@@ -91,6 +95,8 @@ func runComplete(app *App, args []string) int {
 		printCompletionLines(completionCommands)
 	case "tools":
 		printCompletionLines(constants.Tools)
+	case "ls-targets":
+		printCompletionLines(lsTargetWords())
 	case "companions":
 		printCompletionLines(constants.Companions)
 	case "companion-knobs":
@@ -203,4 +209,10 @@ func printCompletionLines(lines []string) {
 	for _, line := range lines {
 		fmt.Println(line)
 	}
+}
+
+// lsTargetWords is what `kae ls <TAB>` offers: the fixed group words, then the
+// tools — the same words resolveLsTarget matches exactly.
+func lsTargetWords() []string {
+	return append(append([]string{}, constants.PlaceGroups...), constants.Tools...)
 }

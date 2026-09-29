@@ -47,12 +47,7 @@ func resolveToolArg(input string) (string, error) {
 	if constants.IsTool(input) {
 		return input, nil
 	}
-	var matches []string
-	for _, t := range constants.Tools {
-		if strings.HasPrefix(t, input) {
-			matches = append(matches, t)
-		}
-	}
+	matches := toolPrefixMatches(input)
 	switch len(matches) {
 	case 1:
 		return matches[0], nil
@@ -62,6 +57,18 @@ func resolveToolArg(input string) (string, error) {
 		return "", errf(constants.ExitUsage,
 			"ambiguous tool prefix %q (matches: %s)", input, strings.Join(matches, ", "))
 	}
+}
+
+// toolPrefixMatches is every tool whose name starts with prefix, in canonical
+// order: the one prefix rule resolveToolArg and `kae ls` targets share.
+func toolPrefixMatches(prefix string) []string {
+	var matches []string
+	for _, t := range constants.Tools {
+		if strings.HasPrefix(t, prefix) {
+			matches = append(matches, t)
+		}
+	}
+	return matches
 }
 
 // canonicalToolAccount resolves a tool-position prefix alias to its canonical

@@ -551,6 +551,8 @@ func TestSwitchToExpiringSnapshotWarnsWithLeadTime(t *testing.T) {
 // that warning appears only near the end, not constantly. So a refresh-backed
 // credential with hours left is exactly what this notice is for.
 func TestRefreshBackedLoginDeadlineInTheBandWarns(t *testing.T) {
+	// bare ls resolves places from cwd; keep it off the real checkout.
+	chdirTemp(t)
 	app := testApp(t, nil)
 	ctx := context.Background()
 	opts := commonOpts{Format: formatText}

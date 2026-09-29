@@ -46,9 +46,10 @@ Do not widen those mutation paths without affected acceptance.
 
 The uninstall/Packslip release is recorded in [RELEASE.md](RELEASE.md), with
 lifecycle evidence and limitations in [ACCEPTANCE.md](ACCEPTANCE.md)
-§ Uninstall and Packslip assessment. Revisit the ideas in
-§ Agent orchestration and remote authentication — deferred exploration next;
-they still require investigation and an explicit implementation decision.
+§ Uninstall and Packslip assessment. Next come the two operator-requested
+features in § Store navigation and the tree-shared mode, in the order given there;
+§ Agent orchestration and remote authentication — deferred exploration follows
+them and still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
 § Upstream-drift automation — what is left.
 
@@ -78,8 +79,47 @@ prerequisites; entries not named here retain their recorded gate.
    unimplemented**, and § Tier-2 tools — described, not queued only when their own demand
    or evidence gate opens. Tier 2 is not a parity backlog.
 
+## Store navigation and the tree-shared mode
+
+Requested by the operator on 2026-09-29 and settled in one design interview.
+Take them in this order; each still needs its own design before implementation,
+including the command names and the mode's term in [CONTEXT.md](CONTEXT.md).
+
+1. **Open and move to a store.** Resolve the config store that applies at the
+   current directory — from anywhere below a bound directory, not only at the
+   `./.config/<tool>` store link — or the one named by an explicit account and mode.
+   Offer three uses: print the path, open it in the platform file manager, and move
+   the current shell there. The move is a shell function delivered through the paths
+   that already source `kae completion` from the binary (the mise hook and rc eval),
+   because it takes arguments; a mise `[shell_alias]` in the fragment was considered
+   and rejected since an alias cannot place arguments inside `cd "$(…)"`. A
+   completion-file registration gets no function; its users combine the printed
+   path with `cd`. It comes first because it helps today's `-s` and `-i` binds and
+   serves as the inspection tool for the next item.
+2. **Tree-shared mode.** A third per-directory mode beside `-s` and `-i`: the bound
+   directory and everything below it are isolated from the real home, and switching
+   account keeps one config store — sessions, history, memory, settings — while
+   only the credential and the identity cache change. It is `-s`'s account-agnostic
+   store without the links into the real home. claude uses the per-account
+   credential store; codex keeps its credential inside `CODEX_HOME` with the same
+   guarantee as its `-s` bind today, so two directories bound to one codex account
+   still hold copies that can invalidate each other (the research entry **Every
+   credential copy kae keeps can be killed by another copy refreshing, and four kae
+   commands do the killing**). A switch reaches the next launched process; making
+   it reach running processes waits for a measurement showing that doing so does
+   not reintroduce that copy failure. Acceptance includes a measured check that
+   the fragment's `[env]` reaches nested directories: on 2026-09-29 a scratch
+   `conf.d` fragment's `[shell_alias]` appeared in `mise hook-env -s zsh` run from a
+   subdirectory (mise 2026.9.15), which covers fragment loading but not the
+   variables a bind exports.
+
+`kae ls --pins` stays the list of bound directories; the new mode appears there
+as a third mode value.
+
 ## Agent orchestration and remote authentication — deferred exploration
 
+The near-term demand behind this section, per the operator on 2026-09-29, is
+letting a specific Claude Code agent use kae; the other ideas remain possible later.
 The uninstall/Packslip release prerequisite is recorded in [RELEASE.md](RELEASE.md).
 The operator requested preserving these ideas for later investigation;
 no new command, integration or credential-transfer mechanism is selected yet.

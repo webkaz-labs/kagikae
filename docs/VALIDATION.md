@@ -572,6 +572,45 @@ success:
   directory that is not bound and a remedy that lands where nothing reads. The
   sweep therefore reads the mise **fragment**, not the store tree.
 
+## kae open and the kae cd shell function
+
+`kae cd` exists only as the shell function that `kae completion <shell>` prints, and
+`kae open` must degrade without a file manager, so both are checked with the built
+binary named `kae` first on `PATH` and the function defined the way an rc file
+defines it. Nothing here launches Finder: the opener check runs with a `PATH` that
+holds only `kae` and `git`. Read-only against kae's state, so no config is written.
+
+```bash
+. scripts/smoke-env.sh
+KB=$(mktemp -d "$TMPDIR/kae-bin.XXXXXXXX"); go build -o "$KB/kae" . ; test -x "$KB/kae"
+export KAE_CLAUDE_DRIVER=file
+unset COPILOT_HOME CLAUDE_CONFIG_DIR CODEX_HOME CLAUDE_SECURESTORAGE_CONFIG_DIR
+GB=$(mktemp -d "$TMPDIR/kae-git.XXXXXXXX"); ln -s "$(command -v git)" "$GB/git"
+export PATH="$KB:$PATH"
+test "$(command -v kae)" = "$KB/kae"
+eval "$(kae completion bash)"
+test "$(type -t kae)" = function
+R="$HOME/my repo"; mkdir -p "$R/.claude" "$R/sub dir/deep"; R=$(cd "$R" && pwd -P); git -C "$R" init -q
+cd "$R/sub dir/deep"; kae cd repo; test $? -eq 0; test "$PWD" = "$R"
+cd "$R/sub dir/deep"; kae cd claude --project; test $? -eq 0; test "$PWD" = "$R/.claude"
+cd "$R/sub dir/deep"; kae cd claude --project --root; test $? -eq 0; test "$PWD" = "$R"
+cd "$R/sub dir/deep"; kae cd pin 2>"$HOME/pin.err"; test $? -eq 7; test "$PWD" = "$R/sub dir/deep"; test -s "$HOME/pin.err"
+cd "$R/sub dir/deep"; kae cd 2>"$HOME/none.err"; test $? -eq 64; test "$PWD" = "$R/sub dir/deep"; test -s "$HOME/none.err"
+cd "$R/sub dir/deep"; kae cd kae 2>"$HOME/many.err"; test $? -eq 64; test "$PWD" = "$R/sub dir/deep"; grep -q 'kae cd kae --at 1' "$HOME/many.err"
+cd "$R/sub dir/deep"; command kae cd repo 2>"$HOME/nofn.err" >"$HOME/nofn.out"; test $? -eq 64; grep -qF 'cd "$(kae ls repo --current)"' "$HOME/nofn.err"; test ! -s "$HOME/nofn.out"; test "$PWD" = "$R/sub dir/deep"
+cd "$R"; rmdir "$R/.claude"; kae cd claude --project 2>"$HOME/gone.err"; test $? -eq 7; test "$PWD" = "$R"
+cd "$R/sub dir/deep"; PATH="$KB:$GB" kae open repo >"$HOME/open.out" 2>"$HOME/open.err"; test $? -eq 0; test "$(cat "$HOME/open.out")" = "$R"; test -s "$HOME/open.err"
+cd "$R/sub dir/deep"; PATH="$KB:$GB" command -v open xdg-open >/dev/null; test $? -ne 0
+kae completion bash --no-function >"$HOME/nofunc.bash"; test -s "$HOME/nofunc.bash"; test "$(grep -c '^kae()' "$HOME/nofunc.bash")" -eq 0
+env -i HOME="$HOME" PATH="$KB:$GB:/bin" bash --noprofile --norc -c 'eval "$(kae completion bash --no-function)"; test "$(type -t kae)" != function; command kae cd repo >/dev/null 2>&1; test $? -eq 64'
+command -v zsh >/dev/null && env -i HOME="$HOME" PATH="$KB:$GB:/bin:/usr/bin" zsh -f -c "eval \"\$(kae completion zsh)\"; cd '$R/sub dir/deep'; kae cd repo && test \"\$PWD\" = '$R' && cd '$R/sub dir/deep' && kae cd pin 2>/dev/null; test \$? -eq 7 && test \"\$PWD\" = '$R/sub dir/deep'"
+```
+
+The fixture directory has a space on purpose: the function quotes the path it
+receives, and an unquoted `builtin cd -- $path` would split it and fail (or move
+somewhere else). The opener check builds its `PATH` from `kae` and a `git` symlink so
+`open` and `xdg-open` are absent whatever the host, and never runs either.
+
 ## companion-auth surfaces
 
 Companion-auth lockstep (`kae companion`, delivered per-directory by `kae pin`).

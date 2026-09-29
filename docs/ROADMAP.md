@@ -97,13 +97,14 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
    kae ls <target> … --current|--at N [--json]        # print one place's path
    kae cd   [<target> …] [--pick|--at N]  # move the shell
    kae open [<target> …] [--pick|--at N]  # open in the file manager
-   # a tool target: [-i] <tool> <account> | [-s] <tool>, plus [--project|--below|--home] [--root]
+   # a tool target: -i <tool> <account> | -s <tool> | <tool>, plus [--project|--below|--home] [--root]
    ```
 
    - **Targets** are singular: `account`, `pin`, `repo`, `kae`, and a tool name.
      Exact target words match first; prefixes resolve against tool names only.
      `kae ls --pins` stays as an alias of `kae ls pin`, and `kae accounts` keeps its
-     current accounts-only output; both keep their JSON. The `account` group is today's `kae ls` view, accounts and profiles;
+     current accounts-only output; both keep their JSON. The `account` group is
+     today's `kae ls` view, accounts and profiles;
      its rows are shown but are not places, so `cd` and `open` do not take them.
      The `kae` group lists kae's config, data and state directories; the
      credential store and file-backend secrets get no row of their own.

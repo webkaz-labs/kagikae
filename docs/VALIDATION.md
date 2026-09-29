@@ -491,9 +491,9 @@ test "$(grep -c healthy "$HOME/A.json")" -eq 0              # assert: NO credent
 # --- B. the inventory column (ls / accounts / status) ---
 cd "$HOME"                             # bare ls also lists places from cwd: not the checkout
 /tmp/kae ls --no-color > "$HOME/B.txt"
-grep -qE '^claude +dead .+re-login now$'          "$HOME/B.txt"   # assert: a Credential
-grep -qE '^claude +healthy .+ ok$'                "$HOME/B.txt"   #   column reading
-grep -qE '^claude +soon .+[0-9]+ day\(s\) left$'  "$HOME/B.txt"   #   these three
+grep -qE '^claude +dead .+re-login now( {2,}.*)?$'          "$HOME/B.txt"   # assert: a Credential
+grep -qE '^claude +healthy .+ ok( {2,}.*)?$'                "$HOME/B.txt"   #   column reading
+grep -qE '^claude +soon .+[0-9]+ day\(s\) left( {2,}.*)?$'  "$HOME/B.txt"   #   these three
 /tmp/kae ls --json > "$HOME/B.json"
 grep -q '"schema_version": 1' "$HOME/B.json"                 # assert: schema_version still 1
 test "$(grep -c '"credential"' "$HOME/B.json")" -eq 3        # assert: each row has additive
@@ -555,6 +555,8 @@ test -d "$SD"
 ```
 
 **PASSED 2026-07-31** on the pre-release binaries: A, B, C and D as asserted.
+Re-run 2026-09-30 through `scripts/smoke-run.sh` after the accounts table gained
+its trailing Limit column, which the B asserts now allow: every line exited 0.
 
 Two things this block deliberately pins, because each is a failure that looks like
 success:

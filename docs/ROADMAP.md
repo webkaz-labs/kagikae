@@ -84,66 +84,12 @@ prerequisites; entries not named here retain their recorded gate.
 Requested by the operator on 2026-09-29. The first item is implemented; the second
 still needs its own design, including the mode's term in [CONTEXT.md](CONTEXT.md).
 
-1. **List, open and move to places.** A *place* is a directory a user wants to
-   reach: where a tool reads its settings and sessions (not only what kae created),
-   a bound directory, a repository root, or kae's own directories. Three verbs share
-   one set of target words and selectors: `ls` shows, `cd` moves, `open` opens in
-   the platform file manager. The `ls` slice and the `open` and `cd` slice are
-   implemented, and so are the picker and claude's session row; [CLI.md](CLI.md)
-   § kae ls Semantics and § kae open and kae cd Semantics are their contracts.
-
-   ```
-   kae ls                                 # groups: account, pin, each relevant tool, repo, kae
-   kae ls account|pin|repo|kae|<tool> …   # one group
-   kae ls <target> … --current|--at N [--json]        # print one place's path
-   kae cd   [<target> …] [--pick|--at N]  # move the shell
-   kae open [<target> …] [--pick|--at N]  # open in the file manager
-   # a tool target: -i <tool> <account> | -s <tool> | <tool>, plus [--project|--below|--home] [--root]
-   ```
-
-   - **Targets** are singular: `account`, `pin`, `repo`, `kae`, and a tool name.
-     Exact target words match first; prefixes resolve against tool names only.
-     `kae ls --pins` stays as an alias of `kae ls pin`, and `kae accounts` keeps its
-     current accounts-only output; both keep their JSON. The `account` group is
-     today's `kae ls` view, accounts and profiles;
-     its rows are shown but are not places, so `cd` and `open` do not take them.
-     The `kae` group lists kae's config, data and state directories; the
-     credential store and file-backend secrets get no row of their own.
-   - **`kae ls`** — groups, the config-error behaviour and relevance — is in
-     CLI § kae ls Semantics.
-   - **Tool levels** and each tool's discovery rule, including claude's session row
-     (the per-directory `projects/` entry, whose name rule was measured on 2026-09-30),
-     are in CLI § kae ls Semantics; [VALIDATION.md](VALIDATION.md) § Upstream
-     Behaviour Assumptions re-verifies the name on upgrade. codex stores sessions by
-     date, so it has no session row.
-   - **Level selectors** apply to a tool target: `--project` is the nearest
-     effective ancestor project level, `--below` a project level below the current
-     directory, `--home` the real home. When a selector matches several places,
-     `cd` and `open` open the picker over them and `ls --current` is a usage error
-     naming them. `--root` on a project or below place selects the directory
-     holding `.claude/` or `.codex/`. `ls` takes the same selectors with
-     `--current`. Level selectors choose a level; `-s` and `-i` resolve the
-     user level, so `-i` with `--home` is a usage error.
-   - **Explicit resolution** follows `use`'s `-s`/`-i` spelling: `-i <tool>
-     <account>` is that account's global-isolated home, and `-s <tool>` the real
-     home. `-i` takes no value, as in `use`; `-i <tool>` without an account is a
-     usage error. A shared home holds whichever account is active, so an
-     account without `-i` is a usage error. Without explicit arguments the
-     nearest ancestor bound directory's recorded binding applies (not the
-     shell's environment), then what applies globally. The credential store is
-     not a place.
-   - **Picker.** Implemented; [CLI.md](CLI.md) § kae open and kae cd Semantics is its
-     contract and [VALIDATION.md](VALIDATION.md) § Picker PTY suite its terminal tests.
-   - **`open` fallback**: `open` on macOS and `xdg-open` on Linux; without one,
-     print the path and a warning and exit `0`.
-   - **`cd`** is a `kae` shell function delivered through the paths that already
-     source `kae completion` from the binary (the mise hook and rc eval); it
-     passes every other command to the binary and changes directory only when
-     a hidden entry the function calls exits `0` with a path. It is the first
-     of the wrappers named by the `kae shell init` entry under § Exploratory.
-     A mise `[shell_alias]` in the fragment was rejected because an alias
-     cannot place arguments inside `cd "$(…)"`. Without the function, `kae cd`
-     exits `64` and suggests `cd "$(kae ls … --current)"`.
+1. **List, open and move to places.** Implemented: [CLI.md](CLI.md) § kae ls
+   Semantics and § kae open and kae cd Semantics are the contracts, and
+   [VALIDATION.md](VALIDATION.md) § Picker PTY suite holds the picker's terminal
+   tests. `kae cd` is the first of the wrappers named by the `kae shell init` entry
+   under § Exploratory. A mise `[shell_alias]` in the fragment was rejected for it
+   because an alias cannot place arguments inside `cd "$(…)"`.
 
 2. **Tree-shared mode.** A third per-directory mode beside `-s` and `-i`: the bound
    directory and everything below it are isolated from the real home, and switching

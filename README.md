@@ -281,7 +281,7 @@ To reach the directories a tool reads in this worktree, list its places and prin
 one path, move there, or open it:
 
 ```bash
-kae ls claude                          # its accounts, user level, sessions, project levels
+kae ls claude                          # its accounts, user level, session directory, project levels
 cd "$(kae ls claude --current)"        # the bound store claude uses here
 cd "$(kae ls codex --current --project --root)"   # the nearest project holding .codex/
 kae cd claude                          # the same move, through the kae shell function

@@ -47,7 +47,7 @@ to change a name.
 | `artifact` | one captured unit of authentication state (a JSON pointer value, a file, or a keychain item) |
 | `companion` | a non-AI tool (git, gh, a cloud CLI) whose auth kae binds to a profile by driving env/config — not captured like an account; see [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md) |
 | `place` | a directory a user wants to reach: where a tool reads its settings and sessions (not only what kae created), a bound directory, a repository root, or kae's own directories. `kae ls` lists them; which directories count is [CLI.md](CLI.md) § kae ls Semantics. Not an account row, and not a file such as `CLAUDE.md` |
-| `session row` | claude's place under its user level, `projects/<name>`, holding the transcripts of sessions started in the current directory; JSON kind `session`. A place, not a session: kae never reads what is in it. Naming rule and reachability are in [CLI.md](CLI.md) § kae ls Semantics |
+| `session row` | claude's place under its user level, `projects/<name>`, holding the transcripts of sessions started in the current directory; the naming rule and reachability are in [CLI.md](CLI.md) § kae ls Semantics |
 
 ## Mechanism terms
 

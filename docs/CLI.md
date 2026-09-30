@@ -496,9 +496,9 @@ subscription windows — the data otherwise split across `kae accounts` and
 `repo` (the Git repository root of the current directory) and `kae` (kae's
 config, data and state directories; the credential store and file-backend secrets
 live under data and get no row of their own). A tool is relevant when it has a
-governing binding (below), an effective project level at the current
-directory, or (claude) an existing session directory. It takes no locks and does not change accounts, credentials,
-or config. It may update the usage cache described in "Subscription windows in
+governing binding (below), an effective project level at the current directory,
+or (claude) an existing session directory. It takes no locks and does not change
+accounts, credentials, or config. It may update the usage cache described in "Subscription windows in
 listings"; a failure to write that file does not change the exit code.
 
 **Targets.** `kae ls <target>` shows one group. The target words are `account`,
@@ -524,8 +524,8 @@ target, and `account` rows are refused.
 
 **Tool levels**, in list order: the effective user level, claude's session row,
 the effective ancestor project levels (nearest first), the project levels below
-the current directory, and the real home when another user level is in effect. kae resolves places for
-claude and codex, whose project levels are `.claude/` and `.codex/`; the other
+the current directory, and the real home when another user level is in effect.
+kae resolves places for claude and codex, whose project levels are `.claude/` and `.codex/`; the other
 tools list their accounts and no places until a documented or measured discovery
 rule exists. Ancestors stop before HOME, whose `.claude/` and `.codex/` are the
 real homes; when the repository root is HOME or above it, every ancestor below
@@ -559,12 +559,11 @@ directory was reached by for as long as that spelling names the same directory.
   directory holding the transcripts of claude sessions started in the current
   directory. It follows the effective user level, `-s` and `-i` included, comes
   right after it, and is not added for the real-home row listed beside another user
-  level. It is always listed and marked `(missing)` until claude has written there,
-  so `cd` and `open` cannot reach a missing one and the picker leaves it out. No
-  selector chooses it (`--current` is the user level; `--project`, `--below` and
-  `--home` name other levels) and it has no root, so `--root` leaves it out. A
-  session directory that exists is enough to make claude relevant to bare `kae ls`
-  and the picker. codex stores sessions by date and has no such row.
+  level. It is always listed and marked `(missing)` until claude has written there;
+  a missing one is reached by neither `cd` nor `open` (§ kae open and kae cd
+  Semantics). No selector chooses it (`--current` is the user level; `--project`,
+  `--below` and `--home` name other levels) and it has no root, so `--root` leaves
+  it out. codex stores sessions by date and has no such row.
   `<name>` is claude's name for the working directory, which kae derives instead
   of listing `projects/`:
   - The directory is the process's **physical** working directory as the kernel
@@ -1911,8 +1910,8 @@ empty, and `kae ls account --json` is exactly these three keys without `places`.
   `kae ls <group>`.
 - `kind`: `bound-directory` (pin), `repository-root` (repo), `config`, `data` or
   `state` (kae), and for a tool `user` (the effective user level), `session`
-  (claude's session directory for the current directory, under the user level and
-  carrying its `source`, `mode` and `account`), `project` (an
+  (claude's session directory for the current directory, under the user level; it
+  carries the `in_effect`, `source`, `mode` and `account` its user level has), `project` (an
   effective ancestor level), `below` (a level below the current directory, not in
   effect) or `home` (the real home, listed when another user level is in effect).
 - `path`, `exists` (a directory is there now) and `in_effect` (the level applies

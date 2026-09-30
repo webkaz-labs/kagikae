@@ -24,9 +24,10 @@
 //     answer as `echo "<marker>:$?"` and the scenario expects `<marker>:0`.
 //   * A snapshot that does not exist fails; KAE_TUI_UPDATE=1 is the only way one
 //     is written or changed.
-//   * runScenarios runs every scenario, catches each one on its own, then
-//     reports; the exit status is non-zero if any failed. A run that stopped at
-//     the first failure would hide the others.
+//   * runScenarios runs every scenario (up to KAE_TUI_JOBS at once, default 4),
+//     catches each one on its own, then reports in declaration order; the exit
+//     status is non-zero if any failed. A run that stopped at the first failure
+//     would hide the others.
 //
 // The environment sets no NO_COLOR on purpose: only text is asserted, and colour
 // is the Go tests' business.
@@ -35,6 +36,7 @@
 // asserted), and any terminal other than this emulator. docs/VALIDATION.md §
 // Picker PTY suite says the same for a reader.
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -48,6 +50,8 @@ const TIMEOUT_MS = 15000;
 const BUILD_TIMEOUT_MS = 300000;
 const SCENARIO_TIMEOUT_MS = 90000;
 const PROMPT = "READY> ";
+// Scenarios in flight at once; KAE_TUI_JOBS overrides, 1 runs them one by one.
+const DEFAULT_JOBS = Math.max(1, Math.min(4, os.cpus().length));
 
 const PALETTE = {
   foreground: "#d0d0d0",
@@ -72,7 +76,10 @@ const PALETTE = {
 };
 
 let world = null;
+// Every shell still open, across scenarios. A scenario running under `owner`
+// also records its shells in its own set, so one finishing closes only its own.
 const sessions = new Set();
+const owner = new AsyncLocalStorage();
 
 // setup builds kae once. Every path it returns lies under one temp directory
 // that teardown removes, also when the build fails.
@@ -153,6 +160,7 @@ async function openShell({ name, cols, rows, repoName = "repo" }) {
   const xdg = (d) => path.join(fx.home, ".xdg", d);
   const t = new TuiTest(uniqueSession("kae"), { profile: { colors: PALETTE } });
   sessions.add(t);
+  owner.getStore()?.add(t);
   await t.run(
     "/usr/bin/env",
     [
@@ -273,28 +281,41 @@ export async function runScenarios(scenarios, tag) {
     console.error(`building kae failed: ${err?.message ?? err}`);
     return 1;
   }
-  const results = [];
-  try {
-    for (const sc of chosen) {
-      const t0 = performance.now();
-      let timer;
-      try {
-        const deadline = new Promise((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error(`scenario exceeded ${SCENARIO_TIMEOUT_MS} ms`)),
-            SCENARIO_TIMEOUT_MS,
-          );
-        });
-        await Promise.race([sc.run(), deadline]);
-        results.push({ sc, ok: true, ms: performance.now() - t0 });
-      } catch (err) {
-        results.push({ sc, ok: false, ms: performance.now() - t0, err });
-      } finally {
-        clearTimeout(timer);
-        await Promise.all([...sessions].map((t) => t.closeQuiet().catch(() => {})));
-        sessions.clear();
-      }
+  // Scenarios run concurrently, at most `jobs` at a time. Each has its own
+  // shell, HOME and temp directory, so they share only the built binary. The
+  // report below keeps the declaration order whatever the finishing order.
+  const results = new Array(chosen.length);
+  const jobs = Math.max(1, Math.min(chosen.length, Number(process.env.KAE_TUI_JOBS) || DEFAULT_JOBS));
+  let next = 0;
+  const runOne = async (sc, i) => {
+    const t0 = performance.now();
+    const mine = new Set();
+    let timer;
+    try {
+      const deadline = new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`scenario exceeded ${SCENARIO_TIMEOUT_MS} ms`)),
+          SCENARIO_TIMEOUT_MS,
+        );
+      });
+      await Promise.race([owner.run(mine, () => sc.run()), deadline]);
+      results[i] = { sc, ok: true, ms: performance.now() - t0 };
+    } catch (err) {
+      results[i] = { sc, ok: false, ms: performance.now() - t0, err };
+    } finally {
+      clearTimeout(timer);
+      await Promise.all([...mine].map((t) => t.closeQuiet().catch(() => {})));
+      for (const t of mine) sessions.delete(t);
     }
+  };
+  const worker = async () => {
+    while (next < chosen.length) {
+      const i = next++;
+      await runOne(chosen[i], i);
+    }
+  };
+  try {
+    await Promise.all(Array.from({ length: jobs }, worker));
   } finally {
     await teardown();
   }

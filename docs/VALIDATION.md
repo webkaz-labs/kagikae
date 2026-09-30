@@ -39,6 +39,28 @@ also retains a shim preflight before each upstream invocation.
 The actual upstream comparison stays outside the commit gate and CI because it
 requires an explicitly reviewed macOS binary.
 
+`mise run test` (and `test-fresh`, which adds `-count=1`) runs
+`tools/devtools/cmd/testshard`. `internal/cmd` holds most of the suite's wall time and
+its tests swap process globals (working directory, `os.Stdout`, environment), so
+they cannot run in parallel inside one process. The runner instead lists that
+package's top-level tests, deals them round-robin by sorted name into shards, runs
+each shard as its own `go test -run` process, and runs every other package with one
+plain `go test` beside them. Each shard is a normal `go test` invocation, so the test
+cache and `-count` behave as before. `KAE_TEST_SHARDS` sets the shard count (default:
+CPU count, at most 6, because the tests are heavy on process creation and more shards
+stopped helping on a 10-core machine; `1` runs the package in one process).
+Isolation rests on every test using `t.TempDir()`, on the `TestMain` guard above and
+on no fixed path or port outside a temp directory; a new test that binds one breaks
+the sharding.
+
+The runner checks its own split: each shard's verbose output must show exactly its
+assigned top-level tests, once each, and the shards together must equal the listed
+set; any mismatch fails the run and names the test. It does not check which tests a
+shard skips with `t.Skip`, and a listed benchmark is not run. CI keeps a plain
+`go test ./...` (a runner with few cores gains little, and it stays a second opinion
+on the split), so a test that passes only in isolation from its neighbours fails
+there first.
+
 Run `go mod tidy` before committing dependency changes.
 
 The `internal/cmd` package's `TestMain` is a process boundary as well as a test
@@ -104,7 +126,10 @@ inside `node_modules` records which).
   `test/tui/__snapshots__/picker-120x36.snap`. A missing snapshot fails; regenerate
   it with `KAE_TUI_UPDATE=1` and review the diff.
 - **Running.** Every scenario runs and each is caught on its own, each bounded at
-  90 s; the run ends with one line per scenario and exits non-zero when any failed.
+  90 s. Up to four run at once (`KAE_TUI_JOBS` overrides, `1` runs them one by one; the
+  default is the CPU count when that is lower); each has its own shell, HOME and temp
+  directory, so they share only the built binary, and the report keeps declaration
+  order; the run ends with one line per scenario and exits non-zero when any failed.
   `mise run tui-e2e-fast` runs the scenario tagged `fast` (the 80x24 journey),
   selected from the same list rather than written apart; it is a dependency of
   `mise run check`. Its key presses only change the test shell's directory. Rerun the

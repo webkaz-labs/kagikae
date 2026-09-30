@@ -14,6 +14,15 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files")
 
+// go-runewidth counts East Asian ambiguous characters such as "…" as two
+// columns under a CJK locale, so the expected widths and goldens pin the
+// narrow reading that CI and most terminals use.
+func TestMain(m *testing.M) {
+	runewidth.DefaultCondition = runewidth.NewCondition()
+	runewidth.DefaultCondition.EastAsianWidth = false
+	os.Exit(m.Run())
+}
+
 // fixture is two groups and a third: a project root with its .claude/ row
 // beneath (items 2 and 3), then codex and kae.
 func fixture() []Item {
@@ -263,7 +272,7 @@ func TestLongPathsAreCutFromTheLeftByDisplayWidth(t *testing.T) {
 		want string
 	}{
 		{"~/short", 20, "~/short"},
-		{"~/work/very/long/path/.claude", 12, "…th/.claude"},
+		{"~/work/very/long/path/.claude", 12, "…ath/.claude"},
 		{"~/日本語のディレクトリ/.claude", 12, "…リ/.claude"},
 	} {
 		got := fitLeft(tc.in, tc.w)
@@ -280,7 +289,7 @@ func TestLongPathsAreCutFromTheLeftByDisplayWidth(t *testing.T) {
 			t.Fatalf("line wider than the terminal: %q", line)
 		}
 	}
-	if !strings.Contains(m.View().Content, "> …at/does/not/fit/.claude  project  #3") {
+	if !strings.Contains(m.View().Content, "> …hat/does/not/fit/.claude  project  #3") {
 		t.Fatalf("the path's tail and the columns must survive:\n%s", m.View().Content)
 	}
 }

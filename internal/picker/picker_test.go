@@ -367,7 +367,8 @@ func TestKeptParentIsDimmed(t *testing.T) {
 }
 
 // The picker stays within height-2 lines when the terminal allows, and below
-// that keeps the filter line and one row; an unknown size (0) means 80x24.
+// that keeps the filter line and one row. (A terminal of size 0 never reaches
+// the picker: textui.Open refuses it.)
 func TestTinyTerminals(t *testing.T) {
 	lines := func(m Model) int { return strings.Count(m.View().Content, "\n") + 1 }
 	for _, tc := range []struct{ w, h, max, min int }{
@@ -388,5 +389,27 @@ func TestTinyTerminals(t *testing.T) {
 		if !strings.Contains(m.View().Content, "\n") || m.View().Content == "" {
 			t.Fatalf("%dx%d drew no row", tc.w, tc.h)
 		}
+	}
+}
+
+// A level line is never the top of the window with its root scrolled out: the
+// root comes into view with it.
+func TestChildBringsItsRootIntoView(t *testing.T) {
+	items := []Item{{Kind: Heading, Label: "g", Parent: -1}}
+	for i := range 20 {
+		items = append(items, Item{Label: fmt.Sprintf("row%02d", i), Value: "v", Parent: -1, Filter: "x"})
+	}
+	items = append(items,
+		Item{Label: "ROOT", Value: "r", Parent: -1, Filter: "x"},
+		Item{Label: "lvl", Value: "l", Depth: 1, Parent: 21, Filter: "x"})
+	m := press(New(items, Options{NoColor: true}), tea.WindowSizeMsg{Width: 60, Height: 8}) // 4 list lines
+	m = press(m, code(tea.KeyEnd))
+	if view := m.View().Content; !strings.Contains(view, "  ROOT\n>   lvl") {
+		t.Fatalf("the level line has lost its root:\n%s", view)
+	}
+	// Scrolling up past it and back down keeps the rule.
+	m = press(m, code(tea.KeyUp), code(tea.KeyUp), code(tea.KeyDown), code(tea.KeyDown))
+	if view := m.View().Content; !strings.Contains(view, "  ROOT\n>   lvl") {
+		t.Fatalf("after moving, the level line has lost its root:\n%s", view)
 	}
 }

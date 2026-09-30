@@ -275,7 +275,10 @@ func (app *App) pickLevelOfBoundTool(ctx context.Context, opts commonOpts, req *
 // requestWords is the target as typed, with its explicit resolution, and —
 // unless targetOnly — its level selector.
 func requestWords(req lsRequest, targetOnly bool) string {
-	words := []string{req.target}
+	var words []string
+	if req.target != "" {
+		words = append(words, req.target)
+	}
 	if req.explicit != nil {
 		if req.explicit.isolated {
 			words = []string{"-i", req.target, req.explicit.account}

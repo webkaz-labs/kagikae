@@ -14,20 +14,27 @@ func TestOpenNeedsStdinTerminalTTYAndATerm(t *testing.T) {
 	defer devNull.Close()
 	fakeTTY := func() (*os.File, error) { return os.Open(os.DevNull) }
 	noTTY := func() (*os.File, error) { return nil, errors.New("no controlling terminal") }
+	size := func(cols, rows int, err error) func(*os.File) (int, int, error) {
+		return func(*os.File) (int, int, error) { return cols, rows, err }
+	}
 	for _, tc := range []struct {
 		name  string
 		stdin bool
 		term  string
 		open  func() (*os.File, error)
+		size  func(*os.File) (int, int, error)
 		want  bool
 	}{
-		{"everything present", true, "xterm-256color", fakeTTY, true},
-		{"stdin is not a terminal", false, "xterm-256color", fakeTTY, false},
-		{"TERM is dumb", true, "dumb", fakeTTY, false},
-		{"/dev/tty does not open", true, "xterm-256color", noTTY, false},
+		{"everything present", true, "xterm-256color", fakeTTY, size(80, 24, nil), true},
+		{"stdin is not a terminal", false, "xterm-256color", fakeTTY, size(80, 24, nil), false},
+		{"TERM is dumb", true, "dumb", fakeTTY, size(80, 24, nil), false},
+		{"/dev/tty does not open", true, "xterm-256color", noTTY, size(80, 24, nil), false},
+		{"zero rows", true, "xterm-256color", fakeTTY, size(80, 0, nil), false},
+		{"zero columns", true, "xterm-256color", fakeTTY, size(0, 24, nil), false},
+		{"size unreadable", true, "xterm-256color", fakeTTY, size(0, 0, errors.New("no size")), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, ok := open(tc.stdin, tc.term, tc.open)
+			got, ok := open(tc.stdin, tc.term, tc.open, tc.size)
 			if ok != tc.want || (got != nil) != tc.want {
 				t.Fatalf("open = %v, %v; want ok %v", got, ok, tc.want)
 			}

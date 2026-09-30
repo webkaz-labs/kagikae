@@ -123,16 +123,10 @@ func (m Model) Result() (value string, cancelled, ok bool) {
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd { return textinput.Blink }
 
-// resize takes a terminal size; a zero dimension means unknown and keeps the
-// 80x24 default, so the picker never draws into nothing.
+// resize takes a terminal size. A terminal that reports no size at all never
+// gets here: textui.Open counts it as no terminal.
 func (m *Model) resize(w, h int) {
-	if w <= 0 {
-		w = 80
-	}
-	if h <= 0 {
-		h = 24
-	}
-	m.width, m.height = w, h
+	m.width, m.height = max(w, 1), max(h, 1)
 	m.input.SetWidth(max(m.width-runewidth.StringWidth(m.input.Prompt)-1, 1))
 }
 
@@ -315,7 +309,17 @@ func (m *Model) scroll() {
 		m.offset = 0
 		return
 	}
+	// A row beneath a root brings the root into view, and its heading above it,
+	// so a bare level name is never the top line of the window.
 	top := pos
+	if parent := m.items[m.cursor].Parent; parent >= 0 {
+		for q := pos - 1; q >= 0; q-- {
+			if m.vis[q] == parent {
+				top = q
+				break
+			}
+		}
+	}
 	for top > 0 && m.items[m.vis[top-1]].Kind == Heading {
 		top--
 	}

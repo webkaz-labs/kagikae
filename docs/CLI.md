@@ -684,9 +684,10 @@ whose directory does not exist, since choosing one exits `7`, and keeps `kae ls`
 numbers for the rest; with none left, the request exits `7`. A set goes to the
 picker, or without a terminal to a list.
 
-**The picker** opens when all three hold: stdin is a terminal (asked by ioctl, so
+**The picker** opens when all four hold: stdin is a terminal (asked by ioctl, so
 `</dev/null` is not one), the controlling terminal `/dev/tty` opens for reading and
-writing, and `TERM` is not `dumb`. Stdout is not consulted, because `kae cd`'s is
+writing, `TERM` is not `dumb`, and the terminal reports a size (0 rows or columns
+counts as no terminal). Stdout is not consulted, because `kae cd`'s is
 read through `$(…)`: the picker is drawn on `/dev/tty`, inline without taking over
 the screen, and erases itself on exit, so stdout carries only the chosen path
 (`open` opens it). It opens even over one candidate.
@@ -713,7 +714,7 @@ the screen, and erases itself on exit, so stdout carries only the chosen path
   there is none; Ctrl-C cancels.
 - **Layout.** At most the terminal height minus 2 lines, scrolling within, but never
   fewer than the filter line and one row (the hint line goes first when space is
-  short); an unknown size (0) is taken as 80x24. A path too long for the width is cut
+  short). A path too long for the width is cut
   from the left with `…`. `NO_COLOR` and `--no-color` draw
   no color.
 - **Cancelling** exits `130` (`cancelled`) with nothing on stdout or stderr. A

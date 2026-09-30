@@ -320,6 +320,7 @@ func TestNoTerminalKeepsTheList(t *testing.T) {
 		{"no target", lsFlags{}, nil, "kae cd needs a target; choose one:"},
 		{"--pick", lsFlags{pick: true}, []string{"claude"}, "kae cd claude --pick needs a terminal to open the picker; it lists"},
 		{"--pick, no target", lsFlags{pick: true}, nil, "kae cd --pick needs a terminal to open the picker; it lists"},
+		{"--pick, level without a tool", lsFlags{pick: true, project: true}, nil, "kae cd --project --pick needs a terminal to open the picker; it lists"},
 		{"--pick with a current place", lsFlags{pick: true}, []string{"repo"}, "kae cd repo --pick needs a terminal to open the picker; it lists 1 place;"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -327,7 +328,7 @@ func TestNoTerminalKeepsTheList(t *testing.T) {
 			if code != constants.ExitUsage || stdout != "" || !strings.Contains(stderr, tc.want) {
 				t.Fatalf("exit %d stdout %q:\n%s", code, stdout, stderr)
 			}
-			if strings.Contains(stderr, "  --pick") || strings.Contains(stderr, "(s)") {
+			if reason, _, _ := strings.Cut(stderr, "\n"); strings.Contains(reason, "  ") || strings.Contains(stderr, "(s)") {
 				t.Fatalf("a doubled space or a place(s) in the reason:\n%s", stderr)
 			}
 			// The list itself: a line that reaches a place.

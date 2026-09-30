@@ -307,6 +307,20 @@ func TestSessionRowIsOmittedWithAWarningWhenTheDirectoryCannotBeResolved(t *test
 	}
 }
 
+// A command that lists claude's places more than once (--project with no project
+// level among the leading rows) still warns once.
+func TestUnresolvableDirectoryWarnsOncePerCommand(t *testing.T) {
+	app := testApp(t, nil)
+	chdirTo(t, filepath.Join(t.TempDir(), "main-app"))
+	prev := physicalWd
+	physicalWd = func() (string, error) { return "", errors.New("getcwd failed") }
+	t.Cleanup(func() { physicalWd = prev })
+	_, _, stderr := cdPathOrOpen(t, app, "cd", navRequest(t, "cd", lsFlags{project: true}, "claude"))
+	if n := strings.Count(stderr, "session row is not listed"); n != 1 {
+		t.Fatalf("want the warning once, got %d:\n%s", n, stderr)
+	}
+}
+
 // A missing session directory is not a candidate and cannot be reached; no selector
 // chooses the row; --root has no root to reach; --current is still the user level.
 func TestSessionRowIsListedButNotReachedUnlessItExists(t *testing.T) {

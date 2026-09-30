@@ -170,8 +170,7 @@ func TestSessionDirName(t *testing.T) {
 		want     string
 		wantErr  bool
 	}{
-		{"override honoured", "work", true, forbidden, "work", false},
-		{"override honoured despite an unreadable directory", "work", true, forbidden, "work", false},
+		{"override honoured without reading the directory", "work", true, forbidden, "work", false},
 		{"no CLAUDE_CONFIG_DIR", "work", false, cwd, "-tmp-x", false},
 		{"invalid override", "a b", true, cwd, "-tmp-x", false},
 		{"no override", "", true, cwd, "-tmp-x", false},

@@ -310,9 +310,9 @@ func cdPathOrOpen(t *testing.T, app *App, verb string, req lsRequest) (int, stri
 	})
 }
 
-// A level selector without a tool uses the one bound tool; an explicit target
-// without a current place exits 7 as ls --current does; so does a place whose
-// directory is missing, which neither open nor cd can reach.
+// A level selector without a tool uses the one bound tool; a target with no
+// place at all exits 7, and so does a place whose directory is missing, which
+// neither open nor cd can reach.
 func TestNavigateResolution(t *testing.T) {
 	app := testApp(t, nil)
 	bound := chdirTo(t, filepath.Join(t.TempDir(), "main-app"))
@@ -339,8 +339,8 @@ func TestNavigateResolution(t *testing.T) {
 		pos  []string
 		want string
 	}{
-		{"no repository", lsFlags{}, []string{"repo"}, "no current place for kae cd repo"},
-		{"no level below", lsFlags{below: true}, []string{"claude"}, "no current place for kae cd claude --below"},
+		// No candidate place at all: not_found.
+		{"no repository", lsFlags{}, []string{"repo"}, "no current place for kae cd repo here"},
 		{"a tool without places", lsFlags{}, []string{"agy"}, "kae resolves no places for agy"},
 		// The bound store was never created: the place is listed (missing).
 		{"missing directory", lsFlags{}, []string{"claude"}, "does not exist"},
@@ -349,6 +349,75 @@ func TestNavigateResolution(t *testing.T) {
 		if code != constants.ExitNotFound || got != "" || !strings.Contains(stderr, tc.want) {
 			t.Fatalf("%s: %d %q %q; want not_found naming %q", tc.name, code, got, stderr, tc.want)
 		}
+	}
+}
+
+// A target with no current place is the picker's case over its places (the
+// operator's reading of ROADMAP "Selection"); ls --current keeps not_found.
+func TestNavigateNoCurrentPlaceListsTheTargetsPlaces(t *testing.T) {
+	app := overlayTestApp(t)
+	captureClaude(t, app, "main", mainToken)
+	outside := chdirTo(t, filepath.Join(t.TempDir(), "outside"))
+
+	// No bound directory yet: the pin group has no place to offer.
+	code, _, stderr := cdPath(t, app, navRequest(t, "cd", lsFlags{}, "pin"))
+	if code != constants.ExitNotFound || !strings.Contains(stderr, "no bound directory governs") {
+		t.Fatalf("kae cd pin with nothing bound = %d %q", code, stderr)
+	}
+
+	bound := chdirTo(t, filepath.Join(filepath.Dir(outside), "main-app"))
+	if code, out := captureStdout(t, func() int {
+		return runPin(context.Background(), app, commonOpts{Format: formatText}, "main", modeShared, false)
+	}); code != constants.ExitOK {
+		t.Fatalf("runPin: %s", out)
+	}
+	chdirTo(t, outside)
+	mkdirs(t, filepath.Join(outside, ".claude"))
+	for _, tc := range []struct {
+		name string
+		f    lsFlags
+		pos  []string
+		want []string
+	}{
+		{"pin, not inside a bound directory", lsFlags{}, []string{"pin"}, []string{
+			"kae cd pin has no current place here; choose one:", "kae cd pin --at 1  " + bound,
+		}},
+		{"no level below", lsFlags{below: true}, []string{"claude"}, []string{
+			"kae cd claude --below has no current place here; choose one:",
+			"kae cd claude --at 1  " + filepath.Join(app.Env.Home, ".claude"),
+			"kae cd claude --at 2  " + filepath.Join(outside, ".claude"),
+		}},
+		// With --root only the places that have a root are offered, as the path
+		// the command reaches.
+		{"no level below, root", lsFlags{below: true, root: true}, []string{"claude"}, []string{
+			"kae cd claude --at 2 --root  " + outside + "\n",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code, got, stderr := cdPath(t, app, navRequest(t, "cd", tc.f, tc.pos...))
+			if code != constants.ExitUsage || got != "" {
+				t.Fatalf("exit %d stdout %q; want usage:\n%s", code, got, stderr)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(stderr, want) {
+					t.Fatalf("stderr missing %q:\n%s", want, stderr)
+				}
+			}
+			if tc.f.root && strings.Contains(stderr, "--at 1") {
+				t.Fatalf("the user level has no root and must not be offered with --root:\n%s", stderr)
+			}
+		})
+	}
+	// ls --current keeps its not_found.
+	if code, _ := pickPath(t, app, lsRequest{target: constants.PlaceGroupPin, current: true}); code != constants.ExitNotFound {
+		t.Fatalf("kae ls pin --current = %d, want not_found", code)
+	}
+
+	// --root with no place that has a root: nothing to offer.
+	chdirTo(t, filepath.Join(t.TempDir(), "bare"))
+	code, _, stderr = cdPath(t, app, navRequest(t, "cd", lsFlags{below: true, root: true}, "claude"))
+	if code != constants.ExitNotFound || !strings.Contains(stderr, "no place to choose") {
+		t.Fatalf("--below --root with no project level = %d %q", code, stderr)
 	}
 }
 

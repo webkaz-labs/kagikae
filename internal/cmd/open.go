@@ -164,6 +164,9 @@ func (app *App) navigatePath(ctx context.Context, opts commonOpts, req lsRequest
 	} else {
 		row, several, code = app.pickPlace(ctx, opts, req)
 	}
+	if several != nil && code == constants.ExitNotFound {
+		return "", app.reportNoCurrentPlace(opts, req, several)
+	}
 	if several != nil {
 		return "", reportCandidates(req, fmt.Sprintf("kae %s %s matches %d places", req.verb, requestWords(req, false), len(several)), several)
 	}
@@ -178,6 +181,23 @@ func (app *App) navigatePath(ctx context.Context, opts commonOpts, req lsRequest
 		return "", finish(opts, errf(constants.ExitNotFound, "%s does not exist (kae ls marks it (missing))", path))
 	}
 	return path, constants.ExitOK
+}
+
+// reportNoCurrentPlace is a target with no current place here: the picker's case
+// over the target's places, which with --root are the ones that have a root.
+// Only a target with no candidate at all is not_found.
+func (app *App) reportNoCurrentPlace(opts commonOpts, req lsRequest, rows []placeRow) int {
+	var candidates []placeRow
+	for _, row := range rows {
+		if !req.root || row.Root != "" {
+			candidates = append(candidates, row)
+		}
+	}
+	what := requestWords(req, false)
+	if len(candidates) == 0 {
+		return finish(opts, errf(constants.ExitNotFound, "no current place for kae %s %s here, and no place to choose", req.verb, what))
+	}
+	return reportCandidates(req, fmt.Sprintf("kae %s %s has no current place here", req.verb, what), candidates)
 }
 
 // pickLevelOfBoundTool is a level selector without a tool: it applies to the one

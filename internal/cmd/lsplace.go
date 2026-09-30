@@ -526,14 +526,15 @@ func placePath(row placeRow, req lsRequest) (string, int) {
 }
 
 // pickPlace chooses the place --current or --at names. A failure has already
-// been reported and its exit code is returned — except when the request matches
-// several places: those come back as several, unreported, with ExitUsage, for
-// the caller to present (ls names them in its usage error; open and cd list them
-// as the picker's candidates).
+// been reported and its exit code is returned — except in two cases the caller
+// presents, both unreported: a request matching several places returns them as
+// several with ExitUsage (ls names them in its usage error; open and cd list them
+// as the picker's candidates), and, for open and cd only, a request with no
+// current place returns the target's places as several with ExitNotFound (the
+// picker's candidates; ls reports not_found itself).
 func (app *App) pickPlace(ctx context.Context, opts commonOpts, req lsRequest) (placeRow, []placeRow, int) {
 	if req.target == constants.PlaceGroupPin && req.current {
-		row, code := app.currentPinPlace(opts)
-		return row, nil, code
+		return app.currentPinPlace(opts, req.navigates())
 	}
 	rows, err := app.groupPlaces(ctx, req.target, req.explicit)
 	if err != nil {
@@ -543,29 +544,46 @@ func (app *App) pickPlace(ctx context.Context, opts commonOpts, req lsRequest) (
 }
 
 // currentPinPlace is `pin --current`: the nearest ancestor bound directory.
-func (app *App) currentPinPlace(opts commonOpts) (placeRow, int) {
+// With offer (open, cd) and none, the pin group's places come back as
+// pickPlace's no-current-place candidates.
+func (app *App) currentPinPlace(opts commonOpts, offer bool) (placeRow, []placeRow, int) {
 	cwd, err := cwdAbs()
 	if err != nil {
-		return placeRow{}, finish(opts, err)
+		return placeRow{}, nil, finish(opts, err)
 	}
 	binding := app.governingBindingAt(cwd)
 	if binding == nil {
-		return placeRow{}, finish(opts, errf(constants.ExitNotFound, "no bound directory governs %s", cwd))
+		if offer {
+			rows, err := app.pinGroupPlaces(nil)
+			if err != nil {
+				return placeRow{}, nil, finish(opts, err)
+			}
+			if len(rows) > 0 {
+				return placeRow{}, rows, constants.ExitNotFound
+			}
+		}
+		return placeRow{}, nil, finish(opts, errf(constants.ExitNotFound, "no bound directory governs %s", cwd))
 	}
 	rows, err := app.pinGroupPlaces(binding)
 	if err != nil {
-		return placeRow{}, finish(opts, err)
+		return placeRow{}, nil, finish(opts, err)
 	}
 	for _, row := range rows {
 		if samePath(row.Path, binding.dir) {
-			return row, constants.ExitOK
+			return row, nil, constants.ExitOK
 		}
 	}
 	// Bound by a kae older than the breadcrumb, so not in the listing: no number.
 	return placeRow{
 		Group: constants.PlaceGroupPin, Kind: constants.PlaceKindBoundDirectory, Path: binding.dir,
 		Exists: true, InEffect: true, Source: constants.PlaceSourcePin, Mode: binding.info.Mode,
-	}, constants.ExitOK
+	}, nil, constants.ExitOK
+}
+
+// navigates says whether the request is open's or cd's, which offer candidates
+// where ls reports that there is no current place.
+func (req lsRequest) navigates() bool {
+	return req.verb != "" && req.verb != "ls"
 }
 
 // selectPlace applies --at or --current and a level selector to the rows `kae ls
@@ -610,6 +628,9 @@ func selectPlace(app *App, opts commonOpts, req lsRequest, rows []placeRow) (pla
 	}
 	switch len(matches) {
 	case 0:
+		if req.navigates() && len(rows) > 0 {
+			return placeRow{}, rows, constants.ExitNotFound
+		}
 		what := req.target
 		if req.level != "" {
 			what += " --" + req.level

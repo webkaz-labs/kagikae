@@ -667,11 +667,16 @@ publishes the path). Neither takes a lock or changes anything.
 <target> --current` prints, with the same selectors. A level selector without a
 target applies to the one tool kae resolves places for (claude, codex) that a
 governing binding binds here. A place whose directory does not exist — `kae ls`
-marks it `(missing)` — exits `7`, as does a target with no current place.
+marks it `(missing)` — exits `7`.
 
 **No single place.** No target; a level selector without a target when zero or
-several such tools are bound; or a selection that matches several places (`kae`,
-several `--below` levels). Until the picker exists ([ROADMAP.md](ROADMAP.md)
+several such tools are bound; a selection that matches several places (`kae`,
+several `--below` levels); or a target with no current place here (`pin` outside
+every bound directory, `--below` with no level below), whose candidates are the
+places `kae ls <target>` lists — with `--root`, those that have a root. Only a
+target with no candidate at all (`repo` outside a repository, `pin` with nothing
+bound, a tool kae resolves no places for) exits `7`; `kae ls --current` keeps its
+`7` for every case without a current place. Until the picker exists ([ROADMAP.md](ROADMAP.md)
 § Place navigation and the tree-shared mode), each prints a usage error on stderr followed by the
 candidates, one per line as the command that reaches it (`kae open claude --at 3`
 and the path), and exits `64`.

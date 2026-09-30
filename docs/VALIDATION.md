@@ -598,7 +598,7 @@ cd "$R/sub dir/deep"; kae cd pin 2>"$HOME/pin.err"; test $? -eq 7; test "$PWD" =
 cd "$R/sub dir/deep"; kae cd 2>"$HOME/none.err"; test $? -eq 64; test "$PWD" = "$R/sub dir/deep"; test -s "$HOME/none.err"
 cd "$R/sub dir/deep"; kae cd kae 2>"$HOME/many.err"; test $? -eq 64; test "$PWD" = "$R/sub dir/deep"; grep -q 'kae cd kae --at 1' "$HOME/many.err"
 cd "$R/sub dir/deep"; command kae cd repo 2>"$HOME/nofn.err" >"$HOME/nofn.out"; test $? -eq 64; grep -qF 'cd "$(kae ls repo --current)"' "$HOME/nofn.err"; test ! -s "$HOME/nofn.out"; test "$PWD" = "$R/sub dir/deep"
-cd "$R"; rmdir "$R/.claude"; kae cd claude --project 2>"$HOME/gone.err"; test $? -eq 7; test "$PWD" = "$R"
+cd "$R"; rmdir "$R/.claude"; kae cd claude --project 2>"$HOME/gone.err"; test $? -eq 64; test "$PWD" = "$R"; grep -q 'has no current place here' "$HOME/gone.err"
 cd "$R/sub dir/deep"; PATH="$KB:$GB" kae open repo >"$HOME/open.out" 2>"$HOME/open.err"; test $? -eq 0; test "$(cat "$HOME/open.out")" = "$R"; test -s "$HOME/open.err"
 cd "$R/sub dir/deep"; PATH="$KB:$GB" command -v open xdg-open >/dev/null; test $? -ne 0
 kae completion bash >"$HOME/withfunc.bash"; test "$(grep -c '^function kae {' "$HOME/withfunc.bash")" -eq 1
@@ -608,6 +608,10 @@ env -i HOME="$HOME" PATH="$KB:$GB:/bin" bash --noprofile --norc "$HOME/alias.bas
 env -i HOME="$HOME" PATH="$KB:$GB:/bin" bash --noprofile --norc -c 'eval "$(kae completion bash --no-function)"; test "$(type -t kae)" != function; command kae cd repo >/dev/null 2>&1; test $? -eq 64'
 command -v zsh >/dev/null && env -i HOME="$HOME" PATH="$KB:$GB:/bin:/usr/bin" zsh -f -c "eval \"\$(kae completion zsh)\"; cd '$R/sub dir/deep'; kae cd repo && test \"\$PWD\" = '$R' && cd '$R/sub dir/deep' && kae cd pin 2>/dev/null; test \$? -eq 7 && test \"\$PWD\" = '$R/sub dir/deep'"
 ```
+
+`kae cd pin` exits `7` here because nothing is bound in the fixture HOME, so the
+pin group has no place to offer; with a bound directory elsewhere it would list it
+and exit `64`, which is what the missing-`.claude` line checks for the claude group.
 
 The fixture directory has a space on purpose: the function quotes the path it
 receives, and an unquoted `builtin cd -- $path` would split it and fail (or move

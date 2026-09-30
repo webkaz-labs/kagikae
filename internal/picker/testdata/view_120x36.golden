@@ -1,0 +1,12 @@
+> type to filter
+claude
+  ~/.claude  user  #1  main
+> ~/work/repo  project root  #2
+    ~/work/repo/.claude  project  #2
+codex
+  ~/.codex  user  #1
+kae
+  ~/.config/kagikae  kae config  #1
+repo
+  ~/work/a/very/deeply/nested/monorepo/packages/service-name/.claude  below  #4  side
+up/down move   enter choose   esc clear or cancel

@@ -15,6 +15,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/backup"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -803,5 +804,95 @@ func TestDoctorHealthy(t *testing.T) {
 	mustExit(t, constants.ExitOK, code, out)
 	if !strings.Contains(out, "claude") || !strings.Contains(out, "no blocking problems") {
 		t.Fatalf("unexpected doctor output: %s", out)
+	}
+}
+
+func TestCaptureWithoutLiveAuth(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitAuthMissing, code, out)
+}
+
+func TestSwitchLockBusy(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	seedClaude(t, app, mainToken, "main-uuid")
+	code, _ := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, "")
+
+	held, err := lock.Acquire(app.Paths.LocksDir(), "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitLockBusy, code, out)
+}
+
+func TestJSONErrorReport(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	jsonOpts := commonOpts{Format: formatJSON}
+	code, out := captureStdout(t, func() int { return runSwitch(ctx, app, jsonOpts, "claude", "nope") })
+	mustExit(t, constants.ExitNotFound, code, out)
+	var report map[string]any
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("error report must be json: %v\n%s", err, out)
+	}
+	if report["ok"] != false || report["error_code"] != "not_found" {
+		t.Fatalf("unexpected error report: %s", out)
+	}
+}
+
+func TestInitCreatesConfigIdempotently(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	code, out := captureStdout(t, func() int { return runInit(ctx, app, opts) })
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(out, "Created") {
+		t.Fatalf("unexpected: %s", out)
+	}
+	marker := "# user marker"
+	writeFile(t, app.ConfigPath, "version = 1\n"+marker+"\n")
+	code, out = captureStdout(t, func() int { return runInit(ctx, app, opts) })
+	mustExit(t, constants.ExitOK, code, out)
+	if !strings.Contains(out, "already exists") {
+		t.Fatalf("unexpected: %s", out)
+	}
+	if !strings.Contains(readFile(t, app.ConfigPath), marker) {
+		t.Fatal("init must not overwrite an existing config")
+	}
+}
+
+func TestRollbackUnknownID(t *testing.T) {
+	app := testApp(t, nil)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	code, out := captureStdout(t, func() int { return runRollback(ctx, app, opts, "20000101T000000Z") })
+	mustExit(t, constants.ExitNotFound, code, out)
+}
+
+func TestBackupPruneRetention(t *testing.T) {
+	app := testApp(t, nil)
+	app.Config.Security.BackupKeep = 1
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	seedClaude(t, app, mainToken, "main-uuid")
+	code, _ := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") })
+	mustExit(t, constants.ExitOK, code, "")
+	for i := 0; i < 3; i++ {
+		code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") })
+		mustExit(t, constants.ExitOK, code, out)
+	}
+	entries, err := os.ReadDir(app.Paths.BackupsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected retention to keep 1 backup, got %d", len(entries))
 	}
 }

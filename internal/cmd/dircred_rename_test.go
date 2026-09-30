@@ -11,12 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/webkaz-labs/kagikae/internal/adapter"
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
-	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
 
 // renameFixtureApp is overlayTestApp with the config **on disk** that a rename needs, which
@@ -403,173 +401,186 @@ func TestRecordHarvestTimeDoesNotResurrectARemovedAccount(t *testing.T) {
 	}
 }
 
-// The harvest is claude-only by declaration, not by accident, and the declaration is
-// what a new tool has to earn: without a measured rotation "the newest copy" is a
-// guess, and a wrong guess destroys the working credential. Enumerated rather than
-// spot-checked, so adding a tool to that predicate cannot pass unnoticed.
+// The half a walk of the bound directories does not reach: a globally isolated home
+// (`kae use -i`) reads the account's own credential store with no fragment and no pin
+// record anywhere, so the first version of the rename's harvest reported nothing to do and
+// lost the copy exactly as before (measured 2026-08-16, with `pins=0`). credStoreReaders is
+// what spans both, and this test is why the pass asks it instead of walking pins.
 //
-// The second half is why a tool needs more than the measurement: attribution reads
-// an identity-only artifact, and a tool that declares none can never satisfy it — so
-// the harvest would be dead code for it. codex is in that state today, which is why
-// the end-to-end codex test below cannot prove this gate on its own.
-func TestHarvestIsDeclaredForMeasuredToolsOnly(t *testing.T) {
+// The fail-closed contract requires the documented teardown first. That teardown leaves
+// this home in place, so the retried rename must still discover it from disk and harvest
+// the refreshed copy before changing the account. This is the credential-ordering half
+// of the remedy in docs/ROADMAP.md § `kae account rename` leaves `state.synced` and the
+// global fragment on the old name.
+func TestAccountRenameHarvestsWhatAGloballyIsolatedHomeReads(t *testing.T) {
+	app := renameFixtureApp(t)
 	ctx := context.Background()
-	app := testApp(t, nil)
-	for _, tool := range constants.Tools {
-		if got := rotatesSingleUse(tool); got != (tool == constants.ToolClaude) {
-			t.Fatalf("rotatesSingleUse(%s) = %v; only claude's rotation is measured "+
-				"(docs/VALIDATION.md, docs/ROADMAP.md)", tool, got)
-		}
-		if !rotatesSingleUse(tool) {
-			continue
-		}
-		ad, err := adapter.ForTool(tool)
-		if err != nil {
-			t.Fatalf("adapter for %s: %v", tool, err)
-		}
-		specs, err := ad.Artifacts(ctx, app.Env)
-		if err != nil {
-			t.Fatalf("artifacts for %s: %v", tool, err)
-		}
-		identities := 0
-		for _, sp := range specs {
-			if sp.IdentityOnly {
-				identities++
-			}
-		}
-		if identities == 0 {
-			t.Fatalf("%s harvests but declares no identity-only artifact, so dirIdentityConfirms "+
-				"can never confirm and the harvest would never fire", tool)
-		}
-	}
-}
-
-// A payload that parses but carries no deadline cannot be ordered against anything,
-// so it is never harvested — the guard the selection rule rests on. A mutation that
-// dropped the zero check survived the whole suite (execution-type review).
-//
-// Two shapes, and they reach the classifier by different routes, which is why the second
-// row exists: with `expiresAt` **absent** claude never sets `Known`, while a **non-numeric**
-// one sets `Known` and parses to the zero time. The second used to be classified
-// "nothing to lose" — see TestPruneDirCredentialsKeepsACopyItCannotDate for what that
-// licensed — so an older comment here claiming the delete path "protected this state from
-// the start" was true only of the first row.
-func TestWriteDirCredentialDoesNotHarvestUndatedCredential(t *testing.T) {
-	for _, tc := range []struct{ name, oauth string }{
-		{"no expiresAt at all", `{"accessToken":"sk-ant-oat01-UNDATED-ffff","refreshToken":"r"}`},
-		{"an expiresAt of the wrong type", `{"accessToken":"sk-ant-oat01-UNDATED-ffff","refreshToken":"r","expiresAt":"1814400000000"}`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			app := overlayTestApp(t)
-			ctx := context.Background()
-			captureClaudeAt(t, app, "main", mainToken, app.Now().Add(time.Hour))
-			_, credDir := bindClaudeHere(t, app, "main")
-			writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
-				`{"claudeAiOauth":`+tc.oauth+`}`)
-
-			be := testBackend(t, app)
-			_, stderr := captureStderr(t, func() int {
-				if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, false); err != nil {
-					t.Fatalf("writeDirCredential: %v", err)
-				}
-				return 0
-			})
-			if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
-				t.Fatalf("an undated credential must not be harvested: %s", got)
-			}
-			// And the overwrite is not silent. A payload kae cannot judge may still be a
-			// login, and on this path it is the only early signal of an upstream format
-			// change — `upstream_version` skips a version string it cannot parse.
-			if !strings.Contains(stderr, "cannot read or date the copy already there") {
-				t.Fatalf("overwriting a copy kae cannot judge must be reported: %q", stderr)
-			}
-		})
-	}
-}
-
-// An identity cache that resolves *outside* the store labels the real home, not this
-// directory (a pre-v0.16.0 bind linked it there), so it cannot attribute this
-// store's credential — even when it happens to name the same account. Dropping that
-// branch survived the whole suite (execution-type review).
-func TestWriteDirCredentialDoesNotHarvestThroughSharedIdentity(t *testing.T) {
-	app := overlayTestApp(t)
-	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
 	now := app.Now()
 	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	_, storeDir := bindClaudeHere(t, app, "main")
+	if code := runUseIsolated(ctx, app, opts, "claude", "main"); code != constants.ExitOK {
+		t.Fatalf("use --isolated exit %d", code)
+	}
+	home := app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")
+	live := dirCredFile(app, constants.ToolClaude, "main", home)
+	if !strings.Contains(readFile(t, live), mainToken) {
+		t.Fatalf("the isolated home must read a materialized credential at %s", live)
+	}
+	// Nothing is bound: this is the state the pin walk cannot see.
+	if index := app.boundDirectoryIndex(); index.err != nil || !index.complete || len(index.directories) != 0 {
+		t.Fatalf("this test is only about the unpinned case: index=%+v", index)
+	}
 	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
-	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", storeDir), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
-	// The reader's own cache replaced by a link back out to the real home — the shape a
-	// pre-v0.16.0 shared bind left — still naming the account being bound.
-	identityFile := filepath.Join(storeDir, ".claude.json")
-	if err := os.Remove(identityFile); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(filepath.Join(app.Env.Home, ".claude.json"), identityFile); err != nil {
-		t.Fatal(err)
-	}
-	// Positive first: the link resolves to a payload that names the *same* account, so the
-	// refusal below is the escape guard rather than a disagreement or an unreadable file.
-	if got := readFile(t, identityFile); !strings.Contains(got, "main-uuid") {
-		t.Fatalf("the link must resolve to the real home's payload naming main, got %q", got)
+	writeFile(t, live, claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
+	if code := runSwitch(ctx, app, opts, "claude", "main"); code != constants.ExitOK {
+		t.Fatalf("use --shared teardown exit %d", code)
 	}
 
 	be := testBackend(t, app)
-	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
-			t.Fatalf("writeDirCredential: %v", err)
-		}
-		return 0
-	})
-	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, refreshed) {
-		t.Fatalf("a credential attributed by the real home's label was harvested: %s", got)
+	if _, err := buildAccountRename(ctx, app, opts, "claude", "main", "side"); err != nil {
+		t.Fatalf("rename: %v", err)
 	}
-	if !strings.Contains(stderr, "shared with the real tool home") {
-		t.Fatalf("the reason must be the shared label, not something else: %q", stderr)
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "side"); !strings.Contains(got, refreshed) {
+		t.Fatalf("the renamed account must carry what the isolated home was reading: %s", got)
+	}
+	if _, err := os.Stat(home); err != nil {
+		t.Fatalf("rename must retain the old isolated home for recovery: %v", err)
 	}
 }
 
-// A whole-profile bind must not fail over one tool whose credential store cannot
-// be scoped to a directory: the others still bind, and that tool's settings and
-// sessions are still isolated. Only the credential is shared, and the warning
-// says so.
-func TestPrepareBondWarnsOnGlobalStoreAndKeepsBinding(t *testing.T) {
-	app := testApp(t, nil)
-	app.Env.GOOS = "darwin"
-	cwd := t.TempDir()
-	pinID := paths.PinID(cwd)
-	// codex's real home carries the keyring setting; prepareBond symlinks
-	// config.toml into the bond dir before the credential step, which is how the
-	// bound directory ends up resolving the global store.
-	seedKeyringCodex(t, filepath.Join(app.Env.Home, ".codex"))
-
-	// The whole-profile path is prepareIsolationDirs; prepareBond itself reports
-	// the limitation and the policy of tolerating it lives one level up.
+// The other half of the pass, and nothing reached it until this test: a binding made
+// before the credential split keeps its copy *inside* the per-directory store, so
+// credStoreReaders never names it and only a walk of the bound directories does. Disabling
+// that walk passed the entire suite (measured 2026-08-16), which is the same shape as a
+// test that covers one side of a two-sided predicate and reads as if it covered both.
+//
+// makePreSplit builds the state deliberately: kae cannot produce it any more, and a
+// directory bound by an older release keeps its own credential until it is re-pinned.
+func TestAccountRenameHarvestsAPreSplitDirectorysOwnCopy(t *testing.T) {
+	app := renameFixtureApp(t)
 	ctx := context.Background()
-	be := testBackend(t, app)
-	entries := app.bondIsolationEntries([]runTarget{{Tool: constants.ToolCodex, Account: "main"}}, pinID)
-	bondDir := app.Paths.SharedDir(pinID, constants.ToolCodex)
+	opts := commonOpts{Format: formatText}
+	dir, storeDir, _ := pinWithIdentifiedClaude(t, app, modeIsolated)
+	makePreSplit(t, app, constants.ToolClaude, "main", dir, storeDir)
 
-	fake := &runnertest.Fake{Code: 0}
-	var err error
-	runner.With(fake, func() {
-		err = app.prepareIsolationDirs(modeShared, entries, func(tool, account string) (string, error) {
-			return app.prepareBond(ctx, be, tool, account, pinID, false)
-		})
-	})
+	inStore := filepath.Join(storeDir, ".credentials.json")
+	if !strings.Contains(readFile(t, inStore), mainToken) {
+		t.Fatalf("the pre-split fixture must leave the credential inside the store (%s)", inStore)
+	}
+	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
+	writeFile(t, inStore, claudeOAuthPayload(refreshed, app.Now().Add(8*time.Hour)))
+
+	be := testBackend(t, app)
+	if _, err := buildAccountRename(ctx, app, opts, "claude", "main", "side"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if got := snapshotPayload(t, app, be, constants.ToolClaude, "side"); !strings.Contains(got, refreshed) {
+		t.Fatalf("the renamed account must carry the pre-split directory's own copy: %s", got)
+	}
+}
+
+// An **isolated** re-bind is the one case where the store the binding leaves is not the
+// shared one, so the set of stores this operation moves off has to come from the
+// replaced fragment's *own* mode. Forcing that lookup to shared mode survived the suite:
+// the genuine refusal went unreported and a leftover shared store's was reported instead
+// (execution-type review, round 3).
+func TestRunRebindIsolatedReportsTheStoreItLeaves(t *testing.T) {
+	app := overlayTestApp(t)
+	chdirTemp(t)
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	now := app.Now()
+	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
+	captureClaudeAt(t, app, "side", sideToken, now.Add(time.Hour))
+	if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
+		t.Fatalf("pin --isolated exit %d", code)
+	}
+	cwd, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("a global credential store must warn, not fail the bind: %v", err)
+		t.Fatal(err)
 	}
-	if fake.Name != "" {
-		t.Fatalf("the global keychain item must be left alone, ran %q %v", fake.Name, fake.Args)
+	pinID := paths.PinID(cwd)
+	leaving := app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")
+	// A newer copy with nothing to attribute it by, so the harvest refuses and the pass
+	// has something to report about the store the re-bind moves off.
+	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", leaving),
+		claudeOAuthPayload("sk-ant-oat01-MAIN-REFRESHED-cccc", now.Add(8*time.Hour)))
+	if err := os.Remove(filepath.Join(leaving, ".claude.json")); err != nil {
+		t.Fatal(err)
 	}
-	// The bond dir is still built, so the tool's non-auth state is isolated.
-	if _, statErr := os.Lstat(filepath.Join(bondDir, "config.toml")); statErr != nil {
-		t.Fatalf("bond dir must still be materialized: %v", statErr)
+	// A leftover shared store from no binding at all, which must not be what gets named.
+	shared := app.Paths.SharedDir(pinID, constants.ToolClaude)
+	mkdirs(t, shared)
+	writeFile(t, filepath.Join(shared, ".credentials.json"),
+		claudeOAuthPayload("sk-ant-oat01-LEFTOVER-eeee", now.Add(9*time.Hour)))
+
+	_, stderr := captureStderr(t, func() int { return runRebind(ctx, app, opts, constants.ToolClaude, "side", false) })
+
+	// The message names the **account** whose copy could not be kept and the bound
+	// directory to log in to — not the store path, deliberately, since a store path is
+	// not somewhere a login works. What the mutation removes is the message itself: with
+	// `replaced` computed as if the previous binding were shared, the store being left is
+	// no longer in it and nothing is reported.
+	if !strings.Contains(stderr, "held for claude/main") ||
+		!strings.Contains(stderr, "log in inside that directory") {
+		t.Fatalf("the store the binding leaves must be reported, with the remedy:\n%s", stderr)
 	}
-	// And no credential file was left as a consolation prize: codex reads the
-	// keyring, so a file here would be a plaintext secret nothing reads.
-	if _, statErr := os.Stat(filepath.Join(bondDir, "auth.json")); !os.IsNotExist(statErr) {
-		t.Error("no credential file may be written for a tool that reads a global keyring")
+	if strings.Contains(stderr, shared) || strings.Contains(stderr, "LEFTOVER") {
+		t.Fatalf("a leftover store this re-bind does not touch must not be named:\n%s", stderr)
 	}
+	_ = leaving
+}
+
+// `kae account rename` warns and tells the user to re-bind with `kae pin <tool> <new>`,
+// which is **runRebind** — so that is the sweep the renamed account's newest copy meets,
+// and its `purging=false` needs pinning separately from `runPin`'s (reading-type review,
+// round 3: mutating this one to `true` passed the whole suite).
+//
+// That first sentence describes a rename that no longer reaches this sweep: the rename
+// harvests before its first write now, so a renamed account's copy is already in the
+// snapshot (TestAccountRenameHarvestsWhatTheBoundDirectoryIsReading). What still arrives
+// here is an account gone by **removal**, and only for a store holding its own credential
+// — the shape makePreSplit builds below. Measured 2026-08-16; a sweep for the unscoped
+// version of that sentence reached the docs and both dircred.go comments and missed this
+// one, because it grepped prose files.
+func TestRunRebindSweepKeepsALostAccountsCredential(t *testing.T) {
+	sim := &keychainSim{}
+	runner.With(sim, func() {
+		app := overlayTestApp(t)
+		app.Env.GOOS = "darwin"
+		chdirTemp(t)
+		ctx := context.Background()
+		opts := commonOpts{Format: formatText}
+		captureClaudeFromKeychain(t, app, sim, "main", mainToken, app.Now().Add(time.Hour))
+		captureClaudeFromKeychain(t, app, sim, "side", sideToken, app.Now().Add(time.Hour))
+		if code := runPin(ctx, app, opts, "main", modeIsolated, false); code != constants.ExitOK {
+			t.Fatalf("pin --isolated exit %d", code)
+		}
+		// Pre-split: since the credential became the account's rather than the
+		// directory's, a bind sweep does not consider it at all — it is kept the way an
+		// account snapshot is kept, with nothing to say. The branch under test is the
+		// one that still runs, for the per-directory item an older kae left behind.
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		makePreSplit(t, app, constants.ToolClaude, "main", cwd,
+			app.Paths.IsolatedConfigDir(paths.PinID(cwd), constants.ToolClaude, "main"))
+		if err := os.RemoveAll(app.Paths.AccountDir(constants.ToolClaude, "main")); err != nil {
+			t.Fatal(err)
+		}
+		sim.payload = claudeOAuthPayload("sk-ant-oat01-MAIN-REFRESHED-cccc", app.Now().Add(8*time.Hour))
+		sim.ops = nil
+
+		_, stderr := captureStderr(t, func() int {
+			return runRebind(ctx, app, opts, constants.ToolClaude, "side", false)
+		})
+
+		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
+			t.Fatalf("the re-bind kae itself recommends after a rename must not delete that copy: %v", sim.ops)
+		}
+		if !strings.Contains(stderr, "no account named claude/main exists any more") {
+			t.Fatalf("keeping it must name the branch that kept it: %q", stderr)
+		}
+	})
 }

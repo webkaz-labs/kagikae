@@ -458,196 +458,47 @@ func TestWriteDirCredentialRefusesTwoIdentitiesThatAreNotAccountRecords(t *testi
 	}
 }
 
-// The defect this whole harvest exists for: the tool refreshes the copy *inside* a
-// bound directory, in place, and claude's refresh token is single-use — so writing
-// the account snapshot over that copy does not regress the directory to an older
-// login, it logs it out, hours later, with every offline check green
-// (docs/VALIDATION.md). The bind must take the newer copy into the snapshot first
-// and then write *that*.
-//
-// The evidence that the copy is this account's comes from the directories that read the
-// store, so the fixture binds one: the identity cache the bind leaves in that directory
-// is what confirms the harvest. Its opposite number is
-// TestWriteDirCredentialKeepsANewerCopyItCannotAttribute, which is the same store with no
-// reader at all — the pair is what separates "the reader gate" from "the harvest".
-func TestWriteDirCredentialHarvestsNewerLiveCredential(t *testing.T) {
-	app := overlayTestApp(t)
-	ctx := context.Background()
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	_, storeDir := bindClaudeHere(t, app, "main")
-	// The tool refreshed the account's copy in place, in the store every directory bound
-	// to claude/main reads.
-	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
-	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", storeDir), claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
-	// A capture time that has moved on, so the recorded one is proof this snapshot
-	// was rewritten rather than merely unchanged.
-	later := now.Add(2 * time.Hour)
-	app.Now = func() time.Time { return later }
-
-	be := testBackend(t, app)
-	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
-			t.Fatalf("writeDirCredential: %v", err)
-		}
-		return 0
-	})
-
-	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", storeDir)); !strings.Contains(got, refreshed) {
-		t.Fatalf("the bind overwrote the newer live credential: %s", got)
-	}
-	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, refreshed) {
-		t.Fatalf("the newer credential was not harvested into the snapshot: %s", got)
-	}
-	if !strings.Contains(stderr, "harvested") {
-		t.Fatalf("a harvest must be reported: %q", stderr)
-	}
-	if strings.Contains(stderr, refreshed) {
-		t.Fatalf("a credential must never reach a message: %q", stderr)
-	}
-	acc, _, err := account.Load(app.Paths.AccountDir(constants.ToolClaude, "main"))
-	if err != nil || !acc.CapturedAt.Equal(later) {
-		t.Fatalf("captured_at must follow the harvested payload: %v (err %v)", acc.CapturedAt, err)
-	}
-}
-
-// The other direction, which must stay cheap and silent: the snapshot is the newer
-// copy, so the bind writes it as it always did. Without this the harvest would be
-// free to run backwards and overwrite a good snapshot from a directory nobody has
-// opened in weeks.
-func TestWriteDirCredentialKeepsSnapshotWhenLiveIsOlder(t *testing.T) {
-	app := overlayTestApp(t)
-	ctx := context.Background()
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(8*time.Hour))
-	_, credDir := bindClaudeHere(t, app, "main")
-	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
-		claudeOAuthPayload("sk-ant-oat01-MAIN-OLD-dddd", now.Add(time.Hour)))
-
-	be := testBackend(t, app)
-	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, false); err != nil {
-			t.Fatalf("writeDirCredential: %v", err)
-		}
-		return 0
-	})
-
-	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, mainToken) {
-		t.Fatalf("the snapshot must be applied when it is the newer copy: %s", got)
-	}
-	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); !strings.Contains(got, mainToken) {
-		t.Fatalf("the older live copy must not reach the snapshot: %s", got)
-	}
-	if strings.Contains(stderr, "harvested") {
-		t.Fatalf("nothing was harvested, so nothing may be reported: %q", stderr)
-	}
-}
-
-// Attribution is the guard that makes the harvest safe, because a store can hold a
-// credential that is not the account's at all. The reachable shape is a **login as
-// somebody else inside a bound directory**: the directory binds claude/main, the user runs
-// `/login` there as side, and the account's store now holds side's credential — usually
-// the newer one, since it is the one in daily use — while the directory's identity cache
-// says side too. Harvesting that would file side's token under main's name, after which
-// nothing offline can tell: the token is opaque, so live, snapshot and doctor all agree on
-// a label that is simply wrong.
-//
-// Note which state this is *not*, since it used to be: a re-bind of this directory from
-// one account to another. That one is now the case the model deliberately declines to
-// judge (TestRunPinRebindBetweenAccountsPreservesTheTargetsLiveCredential) — the directory
-// being re-bound is not yet a reader of the new account's store, so its stale label says
-// nothing about it.
-func TestWriteDirCredentialRefusesToHarvestAnotherAccountsCredential(t *testing.T) {
-	app := overlayTestApp(t)
-	ctx := context.Background()
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	_, storeDir := bindClaudeHere(t, app, "main")
-	// Logged in as side inside the bound directory: the store's copy and the reader's
-	// label both name side.
-	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", storeDir), claudeOAuthPayload(sideToken, now.Add(8*time.Hour)))
-	writeFile(t, filepath.Join(storeDir, ".claude.json"), claudeIdentityFile("side-uuid"))
-
-	be := testBackend(t, app)
-	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", storeDir, false); err != nil {
-			t.Fatalf("writeDirCredential: %v", err)
-		}
-		return 0
-	})
-
-	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, sideToken) {
-		t.Fatalf("another account's token was filed under this one: %s", got)
-	}
-	if !strings.Contains(stderr, "not harvesting") {
-		t.Fatalf("declining to harvest must be said out loud: %q", stderr)
-	}
-	// The bind still does its job: the directory ends up on the account it names.
-	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", storeDir)); !strings.Contains(got, mainToken) {
-		t.Fatalf("the bind must still apply the bound account: %s", got)
-	}
-}
-
-// **The first bind of a directory has no evidence to attribute from, and the store it
-// would overwrite belongs to the account, not to the directory.** writeDirCredential's
-// comment carries why attribution refuses there; what this test adds is the reason it went
-// unnoticed — every test above binds a directory first, so none of them is a first bind.
-// Measured end to end 2026-08-08: use claude in one worktree, bind a second, and both are
-// dead up to 8h later with nothing left for doctor to compare.
-//
-// Deliberately **not** bound, which is what makes it the opposite number of
-// TestWriteDirCredentialHarvestsNewerLiveCredential: no directory reads this account's
-// credential store yet, so nothing can say whose login the copy is. Missing evidence here
-// is the absence of a *reader*, not the absence of a file in this directory — seeding a
-// `.claude.json` beside the store would change nothing, because a directory no binding
-// points at is evidence about nothing.
-func TestWriteDirCredentialKeepsANewerCopyItCannotAttribute(t *testing.T) {
+// A whole-profile bind must not fail over one tool whose credential store cannot
+// be scoped to a directory: the others still bind, and that tool's settings and
+// sessions are still isolated. Only the credential is shared, and the warning
+// says so.
+func TestPrepareBondWarnsOnGlobalStoreAndKeepsBinding(t *testing.T) {
 	app := testApp(t, nil)
+	app.Env.GOOS = "darwin"
+	cwd := t.TempDir()
+	pinID := paths.PinID(cwd)
+	// codex's real home carries the keyring setting; prepareBond symlinks
+	// config.toml into the bond dir before the credential step, which is how the
+	// bound directory ends up resolving the global store.
+	seedKeyringCodex(t, filepath.Join(app.Env.Home, ".codex"))
+
+	// The whole-profile path is prepareIsolationDirs; prepareBond itself reports
+	// the limitation and the policy of tolerating it lives one level up.
 	ctx := context.Background()
-	now := app.Now()
-	captureClaudeAt(t, app, "main", mainToken, now.Add(time.Hour))
-	credDir := t.TempDir() // an unbound config dir: nothing reads the account's store
-	const refreshed = "sk-ant-oat01-MAIN-REFRESHED-cccc"
-	writeFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir),
-		claudeOAuthPayload(refreshed, now.Add(8*time.Hour)))
-
 	be := testBackend(t, app)
-	_, stderr := captureStderr(t, func() int {
-		if err := app.writeDirCredential(ctx, be, constants.ToolClaude, "main", credDir, false); err != nil {
-			t.Fatalf("writeDirCredential: %v", err)
-		}
-		return 0
-	})
+	entries := app.bondIsolationEntries([]runTarget{{Tool: constants.ToolCodex, Account: "main"}}, pinID)
+	bondDir := app.Paths.SharedDir(pinID, constants.ToolCodex)
 
-	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", credDir)); !strings.Contains(got, refreshed) {
-		t.Fatalf("the only copy that can still refresh was destroyed: %s", got)
+	fake := &runnertest.Fake{Code: 0}
+	var err error
+	runner.With(fake, func() {
+		err = app.prepareIsolationDirs(modeShared, entries, func(tool, account string) (string, error) {
+			return app.prepareBond(ctx, be, tool, account, pinID, false)
+		})
+	})
+	if err != nil {
+		t.Fatalf("a global credential store must warn, not fail the bind: %v", err)
 	}
-	// Kept is not harvested: the copy stays where it is and is *not* filed under this
-	// account, because the reason kae kept it is that it could not tell whose it is.
-	if got := snapshotPayload(t, app, be, constants.ToolClaude, "main"); strings.Contains(got, refreshed) {
-		t.Fatalf("an unattributable copy must not be filed under this account: %s", got)
+	if fake.Name != "" {
+		t.Fatalf("the global keychain item must be left alone, ran %q %v", fake.Name, fake.Args)
 	}
-	if !strings.Contains(stderr, "kept it rather than replacing it") {
-		t.Fatalf("keeping the copy must be said out loud: %q", stderr)
+	// The bond dir is still built, so the tool's non-auth state is isolated.
+	if _, statErr := os.Lstat(filepath.Join(bondDir, "config.toml")); statErr != nil {
+		t.Fatalf("bond dir must still be materialized: %v", statErr)
 	}
-	if strings.Contains(stderr, "this write replaces it") {
-		t.Fatalf("the overwrite wording must not survive here: %q", stderr)
-	}
-	// No remedy at this site by design: it holds a store path, not the bound directory a
-	// login would have to happen in. The pin-level pass carries the remedy, and when it
-	// speaks this message is suppressed — asserted by the pin-level tests.
-	if strings.Contains(stderr, "kae relogin") || strings.Contains(stderr, "kae add --no-login") {
-		t.Fatalf("the chokepoint must not name a remedy for a store path: %q", stderr)
-	}
-	if strings.Contains(stderr, refreshed) {
-		t.Fatalf("a credential must never reach a message: %q", stderr)
-	}
-	// No label either, and this is the load-bearing half. kae's own label is exactly the
-	// evidence the next bind's attribution reads, so writing it here let `kae pin` again
-	// confirm against a cache kae had planted and harvest the copy this bind refused —
-	// measured 2026-08-08, filing another account's token under this one's name. Absence is
-	// the honest record; the next cache here is the tool's own.
-	if _, err := os.Stat(filepath.Join(credDir, ".claude.json")); !os.IsNotExist(err) {
-		t.Fatalf("kae must not plant the label it would later read as attribution (err %v)", err)
+	// And no credential file was left as a consolation prize: codex reads the
+	// keyring, so a file here would be a plaintext secret nothing reads.
+	if _, statErr := os.Stat(filepath.Join(bondDir, "auth.json")); !os.IsNotExist(statErr) {
+		t.Error("no credential file may be written for a tool that reads a global keyring")
 	}
 }

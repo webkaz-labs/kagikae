@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,8 +9,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/preservation"
 )
 
 func TestValuedFlagBackend(t *testing.T) {
@@ -205,5 +208,93 @@ end
 	got := strings.Fields(string(out))
 	if !slices.Equal(got, want) {
 		t.Fatalf("%s %q: got %q, want %q", shell, words, got, want)
+	}
+}
+
+// TestCompletionScriptsCompleteRelogin: `kae relogin <TAB>` offers the tools, and
+// only at the first positional — the account is the binding's answer, never a word
+// typed here, so a second slot would offer something the parser rejects.
+//
+// TestEveryPositionalCommandCompletes now makes the same assertion generically,
+// and this test is kept for what that one structurally cannot see: it names
+// "relogin" as a literal, so it still fires if the verb is dropped from
+// completionCommands and positionalCommands together — the shape of gap that both
+// table-driven guards are blind to.
+func TestCompletionScriptsCompleteRelogin(t *testing.T) {
+	if !slices.Contains(completionCommands, "relogin") {
+		t.Fatal("relogin must be in completionCommands, or `kae <TAB>` never offers it")
+	}
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		script, _ := completionScript(shell)
+		caseExists := strings.Contains(script, "relogin)") || strings.Contains(script, "case relogin")
+		if !caseExists {
+			t.Errorf("%s completion has no case for relogin:\n%s", shell, script)
+		}
+	}
+}
+
+// And the router actually dispatches it: a command that completes but does not run
+// is the same dead end from the other side.
+//
+// The unparseable flag is deliberate, and it is what keeps this test off the real
+// environment: CmdRelogin calls parseCommon first and returns on its failure, so
+// this path exits before newApp reads any config or state. A routed command answers
+// with the flag error; an unrouted one falls to Root's default arm.
+func TestRootDispatchesRelogin(t *testing.T) {
+	_, out := captureStderr(t, func() int { return Root([]string{"relogin", "--not-a-flag-kae-defines"}) })
+	if strings.Contains(out, "unknown command") {
+		t.Fatalf("Root does not route relogin: %q", out)
+	}
+	if !strings.Contains(out, "not-a-flag-kae-defines") {
+		t.Fatalf("expected the flag parser to answer, so nothing further ran: %q", out)
+	}
+}
+
+// Completion reads metadata even when the secret backend is unavailable; it must
+// neither reconcile interrupted records nor offer them as restoration targets.
+func TestCompletePreservationIDs(t *testing.T) {
+	app := testApp(t, nil)
+	code, out := captureStdout(t, func() int { return runComplete(app, []string{"preservations", "restore"}) })
+	if code != constants.ExitOK || out != "" {
+		t.Fatalf("empty inventory: %d %q", code, out)
+	}
+	if _, err := os.Stat(app.Paths.PreservationsDir()); !os.IsNotExist(err) {
+		t.Fatalf("completion created metadata: %v", err)
+	}
+	if err := os.MkdirAll(app.Paths.PreservationsDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	states := []string{constants.PreservationStateReady, constants.PreservationStatePending, constants.PreservationStateDeleting}
+	var ids []string
+	for i, state := range states {
+		id := fmt.Sprintf("%032x", i+1)
+		ids = append(ids, id)
+		record := preservation.Record{
+			SchemaVersion: constants.SchemaVersion, ID: id, CreatedAt: time.Unix(int64(i+1), 0), State: state, Size: 10, Digest: strings.Repeat("a", 64),
+			Origin: preservation.Origin{
+				Directory: app.Env.Home, Tool: constants.ToolClaude, BoundAccount: "main", Mode: constants.ModeShared, ConfigDir: app.Env.Home,
+				Locator: preservation.Locator{Name: "credential", Kind: constants.KindFile, Target: filepath.Join(app.Env.Home, "credential")},
+			},
+		}
+		data, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(app.Paths.PreservationsDir(), id+".json"), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct{ verb, want string }{{"restore", ids[0] + "\n"}, {"rm", ids[2] + "\n" + ids[1] + "\n" + ids[0] + "\n"}} {
+		code, out := captureStdout(t, func() int { return runComplete(app, []string{"preservations", tc.verb}) })
+		if code != constants.ExitOK || out != tc.want {
+			t.Fatalf("%s: %d %q", tc.verb, code, out)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(app.Paths.PreservationsDir(), "invalid.json"), []byte("synthetic-secret-must-not-print"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out = captureStdout(t, func() int { return runComplete(app, []string{"preservations", "rm"}) })
+	if code != constants.ExitError || out != "" {
+		t.Fatalf("invalid metadata leaked: %d %q", code, out)
 	}
 }

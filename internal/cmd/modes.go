@@ -190,6 +190,11 @@ func pathWithin(dir, root string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
 // pinnedGlobalScope puts the global-scope commands (use / add) on the real home:
 // they are inherently global, so kae-managed isolation env values are hidden
 // (applyGlobalScope) and the adapters resolve the real base paths; genuinely

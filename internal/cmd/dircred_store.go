@@ -13,6 +13,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/account"
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/keychain"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
@@ -132,11 +133,6 @@ func (app *App) attributedCredDir(store dirStore, prev fragmentInfo) string {
 		return recorded
 	}
 	return ""
-}
-
-func dirExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
 }
 
 // pruneDirCredentials removes the per-directory keychain credential of every store
@@ -430,6 +426,32 @@ func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, stor
 		return false, err
 	}
 	return true, nil
+}
+
+// dirCredentialExists answers "is there anything to delete" for either store kind,
+// so the caller can report what it actually removed rather than announcing a cleanup
+// of a store that never held one — the delete primitive treats absence as success.
+func dirCredentialExists(ctx context.Context, sp artifact.Spec) (bool, error) {
+	if sp.Kind != constants.KindKeychain {
+		// Present, not "the read succeeded": a store that never held a credential must
+		// answer no, or `--purge` announces having removed one from it.
+		value, err := artifact.ReadLive(ctx, sp)
+		if err != nil {
+			return false, err
+		}
+		return value.Present, nil
+	}
+	return dirItemExists(ctx, sp)
+}
+
+// dirItemExists answers "is there an item to delete" for a keychain spec, scoped
+// the way that spec's delete is: account-scoped only where the service can hold
+// more than one legitimate item.
+func dirItemExists(ctx context.Context, sp artifact.Spec) (bool, error) {
+	if sp.KeychainMatchAccount {
+		return keychain.ItemExistsForAccount(ctx, sp.Target, sp.KeychainAccount)
+	}
+	return keychain.ItemExists(ctx, sp.Target)
 }
 
 // credStoreRefs counts what still reads a per-account credential store, and says

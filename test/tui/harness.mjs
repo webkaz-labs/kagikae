@@ -18,9 +18,18 @@
 //     a text or style assertion sees.
 //   * Nothing waits by sleeping: a scenario waits for text to appear (bounded by
 //     TIMEOUT_MS) or for the process to exit.
+//   * Expected text can never be satisfied by the echoed command line. The handle
+//     records every line and key text it types, and expectText throws when the
+//     expectation is a substring of one of them. A command therefore prints its
+//     answer as `echo "<marker>:$?"` and the scenario expects `<marker>:0`.
+//   * A snapshot that does not exist fails; KAE_TUI_UPDATE=1 is the only way one
+//     is written or changed.
 //   * runScenarios runs every scenario, catches each one on its own, then
 //     reports; the exit status is non-zero if any failed. A run that stopped at
 //     the first failure would hide the others.
+//
+// The environment sets no NO_COLOR on purpose: only text is asserted, and colour
+// is the Go tests' business.
 //
 // Not covered: a real login shell, another shell than zsh, colors (only text is
 // asserted), and any terminal other than this emulator. docs/VALIDATION.md §
@@ -36,6 +45,8 @@ import { TuiTest, uniqueSession } from "@microsoft/tui-test";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
 const TIMEOUT_MS = 15000;
+const BUILD_TIMEOUT_MS = 300000;
+const SCENARIO_TIMEOUT_MS = 90000;
 const PROMPT = "READY> ";
 
 const PALETTE = {
@@ -61,52 +72,87 @@ const PALETTE = {
 };
 
 let world = null;
+const sessions = new Set();
 
 // setup builds kae once. Every path it returns lies under one temp directory
-// that teardown removes.
+// that teardown removes, also when the build fails.
 export function setup() {
   if (world) return world;
   const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "kae-tui-")));
-  const binDir = path.join(base, "bin");
-  fs.mkdirSync(binDir);
-  execFileSync("go", ["build", "-o", path.join(binDir, "kae"), "."], {
-    cwd: REPO_ROOT,
-    stdio: ["ignore", "inherit", "inherit"],
-  });
-  world = { base, binDir };
+  try {
+    const binDir = path.join(base, "bin");
+    fs.mkdirSync(binDir);
+    execFileSync("go", ["build", "-o", path.join(binDir, "kae"), "."], {
+      cwd: REPO_ROOT,
+      stdio: ["ignore", "inherit", "inherit"],
+      timeout: BUILD_TIMEOUT_MS,
+      // The cache the sibling mise tasks use, so this build is warm after them and
+      // writes nothing under the real HOME.
+      env: {
+        ...process.env,
+        GOCACHE: process.env.GOCACHE || path.join(process.env.TMPDIR || "/tmp", "kae-gocache"),
+      },
+    });
+    world = { base, binDir };
+  } catch (err) {
+    fs.rmSync(base, { recursive: true, force: true });
+    throw err;
+  }
   return world;
 }
 
-export function teardown() {
+function removeWorld() {
   if (!world) return;
   fs.rmSync(world.base, { recursive: true, force: true });
   world = null;
 }
 
+// teardown closes every shell still open (a scenario that failed or timed out
+// leaves its shell here) and removes the temp directory.
+export async function teardown() {
+  await Promise.all([...sessions].map((t) => t.closeQuiet().catch(() => {})));
+  sessions.clear();
+  removeWorld();
+}
+
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.once(sig, () => {
+    removeWorld();
+    process.exit(130);
+  });
+}
+
 // makeFixture creates a fresh HOME holding a git repository with `.claude/` at
 // its root and a subdirectory. It sits under $HOME/work so the picker shows it
 // as ~/work/repo, which keeps a snapshot independent of the temp directory name.
-function makeFixture(name) {
+function makeFixture(name, repoName) {
   const { base } = setup();
   const home = path.join(base, name);
-  const repo = path.join(home, "work", "repo");
+  const repo = path.join(home, "work", repoName);
   const sub = path.join(repo, "sub");
   fs.mkdirSync(path.join(repo, ".claude"), { recursive: true });
   fs.mkdirSync(sub, { recursive: true });
-  for (const d of ["config", "data", "state", "cache"]) {
+  for (const d of ["config", "data", "state", "cache", "run"]) {
     fs.mkdirSync(path.join(home, ".xdg", d), { recursive: true });
   }
-  execFileSync("/usr/bin/git", ["init", "-q"], { cwd: repo, stdio: "ignore" });
+  fs.mkdirSync(path.join(home, "tmp"));
+  // The operator's git configuration must not reach the fixture either.
+  execFileSync("/usr/bin/git", ["init", "-q"], {
+    cwd: repo,
+    stdio: "ignore",
+    env: { PATH: "/usr/bin:/bin", HOME: home, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
+  });
   return { home, repo, sub };
 }
 
 // openShell starts zsh in the fixture's subdirectory with the kae function
 // defined the way an rc file defines it, and returns the scenario's handle.
-async function openShell({ name, cols, rows }) {
+async function openShell({ name, cols, rows, repoName = "repo" }) {
   const { binDir } = setup();
-  const fx = makeFixture(name);
+  const fx = makeFixture(name, repoName);
   const xdg = (d) => path.join(fx.home, ".xdg", d);
   const t = new TuiTest(uniqueSession("kae"), { profile: { colors: PALETTE } });
+  sessions.add(t);
   await t.run(
     "/usr/bin/env",
     [
@@ -116,7 +162,10 @@ async function openShell({ name, cols, rows }) {
       `XDG_DATA_HOME=${xdg("data")}`,
       `XDG_STATE_HOME=${xdg("state")}`,
       `XDG_CACHE_HOME=${xdg("cache")}`,
-      `TMPDIR=${fx.home}`,
+      `XDG_RUNTIME_DIR=${xdg("run")}`,
+      `TMPDIR=${path.join(fx.home, "tmp")}`,
+      "LC_ALL=C",
+      "TZ=UTC",
       `PATH=${binDir}:/usr/bin:/bin`,
       "KAE_CLAUDE_DRIVER=file",
       "GIT_CONFIG_GLOBAL=/dev/null",
@@ -133,47 +182,79 @@ async function openShell({ name, cols, rows }) {
   await s.run(`eval "$(kae completion zsh)"`);
   await s.run(`cd '${fx.sub}'`);
   await s.run("clear");
+  s.forgetTyped(); // setup lines are not part of any scenario's expectations
   return s;
 }
 
 function makeHandle(t, fx) {
+  const typed = [];
   const s = {
     fx,
+    forgetTyped: () => {
+      typed.length = 0;
+    },
     // run types a line and Enter, then waits for the output to go quiet; a
     // command that opens a picker returns once the picker has drawn.
     run: async (line) => {
+      typed.push(line);
       await t.submit(line);
       await t.waitIdle({ timeout: TIMEOUT_MS });
     },
-    type: (text) => t.type(text),
+    type: (text) => {
+      typed.push(text);
+      return t.type(text);
+    },
     key: (name) => t.keyboard.press(name),
     resize: (cols, rows) => t.resize(cols, rows),
     size: () => t.getSize(),
     screen: () => t.text(),
     idle: () => t.waitIdle({ timeout: TIMEOUT_MS }),
-    expectText: (text) => t.getByText(text, { regex: false }).expect({ timeout: TIMEOUT_MS }),
+    // expectText refuses an expectation that the terminal's echo of what was
+    // typed would satisfy, because that assertion could never fail.
+    expectText: (text) => {
+      const echoed = typed.find((line) => line.includes(text));
+      if (echoed !== undefined) {
+        throw new Error(
+          `expectText(${JSON.stringify(text)}) is satisfied by the typed line ${JSON.stringify(echoed)}; print it from the command, for example echo "marker:$?"`,
+        );
+      }
+      return t.getByText(text, { regex: false }).expect({ timeout: TIMEOUT_MS });
+    },
+    // expectMatch is expectText for a pattern, with the same refusal.
+    expectMatch: (re) => {
+      const echoed = typed.find((line) => re.test(line));
+      if (echoed !== undefined) {
+        throw new Error(`expectMatch(${re}) is satisfied by the typed line ${JSON.stringify(echoed)}`);
+      }
+      return t.getByText(re.source, { regex: true }).expect({ timeout: TIMEOUT_MS });
+    },
     expectNoText: (text) =>
       t.getByText(text, { regex: false }).expect({ not: true, timeout: TIMEOUT_MS }),
     // expectPwd asks the shell to compare, so a path wrapped by a narrow
-    // terminal cannot make the screen text disagree with $PWD.
+    // terminal cannot make the screen text disagree with $PWD. The status is
+    // printed from `$?`, so the typed line cannot contain the expected `:0`.
     expectPwd: async (dir, marker) => {
-      await s.run(`[ "$PWD" = '${dir}' ] && echo "${marker}:same" || echo "${marker}:other"`);
-      await s.expectText(`${marker}:same`);
+      await s.run(`[ "$PWD" = '${dir}' ]; echo "${marker}:$?"`);
+      await s.expectText(`${marker}:0`);
     },
-    snapshot: (name) => t.expectSnapshot(name, { update: process.env.KAE_TUI_UPDATE === "1" }),
-    close: () => t.closeQuiet(),
+    // snapshot fails when the file is missing, so a renamed or unchecked-out
+    // baseline cannot turn into a silent new one.
+    snapshot: (name) => {
+      const update = process.env.KAE_TUI_UPDATE === "1";
+      if (!update && !fs.existsSync(path.join(HERE, "__snapshots__", `${name}.snap`))) {
+        throw new Error(`snapshot ${name} is missing; run with KAE_TUI_UPDATE=1 and review it`);
+      }
+      return t.expectSnapshot(name, { update });
+    },
   };
   return s;
 }
 
-// withShell runs body against a fresh shell and always closes it.
+// withShell runs body against a fresh shell. The shell is closed by teardown
+// even when opening it fails part way.
 export async function withShell(opts, body) {
   const s = await openShell(opts);
-  try {
-    await body(s);
-  } finally {
-    await s.close();
-  }
+  await body(s);
 }
 
 // runScenarios runs the scenarios whose tag matches (all when tag is empty),
@@ -186,19 +267,36 @@ export async function runScenarios(scenarios, tag) {
     console.error(`no scenario is tagged ${JSON.stringify(tag)}`);
     return 1;
   }
+  try {
+    setup(); // one build for the run; a failure is one failure, not one per scenario
+  } catch (err) {
+    console.error(`building kae failed: ${err?.message ?? err}`);
+    return 1;
+  }
   const results = [];
   try {
     for (const sc of chosen) {
       const t0 = performance.now();
+      let timer;
       try {
-        await sc.run();
+        const deadline = new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`scenario exceeded ${SCENARIO_TIMEOUT_MS} ms`)),
+            SCENARIO_TIMEOUT_MS,
+          );
+        });
+        await Promise.race([sc.run(), deadline]);
         results.push({ sc, ok: true, ms: performance.now() - t0 });
       } catch (err) {
         results.push({ sc, ok: false, ms: performance.now() - t0, err });
+      } finally {
+        clearTimeout(timer);
+        await Promise.all([...sessions].map((t) => t.closeQuiet().catch(() => {})));
+        sessions.clear();
       }
     }
   } finally {
-    teardown();
+    await teardown();
   }
   for (const r of results) {
     const ms = Math.round(r.ms);

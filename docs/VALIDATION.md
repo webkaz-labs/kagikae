@@ -80,38 +80,41 @@ function's use of its exit status are only observable from a terminal. Scenarios
 are `test/tui/run.mjs`; `test/tui/harness.mjs` is the one module that imports
 Microsoft `tui-test`, pinned `0.1.0-beta.5` (never the `latest` tag, which is an older
 release) in `test/tui/package-lock.json` and run under the Node that `mise.toml` pins.
-The tasks install from the lockfile with `npm ci --ignore-scripts` when
-`test/tui/node_modules` is missing.
+The tasks run `npm ci --ignore-scripts` when `test/tui/node_modules` is missing or
+was installed from a different `package-lock.json` (a stamp copy of the lockfile
+inside `node_modules` records which).
 
-- **Isolation.** The harness builds `kae` once into a temp directory and starts
-  `zsh -f` through `env -i` with a temp HOME, every XDG root and `TMPDIR` under it,
-  and `PATH` holding only that directory plus `/usr/bin:/bin`, because tui-test merges
-  the parent's environment into any environment option. No installed `kae` and no
-  real HOME or XDG root is reachable. The palette is pinned and no step sleeps: each
-  waits for screen text, bounded at 15 s.
-- **Scenarios** (each in a fresh shell holding a git repository with `.claude/` at
-  its root, started in a subdirectory, with `eval "$(kae completion zsh)"`): choosing
-  the repository root by filter at 80x24 and again at 120x36 (`$PWD` compared inside
-  the shell, exit status `0`); one text-only snapshot of the picker,
-  `test/tui/__snapshots__/picker-120x36.snap`, regenerated with `KAE_TUI_UPDATE=1`;
-  Esc on an empty filter (`130`, directory unchanged, nothing on the entry's
-  stdout); Esc with a filter clearing it before the second Esc cancels; Ctrl-C (`130`,
-  a following command runs); `--pick` over a request that has a current place;
-  `</dev/null` (no picker, list on stderr, `64`); and a resize from 120x36 to 80x24
-  keeping the filter and the selected row.
-- **Running.** Every scenario runs and each is caught on its own; the run ends with
-  one line per scenario and exits non-zero when any failed. `mise run tui-e2e-fast`
-  runs the scenario tagged `fast` (the 80x24 journey), selected from the same list
-  rather than written apart; it is a dependency of `mise run check`. Its key press
-  is Enter on a filtered row, which only changes the test shell's directory. Rerun
-  the full suite after a picker or `kae cd` change and before a release; the fast
-  journey takes seconds once `npm ci` has run.
+- **Isolation.** The harness builds `kae` once per run into a temp directory, with
+  the Go cache the other mise tasks use (`GOCACHE`, else `$TMPDIR/kae-gocache`), and
+  starts `zsh -f` through `env -i` with a temp HOME, every XDG root, `TMPDIR`,
+  `LC_ALL=C` and `TZ=UTC` set, and `PATH` holding only that directory plus
+  `/usr/bin:/bin`, because tui-test merges the parent's environment into any
+  environment option. The fixture's `git init` gets the same empty git
+  configuration. No installed `kae` is on the child's `PATH` and the child reaches no
+  real HOME or XDG root. The palette is pinned and no step sleeps: each waits for
+  screen text, bounded at 15 s.
+- **What is asserted.** `test/tui/run.mjs` lists the scenarios. Each runs in a fresh
+  shell holding a git repository with `.claude/` at its root and starts in a
+  subdirectory. Exit statuses, the shell's `$PWD`, stdout and stderr contents and the
+  terminal modes (`stty -a` from a non-zsh parent, because interactive zsh resets
+  them before each prompt) are printed by the shell and matched as `marker:status`.
+  The harness throws when an expected string occurs in a line the scenario typed, so
+  the terminal's echo of the command can never satisfy an expectation. The picker's
+  rendering is asserted as text on the screen, plus one text-only snapshot,
+  `test/tui/__snapshots__/picker-120x36.snap`. A missing snapshot fails; regenerate
+  it with `KAE_TUI_UPDATE=1` and review the diff.
+- **Running.** Every scenario runs and each is caught on its own, each bounded at
+  90 s; the run ends with one line per scenario and exits non-zero when any failed.
+  `mise run tui-e2e-fast` runs the scenario tagged `fast` (the 80x24 journey),
+  selected from the same list rather than written apart; it is a dependency of
+  `mise run check`. Its key presses only change the test shell's directory. Rerun the
+  full suite after a picker or `kae cd` change and before a release.
 - **Limits.** Only text is asserted, so color and `NO_COLOR` are covered by Go tests
-  and not here. Only zsh, one emulator and one platform run at a time: a picker
-  drawing bug specific to another terminal, or to bash and fish, is outside it.
-  CI (`check.yml`) does not run it: that workflow has no Node or `npm ci` step and
-  the suite has been run on macOS only, so it is a developer-machine check like the
-  other steps `check.yml` omits.
+  and not here. Only zsh (a non-zsh `sh -c` for the terminal-modes check), one
+  emulator and one platform per run: a picker drawing bug specific to another
+  terminal, or to bash and fish, is outside it. CI (`check.yml`) runs the full suite
+  on `ubuntu-latest` after `actions/setup-node` at the version `mise.toml` pins; it
+  passed on Ubuntu 24.04 in containers on linux/arm64 and linux/amd64.
 
 ## Packslip consumer smoke
 

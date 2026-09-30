@@ -1,7 +1,8 @@
 name: Check
 
 # Shared by ci.yml and release.yml. This workflow is a subset of the local
-# mise run check; compare these steps with mise.toml for the current gap.
+# mise run check; compare these steps with mise.toml for the current gap. It runs
+# the full picker PTY suite where mise run check runs the fast journey only.
 # Formatter behavior is owned by tools/devtools/shell/check-go-format.sh. Docs module-resolution
 # constraints are set on their steps below. Further admission decisions live in
 # docs/ROADMAP.md.
@@ -29,6 +30,13 @@ jobs:
       - name: Install zsh
         run: sudo apt-get update && sudo apt-get install -y zsh
 
+      # The picker PTY suite runs the built kae under zsh. The Node version is the
+      # one mise.toml pins; setup-node cannot read mise.toml, so change both together.
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+
       - name: Vet
         run: go vet ./...
 
@@ -39,6 +47,14 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+      # The same commands as the mise tui-e2e-setup and tui-e2e tasks
+      # (docs/VALIDATION.md § Picker PTY suite).
+      - name: Picker PTY suite
+        working-directory: test/tui
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node run.mjs
 
       # The missing-main control in docs/VALIDATION.md passes
       # go test and fails go build. Reuse Setup Go's cache to check linking too;

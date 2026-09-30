@@ -22,6 +22,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
+	"github.com/webkaz-labs/kagikae/internal/textui"
 )
 
 // App bundles the resolved environment every command needs. Tests construct
@@ -47,6 +48,10 @@ type App struct {
 	// fresh cache entry exist. Nil skips the network. Production sets it;
 	// tests leave it nil unless a case is about that fetch.
 	usageClient *http.Client
+	// openTerminal opens the controlling terminal for an interactive chooser, or
+	// says there is none (textui.Open). Nil in tests means no terminal, so a
+	// test never depends on where it runs; production sets it.
+	openTerminal func() (*textui.Terminal, bool)
 	// Test seams for failures and pre-lock races that cannot be scheduled
 	// deterministically around non-blocking flock acquisition. All are nil in
 	// production.
@@ -93,7 +98,19 @@ func newApp(configPath string) *App {
 		},
 		Now:         time.Now,
 		usageClient: newUsageClient(),
+		openTerminal: func() (*textui.Terminal, bool) {
+			return textui.Open(os.Stdin, os.Getenv("TERM"))
+		},
 	}
+}
+
+// terminal is the controlling terminal when kae may prompt on it. The caller
+// closes it.
+func (app *App) terminal() (*textui.Terminal, bool) {
+	if app.openTerminal == nil {
+		return nil, false
+	}
+	return app.openTerminal()
 }
 
 // osUsername resolves the OS account name for adapter.Env.Username. It is only

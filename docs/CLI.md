@@ -673,7 +673,9 @@ marks it `(missing)` — exits `7`.
 several such tools are bound; a selection that matches several places (`kae`,
 several `--below` levels); or a target with no current place here (`pin` outside
 every bound directory, `--below` with no level below), whose candidates are the
-places `kae ls <target>` lists — with `--root`, those that have a root. Only a
+places `kae ls <target>` lists — with `--root`, those that have a root; for the level
+selector without a target, every place of that level of each bound tool, or of both
+place tools when none is bound. Only a
 target with no candidate at all (`repo` outside a repository, `pin` with nothing
 bound, a tool kae resolves no places for) exits `7`; `kae ls --current` keeps its
 `7` for every case without a current place. Every candidate list leaves out places

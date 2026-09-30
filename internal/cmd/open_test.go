@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
+	"github.com/webkaz-labs/kagikae/internal/textui"
 )
 
 // navRequest parses an open or cd command line as the command would.
@@ -245,7 +247,7 @@ func TestNavigatePickerCasesListCandidates(t *testing.T) {
 	cwd := chdirTo(t, t.TempDir())
 	// cwd's own .claude/ makes claude relevant to bare ls: user 1, project 2,
 	// below 3 and 4.
-	mkdirs(t, filepath.Join(cwd, ".claude"), filepath.Join(cwd, "a", ".claude"), filepath.Join(cwd, "b", ".claude"),
+	mkdirs(t, filepath.Join(cwd, ".claude"), filepath.Join(cwd, ".codex"), filepath.Join(cwd, "a", ".claude"), filepath.Join(cwd, "b", ".claude"),
 		app.Paths.ConfigDir, app.Paths.DataDir, app.Paths.StateDir)
 	for _, tc := range []struct {
 		name string
@@ -270,12 +272,13 @@ func TestNavigatePickerCasesListCandidates(t *testing.T) {
 			// The path is the one the command reaches: the directory holding .claude/.
 			"kae open -s claude --at 4 --root  " + filepath.Join(cwd, "b") + "\n",
 		}},
+		// Each tool's places of that level, as place lines like any candidate list.
 		{"level without a bound tool", "cd", lsFlags{project: true}, nil, []string{
 			"kae cd --project needs a tool: no tool is bound here; choose one:",
-			"kae cd claude --project", "kae cd codex --project",
+			"kae cd claude --at 2  " + filepath.Join(cwd, ".claude"), "kae cd codex --at 2  " + filepath.Join(cwd, ".codex"),
 		}},
 		{"level without a bound tool, root", "cd", lsFlags{project: true, root: true}, nil, []string{
-			"kae cd claude --project --root\n", "kae cd codex --project --root",
+			"kae cd claude --at 2 --root  " + cwd + "\n", "kae cd codex --at 2 --root  " + cwd + "\n",
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -295,7 +298,7 @@ func TestNavigatePickerCasesListCandidates(t *testing.T) {
 	writeFile(t, filepath.Join(cwd, fragmentRelPath),
 		fragModePrefix+modeShared+"\n"+fragAccountPrefix+"claude=main\n"+fragAccountPrefix+"codex=main\n")
 	code, _, stderr := cdPath(t, app, navRequest(t, "cd", lsFlags{project: true}))
-	if code != constants.ExitUsage || !strings.Contains(stderr, "2 tools are bound here") || !strings.Contains(stderr, "kae cd codex --project") {
+	if code != constants.ExitUsage || !strings.Contains(stderr, "2 tools are bound here") || !strings.Contains(stderr, "kae cd codex --at 2  "+filepath.Join(cwd, ".codex")) {
 		t.Fatalf("two bound tools = %d %q", code, stderr)
 	}
 }
@@ -893,5 +896,117 @@ func TestSeveralMatchesCountsTheListedCandidates(t *testing.T) {
 	code, _, stderr = cdPath(t, app, navRequest(t, "cd", lsFlags{}, "kae"))
 	if code != constants.ExitUsage || !strings.Contains(stderr, "kae cd kae matches 1 place;") {
 		t.Fatalf("kae cd kae with one directory = %d:\n%s", code, stderr)
+	}
+}
+
+// setSummary is a candidate set as one line per group, "heading: number path …",
+// so a test states what an entry point offers once, whichever view shows it.
+func setSummary(set *placeCandidates) []string {
+	var out []string
+	for _, g := range set.groups {
+		line := g.Heading + ":"
+		for _, row := range g.Rows {
+			line += fmt.Sprintf(" %d %s", row.Number, row.Path)
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// Each entry point that names no single place builds one candidate set: its
+// groups, and their rows in `kae ls` order with `kae ls`'s numbers. Places whose
+// directory is missing are not in it.
+func TestNavigationCandidateSets(t *testing.T) {
+	app := testApp(t, nil)
+	cwd := chdirTo(t, t.TempDir())
+	claudeHome := filepath.Join(app.Env.Home, ".claude")
+	mkdirs(t, claudeHome, filepath.Join(cwd, ".claude"), filepath.Join(cwd, ".codex"),
+		filepath.Join(cwd, "a", ".claude"), filepath.Join(cwd, "b", ".codex"),
+		app.Paths.ConfigDir, app.Paths.DataDir)
+	// codex's real home and kae's state directory are missing.
+	set := func(f lsFlags, pos ...string) *placeCandidates {
+		t.Helper()
+		path, set, code := app.resolveNavigation(context.Background(), commonOpts{Format: formatText}, navRequest(t, "cd", f, pos...))
+		if code != constants.ExitOK || path != "" || set == nil {
+			t.Fatalf("kae cd %v = %q, %v, exit %d; want a candidate set", pos, path, set, code)
+		}
+		return set
+	}
+	for _, tc := range []struct {
+		name string
+		f    lsFlags
+		pos  []string
+		want []string
+	}{
+		{"no target", lsFlags{}, nil, []string{
+			"claude: 1 " + claudeHome + " 2 " + filepath.Join(cwd, ".claude") + " 3 " + filepath.Join(cwd, "a", ".claude"),
+			"codex: 2 " + filepath.Join(cwd, ".codex") + " 3 " + filepath.Join(cwd, "b", ".codex"),
+			"kae: 1 " + app.Paths.ConfigDir + " 2 " + app.Paths.DataDir,
+		}},
+		{"several matches", lsFlags{}, []string{"kae"}, []string{
+			"kae: 1 " + app.Paths.ConfigDir + " 2 " + app.Paths.DataDir,
+		}},
+		{"level without a bound tool, project", lsFlags{project: true}, nil, []string{
+			"claude: 2 " + filepath.Join(cwd, ".claude"), "codex: 2 " + filepath.Join(cwd, ".codex"),
+		}},
+		{"level without a bound tool, below", lsFlags{below: true}, nil, []string{
+			"claude: 3 " + filepath.Join(cwd, "a", ".claude"), "codex: 3 " + filepath.Join(cwd, "b", ".codex"),
+		}},
+		{"level without a bound tool, home", lsFlags{home: true}, nil, []string{"claude: 1 " + claudeHome}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := setSummary(set(tc.f, tc.pos...)); !slices.Equal(got, tc.want) {
+				t.Fatalf("set = %q\nwant %q", got, tc.want)
+			}
+		})
+	}
+	// A target with no current place offers all its places: no level of claude
+	// below a bare directory.
+	bare := chdirTo(t, filepath.Join(t.TempDir(), "bare"))
+	mkdirs(t, filepath.Join(bare, ".claude"))
+	if got, want := setSummary(set(lsFlags{below: true}, "claude")), []string{
+		"claude: 1 " + claudeHome + " 2 " + filepath.Join(bare, ".claude"),
+	}; !slices.Equal(got, want) {
+		t.Fatalf("no current place: set = %q, want %q", got, want)
+	}
+	chdirTo(t, cwd)
+	// A level selector with one bound tool applies to it, and one place is no set.
+	writeFile(t, filepath.Join(cwd, fragmentRelPath), fragModePrefix+modeShared+"\n"+fragAccountPrefix+"codex=main\n")
+	path, got, code := app.resolveNavigation(context.Background(), commonOpts{Format: formatText}, navRequest(t, "cd", lsFlags{below: true}))
+	if code != constants.ExitOK || got != nil || path != filepath.Join(cwd, "b", ".codex") {
+		t.Fatalf("kae cd --below with codex bound = %q, %v, %d", path, got, code)
+	}
+	// No place of the level at all: the request is not_found.
+	if err := os.RemoveAll(claudeHome); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(cwd, ".codex")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(cwd, ".claude")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(cwd, fragmentRelPath)); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := cdPath(t, app, navRequest(t, "cd", lsFlags{project: true}))
+	if code != constants.ExitNotFound || !strings.Contains(stderr, "no existing place to choose") {
+		t.Fatalf("kae cd --project with no project level = %d %q", code, stderr)
+	}
+}
+
+// The terminal seam says no unless a test injects one, and production's default
+// asks textui.
+func TestAppTerminalSeam(t *testing.T) {
+	app := testApp(t, nil)
+	if tty, ok := app.terminal(); ok || tty != nil {
+		t.Fatalf("a test App has a terminal: %v %v", tty, ok)
+	}
+	app.openTerminal = func() (*textui.Terminal, bool) { return &textui.Terminal{}, true }
+	if _, ok := app.terminal(); !ok {
+		t.Fatal("an injected terminal was ignored")
+	}
+	if newApp("").openTerminal == nil {
+		t.Fatal("production App has no terminal opener")
 	}
 }

@@ -596,10 +596,10 @@ cd "$R/sub dir/deep"; kae cd repo; rc=$?; test "$rc" -eq 0 && test "$PWD" = "$R"
 cd "$R/sub dir/deep"; kae cd claude --project; rc=$?; test "$rc" -eq 0 && test "$PWD" = "$R/.claude"
 cd "$R/sub dir/deep"; kae cd claude --project --root; rc=$?; test "$rc" -eq 0 && test "$PWD" = "$R"
 cd "$R/sub dir/deep"; kae cd pin 2>"$HOME/pin.err"; rc=$?; test "$rc" -eq 7 && test "$PWD" = "$R/sub dir/deep" && test -s "$HOME/pin.err"
-cd "$R/sub dir/deep"; kae cd 2>"$HOME/none.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R/sub dir/deep" && test -s "$HOME/none.err"
-cd "$R/sub dir/deep"; kae cd kae 2>"$HOME/many.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R/sub dir/deep" && grep -q 'kae cd kae --at 1' "$HOME/many.err"
+cd "$R/sub dir/deep"; kae cd </dev/null 2>"$HOME/none.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R/sub dir/deep" && test -s "$HOME/none.err"
+cd "$R/sub dir/deep"; kae cd kae </dev/null 2>"$HOME/many.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R/sub dir/deep" && grep -q 'kae cd kae --at 1' "$HOME/many.err"
 cd "$R/sub dir/deep"; command kae cd repo 2>"$HOME/nofn.err" >"$HOME/nofn.out"; rc=$?; test "$rc" -eq 64 && grep -qF 'cd "$(kae ls repo --current)"' "$HOME/nofn.err" && test ! -s "$HOME/nofn.out" && test "$PWD" = "$R/sub dir/deep"
-cd "$R"; rmdir "$R/.claude"; mkdir -p "$HOME/.claude"; kae cd claude --project 2>"$HOME/gone.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R" && grep -q 'has no current place here' "$HOME/gone.err"
+cd "$R"; rmdir "$R/.claude"; mkdir -p "$HOME/.claude"; kae cd claude --project </dev/null 2>"$HOME/gone.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R" && grep -q 'has no current place here' "$HOME/gone.err"
 cd "$R/sub dir/deep"; PATH="$KB:$GB" kae open repo >"$HOME/open.out" 2>"$HOME/open.err"; rc=$?; test "$rc" -eq 0 && test "$(cat "$HOME/open.out")" = "$R" && test -s "$HOME/open.err"
 cd "$R/sub dir/deep"; PATH="$KB:$GB" command -v open xdg-open >/dev/null; test $? -ne 0
 kae completion bash >"$HOME/withfunc.bash"; test "$(grep -c '^function kae {' "$HOME/withfunc.bash")" -eq 1
@@ -617,6 +617,10 @@ and exit `64`, which is what the missing-`.claude` line checks for the claude gr
 `scripts/smoke-run.sh` judges a line by its last command, so each line captures
 the exit code as `rc` and chains every assertion after it with `&&`; a `test $? …`
 in the middle of a line would be discarded.
+
+The lines that expect a candidate list redirect stdin from `/dev/null`: with a terminal
+on stdin `kae cd` opens the picker instead of listing, so the redirect keeps the block
+deterministic from an interactive shell.
 
 The fixture directory has a space on purpose: the function quotes the path it
 receives, and an unquoted `builtin cd -- $path` would split it and fail (or move

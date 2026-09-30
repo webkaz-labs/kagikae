@@ -140,77 +140,93 @@ func parseNavigateArgs(verb string, args []string) (commonOpts, lsRequest, int) 
 
 // navigatePath resolves an open or cd request to one existing directory. A
 // request that names no single place — no target, a level selector with zero or
-// several bound tools, a selection matching several places or none — lists its
-// candidates with a usage error (reportCandidates), the picker's no-terminal case.
+// several bound tools, a selection matching several places or none — has a
+// candidate set (resolveNavigation) that offerCandidates puts to the user.
 func (app *App) navigatePath(ctx context.Context, opts commonOpts, req lsRequest) (string, int) {
+	path, set, code := app.resolveNavigation(ctx, opts, req)
+	if code != constants.ExitOK {
+		return "", code
+	}
+	if set != nil {
+		return "", app.offerCandidates(opts, req, *set)
+	}
+	return path, constants.ExitOK
+}
+
+// resolveNavigation is what an open or cd request comes to: one existing
+// directory, or the candidate set of a request that names no single place.
+// A failure has been reported and its exit code is returned.
+func (app *App) resolveNavigation(ctx context.Context, opts commonOpts, req lsRequest) (string, *placeCandidates, int) {
 	if req.target == "" && req.level == "" {
-		return "", app.reportAllPlaces(ctx, opts, req)
+		set := app.allPlaceCandidates(ctx, req)
+		return "", &set, constants.ExitOK
 	}
 	var (
 		choice placeChoice
 		code   int
 	)
 	if req.target == "" {
-		choice, code = app.pickLevelOfBoundTool(ctx, opts, &req)
+		var set *placeCandidates
+		if choice, set, code = app.pickLevelOfBoundTool(ctx, opts, &req); set != nil {
+			return "", set, constants.ExitOK
+		}
 	} else {
 		choice, code = app.pickPlace(ctx, opts, req)
 	}
 	if code != constants.ExitOK {
-		return "", code
+		return "", nil, code
 	}
 	switch choice.kind {
 	case choiceSeveral:
-		return "", reportCandidates(opts, req, func(n int) string {
+		set := newPlaceCandidates(req, func(n int) string {
 			noun := "places"
 			if n == 1 {
 				noun = "place"
 			}
 			return fmt.Sprintf("kae %s %s matches %d %s", req.verb, requestWords(req, false), n, noun)
-		}, choice.candidates)
+		}, candidateGroup{Heading: req.target, Rows: choice.candidates})
+		return "", &set, constants.ExitOK
 	case choiceNone:
-		return "", app.reportNoCurrentPlace(opts, req, choice)
+		set, code := app.noCurrentPlaceCandidates(opts, req, choice)
+		return "", set, code
 	}
 	path, code := placePath(choice.row, req)
 	if code != constants.ExitOK {
-		return "", code
+		return "", nil, code
 	}
 	if !dirExists(path) {
-		return "", finish(opts, errf(constants.ExitNotFound, "%s does not exist (kae ls marks it (missing))", path))
+		return "", nil, finish(opts, errf(constants.ExitNotFound, "%s does not exist (kae ls marks it (missing))", path))
 	}
-	return path, constants.ExitOK
+	return path, nil, constants.ExitOK
 }
 
-// reportNoCurrentPlace is a target with no current place here: its places are
-// the candidates (pin's listed here, see currentPinPlace), with --root only the
-// ones that have a root. A target with no place at all is not_found.
-func (app *App) reportNoCurrentPlace(opts commonOpts, req lsRequest, choice placeChoice) int {
+// noCurrentPlaceCandidates is a target with no current place here: its places
+// are the candidates (pin's listed here, see currentPinPlace). A target with no
+// place at all is not_found.
+func (app *App) noCurrentPlaceCandidates(opts commonOpts, req lsRequest, choice placeChoice) (*placeCandidates, int) {
 	rows := choice.candidates
 	if req.target == constants.PlaceGroupPin {
 		var err error
 		if rows, err = app.pinGroupPlaces(nil); err != nil {
-			return finish(opts, err)
+			return nil, finish(opts, err)
 		}
 	}
 	if len(rows) == 0 {
-		return finish(opts, choice.noneError(req.verb, req))
-	}
-	var candidates []placeRow
-	for _, row := range rows {
-		if !req.root || row.Root != "" {
-			candidates = append(candidates, row)
-		}
+		return nil, finish(opts, choice.noneError(req.verb, req))
 	}
 	reason := fmt.Sprintf("kae %s %s has no current place here", req.verb, requestWords(req, false))
-	return reportCandidates(opts, req, func(int) string { return reason }, candidates)
+	set := newPlaceCandidates(req, func(int) string { return reason }, candidateGroup{Heading: req.target, Rows: rows})
+	return &set, constants.ExitOK
 }
 
 // pickLevelOfBoundTool is a level selector without a tool: it applies to the one
 // place tool the current directory's bindings bind, and req.target becomes that
-// tool. None or several lists the tools.
-func (app *App) pickLevelOfBoundTool(ctx context.Context, opts commonOpts, req *lsRequest) (placeChoice, int) {
+// tool. None or several gives the candidate set of that level's places under a
+// heading per tool: the bound tools, or both place tools when none is bound.
+func (app *App) pickLevelOfBoundTool(ctx context.Context, opts commonOpts, req *lsRequest) (placeChoice, *placeCandidates, int) {
 	pc, err := app.newPlaceContext(ctx, nil)
 	if err != nil {
-		return placeChoice{}, finish(opts, err)
+		return placeChoice{}, nil, finish(opts, err)
 	}
 	var bound []string
 	for _, tool := range placeTools() {
@@ -219,74 +235,26 @@ func (app *App) pickLevelOfBoundTool(ctx context.Context, opts commonOpts, req *
 		}
 	}
 	if len(bound) != 1 {
-		candidates := bound
+		tools := bound
 		reason := fmt.Sprintf("kae %s --%s needs a tool: %d tools are bound here", req.verb, req.level, len(bound))
 		if len(bound) == 0 {
-			candidates = placeTools()
+			tools = placeTools()
 			reason = fmt.Sprintf("kae %s --%s needs a tool: no tool is bound here", req.verb, req.level)
 		}
-		lines := make([]string, 0, len(candidates))
-		for _, tool := range candidates {
-			line := fmt.Sprintf("kae %s %s --%s", req.verb, tool, req.level)
-			if req.root {
-				line += " --root"
+		var groups []candidateGroup
+		for _, tool := range tools {
+			rows, err := app.levelPlaces(ctx, pc, tool, req.level)
+			if err != nil {
+				return placeChoice{}, nil, finish(opts, err)
 			}
-			lines = append(lines, line)
+			groups = append(groups, candidateGroup{Heading: tool, Rows: rows})
 		}
-		return placeChoice{}, reportChoices(reason+"; choose one", lines)
+		set := newPlaceCandidates(*req, func(int) string { return reason }, groups...)
+		return placeChoice{}, &set, constants.ExitOK
 	}
 	req.target = bound[0]
-	return app.selectToolPlace(ctx, opts, pc, *req)
-}
-
-// reportAllPlaces is open or cd with no target: every place bare `kae ls`
-// lists is a candidate.
-func (app *App) reportAllPlaces(ctx context.Context, opts commonOpts, req lsRequest) int {
-	g := app.collectPlaceGroups(ctx, app.readState(), warnGroupOnce())
-	return reportCandidates(opts, req, func(int) string { return fmt.Sprintf("kae %s needs a target", req.verb) }, g.places())
-}
-
-// reportCandidates lists, one per line, the command that reaches each candidate,
-// under a usage error whose reason is given the number listed. A place whose
-// directory does not exist is left out, since choosing it exits 7, and the rest
-// keep `kae ls`'s numbers. With none left it is not_found, and the reason is
-// given the number of rows instead.
-func reportCandidates(opts commonOpts, req lsRequest, reason func(listed int) string, rows []placeRow) int {
-	lines := make([]string, 0, len(rows))
-	for _, row := range rows {
-		if !row.Exists {
-			continue
-		}
-		words := row.Group
-		if req.target == row.Group {
-			words = requestWords(req, true)
-		}
-		cmd := fmt.Sprintf("kae %s %s --at %d", req.verb, words, row.Number)
-		path := row.Path
-		if req.root {
-			cmd += " --root"
-			if row.Root != "" {
-				path = row.Root // what the command reaches
-			}
-		}
-		lines = append(lines, cmd+"  "+path)
-	}
-	if len(lines) == 0 {
-		return finish(opts, errf(constants.ExitNotFound, "%s, and no existing place to choose", reason(len(rows))))
-	}
-	return reportChoices(reason(len(lines))+"; choose one", lines)
-}
-
-// reportChoices prints a usage error and its candidates on stderr. On a
-// terminal the picker takes its place (ROADMAP § Place navigation and the
-// tree-shared mode).
-func reportChoices(reason string, lines []string) int {
-	var b strings.Builder
-	b.WriteString(reason + ":")
-	for _, line := range lines {
-		b.WriteString("\n  " + line)
-	}
-	return usageError("%s", b.String())
+	choice, code := app.selectToolPlace(ctx, opts, pc, *req)
+	return choice, nil, code
 }
 
 // requestWords is the target as typed, with its explicit resolution, and —

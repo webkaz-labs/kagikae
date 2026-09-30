@@ -668,26 +668,12 @@ func selectPlace(app *App, opts commonOpts, req lsRequest, rows []placeRow) (pla
 		matches = rows[:1] // the effective user level is always first
 	case req.level == constants.PlaceKindProject:
 		// The nearest effective ancestor level: the first in list order.
-		for _, row := range rows {
-			if row.Kind == constants.PlaceKindProject {
-				matches = []placeRow{row}
-				break
-			}
+		matches = app.placesOfLevel(req.target, rows, req.level)
+		if len(matches) > 1 {
+			matches = matches[:1]
 		}
-	case req.level == constants.PlaceKindBelow:
-		for _, row := range rows {
-			if row.Kind == constants.PlaceKindBelow {
-				matches = append(matches, row)
-			}
-		}
-	case req.level == constants.PlaceKindHome:
-		home := app.realToolHome(req.target)
-		for _, row := range rows {
-			if (row.Kind == constants.PlaceKindHome || row.Kind == constants.PlaceKindUser) && samePath(row.Path, home) {
-				matches = []placeRow{row}
-				break
-			}
-		}
+	case req.level != "":
+		matches = app.placesOfLevel(req.target, rows, req.level)
 	default: // repo, kae
 		matches = rows
 	}

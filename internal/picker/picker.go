@@ -82,9 +82,10 @@ type Model struct {
 	width  int
 	height int
 
-	vis    []int // indices of the visible items, in display order
-	cursor int   // index of the selected item, or -1 when no row is visible
-	offset int   // position in vis of the first drawn line
+	vis     []int  // indices of the visible items, in display order
+	matched []bool // per item: a row that matches the filter itself (not only a kept parent)
+	cursor  int    // index of the selected item, or -1 when no row is visible
+	offset  int    // position in vis of the first drawn line
 
 	done      bool
 	cancelled bool
@@ -99,6 +100,9 @@ func New(items []Item, opts Options) Model {
 	in.Placeholder = "type to filter"
 	in.SetVirtualCursor(false)
 	in.SetStyles(textinput.Styles{}) // plain: styling is the picker's, and only with color
+	// Ctrl-V would run a clipboard program outside internal/runner; a terminal's
+	// own paste arrives as a PasteMsg and is handled.
+	in.KeyMap.Paste.SetEnabled(false)
 	in.Focus()
 	m := Model{items: items, color: !opts.NoColor, input: in, width: 80, height: 24}
 	m.lower = make([]string, len(items))
@@ -119,8 +123,16 @@ func (m Model) Result() (value string, cancelled, ok bool) {
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd { return textinput.Blink }
 
+// resize takes a terminal size; a zero dimension means unknown and keeps the
+// 80x24 default, so the picker never draws into nothing.
 func (m *Model) resize(w, h int) {
-	m.width, m.height = max(w, 1), max(h, 1)
+	if w <= 0 {
+		w = 80
+	}
+	if h <= 0 {
+		h = 24
+	}
+	m.width, m.height = w, h
 	m.input.SetWidth(max(m.width-runewidth.StringWidth(m.input.Prompt)-1, 1))
 }
 
@@ -139,8 +151,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.key(msg)
 	}
+	return m.edit(msg)
+}
+
+// edit gives msg (a typed key, a paste, a blink) to the filter field and
+// re-filters whenever its value changed, whichever message changed it.
+func (m Model) edit(msg tea.Msg) (tea.Model, tea.Cmd) {
+	before := m.input.Value()
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
+	if m.input.Value() != before {
+		m.refilter()
+	}
 	return m, cmd
 }
 
@@ -174,13 +196,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "end":
 		m.move(len(m.items))
 	default:
-		before := m.input.Value()
-		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(msg)
-		if m.input.Value() != before {
-			m.refilter()
-		}
-		return m, cmd
+		return m.edit(msg)
 	}
 	return m, nil
 }
@@ -230,9 +246,10 @@ func (m *Model) refilter() {
 		return true
 	}
 	show := make([]bool, len(m.items))
+	m.matched = make([]bool, len(m.items))
 	for i, it := range m.items {
 		if it.Kind == Row && matches(i) {
-			show[i] = true
+			show[i], m.matched[i] = true, true
 			if it.Parent >= 0 && it.Parent < len(m.items) {
 				show[it.Parent] = true
 			}
@@ -253,9 +270,11 @@ func (m *Model) refilter() {
 			m.vis = append(m.vis, i)
 		}
 	}
+	// The cursor goes to the first row that matches itself: a parent kept for
+	// context stays visible and selectable but is not where Enter lands.
 	m.cursor, m.offset = -1, 0
 	for _, i := range m.vis {
-		if m.items[i].Kind == Row {
+		if m.items[i].Kind == Row && m.matched[i] {
 			m.cursor = i
 			break
 		}
@@ -263,11 +282,22 @@ func (m *Model) refilter() {
 	m.scroll()
 }
 
-// bodyHeight is how many list lines are drawn: the visible items, bounded so the
-// whole picker (filter line, list, hint) stays within the terminal height − 2,
-// and at least one line (the empty-result message).
+// budget is the most lines the picker draws: the terminal height minus 2, but
+// never fewer than the filter line and one row.
+func (m Model) budget() int { return max(m.height-2, 2) }
+
+// showHint says whether the footer fits: it goes first when space is short.
+func (m Model) showHint() bool { return m.budget() >= 3 }
+
+// bodyHeight is how many list lines are drawn: the visible items, within the
+// budget less the filter line and the hint, and at least one line (the
+// empty-result message).
 func (m Model) bodyHeight() int {
-	return max(min(len(m.vis), m.height-4), 1)
+	overhead := 1
+	if m.showHint() {
+		overhead = 2
+	}
+	return max(min(len(m.vis), m.budget()-overhead), 1)
 }
 
 // scroll moves the window over the visible items so the cursor, and the heading
@@ -312,7 +342,9 @@ func (m Model) View() tea.View {
 			lines = append(lines, m.line(i))
 		}
 	}
-	lines = append(lines, m.dim(runewidth.Truncate(hint, m.width, "")))
+	if m.showHint() {
+		lines = append(lines, m.dim(runewidth.Truncate(hint, m.width, "")))
+	}
 	v := tea.NewView(strings.Join(lines, "\n"))
 	v.Cursor = m.input.Cursor()
 	return v
@@ -351,9 +383,12 @@ func (m Model) line(i int) string {
 	}
 	var b strings.Builder
 	b.WriteString(prefix)
-	if i == m.cursor {
+	switch {
+	case i == m.cursor:
 		b.WriteString(m.style(lipgloss.NewStyle().Bold(true), label))
-	} else {
+	case !m.matched[i]:
+		b.WriteString(m.dim(label)) // shown only as the parent of a matching row
+	default:
 		b.WriteString(label)
 	}
 	for _, c := range tail {

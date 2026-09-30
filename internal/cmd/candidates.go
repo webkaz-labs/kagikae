@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -32,8 +33,30 @@ type candidateGroup struct {
 // that ends up with none.
 type placeCandidates struct {
 	reason func(listed int) string
+	// none, when set, words the not_found of a set with nothing listed (given
+	// found); otherwise reason(found) and "no existing place to choose" do.
+	none   func(found int) string
 	found  int
 	groups []candidateGroup
+}
+
+// constReason is a reason that does not depend on the number listed.
+func constReason(reason string) func(int) string { return func(int) string { return reason } }
+
+// placeNoun is "place" for one and "places" otherwise.
+func placeNoun(n int) string {
+	if n == 1 {
+		return "place"
+	}
+	return "places"
+}
+
+// noneMessage is the not_found message for a set with nothing listed.
+func (s placeCandidates) noneMessage() string {
+	if s.none != nil {
+		return s.none(s.found)
+	}
+	return s.reason(s.found) + ", and no existing place to choose"
 }
 
 // newPlaceCandidates builds the set for req. With --root a place without a root
@@ -68,44 +91,32 @@ func (s placeCandidates) listed() int {
 }
 
 // allPlaceCandidates is open or cd with no target: every place bare `kae ls`
-// lists is a candidate, group by group. A group is relevant when it holds a
-// place that bears on the current directory: a governing binding, a tool
-// `kae ls` shows, the repository.
+// lists is a candidate, group by group, in the order placeGroups.groups gives.
 func (app *App) allPlaceCandidates(ctx context.Context, req lsRequest) placeCandidates {
 	g := app.collectPlaceGroups(ctx, app.readState(), warnGroupOnce())
-	var groups []candidateGroup
-	if g.pins != nil {
-		rows := pinPlaces(g.pins.BoundDirectories)
-		groups = append(groups, candidateGroup{
-			Heading: constants.PlaceGroupPin, Rows: rows,
-			Relevant: slices.ContainsFunc(rows, func(row placeRow) bool { return row.InEffect }),
-		})
-	}
-	for _, tool := range g.tools {
-		groups = append(groups, candidateGroup{Heading: tool, Rows: g.toolRows[tool], Relevant: true})
-	}
-	groups = append(groups,
-		candidateGroup{Heading: constants.PlaceGroupRepo, Rows: g.repo, Relevant: true},
-		candidateGroup{Heading: constants.PlaceGroupKae, Rows: g.kae})
-	return newPlaceCandidates(req, func(int) string { return fmt.Sprintf("kae %s needs a target", req.verb) }, groups...)
+	return newPlaceCandidates(req, constReason(fmt.Sprintf("kae %s needs a target", req.verb)), g.groups()...)
 }
 
 // pickCandidates is `--pick`: the places `kae ls <target>` lists (no target: all
 // places), and with a level selector every place of that level rather than the
 // first one a plain request would choose.
 func (app *App) pickCandidates(ctx context.Context, opts commonOpts, req lsRequest) (*placeCandidates, int) {
-	words := strings.TrimSpace(requestWords(req, false))
+	words := slices.DeleteFunc([]string{"kae", req.verb, requestWords(req, false), "--pick"}, func(w string) bool { return w == "" })
+	head := strings.Join(words, " ")
 	reason := func(n int) string {
-		if n == 0 {
-			return fmt.Sprintf("kae %s %s --pick lists no place", req.verb, words)
+		return fmt.Sprintf("%s needs a terminal to open the picker; it lists %d %s", head, n, placeNoun(n))
+	}
+	none := func(found int) string {
+		if found == 0 {
+			return head + " lists no place"
 		}
-		return fmt.Sprintf("kae %s %s --pick needs a terminal to open the picker; it lists %d place(s)", req.verb, words, n)
+		return fmt.Sprintf("%s lists %d %s, and no existing place to choose", head, found, placeNoun(found))
 	}
 	var groups []candidateGroup
 	switch {
 	case req.target == "" && req.level == "":
 		set := app.allPlaceCandidates(ctx, req)
-		set.reason = reason
+		set.reason, set.none = reason, none
 		return &set, constants.ExitOK
 	case req.target == "":
 		pc, err := app.newPlaceContext(ctx, nil)
@@ -145,59 +156,23 @@ func (app *App) pickCandidates(ctx context.Context, opts commonOpts, req lsReque
 		groups = []candidateGroup{{Heading: req.target, Rows: rows}}
 	}
 	set := newPlaceCandidates(req, reason, groups...)
+	set.none = none
 	return &set, constants.ExitOK
 }
 
-// levelPlaces is every place of one level of tool, with `kae ls <tool>`'s
-// numbers. The ancestor project levels come first in list order, so they are
-// found without looking for the below levels.
-func (app *App) levelPlaces(ctx context.Context, pc *placeContext, tool, level string) ([]placeRow, error) {
-	var rows []placeRow
-	var err error
-	if level == constants.PlaceKindProject {
-		rows, err = app.leadingToolPlaces(pc, tool)
-	} else {
-		rows, err = app.toolPlaces(ctx, pc, tool)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return app.placesOfLevel(tool, rows, level), nil
-}
-
-// placesOfLevel picks the rows of a tool's list that a level selector names:
-// every effective ancestor project level, every level below, or the real home.
-func (app *App) placesOfLevel(tool string, rows []placeRow, level string) []placeRow {
-	var matches []placeRow
-	for _, row := range rows {
-		switch level {
-		case constants.PlaceKindProject, constants.PlaceKindBelow:
-			if row.Kind == level {
-				matches = append(matches, row)
-			}
-		case constants.PlaceKindHome:
-			if (row.Kind == constants.PlaceKindHome || row.Kind == constants.PlaceKindUser) && samePath(row.Path, app.realToolHome(tool)) {
-				return []placeRow{row}
-			}
-		}
-	}
-	return matches
-}
-
 // offerCandidates puts the set to the user: the picker when a terminal is
-// there, else the list on stderr under a usage error (listCandidates). The
-// picker opens even over one candidate; a set with nothing in it is not_found
-// either way. It returns the chosen path, or ExitCancelled when the user backs out.
+// there and the set has something in it, else the list on stderr under a usage
+// error (listCandidates), or not_found for an empty set. The picker opens even
+// over one candidate. It returns the chosen path, or ExitCancelled when the user
+// backs out.
 func (app *App) offerCandidates(ctx context.Context, opts commonOpts, req lsRequest, set placeCandidates) (string, int) {
-	if set.listed() == 0 {
-		return "", listCandidates(opts, req, set)
-	}
 	tty, ok := app.terminal()
-	if !ok {
+	if !ok || set.listed() == 0 {
+		tty.Close() // nil-safe
 		return "", listCandidates(opts, req, set)
 	}
 	defer tty.Close()
-	value, cancelled, err := app.choose(ctx, tty, placePickerItems(app, req, set), picker.Options{NoColor: noColorRequested(opts.NoColor)})
+	value, cancelled, err := app.choose(ctx, tty, app.placePickerItems(req, set), picker.Options{NoColor: noColorRequested(opts.NoColor)})
 	switch {
 	case err != nil:
 		return "", finish(opts, errf(constants.ExitError, "%v", err))
@@ -217,7 +192,7 @@ func (app *App) choose(ctx context.Context, tty *textui.Terminal, items []picker
 
 // listCandidates lists, one per line, the command that reaches each candidate,
 // under a usage error whose reason is given the number listed. With none listed
-// it is not_found, and the reason is given the number found instead.
+// it is not_found (noneMessage).
 func listCandidates(opts commonOpts, req lsRequest, set placeCandidates) int {
 	var lines []string
 	for _, g := range set.groups {
@@ -236,7 +211,7 @@ func listCandidates(opts commonOpts, req lsRequest, set placeCandidates) int {
 		}
 	}
 	if len(lines) == 0 {
-		return finish(opts, errf(constants.ExitNotFound, "%s, and no existing place to choose", set.reason(set.found)))
+		return finish(opts, errf(constants.ExitNotFound, "%s", set.noneMessage()))
 	}
 	return reportChoices(set.reason(len(lines))+"; choose one", lines)
 }
@@ -249,4 +224,62 @@ func reportChoices(reason string, lines []string) int {
 		b.WriteString("\n  " + line)
 	}
 	return usageError("%s", b.String())
+}
+
+// placePickerItems turns a candidate set into the picker's list: the groups
+// holding a place that bears on the current directory first, each in `kae ls`
+// order, then the rest. A project or below place is its root line (kind, number,
+// account) with its `.claude/` or `.codex/` directory indented beneath as a
+// bare name, both chosen for what they are: the root gives the root, the level
+// its own path. With --root only the root lines are shown, since the request
+// reaches the root.
+func (app *App) placePickerItems(req lsRequest, set placeCandidates) []picker.Item {
+	groups := slices.Clone(set.groups)
+	slices.SortStableFunc(groups, func(a, b candidateGroup) int {
+		switch {
+		case a.Relevant == b.Relevant:
+			return 0
+		case a.Relevant:
+			return -1
+		}
+		return 1
+	})
+	var items []picker.Item
+	for _, g := range groups {
+		items = append(items, picker.Item{Kind: picker.Heading, Label: g.Heading, Parent: -1})
+		for _, row := range g.Rows {
+			switch {
+			case row.Root == "":
+				items = append(items, app.placePickerRow(g.Heading, row, row.Path, -1))
+			case req.root:
+				items = append(items, app.placePickerRow(g.Heading, row, row.Root, -1))
+			default:
+				parent := len(items)
+				items = append(items, app.placePickerRow(g.Heading, row, row.Root, -1),
+					app.placePickerRow(g.Heading, row, row.Path, parent))
+			}
+		}
+	}
+	return items
+}
+
+// placePickerRow is one selectable line for path, the place's own or its root.
+// A line beneath a root (parent >= 0) is the level directory: its name alone,
+// indented, since kind and number are its root line's. Filtering matches the
+// displayed and the absolute path, the kind and the group on every line.
+func (app *App) placePickerRow(group string, row placeRow, path string, parent int) picker.Item {
+	display := app.displayPath(path)
+	it := picker.Item{
+		Label:  display,
+		Detail: row.Kind,
+		Note:   fmt.Sprintf("#%d", row.Number),
+		Extra:  row.Account,
+		Value:  path,
+		Parent: parent,
+		Filter: display + " " + path + " " + row.Kind + " " + group,
+	}
+	if parent >= 0 {
+		it.Label, it.Detail, it.Note, it.Extra, it.Depth = filepath.Base(path), "", "", "", 1
+	}
+	return it
 }

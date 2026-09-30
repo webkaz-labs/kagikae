@@ -30,9 +30,15 @@ func (t *Terminal) Close() error {
 // too), /dev/tty opens read-write, and TERM is not "dumb". Redirecting stdin
 // from /dev/null therefore always says no.
 func Open(stdin *os.File, termName string) (*Terminal, bool) {
-	return open(stdin != nil && term.IsTerminal(int(stdin.Fd())), termName, func() (*os.File, error) {
+	return open(stdinIsTerminal(stdin), termName, func() (*os.File, error) {
 		return os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	})
+}
+
+// stdinIsTerminal asks the terminal driver (an ioctl), which is false for
+// /dev/null and for pipes.
+func stdinIsTerminal(stdin *os.File) bool {
+	return stdin != nil && term.IsTerminal(int(stdin.Fd()))
 }
 
 // open is Open with its three observations injected.

@@ -19,7 +19,7 @@ type lsFlags struct {
 	at                         atFlag
 	project, below, home, root bool
 	shared, isolated           bool
-	pick                       bool // open and cd only: --pick
+	pick                       bool
 }
 
 // atFlag is `--at N`, which must tell "not given" from any value given.
@@ -194,7 +194,10 @@ func parsePlaceArgs(verb string, f lsFlags, positionals []string) (lsRequest, in
 	if req.root && !req.current && req.at == 0 {
 		return req, usageError("--root selects the directory holding a project level, with --current or --at")
 	}
-	if req.root && req.current && !req.pick && req.level != constants.PlaceKindProject && req.level != constants.PlaceKindBelow {
+	// --pick alone waives the level requirement, and only where a level could
+	// follow: no target or a tool. --home, repo, kae and pin stay refused.
+	rootNeedsLevel := !req.pick || req.level != "" || (req.target != "" && !constants.IsTool(req.target))
+	if req.root && req.current && rootNeedsLevel && req.level != constants.PlaceKindProject && req.level != constants.PlaceKindBelow {
 		return req, usageError("--root applies to a project level: add --project or --below")
 	}
 	if req.level != "" && !constants.IsTool(req.target) && (!navigate || req.target != "") {
@@ -413,16 +416,33 @@ func warnGroupOnce(seen ...error) func(group string, err error) {
 	}
 }
 
+// groups is the place groups in bare `kae ls` order, the one owner of that order.
+// Relevant marks a group holding a place that bears on the current directory: a
+// governing binding, a tool `kae ls` shows, the repository.
+func (g placeGroups) groups() []candidateGroup {
+	var groups []candidateGroup
+	if g.pins != nil {
+		rows := pinPlaces(g.pins.BoundDirectories)
+		groups = append(groups, candidateGroup{
+			Heading: constants.PlaceGroupPin, Rows: rows,
+			Relevant: slices.ContainsFunc(rows, func(row placeRow) bool { return row.InEffect }),
+		})
+	}
+	for _, tool := range g.tools {
+		groups = append(groups, candidateGroup{Heading: tool, Rows: g.toolRows[tool], Relevant: true})
+	}
+	return append(groups,
+		candidateGroup{Heading: constants.PlaceGroupRepo, Rows: g.repo, Relevant: true},
+		candidateGroup{Heading: constants.PlaceGroupKae, Rows: g.kae})
+}
+
 // places is the groups' rows in bare `kae ls` order.
 func (g placeGroups) places() []placeRow {
 	places := []placeRow{}
-	if g.pins != nil {
-		places = append(places, pinPlaces(g.pins.BoundDirectories)...)
+	for _, group := range g.groups() {
+		places = append(places, group.Rows...)
 	}
-	for _, tool := range g.tools {
-		places = append(places, g.toolRows[tool]...)
-	}
-	return append(append(places, g.repo...), g.kae...)
+	return places
 }
 
 // runLsTool is `kae ls <tool>`: the tool's accounts, which need config, and its
@@ -560,7 +580,8 @@ const (
 )
 
 // placeChoice is what --current or --at resolved to. ls reports several and
-// none itself; open and cd list the candidates (the picker's seam).
+// none itself; open and cd turn them into a candidate set for the picker or the
+// list (candidates.go).
 type placeChoice struct {
 	kind       choiceKind
 	row        placeRow

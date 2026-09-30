@@ -41,18 +41,36 @@ func TestOpenNeedsStdinTerminalTTYAndATerm(t *testing.T) {
 }
 
 // /dev/null is a character device, which is why the check is an ioctl: a
-// ModeCharDevice test would let `kae cd </dev/null` open the picker.
-func TestOpenRefusesDevNullAndNil(t *testing.T) {
+// ModeCharDevice test would let `kae cd </dev/null` open the picker. The stdin
+// predicate is tested on its own, so a regression fails here even where no
+// controlling terminal exists for Open to find.
+func TestStdinPredicateRefusesDevNullAndNil(t *testing.T) {
 	devNull, err := os.Open(os.DevNull)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer devNull.Close()
-	if _, ok := Open(devNull, "xterm"); ok {
+	info, err := devNull.Stat()
+	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
+		t.Fatalf("fixture: %s must be a character device for this test to mean anything (%v, %v)", os.DevNull, info, err)
+	}
+	if stdinIsTerminal(devNull) {
 		t.Fatal("/dev/null must not count as a terminal")
 	}
-	if _, ok := Open(nil, "xterm"); ok {
+	if stdinIsTerminal(nil) {
 		t.Fatal("a nil stdin must not count as a terminal")
+	}
+	pipe, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pipe.Close()
+	defer w.Close()
+	if stdinIsTerminal(pipe) {
+		t.Fatal("a pipe must not count as a terminal")
+	}
+	if _, ok := Open(devNull, "xterm"); ok {
+		t.Fatal("Open accepted /dev/null")
 	}
 	var zero *Terminal
 	if err := zero.Close(); err != nil {

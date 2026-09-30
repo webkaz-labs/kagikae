@@ -57,10 +57,10 @@ kae ls <target> --current [--project|--below|--home] [--root] [--json]
 kae ls <target> --at N [--root] [--json]
                                      # print one place's path
 kae ls --pins [--json]               # alias of kae ls pin
-kae open [<target>] [--project|--below|--home] [--root] [--at N]
+kae open [<target>] [--project|--below|--home] [--root] [--at N | --pick]
                                      # open a place in the file manager
-                                     #   (the current place unless --at; no account)
-kae cd [<target>] [--project|--below|--home] [--root] [--at N]
+                                     #   (the current place unless --at or --pick; no account)
+kae cd [<target>] [--project|--below|--home] [--root] [--at N | --pick]
                                      # move the shell to a place (the kae shell function)
 kae account rm <tool> <account> [--force]      # delete a captured account
 kae account rename <tool> <old> <new>          # rename a captured account
@@ -695,22 +695,26 @@ the screen, and erases itself on exit, so stdout carries only the chosen path
   relevant to the current directory (the binding governing here, a tool `kae ls`
   shows, the repository) first, each in `kae ls` order, then the rest (a pin group
   with no governing binding, then kae). A project or below place is its root with the
-  `.claude/` or `.codex/` place indented beneath it; choosing the root gives the root
-  and choosing the level its own path, and with `--root` only the root lines are
-  shown. A row shows the displayed path, its kind, the dimmed `kae ls` number and the
-  account when set. Account rows never appear, and the same path can appear under
-  two groups. Headings are not selectable.
+  `.claude/` or `.codex/` directory indented beneath it as its bare name; choosing the
+  root gives the root and choosing the level its own path, and with `--root` only the
+  root lines are shown. A row shows the displayed path, its kind, the dimmed `kae ls`
+  number and the account when set; the level directory's line carries none of these,
+  its root line's being the place's. Account rows never appear, and the same path can
+  appear under two groups. Headings are not selectable.
 - **Filter.** Typing filters at once. Terms are separated by whitespace, all must be
   substrings of the row's displayed path, absolute path, kind and group, case
-  insensitively; so `q` and `/` are filter text, not commands. A group with no match
-  hides its heading, a matching level keeps its root row, and with no match the
-  picker says `no matching place` and Enter does nothing.
+  insensitively; so `q` and `/` are filter text, not commands, and a terminal paste
+  filters like typing. A group with no match hides its heading, a matching level
+  keeps its root row (dimmed, and the cursor lands on the level that matched), and
+  with no match the picker says `no matching place` and Enter does nothing.
 - **Keys.** Up, Down, Ctrl-P and Ctrl-N move over the rows (headings skipped, no
   wrap), PgUp, PgDn, Home and End jump, and the cursor starts on the first row. Enter
   chooses. Backspace and Ctrl-U edit the filter. Esc clears a filter, and cancels when
   there is none; Ctrl-C cancels.
-- **Layout.** At most the terminal height minus 2 lines, scrolling within; a path too
-  long for the width is cut from the left with `…`. `NO_COLOR` and `--no-color` draw
+- **Layout.** At most the terminal height minus 2 lines, scrolling within, but never
+  fewer than the filter line and one row (the hint line goes first when space is
+  short); an unknown size (0) is taken as 80x24. A path too long for the width is cut
+  from the left with `…`. `NO_COLOR` and `--no-color` draw
   no color.
 - **Cancelling** exits `130` (`cancelled`) with nothing on stdout or stderr. A
   terminal failure exits `1`.

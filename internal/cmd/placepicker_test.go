@@ -103,7 +103,8 @@ func TestPickerOffersEachEntryPoint(t *testing.T) {
 	d := app.displayPath
 	home := app.Env.Home
 	level := func(dir, name string) []string {
-		return []string{d(dir) + " -> " + dir, "  " + d(filepath.Join(dir, name)) + " -> " + filepath.Join(dir, name)}
+		// the level directory is its bare name beneath the root
+		return []string{d(dir) + " -> " + dir, "  " + name + " -> " + filepath.Join(dir, name)}
 	}
 	join := func(parts ...[]string) []string {
 		var out []string
@@ -187,7 +188,13 @@ func TestPickerRowsFilterOnPathKindAndGroup(t *testing.T) {
 			t.Fatalf("root filter text %q lacks %q", root.Filter, want)
 		}
 	}
-	if !strings.Contains(child.Filter, filepath.Join(sub, ".claude")) || child.Note != "#2" || child.Detail != constants.PlaceKindProject {
+	// The root line carries kind and number; the level directory line is its name
+	// alone, and still filters on the whole path, kind and group.
+	if root.Detail != constants.PlaceKindProject || root.Note != "#2" {
+		t.Fatalf("root row %+v", root)
+	}
+	if child.Label != ".claude" || child.Detail != "" || child.Note != "" || !strings.Contains(child.Filter, filepath.Join(sub, ".claude")) ||
+		!strings.Contains(child.Filter, constants.PlaceKindProject) {
 		t.Fatalf("level row %+v", child)
 	}
 	// Choosing the root gives the root; choosing the level gives the level.
@@ -303,7 +310,7 @@ func TestPickerOpensOverOneCandidate(t *testing.T) {
 // request that names no single place and for --pick; a request with nothing to
 // offer is not_found with or without one.
 func TestNoTerminalKeepsTheList(t *testing.T) {
-	app, _, _ := pickerRepo(t)
+	app, root, _ := pickerRepo(t)
 	for _, tc := range []struct {
 		name string
 		f    lsFlags
@@ -312,12 +319,20 @@ func TestNoTerminalKeepsTheList(t *testing.T) {
 	}{
 		{"no target", lsFlags{}, nil, "kae cd needs a target; choose one:"},
 		{"--pick", lsFlags{pick: true}, []string{"claude"}, "kae cd claude --pick needs a terminal to open the picker; it lists"},
-		{"--pick with a current place", lsFlags{pick: true}, []string{"repo"}, "kae cd repo --pick needs a terminal"},
+		{"--pick, no target", lsFlags{pick: true}, nil, "kae cd --pick needs a terminal to open the picker; it lists"},
+		{"--pick with a current place", lsFlags{pick: true}, []string{"repo"}, "kae cd repo --pick needs a terminal to open the picker; it lists 1 place;"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			code, stdout, stderr := cdPath(t, app, navRequest(t, "cd", tc.f, tc.pos...))
-			if code != constants.ExitUsage || stdout != "" || !strings.Contains(stderr, tc.want) || !strings.Contains(stderr, "kae cd ") {
+			if code != constants.ExitUsage || stdout != "" || !strings.Contains(stderr, tc.want) {
 				t.Fatalf("exit %d stdout %q:\n%s", code, stdout, stderr)
+			}
+			if strings.Contains(stderr, "  --pick") || strings.Contains(stderr, "(s)") {
+				t.Fatalf("a doubled space or a place(s) in the reason:\n%s", stderr)
+			}
+			// The list itself: a line that reaches a place.
+			if !strings.Contains(stderr, "\n  kae cd ") || !strings.Contains(stderr, " --at ") || !strings.Contains(stderr, "  "+root) {
+				t.Fatalf("the candidate lines are missing:\n%s", stderr)
 			}
 		})
 	}
@@ -327,6 +342,23 @@ func TestNoTerminalKeepsTheList(t *testing.T) {
 	code, _, stderr := cdPath(t, app, navRequest(t, "cd", lsFlags{pick: true}, "pin"))
 	if code != constants.ExitNotFound || !strings.Contains(stderr, "kae cd pin --pick lists no place") || len(stub.offered) != 0 {
 		t.Fatalf("--pick over nothing = %d %q, picker opened %d time(s)", code, stderr, len(stub.offered))
+	}
+}
+
+// --pick over places that are all missing is "no existing place", with or
+// without a terminal, and does not say a terminal is needed.
+func TestPickOverMissingPlacesIsNotFound(t *testing.T) {
+	app := testApp(t, nil)
+	chdirTo(t, t.TempDir()) // none of kae's three directories exists
+	for _, withTerminal := range []bool{false, true} {
+		if withTerminal {
+			withPicker(app)
+		}
+		code, stdout, stderr := cdPath(t, app, navRequest(t, "cd", lsFlags{pick: true}, "kae"))
+		if code != constants.ExitNotFound || stdout != "" ||
+			!strings.Contains(stderr, "kae cd kae --pick lists 3 places, and no existing place to choose") || strings.Contains(stderr, "needs a terminal") {
+			t.Fatalf("terminal %v: %d %q %q", withTerminal, code, stdout, stderr)
+		}
 	}
 }
 
@@ -341,6 +373,13 @@ func TestPickFlagRules(t *testing.T) {
 		{"pick and at", lsFlags{pick: true, at: atFlag{n: 1, set: true}}, []string{"claude"}, "--pick chooses a place in the picker and --at names one"},
 		{"pick and at, no target", lsFlags{pick: true, at: atFlag{n: 1, set: true}}, nil, "--pick chooses a place"},
 		{"account", lsFlags{pick: true}, []string{"account"}, "not places"},
+		// --pick waives the level requirement of --root only where a level could
+		// follow; every other --root misuse stays a usage error as without --pick.
+		{"pick, home, root", lsFlags{pick: true, home: true, root: true}, []string{"claude"}, "add --project or --below"},
+		{"pick, home, root, no tool", lsFlags{pick: true, home: true, root: true}, nil, "add --project or --below"},
+		{"pick, repo, root", lsFlags{pick: true, root: true}, []string{"repo"}, "add --project or --below"},
+		{"pick, kae, root", lsFlags{pick: true, root: true}, []string{"kae"}, "add --project or --below"},
+		{"pick, pin, root", lsFlags{pick: true, root: true}, []string{"pin"}, "add --project or --below"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var code int

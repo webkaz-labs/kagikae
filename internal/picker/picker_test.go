@@ -19,9 +19,9 @@ var update = flag.Bool("update", false, "rewrite the golden files")
 func fixture() []Item {
 	return []Item{
 		{Kind: Heading, Label: "claude", Parent: -1}, // 0
-		{Label: "~/.claude", Detail: "user", Note: "#1", Extra: "main", Value: "/h/.claude", Parent: -1, Filter: "~/.claude /h/.claude user claude"},                                         // 1
-		{Label: "~/work/repo", Detail: "project root", Note: "#2", Value: "/h/work/repo", Parent: -1, Filter: "~/work/repo /h/work/repo project root claude"},                                // 2
-		{Label: "~/work/repo/.claude", Detail: "project", Note: "#2", Value: "/h/work/repo/.claude", Depth: 1, Parent: 2, Filter: "~/work/repo/.claude /h/work/repo/.claude project claude"}, // 3
+		{Label: "~/.claude", Detail: "user", Note: "#1", Extra: "main", Value: "/h/.claude", Parent: -1, Filter: "~/.claude /h/.claude user claude"}, // 1
+		{Label: "~/work/repo", Detail: "project", Note: "#2", Value: "/h/work/repo", Parent: -1, Filter: "~/work/repo /h/work/repo project claude"},  // 2
+		{Label: ".claude", Value: "/h/work/repo/.claude", Depth: 1, Parent: 2, Filter: "~/work/repo/.claude /h/work/repo/.claude project claude"},    // 3
 		{Kind: Heading, Label: "codex", Parent: -1}, // 4
 		{Label: "~/.codex", Detail: "user", Note: "#1", Value: "/h/.codex", Parent: -1, Filter: "~/.codex /h/.codex user codex"}, // 5
 		{Kind: Heading, Label: "kae", Parent: -1}, // 6
@@ -155,19 +155,27 @@ func TestFilterNarrowsAndKeepsTheParent(t *testing.T) {
 	// Every term must match, in any order; a group with no match hides its heading.
 	m = New(fixture(), Options{NoColor: true})
 	m = press(m, typed("project  claude")...)
-	eq(t, "filter 'project  claude'", visible(m), []string{"claude", "~/work/repo", "~/work/repo/.claude"})
-	// Only the child matches ("/h/work/repo/.claude" is in its filter text alone):
-	// its root row stays above it.
+	eq(t, "filter 'project  claude'", visible(m), []string{"claude", "~/work/repo", ".claude"})
+	// Only the child matches ("repo/.claude" is in its filter text alone): its root
+	// row stays above it for context, and the cursor lands on the child, so Enter
+	// reaches the level that matched.
 	m = New(fixture(), Options{NoColor: true})
 	m = press(m, typed("repo/.claude")...)
-	eq(t, "child only", visible(m), []string{"claude", "~/work/repo", "~/work/repo/.claude"})
-	if m.cursor != 2 {
-		t.Fatalf("cursor = %d, want the kept parent row 2", m.cursor)
+	eq(t, "child only", visible(m), []string{"claude", "~/work/repo", ".claude"})
+	if m.cursor != 3 {
+		t.Fatalf("cursor = %d, want the matching child 3, not its kept parent", m.cursor)
+	}
+	m = press(m, code(tea.KeyEnter))
+	if value, _, _ := m.Result(); value != "/h/work/repo/.claude" {
+		t.Fatalf("Enter chose %q, want the matching level", value)
 	}
 	// A matching parent does not pull its children in.
-	m = New(fixture(), Options{NoColor: true})
-	m = press(m, typed("root")...)
-	eq(t, "parent only", visible(m), []string{"claude", "~/work/repo"})
+	m = press(New([]Item{
+		{Kind: Heading, Label: "g", Parent: -1},
+		{Label: "root", Value: "r", Parent: -1, Filter: "alpha"},
+		{Label: "child", Value: "c", Depth: 1, Parent: 1, Filter: "beta"},
+	}, Options{NoColor: true}), typed("alpha")...)
+	eq(t, "parent only", visible(m), []string{"g", "root"})
 	// q and / are text, not commands.
 	m = press(New(fixture(), Options{NoColor: true}), typed("q/")...)
 	if m.input.Value() != "q/" {
@@ -319,4 +327,66 @@ func goldenItems() []Item {
 	items = append(items, Item{Kind: Heading, Label: "repo", Parent: -1},
 		Item{Label: "~/work/a/very/deeply/nested/monorepo/packages/service-name/.claude", Detail: "below", Note: "#4", Extra: "side", Value: "/h/deep", Parent: -1, Filter: "deep"})
 	return items
+}
+
+// A terminal's paste (bracketed paste) filters like typing, and Enter then
+// chooses a row the filter allows.
+func TestPasteFilters(t *testing.T) {
+	m := press(New(fixture(), Options{NoColor: true}), tea.PasteMsg{Content: "CODEX"})
+	if m.input.Value() != "CODEX" {
+		t.Fatalf("filter = %q after a paste", m.input.Value())
+	}
+	eq(t, "after paste", visible(m), []string{"codex", "~/.codex"})
+	m = press(m, code(tea.KeyEnter))
+	if value, _, done := m.Result(); !done || value != "/h/.codex" {
+		t.Fatalf("Enter after a paste chose %q (done %v), want the codex row", value, done)
+	}
+	// Ctrl-V would run a clipboard program; it does nothing here.
+	m = New(fixture(), Options{NoColor: true})
+	next, cmd := m.Update(ctrl('v'))
+	if cmd != nil || next.(Model).input.Value() != "" {
+		t.Fatalf("Ctrl-V reached the clipboard path: cmd %v, filter %q", cmd, next.(Model).input.Value())
+	}
+}
+
+// A row kept only as the parent of a match is drawn dimmed.
+func TestKeptParentIsDimmed(t *testing.T) {
+	m := press(New(fixture(), Options{}), typed("repo/.claude")...)
+	var parent, child string
+	for _, line := range strings.Split(m.View().Content, "\n") {
+		switch {
+		case strings.Contains(line, "~/work/repo"):
+			parent = line
+		case strings.Contains(line, ".claude"):
+			child = line
+		}
+	}
+	if !strings.Contains(parent, "\x1b[2m~/work/repo") || strings.Contains(child, "\x1b[2m.claude") {
+		t.Fatalf("parent %q child %q: only the kept parent is dimmed", parent, child)
+	}
+}
+
+// The picker stays within height-2 lines when the terminal allows, and below
+// that keeps the filter line and one row; an unknown size (0) means 80x24.
+func TestTinyTerminals(t *testing.T) {
+	lines := func(m Model) int { return strings.Count(m.View().Content, "\n") + 1 }
+	for _, tc := range []struct{ w, h, max, min int }{
+		{80, 24, 22, 2},
+		{80, 10, 8, 2},
+		{80, 6, 4, 2},
+		{80, 5, 3, 2},
+		{80, 4, 2, 2},
+		{80, 3, 2, 2},
+		{80, 1, 2, 2},
+		{1, 1, 2, 2},
+		{0, 0, 22, 2},
+	} {
+		m := press(New(fixture(), Options{NoColor: true}), tea.WindowSizeMsg{Width: tc.w, Height: tc.h})
+		if n := lines(m); n > tc.max || n < tc.min {
+			t.Fatalf("%dx%d drew %d lines, want %d..%d:\n%s", tc.w, tc.h, n, tc.min, tc.max, m.View().Content)
+		}
+		if !strings.Contains(m.View().Content, "\n") || m.View().Content == "" {
+			t.Fatalf("%dx%d drew no row", tc.w, tc.h)
+		}
+	}
 }

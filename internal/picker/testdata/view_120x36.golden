@@ -1,8 +1,8 @@
 > type to filter
 claude
   ~/.claude  user  #1  main
-> ~/work/repo  project root  #2
-    ~/work/repo/.claude  project  #2
+> ~/work/repo  project  #2
+    .claude
 codex
   ~/.codex  user  #1
 kae

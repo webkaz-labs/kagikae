@@ -583,6 +583,42 @@ func (app *App) leadingToolPlaces(pc *placeContext, tool string) ([]placeRow, er
 	return numberPlaces(append([]placeRow{user}, pc.projectLevels(tool)...)), nil
 }
 
+// levelPlaces is every place of one level of tool, with `kae ls <tool>`'s
+// numbers. The ancestor project levels come first in list order, so they are
+// found without looking for the below levels.
+func (app *App) levelPlaces(ctx context.Context, pc *placeContext, tool, level string) ([]placeRow, error) {
+	var rows []placeRow
+	var err error
+	if level == constants.PlaceKindProject {
+		rows, err = app.leadingToolPlaces(pc, tool)
+	} else {
+		rows, err = app.toolPlaces(ctx, pc, tool)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return app.placesOfLevel(tool, rows, level), nil
+}
+
+// placesOfLevel picks the rows of a tool's list that a level selector names:
+// every effective ancestor project level, every level below, or the real home.
+func (app *App) placesOfLevel(tool string, rows []placeRow, level string) []placeRow {
+	var matches []placeRow
+	for _, row := range rows {
+		switch level {
+		case constants.PlaceKindProject, constants.PlaceKindBelow:
+			if row.Kind == level {
+				matches = append(matches, row)
+			}
+		case constants.PlaceKindHome:
+			if (row.Kind == constants.PlaceKindHome || row.Kind == constants.PlaceKindUser) && samePath(row.Path, app.realToolHome(tool)) {
+				return []placeRow{row}
+			}
+		}
+	}
+	return matches
+}
+
 // toolRelevant says whether bare `kae ls` shows tool's group: it has a governing
 // binding (toolBinding), or it has an effective project level at cwd.
 func (pc *placeContext) toolRelevant(tool string) bool {

@@ -216,12 +216,16 @@ func TestCommandLifecycle(t *testing.T) {
 					t.Fatalf("unexpected stages %q %v", data, err)
 				}
 			}
-			// A surviving child would echo this marker after the command returned.
-			_, _ = conn.Write([]byte("after-return\n"))
+			// SIGKILL to the group is queued when the command returns; the kernel
+			// tears the child down asynchronously, so a probe written right away can
+			// still be echoed by a child that is already doomed. Instead wait for the
+			// child's socket to close: EOF proves it died, while a survivor keeps the
+			// connection open until this deadline and any bytes it sends are a failure.
+			_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 			if line, err := reader.ReadString('\n'); err == nil || line != "" {
-				t.Fatalf("descendant survived return: %q %v", line, err)
+				t.Fatalf("descendant sent data after return: %q %v", line, err)
 			} else if e, ok := err.(net.Error); ok && e.Timeout() {
-				t.Fatal("child connection stayed open")
+				t.Fatal("descendant survived return: child connection stayed open")
 			}
 		})
 	}

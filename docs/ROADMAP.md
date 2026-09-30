@@ -117,7 +117,7 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      Semantics. claude's user level also has a session row, the per-project
      directory under `projects/`; it is not implemented. codex stores sessions
      by date, so it has no session row. Measured with claude 2.1.284 on
-     2026-09-30 (`claude -p` under `env -i`, a scratch `HOME` and
+     macOS on 2026-09-30 (`claude -p` under `env -i`, a scratch `HOME` and
      `CLAUDE_CONFIG_DIR`, a bogus API key and a local listener answering 401; the
      transcript and `memory/` appear at session start despite the 401, and a
      `SessionStart` hook's `transcript_path` named the directory that appeared;
@@ -192,8 +192,9 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
 
    Remaining slices, each merged on its own: the picker, which replaces the
    candidate list `open` and `cd` print on stderr where it would open and adds
-   `--pick`; the claude session row, whose name rule is measured under **Tool levels**. Each slice updates
-   completion for what it adds (CLI § Keeping completion current), CLI, CONTEXT
+   `--pick`; the claude session row, whose name rule is measured in the **Tool
+   levels** bullet above. Each slice updates completion for what it adds (CLI
+   § Keeping completion current), CLI, CONTEXT
    when a term changes, README, README.ja and GUIDE.ja in the same commit. It comes
    first because it helps today's `-s` and `-i` binds and serves as the inspection
    tool for the next item.
@@ -210,8 +211,9 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
    depends on codex's refresh-token rotation, which is unmeasured; the source
    reading in § Hardening backlog — daily-use robustness, **Rotation is measured
    for claude only**, says separate copies are at risk and one shared file is
-   not, and a measurement must still settle the severity. A switch reaches the next launched process; making
-   it reach running processes waits for a measurement showing that doing so does
+   not, and a measurement must still settle the severity. A switch reaches the
+   next launched process; making it reach running processes waits for a
+   measurement showing that doing so does
    not reintroduce that copy failure. Acceptance includes a measured check that
    the fragment's `[env]` reaches nested directories: on 2026-09-29 a scratch
    `conf.d` fragment's `[shell_alias]` appeared in `mise hook-env -s zsh` run from a

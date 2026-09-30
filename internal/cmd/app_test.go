@@ -8,6 +8,7 @@ import (
 
 	"github.com/webkaz-labs/kagikae/internal/config"
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/textui"
 )
 
 func TestClaudeDriverGetenvPrecedence(t *testing.T) {
@@ -101,5 +102,21 @@ func TestSyncedWritesKeepTheFragmentInsideTheStateSeam(t *testing.T) {
 			strings.Contains(string(data), "regenGlobalFragment(st.Synced)") {
 			t.Errorf("%s splits a synced state write from fragment regeneration; use mutateSyncedAndFragment", name)
 		}
+	}
+}
+
+// The terminal seam says no unless a test injects one, and production's default
+// asks textui.
+func TestAppTerminalSeam(t *testing.T) {
+	app := testApp(t, nil)
+	if tty, ok := app.terminal(); ok || tty != nil {
+		t.Fatalf("a test App has a terminal: %v %v", tty, ok)
+	}
+	app.openTerminal = func() (*textui.Terminal, bool) { return &textui.Terminal{}, true }
+	if _, ok := app.terminal(); !ok {
+		t.Fatal("an injected terminal was ignored")
+	}
+	if newApp("").openTerminal == nil {
+		t.Fatal("production App has no terminal opener")
 	}
 }

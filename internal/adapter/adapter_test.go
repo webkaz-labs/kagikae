@@ -18,6 +18,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/adapter/copilot"
 	"github.com/webkaz-labs/kagikae/internal/adapter/cursor"
 	"github.com/webkaz-labs/kagikae/internal/adapter/opencode"
+	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
@@ -201,6 +202,85 @@ func TestFresherConformance(t *testing.T) {
 		if _, ok := ad.(adapter.Fresher); ok != want {
 			t.Fatalf("%s Fresher=%v, want %v", ad.ID(), ok, want)
 		}
+	}
+}
+
+// TestKeychainDirBindableMatchesTheItemIdentity is the drift guard on the flag a
+// seventh adapter would otherwise forget. KeychainDirBindable is a *claim* that the
+// item's identity moves with the tool's isolation env var, and the per-directory
+// materializer trusts it: claim it wrongly and kae writes a global login; omit it
+// on a tool that does move and per-directory credentials silently degrade to a
+// warning. So derive the truth — resolve each tool's specs with its isolation
+// variable pointed at two different directories — and require the flag to agree.
+//
+// The truth is the whole item identity, service **and** account, because either
+// half can be the one that moves: claude's service name is namespaced by
+// `CLAUDE_CONFIG_DIR`, codex's account is a hash of `CODEX_HOME` under one fixed
+// service. Deriving it from `Target` alone did worse than under-measure — it made
+// the guard *contradict* its own consumer, so an adapter that binds by account and
+// declared the flag honestly would fail here.
+//
+// The keyring `config.toml` matters as much as the derivation: without it codex
+// resolves to `auth.json` (the store's default is `file`), its spec is not
+// KindKeychain, and the tool the guard exists for is skipped entirely.
+func TestKeychainDirBindableMatchesTheItemIdentity(t *testing.T) {
+	// codex's identity does move, but the capability is not declared yet: the
+	// per-directory keyring bind has never been run against a real keychain, and
+	// docs/ACCEPTANCE.md § Optional account-combination checks names the capability
+	// check that must pass before codex leaves this map. Carried by name so the gap
+	// stays a gap, instead
+	// of being encoded here as "codex's identity is fixed" — which is false, and is
+	// what a Target-only derivation quietly asserted.
+	bindableNotYetDeclared := map[string]bool{constants.ToolCodex: true}
+	isolationEnvVar := map[string]string{
+		constants.ToolClaude: "CLAUDE_CONFIG_DIR",
+		constants.ToolCodex:  "CODEX_HOME",
+	}
+	for _, tool := range constants.Tools {
+		t.Run(tool, func(t *testing.T) {
+			adp, err := adapter.ForTool(tool)
+			if err != nil {
+				t.Fatal(err)
+			}
+			specsFor := func(dir string) []artifact.Spec {
+				vars := map[string]string{"USER": "alice"}
+				if envVar := isolationEnvVar[tool]; envVar != "" {
+					vars[envVar] = dir
+				}
+				// The keychain store, explicitly: `keyring` needs no live probe, so the
+				// keychain spec resolves without a runner double.
+				write(t, filepath.Join(dir, "config.toml"), "cli_auth_credentials_store = \"keyring\"\n")
+				specs, err := adp.Artifacts(context.Background(), testEnv(t, "darwin", vars))
+				if err != nil {
+					t.Skipf("%s has no darwin artifacts: %v", tool, err)
+				}
+				return specs
+			}
+			// Two directories that exist, so only the identity is under test.
+			first, second := specsFor(t.TempDir()), specsFor(t.TempDir())
+			identity := func(sp artifact.Spec) string { return sp.Target + "\x00" + sp.KeychainAccount }
+			keychainSpecs := 0
+			for i := range first {
+				if first[i].Kind != constants.KindKeychain {
+					continue
+				}
+				keychainSpecs++
+				moves := identity(first[i]) != identity(second[i])
+				want := moves && !bindableNotYetDeclared[tool]
+				if first[i].KeychainDirBindable != want {
+					t.Errorf("%s/%s: KeychainDirBindable = %v but the item identity %s (%q vs %q)",
+						tool, first[i].Name, first[i].KeychainDirBindable,
+						map[bool]string{true: "moves with the isolation env var", false: "is fixed"}[moves],
+						identity(first[i]), identity(second[i]))
+				}
+			}
+			// A tool with an isolation variable and no keychain spec here means the
+			// resolution went somewhere this guard cannot see, and the loop above
+			// silently passed. That is how codex went unchecked.
+			if isolationEnvVar[tool] != "" && keychainSpecs == 0 {
+				t.Errorf("%s: no keychain spec resolved, so the flag was never checked", tool)
+			}
+		})
 	}
 }
 

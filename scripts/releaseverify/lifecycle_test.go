@@ -16,6 +16,10 @@ import (
 	"time"
 )
 
+// survivorWait is how long TestCommandLifecycle waits after a return for the
+// descendant's connection to close.
+const survivorWait = 5 * time.Second
+
 // The helper child has a finite lifetime and acknowledges readiness over a socket.
 // Its stdout/stderr are detached from the command's collection pipes deliberately.
 func TestLifecycleHelper(t *testing.T) {
@@ -29,7 +33,9 @@ func TestLifecycleHelper(t *testing.T) {
 			os.Exit(3)
 		}
 		defer conn.Close()
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		// Outlives the test's post-return wait, so a survivor is still
+		// connected when TestCommandLifecycle looks for it.
+		_ = conn.SetDeadline(time.Now().Add(6 * survivorWait))
 		fmt.Fprintln(conn, "ready")
 		scanner := bufio.NewScanner(conn)
 		for scanner.Scan() {
@@ -221,7 +227,7 @@ func TestCommandLifecycle(t *testing.T) {
 			// still be echoed by a child that is already doomed. Instead wait for the
 			// child's socket to close: EOF proves it died, while a survivor keeps the
 			// connection open until this deadline and any bytes it sends are a failure.
-			_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+			_ = conn.SetDeadline(time.Now().Add(survivorWait))
 			if line, err := reader.ReadString('\n'); err == nil || line != "" {
 				t.Fatalf("descendant sent data after return: %q %v", line, err)
 			} else if e, ok := err.(net.Error); ok && e.Timeout() {

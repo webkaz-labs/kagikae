@@ -2,7 +2,7 @@
 # Rejects the docs defects nothing else here catches: a markdown link whose target does not
 # exist, a `X.md § Name` citation naming a section that file declares nowhere, a document
 # under docs/ that AGENTS.md's Documentation Map does not list, a root document (README.md,
-# AGENTS.md, CLAUDE.md) that is missing, empty, or not a regular file,
+# AGENTS.md) that is missing, empty, or not a regular file,
 # and — dormant, because no docs/<domain>/ directory exists yet — a domain child its
 # uppercase index does not link. Enumerated rather than counted, because a count here has
 # no reader: it undercounted once by leaving the dormant one out and nothing reported it.
@@ -87,22 +87,21 @@ fail() {
 #   * each required document under docs/ is linked from several others, so deleting one
 #     breaks a link the walk below resolves — but that is coverage by side effect, held up
 #     by documents that happen to cite it and nothing that enforces they keep doing so;
-#   * README.md is reachable from the Documentation Map's own row and nowhere else, so
-#     deleting it together with that row was measured passing;
-#   * CLAUDE.md is reachable from nothing at all;
-#   * AGENTS.md is in fact linked from several documents. It is in this loop as cheap
-#     redundancy, not because nothing else would notice — and the loop is what survives
-#     AGENTS.md being replaced by a directory, which the Map extraction below does not
-#     report as a missing document.
+#   * README.md is linked from several documents, so deleting it or replacing it with a
+#     directory breaks links; what only this loop sees is README.md emptied, which passes
+#     every other check;
+#   * AGENTS.md is linked from several documents and its deletion, replacement by a
+#     directory or emptying also trips the Map extraction and the floors. It is in this
+#     loop as cheap redundancy.
 #
 # The predicate is three-sided on purpose: missing, not a regular file, and empty all reach
 # the same outcome, and all three were measured reporting `ok` when this tested only `-f` on
-# CLAUDE.md alone. Empty is as bad as absent because CLAUDE.md is what loads AGENTS.md for
-# Claude Code: truncating it removes every project rule with no error anywhere. This is the
-# one copy of that reasoning — the selftest cases point here rather than restating it.
+# one file. Empty is as bad as absent: an emptied README.md was measured passing every other
+# check. This is the one copy of that reasoning — the selftest cases point here rather than
+# restating it.
 docs_checked=0
 if [ "$portable" -eq 0 ]; then
-for required in README.md AGENTS.md CLAUDE.md; do
+for required in README.md AGENTS.md; do
   if [ ! -f "$required" ] || [ ! -s "$required" ]; then
     fail "$required is missing, empty, or not a regular file — the root documents are asserted here because no link walk can vouch for all of them"
   fi

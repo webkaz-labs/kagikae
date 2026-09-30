@@ -343,14 +343,25 @@ alternative exists (`secret-tool`).
   duplication rather than fixing it. That half existed only to track the standard's
   § Required Files, which cannot be tracked from here now, and re-deriving it from a
   hand-copied literal is the defect the derivation was built to avoid — so the check
-  shrank to what is genuinely kae's, the Documentation Map shape plus `CLAUDE.md`, which
-  no link reaches, and its header records what deleting the derivation cost. The link walk is
-  still a second implementation, which is why this entry stays open. Note that
+  shrank to what is genuinely kae's, the Documentation Map shape plus the root documents whose
+  content no link walk vouches for, and its header records what deleting the derivation
+  cost. The link walk is still a second implementation, which is why this entry stays open. Note that
   `mise run docs-scan` cannot see any of it: that program compares `.md` files, and this
   duplication lives in a shell header and a Go package comment. It said "shell and Python
   headers" until the link extractor stopped being Python — the concept survived the sweep
   that repointed the two hits naming the old directory, which is the class this file's own
   entries keep describing.
+
+- **This repository has no `CLAUDE.md`, which the upstream standard's § Required Files
+  still requires as a thin import of `AGENTS.md`** (operator request, 2026-09-30; the
+  standard itself is not edited here). Claude Code >= 2.1.277 reads `AGENTS.md` directly
+  when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` is at or above the working
+  directory ([memory docs](https://code.claude.com/docs/en/memory.md) § AGENTS.md; the
+  [changelog](https://code.claude.com/docs/en/changelog) lists 2.1.281 as extending it to
+  further providers and gateways). It does not load when the built-in agents-md plugin is
+  disabled or `/config` "Project instructions" is `claude-md` or `managed-only`, and may
+  not in the first session after upgrading from 2.1.276 or earlier. Closes when the upstream standard
+  makes `CLAUDE.md` conditional on the agent version.
 
 - **The claim-reconciliation stage has one slice in the gate and no general
   implementation** (recorded 2026-08-10 as unbuilt, **partly built** 2026-08-13).

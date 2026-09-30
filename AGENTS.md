@@ -115,7 +115,7 @@ review finding. Report both verdicts and the disposition of findings.
 ## Documentation Update Checklist
 
 Derive the owned set with `git ls-files '*.md'` once per scope. Decide changed or
-unchanged for every file, including CLAUDE.md, repo-local skills and memory.
+unchanged for every file, including repo-local skills and memory.
 Report changed, related-but-unchanged and remaining-unchanged groups with reasons;
 name individual files when reasons differ. Reassess affected decisions if scope
 changes. Keep this assessment in the work report, not a new tracker.

@@ -274,19 +274,11 @@ subst_once "$dir/AGENTS.md" '## Documentation Map' '## Doc Map'
 out=$(run_check "$dir")
 check 'renaming the Map heading trips its extraction floor' 'extracted only 0 docs/ links' "$out"
 
-# 8. `CLAUDE.md`, which no link reaches. No floor is involved in this case or in the
-#    root-document cases after it — a floor bounds a walk, and these are single tests.
-#    Referring to them that way rather than by number, because inserting a case renumbers
-#    every reference to one and nothing here would report that.
-dir=$(fixture noclaudemd)
-rm -f "$dir/CLAUDE.md"
-out=$(run_check "$dir")
-check 'a deleted CLAUDE.md is named' "CLAUDE.md $ROOT_DOC_MSG" "$out"
-
-# 9. The case that put README.md in that loop, and the only one of the three the link walk
-#    looked like it covered: README.md is reachable from the Map's own row and nothing else,
-#    so removing the row in the same change removes the coverage with it. Measured passing
-#    with `ok — 13 docs in the Map, 278 links resolved` before the loop existed.
+# 9. The root-document cases (this one and the two after it) involve no floor — a floor
+#    bounds a walk, and these are single tests. Refer to them by description, not number:
+#    inserting a case renumbers every reference and nothing here would report it. This one
+#    is deletion: README.md removed together with its Map row. Why the loop is needed at all
+#    is stated once, above it in scripts/check-docs.sh.
 dir=$(fixture noreadme)
 rm -f "$dir/README.md"
 drop_map_row "$dir/AGENTS.md" README.md
@@ -295,20 +287,21 @@ check 'README.md deleted with its only Map row is named' "README.md $ROOT_DOC_MS
 
 # 10. Emptied rather than deleted, which `-f` alone passed. Why empty is as bad as absent is
 #     stated once, above the predicate in scripts/check-docs.sh.
-dir=$(fixture emptyclaudemd)
-: > "$dir/CLAUDE.md"
+dir=$(fixture emptyreadme)
+: > "$dir/README.md"
 out=$(run_check "$dir")
-check 'an emptied CLAUDE.md is named' "CLAUDE.md $ROOT_DOC_MSG" "$out"
+check 'an emptied README.md is named' "README.md $ROOT_DOC_MSG" "$out"
 
 # 11. A root document replaced by a directory of the same name. This is the only case that
 #     pins `-f` in that loop: deleted is caught by `-e` too, and empty by `-s`, so weakening
-#     `-f` to `-e` is invisible without it. CLAUDE.md is used because nothing else reads it,
-#     which keeps the assertion on the loop rather than on a second check firing too.
-dir=$(fixture claudemddir)
-rm -f "$dir/CLAUDE.md"
-mkdir "$dir/CLAUDE.md"
+#     `-f` to `-e` is invisible without it. AGENTS.md is used because it is the other root
+#     document; replacing it also trips the Map extraction and every link to it, so the
+#     assertion is on the loop's own message, which nothing else prints.
+dir=$(fixture agentsdir)
+rm -f "$dir/AGENTS.md"
+mkdir "$dir/AGENTS.md"
 out=$(run_check "$dir")
-check 'a root doc replaced by a directory is named' "CLAUDE.md $ROOT_DOC_MSG" "$out"
+check 'a root doc replaced by a directory is named' "AGENTS.md $ROOT_DOC_MSG" "$out"
 
 # 12. A required document under docs/ replaced by a directory of the same name. This reaches
 #     the link walk's target test rather than the loop above, for the reason recorded beside
@@ -557,7 +550,8 @@ fi
 # target does not exist` sat inside `link target does not exist: docs/PRODUCT.md`, so the
 # broken-link case could not tell a named target from the wrong one, and it names its own
 # fixture's target now. The other two are the vacuity this branch produced: a needle truncated
-# to `CLAUDE.md ` still matched a reworded diagnostic, and the new verdict needle loosened to
+# to its bare filename prefix (e.g. `CLAUDE.md `, a file since deleted) still matched a
+# reworded diagnostic, and the new verdict needle loosened to
 # `unrecognised` passed on its twin's *kind* message.
 #
 # Complementary to the reference counts below rather than a replacement: that check sees a
@@ -586,7 +580,8 @@ done
 # leaves its cases asserting a prefix of the real output, which `grep -Fq` still matches, so
 # they stay green while testing nothing. That happened on the branch that added this — a perl
 # replacement interpolated ROOT_DOC_MSG as a perl variable and four assertions silently became
-# `CLAUDE.md `. shellcheck caught that one only because the constant went entirely unused;
+# their bare filename prefix (e.g. `CLAUDE.md `, a file since deleted). shellcheck caught
+# that one only because the constant went entirely unused;
 # one surviving use and it would have been silent. Adding a case that asserts one of these
 # has to bump its number, which is the point.
 while read -r const want; do
@@ -600,14 +595,14 @@ while read -r const want; do
   fi
 done <<'CONSTS'
 OK_LINE 4
-ROOT_DOC_MSG 4
+ROOT_DOC_MSG 3
 CONSTS
 
 # Two-directional, the way scripts/smoke-run-selftest.sh's EXPECTED_GUARDS is: a floor would
 # let a case be added and then silently deleted back to the count before it. Adding a case
 # has to bump this, and that is the point. Written without naming either count, because the
 # sentence that did name them was left behind by the first bump.
-EXPECTED_CASES=24
+EXPECTED_CASES=23
 if [ "$cases" -ne "$EXPECTED_CASES" ]; then
   printf 'check-docs-selftest: %s case(s) ran, expected %s\n' "$cases" "$EXPECTED_CASES" >&2
   exit 1

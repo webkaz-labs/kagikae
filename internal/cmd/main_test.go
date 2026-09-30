@@ -46,6 +46,7 @@ func TestMain(m *testing.M) {
 
 	// Durability cannot be observed by a test, and a full fsync costs ~4 ms per
 	// credential write on macOS. patch's own tests keep the real sync.
+	savedSyncFile := patch.SyncFile
 	patch.SyncFile = func(*os.File) error { return nil }
 
 	savedDefault := runner.Default
@@ -65,6 +66,7 @@ func TestMain(m *testing.M) {
 	runner.Default = savedDefault
 	runner.RunInteractive = savedInteractive
 	runner.RunWithEnv = savedWithEnv
+	patch.SyncFile = savedSyncFile
 	os.Exit(code)
 }
 

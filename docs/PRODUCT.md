@@ -68,13 +68,20 @@ kae use main                 # resolves the "main" profile
 ## Switching Surface
 
 Every switch is one cell of **scope** (where it applies) × **environment**
-(what is shared with the real home). Two verbs select the scope, two flags the
+(what is shared with the real home). Two verbs select the scope, flags the
 environment:
 
 |                               | `--shared` / `-s` (default)                                                                                | `--isolated` / `-i`                                                                  |
 |-------------------------------|------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------|
 | **`kae use`** / `u` — global  | switch every terminal's account in place; skills, hooks, memory, MCP, trust stay shared with the real home  | point every terminal at a per-account private home via a kae-owned global mise fragment (the real home untouched) |
 | **`kae pin`** / `p` — per-dir | bind this directory; settings/sessions/memory shared with the real home, credential private                 | bind this directory; fully isolated, nothing shared unless opted in                  |
+
+`kae pin` takes a third flag, **`--tree` / `-t`** (claude only): the bound directory
+and everything below it keep one private store — sessions, history, memory,
+settings — whichever account it runs, and nothing is shared with the real home
+unless opted in. Switching account there changes only the credential and its
+identity cache. It has no global form. [ADAPTERS.md](ADAPTERS.md) § Per-directory
+tree bind (`kae pin -t`) is what it switches.
 
 Both verbs take `<profile>` (every tool it maps) or `<tool> <account>` (one
 tool). `use` and `pin` both default to **shared**. The environment is a
@@ -101,8 +108,9 @@ no-op conditions and output behavior.
 
 `run -i` prints the exact isolated home path and that it is shared with
 `kae use -i <account>`, so the shared state is never invisible. There are
-exactly three isolation scopes: global (`use -i` / `run -i` share one home per
-account), per-directory shared (`pin -s`), per-directory isolated (`pin -i`).
+exactly four isolation scopes: global (`use -i` / `run -i` share one home per
+account), per-directory shared (`pin -s`), per-directory isolated (`pin -i`),
+per-directory tree (`pin -t`).
 
 What each cell does internally is
 [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Mechanisms.
@@ -122,10 +130,10 @@ close.
 
 | Tier | Tools | Surface kae commits to |
 |------|-------|------------------------|
-| **1 — full surface** | claude, codex | target modes: global shared (`use`), global isolated (`use -i` / `run -i`), both per-directory binds (`pin -s` / `pin -i`), identity switching and drift detection, per-directory credential stores, and the per-directory login flow (`kae relogin`). Where the tool can address its credential separately from its home, a **per-account** credential store as well, so two directories on one account run at once (claude only — [ADAPTERS.md](ADAPTERS.md) § Per-account credential store). Gaps here are debt with a plan (see [ROADMAP.md](ROADMAP.md)) |
+| **1 — full surface** | claude, codex | target modes: global shared (`use`), global isolated (`use -i` / `run -i`), the per-directory binds (`pin -s` / `pin -i`, and `pin -t` for claude — codex waits on measurements R1 and R2 in [ROADMAP.md](ROADMAP.md) § Place navigation and the tree mode), identity switching and drift detection, per-directory credential stores, and the per-directory login flow (`kae relogin`). Where the tool can address its credential separately from its home, a **per-account** credential store as well, so two directories on one account run at once (claude only — [ADAPTERS.md](ADAPTERS.md) § Per-account credential store). Gaps here are debt with a plan (see [ROADMAP.md](ROADMAP.md)) |
 | **2 — credential switching** | agy, opencode, cursor, copilot | global shared (`kae use`), `kae run --env`, capture / apply / backup / `kae rollback`, `kae doctor`, and identity detection as far as the tool exposes one. Nothing else, and that is the specification — not a backlog |
 
-What Tier 2 does **not** get, deliberately: `kae pin` in either mode, and
+What Tier 2 does **not** get, deliberately: `kae pin` in any mode, and
 `kae use -i` / `kae run -i`. All of those redirect the tool's home, which requires
 an isolation env var kae has verified end to end for that tool; a profile-wide
 `-i` skips such a tool with a warning and a single-tool `kae use -i agy <acct>`

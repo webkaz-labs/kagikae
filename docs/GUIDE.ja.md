@@ -131,6 +131,16 @@ kae cd claude --pick                   # 現在の場所があっても claude �
 配下に固定するときの注意は
 [SECURITY.md](SECURITY.md) § Store links in a bound directory にあります。
 
+`kae pin -t side` はツリーモード（Claude のみ）で固定します。固定したディレクトリと
+その配下で 1 つの専用ストアを使い、`kae pin claude main` でアカウントを替えても
+会話・履歴・メモリ・設定は残り、認証とそれに対応するアカウント表示だけが替わります。
+実ホームとは `isolated_shared_items` に挙げた項目以外を共有しません。プロファイルに
+Codex が含まれていても Codex は実ホームのまま残り、警告が出ます。切替が反映されるのは
+次に起動する Claude からで、実行中の Claude への影響は確認されていません。既存の固定を
+`-s`・`-i`・`-t` の間で替えても会話は移らず、元のストアはそのまま残ります。正本は
+[ADAPTERS.md](ADAPTERS.md) § Per-directory tree bind (`kae pin -t`) と
+[CLI.md](CLI.md#kae-pin-and-mise-init-semantics) です。
+
 同じディレクトリで `kae pin claude main` を実行すると、そのツールの固定先を
 変更します。`kae unpin` は固定を解除しますが、再固定に使う作業ストアは残ります
 （リンクは固定とともに削除します）。
@@ -155,7 +165,7 @@ kae use -s -P main
 自動適用の `kae use --auto --quiet` はこの手動選択を維持します。
 `kae use -s -P main` は、指定プロファイルのツールを共有環境に戻します。
 
-独立環境で共有する項目は `isolated_shared_items` で明示します。ツールごとの
+独立環境とツリーモードで共有する項目は `isolated_shared_items` で明示します。ツールごとの
 対応と設定形式は [CLI.md](CLI.md)・[DATA-MODEL.md](DATA-MODEL.md) を確認してください。
 
 ## mise と補完の設定

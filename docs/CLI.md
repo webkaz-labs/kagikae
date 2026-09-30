@@ -7,9 +7,11 @@ For Japanese usage and recovery guidance, see [GUIDE.ja.md](GUIDE.ja.md).
 
 ## Commands
 
-Two verbs by scope, two flags by environment: `use` switches globally, `pin`
+Two verbs by scope, flags by environment: `use` switches globally, `pin`
 binds the current directory; `-s`/`--shared` (default) shares the real home,
-`-i`/`--isolated` keeps a private home. `run` wraps one process.
+`-i`/`--isolated` keeps a private home, and `-t`/`--tree` (`pin` only) keeps one
+private home for the directory's tree whichever account it runs. `run` wraps one
+process.
 
 ```bash
 kae                                  # status summary (same as kae status)
@@ -25,8 +27,8 @@ kae use [-s|-i] [-P <profile>]       # bare: resolve the profile and apply it id
                                      #   (--quiet suppresses success report; folds kae apply)
 kae use [-s|-i] <profile>            # switch every enabled tool now, global (alias: kae u)
 kae use [-s|-i] <tool> <account>     # switch one tool now, global
-kae pin [-s|-i] [<profile>]          # bind this directory (alias: kae p; default shared)
-kae pin [-s|-i] <tool> <account>     # re-bind one tool in this directory
+kae pin [-s|-i|-t] [<profile>]       # bind this directory (alias: kae p; default shared)
+kae pin <tool> <account>             # re-bind one tool in this directory (keeps its mode)
 kae pin [...] --no-link              # leave no ./.config/<tool> store links here
                                      # (and remove the ones kae made)
 kae unpin [--purge]                  # delete the kae-owned mise fragment
@@ -114,6 +116,7 @@ Aliases: `u`=`use`, `p`=`pin`, `r`=`run`, `d`=`doctor`, `s`=`status`.
 | `--format text\|json` | structured commands | output format |
 | `--shared` / `-s` | `use`, `pin`, `run` | share the real home (default); credential private |
 | `--isolated` / `-i` | `use`, `pin`, `run` | private home via a kae-owned mise fragment (global: `~/.config/mise/conf.d/kagikae.toml`; per-dir: `./.config/mise/conf.d/kagikae.toml`) |
+| `--tree` / `-t` | `pin` | one private store for the bound directory's tree, kept across account switches; claude only |
 | `--env` | `run` | inject env-profile vars only (no home redirect, no lock) |
 | `--no-link` | `pin` | leave no `./.config/<tool>` links to this directory's stores, and remove the ones kae made here |
 | `--dry-run` | `add --no-login`, `use`, `pin`, `rollback` | print planned actions, write nothing |
@@ -330,7 +333,7 @@ and still requires `-- <cmd>`, erroring (exit `64`) when it is missing.
 The former `--mode` flag and its values (`auth|env|home|overlay|bond|pin`) are
 **removed** in v0.8.0. A command using `--mode` exits `64` with a usage error.
 `overlay` and per-directory `bond`/`pin` via `run` are retired; bind a
-directory with `kae pin -s|-i` instead.
+directory with `kae pin -s|-i|-t` instead.
 
 ## kae uninstall Semantics
 
@@ -539,7 +542,7 @@ directory was reached by for as long as that spelling names the same directory.
   tool's **governing binding** decides — the recorded binding (fragment) of the
   nearest ancestor bound directory whose fragment binds that tool, not the
   shell's environment — giving that directory's store (source `pin`, and that
-  directory's mode `shared` or `isolated`). It is per tool because mise merges
+  directory's mode `shared`, `isolated` or `tree`). It is per tool because mise merges
   nested fragments per variable: measured 2026-09-30 with mise 2026.9.17, an
   outer fragment exporting `CLAUDE_CONFIG_DIR` and `CODEX_HOME` and an inner one
   exporting `CODEX_HOME` only gave `mise env` in the inner directory's
@@ -924,7 +927,7 @@ the comment-preserving writer under the config lock and supports `--dry-run`:
 
 ## kae pin and mise init Semantics
 
-`kae pin [-s|-i] [<profile>]` binds the current directory to a profile by
+`kae pin [-s|-i|-t] [<profile>]` binds the current directory to a profile by
 writing a kae-owned mise fragment `./.config/mise/conf.d/kagikae.toml`; the
 user's `mise.toml` is **never** touched.
 
@@ -959,8 +962,8 @@ which matches nothing — while `kae pin` reports the fragment as ignored.
 
 **Store links.** A bind also leaves one symlink per tool in the bound directory:
 `./.config/<tool>` → the store that tool's isolation variable is pointed at, the
-same absolute directory the fragment's `[env]` block exports (shared or isolated
-by mode). A store is named after a hash of the directory's absolute path, so
+same absolute directory the fragment's `[env]` block exports (the store of the
+binding's mode). A store is named after a hash of the directory's absolute path, so
 without the link the only thing here that names it is the fragment's `[env]`
 line — a path to read out and retype rather than one to open. The links are
 recorded in the exclude file exactly as the fragment is.
@@ -991,9 +994,10 @@ recorded in the exclude file exactly as the fragment is.
 keeps for a re-pin. A `./.gitignore` line written by an older kae is also left
 alone: a duplicate ignore rule is harmless, and removing a line from a tracked
 file is a change kae was not asked to make. The profile defaults
-to `default_profile`. `kae pin [-s|-i] <tool> <account>` re-binds **one** tool in
-the directory, leaving the others and the sharing set intact (the v0.7.1
-`kae as`). It recomputes `KAE_PROFILE` from the new account set and re-applies
+to `default_profile`. `kae pin <tool> <account>` re-binds **one** tool in
+the directory, leaving the others, the mode and the sharing set intact (the v0.7.1
+`kae as`); a mode flag there is a usage error (`64`), because the mode is the
+directory's. It recomputes `KAE_PROFILE` from the new account set and re-applies
 that profile's companions in lockstep (cleared when the set is ad-hoc), so a
 one-tool re-bind never leaves a stale git/token identity bound; see
 [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md). `kae p` is the alias. `kae unpin` deletes the kae-owned fragment and
@@ -1017,11 +1021,15 @@ moved out of its store. A file credential still sitting in a per-directory store
 no escape, because a path the user can name is one the user can delete.
 
 Both commands sweep a **superseded per-directory credential**: a re-bind to another
-account re-keys the credential store, and a `-s` ↔ `-i` toggle moves every tool to the
-other mechanism's config store — which since the per-account credential store leaves that
+account re-keys the credential store, and a mode change (`-s`, `-i`, `-t`) moves every
+tool it binds to the other mechanism's config store — which since the per-account credential store leaves that
 account's credential where it is, but still moves the directory off a store a **pre-split**
 binding left a credential in. Either way the store the directory used before is
-unreachable, and its credential would otherwise be one nothing points at. A
+unreachable, and its credential would otherwise be one nothing points at. A tool
+the new mode does not bind — codex when `-t` replaces an `-s` or `-i` binding — is
+treated as a tool dropped from the profile: its store link is retracted, its store
+is kept, and a file credential in that store (codex's `auth.json`) is kept by the
+two-case file rule below. A
 keychain item is the case that is easiest to miss, and the common one: it lives
 under a per-directory service name that appears nowhere in kae's data dir, and no
 kae check reports the item itself — `credential_unsplit` names the *directory* whose
@@ -1095,7 +1103,9 @@ does not clear itself, so a single legacy store leaves `--purge` permanently una
 to remove a per-account credential; `kae doctor`'s `pin_stale` is what names it. When
 kae keeps a credential because bindings still use it, it prints how many.
 
-`kae pin` defaults to **shared** (`-s`); pass `-i` for isolated:
+`kae pin` defaults to **shared** (`-s`); pass `-i` for isolated or `-t` for tree.
+The three are mutually exclusive (passing two is a usage error, `64`), and `-t`
+is `kae pin`'s alone: `kae use -t` and `kae run -t` exit `64`.
 
 - **`-s` / `--shared`** (default): the fragment points each tool at a
   per-directory shared home (`isolation/<pin-id>/<tool>/shared/`): every
@@ -1155,7 +1165,8 @@ kae keeps a credential because bindings still use it, it prints how many.
   there until it runs. That is the honest record rather than a fault: leaving it is how a
   keep destroys what it kept, because the next run reads it as this directory's own reading
   of the new account's store. A directory bound in isolated mode keeps its label, which
-  belongs to the account that dir is keyed by.
+  belongs to the account that dir is keyed by; a tree-bound one is treated as a shared
+  one, because its store is account-agnostic too.
   Whose the copy is, is answered by the directories **currently reading
   that store** — so binding a second directory to an account you are already using is not a
   refusal at all: the sibling agrees, and the bind harvests the copy and writes it back. The
@@ -1203,6 +1214,37 @@ kae keeps a credential because bindings still use it, it prints how many.
   keychain item unless the adapter declares that the item moves with the isolation
   variable. For codex that means the bound directory may have no login until you
   log in inside it (docs/ADAPTERS.md "Per-directory credential store").
+- **`-t` / `--tree`**: the fragment points claude at one per-directory store
+  for the bound directory and every directory below it (unless a nearer binding
+  governs claude there — the governing binding of § kae ls Semantics)
+  (`isolation/<pin-id>/claude/tree/`), whichever account the directory runs:
+  sessions, history, memory and settings stay there when the account changes,
+  and only the credential and its identity cache move. As with `-i`, nothing is
+  shared with the real home except the items in `tools.claude.isolated_shared_items`,
+  reconciled the same way, and the credential and identity follow the rules under
+  `-i` above; the credential is the account's own store, so no new copy of it is
+  made. Switching account is `kae pin claude <account>`, which keeps the tree
+  store and rewrites only what names the account — [ADAPTERS.md](ADAPTERS.md)
+  § Per-directory tree bind (`kae pin -t`) lists the writes. The switch reaches
+  the next claude launched in the tree; what it does to a claude already running
+  there is not established ([ROADMAP.md](ROADMAP.md) § Place navigation and the
+  tree mode).
+
+  **claude only.** A profile that maps codex binds claude and leaves codex on the
+  real home with a warning, as it does a tool with no isolation variable, and
+  `kae pin codex <account>` in a tree-bound directory exits `5` (`unsupported`)
+  with a message naming that reason (tree mode binds claude only), rather than the
+  `7` an unbound tool otherwise gets, because re-pinning the profile would not bind
+  it either.
+
+**Changing an existing binding's mode moves no sessions.** `kae pin -s`, `-i` or `-t`
+over a directory bound in another mode points each tool at the new mode's store
+and leaves the old one in place, sessions included, so a later pin in that mode
+finds it again, and a new tree store starts with no sessions. Every mode change,
+`-s` ↔ `-i` included, says so in a note on stderr naming the store it left; the
+note passes through the same redaction as other output (§ Output Rules), and the
+exit code is unaffected. What the old
+store's credential gets is the superseded-credential sweep above.
 
 `kae mise init [-P <profile>] [--auto] [--write]` renders auth-mode tasks and
 the opt-in enter hook into a marker-delimited block in `.mise.toml`. Default
@@ -1227,7 +1269,7 @@ argument completion is project-scoped (it lives in the project's `.mise.toml`),
 the opposite of kae's own completion, which is global (see "Shell completion").
 
 The former isolation modes (`--mode bond|pin|home|overlay`) are **removed** in
-v0.8.0 — passing any of them exits `64`. Bind a directory with `kae pin -s|-i`
+v0.8.0 — passing any of them exits `64`. Bind a directory with `kae pin -s|-i|-t`
 instead (which writes a kae-owned fragment, not via `mise init`).
 
 Isolation requires the profile to be defined (its accounts pick the per-account
@@ -1725,7 +1767,7 @@ in the same transaction.
 matching the per-tool accounts; it is `null` when neither resolves. `pinned`
 is `null` outside bound directories; inside one it reflects the exported
 `KAE_PROFILE` and the environment inferred from where the tools' env vars point
-(`shared`, `isolated`, or `auth` when only the profile is exported). The bound
+(`shared`, `isolated`, `tree`, or `auth` when only the profile is exported). The bound
 account shown for each tool is the real per-tool account (resolved from the
 isolated path or the recorded shared-dir account), never a stale profile label.
 `profiles` lists every defined profile (name ascending) with its mapping and an
@@ -1917,7 +1959,7 @@ empty, and `kae ls account --json` is exactly these three keys without `places`.
 - `path`, `exists` (a directory is there now) and `in_effect` (the level applies
   at the current directory; for `pin`, the governing binding).
 - `source` (`pin`, `global` or `explicit`) and `mode` (`shared`, `isolated`,
-  `sync` or `auth`) on a user level, and `source: "pin"` with the binding's mode
+  `tree`, `sync` or `auth`) on a user level, and `source: "pin"` with the binding's mode
   on a bound directory; `account` on a user level that names one.
 - `root` on `project` and `below` rows: the directory holding the level.
 - `applies` on claude `project` rows that have something claude reads:
@@ -1956,7 +1998,9 @@ together) and is `[]` when nothing is bound; that order is the pin group's `--at
 numbering. `current` marks the directory `kae ls` runs in exactly; `governing`
 marks the binding that applies there — the nearest ancestor bound directory — so
 it is also set from a subdirectory. `profile` is empty for an ad-hoc
-account set; `accounts` covers every tool the directory binds, in either mode.
+account set; `mode` is the binding's mode, `shared`, `isolated` or `tree`, which is
+also the human table's mode column; `accounts` covers every tool the directory
+binds, in any mode.
 
 `stores` maps each of those tools to the config store its binding names — the
 path that directory's fragment exports in its `[env]` block, laid out as

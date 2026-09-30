@@ -166,7 +166,9 @@ See [docs/CLI.md](docs/CLI.md) § kae uninstall Semantics for recovery and scope
 
 Two verbs by scope: **`use`** switches globally, **`pin`** binds the current
 directory. Add **`-i`** for an isolated (private) home, or keep the default
-**`-s`** (shared with your real home). **`run`** wraps one process.
+**`-s`** (shared with your real home); `pin` also takes **`-t`** (tree: one private
+home for the directory's tree, kept across account switches). **`run`** wraps one
+process.
 
 ```bash
 kae init                       # create config
@@ -249,6 +251,9 @@ binding a directory that something else syncs. Variants:
 ```bash
 kae pin -i side                # isolated: nothing shared with the real home
                                # (opt in via isolated_shared_items)
+kae pin -t side                # tree (claude only): one private home for this
+                               # directory and everything below it; switching
+                               # account keeps its sessions and settings
 kae pin claude main            # re-bind one tool in this dir (sessions/settings kept)
 kae pin side --no-link         # no ./.config/<tool> store links here (removes kae's)
 kae unpin                      # remove the binding (deletes the kae-owned fragment)
@@ -306,7 +311,7 @@ error instead ([docs/CLI.md](docs/CLI.md) § kae open and kae cd Semantics). `ka
 without it, `kae cd` prints the `cd "$(kae ls … --current)"` to run instead.
 
 Claude bindings for the same account share its credential store, while their
-working homes follow the chosen shared/isolated mode. This avoids independent
+working homes follow the chosen shared/isolated/tree mode. This avoids independent
 copies of the rotating credential in each directory; it does not serialize
 upstream processes or guarantee that a session stays logged in.
 [ADAPTERS.md](docs/ADAPTERS.md) § Per-account credential store owns the mechanism.
@@ -462,8 +467,8 @@ in which tier — with the rationale and the promotion criteria — is normative
 [docs/PRODUCT.md](docs/PRODUCT.md) § Tool Tiers**; this file deliberately does not
 repeat the mapping:
 
-- **Tier 1** targets the full surface, subject to capability guards: global switching, global isolated homes, both
-  per-directory binds, identity switching and drift detection.
+- **Tier 1** targets the full surface, subject to capability guards: global switching, global isolated homes, the
+  per-directory binds (tree mode is claude only so far), identity switching and drift detection.
 - **Tier 2** gets global switching (`kae use`), `kae run --env`, backup/rollback,
   `kae doctor`, and identity detection where the tool exposes one. No `kae pin` and
   no `-i`: those redirect the tool's home, which needs an isolation variable
@@ -497,7 +502,7 @@ binary does not imply support for every adapter.
 |---------|---------|
 | `kae` / `kae status` (`kae s`) | Show what is active per tool, including subscription windows when a reading exists. |
 | `kae use <profile\|tool account>` (`kae u`) | Switch globally (`-i` isolated; automatic hooks use `--auto --quiet`). |
-| `kae pin [<profile>]` (`kae p`) | Bind the current directory (`-i` isolated). |
+| `kae pin [<profile>]` (`kae p`) | Bind the current directory (`-i` isolated, `-t` tree). |
 | `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials, harvesting each into its account snapshot first and keeping any it could not (sessions and settings are kept). One copy it deletes without keeping: one whose account no longer exists, because there is no snapshot to keep it in — it says so, and [docs/CLI.md](docs/CLI.md) § kae pin says why. |
 | `kae relogin [<tool>]` | Run the tool's login flow into *this directory's* bound store — kae exports the isolation variable itself, so it lands there whether or not the pin is active in this shell — then capture the new login back into the account snapshot. Before starting, it preserves the current credential for original-store recovery, then attempts the existing account harvest. If preservation fails, login does not start. |
 | `kae run <tool> <account> [-- <cmd>]` (`kae r`) | Run one process under an account (`-s`/`-i`/`--env`). |

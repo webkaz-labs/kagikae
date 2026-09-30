@@ -14,10 +14,11 @@ vocabulary for `kae`.
 | env profiles (metadata) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/env/<tool>/<account>/env.toml` |
 | companion generated files | `${XDG_DATA_HOME:-~/.local/share}/kagikae/companion/<profile>/<id>/config` (git-config kind only; token and config-dir kinds generate no file) |
 | bound-directory record | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/dir` (the absolute path `<pin-id>` hashes, written by `kae pin`) |
-| per-dir store links | `<bound directory>/.config/<tool>` — a symlink to the store that tool's isolation variable is pointed at (`isolation/<pin-id>/…`, shared or isolated by mode), written by `kae pin` and removed by `kae unpin`. A pointer, not a copy: the store is never moved into the working tree. `kae pin --no-link` leaves none and removes kae's. See [CLI.md](CLI.md) § kae pin and mise init Semantics, and [SECURITY.md](SECURITY.md) § Store links in a bound directory for what following one reaches |
+| per-dir store links | `<bound directory>/.config/<tool>` — a symlink to the store that tool's isolation variable is pointed at (`isolation/<pin-id>/…`, the store of the binding's mode), written by `kae pin` and removed by `kae unpin`. A pointer, not a copy: the store is never moved into the working tree. `kae pin --no-link` leaves none and removes kae's. See [CLI.md](CLI.md) § kae pin and mise init Semantics, and [SECURITY.md](SECURITY.md) § Store links in a bound directory for what following one reaches |
 | per-dir ignore rules | `$GIT_COMMON_DIR/info/exclude` of the bound directory's repository — entries anchored at the repository root naming `.config/mise/conf.d/kagikae.toml` and each store link above. Both halves come from `git rev-parse`, never from an assumed layout, and nothing is written outside a repository. **Not** a tracked `./.gitignore` (that was kae up to v0.16.0): one entry here covers the main checkout and every linked worktree, and leaves no working tree dirty. See [CLI.md](CLI.md) § kae pin |
 | per-dir shared (`pin -s`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/shared/` |
 | per-dir isolated (`pin -i`) config dirs | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/isolated/<account>/config/` |
+| per-dir tree (`pin -t`) stores | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/<pin-id>/<tool>/tree/` (`0700`) — one store for the bound directory's tree, whichever account it runs; claude only. See [ADAPTERS.md](ADAPTERS.md) § Per-directory tree bind (`kae pin -t`) |
 | per-account credential stores | `${XDG_DATA_HOME:-~/.local/share}/kagikae/credstore/<tool>/<account>/` — the directory a bind points the tool's **credential** variable at (claude's `CLAUDE_SECURESTORAGE_CONFIG_DIR`), so every directory bound to one account reads one credential while keeping its own sessions. Deliberately outside `isolation/`: nothing here is a tool home, and the classifier that reads that tree by path would answer "shared" for it. On a keychain platform the directory itself is empty — its *name* is what the item's service hashes from. Only claude has such a variable; every other tool's credential stays in its store. See [ADAPTERS.md](ADAPTERS.md) § Per-account credential store |
 | global-isolated (`use -i` / `run -i`) homes | `${XDG_DATA_HOME:-~/.local/share}/kagikae/isolation/global/<tool>/<account>/` (a kae-owned mise fragment points `CLAUDE_CONFIG_DIR` / `CODEX_HOME` here; the real `~/.<tool>` is never touched) |
 | file-backend secrets (opt-in) | `${XDG_DATA_HOME:-~/.local/share}/kagikae/secrets/...` |
@@ -93,7 +94,8 @@ enabled = true
 # the built-in auth artifacts are refused to prevent misconfiguration:
 # shared_denylist_extra = ["custom-session.json"]
 # Items to share (symlink) from the real home into the per-directory
-# isolated-bind config dir (kae pin -i). Default is empty (full isolation).
+# isolated-bind config dir (kae pin -i) and tree store (kae pin -t).
+# Default is empty (full isolation).
 # Bare file names only; credential files
 # (.credentials.json, auth.json) are refused at config load:
 # isolated_shared_items = ["settings.json", "CLAUDE.md"]
@@ -567,11 +569,11 @@ Defined in `internal/constants`; JSON uses exactly these tokens:
 - drivers: `claude-file-patch`, `claude-keychain-patch`, `codex-auth-json`,
   `codex-keyring`, `agy-keychain`, `agy-file-snapshot`, `opencode-file-patch`,
   `cursor-keychain`, `copilot-config-pointer`
-- internal mechanisms: `auth`, `env`, `shared`, `isolated`, `sync`
-  (`shared`/`isolated` back per-dir `pin -s`/`-i`; `sync` is the
+- internal mechanisms: `auth`, `env`, `shared`, `isolated`, `tree`, `sync`
+  (`shared`/`isolated`/`tree` back per-dir `pin -s`/`-i`/`-t`; `sync` is the
   global-isolated mechanism behind `kae use -i` / `kae run -i`, delivered as a
   kae-owned mise fragment)
-- status `pinned.mode` (user-facing environment): `shared`, `isolated`, `auth`
+- status `pinned.mode` (user-facing environment): `shared`, `isolated`, `tree`, `auth`
 - `kae ls` places: groups `account`, `pin`, `repo`, `kae` (a tool group is named
   by the tool); kinds `user`, `session`, `project`, `below`, `home`, `bound-directory`,
   `repository-root`, `config`, `data`, `state`; sources `pin`, `global`,

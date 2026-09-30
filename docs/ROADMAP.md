@@ -46,10 +46,17 @@ Do not widen those mutation paths without affected acceptance.
 
 The uninstall/Packslip release is recorded in [RELEASE.md](RELEASE.md), with
 lifecycle evidence and limitations in [ACCEPTANCE.md](ACCEPTANCE.md)
-§ Uninstall and Packslip assessment. Next comes the operator-requested tree-shared
-mode described in § Place navigation and the tree-shared mode;
+§ Uninstall and Packslip assessment. Next comes the operator-requested tree
+mode described in § Place navigation and the tree mode;
 § Agent orchestration and remote authentication — deferred exploration follows
 it and still requires investigation and an explicit implementation decision.
+Between the two comes **localized human output (Japanese)**, requested by the
+operator on 2026-09-30: runtime human messages, the tree mode's new ones and the
+existing ones, localized once the tree mode's local verification is done.
+[CLI.md](CLI.md) § Localization describes current behavior until it ships.
+How the locale is selected, and which locale the gate's and smoke blocks' English
+assertions run under, are part of its design: this machine runs `LC_ALL=ja_JP.UTF-8`
+and CI does not.
 The upstream detector remains conditional on reviewed artifact pairs under
 § Upstream-drift automation — what is left.
 
@@ -79,10 +86,10 @@ prerequisites; entries not named here retain their recorded gate.
    unimplemented**, and § Tier-2 tools — described, not queued only when their own demand
    or evidence gate opens. Tier 2 is not a parity backlog.
 
-## Place navigation and the tree-shared mode
+## Place navigation and the tree mode
 
 Requested by the operator on 2026-09-29. The first item is implemented; the second
-still needs its own design, including the mode's term in [CONTEXT.md](CONTEXT.md).
+has its contract and awaits implementation.
 
 1. **List, open and move to places.** Implemented: [CLI.md](CLI.md) § kae ls
    Semantics and § kae open and kae cd Semantics are the contracts, and
@@ -91,30 +98,44 @@ still needs its own design, including the mode's term in [CONTEXT.md](CONTEXT.md
    under § Exploratory. A mise `[shell_alias]` in the fragment was rejected for it
    because an alias cannot place arguments inside `cd "$(…)"`.
 
-2. **Tree-shared mode.** A third per-directory mode beside `-s` and `-i`: the bound
-   directory and everything below it are isolated from the real home, and switching
-   account keeps one config store — sessions, history, memory, settings — while
-   only the credential changes (and, for claude, its identity cache alongside it).
-   It is `-s`'s account-agnostic store without the links into the real home. claude
-   uses the per-account credential store; codex keeps its credential inside
-   `CODEX_HOME`, with the same per-directory copy shape as its `-s` bind today.
-   Whether two directories bound to one codex account can invalidate each other the
-   way claude's copies do (the research entry **Every credential copy kae keeps can
-   be killed by another copy refreshing, and four kae commands do the killing**)
-   depends on codex's refresh-token rotation, which is unmeasured; the source
-   reading in § Hardening backlog — daily-use robustness, **Rotation is measured
-   for claude only**, says separate copies are at risk and one shared file is
-   not, and a measurement must still settle the severity. A switch reaches the
-   next launched process; making it reach running processes waits for a
-   measurement showing that doing so does
-   not reintroduce that copy failure. Acceptance includes a measured check that
-   the fragment's `[env]` reaches nested directories: on 2026-09-29 a scratch
-   `conf.d` fragment's `[shell_alias]` appeared in `mise hook-env -s zsh` run from a
-   subdirectory (mise 2026.9.15), which covers fragment loading but not the
-   variables a bind exports.
+2. **Tree mode (`kae pin -t`).** The contract is written: [CLI.md](CLI.md) § kae pin
+   and mise init Semantics for the command, [ADAPTERS.md](ADAPTERS.md)
+   § Per-directory tree bind (`kae pin -t`) for what it switches,
+   [DATA-MODEL.md](DATA-MODEL.md) § Directory Layout (XDG) for the store and
+   [CONTEXT.md](CONTEXT.md) for the term. What remains:
 
-`kae ls --pins` stays the list of bound directories; the new mode appears there
-as a third mode value.
+   - **The claude slice.** Implement that contract, with completion for `-t` in the
+     same commit (CLI § Keeping completion current), and `tree` decided at every site
+     that branches on the bind mode. Derive the sites rather than listing them here:
+     `git grep -nE 'modeShared|modeIsolated|SharedSegment|IsolatedSegment|ModeShared|ModeIsolated' -- 'internal/*.go'`,
+     or gopls references to those constants, whatever form the sites take.
+   - **R4, the fragment's `[env]` in nested directories**, is an acceptance check of
+     that slice: a kae-rendered tree fragment run through
+     `bash scripts/smoke-run.sh`. What stands in for it so far is scratch fragments,
+     not kae-rendered ones: on 2026-09-29 a `conf.d` fragment's `[shell_alias]`
+     appeared in `mise hook-env -s zsh` run from a subdirectory (mise 2026.9.15),
+     and on 2026-09-30 one exporting four variables gave all four in the bound
+     directory and 1 and 3 levels below it, none in its parent, and an error while
+     it was untrusted (mise 2026.9.17). It is overturned if the kae-rendered fragment
+     leaves any of its variables out of a directory below the bound one.
+   - **R3, a switch and a claude already running in the tree.** The contract claims
+     only that a switch reaches the next launched process. Saying anything about a
+     running one needs a measurement of two accounts using one tree config dir at
+     once, which needs two real accounts of the operator's; until then the docs make
+     no claim either way.
+   - **codex waits for R1 and R2.** codex keeps its credential inside `CODEX_HOME`,
+     so a tree store would hold a per-directory copy. **R1**: whether copies of one
+     codex account invalidate each other through refresh-token rotation (the research
+     entry **Every credential copy kae keeps can be killed by another copy
+     refreshing, and four kae commands do the killing**, and the source reading in
+     § Hardening backlog — daily-use robustness, **Rotation is measured for claude
+     only**, which says separate copies are at risk and one shared file is not).
+     **R2**: what a switch that overwrites the copy in place does to a codex process
+     running in the tree. Until both are measured, `kae pin -t` binds no codex.
+   - **Candidate, not scheduled: bare `kae pin` keeps the directory's existing
+     mode.** Today bare `kae pin` in a tree- or isolated-bound directory falls back
+     to the default `-s` (a mode change). Recorded 2026-09-30 for the operator to
+     decide.
 
 ## Agent orchestration and remote authentication — deferred exploration
 
@@ -1420,7 +1441,6 @@ is anywhere near that, and only by demand.
 ## Exploratory
 
 - richer TTY (routed review surface) if daily use shows the need
-- localized human output (Japanese)
 - `kae shell init` convenience wrappers
 - list and filter every tool project directory on the machine (every `.claude/`,
   not only those around the current directory)

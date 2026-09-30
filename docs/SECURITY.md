@@ -302,13 +302,19 @@ Preservation records are not a guarantee that a copied rotating token remains us
 
 ## Isolation Safety
 
-Three isolation scopes exist; their credential boundaries are:
+Four isolation scopes exist; their credential boundaries are:
 
 | Scope | Command | Config store (sessions, settings, identity) | Credential store | Live home touched? |
 |-------|---------|------|------------------|--------------------|
 | Global isolated | `use -i` / `run -i` | `isolation/global/<tool>/<account>/` | claude: `credstore/<tool>/<account>/`; other tools: the config store | No |
 | Per-directory shared | `pin -s` | `isolation/<pin-id>/<tool>/shared/` (symlinks to the real home) | same | No (symlink source only) |
 | Per-directory isolated | `pin -i` | `isolation/<pin-id>/<tool>/isolated/<account>/config/` | same | No |
+| Per-directory tree (claude only) | `pin -t` | `isolation/<pin-id>/<tool>/tree/`, one for the directory's tree whichever account it runs | same | No |
+
+**A tree store has no account boundary; its boundary is the directory tree.** Every
+account the directory is switched to runs in the same store, so one account's
+transcripts, memory and `.claude.json` are readable while another account runs
+there. Only the credential stays per account.
 
 **The credential column is deliberately not private per directory**, and reading it
 as private is the mistake this table exists to prevent. For a tool that can address

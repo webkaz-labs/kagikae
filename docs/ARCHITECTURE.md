@@ -236,7 +236,8 @@ Surface is the user-facing statement of it) maps to one mechanism: global shared
 in-place credential patch; global isolated = `CLAUDE_CONFIG_DIR` / `CODEX_HOME` via
 a kae-owned global mise fragment; per-dir shared =
 symlink-everything-but-credential; per-dir isolated = private config dir with
-opt-in shares. All per-dir bindings use kae-owned mise fragments — kae never edits
+opt-in shares; per-dir tree = one account-agnostic private config dir with opt-in
+shares. All per-dir bindings use kae-owned mise fragments — kae never edits
 the user's `mise.toml`. Each clause here is a summary: [ADAPTERS.md](ADAPTERS.md) has
 the per-tool switched/preserved contract, [SCOPE-MODEL.md](SCOPE-MODEL.md) §5 the
 rationale for the shared mechanism (including what per-dir shared does *not* symlink),
@@ -577,7 +578,8 @@ source and backend-read error policy.
   choosing different values.
 - `~/.claude.json` can be large and is rewritten by Claude Code itself; always
   re-read immediately before patching inside the lock, never reuse a value
-  read earlier in the process.
+  read earlier in the process. A tree store's `.claude.json` is the same case,
+  written by every claude in the bound tree, and its lock is the pin lock.
 - macOS `security add-generic-password -U` updates in place but requires the
   same service/account pair. The account is derived from the environment being
   written wherever the spec carries one, rather than read back from the live item —

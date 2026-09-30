@@ -1,6 +1,8 @@
 # Scope × Environment Model (design guidance)
 
-> The model is implemented. Normative parts live in PRODUCT.md / CLI.md /
+> The model is implemented, except the per-directory tree mode (`kae pin -t`),
+> whose contract is written ahead of its code ([ROADMAP.md](ROADMAP.md) § Place
+> navigation and the tree mode). Normative parts live in PRODUCT.md / CLI.md /
 > ADAPTERS.md / DATA-MODEL.md; this file keeps only the reasoning behind them.
 > The surface it describes reached its current shape over v0.7.0–v0.8.0, and
 > git log is where that sequence is.
@@ -24,8 +26,9 @@ token; `/oauthAccount` is a token-derived cache that was believed to self-heal �
 §6 amends that: the self-heal is gated behind a 24h TTL every token refresh
 renews, so the cache **is** switched too). Where sessions/settings are shared is an
 independent axis. This principle is what keeps the command surface coherent:
-each mode decides *only* the sharing set, and `kae pin <tool> <account>` handles
-the credential-only swap inside a bound directory.
+each mode decides only where sessions and settings live — its sharing set and
+whether its store is keyed by the account (§5) — and `kae pin <tool> <account>`
+handles the credential-only swap inside a bound directory.
 
 ## 5. Shared mechanism
 
@@ -40,8 +43,9 @@ parameters:
    these are mise `[env]` entries, so the scope is the directory automatically
    (set on enter, unset on leave; never touches global live state). For the
    global isolated home it is a global pointer (see §10).
-2. **Symlink the sharing set** into the alternate dir — from the real home
-   (shared mode) or from a per-directory store (isolated mode).
+2. **Symlink the sharing set** into the alternate dir from the real home — its
+   whole listing minus a denylist (shared mode) or an opt-in list (isolated and
+   tree modes).
 3. **Materialise the credential and mixed-state files privately** (never
    symlinked — see §6), **reading each store before writing over it**: a private
    copy is not a free copy, because the tool refreshes the one inside the directory
@@ -49,8 +53,11 @@ parameters:
    into the account snapshot first ([CLI.md](CLI.md) § kae pin). A new mechanism
    inherits that only by routing through the same materializer (AGENTS.md).
 
-The only differences between modes are the **sharing source** (real home vs
-per-directory store) and the **default sharing set**:
+The per-directory modes differ in two parameters: the **sharing set** (a
+denylist over the real home, or an opt-in list) and whether the config store is
+**keyed by the account** (a switch moves the directory to that account's own
+store) or **account-agnostic** (a switch changes only the credential and its
+identity cache, so sessions stay put):
 
 - **shared** = *denylist*: share everything from the real home *except* the auth
   artifacts. The denylist is **hard-coded per tool** (claude `.credentials.json`
@@ -58,9 +65,16 @@ per-directory store) and the **default sharing set**:
   exclude; codex `auth.json`), not a dynamic scan. Unknown new files are shared
   (consistent with "same environment as global"); a newly discovered credential
   file must be added to the denylist *and* to the config-load refusal list in
-  the same commit.
+  the same commit. Account-agnostic, with the real home's sessions through
+  those links.
 - **isolated** = *opt-in*: share nothing by default; the user adds specific
-  files/directories via config.
+  files/directories via config. Keyed by the account.
+- **tree** = *opt-in* like isolated, with an account-agnostic store like shared:
+  one store for the bound directory's tree, private from the real home, that
+  outlives an account switch. It exists because the other two force a choice
+  between keeping sessions across a switch (shared, which also shares them with
+  the real home) and keeping them private (isolated, which leaves them behind
+  with the previous account).
 
 ## 6. Mixed-state files
 
@@ -221,9 +235,12 @@ do not restore the sharing on the strength of this note.
 
 ## 7. Applicability
 
-The per-directory binds (`pin -s`/`-i`) and the global isolated home
+The per-directory binds (`pin -s`/`-i`/`-t`) and the global isolated home
 (`use -i` / `run -i`) all require a home-isolation env var, so they apply to
-**claude and codex only**. Tools without one (agy, opencode, cursor, copilot)
+**claude and codex only** — and `pin -t` to claude alone until codex's
+measurements R1 (refresh-token rotation across copies) and R2 (a switch's effect on
+a running codex) exist ([ROADMAP.md](ROADMAP.md) § Place navigation and the tree
+mode). Tools without one (agy, opencode, cursor, copilot)
 support **global shared (`kae use`) and `kae run --env` only** — there is no way
 to make their credential private without redirecting their home. For a `-i`
 *profile* that also maps such a tool, it is skipped with a warning (claude/codex
@@ -245,7 +262,7 @@ chars (stable, deterministic, rename-proof). All stores live under
 `isolation/<pin-id>/` (per-directory) and `isolation/global/` (global isolated).
 No copy+patch anywhere — the mixed-state finding (§6) removed that need.
 
-The current per-mode paths, the segment names (`shared` / `isolated` / `global`),
+The current per-mode paths, the segment names (`shared` / `isolated` / `tree` / `global`),
 and the kae-owned mise-fragment delivery (a fragment merged by mise, **not** a
 `~/.claude` symlink-swap) are normative in [DATA-MODEL.md](DATA-MODEL.md); this
 section keeps only the `pin-id` rationale above.

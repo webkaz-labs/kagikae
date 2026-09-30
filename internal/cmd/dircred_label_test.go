@@ -5,8 +5,10 @@ package cmd
 
 import (
 	"context"
+	"flag"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -387,6 +389,7 @@ func TestBindModeConstantsAgreeAcrossPackages(t *testing.T) {
 	for _, pair := range []struct{ name, mode, segment string }{
 		{"shared", constants.ModeShared, paths.SharedSegment},
 		{"isolated", constants.ModeIsolated, paths.IsolatedSegment},
+		{"tree", constants.ModeTree, paths.TreeSegment},
 	} {
 		if pair.mode != pair.segment {
 			t.Errorf("%s: constants %q and paths %q must name one mechanism", pair.name, pair.mode, pair.segment)
@@ -405,6 +408,14 @@ func TestBindModeConstantsAgreeAcrossPackages(t *testing.T) {
 			t.Errorf("bindModes names %q twice", m.name)
 		}
 		seen[m.name] = true
+		// The row's flag is the one `kae pin` parses into this mode, so a message that
+		// names it to come back to the mode names a flag that exists.
+		if !slices.Contains(flagCompletions("pin"), m.flag) {
+			t.Errorf("%s: its flag %q is not a kae pin flag", m.name, m.flag)
+		}
+		if got, ok := resolvePinModeFlag(t, m.flag); !ok || got != m.name {
+			t.Errorf("%s: kae pin %s resolves to %q (ok=%v)", m.name, m.flag, got, ok)
+		}
 		if m.name != m.segment {
 			t.Errorf("%s: mode token and path segment %q must name one mechanism", m.name, m.segment)
 		}
@@ -433,6 +444,7 @@ func TestModeLabelStalePolarityPerMode(t *testing.T) {
 	}{
 		{modeShared, true},
 		{modeIsolated, false},
+		{modeTree, true},
 		{constants.ModeSync, false},
 		{constants.ModeAuth, false},
 		{"future-mode", false},
@@ -515,6 +527,18 @@ func TestDirCredentialStoresWalksEveryBindMode(t *testing.T) {
 			t.Errorf("store %s: want %+v, got %+v", store.Dir, want[store.Dir], store)
 		}
 	}
+}
+
+// resolvePinModeFlag is the mode `kae pin <flag>` selects, through the real flag set.
+func resolvePinModeFlag(t *testing.T, flagName string) (string, bool) {
+	t.Helper()
+	var shared, isolated, tree, noLink bool
+	if _, ok := parseCommon("pin", []string{flagName}, false, func(fs *flag.FlagSet) {
+		registerPinFlags(fs, &shared, &isolated, &tree, &noLink)
+	}); !ok {
+		return "", false
+	}
+	return resolvePinMode(shared, isolated, tree)
 }
 
 func mustBindMode(t *testing.T, mode string) bindMode {

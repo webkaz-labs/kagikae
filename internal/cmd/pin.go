@@ -16,25 +16,27 @@ import (
 
 // CmdPin binds the current directory to a profile, by scope and environment:
 //
-//	kae pin [-s|-i] [<profile>]         bind every enabled tool in the profile
+//	kae pin [-s|-i|-t] [<profile>]      bind every enabled tool in the profile
 //	kae pin <tool> <account>            re-bind one tool, keeping the sharing set
 //
-// --shared/-s (the default) shares settings, sessions, and memory with the
-// real home while keeping the credential private; --isolated/-i is fully
-// isolated, with opt-in shares via pin_shared_items in config.toml. Sugar over
-// `kae mise init --write`: renders and writes the kagikae block of .mise.toml.
-// Profile defaults to config default_profile. Re-running pin refreshes links
-// and the credential copy. kae unpin removes the block.
+// --shared/-s (the default) shares settings, sessions, and memory with the real
+// home while keeping the credential private; --isolated/-i is fully isolated, with
+// opt-in shares via isolated_shared_items in config.toml; --tree/-t is one
+// account-agnostic store for the directory's tree with the same opt-in shares
+// (claude only). Sugar over `kae mise init --write`: renders and writes the
+// kagikae block of .mise.toml. Profile defaults to config default_profile.
+// Re-running pin refreshes links and the credential copy. kae unpin removes the
+// block.
 func CmdPin(ctx context.Context, args []string) int {
 	flags, positionals := splitArgs(args)
-	var shared, isolated, noLink bool
+	var shared, isolated, tree, noLink bool
 	opts, ok := parseCommon("pin", flags, false, func(fs *flag.FlagSet) {
-		registerPinFlags(fs, &shared, &isolated, &noLink)
+		registerPinFlags(fs, &shared, &isolated, &tree, &noLink)
 	})
 	if !ok {
 		return constants.ExitUsage
 	}
-	isolatedMode, ok := resolveScope(shared, isolated)
+	mode, ok := resolvePinMode(shared, isolated, tree)
 	if !ok {
 		return constants.ExitUsage
 	}
@@ -42,11 +44,11 @@ func CmdPin(ctx context.Context, args []string) int {
 	switch len(positionals) {
 	case 2:
 		// kae pin <tool> <account>: re-bind one tool in place, keeping the
-		// other tools and the directory's existing mechanism. Scope flags
+		// other tools and the directory's existing mechanism. Mode flags
 		// cannot be honored here (the mechanism is the directory's, not the
 		// caller's), so reject them rather than silently dropping them.
-		if shared || isolated {
-			return usageError("--shared/--isolated do not apply to `kae pin <tool> <account>`; the directory's existing mode is kept")
+		if shared || isolated || tree {
+			return usageError("--shared/--isolated/--tree do not apply to `kae pin <tool> <account>`; the directory's existing mode is kept")
 		}
 		return runRebind(ctx, app, opts, positionals[0], positionals[1], noLink)
 	case 0, 1:
@@ -54,16 +56,34 @@ func CmdPin(ctx context.Context, args []string) int {
 		if len(positionals) == 1 {
 			profileName = positionals[0]
 		}
-		// --shared selects the per-directory shared bind, --isolated the fully
-		// isolated bind; shared is the default.
-		mode := modeShared
-		if isolatedMode {
-			mode = modeIsolated
-		}
 		warnIfLegacyPinBlock()
 		return runPin(ctx, app, opts, profileName, mode, noLink)
 	default:
-		return usageError("usage: %s pin [-s|-i] [<profile>] | %s pin <tool> <account>", toolName, toolName)
+		return usageError("usage: %s pin [-s|-i|-t] [<profile>] | %s pin <tool> <account>", toolName, toolName)
+	}
+}
+
+// resolvePinMode validates `kae pin`'s mutually exclusive mode flags and returns the
+// selected bind mode; shared is the default. ok is false (and a usage error already
+// emitted) when more than one is set. resolveScope is the two-flag sibling for use and
+// run, which take no -t.
+func resolvePinMode(shared, isolated, tree bool) (mode string, ok bool) {
+	set := 0
+	for _, on := range []bool{shared, isolated, tree} {
+		if on {
+			set++
+		}
+	}
+	switch {
+	case set > 1:
+		usageError("--shared, --isolated and --tree are mutually exclusive")
+		return "", false
+	case isolated:
+		return modeIsolated, true
+	case tree:
+		return modeTree, true
+	default:
+		return modeShared, true
 	}
 }
 
@@ -109,6 +129,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	if err != nil {
 		return finish(opts, err)
 	}
+	pinID := paths.PinID(absDir)
 	// Takes the pin lock and records which directory this store belongs to; a
 	// store nothing can name is what pinindex.go exists to prevent.
 	pinLock, err := app.beginBind(absDir)
@@ -148,15 +169,22 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// makes the keep retract a live label on the strength of an emptiness that is only the
 	// read failing (measured 2026-08-08). `readFragmentAt` returns an error for anything that
 	// is not "absent", and absent is a genuine answer.
-	prevBinding, _, prevErr := readDirFragment()
+	prevBinding, prevExists, prevErr := readDirFragment()
 	prevKnown := prevErr == nil
-	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets, paths.PinID(absDir), prevBinding, prevKnown)
+	entries, prepare, err := app.isolationPlan(ctx, be, mode, targets, pinID, prevBinding, prevKnown)
 	if err != nil {
 		return finish(opts, err)
 	}
 	companionEntries, redactions, prepareCompanions, err := app.companionPlan(profileName)
 	if err != nil {
 		return finish(opts, err)
+	}
+	// Warnings before the writes they are about (docs/CLI.md § Output Rules), and after
+	// the last planning step that can fail, so a refused pin prints no note about a mode
+	// change that never happened.
+	warnModeUnboundTools(mode, entries)
+	if prevKnown && prevExists {
+		app.noteModeChange(pinID, prevBinding, mode, entries)
 	}
 
 	// Before the stores are written, not after: a re-bind to another account builds a
@@ -174,14 +202,14 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 			next[e.Tool] = bindDirs{Config: e.Dir, Cred: e.CredDir}
 		}
 	}
-	app.harvestSupersededDirCredentials(ctx, be, paths.PinID(absDir), absDir, "", prevBinding, next)
+	app.harvestSupersededDirCredentials(ctx, be, pinID, absDir, "", prevBinding, next)
 	if err := app.prepareIsolationDirs(mode, entries, prepare); err != nil {
 		return finish(opts, err)
 	}
 	if err := prepareCompanions(); err != nil {
 		return finish(opts, err)
 	}
-	// mode is already the user-facing scope label (shared/isolated).
+	// mode is already the user-facing scope label (shared/isolated/tree).
 	companionLines := companionFragmentLines(companionEntries)
 	if err := writeDirFragment(renderDirFragment(profileName, mode, entries, companionLines, redactions)); err != nil {
 		return finish(opts, err)
@@ -195,7 +223,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// purging=false: this sweep is housekeeping after a re-bind, so a store whose
 	// account no longer exists keeps its credential rather than having it deleted by a
 	// command the user ran to *bind* something (harvestBeforeDelete).
-	reportPruned(app.pruneDirCredentials(ctx, be, paths.PinID(absDir), "", boundDirs(entries), prevBinding, false))
+	reportPruned(app.pruneDirCredentials(ctx, be, pinID, "", boundDirs(entries), prevBinding, false))
 	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, mode)
 	// The stores are named by a hash of this directory's path, so nothing in the
 	// directory points at them without these links. Converged over every linkable
@@ -231,6 +259,57 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 		fmt.Fprint(os.Stderr, exportFallback(profileName, entries, companionExportLines(companionEntries)))
 	}
 	return constants.ExitOK
+}
+
+// warnModeUnboundTools says on stderr which of the profile's tools the mode leaves on
+// the real home (codex under -t), which the fragment otherwise records only as a
+// comment. A tool with no isolation variable at all keeps its comment-only warning.
+func warnModeUnboundTools(mode string, entries []isolationEntry) {
+	m, ok := bindModeFor(mode)
+	if !ok {
+		return
+	}
+	for _, e := range entries {
+		// Only the mode's own reason (bindMode.unboundReason): a tool with no isolation
+		// variable (agy) keeps its comment-only warning, as under -s and -i.
+		if e.Warning != "" && e.Warning == modeUnboundReason(m, e.Tool) {
+			fmt.Fprintf(os.Stderr, "kae: warning: %s\n", e.Warning)
+		}
+	}
+}
+
+// noteModeChange prints, on stderr, that a pin over a binding of another mode moves no
+// sessions: one line per tool naming the store it leaves (which a later pin in that
+// mode finds again) and, when the new mode is tree and its store does not exist yet,
+// that it starts empty (docs/CLI.md § kae pin and mise init Semantics). It is a note,
+// so it never changes the exit code. Paths go through displayPath like every other
+// path kae prints; nothing here reads a credential.
+//
+// Called before the stores are prepared, which is what lets it tell a new tree store
+// from one an earlier -t binding left.
+func (app *App) noteModeChange(pinID string, prev fragmentInfo, mode string, entries []isolationEntry) {
+	old, known := bindModeFor(prev.Mode)
+	if !known || prev.Mode == mode {
+		return
+	}
+	for _, tool := range constants.Tools {
+		dir, bound := app.boundStoreDir(pinID, tool, prev)
+		if !bound {
+			continue
+		}
+		fmt.Fprintf(os.Stderr,
+			"kae: note: changing this directory from %s to %s moves no sessions; %s's stay in %s, "+
+				"which `kae pin %s` finds again\n",
+			prev.Mode, mode, tool, app.displayPath(dir), old.flag)
+	}
+	if mode != modeTree {
+		return
+	}
+	for _, e := range entries {
+		if e.Warning == "" && e.Dir != "" && !dirExists(e.Dir) {
+			fmt.Fprintf(os.Stderr, "kae: note: the new tree store %s starts empty\n", app.displayPath(e.Dir))
+		}
+	}
 }
 
 // CmdUnpin removes the binding from the current directory: it deletes the

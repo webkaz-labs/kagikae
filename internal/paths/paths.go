@@ -136,10 +136,11 @@ func (p Paths) IsolationDir() string { return filepath.Join(p.DataDir, "isolatio
 
 // Per-directory store segments under isolation/<pinID>/<tool>/. Exported so
 // callers that classify a directory by its path (cmd.kaeManagedHomeKind) stay
-// in lockstep with SharedDir / IsolatedConfigDir.
+// in lockstep with SharedDir / IsolatedConfigDir / TreeDir.
 const (
 	SharedSegment   = "shared"   // per-directory shared (kae pin --shared)
 	IsolatedSegment = "isolated" // per-directory isolated (kae pin --isolated)
+	TreeSegment     = "tree"     // per-directory tree (kae pin --tree)
 	GlobalSegment   = "global"   // global isolated homes (kae use --isolated)
 )
 
@@ -178,6 +179,13 @@ func (p Paths) SharedDir(pinID, tool string) string {
 // composed at setup time from opt-in symlinks plus the private credential.
 func (p Paths) IsolatedConfigDir(pinID, tool, account string) string {
 	return filepath.Join(p.toolIsolDir(pinID, tool), IsolatedSegment, account, "config")
+}
+
+// TreeDir returns the config directory for the per-directory tree mechanism: one
+// account-agnostic store per pinID×tool that the bound directory's whole tree reads,
+// kept across account switches.
+func (p Paths) TreeDir(pinID, tool string) string {
+	return filepath.Join(p.toolIsolDir(pinID, tool), TreeSegment)
 }
 
 // GlobalIsolationDir returns the root of all global-isolated tool homes

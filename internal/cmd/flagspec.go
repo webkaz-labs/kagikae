@@ -56,8 +56,13 @@ func registerPickFlag(fs *flag.FlagSet, pick *bool) {
 	fs.BoolVar(pick, "pick", false, "choose among the target's places in the picker, even when it has a current place")
 }
 
-func registerPinFlags(fs *flag.FlagSet, shared, isolated, noLink *bool) {
+// registerPinFlags carries -t/--tree on top of the shared scope pair: the tree mode is
+// kae pin's alone, so use and run, which register the pair without it, reject -t as an
+// undefined flag (exit 64).
+func registerPinFlags(fs *flag.FlagSet, shared, isolated, tree, noLink *bool) {
 	registerScopeFlags(fs, shared, isolated)
+	fs.BoolVar(tree, "tree", false, "one private store for this directory's tree, kept across account switches (claude only)")
+	fs.BoolVar(tree, "t", false, "alias for --tree")
 	fs.BoolVar(noLink, "no-link", false,
 		"do not leave ./.config/<tool> links to this directory's stores (and remove the ones kae made here)")
 }
@@ -123,7 +128,7 @@ var commandFlagSpecs = map[string]commandFlagSpec{
 	"ls":        {extra: func(fs *flag.FlagSet) { registerLsFlags(fs, new(lsFlags)) }},
 	"open":      {extra: func(fs *flag.FlagSet) { registerNavigateFlags(fs, new(lsFlags)) }},
 	"cd":        {extra: func(fs *flag.FlagSet) { registerNavigateFlags(fs, new(lsFlags)) }},
-	"pin":       {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool), new(bool)) }},
+	"pin":       {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool), new(bool), new(bool)) }},
 	"unpin":     {extra: func(fs *flag.FlagSet) { registerUnpinFlags(fs, new(bool)) }},
 	"run":       {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},
 	"mise": {extra: func(fs *flag.FlagSet) {

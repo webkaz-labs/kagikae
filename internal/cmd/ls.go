@@ -30,7 +30,7 @@ type lsReport struct {
 type boundDir struct {
 	Directory string `json:"directory"`
 	Profile   string `json:"profile"` // empty for an ad-hoc account set
-	Mode      string `json:"mode"`    // shared | isolated
+	Mode      string `json:"mode"`    // shared | isolated | tree
 	// Accounts is every tool the directory binds, in either mode (fragmentInfo).
 	Accounts map[string]string `json:"accounts"`
 	// Stores maps each bound tool to the config store this directory's binding

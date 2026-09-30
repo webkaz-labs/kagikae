@@ -251,9 +251,11 @@ Usage:
                                        (--quiet suppresses success output)
   kae use [-s|-i] <profile>            switch every tool now (alias: kae u)
   kae use <tool> <account>             switch one tool now
-  kae pin [-s|-i] [<profile>]          bind this directory (alias: kae p);
+  kae pin [-s|-i|-t] [<profile>]       bind this directory (alias: kae p);
                                        -s shares settings/sessions with the real
-                                       home (credential private), -i isolates
+                                       home (credential private), -i isolates,
+                                       -t keeps one store for the directory's
+                                       tree across account switches (claude only)
   kae pin <tool> <account>             re-bind one tool inside a pinned dir
   kae unpin                            remove the binding from .mise.toml
   kae uninstall [--dry-run] [--yes]    remove owned integrations and a recorded direct binary

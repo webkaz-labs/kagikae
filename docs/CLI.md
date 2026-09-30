@@ -1236,7 +1236,7 @@ is `kae pin`'s alone: `kae use -t` and `kae run -t` exit `64`.
 over a directory bound in another mode points each tool at the new mode's store and
 leaves the old store in place; a later pin in that mode finds it again, and a new
 tree store starts empty. Every mode change, `-s` ↔ `-i` included, prints a note on
-stderr naming the store it left and, for `-t`, that the new tree store starts empty (redacted like other output, § Output Rules; the
+stderr naming the store it left and, for `-t` when the tree store is new, that it starts empty (redacted like other output, § Output Rules; the
 exit code is unaffected). The old store's credential is handled by the
 superseded-credential sweep above.
 

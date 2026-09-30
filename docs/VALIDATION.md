@@ -939,6 +939,92 @@ directory, so carrying the old entry string over would write a rule that matches
 nothing — and `kae pin` would still report success, with the fragment sitting in
 `git status` for the user to find.
 
+## Tree mode in nested directories (`kae pin -t`, R4)
+
+A tree binding is meant for every directory below the bound one, and that reach is
+mise's rather than kae's: mise loads the bound directory's
+`.config/mise/conf.d/kagikae.toml` from each directory beneath it. This block checks it
+on a **kae-rendered** tree fragment — the acceptance check R4 in
+[ROADMAP.md](ROADMAP.md) § Place navigation and the tree mode names — through
+`mise env` and `mise hook-env`, in the bound directory, 1 and 3 levels below it, and in
+its parent. Temp HOME, file driver, file backend; the bound directory is inside the
+temp HOME, and `scripts/smoke-run.sh`'s header states why the mise calls here cannot
+reach the operator's own mise config.
+
+```bash
+go build -o /tmp/kae .
+. scripts/smoke-env.sh
+export KAE_CLAUDE_DRIVER=file
+unset CLAUDE_CONFIG_DIR CODEX_HOME CLAUDE_SECURESTORAGE_CONFIG_DIR KAE_PROFILE
+mkdir -p "$XDG_CONFIG_HOME/kagikae" "$HOME/.claude"
+printf 'version = 1\n[security]\nsecret_backend = "file"\n' > "$XDG_CONFIG_HOME/kagikae/config.toml"
+printf '{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":99999999999999}}' \
+  > "$HOME/.claude/.credentials.json"
+/tmp/kae add --no-login --identity you@example.com claude main
+/tmp/kae profile set main claude main
+# Canonical, so the paths kae writes and the ones compared below are one spelling.
+B=$(mkdir -p "$HOME/work/main-app/one" "$HOME/work/main-app/a/b/c" && cd "$HOME/work/main-app" && pwd -P)
+V='^export (KAE_PROFILE|CLAUDE_CONFIG_DIR|CLAUDE_SECURESTORAGE_CONFIG_DIR)='
+
+cd "$B" && /tmp/kae pin -t main > "$HOME/T.out" 2>&1
+grep -q 'Pinned this directory: profile main (tree)' "$HOME/T.out"
+F="$B/.config/mise/conf.d/kagikae.toml"
+grep -q '^# kae:mode=tree$' "$F"      # assert: the fragment is a tree binding
+grep -qE '^CLAUDE_CONFIG_DIR = ".*/isolation/[0-9a-f]{16}/claude/tree"$' "$F"
+                                       # assert: pointing claude at the tree store
+grep -qE '^CLAUDE_SECURESTORAGE_CONFIG_DIR = ".*/credstore/claude/main"$' "$F"
+                                       # assert: and at the account's credential store
+test "$(readlink "$B/.config/claude")" = "$(sed -n 's/^CLAUDE_CONFIG_DIR = "\(.*\)"$/\1/p' "$F")"
+                                       # assert: the store link names the same store
+mise trust "$F"
+
+cd "$B" && mise env -s bash | grep -E "$V" | sort > "$HOME/env0"
+test "$(wc -l < "$HOME/env0")" -eq 3   # assert: all three in the bound directory
+cd "$B/one" && mise env -s bash | grep -E "$V" | sort > "$HOME/env1"
+cmp "$HOME/env0" "$HOME/env1"          # assert: the same three, 1 level below
+cd "$B/a/b/c" && mise env -s bash | grep -E "$V" | sort > "$HOME/env3"
+cmp "$HOME/env0" "$HOME/env3"          # assert: and 3 levels below
+cd "$B/.." && test "$(mise env -s bash | grep -cE "$V")" -eq 0
+                                       # assert: none in the parent; env0's count is
+                                       #   this absence check's positive control
+
+cd "$B" && mise hook-env -s bash | grep -E "$V" | sort > "$HOME/hook0"
+cmp "$HOME/env0" "$HOME/hook0"         # assert: hook-env exports what env does
+cd "$B/one" && mise hook-env -s bash | grep -E "$V" | sort > "$HOME/hook1"
+cmp "$HOME/env0" "$HOME/hook1"
+cd "$B/a/b/c" && mise hook-env -s bash | grep -E "$V" | sort > "$HOME/hook3"
+cmp "$HOME/env0" "$HOME/hook3"
+cd "$B/.." && test "$(mise hook-env -s bash | grep -cE "$V")" -eq 0
+```
+
+**PASSED 2026-09-30** on a `/tmp/kae` built from the working tree, through
+`scripts/smoke-run.sh` on this section with mise 2026.9.17: every line exited 0 and
+the checkout was unchanged. The kae-rendered tree fragment gave `KAE_PROFILE`,
+`CLAUDE_CONFIG_DIR` and `CLAUDE_SECURESTORAGE_CONFIG_DIR` identically through `mise env`
+and `mise hook-env` in the bound directory and 1 and 3 levels below it, and none of
+them in its parent — the scratch-fragment result R4 stood on until then. It is
+overturned if a later mise leaves any of the three out of a directory below the bound
+one. It does not run a directory below that has a binding of its own; kae's side of
+that case, the governing binding of [CLI.md](CLI.md) § kae ls Semantics, is
+`TestNestedBindingsGovernPerTool` (`place_test.go`).
+
+Unit-covered, in `internal/cmd/tree_test.go` unless noted: the fragment, store and
+links a tree bind writes and codex left on the real home
+(`TestPinTreeWritesTheFragmentAndTheStore`); the account switch keeping the config
+line, `projects/` and `history.jsonl` while `/oauthAccount` and the credential entry
+move (`TestRebindInATreeDirectoryKeepsTheStore`); one credential for two tree
+directories of one account (`TestTwoTreeDirectoriesOfOneAccountShareOneCredential`);
+attribution never crossing modes (`TestTreeStoreAttributionNeverCrossesModes`); the
+mode reported by `kae ls --pins`, the session row, `kae status` and the global-scope
+warning from a subdirectory (`TestTreeModeShowsWhereverTheModeIsReported`); unpin,
+re-pin and `--purge` reference counting
+(`TestUnpinKeepsTheTreeStoreAndPurgeCountsTreeFragments`); the mode-change note
+(`TestModeChangesNoteTheStoreTheyLeave`); uninstall ownership
+(`TestUninstallRecognisesATreeFragmentAndKeepsTheStore`); the codex refusal and flag
+conflicts (`TestTreeRefusesCodexAndConflictingFlags`, `TestTreeFlagIsPinsAlone`); and
+the table row itself (`TestBindModeConstantsAgreeAcrossPackages`,
+`TestModeLabelStalePolarityPerMode`, in `dircred_label_test.go`).
+
 ## Harvesting a credential before it is overwritten
 
 **Run this section with `bash scripts/smoke-run.sh '## Harvesting a credential'`,

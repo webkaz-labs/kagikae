@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
@@ -12,12 +13,13 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
-// Per-directory bind kinds, unified on the user-facing shared/isolated
+// Per-directory bind kinds, unified on the user-facing shared/isolated/tree
 // vocabulary (docs/CONTEXT.md § Mechanism terms). They equal the on-disk path segments
-// (paths.SharedSegment / paths.IsolatedSegment) and the -s/-i flags.
+// (paths.SharedSegment / paths.IsolatedSegment / paths.TreeSegment) and the -s/-i/-t flags.
 const (
 	modeShared   = constants.ModeShared
 	modeIsolated = constants.ModeIsolated
+	modeTree     = constants.ModeTree
 )
 
 // bindMode is one per-directory bind mechanism: every fact kae derives from "which
@@ -27,8 +29,11 @@ const (
 // unrecognized-mode answer rather than silently taking another mode's branch.
 type bindMode struct {
 	// name is the mode token (constants.Mode*): the fragment's mode, the status label
-	// and the -s/-i vocabulary.
+	// and the -s/-i/-t vocabulary.
 	name string
+	// flag is the `kae pin` short flag that selects the mode, for messages that tell
+	// the user how to come back to it.
+	flag string
 	// segment is the store's path segment under isolation/<pin-id>/<tool>/
 	// (paths.*Segment), which is how kaeManagedHomeKind recognizes a store by its
 	// path and dirCredentialStores finds one on disk. It equals name; both are kept
@@ -38,13 +43,18 @@ type bindMode struct {
 	// (…/<segment>/<account>/config/) rather than being one store per pin×tool.
 	// labelStaleOnAccountChange and configMovesWithAccount follow from it.
 	perAccount bool
+	// tools is the set of tools the mode binds; nil binds every tool that has an
+	// isolation variable. A tool outside it keeps the real home with a warning entry,
+	// as a tool with no isolation variable does (modeIsolationEntries), and
+	// `kae pin <tool> <account>` refuses it (runRebind).
+	tools []string
 	// storeDir is the config dir the tool's isolation variable points at. An
 	// account-agnostic mode ignores account.
 	storeDir func(p paths.Paths, pinID, tool, account string) string
 	// prepare materializes the store for one tool and account and returns its dir:
 	// it links what the mode shares from the real home (shared: the real-home
-	// listing minus the denylist; isolated: isolated_shared_items) and writes the
-	// credential.
+	// listing minus the denylist; isolated and tree: isolated_shared_items) and writes
+	// the credential.
 	prepare func(app *App, ctx context.Context, be secret.Backend, tool, account, pinID string, staleLabel bool) (string, error)
 	// rebindFailure names what a failed prepare was doing, for the error of
 	// `kae pin <tool> <account>`.
@@ -59,6 +69,7 @@ func bindModes() []bindMode {
 	return []bindMode{
 		{
 			name:       modeShared,
+			flag:       "-s",
 			segment:    paths.SharedSegment,
 			perAccount: false, // one store per pin×tool
 			storeDir: func(p paths.Paths, pinID, tool, _ string) string {
@@ -71,12 +82,31 @@ func bindModes() []bindMode {
 		},
 		{
 			name:       modeIsolated,
+			flag:       "-i",
 			segment:    paths.IsolatedSegment,
 			perAccount: true,
 			storeDir:   paths.Paths.IsolatedConfigDir,
 			prepare:    (*App).preparePinConfig,
 			rebindFailure: func(tool, account string) string {
 				return "prepare isolated config for " + tool + "/" + account
+			},
+		},
+		{
+			name:       modeTree,
+			flag:       "-t",
+			segment:    paths.TreeSegment,
+			perAccount: false, // one store per pin×tool, kept across account switches
+			// claude only: its credential lives in the per-account credential store, so
+			// the tree store holds none. codex keeps its credential inside CODEX_HOME,
+			// so it is not bound here (docs/ADAPTERS.md § Per-directory tree bind
+			// (`kae pin -t`)).
+			tools: []string{constants.ToolClaude},
+			storeDir: func(p paths.Paths, pinID, tool, _ string) string {
+				return p.TreeDir(pinID, tool)
+			},
+			prepare: (*App).prepareTree,
+			rebindFailure: func(tool, account string) string {
+				return "prepare tree store for " + tool + "/" + account
 			},
 		},
 	}
@@ -101,6 +131,11 @@ func bindModeForSegment(segment string) (bindMode, bool) {
 		}
 	}
 	return bindMode{}, false
+}
+
+// bindsTool reports whether the mode binds tool at all (bindMode.tools).
+func (m bindMode) bindsTool(tool string) bool {
+	return m.tools == nil || slices.Contains(m.tools, tool)
 }
 
 // labelStaleOnAccountChange is modeLabelStale's polarity for this mode: an
@@ -232,6 +267,7 @@ func (app *App) isKaeManagedHome(dir string) bool {
 //	isolation/global/<tool>/<account>/      → sync (global isolated, kae use -i)
 //	isolation/<pin-id>/<tool>/shared/       → shared (per-dir, kae pin -s)
 //	isolation/<pin-id>/<tool>/isolated/…    → isolated (per-dir, kae pin -i)
+//	isolation/<pin-id>/<tool>/tree/         → tree (per-dir, kae pin -t)
 //
 // A pin-id is 16 hex chars, so it never collides with the "global" prefix.
 //
@@ -272,7 +308,7 @@ func (app *App) pinnedStatus() *pinnedStatus {
 	}
 	mode := constants.ModeAuth
 	if kind := app.firstKaeManagedIsolation(); kind != "" {
-		// kind is already the user-facing label (shared/isolated/sync).
+		// kind is already the user-facing label (shared/isolated/tree/sync).
 		mode = kind
 	}
 	return &pinnedStatus{Profile: profile, Mode: mode}
@@ -329,7 +365,7 @@ func (app *App) pinnedGlobalScope() {
 	if app.globalScope {
 		return
 	}
-	// Warn only inside a per-directory pin (shared/isolated), where the change
+	// Warn only inside a per-directory pin (shared/isolated/tree), where the change
 	// really is invisible to the directory. A terminal activated by the global
 	// mise fragment (kind == sync) is not "pinned": `kae use -s`/`-i` is the
 	// sanctioned global path there, so it must not print a misleading warning.

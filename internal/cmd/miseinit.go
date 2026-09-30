@@ -27,7 +27,7 @@ const (
 // marker-delimited kagikae block. An existing file without markers is never
 // modified. --auto adds a [hooks.enter] entry running `kae use --auto --quiet`. The
 // former isolation modes (home/overlay/bond/pin) are gone: bind a directory
-// with `kae pin -s|-i`, which owns its own mise fragment.
+// with `kae pin -s|-i|-t`, which owns its own mise fragment.
 func CmdMise(ctx context.Context, args []string) int {
 	if len(args) == 0 || args[0] != "init" {
 		return usageError("usage: %s mise init [--profile NAME] [--auto] [--write]", toolName)
@@ -51,7 +51,7 @@ func CmdMise(ctx context.Context, args []string) int {
 func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode string, auto, write bool) int {
 	if mode != constants.ModeAuth {
 		return usageError(
-			"kae mise init renders auth mode only (mode %q is no longer supported); bind a directory with `kae pin -s|-i`", mode,
+			"kae mise init renders auth mode only (mode %q is no longer supported); bind a directory with `kae pin -s|-i|-t`", mode,
 		)
 	}
 	if err := app.requireConfig(); err != nil {
@@ -92,7 +92,7 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 }
 
 // isolationPlan resolves the per-tool env entries and the matching directory
-// preparer for a per-directory bind (shared/isolated). Used by `kae pin`, which
+// preparer for a per-directory bind (shared/isolated/tree). Used by `kae pin`, which
 // renders the kae-owned mise fragment; both mechanisms key their stores by the
 // bound directory, whose pin id the caller has already resolved (it needs it for
 // the pin lock and the breadcrumb, and two derivations of one id is one too many).
@@ -226,31 +226,29 @@ type isolationEntry struct {
 	Warning    string // non-empty: rendered as a comment, no env entry
 }
 
-// isolationEntryFor builds one bind entry for a tool: the env entries pointing at
-// dir and at the account's credential store when the tool has a home-isolation
-// env var, or a warning entry (dir ignored) when it does not. Shared by the
-// shared (SharedDir) and isolated (IsolatedConfigDir) bind planners, which differ
-// only in how dir is computed.
+// isolationEntryFor builds the env entries of one tool the bind mode binds: the
+// isolation variable pointing at dir and, where the tool has one, the credential
+// variable pointing at the account's credential store. A tool the mode leaves on the
+// real home never reaches it; modeIsolationEntries gives that one its warning entry
+// from bindMode.unboundReason.
 //
-// The credential entry is written in **both** modes, and it is the account rather
+// The credential entry is written in **every** mode, and it is the account rather
 // than the directory that selects it. That is what the shared mode's own
 // account-agnostic store cannot express: two directories bound to one account
 // each hold a copy there, and claude's refresh token rotates single-use, so the
 // first refresh in either one logs the other out (docs/ROADMAP.md § One
 // credential per account).
 func (app *App) isolationEntryFor(tgt runTarget, dir string) isolationEntry {
-	entry := isolationEntry{Tool: tgt.Tool, Account: tgt.Account, EnvVar: isolationEnvVar(tgt.Tool)}
-	if entry.EnvVar == "" {
-		entry.Warning = fmt.Sprintf(
-			"%s has no stable home-isolation env var; it keeps the real home (docs/ROADMAP.md)", tgt.Tool,
-		)
-		return entry
-	}
-	entry.Dir = dir
+	entry := isolationEntry{Tool: tgt.Tool, Account: tgt.Account, EnvVar: isolationEnvVar(tgt.Tool), Dir: dir}
 	if credDir := app.credStoreDir(tgt.Tool, tgt.Account); credDir != "" {
 		entry.CredEnvVar, entry.CredDir = credentialEnvVar(tgt.Tool), credDir
 	}
 	return entry
+}
+
+// noIsolationVarReason is the warning entry of a tool with no home-isolation variable.
+func noIsolationVarReason(tool string) string {
+	return fmt.Sprintf("%s has no stable home-isolation env var; it keeps the real home (docs/ROADMAP.md)", tool)
 }
 
 // writeEnvEntries renders the shared [env] block — KAE_PROFILE plus each bound
@@ -288,12 +286,41 @@ func (app *App) bondDenylistItems(tool string) []string {
 // in mode m. Each target carries its account: an account-agnostic store (shared,
 // one per pinID×tool) uses it for credential-copy bookkeeping only, a per-account
 // one (isolated, …/isolated/<account>/config/) also composes its path from it.
+//
+// A tool the mode does not bind (bindMode.tools: codex under tree) gets a warning
+// entry and keeps the real home, exactly as a tool with no isolation variable does.
 func (app *App) modeIsolationEntries(m bindMode, targets []runTarget, pinID string) []isolationEntry {
 	entries := make([]isolationEntry, 0, len(targets))
 	for _, tgt := range targets {
+		if reason := m.unboundReason(tgt.Tool); reason != "" {
+			// Rendered as a comment only: the fragment records no account for it.
+			entries = append(entries, isolationEntry{Tool: tgt.Tool, Account: tgt.Account, Warning: reason})
+			continue
+		}
 		entries = append(entries, app.isolationEntryFor(tgt, m.storeDir(app.Paths, pinID, tgt.Tool, tgt.Account)))
 	}
 	return entries
+}
+
+// unboundReason is why a bind in mode m leaves tool on the real home, or "" for a tool
+// it binds: the one answer the planner's warning entries, the bind's stderr warning and
+// uninstall's reconstruction of a rendered fragment all read.
+func (m bindMode) unboundReason(tool string) string {
+	switch {
+	case isolationEnvVar(tool) == "":
+		return noIsolationVarReason(tool)
+	case !m.bindsTool(tool):
+		return modeUnboundReason(m, tool)
+	default:
+		return ""
+	}
+}
+
+// modeUnboundReason is why mode m, which does not bind tool, leaves it on the real home:
+// the fragment's warning comment, the bind's stderr warning and the re-bind's refusal.
+func modeUnboundReason(m bindMode, tool string) string {
+	return fmt.Sprintf("%s mode binds %s only, so %s keeps the real home (docs/ROADMAP.md)",
+		m.name, strings.Join(m.tools, ", "), tool)
 }
 
 // prepareBond creates the bond directory for one tool/pinID: symlinks every
@@ -474,15 +501,31 @@ func retractLinks(dir string, names []string) error {
 // account's credential privately (writeDirCredential). Idempotent: stale
 // symlinks are refreshed; real files are left.
 func (app *App) preparePinConfig(ctx context.Context, be secret.Backend, tool, account, pinID string, staleLabel bool) (string, error) {
-	configDir := app.Paths.IsolatedConfigDir(pinID, tool, account)
+	return app.prepareOptInStore(ctx, be, tool, account, app.Paths.IsolatedConfigDir(pinID, tool, account), "isolated config dir", staleLabel)
+}
+
+// prepareTree creates the tree store for one tool/pinID
+// (isolation/<pin-id>/<tool>/tree/), whichever account is bound: the isolated bind's
+// opt-in links, and the account's credential in its own credential store with the
+// identity cache in the tree store (docs/ADAPTERS.md § Per-directory tree bind). An
+// account switch runs this same preparer, which is what keeps the store's sessions,
+// history and settings and rewrites only what names the account.
+func (app *App) prepareTree(ctx context.Context, be secret.Backend, tool, account, pinID string, staleLabel bool) (string, error) {
+	return app.prepareOptInStore(ctx, be, tool, account, app.Paths.TreeDir(pinID, tool), "tree store", staleLabel)
+}
+
+// prepareOptInStore materializes configDir as a store whose links from the real home
+// are the configured isolated_shared_items: the isolated and tree binds, which differ
+// only in how configDir is composed. what names the store in errors.
+func (app *App) prepareOptInStore(ctx context.Context, be secret.Backend, tool, account, configDir, what string, staleLabel bool) (string, error) {
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		return "", fmt.Errorf("create isolated config dir: %w", err)
+		return "", fmt.Errorf("create %s: %w", what, err)
 	}
 	realHome := app.realToolHome(tool)
 	if filepath.Clean(realHome) == filepath.Clean(configDir) {
 		return "", errf(constants.ExitUnsafeRefused,
-			"the real %s home resolves to the pin config dir itself; unset %s and retry",
-			tool, isolationEnvVar(tool))
+			"the real %s home resolves to the %s itself; unset %s and retry",
+			tool, what, isolationEnvVar(tool))
 	}
 
 	// Symlink opt-in shared items from the real home. The *configured list* is this

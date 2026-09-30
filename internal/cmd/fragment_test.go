@@ -722,6 +722,12 @@ func TestKaeManagedHomeKindClassifiesSegments(t *testing.T) {
 	if got := app.kaeManagedHomeKind(app.Paths.IsolatedConfigDir(pinID, constants.ToolClaude, "main")); got != modeIsolated {
 		t.Fatalf("isolated segment must classify as isolated, got %q", got)
 	}
+	if got := app.kaeManagedHomeKind(app.Paths.TreeDir(pinID, constants.ToolClaude)); got != modeTree {
+		t.Fatalf("tree segment must classify as tree, got %q", got)
+	}
+	if got := app.kaeManagedHomeKind(filepath.Join(app.Paths.TreeDir(pinID, constants.ToolClaude), "projects", "x")); got != modeTree {
+		t.Fatalf("a path inside a tree store must classify as tree, got %q", got)
+	}
 	if got := app.kaeManagedHomeKind(app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "main")); got != constants.ModeSync {
 		t.Fatalf("global segment must classify as sync, got %q", got)
 	}

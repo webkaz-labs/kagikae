@@ -46,14 +46,14 @@ Do not widen those mutation paths without affected acceptance.
 
 The uninstall/Packslip release is recorded in [RELEASE.md](RELEASE.md), with
 lifecycle evidence and limitations in [ACCEPTANCE.md](ACCEPTANCE.md)
-§ Uninstall and Packslip assessment. Next comes the operator-requested tree
-mode described in § Place navigation and the tree mode;
-§ Agent orchestration and remote authentication — deferred exploration follows
-it and still requires investigation and an explicit implementation decision.
-Between the two comes **localized human output (Japanese)**, requested by the
-operator on 2026-09-30: new and existing runtime human messages, after the tree
-mode's local verification. [CLI.md](CLI.md) § Localization describes current
-behavior until it ships. Design questions: how the locale is selected, and which
+§ Uninstall and Packslip assessment. The operator-requested tree mode is implemented
+for claude; next is its R3 real-machine check in § Place navigation and the tree mode,
+while its codex slice stays gated on R1 and R2 there. After R3 comes **localized human
+output (Japanese)**, requested by the operator on 2026-09-30: new and existing runtime
+human messages; [CLI.md](CLI.md) § Localization describes current behavior until it
+ships. § Agent orchestration and remote authentication — deferred exploration
+follows it and still requires investigation and an explicit implementation decision.
+Localization design questions: how the locale is selected, and which
 locale the gate's and smoke blocks' English assertions run under (this machine
 uses `LC_ALL=ja_JP.UTF-8`, CI does not).
 The upstream detector remains conditional on reviewed artifact pairs under
@@ -88,7 +88,7 @@ prerequisites; entries not named here retain their recorded gate.
 ## Place navigation and the tree mode
 
 Requested by the operator on 2026-09-29. The first item is implemented; the second
-has its contract and awaits implementation.
+is implemented for claude, with the gates below still open.
 
 1. **List, open and move to places.** Implemented: [CLI.md](CLI.md) § kae ls
    Semantics and § kae open and kae cd Semantics are the contracts, and
@@ -97,26 +97,14 @@ has its contract and awaits implementation.
    under § Exploratory. A mise `[shell_alias]` in the fragment was rejected for it
    because an alias cannot place arguments inside `cd "$(…)"`.
 
-2. **Tree mode (`kae pin -t`).** The contract is written: [CLI.md](CLI.md) § kae pin
+2. **Tree mode (`kae pin -t`).** Implemented for claude: [CLI.md](CLI.md) § kae pin
    and mise init Semantics for the command, [ADAPTERS.md](ADAPTERS.md)
    § Per-directory tree bind (`kae pin -t`) for what it switches,
    [DATA-MODEL.md](DATA-MODEL.md) § Directory Layout (XDG) for the store and
-   [CONTEXT.md](CONTEXT.md) for the term. What remains:
+   [CONTEXT.md](CONTEXT.md) for the term. R4, the fragment's `[env]` in nested
+   directories, is [VALIDATION.md](VALIDATION.md) § Tree mode in nested directories
+   (`kae pin -t`, R4). What remains:
 
-   - **The claude slice.** Implement that contract, with completion for `-t` in the
-     same commit (CLI § Keeping completion current), and `tree` as a new row
-     in `bindModes()` (`internal/cmd/modes.go`), whose attributes drive the store
-     walk, label polarity and classification, plus what the table does not reach,
-     among them the pin flag, completion, the constants and the claude-only gate
-     (`kae pin -t` binds no codex).
-   - **R4, the fragment's `[env]` in nested directories**, is an acceptance check of
-     that slice: a kae-rendered tree fragment run through
-     `bash scripts/smoke-run.sh`. What stands in for it is a scratch `conf.d`
-     fragment, not a kae-rendered one: on 2026-09-30 one exporting four variables
-     gave all four in the bound directory and 1 and 3 levels below it, none in its
-     parent, and an error while it was untrusted (mise 2026.9.17). It is overturned
-     if the kae-rendered fragment leaves any of its variables out of a directory
-     below the bound one.
    - **R3, a switch and a claude already running in the tree**
      ([ADAPTERS.md](ADAPTERS.md) § Per-directory tree bind (`kae pin -t`) makes no
      claim about it). Saying anything about a running one needs a measurement of two
@@ -903,6 +891,14 @@ alternative exists (`secret-tool`).
   values, so the ordinary relogin leaves them unchanged. The cache cannot date the store
   under either reading, which is this entry's point restated from the other end: whatever
   settles it has to time the **store**, and a marker on the cache will look like it did.
+
+- **A leftover label across a mode round trip is read as evidence** (recorded 2026-09-30,
+  unmeasured). The retraction named in **Attribution reads a label kae may have written
+  itself** does not reach an account-agnostic store left over across a mode round trip
+  (`-t side` → `-s main` → `-t main`, or `-s side` → `-i main` → `-s main`):
+  `modeLabelStale` compares the previous binding's account, not the account whose label the
+  store holds, so the leftover label is read as evidence — on the keep path only; a
+  pre-existing shape to which the tree mode adds a path, recorded rather than fixed.
 
 - **A store bound before the credential split, unbound, then re-bound after it keeps
   its pre-split item** (recorded 2026-08-07, **not fixed** — deliberately). The

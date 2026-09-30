@@ -68,13 +68,14 @@ const (
 )
 
 // Switch modes / isolation kinds. The mechanism vocabulary is unified on
-// shared/isolated (docs/CONTEXT.md § Mechanism terms): the per-directory bind kinds match
-// the user-facing -s/-i flags and the on-disk path segments.
+// shared/isolated/tree (docs/CONTEXT.md § Mechanism terms): the per-directory bind kinds
+// match the user-facing -s/-i/-t flags and the on-disk path segments.
 const (
 	ModeAuth     = "auth"     // global shared (real home; bare use, run -s)
 	ModeEnv      = "env"      // env-profile injection (run --env)
 	ModeShared   = "shared"   // per-directory shared (kae pin --shared)
 	ModeIsolated = "isolated" // per-directory isolated (kae pin --isolated)
+	ModeTree     = "tree"     // per-directory tree (kae pin --tree)
 	ModeSync     = "sync"     // global isolated (kae use --isolated)
 )
 

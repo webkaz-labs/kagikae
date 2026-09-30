@@ -16,16 +16,14 @@ import (
 //	kae pin <tool> <account>
 //
 // Valid only inside a directory bound with `kae pin` (it reads the kae-owned
-// fragment). Two env entries move on different rules, and this comment used to
-// state the pre-split one: the **config** entry is repointed only in isolated
-// mode, where the dir is re-keyed to the new account, because a shared dir is
-// account-agnostic; the **credential** entry moves in **both**, because the
-// account is what selects that store. rebindFragment owns that asymmetry and says
-// why — do not restate it here, which is how these two came to say opposite
-// things about one behaviour. The
-// fragment's account record and KAE_PROFILE are recomputed (the latter goes
-// empty when the new account set matches no named profile). Sessions and
-// settings are never disturbed.
+// fragment). Two env entries move on different rules: the **config** entry is
+// repointed only in isolated mode, where the dir is re-keyed to the new account,
+// because a shared or tree dir is account-agnostic; the **credential** entry moves
+// in **every** mode, because the account is what selects that store.
+// rebindFragment owns that asymmetry and says why — do not restate it here. The
+// fragment's account record and KAE_PROFILE are recomputed (the latter goes empty
+// when the new account set matches no named profile). Sessions and settings are
+// never disturbed.
 func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName string, noLink bool) int {
 	tool, err := canonicalToolAccount(tool, accountName, "account")
 	if err != nil {
@@ -45,6 +43,13 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	if !exists {
 		return finish(opts, errf(constants.ExitUnsupported,
 			"this directory is not pinned; run `kae pin` first"))
+	}
+	// Before the not-bound refusal below, whose remedy — re-pin the profile — is wrong
+	// here: a re-pin in this mode would leave the tool on the real home again.
+	if m, known := bindModeFor(info.Mode); known && !m.bindsTool(tool) {
+		return finish(opts, errf(constants.ExitUnsupported,
+			"`kae pin %s <account>` does not apply in this directory: %s",
+			tool, modeUnboundReason(m, tool)))
 	}
 	if _, bound := info.Accounts[tool]; !bound {
 		return finish(opts, errf(constants.ExitNotFound,
@@ -162,7 +167,7 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// In isolated mode the store is keyed by account, so the previous account's dir
 	// is now unreachable and its keychain item would keep that credential with
 	// nothing pointing at it. Scoped to this tool: a sibling tool's store is still
-	// bound by the same fragment. (Shared mode re-uses one dir, so nothing is stale.)
+	// bound by the same fragment. (Shared and tree modes re-use one dir, so nothing is stale.)
 	// `info` is the binding this re-bind replaced, which is what names the account a
 	// shared store's credential belongs to (storeAccount) — read before
 	// rebindFragment rewrote it.

@@ -28,6 +28,13 @@ func (app *App) ownedUninstallFragment(dir, content string) bool {
 	for _, tool := range constants.Tools {
 		if account, ok := info.Accounts[tool]; ok {
 			targets = append(targets, runTarget{Tool: tool, Account: account})
+			continue
+		}
+		// A tool the bind left on the real home records no account, only its warning
+		// comment (a tool with no isolation variable, or codex under tree mode), so it is
+		// reconstructed from that comment or a profile with one never renders equal.
+		if warning := mode.unboundReason(tool); warning != "" && strings.Contains(content, "\n# warning: "+warning+"\n") {
+			targets = append(targets, runTarget{Tool: tool})
 		}
 	}
 	entries := app.modeIsolationEntries(mode, targets, paths.PinID(dir))

@@ -15,10 +15,10 @@ git diff --check
 it had already drifted — this line omitted `smoke-selftest` for as long as it existed,
 and `AGENTS.md` and `README.md` each carried a third version. Read the task.
 
-CI is a **subset**, not a mirror, except that it runs the full picker PTY suite where
-`mise run check` runs the fast journey (§ Picker PTY suite):
-`.github/workflows/check.yml`'s own steps are the one copy of which of those steps run
-there, and everything else is enforced on a developer's machine only.
+CI is a **subset**, not a mirror, apart from the picker PTY suite (§ Picker PTY suite
+says which part of it each runs): `.github/workflows/check.yml`'s own steps are the one
+copy of which of those steps run there, and everything else is enforced on a
+developer's machine only.
 [ROADMAP.md](ROADMAP.md) routes to per-step admission decisions; the workflow steps
 own their environment constraints.
 
@@ -30,8 +30,7 @@ proves that an empty
 gate keeps the four historical smoke-run defect shapes live through
 `smoke-selftest-mutations-fast`; the full table stays release-only because it runs the
 selftest once per guard. Lint tools run via `go run <tool>@<pinned version>`; the first
-run downloads them. The full picker PTY suite (`mise run tui-e2e`, § Picker PTY suite)
-runs in CI and is the local run after a picker change.
+run downloads them.
 
 `mise run naming-agreement` is the login-free release naming check described in
 [ACCEPTANCE.md](ACCEPTANCE.md) § Bound-directory credential store. Its Go
@@ -44,25 +43,15 @@ requires an explicitly reviewed macOS binary.
 
 `mise run test` (and `test-fresh`, which adds `-count=1`) runs
 `scripts/testshard` (`go run ./scripts/testshard` from the repository root).
-`internal/cmd` holds most of the suite's wall time and
-its tests swap process globals (working directory, `os.Stdout`, environment), so
-they cannot run in parallel inside one process. The runner instead lists that
-package's top-level tests, deals them round-robin by sorted name into shards, runs
-each shard as its own `go test -run` process, and runs every other package with one
-plain `go test` beside them. Each shard is a normal `go test` invocation, so the test
-cache and `-count` behave as before. `KAE_TEST_SHARDS` sets the shard count (default:
-CPU count, at most 6; an override is clamped to 16; `1` runs the package in one
-process). Isolation rests on every test using `t.TempDir()`, on the `TestMain` guard
-described below and
-on no fixed path or port outside a temp directory; a new test that binds one breaks
-the sharding.
-
-The runner checks its own split: each shard's verbose output must show exactly its
-assigned top-level tests, once each, and the shards together must equal the listed
-set; any mismatch fails the run and names the test. The runner also fails unless
-`internal/cmd` is removed from the other packages' list exactly once, so a workspace
-or rename cannot run it twice unnoticed. It does not check which tests a
-shard skips with `t.Skip`, and a listed benchmark is not run. CI keeps a plain
+`internal/cmd` holds most of the suite's wall time and its tests swap process
+globals, so the runner splits that package's tests across processes. The dealing,
+the shard count (`KAE_TEST_SHARDS`, with its default and clamps) and the split
+verification are described in the package comment of `scripts/testshard/main.go`,
+which is the one copy of the mechanism. Isolation rests on every test using
+`t.TempDir()`, on the `TestMain` guard described below and on no fixed path or port
+outside a temp directory; a new test that binds one breaks the sharding. The runner
+does not check which tests a shard skips with `t.Skip`, and a listed benchmark is
+not run. CI keeps a plain
 `go test ./...` (a runner with few cores gains little, and it stays a second opinion
 on the split), so a test that passes only in isolation from its neighbours fails
 there first.
@@ -120,30 +109,31 @@ inside `node_modules` records which).
   environment option. The fixture's `git init` gets the same empty git
   configuration. No installed `kae` is on the child's `PATH` and the child reaches no
   real HOME or XDG root. The palette is pinned and no step sleeps: each waits for
-  screen text, bounded at 15 s.
+  screen text.
 - **What is asserted.** `test/tui/run.mjs` lists the scenarios. Each runs in a fresh
   shell holding a git repository with `.claude/` at its root and starts in a
   subdirectory. Exit statuses, the shell's `$PWD`, stdout and stderr contents and the
-  terminal modes (`stty -a` from a non-zsh parent, because interactive zsh resets
-  them before each prompt) are printed by the shell and matched as `marker:status`.
+  terminal modes are printed by the shell and matched as `marker:status`.
   The harness throws when an expected string occurs in a line the scenario typed, so
   the terminal's echo of the command can never satisfy an expectation. The picker's
   rendering is asserted as text on the screen, plus one text-only snapshot,
   `test/tui/__snapshots__/picker-120x36.snap`. A missing snapshot fails; regenerate
   it with `KAE_TUI_UPDATE=1` and review the diff.
-- **Running.** Every scenario runs and each is caught on its own, each bounded at
-  90 s. Up to four run at once (`KAE_TUI_JOBS` overrides, `1` runs them one by one; the
-  default is the CPU count when that is lower); each has its own shell, HOME and temp
+- **Running.** Every scenario runs and each is caught on its own. A step waits up to
+  15 s (`KAE_TUI_TIMEOUT_MS` overrides it for a loaded machine) and a scenario 90 s.
+  Up to four run at once, fewer when the machine has fewer CPUs (`KAE_TUI_JOBS`
+  overrides, `1` runs them one by one); each has its own shell, HOME and temp
   directory, so they share only the built binary, and the report keeps declaration
   order; the run ends with one line per scenario and exits non-zero when any failed.
   `mise run tui-e2e-fast` runs the scenario tagged `fast` (the 80x24 journey),
   selected from the same list rather than written apart; it is a dependency of
-  `mise run check`. Its key presses only change the test shell's directory. Rerun the
-  full suite after a picker or `kae cd` change and before a release.
+  `mise run check`. Its key presses only change the test shell's directory. CI runs
+  the full suite; `mise run check` runs the fast journey, so rerun the full suite
+  locally after a picker or `kae cd` change and before a release.
 - **Limits.** Only text is asserted, so color and `NO_COLOR` are covered by Go tests
   and not here. Only zsh (a non-zsh `sh -c` for the terminal-modes check), one
   emulator and one platform per run: a picker drawing bug specific to another
-  terminal, or to bash and fish, is outside it. CI (`check.yml`) runs the full suite
+  terminal, or to bash and fish, is outside it. CI (`check.yml`) runs it
   on `ubuntu-latest` after `actions/setup-node` at the version `mise.toml` pins; it
   passed on Ubuntu 24.04 in containers on linux/arm64 and linux/amd64.
 

@@ -122,10 +122,11 @@ export async function teardown() {
   removeWorld();
 }
 
-for (const sig of ["SIGINT", "SIGTERM"]) {
+// 128 plus the signal number, the shell convention: SIGINT 130, SIGTERM 143.
+for (const [sig, code] of [["SIGINT", 130], ["SIGTERM", 143]]) {
   process.once(sig, () => {
     removeWorld();
-    process.exit(130);
+    process.exit(code);
   });
 }
 

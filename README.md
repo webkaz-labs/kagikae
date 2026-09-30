@@ -580,7 +580,7 @@ git diff --check
 Choose the pre-commit gate using [AGENTS.md](AGENTS.md) § Validation.
 `mise run check` remains the full authoritative gate. CI
 ([.github/workflows/ci.yml](.github/workflows/ci.yml), which calls `check.yml`) runs a
-**subset** of it. Static analysers, `shellcheck` and smoke selftests remain in the
+**subset** of it, plus the full picker PTY suite (`check` runs its fast journey). Static analysers, `shellcheck` and smoke selftests remain in the
 local gate. Compare `check.yml`'s steps with `mise.toml`'s `[tasks.check]` for the
 current coverage.
 Tagging `vX.Y.Z`

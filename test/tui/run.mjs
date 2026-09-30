@@ -102,15 +102,16 @@ const scenarios = [
       withShell({ name: "s5", cols: 80, rows: 24 }, async (s) => {
         // A non-zsh parent: interactive zsh resets the tty modes before each
         // prompt and would hide a kae that leaves raw mode on. sh prints the
-        // modes itself, straight after kae returns. grep -q succeeds (0) when
-        // -icanon or -echo is listed, so 1 means cooked mode is back.
+        // modes itself, straight after kae returns. The check is positive: stty
+        // must succeed and list both icanon and echo, so a missing or failing
+        // stty leaves s5-cooked at a non-zero status instead of passing.
         await s.run(
-          `sh -c 'out=$(kae __cd); echo "s5-rc:$?"; stty -a | grep -Eq "(^| )-(icanon|echo)( |\$)"; echo "s5-raw:$?"'`,
+          `sh -c 'out=$(kae __cd); echo "s5-rc:$?"; m=$(stty -a) && printf "%s\\n" "$m" | grep -Eq "(^| )icanon( |;|\$)" && printf "%s\\n" "$m" | grep -Eq "(^| )echo( |;|\$)"; echo "s5-cooked:$?"'`,
         );
         await s.expectText(FILTER_HINT);
         await s.key("Ctrl+C");
         await s.expectText("s5-rc:130");
-        await s.expectText("s5-raw:1");
+        await s.expectText("s5-cooked:0");
       }),
   },
   {
@@ -133,10 +134,10 @@ const scenarios = [
         await s.run('kae cd </dev/null >"$HOME/s7.out" 2>"$HOME/s7.err"; echo "s7-rc:$?"');
         await s.expectText("s7-rc:64");
         await s.expectNoText(FOOTER);
-        // A candidate line is `kae cd <tool> --at <n>  <path>`; the usage line
-        // alone would not contain `--at 1  <repo>`.
+        // A candidate line is `  kae cd <group> --at <n>  <path>`. The whole line
+        // is matched: a prefix would also match the `<repo>/.claude` line.
         await s.run(
-          `grep -qF -- '--at 1  ${s.fx.repo}' "$HOME/s7.err" && [ ! -s "$HOME/s7.out" ]; echo "s7-list:$?"`,
+          `grep -qxF -- '  kae cd repo --at 1  ${s.fx.repo}' "$HOME/s7.err" && [ ! -s "$HOME/s7.out" ]; echo "s7-list:$?"`,
         );
         await s.expectText("s7-list:0");
         await s.expectPwd(s.fx.sub, "s7-pwd");

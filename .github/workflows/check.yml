@@ -54,7 +54,9 @@ jobs:
         working-directory: test/tui
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
-          node run.mjs
+          # setup-go caches `go env GOCACHE` and does not export it; the harness's
+          # build would otherwise use a cold $TMPDIR/kae-gocache.
+          GOCACHE="$(go env GOCACHE)" node run.mjs
 
       # The missing-main control in docs/VALIDATION.md passes
       # go test and fails go build. Reuse Setup Go's cache to check linking too;

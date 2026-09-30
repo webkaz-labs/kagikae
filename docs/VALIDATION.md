@@ -15,14 +15,16 @@ git diff --check
 it had already drifted — this line omitted `smoke-selftest` for as long as it existed,
 and `AGENTS.md` and `README.md` each carried a third version. Read the task.
 
-CI is a **subset**, not a mirror: `.github/workflows/check.yml`'s own steps are the one
-copy of which of those steps run there, and everything else is enforced on a developer's
-machine only. [ROADMAP.md](ROADMAP.md) routes to per-step admission decisions;
+CI is a **subset**, not a mirror, except that it runs the full picker PTY suite where
+`mise run check` runs the fast journey (§ Picker PTY suite):
+`.github/workflows/check.yml`'s own steps are the one copy of which of those steps run
+there, and everything else is enforced on a developer's machine only. [ROADMAP.md](ROADMAP.md) routes to per-step admission decisions;
 the workflow steps own their environment constraints.
 
 Slower release-time checks live in `mise run audit` (govulncheck and installed-tool
-fingerprints), `mise run goreleaser-check`, `mise run tui-e2e` (the full picker PTY
-suite, § Picker PTY suite) and `mise run release-evidence`. The last
+fingerprints), `mise run goreleaser-check` and `mise run release-evidence`. The full
+picker PTY suite (`mise run tui-e2e`, § Picker PTY suite) runs in CI and is the local
+run after a picker change. The last
 task runs one bounded mutation for each current smoke-run guard and proves that an empty
 `snap()` makes all four tagged consumers in § Harvesting a credential fail. The commit
 gate keeps the four historical smoke-run defect shapes live through

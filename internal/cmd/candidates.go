@@ -166,9 +166,11 @@ func (app *App) pickCandidates(ctx context.Context, opts commonOpts, req lsReque
 // over one candidate. It returns the chosen path, or ExitCancelled when the user
 // backs out.
 func (app *App) offerCandidates(ctx context.Context, opts commonOpts, req lsRequest, set placeCandidates) (string, int) {
+	if set.listed() == 0 {
+		return "", listCandidates(opts, req, set)
+	}
 	tty, ok := app.terminal()
-	if !ok || set.listed() == 0 {
-		tty.Close() // nil-safe
+	if !ok {
 		return "", listCandidates(opts, req, set)
 	}
 	defer tty.Close()

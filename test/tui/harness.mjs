@@ -24,10 +24,10 @@
 //     answer as `echo "<marker>:$?"` and the scenario expects `<marker>:0`.
 //   * A snapshot that does not exist fails; KAE_TUI_UPDATE=1 is the only way one
 //     is written or changed.
-//   * runScenarios runs every scenario (up to KAE_TUI_JOBS at once; default 4, or the CPU
-//     count when lower), catches each one on its own, then reports in
-//     declaration order; the exit status is non-zero if any failed. A run that
-//     stopped at the first failure would hide the others.
+//   * runScenarios runs every scenario (up to KAE_TUI_JOBS at once, see
+//     DEFAULT_JOBS), catches each one on its own, then reports in declaration
+//     order; the exit status is non-zero if any failed. A run that stopped at
+//     the first failure would hide the others.
 //
 // The environment sets no NO_COLOR on purpose: only text is asserted, and colour
 // is the Go tests' business.
@@ -46,12 +46,15 @@ import { TuiTest, uniqueSession } from "@microsoft/tui-test";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
-const TIMEOUT_MS = 15000;
+// Per-step wait, 15 s unless KAE_TUI_TIMEOUT_MS overrides it (docs/VALIDATION.md
+// § Picker PTY suite).
+const TIMEOUT_MS = Number(process.env.KAE_TUI_TIMEOUT_MS) || 15000;
 const BUILD_TIMEOUT_MS = 300000;
 const SCENARIO_TIMEOUT_MS = 90000;
 const PROMPT = "READY> ";
-// Scenarios in flight at once; KAE_TUI_JOBS overrides, 1 runs them one by one.
-const DEFAULT_JOBS = Math.max(1, Math.min(4, os.cpus().length));
+// Scenarios in flight at once: 4, or the CPUs available to this process when
+// fewer. KAE_TUI_JOBS overrides; 1 runs them one by one.
+const DEFAULT_JOBS = Math.min(4, os.availableParallelism());
 
 const PALETTE = {
   foreground: "#d0d0d0",
@@ -108,6 +111,10 @@ export function setup() {
   return world;
 }
 
+function closeAll(set) {
+  return Promise.all([...set].map((t) => t.closeQuiet().catch(() => {})));
+}
+
 function removeWorld() {
   if (!world) return;
   fs.rmSync(world.base, { recursive: true, force: true });
@@ -117,7 +124,7 @@ function removeWorld() {
 // teardown closes every shell still open (a scenario that failed or timed out
 // leaves its shell here) and removes the temp directory.
 export async function teardown() {
-  await Promise.all([...sessions].map((t) => t.closeQuiet().catch(() => {})));
+  await closeAll(sessions);
   sessions.clear();
   removeWorld();
 }
@@ -197,6 +204,14 @@ async function openShell({ name, cols, rows, repoName = "repo" }) {
 
 function makeHandle(t, fx) {
   const typed = [];
+  const refuseEchoed = (fn, shown, matches) => {
+    const echoed = typed.find(matches);
+    if (echoed !== undefined) {
+      throw new Error(
+        `${fn}(${shown}) is satisfied by the typed line ${JSON.stringify(echoed)}; print it from the command, for example echo "marker:$?"`,
+      );
+    }
+  };
   const s = {
     fx,
     forgetTyped: () => {
@@ -221,20 +236,13 @@ function makeHandle(t, fx) {
     // expectText refuses an expectation that the terminal's echo of what was
     // typed would satisfy, because that assertion could never fail.
     expectText: (text) => {
-      const echoed = typed.find((line) => line.includes(text));
-      if (echoed !== undefined) {
-        throw new Error(
-          `expectText(${JSON.stringify(text)}) is satisfied by the typed line ${JSON.stringify(echoed)}; print it from the command, for example echo "marker:$?"`,
-        );
-      }
+      refuseEchoed("expectText", JSON.stringify(text), (line) => line.includes(text));
       return t.getByText(text, { regex: false }).expect({ timeout: TIMEOUT_MS });
     },
-    // expectMatch is expectText for a pattern, with the same refusal.
+    // expectMatch is expectText for a pattern, with the same refusal. Only the
+    // pattern's source reaches the terminal search; its flags do not.
     expectMatch: (re) => {
-      const echoed = typed.find((line) => re.test(line));
-      if (echoed !== undefined) {
-        throw new Error(`expectMatch(${re}) is satisfied by the typed line ${JSON.stringify(echoed)}`);
-      }
+      refuseEchoed("expectMatch", String(re), (line) => re.test(line));
       return t.getByText(re.source, { regex: true }).expect({ timeout: TIMEOUT_MS });
     },
     expectNoText: (text) =>
@@ -305,7 +313,7 @@ export async function runScenarios(scenarios, tag) {
       results[i] = { sc, ok: false, ms: performance.now() - t0, err };
     } finally {
       clearTimeout(timer);
-      await Promise.all([...mine].map((t) => t.closeQuiet().catch(() => {})));
+      await closeAll(mine);
       for (const t of mine) sessions.delete(t);
     }
   };

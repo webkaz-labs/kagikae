@@ -48,8 +48,8 @@ func ttySize(tty *os.File) (cols, rows int, err error) {
 }
 
 // open is Open with its observations injected.
-func open(stdinIsTerminal bool, termName string, openTTY func() (*os.File, error), size func(*os.File) (cols, rows int, err error)) (*Terminal, bool) {
-	if !stdinIsTerminal || termName == "dumb" {
+func open(isTerminal bool, termName string, openTTY func() (*os.File, error), size func(*os.File) (cols, rows int, err error)) (*Terminal, bool) {
+	if !isTerminal || termName == "dumb" {
 		return nil, false
 	}
 	tty, err := openTTY()

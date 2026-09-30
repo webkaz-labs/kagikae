@@ -196,8 +196,8 @@ func parsePlaceArgs(verb string, f lsFlags, positionals []string) (lsRequest, in
 	}
 	// --pick alone waives the level requirement, and only where a level could
 	// follow: no target or a tool. --home, repo, kae and pin stay refused.
-	rootNeedsLevel := !req.pick || req.level != "" || (req.target != "" && !constants.IsTool(req.target))
-	if req.root && req.current && rootNeedsLevel && req.level != constants.PlaceKindProject && req.level != constants.PlaceKindBelow {
+	pickMayOmitLevel := req.pick && req.level == "" && (req.target == "" || constants.IsTool(req.target))
+	if req.root && req.current && !pickMayOmitLevel && req.level != constants.PlaceKindProject && req.level != constants.PlaceKindBelow {
 		return req, usageError("--root applies to a project level: add --project or --below")
 	}
 	if req.level != "" && !constants.IsTool(req.target) && (!navigate || req.target != "") {

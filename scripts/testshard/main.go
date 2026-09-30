@@ -18,9 +18,10 @@
 //
 //	go run ./scripts/testshard [-count1]
 //
-// KAE_TEST_SHARDS sets the shard count (default: CPU count, at most 6; the override
-// is clamped to 16; 1 runs the package in one process). -count1 passes -count=1 to every go test. The exit
-// status is 1 when any test fails or the split does not verify.
+// KAE_TEST_SHARDS sets the shard count (default: CPU count, at most 6; the
+// override is clamped to 16; 1 runs the package in one process). -count1 passes
+// -count=1 to every go test. The exit status is 1 when any test fails or the
+// split does not verify.
 package main
 
 import (
@@ -28,11 +29,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"os/signal"
 	"regexp"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,8 +81,7 @@ func shardCount(override string, cpus int) int {
 // shards. Related tests are adjacent by name and often cost alike, so dealing
 // spreads them.
 func partition(names []string, n int) [][]string {
-	sorted := append([]string(nil), names...)
-	sort.Strings(sorted)
+	sorted := slices.Sorted(slices.Values(names))
 	n = max(1, min(n, len(sorted)))
 	shards := make([][]string, n)
 	for i, name := range sorted {
@@ -117,7 +118,7 @@ func verify(listed []string, assigned, started [][]string) error {
 	for i, names := range assigned {
 		problems = append(problems, diff(fmt.Sprintf("shard %d", i+1), names, started[i])...)
 	}
-	problems = append(problems, diff("union of shards", listed, flatten(assigned))...)
+	problems = append(problems, diff("union of shards", listed, slices.Concat(assigned...))...)
 	if len(problems) > 0 {
 		return errors.New("split does not verify:\n  " + strings.Join(problems, "\n  "))
 	}
@@ -136,12 +137,12 @@ func diff(label string, expected, got []string) []string {
 	}
 	e, g := count(expected), count(got)
 	var out []string
-	for _, name := range sortedKeys(e) {
+	for _, name := range slices.Sorted(maps.Keys(e)) {
 		if g[name] == 0 {
 			out = append(out, fmt.Sprintf("%s: %s never ran", label, name))
 		}
 	}
-	for _, name := range sortedKeys(g) {
+	for _, name := range slices.Sorted(maps.Keys(g)) {
 		switch {
 		case e[name] == 0:
 			out = append(out, fmt.Sprintf("%s: %s ran but was not assigned", label, name))
@@ -150,23 +151,6 @@ func diff(label string, expected, got []string) []string {
 		}
 	}
 	return out
-}
-
-func sortedKeys(m map[string]int) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func flatten(shards [][]string) []string {
-	var all []string
-	for _, s := range shards {
-		all = append(all, s...)
-	}
-	return all
 }
 
 // listTests returns the package's top-level tests. Benchmarks are listed by
@@ -181,8 +165,9 @@ func listTests(ctx context.Context, count1 bool) ([]string, error) {
 	}
 	var names []string
 	for _, line := range strings.Split(res.Stdout, "\n") {
-		if topLevelName.MatchString(strings.TrimSpace(line)) && !strings.ContainsAny(strings.TrimSpace(line), " \t") {
-			names = append(names, strings.TrimSpace(line))
+		line = strings.TrimSpace(line)
+		if topLevelName.MatchString(line) && !strings.ContainsAny(line, " \t") {
+			names = append(names, line)
 		}
 	}
 	if len(names) == 0 {
@@ -225,11 +210,7 @@ func otherPackages(ctx context.Context) ([]string, error) {
 	if len(sharded) != 1 {
 		return nil, fmt.Errorf("go list %s returned %d packages, want 1: %v", shardedPackage, len(sharded), sharded)
 	}
-	pkgs, err := without(all, sharded[0])
-	if err != nil {
-		return nil, err
-	}
-	return pkgs, nil
+	return without(all, sharded[0])
 }
 
 // without removes name from pkgs and fails unless it was present exactly once.
@@ -240,8 +221,12 @@ func without(pkgs []string, name string) ([]string, error) {
 			rest = append(rest, p)
 		}
 	}
-	if len(pkgs)-len(rest) != 1 {
-		return nil, fmt.Errorf("%s appears %d times in go list ./...; it would run outside its shards", name, len(pkgs)-len(rest))
+	switch removed := len(pkgs) - len(rest); removed {
+	case 1:
+	case 0:
+		return nil, fmt.Errorf("%s is missing from the go list ./... output", name)
+	default:
+		return nil, fmt.Errorf("%s is listed %d times in the go list ./... output; it would run outside its shards", name, removed)
 	}
 	return rest, nil
 }

@@ -11,9 +11,9 @@ import (
 const CredentialFileMode fs.FileMode = 0o600
 
 // SyncFile flushes a written temp file before it is renamed into place. It is a
-// variable only so a test binary can replace it with a no-op or a failure.
-// Production code never reassigns it. A test cannot observe power-loss
-// durability, so a no-op replacement does not weaken what a test proves.
+// variable only so a test binary can replace it; production code never
+// reassigns it. A test cannot observe power-loss durability, so a no-op
+// replacement does not weaken what a test proves.
 var SyncFile = func(f *os.File) error { return f.Sync() }
 
 // WriteFileAtomic writes data via a temp file + rename in the same directory.

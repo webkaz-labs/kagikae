@@ -30,11 +30,12 @@ func TestWriteFileAtomicSyncFailureKeepsDestination(t *testing.T) {
 	}
 	saved := SyncFile
 	t.Cleanup(func() { SyncFile = saved })
-	SyncFile = func(*os.File) error { return errors.New("injected sync failure") }
+	injected := errors.New("injected sync failure")
+	SyncFile = func(*os.File) error { return injected }
 
 	err := WriteFileAtomic(dest, []byte("new"), CredentialFileMode)
-	if err == nil || !strings.Contains(err.Error(), "sync temp file") {
-		t.Fatalf("WriteFileAtomic error = %v, want one containing %q", err, "sync temp file")
+	if !errors.Is(err, injected) || !strings.Contains(err.Error(), "sync temp file") {
+		t.Fatalf("WriteFileAtomic error = %v, want %v wrapped with %q", err, injected, "sync temp file")
 	}
 	got, readErr := os.ReadFile(dest)
 	if readErr != nil || string(got) != "old" {

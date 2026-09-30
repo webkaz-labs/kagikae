@@ -44,8 +44,9 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	// Durability cannot be observed by a test, and a full fsync costs ~4 ms per
-	// credential write on macOS. patch's own tests keep the real sync.
+	// Power-loss durability cannot be observed by a test, and a full fsync costs
+	// ~4 ms per credential write on macOS. patch's own tests pin the default
+	// SyncFile and its failure path.
 	savedSyncFile := patch.SyncFile
 	patch.SyncFile = func(*os.File) error { return nil }
 

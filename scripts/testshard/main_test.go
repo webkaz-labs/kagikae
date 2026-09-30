@@ -113,9 +113,15 @@ func TestWithoutRemovesTheShardedPackageExactlyOnce(t *testing.T) {
 		t.Fatalf("got %v, %v", got, err)
 	}
 	// Failing controls: absent (a workspace or rename) and repeated.
-	for _, pkgs := range [][]string{{"m/a", "m/b"}, {"m/internal/cmd", "m/internal/cmd"}} {
-		if _, err := without(pkgs, "m/internal/cmd"); err == nil || !strings.Contains(err.Error(), "outside its shards") {
-			t.Fatalf("%v: err = %v", pkgs, err)
+	for _, c := range []struct {
+		pkgs []string
+		want string
+	}{
+		{[]string{"m/a", "m/b"}, "is missing from the go list"},
+		{[]string{"m/internal/cmd", "m/internal/cmd"}, "is listed 2 times"},
+	} {
+		if _, err := without(c.pkgs, "m/internal/cmd"); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Fatalf("%v: err = %v, want %q", c.pkgs, err, c.want)
 		}
 	}
 }

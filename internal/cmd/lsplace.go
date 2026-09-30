@@ -67,11 +67,7 @@ func resolveLsTarget(verb, word string) (string, int) {
 	case 1:
 		return matches[0], constants.ExitOK
 	case 0:
-		// open and cd refuse account, so they never suggest it.
-		groups := constants.PlaceGroups
-		if verb != "ls" {
-			groups = slices.DeleteFunc(slices.Clone(groups), func(g string) bool { return g == constants.PlaceGroupAccount })
-		}
+		groups := targetGroups(verb)
 		candidates := append(append([]string{}, groups...), constants.Tools...)
 		return "", usageError("unknown %s target: %s (targets: %s, or a tool: %s)%s", verb, word,
 			strings.Join(groups, ", "), strings.Join(constants.Tools, ", "), didYouMean(word, candidates))
@@ -80,10 +76,19 @@ func resolveLsTarget(verb, word string) (string, int) {
 	}
 }
 
+// targetGroups is the fixed target words verb offers: every group for ls, and
+// all but account for open and cd, which refuse it.
+func targetGroups(verb string) []string {
+	if verb == "ls" {
+		return constants.PlaceGroups
+	}
+	return slices.DeleteFunc(slices.Clone(constants.PlaceGroups), func(g string) bool { return g == constants.PlaceGroupAccount })
+}
+
 // parseLsRequest validates the command line against docs/CLI.md § kae ls
 // Semantics. Every refusal is a usage error, printed here.
 func parseLsRequest(f lsFlags, positionals []string) (lsRequest, int) {
-	return parsePlaceArgs("ls", lsUsage, f, positionals)
+	return parsePlaceArgs("ls", f, positionals)
 }
 
 // parsePlaceArgs is the target, explicit-resolution and selector grammar that
@@ -93,8 +98,12 @@ func parseLsRequest(f lsFlags, positionals []string) (lsRequest, int) {
 // so they take no --current (f.current is always false for them) and their
 // request is --current unless --at is given. For them a missing target and a
 // level selector without a tool are not usage errors here: resolution decides.
-func parsePlaceArgs(verb, usage string, f lsFlags, positionals []string) (lsRequest, int) {
+func parsePlaceArgs(verb string, f lsFlags, positionals []string) (lsRequest, int) {
 	navigate := verb != "ls"
+	usage := lsUsage
+	if navigate {
+		usage = placeUsage(verb)
+	}
 	req := lsRequest{verb: verb, current: f.current, root: f.root}
 	if f.at.set {
 		req.at = f.at.n
@@ -303,19 +312,9 @@ func runLs(ctx context.Context, app *App, opts commonOpts) int {
 	if accountErr != nil && opts.Format == formatJSON {
 		return finish(opts, accountErr)
 	}
-	// warned keeps one message from printing twice: an unreadable state.json
-	// fails both the account rows and every tool's user level.
-	warned := map[string]bool{}
-	if accountErr != nil {
-		warned[accountErr.Error()] = true
-	}
-	warnGroup := func(group string, err error) {
-		if !warned[err.Error()] {
-			warned[err.Error()] = true
-			fmt.Fprintf(os.Stderr, "kae: warning: the %s group is not listed: %v\n", group, err)
-		}
-	}
-	g := app.collectPlaceGroups(ctx, loaded, warnGroup)
+	// An unreadable state.json fails both the account rows and every tool's user
+	// level; the account error is already reported, so it is not warned again.
+	g := app.collectPlaceGroups(ctx, loaded, warnGroupOnce(accountErr))
 
 	if opts.Format == formatJSON {
 		return encodeJSON(bareLsReport{
@@ -390,6 +389,23 @@ func (app *App) collectPlaceGroups(ctx context.Context, loaded loadedState, warn
 	}
 	g.kae = app.kaePlaces()
 	return g
+}
+
+// warnGroupOnce warns that a group is not listed, once per distinct error;
+// seen errors (already reported) are never warned about.
+func warnGroupOnce(seen ...error) func(group string, err error) {
+	warned := map[string]bool{}
+	for _, err := range seen {
+		if err != nil {
+			warned[err.Error()] = true
+		}
+	}
+	return func(group string, err error) {
+		if !warned[err.Error()] {
+			warned[err.Error()] = true
+			fmt.Fprintf(os.Stderr, "kae: warning: the %s group is not listed: %v\n", group, err)
+		}
+	}
 }
 
 // places is the groups' rows in bare `kae ls` order.
@@ -490,18 +506,22 @@ func (app *App) groupPlaces(ctx context.Context, group string, explicit *explici
 
 // runLsPick is `--current` and `--at N`: one place's path on stdout.
 func runLsPick(ctx context.Context, app *App, opts commonOpts, req lsRequest) int {
-	row, several, code := app.pickPlace(ctx, opts, req)
-	if several != nil {
-		names := make([]string, 0, len(several))
-		for _, row := range several {
-			names = append(names, fmt.Sprintf("%d %s", row.Number, row.Path))
-		}
-		return usageError("kae ls %s --current matches %d places; choose one with --at N: %s",
-			req.target, len(several), strings.Join(names, ", "))
-	}
+	choice, code := app.pickPlace(ctx, opts, req)
 	if code != constants.ExitOK {
 		return code
 	}
+	switch choice.kind {
+	case choiceNone:
+		return finish(opts, choice.noneError("ls", req))
+	case choiceSeveral:
+		names := make([]string, 0, len(choice.candidates))
+		for _, row := range choice.candidates {
+			names = append(names, fmt.Sprintf("%d %s", row.Number, row.Path))
+		}
+		return usageError("kae ls %s --current matches %d places; choose one with --at N: %s",
+			req.target, len(choice.candidates), strings.Join(names, ", "))
+	}
+	row := choice.row
 	path, code := placePath(row, req)
 	if code != constants.ExitOK {
 		return code
@@ -525,80 +545,125 @@ func placePath(row placeRow, req lsRequest) (string, int) {
 	return row.Root, constants.ExitOK
 }
 
+// choiceKind says what a place request resolved to.
+type choiceKind int
+
+const (
+	choiceOne     choiceKind = iota // one place: placeChoice.row
+	choiceSeveral                   // several places match: placeChoice.candidates
+	choiceNone                      // no current place: candidates are the target's places (not pin's; currentPinPlace)
+)
+
+// placeChoice is what --current or --at resolved to. ls reports several and
+// none itself; open and cd list the candidates (the picker's seam).
+type placeChoice struct {
+	kind       choiceKind
+	row        placeRow
+	candidates []placeRow
+	// governs is set for a pin request with no governing binding: the directory
+	// the not_found message names.
+	governs string
+}
+
+// noneError is the not_found a choiceNone reports, as verb.
+func (c placeChoice) noneError(verb string, req lsRequest) error {
+	if c.governs != "" {
+		return errf(constants.ExitNotFound, "no bound directory governs %s", c.governs)
+	}
+	what := req.target
+	if req.level != "" {
+		what += " --" + req.level
+	}
+	return errf(constants.ExitNotFound, "no current place for kae %s %s here", verb, what)
+}
+
 // pickPlace chooses the place --current or --at names. A failure has already
-// been reported and its exit code is returned — except in two cases the caller
-// presents, both unreported: a request matching several places returns them as
-// several with ExitUsage (ls names them in its usage error; open and cd list them
-// as the picker's candidates), and, for open and cd only, a request with no
-// current place returns the target's places as several with ExitNotFound (the
-// picker's candidates; ls reports not_found itself).
-func (app *App) pickPlace(ctx context.Context, opts commonOpts, req lsRequest) (placeRow, []placeRow, int) {
-	if req.target == constants.PlaceGroupPin && req.current {
-		return app.currentPinPlace(opts, req.navigates())
+// been reported and its exit code is returned; otherwise the code is ExitOK and
+// the choice says what was found.
+func (app *App) pickPlace(ctx context.Context, opts commonOpts, req lsRequest) (placeChoice, int) {
+	switch {
+	case req.target == constants.PlaceGroupPin && req.current:
+		return app.currentPinPlace(opts)
+	case constants.IsTool(req.target):
+		pc, err := app.newPlaceContext(ctx, req.explicit)
+		if err != nil {
+			return placeChoice{}, finish(opts, err)
+		}
+		return app.selectToolPlace(ctx, opts, pc, req)
 	}
 	rows, err := app.groupPlaces(ctx, req.target, req.explicit)
 	if err != nil {
-		return placeRow{}, nil, finish(opts, err)
+		return placeChoice{}, finish(opts, err)
 	}
 	return selectPlace(app, opts, req, rows)
 }
 
-// currentPinPlace is `pin --current`: the nearest ancestor bound directory.
-// With offer (open, cd) and none, the pin group's places come back as
-// pickPlace's no-current-place candidates.
-func (app *App) currentPinPlace(opts commonOpts, offer bool) (placeRow, []placeRow, int) {
+// selectToolPlace is selectPlace over a tool's places. The user level and the
+// ancestor project levels come before the below levels in list order, so a
+// request for one of them (no selector, or --project) is chosen without finding
+// the below levels, which can mean a `git ls-files` over the repository. Any
+// other request, and one that finds no single place, uses the full list, whose
+// numbers are `kae ls <tool>`'s.
+func (app *App) selectToolPlace(ctx context.Context, opts commonOpts, pc *placeContext, req lsRequest) (placeChoice, int) {
+	if req.at == 0 && (req.level == "" || req.level == constants.PlaceKindProject) {
+		rows, err := app.leadingToolPlaces(pc, req.target)
+		if err != nil {
+			return placeChoice{}, finish(opts, err)
+		}
+		choice, code := selectPlace(app, opts, req, rows)
+		if code != constants.ExitOK || choice.kind == choiceOne {
+			return choice, code
+		}
+	}
+	rows, err := app.toolPlaces(ctx, pc, req.target)
+	if err != nil {
+		return placeChoice{}, finish(opts, err)
+	}
+	return selectPlace(app, opts, req, rows)
+}
+
+// currentPinPlace is `pin --current`: the nearest ancestor bound directory. With
+// none it carries no candidates: the pin listing reads every bound directory's
+// fragment (and warns about the unreadable ones), which `kae ls pin --current`
+// never did, so the caller that offers candidates lists the pin group itself.
+func (app *App) currentPinPlace(opts commonOpts) (placeChoice, int) {
 	cwd, err := cwdAbs()
 	if err != nil {
-		return placeRow{}, nil, finish(opts, err)
+		return placeChoice{}, finish(opts, err)
 	}
 	binding := app.governingBindingAt(cwd)
 	if binding == nil {
-		if offer {
-			rows, err := app.pinGroupPlaces(nil)
-			if err != nil {
-				return placeRow{}, nil, finish(opts, err)
-			}
-			if len(rows) > 0 {
-				return placeRow{}, rows, constants.ExitNotFound
-			}
-		}
-		return placeRow{}, nil, finish(opts, errf(constants.ExitNotFound, "no bound directory governs %s", cwd))
+		return placeChoice{kind: choiceNone, governs: cwd}, constants.ExitOK
 	}
 	rows, err := app.pinGroupPlaces(binding)
 	if err != nil {
-		return placeRow{}, nil, finish(opts, err)
+		return placeChoice{}, finish(opts, err)
 	}
 	for _, row := range rows {
 		if samePath(row.Path, binding.dir) {
-			return row, nil, constants.ExitOK
+			return placeChoice{kind: choiceOne, row: row}, constants.ExitOK
 		}
 	}
 	// Bound by a kae older than the breadcrumb, so not in the listing: no number.
-	return placeRow{
+	return placeChoice{kind: choiceOne, row: placeRow{
 		Group: constants.PlaceGroupPin, Kind: constants.PlaceKindBoundDirectory, Path: binding.dir,
 		Exists: true, InEffect: true, Source: constants.PlaceSourcePin, Mode: binding.info.Mode,
-	}, nil, constants.ExitOK
-}
-
-// navigates says whether the request is open's or cd's, which offer candidates
-// where ls reports that there is no current place.
-func (req lsRequest) navigates() bool {
-	return req.verb != "" && req.verb != "ls"
+	}}, constants.ExitOK
 }
 
 // selectPlace applies --at or --current and a level selector to the rows `kae ls
 // <target>` lists, with pickPlace's result contract.
-func selectPlace(app *App, opts commonOpts, req lsRequest, rows []placeRow) (placeRow, []placeRow, int) {
+func selectPlace(app *App, opts commonOpts, req lsRequest, rows []placeRow) (placeChoice, int) {
 	if req.at != 0 {
 		if req.at > len(rows) {
-			return placeRow{}, nil, usageError("kae ls %s lists %d place(s); there is no place %d", req.target, len(rows), req.at)
+			return placeChoice{}, usageError("kae ls %s lists %d place(s); there is no place %d", req.target, len(rows), req.at)
 		}
-		return rows[req.at-1], nil, constants.ExitOK
+		return placeChoice{kind: choiceOne, row: rows[req.at-1]}, constants.ExitOK
 	}
 	var matches []placeRow
 	switch {
 	case constants.IsTool(req.target) && projectLevelName(req.target) == "":
-		return placeRow{}, nil, finish(opts, errf(constants.ExitNotFound, "kae resolves no places for %s", req.target))
+		return placeChoice{}, finish(opts, errf(constants.ExitNotFound, "kae resolves no places for %s", req.target))
 	case constants.IsTool(req.target) && req.level == "":
 		matches = rows[:1] // the effective user level is always first
 	case req.level == constants.PlaceKindProject:
@@ -628,22 +693,11 @@ func selectPlace(app *App, opts commonOpts, req lsRequest, rows []placeRow) (pla
 	}
 	switch len(matches) {
 	case 0:
-		if req.navigates() && len(rows) > 0 {
-			return placeRow{}, rows, constants.ExitNotFound
-		}
-		what := req.target
-		if req.level != "" {
-			what += " --" + req.level
-		}
-		verb := req.verb
-		if verb == "" {
-			verb = "ls"
-		}
-		return placeRow{}, nil, finish(opts, errf(constants.ExitNotFound, "no current place for kae %s %s here", verb, what))
+		return placeChoice{kind: choiceNone, candidates: rows}, constants.ExitOK
 	case 1:
-		return matches[0], nil, constants.ExitOK
+		return placeChoice{kind: choiceOne, row: matches[0]}, constants.ExitOK
 	}
-	return placeRow{}, matches, constants.ExitUsage
+	return placeChoice{kind: choiceSeveral, candidates: matches}, constants.ExitOK
 }
 
 // placePathCell is a place's path for the human tables, marked when absent.

@@ -74,18 +74,18 @@ var RunWithEnv = func(ctx context.Context, extraEnv []string, name string, args 
 	return stdout.String(), err.Error(), 1
 }
 
-// Launcher is the optional seam for a program kae starts and does not read:
-// Launch runs it with its output not captured and returns its exit code, or an
-// error when it could not be started at all. A
-// captured pipe would be inherited by anything the program leaves running (a
-// file manager an opener starts), and Wait would not return until that exits.
+// Launcher is the optional seam for a program kae starts and does not read.
+// Launch returns its exit code, or an error when it could not be started. Its
+// output is not captured: a captured pipe is inherited by anything the program
+// leaves running (a file manager an opener starts), and Wait would not return
+// until that exits.
 type Launcher interface {
 	Launch(ctx context.Context, name string, args ...string) (int, error)
 }
 
-// Launch runs name through Default: its Launch when Default has one, else its
-// Run with the output dropped, so a test runner that predates Launcher still
-// answers (and records) the call.
+// Launch runs name through Default's Launch. A Default without one — the
+// Runner test doubles — answers through Run, which records the call; the
+// output is dropped.
 func Launch(ctx context.Context, name string, args ...string) (int, error) {
 	if l, ok := Default.(Launcher); ok {
 		return l.Launch(ctx, name, args...)
@@ -94,10 +94,8 @@ func Launch(ctx context.Context, name string, args ...string) (int, error) {
 	return code, nil
 }
 
-// Launch waits for the program itself only: stdin and stdout are the null
-// device and stderr is kae's own, all passed as files rather than pipes, so a
-// process it leaves behind holds nothing Wait waits on. Its error output
-// reaches the user directly.
+// Launch passes stdin and stdout as the null device and stderr as kae's own,
+// files rather than pipes, so it waits for the program itself only.
 func (OSRunner) Launch(ctx context.Context, name string, args ...string) (int, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stderr = os.Stderr // Stdin and Stdout nil: the null device

@@ -557,23 +557,30 @@ func (app *App) userLevel(pc *placeContext, tool string) (placeRow, error) {
 // effective ancestor project levels (nearest first), the project levels below
 // cwd, and the real home when another user level is in effect.
 func (app *App) toolPlaces(ctx context.Context, pc *placeContext, tool string) ([]placeRow, error) {
-	name := projectLevelName(tool)
-	if name == "" {
+	rows, err := app.leadingToolPlaces(pc, tool)
+	if err != nil || len(rows) == 0 {
+		return rows, err
+	}
+	for _, level := range pc.belowLevels(ctx)[tool] {
+		rows = append(rows, placeRow{Group: tool, Kind: constants.PlaceKindBelow, Path: level, Root: filepath.Dir(level), Exists: true})
+	}
+	if home := app.realToolHome(tool); home != "" && !samePath(home, rows[0].Path) {
+		rows = append(rows, placeRow{Group: tool, Kind: constants.PlaceKindHome, Path: home, Exists: dirExists(home)})
+	}
+	return numberPlaces(rows), nil
+}
+
+// leadingToolPlaces is the start of toolPlaces' list: the effective user level
+// and the ancestor project levels, numbered as toolPlaces numbers them.
+func (app *App) leadingToolPlaces(pc *placeContext, tool string) ([]placeRow, error) {
+	if projectLevelName(tool) == "" {
 		return []placeRow{}, nil
 	}
 	user, err := app.userLevel(pc, tool)
 	if err != nil {
 		return nil, err
 	}
-	rows := []placeRow{user}
-	rows = append(rows, pc.projectLevels(tool)...)
-	for _, level := range pc.belowLevels(ctx)[tool] {
-		rows = append(rows, placeRow{Group: tool, Kind: constants.PlaceKindBelow, Path: level, Root: filepath.Dir(level), Exists: true})
-	}
-	if home := app.realToolHome(tool); home != "" && !samePath(home, user.Path) {
-		rows = append(rows, placeRow{Group: tool, Kind: constants.PlaceKindHome, Path: home, Exists: dirExists(home)})
-	}
-	return numberPlaces(rows), nil
+	return numberPlaces(append([]placeRow{user}, pc.projectLevels(tool)...)), nil
 }
 
 // toolRelevant says whether bare `kae ls` shows tool's group: it has a governing

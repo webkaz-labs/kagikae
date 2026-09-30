@@ -24,14 +24,12 @@ import (
 // __complete: not in `kae help` and not in completionCommands.
 const cdPathCommand = "__cd"
 
-const (
-	openUsage = "usage: kae open [pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--project|--below|--home] [--root] [--at N]"
-	cdUsage   = "usage: kae cd [pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--project|--below|--home] [--root] [--at N]"
-)
+func placeUsage(verb string) string {
+	return "usage: kae " + verb + " [pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--project|--below|--home] [--root] [--at N]"
+}
 
-// CmdOpen is `kae open`: open one place in the platform file manager.
 func CmdOpen(ctx context.Context, args []string) int {
-	opts, req, code := parseNavigateArgs("open", openUsage, args)
+	opts, req, code := parseNavigateArgs("open", args)
 	if code != constants.ExitOK {
 		return code
 	}
@@ -46,9 +44,8 @@ func runOpen(ctx context.Context, app *App, opts commonOpts, req lsRequest) int 
 	return app.openPlace(ctx, opts, path)
 }
 
-// CmdCdPath is the hidden `kae __cd`: the path `kae cd` moves to, on stdout.
 func CmdCdPath(ctx context.Context, args []string) int {
-	opts, req, code := parseNavigateArgs("cd", cdUsage, args)
+	opts, req, code := parseNavigateArgs("cd", args)
 	if code != constants.ExitOK {
 		return code
 	}
@@ -90,22 +87,18 @@ func cdSuggestionWords(args []string) string {
 			continue
 		}
 		flagName, _, attached := strings.Cut(arg, "=")
-		name := strings.TrimLeft(flagName, "-")
-		value := []string{}
+		flagWords := []string{shellWord(arg)}
 		if !attached && slices.Contains(valued, arg) && i+1 < len(args) {
 			i++
-			value = append(value, args[i])
+			flagWords = append(flagWords, shellWord(args[i]))
 		}
-		switch name {
+		switch strings.TrimLeft(flagName, "-") {
 		case "json", "format":
 			continue
 		case "at", "current":
 			chooses = true
 		}
-		words = append(words, shellWord(arg))
-		for _, v := range value {
-			words = append(words, shellWord(v))
-		}
+		words = append(words, flagWords...)
 	}
 	if !hasTarget {
 		words = append([]string{"<target>"}, words...)
@@ -129,7 +122,7 @@ func shellWord(s string) string {
 // parseNavigateArgs parses `kae open` and `kae cd` (and `kae __cd`, as cd). They
 // print no report, so --json is refused rather than ignored: the path is `kae ls
 // <target> --current --json`'s to publish.
-func parseNavigateArgs(verb, usage string, args []string) (commonOpts, lsRequest, int) {
+func parseNavigateArgs(verb string, args []string) (commonOpts, lsRequest, int) {
 	flags, positionals := splitArgs(args, "--at")
 	var f lsFlags
 	opts, ok := parseCommon(verb, flags, false, func(fs *flag.FlagSet) {
@@ -141,39 +134,39 @@ func parseNavigateArgs(verb, usage string, args []string) (commonOpts, lsRequest
 	if opts.Format == formatJSON {
 		return opts, lsRequest{}, usageError("kae %s prints no report; for a place's path as JSON use kae ls <target> --current --json", verb)
 	}
-	req, code := parsePlaceArgs(verb, usage, f, positionals)
+	req, code := parsePlaceArgs(verb, f, positionals)
 	return opts, req, code
 }
 
 // navigatePath resolves an open or cd request to one existing directory. A
 // request that names no single place — no target, a level selector with zero or
-// several bound tools, a selector matching several places — is where the picker
-// goes; until it exists, each is the picker's no-terminal case: the candidates
-// and a usage error on stderr (reportCandidates).
+// several bound tools, a selection matching several places or none — lists its
+// candidates with a usage error (reportCandidates), the picker's no-terminal case.
 func (app *App) navigatePath(ctx context.Context, opts commonOpts, req lsRequest) (string, int) {
 	if req.target == "" && req.level == "" {
 		return "", app.reportAllPlaces(ctx, opts, req)
 	}
 	var (
-		row     placeRow
-		several []placeRow
-		code    int
+		choice placeChoice
+		code   int
 	)
 	if req.target == "" {
-		row, several, code = app.pickLevelOfBoundTool(ctx, opts, &req)
+		choice, code = app.pickLevelOfBoundTool(ctx, opts, &req)
 	} else {
-		row, several, code = app.pickPlace(ctx, opts, req)
-	}
-	if several != nil && code == constants.ExitNotFound {
-		return "", app.reportNoCurrentPlace(opts, req, several)
-	}
-	if several != nil {
-		return "", reportCandidates(opts, req, fmt.Sprintf("kae %s %s matches %d places", req.verb, requestWords(req, false), len(several)), several)
+		choice, code = app.pickPlace(ctx, opts, req)
 	}
 	if code != constants.ExitOK {
 		return "", code
 	}
-	path, code := placePath(row, req)
+	switch choice.kind {
+	case choiceSeveral:
+		return "", reportCandidates(opts, req, func(n int) string {
+			return fmt.Sprintf("kae %s %s matches %d places", req.verb, requestWords(req, false), n)
+		}, choice.candidates)
+	case choiceNone:
+		return "", app.reportNoCurrentPlace(opts, req, choice)
+	}
+	path, code := placePath(choice.row, req)
 	if code != constants.ExitOK {
 		return "", code
 	}
@@ -183,26 +176,37 @@ func (app *App) navigatePath(ctx context.Context, opts commonOpts, req lsRequest
 	return path, constants.ExitOK
 }
 
-// reportNoCurrentPlace is a target with no current place here: the picker's case
-// over the target's places, which with --root are the ones that have a root.
-// Only a target with no candidate at all is not_found (reportCandidates).
-func (app *App) reportNoCurrentPlace(opts commonOpts, req lsRequest, rows []placeRow) int {
+// reportNoCurrentPlace is a target with no current place here: its places are
+// the candidates (pin's listed here, see currentPinPlace), with --root only the
+// ones that have a root. A target with no place at all is not_found.
+func (app *App) reportNoCurrentPlace(opts commonOpts, req lsRequest, choice placeChoice) int {
+	rows := choice.candidates
+	if req.target == constants.PlaceGroupPin {
+		var err error
+		if rows, err = app.pinGroupPlaces(nil); err != nil {
+			return finish(opts, err)
+		}
+	}
+	if len(rows) == 0 {
+		return finish(opts, choice.noneError(req.verb, req))
+	}
 	var candidates []placeRow
 	for _, row := range rows {
 		if !req.root || row.Root != "" {
 			candidates = append(candidates, row)
 		}
 	}
-	return reportCandidates(opts, req, fmt.Sprintf("kae %s %s has no current place here", req.verb, requestWords(req, false)), candidates)
+	reason := fmt.Sprintf("kae %s %s has no current place here", req.verb, requestWords(req, false))
+	return reportCandidates(opts, req, func(int) string { return reason }, candidates)
 }
 
 // pickLevelOfBoundTool is a level selector without a tool: it applies to the one
 // place tool the current directory's bindings bind, and req.target becomes that
-// tool. None or several is the picker's case over the tools.
-func (app *App) pickLevelOfBoundTool(ctx context.Context, opts commonOpts, req *lsRequest) (placeRow, []placeRow, int) {
+// tool. None or several lists the tools.
+func (app *App) pickLevelOfBoundTool(ctx context.Context, opts commonOpts, req *lsRequest) (placeChoice, int) {
 	pc, err := app.newPlaceContext(ctx, nil)
 	if err != nil {
-		return placeRow{}, nil, finish(opts, err)
+		return placeChoice{}, finish(opts, err)
 	}
 	var bound []string
 	for _, tool := range placeTools() {
@@ -225,34 +229,25 @@ func (app *App) pickLevelOfBoundTool(ctx context.Context, opts commonOpts, req *
 			}
 			lines = append(lines, line)
 		}
-		return placeRow{}, nil, reportChoices(reason+"; choose one", lines)
+		return placeChoice{}, reportChoices(reason+"; choose one", lines)
 	}
 	req.target = bound[0]
-	rows, err := app.toolPlaces(ctx, pc, req.target)
-	if err != nil {
-		return placeRow{}, nil, finish(opts, err)
-	}
-	return selectPlace(app, opts, *req, rows)
+	return app.selectToolPlace(ctx, opts, pc, *req)
 }
 
 // reportAllPlaces is open or cd with no target: every place bare `kae ls`
 // lists is a candidate.
 func (app *App) reportAllPlaces(ctx context.Context, opts commonOpts, req lsRequest) int {
-	warned := map[string]bool{}
-	g := app.collectPlaceGroups(ctx, app.readState(), func(group string, err error) {
-		if !warned[err.Error()] {
-			warned[err.Error()] = true
-			fmt.Fprintf(os.Stderr, "kae: warning: the %s group is not listed: %v\n", group, err)
-		}
-	})
-	return reportCandidates(opts, req, fmt.Sprintf("kae %s needs a target", req.verb), g.places())
+	g := app.collectPlaceGroups(ctx, app.readState(), warnGroupOnce())
+	return reportCandidates(opts, req, func(int) string { return fmt.Sprintf("kae %s needs a target", req.verb) }, g.places())
 }
 
-// reportCandidates is the picker's no-terminal case over place rows: a usage
-// error and, one per line, the command that reaches each candidate. A place
-// whose directory does not exist is left out, since choosing it exits 7; the
-// numbers stay `kae ls`'s. With no candidate left it is not_found.
-func reportCandidates(opts commonOpts, req lsRequest, reason string, rows []placeRow) int {
+// reportCandidates lists, one per line, the command that reaches each candidate,
+// under a usage error whose reason is given the number listed. A place whose
+// directory does not exist is left out, since choosing it exits 7, and the rest
+// keep `kae ls`'s numbers. With none left it is not_found, and the reason is
+// given the number of rows instead.
+func reportCandidates(opts commonOpts, req lsRequest, reason func(listed int) string, rows []placeRow) int {
 	lines := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if !row.Exists {
@@ -273,14 +268,14 @@ func reportCandidates(opts commonOpts, req lsRequest, reason string, rows []plac
 		lines = append(lines, cmd+"  "+path)
 	}
 	if len(lines) == 0 {
-		return finish(opts, errf(constants.ExitNotFound, "%s, and no existing place to choose", reason))
+		return finish(opts, errf(constants.ExitNotFound, "%s, and no existing place to choose", reason(len(rows))))
 	}
-	return reportChoices(reason+"; choose one", lines)
+	return reportChoices(reason(len(lines))+"; choose one", lines)
 }
 
-// reportChoices prints a usage error and its candidates on stderr. It is the
-// interim for the picker (ROADMAP § Place navigation and the tree-shared mode),
-// which replaces it on a terminal.
+// reportChoices prints a usage error and its candidates on stderr. On a
+// terminal the picker takes its place (ROADMAP § Place navigation and the
+// tree-shared mode).
 func reportChoices(reason string, lines []string) int {
 	var b strings.Builder
 	b.WriteString(reason + ":")
@@ -311,9 +306,9 @@ func requestWords(req lsRequest, targetOnly bool) string {
 // kae cd Semantics).
 var openers = map[string]string{"darwin": "open", "linux": "xdg-open"}
 
-// openPlace opens path with the platform's opener through the runner seam.
-// Without one, the path goes to stdout and a warning to stderr, and the exit
-// code stays 0: the place was resolved, and the path is what a caller needs.
+// openPlace opens path with the platform's opener. Without one, the path goes
+// to stdout and a warning to stderr, and the exit code stays 0: the place was
+// resolved, and the path is what a caller needs.
 func (app *App) openPlace(ctx context.Context, opts commonOpts, path string) int {
 	opener := openers[app.Env.GOOS]
 	found := opener != ""
@@ -331,8 +326,7 @@ func (app *App) openPlace(ctx context.Context, opts commonOpts, path string) int
 		return constants.ExitOK
 	}
 	// Launched, not run: xdg-open can leave the file manager holding a captured
-	// pipe, and kae would wait for the file manager to exit. The opener's own
-	// error output reaches stderr directly.
+	// pipe, and kae would wait for the file manager to exit.
 	code, err := runner.Launch(ctx, opener, path)
 	switch {
 	case err != nil:

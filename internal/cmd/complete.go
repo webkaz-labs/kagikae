@@ -227,11 +227,5 @@ func lsTargetWords() []string {
 // placeTargetWords is what `kae open <TAB>` and `kae cd <TAB>` offer: the ls
 // target words but account, which they refuse.
 func placeTargetWords() []string {
-	var out []string
-	for _, word := range lsTargetWords() {
-		if word != constants.PlaceGroupAccount {
-			out = append(out, word)
-		}
-	}
-	return out
+	return append(targetGroups("open"), constants.Tools...)
 }

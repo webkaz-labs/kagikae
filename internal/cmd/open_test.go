@@ -19,7 +19,7 @@ import (
 // navRequest parses an open or cd command line as the command would.
 func navRequest(t *testing.T, verb string, f lsFlags, pos ...string) lsRequest {
 	t.Helper()
-	req, code := parsePlaceArgs(verb, "usage", f, pos)
+	req, code := parsePlaceArgs(verb, f, pos)
 	if code != constants.ExitOK {
 		t.Fatalf("parse %s %+v %v: exit %d", verb, f, pos, code)
 	}
@@ -198,7 +198,7 @@ func TestNavigateUsageErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var code int
 			_, stderr := captureStderr(t, func() int {
-				_, code = parsePlaceArgs("open", "usage", tc.f, tc.pos)
+				_, code = parsePlaceArgs("open", tc.f, tc.pos)
 				return code
 			})
 			if code != constants.ExitUsage || !strings.Contains(stderr, tc.want) {
@@ -219,7 +219,7 @@ func TestNavigateUsageErrors(t *testing.T) {
 	}
 	// No target and a level selector without a tool are resolution's to decide.
 	for _, f := range []lsFlags{{}, {project: true}, {below: true, root: true}} {
-		if req, code := parsePlaceArgs("cd", "usage", f, nil); code != constants.ExitOK || !req.current || req.target != "" {
+		if req, code := parsePlaceArgs("cd", f, nil); code != constants.ExitOK || !req.current || req.target != "" {
 			t.Fatalf("kae cd %+v: %+v exit %d", f, req, code)
 		}
 	}
@@ -813,5 +813,78 @@ func TestOpenReportsAnUnstartableOpenerOnce(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(stderr), "\n")
 	if code != constants.ExitError || len(lines) != 1 || !strings.Contains(lines[0], "no such file") || strings.Contains(stderr, "exited") {
 		t.Fatalf("unstartable opener = %d %q", code, stderr)
+	}
+}
+
+// recordingRunner runs the real programs and records every argv.
+type recordingRunner struct{ calls [][]string }
+
+func (r *recordingRunner) Run(ctx context.Context, name string, args ...string) (string, string, int) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	return runner.OSRunner{}.Run(ctx, name, args...)
+}
+
+func (r *recordingRunner) RunInput(ctx context.Context, stdin, name string, args ...string) (string, string, int) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	return runner.OSRunner{}.RunInput(ctx, stdin, name, args...)
+}
+
+func (r *recordingRunner) listed() bool {
+	for _, call := range r.calls {
+		if slices.Contains(call, "ls-files") {
+			return true
+		}
+	}
+	return false
+}
+
+// The user level and the ancestor project levels come before the below levels,
+// so choosing one does not list the repository; --below, --at and a request with
+// no single place do, and their numbers stay kae ls's.
+func TestNavigateFindsBelowLevelsOnlyWhenNeeded(t *testing.T) {
+	app := testApp(t, nil)
+	root := chdirTo(t, t.TempDir())
+	scratchGit(t, root, "init", "-q")
+	mkdirs(t, filepath.Join(root, ".claude"), filepath.Join(app.Env.Home, ".claude"))
+	writeFile(t, filepath.Join(root, "a", ".claude", "settings.json"), "{}\n")
+	for _, tc := range []struct {
+		name   string
+		f      lsFlags
+		want   string
+		listed bool
+	}{
+		{"user level", lsFlags{}, filepath.Join(app.Env.Home, ".claude"), false},
+		{"project", lsFlags{project: true}, filepath.Join(root, ".claude"), false},
+		{"below", lsFlags{below: true}, filepath.Join(root, "a", ".claude"), true},
+		{"--at", lsFlags{at: atFlag{n: 3, set: true}}, filepath.Join(root, "a", ".claude"), true},
+	} {
+		rec := &recordingRunner{}
+		var code int
+		var got, stderr string
+		runner.With(rec, func() { code, got, stderr = cdPath(t, app, navRequest(t, "cd", tc.f, "claude")) })
+		if code != constants.ExitOK || got != tc.want || rec.listed() != tc.listed {
+			t.Fatalf("%s: %d %q %s; listed the repository = %v, want %v (%v)", tc.name, code, got, stderr, rec.listed(), tc.listed, rec.calls)
+		}
+	}
+	// No project level: the candidates are the full list, with its numbers.
+	chdirTo(t, filepath.Join(t.TempDir(), "bare"))
+	scratchGit(t, filepath.Dir(mustCwdAbs(t)), "init", "-q")
+	writeFile(t, filepath.Join(mustCwdAbs(t), "x", ".codex", "config.toml"), "\n")
+	mkdirs(t, filepath.Join(app.Env.Home, ".codex"))
+	code, _, stderr := cdPath(t, app, navRequest(t, "cd", lsFlags{project: true}, "codex"))
+	if code != constants.ExitUsage || !strings.Contains(stderr, "kae cd codex --at 2  "+filepath.Join(mustCwdAbs(t), "x", ".codex")) {
+		t.Fatalf("codex --project with none = %d:\n%s", code, stderr)
+	}
+}
+
+// The count in "matches N places" is the candidates listed, after missing places
+// are left out.
+func TestSeveralMatchesCountsTheListedCandidates(t *testing.T) {
+	app := testApp(t, nil)
+	chdirTo(t, t.TempDir())
+	mkdirs(t, app.Paths.ConfigDir, app.Paths.DataDir) // state is missing
+	code, _, stderr := cdPath(t, app, navRequest(t, "cd", lsFlags{}, "kae"))
+	if code != constants.ExitUsage || !strings.Contains(stderr, "kae cd kae matches 2 places") || strings.Contains(stderr, "--at 3") {
+		t.Fatalf("kae cd kae = %d:\n%s", code, stderr)
 	}
 }

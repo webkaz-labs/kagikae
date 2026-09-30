@@ -36,9 +36,3 @@ func (f *Fake) RunInput(ctx context.Context, stdin, name string, args ...string)
 	f.Stdin = stdin
 	return f.Run(ctx, name, args...)
 }
-
-// Launch records the call like Run and returns Code (runner.Launcher).
-func (f *Fake) Launch(ctx context.Context, name string, args ...string) (int, error) {
-	_, _, code := f.Run(ctx, name, args...)
-	return code, nil
-}

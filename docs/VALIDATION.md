@@ -1885,7 +1885,7 @@ copies do not — is measured in the table below, with its negative control; it 
 the row this whole surface stands on, so re-verify it on a claude upgrade rather
 than trusting this section.
 
-Unit-covered, in `internal/cmd` (`credstore_test.go` unless noted):
+Unit-covered, in `internal/cmd` (`credstore_test.go` and `credstore_binding_test.go` unless noted):
 
 - `TestTwoDirectoriesOfOneAccountShareOneCredential` — the property itself, read
   from both fragments: one credential entry, two different config dirs.

@@ -90,10 +90,8 @@ func (app *App) isKaeManagedCredStore(dir string) bool {
 // from itself — self-referential symlinks, ELOOP at runtime (found in v0.5.0
 // real-machine acceptance).
 func (app *App) realToolHome(tool string) string {
-	envVar := isolationEnvVar(tool)
 	envHome := func(def string) string {
-		dir := app.Env.Getenv(envVar)
-		if dir != "" && !app.isKaeManagedHome(dir) {
+		if dir, ok := app.userToolHomeEnv(tool); ok {
 			return dir
 		}
 		return def
@@ -106,6 +104,13 @@ func (app *App) realToolHome(tool string) string {
 	default:
 		return ""
 	}
+}
+
+// userToolHomeEnv is the tool's isolation variable when the user set it to a
+// directory of their own, that is, not one kae's own binding exported.
+func (app *App) userToolHomeEnv(tool string) (string, bool) {
+	dir := app.Env.Getenv(isolationEnvVar(tool))
+	return dir, dir != "" && !app.isKaeManagedHome(dir)
 }
 
 // isKaeManagedHome reports whether dir lies inside kae's isolation data root.

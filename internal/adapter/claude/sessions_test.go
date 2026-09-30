@@ -1,7 +1,9 @@
 package claude
 
 import (
+	"errors"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -28,8 +30,19 @@ func TestProjectDirNameReplacesEverythingButASCIIAlphanumerics(t *testing.T) {
 			}
 		})
 	}
-	if ProjectDirName("/tmp/café") != ProjectDirName(norm.NFC.String("/tmp/café")) {
-		t.Fatal("NFD and NFC spellings of one path must name one directory")
+}
+
+// The hash is over the NFC path, as the name is: a decomposed spelling of a long
+// path must give the whole name of its composed spelling, suffix included.
+func TestProjectDirNameHashesTheNFCPath(t *testing.T) {
+	nfc := "/private/tmp/" + strings.Repeat("é", 190)
+	nfd := "/private/tmp/" + strings.Repeat("é", 190)
+	if nfc == nfd {
+		t.Fatal("fixture: the two spellings must differ")
+	}
+	got, want := ProjectDirName(nfd), ProjectDirName(nfc)
+	if got != want || !strings.HasSuffix(want, "-q53u4z") {
+		t.Fatalf("NFD name %q, NFC name %q; want equal, ending -q53u4z", got, want)
 	}
 }
 
@@ -104,15 +117,7 @@ func referenceSuffix(path string) string {
 	if h < 0 {
 		h = -h
 	}
-	const digits = "0123456789abcdefghijklmnopqrstuvwxyz"
-	if h == 0 {
-		return "0"
-	}
-	var out []byte
-	for ; h > 0; h /= 36 {
-		out = append([]byte{digits[h%36]}, out...)
-	}
-	return string(out)
+	return strconv.FormatInt(h, 36)
 }
 
 func TestJavaHashAgreesWithTheReferenceOverManyPaths(t *testing.T) {
@@ -144,8 +149,40 @@ func TestValidProjectDirName(t *testing.T) {
 		"line\n":                       false,
 		strings.Repeat("y", 64) + "\n": false,
 	} {
-		if got := ValidProjectDirName(value); got != want {
-			t.Errorf("ValidProjectDirName(%q) = %v, want %v", value, got, want)
+		if got := validProjectDirName(value); got != want {
+			t.Errorf("validProjectDirName(%q) = %v, want %v", value, got, want)
 		}
+	}
+}
+
+func TestSessionDirName(t *testing.T) {
+	cwd := func() (string, error) { return "/tmp/x", nil }
+	failing := func() (string, error) { return "", errors.New("getcwd") }
+	forbidden := func() (string, error) {
+		t.Fatal("the directory must not be read when the override is honoured")
+		return "", nil
+	}
+	for _, tc := range []struct {
+		name     string
+		override string
+		inEnv    bool
+		cwd      func() (string, error)
+		want     string
+		wantErr  bool
+	}{
+		{"override honoured", "work", true, forbidden, "work", false},
+		{"override honoured despite an unreadable directory", "work", true, forbidden, "work", false},
+		{"no CLAUDE_CONFIG_DIR", "work", false, cwd, "-tmp-x", false},
+		{"invalid override", "a b", true, cwd, "-tmp-x", false},
+		{"no override", "", true, cwd, "-tmp-x", false},
+		{"unreadable directory without an override", "", true, failing, "", true},
+		{"unreadable directory, override not in play", "work", false, failing, "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := SessionDirName(tc.override, tc.inEnv, tc.cwd)
+			if got != tc.want || (err != nil) != tc.wantErr {
+				t.Fatalf("SessionDirName = %q, %v; want %q, error %v", got, err, tc.want, tc.wantErr)
+			}
+		})
 	}
 }

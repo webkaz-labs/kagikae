@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
@@ -73,10 +74,9 @@ type placeContext struct {
 	project  map[string][]placeRow // tool -> projectLevels, memoized
 	belowSet bool
 	// physicalCwd is the working directory as the kernel names it (physicalWd),
-	// which is what claude names its session directory from; observed once.
-	physicalCwd    string
-	physicalCwdErr error
-	physicalSet    bool
+	// which is what claude names its session directory from; read at most once.
+	physicalCwd func() (string, error)
+	cwdWarned   bool
 }
 
 // placeTools are the tools kae resolves places for: the ones with a home it can
@@ -121,6 +121,7 @@ func (app *App) newPlaceContextWith(ctx context.Context, explicit *explicitUserL
 		return nil, fmt.Errorf("resolve the current directory: %w", err)
 	}
 	pc := &placeContext{cwd: cwd, home: app.Env.Home, explicit: explicit}
+	pc.physicalCwd = sync.OnceValues(func() (string, error) { return physicalWd() })
 	pc.repoRoot = gitRepositoryRoot(ctx, cwd)
 	pc.bindings = app.bindingsAt(cwd)
 	if len(pc.bindings) > 0 {
@@ -560,9 +561,9 @@ func (app *App) userLevel(pc *placeContext, tool string) (placeRow, error) {
 	return row, nil
 }
 
-// toolPlaces lists tool's places in list order: the effective user level, the
-// effective ancestor project levels (nearest first), the project levels below
-// cwd, and the real home when another user level is in effect.
+// toolPlaces lists tool's places in list order: the effective user level, claude's
+// session row, the effective ancestor project levels (nearest first), the project
+// levels below cwd, and the real home when another user level is in effect.
 func (app *App) toolPlaces(ctx context.Context, pc *placeContext, tool string) ([]placeRow, error) {
 	rows, err := app.leadingToolPlaces(pc, tool)
 	if err != nil || len(rows) == 0 {
@@ -577,8 +578,9 @@ func (app *App) toolPlaces(ctx context.Context, pc *placeContext, tool string) (
 	return numberPlaces(rows), nil
 }
 
-// leadingToolPlaces is the start of toolPlaces' list: the effective user level
-// and the ancestor project levels, numbered as toolPlaces numbers them.
+// leadingToolPlaces is the start of toolPlaces' list: the effective user level,
+// claude's session row and the ancestor project levels, numbered as toolPlaces
+// numbers them.
 func (app *App) leadingToolPlaces(pc *placeContext, tool string) ([]placeRow, error) {
 	if projectLevelName(tool) == "" {
 		return []placeRow{}, nil
@@ -588,7 +590,7 @@ func (app *App) leadingToolPlaces(pc *placeContext, tool string) ([]placeRow, er
 		return nil, err
 	}
 	rows := []placeRow{user}
-	if session, ok := app.sessionRow(pc, tool, user); ok {
+	if session, ok := app.sessionRow(pc, tool, user, true); ok {
 		rows = append(rows, session)
 	}
 	return numberPlaces(append(rows, pc.projectLevels(tool)...)), nil
@@ -600,37 +602,24 @@ func (app *App) leadingToolPlaces(pc *placeContext, tool string) ([]placeRow, er
 // have, which would name a session directory claude never writes.
 var physicalWd = syscall.Getwd
 
-// sessionCwd is the physical working directory, read once per command; a failure
-// is warned about once and leaves the session row out.
-func (pc *placeContext) sessionCwd() (string, bool) {
-	if !pc.physicalSet {
-		pc.physicalSet = true
-		pc.physicalCwd, pc.physicalCwdErr = physicalWd()
-		if pc.physicalCwdErr != nil {
-			fmt.Fprintf(os.Stderr, "kae: warning: the current directory could not be resolved (%v), so the claude session row is not listed\n", pc.physicalCwdErr)
-		}
-	}
-	return pc.physicalCwd, pc.physicalCwdErr == nil
-}
-
 // sessionRow is claude's session row: `<user level>/projects/<name>`, the
 // directory holding the transcripts of the current directory (docs/CLI.md § kae
 // ls Semantics). It follows the user level, so an explicit -s or -i and a binding
 // both move it. It is always listed and marked missing until claude has written
-// there.
-func (app *App) sessionRow(pc *placeContext, tool string, user placeRow) (placeRow, bool) {
+// there. When the current directory cannot be resolved (and no override applies)
+// the row is left out; warn says whether that is worth a warning, once per
+// command, which the caller decides by whether the group is being shown.
+func (app *App) sessionRow(pc *placeContext, tool string, user placeRow, warn bool) (placeRow, bool) {
 	if tool != constants.ToolClaude {
 		return placeRow{}, false
 	}
-	name := ""
-	if override := app.Env.Getenv(claude.ProjectDirNameEnv); claude.ValidProjectDirName(override) && app.launchEnvHasConfigDir(user) {
-		name = override
-	} else {
-		cwd, ok := pc.sessionCwd()
-		if !ok {
-			return placeRow{}, false
+	name, err := claude.SessionDirName(app.Env.Getenv(claude.ProjectDirNameEnv), app.launchEnvHasConfigDir(user), pc.physicalCwd)
+	if err != nil {
+		if warn && !pc.cwdWarned {
+			pc.cwdWarned = true
+			fmt.Fprintf(os.Stderr, "kae: warning: the current directory could not be resolved (%v), so the claude session row is not listed\n", err)
 		}
-		name = claude.ProjectDirName(cwd)
+		return placeRow{}, false
 	}
 	row := user
 	row.Kind = constants.PlaceKindSession
@@ -648,8 +637,8 @@ func (app *App) launchEnvHasConfigDir(user placeRow) bool {
 	if user.Mode != constants.ModeAuth {
 		return true
 	}
-	dir := app.Env.Getenv(isolationEnvVar(constants.ToolClaude))
-	return dir != "" && !app.isKaeManagedHome(dir)
+	_, ok := app.userToolHomeEnv(constants.ToolClaude)
+	return ok
 }
 
 // hasSession says whether tool's session directory for the current directory
@@ -662,7 +651,7 @@ func (app *App) hasSession(pc *placeContext, tool string) bool {
 	if err != nil {
 		return false
 	}
-	session, ok := app.sessionRow(pc, tool, user)
+	session, ok := app.sessionRow(pc, tool, user, false)
 	return ok && session.Exists
 }
 
@@ -702,8 +691,10 @@ func (app *App) placesOfLevel(tool string, rows []placeRow, level string) []plac
 	return matches
 }
 
-// toolRelevant says whether bare `kae ls` shows tool's group: it has a governing
-// binding (toolBinding), or it has an effective project level at cwd.
+// toolRelevant says whether a governing binding (toolBinding) or an effective
+// project level at cwd makes tool relevant to bare `kae ls`. It is not the whole
+// condition: claude is also relevant while its session directory exists
+// (hasSession), which collectPlaceGroups adds.
 func (pc *placeContext) toolRelevant(tool string) bool {
 	if pc.toolBinding(tool) != nil {
 		return true

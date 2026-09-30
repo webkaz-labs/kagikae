@@ -464,3 +464,22 @@ func TestSessionRowNeverCarriesACredential(t *testing.T) {
 		}
 	}
 }
+
+// An unreadable current directory is worth a warning only when claude's group is
+// shown anyway; deciding relevance from the session directory stays silent.
+func TestUnresolvableDirectoryWarnsOnlyWhereTheClaudeGroupIsShown(t *testing.T) {
+	app := testApp(t, nil)
+	chdirTo(t, filepath.Join(t.TempDir(), "side-project"))
+	mkdirs(t, app.Paths.ConfigDir)
+	prev := physicalWd
+	physicalWd = func() (string, error) { return "", errors.New("getcwd failed") }
+	t.Cleanup(func() { physicalWd = prev })
+	var tools []string
+	_, stderr := captureStderr(t, func() int {
+		tools = app.collectPlaceGroups(context.Background(), app.readState(), warnGroupOnce()).tools
+		return constants.ExitOK
+	})
+	if len(tools) != 0 || strings.Contains(stderr, "warning") {
+		t.Fatalf("tool groups %v, stderr %q; want no group and no warning", tools, stderr)
+	}
+}

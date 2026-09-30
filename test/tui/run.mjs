@@ -135,7 +135,8 @@ const scenarios = [
         await s.expectText("s7-rc:64");
         await s.expectNoText(FOOTER);
         // A candidate line is `  kae cd <group> --at <n>  <path>`. The whole line
-        // is matched: a prefix would also match the `<repo>/.claude` line.
+        // is matched, so a wrong group word or a longer path at --at 1 (such as
+        // `<repo>/.claude`) fails.
         await s.run(
           `grep -qxF -- '  kae cd repo --at 1  ${s.fx.repo}' "$HOME/s7.err" && [ ! -s "$HOME/s7.out" ]; echo "s7-list:$?"`,
         );

@@ -16,10 +16,10 @@
 //
 // Usage, from the module root:
 //
-//	go run ./tools/devtools/cmd/testshard [-count1]
+//	go run ./scripts/testshard [-count1]
 //
-// KAE_TEST_SHARDS sets the shard count (default: CPU count, at most 6; 1 runs the
-// package in one process). -count1 passes -count=1 to every go test. The exit
+// KAE_TEST_SHARDS sets the shard count (default: CPU count, at most 6; the override
+// is clamped to 16; 1 runs the package in one process). -count1 passes -count=1 to every go test. The exit
 // status is 1 when any test fails or the split does not verify.
 package main
 
@@ -45,6 +45,7 @@ const (
 	shardedPackage = "./internal/cmd"
 	shardsEnv      = "KAE_TEST_SHARDS"
 	maxShards      = 6
+	maxOverride    = 16
 	runTimeout     = 30 * time.Minute
 )
 
@@ -69,7 +70,7 @@ func main() {
 // shardCount reads the override; an unusable value falls back to the CPU count.
 func shardCount(override string, cpus int) int {
 	if n, err := strconv.Atoi(override); err == nil && n >= 1 {
-		return n
+		return min(n, maxOverride)
 	}
 	return max(1, min(cpus, maxShards))
 }
@@ -198,27 +199,51 @@ func goTest(ctx context.Context, count1 bool, args ...string) (commandrun.Result
 	return commandrun.Command{Name: "go", Args: append(full, args...), Timeout: runTimeout}.Run(ctx)
 }
 
-// otherPackages lists every package except the sharded one.
+// otherPackages lists every package except the sharded one. The sharded package's
+// import path comes from go list itself, in the same module context as `./...`, and
+// exactly one entry must be removed: otherwise (a workspace with several modules, a
+// renamed package) internal/cmd would run in full a second time without notice.
 func otherPackages(ctx context.Context) ([]string, error) {
-	res, err := commandrun.Command{Name: "go", Args: []string{"list", "./..."}, Timeout: time.Minute}.Run(ctx)
+	list := func(pattern string) ([]string, error) {
+		res, err := commandrun.Command{Name: "go", Args: []string{"list", pattern}, Timeout: time.Minute}.Run(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if res.ExitCode != 0 {
+			return nil, fmt.Errorf("go list %s failed:\n%s%s", pattern, res.Stdout, res.Stderr)
+		}
+		return strings.Fields(res.Stdout), nil
+	}
+	all, err := list("./...")
 	if err != nil {
 		return nil, err
 	}
-	if res.ExitCode != 0 {
-		return nil, fmt.Errorf("go list ./... failed:\n%s%s", res.Stdout, res.Stderr)
+	sharded, err := list(shardedPackage)
+	if err != nil {
+		return nil, err
 	}
-	mod, err := commandrun.Command{Name: "go", Args: []string{"list", "-m"}, Timeout: time.Minute}.Run(ctx)
-	if err != nil || mod.ExitCode != 0 {
-		return nil, fmt.Errorf("go list -m failed: %v %s", err, mod.Stderr)
+	if len(sharded) != 1 {
+		return nil, fmt.Errorf("go list %s returned %d packages, want 1: %v", shardedPackage, len(sharded), sharded)
 	}
-	skip := strings.TrimSpace(mod.Stdout) + strings.TrimPrefix(shardedPackage, ".")
-	var pkgs []string
-	for _, p := range strings.Fields(res.Stdout) {
-		if p != skip {
-			pkgs = append(pkgs, p)
-		}
+	pkgs, err := without(all, sharded[0])
+	if err != nil {
+		return nil, err
 	}
 	return pkgs, nil
+}
+
+// without removes name from pkgs and fails unless it was present exactly once.
+func without(pkgs []string, name string) ([]string, error) {
+	var rest []string
+	for _, p := range pkgs {
+		if p != name {
+			rest = append(rest, p)
+		}
+	}
+	if len(pkgs)-len(rest) != 1 {
+		return nil, fmt.Errorf("%s appears %d times in go list ./...; it would run outside its shards", name, len(pkgs)-len(rest))
+	}
+	return rest, nil
 }
 
 type outcome struct {

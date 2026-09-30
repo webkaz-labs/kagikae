@@ -50,7 +50,7 @@ func TestShardCount(t *testing.T) {
 	for _, tc := range []struct {
 		override   string
 		cpus, want int
-	}{{"", 4, 4}, {"", 32, maxShards}, {"1", 32, 1}, {"12", 4, 12}, {"0", 4, 4}, {"x", 4, 4}, {"", 0, 1}} {
+	}{{"", 4, 4}, {"", 32, maxShards}, {"1", 32, 1}, {"12", 4, 12}, {"1000", 4, maxOverride}, {"0", 4, 4}, {"x", 4, 4}, {"", 0, 1}} {
 		if got := shardCount(tc.override, tc.cpus); got != tc.want {
 			t.Errorf("shardCount(%q, %d) = %d, want %d", tc.override, tc.cpus, got, tc.want)
 		}
@@ -104,5 +104,18 @@ func TestVerifyRejectsEachDefectShape(t *testing.T) {
 				t.Fatalf("err = %v, want it to contain %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestWithoutRemovesTheShardedPackageExactlyOnce(t *testing.T) {
+	got, err := without([]string{"m/a", "m/internal/cmd", "m/b"}, "m/internal/cmd")
+	if err != nil || !reflect.DeepEqual(got, []string{"m/a", "m/b"}) {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	// Failing controls: absent (a workspace or rename) and repeated.
+	for _, pkgs := range [][]string{{"m/a", "m/b"}, {"m/internal/cmd", "m/internal/cmd"}} {
+		if _, err := without(pkgs, "m/internal/cmd"); err == nil || !strings.Contains(err.Error(), "outside its shards") {
+			t.Fatalf("%v: err = %v", pkgs, err)
+		}
 	}
 }

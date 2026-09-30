@@ -24,10 +24,10 @@
 //     answer as `echo "<marker>:$?"` and the scenario expects `<marker>:0`.
 //   * A snapshot that does not exist fails; KAE_TUI_UPDATE=1 is the only way one
 //     is written or changed.
-//   * runScenarios runs every scenario (up to KAE_TUI_JOBS at once, default 4),
-//     catches each one on its own, then reports in declaration order; the exit
-//     status is non-zero if any failed. A run that stopped at the first failure
-//     would hide the others.
+//   * runScenarios runs every scenario (up to KAE_TUI_JOBS at once; default 4, or the CPU
+//     count when lower), catches each one on its own, then reports in
+//     declaration order; the exit status is non-zero if any failed. A run that
+//     stopped at the first failure would hide the others.
 //
 // The environment sets no NO_COLOR on purpose: only text is asserted, and colour
 // is the Go tests' business.

@@ -18,19 +18,20 @@ and `AGENTS.md` and `README.md` each carried a third version. Read the task.
 CI is a **subset**, not a mirror, except that it runs the full picker PTY suite where
 `mise run check` runs the fast journey (§ Picker PTY suite):
 `.github/workflows/check.yml`'s own steps are the one copy of which of those steps run
-there, and everything else is enforced on a developer's machine only. [ROADMAP.md](ROADMAP.md) routes to per-step admission decisions;
-the workflow steps own their environment constraints.
+there, and everything else is enforced on a developer's machine only.
+[ROADMAP.md](ROADMAP.md) routes to per-step admission decisions; the workflow steps
+own their environment constraints.
 
 Slower release-time checks live in `mise run audit` (govulncheck and installed-tool
-fingerprints), `mise run goreleaser-check` and `mise run release-evidence`. The full
-picker PTY suite (`mise run tui-e2e`, § Picker PTY suite) runs in CI and is the local
-run after a picker change. The last
-task runs one bounded mutation for each current smoke-run guard and proves that an empty
+fingerprints), `mise run goreleaser-check` and `mise run release-evidence`.
+`release-evidence` runs one bounded mutation for each current smoke-run guard and
+proves that an empty
 `snap()` makes all four tagged consumers in § Harvesting a credential fail. The commit
 gate keeps the four historical smoke-run defect shapes live through
 `smoke-selftest-mutations-fast`; the full table stays release-only because it runs the
 selftest once per guard. Lint tools run via `go run <tool>@<pinned version>`; the first
-run downloads them.
+run downloads them. The full picker PTY suite (`mise run tui-e2e`, § Picker PTY suite)
+runs in CI and is the local run after a picker change.
 
 `mise run naming-agreement` is the login-free release naming check described in
 [ACCEPTANCE.md](ACCEPTANCE.md) § Bound-directory credential store. Its Go
@@ -42,22 +43,25 @@ The actual upstream comparison stays outside the commit gate and CI because it
 requires an explicitly reviewed macOS binary.
 
 `mise run test` (and `test-fresh`, which adds `-count=1`) runs
-`tools/devtools/cmd/testshard`. `internal/cmd` holds most of the suite's wall time and
+`scripts/testshard` (`go run ./scripts/testshard` from the repository root).
+`internal/cmd` holds most of the suite's wall time and
 its tests swap process globals (working directory, `os.Stdout`, environment), so
 they cannot run in parallel inside one process. The runner instead lists that
 package's top-level tests, deals them round-robin by sorted name into shards, runs
 each shard as its own `go test -run` process, and runs every other package with one
 plain `go test` beside them. Each shard is a normal `go test` invocation, so the test
 cache and `-count` behave as before. `KAE_TEST_SHARDS` sets the shard count (default:
-CPU count, at most 6, because the tests are heavy on process creation and more shards
-stopped helping on a 10-core machine; `1` runs the package in one process).
-Isolation rests on every test using `t.TempDir()`, on the `TestMain` guard above and
+CPU count, at most 6; an override is clamped to 16; `1` runs the package in one
+process). Isolation rests on every test using `t.TempDir()`, on the `TestMain` guard
+described below and
 on no fixed path or port outside a temp directory; a new test that binds one breaks
 the sharding.
 
 The runner checks its own split: each shard's verbose output must show exactly its
 assigned top-level tests, once each, and the shards together must equal the listed
-set; any mismatch fails the run and names the test. It does not check which tests a
+set; any mismatch fails the run and names the test. The runner also fails unless
+`internal/cmd` is removed from the other packages' list exactly once, so a workspace
+or rename cannot run it twice unnoticed. It does not check which tests a
 shard skips with `t.Skip`, and a listed benchmark is not run. CI keeps a plain
 `go test ./...` (a runner with few cores gains little, and it stays a second opinion
 on the split), so a test that passes only in isolation from its neighbours fails

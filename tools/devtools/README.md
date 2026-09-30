@@ -15,7 +15,6 @@ explicitly so source lookup never follows its Go workspace.
 | `go run ./cmd/distributionverify` | Trusted-spec distribution and installer checks | Go, gh, Packslip; execution modes are explicit |
 | `go run ./cmd/completionverify /absolute/spec.json` | Actual Bash/Zsh candidates and registration | Go, Bash, Zsh |
 | `go run ./cmd/docrefs /absolute/project` | Reference records for policy adapters | Go |
-| `go run ./cmd/testshard [-count1]` | Run the module root's tests with `internal/cmd` split across processes; run from the module root | Go |
 
 [Maintenance guidance](../../docs/DOCUMENTATION.md) owns invocation details for
 reference, prose and formatting checks. [Distribution verification](../../docs/DISTRIBUTION-VERIFY.md)

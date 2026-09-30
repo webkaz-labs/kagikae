@@ -6,12 +6,12 @@ shellcheck = "0.11.0"
 
 [tasks.test]
 description = "Run Go tests, internal/cmd sharded across processes, with cache and wall time"
-run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} /usr/bin/time -p go run ./tools/devtools/cmd/testshard"
+run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} /usr/bin/time -p go run ./scripts/testshard"
 
 [tasks.test-fresh]
 hide = true
 description = "Run Go tests without cache and show wall time"
-run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} /usr/bin/time -p go run ./tools/devtools/cmd/testshard -count1"
+run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} /usr/bin/time -p go run ./scripts/testshard -count1"
 
 [tasks.vet]
 hide = true

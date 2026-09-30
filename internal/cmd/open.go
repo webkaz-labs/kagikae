@@ -152,7 +152,7 @@ func parseNavigateArgs(verb, usage string, args []string) (commonOpts, lsRequest
 // and a usage error on stderr (reportCandidates).
 func (app *App) navigatePath(ctx context.Context, opts commonOpts, req lsRequest) (string, int) {
 	if req.target == "" && req.level == "" {
-		return "", app.reportAllPlaces(ctx, req)
+		return "", app.reportAllPlaces(ctx, opts, req)
 	}
 	var (
 		row     placeRow
@@ -168,7 +168,7 @@ func (app *App) navigatePath(ctx context.Context, opts commonOpts, req lsRequest
 		return "", app.reportNoCurrentPlace(opts, req, several)
 	}
 	if several != nil {
-		return "", reportCandidates(req, fmt.Sprintf("kae %s %s matches %d places", req.verb, requestWords(req, false), len(several)), several)
+		return "", reportCandidates(opts, req, fmt.Sprintf("kae %s %s matches %d places", req.verb, requestWords(req, false), len(several)), several)
 	}
 	if code != constants.ExitOK {
 		return "", code
@@ -185,7 +185,7 @@ func (app *App) navigatePath(ctx context.Context, opts commonOpts, req lsRequest
 
 // reportNoCurrentPlace is a target with no current place here: the picker's case
 // over the target's places, which with --root are the ones that have a root.
-// Only a target with no candidate at all is not_found.
+// Only a target with no candidate at all is not_found (reportCandidates).
 func (app *App) reportNoCurrentPlace(opts commonOpts, req lsRequest, rows []placeRow) int {
 	var candidates []placeRow
 	for _, row := range rows {
@@ -193,11 +193,7 @@ func (app *App) reportNoCurrentPlace(opts commonOpts, req lsRequest, rows []plac
 			candidates = append(candidates, row)
 		}
 	}
-	what := requestWords(req, false)
-	if len(candidates) == 0 {
-		return finish(opts, errf(constants.ExitNotFound, "no current place for kae %s %s here, and no place to choose", req.verb, what))
-	}
-	return reportCandidates(req, fmt.Sprintf("kae %s %s has no current place here", req.verb, what), candidates)
+	return reportCandidates(opts, req, fmt.Sprintf("kae %s %s has no current place here", req.verb, requestWords(req, false)), candidates)
 }
 
 // pickLevelOfBoundTool is a level selector without a tool: it applies to the one
@@ -241,7 +237,7 @@ func (app *App) pickLevelOfBoundTool(ctx context.Context, opts commonOpts, req *
 
 // reportAllPlaces is open or cd with no target: every place bare `kae ls`
 // lists is a candidate.
-func (app *App) reportAllPlaces(ctx context.Context, req lsRequest) int {
+func (app *App) reportAllPlaces(ctx context.Context, opts commonOpts, req lsRequest) int {
 	warned := map[string]bool{}
 	g := app.collectPlaceGroups(ctx, app.readState(), func(group string, err error) {
 		if !warned[err.Error()] {
@@ -249,14 +245,19 @@ func (app *App) reportAllPlaces(ctx context.Context, req lsRequest) int {
 			fmt.Fprintf(os.Stderr, "kae: warning: the %s group is not listed: %v\n", group, err)
 		}
 	})
-	return reportCandidates(req, fmt.Sprintf("kae %s needs a target", req.verb), g.places())
+	return reportCandidates(opts, req, fmt.Sprintf("kae %s needs a target", req.verb), g.places())
 }
 
 // reportCandidates is the picker's no-terminal case over place rows: a usage
-// error and, one per line, the command that reaches each candidate.
-func reportCandidates(req lsRequest, reason string, rows []placeRow) int {
+// error and, one per line, the command that reaches each candidate. A place
+// whose directory does not exist is left out, since choosing it exits 7; the
+// numbers stay `kae ls`'s. With no candidate left it is not_found.
+func reportCandidates(opts commonOpts, req lsRequest, reason string, rows []placeRow) int {
 	lines := make([]string, 0, len(rows))
 	for _, row := range rows {
+		if !row.Exists {
+			continue
+		}
 		words := row.Group
 		if req.target == row.Group {
 			words = requestWords(req, true)
@@ -270,6 +271,9 @@ func reportCandidates(req lsRequest, reason string, rows []placeRow) int {
 			}
 		}
 		lines = append(lines, cmd+"  "+path)
+	}
+	if len(lines) == 0 {
+		return finish(opts, errf(constants.ExitNotFound, "%s, and no existing place to choose", reason))
 	}
 	return reportChoices(reason+"; choose one", lines)
 }
@@ -329,7 +333,11 @@ func (app *App) openPlace(ctx context.Context, opts commonOpts, path string) int
 	// Launched, not run: xdg-open can leave the file manager holding a captured
 	// pipe, and kae would wait for the file manager to exit. The opener's own
 	// error output reaches stderr directly.
-	if code := runner.Launch(ctx, opener, path); code != 0 {
+	code, err := runner.Launch(ctx, opener, path)
+	switch {
+	case err != nil:
+		return finish(opts, errf(constants.ExitError, "%s %s: %v", opener, path, err))
+	case code != 0:
 		return finish(opts, errf(constants.ExitError, "%s %s exited %d", opener, path, code))
 	}
 	return constants.ExitOK

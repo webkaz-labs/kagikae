@@ -145,6 +145,11 @@ child could rotate the live credential unseen — a cached value would be stale.
   argv exposure grants no privilege beyond what the keychain itself grants.
   stdout of `security find-generic-password -w` is treated as secret and
   redacted from any diagnostics.
+- `kae open` runs the platform opener (`open` on macOS, `xdg-open` on Linux)
+  through `runner.Launch`: argv `[opener, <path>]`, no shell, the path a resolved
+  place and never a credential. stdin and stdout are the null device and stderr is
+  kae's own, none of them a pipe, so kae waits for the opener process only and not
+  for a file manager it leaves running.
 - User-controlled account/profile names are validated against
   `[a-zA-Z0-9._-]{1,64}` before use in paths, lock names, or secret keys.
 - The `companion_drift` doctor check shells out to `git config --get

@@ -591,27 +591,32 @@ test "$(command -v kae)" = "$KB/kae"
 eval "$(kae completion bash)"
 test "$(type -t kae)" = function
 R="$HOME/my repo"; mkdir -p "$R/.claude" "$R/sub dir/deep"; R=$(cd "$R" && pwd -P); git -C "$R" init -q
-cd "$R/sub dir/deep"; kae cd repo; test $? -eq 0; test "$PWD" = "$R"
-cd "$R/sub dir/deep"; kae cd claude --project; test $? -eq 0; test "$PWD" = "$R/.claude"
-cd "$R/sub dir/deep"; kae cd claude --project --root; test $? -eq 0; test "$PWD" = "$R"
-cd "$R/sub dir/deep"; kae cd pin 2>"$HOME/pin.err"; test $? -eq 7; test "$PWD" = "$R/sub dir/deep"; test -s "$HOME/pin.err"
-cd "$R/sub dir/deep"; kae cd 2>"$HOME/none.err"; test $? -eq 64; test "$PWD" = "$R/sub dir/deep"; test -s "$HOME/none.err"
-cd "$R/sub dir/deep"; kae cd kae 2>"$HOME/many.err"; test $? -eq 64; test "$PWD" = "$R/sub dir/deep"; grep -q 'kae cd kae --at 1' "$HOME/many.err"
-cd "$R/sub dir/deep"; command kae cd repo 2>"$HOME/nofn.err" >"$HOME/nofn.out"; test $? -eq 64; grep -qF 'cd "$(kae ls repo --current)"' "$HOME/nofn.err"; test ! -s "$HOME/nofn.out"; test "$PWD" = "$R/sub dir/deep"
-cd "$R"; rmdir "$R/.claude"; kae cd claude --project 2>"$HOME/gone.err"; test $? -eq 64; test "$PWD" = "$R"; grep -q 'has no current place here' "$HOME/gone.err"
-cd "$R/sub dir/deep"; PATH="$KB:$GB" kae open repo >"$HOME/open.out" 2>"$HOME/open.err"; test $? -eq 0; test "$(cat "$HOME/open.out")" = "$R"; test -s "$HOME/open.err"
+mkdir -p "$XDG_CONFIG_HOME/kagikae" "$XDG_DATA_HOME/kagikae"
+cd "$R/sub dir/deep"; kae cd repo; rc=$?; test "$rc" -eq 0 && test "$PWD" = "$R"
+cd "$R/sub dir/deep"; kae cd claude --project; rc=$?; test "$rc" -eq 0 && test "$PWD" = "$R/.claude"
+cd "$R/sub dir/deep"; kae cd claude --project --root; rc=$?; test "$rc" -eq 0 && test "$PWD" = "$R"
+cd "$R/sub dir/deep"; kae cd pin 2>"$HOME/pin.err"; rc=$?; test "$rc" -eq 7 && test "$PWD" = "$R/sub dir/deep" && test -s "$HOME/pin.err"
+cd "$R/sub dir/deep"; kae cd 2>"$HOME/none.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R/sub dir/deep" && test -s "$HOME/none.err"
+cd "$R/sub dir/deep"; kae cd kae 2>"$HOME/many.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R/sub dir/deep" && grep -q 'kae cd kae --at 1' "$HOME/many.err"
+cd "$R/sub dir/deep"; command kae cd repo 2>"$HOME/nofn.err" >"$HOME/nofn.out"; rc=$?; test "$rc" -eq 64 && grep -qF 'cd "$(kae ls repo --current)"' "$HOME/nofn.err" && test ! -s "$HOME/nofn.out" && test "$PWD" = "$R/sub dir/deep"
+cd "$R"; rmdir "$R/.claude"; mkdir -p "$HOME/.claude"; kae cd claude --project 2>"$HOME/gone.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R" && grep -q 'has no current place here' "$HOME/gone.err"
+cd "$R/sub dir/deep"; PATH="$KB:$GB" kae open repo >"$HOME/open.out" 2>"$HOME/open.err"; rc=$?; test "$rc" -eq 0 && test "$(cat "$HOME/open.out")" = "$R" && test -s "$HOME/open.err"
 cd "$R/sub dir/deep"; PATH="$KB:$GB" command -v open xdg-open >/dev/null; test $? -ne 0
 kae completion bash >"$HOME/withfunc.bash"; test "$(grep -c '^function kae {' "$HOME/withfunc.bash")" -eq 1
-kae completion bash --no-function >"$HOME/nofunc.bash"; test -s "$HOME/nofunc.bash"; test "$(grep -c '^function kae {' "$HOME/nofunc.bash")" -eq 0
+kae completion bash --no-function >"$HOME/nofunc.bash"; rc=$?; test "$rc" -eq 0 && test -s "$HOME/nofunc.bash" && test "$(grep -c '^function kae {' "$HOME/nofunc.bash")" -eq 0
 printf '%s\n' 'shopt -s expand_aliases' "alias kae='kae --no-color'" 'eval "$(command kae completion bash)" || exit 9' 'complete -p kae >/dev/null || exit 8' 'cd "$1" && \kae cd repo && test "$PWD" = "$2"' >"$HOME/alias.bash"
 env -i HOME="$HOME" PATH="$KB:$GB:/bin" bash --noprofile --norc "$HOME/alias.bash" "$R/sub dir/deep" "$R"
-env -i HOME="$HOME" PATH="$KB:$GB:/bin" bash --noprofile --norc -c 'eval "$(kae completion bash --no-function)"; test "$(type -t kae)" != function; command kae cd repo >/dev/null 2>&1; test $? -eq 64'
-command -v zsh >/dev/null && env -i HOME="$HOME" PATH="$KB:$GB:/bin:/usr/bin" zsh -f -c "eval \"\$(kae completion zsh)\"; cd '$R/sub dir/deep'; kae cd repo && test \"\$PWD\" = '$R' && cd '$R/sub dir/deep' && kae cd pin 2>/dev/null; test \$? -eq 7 && test \"\$PWD\" = '$R/sub dir/deep'"
+env -i HOME="$HOME" PATH="$KB:$GB:/bin" bash --noprofile --norc -c 'eval "$(kae completion bash --no-function)"; test "$(type -t kae)" != function || exit 1; command kae cd repo >/dev/null 2>&1; rc=$?; test "$rc" -eq 64'
+command -v zsh >/dev/null && env -i HOME="$HOME" PATH="$KB:$GB:/bin:/usr/bin" zsh -f -c "eval \"\$(kae completion zsh)\"; cd '$R/sub dir/deep'; kae cd repo && test \"\$PWD\" = '$R' && cd '$R/sub dir/deep' && kae cd pin 2>/dev/null; rc=\$?; test \$rc -eq 7 && test \"\$PWD\" = '$R/sub dir/deep'"
 ```
 
 `kae cd pin` exits `7` here because nothing is bound in the fixture HOME, so the
 pin group has no place to offer; with a bound directory elsewhere it would list it
 and exit `64`, which is what the missing-`.claude` line checks for the claude group.
+
+`scripts/smoke-run.sh` judges a line by its last command, so each line captures
+the exit code as `rc` and chains every assertion after it with `&&`; a `test $? …`
+in the middle of a line would be discarded.
 
 The fixture directory has a space on purpose: the function quotes the path it
 receives, and an unquoted `builtin cd -- $path` would split it and fail (or move

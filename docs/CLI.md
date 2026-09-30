@@ -676,7 +676,9 @@ every bound directory, `--below` with no level below), whose candidates are the
 places `kae ls <target>` lists — with `--root`, those that have a root. Only a
 target with no candidate at all (`repo` outside a repository, `pin` with nothing
 bound, a tool kae resolves no places for) exits `7`; `kae ls --current` keeps its
-`7` for every case without a current place. Until the picker exists ([ROADMAP.md](ROADMAP.md)
+`7` for every case without a current place. Every candidate list leaves out places
+whose directory does not exist, since choosing one exits `7`, and keeps `kae ls`'s
+numbers for the rest; with none left, the request exits `7`. Until the picker exists ([ROADMAP.md](ROADMAP.md)
 § Place navigation and the tree-shared mode), each prints a usage error on stderr followed by the
 candidates, one per line as the command that reaches it (`kae open claude --at 3`
 and the path), and exits `64`.

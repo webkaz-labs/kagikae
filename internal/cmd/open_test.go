@@ -245,7 +245,8 @@ func TestNavigatePickerCasesListCandidates(t *testing.T) {
 	cwd := chdirTo(t, t.TempDir())
 	// cwd's own .claude/ makes claude relevant to bare ls: user 1, project 2,
 	// below 3 and 4.
-	mkdirs(t, filepath.Join(cwd, ".claude"), filepath.Join(cwd, "a", ".claude"), filepath.Join(cwd, "b", ".claude"))
+	mkdirs(t, filepath.Join(cwd, ".claude"), filepath.Join(cwd, "a", ".claude"), filepath.Join(cwd, "b", ".claude"),
+		app.Paths.ConfigDir, app.Paths.DataDir, app.Paths.StateDir)
 	for _, tc := range []struct {
 		name string
 		verb string
@@ -296,6 +297,31 @@ func TestNavigatePickerCasesListCandidates(t *testing.T) {
 	code, _, stderr := cdPath(t, app, navRequest(t, "cd", lsFlags{project: true}))
 	if code != constants.ExitUsage || !strings.Contains(stderr, "2 tools are bound here") || !strings.Contains(stderr, "kae cd codex --project") {
 		t.Fatalf("two bound tools = %d %q", code, stderr)
+	}
+}
+
+// A candidate whose directory does not exist is left out (choosing it would
+// exit 7) and the rest keep kae ls's numbers; with none left, it is not_found.
+func TestNavigateCandidatesLeaveOutMissingPlaces(t *testing.T) {
+	app := testApp(t, nil)
+	cwd := chdirTo(t, t.TempDir())
+	// ~/.claude and ~/.codex do not exist; cwd's .claude/ does.
+	mkdirs(t, filepath.Join(cwd, ".claude"))
+	code, _, stderr := cdPath(t, app, navRequest(t, "cd", lsFlags{}))
+	if code != constants.ExitUsage || !strings.Contains(stderr, "kae cd claude --at 2  "+filepath.Join(cwd, ".claude")) ||
+		strings.Contains(stderr, "kae cd claude --at 1") || strings.Contains(stderr, "kae cd kae --at") {
+		t.Fatalf("no target = %d:\n%s", code, stderr)
+	}
+	// codex has no project level here and its only place, the real home, is
+	// missing: nothing to choose.
+	code, _, stderr = cdPath(t, app, navRequest(t, "cd", lsFlags{project: true}, "codex"))
+	if code != constants.ExitNotFound || !strings.Contains(stderr, "no existing place to choose") {
+		t.Fatalf("kae cd codex --project with no ~/.codex = %d %q", code, stderr)
+	}
+	// Several matches, all missing: kae's directories were never created.
+	code, _, stderr = cdPath(t, app, navRequest(t, "cd", lsFlags{}, "kae"))
+	if code != constants.ExitNotFound {
+		t.Fatalf("kae cd kae with no kae directory = %d %q", code, stderr)
 	}
 }
 
@@ -416,7 +442,7 @@ func TestNavigateNoCurrentPlaceListsTheTargetsPlaces(t *testing.T) {
 	// --root with no place that has a root: nothing to offer.
 	chdirTo(t, filepath.Join(t.TempDir(), "bare"))
 	code, _, stderr = cdPath(t, app, navRequest(t, "cd", lsFlags{below: true, root: true}, "claude"))
-	if code != constants.ExitNotFound || !strings.Contains(stderr, "no place to choose") {
+	if code != constants.ExitNotFound || !strings.Contains(stderr, "no existing place to choose") {
 		t.Fatalf("--below --root with no project level = %d %q", code, stderr)
 	}
 }
@@ -761,5 +787,31 @@ echo "pwd=$PWD"
 				t.Fatalf("%s: \\kae cd left PWD at %q:\n%s\nstderr:\n%s", shell, got, out, stderr.String())
 			}
 		})
+	}
+}
+
+// unstartable is a runner whose Launch cannot start the program.
+type unstartable struct{ runnertest.Fake }
+
+func (u *unstartable) Launch(context.Context, string, ...string) (int, error) {
+	return 1, errors.New("exec: no such file")
+}
+
+// An opener that cannot be started is reported once, in one line.
+func TestOpenReportsAnUnstartableOpenerOnce(t *testing.T) {
+	app := testApp(t, nil)
+	withOpener(app, "xdg-open")
+	chdirTo(t, t.TempDir())
+	mkdirs(t, app.Paths.ConfigDir)
+	var code int
+	var stderr string
+	runner.With(&unstartable{}, func() {
+		code, _, stderr = captureBoth(t, func() int {
+			return runOpen(context.Background(), app, commonOpts{Format: formatText}, navRequest(t, "open", lsFlags{at: atFlag{n: 1, set: true}}, "kae"))
+		})
+	})
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	if code != constants.ExitError || len(lines) != 1 || !strings.Contains(lines[0], "no such file") || strings.Contains(stderr, "exited") {
+		t.Fatalf("unstartable opener = %d %q", code, stderr)
 	}
 }

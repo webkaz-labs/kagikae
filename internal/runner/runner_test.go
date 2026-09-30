@@ -69,8 +69,8 @@ func TestOSRunnerLaunchWaitsForTheProgramOnly(t *testing.T) {
 	start := time.Now()
 	// The child keeps the stdout Launch gave it; its stderr is redirected only so
 	// the test binary's own stderr pipe is not held after the test ends.
-	if code := (OSRunner{}).Launch(context.Background(), sh, "-c", "sleep 5 2>/dev/null & exit 0"); code != 0 {
-		t.Fatalf("code = %d", code)
+	if code, err := (OSRunner{}).Launch(context.Background(), sh, "-c", "sleep 5 2>/dev/null & exit 0"); code != 0 || err != nil {
+		t.Fatalf("code = %d, err = %v", code, err)
 	}
 	if elapsed := time.Since(start); elapsed > 3*time.Second {
 		t.Fatalf("Launch waited %v for the program's background child", elapsed)
@@ -81,8 +81,13 @@ func TestOSRunnerLaunchWaitsForTheProgramOnly(t *testing.T) {
 	if time.Since(start) < 900*time.Millisecond {
 		t.Fatalf("control: Run returned before the child exited, so the Launch check proves nothing")
 	}
-	if code := (OSRunner{}).Launch(context.Background(), sh, "-c", "exit 3"); code != 3 {
-		t.Fatalf("exit code = %d, want 3", code)
+	if code, err := (OSRunner{}).Launch(context.Background(), sh, "-c", "exit 3"); code != 3 || err != nil {
+		t.Fatalf("exit code = %d (%v), want 3", code, err)
+	}
+	// A program that cannot start is an error, not an exit code, and prints
+	// nothing itself: the caller reports it once.
+	if code, err := (OSRunner{}).Launch(context.Background(), "/nonexistent/kae-opener"); code == 0 || err == nil {
+		t.Fatalf("an unstartable program = %d %v", code, err)
 	}
 }
 
@@ -90,7 +95,7 @@ func TestOSRunnerLaunchWaitsForTheProgramOnly(t *testing.T) {
 func TestLaunchFallsBackToRun(t *testing.T) {
 	fake := &fakeRunner{code: 4}
 	var code int
-	With(fake, func() { code = Launch(context.Background(), "opener", "/p") })
+	With(fake, func() { code, _ = Launch(context.Background(), "opener", "/p") })
 	if code != 4 || fake.name != "opener" || !reflect.DeepEqual(fake.args, []string{"/p"}) {
 		t.Fatalf("code %d, ran %s %v", code, fake.name, fake.args)
 	}

@@ -88,9 +88,12 @@ main -> cmd -> adapter -> artifact -> {patch, secret, runner}
   leaves the group or the verifier receiving SIGKILL. Installer-smoke temporary
   files are placed beneath that parent; the smoke runner's header owns allocation
   and isolation details.
-- All subprocess calls (`security`, `secret-tool`, binary detection) go
-  through `internal/runner`. Production code never calls `exec.Command`
-  directly.
+- All subprocess calls (`security`, `secret-tool`, binary detection, the
+  `kae open` opener) go through `internal/runner`. Production code never calls
+  `exec.Command` directly. A program kae starts and does not read — the opener
+  (`open` / `xdg-open`) — goes through `runner.Launch`: stdin and stdout to the
+  null device, stderr to kae's, and a wait for the opener process only; a runner
+  without `Launch` (a test double) answers through `Run`.
 - **Completion backend seam** (`cmd/complete.go`): the hidden
   `kae __complete <kind>` reads the live router/config/captured state and prints
   one candidate per line. It is the single source for both completion surfaces —

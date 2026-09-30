@@ -33,8 +33,9 @@ func TestLifecycleHelper(t *testing.T) {
 			os.Exit(3)
 		}
 		defer conn.Close()
-		// Outlives the test's post-return wait, so a survivor is still
-		// connected when TestCommandLifecycle looks for it.
+		// Outlives the bound from dial to return plus the test's post-return wait
+		// (together about 16 s), so a survivor is still connected when
+		// TestCommandLifecycle looks for it.
 		_ = conn.SetDeadline(time.Now().Add(6 * survivorWait))
 		fmt.Fprintln(conn, "ready")
 		scanner := bufio.NewScanner(conn)

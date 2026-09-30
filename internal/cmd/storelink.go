@@ -126,7 +126,7 @@ func (app *App) storeLinkState(path string) (target string, state linkState) {
 
 // ensureStoreLink points path at target, reporting whether the link is now in
 // place. target must be absolute: the link is read by the user, and by
-// kaeManagedHomeKind on the next run, neither of which resolves it against the
+// isKaeManagedHome on the next run, neither of which resolves it against the
 // directory it sits in.
 //
 // It refuses to replace anything kae did not put there — a real directory, a real

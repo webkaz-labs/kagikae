@@ -14,7 +14,6 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/artifact"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/keychain"
-	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 )
 
@@ -23,10 +22,14 @@ import (
 // var points at, which is what resolves the store's item identity.
 //
 // Account is the account whose credential the store holds, and it is empty for
-// the shared mechanism: that store is one directory per pin×tool, so its path
-// records no account and only the fragment kae is replacing can name one
-// (storeAccount).
+// an account-agnostic mechanism (shared): that store is one directory per
+// pin×tool, so its path records no account and only the fragment kae is
+// replacing can name one (storeAccount).
 type dirStore struct {
+	// Mode is the bind mode whose store this is (a bindModes name), as the walk found
+	// it on disk; empty for a store built from a binding rather than the walk, which
+	// storeAccount then never attributes from the replaced fragment.
+	Mode    string
 	Tool    string
 	Dir     string
 	Account string
@@ -45,7 +48,8 @@ type dirStore struct {
 func (s dirStore) dirs() bindDirs { return bindDirs{Config: s.Dir, Cred: s.CredDir} }
 
 // dirCredentialStores lists the per-directory stores that exist on disk for one
-// bound directory, across both mechanisms and every account of the isolated one.
+// bound directory, across every bindModes mechanism and every account of a
+// per-account one.
 //
 // It walks isolation/<pinID> rather than consulting a record of past bindings,
 // because no such record exists: the mise fragment describes the binding kae is
@@ -76,31 +80,36 @@ func (app *App) dirCredentialStores(pinID string, prev fragmentInfo) ([]dirStore
 		return nil, fmt.Errorf("list per-directory stores in %s: %w", pinDir, err)
 	}
 	stores := []dirStore{}
+	add := func(store dirStore) {
+		store.CredDir = app.attributedCredDir(store, prev)
+		stores = append(stores, store)
+	}
 	for _, toolEntry := range tools {
 		if !toolEntry.IsDir() {
 			continue
 		}
 		tool := toolEntry.Name()
-		if shared := app.Paths.SharedDir(pinID, tool); dirExists(shared) {
-			store := dirStore{Tool: tool, Dir: shared}
-			store.CredDir = app.attributedCredDir(store, prev)
-			stores = append(stores, store)
-		}
-		accounts, err := os.ReadDir(filepath.Join(pinDir, tool, paths.IsolatedSegment))
-		if err != nil {
-			continue // no isolated stores for this tool
-		}
-		for _, acct := range accounts {
-			if !acct.IsDir() {
+		for _, m := range bindModes() {
+			if !m.perAccount {
+				if dir := m.storeDir(app.Paths, pinID, tool, ""); dirExists(dir) {
+					add(dirStore{Mode: m.name, Tool: tool, Dir: dir})
+				}
 				continue
 			}
-			if dir := app.Paths.IsolatedConfigDir(pinID, tool, acct.Name()); dirExists(dir) {
-				// The account is the directory's own name (kae composes the path from it),
-				// which is what lets the sweep harvest an isolated store it is about to
-				// delete without consulting any binding.
-				store := dirStore{Tool: tool, Dir: dir, Account: acct.Name()}
-				store.CredDir = app.attributedCredDir(store, prev)
-				stores = append(stores, store)
+			accounts, err := os.ReadDir(filepath.Join(pinDir, tool, m.segment))
+			if err != nil {
+				continue // no stores of this mode for this tool
+			}
+			for _, acct := range accounts {
+				if !acct.IsDir() {
+					continue
+				}
+				if dir := m.storeDir(app.Paths, pinID, tool, acct.Name()); dirExists(dir) {
+					// The account is the directory's own name (kae composes the path from it),
+					// which is what lets the sweep harvest a per-account store it is about to
+					// delete without consulting any binding.
+					add(dirStore{Mode: m.name, Tool: tool, Dir: dir, Account: acct.Name()})
+				}
 			}
 		}
 	}
@@ -311,18 +320,18 @@ func (app *App) credentialMovedOutOf(store dirStore, pinID string, prev fragment
 // storeAccount names the account whose credential store holds, for the sweep that
 // is about to delete it. Empty means nothing kae can read says so.
 //
-// An isolated store answers for itself: its path is composed from the account.
-// A shared store cannot — one directory serves every account this pin ever bound
-// there — so the answer comes from the binding being replaced, and only when that
-// binding used the shared mechanism. Reading it from a fragment that was in
-// isolated mode would attribute a shared store left over from an *earlier*
-// binding to the wrong account, which is the mislabelling the harvest's identity
-// check exists to catch; there is no reason to hand it that case on purpose.
+// A per-account store answers for itself: its path is composed from the account.
+// An account-agnostic one cannot — one directory serves every account this pin ever
+// bound there — so the answer comes from the binding being replaced, and only when
+// that binding used the store's own mechanism. Reading it from a fragment in another
+// mode would attribute a store left over from an *earlier* binding to the wrong
+// account, which is the mislabelling the harvest's identity check exists to catch;
+// there is no reason to hand it that case on purpose.
 func storeAccount(store dirStore, prev fragmentInfo) string {
 	if store.Account != "" {
 		return store.Account
 	}
-	if prev.Mode == modeShared {
+	if m, ok := bindModeFor(store.Mode); ok && !m.perAccount && store.Mode == prev.Mode {
 		return prev.Accounts[store.Tool]
 	}
 	return ""
@@ -559,8 +568,8 @@ type credStoreReader struct {
 // fragments making the set incomplete. Dropping the `bound` check
 // would append `""` — which `dirSpecs` resolves to the **real home**, so a future third
 // per-directory mechanism would silently attribute the account's store from the real home's
-// identity cache. That last one belongs in the same lockstep list `dirCredentialStores`
-// carries.
+// identity cache — the reason a mode resolves through its bindModes row and never
+// through a default.
 // Each call obtains a fresh boundDirectoryIndex and then reads global homes. The
 // supersedes gate decides whether attribution calls it at all; a bind must not
 // retain those observations through its later fragment write and teardown.

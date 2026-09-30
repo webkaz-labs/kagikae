@@ -592,7 +592,7 @@ source and backend-read error policy.
   classified with `os.Lstat` plus `os.Readlink`, never `os.Stat`: a kae link whose
   store was deleted is broken, and `Stat` reports it as absent, so kae would try to
   create a link over a name that already exists and leave the stale one behind.
-  Only a symlink whose target is inside the isolation root (`kaeManagedHomeKind`)
+  Only a symlink whose target is inside the isolation root (`isKaeManagedHome`)
   is kae's to re-aim or remove; everything else there is the user's and is left
   alone with a warning.
 - `secret-tool` returns exit code 1 both for "not found" and some errors;

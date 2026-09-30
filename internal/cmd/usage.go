@@ -299,7 +299,7 @@ func (app *App) usageHomes(captured []account.Account, st *state.State) map[stri
 		if acc, bound := pinAccounts[tool]; bound && pinID != "" {
 			if dir, ok := app.modeStoreDir(pinMode, pinID, tool, acc); ok && filepath.Clean(dir) == filepath.Clean(live) {
 				owner = acc
-				pathOwned = pinMode == modeIsolated
+				pathOwned = modeStoreIsPerAccount(pinMode)
 			}
 		}
 		add(tool, usageHome{path: live, account: owner, pathOwned: pathOwned})
@@ -323,7 +323,7 @@ func (app *App) usageHomes(captured []account.Account, st *state.State) map[stri
 				if !bound {
 					continue
 				}
-				add(tool, usageHome{path: dir, account: acc, pathOwned: info.Mode == modeIsolated})
+				add(tool, usageHome{path: dir, account: acc, pathOwned: modeStoreIsPerAccount(info.Mode)})
 			}
 		}
 	}

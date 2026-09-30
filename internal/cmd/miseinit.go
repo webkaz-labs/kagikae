@@ -105,20 +105,14 @@ func (app *App) isolationPlan(ctx context.Context, be secret.Backend, mode strin
 	stale := func(tool, account string) bool {
 		return prevKnown && modeLabelStale(mode, prev.Accounts[tool], account)
 	}
-	switch mode {
-	case modeShared:
-		return app.bondIsolationEntries(targets, pinID),
-			func(tool, account string) (string, error) {
-				return app.prepareBond(ctx, be, tool, account, pinID, stale(tool, account))
-			}, nil
-	case modeIsolated:
-		return app.pinIsolationEntries(targets, pinID),
-			func(tool, account string) (string, error) {
-				return app.preparePinConfig(ctx, be, tool, account, pinID, stale(tool, account))
-			}, nil
-	default:
+	m, ok := bindModeFor(mode)
+	if !ok {
 		return nil, nil, errf(constants.ExitError, "unknown per-directory bind kind %q", mode)
 	}
+	return app.modeIsolationEntries(m, targets, pinID),
+		func(tool, account string) (string, error) {
+			return m.prepare(app, ctx, be, tool, account, pinID, stale(tool, account))
+		}, nil
 }
 
 // prepareIsolationDirs runs the preparer for every non-warning entry, so a
@@ -290,14 +284,14 @@ func (app *App) bondDenylistItems(tool string) []string {
 	return append(constants.PrivateBindNames(tool), app.Config.SharedDenylistExtra(tool)...)
 }
 
-// bondIsolationEntries resolves the per-tool env entries for bond mode.
-// SharedDir is account-agnostic (one per pinID×tool), so the account field
-// carries the profile's account name for credential-copy bookkeeping only.
-func (app *App) bondIsolationEntries(targets []runTarget, pinID string) []isolationEntry {
+// modeIsolationEntries resolves the per-tool env entries for a per-directory bind
+// in mode m. Each target carries its account: an account-agnostic store (shared,
+// one per pinID×tool) uses it for credential-copy bookkeeping only, a per-account
+// one (isolated, …/isolated/<account>/config/) also composes its path from it.
+func (app *App) modeIsolationEntries(m bindMode, targets []runTarget, pinID string) []isolationEntry {
 	entries := make([]isolationEntry, 0, len(targets))
 	for _, tgt := range targets {
-		dir, _ := app.modeStoreDir(modeShared, pinID, tgt.Tool, tgt.Account)
-		entries = append(entries, app.isolationEntryFor(tgt, dir))
+		entries = append(entries, app.isolationEntryFor(tgt, m.storeDir(app.Paths, pinID, tgt.Tool, tgt.Account)))
 	}
 	return entries
 }
@@ -473,19 +467,6 @@ func retractLinks(dir string, names []string) error {
 		}
 	}
 	return nil
-}
-
-// pinIsolationEntries resolves the per-tool env entries for pin mode.
-// IsolatedConfigDir is per-account
-// (isolation/<pinID>/<tool>/isolated/<account>/config/), so each target
-// carries the account name for directory construction.
-func (app *App) pinIsolationEntries(targets []runTarget, pinID string) []isolationEntry {
-	entries := make([]isolationEntry, 0, len(targets))
-	for _, tgt := range targets {
-		dir, _ := app.modeStoreDir(modeIsolated, pinID, tgt.Tool, tgt.Account)
-		entries = append(entries, app.isolationEntryFor(tgt, dir))
-	}
-	return entries
 }
 
 // preparePinConfig creates the pin config directory for one tool/account/pinID:

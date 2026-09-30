@@ -635,10 +635,8 @@ func (app *App) boundDirStores() []boundDirStore {
 // this directory binds *now* — and a report that says "bound to" has to mean it,
 // or its remedy (log in here) lands somewhere the tool will not read.
 //
-// A mode kae does not recognize yields bound=false rather than a guessed path: a
-// third per-directory mechanism must be added here deliberately, the same lockstep
-// dirCredentialStores needs, and inventing a path for one is how kae ends up
-// judging a store that does not exist.
+// A mode no bindModes row names yields bound=false rather than a guessed path:
+// inventing a path for one is how kae ends up judging a store that does not exist.
 func (app *App) boundStoreDir(pinID, tool string, fragment fragmentInfo) (dir string, bound bool) {
 	account, ok := fragment.Accounts[tool]
 	if !ok {

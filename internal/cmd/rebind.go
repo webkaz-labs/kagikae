@@ -99,12 +99,13 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// The mode is validated before anything is written, including the harvest below: a
 	// command that is going to refuse an unrecognized fragment must not leave an
 	// account snapshot rewritten behind it.
-	if info.Mode != paths.SharedSegment && info.Mode != paths.IsolatedSegment {
+	mode, known := bindModeFor(info.Mode)
+	if !known {
 		return finish(opts, errf(constants.ExitError,
 			"fragment %s has an unrecognized mode %q", fragmentRelPath, info.Mode))
 	}
-	// Before either branch writes a store: in isolated mode the binding moves to a
-	// store keyed by the new account, and in shared mode it stays in one store whose
+	// Before anything writes a store: a per-account binding moves to a store keyed
+	// by the new account, and an account-agnostic one stays in one store whose
 	// credential still belongs to the *previous* account — and `info` is the only
 	// thing that names it. Harvesting here is what keeps a re-bind from destroying the
 	// login it is re-binding away from (docs/ROADMAP.md).
@@ -117,45 +118,32 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	// shared this *is* SharedDir, and where it says isolated the shared dir is not a reader
 	// either — the two answers coincide. Written down rather than tested (measured
 	// unkillable, 2026-08-08).
-	nextConfig, _ := app.modeStoreDir(info.Mode, pinID, tool, accountName)
+	nextConfig := mode.storeDir(app.Paths, pinID, tool, accountName)
 	app.harvestSupersededDirCredentials(ctx, be, pinID, absDir, tool, info,
 		map[string]bindDirs{tool: {Config: nextConfig, Cred: app.credStoreDir(tool, accountName)}})
 
-	var envDir string   // fragment env entry to repoint (isolated only)
-	var boundDir string // the store this tool reads after the re-bind
-	// The credential entry moves in **both** modes, because the account selects the
+	// The credential entry moves in **every** mode, because the account selects the
 	// store: a shared-mode re-bind keeps one config dir and still has to point the
 	// credential at the new account's own store.
 	credDir := app.credStoreDir(tool, accountName)
-	// One question, one answer, before the branch: assembling it per branch is how the two
+	// One question, one answer, before the prepare: assembling it per branch is how the two
 	// bind paths came to encode the polarity as an empty literal in one arm and an
 	// expression in the other (modeLabelStale).
 	staleLabel := modeLabelStale(info.Mode, info.Accounts[tool], accountName)
-	switch info.Mode {
-	case paths.SharedSegment:
-		// prepareBond, not writeDirCredential alone: the bond dir also holds the
-		// symlinks to the real home that carry settings and sessions, and only
-		// prepareBond re-creates them. Writing just the credential left a re-bind
-		// unable to repair a bond dir that had been wiped, while the isolated
-		// branch below (preparePinConfig) could — an asymmetry with no reason
-		// behind it. prepareBond writes the credential too, and is idempotent.
-		sharedDir, err := app.prepareBond(ctx, be, tool, accountName, pinID, staleLabel)
-		if err != nil {
-			return finish(opts, fmt.Errorf("swap shared credential for %s: %w", tool, err))
-		}
-		boundDir = sharedDir
-	case paths.IsolatedSegment:
-		newDir, err := app.preparePinConfig(ctx, be, tool, accountName, pinID, staleLabel)
-		if err != nil {
-			return finish(opts, fmt.Errorf("prepare isolated config for %s/%s: %w", tool, accountName, err))
-		}
-		envDir = newDir
-		boundDir = newDir
-	default:
-		// Unreachable: the same check runs above, before the harvest, so a refused mode
-		// costs nothing. Kept so the switch stays total if that check ever moves.
-		return finish(opts, errf(constants.ExitError,
-			"fragment %s has an unrecognized mode %q", fragmentRelPath, info.Mode))
+	// The mode's full preparer, not writeDirCredential alone: the store also holds the
+	// symlinks to the real home that carry settings and sessions, and only the preparer
+	// re-creates them. Writing just the credential left a shared re-bind unable to repair
+	// a bond dir that had been wiped, while an isolated one could — an asymmetry with no
+	// reason behind it. Every preparer writes the credential too, and is idempotent.
+	boundDir, err := mode.prepare(app, ctx, be, tool, accountName, pinID, staleLabel)
+	if err != nil {
+		return finish(opts, fmt.Errorf("%s: %w", mode.rebindFailure(tool, accountName), err))
+	}
+	// The fragment's config line moves only where the store is keyed by the account; an
+	// account-agnostic store is the same directory before and after.
+	var envDir string
+	if mode.configMovesWithAccount() {
+		envDir = boundDir
 	}
 	// Companions are profile-scoped, so re-bind them to the recomputed profile:
 	// a profile match re-applies its bindings (regenerating the git-config file),

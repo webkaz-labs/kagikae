@@ -103,12 +103,13 @@ item and prints the secret. And an
 empty enumeration is not proof of nothing: it reads only file-based keychains, so a
 future move to the Data Protection keychain would make this silently return zero,
 the same trap as comparing two empty greps.
-Things that must move in lockstep with it — not a closed list: a **third**
-per-directory mechanism (today `shared` and `isolated`) has to be added to
-`dirCredentialStores`, or its stores are silently never swept, **and to
-`modeLabelStale`** (beside `modeStoreDir`, which carries the note), where it falls
-through to *not stale* — right for an account-keyed mechanism, and the
-"keep then destroy on the next run" defect for an account-agnostic one; and the sweep must
+Things that must move in lockstep with it — not a closed list: a **new**
+per-directory mechanism is a row in `bindModes` (`internal/cmd/modes.go`), and the
+row covers both things that used to be separate edits: the `dirCredentialStores`
+walk visits every row (its `perAccount` picks the per-account layout), so its stores
+are swept, and `modeLabelStale` derives label polarity from `perAccount` — a per-account store's label is
+evidence, an account-agnostic one's a leftover that would otherwise be kept and then
+destroyed on the next run. A mode with no row is *not stale*. The sweep must
 run **after** the new binding is written, or a mid-sequence failure leaves the live
 binding pointing at a store whose credential is already gone.
 

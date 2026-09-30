@@ -316,11 +316,11 @@ func TestALeftoverStoreIsNotGivenAnotherAccountsCredentialDir(t *testing.T) {
 		Accounts: map[string]string{constants.ToolClaude: "main"},
 		CredDirs: map[string]string{constants.ToolClaude: app.credStoreDir(constants.ToolClaude, "main")},
 	}
-	bound := dirStore{Tool: constants.ToolClaude, Dir: "/store/shared"}
+	bound := dirStore{Mode: modeShared, Tool: constants.ToolClaude, Dir: "/store/shared"}
 	if got := app.attributedCredDir(bound, prev); got != prev.CredDirs[constants.ToolClaude] {
 		t.Fatalf("the store this binding names must keep its credential dir, got %q", got)
 	}
-	leftover := dirStore{Tool: constants.ToolClaude, Dir: "/store/isolated/side", Account: "side"}
+	leftover := dirStore{Mode: modeIsolated, Tool: constants.ToolClaude, Dir: "/store/isolated/side", Account: "side"}
 	if got := app.attributedCredDir(leftover, prev); got != "" {
 		t.Fatalf("a leftover store of another account must fall back to itself, got %q", got)
 	}
@@ -336,7 +336,7 @@ func TestAPreSplitStoreKeepsItsOwnCredentialDir(t *testing.T) {
 		Accounts: map[string]string{constants.ToolClaude: "main"},
 		CredDirs: map[string]string{}, // bound before the split
 	}
-	store := dirStore{Tool: constants.ToolClaude, Dir: "/store/shared"}
+	store := dirStore{Mode: modeShared, Tool: constants.ToolClaude, Dir: "/store/shared"}
 	if got := app.attributedCredDir(store, prev); got != "" {
 		t.Fatalf("a pre-split store's credential is inside it, got %q", got)
 	}

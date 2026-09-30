@@ -476,7 +476,7 @@ func TestPrepareBondWarnsOnGlobalStoreAndKeepsBinding(t *testing.T) {
 	// the limitation and the policy of tolerating it lives one level up.
 	ctx := context.Background()
 	be := testBackend(t, app)
-	entries := app.bondIsolationEntries([]runTarget{{Tool: constants.ToolCodex, Account: "main"}}, pinID)
+	entries := app.modeIsolationEntries(mustBindMode(t, modeShared), []runTarget{{Tool: constants.ToolCodex, Account: "main"}}, pinID)
 	bondDir := app.Paths.SharedDir(pinID, constants.ToolCodex)
 
 	fake := &runnertest.Fake{Code: 0}

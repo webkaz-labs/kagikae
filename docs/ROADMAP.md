@@ -105,10 +105,11 @@ has its contract and awaits implementation.
    [CONTEXT.md](CONTEXT.md) for the term. What remains:
 
    - **The claude slice.** Implement that contract, with completion for `-t` in the
-     same commit (CLI § Keeping completion current), and `tree` decided at every site
-     that branches on the bind mode. Derive the sites rather than listing them here:
-     `git grep -nE 'modeShared|modeIsolated|SharedSegment|IsolatedSegment|ModeShared|ModeIsolated' -- 'internal/*.go'`,
-     or gopls references to those constants, whatever form the sites take.
+     same commit (CLI § Keeping completion current), and `tree` as a new row
+     in `bindModes()` (`internal/cmd/modes.go`), whose attributes drive the store
+     walk, label polarity and classification, plus what the table does not reach,
+     among them the pin flag, completion, the constants and the claude-only gate
+     (`kae pin -t` binds no codex).
    - **R4, the fragment's `[env]` in nested directories**, is an acceptance check of
      that slice: a kae-rendered tree fragment run through
      `bash scripts/smoke-run.sh`. What stands in for it so far is scratch fragments,

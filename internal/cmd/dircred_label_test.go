@@ -381,7 +381,8 @@ func TestRunRebindToTheSameAccountKeepsTheLiveLabel(t *testing.T) {
 // while `runRebind` switches the mode read from the fragment on `paths.*Segment`, so a
 // drift would put the two entry points on different branches of the same question —
 // the "two tables keyed differently" hazard AGENTS.md routes to for the completion guards.
-// Measured interchangeable 2026-08-08; nothing enforced it.
+// Measured interchangeable 2026-08-08; nothing enforced it. Every bindModes row is checked,
+// and the explicit pairs keep the table from dropping or renaming a shipped mechanism.
 func TestBindModeConstantsAgreeAcrossPackages(t *testing.T) {
 	for _, pair := range []struct{ name, mode, segment string }{
 		{"shared", constants.ModeShared, paths.SharedSegment},
@@ -390,7 +391,139 @@ func TestBindModeConstantsAgreeAcrossPackages(t *testing.T) {
 		if pair.mode != pair.segment {
 			t.Errorf("%s: constants %q and paths %q must name one mechanism", pair.name, pair.mode, pair.segment)
 		}
+		m, ok := bindModeFor(pair.mode)
+		if !ok || m.segment != pair.segment {
+			t.Errorf("%s: bindModes must carry constants %q with paths segment %q, got %+v (ok=%v)",
+				pair.name, pair.mode, pair.segment, m, ok)
+		}
 	}
+	app := testApp(t, nil)
+	pinID := "abcdef0123456789"
+	seen := map[string]bool{}
+	for _, m := range bindModes() {
+		if seen[m.name] {
+			t.Errorf("bindModes names %q twice", m.name)
+		}
+		seen[m.name] = true
+		if m.name != m.segment {
+			t.Errorf("%s: mode token and path segment %q must name one mechanism", m.name, m.segment)
+		}
+		// The store the row composes is the store the classifier recognizes as the row,
+		// so the segment the path is built with and the one it is read back by agree.
+		dir := m.storeDir(app.Paths, pinID, constants.ToolClaude, "main")
+		if got := app.kaeManagedHomeKind(dir); got != m.name {
+			t.Errorf("%s: its store %s classifies as %q", m.name, dir, got)
+		}
+		if rel, err := filepath.Rel(app.Paths.PinDir(pinID), dir); err != nil ||
+			!strings.HasPrefix(rel, filepath.Join(constants.ToolClaude, m.segment)) {
+			t.Errorf("%s: its store %s must live under <pin>/<tool>/%s", m.name, dir, m.segment)
+		}
+	}
+}
+
+// The polarity of modeLabelStale, pinned per mode: a label in an account-agnostic store is
+// a leftover once the account changes, a label in a per-account store (or the global
+// isolated home, sync) is evidence, and a mode kae does not recognize answers not stale.
+// Before the table this was unpinned (see modeLabelStale's doc) because no third mode
+// existed to tell `mode == shared` from `mode != isolated`; the unknown row is that mode.
+func TestModeLabelStalePolarityPerMode(t *testing.T) {
+	for _, tc := range []struct {
+		mode      string
+		wantStale bool
+	}{
+		{modeShared, true},
+		{modeIsolated, false},
+		{constants.ModeSync, false},
+		{constants.ModeAuth, false},
+		{"future-mode", false},
+	} {
+		if got := modeLabelStale(tc.mode, "main", "side"); got != tc.wantStale {
+			t.Errorf("%s: an account change must be stale=%v, got %v", tc.mode, tc.wantStale, got)
+		}
+		if modeLabelStale(tc.mode, "main", "main") {
+			t.Errorf("%s: the same account is never stale", tc.mode)
+		}
+	}
+}
+
+// A store segment no bindModes row names is still kae's (so a global command hides it and
+// no link logic treats it as the user's), but it is not labelled as any mode — it used to
+// be classified shared, which would call a newer kae's mechanism shared in `kae status`.
+func TestKaeManagedHomeKindLeavesAnUnknownSegmentUnclassified(t *testing.T) {
+	app := testApp(t, nil)
+	dir := filepath.Join(app.Paths.PinDir("abcdef0123456789"), constants.ToolClaude, "future-mode")
+	if got := app.kaeManagedHomeKind(dir); got != "" {
+		t.Fatalf("an unknown segment must not be classified, got %q", got)
+	}
+	if !app.isKaeManagedHome(dir) {
+		t.Fatal("a path inside the isolation root stays kae-managed whatever its segment")
+	}
+	if app.isKaeManagedHome(filepath.Join(app.Env.Home, ".claude")) {
+		t.Fatal("the real home is not kae-managed")
+	}
+}
+
+// storeAccount borrows the replaced binding's account only for a store of that binding's
+// own account-agnostic mode. An isolated binding never lends its account to a leftover
+// shared store, and a store with no recognized mode is never attributed.
+func TestStoreAccountBorrowsOnlyFromTheStoresOwnMode(t *testing.T) {
+	prev := func(mode string) fragmentInfo {
+		return fragmentInfo{Mode: mode, Accounts: map[string]string{constants.ToolClaude: "main"}}
+	}
+	shared := dirStore{Mode: modeShared, Tool: constants.ToolClaude, Dir: "/store/shared"}
+	if got := storeAccount(shared, prev(modeShared)); got != "main" {
+		t.Fatalf("a shared store under a shared binding is that binding's account, got %q", got)
+	}
+	if got := storeAccount(shared, prev(modeIsolated)); got != "" {
+		t.Fatalf("an isolated binding must not attribute a leftover shared store, got %q", got)
+	}
+	if got := storeAccount(dirStore{Tool: constants.ToolClaude, Dir: "/store/shared"}, prev(modeShared)); got != "" {
+		t.Fatalf("a store with no mode must not borrow an account, got %q", got)
+	}
+	isolated := dirStore{Mode: modeIsolated, Tool: constants.ToolClaude, Dir: "/store/isolated/side", Account: "side"}
+	if got := storeAccount(isolated, prev(modeShared)); got != "side" {
+		t.Fatalf("a per-account store answers for itself, got %q", got)
+	}
+}
+
+// The store walk enumerates every bindModes row, recording which row each store belongs to,
+// so a new row's stores reach the harvest pass and the sweep without a second list.
+func TestDirCredentialStoresWalksEveryBindMode(t *testing.T) {
+	app := testApp(t, nil)
+	pinID := "abcdef0123456789"
+	want := map[string]dirStore{}
+	for _, m := range bindModes() {
+		account := ""
+		if m.perAccount {
+			account = "side"
+		}
+		dir := m.storeDir(app.Paths, pinID, constants.ToolClaude, account)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		want[dir] = dirStore{Mode: m.name, Tool: constants.ToolClaude, Dir: dir, Account: account}
+	}
+	stores, err := app.dirCredentialStores(pinID, fragmentInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stores) != len(want) {
+		t.Fatalf("want one store per mode %v, got %+v", want, stores)
+	}
+	for _, store := range stores {
+		if store != want[store.Dir] {
+			t.Errorf("store %s: want %+v, got %+v", store.Dir, want[store.Dir], store)
+		}
+	}
+}
+
+func mustBindMode(t *testing.T, mode string) bindMode {
+	t.Helper()
+	m, ok := bindModeFor(mode)
+	if !ok {
+		t.Fatalf("no bindModes row for %q", mode)
+	}
+	return m
 }
 
 // **An isolated config dir is keyed by the account, so a label in it is never stale.** Every

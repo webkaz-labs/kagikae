@@ -15,7 +15,8 @@ import (
 
 func (app *App) ownedUninstallFragment(dir, content string) bool {
 	info := parseDirFragment(content)
-	if (info.Profile != "" && !config.ValidName(info.Profile)) || (info.Mode != modeShared && info.Mode != modeIsolated) {
+	mode, known := bindModeFor(info.Mode)
+	if (info.Profile != "" && !config.ValidName(info.Profile)) || !known {
 		return false
 	}
 	for tool, account := range info.Accounts {
@@ -29,10 +30,7 @@ func (app *App) ownedUninstallFragment(dir, content string) bool {
 			targets = append(targets, runTarget{Tool: tool, Account: account})
 		}
 	}
-	entries := app.bondIsolationEntries(targets, paths.PinID(dir))
-	if info.Mode == modeIsolated {
-		entries = app.pinIsolationEntries(targets, paths.PinID(dir))
-	}
+	entries := app.modeIsolationEntries(mode, targets, paths.PinID(dir))
 	for i := range entries {
 		if _, present := info.CredDirs[entries[i].Tool]; !present {
 			entries[i].CredEnvVar, entries[i].CredDir = "", ""

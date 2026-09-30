@@ -205,7 +205,8 @@ func (p Paths) GlobalIsolatedHomeDir(tool, account string) string {
 // isolation/ is a config dir some tool runs against, which is what
 // cmd.kaeManagedHomeKind classifies into shared/isolated/sync; this directory
 // holds one credential and is never a CLAUDE_CONFIG_DIR. Putting it there would
-// have that classifier answer "shared" for it by default.
+// have that classifier treat it as a tool home (or misclassify it, when the
+// account name happens to be a mode segment).
 func (p Paths) CredStoreDir(tool, account string) string {
 	return filepath.Join(p.DataDir, "credstore", tool, account)
 }

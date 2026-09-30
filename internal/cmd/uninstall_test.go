@@ -93,7 +93,7 @@ func TestUninstallRechecksContentAndWriterLock(t *testing.T) {
 func TestUninstallBoundDirectoryRetainsStores(t *testing.T) {
 	app := testApp(t, nil)
 	dir := t.TempDir()
-	entries := app.bondIsolationEntries([]runTarget{{Tool: constants.ToolClaude, Account: "side"}}, paths.PinID(dir))
+	entries := app.modeIsolationEntries(mustBindMode(t, modeShared), []runTarget{{Tool: constants.ToolClaude, Account: "side"}}, paths.PinID(dir))
 	fragment := filepath.Join(dir, fragmentRelPath)
 	writeFile(t, fragment, renderDirFragment("side", modeShared, entries, nil, nil))
 	store := filepath.Join(app.Paths.CredStoreDir(constants.ToolClaude, "side"), "credentials")

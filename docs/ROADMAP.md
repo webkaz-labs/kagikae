@@ -164,10 +164,8 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      shell's environment), then what applies globally. The credential store is
      not a place.
    - **Picker.** Implemented; [CLI.md](CLI.md) § kae open and kae cd Semantics is its
-     contract. Still open: the tree's user level gains its session row when that
-     slice lands, and built-binary PTY tests through one wrapper over Microsoft
-     `tui-test` (pinned `0.1.0-beta.5`, Node under mise), with a fast journey in
-     `mise run check`.
+     contract and [VALIDATION.md](VALIDATION.md) § Picker PTY suite its terminal tests.
+     Still open: the tree's user level gains its session row when that slice lands.
    - **`open` fallback**: `open` on macOS and `xdg-open` on Linux; without one,
      print the path and a warning and exit `0`.
    - **`cd`** is a `kae` shell function delivered through the paths that already

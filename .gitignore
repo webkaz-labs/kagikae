@@ -4,3 +4,4 @@ kae
 *.test
 .DS_Store
 /docrefs
+/test/tui/node_modules/

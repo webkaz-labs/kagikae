@@ -1,5 +1,6 @@
 [tools]
 go = "1.27.1"
+node = "24.21.0"
 goreleaser = "2.16.0"
 shellcheck = "0.11.0"
 
@@ -80,6 +81,24 @@ run = "go mod verify"
 description = "Build packages"
 run = "GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/kae-gocache} go build ./..."
 
+[tasks.tui-e2e-setup]
+hide = true
+description = "Install the PTY suite's pinned dependencies from the lockfile when node_modules is missing"
+dir = "test/tui"
+run = "[ -d node_modules ] || npm ci --ignore-scripts --no-audit --no-fund"
+
+[tasks.tui-e2e]
+description = "Run every picker PTY scenario against the built binary (docs/VALIDATION.md § Picker PTY suite)"
+depends = ["tui-e2e-setup"]
+dir = "test/tui"
+run = "node run.mjs"
+
+[tasks.tui-e2e-fast]
+description = "Run the PTY scenarios tagged fast, one journey selected from the full suite"
+depends = ["tui-e2e-setup"]
+dir = "test/tui"
+run = "node run.mjs --tag fast"
+
 [tasks.smoke-selftest]
 hide = true
 description = "Check the guards in scripts/smoke-run.sh (no kae build, no network)"
@@ -133,7 +152,7 @@ run = "bash scripts/check-docs-selftest.sh"
 
 [tasks.check]
 description = "Run the standard local validation suite"
-depends = ["lint", "test", "vet", "mod-verify", "build", "smoke-selftest", "smoke-selftest-mutations-fast", "docs-check", "docs-check-selftest"]
+depends = ["lint", "test", "vet", "mod-verify", "build", "smoke-selftest", "smoke-selftest-mutations-fast", "docs-check", "docs-check-selftest", "tui-e2e-fast"]
 
 # Deliberately not a dependency of `check`. What a report does and does not mean is
 # tools/devtools/cmd/docscan/main.go's header, which is the one copy of it.

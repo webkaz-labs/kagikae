@@ -21,7 +21,8 @@ machine only. [ROADMAP.md](ROADMAP.md) routes to per-step admission decisions;
 the workflow steps own their environment constraints.
 
 Slower release-time checks live in `mise run audit` (govulncheck and installed-tool
-fingerprints), `mise run goreleaser-check`, and `mise run release-evidence`. The last
+fingerprints), `mise run goreleaser-check`, `mise run tui-e2e` (the full picker PTY
+suite, § Picker PTY suite) and `mise run release-evidence`. The last
 task runs one bounded mutation for each current smoke-run guard and proves that an empty
 `snap()` makes all four tagged consumers in § Harvesting a credential fail. The commit
 gate keeps the four historical smoke-run defect shapes live through
@@ -70,6 +71,47 @@ controls covered unused imports and blank lines, not local import grouping.
 Reconsider admission if CI cost no longer justifies detection; compare total gate
 time under the same conditions before claiming a speed improvement. Further
 admission and shared-cache work remain in [ROADMAP.md](ROADMAP.md).
+
+## Picker PTY suite
+
+`mise run tui-e2e` drives the built `kae` through a pseudo-terminal, which no Go test
+does: the picker draws on `/dev/tty`, so its keys, its erasing and the `kae cd`
+function's use of its exit status are only observable from a terminal. Scenarios
+are `test/tui/run.mjs`; `test/tui/harness.mjs` is the one module that imports
+Microsoft `tui-test`, pinned `0.1.0-beta.5` (never the `latest` tag, which is an older
+release) in `test/tui/package-lock.json` and run under the Node that `mise.toml` pins.
+The tasks install from the lockfile with `npm ci --ignore-scripts` when
+`test/tui/node_modules` is missing.
+
+- **Isolation.** The harness builds `kae` once into a temp directory and starts
+  `zsh -f` through `env -i` with a temp HOME, every XDG root and `TMPDIR` under it,
+  and `PATH` holding only that directory plus `/usr/bin:/bin`, because tui-test merges
+  the parent's environment into any environment option. No installed `kae` and no
+  real HOME or XDG root is reachable. The palette is pinned and no step sleeps: each
+  waits for screen text, bounded at 15 s.
+- **Scenarios** (each in a fresh shell holding a git repository with `.claude/` at
+  its root, started in a subdirectory, with `eval "$(kae completion zsh)"`): choosing
+  the repository root by filter at 80x24 and again at 120x36 (`$PWD` compared inside
+  the shell, exit status `0`); one text-only snapshot of the picker,
+  `test/tui/__snapshots__/picker-120x36.snap`, regenerated with `KAE_TUI_UPDATE=1`;
+  Esc on an empty filter (`130`, directory unchanged, nothing on the entry's
+  stdout); Esc with a filter clearing it before the second Esc cancels; Ctrl-C (`130`,
+  a following command runs); `--pick` over a request that has a current place;
+  `</dev/null` (no picker, list on stderr, `64`); and a resize from 120x36 to 80x24
+  keeping the filter and the selected row.
+- **Running.** Every scenario runs and each is caught on its own; the run ends with
+  one line per scenario and exits non-zero when any failed. `mise run tui-e2e-fast`
+  runs the scenario tagged `fast` (the 80x24 journey), selected from the same list
+  rather than written apart; it is a dependency of `mise run check`. Its key press
+  is Enter on a filtered row, which only changes the test shell's directory. Rerun
+  the full suite after a picker or `kae cd` change and before a release; the fast
+  journey takes seconds once `npm ci` has run.
+- **Limits.** Only text is asserted, so color and `NO_COLOR` are covered by Go tests
+  and not here. Only zsh, one emulator and one platform run at a time: a picker
+  drawing bug specific to another terminal, or to bash and fish, is outside it.
+  CI (`check.yml`) does not run it: that workflow has no Node or `npm ci` step and
+  the suite has been run on macOS only, so it is a developer-machine check like the
+  other steps `check.yml` omits.
 
 ## Packslip consumer smoke
 

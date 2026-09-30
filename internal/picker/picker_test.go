@@ -14,12 +14,10 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files")
 
-// go-runewidth counts East Asian ambiguous characters such as "…" as two
-// columns under a CJK locale, so the expected widths and goldens pin the
-// narrow reading that CI and most terminals use.
+// The expected widths and goldens read ambiguous characters as narrow, the
+// renderer's default, even when the caller's RUNEWIDTH_EASTASIAN says wide.
 func TestMain(m *testing.M) {
-	runewidth.DefaultCondition = runewidth.NewCondition()
-	runewidth.DefaultCondition.EastAsianWidth = false
+	cells = newCells("")
 	os.Exit(m.Run())
 }
 
@@ -276,8 +274,8 @@ func TestLongPathsAreCutFromTheLeftByDisplayWidth(t *testing.T) {
 		{"~/日本語のディレクトリ/.claude", 12, "…リ/.claude"},
 	} {
 		got := fitLeft(tc.in, tc.w)
-		if runewidth.StringWidth(got) > tc.w || got != tc.want {
-			t.Fatalf("fitLeft(%q, %d) = %q (width %d), want %q", tc.in, tc.w, got, runewidth.StringWidth(got), tc.want)
+		if cells.StringWidth(got) > tc.w || got != tc.want {
+			t.Fatalf("fitLeft(%q, %d) = %q (width %d), want %q", tc.in, tc.w, got, cells.StringWidth(got), tc.want)
 		}
 	}
 	m := press(New([]Item{
@@ -285,12 +283,50 @@ func TestLongPathsAreCutFromTheLeftByDisplayWidth(t *testing.T) {
 		{Label: "~/very/long/directory/name/that/does/not/fit/.claude", Detail: "project", Note: "#3", Value: "x", Parent: -1, Filter: "x"},
 	}, Options{NoColor: true}), tea.WindowSizeMsg{Width: 40, Height: 24})
 	for _, line := range strings.Split(m.View().Content, "\n") {
-		if runewidth.StringWidth(line) > 40 {
+		if cells.StringWidth(line) > 40 {
 			t.Fatalf("line wider than the terminal: %q", line)
 		}
 	}
 	if !strings.Contains(m.View().Content, "> …hat/does/not/fit/.claude  project  #3") {
 		t.Fatalf("the path's tail and the columns must survive:\n%s", m.View().Content)
+	}
+}
+
+// The locale must not change the width, as the renderer ignores it; only
+// RUNEWIDTH_EASTASIAN widens ambiguous characters, and then rows still fit.
+func TestAmbiguousWidthFollowsTheRenderer(t *testing.T) {
+	for _, tc := range []struct {
+		env  string
+		want int
+	}{{"", 1}, {"0", 1}, {"junk", 1}, {"1", 2}, {"true", 2}} {
+		if got := newCells(tc.env).StringWidth("…"); got != tc.want {
+			t.Errorf("RUNEWIDTH_EASTASIAN=%q: width of … = %d, want %d", tc.env, got, tc.want)
+		}
+	}
+	// runewidth reads the locale once at init into its package default, so a
+	// CJK locale is stood in for by setting that default.
+	savedDefault := runewidth.EastAsianWidth
+	runewidth.EastAsianWidth = true
+	got := newCells("").StringWidth("…")
+	runewidth.EastAsianWidth = savedDefault
+	if got != 1 {
+		t.Errorf("a CJK locale widened … to %d", got)
+	}
+
+	saved := cells
+	t.Cleanup(func() { cells = saved })
+	cells = newCells("1")
+	m := press(New([]Item{
+		{Kind: Heading, Label: "g", Parent: -1},
+		{Label: "~/very/long/directory/name/that/does/not/fit/.claude", Detail: "project", Note: "#3", Value: "x", Parent: -1, Filter: "x"},
+	}, Options{NoColor: true}), tea.WindowSizeMsg{Width: 40, Height: 24})
+	for _, line := range strings.Split(m.View().Content, "\n") {
+		if w := cells.StringWidth(line); w > 40 {
+			t.Fatalf("wide ambiguous: line of %d columns: %q", w, line)
+		}
+	}
+	if !strings.Contains(m.View().Content, "> …at/does/not/fit/.claude  project  #3") {
+		t.Fatalf("wide ambiguous: the cut must leave room for the wide …:\n%s", m.View().Content)
 	}
 }
 

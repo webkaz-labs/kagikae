@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -28,6 +30,17 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/mattn/go-runewidth"
 )
+
+// cells measures display width by the rule the bubbletea renderer draws with
+// (charmbracelet/x/ansi): East Asian ambiguous characters such as "…" take one
+// column unless RUNEWIDTH_EASTASIAN is true. runewidth's own default also reads
+// the locale, which would size rows differently from how they are drawn.
+var cells = newCells(os.Getenv("RUNEWIDTH_EASTASIAN"))
+
+func newCells(eastAsian string) *runewidth.Condition {
+	wide, _ := strconv.ParseBool(eastAsian)
+	return &runewidth.Condition{EastAsianWidth: wide, StrictEmojiNeutral: true}
+}
 
 // Kind says whether an item is a group heading or a row that can be chosen.
 type Kind int
@@ -127,7 +140,7 @@ func (m Model) Init() tea.Cmd { return textinput.Blink }
 // gets here: textui.Open counts it as no terminal.
 func (m *Model) resize(w, h int) {
 	m.width, m.height = max(w, 1), max(h, 1)
-	m.input.SetWidth(max(m.width-runewidth.StringWidth(m.input.Prompt)-1, 1))
+	m.input.SetWidth(max(m.width-cells.StringWidth(m.input.Prompt)-1, 1))
 }
 
 // Update implements tea.Model.
@@ -347,7 +360,7 @@ func (m Model) View() tea.View {
 		}
 	}
 	if m.showHint() {
-		lines = append(lines, m.dim(runewidth.Truncate(hint, m.width, "")))
+		lines = append(lines, m.dim(cells.Truncate(hint, m.width, "")))
 	}
 	v := tea.NewView(strings.Join(lines, "\n"))
 	v.Cursor = m.input.Cursor()
@@ -357,7 +370,7 @@ func (m Model) View() tea.View {
 func (m Model) line(i int) string {
 	it := m.items[i]
 	if it.Kind == Heading {
-		return m.style(lipgloss.NewStyle().Bold(true), runewidth.Truncate(it.Label, m.width, "…"))
+		return m.style(lipgloss.NewStyle().Bold(true), cells.Truncate(it.Label, m.width, "…"))
 	}
 	marker := "  "
 	if i == m.cursor {
@@ -373,13 +386,13 @@ func (m Model) line(i int) string {
 	for _, c := range []cell{{it.Detail, false}, {it.Note, true}, {it.Extra, false}} {
 		if c.text != "" {
 			tail = append(tail, c)
-			tailWidth += 2 + runewidth.StringWidth(c.text)
+			tailWidth += 2 + cells.StringWidth(c.text)
 		}
 	}
-	avail := m.width - runewidth.StringWidth(prefix)
+	avail := m.width - cells.StringWidth(prefix)
 	label := it.Label
 	switch {
-	case runewidth.StringWidth(label)+tailWidth <= avail:
+	case cells.StringWidth(label)+tailWidth <= avail:
 	case avail-tailWidth >= 2:
 		label = fitLeft(label, avail-tailWidth)
 	default:
@@ -408,10 +421,10 @@ func (m Model) line(i int) string {
 
 // fitLeft shortens s from the left to w display cells, marking the cut with "…".
 func fitLeft(s string, w int) string {
-	if runewidth.StringWidth(s) <= w {
+	if cells.StringWidth(s) <= w {
 		return s
 	}
-	return runewidth.TruncatePrefix(s, w, "…")
+	return cells.TruncatePrefix(s, w, "…")
 }
 
 func (m Model) style(s lipgloss.Style, text string) string {

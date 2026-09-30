@@ -716,7 +716,9 @@ the screen, and erases itself on exit, so stdout carries only the chosen path
 - **Layout.** At most the terminal height minus 2 lines, scrolling within, but never
   fewer than the filter line and one row (the hint line goes first when space is
   short). A path too long for the width is cut
-  from the left with `…`. `NO_COLOR` and `--no-color` draw
+  from the left with `…`. Widths follow the renderer: East Asian ambiguous
+  characters such as `…` take one column unless `RUNEWIDTH_EASTASIAN` is true,
+  whatever the locale. `NO_COLOR` and `--no-color` draw
   no color.
 - **Cancelling** exits `130` (`cancelled`) with nothing on stdout or stderr. A
   terminal failure exits `1`.

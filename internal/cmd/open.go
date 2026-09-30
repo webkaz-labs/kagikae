@@ -25,7 +25,7 @@ import (
 const cdPathCommand = "__cd"
 
 func placeUsage(verb string) string {
-	return "usage: kae " + verb + " [pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--project|--below|--home] [--root] [--at N]"
+	return "usage: kae " + verb + " [pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--project|--below|--home] [--root] [--at N | --pick]"
 }
 
 func CmdOpen(ctx context.Context, args []string) int {
@@ -93,7 +93,7 @@ func cdSuggestionWords(args []string) string {
 			flagWords = append(flagWords, shellWord(args[i]))
 		}
 		switch strings.TrimLeft(flagName, "-") {
-		case "json", "format":
+		case "json", "format", "pick": // no `kae ls` spelling picks
 			continue
 		case "at", "current":
 			chooses = true
@@ -126,7 +126,7 @@ func parseNavigateArgs(verb string, args []string) (commonOpts, lsRequest, int) 
 	flags, positionals := splitArgs(args, "--at")
 	var f lsFlags
 	opts, ok := parseCommon(verb, flags, false, func(fs *flag.FlagSet) {
-		registerPlaceFlags(fs, &f)
+		registerNavigateFlags(fs, &f)
 	})
 	if !ok {
 		return opts, lsRequest{}, constants.ExitUsage
@@ -148,7 +148,7 @@ func (app *App) navigatePath(ctx context.Context, opts commonOpts, req lsRequest
 		return "", code
 	}
 	if set != nil {
-		return "", app.offerCandidates(opts, req, *set)
+		return app.offerCandidates(ctx, opts, req, *set)
 	}
 	return path, constants.ExitOK
 }
@@ -157,6 +157,10 @@ func (app *App) navigatePath(ctx context.Context, opts commonOpts, req lsRequest
 // directory, or the candidate set of a request that names no single place.
 // A failure has been reported and its exit code is returned.
 func (app *App) resolveNavigation(ctx context.Context, opts commonOpts, req lsRequest) (string, *placeCandidates, int) {
+	if req.pick {
+		set, code := app.pickCandidates(ctx, opts, req)
+		return "", set, code
+	}
 	if req.target == "" && req.level == "" {
 		set := app.allPlaceCandidates(ctx, req)
 		return "", &set, constants.ExitOK
@@ -219,6 +223,30 @@ func (app *App) noCurrentPlaceCandidates(opts commonOpts, req lsRequest, choice 
 	return &set, constants.ExitOK
 }
 
+// boundPlaceTools is the place tools the current directory's bindings bind.
+func boundPlaceTools(pc *placeContext) []string {
+	var bound []string
+	for _, tool := range placeTools() {
+		if pc.toolBinding(tool) != nil {
+			bound = append(bound, tool)
+		}
+	}
+	return bound
+}
+
+// levelGroups is a heading per tool with that level's places beneath.
+func (app *App) levelGroups(ctx context.Context, pc *placeContext, tools []string, level string) ([]candidateGroup, error) {
+	var groups []candidateGroup
+	for _, tool := range tools {
+		rows, err := app.levelPlaces(ctx, pc, tool, level)
+		if err != nil {
+			return nil, err
+		}
+		groups = append(groups, candidateGroup{Heading: tool, Rows: rows})
+	}
+	return groups, nil
+}
+
 // pickLevelOfBoundTool is a level selector without a tool: it applies to the one
 // place tool the current directory's bindings bind, and req.target becomes that
 // tool. None or several gives the candidate set of that level's places under a
@@ -228,33 +256,24 @@ func (app *App) pickLevelOfBoundTool(ctx context.Context, opts commonOpts, req *
 	if err != nil {
 		return placeChoice{}, nil, finish(opts, err)
 	}
-	var bound []string
-	for _, tool := range placeTools() {
-		if pc.toolBinding(tool) != nil {
-			bound = append(bound, tool)
-		}
+	bound := boundPlaceTools(pc)
+	if len(bound) == 1 {
+		req.target = bound[0]
+		choice, code := app.selectToolPlace(ctx, opts, pc, *req)
+		return choice, nil, code
 	}
-	if len(bound) != 1 {
-		tools := bound
-		reason := fmt.Sprintf("kae %s --%s needs a tool: %d tools are bound here", req.verb, req.level, len(bound))
-		if len(bound) == 0 {
-			tools = placeTools()
-			reason = fmt.Sprintf("kae %s --%s needs a tool: no tool is bound here", req.verb, req.level)
-		}
-		var groups []candidateGroup
-		for _, tool := range tools {
-			rows, err := app.levelPlaces(ctx, pc, tool, req.level)
-			if err != nil {
-				return placeChoice{}, nil, finish(opts, err)
-			}
-			groups = append(groups, candidateGroup{Heading: tool, Rows: rows})
-		}
-		set := newPlaceCandidates(*req, func(int) string { return reason }, groups...)
-		return placeChoice{}, &set, constants.ExitOK
+	tools := bound
+	reason := fmt.Sprintf("kae %s --%s needs a tool: %d tools are bound here", req.verb, req.level, len(bound))
+	if len(bound) == 0 {
+		tools = placeTools()
+		reason = fmt.Sprintf("kae %s --%s needs a tool: no tool is bound here", req.verb, req.level)
 	}
-	req.target = bound[0]
-	choice, code := app.selectToolPlace(ctx, opts, pc, *req)
-	return choice, nil, code
+	groups, err := app.levelGroups(ctx, pc, tools, req.level)
+	if err != nil {
+		return placeChoice{}, nil, finish(opts, err)
+	}
+	set := newPlaceCandidates(*req, func(int) string { return reason }, groups...)
+	return placeChoice{}, &set, constants.ExitOK
 }
 
 // requestWords is the target as typed, with its explicit resolution, and —

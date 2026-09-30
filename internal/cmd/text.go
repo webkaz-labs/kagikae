@@ -14,9 +14,14 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 )
 
+// noColorRequested is --no-color or a non-empty NO_COLOR.
+func noColorRequested(noColorFlag bool) bool {
+	return noColorFlag || os.Getenv("NO_COLOR") != ""
+}
+
 // colorEnabled reports whether semantic color should be used for human text.
 func colorEnabled(noColorFlag bool) bool {
-	if noColorFlag || os.Getenv("NO_COLOR") != "" {
+	if noColorRequested(noColorFlag) {
 		return false
 	}
 	info, err := os.Stdout.Stat()

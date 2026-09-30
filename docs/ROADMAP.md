@@ -90,9 +90,9 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
    a bound directory, a repository root, or kae's own directories. Three verbs share
    one set of target words and selectors: `ls` shows, `cd` moves, `open` opens in
    the platform file manager. The `ls` slice and the `open` and `cd` slice are
-   implemented; [CLI.md](CLI.md) § kae ls Semantics and § kae open and kae cd
-   Semantics are their contracts. What follows is the design the picker and the
-   session row still build on.
+   implemented, and so is the picker; [CLI.md](CLI.md) § kae ls Semantics and § kae open
+   and kae cd Semantics are their contracts. What follows is the design the session
+   row and the PTY tests still build on.
 
    ```
    kae ls                                 # groups: account, pin, each relevant tool, repo, kae
@@ -163,39 +163,10 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      nearest ancestor bound directory's recorded binding applies (not the
      shell's environment), then what applies globally. The credential store is
      not a place.
-   - **Selection.** Without a selector, `cd` and `open` take the current place:
-     the effective user level for a tool, the bound directory governing the current
-     directory for `pin`, the repository root for `repo`. A level selector without
-     a tool uses the one bound tool; with none or several bound, it opens one
-     picker with a heading per tool (both place tools when none is bound) and
-     that level's places beneath. `kae cd` or `kae open` with no target, or with no
-     current place, or a selection matching several places, opens the built-in
-     picker, even over one candidate. `--pick` opens it over the places `kae ls
-     <target>` lists even when a current place exists; with a level selector,
-     over every place of that level; `--pick` with `--at` is a usage error.
-     The picker opens only when stdin is a terminal and the controlling terminal
-     (`/dev/tty`) opens, and `TERM` is not `dumb`; not stdout, because `cd` reads
-     the path through `$(…)`, so `</dev/null` always gives the list. Without a
-     terminal, the list and a usage error go to stderr, one line per place
-     (`--at N`). Cancelling (Esc on an empty filter, Ctrl-C) exits `130` with
-     nothing on stdout. `--at N`
-     is the number `kae ls` shows for the same target: only place rows are
-     numbered, in list order. Numbers change when places come and go, so agents use
-     `--json` paths.
-   - **Picker.** Built on the standard's Charm v2 stack, drawn inline on the
-     controlling terminal. One candidate set feeds both the picker and the
-     no-terminal list. A tree under group headings: a project root row with its
-     `.claude/` row beneath, the user level with its session row; account rows
-     are left out (place rows name their account). Headings are not selectable.
-     Groups holding a place relevant to the current directory (a governing
-     binding, a tool, the repository) come first, each in `kae ls` order; the
-     cursor starts on the first row. Typing filters immediately — case-insensitive
-     substring terms over the displayed and absolute path, kind and group — so `/`
-     and `q` are filter text, a deviation from the standard's routed-review keys
-     for a chooser; a matching `.claude/` row keeps its root row. The same path
-     may appear under two groups (a project root that is also the repository
-     root). Built-binary PTY tests run through one wrapper over Microsoft
-     `tui-test` (pinned `0.1.0-beta.5`, Node under mise); a fast journey runs in
+   - **Picker.** Implemented; [CLI.md](CLI.md) § kae open and kae cd Semantics is its
+     contract. Still open: the tree's user level gains its session row when that
+     slice lands, and built-binary PTY tests through one wrapper over Microsoft
+     `tui-test` (pinned `0.1.0-beta.5`, Node under mise), with a fast journey in
      `mise run check`.
    - **`open` fallback**: `open` on macOS and `xdg-open` on Linux; without one,
      print the path and a warning and exit `0`.
@@ -208,14 +179,11 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      cannot place arguments inside `cd "$(…)"`. Without the function, `kae cd`
      exits `64` and suggests `cd "$(kae ls … --current)"`.
 
-   Remaining slices, each merged on its own: the picker, which replaces the
-   candidate list `open` and `cd` print on stderr where a terminal exists and adds
-   `--pick` (its design was settled with the operator on 2026-09-30); the claude session row, whose name rule is measured in the **Tool
-   levels** bullet above. Each slice updates completion for what it adds (CLI
-   § Keeping completion current), CLI, CONTEXT
-   when a term changes, README, README.ja and GUIDE.ja in the same commit. It comes
-   first because it helps today's `-s` and `-i` binds and serves as the inspection
-   tool for the next item.
+   Remaining slice: the claude session row, whose name rule is measured in the
+   **Tool levels** bullet above. It updates completion for what it adds (CLI
+   § Keeping completion current), CLI, CONTEXT when a term changes, README, README.ja
+   and GUIDE.ja in the same commit. It comes first because it helps today's `-s` and
+   `-i` binds and serves as the inspection tool for the next item.
 2. **Tree-shared mode.** A third per-directory mode beside `-s` and `-i`: the bound
    directory and everything below it are isolated from the real home, and switching
    account keeps one config store — sessions, history, memory, settings — while

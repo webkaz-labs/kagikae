@@ -10,7 +10,9 @@
 // Keys: typing filters at once; Up, Down, Ctrl-P and Ctrl-N move over the
 // selectable rows without wrapping, and PgUp, PgDn, Home and End jump; Enter
 // chooses; Backspace and Ctrl-U edit the filter; Esc clears a filter and, with
-// none, cancels; Ctrl-C cancels. Letters such as `q` and `/` are filter text.
+// none, cancels; Ctrl-C cancels. Letters such as `q` and `/` are filter text: a
+// chooser is typed into, a deliberate departure from the go-cli standard's
+// routed-review keys.
 package picker
 
 import (

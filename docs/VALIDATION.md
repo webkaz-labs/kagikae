@@ -598,6 +598,7 @@ cd "$R/sub dir/deep"; kae cd claude --project --root; rc=$?; test "$rc" -eq 0 &&
 cd "$R/sub dir/deep"; kae cd pin 2>"$HOME/pin.err"; rc=$?; test "$rc" -eq 7 && test "$PWD" = "$R/sub dir/deep" && test -s "$HOME/pin.err"
 cd "$R/sub dir/deep"; kae cd </dev/null 2>"$HOME/none.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R/sub dir/deep" && test -s "$HOME/none.err"
 cd "$R/sub dir/deep"; kae cd kae </dev/null 2>"$HOME/many.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R/sub dir/deep" && grep -q 'kae cd kae --at 1' "$HOME/many.err"
+cd "$R/sub dir/deep"; kae cd repo --pick </dev/null 2>"$HOME/pick.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R/sub dir/deep" && grep -q 'kae cd repo --pick needs a terminal' "$HOME/pick.err"
 cd "$R/sub dir/deep"; command kae cd repo 2>"$HOME/nofn.err" >"$HOME/nofn.out"; rc=$?; test "$rc" -eq 64 && grep -qF 'cd "$(kae ls repo --current)"' "$HOME/nofn.err" && test ! -s "$HOME/nofn.out" && test "$PWD" = "$R/sub dir/deep"
 cd "$R"; rmdir "$R/.claude"; mkdir -p "$HOME/.claude"; kae cd claude --project </dev/null 2>"$HOME/gone.err"; rc=$?; test "$rc" -eq 64 && test "$PWD" = "$R" && grep -q 'has no current place here' "$HOME/gone.err"
 cd "$R/sub dir/deep"; PATH="$KB:$GB" kae open repo >"$HOME/open.out" 2>"$HOME/open.err"; rc=$?; test "$rc" -eq 0 && test "$(cat "$HOME/open.out")" = "$R" && test -s "$HOME/open.err"

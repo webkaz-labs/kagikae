@@ -162,14 +162,18 @@ cd "$(kae ls codex --current --project --root)"  # .codex/ を持つ最も近い
 kae ls claude --at 2                             # kae ls claude の 2 番目の場所
 kae cd claude                                    # 同じ移動を kae シェル関数で
 kae open repo                                    # リポジトリのルートをファイルマネージャーで開く
+kae cd                                           # 対象なし: すべての場所からピッカーで選ぶ
+kae cd claude --pick                             # 現在の場所があっても claude の場所から選ぶ
 ```
 
 ユーザーレベルはシェルの環境ではなく、そのツールを固定している最も近い固定ディレクトリに
 記録された固定から決まります。`.claude/` と `.codex/` の探索規則は
 [docs/CLI.md](docs/CLI.md) § kae ls Semantics にあります。`kae cd` と `kae open` は
 同じ対象と選択子を取り、既定は現在の場所です。対象がない場合や複数の場所に一致した
-場合は、候補を一覧して使い方エラーになります（[docs/CLI.md](docs/CLI.md) § kae open and
-kae cd Semantics）。`kae cd` には、`eval "$(kae completion zsh)"` などで補完スクリプトを
+場合、または `--pick` を付けた場合は、端末上に絞り込めるピッカーを開きます（文字入力で
+絞り込み、Enter で決定、Esc で絞り込みの解除かキャンセル。キャンセルは終了コード `130`）。
+端末がない場合（標準入力を `/dev/null` にした場合など）は、候補を一覧して使い方エラー
+になります（[docs/CLI.md](docs/CLI.md) § kae open and kae cd Semantics）。`kae cd` には、`eval "$(kae completion zsh)"` などで補完スクリプトを
 読み込むと定義される kae シェル関数が必要です。関数がないと、代わりに実行する
 `cd "$(kae ls … --current)"` を表示します。
 

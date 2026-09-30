@@ -13,12 +13,13 @@ import (
 )
 
 // lsFlags is every flag `kae ls` takes beyond the common ones; `kae open` and
-// `kae cd` take all of them but pins and current (registerPlaceFlags).
+// `kae cd` take all of them but pins and current (registerPlaceFlags), and add pick.
 type lsFlags struct {
 	pins, current              bool
 	at                         atFlag
 	project, below, home, root bool
 	shared, isolated           bool
+	pick                       bool // open and cd only: --pick
 }
 
 // atFlag is `--at N`, which must tell "not given" from any value given.
@@ -52,6 +53,7 @@ type lsRequest struct {
 	at       int    // 0 when --at was not given
 	level    string // PlaceKindProject / PlaceKindBelow / PlaceKindHome, or ""
 	root     bool
+	pick     bool // open and cd only: choose among the target's places in the picker
 }
 
 const lsUsage = "usage: kae ls [account|pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--current [--project|--below|--home] [--root] | --at N] [--json]"
@@ -104,9 +106,12 @@ func parsePlaceArgs(verb string, f lsFlags, positionals []string) (lsRequest, in
 	if navigate {
 		usage = placeUsage(verb)
 	}
-	req := lsRequest{verb: verb, current: f.current, root: f.root}
+	req := lsRequest{verb: verb, current: f.current, root: f.root, pick: navigate && f.pick}
 	if f.at.set {
 		req.at = f.at.n
+	}
+	if req.pick && f.at.set {
+		return req, usageError("--pick chooses a place in the picker and --at names one; give one")
 	}
 	if navigate && !f.at.set {
 		req.current = true
@@ -189,7 +194,7 @@ func parsePlaceArgs(verb string, f lsFlags, positionals []string) (lsRequest, in
 	if req.root && !req.current && req.at == 0 {
 		return req, usageError("--root selects the directory holding a project level, with --current or --at")
 	}
-	if req.root && req.current && req.level != constants.PlaceKindProject && req.level != constants.PlaceKindBelow {
+	if req.root && req.current && !req.pick && req.level != constants.PlaceKindProject && req.level != constants.PlaceKindBelow {
 		return req, usageError("--root applies to a project level: add --project or --below")
 	}
 	if req.level != "" && !constants.IsTool(req.target) && (!navigate || req.target != "") {

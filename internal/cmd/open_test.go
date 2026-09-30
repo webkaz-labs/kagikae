@@ -467,6 +467,8 @@ func TestCdWithoutTheShellFunction(t *testing.T) {
 		{[]string{"--at", "2"}, `cd "$(kae ls <target> --at 2)"`},
 		{[]string{"kae", "-at=2"}, `cd "$(kae ls kae -at=2)"`},
 		{[]string{"claude", "--json"}, `cd "$(kae ls claude --current)"`},
+		// kae ls has no picker, so the suggestion prints the current place.
+		{[]string{"claude", "--pick"}, `cd "$(kae ls claude --current)"`},
 		{[]string{"--format", "json", "claude", "--config", "/p q"}, `cd "$(kae ls claude --config '/p q' --current)"`},
 	} {
 		code, stderr := captureStderr(t, func() int { return Root(append([]string{"cd"}, tc.args...)) })

@@ -279,10 +279,11 @@ Usage:
   kae ls <target> --current|--at N     print one place's path; a tool target
                                        takes -s <tool>, -i <tool> <account>,
                                        --project|--below|--home and --root
-  kae open [<target>] [--at N]         open a place in the file manager (the
-                                       current place unless --at; same targets
-                                       and selectors as kae ls, no account)
-  kae cd [<target>] [--at N]           move the shell to a place; needs the kae
+  kae open [<target>] [--at N|--pick]  open a place in the file manager (the
+                                       current place unless --at or --pick; same
+                                       targets and selectors as kae ls, no
+                                       account; several places open the picker)
+  kae cd [<target>] [--at N|--pick]    move the shell to a place; needs the kae
                                        shell function that eval "$(kae
                                        completion zsh)" (or bash) defines
   kae status [--json]                  full status report (alias: kae s)

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
+	"github.com/webkaz-labs/kagikae/internal/picker"
 	"github.com/webkaz-labs/kagikae/internal/secret"
 	"github.com/webkaz-labs/kagikae/internal/state"
 	"github.com/webkaz-labs/kagikae/internal/textui"
@@ -52,6 +54,9 @@ type App struct {
 	// says there is none (textui.Open). Nil in tests means no terminal, so a
 	// test never depends on where it runs; production sets it.
 	openTerminal func() (*textui.Terminal, bool)
+	// pick replaces the interactive picker in tests, which have no terminal to
+	// drive; it is handed exactly what the picker would show. Nil in production.
+	pick func(ctx context.Context, items []picker.Item, opts picker.Options) (string, bool, error)
 	// Test seams for failures and pre-lock races that cannot be scheduled
 	// deterministically around non-blocking flock acquisition. All are nil in
 	// production.

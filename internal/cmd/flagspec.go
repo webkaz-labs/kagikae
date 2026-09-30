@@ -43,6 +43,19 @@ func registerPlaceFlags(fs *flag.FlagSet, f *lsFlags) {
 	registerScopeFlags(fs, &f.shared, &f.isolated)
 }
 
+// registerNavigateFlags is every flag `kae open` and `kae cd` take beyond the
+// common ones.
+func registerNavigateFlags(fs *flag.FlagSet, f *lsFlags) {
+	registerPlaceFlags(fs, f)
+	registerPickFlag(fs, &f.pick)
+}
+
+// registerPickFlag is the picker `kae open` and `kae cd` add to the place
+// selection; `kae ls` prints, so it has nothing to pick.
+func registerPickFlag(fs *flag.FlagSet, pick *bool) {
+	fs.BoolVar(pick, "pick", false, "choose among the target's places in the picker, even when it has a current place")
+}
+
 func registerPinFlags(fs *flag.FlagSet, shared, isolated, noLink *bool) {
 	registerScopeFlags(fs, shared, isolated)
 	fs.BoolVar(noLink, "no-link", false,
@@ -108,8 +121,8 @@ var commandFlagSpecs = map[string]commandFlagSpec{
 	"add":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
 	"use":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(bool), new(string)) }},
 	"ls":        {extra: func(fs *flag.FlagSet) { registerLsFlags(fs, new(lsFlags)) }},
-	"open":      {extra: func(fs *flag.FlagSet) { registerPlaceFlags(fs, new(lsFlags)) }},
-	"cd":        {extra: func(fs *flag.FlagSet) { registerPlaceFlags(fs, new(lsFlags)) }},
+	"open":      {extra: func(fs *flag.FlagSet) { registerNavigateFlags(fs, new(lsFlags)) }},
+	"cd":        {extra: func(fs *flag.FlagSet) { registerNavigateFlags(fs, new(lsFlags)) }},
 	"pin":       {extra: func(fs *flag.FlagSet) { registerPinFlags(fs, new(bool), new(bool), new(bool)) }},
 	"unpin":     {extra: func(fs *flag.FlagSet) { registerUnpinFlags(fs, new(bool)) }},
 	"run":       {extra: func(fs *flag.FlagSet) { registerRunFlags(fs, new(bool), new(bool), new(bool), new(string)) }},

@@ -40,6 +40,8 @@ kagikae/
     preservation/         # original-store credential records, budget and retention
     envprofile/           # env-mode profiles (var names; values in secret backend)
     state/                # state.json load/save
+    picker/               # inline filterable chooser (Bubble Tea v2); knows no place types
+    textui/               # may kae prompt? (stdin terminal, /dev/tty, TERM) and the terminal handle
     runner/               # subprocess seam (template standard)
     testutil/runnertest/  # shared canned-response runner fake for tests
   tools/devtools/         # common commands, shell entrypoints and libraries; same module

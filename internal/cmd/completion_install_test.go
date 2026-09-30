@@ -138,6 +138,14 @@ accounts = { claude = "bob" }
 			t.Fatalf("flags run missing %q:\n%s", want, out)
 		}
 	}
+	// --pick is open and cd's, and the three scripts read this list, so every
+	// shell offers it there and only there.
+	for _, verb := range []string{"open", "cd", "ls"} {
+		_, out = captureStdout(t, func() int { return runComplete(app, []string{"flags", verb}) })
+		if got := strings.Contains(out, "--pick\n"); got != (verb != "ls") {
+			t.Fatalf("flags %s lists --pick = %v:\n%s", verb, got, out)
+		}
+	}
 	// An unknown command yields the common flags only (no extras leak).
 	_, out = captureStdout(t, func() int { return runComplete(app, []string{"flags", "status"}) })
 	if !strings.Contains(out, "--json\n") || strings.Contains(out, "--no-login\n") {
@@ -491,8 +499,8 @@ func TestFlagSpecWiring(t *testing.T) {
 		"unpin":      {"purge"},
 		"mise":       {"mode", "auto", "write", "profile"},
 		"completion": {"install", "refresh", "no-function"},
-		"open":       {"at", "project", "below", "home", "root", "shared", "isolated"},
-		"cd":         {"at", "project", "below", "home", "root", "shared", "isolated"},
+		"open":       {"at", "pick", "project", "below", "home", "root", "shared", "isolated"},
+		"cd":         {"at", "pick", "project", "below", "home", "root", "shared", "isolated"},
 		"rollback":   {"to", "dry-run"},
 		"account":    {"force", "dry-run"},
 		"profile":    {"force", "clear", "dry-run"},

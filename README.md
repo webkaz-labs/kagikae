@@ -287,14 +287,18 @@ cd "$(kae ls codex --current --project --root)"   # the nearest project holding 
 kae cd claude                          # the same move, through the kae shell function
 kae cd codex --project --root
 kae open repo                          # the repository root, in the file manager
+kae cd                                 # no target: choose among every place in the picker
+kae cd claude --pick                   # choose among claude's places, even with a current one
 ```
 
 The user level follows the recorded binding of the nearest bound directory that
 binds that tool, not the shell's environment; [docs/CLI.md](docs/CLI.md) § kae ls Semantics has the
 discovery rules for `.claude/` and `.codex/`. `kae cd` and `kae open` take the same
-targets and selectors, default to the current place, and list the candidates with a
-usage error when a request names several places or none
-([docs/CLI.md](docs/CLI.md) § kae open and kae cd Semantics). `kae cd` needs the
+targets and selectors and default to the current place. When a request names several
+places or none, or with `--pick`, they open a filterable picker on the terminal (type to
+filter, Enter to choose, Esc to clear or cancel; cancelling exits `130`). Without a
+terminal (stdin from `/dev/null`, for example) they list the candidates with a usage
+error instead ([docs/CLI.md](docs/CLI.md) § kae open and kae cd Semantics). `kae cd` needs the
 **kae shell function**, which sourcing `kae completion` defines (§ Shell Completion);
 without it, `kae cd` prints the `cd "$(kae ls … --current)"` to run instead.
 
@@ -499,8 +503,8 @@ binary does not imply support for every adapter.
 | `kae ls <target>` | One group: `account`, `pin`, `repo`, `kae` or a tool (a prefix of its name works). `-s <tool>` / `-i <tool> <account>` name the tool's user level explicitly. |
 | `kae ls <target> --current` / `--at N` | Print one place's path: the current one (with `--project`, `--below` or `--home` for a tool, and `--root` for the directory holding `.claude/`/`.codex/`), or the one numbered `N` in `kae ls <target>`. |
 | `kae ls --pins` | Alias of `kae ls pin`: every directory bound with `kae pin` — one row per bound directory or worktree. |
-| `kae open [<target>]` | Open a place in the file manager (`open` on macOS, `xdg-open` on Linux; without one, print the path): the current place, or `--at N`, with `kae ls`'s targets and selectors. |
-| `kae cd [<target>]` | Move the shell to a place, chosen as `kae open` chooses; needs the kae shell function that sourcing `kae completion <shell>` defines. |
+| `kae open [<target>]` | Open a place in the file manager (`open` on macOS, `xdg-open` on Linux; without one, print the path): the current place, `--at N`, or `--pick` (the picker), with `kae ls`'s targets and selectors. |
+| `kae cd [<target>]` | Move the shell to a place, chosen as `kae open` chooses (including `--pick`); needs the kae shell function that sourcing `kae completion <shell>` defines. |
 | `kae account rm\|rename` | Delete or rename a captured account. Both refuse while the account is selected by global isolation and print the safe teardown-and-retry sequence; `--force` on removal permits only the active-account case. |
 | `kae profile save\|set\|unset\|rm\|default` | Manage profiles without editing TOML. |
 | `kae env set\|...` | Manage API-key env profiles for `run --env`. |

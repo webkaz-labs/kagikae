@@ -658,7 +658,8 @@ so a malformed `config.toml` — which makes plain `kae ls` exit `2` — does no
 `kae open` opens one place in the platform file manager and `kae cd` moves the
 shell to one. Both take `kae ls`'s target words (without `account`, whose rows
 are not places), explicit resolution, level selectors, `--root` and `--at N`,
-with the rules and usage errors of § kae ls Semantics. They always choose one
+with the rules and usage errors of § kae ls Semantics, and add `--pick` (below).
+They always choose one
 place, so they take no `--current` — it is their default — and no `--pins`; they
 print no report, so `--json` is a usage error (`kae ls <target> --current --json`
 publishes the path). Neither takes a lock or changes anything.
@@ -678,12 +679,54 @@ selector without a target, every place of that level of each bound tool, or of b
 place tools when none is bound. Only a
 target with no candidate at all (`repo` outside a repository, `pin` with nothing
 bound, a tool kae resolves no places for) exits `7`; `kae ls --current` keeps its
-`7` for every case without a current place. Every candidate list leaves out places
+`7` for every case without a current place. Every candidate set leaves out places
 whose directory does not exist, since choosing one exits `7`, and keeps `kae ls`'s
-numbers for the rest; with none left, the request exits `7`. Until the picker exists ([ROADMAP.md](ROADMAP.md)
-§ Place navigation and the tree-shared mode), each prints a usage error on stderr followed by the
-candidates, one per line as the command that reaches it (`kae open claude --at 3`
-and the path), and exits `64`.
+numbers for the rest; with none left, the request exits `7`. A set goes to the
+picker, or without a terminal to a list.
+
+**The picker** opens when all three hold: stdin is a terminal (asked by ioctl, so
+`</dev/null` is not one), the controlling terminal `/dev/tty` opens for reading and
+writing, and `TERM` is not `dumb`. Stdout is not consulted, because `kae cd`'s is
+read through `$(…)`: the picker is drawn on `/dev/tty`, inline without taking over
+the screen, and erases itself on exit, so stdout carries only the chosen path
+(`open` opens it). It opens even over one candidate.
+
+- **Rows.** The candidate set under a heading per group: groups holding a place
+  relevant to the current directory (the binding governing here, a tool `kae ls`
+  shows, the repository) first, each in `kae ls` order, then the rest (a pin group
+  with no governing binding, then kae). A project or below place is its root with the
+  `.claude/` or `.codex/` place indented beneath it; choosing the root gives the root
+  and choosing the level its own path, and with `--root` only the root lines are
+  shown. A row shows the displayed path, its kind, the dimmed `kae ls` number and the
+  account when set. Account rows never appear, and the same path can appear under
+  two groups. Headings are not selectable.
+- **Filter.** Typing filters at once. Terms are separated by whitespace, all must be
+  substrings of the row's displayed path, absolute path, kind and group, case
+  insensitively; so `q` and `/` are filter text, not commands. A group with no match
+  hides its heading, a matching level keeps its root row, and with no match the
+  picker says `no matching place` and Enter does nothing.
+- **Keys.** Up, Down, Ctrl-P and Ctrl-N move over the rows (headings skipped, no
+  wrap), PgUp, PgDn, Home and End jump, and the cursor starts on the first row. Enter
+  chooses. Backspace and Ctrl-U edit the filter. Esc clears a filter, and cancels when
+  there is none; Ctrl-C cancels.
+- **Layout.** At most the terminal height minus 2 lines, scrolling within; a path too
+  long for the width is cut from the left with `…`. `NO_COLOR` and `--no-color` draw
+  no color.
+- **Cancelling** exits `130` (`cancelled`) with nothing on stdout or stderr. A
+  terminal failure exits `1`.
+
+**Without a terminal**, including `</dev/null` — which keeps scripts and the smoke
+block deterministic from an interactive shell — the set is a usage error on stderr
+followed by the candidates, one per line as the command that reaches it (`kae open
+claude --at 3` and the path), and exits `64`. A level selector without a target lists
+each tool's places of that level in the same form.
+
+**`--pick`** opens the picker over the places `kae ls <target>` lists even when the
+target has a current place; without a target, over every place; with a level
+selector, over every place of that level (not only the first one a plain request
+takes), of the bound tools or of both place tools when none is bound; with `--root`,
+over the rows that have a root. `--pick` with `--at` is a usage error, and without a
+terminal it lists the same rows under exit `64`.
 
 **`open`** runs `open` on macOS and `xdg-open` on Linux, found on `PATH`, with the
 path as its one argument, and prints nothing on success. kae waits for the opener
@@ -707,7 +750,8 @@ reaches the terminal unchanged. `kae __cd` is internal to the function, like
 `kae __complete`, and hidden from `kae help`. Without the function, `kae cd`
 reaches the binary, which cannot move its parent shell: it exits `64` and
 suggests `cd "$(kae ls … --current)"` with the words it was given (`--at N` in
-place of `--current` when given; `--json` and `--format` left out).
+place of `--current` when given; `--json` and `--format` left out, and `--pick`, which
+`kae ls` has no spelling for).
 
 ## kae account Semantics
 
@@ -1560,6 +1604,7 @@ best-match candidate is named (no multi-candidate list).
 | `10` | `unsafe_refused` | a write was refused as unsafe: a structure guard failed, or an account remove/rename would hit the active account (no `--force`) or overwrite an existing one |
 | `11` | `auth_unchanged` | login flow exited without changing auth; nothing captured |
 | `64` | `usage` | usage / flag error |
+| `130` | `cancelled` | the picker of `kae open` and `kae cd` was cancelled; nothing was printed |
 
 These codes diverge intentionally from the minimal shared standard (`0/1/2/64`)
 because agents need to branch on switch failures; the token column appears as

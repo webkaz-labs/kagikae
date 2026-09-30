@@ -313,6 +313,7 @@ const (
 	ExitUnsafeRefused = 10
 	ExitAuthUnchanged = 11
 	ExitUsage         = 64
+	ExitCancelled     = 130
 )
 
 // Error-code tokens used in JSON error reports.
@@ -330,6 +331,7 @@ const (
 	CodeUnsafeRefused = "unsafe_refused"
 	CodeAuthUnchanged = "auth_unchanged"
 	CodeUsage         = "usage"
+	CodeCancelled     = "cancelled"
 )
 
 // ErrorCode returns the stable token for an exit code.
@@ -359,6 +361,8 @@ func ErrorCode(exit int) string {
 		return CodeAuthUnchanged
 	case ExitUsage:
 		return CodeUsage
+	case ExitCancelled:
+		return CodeCancelled
 	default:
 		return CodeError
 	}

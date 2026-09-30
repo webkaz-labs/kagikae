@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/runner"
 	"github.com/webkaz-labs/kagikae/internal/testutil/runnertest"
 )
@@ -42,6 +43,10 @@ func TestMain(m *testing.M) {
 			os.TempDir(), root)
 		os.Exit(1)
 	}
+
+	// Durability cannot be observed by a test, and a full fsync costs ~4 ms per
+	// credential write on macOS. patch's own tests keep the real sync.
+	patch.SyncFile = func(*os.File) error { return nil }
 
 	savedDefault := runner.Default
 	savedInteractive := runner.RunInteractive

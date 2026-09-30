@@ -31,8 +31,8 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
-// cells measures display width by the rule the bubbletea renderer draws with
-// (charmbracelet/x/ansi): East Asian ambiguous characters such as "…" take one
+// cells measures display width with the East Asian ambiguous rule of the
+// bubbletea renderer (charmbracelet/x/ansi): characters such as "…" take one
 // column unless RUNEWIDTH_EASTASIAN is true. runewidth's own default also reads
 // the locale, which would size rows differently from how they are drawn.
 var cells = newCells(os.Getenv("RUNEWIDTH_EASTASIAN"))

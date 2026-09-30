@@ -303,31 +303,53 @@ func TestAmbiguousWidthFollowsTheRenderer(t *testing.T) {
 			t.Errorf("RUNEWIDTH_EASTASIAN=%q: width of … = %d, want %d", tc.env, got, tc.want)
 		}
 	}
-	// runewidth reads the locale once at init into its package default, so a
-	// CJK locale is stood in for by setting that default.
-	savedDefault := runewidth.EastAsianWidth
-	runewidth.EastAsianWidth = true
-	got := newCells("").StringWidth("…")
-	runewidth.EastAsianWidth = savedDefault
-	if got != 1 {
-		t.Errorf("a CJK locale widened … to %d", got)
-	}
 
-	saved := cells
-	t.Cleanup(func() { cells = saved })
-	cells = newCells("1")
-	m := press(New([]Item{
+	longPath := []Item{
 		{Kind: Heading, Label: "g", Parent: -1},
 		{Label: "~/very/long/directory/name/that/does/not/fit/.claude", Detail: "project", Note: "#3", Value: "x", Parent: -1, Filter: "x"},
-	}, Options{NoColor: true}), tea.WindowSizeMsg{Width: 40, Height: 24})
-	for _, line := range strings.Split(m.View().Content, "\n") {
-		if w := cells.StringWidth(line); w > 40 {
-			t.Fatalf("wide ambiguous: line of %d columns: %q", w, line)
+	}
+	saved := cells
+	t.Cleanup(func() { cells = saved })
+
+	// runewidth reads the locale once at init into its package defaults, so a
+	// CJK locale is stood in for by setting them.
+	savedEA, savedDefault := runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth
+	t.Cleanup(func() { runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth = savedEA, savedDefault })
+	runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth = true, true
+	cells = newCells("")
+	if got := cells.StringWidth("…"); got != 1 {
+		t.Errorf("a CJK locale widened … to %d", got)
+	}
+	if got := fitView(t, longPath, cells).Content; !strings.Contains(got, "> …hat/does/not/fit/.claude  project  #3") {
+		t.Errorf("a CJK locale changed the narrow layout:\n%s", got)
+	}
+	runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth = savedEA, savedDefault
+
+	runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth = false, false
+	cells = newCells("1")
+	if got := fitView(t, longPath, cells).Content; !strings.Contains(got, "> …at/does/not/fit/.claude  project  #3") {
+		t.Errorf("wide ambiguous: the cut must leave room for the wide …:\n%s", got)
+	}
+	fitView(t, []Item{
+		{Kind: Heading, Label: strings.Repeat("①…", 25), Parent: -1},
+		{Label: "~/①/…/" + strings.Repeat("②", 30), Detail: "…project", Note: "#①", Value: "x", Parent: -1, Filter: "x"},
+		{Label: "~/①…", Detail: "①", Note: "#…", Value: "y", Parent: -1, Filter: "y"},
+		// 25 columns narrow and 30 wide: fits beside the 13 of its columns only
+		// when the ambiguous characters are counted narrow.
+		{Label: "~/①①①①①" + strings.Repeat("a", 18), Detail: "project", Note: "#3", Value: "z", Parent: -1, Filter: "z"},
+	}, cells)
+}
+
+// fitView draws items 40 columns wide and fails if a line is wider under c.
+func fitView(t *testing.T, items []Item, c *runewidth.Condition) tea.View {
+	t.Helper()
+	v := press(New(items, Options{NoColor: true}), tea.WindowSizeMsg{Width: 40, Height: 24}).View()
+	for _, line := range strings.Split(v.Content, "\n") {
+		if w := c.StringWidth(line); w > 40 {
+			t.Errorf("line of %d columns: %q", w, line)
 		}
 	}
-	if !strings.Contains(m.View().Content, "> …at/does/not/fit/.claude  project  #3") {
-		t.Fatalf("wide ambiguous: the cut must leave room for the wide …:\n%s", m.View().Content)
-	}
+	return v
 }
 
 func TestNoColorDrawsNoEscapeSequences(t *testing.T) {

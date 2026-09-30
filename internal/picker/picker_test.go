@@ -278,17 +278,8 @@ func TestLongPathsAreCutFromTheLeftByDisplayWidth(t *testing.T) {
 			t.Fatalf("fitLeft(%q, %d) = %q (width %d), want %q", tc.in, tc.w, got, cells.StringWidth(got), tc.want)
 		}
 	}
-	m := press(New([]Item{
-		{Kind: Heading, Label: "g", Parent: -1},
-		{Label: "~/very/long/directory/name/that/does/not/fit/.claude", Detail: "project", Note: "#3", Value: "x", Parent: -1, Filter: "x"},
-	}, Options{NoColor: true}), tea.WindowSizeMsg{Width: 40, Height: 24})
-	for _, line := range strings.Split(m.View().Content, "\n") {
-		if cells.StringWidth(line) > 40 {
-			t.Fatalf("line wider than the terminal: %q", line)
-		}
-	}
-	if !strings.Contains(m.View().Content, "> …hat/does/not/fit/.claude  project  #3") {
-		t.Fatalf("the path's tail and the columns must survive:\n%s", m.View().Content)
+	if got := fitView(t, longPath(), cells).Content; !strings.Contains(got, "> …hat/does/not/fit/.claude  project  #3") {
+		t.Fatalf("the path's tail and the columns must survive:\n%s", got)
 	}
 }
 
@@ -304,40 +295,60 @@ func TestAmbiguousWidthFollowsTheRenderer(t *testing.T) {
 		}
 	}
 
-	longPath := []Item{
+	t.Run("a CJK locale stays narrow", func(t *testing.T) {
+		runewidthDefault(t, true)
+		useCells(t, newCells(""))
+		if got := cells.StringWidth("…"); got != 1 {
+			t.Errorf("a CJK locale widened … to %d", got)
+		}
+		if got := fitView(t, longPath(), cells).Content; !strings.Contains(got, "> …hat/does/not/fit/.claude  project  #3") {
+			t.Errorf("a CJK locale changed the narrow layout:\n%s", got)
+		}
+	})
+
+	t.Run("RUNEWIDTH_EASTASIAN widens and rows still fit", func(t *testing.T) {
+		// runewidth's default reads narrow, so a call site measuring with it
+		// instead of cells draws a line too wide.
+		runewidthDefault(t, false)
+		useCells(t, newCells("1"))
+		if got := fitView(t, longPath(), cells).Content; !strings.Contains(got, "> …at/does/not/fit/.claude  project  #3") {
+			t.Errorf("the cut must leave room for the wide …:\n%s", got)
+		}
+		fitView(t, []Item{
+			{Kind: Heading, Label: strings.Repeat("①…", 25), Parent: -1},
+			{Label: "~/①/…/" + strings.Repeat("②", 30), Detail: "…project", Note: "#①", Value: "x", Parent: -1, Filter: "x"},
+			{Label: "~/①…", Detail: "①", Note: "#…", Value: "y", Parent: -1, Filter: "y"},
+			// 25 columns narrow and 30 wide: fits beside the 13 of its columns only
+			// when the ambiguous characters are counted narrow.
+			{Label: "~/①①①①①" + strings.Repeat("a", 18), Detail: "project", Note: "#3", Value: "z", Parent: -1, Filter: "z"},
+		}, cells)
+	})
+}
+
+// longPath is a row whose path cannot fit 40 columns beside its columns.
+func longPath() []Item {
+	return []Item{
 		{Kind: Heading, Label: "g", Parent: -1},
 		{Label: "~/very/long/directory/name/that/does/not/fit/.claude", Detail: "project", Note: "#3", Value: "x", Parent: -1, Filter: "x"},
 	}
+}
+
+// runewidthDefault sets how runewidth's package default counts ambiguous
+// characters for the rest of t. runewidth reads the locale into it once at init,
+// so wide stands in for a CJK locale.
+func runewidthDefault(t *testing.T, wide bool) {
+	t.Helper()
+	ea, def := runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth
+	t.Cleanup(func() { runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth = ea, def })
+	runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth = wide, wide
+}
+
+// useCells makes the picker measure with c for the rest of t.
+func useCells(t *testing.T, c *runewidth.Condition) {
+	t.Helper()
 	saved := cells
 	t.Cleanup(func() { cells = saved })
-
-	// runewidth reads the locale once at init into its package defaults, so a
-	// CJK locale is stood in for by setting them.
-	savedEA, savedDefault := runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth
-	t.Cleanup(func() { runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth = savedEA, savedDefault })
-	runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth = true, true
-	cells = newCells("")
-	if got := cells.StringWidth("…"); got != 1 {
-		t.Errorf("a CJK locale widened … to %d", got)
-	}
-	if got := fitView(t, longPath, cells).Content; !strings.Contains(got, "> …hat/does/not/fit/.claude  project  #3") {
-		t.Errorf("a CJK locale changed the narrow layout:\n%s", got)
-	}
-	runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth = savedEA, savedDefault
-
-	runewidth.EastAsianWidth, runewidth.DefaultCondition.EastAsianWidth = false, false
-	cells = newCells("1")
-	if got := fitView(t, longPath, cells).Content; !strings.Contains(got, "> …at/does/not/fit/.claude  project  #3") {
-		t.Errorf("wide ambiguous: the cut must leave room for the wide …:\n%s", got)
-	}
-	fitView(t, []Item{
-		{Kind: Heading, Label: strings.Repeat("①…", 25), Parent: -1},
-		{Label: "~/①/…/" + strings.Repeat("②", 30), Detail: "…project", Note: "#①", Value: "x", Parent: -1, Filter: "x"},
-		{Label: "~/①…", Detail: "①", Note: "#…", Value: "y", Parent: -1, Filter: "y"},
-		// 25 columns narrow and 30 wide: fits beside the 13 of its columns only
-		// when the ambiguous characters are counted narrow.
-		{Label: "~/①①①①①" + strings.Repeat("a", 18), Detail: "project", Note: "#3", Value: "z", Parent: -1, Filter: "z"},
-	}, cells)
+	cells = c
 }
 
 // fitView draws items 40 columns wide and fails if a line is wider under c.

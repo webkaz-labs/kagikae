@@ -887,4 +887,11 @@ func TestSeveralMatchesCountsTheListedCandidates(t *testing.T) {
 	if code != constants.ExitUsage || !strings.Contains(stderr, "kae cd kae matches 2 places") || strings.Contains(stderr, "--at 3") {
 		t.Fatalf("kae cd kae = %d:\n%s", code, stderr)
 	}
+	if err := os.Remove(app.Paths.DataDir); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = cdPath(t, app, navRequest(t, "cd", lsFlags{}, "kae"))
+	if code != constants.ExitUsage || !strings.Contains(stderr, "kae cd kae matches 1 place;") {
+		t.Fatalf("kae cd kae with one directory = %d:\n%s", code, stderr)
+	}
 }

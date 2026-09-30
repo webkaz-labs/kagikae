@@ -161,7 +161,11 @@ func (app *App) navigatePath(ctx context.Context, opts commonOpts, req lsRequest
 	switch choice.kind {
 	case choiceSeveral:
 		return "", reportCandidates(opts, req, func(n int) string {
-			return fmt.Sprintf("kae %s %s matches %d places", req.verb, requestWords(req, false), n)
+			noun := "places"
+			if n == 1 {
+				noun = "place"
+			}
+			return fmt.Sprintf("kae %s %s matches %d %s", req.verb, requestWords(req, false), n, noun)
 		}, choice.candidates)
 	case choiceNone:
 		return "", app.reportNoCurrentPlace(opts, req, choice)

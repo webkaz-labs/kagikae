@@ -363,7 +363,8 @@ two deliberately different places, and one of them cannot always establish it at
 all. `docs/ADAPTERS.md` (§ Per-directory shared bind (`kae pin -s`),
 § Per-directory isolated bind (`kae pin -i`), and § Per-directory tree bind
 (`kae pin -t`), which takes the isolated bind's source) is normative for which
-source each mode uses and what happens when the intent is unknown; do not restate the rule anywhere else, including in a code comment.
+source each mode uses and what happens when the intent is unknown; do not restate
+the rule anywhere else, including in a code comment.
 
 ## A store tree is history; a fragment is the binding
 

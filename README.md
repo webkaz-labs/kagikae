@@ -468,7 +468,7 @@ in which tier — with the rationale and the promotion criteria — is normative
 repeat the mapping:
 
 - **Tier 1** targets the full surface, subject to capability guards: global switching, global isolated homes, the
-  per-directory binds (tree mode is claude only so far), identity switching and drift detection.
+  per-directory binds, identity switching and drift detection.
 - **Tier 2** gets global switching (`kae use`), `kae run --env`, backup/rollback,
   `kae doctor`, and identity detection where the tool exposes one. No `kae pin` and
   no `-i`: those redirect the tool's home, which needs an isolation variable

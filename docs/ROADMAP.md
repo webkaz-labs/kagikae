@@ -51,12 +51,11 @@ mode described in § Place navigation and the tree mode;
 § Agent orchestration and remote authentication — deferred exploration follows
 it and still requires investigation and an explicit implementation decision.
 Between the two comes **localized human output (Japanese)**, requested by the
-operator on 2026-09-30: runtime human messages, the tree mode's new ones and the
-existing ones, localized once the tree mode's local verification is done.
-[CLI.md](CLI.md) § Localization describes current behavior until it ships.
-How the locale is selected, and which locale the gate's and smoke blocks' English
-assertions run under, are part of its design: this machine runs `LC_ALL=ja_JP.UTF-8`
-and CI does not.
+operator on 2026-09-30: new and existing runtime human messages, after the tree
+mode's local verification. [CLI.md](CLI.md) § Localization describes current
+behavior until it ships. Design questions: how the locale is selected, and which
+locale the gate's and smoke blocks' English assertions run under (this machine
+uses `LC_ALL=ja_JP.UTF-8`, CI does not).
 The upstream detector remains conditional on reviewed artifact pairs under
 § Upstream-drift automation — what is left.
 
@@ -112,18 +111,17 @@ has its contract and awaits implementation.
      (`kae pin -t` binds no codex).
    - **R4, the fragment's `[env]` in nested directories**, is an acceptance check of
      that slice: a kae-rendered tree fragment run through
-     `bash scripts/smoke-run.sh`. What stands in for it so far is scratch fragments,
-     not kae-rendered ones: on 2026-09-29 a `conf.d` fragment's `[shell_alias]`
-     appeared in `mise hook-env -s zsh` run from a subdirectory (mise 2026.9.15),
-     and on 2026-09-30 one exporting four variables gave all four in the bound
-     directory and 1 and 3 levels below it, none in its parent, and an error while
-     it was untrusted (mise 2026.9.17). It is overturned if the kae-rendered fragment
-     leaves any of its variables out of a directory below the bound one.
-   - **R3, a switch and a claude already running in the tree.** The contract claims
-     only that a switch reaches the next launched process. Saying anything about a
-     running one needs a measurement of two accounts using one tree config dir at
-     once, which needs two real accounts of the operator's; until then the docs make
-     no claim either way.
+     `bash scripts/smoke-run.sh`. What stands in for it is a scratch `conf.d`
+     fragment, not a kae-rendered one: on 2026-09-30 one exporting four variables
+     gave all four in the bound directory and 1 and 3 levels below it, none in its
+     parent, and an error while it was untrusted (mise 2026.9.17). It is overturned
+     if the kae-rendered fragment leaves any of its variables out of a directory
+     below the bound one.
+   - **R3, a switch and a claude already running in the tree**
+     ([ADAPTERS.md](ADAPTERS.md) § Per-directory tree bind (`kae pin -t`) makes no
+     claim about it). Saying anything about a running one needs a measurement of two
+     accounts using one tree config dir at once, which needs two real accounts of
+     the operator's.
    - **codex waits for R1 and R2.** codex keeps its credential inside `CODEX_HOME`,
      so a tree store would hold a per-directory copy. **R1**: whether copies of one
      codex account invalidate each other through refresh-token rotation (the research

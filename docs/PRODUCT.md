@@ -79,8 +79,8 @@ environment:
 `kae pin` takes a third flag, **`--tree` / `-t`** (claude only): the bound directory
 and everything below it keep one private store — sessions, history, memory,
 settings — whichever account it runs, and nothing is shared with the real home
-unless opted in. Switching account there changes only the credential and its
-identity cache. It has no global form. [ADAPTERS.md](ADAPTERS.md) § Per-directory
+unless opted in. Switching account there changes only the credential and the
+account label in the tree store. It has no global form. [ADAPTERS.md](ADAPTERS.md) § Per-directory
 tree bind (`kae pin -t`) is what it switches.
 
 Both verbs take `<profile>` (every tool it maps) or `<tool> <account>` (one
@@ -107,10 +107,10 @@ no-op conditions and output behavior.
 | `--env` | env vars only | injects the profile's env vars; no home redirect, no lock |
 
 `run -i` prints the exact isolated home path and that it is shared with
-`kae use -i <account>`, so the shared state is never invisible. There are
-exactly four isolation scopes: global (`use -i` / `run -i` share one home per
-account), per-directory shared (`pin -s`), per-directory isolated (`pin -i`),
-per-directory tree (`pin -t`).
+`kae use -i <account>`, so the shared state is never invisible. The isolation
+scopes are global (`use -i` / `run -i` share one home per account), per-directory
+shared (`pin -s`), per-directory isolated (`pin -i`) and per-directory tree
+(`pin -t`).
 
 What each cell does internally is
 [ARCHITECTURE.md](ARCHITECTURE.md) § Switch Mechanisms.
@@ -130,7 +130,7 @@ close.
 
 | Tier | Tools | Surface kae commits to |
 |------|-------|------------------------|
-| **1 — full surface** | claude, codex | target modes: global shared (`use`), global isolated (`use -i` / `run -i`), the per-directory binds (`pin -s` / `pin -i`, and `pin -t` for claude — codex waits on measurements R1 and R2 in [ROADMAP.md](ROADMAP.md) § Place navigation and the tree mode), identity switching and drift detection, per-directory credential stores, and the per-directory login flow (`kae relogin`). Where the tool can address its credential separately from its home, a **per-account** credential store as well, so two directories on one account run at once (claude only — [ADAPTERS.md](ADAPTERS.md) § Per-account credential store). Gaps here are debt with a plan (see [ROADMAP.md](ROADMAP.md)) |
+| **1 — full surface** | claude, codex | target modes: global shared (`use`), global isolated (`use -i` / `run -i`), the per-directory binds (`pin -s` / `pin -i`, and `pin -t` for claude only; codex waits on measurements, [ROADMAP.md](ROADMAP.md) § Place navigation and the tree mode), identity switching and drift detection, per-directory credential stores, and the per-directory login flow (`kae relogin`). Where the tool can address its credential separately from its home, a **per-account** credential store as well, so two directories on one account run at once (claude only — [ADAPTERS.md](ADAPTERS.md) § Per-account credential store). Gaps here are debt with a plan (see [ROADMAP.md](ROADMAP.md)) |
 | **2 — credential switching** | agy, opencode, cursor, copilot | global shared (`kae use`), `kae run --env`, capture / apply / backup / `kae rollback`, `kae doctor`, and identity detection as far as the tool exposes one. Nothing else, and that is the specification — not a backlog |
 
 What Tier 2 does **not** get, deliberately: `kae pin` in any mode, and

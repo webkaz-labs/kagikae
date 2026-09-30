@@ -302,7 +302,7 @@ Preservation records are not a guarantee that a copied rotating token remains us
 
 ## Isolation Safety
 
-Four isolation scopes exist; their credential boundaries are:
+The isolation scopes and their credential boundaries are:
 
 | Scope | Command | Config store (sessions, settings, identity) | Credential store | Live home touched? |
 |-------|---------|------|------------------|--------------------|

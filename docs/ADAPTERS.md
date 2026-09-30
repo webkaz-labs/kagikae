@@ -732,10 +732,9 @@ of scope.
 
 ## Isolation
 
-`kae` isolates at two levels: **per-directory** (`kae pin -s|-i|-t`, three modes) and
-**global** (`kae use -i` / `kae run -i`) — the four isolation scopes
-[PRODUCT.md](PRODUCT.md) § Switching Surface and [SECURITY.md](SECURITY.md)
-§ Isolation Safety count are the global one plus each per-directory mode. `kae mise init` generates project tasks and an optional automatic profile hook;
+`kae` isolates at two levels: **per-directory** (`kae pin -s|-i|-t`) and
+**global** (`kae use -i` / `kae run -i`).
+`kae mise init` generates project tasks and an optional automatic profile hook;
 use `kae pin -s|-i|-t` for a directory binding.
 
 ### Isolation env vars
@@ -822,8 +821,9 @@ say "the store", read it as whichever of the two that tool resolves:
   materialized, over *every* store that directory has, which is what covers a binding
   whose credential moves to a **different** store: a re-bind to another account, in
   any mode — the isolated one, and the shared and tree ones, whose single config
-  store stays while the credential entry is re-keyed to the new account's store. A `-s` ↔ `-i` toggle for the **same** account is not
-  such a case and was listed here as one until 2026-08-08: since the per-account
+  store stays while the credential entry is re-keyed to the new account's store.
+  A `-s` ↔ `-i` toggle for the **same** account is not such a case and was listed
+  here as one until 2026-08-08: since the per-account
   credential store both modes name that account's store, so the toggle moves the
   sessions and leaves the credential where it is. The pass still has to walk that
   directory's other stores, because a binding from **before** the split left its
@@ -1193,9 +1193,9 @@ profile matches).
 
 ### Per-directory tree bind (`kae pin -t`)
 
-One store for the bound directory and every directory below it (unless a nearer
-binding governs claude there, [CLI.md](CLI.md) § kae ls Semantics), whichever
-account the directory runs: `isolation/<pin-id>/<tool>/tree/`. Sessions, history,
+One store for the bound directory's tree, whichever account the directory runs:
+`isolation/<pin-id>/<tool>/tree/` ([CLI.md](CLI.md) § kae pin and mise init
+Semantics states which directories the tree covers). Sessions, history,
 memory and settings stay in it across an account switch; only the credential and
 the identity cache that names it change. It takes the shared bind's
 account-agnostic store and the isolated bind's opt-in sharing:
@@ -1208,19 +1208,16 @@ account-agnostic store and the isolated bind's opt-in sharing:
 
 **Linking is the isolated bind's**: the same `tools.<tool>.isolated_shared_items`
 list, the same refusals, and the same reconcile, with the configured list as the
-statement of intent (§ Per-directory isolated bind). There is no tree-specific
-share list.
+statement of intent (§ Per-directory isolated bind).
 
 **claude only.** claude's credential lives in the per-account credential store
 (§ Per-account credential store), so a tree binding adds no copy of it: the
 fragment exports `CLAUDE_CONFIG_DIR` at the tree store and
 `CLAUDE_SECURESTORAGE_CONFIG_DIR` at `credstore/claude/<account>/`. codex keeps its
-credential inside `CODEX_HOME`, so a tree store would hold a per-directory copy
-that an account switch overwrites in place, and whether copies of one codex
-account invalidate each other is unmeasured. `kae pin -t` therefore binds no
-codex; [CLI.md](CLI.md) § kae pin and mise init Semantics states what the user
-sees, and [ROADMAP.md](ROADMAP.md) § Place navigation and the tree mode the
-measurements codex waits for.
+credential inside `CODEX_HOME`, so `kae pin -t` binds no codex until the
+measurements in [ROADMAP.md](ROADMAP.md) § Place navigation and the tree mode
+exist; [CLI.md](CLI.md) § kae pin and mise init Semantics states what the user
+sees.
 
 **An account switch** (`kae pin claude <account>` in a tree-bound directory) keeps
 the fragment's `CLAUDE_CONFIG_DIR` entry and the tree store's contents, and writes
@@ -1237,19 +1234,17 @@ companions, [CLI.md](CLI.md) § kae pin and mise init Semantics):
   tree writes that one file;
 - the fragment's `CLAUDE_SECURESTORAGE_CONFIG_DIR` entry and its account record.
 
-The identity cache is one per tree rather than one per account, so on an account
-change the label there is the previous account's and is treated as a shared
-bind's is: where attribution declines the write, the label is removed rather than
-kept ([CLI.md](CLI.md) § kae pin and mise init Semantics). The switch takes no lock
-beyond the directory's pin lock. It reaches the next claude launched in the tree.
-What it does to a claude already running there — two accounts using one config
-dir at once — is unmeasured, so kae makes no claim about it.
+The switch takes no lock beyond the pin lock.
 
-Everything else is the other modes' behaviour: `kae unpin` removes the fragment
-and the store links and keeps the tree store, `--purge` counts a tree fragment's
-credential entry like any other fragment's, `kae uninstall` recognizes a tree
-fragment it rendered as its own, `kae ls` follows a tree binding's user level and
-session row into the tree store, and `kae doctor` has no finding of its own for it.
+The identity cache is one per tree, so after a switch the label there is the
+previous account's; it follows the shared bind's rule ([CLI.md](CLI.md) § kae pin
+and mise init Semantics). The switch reaches the next claude launched in the tree.
+What it does to a claude already running there is unmeasured, so kae makes no
+claim about it ([ROADMAP.md](ROADMAP.md) § Place navigation and the tree mode).
+
+Every other command treats a tree fragment and its store as it treats the other
+modes' ([CLI.md](CLI.md) § kae pin and mise init Semantics, § kae uninstall
+Semantics and § kae ls Semantics); `kae doctor` has no finding of its own for it.
 
 ### Global isolated home (`kae use -i` / `kae run -i`)
 

@@ -1021,16 +1021,16 @@ moved out of its store. A file credential still sitting in a per-directory store
 no escape, because a path the user can name is one the user can delete.
 
 Both commands sweep a **superseded per-directory credential**: a re-bind to another
-account re-keys the credential store, and a mode change (`-s`, `-i`, `-t`) moves every
-tool it binds to the other mechanism's config store — which since the per-account credential store leaves that
-account's credential where it is, but still moves the directory off a store a **pre-split**
-binding left a credential in. Either way the store the directory used before is
-unreachable, and its credential would otherwise be one nothing points at. A tool
-the new mode does not bind — codex when `-t` replaces an `-s` or `-i` binding — is
-treated as a tool dropped from the profile: its store link is retracted, its store
-is kept, and a file credential in that store (codex's `auth.json`) is kept by the
-two-case file rule below. A
-keychain item is the case that is easiest to miss, and the common one: it lives
+account re-keys the credential store, and a mode change (`-s`, `-i`, `-t`) moves
+every tool it binds to the new mode's config store — which since the per-account
+credential store leaves that account's credential where it is, but still moves the
+directory off a store a **pre-split** binding left a credential in. Either way the
+store the directory used before is unreachable, and its credential would otherwise
+be one nothing points at. A tool the new mode does not bind (codex, when `-t`
+replaces an `-s` or `-i` binding) is treated as a tool dropped from the profile.
+Its store link is retracted, its store is kept, and a file credential in it
+(codex's `auth.json`) is kept by the two-case file rule below. A keychain item is
+the case that is easiest to miss, and the common one: it lives
 under a per-directory service name that appears nowhere in kae's data dir, and no
 kae check reports the item itself — `credential_unsplit` names the *directory* whose
 re-bind would remove it, which is the closest thing there is. Only the credential goes — the store directory, its
@@ -1214,21 +1214,16 @@ is `kae pin`'s alone: `kae use -t` and `kae run -t` exit `64`.
   keychain item unless the adapter declares that the item moves with the isolation
   variable. For codex that means the bound directory may have no login until you
   log in inside it (docs/ADAPTERS.md "Per-directory credential store").
-- **`-t` / `--tree`**: the fragment points claude at one per-directory store
-  for the bound directory and every directory below it (unless a nearer binding
-  governs claude there — the governing binding of § kae ls Semantics)
-  (`isolation/<pin-id>/claude/tree/`), whichever account the directory runs:
-  sessions, history, memory and settings stay there when the account changes,
-  and only the credential and its identity cache move. As with `-i`, nothing is
-  shared with the real home except the items in `tools.claude.isolated_shared_items`,
-  reconciled the same way, and the credential and identity follow the rules under
-  `-i` above; the credential is the account's own store, so no new copy of it is
-  made. Switching account is `kae pin claude <account>`, which keeps the tree
-  store and rewrites only what names the account — [ADAPTERS.md](ADAPTERS.md)
-  § Per-directory tree bind (`kae pin -t`) lists the writes. The switch reaches
-  the next claude launched in the tree; what it does to a claude already running
-  there is not established ([ROADMAP.md](ROADMAP.md) § Place navigation and the
-  tree mode).
+- **`-t` / `--tree`**: the fragment points claude at one store
+  (`isolation/<pin-id>/claude/tree/`), whichever account the directory runs, for
+  the bound directory and every directory below it except where a nearer binding
+  governs claude (the governing binding of § kae ls Semantics). As with `-i`,
+  nothing is shared with the real home except the items in
+  `tools.claude.isolated_shared_items`, and the credential and identity follow the
+  rules under `-i` above. Switching account is `kae pin claude <account>`, which
+  keeps the tree store. [ADAPTERS.md](ADAPTERS.md) § Per-directory tree bind
+  (`kae pin -t`) owns what the store keeps across a switch, what the switch writes,
+  and what is and is not claimed about when it takes effect.
 
   **claude only.** A profile that maps codex binds claude and leaves codex on the
   real home with a warning, as it does a tool with no isolation variable, and
@@ -1238,13 +1233,12 @@ is `kae pin`'s alone: `kae use -t` and `kae run -t` exit `64`.
   it either.
 
 **Changing an existing binding's mode moves no sessions.** `kae pin -s`, `-i` or `-t`
-over a directory bound in another mode points each tool at the new mode's store
-and leaves the old one in place, sessions included, so a later pin in that mode
-finds it again, and a new tree store starts with no sessions. Every mode change,
-`-s` ↔ `-i` included, says so in a note on stderr naming the store it left; the
-note passes through the same redaction as other output (§ Output Rules), and the
-exit code is unaffected. What the old
-store's credential gets is the superseded-credential sweep above.
+over a directory bound in another mode points each tool at the new mode's store and
+leaves the old store in place; a later pin in that mode finds it again, and a new
+tree store starts empty. Every mode change, `-s` ↔ `-i` included, prints a note on
+stderr naming the store it left and, for `-t`, that the new tree store starts empty (redacted like other output, § Output Rules; the
+exit code is unaffected). The old store's credential is handled by the
+superseded-credential sweep above.
 
 `kae mise init [-P <profile>] [--auto] [--write]` renders auth-mode tasks and
 the opt-in enter hook into a marker-delimited block in `.mise.toml`. Default

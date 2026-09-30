@@ -1,9 +1,8 @@
 # Scope × Environment Model (design guidance)
 
-> The model is implemented, except the per-directory tree mode (`kae pin -t`),
-> whose contract is written ahead of its code ([ROADMAP.md](ROADMAP.md) § Place
-> navigation and the tree mode). Normative parts live in PRODUCT.md / CLI.md /
-> ADAPTERS.md / DATA-MODEL.md; this file keeps only the reasoning behind them.
+> Implementation status is [ROADMAP.md](ROADMAP.md)'s. Normative parts live in
+> PRODUCT.md / CLI.md / ADAPTERS.md / DATA-MODEL.md; this file keeps only the
+> reasoning behind them.
 > The surface it describes reached its current shape over v0.7.0–v0.8.0, and
 > git log is where that sequence is.
 >
@@ -237,10 +236,9 @@ do not restore the sharing on the strength of this note.
 
 The per-directory binds (`pin -s`/`-i`/`-t`) and the global isolated home
 (`use -i` / `run -i`) all require a home-isolation env var, so they apply to
-**claude and codex only** — and `pin -t` to claude alone until codex's
-measurements R1 (refresh-token rotation across copies) and R2 (a switch's effect on
-a running codex) exist ([ROADMAP.md](ROADMAP.md) § Place navigation and the tree
-mode). Tools without one (agy, opencode, cursor, copilot)
+**claude and codex only**, and `pin -t` to claude only; codex waits on
+measurements ([ROADMAP.md](ROADMAP.md) § Place navigation and the tree mode).
+Tools without one (agy, opencode, cursor, copilot)
 support **global shared (`kae use`) and `kae run --env` only** — there is no way
 to make their credential private without redirecting their home. For a `-i`
 *profile* that also maps such a tool, it is skipped with a warning (claude/codex

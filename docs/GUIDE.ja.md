@@ -135,9 +135,11 @@ kae cd claude --pick                   # 現在の場所があっても claude �
 その配下で 1 つの専用ストアを使い、`kae pin claude main` でアカウントを替えても
 会話・履歴・メモリ・設定は残り、認証とそれに対応するアカウント表示だけが替わります。
 実ホームとは `isolated_shared_items` に挙げた項目以外を共有しません。プロファイルに
-Codex が含まれていても Codex は実ホームのまま残り、警告が出ます。切替が反映されるのは
-次に起動する Claude からで、実行中の Claude への影響は確認されていません。既存の固定を
-`-s`・`-i`・`-t` の間で替えても会話は移らず、元のストアはそのまま残ります。正本は
+Codex が含まれていても Codex は実ホームのまま残り、警告が出ます。
+
+切替が反映されるのは次に起動する Claude からで、実行中の Claude への影響は確認されて
+いません。既存の固定を `-s`・`-i`・`-t` の間で替えても会話は移らず、元のストアは
+そのまま残ります。替えたときは残したストアを標準エラーに表示します。正本は
 [ADAPTERS.md](ADAPTERS.md) § Per-directory tree bind (`kae pin -t`) と
 [CLI.md](CLI.md#kae-pin-and-mise-init-semantics) です。
 

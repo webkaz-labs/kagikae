@@ -392,8 +392,8 @@ func TestTinyTerminals(t *testing.T) {
 	}
 }
 
-// A level line is never the top of the window with its root scrolled out: the
-// root comes into view with it.
+// With the cursor on a level line, its root comes into view with it when the
+// window has room for both.
 func TestChildBringsItsRootIntoView(t *testing.T) {
 	items := []Item{{Kind: Heading, Label: "g", Parent: -1}}
 	for i := range 20 {

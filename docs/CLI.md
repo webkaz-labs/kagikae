@@ -704,8 +704,9 @@ the screen, and erases itself on exit, so stdout carries only the chosen path
   appear under two groups. Headings are not selectable.
 - **Filter.** Typing filters at once. Terms are separated by whitespace, all must be
   substrings of the row's displayed path, absolute path, kind and group, case
-  insensitively; so `q` and `/` are filter text, not commands, and a terminal paste
-  filters like typing. A group with no match hides its heading, a matching level
+  insensitively; so `q` and `/` are filter text, not commands (a deliberate
+  departure from the Go CLI standard's `/` filter and `q` quit: a path filter
+  needs `/`), and a terminal paste filters like typing. A group with no match hides its heading, a matching level
   keeps its root row (dimmed, and the cursor lands on the level that matched), and
   with no match the picker says `no matching place` and Enter does nothing.
 - **Keys.** Up, Down, Ctrl-P and Ctrl-N move over the rows (headings skipped, no

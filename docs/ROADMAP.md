@@ -92,7 +92,7 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
    the platform file manager. The `ls` slice and the `open` and `cd` slice are
    implemented, and so is the picker; [CLI.md](CLI.md) § kae ls Semantics and § kae open
    and kae cd Semantics are their contracts. What follows is the design the session
-   row and the PTY tests still build on.
+   row still builds on.
 
    ```
    kae ls                                 # groups: account, pin, each relevant tool, repo, kae

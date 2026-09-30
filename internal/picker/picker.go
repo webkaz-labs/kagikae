@@ -310,7 +310,7 @@ func (m *Model) scroll() {
 		return
 	}
 	// A row beneath a root brings the root into view, and its heading above it,
-	// so the cursor on a bare level name never hides which root it belongs to.
+	// when the window has room; with one body line only the cursor row shows.
 	top := pos
 	if parent := m.items[m.cursor].Parent; parent >= 0 {
 		for q := pos - 1; q >= 0; q-- {

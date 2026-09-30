@@ -10,7 +10,9 @@ import (
 
 // SyncDir acknowledges directory entry mutations through the OS filesystem API.
 // It does not promise portable power-loss guarantees beyond that acknowledgement.
-func SyncDir(path string) error {
+// Like SyncFile, it is a variable only so a test binary can replace it;
+// production code never reassigns it.
+var SyncDir = func(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err

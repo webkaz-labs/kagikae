@@ -7,6 +7,17 @@ import (
 	"testing"
 )
 
+func TestDefaultSyncDirSyncs(t *testing.T) {
+	// A real sync opens the directory, so a missing one fails; a no-op default
+	// would return nil.
+	if err := SyncDir(filepath.Join(t.TempDir(), "missing")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("default SyncDir on a missing directory = %v, want os.ErrNotExist", err)
+	}
+	if err := SyncDir(t.TempDir()); err != nil {
+		t.Fatalf("default SyncDir on a directory = %v", err)
+	}
+}
+
 func TestMkdirAllDurableRetriesFailedAncestor(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

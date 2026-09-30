@@ -46,9 +46,10 @@ func TestMain(m *testing.M) {
 
 	// Power-loss durability cannot be observed by a test, and a full fsync costs
 	// ~4 ms per credential write on macOS. patch's own tests pin the default
-	// SyncFile and its failure path.
-	savedSyncFile := patch.SyncFile
+	// SyncFile and SyncDir and their failure paths.
+	savedSyncFile, savedSyncDir := patch.SyncFile, patch.SyncDir
 	patch.SyncFile = func(*os.File) error { return nil }
+	patch.SyncDir = func(string) error { return nil }
 
 	savedDefault := runner.Default
 	savedInteractive := runner.RunInteractive
@@ -67,7 +68,7 @@ func TestMain(m *testing.M) {
 	runner.Default = savedDefault
 	runner.RunInteractive = savedInteractive
 	runner.RunWithEnv = savedWithEnv
-	patch.SyncFile = savedSyncFile
+	patch.SyncFile, patch.SyncDir = savedSyncFile, savedSyncDir
 	os.Exit(code)
 }
 

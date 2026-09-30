@@ -46,7 +46,7 @@ func TestMain(m *testing.M) {
 
 	// Power-loss durability cannot be observed by a test, and a full fsync costs
 	// ~4 ms per credential write on macOS. patch's own tests pin the default
-	// SyncFile and SyncDir and their failure paths.
+	// SyncFile and its failure path; SyncDir's default opens the directory.
 	savedSyncFile, savedSyncDir := patch.SyncFile, patch.SyncDir
 	patch.SyncFile = func(*os.File) error { return nil }
 	patch.SyncDir = func(string) error { return nil }

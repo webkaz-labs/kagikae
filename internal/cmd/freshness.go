@@ -729,7 +729,7 @@ func liveValuesFreshness(tool string, values []artifact.Value) freshness.Info {
 // upstream `expiresAt` type change produces) is one kae cannot judge at all. So the two
 // are separated: only an `orderable` live copy is declared superseded, and an
 // un-orderable one is reported as unorderable and marked `preserve`, because the caller
-// may be about to overwrite it. `pinSupersededChecks` in dircred.go is the worked example
+// may be about to overwrite it. `pinSupersededChecks` in dircred_checks.go is the worked example
 // of the same asymmetry; taking `supersedes`' subset here destroyed a refreshed token on
 // `run -s` (measured 2026-08-07), which is the same defect one guard over from the one
 // that commit was fixing.

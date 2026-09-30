@@ -688,7 +688,8 @@ func TestWriteDirCredentialKeepsANewerCopyItCannotAttribute(t *testing.T) {
 // The second half is why a tool needs more than the measurement: attribution reads
 // an identity-only artifact, and a tool that declares none can never satisfy it — so
 // the harvest would be dead code for it. codex is in that state today, which is why
-// the end-to-end codex test below cannot prove this gate on its own.
+// TestWriteDirCredentialDoesNotHarvestUnmeasuredTool, the end-to-end codex test,
+// cannot prove this gate on its own.
 func TestHarvestIsDeclaredForMeasuredToolsOnly(t *testing.T) {
 	ctx := context.Background()
 	app := testApp(t, nil)

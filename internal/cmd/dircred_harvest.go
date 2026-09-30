@@ -784,3 +784,17 @@ func (app *App) recordHarvestTime(tool, accountName string) {
 			tool, tool, accountName, err)
 	}
 }
+
+// rotatesSingleUse reports whether tool's refresh token is measured to rotate
+// single-use — whether a newer copy of one account's credential *invalidates*
+// the older copies of it, rather than merely being newer than them. That fact is
+// what makes "keep the newest copy" a rule instead of a coin flip, and it is why
+// the harvest exists at all.
+//
+// claude only, because claude is the only tool whose rotation has been measured
+// ([docs/VALIDATION.md] § Upstream Behaviour Assumptions;
+// docs/ROADMAP.md § Rotation is measured for claude only). Adding a tool here
+// without that measurement would have kae choose between two copies on a guess
+// and destroy the working one — the same class of defect every "never declare an
+// artifact for a location you could not measure" refusal in the dircred files prevents.
+func rotatesSingleUse(tool string) bool { return tool == constants.ToolClaude }

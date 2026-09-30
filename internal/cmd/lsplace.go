@@ -382,7 +382,7 @@ func (app *App) collectPlaceGroups(ctx context.Context, loaded loadedState, warn
 			g.pins = nil
 		}
 		for _, tool := range placeTools() {
-			if !pc.toolRelevant(tool) {
+			if !pc.toolRelevant(tool) && !app.hasSession(pc, tool) {
 				continue
 			}
 			rows, err := app.toolPlaces(ctx, pc, tool)

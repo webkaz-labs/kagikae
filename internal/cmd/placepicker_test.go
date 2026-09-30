@@ -190,7 +190,7 @@ func TestPickerRowsFilterOnPathKindAndGroup(t *testing.T) {
 	}
 	// The root line carries kind and number; the level directory line is its name
 	// alone, and still filters on the whole path, kind and group.
-	if root.Detail != constants.PlaceKindProject || root.Note != "#2" {
+	if root.Detail != constants.PlaceKindProject || root.Note != "#3" {
 		t.Fatalf("root row %+v", root)
 	}
 	if child.Label != ".claude" || child.Detail != "" || child.Note != "" || !strings.Contains(child.Filter, filepath.Join(sub, ".claude")) ||

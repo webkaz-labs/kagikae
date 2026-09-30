@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
+	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
@@ -71,6 +73,17 @@ func placesOf(t *testing.T, app *App, req lsRequest) []placeRow {
 		t.Fatalf("places must be [] not null: %s", out)
 	}
 	return report.Places
+}
+
+// wantSession is the kindsAndPaths entry of claude's session row under user, for
+// the test's current directory as the kernel names it.
+func wantSession(t *testing.T, user string) string {
+	t.Helper()
+	cwd, err := syscall.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "session " + filepath.Join(user, "projects", claude.ProjectDirName(cwd))
 }
 
 func kindsAndPaths(rows []placeRow) []string {
@@ -181,6 +194,7 @@ func TestToolPlacesInARepositoryFollowTheMeasuredRules(t *testing.T) {
 	claude := placesOf(t, app, lsRequest{target: constants.ToolClaude})
 	want := []string{
 		"user " + realClaude,
+		wantSession(t, realClaude),
 		"project " + filepath.Join(cwd, ".claude"),
 		"project " + filepath.Join(root, "sub", ".claude"),
 		"project " + filepath.Join(root, ".claude"),
@@ -194,6 +208,7 @@ func TestToolPlacesInARepositoryFollowTheMeasuredRules(t *testing.T) {
 	}
 	for i, applies := range [][]string{
 		nil,
+		nil,                                   // the session row
 		{constants.PlaceAppliesSettings},      // cwd's settings.json
 		{constants.PlaceAppliesSkillsAgents},  // sub's settings.json does not apply from sub/mid
 		{constants.PlaceAppliesLocalSettings}, // the root's settings.local.json
@@ -207,7 +222,7 @@ func TestToolPlacesInARepositoryFollowTheMeasuredRules(t *testing.T) {
 	if claude[0].Source != constants.PlaceSourceGlobal || claude[0].Mode != constants.ModeAuth || !claude[0].InEffect {
 		t.Fatalf("an unbound user level is the real home, applied globally: %+v", claude[0])
 	}
-	if claude[3].Root != root || !claude[3].InEffect || claude[5].InEffect || claude[5].Root != filepath.Join(cwd, "deeper") {
+	if claude[4].Root != root || !claude[4].InEffect || claude[6].InEffect || claude[6].Root != filepath.Join(cwd, "deeper") {
 		t.Fatalf("project/below rows: %+v", claude[1:])
 	}
 	for i, row := range claude {
@@ -295,6 +310,7 @@ func TestToolPlacesOutsideARepository(t *testing.T) {
 	claude := placesOf(t, app, lsRequest{target: constants.ToolClaude})
 	if got, want := kindsAndPaths(claude), []string{
 		"user " + filepath.Join(app.Env.Home, ".claude"),
+		wantSession(t, filepath.Join(app.Env.Home, ".claude")),
 		"below " + filepath.Join(cwd, "a", "b", "c", ".claude"),
 	}; !slices.Equal(got, want) {
 		t.Fatalf("claude places:\n got %v\nwant %v", got, want)
@@ -303,8 +319,8 @@ func TestToolPlacesOutsideARepository(t *testing.T) {
 	// instructions.
 	writeFile(t, filepath.Join(parent, ".claude", "AGENTS.md"), "# parent\n")
 	claude = placesOf(t, app, lsRequest{target: constants.ToolClaude})
-	if len(claude) != 3 || claude[1].Path != filepath.Join(parent, ".claude") ||
-		!slices.Equal(claude[1].Applies, []string{constants.PlaceAppliesInstructions}) {
+	if len(claude) != 4 || claude[2].Path != filepath.Join(parent, ".claude") ||
+		!slices.Equal(claude[2].Applies, []string{constants.PlaceAppliesInstructions}) {
 		t.Fatalf("claude places with the parent's AGENTS.md: %v %+v", kindsAndPaths(claude), claude)
 	}
 	if code, out := captureStdout(t, func() int {
@@ -333,17 +349,18 @@ func TestProjectLevelsStopBeforeHome(t *testing.T) {
 	home := chdirTo(t, app.Env.Home)
 	app.Env.Home = home
 	mkdirs(t, filepath.Join(home, ".claude"), filepath.Join(home, ".codex"))
-	for _, tool := range []string{constants.ToolClaude, constants.ToolCodex} {
-		if rows := placesOf(t, app, lsRequest{target: tool}); len(rows) != 1 || rows[0].Kind != constants.PlaceKindUser {
-			t.Fatalf("%s at HOME lists only its user level: %v", tool, kindsAndPaths(rows))
+	// claude's session row follows its user level; it is not a project level.
+	for tool, count := range map[string]int{constants.ToolClaude: 2, constants.ToolCodex: 1} {
+		if rows := placesOf(t, app, lsRequest{target: tool}); len(rows) != count || rows[0].Kind != constants.PlaceKindUser {
+			t.Fatalf("%s at HOME lists only its user level and session row: %v", tool, kindsAndPaths(rows))
 		}
 	}
 	scratchGit(t, home, "init", "-q")
 	writeFile(t, filepath.Join(home, ".claude", "settings.local.json"), "{}\n")
 	writeFile(t, filepath.Join(home, ".codex", "config.toml"), "\n")
 	chdirTo(t, filepath.Join(home, "proj"))
-	for _, tool := range []string{constants.ToolClaude, constants.ToolCodex} {
-		if rows := placesOf(t, app, lsRequest{target: tool}); len(rows) != 1 {
+	for tool, count := range map[string]int{constants.ToolClaude: 2, constants.ToolCodex: 1} {
+		if rows := placesOf(t, app, lsRequest{target: tool}); len(rows) != count {
 			t.Fatalf("%s in a repository rooted at HOME has no project level from HOME: %v", tool, kindsAndPaths(rows))
 		}
 	}
@@ -446,7 +463,7 @@ func TestCurrentWithSeveralMatchesNamesThem(t *testing.T) {
 	if code != constants.ExitUsage {
 		t.Fatalf("exit = %d, want usage: %s", code, stderr)
 	}
-	for _, want := range []string{"2 " + filepath.Join(cwd, "a", ".claude"), "3 " + filepath.Join(cwd, "b", ".claude")} {
+	for _, want := range []string{"3 " + filepath.Join(cwd, "a", ".claude"), "4 " + filepath.Join(cwd, "b", ".claude")} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("the error must name %q:\n%s", want, stderr)
 		}
@@ -736,14 +753,15 @@ func TestProjectLevelsInARepositoryRootedAtHome(t *testing.T) {
 	claude := placesOf(t, app, lsRequest{target: constants.ToolClaude})
 	if got, want := kindsAndPaths(claude), []string{
 		"user " + filepath.Join(home, ".claude"),
+		wantSession(t, filepath.Join(home, ".claude")),
 		"project " + filepath.Join(cwd, ".claude"),
 		"project " + filepath.Join(home, "proj", ".claude"),
 	}; !slices.Equal(got, want) {
 		t.Fatalf("claude places:\n got %v\nwant %v", got, want)
 	}
-	if !slices.Equal(claude[1].Applies, []string{constants.PlaceAppliesLocalSettings}) ||
-		!slices.Equal(claude[2].Applies, []string{constants.PlaceAppliesSkillsAgents}) {
-		t.Fatalf("applies: %v / %v", claude[1].Applies, claude[2].Applies)
+	if !slices.Equal(claude[2].Applies, []string{constants.PlaceAppliesLocalSettings}) ||
+		!slices.Equal(claude[3].Applies, []string{constants.PlaceAppliesSkillsAgents}) {
+		t.Fatalf("applies: %v / %v", claude[2].Applies, claude[3].Applies)
 	}
 	repo := placesOf(t, app, lsRequest{target: constants.PlaceGroupRepo})
 	if len(repo) != 1 || !samePath(repo[0].Path, home) {
@@ -777,8 +795,8 @@ func TestProjectLevelsThroughASymlinkIntoARepository(t *testing.T) {
 		t.Fatalf("codex places:\n got %v\nwant %v", got, want)
 	}
 	claude := placesOf(t, app, lsRequest{target: constants.ToolClaude})
-	if len(claude) != 2 || claude[1].Path != filepath.Join(repo, ".claude") ||
-		!slices.Equal(claude[1].Applies, []string{constants.PlaceAppliesLocalSettings}) {
+	if len(claude) != 3 || claude[2].Path != filepath.Join(repo, ".claude") ||
+		!slices.Equal(claude[2].Applies, []string{constants.PlaceAppliesLocalSettings}) {
 		t.Fatalf("claude places: %v %+v", kindsAndPaths(claude), claude)
 	}
 	rows := placesOf(t, app, lsRequest{target: constants.PlaceGroupRepo})

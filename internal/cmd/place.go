@@ -9,7 +9,9 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"syscall"
 
+	"github.com/webkaz-labs/kagikae/internal/adapter/claude"
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/runner"
@@ -70,6 +72,11 @@ type placeContext struct {
 	below    map[string][]string   // tool -> project levels below cwd (the .claude/.codex dirs)
 	project  map[string][]placeRow // tool -> projectLevels, memoized
 	belowSet bool
+	// physicalCwd is the working directory as the kernel names it (physicalWd),
+	// which is what claude names its session directory from; observed once.
+	physicalCwd    string
+	physicalCwdErr error
+	physicalSet    bool
 }
 
 // placeTools are the tools kae resolves places for: the ones with a home it can
@@ -580,7 +587,83 @@ func (app *App) leadingToolPlaces(pc *placeContext, tool string) ([]placeRow, er
 	if err != nil {
 		return nil, err
 	}
-	return numberPlaces(append([]placeRow{user}, pc.projectLevels(tool)...)), nil
+	rows := []placeRow{user}
+	if session, ok := app.sessionRow(pc, tool, user); ok {
+		rows = append(rows, session)
+	}
+	return numberPlaces(append(rows, pc.projectLevels(tool)...)), nil
+}
+
+// physicalWd is the process's working directory by the kernel's own answer
+// (syscall.Getwd), never a spelling: os.Getwd trusts $PWD and filepath.Abs the
+// path as typed, and either keeps a symlink or a case the filesystem does not
+// have, which would name a session directory claude never writes.
+var physicalWd = syscall.Getwd
+
+// sessionCwd is the physical working directory, read once per command; a failure
+// is warned about once and leaves the session row out.
+func (pc *placeContext) sessionCwd() (string, bool) {
+	if !pc.physicalSet {
+		pc.physicalSet = true
+		pc.physicalCwd, pc.physicalCwdErr = physicalWd()
+		if pc.physicalCwdErr != nil {
+			fmt.Fprintf(os.Stderr, "kae: warning: the current directory could not be resolved (%v), so the claude session row is not listed\n", pc.physicalCwdErr)
+		}
+	}
+	return pc.physicalCwd, pc.physicalCwdErr == nil
+}
+
+// sessionRow is claude's session row: `<user level>/projects/<name>`, the
+// directory holding the transcripts of the current directory (docs/CLI.md § kae
+// ls Semantics). It follows the user level, so an explicit -s or -i and a binding
+// both move it. It is always listed and marked missing until claude has written
+// there.
+func (app *App) sessionRow(pc *placeContext, tool string, user placeRow) (placeRow, bool) {
+	if tool != constants.ToolClaude {
+		return placeRow{}, false
+	}
+	name := ""
+	if override := app.Env.Getenv(claude.ProjectDirNameEnv); claude.ValidProjectDirName(override) && app.launchEnvHasConfigDir(user) {
+		name = override
+	} else {
+		cwd, ok := pc.sessionCwd()
+		if !ok {
+			return placeRow{}, false
+		}
+		name = claude.ProjectDirName(cwd)
+	}
+	row := user
+	row.Kind = constants.PlaceKindSession
+	row.Path = filepath.Join(user.Path, "projects", name)
+	row.Exists = dirExists(row.Path)
+	return row, true
+}
+
+// launchEnvHasConfigDir says whether the environment claude is launched in holds
+// CLAUDE_CONFIG_DIR, the only case claude honours CLAUDE_CODE_PROJECT_DIR_NAME. A
+// binding, a global `kae use -i` home and an explicit -i export it; the real home
+// does only when the user's own variable named it (realToolHome), so the variable
+// a binding exported does not count under an explicit -s.
+func (app *App) launchEnvHasConfigDir(user placeRow) bool {
+	if user.Mode != constants.ModeAuth {
+		return true
+	}
+	dir := app.Env.Getenv(isolationEnvVar(constants.ToolClaude))
+	return dir != "" && !app.isKaeManagedHome(dir)
+}
+
+// hasSession says whether tool's session directory for the current directory
+// exists, which makes its group relevant to bare `kae ls` and the picker.
+func (app *App) hasSession(pc *placeContext, tool string) bool {
+	if tool != constants.ToolClaude {
+		return false
+	}
+	user, err := app.userLevel(pc, tool)
+	if err != nil {
+		return false
+	}
+	session, ok := app.sessionRow(pc, tool, user)
+	return ok && session.Exists
 }
 
 // levelPlaces is every place of one level of tool, with `kae ls <tool>`'s

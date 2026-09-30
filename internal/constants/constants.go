@@ -423,12 +423,14 @@ var PlaceGroups = []string{PlaceGroupAccount, PlaceGroupPin, PlaceGroupRepo, Pla
 
 // Place kinds. The four tool levels match the level selectors (`--project`,
 // `--below`, `--home`); `user` is the effective user level, which is also the
-// real home when nothing else applies.
+// real home when nothing else applies. `session` is claude's per-working-directory
+// transcript directory under the user level; no selector chooses it.
 const (
 	PlaceKindUser           = "user"
 	PlaceKindProject        = "project"
 	PlaceKindBelow          = "below"
 	PlaceKindHome           = "home"
+	PlaceKindSession        = "session"
 	PlaceKindBoundDirectory = "bound-directory"
 	PlaceKindRepositoryRoot = "repository-root"
 	PlaceKindKaeConfig      = "config"

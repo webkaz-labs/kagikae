@@ -144,8 +144,8 @@ func TestCdPathMatchesLs(t *testing.T) {
 		{"codex project", lsFlags{project: true}, []string{"codex"}, filepath.Join(root, ".codex")},
 		{"below", lsFlags{below: true}, []string{"codex"}, filepath.Join(cwd, "a", ".codex")},
 		{"below root", lsFlags{below: true, root: true}, []string{"codex"}, filepath.Join(cwd, "a")},
-		{"--at", lsFlags{at: atFlag{n: 2, set: true}}, []string{"claude"}, filepath.Join(cwd, ".claude")},
-		{"--at --root", lsFlags{at: atFlag{n: 2, set: true}, root: true}, []string{"claude"}, cwd},
+		{"--at", lsFlags{at: atFlag{n: 3, set: true}}, []string{"claude"}, filepath.Join(cwd, ".claude")},
+		{"--at --root", lsFlags{at: atFlag{n: 3, set: true}, root: true}, []string{"claude"}, cwd},
 		{"-s", lsFlags{shared: true}, []string{"claude"}, filepath.Join(app.Env.Home, ".claude")},
 		{"-i", lsFlags{isolated: true}, []string{"claude", "side"}, app.Paths.GlobalIsolatedHomeDir(constants.ToolClaude, "side")},
 		{"--home", lsFlags{home: true}, []string{"claude"}, filepath.Join(app.Env.Home, ".claude")},
@@ -245,8 +245,8 @@ func TestNavigateUsageErrors(t *testing.T) {
 func TestNavigatePickerCasesListCandidates(t *testing.T) {
 	app := testApp(t, nil)
 	cwd := chdirTo(t, t.TempDir())
-	// cwd's own .claude/ makes claude relevant to bare ls: user 1, project 2,
-	// below 3 and 4.
+	// cwd's own .claude/ makes claude relevant to bare ls: user 1, session 2,
+	// project 3, below 4 and 5.
 	mkdirs(t, filepath.Join(cwd, ".claude"), filepath.Join(cwd, ".codex"), filepath.Join(cwd, "a", ".claude"), filepath.Join(cwd, "b", ".claude"),
 		app.Paths.ConfigDir, app.Paths.DataDir, app.Paths.StateDir)
 	for _, tc := range []struct {
@@ -258,27 +258,27 @@ func TestNavigatePickerCasesListCandidates(t *testing.T) {
 	}{
 		{"no target", "open", lsFlags{}, nil, []string{
 			"kae open needs a target; choose one:", "kae open kae --at 2  " + app.Paths.DataDir,
-			"kae open claude --at 3  " + filepath.Join(cwd, "a", ".claude"),
+			"kae open claude --at 4  " + filepath.Join(cwd, "a", ".claude"),
 		}},
 		{"kae has no current place", "cd", lsFlags{}, []string{"kae"}, []string{
 			"kae cd kae matches 3 places", "kae cd kae --at 1  " + app.Paths.ConfigDir,
 		}},
 		{"several below", "cd", lsFlags{below: true}, []string{"claude"}, []string{
 			"kae cd claude --below matches 2 places",
-			"kae cd claude --at 3  " + filepath.Join(cwd, "a", ".claude"),
-			"kae cd claude --at 4  " + filepath.Join(cwd, "b", ".claude"),
+			"kae cd claude --at 4  " + filepath.Join(cwd, "a", ".claude"),
+			"kae cd claude --at 5  " + filepath.Join(cwd, "b", ".claude"),
 		}},
 		{"several below, explicit, root", "open", lsFlags{below: true, root: true, shared: true}, []string{"claude"}, []string{
 			// The path is the one the command reaches: the directory holding .claude/.
-			"kae open -s claude --at 4 --root  " + filepath.Join(cwd, "b") + "\n",
+			"kae open -s claude --at 5 --root  " + filepath.Join(cwd, "b") + "\n",
 		}},
 		// Each tool's places of that level, as place lines like any candidate list.
 		{"level without a bound tool", "cd", lsFlags{project: true}, nil, []string{
 			"kae cd --project needs a tool: no tool is bound here; choose one:",
-			"kae cd claude --at 2  " + filepath.Join(cwd, ".claude"), "kae cd codex --at 2  " + filepath.Join(cwd, ".codex"),
+			"kae cd claude --at 3  " + filepath.Join(cwd, ".claude"), "kae cd codex --at 2  " + filepath.Join(cwd, ".codex"),
 		}},
 		{"level without a bound tool, root", "cd", lsFlags{project: true, root: true}, nil, []string{
-			"kae cd claude --at 2 --root  " + cwd + "\n", "kae cd codex --at 2 --root  " + cwd + "\n",
+			"kae cd claude --at 3 --root  " + cwd + "\n", "kae cd codex --at 2 --root  " + cwd + "\n",
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -311,8 +311,8 @@ func TestNavigateCandidatesLeaveOutMissingPlaces(t *testing.T) {
 	// ~/.claude and ~/.codex do not exist; cwd's .claude/ does.
 	mkdirs(t, filepath.Join(cwd, ".claude"))
 	code, _, stderr := cdPath(t, app, navRequest(t, "cd", lsFlags{}))
-	if code != constants.ExitUsage || !strings.Contains(stderr, "kae cd claude --at 2  "+filepath.Join(cwd, ".claude")) ||
-		strings.Contains(stderr, "kae cd claude --at 1") || strings.Contains(stderr, "kae cd kae --at") {
+	if code != constants.ExitUsage || !strings.Contains(stderr, "kae cd claude --at 3  "+filepath.Join(cwd, ".claude")) ||
+		strings.Contains(stderr, "kae cd claude --at 1") || strings.Contains(stderr, "kae cd claude --at 2") || strings.Contains(stderr, "kae cd kae --at") {
 		t.Fatalf("no target = %d:\n%s", code, stderr)
 	}
 	// codex has no project level here and its only place, the real home, is
@@ -414,12 +414,12 @@ func TestNavigateNoCurrentPlaceListsTheTargetsPlaces(t *testing.T) {
 		{"no level below", lsFlags{below: true}, []string{"claude"}, []string{
 			"kae cd claude --below has no current place here; choose one:",
 			"kae cd claude --at 1  " + filepath.Join(app.Env.Home, ".claude"),
-			"kae cd claude --at 2  " + filepath.Join(outside, ".claude"),
+			"kae cd claude --at 3  " + filepath.Join(outside, ".claude"),
 		}},
 		// With --root only the places that have a root are offered, as the path
 		// the command reaches.
 		{"no level below, root", lsFlags{below: true, root: true}, []string{"claude"}, []string{
-			"kae cd claude --at 2 --root  " + outside + "\n",
+			"kae cd claude --at 3 --root  " + outside + "\n",
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -861,7 +861,7 @@ func TestNavigateFindsBelowLevelsOnlyWhenNeeded(t *testing.T) {
 		{"user level", lsFlags{}, filepath.Join(app.Env.Home, ".claude"), false},
 		{"project", lsFlags{project: true}, filepath.Join(root, ".claude"), false},
 		{"below", lsFlags{below: true}, filepath.Join(root, "a", ".claude"), true},
-		{"--at", lsFlags{at: atFlag{n: 3, set: true}}, filepath.Join(root, "a", ".claude"), true},
+		{"--at", lsFlags{at: atFlag{n: 4, set: true}}, filepath.Join(root, "a", ".claude"), true},
 	} {
 		rec := &recordingRunner{}
 		var code int
@@ -941,7 +941,7 @@ func TestNavigationCandidateSets(t *testing.T) {
 		want []string
 	}{
 		{"no target", lsFlags{}, nil, []string{
-			"claude: 1 " + claudeHome + " 2 " + filepath.Join(cwd, ".claude") + " 3 " + filepath.Join(cwd, "a", ".claude"),
+			"claude: 1 " + claudeHome + " 3 " + filepath.Join(cwd, ".claude") + " 4 " + filepath.Join(cwd, "a", ".claude"),
 			"codex: 2 " + filepath.Join(cwd, ".codex") + " 3 " + filepath.Join(cwd, "b", ".codex"),
 			"kae: 1 " + app.Paths.ConfigDir + " 2 " + app.Paths.DataDir,
 		}},
@@ -949,10 +949,10 @@ func TestNavigationCandidateSets(t *testing.T) {
 			"kae: 1 " + app.Paths.ConfigDir + " 2 " + app.Paths.DataDir,
 		}},
 		{"level without a bound tool, project", lsFlags{project: true}, nil, []string{
-			"claude: 2 " + filepath.Join(cwd, ".claude"), "codex: 2 " + filepath.Join(cwd, ".codex"),
+			"claude: 3 " + filepath.Join(cwd, ".claude"), "codex: 2 " + filepath.Join(cwd, ".codex"),
 		}},
 		{"level without a bound tool, below", lsFlags{below: true}, nil, []string{
-			"claude: 3 " + filepath.Join(cwd, "a", ".claude"), "codex: 3 " + filepath.Join(cwd, "b", ".codex"),
+			"claude: 4 " + filepath.Join(cwd, "a", ".claude"), "codex: 3 " + filepath.Join(cwd, "b", ".codex"),
 		}},
 		{"level without a bound tool, home", lsFlags{home: true}, nil, []string{"claude: 1 " + claudeHome}},
 	} {
@@ -967,7 +967,7 @@ func TestNavigationCandidateSets(t *testing.T) {
 	bare := chdirTo(t, filepath.Join(t.TempDir(), "bare"))
 	mkdirs(t, filepath.Join(bare, ".claude"))
 	if got, want := setSummary(set(lsFlags{below: true}, "claude")), []string{
-		"claude: 1 " + claudeHome + " 2 " + filepath.Join(bare, ".claude"),
+		"claude: 1 " + claudeHome + " 3 " + filepath.Join(bare, ".claude"),
 	}; !slices.Equal(got, want) {
 		t.Fatalf("no current place: set = %q, want %q", got, want)
 	}

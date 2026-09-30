@@ -175,6 +175,25 @@ const scenarios = [
         await s.expectPwd(`${s.fx.repo}/.claude`, "s8-pwd");
       }),
   },
+  {
+    name: "9 an existing claude session directory is a row that the filter projects selects",
+    run: () =>
+      withShell({ name: "s9", cols: 120, rows: 36 }, async (s) => {
+        // The row's path comes from kae; the Go tests own how its name is derived.
+        // The directory is created here because a missing one is not offered.
+        await s.run('d=$(kae ls claude --at 2) && mkdir -p "$d"; echo "s9-mk:$?"');
+        await s.expectText("s9-mk:0");
+        await s.run("kae cd");
+        await s.expectText(FILTER_HINT);
+        await s.expectText("session");
+        await s.type("projects");
+        await s.expectText("> projects");
+        await s.key("Enter");
+        await s.expectNoText(FOOTER);
+        await s.run('[ "$PWD" = "$d" ]; echo "s9-pwd:$?"');
+        await s.expectText("s9-pwd:0");
+      }),
+  },
 ];
 
 const tagAt = process.argv.indexOf("--tag");

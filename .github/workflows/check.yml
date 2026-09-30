@@ -1,8 +1,8 @@
 name: Check
 
 # Shared by ci.yml and release.yml. This workflow is a subset of the local
-# mise run check; compare these steps with mise.toml for the current gap. It runs
-# the full picker PTY suite where mise run check runs the fast journey only.
+# mise run check; compare these steps with mise.toml for the current gap. The
+# picker PTY split is in docs/VALIDATION.md § Picker PTY suite.
 # Formatter behavior is owned by tools/devtools/shell/check-go-format.sh. Docs module-resolution
 # constraints are set on their steps below. Further admission decisions live in
 # docs/ROADMAP.md.

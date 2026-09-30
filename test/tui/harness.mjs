@@ -46,9 +46,15 @@ import { TuiTest, uniqueSession } from "@microsoft/tui-test";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
+// A positive finite number from an environment value, or undefined.
+function positiveFinite(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 // Per-step wait, 15 s unless KAE_TUI_TIMEOUT_MS overrides it (docs/VALIDATION.md
 // § Picker PTY suite).
-const TIMEOUT_MS = Number(process.env.KAE_TUI_TIMEOUT_MS) || 15000;
+const TIMEOUT_MS = positiveFinite(process.env.KAE_TUI_TIMEOUT_MS) ?? 15000;
 const BUILD_TIMEOUT_MS = 300000;
 const SCENARIO_TIMEOUT_MS = 90000;
 const PROMPT = "READY> ";

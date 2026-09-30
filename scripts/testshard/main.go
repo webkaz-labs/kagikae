@@ -12,7 +12,8 @@
 // A split that dropped or repeated a test would pass without saying so, so every
 // shard's own verbose output is checked: the top-level tests it started must be
 // exactly the ones it was given, each once, and the shards together must cover the
-// listed set. Any mismatch fails the run.
+// listed set. The plain run's package list must drop internal/cmd exactly once, so
+// the package never also runs outside its shards. Any mismatch fails the run.
 //
 // Usage, from the module root:
 //

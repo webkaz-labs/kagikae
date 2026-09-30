@@ -46,10 +46,10 @@ Do not widen those mutation paths without affected acceptance.
 
 The uninstall/Packslip release is recorded in [RELEASE.md](RELEASE.md), with
 lifecycle evidence and limitations in [ACCEPTANCE.md](ACCEPTANCE.md)
-§ Uninstall and Packslip assessment. Next come the two operator-requested
-features described in § Place navigation and the tree-shared mode, in the order given there;
+§ Uninstall and Packslip assessment. Next comes the operator-requested tree-shared
+mode described in § Place navigation and the tree-shared mode;
 § Agent orchestration and remote authentication — deferred exploration follows
-them and still requires investigation and an explicit implementation decision.
+it and still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
 § Upstream-drift automation — what is left.
 
@@ -81,18 +81,16 @@ prerequisites; entries not named here retain their recorded gate.
 
 ## Place navigation and the tree-shared mode
 
-Requested by the operator on 2026-09-29. Take them in this order. The first item's
-design was settled with the operator on 2026-09-30; the second still needs its own
-design, including the mode's term in [CONTEXT.md](CONTEXT.md).
+Requested by the operator on 2026-09-29. The first item is implemented; the second
+still needs its own design, including the mode's term in [CONTEXT.md](CONTEXT.md).
 
 1. **List, open and move to places.** A *place* is a directory a user wants to
    reach: where a tool reads its settings and sessions (not only what kae created),
    a bound directory, a repository root, or kae's own directories. Three verbs share
    one set of target words and selectors: `ls` shows, `cd` moves, `open` opens in
    the platform file manager. The `ls` slice and the `open` and `cd` slice are
-   implemented, and so is the picker; [CLI.md](CLI.md) § kae ls Semantics and § kae open
-   and kae cd Semantics are their contracts. What follows is the design the session
-   row still builds on.
+   implemented, and so are the picker and claude's session row; [CLI.md](CLI.md)
+   § kae ls Semantics and § kae open and kae cd Semantics are their contracts.
 
    ```
    kae ls                                 # groups: account, pin, each relevant tool, repo, kae
@@ -113,40 +111,11 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      credential store and file-backend secrets get no row of their own.
    - **`kae ls`** — groups, the config-error behaviour and relevance — is in
      CLI § kae ls Semantics.
-   - **Tool levels** and each tool's discovery rule are in CLI § kae ls
-     Semantics. claude's user level also has a session row, the per-project
-     directory under `projects/`; it is not implemented. codex stores sessions
-     by date, so it has no session row. Measured with claude 2.1.284 on
-     macOS on 2026-09-30 (`claude -p` under `env -i`, a scratch `HOME` and
-     `CLAUDE_CONFIG_DIR`, a bogus API key and a local listener answering 401; the
-     transcript and `memory/` appear at session start despite the 401, and a
-     `SessionStart` hook's `transcript_path` named the directory that appeared;
-     no mismatch over every case not using the variable):
-     - **Name**: for each UTF-16 code unit of the process's physical working
-       directory (symlinks resolved, so `/tmp` is `/private/tmp`; `PWD` unused;
-       on-disk case on a case-insensitive filesystem), keep `[A-Za-z0-9]` and
-       replace anything else with `-`. An astral character gives two dashes, and
-       CJK or accented letters are not alphanumeric. A converted name over 200
-       characters becomes its first 200 characters, `-`, and the base 36 of the
-       absolute value of Java's `String.hashCode` (`h = h*31 + unit`, int32) over
-       the raw path. The hash is undocumented and was matched against five
-       suffixes; a seven-character suffix was not observed.
-     - **Transcripts and memory differ**: transcripts sit in the directory named
-       for the working directory itself, so a subdirectory and a linked worktree
-       each have their own; `memory/` sits only under the repository root's name
-       (the main checkout for a linked worktree). An empty `.git` directory
-       counted as a root for `memory/`.
-     - **`CLAUDE_CODE_PROJECT_DIR_NAME`**: 1-64 of `[A-Za-z0-9_-]`, not a device
-       name such as `con`, replaces the name for transcripts and `memory/` from
-       every working directory, and only with `CLAUDE_CONFIG_DIR` in the
-       launching environment; an invalid value, one set only in a settings `env`
-       block, or one without `CLAUDE_CONFIG_DIR` is ignored and the derived name
-       is used.
-     - **Unmeasured**: decomposed (NFD) Unicode names, a seven-character hash
-       suffix, versions other than 2.1.284, and `/cd` or `EnterWorktree`
-       relocating a transcript. The session row waits on a design that either
-       derives this name or lists `projects/` and matches, and on re-verifying
-       the name on upgrade.
+   - **Tool levels** and each tool's discovery rule, including claude's session row
+     (the per-directory `projects/` entry, whose name rule was measured on 2026-09-30),
+     are in CLI § kae ls Semantics; [VALIDATION.md](VALIDATION.md) § Upstream
+     Behaviour Assumptions re-verifies the name on upgrade. codex stores sessions by
+     date, so it has no session row.
    - **Level selectors** apply to a tool target: `--project` is the nearest
      effective ancestor project level, `--below` a project level below the current
      directory, `--home` the real home. When a selector matches several places,
@@ -165,7 +134,6 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      not a place.
    - **Picker.** Implemented; [CLI.md](CLI.md) § kae open and kae cd Semantics is its
      contract and [VALIDATION.md](VALIDATION.md) § Picker PTY suite its terminal tests.
-     Still open: the tree's user level gains its session row when that slice lands.
    - **`open` fallback**: `open` on macOS and `xdg-open` on Linux; without one,
      print the path and a warning and exit `0`.
    - **`cd`** is a `kae` shell function delivered through the paths that already
@@ -177,11 +145,6 @@ design, including the mode's term in [CONTEXT.md](CONTEXT.md).
      cannot place arguments inside `cd "$(…)"`. Without the function, `kae cd`
      exits `64` and suggests `cd "$(kae ls … --current)"`.
 
-   Remaining slice: the claude session row, whose name rule is measured in the
-   **Tool levels** bullet above. It updates completion for what it adds (CLI
-   § Keeping completion current), CLI, CONTEXT when a term changes, README, README.ja
-   and GUIDE.ja in the same commit. It comes first because it helps today's `-s` and
-   `-i` binds and serves as the inspection tool for the next item.
 2. **Tree-shared mode.** A third per-directory mode beside `-s` and `-i`: the bound
    directory and everything below it are isolated from the real home, and switching
    account keeps one config store — sessions, history, memory, settings — while
@@ -1503,8 +1466,7 @@ is anywhere near that, and only by demand.
 - localized human output (Japanese)
 - `kae shell init` convenience wrappers
 - list and filter every tool project directory on the machine (every `.claude/`,
-  not only those around the current directory), after
-  § Place navigation and the tree-shared mode's first item
+  not only those around the current directory)
 
 ## Delete the prose that is not load-bearing
 

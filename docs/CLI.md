@@ -496,8 +496,8 @@ subscription windows — the data otherwise split across `kae accounts` and
 `repo` (the Git repository root of the current directory) and `kae` (kae's
 config, data and state directories; the credential store and file-backend secrets
 live under data and get no row of their own). A tool is relevant when it has a
-governing binding (below) or an effective project level at the current
-directory. It takes no locks and does not change accounts, credentials,
+governing binding (below), an effective project level at the current
+directory, or (claude) an existing session directory. It takes no locks and does not change accounts, credentials,
 or config. It may update the usage cache described in "Subscription windows in
 listings"; a failure to write that file does not change the exit code.
 
@@ -522,9 +522,9 @@ No current place (no governing binding, no repository, no matching level) exits
 it is the several-matches usage error below. `--current` and `--at` need a
 target, and `account` rows are refused.
 
-**Tool levels**, in list order: the effective user level, the effective ancestor
-project levels (nearest first), the project levels below the current directory,
-and the real home when another user level is in effect. kae resolves places for
+**Tool levels**, in list order: the effective user level, claude's session row,
+the effective ancestor project levels (nearest first), the project levels below
+the current directory, and the real home when another user level is in effect. kae resolves places for
 claude and codex, whose project levels are `.claude/` and `.codex/`; the other
 tools list their accounts and no places until a documented or measured discovery
 rule exists. Ancestors stop before HOME, whose `.claude/` and `.codex/` are the
@@ -555,6 +555,44 @@ directory was reached by for as long as that spelling names the same directory.
   fragment that cannot be read is warned about on stderr and passed over, and
   kae's global mise fragment — which the default XDG layout puts at HOME's
   fragment path — is not a binding.
+- **claude session row** (kind `session`): `<user level>/projects/<name>`, the
+  directory holding the transcripts of claude sessions started in the current
+  directory. It follows the effective user level, `-s` and `-i` included, comes
+  right after it, and is not added for the real-home row listed beside another user
+  level. It is always listed and marked `(missing)` until claude has written there,
+  so `cd` and `open` cannot reach a missing one and the picker leaves it out. No
+  selector chooses it (`--current` is the user level; `--project`, `--below` and
+  `--home` name other levels) and it has no root, so `--root` leaves it out. A
+  session directory that exists is enough to make claude relevant to bare `kae ls`
+  and the picker. codex stores sessions by date and has no such row.
+  `<name>` is claude's name for the working directory, which kae derives instead
+  of listing `projects/`:
+  - The directory is the process's **physical** working directory as the kernel
+    names it (`getcwd`), so a symlink is resolved (`/tmp` is `/private/tmp`) and a
+    case-insensitive filesystem gives the on-disk case, whatever `PWD` or the
+    typed path says. If it cannot be read, only this row is left out, with a
+    warning that does not change the exit code.
+  - The path is NFC-normalised (a decomposed name and its composed spelling are one
+    directory). Each UTF-16 code unit that is not `[A-Za-z0-9]` becomes `-`: an
+    astral character gives two dashes, and CJK or accented letters, `.`, `_` and
+    spaces each give one.
+  - A converted name over 200 characters is its first 200 characters, `-`, and the
+    base 36 of the absolute value of Java's `String.hashCode` (`h = h*31 + unit`,
+    int32, widened to 64 bits before the absolute value) over the NFC path's
+    UTF-16 units; the suffix is at most 6 characters.
+  - `CLAUDE_CODE_PROJECT_DIR_NAME` in kae's environment replaces the name when it is
+    1-64 of `[A-Za-z0-9_-]` and not a device name (`con`, `prn`, `aux`, `nul`,
+    `com0`-`com9`, `lpt0`-`lpt9`, any case), and only where claude would honour it,
+    which is with `CLAUDE_CONFIG_DIR` in the launching environment: for a
+    binding, a `kae use -i` home and an explicit `-i`, which export it, and for the
+    real home only when the user's own `CLAUDE_CONFIG_DIR` named it. The variable a
+    binding exported is not counted under an explicit `-s`. An invalid value, or a
+    valid one without `CLAUDE_CONFIG_DIR`, leaves the derived name.
+  - The rule is claude's, measured, and re-verified on upgrade
+    ([VALIDATION.md](VALIDATION.md) § Upstream Behaviour Assumptions). Transcripts
+    sit in the directory named for the working directory itself, so a
+    subdirectory and a linked worktree each have their own row and their own name.
+    claude's `memory/` sits only under the repository root's name and is not a row.
 - **codex** reads `.codex/` from the current directory up to the repository root,
   and outside a repository only the current directory's. The documentation
   (https://learn.chatgpt.com/docs/config-file/config-advanced, read 2026-09-30):
@@ -1846,10 +1884,13 @@ write it.
     {"group": "claude", "number": 1, "kind": "user",
      "path": "/Users/you/.local/share/kagikae/isolation/0f2a1c9b4d7e6a83/claude/isolated/main/config",
      "exists": true, "in_effect": true, "source": "pin", "mode": "isolated", "account": "main"},
-    {"group": "claude", "number": 2, "kind": "project",
+    {"group": "claude", "number": 2, "kind": "session",
+     "path": "/Users/you/.local/share/kagikae/isolation/0f2a1c9b4d7e6a83/claude/isolated/main/config/projects/-Users-you-code-main-app",
+     "exists": true, "in_effect": true, "source": "pin", "mode": "isolated", "account": "main"},
+    {"group": "claude", "number": 3, "kind": "project",
      "path": "/Users/you/code/main-app/.claude", "root": "/Users/you/code/main-app",
      "exists": true, "in_effect": true, "applies": ["settings", "local-settings"]},
-    {"group": "claude", "number": 3, "kind": "home", "path": "/Users/you/.claude",
+    {"group": "claude", "number": 4, "kind": "home", "path": "/Users/you/.claude",
      "exists": true, "in_effect": false},
     {"group": "repo", "number": 1, "kind": "repository-root",
      "path": "/Users/you/code/main-app", "exists": true, "in_effect": true},
@@ -1869,7 +1910,9 @@ empty, and `kae ls account --json` is exactly these three keys without `places`.
 - `group`: `pin`, `repo`, `kae` or the tool name; `number`: its `--at` number in
   `kae ls <group>`.
 - `kind`: `bound-directory` (pin), `repository-root` (repo), `config`, `data` or
-  `state` (kae), and for a tool `user` (the effective user level), `project` (an
+  `state` (kae), and for a tool `user` (the effective user level), `session`
+  (claude's session directory for the current directory, under the user level and
+  carrying its `source`, `mode` and `account`), `project` (an
   effective ancestor level), `below` (a level below the current directory, not in
   effect) or `home` (the real home, listed when another user level is in effect).
 - `path`, `exists` (a directory is there now) and `in_effect` (the level applies

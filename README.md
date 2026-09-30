@@ -281,7 +281,7 @@ To reach the directories a tool reads in this worktree, list its places and prin
 one path, move there, or open it:
 
 ```bash
-kae ls claude                          # its accounts, user level, project levels
+kae ls claude                          # its accounts, user level, sessions, project levels
 cd "$(kae ls claude --current)"        # the bound store claude uses here
 cd "$(kae ls codex --current --project --root)"   # the nearest project holding .codex/
 kae cd claude                          # the same move, through the kae shell function
@@ -292,7 +292,10 @@ kae cd claude --pick                   # choose among claude's places, even with
 ```
 
 The user level follows the recorded binding of the nearest bound directory that
-binds that tool, not the shell's environment; [docs/CLI.md](docs/CLI.md) § kae ls Semantics has the
+binds that tool, not the shell's environment. Claude's list has one more row after
+it, the `projects/` directory holding this directory's session transcripts (marked
+`(missing)` until claude has written there), which follows the same user level.
+[docs/CLI.md](docs/CLI.md) § kae ls Semantics has the
 discovery rules for `.claude/` and `.codex/`. `kae cd` and `kae open` take the same
 targets and selectors and default to the current place. When a request names several
 places or none, or with `--pick`, they open a filterable picker on the terminal (type to

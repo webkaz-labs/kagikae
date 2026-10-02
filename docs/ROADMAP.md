@@ -64,6 +64,8 @@ English-only commit that unifies the wording of near-duplicate messages (how a r
 is phrased, `not captured`, `pinned` against `bound`) and hoists messages that
 repeat into shared helpers.
 
+Every stage that changes or translates a message updates, in the same commit, the documents and smoke assertions that quote it, the Japanese guide's quotations included.
+
 1. The mechanism (language selection, the catalog and its test), including the
    English pins VALIDATION states: the `TestMain` pin and `scripts/smoke-run.sh`
    setting `KAE_LANG=en`. With it, the `kae:` line a failing command ends on, usage
@@ -72,7 +74,7 @@ repeat into shared helpers.
    comment, stderr and `kae uninstall`'s match; only the stderr use is localized.
 3. The `use`, `pin`, `ls`, `status` and `doctor` reports.
 4. The remaining human output.
-5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. A stage that changes an English message also updates the documents and smoke assertions that quote it, the Japanese guide's quotations included.
+5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's.
 
 § Agent orchestration and remote authentication — deferred exploration follows the
 localization work and still requires investigation and an explicit implementation decision.

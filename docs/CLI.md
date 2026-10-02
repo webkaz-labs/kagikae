@@ -2615,7 +2615,7 @@ picker's text, and `--help` and usage text.
 
 **What is never localized** stays as specified in every language:
 
-- **JSON.** Nothing a JSON-mode process (`--json`, `-json`, `--json=true`, `--format json` or `--format=json`, among kae's own arguments before any `--`; the value of another flag and a child command after `--` do not count) writes is localized, its stderr warnings and errors included, usage errors raised while parsing that command line among them (§ Output Rules).
+- **JSON.** Nothing a JSON-mode process (`--json` or `-json`, with or without a true value such as `=true`; `--format` or `-format` given `json`, as `--format json` or `--format=json`; among kae's own arguments before any `--`; the value of another flag and a child command after `--` do not count) writes is localized, its stderr warnings and errors included, usage errors raised while parsing that command line among them (§ Output Rules).
 - **Machine lines.** `kae __complete` output, completion scripts, generated files
   (mise fragments and blocks, task descriptions and the `# warning:` comments kae
   writes into them), the `export` lines kae prints for a shell to run, the shell
@@ -2630,7 +2630,7 @@ picker's text, and `--help` and usage text.
   standard library appears verbatim.
 
 **One language per line.** A line kae writes is wholly in the selected language
-apart from the verbatim parts above. An embedded external cause is quoted whole in English rather than translated in part; kae's own messages are localized wherever they are composed, those built in packages below the command layer included, and a message that reaches a JSON field or a generated file renders English there (VALIDATION § Output language in tests). Text the `flag` package prints (`Usage of`, `flag provided but not defined`, `(default ...)`) is rendered by kae in the selected language, and the flag descriptions are kae's own messages.
+apart from the verbatim parts above. An embedded external cause is quoted whole in English rather than translated in part; kae's own messages are localized wherever they are composed, those built in packages below the command layer included, and a message that reaches a JSON field or a generated file renders English there (VALIDATION § Output language in tests). The usage block the `flag` package prints (`Usage of`, `(default ...)`) is rendered by kae in the selected language and the flag descriptions are kae's own messages; the errors `fs.Parse` returns (`flag provided but not defined`, `flag needs an argument`, `invalid value`) are rendered by kae per kind, never by matching the standard library's text, and an error of a kind kae does not render appears verbatim as an embedded external error.
 
 **Behavior does not depend on the language.** Exit codes, the split between stdout and stderr, which warnings appear and when, redaction, the answers a prompt accepts (`y`, `yes`, a menu number) and every JSON byte are the same in both. Layout can differ: a table whose localized headers are wider switches to the block form at a different terminal width. Japanese text follows the display-width layout of § Output Rules.
 

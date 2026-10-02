@@ -105,7 +105,7 @@ future move to the Data Protection keychain would make this silently return zero
 the same trap as comparing two empty greps.
 Things that must move in lockstep with it — not a closed list: a **new**
 per-directory mechanism is a row in `bindModes` (`internal/cmd/modes.go`), and the
-row covers both things that used to be separate edits: the `dirCredentialStores`
+row covers both: the `dirCredentialStores`
 walk visits every row (its `perAccount` picks the per-account layout), so its stores
 are swept, and `modeLabelStale` derives label polarity from `perAccount` — a per-account store's label is
 evidence, an account-agnostic one's a leftover that would otherwise be kept and then

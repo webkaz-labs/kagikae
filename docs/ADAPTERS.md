@@ -1236,18 +1236,18 @@ companions, [CLI.md](CLI.md) § kae pin and mise init Semantics):
 
 The switch takes no lock beyond the pin lock.
 
-The identity cache is one per tree, so after a switch the label there is the
+The identity cache is one per tree, so when the account changes the label there is the
 previous account's; it follows the shared bind's rule ([CLI.md](CLI.md) § kae pin
 and mise init Semantics). The switch reaches the next claude launched in the tree.
-A claude already running there was observed once, on 2026-10-03 with Claude Code
+A claude already running there was observed once, on 2026-10-03 on macOS with Claude Code
 2.1.284 and two real accounts: in a directory bound with `kae pin -t`, a claude
-running as `main` had exchanged a message when `kae pin claude side` ran in a second
-terminal of the same directory. A claude launched there afterwards showed `side` in
+running as `main` was open when `kae pin claude side` ran in a second terminal of
+the same directory. A claude launched there afterwards showed `side` in
 `/status`, and its `/resume` listed the first claude's conversation. The first
 claude's `/status` still showed `main`, and its further exchanges, one several
 minutes later, worked with no login prompt and no error. Whether it refreshed its
-token in that window was not observed (claude refreshes only near expiry), so kae
-makes no claim about what a running claude does when its token next refreshes.
+token in that window was not observed, so kae makes no claim about what a running
+claude does when its token next refreshes.
 
 Every other command treats a tree fragment and its store as it treats the other
 modes' ([CLI.md](CLI.md) § kae pin and mise init Semantics, § kae uninstall

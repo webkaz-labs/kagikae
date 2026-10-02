@@ -107,6 +107,10 @@ is implemented for claude, with its codex slice still gated below.
    dated observation in [ADAPTERS.md](ADAPTERS.md) § Per-directory tree bind
    (`kae pin -t`). What remains:
 
+   - **Not scheduled: R3 past a token refresh.** [ADAPTERS.md](ADAPTERS.md)
+     § Per-directory tree bind (`kae pin -t`) records a claude running across a switch
+     only up to its next token refresh; what it does then is unmeasured.
+
    - **codex waits for R1 and R2.** codex keeps its credential inside `CODEX_HOME`,
      so a tree store would hold a per-directory copy. **R1**: whether copies of one
      codex account invalidate each other through refresh-token rotation (the research

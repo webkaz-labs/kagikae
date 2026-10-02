@@ -82,7 +82,11 @@ In progress: **localized human output (Japanese)**, requested by the operator on
 2. The `kae: warning:` lines. `unboundReason` feeds a generated `# warning:`
    comment, stderr and `kae uninstall`'s match; only the stderr use is localized.
 3. The `use`, `pin`, `ls`, `status` and `doctor` reports.
-4. The remaining human output.
+4. The remaining human output, including the messages that still take an already
+   composed English sentence as an argument (the `why` of the snapshot-unchanged
+   warnings, `verifiedCaptureRemedy`); the catalog test cannot see them, so each
+   becomes a message value or a set of constant formats before its stage ships.
+   Stage 2 takes the ones inside `kae: warning:` lines.
 5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. The second allowlist VALIDATION names is empty after it.
 
 § Agent orchestration and remote authentication — deferred exploration follows the

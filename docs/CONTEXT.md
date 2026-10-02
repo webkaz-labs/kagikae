@@ -34,6 +34,8 @@ Where the answers live:
 | what a JSON status, code, artifact kind or driver id is called | `internal/constants`, described in [DATA-MODEL.md](DATA-MODEL.md) § Status Vocabulary |
 | how a term is written in Japanese output, and which characters Japanese strings may use | [L10N-JA.md](L10N-JA.md) |
 
+When a term in either table below is added or renamed, update the table in [L10N-JA.md](L10N-JA.md) in the same change.
+
 ## Surface terms
 
 The words a user types or reads. The first five are the ones this file inherited
@@ -51,8 +53,6 @@ to change a name.
 | `session row` | claude's place under its user level, `projects/<name>`, holding the transcripts of sessions started in the current directory; the naming rule and reachability are in [CLI.md](CLI.md) § kae ls Semantics |
 
 ## Mechanism terms
-
-When a term here is added or renamed, update the table in [L10N-JA.md](L10N-JA.md) in the same change.
 
 | term | names | naming note |
 |------|-------|-------------|

@@ -44,7 +44,7 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | auth / authentication | 認証 | 確定 | |
 | credential store | 認証ストア | 確定 | 短縮の「ストア」は文脈が自明なときだけ |
 | isolation store / working store | 作業ストア | 確定 | |
-| bound directory | 固定したディレクトリ | 未確認（operator 確認待ち） | 英語の散文は bound directory / bind に統一する（operator 決定。pin はコマンド名 `kae pin` だけ。統一は [ROADMAP.md](ROADMAP.md) 段階 0 の英語コミットで行う）。既存の日本語文書は「固定したディレクトリ」（PRODUCT.ja.md、GUIDE.ja.md の `ls --pins` 解説）と「固定ディレクトリ」（GUIDE.ja.md の「認証の復旧」節）が混在していて、既存の用例が 1 つに定まらない。PRODUCT.ja.md の「ディレクトリ固定」は機能名。日本語では bound と pinned の区別が出ない |
+| bound directory | 固定したディレクトリ | 未確認（operator 確認待ち） | 英語の散文は bound directory / bind に統一する（operator 決定。pin はコマンド名 `kae pin` だけ。統一は [ROADMAP.md](ROADMAP.md) 段階 0 の英語コミットで行う）。既存の日本語文書（README.ja.md と GUIDE.ja.md）は「固定したディレクトリ」と「固定ディレクトリ」の両方を使っていて、既存の用例が 1 つに定まらない。PRODUCT.ja.md の「ディレクトリ固定」は機能名。日本語では bound と pinned の区別が出ない |
 | bind（動詞） | 固定する | 確定 | |
 | binding（名詞） | 固定の内容 | 未確認（operator 確認待ち） | 「バインディング」は既存ゼロなので使わない |
 | unpin / unbind | 固定を解除する | 確定 | GUIDE.ja.md「`kae unpin` は固定を解除します」。コマンド名は訳さない |
@@ -53,7 +53,7 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | `isolated` mode | 独立モード / 独立環境 | 確定 | 「隔離」は mode 名に使わない |
 | `tree` mode | ツリーモード | 確定 | 「ツリー」単独で mode を指さない |
 | fragment | フラグメント | 確定 | パス `.config/mise/conf.d/kagikae.toml` と併記する |
-| store link | ストアへのリンク | 確定 | README.ja.md の「ストアへの symlink を張ります」とリンクの用例に合う。symlink は技術語として訳さない |
+| store link | ストアへのリンク | 確定 | GUIDE.ja.md の「そのツールのストアへの symlink も張ります」に合う。symlink は技術語として訳さない |
 | bond dir | 利用者向けでは出さない | 未確認（operator 確認待ち） | CONTEXT.md の shared config dir と同一物。見せるならパス（`shared`）を出す |
 | pin-id | 訳さない | 確定 | パス断片（`isolation/<pin-id>/`）として英語のまま出る |
 | breadcrumb | 固定したディレクトリの記録 | 未確認（operator 確認待ち） | 内部語。「パンくず」は誤解を招くので不可。fragment と混ぜない |
@@ -190,7 +190,8 @@ Ambiguous は 1 と数えられますが、East Asian Ambiguous を 2 桁で描�
 
 operator の確認が取れるまで、次は暫定です。確認が取れたら本文の区分を「決定」に直し、この節から外します。
 
-- driver はドライバー、session row はセッション記録の行、store link はストアへのリンク。
+- driver はドライバー、session row はセッション記録の行。
+- 疑問文、確認プロンプト（`[y/N]`）、did-you-mean の日本語の型。
 - bound directory は固定したディレクトリ、binding は固定の内容。PRODUCT.ja.md の「ディレクトリ固定」（機能名）との役割分担を規約として固定するか。
 - bond dir は利用者向け出力に出さない。pin-id は訳さない。supersedes / orderable は訳さず、文では「新しい」「新旧を決められない」と書く。いずれも利用者向け出力に出ない見込みという前提。
 - breadcrumb は固定したディレクトリの記録、identity cache はログイン中アカウントの記録。

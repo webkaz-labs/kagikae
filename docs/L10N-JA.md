@@ -43,7 +43,7 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | auth / authentication | 認証 | 確定 | |
 | credential store | 認証ストア | 確定 | 短縮の「ストア」は文脈が自明なときだけ |
 | isolation store / working store | 作業ストア | 確定 | |
-| bound directory | 固定したディレクトリ | 未確認 | 英語の散文は bound directory / bind に統一する（operator 決定。pin はコマンド名 `kae pin` だけ）。既存の日本語文書（README.ja.md と GUIDE.ja.md）は「固定したディレクトリ」と「固定ディレクトリ」の両方を使っていて、既存の用例が 1 つに定まらない。PRODUCT.ja.md の「ディレクトリ固定」は機能名。日本語では bound と pinned の区別が出ない |
+| bound directory | 固定したディレクトリ | 未確認 | 英語の散文は bound directory / bind に統一する（operator 決定。pin はコマンド名 `kae pin` だけ）。既存の日本語文書（README.ja.md と GUIDE.ja.md）は「固定したディレクトリ」と「固定ディレクトリ」の両方を使っていて、既存の用例が 1 つに定まらない。PRODUCT.ja.md の「ディレクトリ固定」は機能名で、その役割分担を規約にするかも未確認。日本語では bound と pinned の区別が出ない |
 | bind（動詞） | 固定する | 確定 | |
 | binding（名詞） | 固定の内容 | 未確認 | 「バインディング」は既存ゼロなので使わない |
 | unpin / unbind | 固定を解除する | 確定 | GUIDE.ja.md「`kae unpin` は固定を解除します」。コマンド名は訳さない |
@@ -142,16 +142,16 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 
 Ambiguous は 1 と数えられますが、East Asian Ambiguous を 2 桁で描く端末では列が右へずれます。日本語の文字列は日本語ロケールで読まれる前提なので、Ambiguous を使いません。
 
-次の分類は x/text の `width.LookupRune` を引いた結果の例です。正本は [VALIDATION.md](VALIDATION.md) § Output language in tests のカタログテストです。
+次の分類は x/text の `width.LookupRune` を引いた結果の例です。Ambiguous の判定の正本は [VALIDATION.md](VALIDATION.md) § Output language in tests のカタログテストで、それ以外の不可は文体規約です。
 
 | 範囲または文字 | 分類 | 可否 |
 |---|---|---|
-| ひらがな、カタカナ、CJK 統合漢字 | Wide | 可 |
+| ひらがな、カタカナ（「・」(U+30FB)「ー」(U+30FC) を含む）、CJK 統合漢字 | Wide | 可 |
 | 全角形 U+FF01 から U+FF60 | Fullwidth | 幅計算上は可。ただし「，」「．」と全角英数は文体規約で不可 |
 | 半角カナ U+FF61 から U+FF9F | Halfwidth（幅 1） | 可だが使わない |
 | ASCII | Narrow | 可 |
 | 列挙した記号: Latin-1 補助「× ÷ ° ± · § ¼ ½ é ü」、「…」「‥」「—」「―」「–」「※」、曲線引用符、矢印「→ ← ↑ ↓ ⇒ ⇔」、数学記号「≠ ≦ ≧ ∴ ∞ ≈」、罫線「─ │ ┌」、幾何図形「○ ● □ ■ △ ▲ ◆」、囲み数字「① ②」、「℃」「№」「™」「®」 | Ambiguous | 不可 |
-| 「、」「。」「「」」「『』」「【】」「・」(U+30FB)「ー」「〜」(U+301C) など U+3000 から U+303F の記号（U+303F を除く） | Wide（U+3000 は Fullwidth） | 可 |
+| 「、」「。」「「」」「『』」「【】」「〜」(U+301C) など U+3000 から U+303F の記号（U+303F を除く） | Wide（U+3000 は Fullwidth） | 可 |
 | 「（）」「！」「？」「％」「＋」「－」「＝」「／」と「～」(U+FF5E) | Fullwidth | 可 |
 | 「：」「；」 | Fullwidth | 幅計算上は可。ただしコロン類は ASCII を使う規約で不可 |
 | 「✓」「✗」「⚠」「➜」「⋯」 | Neutral（幅 1） | 計算は通るが、端末が絵文字幅（2）で描く場合があるので使わない |

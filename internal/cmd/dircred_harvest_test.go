@@ -269,11 +269,11 @@ func TestRunPinReportsOneRefusalPerStoreWithTheRightRemedy(t *testing.T) {
 	if got := readFile(t, dirCredFile(app, constants.ToolClaude, "main", shared)); !strings.Contains(got, "sk-ant-oat01-MAIN-REFRESHED-cccc") {
 		t.Fatalf("a copy kae could not attribute must be kept, not overwritten: %s", got)
 	}
-	// "Left in place" is the one clause true in every shape this arm reaches — a
+	// "This bind leaves it in place" is the one clause true in every shape this arm reaches — a
 	// refusal defers the delete, and for a pre-split binding the write does not touch this
 	// store at all. The wording it replaced ("and this bind replaces it") was false about a
 	// copy kae kept, and survived the whole suite until this assertion existed.
-	if !strings.Contains(stderr, "so it is left in place") {
+	if !strings.Contains(stderr, "so this bind leaves it in place") {
 		t.Fatalf("the primary voice must state what actually happens to the copy:\n%s", stderr)
 	}
 	if strings.Contains(stderr, "this bind replaces it") {

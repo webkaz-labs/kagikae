@@ -628,10 +628,9 @@ func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) [
 // code applies (not_found, auth_missing, ...); plain fmt.Errorf flows through
 // exitOf's default branch as a general error.
 
-// restoredFailure reports an operation that failed and was rolled back from the backup.
-func restoredFailure(op string, err error, backupID string) error {
-	return errf(exitOf(err), "%s failed, previous state restored from backup %s: %v", op, backupID, err)
-}
+// restoredFromBackup ends the error of an operation that failed and was rolled back from
+// its backup; each caller supplies the constant head naming the operation.
+const restoredFromBackup = " failed, previous state restored from backup %s: %v"
 
 // doubleFailure reports the catastrophic case: the primary operation failed
 // AND restoring from the backup failed too. The manual escape hatch is

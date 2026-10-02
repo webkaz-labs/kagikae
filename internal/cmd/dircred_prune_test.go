@@ -716,7 +716,7 @@ func TestPurgeIsTheWayOutForACredentialKaeCannotJudge(t *testing.T) {
 		wantDeleted bool
 		wantSays    string
 	}{
-		{"a bind's sweep keeps it and names the way out", false, false, "run: kae unpin --purge in that directory to remove it"},
+		{"a bind's sweep keeps it and names the way out", false, false, "in that directory run: kae unpin --purge"},
 		{"--purge takes it and says what it destroys", true, true, "nor tell which account it belonged to"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

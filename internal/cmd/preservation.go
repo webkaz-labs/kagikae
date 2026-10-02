@@ -122,7 +122,7 @@ func preservationError(err error) error {
 	case errors.Is(err, preservation.ErrInvalidID):
 		return errf(constants.ExitUsage, "invalid preservation ID")
 	case errors.Is(err, lock.ErrBusy):
-		return errf(constants.ExitLockBusy, "%s", busyMessage("running a preservation operation"))
+		return errf(constants.ExitLockBusy, "another kae process is running a preservation operation; retry shortly")
 	case errors.Is(err, preservation.ErrQuota):
 		return errf(constants.ExitUnsafeRefused, "preservation capacity is full; list preserved copies and explicitly remove an unwanted ID before retrying")
 	case errors.Is(err, preservation.ErrProtected):

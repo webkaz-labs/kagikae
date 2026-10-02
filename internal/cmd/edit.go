@@ -50,7 +50,7 @@ func runEdit(ctx context.Context, app *App, opts commonOpts) int {
 	}
 	if code != 0 {
 		return finish(opts, errf(constants.ExitError,
-			"editor %s exited with %d; the config is left unchanged", parts[0], code))
+			"editor %s exited with %d; the config is left as the editor last saved it; nothing is rolled back", parts[0], code))
 	}
 	_, warnings, err := config.Load(app.ConfigPath)
 	if err != nil {

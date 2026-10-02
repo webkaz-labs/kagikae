@@ -45,7 +45,7 @@ func (d listDiagnostics) exitCode() int {
 
 func (d listDiagnostics) print() {
 	for range d.Warnings {
-		fmt.Fprintln(os.Stderr, "kae: warning: config is invalid or unreadable; listing metadata from the resolved state directory; before recovery, run: kae doctor to check the selected config file and its permissions")
+		fmt.Fprintln(os.Stderr, "kae: warning: config is invalid or unreadable; listing metadata from the resolved state directory; check the selected config file and its permissions before recovery; run: kae doctor")
 	}
 	if !d.Complete {
 		fmt.Fprintln(os.Stderr, "kae: metadata listing is incomplete; readable records are shown")

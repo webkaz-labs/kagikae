@@ -327,8 +327,8 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 			if err := retractDirIdentity(ctx, specs, configDir); err != nil {
 				fmt.Fprintf(os.Stderr,
 					"kae: warning: the %s identity cache in this directory still names the account it was "+
-						"bound to before, and kae could not remove it (%v); run: kae relogin %s in this directory, or the "+
-						"next bind may read it as this directory's own and replace the credential kae just kept\n",
+						"bound to before, and kae could not remove it (%v), so the "+
+						"next bind may read it as this directory's own and replace the credential kae just kept; in this directory, run: kae relogin %s\n",
 					tool, err, tool)
 			}
 		}

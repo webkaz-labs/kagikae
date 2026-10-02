@@ -63,7 +63,7 @@ func (app *App) managedUninstallGuidance(executable string, dirs []string) []str
 			if _, present := cfg.Tools[tool]; !present {
 				continue
 			}
-			guidance = append(guidance, fmt.Sprintf("After integration cleanup, remove this configured request with: mise unuse --path %s %s. This also prunes versions unused by tracked configs; use --no-prune to retain installations. Other projects may still need them.", shellSingleQuote(path), shellSingleQuote(tool)))
+			guidance = append(guidance, fmt.Sprintf("After integration cleanup, to remove this configured request, run: mise unuse --path %s %s. This also prunes versions unused by tracked configs; use --no-prune to retain installations. Other projects may still need them.", shellSingleQuote(path), shellSingleQuote(tool)))
 		}
 	}
 	if len(guidance) == 0 {

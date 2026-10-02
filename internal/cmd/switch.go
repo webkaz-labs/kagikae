@@ -249,7 +249,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 			if restoreErr := app.applyBackup(ctx, be, meta, appliedTools, false); restoreErr != nil {
 				return nil, doubleFailure("switch "+plan.Tool, err, restoreErr, meta.ID)
 			}
-			return nil, restoredFailure("switch "+plan.Tool, err, meta.ID)
+			return nil, errf(exitOf(err), "switch %s"+restoredFromBackup, plan.Tool, meta.ID, err)
 		}
 		appliedTools[plan.Tool] = true
 	}
@@ -264,7 +264,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
 			return nil, doubleFailure("recording state", err, restoreErr, meta.ID)
 		}
-		return nil, restoredFailure("recording state", err, meta.ID)
+		return nil, errf(exitOf(err), "recording state"+restoredFromBackup, meta.ID, err)
 	}
 	app.pruneBackups(ctx, be)
 	return report, nil

@@ -666,7 +666,7 @@ func (app *App) boundStoreDir(pinID, tool string, fragment fragmentInfo) (dir st
 // that would refuse.
 func pinLoginRemedy(tool, dir string) string {
 	if loginCommand(tool) != nil {
-		return fmt.Sprintf("stop other sessions using its credential; to verify the bound account, run: kae status in that directory; to log in inside that directory as the bound account, run: cd %s && kae relogin %s", dir, tool)
+		return fmt.Sprintf("to verify the bound account, in that directory run: kae status; stop other sessions using that account's credential; to log in inside that directory as the bound account, run: cd %s && kae relogin %s", dir, tool)
 	}
 	return fmt.Sprintf("kae cannot launch a login for %s; before manual login in %s, verify the bound account and that mise activation, trust and the tool environment select its bound store; see docs/CLI.md Recovery guidance", tool, dir)
 }

@@ -275,7 +275,7 @@ func printProfileList(profiles []profileStatus) {
 // group; addHint is the command the empty case suggests.
 func printAccountItems(app *App, items []accountItem, addHint string, opts commonOpts) {
 	if len(items) == 0 {
-		fmt.Printf("Accounts: (none — register one with: %s)\n", addHint)
+		fmt.Printf("Accounts: (none); run: %s\n", addHint)
 		return
 	}
 	fmt.Println("Accounts:")

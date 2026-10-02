@@ -937,7 +937,7 @@ say "the store", read it as whichever of the two that tool resolves:
   written while bound to that account, so a disagreement there is a live login and
   retracting it deletes the only record of whose the credential is. Among stale ones, only
   a label that *disagrees* goes: one that agrees is evidence, and one kae cannot read is
-  left for the same reason an unreadable credential is. The pin-level pass says *leaving it where it is* only where that is
+  left for the same reason an unreadable credential is. The pin-level pass says *this bind leaves it in place* only where that is
   true — when the write will keep, or when the store it is talking about is not the one the
   write touches at all (a pre-split store, whose copy the write leaves alone because it
   writes to the account's store instead). Where the write does replace, it still says so: a

@@ -326,7 +326,7 @@ func TestRunRebindConflictingCopyIsLeftBehindNotReplaced(t *testing.T) {
 	if strings.Contains(stderr, "this bind replaces it") {
 		t.Fatalf("the store this bind moves off is not replaced by it: %q", stderr)
 	}
-	if !strings.Contains(stderr, "so it is left in place") {
+	if !strings.Contains(stderr, "so this bind leaves it in place") {
 		t.Fatalf("the consequence must be the one that happens: %q", stderr)
 	}
 	if !strings.Contains(stderr, mainStore) {

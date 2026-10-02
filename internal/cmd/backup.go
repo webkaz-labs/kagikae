@@ -237,7 +237,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 				"rollback failed (%v) and restore also failed (%v); inspect backups %s and %s",
 				err, restoreErr, meta.ID, preMeta.ID)
 		}
-		return nil, restoredFailure("rollback", err, preMeta.ID)
+		return nil, errf(exitOf(err), "rollback"+restoredFromBackup, preMeta.ID, err)
 	}
 	// Decided once, for both the warning and the write, so the two cannot answer
 	// differently about the same tool — and so `restorableActiveAccount`'s

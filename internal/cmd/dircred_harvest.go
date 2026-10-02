@@ -81,8 +81,8 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae cannot read or date the %s credential in %s, so it is left in place "+
 				"instead of deleted (a payload kae cannot judge may still be a working login); "+
-				"if it is spent, run: kae unpin --purge in that directory to remove it — that tears the "+
-				"binding down too, so re-bind afterwards\n", tool, credDir)
+				"removing it tears the binding down too, so re-bind afterwards; if it is spent, "+
+				"in that directory run: kae unpin --purge\n", tool, credDir)
 		return false
 	}
 	if accountName == "" {
@@ -413,7 +413,7 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 		// Chosen once for the same reason it is asked once: the two arms below said this in
 		// two hand-kept copies, and this function's own history is one wording drifting in
 		// the unreadable arm and the other in the replaced one. Both measured.
-		consequence := "so it is left in place"
+		consequence := "so this bind leaves it in place"
 		if replacedNow {
 			consequence = "and this bind replaces it"
 		}

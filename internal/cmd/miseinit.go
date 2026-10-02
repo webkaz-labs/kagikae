@@ -71,7 +71,7 @@ func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode
 		if auto {
 			hint += " --auto"
 		}
-		fmt.Fprintln(os.Stderr, "\nkae: preview only; apply with: "+hint+" --write")
+		fmt.Fprintln(os.Stderr, "\nkae: preview only; to apply, run: "+hint+" --write")
 		return constants.ExitOK
 	}
 	dir, err := os.Getwd()
@@ -323,15 +323,21 @@ func modeUnboundReason(m bindMode, tool string) string {
 		m.name, strings.Join(m.tools, ", "), tool)
 }
 
-// errRealHomeIsStore refuses a store that is the tool's real home itself; what names the store.
-func errRealHomeIsStore(tool, what string) error {
-	return errf(constants.ExitUnsafeRefused,
-		"the real %s home resolves to the %s itself; unset %s and retry", tool, what, isolationEnvVar(tool))
+// errRealHomeIsStore refuses a store that is the tool's real home itself. The format is the
+// caller's constant: "the real %s home resolves to the <store> itself; unset %s and retry".
+func errRealHomeIsStore(format, tool string) error {
+	return errf(constants.ExitUnsafeRefused, format, tool, isolationEnvVar(tool))
 }
 
-// ensureStoreLink links dst to src, replacing a stale symlink. A real file or
+const (
+	realHomeIsBondDir      = "the real %s home resolves to the bond dir itself; unset %s and retry"
+	realHomeIsIsolatedDir  = "the real %s home resolves to the isolated config dir itself; unset %s and retry"
+	realHomeIsTreeStoreDir = "the real %s home resolves to the tree store itself; unset %s and retry"
+)
+
+// linkSharedItem links dst to src, replacing a stale symlink. A real file or
 // directory at dst is a private override and is left unchanged.
-func ensureStoreLink(src, dst string) error {
+func linkSharedItem(src, dst string) error {
 	info, statErr := os.Lstat(dst)
 	if statErr != nil && !os.IsNotExist(statErr) {
 		return fmt.Errorf("stat link item %s: %w", dst, statErr)
@@ -365,7 +371,7 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 	}
 	realHome := app.realToolHome(tool)
 	if filepath.Clean(realHome) == filepath.Clean(bondDir) {
-		return "", errRealHomeIsStore(tool, "bond dir")
+		return "", errRealHomeIsStore(realHomeIsBondDir, tool)
 	}
 
 	denylist := app.bondDenylistItems(tool)
@@ -393,7 +399,7 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 		}
 		intended[name] = true
 		src := filepath.Join(realHome, name)
-		if err := ensureStoreLink(src, filepath.Join(bondDir, name)); err != nil {
+		if err := linkSharedItem(src, filepath.Join(bondDir, name)); err != nil {
 			return "", err
 		}
 	}
@@ -512,7 +518,7 @@ func retractLinks(dir string, names []string) error {
 // account's credential privately (writeDirCredential). Idempotent: stale
 // symlinks are refreshed; real files are left.
 func (app *App) preparePinConfig(ctx context.Context, be secret.Backend, tool, account, pinID string, staleLabel bool) (string, error) {
-	return app.prepareOptInStore(ctx, be, tool, account, app.Paths.IsolatedConfigDir(pinID, tool, account), "isolated config dir", staleLabel)
+	return app.prepareOptInStore(ctx, be, tool, account, app.Paths.IsolatedConfigDir(pinID, tool, account), "isolated config dir", realHomeIsIsolatedDir, staleLabel)
 }
 
 // prepareTree creates the tree store for one tool/pinID
@@ -522,19 +528,19 @@ func (app *App) preparePinConfig(ctx context.Context, be secret.Backend, tool, a
 // account switch runs this same preparer, which is what keeps the store's sessions,
 // history and settings and rewrites only what names the account.
 func (app *App) prepareTree(ctx context.Context, be secret.Backend, tool, account, pinID string, staleLabel bool) (string, error) {
-	return app.prepareOptInStore(ctx, be, tool, account, app.Paths.TreeDir(pinID, tool), "tree store", staleLabel)
+	return app.prepareOptInStore(ctx, be, tool, account, app.Paths.TreeDir(pinID, tool), "tree store", realHomeIsTreeStoreDir, staleLabel)
 }
 
 // prepareOptInStore materializes configDir as a store whose links from the real home
 // are the configured isolated_shared_items: the isolated and tree binds, which differ
 // only in how configDir is composed. what names the store in errors.
-func (app *App) prepareOptInStore(ctx context.Context, be secret.Backend, tool, account, configDir, what string, staleLabel bool) (string, error) {
+func (app *App) prepareOptInStore(ctx context.Context, be secret.Backend, tool, account, configDir, what, realHomeFormat string, staleLabel bool) (string, error) {
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return "", fmt.Errorf("create %s: %w", what, err)
 	}
 	realHome := app.realToolHome(tool)
 	if filepath.Clean(realHome) == filepath.Clean(configDir) {
-		return "", errRealHomeIsStore(tool, what)
+		return "", errRealHomeIsStore(realHomeFormat, tool)
 	}
 
 	// Symlink opt-in shared items from the real home. The *configured list* is this
@@ -551,7 +557,7 @@ func (app *App) prepareOptInStore(ctx context.Context, be secret.Backend, tool, 
 		if _, err := os.Stat(src); err != nil {
 			continue // only link what exists
 		}
-		if err := ensureStoreLink(src, filepath.Join(configDir, item)); err != nil {
+		if err := linkSharedItem(src, filepath.Join(configDir, item)); err != nil {
 			return "", err
 		}
 	}

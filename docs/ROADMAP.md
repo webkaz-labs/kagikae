@@ -58,8 +58,8 @@ not before it. The code ships stage by stage, so until the last stage some human
 output is still English only, and the release notes of each release name which
 stages it ships. Each stage is its own commit and review, and its Japanese strings
 go to the operator for review before the stage is accepted. Stage 0 comes first and
-ships no Japanese: a Japanese glossary and style rules in a new document (terms from
-[CONTEXT.md](CONTEXT.md); a style that avoids East Asian Ambiguous characters) and one
+ships no Japanese: the Japanese glossary and style rules are in
+[L10N-JA.md](L10N-JA.md), and what remains is one
 English-only commit that unifies the wording of near-duplicate messages (how a remedy
 is phrased, `not captured`, `pinned` against `bound`) and hoists messages that
 repeat into shared helpers.

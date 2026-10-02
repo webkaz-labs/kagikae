@@ -52,6 +52,8 @@ to change a name.
 
 ## Mechanism terms
 
+When a term here is added or renamed, update the table in [L10N-JA.md](L10N-JA.md) in the same change.
+
 | term | names | naming note |
 |------|-------|-------------|
 | **bound directory** | a directory `kae pin` has bound, so that working in it selects the accounts the binding names | Preferred over **pinned directory**; § Naming audit distinguishes references to that spelling from names for the concept |

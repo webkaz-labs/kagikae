@@ -147,7 +147,7 @@ type miseCompletionMigration struct {
 func updateGlobalMiseCompletion(env adapter.Env, requested string, refresh bool) (path, shell string, registered, changed bool, err error) {
 	app := &App{Env: env, Paths: paths.Resolve(env.Getenv, env.Home)}
 	path = app.Paths.MiseGlobalFragmentFile()
-	l, err := app.acquireNamedLock(lockNameState, "another kae process is updating global mise integration; retry shortly")
+	l, err := app.acquireNamedLock(lockNameState, busyMessage("updating global mise integration"))
 	if err != nil {
 		return path, "", false, false, err
 	}

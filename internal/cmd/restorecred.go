@@ -255,7 +255,7 @@ func (app *App) warnRestoringSupersededCredential(ctx context.Context, be secret
 			remedy = fmt.Sprintf("the newer copy is left only in backup %s (kae rollback --to %s)", preID, preID)
 		case supersedes(snap, recorded.Info):
 			where = fmt.Sprintf("snapshot %s/%s", tool, accountName)
-			remedy = fmt.Sprintf("apply the newer copy afterwards with: kae use %s %s", tool, accountName)
+			remedy = fmt.Sprintf("to apply the newer copy afterwards, run: kae use %s %s", tool, accountName)
 		default:
 			continue
 		}

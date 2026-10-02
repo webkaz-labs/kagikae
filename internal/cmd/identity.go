@@ -48,7 +48,7 @@ func (app *App) resolveAccount(ctx context.Context, tool, explicit, identityOver
 				// the explicit fix. The raw cause is intentionally omitted so a
 				// missing file does not read like a bug.
 				fmt.Fprintf(os.Stderr,
-					"kae: note: no login identity could be detected for %s; %s/%s was captured without one (identity is optional). Add it anytime: kae account set-identity %s %s <value>\n",
+					"kae: note: no login identity could be detected for %s; %s/%s was captured without one (identity is optional). To add it anytime, run: kae account set-identity %s %s <value>\n",
 					tool, tool, explicit, tool, explicit)
 			}
 		}
@@ -60,25 +60,25 @@ func (app *App) resolveAccount(ctx context.Context, tool, explicit, identityOver
 		name = sanitizeAccountName(override)
 		if name == "" {
 			return "", "", errf(constants.ExitUsage,
-				"--identity %q has no usable account-name characters; give a name: kae add %s <account>",
+				"--identity %q has no usable account-name characters; to give a name, run: kae add %s <account>",
 				identityOverride, tool)
 		}
 		return name, override, nil
 	}
 	if !hasIdentifier {
 		return "", "", errf(constants.ExitUsage,
-			"kae add %s cannot auto-detect an account name; give one: kae add %s <account> (or pass --identity <value>)", tool, tool)
+			"kae add %s cannot auto-detect an account name; to give one, run: kae add %s <account> (or pass --identity <value>)", tool, tool)
 	}
 	raw, derr := identifier.Identity(ctx, app.Env)
 	if derr != nil {
 		return "", "", errf(constants.ExitUsage,
-			"could not detect the %s login identity (%v); give an account name: kae add %s <account> (or pass --identity <value>)",
+			"could not detect the %s login identity (%v); to give an account name, run: kae add %s <account> (or pass --identity <value>)",
 			tool, derr, tool)
 	}
 	name = sanitizeAccountName(raw)
 	if name == "" {
 		return "", "", errf(constants.ExitUsage,
-			"the detected %s identity %q has no usable account-name characters; give one: kae add %s <account>",
+			"the detected %s identity %q has no usable account-name characters; to give one, run: kae add %s <account>",
 			tool, raw, tool)
 	}
 	return name, strings.TrimSpace(raw), nil

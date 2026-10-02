@@ -372,8 +372,8 @@ func (app *App) pinnedGlobalScope() {
 	kind := app.firstKaeManagedIsolation()
 	if _, perDirectory := bindModeFor(kind); perDirectory {
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: this directory is pinned (%s); you are changing GLOBAL state, "+
-				"which this directory will not see — re-bind with `kae pin`\n", kind)
+			"kae: warning: this directory is bound (%s); you are changing GLOBAL state, "+
+				"which this directory will not see — to re-bind, run: kae pin\n", kind)
 	}
 	app.applyGlobalScope()
 }

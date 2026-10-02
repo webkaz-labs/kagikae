@@ -402,8 +402,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			continue
 		}
 		if !anyPresent {
-			fmt.Fprintf(os.Stderr, "kae: warning: %s is logged out; snapshot %s/%s left unchanged\n",
-				plan.Tool, plan.Tool, active)
+			warnSnapshotUnchanged(plan.Tool+" is logged out", plan.Tool, active)
 			continue
 		}
 		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, active, acc, values); why != "" {
@@ -415,18 +414,18 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			// of where it sits: createBackup runs *before* this recapture and before
 			// applySnapshot, so it holds exactly the live copy being declined. `run -s`
 			// has to create one of its own for the same sentence to be true there.
-			warnRecaptureDeclined(plan.Tool, why, backupID,
-				"which reverts this whole switch")
+			warnRecaptureDeclined(plan.Tool, active, why, backupID,
+				revertsWholeSwitch)
 			continue
 		}
 		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); why != "" {
 			if preserve {
 				// kae cannot order the two, so it must not imply the live copy is finished
 				// *or* let it vanish: this switch is about to overwrite the live store.
-				warnRecaptureDeclined(plan.Tool, why, backupID, "which reverts this whole switch")
+				warnRecaptureDeclined(plan.Tool, active, why, backupID, revertsWholeSwitch)
 				continue
 			}
-			warnRecaptureSkipped(why)
+			warnRecaptureSkipped(plan.Tool, active, why)
 			continue
 		}
 		if !valuesDiverge(ctx, be, plan.Specs, acc, values) {
@@ -448,6 +447,10 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 	}
 }
 
+// revertsWholeSwitch is warnRecaptureDeclined's scope for `kae use`, whose backup is the
+// switch's own.
+const revertsWholeSwitch = "which reverts this whole switch"
+
 // warningsDetail renders an adapter's Detect warnings as a parenthesised suffix, or "" when
 // there are none. Two messages carry them — captureSnapshot's auth_missing error and the
 // logged-out-during-a-run warning — and they are the same sentence-shape, so a change to the
@@ -464,8 +467,14 @@ func warningsDetail(warnings []string) string {
 // handles the case that *is* worth keeping; both recapture paths use both, and splitting the
 // pair across two hand-written literals is how one of them would later gain a clause the
 // other lacks.
-func warnRecaptureSkipped(why string) {
-	fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot left unchanged\n", why)
+func warnRecaptureSkipped(tool, accountName, why string) {
+	warnSnapshotUnchanged(why, tool, accountName)
+}
+
+// warnSnapshotUnchanged is the one sentence for a snapshot a recapture left alone: the
+// reason, then which snapshot was not written.
+func warnSnapshotUnchanged(why, tool, accountName string) {
+	fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot %s/%s left unchanged\n", why, tool, accountName)
 }
 
 // warnRecaptureFailed reports a recapture that could not be completed, as opposed to one kae
@@ -495,8 +504,8 @@ func warnRecaptureFailed(tool, accountName string, err error) {
 // that differs by caller and the remedy is otherwise over-precise: `kae run -s` backs up
 // only the tools whose recapture it declined, while `kae use`'s backup is the switch's
 // own and covers **every** tool it switched.
-func warnRecaptureDeclined(tool, why, backupID, scope string) {
-	fmt.Fprintf(os.Stderr, "kae: warning: %s, so that snapshot is left unchanged\n", why)
+func warnRecaptureDeclined(tool, accountName, why, backupID, scope string) {
+	warnSnapshotUnchanged(why, tool, accountName)
 	if backupID == "" {
 		fmt.Fprintf(os.Stderr,
 			"kae: kae could not preserve the live %s login it declined to adopt; it is lost once the "+
@@ -505,7 +514,7 @@ func warnRecaptureDeclined(tool, why, backupID, scope string) {
 	}
 	fmt.Fprintf(os.Stderr,
 		"kae: the live %s login kae declined to adopt is preserved only in backup %s — to keep it as "+
-			"its own account: kae rollback --to %s (%s), then kae add --no-login %s <account>\n",
+			"its own account, run: kae rollback --to %s (%s), then kae add --no-login %s <account>\n",
 		tool, backupID, backupID, scope, tool)
 }
 
@@ -805,12 +814,19 @@ func valuesDiverge(ctx context.Context, be secret.Backend, specs []artifact.Spec
 // verifiedCaptureRemedy qualifies capture when the live account needs verification.
 // A snapshot name alone does not establish which account the live store contains.
 func verifiedCaptureRemedy(tool, accountName string) string {
-	return fmt.Sprintf("first verify the live %s login belongs to account %s and uses the intended global store; only then re-capture with: kae add --no-login %s %s; if logged out or uncertain, see docs/CLI.md Recovery guidance before capture", tool, accountName, tool, accountName)
+	return fmt.Sprintf("first verify the live %s login belongs to account %s and uses the intended global store; only then, to re-capture, run: kae add --no-login %s %s; if logged out or uncertain, see docs/CLI.md Recovery guidance before capture", tool, accountName, tool, accountName)
+}
+
+// errUncapturedWithRemedy is the not-found error for an account kae cannot read a
+// snapshot of, ending in the verified-capture remedy.
+func errUncapturedWithRemedy(tool, accountName string) *cmdError {
+	return errf(constants.ExitNotFound, "account %s/%s is not captured; %s",
+		tool, accountName, verifiedCaptureRemedy(tool, accountName))
 }
 
 func globalLoginRemedy(tool, accountName string) string {
 	if loginCommand(tool) != nil {
-		return fmt.Sprintf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then log in as that account with: kae add --restore %s %s (captures the new login and restores the previous live state)", accountName, tool, accountName)
+		return fmt.Sprintf("confirm account %s and the intended global store outside a bound directory; stop other sessions using that credential, then, to log in as that account, run: kae add --restore %s %s (captures the new login and restores the previous live state)", accountName, tool, accountName)
 	}
 	return fmt.Sprintf("kae cannot launch a login for %s; log in again in %s as account %s using the intended global store outside a bound directory; %s", tool, tool, accountName, verifiedCaptureRemedy(tool, accountName))
 }

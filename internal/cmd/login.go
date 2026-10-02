@@ -148,7 +148,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	fmt.Fprintf(os.Stderr, "kae: complete the %s login flow; the result is captured as %s when it exits (previous state backed up as %s)\n",
 		tool, captureLabel, meta.ID)
 	if code, err := runner.RunInteractive(ctx, nil, command[0], command[1:]...); err != nil {
-		return finish(opts, fmt.Errorf("launch %s login: %w", tool, err))
+		return finish(opts, errLaunchLogin(tool, err))
 	} else if code != 0 {
 		fmt.Fprintf(os.Stderr, "kae: %s exited with %d; capturing whatever auth state is live now\n", command[0], code)
 	}
@@ -171,7 +171,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 			hint = tool + " " + explicitName
 		}
 		return finish(opts, errf(constants.ExitAuthUnchanged,
-			"%s login flow exited without changing auth; nothing captured (to snapshot the current login, run: kae add --no-login %s)",
+			"%s login flow exited without changing auth; nothing captured; to snapshot the current login, run: kae add --no-login %s",
 			tool, hint))
 	}
 
@@ -253,8 +253,7 @@ func finishLoginFailure(ctx context.Context, app *App, opts commonOpts, be secre
 		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
 			return finish(opts, doubleFailure(op, err, restoreErr, meta.ID))
 		}
-		return finish(opts, errf(exitOf(err),
-			"%s failed, previous login restored from backup %s: %v", op, meta.ID, err))
+		return finish(opts, restoredFailure(op, err, meta.ID))
 	}
 	return finish(opts, fmt.Errorf("%s failed (previous state is in backup %s): %w", op, meta.ID, err))
 }

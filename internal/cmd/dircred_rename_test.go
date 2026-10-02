@@ -231,7 +231,7 @@ func TestRunPinSweepKeepsALostAccountsCredential(t *testing.T) {
 		// Branch-specific: "left in place" is shared by the unreadable-store, the
 		// unattributable and the account-gone messages, so matching it alone would pass on
 		// a run that took a different arm entirely.
-		if !strings.Contains(stderr, "no account named claude/main exists any more") {
+		if !strings.Contains(stderr, "account claude/main no longer exists") {
 			t.Fatalf("keeping it must name the branch that kept it: %q", stderr)
 		}
 		if strings.Contains(stderr, "kae add --no-login") {
@@ -326,7 +326,7 @@ func TestRunRebindConflictingCopyIsLeftBehindNotReplaced(t *testing.T) {
 	if strings.Contains(stderr, "this bind replaces it") {
 		t.Fatalf("the store this bind moves off is not replaced by it: %q", stderr)
 	}
-	if !strings.Contains(stderr, "so kae is leaving it where it is") {
+	if !strings.Contains(stderr, "so it is left in place") {
 		t.Fatalf("the consequence must be the one that happens: %q", stderr)
 	}
 	if !strings.Contains(stderr, mainStore) {
@@ -579,7 +579,7 @@ func TestRunRebindSweepKeepsALostAccountsCredential(t *testing.T) {
 		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
 			t.Fatalf("the re-bind kae itself recommends after a rename must not delete that copy: %v", sim.ops)
 		}
-		if !strings.Contains(stderr, "no account named claude/main exists any more") {
+		if !strings.Contains(stderr, "account claude/main no longer exists") {
 			t.Fatalf("keeping it must name the branch that kept it: %q", stderr)
 		}
 	})

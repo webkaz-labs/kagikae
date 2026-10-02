@@ -356,8 +356,8 @@ func (app *App) supersededChecksFor(ctx context.Context, be secret.Backend, grou
 // answer that certainly produces a usable credential.
 func supersededRemedy(tool, accountName, dir string, newerIsSnapshot bool) string {
 	if newerIsSnapshot {
-		return fmt.Sprintf("re-bind that directory from the newer snapshot, no login needed: cd %s && %s pin %s %s",
-			dir, toolName, tool, accountName)
+		return fmt.Sprintf("re-bind that directory from the newer snapshot, no login needed; run: cd %s && kae pin %s %s",
+			dir, tool, accountName)
 	}
 	return pinLoginRemedy(tool, dir)
 }
@@ -422,9 +422,9 @@ func pinUnsplitChecks(stores []boundDirStore) []adapter.Check {
 			Tool: bound.Tool, Code: constants.CheckCredentialUnsplit, Status: constants.StatusWarn,
 			Message: fmt.Sprintf(
 				"the directory bound to %s/%s (%s) keeps its own copy of that account's credential; "+
-					"another directory or `%s use -i` on the same account will invalidate it — "+
-					"re-bind it: cd %s && %s pin",
-				bound.Tool, bound.Account, bound.Dir, toolName, bound.Dir, toolName,
+					"another directory or `kae use -i` on the same account will invalidate it — "+
+					"to re-bind it, run: cd %s && kae pin",
+				bound.Tool, bound.Account, bound.Dir, bound.Dir,
 			),
 		})
 	}
@@ -666,7 +666,7 @@ func (app *App) boundStoreDir(pinID, tool string, fragment fragmentInfo) (dir st
 // that would refuse.
 func pinLoginRemedy(tool, dir string) string {
 	if loginCommand(tool) != nil {
-		return fmt.Sprintf("verify the bound account with kae status in that directory and stop other sessions using its credential; log in inside that directory as the bound account: cd %s && %s relogin %s", dir, toolName, tool)
+		return fmt.Sprintf("stop other sessions using its credential; to verify the bound account, run: kae status in that directory; to log in inside that directory as the bound account, run: cd %s && kae relogin %s", dir, tool)
 	}
 	return fmt.Sprintf("kae cannot launch a login for %s; before manual login in %s, verify the bound account and that mise activation, trust and the tool environment select its bound store; see docs/CLI.md Recovery guidance", tool, dir)
 }

@@ -862,7 +862,7 @@ func TestRunPinModeToggleReportsWhatTheWriteActuallyDid(t *testing.T) {
 	if strings.Contains(stderr, "this bind replaces it") {
 		t.Fatalf("the message must not predict a replacement the write did not make: %q", stderr)
 	}
-	if !strings.Contains(stderr, "leaving it where it is") {
+	if !strings.Contains(stderr, "left in place") {
 		t.Fatalf("the message must state what happened: %q", stderr)
 	}
 }

@@ -52,7 +52,7 @@ func runInit(_ context.Context, app *App, opts commonOpts) int {
 			return finish(opts, errf(constants.ExitUnsafeRefused, "config is not a regular file: %s", app.displayPath(app.ConfigPath)))
 		}
 		if _, _, err := config.Load(app.ConfigPath); err != nil {
-			return finish(opts, errf(constants.ExitInvalidConfig, "invalid config %s: %v", app.displayPath(app.ConfigPath), err))
+			return finish(opts, errInvalidConfig(app.displayPath(app.ConfigPath), err))
 		}
 	}
 	for _, dir := range []string{app.Paths.ConfigDir, app.Paths.DataDir, app.Paths.StateDir} {

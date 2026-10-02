@@ -149,7 +149,7 @@ func (app *App) ensureStoreLink(path, target string) bool {
 		}
 	default: // storeLinkForeign
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: %s is not a kae link; leaving it alone. This directory's %s store is %s\n",
+			"kae: warning: %s is not a kae link; leaving it unchanged. This directory's %s store is %s\n",
 			path, filepath.Base(path), app.displayPath(target))
 		return false
 	}

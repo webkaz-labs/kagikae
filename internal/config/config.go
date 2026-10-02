@@ -128,7 +128,7 @@ func Load(path string) (*Config, []string, error) {
 					)
 				}
 				return nil, warnings, fmt.Errorf(
-					"config key %q was removed in v0.8.0 (overlay/home modes are gone; bind directories with kae pin -s|-i)", key.String(),
+					"config key %q was removed in v0.8.0; to bind directories instead, run: kae pin -s|-i", key.String(),
 				)
 			}
 		}
@@ -275,13 +275,13 @@ func stripRemovedTools(c *Config) []string {
 		if _, ok := c.Tools[tool]; ok {
 			delete(c.Tools, tool)
 			warnings = append(warnings,
-				fmt.Sprintf("[tools.%s] ignored: %s was removed (successor: %s)", tool, tool, successor))
+				fmt.Sprintf("[tools.%s] ignored: %s was removed; use %s instead", tool, tool, successor))
 		}
 		for name, profile := range c.Profiles {
 			if _, ok := profile.Accounts[tool]; ok {
 				delete(profile.Accounts, tool)
 				warnings = append(warnings,
-					fmt.Sprintf("profiles.%s.accounts.%s ignored: %s was removed (successor: %s)", name, tool, tool, successor))
+					fmt.Sprintf("profiles.%s.accounts.%s ignored: %s was removed; use %s instead", name, tool, tool, successor))
 			}
 		}
 	}

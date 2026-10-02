@@ -866,7 +866,7 @@ test -z "$(git -C "$W/main" status --porcelain)"   # assert: empty
 
 # --- D. outside any repository: no rule, and no claim of one ---
 mkdir -p "$HOME/norepo"; cd "$HOME/norepo" && /tmp/kae pin main > "$HOME/D.out" 2>&1
-grep -q 'your mise.toml is untouched' "$HOME/D.out"   # assert: it still reports the write
+grep -q 'your mise.toml is left unchanged' "$HOME/D.out"   # assert: it still reports the write
 test "$(grep -c 'ignored via' "$HOME/D.out")" -eq 0
                                        # assert: and claims no ignore rule. The line
                                        #   above is this one's positive control
@@ -992,7 +992,7 @@ B=$(mkdir -p "$HOME/work/main-app/one" "$HOME/work/main-app/a/b/c" && cd "$HOME/
 V='^export (KAE_PROFILE|CLAUDE_CONFIG_DIR|CLAUDE_SECURESTORAGE_CONFIG_DIR)='
 
 cd "$B" && /tmp/kae pin -t main > "$HOME/T.out" 2>&1
-grep -q 'Pinned this directory: profile main (tree)' "$HOME/T.out"
+grep -q 'Bound this directory: profile main (tree)' "$HOME/T.out"
 F="$B/.config/mise/conf.d/kagikae.toml"
 grep -q '^# kae:mode=tree$' "$F"      # assert: the fragment is a tree binding
 grep -qE '^CLAUDE_CONFIG_DIR = ".*/isolation/[0-9a-f]{16}/claude/tree"$' "$F"
@@ -1320,7 +1320,7 @@ cred FOREIGN $NEW > "$(accstore main)"
 /tmp/kae pin main 2> "$HOME/B2.err"
 test "$(grep -c '^kae: ' "$HOME/B2.err")" -eq 1
 grep -q 'disagree about whose login it is' "$HOME/B2.err"
-grep -q 'leaving it where it is' "$HOME/B2.err"
+grep -q 'left in place' "$HOME/B2.err"
 grep -q 'kae relogin claude' "$HOME/B2.err"
 test "$(grep -c 'kept it rather than replacing it' "$HOME/B2.err")" -eq 0
 #   A disagreement is missing evidence, so it carries the login remedy, unlike B1. The
@@ -1349,7 +1349,7 @@ ident main > "$(store)/.claude.json"
 printf '{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,"refreshTokenExpiresAt":1830384000000}}' \
   > "$(cstore)/.credentials.json"
 /tmp/kae pin main > "$HOME/C1.out" 2> "$HOME/C1.err"
-grep -q 'Pinned this directory' "$HOME/C1.out"
+grep -q 'Bound this directory' "$HOME/C1.out"
                                         # assert: the command ran — the positive control
                                         #         for the two absences below
 test "$(grep -c harvested "$HOME/C1.err")" -eq 0   # assert: NO `harvested` line —
@@ -1564,7 +1564,7 @@ cred MAIN-NEW $NEW > "$HOME/.claude/.credentials.json"; ident main > "$HOME/.cla
 cred MAIN-OLD $OLD > "$HOME/.claude/.credentials.json"   # what a rollback leaves behind
 /tmp/kae use claude side 2> "$HOME/J.err"
 grep -q 'snapshot claude/main holds a later claude credential than the live store' "$HOME/J.err"
-grep -q 'snapshot left unchanged' "$HOME/J.err"
+grep -q 'snapshot claude/main left unchanged' "$HOME/J.err"
 snap main | grep MAIN-NEW                # assert: the only copy that can refresh survived
 test "$(snap main | grep -c MAIN-OLD)" -eq 0
                                         # assert: 0 — paired with the positive line above
@@ -1720,7 +1720,7 @@ SB=$(store)   # B's credential is its config dir again — that is the point of 
 cred A-NEW $LATER > "$SA/.credentials.json"   # the tool refreshed A's account store
 cred B-OLD $NEW   > "$SB/.credentials.json"   # B has been sitting since before that
 # One capture, not three runs over state nothing changes in between: an unscoped
-# `kae doctor` sweeps every tool plus the companion and pinned-directory checks, ~1.5s
+# `kae doctor` sweeps every tool plus the companion and bound-directory checks, ~1.5s
 # a call on the machine this was measured on.
 /tmp/kae doctor --json > "$HOME/K.json"
 test "$(grep -c credential_superseded "$HOME/K.json")" -eq 1
@@ -1813,7 +1813,7 @@ test "$(grep -c relogin "$HOME/L2.txt")" -eq 0
 # --- M. outside a binding nothing is launched ---
 C=$(mktemp -d); cd "$C"
 /tmp/kae relogin > "$HOME/M.out" 2> "$HOME/M.err"; test $? -eq 7   # assert: 7 (not_found)
-grep -q 'this directory is not pinned' "$HOME/M.err"
+grep -q 'this directory is not bound' "$HOME/M.err"
 grep -q 'kae add --restore' "$HOME/M.err"   # assert: and it names the global remedy
 grep -q SOLO-OLD "$HOME/.claude/.credentials.json"
                                         # assert: the temp real home still holds what the
@@ -2082,11 +2082,11 @@ test "$(fragvar "$FIRST/$FRAGMENT" CLAUDE_SECURESTORAGE_CONFIG_DIR)" = "$SHARED_
 "$KAE_STORE_SMOKE_BIN" doctor --json > "$HOME/store-repaired.json"
 "$HOME/storecheck" normal "$HOME/store-repaired.json"
 "$KAE_STORE_SMOKE_BIN" unpin --purge > "$HOME/purge-first.txt" 2>&1
-grep -Fq '1 other binding(s) still use the claude credential for main, so it is kept' "$HOME/purge-first.txt"
+grep -Fq '1 other binding(s) still use the claude credential for main, so it is left in place instead of deleted' "$HOME/purge-first.txt"
 "$HOME/storecheck" credential "$SHARED_CRED" sk-ant-oat01-MAIN-SYNTHETIC-aaaa
 cd "$SECOND"
 "$KAE_STORE_SMOKE_BIN" unpin --purge > "$HOME/purge-last.txt" 2>&1
-grep -Fq "Removed the claude credential this account's bindings shared; nothing points at it any more ($SHARED_CRED)" "$HOME/purge-last.txt"
+grep -Fq "Removed the claude credential this account's bindings shared; no binding still uses it ($SHARED_CRED)" "$HOME/purge-last.txt"
 "$HOME/storecheck" removed "$SHARED_CRED"
 "$KAE_STORE_SMOKE_BIN" pin main
 BEFORE_REBIND=$(fragvar "$SECOND/$FRAGMENT" CLAUDE_CONFIG_DIR)

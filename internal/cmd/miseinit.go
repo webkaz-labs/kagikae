@@ -51,7 +51,7 @@ func CmdMise(ctx context.Context, args []string) int {
 func runMiseInit(_ context.Context, app *App, opts commonOpts, profileName, mode string, auto, write bool) int {
 	if mode != constants.ModeAuth {
 		return usageError(
-			"kae mise init renders auth mode only (mode %q is no longer supported); bind a directory with `kae pin -s|-i|-t`", mode,
+			"kae mise init renders auth mode only (mode %q is no longer supported); to bind a directory instead, run: kae pin -s|-i|-t", mode,
 		)
 	}
 	if err := app.requireConfig(); err != nil {
@@ -323,6 +323,36 @@ func modeUnboundReason(m bindMode, tool string) string {
 		m.name, strings.Join(m.tools, ", "), tool)
 }
 
+// errRealHomeIsStore refuses a store that is the tool's real home itself; what names the store.
+func errRealHomeIsStore(tool, what string) error {
+	return errf(constants.ExitUnsafeRefused,
+		"the real %s home resolves to the %s itself; unset %s and retry", tool, what, isolationEnvVar(tool))
+}
+
+// ensureStoreLink links dst to src, replacing a stale symlink. A real file or
+// directory at dst is a private override and is left unchanged.
+func ensureStoreLink(src, dst string) error {
+	info, statErr := os.Lstat(dst)
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return fmt.Errorf("stat link item %s: %w", dst, statErr)
+	}
+	if statErr == nil {
+		if info.Mode()&os.ModeSymlink == 0 {
+			return nil
+		}
+		if current, readErr := os.Readlink(dst); readErr == nil && current == src {
+			return nil // already linked correctly
+		}
+		if err := os.Remove(dst); err != nil {
+			return fmt.Errorf("refresh link %s: %w", dst, err)
+		}
+	}
+	if err := os.Symlink(src, dst); err != nil {
+		return fmt.Errorf("link item %s: %w", dst, err)
+	}
+	return nil
+}
+
 // prepareBond creates the bond directory for one tool/pinID: symlinks every
 // real-home entry except the hard-coded denylist, then materializes the bound
 // account's credential privately (writeDirCredential). Idempotent: stale
@@ -335,9 +365,7 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 	}
 	realHome := app.realToolHome(tool)
 	if filepath.Clean(realHome) == filepath.Clean(bondDir) {
-		return "", errf(constants.ExitUnsafeRefused,
-			"the real %s home resolves to the bond dir itself; unset %s and retry",
-			tool, isolationEnvVar(tool))
+		return "", errRealHomeIsStore(tool, "bond dir")
 	}
 
 	denylist := app.bondDenylistItems(tool)
@@ -365,25 +393,8 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 		}
 		intended[name] = true
 		src := filepath.Join(realHome, name)
-		dst := filepath.Join(bondDir, name)
-		info, statErr := os.Lstat(dst)
-		if statErr != nil && !os.IsNotExist(statErr) {
-			return "", fmt.Errorf("stat bond item %s: %w", dst, statErr)
-		}
-		if statErr == nil {
-			if info.Mode()&os.ModeSymlink == 0 {
-				// Real file/dir in bond dir = private override; leave it.
-				continue
-			}
-			if current, readErr := os.Readlink(dst); readErr == nil && current == src {
-				continue // already linked correctly
-			}
-			if err := os.Remove(dst); err != nil {
-				return "", fmt.Errorf("refresh bond link %s: %w", dst, err)
-			}
-		}
-		if err := os.Symlink(src, dst); err != nil {
-			return "", fmt.Errorf("link bond item %s: %w", dst, err)
+		if err := ensureStoreLink(src, filepath.Join(bondDir, name)); err != nil {
+			return "", err
 		}
 	}
 
@@ -412,9 +423,9 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 	case len(stale) > 0:
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: the real %s home (%s) lists nothing to share, so kae cannot tell "+
-				"whether %d shared link(s) in %s are still wanted; leaving them alone. "+
+				"whether %d shared link(s) in %s are still wanted; leaving them in place. "+
 				"If that home is right, remove the links by hand; if it is not, unset %s (or "+
-				"fix it) and run kae pin again\n",
+				"fix it), then run: kae pin\n",
 			tool, realHome, len(stale), bondDir, isolationEnvVar(tool))
 	}
 
@@ -523,9 +534,7 @@ func (app *App) prepareOptInStore(ctx context.Context, be secret.Backend, tool, 
 	}
 	realHome := app.realToolHome(tool)
 	if filepath.Clean(realHome) == filepath.Clean(configDir) {
-		return "", errf(constants.ExitUnsafeRefused,
-			"the real %s home resolves to the %s itself; unset %s and retry",
-			tool, what, isolationEnvVar(tool))
+		return "", errRealHomeIsStore(tool, what)
 	}
 
 	// Symlink opt-in shared items from the real home. The *configured list* is this
@@ -542,24 +551,8 @@ func (app *App) prepareOptInStore(ctx context.Context, be secret.Backend, tool, 
 		if _, err := os.Stat(src); err != nil {
 			continue // only link what exists
 		}
-		dst := filepath.Join(configDir, item)
-		info, statErr := os.Lstat(dst)
-		if statErr != nil && !os.IsNotExist(statErr) {
-			return "", fmt.Errorf("stat pin item %s: %w", dst, statErr)
-		}
-		if statErr == nil {
-			if info.Mode()&os.ModeSymlink == 0 {
-				continue // real file/dir in pin dir is a private override; leave it
-			}
-			if current, readErr := os.Readlink(dst); readErr == nil && current == src {
-				continue // already linked correctly
-			}
-			if err := os.Remove(dst); err != nil {
-				return "", fmt.Errorf("refresh pin link %s: %w", dst, err)
-			}
-		}
-		if err := os.Symlink(src, dst); err != nil {
-			return "", fmt.Errorf("link pin item %s: %w", dst, err)
+		if err := ensureStoreLink(src, filepath.Join(configDir, item)); err != nil {
+			return "", err
 		}
 	}
 

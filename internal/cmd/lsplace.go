@@ -56,6 +56,11 @@ type lsRequest struct {
 	pick     bool // open and cd only: choose among the target's places in the picker
 }
 
+// errNoPlaces is the error for a tool target that has no project-level places.
+func errNoPlaces(target string) *cmdError {
+	return errf(constants.ExitNotFound, "kae resolves no places for %s", target)
+}
+
 const lsUsage = "usage: kae ls [account|pin|repo|kae|<tool> | -s <tool> | -i <tool> <account>] [--current [--project|--below|--home] [--root] | --at N] [--json]"
 
 // resolveLsTarget matches a target word: the exact words first, then a prefix
@@ -204,7 +209,7 @@ func parsePlaceArgs(verb string, f lsFlags, positionals []string) (lsRequest, in
 		if navigate {
 			return req, usageError("a level selector needs a tool target: kae %s <tool> %s", verb, "--"+req.level)
 		}
-		return req, usageError("a level selector needs a tool target: kae ls <tool> --current %s", "--"+req.level)
+		return req, usageError("a level selector needs a tool target; run: kae ls <tool> --current %s", "--"+req.level)
 	}
 	if req.explicit != nil && req.explicit.isolated && req.level == constants.PlaceKindHome {
 		return req, usageError("-i resolves the user level and --home selects the real home; give one")
@@ -212,7 +217,7 @@ func parsePlaceArgs(verb string, f lsFlags, positionals []string) (lsRequest, in
 	if req.current || req.at != 0 {
 		switch {
 		case req.target == "" && !navigate:
-			return req, usageError("--current and --at need a target: kae ls <target> --current")
+			return req, usageError("--current and --at need a target; run: kae ls <target> --current")
 		case req.target == "" && req.at != 0:
 			return req, usageError("--at is the number kae ls <target> shows, so it needs a target: kae %s <target> --at N", verb)
 		case req.target == constants.PlaceGroupAccount:
@@ -689,7 +694,7 @@ func selectPlace(app *App, opts commonOpts, req lsRequest, rows []placeRow) (pla
 	var matches []placeRow
 	switch {
 	case constants.IsTool(req.target) && projectLevelName(req.target) == "":
-		return placeChoice{}, finish(opts, errf(constants.ExitNotFound, "kae resolves no places for %s", req.target))
+		return placeChoice{}, finish(opts, errNoPlaces(req.target))
 	case constants.IsTool(req.target) && req.level == "":
 		matches = rows[:1] // the effective user level is always first
 	case req.level == constants.PlaceKindProject:

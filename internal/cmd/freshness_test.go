@@ -760,7 +760,7 @@ func TestMissingSnapshotRecoveryVerifiesBeforeCapture(t *testing.T) {
 			return runSwitch(context.Background(), app, commonOpts{Format: format}, "claude", "main")
 		})
 		mustExit(t, constants.ExitNotFound, code, out+diagnostic)
-		for _, want := range []string{"verify the live claude login belongs to account main", "only then re-capture", "if logged out or uncertain"} {
+		for _, want := range []string{"verify the live claude login belongs to account main", "only then, to re-capture, run: kae add --no-login claude main", "if logged out or uncertain"} {
 			if !strings.Contains(out+diagnostic, want) {
 				t.Fatalf("missing %q: %s %s", want, out, diagnostic)
 			}

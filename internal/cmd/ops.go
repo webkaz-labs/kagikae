@@ -93,7 +93,7 @@ func validateTool(tool string) error {
 	if !constants.IsTool(tool) {
 		if successor, removed := constants.RemovedTools[tool]; removed {
 			return errf(constants.ExitUsage,
-				"%s was removed in v0.6.0; its upstream successor is %s (captured %s accounts on disk are untouched)",
+				"%s was removed in v0.6.0; use %s instead (captured %s accounts on disk are left unchanged)",
 				tool, successor, tool)
 		}
 		return errf(constants.ExitUsage, "unknown tool %q (tools: %s)%s", tool, strings.Join(constants.Tools, ", "), didYouMean(tool, constants.Tools))
@@ -446,7 +446,7 @@ func restoreSpec(current map[string][]artifact.Spec, rec backup.ArtifactRecord) 
 		if artifact.WholeDocument(live.Kind) != artifact.WholeDocument(rec.Kind) {
 			return artifact.Spec{}, "", errf(constants.ExitUnsafeRefused,
 				"%s/%s was backed up from %s %q but %s now keeps it in %s %q, and the two "+
-					"payload shapes are not interchangeable; switch with `kae use %s <account>` instead",
+					"payload shapes are not interchangeable; run: kae use %s <account> instead",
 				rec.Tool, rec.Name, rec.Kind, rec.Target, rec.Tool, live.Kind, live.Target, rec.Tool)
 		}
 		return live, "", nil
@@ -529,9 +529,9 @@ func (app *App) restorableActiveAccount(meta backup.Meta, tool string) (string, 
 // `kae use` reaches the same work from the snapshot side.
 func (app *App) reapplyHint(meta backup.Meta, tool string) string {
 	if acct, ok := app.restorableActiveAccount(meta, tool); ok {
-		return fmt.Sprintf("re-apply it: kae use %s %s", tool, acct)
+		return fmt.Sprintf("re-apply it; run: kae use %s %s", tool, acct)
 	}
-	return fmt.Sprintf("re-apply the %s account you want (see: kae accounts)", tool)
+	return fmt.Sprintf("re-apply the %s account you want; run: kae use %s <account> (kae accounts lists them)", tool, tool)
 }
 
 // clearUnrecordedIdentity removes every identity-only artifact the backup has no
@@ -628,6 +628,11 @@ func plansFromBackupMeta(meta backup.Meta, current map[string][]artifact.Spec) [
 // code applies (not_found, auth_missing, ...); plain fmt.Errorf flows through
 // exitOf's default branch as a general error.
 
+// restoredFailure reports an operation that failed and was rolled back from the backup.
+func restoredFailure(op string, err error, backupID string) error {
+	return errf(exitOf(err), "%s failed, previous state restored from backup %s: %v", op, backupID, err)
+}
+
 // doubleFailure reports the catastrophic case: the primary operation failed
 // AND restoring from the backup failed too. The manual escape hatch is
 // always the same.
@@ -652,9 +657,7 @@ func (app *App) loadPlansWithSnapshots(ctx context.Context, targets []runTarget)
 			return nil, err
 		}
 		if !found {
-			return nil, errf(constants.ExitNotFound,
-				"account %s/%s is not captured yet; %s",
-				tgt.Tool, tgt.Account, verifiedCaptureRemedy(tgt.Tool, tgt.Account))
+			return nil, errUncapturedWithRemedy(tgt.Tool, tgt.Account)
 		}
 		plan.Meta = acc
 		plans = append(plans, plan)

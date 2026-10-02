@@ -69,7 +69,8 @@ properties, including redaction of credential-bearing diagnostics.
 ### Output language in tests
 
 Assertions on human text assert the English rendering, which is normative
-([CLI.md](CLI.md) § Localization). A developer's locale must not reach them: the maintainer's machine (observed 2026-10-03) runs with `LC_ALL=ja_JP.UTF-8` over `LANG=en_US.UTF-8`, which selects Japanese, and CI does not.
+([CLI.md](CLI.md) § Localization). A developer's locale must not reach them. The maintainer's machine (observed 2026-10-03) runs with `LC_ALL=ja_JP.UTF-8` over `LANG=en_US.UTF-8`, which selects Japanese, and CI does not.
+
 Each test entrypoint therefore pins English itself:
 
 - **Go tests.** The `TestMain` of each package that renders human text pins English
@@ -81,15 +82,20 @@ Each test entrypoint therefore pins English itself:
 - **Picker PTY suite.** The harness already starts its shell through `env -i` with
   `LC_ALL=C` (§ Picker PTY suite).
 
-Japanese output has its own explicit layer rather than inheriting a locale: tests select Japanese explicitly — through a per-test override that the English pin restores (process-wide, so such tests do not run in parallel), or a child process started with `KAE_LANG=ja` — render representative cases of the localized output, and
-the secret-leak regression runs in both languages. Messages are English format strings that the writing sinks (`usageError`, the warning, note and report writers) translate inside, and that the constructors of message values (`errf` and the like, below) carry as data, so a call site keeps its English literal. A sink is a `go vet` printf wrapper only while it passes its unchanged `format` and `args...` to a `fmt.*f` call; translating by reassigning or wrapping the format (`tr(format)`) silently drops the check, so each sink renders English through such a call and the catalog test, not vet, covers the Japanese path. `usageError` takes that form in stage 1.
-A message that travels as data before it is shown (an `errf` error, `adapter.Check.Message`, report and switch warnings, `unboundReason`, did-you-mean suffixes, errors built in packages below `internal/cmd`) is a value holding its English format and arguments (a wrapped cause stays reachable through the value's `Unwrap`, so `errors.Is`, `errors.As` and exit codes do not depend on the language): `Error()`, JSON and generated files render English from it, and only a human sink renders the localized text. Composition happens on the value, never on an already formatted string, and the catalog test counts the constructors of such values as sinks. One catalog test reads the
-source and fails when a sink's format argument is not a constant string expression (as `go/types` evaluates it, so `"a" + "b"` counts) present in the
-Japanese catalog (kept per area, not per source file), when the catalog holds a key no call uses, when a flag description registered with the `flag` package is not in the catalog, when a Japanese
-string's format verbs disagree with its English key (count and verbs; explicit
-indices are allowed), when a Japanese string contains an East Asian Ambiguous
-character (`displayWidth` in `internal/cmd/text.go` counts those as one column),
-or when a human-output sink prints a literal outside the catalog. Machine sinks are on a permanent allowlist; human sinks not yet migrated, flag registrations and the `fmt.Errorf` and `errors.New` calls below `internal/cmd` that are not yet values are on a second allowlist, narrowed file by file as their output moves into the catalog and empty after the last stage.
+Japanese output has its own explicit layer rather than inheriting a locale:
+
+- **Selecting Japanese.** Tests select Japanese explicitly, through a per-test override that the English pin restores (process-wide, so such tests do not run in parallel) or a child process started with `KAE_LANG=ja`. They render representative cases of the localized output, and the secret-leak regression runs in both languages.
+- **Sinks.** Messages are English format strings that the writing sinks (`usageError`, the warning, note and report writers) translate inside, and that the constructors of message values (below) carry as data, so a call site keeps its English literal. A sink passes its unchanged `format` and `args...` to a `fmt.*f` call, which keeps it a `go vet` printf wrapper; translating by reassigning or wrapping the format (`tr(format)`) would drop that check. The catalog test, not vet, covers the Japanese path.
+- **Messages as values.** A message that travels as data before it is shown (an `errf` error, `adapter.Check.Message`, report and switch warnings, `unboundReason`, did-you-mean suffixes, errors built in packages below `internal/cmd`) is a value holding its English format and arguments. A wrapped cause stays reachable through the value's `Unwrap`, so `errors.Is`, `errors.As` and exit codes do not depend on the language. `Error()`, JSON and generated files render English from it, and only a human sink renders the localized text. Composition happens on the value, never on an already formatted string, and the catalog test counts the constructors of such values as sinks.
+- **Catalog test.** One test reads the source and fails when:
+  - a sink's format argument is not a constant string expression (as `go/types` evaluates it, so `"a" + "b"` counts) present in the Japanese catalog (kept per area, not per source file);
+  - the catalog holds a key no call uses;
+  - a flag description registered with the `flag` package is not in the catalog;
+  - a Japanese string's format verbs disagree with its English key (count and verbs; explicit indices are allowed);
+  - a Japanese string contains an East Asian Ambiguous character (`displayWidth` in `internal/cmd/text.go` counts those as one column);
+  - a human-output sink prints a literal outside the catalog.
+
+  Machine sinks are on a permanent allowlist. A second allowlist lists the human sinks not yet migrated, flag registrations and the `fmt.Errorf` and `errors.New` calls below `internal/cmd` that are not yet values; it is narrowed file by file as their output moves into the catalog.
 
 ### Check retention and CI admission
 

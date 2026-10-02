@@ -1,8 +1,9 @@
 # 日本語表示の用語・文体・文字
 
-kae の人間向け出力を日本語で書く・直すときに読む文書です。ここが持つのは「英語のどの語を日本語でどう書くか」「文体」「使える文字」だけです。日本語表示の振る舞い（言語の選択、翻訳しないもの、1 行 1 言語、終了コードや JSON が言語で変わらないこと）は [CLI.md](CLI.md) § Localization が持ち、ここでは決めません。英語の語の定義は [CONTEXT.md](CONTEXT.md) が持ちます。英語が正本で、日本語が英語と食い違うときは英語に合わせて直します。
+kae の人間向け出力を日本語で書く・直すときに読む文書です。英語が正本で、日本語が英語と食い違うときは英語に合わせて直します。
 
-英語の語を足す・変えたときは、CONTEXT.md の表とこの文書の表を同じ変更で揃えます。
+- この文書が持つもの: 英語の語の日本語表記、文体、使える文字。
+- 持たないもの: 日本語表示の振る舞い（言語の選択、翻訳しないもの、1 行 1 言語、終了コードや JSON が言語で変わらないこと）は [CLI.md](CLI.md) § Localization が持つ。英語の語の定義と、語を足す・変えたときに表を揃える規則は [CONTEXT.md](CONTEXT.md) が持つ。
 
 ## 状態
 
@@ -12,9 +13,7 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 |---|---|
 | 確定 | 既存の日本語文書（README.ja.md、GUIDE.ja.md、PRODUCT.ja.md）が既に使っている訳。変えると既存文書と食い違う |
 | 決定 | operator が決めた訳 |
-| 未確認（operator 確認待ち） | 暫定の推奨案。確認が取れるまで変更されうる |
-
-未確認の項目は末尾の「未確認の項目」にまとめてあります。
+| 未確認 | 暫定の推奨案。operator の確認待ちで、確認が取れるまで変更されうる |
 
 ## 用語表
 
@@ -27,11 +26,11 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | tool | ツール | 確定 | `claude` `codex` 等の名前は訳さない。「対応ツール」「上流ツール」 |
 | upstream | 上流 | 確定 | 「上流ツール」「上流サービス」 |
 | adapter | アダプター | 確定 | |
-| driver | ドライバー | 未確認（operator 確認待ち） | 既存なし。adapter（アダプター）と区別できる語。利用者向け出力にはほぼ出ない |
+| driver | ドライバー | 未確認 | 既存なし。adapter（アダプター）と区別できる語。利用者向け出力にはほぼ出ない |
 | artifact | 認証要素 | 決定 | 「成果物」は誤解を招くので使わない。JSON の artifact kind トークンは訳さない |
 | companion | 周辺ツール | 決定 | コマンド名 `kae companion` は訳さない。PRODUCT.ja.md の用語表は英語の `companion` のままで、出力文字列では「周辺ツール」を使う |
 | place | 場所 | 確定 | 初出では「場所」を定義する形（GUIDE.ja.md）を踏襲する |
-| session row | セッション記録の行 | 未確認（operator 確認待ち） | GUIDE.ja.md の「セッション記録を置く `projects/` 以下の行」に合わせた案 |
+| session row | セッション記録の行 | 未確認 | GUIDE.ja.md の「セッション記録を置く `projects/` 以下の行」に合わせた案 |
 | session / transcript | セッション / セッション記録 | 確定 | |
 | mise | mise | 訳さない | 製品名 |
 
@@ -44,9 +43,9 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | auth / authentication | 認証 | 確定 | |
 | credential store | 認証ストア | 確定 | 短縮の「ストア」は文脈が自明なときだけ |
 | isolation store / working store | 作業ストア | 確定 | |
-| bound directory | 固定したディレクトリ | 未確認（operator 確認待ち） | 英語の散文は bound directory / bind に統一する（operator 決定。pin はコマンド名 `kae pin` だけ。統一は [ROADMAP.md](ROADMAP.md) 段階 0 の英語コミットで行う）。既存の日本語文書（README.ja.md と GUIDE.ja.md）は「固定したディレクトリ」と「固定ディレクトリ」の両方を使っていて、既存の用例が 1 つに定まらない。PRODUCT.ja.md の「ディレクトリ固定」は機能名。日本語では bound と pinned の区別が出ない |
+| bound directory | 固定したディレクトリ | 未確認 | 英語の散文は bound directory / bind に統一する（operator 決定。pin はコマンド名 `kae pin` だけ）。既存の日本語文書（README.ja.md と GUIDE.ja.md）は「固定したディレクトリ」と「固定ディレクトリ」の両方を使っていて、既存の用例が 1 つに定まらない。PRODUCT.ja.md の「ディレクトリ固定」は機能名。日本語では bound と pinned の区別が出ない |
 | bind（動詞） | 固定する | 確定 | |
-| binding（名詞） | 固定の内容 | 未確認（operator 確認待ち） | 「バインディング」は既存ゼロなので使わない |
+| binding（名詞） | 固定の内容 | 未確認 | 「バインディング」は既存ゼロなので使わない |
 | unpin / unbind | 固定を解除する | 確定 | GUIDE.ja.md「`kae unpin` は固定を解除します」。コマンド名は訳さない |
 | mode | モード | 確定 | |
 | `shared` mode | 共有モード / 共有環境 | 確定 | フラグ・設定値 `-s` `shared` は訳さない |
@@ -54,9 +53,9 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | `tree` mode | ツリーモード | 確定 | 「ツリー」単独で mode を指さない |
 | fragment | フラグメント | 確定 | パス `.config/mise/conf.d/kagikae.toml` と併記する |
 | store link | ストアへのリンク | 確定 | GUIDE.ja.md の「そのツールのストアへの symlink も張ります」に合う。symlink は技術語として訳さない |
-| bond dir | 利用者向けでは出さない | 未確認（operator 確認待ち） | CONTEXT.md の shared config dir と同一物。見せるならパス（`shared`）を出す |
+| bond dir | 利用者向けでは出さない | 未確認 | CONTEXT.md の shared config dir と同一物。見せるならパス（`shared`）を出す |
 | pin-id | 訳さない | 確定 | パス断片（`isolation/<pin-id>/`）として英語のまま出る |
-| breadcrumb | 固定したディレクトリの記録 | 未確認（operator 確認待ち） | 内部語。「パンくず」は誤解を招くので不可。fragment と混ぜない |
+| breadcrumb | 固定したディレクトリの記録 | 未確認 | 内部語。「パンくず」は誤解を招くので不可。fragment と混ぜない |
 | reader | 参照元 | 決定 | credential store を読んでいる設定ディレクトリ。「証人」系の語は避ける |
 | harvest | 退避 | 決定 | 失う前に残る場所へコピーする意味（元は残る）。「退避コピー」「退避する」。「回収」は元を取り去る含みがあるので使わない |
 | capture back | 取り込み直し | 決定 | `kae relogin` が再ログイン後に行う harvest 1 回。harvest（退避）の同義語ではないので訳語を分ける |
@@ -64,27 +63,33 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 | backup | バックアップ | 確定 | 保全記録とは別の復元経路。混ぜない |
 | restore / rollback | 復元 / `kae rollback` | 確定 | rollback はコマンド名なので訳さない。「復旧」は障害対応の見出し語（「認証の復旧」）として復元と区別する |
 | tombstone | 失効マーカー | 決定 | ツール自身が、自分のログインが失効したと記録するために上書きした認証情報 |
-| identity cache | ログイン中アカウントの記録 | 未確認（operator 確認待ち） | credential ではなく account の証拠であることが読める案。短縮は「アカウント記録」 |
-| supersedes / orderable | 訳さない | 未確認（operator 確認待ち） | 述語名は利用者向けでない。文では「新しい」「新旧を決められない」と書く |
+| identity cache | ログイン中アカウントの記録 | 未確認 | credential ではなく account の証拠であることが読める案。短縮は「アカウント記録」 |
+| supersedes / orderable | 訳さない | 未確認 | 述語名は利用者向けでない。文では「新しい」「新旧を決められない」と書く |
 | dry-run | `--dry-run` | 確定 | 名詞としては「変更予定の確認」。「ドライラン」は使わない |
 | lock | ロック | 確定 | 「ロック競合」 |
 | picker | ピッカー | 確定 | |
 | usage quota | 利用枠 | 確定 | |
 | login / relogin | ログイン / 再ログイン | 確定 | `kae relogin` は訳さない |
 | expire / revoke（live login） | 失効 | 確定 | 期限切れは「期限切れ」 |
-| switch | 切替 / 切り替える | 未確認（operator 確認待ち） | 名詞は送り仮名なしの「切替」、動詞は送って「切り替える」。既存は両方使われている。規則として固定するかは未確認 |
+| switch | 切替 / 切り替える | 未確認 | 名詞は送り仮名なしの「切替」、動詞は送って「切り替える」。既存は両方使われている。規則として固定するかは未確認 |
 | config file | 設定ファイル | 確定 | |
 | env var | 環境変数 | 確定 | `KAE_LANG` 等の名前は訳さない |
 | child process | 子プロセス | 確定 | |
 | cancel | キャンセル | 確定 | |
 
+### 型と記号
+
+| 項目 | 現在の案 | 区分 | 備考 |
+|---|---|---|---|
+| 疑問文・確認プロンプト（`[y/N]`）・did-you-mean | 型は未定 | 未確認 | 受け付ける答えが言語で変わらないことは [CLI.md](CLI.md) § Localization が持つ |
+| 対処コマンドの囲み | バッククォートで囲まない | 未確認 | 端末出力は Markdown ではない |
+| 利用枠のセルの区切り `·`（U+00B7） | 扱いは未定 | 未確認 | 「使える記号」の節を参照 |
+
 ### 訳さないもの
 
-訳さない集合は [CLI.md](CLI.md) § Localization の "What is never localized" が持ちます。ここで足すものはありません。訳語を決めるときに迷いやすい点だけ書きます。
+訳さない集合は [CLI.md](CLI.md) § Localization の "What is never localized" が持ちます。ここでは日本語の文に埋め込むときの書き方だけを決めます。
 
 - コマンド名・フラグ名・tool 名・account 名・profile 名は、文中の日本語に埋め込んでもそのまま書く（「アカウント `claude/main`」）。
-- 行頭の `kae:` `kae: warning:` `kae: note:` は英語のまま、以降を訳す。
-- OS・上流ツール・Go 標準ライブラリ由来のエラー文は、部分翻訳せず全体を英語のまま引用する。
 
 ## 文体
 
@@ -101,12 +106,12 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 
 ### 対処の書き方
 
-英語側は対処を `; run: kae X` の形に統一します（operator 決定）。日本語は同じ内容を「…してください」型で書き、コマンドは英語のまま訳しません。この統一は [ROADMAP.md](ROADMAP.md) 段階 0 の英語コミットで行います。
+英語側は対処を `; run: kae X` の形に統一します（operator 決定）。日本語は同じ内容を「…してください」型で書き、コマンドは英語のまま訳しません。
 
 - 理由を先、対処を後に置く。「A は B のため C できません。D を実行してください」。
 - 条件は「〜の場合は」で前置し、対処を文末に置く。
 - 複数の手順は番号でなく別の行にし、1 行に 1 手順とする。
-- 対処コマンドをバッククォートで囲むかは未確認（operator 確認待ち）。端末出力は Markdown ではないので囲まない案を暫定とする。
+- 対処コマンドの囲みは未確認（「型と記号」の表）。
 
 ### エラー・警告の書き出し
 
@@ -127,31 +132,26 @@ kae の人間向け出力を日本語で書く・直すときに読む文書で�
 - 半角英数と全角文字の間には半角空白を入れる。句読点・括弧・バッククォートの隣には入れない。
 - 引用は鉤括弧「 」を使う。曲線引用符は使わない。
 - 数値は算用数字、助数詞は漢字またはかな（「1 つ」「3 回」）。
-- 疑問文・確認プロンプト・did-you-mean の日本語の型は未確認（operator 確認待ち）。受け付ける答えが言語で変わらないことは [CLI.md](CLI.md) § Localization の "Behavior does not depend on the language" が持つ。
+- 疑問文・確認プロンプト・did-you-mean の日本語の型は未確認（「型と記号」の表）。
 
 ## 使える文字
 
 ### 事実
 
-`internal/cmd/text.go` の `displayWidth` は、SGR を除去し、結合文字（`Mn` `Me`）と U+200D を幅 0 とし、残りを `golang.org/x/text/width` の `LookupRune(r).Kind()` で分類します。`EastAsianWide` と `EastAsianFullwidth` だけを 2、それ以外（Ambiguous を含む）をすべて 1 と数えます（x/text v0.40.0、go.mod の版）。表の列はこの幅で揃えられます（[CLI.md](CLI.md) § Output Rules、§ Localization）。
+`internal/cmd/text.go` の `displayWidth` は、SGR を除去し、結合文字（`Mn` `Me`）と U+200D を幅 0 とし、残りを `golang.org/x/text/width` の `LookupRune(r).Kind()` で分類します。`EastAsianWide` と `EastAsianFullwidth` だけを 2、それ以外（Ambiguous を含む）をすべて 1 と数えます（x/text の版は go.mod が決める）。表の列はこの幅で揃えられます（[CLI.md](CLI.md) § Output Rules、§ Localization）。
 
 Ambiguous は 1 と数えられますが、East Asian Ambiguous を 2 桁で描く端末では列が右へずれます。日本語の文字列は日本語ロケールで読まれる前提なので、Ambiguous を使いません。
 
-次の分類は、上記の版の x/text で `width.LookupRune` を引いた結果です。
+次の分類は x/text の `width.LookupRune` を引いた結果の例です。正本は [VALIDATION.md](VALIDATION.md) § Output language in tests のカタログテストです。
 
 | 範囲または文字 | 分類 | 可否 |
 |---|---|---|
 | ひらがな、カタカナ、CJK 統合漢字 | Wide | 可 |
-| 「、」「。」「「」」など列挙した CJK 記号と U+3000 から U+303F のうち U+303F 以外 | Wide または Fullwidth（U+303F だけ Neutral） | 可（U+303F を除く） |
 | 全角形 U+FF01 から U+FF60 | Fullwidth | 幅計算上は可。ただし「，」「．」と全角英数は文体規約で不可 |
 | 半角カナ U+FF61 から U+FF9F | Halfwidth（幅 1） | 可だが使わない |
 | ASCII | Narrow | 可 |
-| Latin-1 補助のうち列挙した文字（× ÷ ° ± · § ¼ ½ é ü） | Ambiguous | 不可 |
-| 「…」「‥」「—」「―」「–」「※」と曲線引用符 | Ambiguous | 不可 |
-| 矢印「→ ← ↑ ↓ ⇒ ⇔」 | Ambiguous | 不可 |
-| 列挙した数学記号「≠ ≦ ≧ ∴ ∞ ≈」、罫線「─ │ ┌」、幾何図形「○ ● □ ■ △ ▲ ◆」、囲み数字「① ②」 | Ambiguous | 不可 |
-| 「℃」「№」「™」「®」 | Ambiguous | 不可 |
-| 「、」「。」「「」」「『』」「【】」「・」(U+30FB)「ー」「〜」(U+301C) | Wide | 可 |
+| 列挙した記号: Latin-1 補助「× ÷ ° ± · § ¼ ½ é ü」、「…」「‥」「—」「―」「–」「※」、曲線引用符、矢印「→ ← ↑ ↓ ⇒ ⇔」、数学記号「≠ ≦ ≧ ∴ ∞ ≈」、罫線「─ │ ┌」、幾何図形「○ ● □ ■ △ ▲ ◆」、囲み数字「① ②」、「℃」「№」「™」「®」 | Ambiguous | 不可 |
+| 「、」「。」「「」」「『』」「【】」「・」(U+30FB)「ー」「〜」(U+301C) など U+3000 から U+303F の記号（U+303F を除く） | Wide（U+3000 は Fullwidth） | 可 |
 | 「（）」「！」「？」「％」「＋」「－」「＝」「／」と「～」(U+FF5E) | Fullwidth | 可 |
 | 「：」「；」 | Fullwidth | 幅計算上は可。ただしコロン類は ASCII を使う規約で不可 |
 | 「✓」「✗」「⚠」「➜」「⋯」 | Neutral（幅 1） | 計算は通るが、端末が絵文字幅（2）で描く場合があるので使わない |
@@ -180,21 +180,8 @@ Ambiguous は 1 と数えられますが、East Asian Ambiguous を 2 桁で描�
 
 この規約は kae が出す日本語の文字列に掛かります。英語側の出力やコメントが使う `—` `…` `→` `×` `·` は対象外です。既存の日本語文書にある `·` は、kae の出力例の引用か文書内のナビゲーション行です。
 
-例外が 1 つあります。利用枠のセルは `internal/usagelimit/limit.go` の `Separator`（`" · "`、U+00B7）で部品を連結します。これは言語に依存しない値で、日本語の表にもそのまま出ます。VALIDATION の機械検査が見るのは日本語カタログの文字列なので、この値は検査の外にあります。扱いは未確認（operator 判断）です。
+例外が 1 つあります。利用枠のセルは `internal/usagelimit/limit.go` の `Separator`（`" · "`、U+00B7）で部品を連結します。これは言語に依存しない値で、日本語の表にもそのまま出ます。VALIDATION の機械検査が見るのは日本語カタログの文字列なので、この値は検査の外にあります。扱いは未確認です（「型と記号」の表）。
 
 ### 機械検査
 
-日本語文字列に East Asian Ambiguous の文字が含まれないことは、[VALIDATION.md](VALIDATION.md) § Output language in tests のカタログテスト（ROADMAP の段階 1）が検査します。分類器は `displayWidth` と同じ `width.LookupRune` で、規約と検査が一致します。この文書は検査を持ちません。
-
-## 未確認の項目
-
-operator の確認が取れるまで、次は暫定です。確認が取れたら本文の区分を「決定」に直し、この節から外します。
-
-- driver はドライバー、session row はセッション記録の行。
-- 疑問文、確認プロンプト（`[y/N]`）、did-you-mean の日本語の型。
-- bound directory は固定したディレクトリ、binding は固定の内容。PRODUCT.ja.md の「ディレクトリ固定」（機能名）との役割分担を規約として固定するか。
-- bond dir は利用者向け出力に出さない。pin-id は訳さない。supersedes / orderable は訳さず、文では「新しい」「新旧を決められない」と書く。いずれも利用者向け出力に出ない見込みという前提。
-- breadcrumb は固定したディレクトリの記録、identity cache はログイン中アカウントの記録。
-- 切替（名詞）と切り替える（動詞）の送り仮名を規則として固定するか。
-- 対処コマンドをバッククォートで囲むか（囲まない案が暫定）。
-- 利用枠のセルの区切り `·`（U+00B7）の扱い。
+日本語文字列に East Asian Ambiguous の文字が含まれないことは、[VALIDATION.md](VALIDATION.md) § Output language in tests のカタログテストが検査します。分類器は `displayWidth` と同じ `width.LookupRune` で、規約と検査が一致します。この文書は検査を持ちません。

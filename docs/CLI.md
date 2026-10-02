@@ -1705,8 +1705,7 @@ in the same transaction.
 - Human reports go to stdout; usage and runtime errors go to stderr. So do
   warnings: they must survive a piped stdout and `--quiet`, and they are emitted
   before the write they warn about, not after it.
-- JSON mode never emits color, progress, prompts, or localized text, on stdout or
-  stderr. Human text is localized as § Localization states.
+- JSON mode never emits color, progress, prompts, or localized text (§ Localization), on stdout or stderr.
 - Human tables fit the terminal. When stdout is a terminal narrower than the
   table, each row prints as a block instead: the first two cells as a title line,
   then one indented `Header  value` line per remaining non-empty cell. Output
@@ -2600,14 +2599,15 @@ decides, once per process:
 3. `LC_MESSAGES`
 4. `LANG`
 
-A value that is `ja`, or that starts with `ja_`, `ja-`, `ja.` or `ja@`
-(`ja_JP.UTF-8`), selects Japanese, compared case-sensitively as locale names are;
-any other value selects English, and so does none of them being set. The deciding variable
-wins even when it selects English: `LC_ALL=C` gives English whatever `LANG` says.
-`KAE_LANG=en` forces English and `KAE_LANG=ja` Japanese whatever the locale, for a
-bug report, an agent or a test. There is no flag or config key for the language.
-kae writes UTF-8 whatever the locale's codeset; `KAE_LANG=en` gives English on a
-non-UTF-8 terminal.
+- A value that is `ja`, or that starts with `ja_`, `ja-`, `ja.` or `ja@`
+  (`ja_JP.UTF-8`), selects Japanese, compared case-sensitively as locale names are.
+  Any other value selects English, and so does none of them being set.
+- The deciding variable wins even when it selects English: `LC_ALL=C` gives English
+  whatever `LANG` says.
+- `KAE_LANG=en` forces English and `KAE_LANG=ja` Japanese whatever the locale, for a
+  bug report, an agent or a test. There is no flag or config key for the language.
+- kae writes UTF-8 whatever the locale's codeset; `KAE_LANG=en` gives English on a
+  non-UTF-8 terminal.
 
 **What is localized** is every line kae writes for a person to read: reports on
 stdout, errors, warnings and notes on stderr, prompts and confirmations, the
@@ -2615,7 +2615,14 @@ picker's text, and `--help` and usage text.
 
 **What is never localized** stays as specified in every language:
 
-- **JSON.** Nothing a JSON-mode process (`--json` or `-json`, with or without a true value such as `=true`; `--format` or `-format` given `json`, as `--format json` or `--format=json`; among kae's own arguments before any `--`; the value of another flag and a child command after `--` do not count) writes is localized, its stderr warnings and errors included, usage errors raised while parsing that command line among them (§ Output Rules).
+- **JSON.** Nothing a JSON-mode process writes is localized, its stderr warnings and
+  errors and the usage errors raised while parsing its command line included
+  (§ Output Rules). A process is in JSON mode when, among kae's own arguments before
+  any `--`, it has:
+  - `--json` or `-json`, with or without a true value such as `=true`; or
+  - `--format` or `-format` given `json`, as `--format json` or `--format=json`.
+
+  The value of another flag and a child command after `--` do not count.
 - **Machine lines.** `kae __complete` output, completion scripts, generated files
   (mise fragments and blocks, task descriptions and the `# warning:` comments kae
   writes into them), the `export` lines kae prints for a shell to run, the shell
@@ -2630,7 +2637,20 @@ picker's text, and `--help` and usage text.
   standard library appears verbatim.
 
 **One language per line.** A line kae writes is wholly in the selected language
-apart from the verbatim parts above. An embedded external cause is quoted whole in English rather than translated in part; kae's own messages are localized wherever they are composed, those built in packages below the command layer included, and a message that reaches a JSON field or a generated file renders English there (VALIDATION § Output language in tests). The usage block the `flag` package prints (`Usage of`, `(default ...)`) is rendered by kae in the selected language and the flag descriptions are kae's own messages; the errors `fs.Parse` returns (`flag provided but not defined`, `flag needs an argument`, `invalid value`) are rendered by kae per kind, never by matching the standard library's text, and an error of a kind kae does not render appears verbatim as an embedded external error.
+apart from the verbatim parts above. An embedded external cause is quoted whole in
+English rather than translated in part.
+
+**Where messages are composed.** kae's own messages are localized wherever they are
+composed, those built in packages below the command layer included. A message that
+reaches a JSON field or a generated file renders English there (VALIDATION
+§ Output language in tests).
+
+**The `flag` package.** The usage block it prints (`Usage of`, `(default ...)`) is
+rendered by kae in the selected language, and the flag descriptions are kae's own
+messages. The errors `fs.Parse` returns (`flag provided but not defined`, `flag needs
+an argument`, `invalid value`) are rendered by kae per kind, never by matching the
+standard library's text. An error of a kind kae does not render appears verbatim as
+an embedded external error.
 
 **Behavior does not depend on the language.** Exit codes, the split between stdout and stderr, which warnings appear and when, redaction, the answers a prompt accepts (`y`, `yes`, a menu number) and every JSON byte are the same in both. Layout can differ: a table whose localized headers are wider switches to the block form at a different terminal width. Japanese text follows the display-width layout of § Output Rules.
 

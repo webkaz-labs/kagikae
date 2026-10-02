@@ -51,29 +51,38 @@ for claude, with its R3 real-machine check recorded through § Place navigation 
 tree mode; its codex slice stays gated on R1 and R2 there.
 
 In progress: **localized human output (Japanese)**, requested by the operator on
-2026-09-30. [CLI.md](CLI.md) § Localization is the contract and
-[VALIDATION.md](VALIDATION.md) § Output language in tests how it is tested; both are
-written ahead of the code and land on main together with stage 1's implementation,
-not before it. The code ships stage by stage, so until the last stage some human
-output is still English only, and the release notes of each release name which
-stages it ships. Each stage is its own commit and review, and its Japanese strings
-go to the operator for review before the stage is accepted. Stage 0 comes first and
-ships no Japanese: the Japanese glossary and style rules are in
-[L10N-JA.md](L10N-JA.md), and its open items await the operator; what remains is one
-English-only commit that unifies the wording of near-duplicate messages (how a remedy
-is phrased, `not captured`, `pinned` against `bound`) and hoists messages that
-repeat into shared helpers.
+2026-09-30.
 
-Every stage that changes or translates a message updates, in the same commit, the documents and smoke assertions that quote it, the Japanese guide's quotations included.
+- **Contract.** [CLI.md](CLI.md) § Localization is the contract and
+  [VALIDATION.md](VALIDATION.md) § Output language in tests how it is tested. Both are
+  written ahead of the code and land on main together with stage 1's implementation,
+  not before it.
+- **Shipping.** The code ships stage by stage, so until the last stage some human
+  output is still English only, and the release notes of each release name which
+  stages it ships. Each stage is its own commit and review, and its Japanese strings
+  go to the operator for review before the stage is accepted.
+- **Same-commit updates.** Every stage that changes or translates a message updates,
+  in the same commit, the smoke assertions and the documents that quote it, the
+  Japanese guide's quotations included.
+- **Done when** the "migration in progress" notes in README.md, README.ja.md and
+  GUIDE.ja.md are removed.
+- **Open items** are the rows marked 未確認 in [L10N-JA.md](L10N-JA.md); they await
+  the operator.
 
+0. Stage 0 ships no Japanese: the glossary and style rules are in
+   [L10N-JA.md](L10N-JA.md), and one English-only commit unifies the wording of
+   near-duplicate messages (how a remedy is phrased, `not captured`, `pinned` against
+   `bound`) and hoists messages that repeat into shared helpers.
 1. The mechanism (language selection, the catalog and its test), including the
    English pins VALIDATION states: the `TestMain` pin and `scripts/smoke-run.sh`
-   setting `KAE_LANG=en`. With it, the `kae:` line a failing command ends on, usage
+   setting `KAE_LANG=en`; `usageError` takes the sink form VALIDATION states. With
+   it, the `kae:` line a failing command ends on, usage
    errors, did-you-mean suggestions and the common errors.
 2. The `kae: warning:` lines. `unboundReason` feeds a generated `# warning:`
    comment, stderr and `kae uninstall`'s match; only the stderr use is localized.
 3. The `use`, `pin`, `ls`, `status` and `doctor` reports.
-4. The remaining human output.
+4. The remaining human output. The second allowlist VALIDATION names is empty after
+   it.
 5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's.
 
 § Agent orchestration and remote authentication — deferred exploration follows the

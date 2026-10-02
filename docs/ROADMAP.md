@@ -48,14 +48,30 @@ The uninstall/Packslip release is recorded in [RELEASE.md](RELEASE.md), with
 lifecycle evidence and limitations in [ACCEPTANCE.md](ACCEPTANCE.md)
 § Uninstall and Packslip assessment. The operator-requested tree mode is implemented
 for claude, with its R3 real-machine check recorded through § Place navigation and the
-tree mode; its codex slice stays gated on R1 and R2 there. Next is **localized human
-output (Japanese)**, requested by the operator on 2026-09-30: new and existing runtime
-human messages; [CLI.md](CLI.md) § Localization describes current behavior until it
-ships. § Agent orchestration and remote authentication — deferred exploration
-follows it and still requires investigation and an explicit implementation decision.
-Localization design questions: how the locale is selected, and which
-locale the gate's and smoke blocks' English assertions run under (this machine
-uses `LC_ALL=ja_JP.UTF-8`, CI does not).
+tree mode; its codex slice stays gated on R1 and R2 there.
+
+In progress: **localized human output (Japanese)**, requested by the operator on
+2026-09-30. [CLI.md](CLI.md) § Localization is the contract and
+[VALIDATION.md](VALIDATION.md) § Output language in tests how it is tested; both are
+written ahead of the code and land on main together with stage 1's implementation,
+not before it. The code ships stage by stage, so until the last stage some human
+output is still English only, and the release notes of each release name which
+stages it ships. Each stage is its own commit and review, and its Japanese strings
+go to the operator for review before the stage is accepted:
+
+1. The mechanism (language selection, the catalog and its test), including the
+   English pins VALIDATION states: the `TestMain` pin and `scripts/smoke-run.sh`
+   setting `KAE_LANG=en`. With it, the `kae:` line a failing command ends on, usage
+   errors, did-you-mean suggestions and the common errors.
+2. The `kae: warning:` lines. `unboundReason` feeds a generated `# warning:`
+   comment, stderr and `kae uninstall`'s match; only the stderr use is localized.
+3. The `use`, `pin`, `ls`, `status` and `doctor` reports.
+4. The remaining human output.
+5. `--help` and usage text, including the `usage:` synopsis lines; placeholders such
+   as `<tool>` stay English.
+
+§ Agent orchestration and remote authentication — deferred exploration follows it
+and still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
 § Upstream-drift automation — what is left.
 

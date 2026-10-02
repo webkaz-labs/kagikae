@@ -66,6 +66,30 @@ runner seams so an unstubbed credential command cannot fall through to the machi
 `TestRunnerGuardRefusesCredentialProgramsWithoutLeakingPayloads` keep those two
 properties, including redaction of credential-bearing diagnostics.
 
+### Output language in tests
+
+Assertions on human text assert the English rendering, which is normative
+([CLI.md](CLI.md) § Localization). A developer's locale must not reach them: the maintainer's machine (observed 2026-10-03) runs with `LC_ALL=ja_JP.UTF-8` over `LANG=en_US.UTF-8`, which selects Japanese, and CI does not.
+Each test entrypoint therefore pins English itself:
+
+- **Go tests.** The `TestMain` of each package that renders human text pins English
+  before any test runs, so neither `KAE_LANG` nor the locale variables reach an
+  English assertion.
+- **Smoke blocks.** `scripts/smoke-run.sh` pins English by setting `KAE_LANG=en` for
+  every block it runs, which outranks any locale. A block run by hand inherits the
+  shell's locale, which is one more reason not to run them by hand.
+- **Picker PTY suite.** The harness already starts its shell through `env -i` with
+  `LC_ALL=C` (§ Picker PTY suite).
+
+Japanese output has its own explicit layer rather than inheriting a locale: tests select Japanese explicitly — through a per-test override that the English pin restores, or a child process started with `KAE_LANG=ja` — render representative cases of the localized output, and
+the secret-leak regression runs in both languages. One catalog test reads the
+source and fails when a localized call's argument is not a literal present in the
+Japanese catalog, when the catalog holds a key no call uses, when a Japanese
+string's format verbs disagree with its English key (count and verbs; explicit
+indices are allowed), when a Japanese string contains an East Asian Ambiguous
+character (`displayWidth` in `internal/cmd/text.go` counts those as one column),
+or when a human-output sink prints a literal outside the catalog. Machine sinks are on a permanent allowlist; human sinks not yet migrated are on a second allowlist, narrowed file by file as their output moves into the catalog and empty after the last stage.
+
 ### Check retention and CI admission
 
 The 2026-09-07 check-retention comparison retained standalone vet, Staticcheck,

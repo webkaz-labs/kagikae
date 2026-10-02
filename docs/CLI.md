@@ -1705,7 +1705,8 @@ in the same transaction.
 - Human reports go to stdout; usage and runtime errors go to stderr. So do
   warnings: they must survive a piped stdout and `--quiet`, and they are emitted
   before the write they warn about, not after it.
-- JSON mode never emits color, progress, prompts, or localized text.
+- JSON mode never emits color, progress, prompts, or localized text, on stdout or
+  stderr. Human text is localized as § Localization states.
 - Human tables fit the terminal. When stdout is a terminal narrower than the
   table, each row prints as a block instead: the first two cells as a title line,
   then one indented `Header  value` line per remaining non-empty cell. Output
@@ -2586,12 +2587,57 @@ Template-standard shape: `schema_version`, `tool`, `version`, `major`,
 
 ## Localization
 
-Runtime human messages and JSON tokens are English. Japanese documentation is
-available in [README.ja.md](../README.ja.md), [PRODUCT.ja.md](PRODUCT.ja.md) and
-[GUIDE.ja.md](GUIDE.ja.md); it does not change runtime locale behavior.
-The English contract documents own detailed behavior. Update affected Japanese
-usage guidance in the same change as its English source, retaining commands,
-flags and JSON tokens verbatim.
+kae writes its human output in English or Japanese. **English is normative**: the
+English text is the contract, the messages this file and the other contract
+documents quote are their English rendering, and a Japanese rendering that
+disagrees with the English is a defect resolved toward the English.
+
+**Selection.** The first of these variables that is set to a non-empty value
+decides, once per process:
+
+1. `KAE_LANG`
+2. `LC_ALL`
+3. `LC_MESSAGES`
+4. `LANG`
+
+A value that is `ja`, or that starts with `ja_`, `ja-`, `ja.` or `ja@`
+(`ja_JP.UTF-8`), selects Japanese, compared case-sensitively as locale names are;
+any other value selects English, and so does none of them being set. The deciding variable
+wins even when it selects English: `LC_ALL=C` gives English whatever `LANG` says.
+`KAE_LANG=en` forces English and `KAE_LANG=ja` Japanese whatever the locale, for a
+bug report, an agent or a test. There is no flag or config key for the language.
+kae writes UTF-8 whatever the locale's codeset; `KAE_LANG=en` gives English on a
+non-UTF-8 terminal.
+
+**What is localized** is every line kae writes for a person to read: reports on
+stdout, errors, warnings and notes on stderr, prompts and confirmations, the
+picker's text, and `--help` and usage text.
+
+**What is never localized** stays as specified in every language:
+
+- **JSON.** Nothing a JSON-mode process (`--json` or `--format json` on its command line) writes is localized, its stderr warnings and errors included, usage errors raised while parsing that command line among them (§ Output Rules).
+- **Machine lines.** `kae __complete` output, completion scripts, generated files
+  (mise fragments and blocks, task descriptions and the `# warning:` comments kae
+  writes into them), the `export` lines kae prints for a shell to run, the shell
+  functions it prints, and the paths and commands a place lookup prints
+  (`--current`, `--at`, the picker's candidates without a terminal).
+- **Line prefixes.** `kae:`, `kae: warning:` and `kae: note:` stay English; only the text after the prefix is localized.
+- **Tokens and names.** JSON contract tokens, status vocabulary, command and flag
+  names, tool, account and profile names, keychain services, variable names and
+  paths are inserted verbatim.
+- **Embedded external errors.** Text produced by the OS, an upstream tool or the Go
+  standard library appears verbatim.
+
+**One language per line.** A line kae writes is wholly in the selected language
+apart from the verbatim parts above. An embedded external cause is quoted whole in English rather than translated in part; kae's own messages are localized wherever they are composed.
+
+**Behavior does not depend on the language.** Exit codes, the split between stdout and stderr, which warnings appear and when, redaction, the answers a prompt accepts (`y`, `yes`, a menu number) and every JSON byte are the same in both. Layout can differ: a table whose localized headers are wider switches to the block form at a different terminal width. Japanese text follows the display-width layout of § Output Rules.
+
+Japanese documentation is available in [README.ja.md](../README.ja.md),
+[PRODUCT.ja.md](PRODUCT.ja.md) and [GUIDE.ja.md](GUIDE.ja.md); it does not affect
+which language kae prints. The English contract documents own detailed behavior.
+Update affected Japanese usage guidance in the same change as its English source,
+retaining commands, flags and JSON tokens verbatim.
 
 
 ## Global mise integration ownership

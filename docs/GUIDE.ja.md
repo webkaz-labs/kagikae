@@ -308,6 +308,13 @@ kae pin main
 実行するコマンドを確認してください。適用範囲は
 [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md) と [SECURITY.md](SECURITY.md) が正本です。
 
+表示言語はロケールで決まります。`LC_ALL`、`LC_MESSAGES`、`LANG` の順に最初に
+空でないものが `ja` や `ja_JP.UTF-8` のような日本語のロケール名なら日本語、それ以外は英語です。`KAE_LANG=en` で
+ロケールにかかわらず英語に戻せます（`KAE_LANG=ja` は日本語に固定）。不具合の報告や
+英語の表示を前提にする作業ではこれを使ってください。`--json` の出力、補完、生成される
+設定ファイル、行頭の `kae:`、`kae: warning:`、`kae: note:` は常に英語で、日本語の表示は英語の
+文言を正とします。移行中は一部の表示が英語のままです。詳細は [CLI.md](CLI.md#localization) を参照してください。
+
 ## 認証の復旧
 
 グローバル復旧は固定ディレクトリの外で、意図したグローバルストアを確認して行います。

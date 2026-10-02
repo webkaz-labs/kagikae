@@ -64,13 +64,14 @@ In progress: **localized human output (Japanese)**, requested by the operator on
 - **Same-commit updates.** Every stage that changes or translates a message updates,
   in the same commit, the smoke assertions and the documents that quote it, the
   Japanese guide's quotations included.
-- **Done when** the "migration in progress" notes in README.md, README.ja.md and
-  GUIDE.ja.md are removed.
+- **Done when** stage 5 is accepted and the second allowlist is empty; that commit
+  removes the "migration in progress" notes in README.md, README.ja.md and
+  GUIDE.ja.md.
 - **Open items** are the rows marked 未確認 in [L10N-JA.md](L10N-JA.md); they await
   the operator.
 
 0. Stage 0 ships no Japanese: the glossary and style rules are in
-   [L10N-JA.md](L10N-JA.md), and one English-only commit unifies the wording of
+   [L10N-JA.md](L10N-JA.md), and what remains is one English-only commit that unifies the wording of
    near-duplicate messages (how a remedy is phrased, `not captured`, `pinned` against
    `bound`) and hoists messages that repeat into shared helpers.
 1. The mechanism (language selection, the catalog and its test), including the
@@ -81,9 +82,8 @@ In progress: **localized human output (Japanese)**, requested by the operator on
 2. The `kae: warning:` lines. `unboundReason` feeds a generated `# warning:`
    comment, stderr and `kae uninstall`'s match; only the stderr use is localized.
 3. The `use`, `pin`, `ls`, `status` and `doctor` reports.
-4. The remaining human output. The second allowlist VALIDATION names is empty after
-   it.
-5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's.
+4. The remaining human output.
+5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. The second allowlist VALIDATION names is empty after it.
 
 § Agent orchestration and remote authentication — deferred exploration follows the
 localization work and still requires investigation and an explicit implementation decision.

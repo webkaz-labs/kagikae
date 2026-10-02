@@ -260,21 +260,19 @@ const (
 // acquireNamedLock takes one advisory lock under the runtime lock dir, turning
 // a busy lock into the shared lock_busy exit code with the caller's wording.
 func (app *App) acquireNamedLock(name, busyFormat string, args ...any) (*lock.Lock, error) {
-	l, err := lock.Acquire(app.Paths.LocksDir(), name)
-	if err != nil {
-		if errors.Is(err, lock.ErrBusy) {
-			return nil, errf(constants.ExitLockBusy, busyFormat, args...)
-		}
-		return nil, err
-	}
-	return l, nil
+	return app.acquireNamed(lock.Acquire, name, busyFormat, args...)
 }
 
 // acquireNamedSharedLock is the shared-holder counterpart to acquireNamedLock.
 // It is used only for isolation lifecycle readers: several isolated children may
 // use their account-keyed homes at once, while a rename takes the exclusive side.
 func (app *App) acquireNamedSharedLock(name, busyFormat string, args ...any) (*lock.Lock, error) {
-	l, err := lock.AcquireShared(app.Paths.LocksDir(), name)
+	return app.acquireNamed(lock.AcquireShared, name, busyFormat, args...)
+}
+
+// acquireNamed is the body both wrappers share: acquire takes the exclusive or shared side.
+func (app *App) acquireNamed(acquire func(dir, name string) (*lock.Lock, error), name, busyFormat string, args ...any) (*lock.Lock, error) {
+	l, err := acquire(app.Paths.LocksDir(), name)
 	if err != nil {
 		if errors.Is(err, lock.ErrBusy) {
 			return nil, errf(constants.ExitLockBusy, busyFormat, args...)

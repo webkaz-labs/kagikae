@@ -578,7 +578,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			}
 			// No backup for this one: what it declines is a tombstone or a provably older
 			// credential, so there is nothing to keep.
-			warnRecaptureSkipped(plan.Tool, plan.Account, why)
+			warnSnapshotUnchanged(plan.Tool, plan.Account, why)
 			continue
 		}
 		// Carry the snapshot's own recorded identity: the run paths leave plan.Identity

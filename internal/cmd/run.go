@@ -601,8 +601,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			preID = preMeta.ID
 		}
 		for _, d := range declined {
-			warnRecaptureDeclined(d.plan.Tool, d.plan.Account, d.why, preID,
-				"which covers only the tools whose recapture kae declined")
+			warnRecaptureDeclined(d.plan.Tool, d.plan.Account, d.why, preID, declinedByRun)
 		}
 	}
 

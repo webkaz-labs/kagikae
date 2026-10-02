@@ -594,7 +594,7 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae cannot confirm the %s login now in this directory is %s/%s's (%s), "+
 				"so it did not capture it back and that snapshot still holds its own copy%s; "+
-				"to apply that one, run: kae use %s %s\n",
+				"to apply the snapshot's own copy, run: kae use %s %s\n",
 			tool, tool, accountName, refused.Why, remedy, tool, accountName)
 	}
 	return false

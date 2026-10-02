@@ -2159,7 +2159,7 @@ Credential-health checks (warn-level):
     never establishes whose login two copies are, and a store legitimately holds a
     previous account's credential. docs/ADAPTERS.md § Per-directory credential store is
     normative for that taxonomy.
-  - Naming those readers means enumerating kae's pin index, which is **machine-wide**:
+  - Naming those readers means enumerating kae's bound-directory index, which is **machine-wide**:
     one directory under the isolation root whose pin record kae cannot read makes the
     enumeration incomplete, and then no shared store is attributed and no superseded
     finding about one is reported, for any account. `pin_index_incomplete` reports
@@ -2216,7 +2216,7 @@ Credential-health checks (warn-level):
 
 Bound-directory checks (warn-level, unfiltered like the companion ones — a
 binding is a property of the directory, not of one tool):
-- `pin_index_incomplete`: kae could not enumerate the complete pin index. Report
+- `pin_index_incomplete`: kae could not enumerate the complete bound-directory index. Report
   this machine-wide warning once, including with a tool filter, and continue
   diagnosing readable pins. Attribution and credential reference-counting retain
   their existing refusals when enumeration is incomplete.

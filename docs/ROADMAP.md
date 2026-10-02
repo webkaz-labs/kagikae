@@ -47,8 +47,8 @@ Do not widen those mutation paths without affected acceptance.
 The uninstall/Packslip release is recorded in [RELEASE.md](RELEASE.md), with
 lifecycle evidence and limitations in [ACCEPTANCE.md](ACCEPTANCE.md)
 § Uninstall and Packslip assessment. The operator-requested tree mode is implemented
-for claude; next is its R3 real-machine check in § Place navigation and the tree mode,
-while its codex slice stays gated on R1 and R2 there. After R3 comes **localized human
+for claude, with its R3 real-machine check recorded through § Place navigation and the
+tree mode; its codex slice stays gated on R1 and R2 there. Next is **localized human
 output (Japanese)**, requested by the operator on 2026-09-30: new and existing runtime
 human messages; [CLI.md](CLI.md) § Localization describes current behavior until it
 ships. § Agent orchestration and remote authentication — deferred exploration
@@ -88,7 +88,7 @@ prerequisites; entries not named here retain their recorded gate.
 ## Place navigation and the tree mode
 
 Requested by the operator on 2026-09-29. The first item is implemented; the second
-is implemented for claude, with the gates below still open.
+is implemented for claude, with its codex slice still gated below.
 
 1. **List, open and move to places.** Implemented: [CLI.md](CLI.md) § kae ls
    Semantics and § kae open and kae cd Semantics are the contracts, and
@@ -103,13 +103,10 @@ is implemented for claude, with the gates below still open.
    [DATA-MODEL.md](DATA-MODEL.md) § Directory Layout (XDG) for the store and
    [CONTEXT.md](CONTEXT.md) for the term. R4, the fragment's `[env]` in nested
    directories, is [VALIDATION.md](VALIDATION.md) § Tree mode in nested directories
-   (`kae pin -t`, R4). What remains:
+   (`kae pin -t`, R4). R3, a switch and a claude already running in the tree, is the
+   dated observation in [ADAPTERS.md](ADAPTERS.md) § Per-directory tree bind
+   (`kae pin -t`). What remains:
 
-   - **R3, a switch and a claude already running in the tree**
-     ([ADAPTERS.md](ADAPTERS.md) § Per-directory tree bind (`kae pin -t`) makes no
-     claim about it). Saying anything about a running one needs a measurement of two
-     accounts using one tree config dir at once, which needs two real accounts of
-     the operator's.
    - **codex waits for R1 and R2.** codex keeps its credential inside `CODEX_HOME`,
      so a tree store would hold a per-directory copy. **R1**: whether copies of one
      codex account invalidate each other through refresh-token rotation (the research

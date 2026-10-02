@@ -128,7 +128,7 @@ func EnvStrings(ctx context.Context, be secret.Backend, profile Profile) ([]stri
 			return nil, fmt.Errorf("read env value %s: %w", varName, err)
 		}
 		if !found {
-			return nil, fmt.Errorf("env value %s is missing from the secret store; re-run kae env set", varName)
+			return nil, fmt.Errorf("env value %s is missing from the secret store; run: kae env set", varName)
 		}
 		pairs = append(pairs, varName+"="+string(value))
 	}

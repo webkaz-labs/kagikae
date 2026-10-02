@@ -87,12 +87,12 @@ func TestBoundDirectoryConsumerPolicies(t *testing.T) {
 				t.Fatalf("checks = %+v; want count %d", checks, wantChecks)
 			}
 			if len(checks) == 1 {
-				wantCode, marker := constants.CheckPinStale, "recorded path is gone"
+				wantCode, marker := constants.CheckPinStale, "recorded path no longer exists"
 				if shape == "unreadable-fragment" {
 					marker = "fragment could not be read"
 				}
 				if shape == "incomplete-index" {
-					wantCode, marker = constants.CheckPinIndexIncomplete, "pin index could not be read completely"
+					wantCode, marker = constants.CheckPinIndexIncomplete, "bound-directory index could not be read completely"
 				}
 				if checks[0].Code != wantCode || checks[0].Status != constants.StatusWarn || !strings.Contains(checks[0].Message, marker) {
 					t.Fatalf("diagnostic must distinguish missing paths from unreadable fragments: %+v", checks[0])
@@ -310,7 +310,7 @@ func TestDoctorPinIndexIncompleteOutput(t *testing.T) {
 			return runDoctor(context.Background(), app, commonOpts{Format: format, NoColor: true}, constants.ToolClaude)
 		})
 		mustExit(t, constants.ExitOK, code, out)
-		if !strings.Contains(out, "pin index could not be read completely") {
+		if !strings.Contains(out, "bound-directory index could not be read completely") {
 			t.Fatalf("%s output omitted the finding: %s", format, out)
 		}
 		for _, sensitive := range []string{mainToken, "main-uuid", "you@example.com"} {
@@ -525,7 +525,7 @@ func TestPinChecksReportStaleBindings(t *testing.T) {
 		t.Fatalf("the dangling-account check must name the binding and the fix: %q", dangling)
 	}
 	wantAbsent := fmt.Sprintf(
-		"%s was bound with kae pin but its recorded path is gone; it may have been deleted or moved, so kae left its per-directory store untouched",
+		"%s was bound with kae pin but its recorded path no longer exists; it may have been deleted or moved, so kae left its per-directory store unchanged",
 		gone,
 	)
 	if absent != wantAbsent {
@@ -578,7 +578,7 @@ func TestPinCheckDoesNotCallALiveDirectoryAbsent(t *testing.T) {
 	if len(checks) != 1 {
 		t.Fatalf("pinChecks() = %+v, want one unreadable-fragment check", checks)
 	}
-	if strings.Contains(checks[0].Message, "recorded path is gone") {
+	if strings.Contains(checks[0].Message, "recorded path no longer exists") {
 		t.Fatalf("a live directory must never be reported as absent: %q", checks[0].Message)
 	}
 	if !strings.Contains(checks[0].Message, cwd) || !strings.Contains(checks[0].Message, "could not be read") {

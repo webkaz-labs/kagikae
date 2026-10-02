@@ -274,7 +274,7 @@ func (app *App) pruneDirCredentials(ctx context.Context, be secret.Backend, pinI
 		// so do not read that assertion as dead weight.
 		case removed && store.CredDir != "":
 			removals = append(removals, fmt.Sprintf(
-				"Removed the %s credential this account's bindings shared; nothing points at it any more (%s)",
+				"Removed the %s credential this account's bindings shared; no binding still uses it (%s)",
 				store.Tool, store.CredDir,
 			))
 		case removed:
@@ -409,7 +409,7 @@ func (app *App) removeDirCredential(ctx context.Context, be secret.Backend, stor
 			return false, nil
 		case refs > 0:
 			fmt.Fprintf(os.Stderr,
-				"kae: note: %d other binding(s) still use the %s credential for %s, so it is kept\n",
+				"kae: note: %d other binding(s) still use the %s credential for %s, so it is left in place instead of deleted\n",
 				refs, tool, accountName)
 			return false, nil
 		}

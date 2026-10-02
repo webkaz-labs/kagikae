@@ -146,14 +146,14 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		}
 		if !found {
 			return nil, errf(constants.ExitNotFound,
-				"no backup kae can roll back to (a %s backup is a preserved copy, not an undo target; "+
-					"see kae backup list, then kae rollback --to <id>)", constants.BackupReasonRunUnattributable)
+				"no backup kae can roll back to (a %s backup is a preserved copy, not an undo target); "+
+					"run: kae backup list, then kae rollback --to <id>", constants.BackupReasonRunUnattributable)
 		}
 		meta = latest
 	} else {
 		loaded, err := backup.Get(app.Paths.BackupsDir(), toID)
 		if os.IsNotExist(err) {
-			return nil, errf(constants.ExitNotFound, "backup %q not found (see: kae backup list)", toID)
+			return nil, errf(constants.ExitNotFound, "backup %q not found; run: kae backup list", toID)
 		}
 		if err != nil {
 			return nil, err
@@ -209,8 +209,8 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	for _, u := range unresolved {
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: could not resolve current %s artifacts (%v); the pre-rollback backup "+
-				"covers only what this backup recorded, and a stale %s identity cache is left as "+
-				"it is — fix that, then %s\n", u.Tool, u.Err, u.Tool, app.reapplyHint(meta, u.Tool))
+				"covers only what this backup recorded, and a stale %s identity cache is left "+
+				"unchanged — fix that, then %s\n", u.Tool, u.Err, u.Tool, app.reapplyHint(meta, u.Tool))
 	}
 	// rollback is itself a live mutation: back up the current state first so
 	// it stays reversible.
@@ -237,8 +237,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 				"rollback failed (%v) and restore also failed (%v); inspect backups %s and %s",
 				err, restoreErr, meta.ID, preMeta.ID)
 		}
-		return nil, errf(exitOf(err),
-			"rollback failed, live state restored from backup %s: %v", preMeta.ID, err)
+		return nil, restoredFailure("rollback", err, preMeta.ID)
 	}
 	// Decided once, for both the warning and the write, so the two cannot answer
 	// differently about the same tool — and so `restorableActiveAccount`'s
@@ -248,7 +247,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 	// `active_before` keeps the name it had at capture time, so rolling back across
 	// an `account rm`/`rename` used to record an account that no longer exists —
 	// state naming a snapshot nothing can load (doctor's active_orphan) and the next
-	// `kae use <tool>` failing with "is not captured yet". Dropping the entry is the
+	// `kae use <tool>` failing with "is not captured". Dropping the entry is the
 	// established way to say "no active account for this tool", the same thing an
 	// unrecorded tool here and `kae account rm` do. An *empty* recorded value lands in
 	// the same branch, where the old code wrote `st.Active[tool] = ""`: a change in
@@ -272,7 +271,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		}
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: backup %s recorded %s/%s as the active account and that snapshot is no longer "+
-				"captured, so kae is leaving %s with no active account rather than naming one that is gone; %s\n",
+				"captured, so kae is leaving %s with no active account rather than naming one that no longer exists; %s\n",
 			meta.ID, tool, recorded, tool, app.reapplyHint(meta, tool))
 	}
 	if _, err := app.mutateState(func(st *state.State) {
@@ -286,7 +285,7 @@ func buildRollback(ctx context.Context, app *App, opts commonOpts, toID string) 
 		st.ActiveProfile = app.Config.MatchProfile(st.Active)
 	}); err != nil {
 		return nil, errf(exitOf(err),
-			"live state was rolled back but recording it failed (%v); verify with kae status, undo with: kae rollback --to %s",
+			"live state was rolled back but recording it failed (%v); to verify, run: kae status; to undo, run: kae rollback --to %s",
 			err, preMeta.ID)
 	}
 	app.pruneBackups(ctx, be)

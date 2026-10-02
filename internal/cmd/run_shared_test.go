@@ -314,7 +314,7 @@ func TestRunSharedLoggedOutWarningCarriesAdapterWarnings(t *testing.T) {
 // credential being destroyed.
 func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
 	_, stderr := captureStderr(t, func() int {
-		warnRecaptureDeclined("claude", "kae cannot tell", "", "scope")
+		warnRecaptureDeclined("claude", "main", "kae cannot tell", "", "scope")
 		return 0
 	})
 	if !strings.Contains(stderr, "could not preserve") || !strings.Contains(stderr, "lost once") {
@@ -324,7 +324,7 @@ func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
 		t.Errorf("with no backup, kae must not claim the copy survives: %q", stderr)
 	}
 	_, withID := captureStderr(t, func() int {
-		warnRecaptureDeclined("claude", "kae cannot tell", "20260101T000000Z", "which reverts nothing else")
+		warnRecaptureDeclined("claude", "main", "kae cannot tell", "20260101T000000Z", "which reverts nothing else")
 		return 0
 	})
 	if strings.Contains(withID, "could not preserve") {

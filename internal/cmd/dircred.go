@@ -49,7 +49,7 @@ func warnUnisolatableCredential(err error, tool, account string) bool {
 	case exitOf(err) == constants.ExitNotFound || exitOf(err) == constants.ExitAuthMissing:
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: %s/%s has no captured credential, so this directory binds %s without one; "+
-				"%s; then re-run the binding command\n",
+				"%s; then re-bind this directory\n",
 			tool, account, tool, verifiedCaptureRemedy(tool, account))
 		return true
 	}
@@ -327,9 +327,9 @@ func (app *App) writeDirCredential(ctx context.Context, be secret.Backend, tool,
 			if err := retractDirIdentity(ctx, specs, configDir); err != nil {
 				fmt.Fprintf(os.Stderr,
 					"kae: warning: the %s identity cache in this directory still names the account it was "+
-						"bound to before, and kae could not remove it (%v); run `%s relogin %s` here, or the "+
+						"bound to before, and kae could not remove it (%v); run: kae relogin %s in this directory, or the "+
 						"next bind may read it as this directory's own and replace the credential kae just kept\n",
-					tool, err, toolName, tool)
+					tool, err, tool)
 			}
 		}
 		return nil

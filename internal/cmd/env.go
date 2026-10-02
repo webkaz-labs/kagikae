@@ -148,6 +148,11 @@ func runEnvSet(ctx context.Context, app *App, opts commonOpts, positionals []str
 	return constants.ExitOK
 }
 
+// printEnvProfileDeleted reports a removed env profile.
+func printEnvProfileDeleted(tool, accountName string) {
+	fmt.Printf("Deleted env profile %s/%s\n", tool, accountName)
+}
+
 func runEnvUnset(ctx context.Context, app *App, opts commonOpts, positionals []string) int {
 	if len(positionals) < 2 {
 		return usageError("usage: %s env unset <tool> <account> [KEY...]", toolName)
@@ -170,7 +175,7 @@ func runEnvUnset(ctx context.Context, app *App, opts commonOpts, positionals []s
 		return finish(opts, err)
 	}
 	if !found {
-		return finish(opts, errf(constants.ExitNotFound, "env profile %s/%s does not exist", tool, accountName))
+		return finish(opts, errf(constants.ExitNotFound, "env profile %s/%s not found", tool, accountName))
 	}
 	keys := positionals[2:]
 	if len(keys) == 0 {
@@ -178,7 +183,7 @@ func runEnvUnset(ctx context.Context, app *App, opts commonOpts, positionals []s
 		if err := envprofile.Delete(ctx, be, dir, profile); err != nil {
 			return finish(opts, err)
 		}
-		fmt.Printf("Deleted env profile %s/%s\n", tool, accountName)
+		printEnvProfileDeleted(tool, accountName)
 		return constants.ExitOK
 	}
 	remove := map[string]bool{}
@@ -202,7 +207,7 @@ func runEnvUnset(ctx context.Context, app *App, opts commonOpts, positionals []s
 		if err := envprofile.Delete(ctx, be, dir, profile); err != nil {
 			return finish(opts, err)
 		}
-		fmt.Printf("Deleted env profile %s/%s\n", tool, accountName)
+		printEnvProfileDeleted(tool, accountName)
 		return constants.ExitOK
 	}
 	if err := envprofile.Save(dir, profile); err != nil {
@@ -247,7 +252,7 @@ func runEnvList(_ context.Context, app *App, opts commonOpts) int {
 		return encodeJSON(report)
 	}
 	if len(report.Profiles) == 0 {
-		fmt.Println("no env profiles (create one with: kae env set <tool> <account> KEY=VALUE)")
+		fmt.Println("no env profiles; run: kae env set <tool> <account> KEY=VALUE")
 		return constants.ExitOK
 	}
 	rows := [][]string{}

@@ -244,7 +244,7 @@ func TestAutoUseMixedRecordingFailureRestoresSharedStore(t *testing.T) {
 		}
 	}()
 	code, out = captureStdout(t, func() int { return runUseAuto(ctx, app, opts, "main", false) })
-	if code == 0 || !strings.Contains(out, "recording state failed") || !strings.Contains(out, "live state restored") {
+	if code == 0 || !strings.Contains(out, "recording state failed") || !strings.Contains(out, "previous state restored") {
 		t.Fatalf("failure must reach transaction rollback: %s", out)
 	}
 	if readFile(t, app.Env.Home+"/.codex/auth.json") != before || readFile(t, app.Paths.MiseGlobalFragmentFile()) != fragment || readFile(t, app.Paths.StateFile()) != beforeState {

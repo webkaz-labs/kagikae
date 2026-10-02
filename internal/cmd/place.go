@@ -118,7 +118,7 @@ func (app *App) newPlaceContext(ctx context.Context, explicit *explicitUserLevel
 func (app *App) newPlaceContextWith(ctx context.Context, explicit *explicitUserLevel, loaded loadedState) (*placeContext, error) {
 	cwd, err := cwdAbs()
 	if err != nil {
-		return nil, fmt.Errorf("resolve the current directory: %w", err)
+		return nil, errResolveCwd(err)
 	}
 	pc := &placeContext{cwd: cwd, home: app.Env.Home, explicit: explicit}
 	pc.physicalCwd = sync.OnceValues(func() (string, error) { return physicalWd() })

@@ -42,7 +42,7 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	}
 	if !exists {
 		return finish(opts, errf(constants.ExitUnsupported,
-			"this directory is not pinned; run `kae pin` first"))
+			"this directory is not bound; run: kae pin"))
 	}
 	// Before the not-bound refusal below, whose remedy — re-pin the profile — is wrong
 	// here: a re-pin in this mode would leave the tool on the real home again.
@@ -53,7 +53,7 @@ func runRebind(ctx context.Context, app *App, opts commonOpts, tool, accountName
 	}
 	if _, bound := info.Accounts[tool]; !bound {
 		return finish(opts, errf(constants.ExitNotFound,
-			"%s is not bound in this directory; re-pin the profile to include it", tool))
+			"%s is not bound in this directory; re-bind the profile to include it", tool))
 	}
 
 	absDir, err := cwdAbs()

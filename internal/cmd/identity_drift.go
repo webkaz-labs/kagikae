@@ -259,12 +259,12 @@ func identityUntrackedMessage(tool, accountName, artifactName string) string {
 // account, and artifact name are enough to act on.
 func identityDriftMessage(tool, accountName, artifactName string, livePresent bool) string {
 	tail := fmt.Sprintf(
-		"re-apply it with: kae use %s %s. If it drifts again, an upstream behaviour assumption may have changed (docs/VALIDATION.md \"Upstream Behaviour Assumptions\")",
+		"to re-apply it, run: kae use %s %s. If it drifts again, an upstream behaviour assumption may have changed (docs/VALIDATION.md \"Upstream Behaviour Assumptions\")",
 		tool, accountName,
 	)
 	if !livePresent {
 		return fmt.Sprintf(
-			"account %s: the live %s identity is gone while this account is active; %s may rebuild it on its next run — otherwise %s",
+			"account %s: the live %s identity is missing while this account is active; %s may rebuild it on its next run — otherwise %s",
 			accountName, artifactName, tool, tail,
 		)
 	}

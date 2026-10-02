@@ -90,7 +90,7 @@ func TestDoctorIdentityDriftLiveAbsent(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected identity_drift when the live identity disappeared: %+v", report.Checks)
 	}
-	if !strings.Contains(msg, "gone") || !strings.Contains(msg, "rebuild") {
+	if !strings.Contains(msg, "missing") || !strings.Contains(msg, "rebuild") {
 		t.Errorf("absent message should read as possibly-transient, not a wrong account: %q", msg)
 	}
 }

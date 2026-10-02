@@ -670,7 +670,7 @@ func TestAKeptStoreThePassSkippedIsStillKept(t *testing.T) {
 		if strings.Contains(strings.Join(sim.ops, ","), "delete") {
 			t.Fatalf("a store the pass never judged must not be deleted on the sweep's own reading: %v", sim.ops)
 		}
-		if !strings.Contains(stderr, "no account named claude/main exists any more") {
+		if !strings.Contains(stderr, "account claude/main no longer exists") {
 			t.Fatalf("the second net must say which arm kept it: %q", stderr)
 		}
 	})

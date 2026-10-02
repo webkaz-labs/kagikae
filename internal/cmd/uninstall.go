@@ -335,7 +335,7 @@ func (app *App) applyUninstall(op uninstallOperation) error {
 	if op.item.Kind == constants.UninstallLegacy {
 		name = lockNameState
 	}
-	l, err := app.acquireNamedLock(name, "another kae process is updating this integration; retry shortly")
+	l, err := app.acquireNamedLock(name, busyMessage("updating this integration"))
 	if err != nil {
 		return err
 	}

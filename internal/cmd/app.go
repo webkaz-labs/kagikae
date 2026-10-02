@@ -156,7 +156,7 @@ func claudeDriverGetenv(inner func(string) string, cfg *config.Config) func(stri
 // requireConfig converts a deferred config error into a command error.
 func (app *App) requireConfig() error {
 	if app.ConfigErr != nil {
-		return errf(constants.ExitInvalidConfig, "invalid config %s: %v", app.ConfigPath, app.ConfigErr)
+		return errInvalidConfig(app.ConfigPath, app.ConfigErr)
 	}
 	return nil
 }
@@ -169,9 +169,19 @@ func (app *App) requireConfigFile() error {
 		return err
 	}
 	if _, err := os.Stat(app.ConfigPath); os.IsNotExist(err) {
-		return errf(constants.ExitNotFound, "config %s does not exist yet (run: kae init)", app.displayPath(app.ConfigPath))
+		return app.errConfigNotFound()
 	}
 	return nil
+}
+
+// errInvalidConfig is the error for a config.toml that failed to load; path is shown as given.
+func errInvalidConfig(path string, err error) *cmdError {
+	return errf(constants.ExitInvalidConfig, "invalid config %s: %v", path, err)
+}
+
+// errConfigNotFound is the error for a config mutation that needs config.toml on disk.
+func (app *App) errConfigNotFound() *cmdError {
+	return errf(constants.ExitNotFound, "config %s not found; run: kae init", app.displayPath(app.ConfigPath))
 }
 
 // secretBackend resolves the configured secret backend.
@@ -225,7 +235,7 @@ func (app *App) acquireLocks(tools []string) ([]*lock.Lock, error) {
 			continue
 		}
 		l, err := app.acquireNamedLock(tool,
-			fmt.Sprintf("another kae process is switching %s; retry shortly", tool))
+			busyMessage("switching "+tool))
 		if err != nil {
 			releaseLocks(locks)
 			return nil, err
@@ -239,6 +249,12 @@ func releaseLocks(locks []*lock.Lock) {
 	for _, l := range locks {
 		l.Release()
 	}
+}
+
+// busyMessage is the refusal for a lock another kae process holds; doing says what that
+// process is doing.
+func busyMessage(doing string) string {
+	return "another kae process is " + doing + "; retry shortly"
 }
 
 // acquireNamedLock takes one advisory lock under the runtime lock dir, turning
@@ -299,7 +315,7 @@ func (app *App) acquireIsolationLifecycleLocks(tools []string, shared bool) ([]*
 		)
 		if shared {
 			l, err = app.acquireNamedSharedLock(isolationLifecycleLockName(tool),
-				fmt.Sprintf("another kae process is changing %s isolated account paths; retry shortly", tool))
+				busyMessage("changing "+tool+" isolated account paths"))
 		} else {
 			l, err = app.acquireNamedLock(isolationLifecycleLockName(tool),
 				fmt.Sprintf("another kae process is using or changing %s isolated account paths; stop it or retry after it exits", tool))
@@ -316,7 +332,7 @@ func (app *App) acquireIsolationLifecycleLocks(tools []string, shared bool) ([]*
 // acquireConfigLock takes the shared config lock so config.toml edits do not
 // race other kae processes. Released by the caller.
 func (app *App) acquireConfigLock() (*lock.Lock, error) {
-	return app.acquireNamedLock(lockNameConfig, "another kae process is editing the config; retry shortly")
+	return app.acquireNamedLock(lockNameConfig, busyMessage("editing the config"))
 }
 
 // mutateState is the single seam for state.json writes: take the state lock,
@@ -342,7 +358,7 @@ func (app *App) mutateState(mutate func(*state.State)) (*state.State, error) {
 // for account removal, whose config edit must stay between its state preflight
 // and state save without releasing and reacquiring the state lock.
 func (app *App) mutateStateChecked(mutate func(*state.State) error) (*state.State, error) {
-	l, err := app.acquireNamedLock(lockNameState, "another kae process is recording state; retry shortly")
+	l, err := app.acquireNamedLock(lockNameState, busyMessage("recording state"))
 	if err != nil {
 		return nil, err
 	}
@@ -367,7 +383,7 @@ func (app *App) mutateStateChecked(mutate func(*state.State) error) (*state.Stat
 // isolation lifecycle locks. Unlike mutateState this never writes, including on
 // a refusal path.
 func (app *App) inspectState(inspect func(*state.State) error) error {
-	l, err := app.acquireNamedLock(lockNameState, "another kae process is recording state; retry shortly")
+	l, err := app.acquireNamedLock(lockNameState, busyMessage("recording state"))
 	if err != nil {
 		return err
 	}
@@ -397,7 +413,7 @@ func (app *App) mutateSyncedAndFragment(prepare func() error, mutate func(*state
 }
 
 func (app *App) mutateSyncedWithRegenerator(prepare func() error, mutate func(*state.State) bool, regen func(map[string]string) error) (*state.State, error) {
-	l, err := app.acquireNamedLock(lockNameState, "another kae process is recording state; retry shortly")
+	l, err := app.acquireNamedLock(lockNameState, busyMessage("recording state"))
 	if err != nil {
 		return nil, err
 	}

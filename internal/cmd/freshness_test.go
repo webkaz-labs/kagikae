@@ -742,8 +742,10 @@ func TestSwitchAwayNamesABackupForACopyItCannotOrder(t *testing.T) {
 	if !strings.Contains(stderr, "preserved only in backup ") {
 		t.Errorf("the refusal must name where the declined copy survives: %q", stderr)
 	}
-	if !strings.Contains(stderr, "which reverts this whole switch") {
-		t.Errorf("on this path the backup covers every switched tool and must say so: %q", stderr)
+	if id := backupIDFromWarning(t, stderr); !strings.Contains(stderr, "preserved only in backup "+id+
+		" (restoring it reverts this whole switch) — to keep it as its own account, run: kae rollback --to "+
+		id+", then kae add --no-login claude <account>\n") {
+		t.Errorf("on this path the backup covers every switched tool and must say so, in full: %q", stderr)
 	}
 	be := testBackend(t, app)
 	if got := snapshotPayload(t, app, be, "claude", "main"); !strings.Contains(got, "MAIN-T0") {

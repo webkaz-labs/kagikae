@@ -414,15 +414,14 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			// of where it sits: createBackup runs *before* this recapture and before
 			// applySnapshot, so it holds exactly the live copy being declined. `run -s`
 			// has to create one of its own for the same sentence to be true there.
-			warnRecaptureDeclined(plan.Tool, active, why, backupID,
-				revertsWholeSwitch)
+			warnRecaptureDeclined(plan.Tool, active, why, backupID, declinedByUse)
 			continue
 		}
 		if why, preserve := app.recaptureWouldDowngrade(ctx, be, plan.Tool, active, acc, values); why != "" {
 			if preserve {
 				// kae cannot order the two, so it must not imply the live copy is finished
 				// *or* let it vanish: this switch is about to overwrite the live store.
-				warnRecaptureDeclined(plan.Tool, active, why, backupID, revertsWholeSwitch)
+				warnRecaptureDeclined(plan.Tool, active, why, backupID, declinedByUse)
 				continue
 			}
 			warnRecaptureSkipped(plan.Tool, active, why)
@@ -447,9 +446,16 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 	}
 }
 
-// revertsWholeSwitch is warnRecaptureDeclined's scope for `kae use`, whose backup is the
-// switch's own.
-const revertsWholeSwitch = "which reverts this whole switch"
+// declinedScope says whose backup warnRecaptureDeclined names, which decides what
+// restoring it puts back besides the login being named.
+type declinedScope int
+
+const (
+	// declinedByUse: `kae use`'s backup is the switch's own and covers every tool it switched.
+	declinedByUse declinedScope = iota
+	// declinedByRun: `kae run -s` backs up only the tools whose recapture it declined.
+	declinedByRun
+)
 
 // warningsDetail renders an adapter's Detect warnings as a parenthesised suffix, or "" when
 // there are none. Two messages carry them — captureSnapshot's auth_missing error and the
@@ -513,10 +519,9 @@ func warnRecaptureFailed(tool, accountName string, err error) {
 // copy survives. An earlier version told the user to "import it first", naming a
 // moment that does not exist inside a single non-interactive command.
 // scope says what restoring backupID puts back besides the login being named, because
-// that differs by caller and the remedy is otherwise over-precise: `kae run -s` backs up
-// only the tools whose recapture it declined, while `kae use`'s backup is the switch's
-// own and covers **every** tool it switched.
-func warnRecaptureDeclined(tool, accountName, why, backupID, scope string) {
+// that differs by caller and the remedy is otherwise over-precise (see declinedScope);
+// each scope has its own constant sentence.
+func warnRecaptureDeclined(tool, accountName, why, backupID string, scope declinedScope) {
 	warnSnapshotUnchanged(tool, accountName, why)
 	if backupID == "" {
 		fmt.Fprintf(os.Stderr,
@@ -524,10 +529,18 @@ func warnRecaptureDeclined(tool, accountName, why, backupID, scope string) {
 				"previous state is restored\n", tool)
 		return
 	}
-	fmt.Fprintf(os.Stderr,
-		"kae: the live %s login kae declined to adopt is preserved only in backup %s (restoring it %s) — "+
-			"to keep it as its own account, run: kae rollback --to %s, then kae add --no-login %s <account>\n",
-		tool, backupID, scope, backupID, tool)
+	switch scope {
+	case declinedByRun:
+		fmt.Fprintf(os.Stderr,
+			"kae: the live %s login kae declined to adopt is preserved only in backup %s (that backup covers only the tools whose recapture kae declined) — "+
+				"to keep it as its own account, run: kae rollback --to %s, then kae add --no-login %s <account>\n",
+			tool, backupID, backupID, tool)
+	default:
+		fmt.Fprintf(os.Stderr,
+			"kae: the live %s login kae declined to adopt is preserved only in backup %s (restoring it reverts this whole switch) — "+
+				"to keep it as its own account, run: kae rollback --to %s, then kae add --no-login %s <account>\n",
+			tool, backupID, backupID, tool)
+	}
 }
 
 // snapshotArtifactDiffers reports whether one live artifact value differs from

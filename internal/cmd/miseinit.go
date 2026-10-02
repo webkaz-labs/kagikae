@@ -323,16 +323,12 @@ func modeUnboundReason(m bindMode, tool string) string {
 		m.name, strings.Join(m.tools, ", "), tool)
 }
 
-// errRealHomeIsStore refuses a store that is the tool's real home itself. The format is the
-// caller's constant: "the real %s home resolves to the <store> itself; unset %s and retry".
-func errRealHomeIsStore(format, tool string) error {
-	return errf(constants.ExitUnsafeRefused, format, tool, isolationEnvVar(tool))
-}
+// optInStore is the kind of store prepareOptInStore materializes.
+type optInStore int
 
 const (
-	realHomeIsBondDir      = "the real %s home resolves to the bond dir itself; unset %s and retry"
-	realHomeIsIsolatedDir  = "the real %s home resolves to the isolated config dir itself; unset %s and retry"
-	realHomeIsTreeStoreDir = "the real %s home resolves to the tree store itself; unset %s and retry"
+	optInIsolated optInStore = iota // the isolated bind's config dir
+	optInTree                       // the tree bind's store
 )
 
 // linkSharedItem links dst to src, replacing a stale symlink. A real file or
@@ -371,7 +367,8 @@ func (app *App) prepareBond(ctx context.Context, be secret.Backend, tool, accoun
 	}
 	realHome := app.realToolHome(tool)
 	if filepath.Clean(realHome) == filepath.Clean(bondDir) {
-		return "", errRealHomeIsStore(realHomeIsBondDir, tool)
+		return "", errf(constants.ExitUnsafeRefused,
+			"the real %s home resolves to the bond dir itself; unset %s and retry", tool, isolationEnvVar(tool))
 	}
 
 	denylist := app.bondDenylistItems(tool)
@@ -518,7 +515,7 @@ func retractLinks(dir string, names []string) error {
 // account's credential privately (writeDirCredential). Idempotent: stale
 // symlinks are refreshed; real files are left.
 func (app *App) preparePinConfig(ctx context.Context, be secret.Backend, tool, account, pinID string, staleLabel bool) (string, error) {
-	return app.prepareOptInStore(ctx, be, tool, account, app.Paths.IsolatedConfigDir(pinID, tool, account), "isolated config dir", realHomeIsIsolatedDir, staleLabel)
+	return app.prepareOptInStore(ctx, be, tool, account, app.Paths.IsolatedConfigDir(pinID, tool, account), optInIsolated, staleLabel)
 }
 
 // prepareTree creates the tree store for one tool/pinID
@@ -528,19 +525,27 @@ func (app *App) preparePinConfig(ctx context.Context, be secret.Backend, tool, a
 // account switch runs this same preparer, which is what keeps the store's sessions,
 // history and settings and rewrites only what names the account.
 func (app *App) prepareTree(ctx context.Context, be secret.Backend, tool, account, pinID string, staleLabel bool) (string, error) {
-	return app.prepareOptInStore(ctx, be, tool, account, app.Paths.TreeDir(pinID, tool), "tree store", realHomeIsTreeStoreDir, staleLabel)
+	return app.prepareOptInStore(ctx, be, tool, account, app.Paths.TreeDir(pinID, tool), optInTree, staleLabel)
 }
 
 // prepareOptInStore materializes configDir as a store whose links from the real home
 // are the configured isolated_shared_items: the isolated and tree binds, which differ
-// only in how configDir is composed. what names the store in errors.
-func (app *App) prepareOptInStore(ctx context.Context, be secret.Backend, tool, account, configDir, what, realHomeFormat string, staleLabel bool) (string, error) {
+// only in how configDir is composed. kind picks the wording of the errors.
+func (app *App) prepareOptInStore(ctx context.Context, be secret.Backend, tool, account, configDir string, kind optInStore, staleLabel bool) (string, error) {
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		return "", fmt.Errorf("create %s: %w", what, err)
+		if kind == optInTree {
+			return "", fmt.Errorf("create tree store: %w", err)
+		}
+		return "", fmt.Errorf("create isolated config dir: %w", err)
 	}
 	realHome := app.realToolHome(tool)
 	if filepath.Clean(realHome) == filepath.Clean(configDir) {
-		return "", errRealHomeIsStore(realHomeFormat, tool)
+		if kind == optInTree {
+			return "", errf(constants.ExitUnsafeRefused,
+				"the real %s home resolves to the tree store itself; unset %s and retry", tool, isolationEnvVar(tool))
+		}
+		return "", errf(constants.ExitUnsafeRefused,
+			"the real %s home resolves to the isolated config dir itself; unset %s and retry", tool, isolationEnvVar(tool))
 	}
 
 	// Symlink opt-in shared items from the real home. The *configured list* is this

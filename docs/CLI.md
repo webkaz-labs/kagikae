@@ -405,7 +405,7 @@ does not register accounts or select credentials.
 result: parse or validation problems exit `2` (`invalid_config`) with the
 error, soft issues print as warnings. A missing config exits `7` pointing
 at `kae init`; an editor that exits non-zero is reported with exit `1`
-(the file is left as last saved, nothing is rolled back).
+(the file is left as the editor last saved it; nothing is rolled back).
 
 ## kae add Semantics
 

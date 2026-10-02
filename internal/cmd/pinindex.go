@@ -35,7 +35,7 @@ import (
 // which is why nothing has to be rolled back.
 func (app *App) acquirePinLock(absDir string) (*lock.Lock, error) {
 	return app.acquireNamedLock("pin-"+paths.PinID(absDir),
-		busyMessage("binding this directory"))
+		"another kae process is binding this directory; retry shortly")
 }
 
 // beginBind is what a command that *binds* a directory calls instead of
@@ -215,16 +215,22 @@ func (app *App) warnPinnedAccountGone(tool, accountName, replacement string) {
 	app.warnPinnedDirs(
 		func(info fragmentInfo) bool { return info.Accounts[tool] == accountName },
 		func(dir string) string {
-			return staleBindingMessage(dir, tool+"/"+accountName, "kae pin "+tool+" "+replacement)
+			return staleAccountBindingMessage(dir, tool, accountName, replacement)
 		},
 	)
 }
 
-// staleBindingMessage is the warning for a bound directory whose target (an
-// account or a profile) no longer exists; rebind is the command that repoints it.
-func staleBindingMessage(dir, target, rebind string) string {
-	return fmt.Sprintf("%s is still bound to %s, which no longer exists; to re-bind it, run: cd %s && %s",
-		dir, target, dir, rebind)
+// staleAccountBindingMessage is the warning for a bound directory whose account no
+// longer exists; replacement is the account to re-bind to, or "<account>".
+func staleAccountBindingMessage(dir, tool, accountName, replacement string) string {
+	return fmt.Sprintf("%s is still bound to %s/%s, which no longer exists; to re-bind it, run: cd %s && kae pin %s %s",
+		dir, tool, accountName, dir, tool, replacement)
+}
+
+// staleProfileBindingMessage is the same warning for a bound directory whose profile no longer exists.
+func staleProfileBindingMessage(dir, profile string) string {
+	return fmt.Sprintf("%s is still bound to profile %s, which no longer exists; to re-bind it, run: cd %s && kae pin <profile>",
+		dir, profile, dir)
 }
 
 // warnPinnedDirs prints one stderr warning per bound directory the caller's edit
@@ -246,7 +252,7 @@ func (app *App) pinChecks(toolFilter string) []adapter.Check {
 		checks = append(checks, adapter.Check{
 			Code: constants.CheckPinIndexIncomplete, Status: constants.StatusWarn,
 			Message: "the bound-directory index could not be read completely; some bound-directory checks could not run " +
-				"and shared credential attribution is unavailable; restore readable binding records before retrying",
+				"and shared credential attribution is unavailable; restore readable bound-directory records before retrying",
 		})
 	}
 	if index.err != nil || toolFilter != "" {

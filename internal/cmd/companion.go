@@ -125,7 +125,7 @@ func runCompanionAdd(ctx context.Context, app *App, opts commonOpts, positionals
 	}
 	fmt.Printf("Bound companion %s for profile %s: %s\n", id, profileName, strings.Join(names, ", "))
 	if app.miseActivated() {
-		fmt.Println("To refresh its fragment, run: kae pin in a bound directory")
+		fmt.Println("To refresh its fragment, in a bound directory run: kae pin")
 	}
 	return constants.ExitOK
 }

@@ -402,7 +402,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 			continue
 		}
 		if !anyPresent {
-			warnSnapshotUnchanged(plan.Tool+" is logged out", plan.Tool, active)
+			warnLoggedOutUnchanged(plan.Tool, active)
 			continue
 		}
 		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, active, acc, values); why != "" {
@@ -468,13 +468,25 @@ func warningsDetail(warnings []string) string {
 // pair across two hand-written literals is how one of them would later gain a clause the
 // other lacks.
 func warnRecaptureSkipped(tool, accountName, why string) {
-	warnSnapshotUnchanged(why, tool, accountName)
+	warnSnapshotUnchanged(tool, accountName, why)
 }
 
 // warnSnapshotUnchanged is the one sentence for a snapshot a recapture left alone: the
 // reason, then which snapshot was not written.
-func warnSnapshotUnchanged(why, tool, accountName string) {
+func warnSnapshotUnchanged(tool, accountName, why string) {
 	fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot %s/%s left unchanged\n", why, tool, accountName)
+}
+
+// warnLoggedOutUnchanged is warnSnapshotUnchanged for a live store with no login in it.
+func warnLoggedOutUnchanged(tool, accountName string) {
+	fmt.Fprintf(os.Stderr, "kae: warning: %s is logged out; snapshot %s/%s left unchanged\n", tool, tool, accountName)
+}
+
+// warnLoggedOutDuringRunUnchanged is the same for a login that vanished while `kae run -s`
+// ran; detail is the adapter's own warnings from warningsDetail, or "".
+func warnLoggedOutDuringRunUnchanged(tool, accountName, detail string) {
+	fmt.Fprintf(os.Stderr, "kae: warning: %s logged out during the run%s; snapshot %s/%s left unchanged\n",
+		tool, detail, tool, accountName)
 }
 
 // warnRecaptureFailed reports a recapture that could not be completed, as opposed to one kae
@@ -505,7 +517,7 @@ func warnRecaptureFailed(tool, accountName string, err error) {
 // only the tools whose recapture it declined, while `kae use`'s backup is the switch's
 // own and covers **every** tool it switched.
 func warnRecaptureDeclined(tool, accountName, why, backupID, scope string) {
-	warnSnapshotUnchanged(why, tool, accountName)
+	warnSnapshotUnchanged(tool, accountName, why)
 	if backupID == "" {
 		fmt.Fprintf(os.Stderr,
 			"kae: kae could not preserve the live %s login it declined to adopt; it is lost once the "+
@@ -513,9 +525,9 @@ func warnRecaptureDeclined(tool, accountName, why, backupID, scope string) {
 		return
 	}
 	fmt.Fprintf(os.Stderr,
-		"kae: the live %s login kae declined to adopt is preserved only in backup %s — to keep it as "+
-			"its own account, run: kae rollback --to %s (%s), then kae add --no-login %s <account>\n",
-		tool, backupID, backupID, scope, tool)
+		"kae: the live %s login kae declined to adopt is preserved only in backup %s (restoring it %s) — "+
+			"to keep it as its own account, run: kae rollback --to %s, then kae add --no-login %s <account>\n",
+		tool, backupID, scope, backupID, tool)
 }
 
 // snapshotArtifactDiffers reports whether one live artifact value differs from

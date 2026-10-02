@@ -235,7 +235,7 @@ func (app *App) acquireLocks(tools []string) ([]*lock.Lock, error) {
 			continue
 		}
 		l, err := app.acquireNamedLock(tool,
-			busyMessage("switching "+tool))
+			"another kae process is switching %s; retry shortly", tool)
 		if err != nil {
 			releaseLocks(locks)
 			return nil, err
@@ -251,19 +251,19 @@ func releaseLocks(locks []*lock.Lock) {
 	}
 }
 
-// busyMessage is the refusal for a lock another kae process holds; doing says what that
-// process is doing.
-func busyMessage(doing string) string {
-	return "another kae process is " + doing + "; retry shortly"
-}
+// The lock-busy refusals that more than one site raises.
+const (
+	busyRecordingState  = "another kae process is recording state; retry shortly"
+	busyCompletionFiles = "another kae process is updating completion files; retry shortly"
+)
 
 // acquireNamedLock takes one advisory lock under the runtime lock dir, turning
 // a busy lock into the shared lock_busy exit code with the caller's wording.
-func (app *App) acquireNamedLock(name, busy string) (*lock.Lock, error) {
+func (app *App) acquireNamedLock(name, busyFormat string, args ...any) (*lock.Lock, error) {
 	l, err := lock.Acquire(app.Paths.LocksDir(), name)
 	if err != nil {
 		if errors.Is(err, lock.ErrBusy) {
-			return nil, errf(constants.ExitLockBusy, "%s", busy)
+			return nil, errf(constants.ExitLockBusy, busyFormat, args...)
 		}
 		return nil, err
 	}
@@ -273,11 +273,11 @@ func (app *App) acquireNamedLock(name, busy string) (*lock.Lock, error) {
 // acquireNamedSharedLock is the shared-holder counterpart to acquireNamedLock.
 // It is used only for isolation lifecycle readers: several isolated children may
 // use their account-keyed homes at once, while a rename takes the exclusive side.
-func (app *App) acquireNamedSharedLock(name, busy string) (*lock.Lock, error) {
+func (app *App) acquireNamedSharedLock(name, busyFormat string, args ...any) (*lock.Lock, error) {
 	l, err := lock.AcquireShared(app.Paths.LocksDir(), name)
 	if err != nil {
 		if errors.Is(err, lock.ErrBusy) {
-			return nil, errf(constants.ExitLockBusy, "%s", busy)
+			return nil, errf(constants.ExitLockBusy, busyFormat, args...)
 		}
 		return nil, err
 	}
@@ -315,10 +315,10 @@ func (app *App) acquireIsolationLifecycleLocks(tools []string, shared bool) ([]*
 		)
 		if shared {
 			l, err = app.acquireNamedSharedLock(isolationLifecycleLockName(tool),
-				busyMessage("changing "+tool+" isolated account paths"))
+				"another kae process is changing %s isolated account paths; retry shortly", tool)
 		} else {
 			l, err = app.acquireNamedLock(isolationLifecycleLockName(tool),
-				fmt.Sprintf("another kae process is using or changing %s isolated account paths; stop it or retry after it exits", tool))
+				"another kae process is using or changing %s isolated account paths; stop it or retry after it exits", tool)
 		}
 		if err != nil {
 			releaseLocks(locks)
@@ -332,7 +332,7 @@ func (app *App) acquireIsolationLifecycleLocks(tools []string, shared bool) ([]*
 // acquireConfigLock takes the shared config lock so config.toml edits do not
 // race other kae processes. Released by the caller.
 func (app *App) acquireConfigLock() (*lock.Lock, error) {
-	return app.acquireNamedLock(lockNameConfig, busyMessage("editing the config"))
+	return app.acquireNamedLock(lockNameConfig, "another kae process is editing the config; retry shortly")
 }
 
 // mutateState is the single seam for state.json writes: take the state lock,
@@ -358,7 +358,7 @@ func (app *App) mutateState(mutate func(*state.State)) (*state.State, error) {
 // for account removal, whose config edit must stay between its state preflight
 // and state save without releasing and reacquiring the state lock.
 func (app *App) mutateStateChecked(mutate func(*state.State) error) (*state.State, error) {
-	l, err := app.acquireNamedLock(lockNameState, busyMessage("recording state"))
+	l, err := app.acquireNamedLock(lockNameState, busyRecordingState)
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +383,7 @@ func (app *App) mutateStateChecked(mutate func(*state.State) error) (*state.Stat
 // isolation lifecycle locks. Unlike mutateState this never writes, including on
 // a refusal path.
 func (app *App) inspectState(inspect func(*state.State) error) error {
-	l, err := app.acquireNamedLock(lockNameState, busyMessage("recording state"))
+	l, err := app.acquireNamedLock(lockNameState, busyRecordingState)
 	if err != nil {
 		return err
 	}
@@ -413,7 +413,7 @@ func (app *App) mutateSyncedAndFragment(prepare func() error, mutate func(*state
 }
 
 func (app *App) mutateSyncedWithRegenerator(prepare func() error, mutate func(*state.State) bool, regen func(map[string]string) error) (*state.State, error) {
-	l, err := app.acquireNamedLock(lockNameState, busyMessage("recording state"))
+	l, err := app.acquireNamedLock(lockNameState, busyRecordingState)
 	if err != nil {
 		return nil, err
 	}

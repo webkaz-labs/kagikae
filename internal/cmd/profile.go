@@ -327,7 +327,7 @@ func buildProfileRm(_ context.Context, app *App, opts commonOpts, name string, f
 	app.warnPinnedDirs(
 		func(info fragmentInfo) bool { return info.Profile == name },
 		func(dir string) string {
-			return staleBindingMessage(dir, "profile "+name, "kae pin <profile>")
+			return staleProfileBindingMessage(dir, name)
 		},
 	)
 	return report, nil

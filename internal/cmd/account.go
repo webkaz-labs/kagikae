@@ -259,43 +259,42 @@ func errAccountNotCaptured(tool, accountName string) *cmdError {
 
 func (app *App) accountRmIsolationPreflight(st *state.State, tool, accountName string) error {
 	consistent, fragmentErr := app.globalFragmentConsistent(st.Synced)
-	if fragmentErr != nil || !consistent {
-		return isolatedFragmentRefusal(fragmentErr, "removed", tool, accountName,
-			fmt.Sprintf("kae account rm %s %s", tool, accountName), forceNoBypass)
-	}
-	if st.Synced[tool] == accountName {
-		return globallyIsolatedRefusal(tool, accountName,
-			fmt.Sprintf("then switch away or intentionally use --force, then run: kae account rm %s %s", tool, accountName), forceNoBypass)
+	switch {
+	case fragmentErr != nil:
+		return errf(constants.ExitUnsafeRefused, refuseRmFragmentUnreadable,
+			fragmentErr, tool, accountName, tool, accountName)
+	case !consistent:
+		return errf(constants.ExitUnsafeRefused, refuseRmFragmentMismatch,
+			tool, accountName, tool, accountName)
+	case st.Synced[tool] == accountName:
+		return errf(constants.ExitUnsafeRefused, refuseRmGloballyIsolated,
+			tool, accountName, tool, accountName, tool, accountName)
 	}
 	return nil
 }
 
-// forceNoBypass ends the account rm refusals that --force cannot override.
-const forceNoBypass = "; --force does not bypass this isolation guard"
+// The account rm and rename refusals while global isolated mode is involved. Each
+// meaning has its own constant format, built from shared constant clauses, so the
+// words are never assembled from arguments.
+const (
+	stopIsolatedHomes = "stop every process using isolated homes, then run: kae use -s %s %s (regenerates it from state), then run: "
+	stopThatHome      = "stop every process using that isolated home (including `kae run -i` children and terminals activated by `kae use -i`), then run: kae use -s %s %s, "
+	forceNoBypass     = "; --force does not bypass this isolation guard"
 
-// isolatedFragmentRefusal refuses an account path change while the global isolated
-// fragment cannot be trusted. cause is the read error, nil when the fragment was
-// read but differs from state.synced; action is "removed" or "changed"; retry is
-// the command to run again after regenerating the fragment.
-func isolatedFragmentRefusal(cause error, action, tool, account, retry, suffix string) error {
-	reason := "does not match state.synced"
-	if cause != nil {
-		reason = fmt.Sprintf("cannot be read: %v", cause)
-	}
-	return errf(constants.ExitUnsafeRefused,
-		"the global isolated fragment %s, so account paths cannot be %s safely; stop every process using isolated homes, "+
-			"then run: kae use -s %s %s (regenerates it from state), then %s%s",
-		reason, action, tool, account, retry, suffix)
-}
+	refuseRmFragmentUnreadable = "the global isolated fragment cannot be read: %v, so account paths cannot be removed safely; " +
+		stopIsolatedHomes + "kae account rm %s %s" + forceNoBypass
+	refuseRmFragmentMismatch = "the global isolated fragment does not match state.synced, so account paths cannot be removed safely; " +
+		stopIsolatedHomes + "kae account rm %s %s" + forceNoBypass
+	refuseRmGloballyIsolated = "account %s/%s is selected by global isolated mode; " + stopThatHome +
+		"then switch away or intentionally use --force, then run: kae account rm %s %s" + forceNoBypass
 
-// globallyIsolatedRefusal refuses an account path change for the account that
-// global isolated mode currently selects; then is the closing instruction.
-func globallyIsolatedRefusal(tool, account, then, suffix string) error {
-	return errf(constants.ExitUnsafeRefused,
-		"account %s/%s is selected by global isolated mode; stop every process using that isolated home "+
-			"(including `kae run -i` children and terminals activated by `kae use -i`), then run: kae use -s %s %s, %s%s",
-		tool, account, tool, account, then, suffix)
-}
+	refuseRenameFragmentUnreadable = "the global isolated fragment cannot be read: %v, so account paths cannot be changed safely; " +
+		stopIsolatedHomes + "kae account rename %s %s %s"
+	refuseRenameFragmentMismatch = "the global isolated fragment does not match state.synced, so account paths cannot be changed safely; " +
+		stopIsolatedHomes + "kae account rename %s %s %s"
+	refuseRenameGloballyIsolated = "account %s/%s is selected by global isolated mode; " + stopThatHome +
+		"then run: kae account rename %s %s %s"
+)
 
 func printAccountRm(r *accountRmReport) {
 	verb := "Removed"
@@ -600,13 +599,17 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 }
 
 func accountRenameGlobalIsolationMismatchError(tool, oldName, newName string, cause error) error {
-	return isolatedFragmentRefusal(cause, "changed", tool, oldName,
-		fmt.Sprintf("kae account rename %s %s %s", tool, oldName, newName), "")
+	if cause != nil {
+		return errf(constants.ExitUnsafeRefused, refuseRenameFragmentUnreadable,
+			cause, tool, oldName, tool, oldName, newName)
+	}
+	return errf(constants.ExitUnsafeRefused, refuseRenameFragmentMismatch,
+		tool, oldName, tool, oldName, newName)
 }
 
 func accountRenameGloballyIsolatedError(tool, oldName, newName string) error {
-	return globallyIsolatedRefusal(tool, oldName,
-		fmt.Sprintf("then run: kae account rename %s %s %s", tool, oldName, newName), "")
+	return errf(constants.ExitUnsafeRefused, refuseRenameGloballyIsolated,
+		tool, oldName, tool, oldName, tool, oldName, newName)
 }
 
 func printAccountRename(r *accountRenameReport) {

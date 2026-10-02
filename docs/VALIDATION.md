@@ -1320,7 +1320,7 @@ cred FOREIGN $NEW > "$(accstore main)"
 /tmp/kae pin main 2> "$HOME/B2.err"
 test "$(grep -c '^kae: ' "$HOME/B2.err")" -eq 1
 grep -q 'disagree about whose login it is' "$HOME/B2.err"
-grep -q 'left in place' "$HOME/B2.err"
+grep -q 'so this bind leaves it in place' "$HOME/B2.err"
 grep -q 'kae relogin claude' "$HOME/B2.err"
 test "$(grep -c 'kept it rather than replacing it' "$HOME/B2.err")" -eq 0
 #   A disagreement is missing evidence, so it carries the login remedy, unlike B1. The

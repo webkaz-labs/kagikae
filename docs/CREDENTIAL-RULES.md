@@ -198,7 +198,7 @@ else and deleting it destroys the only record of whose the credential is. Two ot
 derivations were tried and both destroyed a login (the label alone; reader membership,
 which reads every directory as a stranger when the walk is incomplete). What it costs is that the acceptance block must seed the cache the **tool** would
 have written wherever it expects a harvest, which is the honest fixture anyway. And the
-pass words its consequence as *leaving it where it is* rather than predicting the write:
+pass words its consequence as *this bind leaves it in place* rather than predicting the write:
 keyed on its own store's dirs it said "this bind replaces it" about a copy nothing
 replaced, and that wording survived the entire suite until an assertion existed.
 Two more traps that outlive the specific code. Harvesting is not deleting — they belong

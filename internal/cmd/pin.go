@@ -261,7 +261,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 // applies it at the next prompt, or fallback supplies the lines to run now.
 func (app *App) reportMiseHandoff(fallback func() string) {
 	if app.miseActivated() {
-		fmt.Println("mise applies it on the next prompt; to apply it now, run: mise env")
+		fmt.Println("mise applies it on the next prompt; to apply it now in bash or zsh, run: eval \"$(mise env)\"")
 		return
 	}
 	fmt.Fprintln(os.Stderr, "kae: warning: mise activation not detected; the binding takes effect once mise is active.")

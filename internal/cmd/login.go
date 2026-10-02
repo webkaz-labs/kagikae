@@ -253,7 +253,7 @@ func finishLoginFailure(ctx context.Context, app *App, opts commonOpts, be secre
 		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
 			return finish(opts, doubleFailure(op, err, restoreErr, meta.ID))
 		}
-		return finish(opts, restoredFailure(op, err, meta.ID))
+		return finish(opts, errf(exitOf(err), "%s"+restoredFromBackup, op, meta.ID, err))
 	}
 	return finish(opts, fmt.Errorf("%s failed (previous state is in backup %s): %w", op, meta.ID, err))
 }

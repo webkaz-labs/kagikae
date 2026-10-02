@@ -453,7 +453,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			if restoreErr := app.applyBackup(ctx, be, meta, appliedTools, false); restoreErr != nil {
 				return 0, doubleFailure("apply "+plan.Tool, err, restoreErr, meta.ID)
 			}
-			return 0, restoredFailure("apply "+plan.Tool, err, meta.ID)
+			return 0, errf(exitOf(err), "apply %s"+restoredFromBackup, plan.Tool, meta.ID, err)
 		}
 		appliedTools[plan.Tool] = true
 	}
@@ -561,7 +561,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			// The adapter's own warnings ride along: captureSnapshot used to append them
 			// to its auth_missing error, and `run -s` prints them nowhere else, so an
 			// env_conflict is otherwise invisible in exactly the case it may explain.
-			warnSnapshotUnchanged(plan.Tool+" logged out during the run"+warningsDetail(plan.Warnings), plan.Tool, plan.Account)
+			warnLoggedOutDuringRunUnchanged(plan.Tool, plan.Account, warningsDetail(plan.Warnings))
 			continue
 		}
 		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); why != "" {

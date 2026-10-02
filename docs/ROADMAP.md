@@ -58,7 +58,7 @@ not before it. The code ships stage by stage, so until the last stage some human
 output is still English only, and the release notes of each release name which
 stages it ships. Each stage is its own commit and review, and its Japanese strings
 go to the operator for review before the stage is accepted. Stage 0 comes first and
-ships no Japanese: a Japanese glossary and style rules (terms from
+ships no Japanese: a Japanese glossary and style rules in a new document (terms from
 [CONTEXT.md](CONTEXT.md); a style that avoids East Asian Ambiguous characters) and one
 English-only commit that unifies the wording of near-duplicate messages (how a remedy
 is phrased, `not captured`, `pinned` against `bound`) and hoists messages that
@@ -72,11 +72,10 @@ repeat into shared helpers.
    comment, stderr and `kae uninstall`'s match; only the stderr use is localized.
 3. The `use`, `pin`, `ls`, `status` and `doctor` reports.
 4. The remaining human output.
-5. `--help` and usage text, including the `usage:` synopsis lines; placeholders such
-   as `<tool>` stay English.
+5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. A stage that changes an English message also updates the documents and smoke assertions that quote it, the Japanese guide's quotations included.
 
-§ Agent orchestration and remote authentication — deferred exploration follows it
-and still requires investigation and an explicit implementation decision.
+§ Agent orchestration and remote authentication — deferred exploration follows the
+localization work and still requires investigation and an explicit implementation decision.
 The upstream detector remains conditional on reviewed artifact pairs under
 § Upstream-drift automation — what is left.
 

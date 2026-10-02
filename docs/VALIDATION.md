@@ -81,10 +81,11 @@ Each test entrypoint therefore pins English itself:
 - **Picker PTY suite.** The harness already starts its shell through `env -i` with
   `LC_ALL=C` (§ Picker PTY suite).
 
-Japanese output has its own explicit layer rather than inheriting a locale: tests select Japanese explicitly — through a per-test override that the English pin restores, or a child process started with `KAE_LANG=ja` — render representative cases of the localized output, and
-the secret-leak regression runs in both languages. Messages are English format strings that the localizing sinks (`errf`, `usageError`, the warning, note and report writers) translate inside, so a call site keeps its English literal and `go vet` still checks the format against its arguments. One catalog test reads the
-source and fails when a sink's format argument is not a literal present in the
-Japanese catalog (kept per area, not per source file), when the catalog holds a key no call uses, when a Japanese
+Japanese output has its own explicit layer rather than inheriting a locale: tests select Japanese explicitly — through a per-test override that the English pin restores (process-wide, so such tests do not run in parallel), or a child process started with `KAE_LANG=ja` — render representative cases of the localized output, and
+the secret-leak regression runs in both languages. Messages are English format strings that the localizing sinks (`errf`, `usageError`, the warning, note and report writers) translate inside, so a call site keeps its English literal. A sink is a `go vet` printf wrapper only while it passes its unchanged `format` and `args...` to a `fmt.*f` call; translating by reassigning or wrapping the format (`tr(format)`) silently drops the check, so each sink renders English through such a call and the catalog test, not vet, covers the Japanese path. `usageError` takes that form in stage 1.
+A message that travels as data before it is shown (an `errf` error, `adapter.Check.Message`, report and switch warnings, `unboundReason`, did-you-mean suffixes, errors built in packages below `internal/cmd`) is a value holding its English format and arguments: `Error()`, JSON and generated files render English from it, and only a human sink renders the localized text. Composition happens on the value, never on an already formatted string, and the catalog test counts the constructors of such values as sinks. One catalog test reads the
+source and fails when a sink's format argument is not a constant string expression (as `go/types` evaluates it, so `"a" + "b"` counts) present in the
+Japanese catalog (kept per area, not per source file), when the catalog holds a key no call uses, when a flag description registered with the `flag` package is not in the catalog, when a Japanese
 string's format verbs disagree with its English key (count and verbs; explicit
 indices are allowed), when a Japanese string contains an East Asian Ambiguous
 character (`displayWidth` in `internal/cmd/text.go` counts those as one column),

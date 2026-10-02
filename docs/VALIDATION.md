@@ -82,9 +82,9 @@ Each test entrypoint therefore pins English itself:
   `LC_ALL=C` (§ Picker PTY suite).
 
 Japanese output has its own explicit layer rather than inheriting a locale: tests select Japanese explicitly — through a per-test override that the English pin restores, or a child process started with `KAE_LANG=ja` — render representative cases of the localized output, and
-the secret-leak regression runs in both languages. One catalog test reads the
-source and fails when a localized call's argument is not a literal present in the
-Japanese catalog, when the catalog holds a key no call uses, when a Japanese
+the secret-leak regression runs in both languages. Messages are English format strings that the localizing sinks (`errf`, `usageError`, the warning, note and report writers) translate inside, so a call site keeps its English literal and `go vet` still checks the format against its arguments. One catalog test reads the
+source and fails when a sink's format argument is not a literal present in the
+Japanese catalog (kept per area, not per source file), when the catalog holds a key no call uses, when a Japanese
 string's format verbs disagree with its English key (count and verbs; explicit
 indices are allowed), when a Japanese string contains an East Asian Ambiguous
 character (`displayWidth` in `internal/cmd/text.go` counts those as one column),

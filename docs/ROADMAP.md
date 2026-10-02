@@ -57,7 +57,12 @@ written ahead of the code and land on main together with stage 1's implementatio
 not before it. The code ships stage by stage, so until the last stage some human
 output is still English only, and the release notes of each release name which
 stages it ships. Each stage is its own commit and review, and its Japanese strings
-go to the operator for review before the stage is accepted:
+go to the operator for review before the stage is accepted. Stage 0 comes first and
+ships no Japanese: a Japanese glossary and style rules (terms from
+[CONTEXT.md](CONTEXT.md); a style that avoids East Asian Ambiguous characters) and one
+English-only commit that unifies the wording of near-duplicate messages (how a remedy
+is phrased, `not captured`, `pinned` against `bound`) and hoists messages that
+repeat into shared helpers.
 
 1. The mechanism (language selection, the catalog and its test), including the
    English pins VALIDATION states: the `TestMain` pin and `scripts/smoke-run.sh`

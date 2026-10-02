@@ -424,7 +424,7 @@ func (app *App) recaptureActiveBeforeSwitch(ctx context.Context, be secret.Backe
 				warnRecaptureDeclined(plan.Tool, active, why, backupID, declinedByUse)
 				continue
 			}
-			warnRecaptureSkipped(plan.Tool, active, why)
+			warnSnapshotUnchanged(plan.Tool, active, why)
 			continue
 		}
 		if !valuesDiverge(ctx, be, plan.Specs, acc, values) {
@@ -468,17 +468,11 @@ func warningsDetail(warnings []string) string {
 	return " (" + strings.Join(warnings, "; ") + ")"
 }
 
-// warnRecaptureSkipped reports a recapture declined where the copy it declines is not worth
-// keeping — a tombstone, or one provably older. The sibling of warnRecaptureDeclined, which
-// handles the case that *is* worth keeping; both recapture paths use both, and splitting the
-// pair across two hand-written literals is how one of them would later gain a clause the
-// other lacks.
-func warnRecaptureSkipped(tool, accountName, why string) {
-	warnSnapshotUnchanged(tool, accountName, why)
-}
-
 // warnSnapshotUnchanged is the one sentence for a snapshot a recapture left alone: the
-// reason, then which snapshot was not written.
+// reason, then which snapshot was not written. Both recapture paths call it directly where
+// the declined copy is not worth keeping — a tombstone, or one provably older — and
+// warnRecaptureDeclined builds on it for the case that *is* worth keeping, so the pair
+// cannot drift into two hand-written literals.
 func warnSnapshotUnchanged(tool, accountName, why string) {
 	fmt.Fprintf(os.Stderr, "kae: warning: %s; snapshot %s/%s left unchanged\n", why, tool, accountName)
 }

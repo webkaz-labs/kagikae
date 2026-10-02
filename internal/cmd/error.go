@@ -24,10 +24,3 @@ func errLaunchLogin(tool string, err error) error {
 func errResolveCwd(err error) error {
 	return fmt.Errorf("resolve the current directory: %w", err)
 }
-
-// printResultWarnings lists an apply result's warnings as indented report lines.
-func printResultWarnings(warnings []string) {
-	for _, warning := range warnings {
-		fmt.Printf("  warning: %s\n", warning)
-	}
-}

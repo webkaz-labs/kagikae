@@ -2637,6 +2637,8 @@ apart from the verbatim parts above. An embedded external cause is quoted whole 
 Japanese documentation is available in [README.ja.md](../README.ja.md),
 [PRODUCT.ja.md](PRODUCT.ja.md) and [GUIDE.ja.md](GUIDE.ja.md); it does not affect
 which language kae prints. The English contract documents own detailed behavior.
+Japanese terms, style and the characters Japanese strings may use are in
+[L10N-JA.md](L10N-JA.md).
 Update affected Japanese usage guidance in the same change as its English source,
 retaining commands, flags and JSON tokens verbatim.
 

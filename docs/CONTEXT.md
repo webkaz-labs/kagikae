@@ -32,6 +32,7 @@ Where the answers live:
 | what one tool switches and preserves | [ADAPTERS.md](ADAPTERS.md) |
 | what may happen to a credential copy | [CREDENTIAL-RULES.md](CREDENTIAL-RULES.md) |
 | what a JSON status, code, artifact kind or driver id is called | `internal/constants`, described in [DATA-MODEL.md](DATA-MODEL.md) § Status Vocabulary |
+| how a term is written in Japanese output, and which characters Japanese strings may use | [L10N-JA.md](L10N-JA.md) |
 
 ## Surface terms
 

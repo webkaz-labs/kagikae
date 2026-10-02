@@ -181,8 +181,6 @@ func printCaptureReport(app *App, report *captureReport) {
 				fmt.Printf("  %s %s\n", act.Kind, act.Target)
 			}
 		}
-		for _, warning := range result.Warnings {
-			fmt.Printf("  warning: %s\n", warning)
-		}
+		printResultWarnings(result.Warnings)
 	}
 }

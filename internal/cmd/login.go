@@ -148,7 +148,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	fmt.Fprintf(os.Stderr, "kae: complete the %s login flow; the result is captured as %s when it exits (previous state backed up as %s)\n",
 		tool, captureLabel, meta.ID)
 	if code, err := runner.RunInteractive(ctx, nil, command[0], command[1:]...); err != nil {
-		return finish(opts, fmt.Errorf("launch %s login: %w", tool, err))
+		return finish(opts, errLaunchLogin(tool, err))
 	} else if code != 0 {
 		fmt.Fprintf(os.Stderr, "kae: %s exited with %d; capturing whatever auth state is live now\n", command[0], code)
 	}
@@ -162,7 +162,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	plan = app.refreshPlan(ctx, plan)
 
 	if changed, err := loginChangedAuth(ctx, be, meta, plan); err != nil {
-		return finishLoginFailure(ctx, app, opts, be, meta, restore, "compare auth after login", err)
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCompare, err)
 	} else if !changed {
 		// The live state is still the pre-login state, so there is nothing
 		// to capture and (with --restore) nothing to put back.
@@ -171,7 +171,7 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 			hint = tool + " " + explicitName
 		}
 		return finish(opts, errf(constants.ExitAuthUnchanged,
-			"%s login flow exited without changing auth; nothing captured (to snapshot the current login, run: kae add --no-login %s)",
+			"%s login flow exited without changing auth; nothing captured; to snapshot the current login, run: kae add --no-login %s",
 			tool, hint))
 	}
 
@@ -180,13 +180,13 @@ func runLogin(ctx context.Context, app *App, opts commonOpts, tool, explicitName
 	// identity to record in the snapshot, then snapshot.
 	accountName, identity, err := app.resolveAccount(ctx, tool, explicitName, opts.IdentityOverride)
 	if err != nil {
-		return finishLoginFailure(ctx, app, opts, be, meta, restore, "detect the logged-in account", err)
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepDetect, err)
 	}
 	plan.Account = accountName
 	plan.Identity = identity
 
 	if err := app.captureSnapshot(ctx, be, plan); err != nil {
-		return finishLoginFailure(ctx, app, opts, be, meta, restore, "capture after login", err)
+		return finishLoginFailure(ctx, app, opts, be, meta, restore, loginStepCapture, err)
 	}
 
 	if restore {
@@ -248,13 +248,46 @@ func loginChangedAuth(ctx context.Context, be secret.Backend, meta backup.Meta, 
 // finishLoginFailure reports a failed post-login step. With --restore the
 // user asked to end up on the previous login no matter what; put it back
 // even when the failed step leaves auth in the post-login state.
-func finishLoginFailure(ctx context.Context, app *App, opts commonOpts, be secret.Backend, meta backup.Meta, restore bool, op string, err error) int {
+func finishLoginFailure(ctx context.Context, app *App, opts commonOpts, be secret.Backend, meta backup.Meta, restore bool, step loginStep, err error) int {
 	if restore {
 		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
-			return finish(opts, doubleFailure(op, err, restoreErr, meta.ID))
+			return finish(opts, doubleFailure(step.phrase(), err, restoreErr, meta.ID))
 		}
-		return finish(opts, errf(exitOf(err),
-			"%s failed, previous login restored from backup %s: %v", op, meta.ID, err))
+		switch step {
+		case loginStepCompare:
+			return finish(opts, errf(exitOf(err), "compare auth after login"+restoredFromBackup, meta.ID, err))
+		case loginStepDetect:
+			return finish(opts, errf(exitOf(err), "detect the logged-in account"+restoredFromBackup, meta.ID, err))
+		default:
+			return finish(opts, errf(exitOf(err), "capture after login"+restoredFromBackup, meta.ID, err))
+		}
 	}
-	return finish(opts, fmt.Errorf("%s failed (previous state is in backup %s): %w", op, meta.ID, err))
+	switch step {
+	case loginStepCompare:
+		return finish(opts, fmt.Errorf("compare auth after login failed (previous state is in backup %s): %w", meta.ID, err))
+	case loginStepDetect:
+		return finish(opts, fmt.Errorf("detect the logged-in account failed (previous state is in backup %s): %w", meta.ID, err))
+	default:
+		return finish(opts, fmt.Errorf("capture after login failed (previous state is in backup %s): %w", meta.ID, err))
+	}
+}
+
+// loginStep is the post-login step finishLoginFailure reports as failed.
+type loginStep int
+
+const (
+	loginStepCompare loginStep = iota // compare auth after login
+	loginStepDetect                   // detect the logged-in account
+	loginStepCapture                  // capture after login
+)
+
+// phrase names the step for doubleFailure, which still takes the operation as a value.
+func (st loginStep) phrase() string {
+	switch st {
+	case loginStepCompare:
+		return "compare auth after login"
+	case loginStepDetect:
+		return "detect the logged-in account"
+	}
+	return "capture after login"
 }

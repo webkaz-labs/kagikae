@@ -273,7 +273,7 @@ func TestRunPinKeepsAndRetractsEvenWhenTheWalkIsIncomplete(t *testing.T) {
 // An isolated re-bind **to the account the directory is already bound to** is what separates
 // `modeStoreDir` from a hardcoded shared dir: there this pin's own isolated config dir is a
 // reader and the shared dir is not, so acting under the wrong one flips the pass to
-// "leaving it where it is" while the write replaces — a message that is the inverse of what
+// "this bind leaves it in place" while the write replaces — a message that is the inverse of what
 // happened, which is the class two earlier fixes exist for. `runRebind` has no no-op
 // short-circuit, so this runs the whole path (execution-type review, 2026-08-08).
 func TestRunRebindIsolatedToTheSameAccountActsUnderItsOwnDir(t *testing.T) {
@@ -862,7 +862,7 @@ func TestRunPinModeToggleReportsWhatTheWriteActuallyDid(t *testing.T) {
 	if strings.Contains(stderr, "this bind replaces it") {
 		t.Fatalf("the message must not predict a replacement the write did not make: %q", stderr)
 	}
-	if !strings.Contains(stderr, "leaving it where it is") {
+	if !strings.Contains(stderr, "so this bind leaves it in place") {
 		t.Fatalf("the message must state what happened: %q", stderr)
 	}
 }

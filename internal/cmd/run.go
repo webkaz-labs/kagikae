@@ -45,7 +45,7 @@ func CmdRun(ctx context.Context, args []string) int {
 	// than the flag package's "not defined" dump.
 	for _, a := range kaeArgs {
 		if a == "--mode" || a == "-mode" || strings.HasPrefix(a, "--mode=") || strings.HasPrefix(a, "-mode=") {
-			return usageError("kae run --mode was removed in v0.8.0; use -s (real home), -i (isolated home), or --env")
+			return usageError("kae run --mode was removed in v0.8.0; use -s (real home), -i (isolated home), or --env instead")
 		}
 	}
 	flags, positionals := splitArgs(kaeArgs, "--profile", "P")
@@ -117,7 +117,7 @@ func runTargetArgs(profileFlag string, positionals []string) (target, name strin
 func defaultChildCmd(targets []runTarget, profileName string) ([]string, error) {
 	if profileName != "" || len(targets) != 1 {
 		return nil, errf(constants.ExitUsage,
-			"a profile target runs no single binary; name the command explicitly: %s run [-s|-i|--env] <tool|all> <name> -- <cmd...>", toolName)
+			"a profile target runs no single binary; name the command explicitly; run: kae run [-s|-i|--env] <tool|all> <name> -- <cmd...>")
 	}
 	tool := targets[0].Tool
 	adp, err := adapter.ForTool(tool)
@@ -127,8 +127,8 @@ func defaultChildCmd(targets []runTarget, profileName string) ([]string, error) 
 	bin := adp.Binary()
 	if bin == "" {
 		return nil, errf(constants.ExitUsage,
-			"%s has no launchable binary; name the command explicitly: %s run %s %s -- <cmd...>",
-			tool, toolName, tool, targets[0].Account)
+			"%s has no launchable binary; name the command explicitly; run: kae run %s %s -- <cmd...>",
+			tool, tool, targets[0].Account)
 	}
 	return []string{bin}, nil
 }
@@ -404,7 +404,7 @@ func (app *App) envModeEnv(ctx context.Context, be secret.Backend, tool, account
 	}
 	if !found {
 		return nil, errf(constants.ExitNotFound,
-			"env profile %s/%s does not exist (create it with: kae env set %s %s KEY=VALUE)",
+			"env profile %s/%s not found; run: kae env set %s %s KEY=VALUE",
 			tool, accountName, tool, accountName)
 	}
 	return envprofile.EnvStrings(ctx, be, profile)
@@ -453,8 +453,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			if restoreErr := app.applyBackup(ctx, be, meta, appliedTools, false); restoreErr != nil {
 				return 0, doubleFailure("apply "+plan.Tool, err, restoreErr, meta.ID)
 			}
-			return 0, errf(exitOf(err),
-				"apply %s failed, previous state restored from backup %s: %v", plan.Tool, meta.ID, err)
+			return 0, errf(exitOf(err), "apply %s"+restoredFromBackup, plan.Tool, meta.ID, err)
 		}
 		appliedTools[plan.Tool] = true
 	}
@@ -562,8 +561,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			// The adapter's own warnings ride along: captureSnapshot used to append them
 			// to its auth_missing error, and `run -s` prints them nowhere else, so an
 			// env_conflict is otherwise invisible in exactly the case it may explain.
-			fmt.Fprintf(os.Stderr, "kae: warning: %s logged out during the run; snapshot %s/%s left unchanged%s\n",
-				plan.Tool, plan.Tool, plan.Account, warningsDetail(plan.Warnings))
+			warnLoggedOutDuringRunUnchanged(plan.Tool, plan.Account, warningsDetail(plan.Warnings))
 			continue
 		}
 		if why := keepSnapshotIdentity(ctx, be, plan.Specs, plan.Tool, plan.Account, plan.Meta, values); why != "" {
@@ -580,7 +578,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			}
 			// No backup for this one: what it declines is a tombstone or a provably older
 			// credential, so there is nothing to keep.
-			warnRecaptureSkipped(why)
+			warnSnapshotUnchanged(plan.Tool, plan.Account, why)
 			continue
 		}
 		// Carry the snapshot's own recorded identity: the run paths leave plan.Identity
@@ -603,8 +601,7 @@ func (app *App) runAuthTransaction(ctx context.Context, targets []runTarget, chi
 			preID = preMeta.ID
 		}
 		for _, d := range declined {
-			warnRecaptureDeclined(d.plan.Tool, d.why, preID,
-				"which covers only the tools whose recapture kae declined")
+			warnRecaptureDeclined(d.plan.Tool, d.plan.Account, d.why, preID, declinedByRun)
 		}
 	}
 

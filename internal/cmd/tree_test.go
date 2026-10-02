@@ -332,7 +332,7 @@ func TestTreeModeShowsWhereverTheModeIsReported(t *testing.T) {
 		t.Fatalf("status must report pinned mode tree from a subdirectory, got %+v", report.Pinned)
 	}
 	_, stderr := captureStderr(t, func() int { app.pinnedGlobalScope(); return 0 })
-	if !strings.Contains(stderr, "this directory is pinned (tree)") {
+	if !strings.Contains(stderr, "this directory is bound (tree)") {
 		t.Fatalf("the global-scope warning must name tree: %q", stderr)
 	}
 }

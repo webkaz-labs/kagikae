@@ -56,7 +56,7 @@ func runDoctor(ctx context.Context, app *App, opts commonOpts, toolFilter string
 		// nothing about them reads as "they are fine". stderr, not a check, so the
 		// JSON contract does not grow a row for something the caller filtered out.
 		fmt.Fprintf(os.Stderr,
-			"kae: note: companion and pinned-directory checks are not per-tool and were skipped; run `kae doctor` with no tool to include them\n")
+			"kae: note: companion and bound-directory checks are not per-tool and were skipped; to include them, run: kae doctor\n")
 	}
 	exit := constants.ExitOK
 	if !report.OK {
@@ -392,7 +392,7 @@ func (app *App) activeOrphanChecks(toolFilter string) []adapter.Check {
 			Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
 			Message: fmt.Sprintf(
 				"could not read %s (%v), so kae cannot say which account is active for any tool; "+
-					"`kae use <tool> <account>` rewrites it",
+					"run: kae use <tool> <account> (rewrites it)",
 				app.displayPath(app.Paths.StateFile()), err,
 			),
 		}}
@@ -420,8 +420,8 @@ func (app *App) activeOrphanChecks(toolFilter string) []adapter.Check {
 			checks = append(checks, adapter.Check{
 				Tool: tool, Code: constants.CheckActiveOrphan, Status: constants.StatusWarn,
 				Message: fmt.Sprintf(
-					"state records %s/%s as active but no such snapshot exists, so kae cannot say which %s account is live; "+
-						"pick one with: kae use %s <account> (kae ls shows the captured ones)",
+					"state records %s/%s as active but that snapshot no longer exists, so kae cannot say which %s account is live; "+
+						"to pick one, run: kae use %s <account> (kae ls shows the captured ones)",
 					tool, name, tool, tool,
 				),
 			})
@@ -464,7 +464,7 @@ func (app *App) orphanChecks(ctx context.Context, be secret.Backend, toolFilter 
 		checks = append(checks, adapter.Check{
 			Tool: tool, Code: constants.CheckSecretOrphan,
 			Status: constants.StatusWarn,
-			Message: fmt.Sprintf("secret item for %s/%s has no snapshot dir; remove it with kae account rm %s %s",
+			Message: fmt.Sprintf("secret item for %s/%s has no snapshot dir; to remove it, run: kae account rm %s %s",
 				tool, acct, tool, acct),
 		})
 	}

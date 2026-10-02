@@ -111,7 +111,7 @@ func TestStatusShowsPinAndProfiles(t *testing.T) {
 	})
 	mustExit(t, constants.ExitOK, code, out)
 	for _, want := range []string{
-		"This directory: profile side (pinned, isolated)",
+		"This directory: profile side (bound, isolated)",
 		"Global active profile: side",
 		"Profiles:",
 		"claude:main codex:main",

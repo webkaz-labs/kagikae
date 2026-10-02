@@ -75,14 +75,14 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 			fmt.Fprintf(os.Stderr,
 				"kae: warning: kae could not read or date the %s credential in %s — nor tell which "+
 					"account it belonged to — so it is deleted without being kept anywhere; if that was "+
-					"a working login in a shape kae does not recognize, it is gone\n", tool, credDir)
+					"a working login in a shape kae does not recognize, it is lost\n", tool, credDir)
 			return true
 		}
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae cannot read or date the %s credential in %s, so it is left in place "+
 				"instead of deleted (a payload kae cannot judge may still be a working login); "+
-				"if it is spent, kae unpin --purge in that directory removes it — that tears the "+
-				"binding down too, so re-pin afterwards\n", tool, credDir)
+				"removing it tears the binding down too, so re-bind afterwards; if it is spent, "+
+				"in that directory run: kae unpin --purge\n", tool, credDir)
 		return false
 	}
 	if accountName == "" {
@@ -109,14 +109,14 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 		// (harvestRenamedAccountCredentials), so there is no instruction left to give here
 		// — a copy still reaching this arm is one no rename claimed.
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: no account named %s/%s exists any more, so the %s credential this directory held "+
+			"kae: warning: account %s/%s no longer exists, so the %s credential this directory held "+
 				"for it is deleted without being kept anywhere (%s)\n",
 			tool, accountName, tool, credDir)
 	case exitOf(err) == constants.ExitNotFound:
 		// Same condition, and this is *housekeeping* rather than a purge — the case that
 		// used to delete the newest copy of a renamed account's credential. Worded from the
-		// fact rather than from the error: snapshotCredential says "not captured yet (run:
-		// kae add --no-login …)", the wrong instruction for an account the user removed or
+		// fact rather than from the error: snapshotCredential says "is not captured; "
+		// followed by a kae add remedy, the wrong instruction for an account the user removed or
 		// renamed on purpose.
 		//
 		// Reached only by a store holding its **own** credential — a pre-split binding, or
@@ -132,8 +132,8 @@ func (app *App) harvestBeforeDelete(ctx context.Context, be secret.Backend, spec
 		// harvest refuses to attribute it. It reads correctly only for a store the *user*
 		// re-binds to an account that genuinely holds it.
 		fmt.Fprintf(os.Stderr,
-			"kae: warning: no account named %s/%s exists any more, so the %s credential this directory "+
-				"held for it is left in place rather than deleted (%s); `kae unpin --purge` removes it, "+
+			"kae: warning: account %s/%s no longer exists, so the %s credential this directory "+
+				"held for it is left in place instead of deleted (%s); to remove it, run: kae unpin --purge, "+
 				"or re-bind to the account that holds it now and it is harvested\n",
 			tool, accountName, tool, credDir)
 		return false
@@ -413,7 +413,7 @@ func (app *App) harvestSupersededDirCredentials(ctx context.Context, be secret.B
 		// Chosen once for the same reason it is asked once: the two arms below said this in
 		// two hand-kept copies, and this function's own history is one wording drifting in
 		// the unreadable arm and the other in the replaced one. Both measured.
-		consequence := "so kae is leaving it where it is"
+		consequence := "so this bind leaves it in place"
 		if replacedNow {
 			consequence = "and this bind replaces it"
 		}
@@ -771,18 +771,21 @@ func (app *App) recordHarvestTime(tool, accountName string) {
 	acc, found, err := account.Load(dir)
 	if err != nil || !found {
 		if err != nil {
-			fmt.Fprintf(os.Stderr,
-				"kae: warning: harvested the %s credential for %s/%s but could not update its capture time: %v\n",
-				tool, tool, accountName, err)
+			warnCaptureTimeNotUpdated(tool, accountName, err)
 		}
 		return
 	}
 	acc.CapturedAt = app.Now().UTC()
 	if err := account.Save(dir, acc); err != nil {
-		fmt.Fprintf(os.Stderr,
-			"kae: warning: harvested the %s credential for %s/%s but could not update its capture time: %v\n",
-			tool, tool, accountName, err)
+		warnCaptureTimeNotUpdated(tool, accountName, err)
 	}
+}
+
+// warnCaptureTimeNotUpdated reports a harvest that kept the credential but could not stamp the snapshot.
+func warnCaptureTimeNotUpdated(tool, accountName string, err error) {
+	fmt.Fprintf(os.Stderr,
+		"kae: warning: harvested the %s credential for %s/%s but could not update its capture time: %v\n",
+		tool, tool, accountName, err)
 }
 
 // rotatesSingleUse reports whether tool's refresh token is measured to rotate

@@ -256,7 +256,7 @@ Usage:
                                        home (credential private), -i isolates,
                                        -t keeps one store for the directory's
                                        tree across account switches (claude only)
-  kae pin <tool> <account>             re-bind one tool inside a pinned dir
+  kae pin <tool> <account>             re-bind one tool inside a bound dir
   kae unpin                            remove the binding from .mise.toml
   kae uninstall [--dry-run] [--yes]    remove owned integrations and a recorded direct binary
   kae relogin [<tool>]                 run the tool's login flow into this
@@ -314,5 +314,5 @@ Tools: ` + strings.Join(constants.Tools, ", "))
 // removedCommand reports a removed or renamed command and names its
 // replacement (kept for one release).
 func removedCommand(old, version, replacement string) int {
-	return usageError("kae %s was removed in %s; use: %s", old, version, replacement)
+	return usageError("kae %s was removed in %s; run: %s", old, version, replacement)
 }

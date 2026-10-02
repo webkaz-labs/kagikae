@@ -61,7 +61,7 @@ func (app *App) resolveCompanionTarget(profileName, id string) (companion.Spec, 
 	}
 	if _, ok := app.Config.Profiles[profileName]; !ok {
 		return companion.Spec{}, errf(constants.ExitNotFound,
-			"profile %q is not defined (create it first, e.g. kae profile set %s <tool> <account>)", profileName, profileName)
+			"profile %q is not defined; to create it first, run: kae profile set %s <tool> <account>", profileName, profileName)
 	}
 	spec, ok := companion.For(id)
 	if !ok {
@@ -125,7 +125,7 @@ func runCompanionAdd(ctx context.Context, app *App, opts commonOpts, positionals
 	}
 	fmt.Printf("Bound companion %s for profile %s: %s\n", id, profileName, strings.Join(names, ", "))
 	if app.miseActivated() {
-		fmt.Println("Re-run `kae pin` in a bound directory to refresh its fragment.")
+		fmt.Println("To refresh its fragment, in a bound directory run: kae pin")
 	}
 	return constants.ExitOK
 }
@@ -308,7 +308,7 @@ func runCompanionList(_ context.Context, app *App, opts commonOpts) int {
 		return encodeJSON(report)
 	}
 	if len(report.Bindings) == 0 {
-		fmt.Println("no companion bindings (create one with: kae companion add <profile> <id> KEY=VALUE)")
+		fmt.Println("no companion bindings; run: kae companion add <profile> <id> KEY=VALUE")
 		return constants.ExitOK
 	}
 	rows := [][]string{}
@@ -353,7 +353,7 @@ func companionToken(ctx context.Context, app *App, args []string) int {
 		return exitOf(err)
 	}
 	if !found {
-		fmt.Fprintf(os.Stderr, "kae: companion token %s/%s/%s is not stored (run: kae companion add %s %s %s)\n",
+		fmt.Fprintf(os.Stderr, "kae: companion token %s/%s/%s is not stored; run: kae companion add %s %s %s\n",
 			args[0], args[1], args[2], args[0], args[1], args[2])
 		return constants.ExitNotFound
 	}

@@ -89,7 +89,7 @@ func buildProfileSave(_ context.Context, app *App, opts commonOpts, name string)
 		accounts[tool] = acc
 	}
 	if len(accounts) == 0 {
-		return nil, errf(constants.ExitNotFound, "no active accounts to save (switch first, e.g. kae use <tool> <account>)")
+		return nil, errf(constants.ExitNotFound, "no active accounts to save; switch first, then run: kae use <tool> <account>")
 	}
 	report := &profileReport{
 		SchemaVersion: constants.SchemaVersion, OK: true, DryRun: opts.DryRun,
@@ -165,7 +165,7 @@ func buildProfileSet(_ context.Context, app *App, opts commonOpts, name, tool, a
 		return nil, err
 	} else if !found {
 		return nil, errf(constants.ExitNotFound,
-			"account %s/%s is not captured (run: kae add %s %s)", tool, accountName, tool, accountName)
+			"account %s/%s is not captured; run: kae add %s %s", tool, accountName, tool, accountName)
 	}
 	report := &profileReport{
 		SchemaVersion: constants.SchemaVersion, OK: true, DryRun: opts.DryRun,
@@ -327,8 +327,7 @@ func buildProfileRm(_ context.Context, app *App, opts commonOpts, name string, f
 	app.warnPinnedDirs(
 		func(info fragmentInfo) bool { return info.Profile == name },
 		func(dir string) string {
-			return fmt.Sprintf("%s is still pinned to profile %s, which no longer exists; re-pin it with: cd %s && kae pin <profile>",
-				dir, name, dir)
+			return staleProfileBindingMessage(dir, name)
 		},
 	)
 	return report, nil

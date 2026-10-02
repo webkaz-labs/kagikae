@@ -132,7 +132,7 @@ func (app *App) pickCandidates(ctx context.Context, opts commonOpts, req lsReque
 		}
 	case constants.IsTool(req.target):
 		if projectLevelName(req.target) == "" {
-			return nil, finish(opts, errf(constants.ExitNotFound, "kae resolves no places for %s", req.target))
+			return nil, finish(opts, errNoPlaces(req.target))
 		}
 		pc, err := app.newPlaceContext(ctx, req.explicit)
 		if err != nil {

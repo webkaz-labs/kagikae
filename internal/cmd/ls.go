@@ -168,7 +168,7 @@ func (app *App) bindingConfigStores(pinID string, info fragmentInfo) map[string]
 
 func printPinsReport(app *App, report *pinsReport, color bool) {
 	if len(report.BoundDirectories) == 0 {
-		fmt.Println("Bound directories: (none — bind one with: kae pin <profile>)")
+		fmt.Println("Bound directories: (none); run: kae pin <profile>")
 		return
 	}
 	fmt.Println("Bound directories:")
@@ -252,12 +252,17 @@ func buildAccountItemsWith(ctx context.Context, app *App, tool string, loaded lo
 func printLsReport(app *App, report *lsReport, opts commonOpts) {
 	printAccountItems(app, report.Accounts, "kae add <tool>", opts)
 	fmt.Println()
-	if len(report.Profiles) == 0 {
-		fmt.Println("Profiles: (none defined — add them with: kae edit)")
+	printProfileList(report.Profiles)
+}
+
+// printProfileList is the Profiles block of the ls and status reports.
+func printProfileList(profiles []profileStatus) {
+	if len(profiles) == 0 {
+		fmt.Println("Profiles: (none defined); run: kae edit")
 		return
 	}
 	fmt.Println("Profiles:")
-	for _, profile := range report.Profiles {
+	for _, profile := range profiles {
 		marker := ""
 		if profile.Active {
 			marker = "  (active)"
@@ -270,7 +275,7 @@ func printLsReport(app *App, report *lsReport, opts commonOpts) {
 // group; addHint is the command the empty case suggests.
 func printAccountItems(app *App, items []accountItem, addHint string, opts commonOpts) {
 	if len(items) == 0 {
-		fmt.Printf("Accounts: (none — register one with: %s)\n", addHint)
+		fmt.Printf("Accounts: (none); run: %s\n", addHint)
 		return
 	}
 	fmt.Println("Accounts:")

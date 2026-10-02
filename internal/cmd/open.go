@@ -66,7 +66,7 @@ func runCdPath(ctx context.Context, app *App, opts commonOpts, req lsRequest) in
 // in. It refuses and names the command that does the same without the function.
 func CmdCd(args []string) int {
 	return usageError("kae cd moves the shell only through the kae shell function, which "+
-		"eval \"$(kae completion zsh)\" (bash likewise; fish: kae completion fish | source) or the mise hook defines; without it run: cd \"$(kae ls %s)\"",
+		"eval \"$(kae completion zsh)\" (bash likewise; fish: kae completion fish | source) or the mise hook defines; without it, run: cd \"$(kae ls %s)\"",
 		cdSuggestionWords(args))
 }
 
@@ -132,7 +132,7 @@ func parseNavigateArgs(verb string, args []string) (commonOpts, lsRequest, int) 
 		return opts, lsRequest{}, constants.ExitUsage
 	}
 	if opts.Format == formatJSON {
-		return opts, lsRequest{}, usageError("kae %s prints no report; for a place's path as JSON use kae ls <target> --current --json", verb)
+		return opts, lsRequest{}, usageError("kae %s prints no report; for a place's path as JSON, run: kae ls <target> --current --json", verb)
 	}
 	req, code := parsePlaceArgs(verb, f, positionals)
 	return opts, req, code

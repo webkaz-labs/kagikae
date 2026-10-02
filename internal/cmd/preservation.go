@@ -104,6 +104,11 @@ func (app *App) preservationStore(be secret.Backend) preservation.Store {
 	return preservation.Store{Dir: app.Paths.PreservationsDir(), LockDir: app.Paths.LocksDir(), Backend: be, LimitBytes: app.Config.Security.PreservationMaxBytes}
 }
 
+// errPreservationIDNotFound is the error for a preservation ID that names no record.
+func errPreservationIDNotFound() *cmdError {
+	return errf(constants.ExitNotFound, "preservation ID not found")
+}
+
 // preservationError deliberately does not print backend errors, which may carry
 // credential material. Only classified, payload-independent diagnoses escape.
 func preservationError(err error) error {
@@ -113,11 +118,11 @@ func preservationError(err error) error {
 	}
 	switch {
 	case errors.Is(err, preservation.ErrNotFound):
-		return errf(constants.ExitNotFound, "preservation ID was not found")
+		return errPreservationIDNotFound()
 	case errors.Is(err, preservation.ErrInvalidID):
 		return errf(constants.ExitUsage, "invalid preservation ID")
 	case errors.Is(err, lock.ErrBusy):
-		return errf(constants.ExitLockBusy, "another preservation operation is running; retry shortly")
+		return errf(constants.ExitLockBusy, "another kae process is running a preservation operation; retry shortly")
 	case errors.Is(err, preservation.ErrQuota):
 		return errf(constants.ExitUnsafeRefused, "preservation capacity is full; list preserved copies and explicitly remove an unwanted ID before retrying")
 	case errors.Is(err, preservation.ErrProtected):
@@ -180,7 +185,7 @@ func runPreservation(ctx context.Context, app *App, opts commonOpts, action, id 
 			}
 		}
 		if !found {
-			return finish(opts, errf(constants.ExitNotFound, "preservation ID was not found"))
+			return finish(opts, errPreservationIDNotFound())
 		}
 		if !opts.DryRun {
 			if !opts.Yes && (opts.Format == formatJSON || !stdinIsTTY() || !confirmPreservationRemoval(id)) {

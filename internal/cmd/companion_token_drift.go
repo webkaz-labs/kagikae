@@ -107,12 +107,12 @@ func (app *App) companionTokenDriftChecks(ctx context.Context, live bool) []adap
 	return checks
 }
 
-// tokenDriftInactiveMessage frames the pin-not-active case: the token env var is
+// tokenDriftInactiveMessage frames the binding-not-active case: the token env var is
 // empty, so the bound token never reaches the tool and a command would fall back
 // to whatever credential the tool finds on its own.
 func tokenDriftInactiveMessage(profile, id, envVar, expected string) string {
 	return fmt.Sprintf(
-		"profile %s: %s is bound to login %q but %s is unset here; the pin is not active in this shell (run `mise env`, or `mise trust` if untrusted), so %s would act as the wrong account",
+		"profile %s: %s is bound to login %q but %s is unset here; the binding is not active in this shell, so %s would act as the wrong account; run: mise env, or mise trust if untrusted",
 		profile, id, sanitizeIdentity(expected), envVar, id,
 	)
 }

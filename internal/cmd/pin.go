@@ -48,7 +48,7 @@ func CmdPin(ctx context.Context, args []string) int {
 		// cannot be honored here (the mechanism is the directory's, not the
 		// caller's), so reject them rather than silently dropping them.
 		if shared || isolated || tree {
-			return usageError("--shared/--isolated/--tree do not apply to `kae pin <tool> <account>`; the directory's existing mode is kept")
+			return usageError("--shared/--isolated/--tree do not apply to `kae pin <tool> <account>`; the directory's existing mode is left unchanged")
 		}
 		return runRebind(ctx, app, opts, positionals[0], positionals[1], noLink)
 	case 0, 1:
@@ -101,8 +101,8 @@ func warnIfLegacyPinBlock() {
 	if strings.Contains(string(data), "Directory-scoped account isolation (kae pin, mode: overlay)") ||
 		strings.Contains(string(data), "Directory-scoped overlay mode (legacy)") {
 		fmt.Fprintln(os.Stderr, "kae: warning: this directory has a legacy overlay-mode block.")
-		fmt.Fprintln(os.Stderr, "kae: run `kae unpin && kae pin --isolated <profile>` to migrate to isolated mode,")
-		fmt.Fprintln(os.Stderr, "kae: or `kae unpin && kae pin --shared <profile>` for shared-settings mode.")
+		fmt.Fprintln(os.Stderr, "kae: to migrate to isolated mode, run: kae unpin && kae pin --isolated <profile>")
+		fmt.Fprintln(os.Stderr, "kae: or, for shared-settings mode, run: kae unpin && kae pin --shared <profile>")
 	}
 }
 
@@ -123,7 +123,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	}
 	if profileName == "" {
 		return finish(opts, errf(constants.ExitUsage,
-			"no profile given and no default_profile in config; use: kae pin <profile>"))
+			"no profile given and no default_profile in config; run: kae pin <profile>"))
 	}
 	absDir, err := cwdAbs()
 	if err != nil {
@@ -224,7 +224,7 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// account no longer exists keeps its credential rather than having it deleted by a
 	// command the user ran to *bind* something (harvestBeforeDelete).
 	reportPruned(app.pruneDirCredentials(ctx, be, pinID, "", boundDirs(entries), prevBinding, false))
-	fmt.Printf("Pinned this directory: profile %s (%s)\n", profileName, mode)
+	fmt.Printf("Bound this directory: profile %s (%s)\n", profileName, mode)
 	// The stores are named by a hash of this directory's path, so nothing in the
 	// directory points at them without these links. Converged over every linkable
 	// tool, not only the bound ones: a tool dropped from the profile, and
@@ -245,20 +245,28 @@ func runPin(ctx context.Context, app *App, opts commonOpts, profileName, mode st
 	// it is outside the working tree; when there was no repository to tell, say
 	// nothing about ignoring rather than claiming it.
 	if excludeFile != "" {
-		fmt.Printf("Wrote %s (ignored via %s); your mise.toml is untouched.\n",
+		fmt.Printf("Wrote %s (ignored via %s); your mise.toml is left unchanged.\n",
 			fragmentRelPath, app.displayPath(excludeFile))
 	} else {
-		fmt.Printf("Wrote %s; your mise.toml is untouched.\n", fragmentRelPath)
+		fmt.Printf("Wrote %s; your mise.toml is left unchanged.\n", fragmentRelPath)
 	}
 	app.reportStoreLinks(linked, removed, excludeFile)
-	if app.miseActivated() {
-		fmt.Println("mise applies it on the next prompt (or run `mise env`).")
-	} else {
-		fmt.Fprintln(os.Stderr, "kae: warning: mise activation not detected; the binding takes effect once mise is active.")
-		fmt.Fprintln(os.Stderr, "kae: to apply it in the current shell now, run:")
-		fmt.Fprint(os.Stderr, exportFallback(profileName, entries, companionExportLines(companionEntries)))
-	}
+	app.reportMiseHandoff(func() string {
+		return exportFallback(profileName, entries, companionExportLines(companionEntries))
+	})
 	return constants.ExitOK
+}
+
+// reportMiseHandoff says how a freshly written fragment reaches the shell: mise
+// applies it at the next prompt, or fallback supplies the lines to run now.
+func (app *App) reportMiseHandoff(fallback func() string) {
+	if app.miseActivated() {
+		fmt.Println("mise applies it on the next prompt; to apply it now in bash or zsh, run: eval \"$(mise env)\"")
+		return
+	}
+	fmt.Fprintln(os.Stderr, "kae: warning: mise activation not detected; the binding takes effect once mise is active.")
+	fmt.Fprintln(os.Stderr, "kae: to apply it in the current shell now, run:")
+	fmt.Fprint(os.Stderr, fallback())
 }
 
 // warnModeUnboundTools says on stderr which of the profile's tools the mode leaves on
@@ -385,7 +393,7 @@ func runUnpin(ctx context.Context, app *App, opts commonOpts, purge bool) int {
 		fmt.Println("Removed the legacy kagikae block from .mise.toml")
 	default:
 		return finish(opts, errf(constants.ExitNotFound,
-			"this directory is not pinned (no %s and no kagikae block in .mise.toml)", fragmentRelPath))
+			"this directory is not bound (no %s and no kagikae block in .mise.toml)", fragmentRelPath))
 	}
 	// The links are pointers, so they go with the binding rather than with the
 	// store: `unpin` keeps the store on purpose, but a link left behind names one

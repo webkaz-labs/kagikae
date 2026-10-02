@@ -405,7 +405,7 @@ does not register accounts or select credentials.
 result: parse or validation problems exit `2` (`invalid_config`) with the
 error, soft issues print as warnings. A missing config exits `7` pointing
 at `kae init`; an editor that exits non-zero is reported with exit `1`
-(the file is left as last saved, nothing is rolled back).
+(the file is left as the editor last saved it; nothing is rolled back).
 
 ## kae add Semantics
 
@@ -1502,7 +1502,7 @@ at mise eval) and a bound companion whose CLI is absent from PATH
 binds git it also runs the live commit-misidentity guard: it shells out to
 `git config` and compares the identity git would actually commit with against the
 profile's bound `user.email`/`name`/`signingkey`, flagging a repo-local override
-or an inactive pin (`companion_drift`). The
+or an inactive binding (`companion_drift`). The
 switched/preserved contract per companion is [ADAPTERS-COMPANION.md](ADAPTERS-COMPANION.md).
 
 ## Shell completion
@@ -2158,7 +2158,7 @@ Credential-health checks (warn-level):
     never establishes whose login two copies are, and a store legitimately holds a
     previous account's credential. docs/ADAPTERS.md § Per-directory credential store is
     normative for that taxonomy.
-  - Naming those readers means enumerating kae's pin index, which is **machine-wide**:
+  - Naming those readers means enumerating kae's bound-directory index, which is **machine-wide**:
     one directory under the isolation root whose pin record kae cannot read makes the
     enumeration incomplete, and then no shared store is attributed and no superseded
     finding about one is reported, for any account. `pin_index_incomplete` reports
@@ -2215,12 +2215,12 @@ Credential-health checks (warn-level):
 
 Bound-directory checks (warn-level, unfiltered like the companion ones — a
 binding is a property of the directory, not of one tool):
-- `pin_index_incomplete`: kae could not enumerate the complete pin index. Report
+- `pin_index_incomplete`: kae could not enumerate the complete bound-directory index. Report
   this machine-wide warning once, including with a tool filter, and continue
   diagnosing readable pins. Attribution and credential reference-counting retain
   their existing refusals when enumeration is incomplete.
 - `pin_stale`: a directory bound with `kae pin` either no longer exists at its
-  recorded path — it may have been deleted or moved — or it is still pinned to
+  recorded path — it may have been deleted or moved — or it is still bound to
   an account that is no longer captured, which is what `kae account rm`/`rename` and
   `kae profile rm` leave behind. Names the directory and the `kae pin` that
   re-binds it for the missing-account case. For an absent recorded path it reports
@@ -2378,7 +2378,7 @@ Companion-binding checks (warn-level, unfiltered report only):
   `git config --show-origin`.
 - `companion_token_drift`: the live login a token companion's token resolves to
   differs from the bound `expected_login`, or the token is absent from the env
-  (an inactive pin). The token-side analogue of `companion_drift`. **Opt-in**: it
+  (an inactive binding). The token-side analogue of `companion_drift`. **Opt-in**: it
   makes a network call (e.g. `gh api user`), so doctor runs it only when its
   prompt is answered yes or `--yes` is passed; `--json`/non-interactive runs skip
   it. `expected_login` is recorded automatically at `kae companion add` time for
@@ -2548,7 +2548,7 @@ The **active-account pointer** is restored only when its snapshot is still
 captured. A backup's `active_before` keeps the name it had at capture time, so a
 rollback across a `kae account rm`/`rename` would otherwise record an account that
 no longer exists — `kae status` naming a phantom and the next `kae use <tool>`
-failing with `account <tool>/<name> is not captured yet`. kae drops the entry for
+failing with `account <tool>/<name> is not captured`. kae drops the entry for
 that tool instead (the same "no active account" state `kae account rm` leaves) and
 warns on stderr, naming the account it could not restore. Never fatal and never a
 non-zero exit: the credentials are already rolled back, and what was lost is a

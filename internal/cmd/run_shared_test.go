@@ -82,8 +82,10 @@ func TestRunSharedRefusesToRecaptureAForeignLogin(t *testing.T) {
 	}
 	// The scope clause is per-caller: on this path the backup covers only the declined
 	// tools, so claiming it reverts a whole switch would be wrong in both halves.
-	if !strings.Contains(stderr, "which covers only the tools whose recapture kae declined") {
-		t.Errorf("the remedy must state what else the rollback reverts: %q", stderr)
+	if id := backupIDFromWarning(t, stderr); !strings.Contains(stderr, "preserved only in backup "+id+
+		" (that backup covers only the tools whose recapture kae declined) — to keep it as its own account, run: kae rollback --to "+
+		id+", then kae add --no-login claude <account>\n") {
+		t.Errorf("the remedy must state what else the rollback reverts, in full: %q", stderr)
 	}
 	for _, pii := range []string{foreign, "stranger", "@example.com"} {
 		if strings.Contains(stderr, pii) {
@@ -314,7 +316,7 @@ func TestRunSharedLoggedOutWarningCarriesAdapterWarnings(t *testing.T) {
 // credential being destroyed.
 func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
 	_, stderr := captureStderr(t, func() int {
-		warnRecaptureDeclined("claude", "kae cannot tell", "", "scope")
+		warnRecaptureDeclined("claude", "main", "kae cannot tell", "", declinedByUse)
 		return 0
 	})
 	if !strings.Contains(stderr, "could not preserve") || !strings.Contains(stderr, "lost once") {
@@ -324,7 +326,7 @@ func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
 		t.Errorf("with no backup, kae must not claim the copy survives: %q", stderr)
 	}
 	_, withID := captureStderr(t, func() int {
-		warnRecaptureDeclined("claude", "kae cannot tell", "20260101T000000Z", "which reverts nothing else")
+		warnRecaptureDeclined("claude", "main", "kae cannot tell", "20260101T000000Z", declinedByRun)
 		return 0
 	})
 	if strings.Contains(withID, "could not preserve") {
@@ -333,8 +335,9 @@ func TestRecaptureRefusalWithNoBackupSaysTheCopyIsLost(t *testing.T) {
 	// What restoring that backup puts back besides this login differs per caller, so
 	// the remedy has to say; without it the sentence is over-precise on `kae use`,
 	// where the same rollback reverts every tool the switch touched.
-	if !strings.Contains(withID, "which reverts nothing else") {
-		t.Errorf("the remedy must state what else the rollback reverts: %q", withID)
+	if want := "preserved only in backup 20260101T000000Z (that backup covers only the tools whose recapture kae declined) — " +
+		"to keep it as its own account, run: kae rollback --to 20260101T000000Z, then kae add --no-login claude <account>\n"; !strings.Contains(withID, want) {
+		t.Errorf("the remedy must state what else the rollback reverts, in full: want %q in %q", want, withID)
 	}
 }
 

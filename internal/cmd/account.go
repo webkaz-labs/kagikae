@@ -85,7 +85,7 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 		return nil, err
 	}
 	if !found {
-		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, accountName)
+		return nil, errAccountNotCaptured(tool, accountName)
 	}
 	if err := validateAccountSecretRefs(acc, tool, accountName); err != nil {
 		return nil, err
@@ -142,7 +142,7 @@ func buildAccountRm(ctx context.Context, app *App, opts commonOpts, tool, accoun
 		return nil, err
 	}
 	if !found {
-		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, accountName)
+		return nil, errAccountNotCaptured(tool, accountName)
 	}
 	acc = lockedAcc
 	if err := validateAccountSecretRefs(acc, tool, accountName); err != nil {
@@ -246,27 +246,55 @@ func validateAccountSecretRefs(acc account.Account, tool, accountName string) er
 	return nil
 }
 
+// errAccountExists is the refusal for a rename onto a name that is taken.
+func errAccountExists(tool, accountName string) *cmdError {
+	return errf(constants.ExitUnsafeRefused, "account %s/%s already exists", tool, accountName)
+}
+
+// errAccountNotCaptured is the not-found error for an account command naming an
+// account kae holds no snapshot of.
+func errAccountNotCaptured(tool, accountName string) *cmdError {
+	return errf(constants.ExitNotFound, "account %s/%s is not captured", tool, accountName)
+}
+
 func (app *App) accountRmIsolationPreflight(st *state.State, tool, accountName string) error {
 	consistent, fragmentErr := app.globalFragmentConsistent(st.Synced)
-	if fragmentErr != nil || !consistent {
-		reason := "does not match state.synced"
-		if fragmentErr != nil {
-			reason = fmt.Sprintf("cannot be read: %v", fragmentErr)
-		}
-		return errf(constants.ExitUnsafeRefused,
-			"the global isolated fragment %s, so account paths cannot be removed safely; stop every process using isolated homes, "+
-				"run `kae use -s %s %s` to regenerate it from state, then retry `kae account rm %s %s`; --force does not bypass this isolation guard",
-			reason, tool, accountName, tool, accountName)
-	}
-	if st.Synced[tool] == accountName {
-		return errf(constants.ExitUnsafeRefused,
-			"account %s/%s is selected by global isolated mode; stop every process using that isolated home "+
-				"(including `kae run -i` children and terminals activated by `kae use -i`), run `kae use -s %s %s`, "+
-				"then switch away or intentionally use --force and retry `kae account rm %s %s`; --force does not bypass this isolation guard",
+	switch {
+	case fragmentErr != nil:
+		return errf(constants.ExitUnsafeRefused, refuseRmFragmentUnreadable,
+			fragmentErr, tool, accountName, tool, accountName)
+	case !consistent:
+		return errf(constants.ExitUnsafeRefused, refuseRmFragmentMismatch,
+			tool, accountName, tool, accountName)
+	case st.Synced[tool] == accountName:
+		return errf(constants.ExitUnsafeRefused, refuseRmGloballyIsolated,
 			tool, accountName, tool, accountName, tool, accountName)
 	}
 	return nil
 }
+
+// The account rm and rename refusals while global isolated mode is involved. Each
+// meaning has its own constant format, built from shared constant clauses, so the
+// words are never assembled from arguments.
+const (
+	stopIsolatedHomes = "stop every process using isolated homes, then run: kae use -s %s %s (regenerates it from state), then run: "
+	stopThatHome      = "stop every process using that isolated home (including `kae run -i` children and terminals activated by `kae use -i`), then run: kae use -s %s %s, "
+	forceNoBypass     = "; --force does not bypass this isolation guard"
+
+	refuseRmFragmentUnreadable = "the global isolated fragment cannot be read: %v, so account paths cannot be removed safely; " +
+		stopIsolatedHomes + "kae account rm %s %s" + forceNoBypass
+	refuseRmFragmentMismatch = "the global isolated fragment does not match state.synced, so account paths cannot be removed safely; " +
+		stopIsolatedHomes + "kae account rm %s %s" + forceNoBypass
+	refuseRmGloballyIsolated = "account %s/%s is selected by global isolated mode; " + stopThatHome +
+		"then switch away or intentionally use --force, then run: kae account rm %s %s" + forceNoBypass
+
+	refuseRenameFragmentUnreadable = "the global isolated fragment cannot be read: %v, so account paths cannot be changed safely; " +
+		stopIsolatedHomes + "kae account rename %s %s %s"
+	refuseRenameFragmentMismatch = "the global isolated fragment does not match state.synced, so account paths cannot be changed safely; " +
+		stopIsolatedHomes + "kae account rename %s %s %s"
+	refuseRenameGloballyIsolated = "account %s/%s is selected by global isolated mode; " + stopThatHome +
+		"then run: kae account rename %s %s %s"
+)
 
 func printAccountRm(r *accountRmReport) {
 	verb := "Removed"
@@ -337,7 +365,7 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		return nil, err
 	}
 	if !found {
-		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, oldName)
+		return nil, errAccountNotCaptured(tool, oldName)
 	}
 	if err := validateAccountSecretRefs(acc, tool, oldName); err != nil {
 		return nil, err
@@ -345,7 +373,7 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 	if _, exists, err := account.Load(app.Paths.AccountDir(tool, newName)); err != nil {
 		return nil, err
 	} else if exists {
-		return nil, errf(constants.ExitUnsafeRefused, "account %s/%s already exists", tool, newName)
+		return nil, errAccountExists(tool, newName)
 	}
 
 	st, err := app.loadState()
@@ -404,12 +432,12 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		return nil, err
 	}
 	if !found {
-		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, oldName)
+		return nil, errAccountNotCaptured(tool, oldName)
 	}
 	if _, exists, err := account.Load(app.Paths.AccountDir(tool, newName)); err != nil {
 		return nil, err
 	} else if exists {
-		return nil, errf(constants.ExitUnsafeRefused, "account %s/%s already exists", tool, newName)
+		return nil, errAccountExists(tool, newName)
 	}
 	acc = lockedAcc
 	if err := validateAccountSecretRefs(acc, tool, oldName); err != nil {
@@ -470,7 +498,7 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 		return nil, err
 	}
 	if !stillThere {
-		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, oldName)
+		return nil, errAccountNotCaptured(tool, oldName)
 	}
 	acc = reloaded
 
@@ -571,21 +599,16 @@ func buildAccountRename(ctx context.Context, app *App, opts commonOpts, tool, ol
 }
 
 func accountRenameGlobalIsolationMismatchError(tool, oldName, newName string, cause error) error {
-	reason := "does not match state.synced"
 	if cause != nil {
-		reason = fmt.Sprintf("cannot be read: %v", cause)
+		return errf(constants.ExitUnsafeRefused, refuseRenameFragmentUnreadable,
+			cause, tool, oldName, tool, oldName, newName)
 	}
-	return errf(constants.ExitUnsafeRefused,
-		"the global isolated fragment %s, so account paths cannot be changed safely; stop every process using isolated homes, "+
-			"run `kae use -s %s %s` to regenerate it from state, then retry `kae account rename %s %s %s`",
-		reason, tool, oldName, tool, oldName, newName)
+	return errf(constants.ExitUnsafeRefused, refuseRenameFragmentMismatch,
+		tool, oldName, tool, oldName, newName)
 }
 
 func accountRenameGloballyIsolatedError(tool, oldName, newName string) error {
-	return errf(constants.ExitUnsafeRefused,
-		"account %s/%s is selected by global isolated mode; stop every process using that isolated home "+
-			"(including `kae run -i` children and terminals activated by `kae use -i`), run `kae use -s %s %s`, "+
-			"then retry `kae account rename %s %s %s`",
+	return errf(constants.ExitUnsafeRefused, refuseRenameGloballyIsolated,
 		tool, oldName, tool, oldName, tool, oldName, newName)
 }
 
@@ -659,7 +682,7 @@ func buildAccountSetIdentity(app *App, opts commonOpts, tool, accountName, value
 		if _, found, err := account.Load(dir); err != nil {
 			return nil, err
 		} else if !found {
-			return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, accountName)
+			return nil, errAccountNotCaptured(tool, accountName)
 		}
 		return report, nil
 	}
@@ -674,7 +697,7 @@ func buildAccountSetIdentity(app *App, opts commonOpts, tool, accountName, value
 		return nil, err
 	}
 	if !found {
-		return nil, errf(constants.ExitNotFound, "account %s/%s is not captured", tool, accountName)
+		return nil, errAccountNotCaptured(tool, accountName)
 	}
 	acc.Identity = identity
 	if err := account.Save(dir, acc); err != nil {

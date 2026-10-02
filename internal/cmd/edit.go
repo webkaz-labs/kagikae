@@ -33,8 +33,7 @@ func CmdEdit(ctx context.Context, args []string) int {
 
 func runEdit(ctx context.Context, app *App, opts commonOpts) int {
 	if _, err := os.Stat(app.ConfigPath); os.IsNotExist(err) {
-		return finish(opts, errf(constants.ExitNotFound,
-			"config %s does not exist yet (run: kae init)", app.displayPath(app.ConfigPath)))
+		return finish(opts, app.errConfigNotFound())
 	}
 	editor := app.Env.Getenv("VISUAL")
 	if editor == "" {
@@ -51,12 +50,12 @@ func runEdit(ctx context.Context, app *App, opts commonOpts) int {
 	}
 	if code != 0 {
 		return finish(opts, errf(constants.ExitError,
-			"editor %s exited with %d; the config is left as last saved", parts[0], code))
+			"editor %s exited with %d; the config is left as the editor last saved it; nothing is rolled back", parts[0], code))
 	}
 	_, warnings, err := config.Load(app.ConfigPath)
 	if err != nil {
 		return finish(opts, errf(constants.ExitInvalidConfig,
-			"config %s is invalid after editing: %v (run kae edit again)",
+			"config %s is invalid after editing: %v; run: kae edit",
 			app.displayPath(app.ConfigPath), err))
 	}
 	for _, warning := range warnings {

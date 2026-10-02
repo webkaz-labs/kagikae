@@ -215,10 +215,22 @@ func (app *App) warnPinnedAccountGone(tool, accountName, replacement string) {
 	app.warnPinnedDirs(
 		func(info fragmentInfo) bool { return info.Accounts[tool] == accountName },
 		func(dir string) string {
-			return fmt.Sprintf("%s is still pinned to %s/%s, which no longer exists; re-bind it with: cd %s && kae pin %s %s",
-				dir, tool, accountName, dir, tool, replacement)
+			return staleAccountBindingMessage(dir, tool, accountName, replacement)
 		},
 	)
+}
+
+// staleAccountBindingMessage is the warning for a bound directory whose account no
+// longer exists; replacement is the account to re-bind to, or "<account>".
+func staleAccountBindingMessage(dir, tool, accountName, replacement string) string {
+	return fmt.Sprintf("%s is still bound to %s/%s, which no longer exists; to re-bind it, run: cd %s && kae pin %s %s",
+		dir, tool, accountName, dir, tool, replacement)
+}
+
+// staleProfileBindingMessage is the same warning for a bound directory whose profile no longer exists.
+func staleProfileBindingMessage(dir, profile string) string {
+	return fmt.Sprintf("%s is still bound to profile %s, which no longer exists; to re-bind it, run: cd %s && kae pin <profile>",
+		dir, profile, dir)
 }
 
 // warnPinnedDirs prints one stderr warning per bound directory the caller's edit
@@ -239,8 +251,8 @@ func (app *App) pinChecks(toolFilter string) []adapter.Check {
 	if !index.complete {
 		checks = append(checks, adapter.Check{
 			Code: constants.CheckPinIndexIncomplete, Status: constants.StatusWarn,
-			Message: "the pin index could not be read completely; some bound-directory checks could not run " +
-				"and shared credential attribution is unavailable; restore readable pin records before retrying",
+			Message: "the bound-directory index could not be read completely; some bound-directory checks could not run " +
+				"and shared credential attribution is unavailable; restore readable bound-directory records before retrying",
 		})
 	}
 	if index.err != nil || toolFilter != "" {
@@ -256,7 +268,7 @@ func (app *App) pinChecks(toolFilter string) []adapter.Check {
 			checks = append(checks, adapter.Check{
 				Code: constants.CheckPinStale, Status: constants.StatusWarn,
 				Message: fmt.Sprintf(
-					"%s was bound with kae pin but its recorded path is gone; it may have been deleted or moved, so kae left its per-directory store untouched",
+					"%s was bound with kae pin but its recorded path no longer exists; it may have been deleted or moved, so kae left its per-directory store unchanged",
 					pin.Dir,
 				),
 			})
@@ -267,7 +279,7 @@ func (app *App) pinChecks(toolFilter string) []adapter.Check {
 			checks = append(checks, adapter.Check{
 				Code: constants.CheckPinStale, Status: constants.StatusWarn,
 				Message: fmt.Sprintf(
-					"%s is bound with kae pin but its fragment could not be read (%v), so its binding was not checked",
+					"%s is bound but its fragment could not be read (%v), so its binding was not checked",
 					pin.Dir, ferr,
 				),
 			})
@@ -284,7 +296,7 @@ func (app *App) pinChecks(toolFilter string) []adapter.Check {
 				Tool: tool,
 				Code: constants.CheckPinStale, Status: constants.StatusWarn,
 				Message: fmt.Sprintf(
-					"%s is pinned to %s/%s, which is not captured; re-bind it with: cd %s && kae pin %s <account>",
+					"%s is bound to %s/%s, which is not captured; to re-bind it, run: cd %s && kae pin %s <account>",
 					pin.Dir, tool, accountName, pin.Dir, tool,
 				),
 			})

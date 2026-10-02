@@ -249,9 +249,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 			if restoreErr := app.applyBackup(ctx, be, meta, appliedTools, false); restoreErr != nil {
 				return nil, doubleFailure("switch "+plan.Tool, err, restoreErr, meta.ID)
 			}
-			return nil, errf(exitOf(err),
-				"switch %s failed, previous state restored from backup %s: %v",
-				plan.Tool, meta.ID, err)
+			return nil, errf(exitOf(err), "switch %s"+restoredFromBackup, plan.Tool, meta.ID, err)
 		}
 		appliedTools[plan.Tool] = true
 	}
@@ -266,8 +264,7 @@ func buildSwitchTargets(ctx context.Context, app *App, opts commonOpts, targets 
 		if restoreErr := app.applyBackup(ctx, be, meta, nil, false); restoreErr != nil {
 			return nil, doubleFailure("recording state", err, restoreErr, meta.ID)
 		}
-		return nil, errf(exitOf(err),
-			"recording state failed, live state restored from backup %s: %v", meta.ID, err)
+		return nil, errf(exitOf(err), "recording state"+restoredFromBackup, meta.ID, err)
 	}
 	app.pruneBackups(ctx, be)
 	return report, nil
@@ -324,9 +321,7 @@ func printSwitchReport(report *switchReport) {
 				}
 			}
 			fmt.Println("  preserve all other keys, settings, skills, hooks, history")
-			for _, warning := range result.Warnings {
-				fmt.Printf("  warning: %s\n", warning)
-			}
+			printResultWarnings(result.Warnings)
 		}
 		return
 	}
@@ -340,7 +335,7 @@ func printSwitchReport(report *switchReport) {
 		fmt.Printf("Active profile: %s\n", *report.Profile)
 	}
 	if report.BackupID != "" {
-		fmt.Printf("Backup: %s (undo: kae rollback)\n", report.BackupID)
+		fmt.Printf("Backup: %s; to undo, run: kae rollback\n", report.BackupID)
 	}
 }
 
@@ -451,15 +446,9 @@ func runUseIsolated(ctx context.Context, app *App, opts commonOpts, target, name
 		return encodeJSON(report)
 	}
 	for _, r := range report.Results {
-		fmt.Printf("Globally isolated %s -> %s (private home; real ~/.%s untouched)\n", r.Tool, r.Account, r.Tool)
+		fmt.Printf("Globally isolated %s -> %s (private home; real ~/.%s left unchanged)\n", r.Tool, r.Account, r.Tool)
 	}
 	fmt.Printf("Wrote %s (regenerated from kae state).\n", report.Fragment)
-	if app.miseActivated() {
-		fmt.Println("mise applies it on the next prompt (or run `mise env`).")
-	} else {
-		fmt.Fprintln(os.Stderr, "kae: warning: mise activation not detected; the binding takes effect once mise is active.")
-		fmt.Fprintln(os.Stderr, "kae: to apply it in the current shell now, run:")
-		fmt.Fprint(os.Stderr, app.globalExportFallback(st.Synced))
-	}
+	app.reportMiseHandoff(func() string { return app.globalExportFallback(st.Synced) })
 	return constants.ExitOK
 }

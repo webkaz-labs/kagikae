@@ -72,7 +72,7 @@ func CmdCompletion(_ context.Context, args []string) int {
 	shell := positionals[0]
 	script, ok := completionScript(shell)
 	if !ok {
-		return usageError("unsupported shell %q (supported: bash, zsh, fish)", shell)
+		return usageError(unsupportedShellFormat, shell)
 	}
 	if !install {
 		if noFunction {

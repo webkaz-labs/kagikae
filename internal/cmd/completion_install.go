@@ -105,7 +105,7 @@ func applyCompletionInstall(app *App, opts commonOpts, shell, script string, cho
 		}
 		return constants.ExitOK
 	case installFpath:
-		l, err := app.acquireNamedLock("completion", "another kae process is updating completion files; retry shortly")
+		l, err := app.acquireNamedLock("completion", busyCompletionFiles)
 		if err != nil {
 			return finish(opts, err)
 		}
@@ -145,7 +145,7 @@ const zshCompdumpRebuild = `  rm -f "${ZSH_COMPDUMP:-$HOME/.zcompdump}" && autol
 // its script body needs no refresh. Refresh also moves recognized registrations
 // from global config into the shared fragment and resumes interrupted migrations.
 func runCompletionRefresh(app *App, opts commonOpts) int {
-	l, err := app.acquireNamedLock("completion", "another kae process is updating completion files; retry shortly")
+	l, err := app.acquireNamedLock("completion", busyCompletionFiles)
 	if err != nil {
 		return finish(opts, err)
 	}
@@ -181,7 +181,7 @@ func runCompletionRefresh(app *App, opts commonOpts) int {
 		}
 	}
 	if !anyRegistered {
-		fmt.Println("No registered kae completion to refresh (run: kae completion <bash|zsh|fish> --install).")
+		fmt.Println("No registered kae completion to refresh; run: kae completion <bash|zsh|fish> --install")
 		return constants.ExitOK
 	}
 	// A normal compinit picks up the rewritten file by mtime; compinit -C
@@ -211,7 +211,7 @@ func completionTarget(env adapter.Env, shell string) (path string, autoLoaded bo
 	case "fish":
 		return filepath.Join(paths.XDGConfigHome(env.Getenv, env.Home, ""), "fish", "completions", "kae.fish"), true, nil
 	default:
-		return "", false, errf(constants.ExitUsage, "unsupported shell %q (supported: bash, zsh, fish)", shell)
+		return "", false, errf(constants.ExitUsage, unsupportedShellFormat, shell)
 	}
 }
 

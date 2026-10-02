@@ -69,7 +69,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// than a warning, because guessing would log in somewhere else.
 	absDir, err := cwdAbs()
 	if err != nil {
-		return finish(opts, fmt.Errorf("resolve the current directory: %w", err))
+		return finish(opts, errResolveCwd(err))
 	}
 	fragment, exists, err := readDirFragment()
 	if err != nil {
@@ -77,8 +77,8 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	}
 	if !exists {
 		return finish(opts, errf(constants.ExitNotFound,
-			"this directory is not pinned, so there is no bound store to log in to; "+
-				"to refresh a global account run: %s add --restore <tool> <account>", toolName))
+			"this directory is not bound, so there is no bound store to log in to; "+
+				"to refresh a global account, run: kae add --restore <tool> <account>"))
 	}
 	tool, err := reloginTool(app, paths.PinID(absDir), fragment, explicitTool)
 	if err != nil {
@@ -106,9 +106,9 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 	// dirExists gate boundDirStores applies before naming a store in a report.
 	if !dirExists(storeDir) {
 		return finish(opts, errf(constants.ExitNotFound,
-			"this directory's %s store is not there (%s), so kae cannot tell where its login would land; "+
-				"re-bind it at its current path: %s pin %s %s",
-			tool, app.displayPath(storeDir), toolName, tool, accountName))
+			"this directory's %s store is missing (%s), so kae cannot tell where its login would land; "+
+				"to re-bind it at its current path, run: kae pin %s %s",
+			tool, app.displayPath(storeDir), tool, accountName))
 	}
 
 	be, err := app.secretBackend()
@@ -150,7 +150,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 			if err != nil {
 				return finish(opts, preservationError(err))
 			}
-			fmt.Fprintf(os.Stderr, "kae: preserved the existing credential as %s; its account ownership is unknown (list with: kae preservation list)\n", saved.Record.ID)
+			fmt.Fprintf(os.Stderr, "kae: preserved the existing credential as %s; its account ownership is unknown; run: kae preservation list\n", saved.Record.ID)
 		}
 	}
 
@@ -189,7 +189,7 @@ func runRelogin(ctx context.Context, app *App, opts commonOpts, explicitTool str
 		tool, strings.Join(shown, " "), tool, accountName)
 	code, err := runner.RunInteractive(ctx, loginEnv, command[0], command[1:]...)
 	if err != nil {
-		return finish(opts, fmt.Errorf("launch %s login: %w", tool, err))
+		return finish(opts, errLaunchLogin(tool, err))
 	}
 	if code != 0 {
 		// Same reading as `kae add`: a non-zero exit does not prove nothing was
@@ -409,8 +409,8 @@ func reloginTool(app *App, pinID string, fragment fragmentInfo, explicitTool str
 	case 1:
 		return candidates[0], nil
 	default:
-		return "", errf(constants.ExitUsage, "this directory binds %s; name the one to log in: %s relogin <tool>",
-			strings.Join(candidates, ", "), toolName)
+		return "", errf(constants.ExitUsage, "this directory binds %s; name the one to log in; run: kae relogin <tool>",
+			strings.Join(candidates, ", "))
 	}
 }
 
@@ -549,8 +549,8 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 		// chain and invalidate the copy just left in place).
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: the %s login now in this directory belongs to an account other than %s/%s (%s), "+
-				"so kae did not capture it into that snapshot; re-bind with: %s pin %s <account>\n",
-			tool, tool, accountName, refused.Why, toolName, tool)
+				"so kae did not capture it into that snapshot; to re-bind, run: kae pin %s <account>\n",
+			tool, tool, accountName, refused.Why, tool)
 	default:
 		// The frame may claim no more than the reason it interpolates. It used to say kae
 		// "cannot attribute" the login and that the snapshot holds "the **older** copy" —
@@ -593,9 +593,9 @@ func (app *App) captureBackAfterRelogin(ctx context.Context, be secret.Backend,
 		}
 		fmt.Fprintf(os.Stderr,
 			"kae: warning: kae cannot confirm the %s login now in this directory is %s/%s's (%s), "+
-				"so it did not capture it back and that snapshot still holds its own copy; "+
-				"%s use %s %s would apply that one%s\n",
-			tool, tool, accountName, refused.Why, toolName, tool, accountName, remedy)
+				"so it did not capture it back and that snapshot still holds its own copy%s; "+
+				"to apply the snapshot's own copy, run: kae use %s %s\n",
+			tool, tool, accountName, refused.Why, remedy, tool, accountName)
 	}
 	return false
 }

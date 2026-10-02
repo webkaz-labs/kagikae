@@ -328,7 +328,7 @@ func globalIsolatedStatuses(app *App, synced map[string]string) []globalIsolated
 func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 	color := colorEnabled(opts.NoColor)
 	if report.Pinned != nil {
-		fmt.Printf("This directory: profile %s (pinned, %s)\n\n", report.Pinned.Profile, report.Pinned.Mode)
+		fmt.Printf("This directory: profile %s (bound, %s)\n\n", report.Pinned.Profile, report.Pinned.Mode)
 	}
 	if len(report.GlobalIsolated) > 0 {
 		fmt.Println("Global isolated homes (kae use -i / run -i share these):")
@@ -377,18 +377,8 @@ func printStatusReport(app *App, report *statusReport, opts commonOpts) {
 	if warned {
 		fmt.Println()
 	}
-	if len(report.Profiles) == 0 {
-		fmt.Println("\nProfiles: (none defined — add them with: kae edit)")
-		return
-	}
-	fmt.Println("\nProfiles:")
-	for _, profile := range report.Profiles {
-		marker := ""
-		if profile.Active {
-			marker = "  (active)"
-		}
-		fmt.Printf("  %-14s %s%s\n", profile.Name, toolAccountList(profile.Accounts), marker)
-	}
+	fmt.Println()
+	printProfileList(report.Profiles)
 }
 
 type accountItem struct {
@@ -455,7 +445,7 @@ func runAccounts(ctx context.Context, app *App, opts commonOpts) int {
 		return encodeJSON(report)
 	}
 	if len(report.Accounts) == 0 {
-		fmt.Println("no captured accounts (run: kae add <tool> <account>)")
+		fmt.Println("no captured accounts; run: kae add <tool> <account>")
 		return constants.ExitOK
 	}
 	now := app.Now()

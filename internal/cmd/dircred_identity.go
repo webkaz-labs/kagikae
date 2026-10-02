@@ -467,9 +467,7 @@ func (app *App) snapshotCredential(ctx context.Context, be secret.Backend, tool,
 		return account.Account{}, nil, "", err
 	}
 	if !found {
-		return account.Account{}, nil, "", errf(constants.ExitNotFound,
-			"account %s/%s is not captured yet; %s",
-			tool, accountName, verifiedCaptureRemedy(tool, accountName))
+		return account.Account{}, nil, "", errUncapturedWithRemedy(tool, accountName)
 	}
 	metaArt, ok := acc.Artifacts[artName]
 	if !ok || !metaArt.Present {
@@ -483,7 +481,7 @@ func (app *App) snapshotCredential(ctx context.Context, be secret.Backend, tool,
 	}
 	if !found {
 		return account.Account{}, nil, "", errf(constants.ExitError,
-			"snapshot payload missing; %s", verifiedCaptureRemedy(tool, accountName))
+			"snapshot payload %s is missing; %s", metaArt.SecretRef, verifiedCaptureRemedy(tool, accountName))
 	}
 	return acc, data, metaArt.Kind, nil
 }

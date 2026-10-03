@@ -81,8 +81,14 @@ In progress: **localized human output (Japanese)**, requested by the operator on
    `account`, `add`, `use`, `pin`, `preservation`, `ls`, `completion` and
    `uninstall` errors among them, except those that still embed composed English,
    which stage 4 takes.
-2. The `kae: warning:` lines. `unboundReason` feeds a generated `# warning:`
+2. The `kae: warning:` lines and the bare `kae:` companion lines that follow one,
+   through `warnf` and `notef` sinks that take a constant format. A warning that
+   embeds a composed English sentence (a refusal's reason, a remedy) takes it as a
+   message value. `unboundReason` feeds a generated `# warning:`
    comment, stderr and `kae uninstall`'s match; only the stderr use is localized.
+   The strings that also reach JSON fields or `kae doctor` checks (an adapter's
+   `Detect` warnings, config warnings) stay English inside a localized warning until
+   stage 3 converts them with those reports.
 3. The `use`, `pin`, `ls`, `status` and `doctor` reports. `printAccountTable` drops the
    Identity and Driver columns by comparing English header strings, so translate the
    headers after the columns are chosen, and test `--full` under Japanese.

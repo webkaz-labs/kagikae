@@ -74,8 +74,9 @@ Assertions on human text assert the English rendering, which is normative
 Each test entrypoint therefore pins English itself:
 
 - **Go tests.** The `TestMain` of each package that renders human text pins English
-  before any test runs, so neither `KAE_LANG` nor the locale variables reach an
-  English assertion.
+  before any test runs (`l10ntest.PinEnglish` in `internal/testutil/l10ntest`, called
+  by `internal/cmd` and `internal/picker`), so neither `KAE_LANG` nor the locale
+  variables reach an English assertion.
 - **Smoke blocks.** `scripts/smoke-run.sh` pins English by setting `KAE_LANG=en` for
   every block it runs, which outranks any locale. A block run by hand inherits the
   shell's locale, which is one more reason not to run them by hand.
@@ -84,10 +85,10 @@ Each test entrypoint therefore pins English itself:
 
 Japanese output has its own explicit layer rather than inheriting a locale:
 
-- **Selecting Japanese.** Tests select Japanese explicitly, through a per-test override that the English pin restores (process-wide, so such tests do not run in parallel) or a child process started with `KAE_LANG=ja`. They render representative cases of the localized output, and the secret-leak regression runs in both languages.
+- **Selecting Japanese.** Tests select Japanese explicitly, through a per-test override that the English pin restores (`l10ntest.UseJapanese`; process-wide, so such tests do not run in parallel) or a child process started with `KAE_LANG=ja`. They render representative cases of the localized output, and the secret-leak regression runs in both languages.
 - **Sinks.** Messages are English format strings that the writing sinks (`usageError`, the warning, note and report writers) translate inside, and that the constructors of message values (below) carry as data, so a call site keeps its English literal. A sink passes its unchanged `format` and `args...` to a `fmt.*f` call, which keeps it a `go vet` printf wrapper; translating by reassigning or wrapping the format (`tr(format)`) would drop that check. The catalog test, not vet, covers the Japanese path.
 - **Messages as values.** A message that travels as data before it is shown (an `errf` error, `adapter.Check.Message`, report and switch warnings, `unboundReason`, did-you-mean suffixes, errors built in packages below `internal/cmd`) is a value holding its English format and arguments. A wrapped cause stays reachable through the value's `Unwrap`, so `errors.Is`, `errors.As` and exit codes do not depend on the language. `Error()`, JSON and generated files render English from it, and only a human sink renders the localized text. Composition happens on the value, never on an already formatted string, and the catalog test counts the constructors of such values as sinks. A constructor keeps `errf`'s vet check by passing its unchanged `format` and `args...` to a `fmt.*f` call when it builds the English text.
-- **Catalog test.** One test reads the source and fails when:
+- **Catalog test.** One test (`internal/l10n/catalog_test.go`, over the Japanese catalog in `internal/l10n`) reads the source and fails when:
   - a sink's format argument is not a constant string expression (as `go/types` evaluates it, so `"a" + "b"` counts) present in the Japanese catalog (kept per area, not per source file);
   - the catalog holds a key no call uses;
   - a flag description registered with the `flag` package is not in the catalog;
@@ -95,7 +96,7 @@ Japanese output has its own explicit layer rather than inheriting a locale:
   - a Japanese string contains an East Asian Ambiguous character (`displayWidth` in `internal/cmd/text.go` counts those as one column);
   - a human-output sink prints a literal outside the catalog.
 
-  Machine sinks are on a permanent allowlist. A second allowlist lists the human sinks not yet migrated, flag registrations and the `fmt.Errorf` and `errors.New` calls below `internal/cmd` that are not yet values; it is narrowed file by file as their output moves into the catalog.
+  The last check reads the calls to `fmt`'s print functions; a string composed elsewhere and printed later is not seen. Machine sinks are on a permanent allowlist. A second allowlist lists the human sinks not yet migrated, flag registrations and the `fmt.Errorf` and `errors.New` calls below `internal/cmd` that are not yet values; it is narrowed file by file as their output moves into the catalog. Both are in `internal/l10n/allowlist_test.go`, and each file's counts must equal the source's, so an entry is lowered when a call migrates and a new unmigrated call fails the test.
 
 ### Check retention and CI admission
 

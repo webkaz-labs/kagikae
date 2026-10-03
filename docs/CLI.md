@@ -493,7 +493,7 @@ account or a restore ID. Human list guidance remains on stderr; JSON retains the
 
 `kae ls` lists **places** — directories a user wants to reach — beside the
 account view. Bare, it shows these groups in order: `account` (every captured
-account, with its detected `identity`, blank when absent, and every defined
+account, with its detected `identity` (table column: `--full`), blank when absent, and every defined
 profile, each with an active marker and, when kae has one, that account's
 subscription windows — the data otherwise split across `kae accounts` and
 `kae status`), `pin` (every bound directory), a group for each **relevant** tool,

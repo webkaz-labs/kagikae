@@ -82,7 +82,7 @@ COPILOT_HOME KAE_FINGERPRINT KAE_PROFILE MISE_CONFIG_DIR OPENCODE_AUTH_CONTENT"
 # same reason: matching only `="$safe` values means a NEW assignment pointing
 # somewhere else entirely (`XDG_CACHE_HOME="/tmp/notsandbox"`) is invisible,
 # which is the "additions are silent" half all over again.
-EXPECTED_OTHER="KAE_CLAUDE_DRIVER MISE_CEILING_PATHS NO_COLOR SMOKE_WHOLE_FILE"
+EXPECTED_OTHER="KAE_CLAUDE_DRIVER KAE_LANG MISE_CEILING_PATHS NO_COLOR SMOKE_WHOLE_FILE"
 
 # A "root" is definitionally a variable the runner points into the sandbox, so
 # that is what is matched: an assignment whose value starts with $safe.
@@ -385,6 +385,13 @@ run "$f" '## Join'; check 'a backslash continuation is joined, not split' 0 $?
 f=$(doc nocolor '## NoColor' 'printf "NO_COLOR=%s\n" "${NO_COLOR-unset}"')
 run "$f" '## NoColor'; check 'colour is disabled for the block' 0 $? 'NO_COLOR=1' "$(transcript)"
 
+# 12b. KAE_LANG=en: the blocks assert kae's English text, and a Japanese locale or
+#      KAE_LANG inherited from the caller would otherwise select Japanese. The
+#      caller here sets both, so a runner that only passed them on would fail.
+f=$(doc lang '## Lang' 'printf "KAE_LANG=%s\n" "${KAE_LANG-unset}"')
+(export KAE_LANG=ja LC_ALL=ja_JP.UTF-8; run "$f" '## Lang')
+check 'English is pinned for the block' 0 $? 'KAE_LANG=en' "$(transcript)"
+
 # 13. mise must not be able to reach a config outside the sandbox. It is the one
 #     isolated thing that has nothing to do with HOME: mise walks up from the
 #     **current directory**, and a block starts in the checkout, which sits inside
@@ -656,7 +663,7 @@ printf '\n'
 #   * the GOMODCACHE/GOCACHE handling in the runner has no guard. Its four edge
 #     cases (either value empty, both empty, `go env` failing) were verified by
 #     hand against a `go` shim on 2026-08-09 and none exports an empty value.
-EXPECTED_GUARDS=39
+EXPECTED_GUARDS=40
 ran=$((ok + fails))
 if [ "$ran" -ne "$EXPECTED_GUARDS" ]; then
   printf 'smoke-run-selftest: %s guards ran, expected %s — a guard was added or removed\n' \

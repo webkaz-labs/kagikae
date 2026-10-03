@@ -42,8 +42,10 @@ kagikae/
     state/                # state.json load/save
     picker/               # inline filterable chooser (Bubble Tea v2); knows no place types
     textui/               # may kae prompt? (stdin terminal, /dev/tty, TERM, size) and the terminal handle
+    l10n/                 # output language selection, Japanese catalog, message rendering
     runner/               # subprocess seam (template standard)
     testutil/runnertest/  # shared canned-response runner fake for tests
+    testutil/l10ntest/    # English pin for TestMain, explicit Japanese for one test
   tools/devtools/         # common commands, shell entrypoints and libraries; same module
     cmd/                  # docrefs, docscan, distributionverify, completionverify
     commandrun/           # bounded subprocess ownership

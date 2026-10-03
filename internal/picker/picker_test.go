@@ -10,14 +10,24 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/mattn/go-runewidth"
+
+	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files")
 
 // The expected widths and goldens read ambiguous characters as narrow, the
 // renderer's default, even when the caller's RUNEWIDTH_EASTASIAN says wide.
+//
+// It also pins English: the picker's text is human output, and the developer's
+// locale must not reach an English assertion (docs/VALIDATION.md § Output
+// language in tests).
 func TestMain(m *testing.M) {
 	cells = newCells("")
+	if err := l10ntest.PinEnglish(); err != nil {
+		fmt.Fprintf(os.Stderr, "picker tests: cannot pin English: %v\n", err)
+		os.Exit(1)
+	}
 	os.Exit(m.Run())
 }
 

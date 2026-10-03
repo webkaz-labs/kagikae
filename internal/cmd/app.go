@@ -18,6 +18,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/constants"
 	"github.com/webkaz-labs/kagikae/internal/installation"
 	"github.com/webkaz-labs/kagikae/internal/integration"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/patch"
 	"github.com/webkaz-labs/kagikae/internal/paths"
@@ -508,16 +509,41 @@ func (app *App) editConfig(mutate func(*config.Editor)) error {
 	return nil
 }
 
-// cmdError carries a deterministic exit code with its message.
+// cmdError carries a deterministic exit code with its message, as a message
+// value (l10n.Message): the English format and arguments, rendered English by
+// Error() and localized only by a human sink (finish).
 type cmdError struct {
-	exit    int
-	message string
+	exit   int
+	format string
+	args   []any
+	// english is fmt.Errorf(format, args...): the English text and, through it,
+	// every cause the format wraps with %w.
+	english error
 }
 
-func (e *cmdError) Error() string { return e.message }
+func (e *cmdError) Error() string { return e.english.Error() }
 
+// Unwrap returns every cause the format wrapped with %w, so errors.Is and
+// errors.As see through the message whatever language renders it. A format
+// with several %w wraps them all, as fmt.Errorf does; exitOf still takes the
+// exit code from the outermost cmdError, never from a cause.
+func (e *cmdError) Unwrap() []error {
+	switch wrapped := e.english.(type) {
+	case interface{ Unwrap() []error }:
+		return wrapped.Unwrap()
+	case interface{ Unwrap() error }:
+		return []error{wrapped.Unwrap()}
+	}
+	return nil
+}
+
+// MessageFormat makes cmdError an l10n.Message.
+func (e *cmdError) MessageFormat() (string, []any) { return e.format, e.args }
+
+// errf builds a cmdError. It hands its unchanged format and args to fmt.Errorf,
+// which keeps it a `go vet` printf wrapper that accepts %w.
 func errf(exit int, format string, args ...any) *cmdError {
-	return &cmdError{exit: exit, message: fmt.Sprintf(format, args...)}
+	return &cmdError{exit: exit, format: format, args: args, english: fmt.Errorf(format, args...)}
 }
 
 // exitOf maps an error to its deterministic exit code.
@@ -568,7 +594,7 @@ func finish(opts commonOpts, err error) int {
 		})
 		return exit
 	}
-	fmt.Fprintln(os.Stderr, "kae:", err)
+	fmt.Fprintln(os.Stderr, "kae:", l10n.Render(err))
 	return exit
 }
 

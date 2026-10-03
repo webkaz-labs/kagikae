@@ -18,6 +18,7 @@ import (
 	"github.com/webkaz-labs/kagikae/internal/lock"
 	"github.com/webkaz-labs/kagikae/internal/paths"
 	"github.com/webkaz-labs/kagikae/internal/secret"
+	"github.com/webkaz-labs/kagikae/internal/testutil/l10ntest"
 )
 
 const (
@@ -377,7 +378,18 @@ func TestSwitchDryRunWritesNothing(t *testing.T) {
 	}
 }
 
+// TestSecretsNeverInOutputOrMetadata runs in both languages
+// (docs/VALIDATION.md § Output language in tests); the Japanese run selects it
+// process-wide, so this test must not run in parallel.
 func TestSecretsNeverInOutputOrMetadata(t *testing.T) {
+	t.Run("English", assertSecretsNeverInOutputOrMetadata)
+	t.Run("Japanese", func(t *testing.T) {
+		l10ntest.UseJapanese(t)
+		assertSecretsNeverInOutputOrMetadata(t)
+	})
+}
+
+func assertSecretsNeverInOutputOrMetadata(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
 	jsonOpts := commonOpts{Format: formatJSON}

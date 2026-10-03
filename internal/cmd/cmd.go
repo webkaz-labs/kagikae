@@ -35,6 +35,7 @@ const (
 
 // Root dispatches the command line.
 func Root(args []string) int {
+	selectLanguage(args)
 	ctx := context.Background()
 	if len(args) == 0 {
 		return CmdStatus(ctx, nil)

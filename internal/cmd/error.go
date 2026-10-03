@@ -5,10 +5,14 @@ import (
 	"os"
 
 	"github.com/webkaz-labs/kagikae/internal/constants"
+	"github.com/webkaz-labs/kagikae/internal/l10n"
 )
 
+// usageError prints a usage error, localized, and returns the usage exit code.
+// It forwards its unchanged format and args to l10n.Sprintf, which keeps it a
+// `go vet` printf wrapper; the newline is added by Fprintln, not to the format.
 func usageError(format string, args ...any) int {
-	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	fmt.Fprintln(os.Stderr, l10n.Sprintf(format, args...))
 	return constants.ExitUsage
 }
 

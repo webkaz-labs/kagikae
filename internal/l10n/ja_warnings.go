@@ -26,7 +26,7 @@ var jaWarnings = map[string]string{
 
 	"could not apply %s's identity cache for account %s in this directory (%v); %s may display another account until you log in inside it": "このディレクトリで、アカウント %[2]s 用の %[1]s のログイン中アカウントの記録を適用できませんでした（%[3]v）。このディレクトリ内でログインするまで、%[4]s が別のアカウントを表示することがあります。",
 
-	"could not migrate the pre-split %s credential in %s (%v); any copy still there is one nothing reads, and a refresh of it elsewhere would invalidate this account's": "分割前の %s の認証情報（%s）を移行できませんでした（%v）。まだそこに残っているコピーはどこからも読まれず、別の場所でそれを更新すると、このアカウントの認証情報が無効になります。",
+	"could not migrate the pre-split %s credential in %s (%v); any copy still there is one nothing reads, and a refresh of it elsewhere would invalidate this account's": "分割前の %s の認証情報（%s）を移行できませんでした（%v）。まだそこに残っているコピーはどこからも読まれず、別の場所でそれをリフレッシュすると、このアカウントの認証情報が無効になります。",
 
 	// dircred_checks.go.
 	"to verify the bound account, in that directory run: kae status; stop other sessions using that account's credential; to log in inside that directory as the bound account, run: cd %s && kae relogin %s": "固定したアカウントを確認するには、そのディレクトリで kae status を実行してください。そのアカウントの認証情報を使っている他のセッションを止めてください。そのディレクトリ内で固定したアカウントとしてログインするには、cd %s && kae relogin %s を実行してください",
@@ -190,7 +190,7 @@ var jaWarnings = map[string]string{
 
 	"kae found no %s credential where it resolves this directory's store, so it is not reporting a login — the flow may have left nothing there, or it may have moved the credential to a store kae does not resolve for this directory": "kae がこのディレクトリのストアとして解決した場所に %s の認証情報がないため、ログインとしては報告しません。ログイン手順が何も残さなかったか、kae がこのディレクトリ用に解決しないストアへ認証情報を移した可能性があります。",
 
-	"kae read no usable %s token in the payload now in this directory's store, so it is not reporting a login — blank tokens are what a failed refresh leaves behind, and a payload whose token keys changed upstream reads the same way": "このディレクトリのストアにある認証情報の中身から、使える %s のトークンを kae は読み取れなかったため、ログインとしては報告しません。トークンが空になるのは更新に失敗したときの状態で、上流でトークンのキーが変わった中身も同じように見えます。",
+	"kae read no usable %s token in the payload now in this directory's store, so it is not reporting a login — blank tokens are what a failed refresh leaves behind, and a payload whose token keys changed upstream reads the same way": "このディレクトリのストアにある認証情報の中身から、使える %s のトークンを kae は読み取れなかったため、ログインとしては報告しません。トークンが空になるのはリフレッシュに失敗したときの状態で、上流でトークンのキーが変わった中身も同じように見えます。",
 
 	"kae could not resolve where %s keeps this directory's credential (%v), so it cannot capture the login back into the account snapshot": "%[1]s がこのディレクトリの認証情報をどこに置いているか kae は解決できなかった（%[2]v）ため、ログインをアカウントのスナップショットへ取り込み直せません。",
 
@@ -221,7 +221,7 @@ var jaWarnings = map[string]string{
 	// run.go.
 	"%s has no home-isolation env var; it keeps the real home (%s isolates claude and codex only)": "%s にはホームを独立させる環境変数がないため、本物のホームのままです（%s で独立させられるのは claude と codex だけです）。",
 
-	"%s refreshed its credential during the run and %s/%s was already the active account, so restoring backup %s would put back a copy %s can no longer refresh; leaving the live %s credential as the child left it": "実行中に %[1]s が認証情報を更新し、%[2]s/%[3]s はすでに有効なアカウントでした。バックアップ %[4]s を復元すると、%[5]s がもうリフレッシュできないコピーを戻してしまうため、現在の %[6]s の認証情報は子プロセスが残したままにします。",
+	"%s refreshed its credential during the run and %s/%s was already the active account, so restoring backup %s would put back a copy %s can no longer refresh; leaving the live %s credential as the child left it": "実行中に %[1]s が認証情報をリフレッシュし、%[2]s/%[3]s はすでに有効なアカウントでした。バックアップ %[4]s を復元すると、%[5]s がもうリフレッシュできないコピーを戻してしまうため、現在の %[6]s の認証情報は子プロセスが残したままにします。",
 
 	"could not back up the live state kae declined to adopt: %v": "kae が取り込まないと判断した現在の状態をバックアップできませんでした: %v",
 	// storelink.go.

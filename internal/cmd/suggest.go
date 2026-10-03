@@ -1,16 +1,16 @@
 package cmd
 
-import "fmt"
-
 // didYouMean returns a " — did you mean %q?" suffix naming the single nearest
-// candidate to input, or "" when none is close enough to suggest. It is
-// suggestion-only: callers append it to an existing error whose exit code and
-// JSON contract are unchanged; only the human-facing message gains the hint.
-func didYouMean(input string, candidates []string) string {
+// candidate to input, or the zero message, which renders "", when none is close
+// enough to suggest. It is suggestion-only: callers pass it as the last argument
+// of an existing error whose exit code and JSON contract are unchanged; only the
+// human-facing message gains the hint. It is a message value rather than a string
+// so the suffix renders in the language of the message it ends.
+func didYouMean(input string, candidates []string) message {
 	if m, ok := nearestMatch(input, candidates); ok {
-		return fmt.Sprintf(" — did you mean %q?", m)
+		return msgf(" — did you mean %q?", m)
 	}
-	return ""
+	return message{}
 }
 
 // nearestMatch returns the single closest candidate to input by Levenshtein

@@ -832,8 +832,9 @@ func valuesDiverge(ctx context.Context, be secret.Backend, specs []artifact.Spec
 
 // verifiedCaptureRemedy qualifies capture when the live account needs verification.
 // A snapshot name alone does not establish which account the live store contains.
-func verifiedCaptureRemedy(tool, accountName string) string {
-	return fmt.Sprintf("first verify the live %s login belongs to account %s and uses the intended global store; only then, to re-capture, run: kae add --no-login %s %s; if logged out or uncertain, see docs/CLI.md Recovery guidance before capture", tool, accountName, tool, accountName)
+// It is a message value, so an error that ends in it renders it in its own language.
+func verifiedCaptureRemedy(tool, accountName string) message {
+	return msgf("first verify the live %s login belongs to account %s and uses the intended global store; only then, to re-capture, run: kae add --no-login %s %s; if logged out or uncertain, see docs/CLI.md Recovery guidance before capture", tool, accountName, tool, accountName)
 }
 
 // errUncapturedWithRemedy is the not-found error for an account kae cannot read a

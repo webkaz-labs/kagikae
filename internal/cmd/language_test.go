@@ -190,6 +190,8 @@ func stageOneCases(t *testing.T) []stageOneCase {
 	text := commonOpts{Format: formatText}
 	tools := strings.Join(constants.Tools, ", ")
 	uncaptured, noConfig, busy := testApp(t, nil), testApp(t, nil), testApp(t, nil)
+	broken := testApp(t, nil)
+	broken.ConfigErr = errors.New("boom")
 	return []stageOneCase{
 		{
 			name: "unknown command",
@@ -248,6 +250,17 @@ func stageOneCases(t *testing.T) []stageOneCase {
 			},
 			en: "kae: config ~/.config/kagikae/config.toml not found; run: kae init\n",
 			ja: "kae: 設定ファイル ~/.config/kagikae/config.toml が見つかりません。kae init を実行してください\n",
+		},
+		{
+			// kae ls reports a group's error itself rather than through finish.
+			name: "ls with a broken config",
+			run: func(t *testing.T) (int, string) {
+				chdirTo(t, t.TempDir())
+				code, _, stderr := captureBoth(t, func() int { return runLs(ctx, broken, text) })
+				return code, stderr
+			},
+			en: "kae: invalid config " + broken.ConfigPath + ": boom\n",
+			ja: "kae: 設定ファイル " + broken.ConfigPath + " が不正です: boom\n",
 		},
 		{
 			name: "lock busy",

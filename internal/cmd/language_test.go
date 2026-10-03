@@ -30,8 +30,9 @@ func TestJSONModeArgsFollowsTheCLIList(t *testing.T) {
 		{[]string{"ls", "-format", "json"}, true},
 		{[]string{"ls", "--format=json"}, true},
 		{[]string{"ls", "--format", "text"}, false},
-		{[]string{"--json"}, true},               // bare kae status
-		{[]string{"main", "ls", "--json"}, true}, // flags may follow positionals
+		{[]string{"--json"}, true},                          // bare kae status
+		{[]string{"use", "claude", "main", "--json"}, true}, // flags may follow positionals
+		{[]string{"zzz", "--json"}, true},                   // an unknown command still has the common flags
 		{[]string{"ls"}, false},
 		{nil, false},
 		// The value of another flag does not count.

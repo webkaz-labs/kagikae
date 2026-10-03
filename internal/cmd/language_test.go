@@ -210,6 +210,23 @@ func stageOneCases(t *testing.T) []stageOneCase {
 			ja: "不明なコマンドです: statu（kae help を参照してください）。もしかして: \"status\"\n",
 		},
 		{
+			name: "removed command",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int { return Root([]string{"login"}) })
+			},
+			en: "kae login was removed in v0.5.0; run: kae add <tool> <account>\n",
+			ja: "kae login は v0.5.0 で削除されました。kae add <tool> <account> を実行してください\n",
+		},
+		{
+			// The replacement's explanation is part of the format, not an English argument.
+			name: "removed command with an explained replacement",
+			run: func(t *testing.T) (int, string) {
+				return captureStderr(t, func() int { return Root([]string{"apply"}) })
+			},
+			en: "kae apply was removed in v0.8.0; run: kae use [--quiet] (bare use resolves the profile)\n",
+			ja: "kae apply は v0.8.0 で削除されました。kae use [--quiet] を実行してください（引数なしの kae use がプロファイルを解決します）\n",
+		},
+		{
 			name: "usage error",
 			run: func(t *testing.T) (int, string) {
 				return captureStderr(t, func() int {

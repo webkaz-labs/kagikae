@@ -54,7 +54,7 @@ func warningCases() []warningCase {
 						"claude", "claude", "main"))
 			},
 			en: "kae: warning: the live claude credential needs a re-login while snapshot claude/main still holds a usable one; snapshot claude/main left unchanged\n",
-			ja: "kae: warning: 現在の claude の認証情報は再ログインが必要だが、スナップショット claude/main にはまだ使えるものが残っている。スナップショット claude/main は変更していません。\n",
+			ja: "kae: warning: 現在の claude の認証情報は再ログインが必要ですが、スナップショット claude/main にはまだ使えるものが残っています。スナップショット claude/main は変更していません。\n",
 		},
 		{
 			name: "a clause that wraps a refusal reason",
@@ -82,7 +82,7 @@ func warningCases() []warningCase {
 			en: "kae: warning: ~/code/side-project is still bound to profile side, which no longer exists; " +
 				"to re-bind it, run: cd ~/code/side-project && kae pin <profile>\n",
 			ja: "kae: warning: ~/code/side-project は、もう存在しないプロファイル side に固定されたままです。" +
-				"固定し直すには cd ~/code/side-project && kae pin <profile> を実行してください\n",
+				"固定し直すには cd ~/code/side-project && kae pin <profile> を実行してください。\n",
 		},
 		{
 			name: "a string that also reaches JSON stays English",
@@ -97,7 +97,7 @@ func warningCases() []warningCase {
 				warnMessage(modeUnboundMessage(m, "codex"))
 			},
 			en: "kae: warning: tree mode binds claude only, so codex keeps the real home (docs/ROADMAP.md)\n",
-			ja: "kae: warning: tree モードが固定するのは claude だけのため、codex は本物のホームのままです（docs/ROADMAP.md）\n",
+			ja: "kae: warning: tree モードが固定するのは claude だけのため、codex は本物のホームのままです（docs/ROADMAP.md）。\n",
 		},
 	}
 }

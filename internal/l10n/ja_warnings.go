@@ -114,15 +114,15 @@ var jaWarnings = map[string]string{
 
 	"the live %s login kae declined to adopt is preserved only in backup %s (restoring it reverts this whole switch) — to keep it as its own account, run: kae rollback --to %s, then kae add --no-login %s <account>": "kae が取り込まないと判断した現在の %[1]s のログインは、バックアップ %[2]s にだけ保全されています（これを復元すると、今回の切替がすべて元に戻ります）。別のアカウントとして残すには、kae rollback --to %[3]s を実行し、続けて kae add --no-login %[4]s <account> を実行してください。",
 
-	"kae cannot read the %s identity records it would compare for %s/%s, so it cannot tell whose login is live": "%[2]s/%[3]s について比較に使う %[1]s のログイン中アカウントの記録を kae が読み取れず、現在のログインが誰のものか判断できない",
+	"kae cannot read the %s identity records it would compare for %s/%s, so it cannot tell whose login is live": "%[2]s/%[3]s について比較に使う %[1]s のログイン中アカウントの記録を kae が読み取れず、現在のログインが誰のものか判断できません",
 
-	"the live %s identity is not the one kae applied for %s/%s; %s was probably logged in again outside kae": "現在の %[1]s のログイン中アカウントの記録は、kae が %[2]s/%[3]s 用に適用したものと違う。%[4]s は kae の外で再ログインされた可能性が高い",
+	"the live %s identity is not the one kae applied for %s/%s; %s was probably logged in again outside kae": "現在の %[1]s のログイン中アカウントの記録は、kae が %[2]s/%[3]s 用に適用したものと違います。%[4]s は kae の外で再ログインされた可能性が高いです",
 
-	"the live %s credential needs a re-login while snapshot %s/%s still holds a usable one": "現在の %s の認証情報は再ログインが必要だが、スナップショット %s/%s にはまだ使えるものが残っている",
+	"the live %s credential needs a re-login while snapshot %s/%s still holds a usable one": "現在の %s の認証情報は再ログインが必要ですが、スナップショット %s/%s にはまだ使えるものが残っています",
 
-	"kae cannot order the live %s credential against snapshot %s/%s, so it cannot tell which of the two can still refresh": "現在の %s の認証情報とスナップショット %s/%s の新旧を kae が決められず、どちらがまだトークンを更新できるか判断できない",
+	"kae cannot order the live %s credential against snapshot %s/%s, so it cannot tell which of the two can still refresh": "現在の %s の認証情報とスナップショット %s/%s の新旧を kae が決められず、どちらがまだリフレッシュできるか判断できません",
 
-	"snapshot %s/%s holds a later %s credential than the live store, and %s's refresh token rotates single-use, so the live copy can no longer refresh": "スナップショット %[1]s/%[2]s には現在のストアより新しい %[3]s の認証情報があり、%[4]s のリフレッシュトークンは 1 回限りで更新されるため、現在のコピーはもうリフレッシュできない",
+	"snapshot %s/%s holds a later %s credential than the live store, and %s's refresh token rotates single-use, so the live copy can no longer refresh": "スナップショット %[1]s/%[2]s には現在のストアより新しい %[3]s の認証情報があり、%[4]s のリフレッシュトークンは 1 回限りで更新されるため、現在のコピーはもうリフレッシュできません",
 
 	// identity.go.
 	"no login identity could be detected for %s; %s/%s was captured without one (identity is optional). To add it anytime, run: kae account set-identity %s %s <value>": "%[1]s のログイン識別子を検出できませんでした。%[2]s/%[3]s は識別子なしで登録しました（識別子は省略できます）。あとから追加するには、kae account set-identity %[4]s %[5]s <value> を実行してください。",
@@ -136,7 +136,7 @@ var jaWarnings = map[string]string{
 	// lsplace.go.
 	"the %s group is not listed: %v": "%s のグループは一覧に載せていません: %v",
 	// miseinit.go.
-	"%s mode binds %s only, so %s keeps the real home (docs/ROADMAP.md)": "%s モードが固定するのは %s だけのため、%s は本物のホームのままです（docs/ROADMAP.md）",
+	"%s mode binds %s only, so %s keeps the real home (docs/ROADMAP.md)": "%s モードが固定するのは %s だけのため、%s は本物のホームのままです（docs/ROADMAP.md）。",
 
 	"the real %s home (%s) lists nothing to share, so kae cannot tell whether %d shared link(s) in %s are still wanted; leaving them in place. If that home is right, remove the links by hand; if it is not, unset %s (or fix it), then run: kae pin": "本物の %[1]s のホーム（%[2]s）に共有するものがないため、%[4]s にある %[3]d 件の共有リンクがまだ必要か kae は判断できません。リンクはそのまま残します。そのホームが正しい場合は、リンクを手動で削除してください。正しくない場合は、環境変数 %[5]s の設定を外すか修正してから kae pin を実行してください。",
 
@@ -154,7 +154,7 @@ var jaWarnings = map[string]string{
 
 	"could not resolve where %s keeps its credential now (%v), so this restore writes the store the backup recorded without checking whether %s has moved it": "いま %[1]s が認証情報をどこに置いているか解決できなかった（%[2]v）ため、この復元はバックアップが記録したストアへ、%[3]s がそれを移していないか確認せずに書き込みます。",
 
-	"%s moved its credential to %s %q, which this backup has no record of; kae left it in place rather than deleting a credential it has no copy of, so %s stays logged in as whatever wrote it": "%[1]s は認証情報を %[2]s %[3]q に移しましたが、このバックアップにはその記録がありません。kae は、コピーを持っていない認証情報を削除せず、そのまま残しました。そのため %[4]s は、それを書き込んだアカウントのままログインした状態になります",
+	"%s moved its credential to %s %q, which this backup has no record of; kae left it in place rather than deleting a credential it has no copy of, so %s stays logged in as whatever wrote it": "%[1]s は認証情報を %[2]s %[3]q に移しましたが、このバックアップにはその記録がありません。kae は、コピーを持っていない認証情報を削除せず、そのまま残しました。そのため %[4]s は、それを書き込んだアカウントのままログインした状態になります。",
 
 	"re-apply it; run: kae use %s %s": "再適用するには kae use %s %s を実行してください",
 	"re-apply the %s account you want; run: kae use %s <account> (kae accounts lists them)": "再適用したい %s のアカウントを指定して kae use %s <account> を実行してください（アカウントは kae accounts で一覧できます）",
@@ -173,9 +173,9 @@ var jaWarnings = map[string]string{
 	"could not open the secret store (%v); this directory's per-directory credentials are left in place rather than deleted without being harvested": "シークレットストアを開けませんでした（%v）。このディレクトリ固有の認証情報は、退避しないまま削除することはせず、そのまま残します。",
 
 	// pinindex.go.
-	"%s is still bound to %s/%s, which no longer exists; to re-bind it, run: cd %s && kae pin %s %s": "%s は、もう存在しない %s/%s に固定されたままです。固定し直すには cd %s && kae pin %s %s を実行してください",
+	"%s is still bound to %s/%s, which no longer exists; to re-bind it, run: cd %s && kae pin %s %s": "%s は、もう存在しない %s/%s に固定されたままです。固定し直すには cd %s && kae pin %s %s を実行してください。",
 
-	"%s is still bound to profile %s, which no longer exists; to re-bind it, run: cd %s && kae pin <profile>": "%s は、もう存在しないプロファイル %s に固定されたままです。固定し直すには cd %s && kae pin <profile> を実行してください",
+	"%s is still bound to profile %s, which no longer exists; to re-bind it, run: cd %s && kae pin <profile>": "%s は、もう存在しないプロファイル %s に固定されたままです。固定し直すには cd %s && kae pin <profile> を実行してください。",
 
 	// place.go.
 	"%s is bound but its fragment could not be read (%v), so its binding is not applied here": "%s は固定されていますが、フラグメントを読み取れません（%v）。そのため、その固定の内容はここには適用されません。",
@@ -216,7 +216,7 @@ var jaWarnings = map[string]string{
 	"so this rollback leaves %s without the copy that can still refresh":                  "このロールバックでは、%s にまだリフレッシュできるコピーが残らなくなります",
 	"recorded a %s credential for %s/%s that carries no usable token, while %s holds one": "%[2]s/%[3]s の %[1]s の認証情報として、使えるトークンを含まないものを記録していますが、「%[4]s」には使えるものがあります",
 	"recorded a %s credential for %s/%s that kae cannot compare with the one in %s":       "%[2]s/%[3]s の %[1]s の認証情報として、「%[4]s」にあるものと kae が比較できないものを記録しています",
-	"so kae cannot tell which of the two %s can still refresh":                            "そのため、2 つのうちどちらの %s がまだリフレッシュできるか kae は判断できません",
+	"so kae cannot tell which of the two %s can still refresh":                            "2 つのうちどちらの %s がまだリフレッシュできるか kae は判断できません",
 	"backup %s %s, and %s's refresh token rotates single-use, %s; %s":                     "バックアップ %[1]s は、%[2]s。また、%[3]s のリフレッシュトークンは 1 回限りで更新されるため、%[4]s。%[5]s。",
 	// run.go.
 	"%s has no home-isolation env var; it keeps the real home (%s isolates claude and codex only)": "%s にはホームを独立させる環境変数がないため、本物のホームのままです（%s で独立させられるのは claude と codex だけです）。",

@@ -89,7 +89,8 @@ In progress: **localized human output (Japanese)**, requested by the operator on
    The strings that also reach JSON fields or `kae doctor` checks (an adapter's
    `Detect` warnings, config warnings) stay English inside a localized warning until
    stage 3 converts them with those reports.
-3. The `use`, `pin`, `ls`, `status` and `doctor` reports. `printAccountTable` drops the
+3. The `use`, `pin`, `ls`, `status` and `doctor` reports. The `kae ls` incomplete-metadata
+   line's remedy (`listIssueGuidance`) is composed English and becomes a message value here. `printAccountTable` drops the
    Identity and Driver columns by comparing English header strings, so translate the
    headers after the columns are chosen, and test `--full` under Japanese.
 4. The remaining human output, including the messages that still take an already

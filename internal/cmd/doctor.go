@@ -155,14 +155,14 @@ func buildDoctor(ctx context.Context, app *App, toolFilter string, checkTokenDri
 	} else {
 		report.SecretBackend = be.Name()
 		status := constants.StatusOK
-		message := "secret backend: " + be.Name()
+		checkMessage := "secret backend: " + be.Name()
 		if be.Name() == secret.BackendFile {
 			status = constants.StatusWarn
-			message += " (plaintext file backend; secrets are stored unencrypted)"
+			checkMessage += " (plaintext file backend; secrets are stored unencrypted)"
 		}
 		report.Checks = append(report.Checks, adapter.Check{
 			Code:   constants.CheckSecretBackend,
-			Status: status, Message: message,
+			Status: status, Message: checkMessage,
 		})
 	}
 

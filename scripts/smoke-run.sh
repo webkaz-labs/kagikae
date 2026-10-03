@@ -41,7 +41,10 @@
 # block runs, so a block whose own preamble silently fails to take effect still
 # cannot reach the real ones. It also forces `KAE_CLAUDE_DRIVER=file` for every
 # section, so a section that wants claude's keychain driver cannot be run through
-# this script. The tool-home variables are not decoration: `CODEX_HOME`,
+# this script, and `KAE_LANG=en`, because the blocks assert kae's English text and
+# KAE_LANG outranks a Japanese locale the shell would otherwise pass on
+# (docs/VALIDATION.md § Output language in tests). The tool-home variables are
+# not decoration: `CODEX_HOME`,
 # `CLAUDE_CONFIG_DIR`, `COPILOT_HOME` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`
 # **outrank** the temp HOME, and a preamble-less block inheriting one of them was
 # measured writing outside the sandbox while this script reported a clean run.
@@ -282,6 +285,7 @@ env -u CODEX_HOME -u CLAUDE_CONFIG_DIR -u COPILOT_HOME \
   TMPDIR="$safe/tmp" \
   NO_COLOR=1 \
   KAE_CLAUDE_DRIVER=file \
+  KAE_LANG=en \
   MISE_CEILING_PATHS="$(pwd -P):$(cd "$HOME" && pwd -P)" \
   SMOKE_WHOLE_FILE="${SMOKE_WHOLE_FILE:-0}" \
   bash -c '

@@ -68,6 +68,7 @@ mutate() {
     cross-heading) subst_once "$runner" '  insec && /^## /             { insec = 0 }' '  insec && /^### /            { insec = 0 }' ;;
     split-continuation) subst_once "$runner" '    if [ -n "$acc" ]; then acc="$acc $line"' '    if false; then acc="$acc $line"' ;;
     color) subst_once "$runner" '  NO_COLOR=1 \' '  NO_COLOR=0 \' ;;
+    lang) subst_once "$runner" '  KAE_LANG=en \' '  KAE_LANG="${KAE_LANG-}" \' ;;
     ceiling) subst_once "$runner" 'MISE_CEILING_PATHS="$(pwd -P):$(cd "$HOME" && pwd -P)"' 'MISE_CEILING_PATHS="/tmp/not-the-smoke-sandbox"' ;;
     early) subst_once "$runner" '  if [ "$got" != complete ]; then' '  if [ "$got" = complete ]; then' ;;
     dangling) subst_once "$runner" '  if [ -z "$acc" ]; then printf "complete\n" > "$lines"; fi' '  printf "complete\n" > "$lines"' ;;
@@ -159,6 +160,7 @@ full|allow-empty|a heading with no block is refused
 full|cross-heading|extraction stops at the next heading
 full|split-continuation|a backslash continuation is joined, not split
 full|color|colour is disabled for the block
+full|lang|English is pinned for the block
 full|ceiling|mise cannot reach a config outside the sandbox
 full|early|a block that ends early is not reported as green
 full|early|a block that ends early with status 0 is caught too

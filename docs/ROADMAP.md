@@ -69,9 +69,9 @@ In progress: **localized human output (Japanese)**, requested by the operator on
   GUIDE.ja.md.
 
 0. Stage 0 ships no Japanese: the glossary and style rules are in
-   [L10N-JA.md](L10N-JA.md), and what remains is one English-only commit that unifies the wording of
-   near-duplicate messages (how a remedy is phrased, `not captured`, `pinned` against
-   `bound`) and hoists messages that repeat into shared helpers.
+   [L10N-JA.md](L10N-JA.md), and the English wording of near-duplicate messages is
+   unified (how a remedy is phrased, `not captured`, `pinned` against `bound`), with
+   the messages that repeat hoisted into shared helpers.
 1. The mechanism (language selection, the catalog and its test), including the
    English pins VALIDATION states: the `TestMain` pin and `scripts/smoke-run.sh`
    setting `KAE_LANG=en`; `usageError` takes the sink form VALIDATION states. With
@@ -83,7 +83,9 @@ In progress: **localized human output (Japanese)**, requested by the operator on
    which stage 4 takes.
 2. The `kae: warning:` lines. `unboundReason` feeds a generated `# warning:`
    comment, stderr and `kae uninstall`'s match; only the stderr use is localized.
-3. The `use`, `pin`, `ls`, `status` and `doctor` reports.
+3. The `use`, `pin`, `ls`, `status` and `doctor` reports. `printAccountTable` drops the
+   Identity and Driver columns by comparing English header strings, so translate the
+   headers after the columns are chosen, and test `--full` under Japanese.
 4. The remaining human output, including the messages that still take an already
    composed English sentence as an argument (the `why` of the snapshot-unchanged
    warnings); the catalog test cannot see them, so each

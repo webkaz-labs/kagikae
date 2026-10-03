@@ -98,7 +98,7 @@ Japanese output has its own explicit layer rather than inheriting a locale:
 
   The test does not see a literal printed through anything but `fmt`'s print functions (`io.WriteString`, a Bubble Tea view), English composed with `fmt.Sprintf` and printed later, a constant English argument handed to a sink (it cannot tell prose from a token), or a file outside the build of the platform it runs on (that file's allowlist entry is skipped, not checked).
 
-  Machine sinks are on a permanent allowlist. A second allowlist lists the human sinks not yet migrated, flag registrations and the `fmt.Errorf` and `errors.New` calls in `internal/cmd` or below that are not yet values; it is narrowed file by file as their output moves into the catalog. Both are in `internal/l10n/allowlist_test.go`, and each file's counts must equal the source's, so an entry is lowered when a call migrates and a new unmigrated call fails the test.
+  Machine sinks are on a permanent allowlist. A second allowlist lists the human sinks not yet migrated, flag registrations and the `fmt.Errorf` and `errors.New` calls in `internal/cmd` or below that are not yet values; it is narrowed file by file as their output moves into the catalog. Both are in `internal/l10n/allowlist_test.go`, and each file's counts must equal the source's, so an entry is lowered when a call migrates and a new unmigrated call fails the test. The one exception is a flag description that arrives from the default branch before the migration reaches `--help` and usage text: its count may rise until that stage.
 
 ### Check retention and CI admission
 

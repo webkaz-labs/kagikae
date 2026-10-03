@@ -86,7 +86,9 @@ In progress: **localized human output (Japanese)**, requested by the operator on
    composed English sentence as an argument (the `why` of the snapshot-unchanged
    warnings, `verifiedCaptureRemedy`); the catalog test cannot see them, so each
    becomes a message value or a set of constant formats before its stage ships.
-   Stage 2 takes the ones inside `kae: warning:` lines.
+   Stage 2 takes the ones inside `kae: warning:` lines. The `fmt.Errorf` and
+   `errors.New` errors in `internal/cmd` or below that no earlier stage made values
+   become values here; until then they reach the `kae:` line in English.
 5. `--help` and usage text, including the `usage:` synopsis lines and the flag descriptions, with the `flag` package's own usage rendering replaced by kae's. The second allowlist VALIDATION names is empty after it.
 
 § Agent orchestration and remote authentication — deferred exploration follows the

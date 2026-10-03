@@ -12,13 +12,14 @@ import (
 	"go/token"
 	"go/types"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"unicode"
 
@@ -37,9 +38,9 @@ import (
 // What it does not see: a literal printed through anything but fmt's print
 // functions (io.WriteString, a Bubble Tea view), English composed with
 // fmt.Sprintf and printed later, a constant English argument handed to a sink
-// (it cannot tell prose from a token), fmt.Errorf inside internal/cmd, and files
-// outside this platform's build (their allowlist entries are skipped, not
-// checked). The package list comes from `go list -deps` of the kae binary.
+// (it cannot tell prose from a token), and files outside this platform's build
+// (their allowlist entries are skipped, not checked). The package list comes from
+// `go list -deps` of the kae binary.
 
 const (
 	modulePath = "github.com/webkaz-labs/kagikae"
@@ -48,12 +49,17 @@ const (
 )
 
 // formatSinks are the functions whose format argument must be a constant in the
-// catalog: the writing sinks and the constructors of message values. A call
-// inside a sink's own body forwards its format parameter and is not judged.
-var formatSinks = map[string]int{ // "pkg.func" -> format argument index
-	cmdPkg + ".errf":       1,
-	cmdPkg + ".usageError": 0,
-	l10nPkg + ".Sprintf":   0,
+// catalog: the writing sinks, the constructors of message values and the
+// functions that forward a format to one of them. A call inside a sink's own
+// body forwards its format parameter and is not judged. Keyed by funcKey:
+// "pkg.Func", or "pkg.Recv.Method" for a method.
+var formatSinks = map[string]int{ // key -> format argument index
+	cmdPkg + ".errf":                       1,
+	cmdPkg + ".usageError":                 0,
+	cmdPkg + ".App.acquireNamed":           2,
+	cmdPkg + ".App.acquireNamedLock":       1,
+	cmdPkg + ".App.acquireNamedSharedLock": 1,
+	l10nPkg + ".Sprintf":                   0,
 }
 
 // flagUsageArg is the index of the usage argument of each flag registration, the
@@ -77,7 +83,7 @@ const (
 	kindSink  = "sink"  // a sink's format is not a constant in the catalog
 	kindPrint = "print" // a fmt print call writes a literal outside the catalog
 	kindFlag  = "flag"  // a flag description is not in the catalog
-	kindError = "error" // fmt.Errorf / errors.New below internal/cmd, not yet a value
+	kindError = "error" // fmt.Errorf / errors.New in internal/cmd or below, not yet a value
 )
 
 type finding struct {
@@ -89,6 +95,8 @@ type finding struct {
 }
 
 type scan struct {
+	root     string         // the module root the files are relative to
+	sinks    map[string]int // formatSinks, or a test's own
 	findings []finding
 	// used holds every constant format a sink or flag registration passes, so a
 	// catalog key nobody passes is an orphan.
@@ -97,23 +105,20 @@ type scan struct {
 	files map[string]bool
 }
 
-var scanResult struct {
-	done bool
-	s    *scan
-	err  error
+func newScan(root string, sinks map[string]int) *scan {
+	return &scan{root: root, sinks: sinks, used: map[string]bool{}, files: map[string]bool{}}
 }
 
-// scanSource type-checks the kae binary's packages once per test process.
+// scanOnce type-checks the kae binary's packages once per test process.
+var scanOnce = sync.OnceValues(runScan)
+
 func scanSource(t *testing.T) *scan {
 	t.Helper()
-	if !scanResult.done {
-		scanResult.s, scanResult.err = runScan()
-		scanResult.done = true
+	s, err := scanOnce()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if scanResult.err != nil {
-		t.Fatal(scanResult.err)
-	}
-	return scanResult.s
+	return s
 }
 
 type listedPackage struct {
@@ -124,25 +129,18 @@ type listedPackage struct {
 	Standard   bool
 }
 
-func moduleRoot() (string, error) {
+func runScan() (*scan, error) {
 	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}").Output()
 	if err != nil {
-		return "", fmt.Errorf("go list -m: %w", err)
+		return nil, fmt.Errorf("go list -m: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-func runScan() (*scan, error) {
-	root, err := moduleRoot()
-	if err != nil {
-		return nil, err
-	}
+	root := strings.TrimSpace(string(out))
 	list := exec.Command("go", "list", "-deps", "-export",
 		"-json=ImportPath,Dir,GoFiles,Export,Standard", modulePath)
 	list.Dir = root
 	var stderr bytes.Buffer
 	list.Stderr = &stderr
-	out, err := list.Output()
+	out, err = list.Output()
 	if err != nil {
 		return nil, fmt.Errorf("go list -deps -export: %w\n%s", err, stderr.String())
 	}
@@ -169,19 +167,19 @@ func runScan() (*scan, error) {
 		}
 		return os.Open(file)
 	})
-	s := &scan{used: map[string]bool{}, files: map[string]bool{}}
+	s := newScan(root, formatSinks)
 	for _, p := range pkgs {
 		if p.Standard || (p.ImportPath != modulePath && !strings.HasPrefix(p.ImportPath, modulePath+"/")) {
 			continue
 		}
-		if err := s.checkPackage(fset, imp, root, p); err != nil {
+		if err := s.checkPackage(fset, imp, p); err != nil {
 			return nil, err
 		}
 	}
 	return s, nil
 }
 
-func (s *scan) checkPackage(fset *token.FileSet, imp types.Importer, root string, p listedPackage) error {
+func (s *scan) checkPackage(fset *token.FileSet, imp types.Importer, p listedPackage) error {
 	var files []*ast.File
 	for _, name := range p.GoFiles {
 		f, err := parser.ParseFile(fset, filepath.Join(p.Dir, name), nil, parser.SkipObjectResolution)
@@ -199,9 +197,11 @@ func (s *scan) checkPackage(fset *token.FileSet, imp types.Importer, root string
 	if _, err := conf.Check(p.ImportPath, fset, files, info); err != nil {
 		return fmt.Errorf("type-check %s: %w", p.ImportPath, err)
 	}
-	belowCmd := p.ImportPath != cmdPkg && p.ImportPath != l10nPkg && p.ImportPath != modulePath
+	// Errors count everywhere but in l10n, whose own fmt.Errorf renders a
+	// message rather than composing one.
+	countErrors := p.ImportPath != l10nPkg
 	for _, f := range files {
-		rel, err := filepath.Rel(root, fset.File(f.Pos()).Name())
+		rel, err := filepath.Rel(s.root, fset.File(f.Pos()).Name())
 		if err != nil {
 			return err
 		}
@@ -211,7 +211,7 @@ func (s *scan) checkPackage(fset *token.FileSet, imp types.Importer, root string
 			fn := ""
 			if fd, ok := decl.(*ast.FuncDecl); ok {
 				fn = funcName(fd)
-				if _, isSink := formatSinks[p.ImportPath+"."+fn]; isSink {
+				if _, isSink := s.sinks[p.ImportPath+"."+fn]; isSink {
 					continue
 				}
 			}
@@ -220,7 +220,7 @@ func (s *scan) checkPackage(fset *token.FileSet, imp types.Importer, root string
 				if !ok {
 					return true
 				}
-				s.checkCall(fset, info, rel, fn, belowCmd, call)
+				s.checkCall(fset, info, rel, fn, countErrors, call)
 				return true
 			})
 		}
@@ -228,6 +228,8 @@ func (s *scan) checkPackage(fset *token.FileSet, imp types.Importer, root string
 	return nil
 }
 
+// funcName names a declaration "Func" or "Recv.Method", the form funcKey gives a
+// callee, so a sink's body and its callers resolve to one formatSinks key.
 func funcName(fd *ast.FuncDecl) string {
 	if fd.Recv == nil || len(fd.Recv.List) == 0 {
 		return fd.Name.Name
@@ -262,6 +264,21 @@ func callee(info *types.Info, call *ast.CallExpr) *types.Func {
 	return nil
 }
 
+// funcKey returns "pkg.Func", or "pkg.Recv.Method" for a method.
+func funcKey(f *types.Func) string {
+	key := f.Pkg().Path() + "."
+	if sig, ok := f.Type().(*types.Signature); ok && sig.Recv() != nil {
+		recv := sig.Recv().Type()
+		if ptr, ok := recv.(*types.Pointer); ok {
+			recv = ptr.Elem()
+		}
+		if named, ok := recv.(*types.Named); ok {
+			key += named.Obj().Name() + "."
+		}
+	}
+	return key + f.Name()
+}
+
 // constString returns the constant string value of an expression.
 func constString(info *types.Info, expr ast.Expr) (string, bool) {
 	tv, ok := info.Types[expr]
@@ -271,7 +288,7 @@ func constString(info *types.Info, expr ast.Expr) (string, bool) {
 	return constant.StringVal(tv.Value), true
 }
 
-func (s *scan) checkCall(fset *token.FileSet, info *types.Info, file, fn string, belowCmd bool, call *ast.CallExpr) {
+func (s *scan) checkCall(fset *token.FileSet, info *types.Info, file, fn string, countErrors bool, call *ast.CallExpr) {
 	f := callee(info, call)
 	if f == nil || f.Pkg() == nil {
 		return
@@ -282,7 +299,7 @@ func (s *scan) checkCall(fset *token.FileSet, info *types.Info, file, fn string,
 		})
 	}
 	pkg, name := f.Pkg().Path(), f.Name()
-	if index, ok := formatSinks[pkg+"."+name]; ok && index < len(call.Args) {
+	if index, ok := s.sinks[funcKey(f)]; ok && index < len(call.Args) {
 		format, isConst := constString(info, call.Args[index])
 		switch {
 		case !isConst:
@@ -318,7 +335,7 @@ func (s *scan) checkCall(fset *token.FileSet, info *types.Info, file, fn string,
 			return
 		}
 	}
-	if belowCmd && ((pkg == "fmt" && name == "Errorf") || (pkg == "errors" && name == "New")) {
+	if countErrors && ((pkg == "fmt" && name == "Errorf") || (pkg == "errors" && name == "New")) {
 		add(kindError, pkg+"."+name+" builds an English string, not a message value")
 	}
 }
@@ -528,7 +545,7 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 			continue
 		}
 		if !s.files[file] {
-			if _, err := os.Stat(file2path(t, file)); err == nil {
+			if _, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(file))); err == nil {
 				continue // in the source, but not in this platform's build
 			}
 		}
@@ -541,7 +558,7 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 		}
 	}
 	if len(mismatched) > 0 {
-		sort.Strings(mismatched)
+		slices.Sort(mismatched)
 		var b strings.Builder
 		for _, f := range listed {
 			if slices.Contains(mismatched, f.file) {
@@ -553,23 +570,9 @@ func TestHumanSinksUseTheCatalogOrAreAllowlisted(t *testing.T) {
 	}
 }
 
-func file2path(t *testing.T, rel string) string {
-	t.Helper()
-	root, err := moduleRoot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return filepath.Join(root, filepath.FromSlash(rel))
-}
-
 func formatAllowlist(got map[string]pendingCounts) string {
-	var keys []string
-	for k := range got {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
 	var b strings.Builder
-	for _, k := range keys {
+	for _, k := range slices.Sorted(maps.Keys(got)) {
 		fmt.Fprintf(&b, "\t%q: %s,\n", k, got[k])
 	}
 	return b.String()

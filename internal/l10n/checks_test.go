@@ -1,6 +1,13 @@
 package l10n
 
-import "testing"
+import (
+	"go/importer"
+	"go/token"
+	"os"
+	"path/filepath"
+	"slices"
+	"testing"
+)
 
 // The catalog checks hold vacuously while the catalog is empty, so each one is
 // shown failing on a bad entry here.
@@ -53,5 +60,71 @@ func TestHasProseSkipsDirectivesAndLinePrefixes(t *testing.T) {
 		if !hasProse(s) {
 			t.Errorf("hasProse(%q) = false, want true", s)
 		}
+	}
+}
+
+// methodSinkFixture has a method sink that forwards its format to another
+// method sink, the shape of App.acquireNamedLock and App.acquireNamed.
+const methodSinkFixture = `package fx
+
+import "errors"
+
+type App struct{}
+
+func (a *App) wrap(name, format string, args ...any) error { return errors.New(format) }
+
+func (a *App) wrapLock(format string, args ...any) error { return a.wrap("n", format, args...) }
+
+func use(a *App, s string) {
+	_ = a.wrapLock("const " + "%s", "x")
+	_ = a.wrap("n", s)
+	_ = errors.New("plain")
+}
+`
+
+// scanFixture type-checks methodSinkFixture as package fx with the given sinks.
+func scanFixture(t *testing.T, sinks map[string]int) *scan {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "fx.go"), []byte(methodSinkFixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	s := newScan(dir, sinks)
+	pkg := listedPackage{ImportPath: "fx", Dir: dir, GoFiles: []string{"fx.go"}}
+	if err := s.checkPackage(fset, importer.ForCompiler(fset, "source", nil), pkg); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func findingSummary(s *scan) []string {
+	var out []string
+	for _, f := range s.findings {
+		out = append(out, f.fn+" "+f.kind)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func TestMethodSinksAreJudgedAtTheirCallersAndSkippedInTheirBodies(t *testing.T) {
+	s := scanFixture(t, map[string]int{"fx.App.wrap": 1, "fx.App.wrapLock": 0})
+	// The bodies of wrap and wrapLock forward their format and are skipped; the
+	// callers are judged: a constant format not in the catalog, a non-constant one,
+	// and an error that is not a message value.
+	want := []string{"use error", "use sink", "use sink"}
+	if got := findingSummary(s); !slices.Equal(got, want) {
+		t.Fatalf("findings = %q, want %q", got, want)
+	}
+	if !s.used["const %s"] {
+		t.Fatalf("the constant format %q must be recorded as used", "const %s")
+	}
+
+	// Without the registration, the bodies are ordinary code and the callers are
+	// not sinks: what is left is the two errors.New calls.
+	s = scanFixture(t, map[string]int{})
+	want = []string{"App.wrap error", "use error"}
+	if got := findingSummary(s); !slices.Equal(got, want) {
+		t.Fatalf("unregistered findings = %q, want %q", got, want)
 	}
 }

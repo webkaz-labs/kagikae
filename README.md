@@ -500,7 +500,7 @@ binary does not imply support for every adapter.
 
 | Command | Purpose |
 |---------|---------|
-| `kae` / `kae status` (`kae s`) | Show what is active per tool, including subscription windows when a reading exists. Like `kae ls` and `kae accounts`, its table leaves out the `Driver` and `Identity` (login email or id) columns unless `--full` (`-f`) is given; `--json` always has them. |
+| `kae` / `kae status` (`kae s`) | Show what is active per tool, including subscription windows when a reading exists. `-f`/`--full` (also on `ls`, `accounts`) adds the Identity and Driver columns. |
 | `kae use <profile\|tool account>` (`kae u`) | Switch globally (`-i` isolated; automatic hooks use `--auto --quiet`). |
 | `kae pin [<profile>]` (`kae p`) | Bind the current directory (`-i` isolated, `-t` tree). |
 | `kae unpin [--purge]` | Remove the directory binding. `--purge` also deletes this directory's per-directory keychain credentials, harvesting each into its account snapshot first and keeping any it could not (sessions and settings are kept). One copy it deletes without keeping: one whose account no longer exists, because there is no snapshot to keep it in — it says so, and [docs/CLI.md](docs/CLI.md) § kae pin says why. |

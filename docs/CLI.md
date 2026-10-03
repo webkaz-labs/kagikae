@@ -51,7 +51,7 @@ kae mise init [-P <profile>] [--auto] [--write]    # auth-mode tasks + opt-in ho
                                                    # (bind directories with kae pin instead)
 kae accounts [-f|--full] [--json]    # registered accounts, active markers
 kae ls [-f|--full] [--json]          # places and accounts: account, pin, relevant tools, repo, kae
-kae ls account|pin|repo|kae|<tool> [--json]
+kae ls account|pin|repo|kae|<tool> [-f|--full] [--json]
                                      # one group; <tool> may be a prefix of a tool name
 kae ls -s <tool> | -i <tool> <account> [--json]
                                      # a tool group with its user level named explicitly
@@ -454,10 +454,8 @@ the sanitized account name, so accounts that sanitize to the same name stay
 distinguishable. It is best-effort: a detection failure leaves it blank and
 never errors, and a snapshot captured before the tool gained identity stays
 blank until re-captured (`kae add --no-login <tool> <name>` while logged into
-that account backfills it). `kae ls` / `kae accounts` / `kae status` show it in an
-additive `identity` field in `--json` and, with `--full`, in an `Identity` column.
-The default tables leave that column out (§ Output Rules), so accounts that differ
-only by identity are told apart with `--full` or `--json`.
+that account backfills it). `kae ls` / `kae accounts` / `kae status` show it with
+`--full` or `--json` (§ Output Rules); use either to tell such accounts apart.
 
 ## Recovery guidance
 
@@ -495,8 +493,7 @@ account or a restore ID. Human list guidance remains on stderr; JSON retains the
 
 `kae ls` lists **places** — directories a user wants to reach — beside the
 account view. Bare, it shows these groups in order: `account` (every captured
-account, with its detected `identity` — blank when absent, and in the table only
-with `--full` — and every defined
+account, with its detected `identity`, blank when absent, and every defined
 profile, each with an active marker and, when kae has one, that account's
 subscription windows — the data otherwise split across `kae accounts` and
 `kae status`), `pin` (every bound directory), a group for each **relevant** tool,
@@ -1710,14 +1707,12 @@ in the same transaction.
   warnings: they must survive a piped stdout and `--quiet`, and they are emitted
   before the write they warn about, not after it.
 - JSON mode never emits color, progress, prompts, or localized text.
-- The account tables — the per-tool table of `kae` / `kae status`, the
-  `kae accounts` table and the Accounts table of `kae ls` (bare, `account` or a
-  tool target) — leave out the `Identity` and `Driver` columns unless `--full`
-  (`-f`) is given (§ Human Text lists both column sets). This holds whether or not
-  stdout is a terminal and in the stacked layout below, and the columns are left
-  out before the width is measured. `--json` always carries `identity` and
-  `driver`. The other tables have neither column, and `kae ls` accepts `--full`
-  for them without effect.
+- The account tables print their default columns unless `--full` (`-f`) adds
+  the rest (§ Human Text lists the tables and both column sets). This holds
+  whether or not stdout is a terminal and in the stacked layout below; the
+  omitted columns are left out before the width is measured. `--json` is
+  unchanged by `--full`. `kae ls` accepts `--full` for its other tables without
+  effect.
 - Human tables fit the terminal. When stdout is a terminal narrower than the
   table, each row prints as a block instead: the first two cells as a title line,
   then one indented `Header  value` line per remaining non-empty cell. Output
@@ -2596,7 +2591,7 @@ Template-standard shape: `schema_version`, `tool`, `version`, `major`,
   |---|---|---|
   | `kae` / `kae status` | `Tool / Account / Auth / Credential / Limit / Notes` | `Identity` after `Account`, `Driver` before `Auth` |
   | `kae accounts` | `Tool / Account / Active / Credential / Limit / Captured` | `Identity` after `Account`, `Driver` after `Active` |
-  | `kae ls` Accounts | `Tool / Account / Active / Credential / Limit` | `Identity` after `Account`, `Driver` after `Active` |
+  | `kae ls` Accounts (bare, `account` or a tool target) | `Tool / Account / Active / Credential / Limit` | `Identity` after `Account`, `Driver` after `Active` |
 - `use --dry-run` prints a `Would switch` plan grouped per tool with the
   patched targets and an explicit `preserved` reminder line.
 - Color is semantic only (ok green, warn yellow, error red) and disabled for

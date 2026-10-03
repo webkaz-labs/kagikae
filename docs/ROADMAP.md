@@ -67,8 +67,6 @@ In progress: **localized human output (Japanese)**, requested by the operator on
 - **Done when** stage 5 is accepted and the second allowlist is empty; that commit
   removes the "migration in progress" notes in README.md, README.ja.md and
   GUIDE.ja.md.
-- **Open items** are the rows marked 未確認 in [L10N-JA.md](L10N-JA.md); they await
-  the operator.
 
 0. Stage 0 ships no Japanese: the glossary and style rules are in
    [L10N-JA.md](L10N-JA.md), and what remains is one English-only commit that unifies the wording of

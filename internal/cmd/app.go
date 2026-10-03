@@ -608,6 +608,10 @@ type commonOpts struct {
 	// IdentityOverride carries `kae add --identity <value>`: the login identity
 	// to record when auto-detection is unavailable. Empty for every other command.
 	IdentityOverride string
+	// Full carries `--full` / `-f` of status, accounts and ls: the account
+	// tables keep their Identity and Driver columns (printAccountTable). False
+	// for every other command.
+	Full bool
 }
 
 // parseCommon parses the flag portion of a command line (positionals are

@@ -594,6 +594,14 @@ cd "$HOME"                             # bare ls also lists places from cwd: not
 grep -qE '^claude +dead .+re-login now( {2,}.*)?$'          "$HOME/B.txt"   # assert: a Credential
 grep -qE '^claude +healthy .+ ok( {2,}.*)?$'                "$HOME/B.txt"   #   column reading
 grep -qE '^claude +soon .+[0-9]+ day\(s\) left( {2,}.*)?$'  "$HOME/B.txt"   #   these three
+grep -qE '^Tool +Account +Active +Credential +Limit$' "$HOME/B.txt"   # assert: piped default has
+                                                                     #   no Identity / Driver
+/tmp/kae ls --full --no-color > "$HOME/B-full.txt"
+grep -qE '^Tool +Account +Identity +Active +Driver +Credential +Limit$' "$HOME/B-full.txt"
+/tmp/kae accounts --no-color > "$HOME/B-acc.txt"
+grep -qE '^Tool +Account +Active +Credential +Limit +Captured$' "$HOME/B-acc.txt"
+/tmp/kae accounts -f --no-color > "$HOME/B-acc-full.txt"   # assert: -f puts both back
+grep -qE '^Tool +Account +Identity +Active +Driver +Credential +Limit +Captured$' "$HOME/B-acc-full.txt"
 /tmp/kae ls --json > "$HOME/B.json"
 grep -q '"schema_version": 1' "$HOME/B.json"                 # assert: schema_version still 1
 test "$(grep -c '"credential"' "$HOME/B.json")" -eq 3        # assert: each row has additive

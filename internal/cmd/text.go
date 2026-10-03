@@ -158,6 +158,39 @@ func printTable(header []string, rows [][]string, color bool) {
 	}
 }
 
+// columnIdentity and columnDriver head the account-table columns that only
+// --full shows (docs/CLI.md § Output Rules).
+const (
+	columnIdentity = "Identity"
+	columnDriver   = "Driver"
+)
+
+// printAccountTable prints one of the account tables — status, accounts and the
+// Accounts table of ls. Without full it drops the Identity and Driver columns
+// before printTable measures the width, so the narrower table is the one that is
+// fitted to the terminal or stacked. Every row has one cell per header column,
+// as each caller builds it; a shorter row is a caller bug and panics here.
+func printAccountTable(header []string, rows [][]string, full, color bool) {
+	if !full {
+		var keep []int
+		for i, h := range header {
+			if h != columnIdentity && h != columnDriver {
+				keep = append(keep, i)
+			}
+		}
+		narrowed := make([][]string, 0, len(rows)+1)
+		for _, cells := range append([][]string{header}, rows...) {
+			out := make([]string, len(keep))
+			for k, i := range keep {
+				out[k] = cells[i]
+			}
+			narrowed = append(narrowed, out)
+		}
+		header, rows = narrowed[0], narrowed[1:]
+	}
+	printTable(header, rows, color)
+}
+
 // dimUnknown recedes the "-" placeholder so known values carry the eye.
 func dimUnknown(cell string, color bool) string {
 	if cell == "-" {

@@ -25,8 +25,25 @@ func registerUseFlags(fs *flag.FlagSet, shared, isolated, quiet, auto *bool, pro
 	registerProfileFlag(fs, profile)
 }
 
+// registerFullFlag is --full and its -f short form, which status, accounts and
+// ls take for their account tables (printAccountTable).
+func registerFullFlag(fs *flag.FlagSet, full *bool) {
+	fs.BoolVar(full, "full", false, "show every column of the account tables, Identity and Driver included")
+	fs.BoolVar(full, "f", false, "alias for --full")
+}
+
+// parseFullCommand is parseCommon for a command whose one extra flag is
+// --full (status and accounts).
+func parseFullCommand(name string, flags []string) (commonOpts, bool) {
+	var full bool
+	opts, ok := parseCommon(name, flags, false, func(fs *flag.FlagSet) { registerFullFlag(fs, &full) })
+	opts.Full = full
+	return opts, ok
+}
+
 func registerLsFlags(fs *flag.FlagSet, f *lsFlags) {
 	fs.BoolVar(&f.pins, "pins", false, "list every directory bound with kae pin (alias of kae ls pin)")
+	registerFullFlag(fs, &f.full)
 	fs.BoolVar(&f.current, "current", false, "print the current place's path for the target")
 	registerPlaceFlags(fs, f)
 }
@@ -125,6 +142,8 @@ var commandFlagSpecs = map[string]commandFlagSpec{
 	"uninstall": {dryRun: true, extra: func(fs *flag.FlagSet) { registerUninstallFlags(fs, new([]string)) }},
 	"add":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerAddFlags(fs, new(bool), new(bool), new(string)) }},
 	"use":       {dryRun: true, extra: func(fs *flag.FlagSet) { registerUseFlags(fs, new(bool), new(bool), new(bool), new(bool), new(string)) }},
+	"status":    {extra: func(fs *flag.FlagSet) { registerFullFlag(fs, new(bool)) }},
+	"accounts":  {extra: func(fs *flag.FlagSet) { registerFullFlag(fs, new(bool)) }},
 	"ls":        {extra: func(fs *flag.FlagSet) { registerLsFlags(fs, new(lsFlags)) }},
 	"open":      {extra: func(fs *flag.FlagSet) { registerNavigateFlags(fs, new(lsFlags)) }},
 	"cd":        {extra: func(fs *flag.FlagSet) { registerNavigateFlags(fs, new(lsFlags)) }},

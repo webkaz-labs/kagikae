@@ -66,6 +66,7 @@ func CmdLs(ctx context.Context, args []string) int {
 	if !ok {
 		return constants.ExitUsage
 	}
+	opts.Full = f.full
 	req, code := parseLsRequest(f, positionals)
 	if code != constants.ExitOK {
 		return code
@@ -290,5 +291,5 @@ func printAccountItems(app *App, items []accountItem, addHint string, opts commo
 			limitCell(item.Usage, now, color),
 		})
 	}
-	printTable([]string{"Tool", "Account", "Identity", "Active", "Driver", "Credential", "Limit"}, rows, color)
+	printAccountTable([]string{"Tool", "Account", columnIdentity, "Active", columnDriver, "Credential", "Limit"}, rows, opts.Full, color)
 }

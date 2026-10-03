@@ -238,7 +238,7 @@ Two verbs by scope plus run: use = switch now (global), pin = bind this
 directory (-s/--shared default, -i/--isolated), run = one process.
 
 Usage:
-  kae                                  status summary: this directory's pin,
+  kae [-f|--full]                      status summary: this directory's pin,
                                        global profile, tools, profiles
   kae init                             create config and directories
   kae edit                             open the config in $VISUAL / $EDITOR
@@ -275,8 +275,8 @@ Usage:
   kae mise init [-P profile] [--auto] [--write]
                                        render the auth-mode tasks + opt-in hook
                                        (bind directories with kae pin instead)
-  kae accounts [--json]                registered accounts
-  kae ls [<target>] [--json]           places and accounts: groups account, pin,
+  kae accounts [-f] [--json]           registered accounts
+  kae ls [<target>] [-f] [--json]      places and accounts: groups account, pin,
                                        each relevant tool, repo, kae; a target
                                        (account|pin|repo|kae|<tool>) shows one
   kae ls <target> --current|--at N     print one place's path; a tool target
@@ -289,7 +289,9 @@ Usage:
   kae cd [<target>] [--at N|--pick]    move the shell to a place; needs the kae
                                        shell function that eval "$(kae
                                        completion zsh)" (or bash) defines
-  kae status [--json]                  full status report (alias: kae s)
+  kae status [-f] [--json]             full status report (alias: kae s);
+                                       -f/--full on status, accounts and ls adds
+                                       the Identity and Driver columns
   kae preservation list [--json]       list preserved credential records
   kae preservation restore <id>        restore to the original credential store
   kae preservation rm <id>             delete a preserved record with confirmation

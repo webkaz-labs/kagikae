@@ -226,8 +226,9 @@ agy's account is resolved server-side from an opaque token and never written to
 disk (docs/ADAPTERS.md) — so it is settable explicitly (v0.9.1): `kae add
 --identity <value>` at capture, or `kae account set-identity <tool> <account>
 <value>` to backfill without re-capturing the credential. `kae ls` /
-`kae accounts` / `kae status` show it (an `Identity` column; an additive
-`identity` field in `--json`, `omitempty`, `schema_version` still `1`).
+`kae accounts` / `kae status` show it in an additive `identity` field in `--json`
+(`omitempty`, `schema_version` still `1`) and, with `--full`, in an `Identity`
+column; the default tables leave that column out ([CLI.md](CLI.md) § Output Rules).
 
 A `keychain` artifact records no **account** — which item of the service the
 payload came from (claude `$USER`, cursor `cursor-user`, codex keyring's

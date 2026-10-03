@@ -52,7 +52,7 @@ var unmigrated = map[string]pendingCounts{
 	"internal/cmd/edit.go":                  {sink: 1, print: 1, error: 1},
 	"internal/cmd/env.go":                   {sink: 4, print: 4, error: 3},
 	"internal/cmd/error.go":                 {error: 2},
-	"internal/cmd/flagspec.go":              {flag: 28},
+	"internal/cmd/flagspec.go":              {flag: 30},
 	"internal/cmd/fragment.go":              {print: 2, error: 5},
 	"internal/cmd/freshness.go":             {print: 9},
 	"internal/cmd/identity.go":              {print: 1},

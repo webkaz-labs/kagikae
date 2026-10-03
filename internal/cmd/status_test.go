@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -124,7 +126,7 @@ func TestStatusShowsPinAndProfiles(t *testing.T) {
 }
 
 // TestStatusShowsActiveAccountIdentity: status surfaces the active account's
-// recorded login identity, in both --json and text.
+// recorded login identity in --json, and in text only with --full.
 func TestStatusShowsActiveAccountIdentity(t *testing.T) {
 	app := testApp(t, nil)
 	ctx := context.Background()
@@ -145,10 +147,167 @@ func TestStatusShowsActiveAccountIdentity(t *testing.T) {
 	if !strings.Contains(out, `"identity": "main-uuid@example.com"`) {
 		t.Fatalf("status --json must carry the active account's identity: %s", out)
 	}
-	code, out = captureStdout(t, func() int { return runStatus(ctx, app, commonOpts{Format: formatText}) })
+	code, out = captureStdout(t, func() int { return runStatus(ctx, app, commonOpts{Format: formatText, Full: true}) })
 	mustExit(t, constants.ExitOK, code, out)
 	if !strings.Contains(out, "main-uuid@example.com") {
-		t.Fatalf("status text must show the identity column: %s", out)
+		t.Fatalf("status --full text must show the identity column: %s", out)
+	}
+}
+
+// accountTableRunners are the three commands whose account table hides the
+// Identity and Driver columns without --full (docs/CLI.md § Output Rules).
+func accountTableRunners(ctx context.Context, app *App) map[string]func(commonOpts) int {
+	return map[string]func(commonOpts) int{
+		"status":   func(o commonOpts) int { return runStatus(ctx, app, o) },
+		"accounts": func(o commonOpts) int { return runAccounts(ctx, app, o) },
+		"ls":       func(o commonOpts) int { return runLs(ctx, app, o) },
+		"ls claude": func(o commonOpts) int {
+			return runLsRequest(ctx, app, o, lsRequest{target: constants.ToolClaude})
+		},
+	}
+}
+
+// seedIdentityAccount captures and activates claude/main with a recorded identity,
+// so every account table has an Identity and a Driver value to show or hide.
+func seedIdentityAccount(t *testing.T, app *App) {
+	t.Helper()
+	ctx := context.Background()
+	opts := commonOpts{Format: formatText}
+	seedClaude(t, app, mainToken, "main-uuid")
+	if code, out := captureStdout(t, func() int { return runCapture(ctx, app, opts, "claude", "main") }); code != constants.ExitOK {
+		t.Fatalf("capture: %s", out)
+	}
+	if code, out := captureStdout(t, func() int { return runSwitch(ctx, app, opts, "claude", "main") }); code != constants.ExitOK {
+		t.Fatalf("switch: %s", out)
+	}
+}
+
+// headerLine is the account table's header row in text output.
+func headerLine(t *testing.T, out string) string {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "Tool ") {
+			return line
+		}
+	}
+	t.Fatalf("no table header in:\n%s", out)
+	return ""
+}
+
+// The default account tables leave out Identity and Driver, also when stdout is
+// not a terminal (captureStdout is a pipe); --full puts both back in place.
+func TestAccountTablesHideIdentityAndDriverUnlessFull(t *testing.T) {
+	chdirTemp(t) // bare ls also resolves places from cwd
+	withTerminalColumns(t, 0)
+	app := testApp(t, nil)
+	seedIdentityAccount(t, app)
+	wantFull := map[string]string{
+		"status":    "Tool Account Identity Driver Auth Credential Limit Notes",
+		"accounts":  "Tool Account Identity Active Driver Credential Limit Captured",
+		"ls":        "Tool Account Identity Active Driver Credential Limit",
+		"ls claude": "Tool Account Identity Active Driver Credential Limit",
+	}
+	wantDefault := map[string]string{
+		"status":    "Tool Account Auth Credential Limit Notes",
+		"accounts":  "Tool Account Active Credential Limit Captured",
+		"ls":        "Tool Account Active Credential Limit",
+		"ls claude": "Tool Account Active Credential Limit",
+	}
+	for name, run := range accountTableRunners(context.Background(), app) {
+		code, out := captureStdout(t, func() int { return run(commonOpts{Format: formatText}) })
+		mustExit(t, constants.ExitOK, code, out)
+		if got := strings.Join(strings.Fields(headerLine(t, out)), " "); got != wantDefault[name] {
+			t.Errorf("%s default header = %q, want %q", name, got, wantDefault[name])
+		}
+		if strings.Contains(out, "main-uuid@example.com") {
+			t.Errorf("%s default table must not show the identity:\n%s", name, out)
+		}
+		code, out = captureStdout(t, func() int { return run(commonOpts{Format: formatText, Full: true}) })
+		mustExit(t, constants.ExitOK, code, out)
+		if got := strings.Join(strings.Fields(headerLine(t, out)), " "); got != wantFull[name] {
+			t.Errorf("%s --full header = %q, want %q", name, got, wantFull[name])
+		}
+		if !strings.Contains(out, "main-uuid@example.com") {
+			t.Errorf("%s --full table must show the identity:\n%s", name, out)
+		}
+	}
+}
+
+// The stacked layout drops the same lines: without --full no Identity or Driver
+// label, with it both.
+func TestStackedAccountTablesHideIdentityAndDriverUnlessFull(t *testing.T) {
+	chdirTemp(t)
+	withTerminalColumns(t, 20) // narrower than any account table
+	app := testApp(t, nil)
+	seedIdentityAccount(t, app)
+	for name, run := range accountTableRunners(context.Background(), app) {
+		_, out := captureStdout(t, func() int { return run(commonOpts{Format: formatText}) })
+		if strings.Contains(out, "Tool ") || !strings.Contains(out, "  Credential") {
+			t.Fatalf("%s should be stacked at 20 columns:\n%s", name, out)
+		}
+		if strings.Contains(out, "  Identity") || strings.Contains(out, "  Driver") || strings.Contains(out, "main-uuid@example.com") {
+			t.Errorf("%s stacked default must not show Identity or Driver:\n%s", name, out)
+		}
+		_, out = captureStdout(t, func() int { return run(commonOpts{Format: formatText, Full: true}) })
+		if !strings.Contains(out, "  Identity") || !strings.Contains(out, "  Driver") || !strings.Contains(out, "main-uuid@example.com") {
+			t.Errorf("%s stacked --full must show Identity and Driver:\n%s", name, out)
+		}
+	}
+}
+
+// --full is a human-text option: the JSON of each command is byte-identical with
+// and without it, and still carries identity and driver.
+func TestFullLeavesJSONUnchanged(t *testing.T) {
+	chdirTemp(t)
+	app := testApp(t, nil)
+	seedIdentityAccount(t, app)
+	for name, run := range accountTableRunners(context.Background(), app) {
+		code, plain := captureStdout(t, func() int { return run(commonOpts{Format: formatJSON}) })
+		mustExit(t, constants.ExitOK, code, plain)
+		_, full := captureStdout(t, func() int { return run(commonOpts{Format: formatJSON, Full: true}) })
+		if plain != full {
+			t.Errorf("%s --json changed with --full:\n%s\nvs\n%s", name, plain, full)
+		}
+		if !strings.Contains(plain, `"identity": "main-uuid@example.com"`) || !strings.Contains(plain, `"driver": "`) {
+			t.Errorf("%s --json must keep identity and driver:\n%s", name, plain)
+		}
+	}
+}
+
+// -f and --full parse on status (bare kae included), accounts and ls; the
+// positional makes each stop at its usage error before any config is read, so
+// the real HOME is never touched.
+func TestFullFlagParsesOnEveryAccountTableCommand(t *testing.T) {
+	for _, args := range [][]string{
+		{"--full", "extra"},
+		{"-f", "extra"},
+		{"status", "-f", "extra"},
+		{"s", "--full", "extra"},
+		{"accounts", "-f", "extra"},
+		{"accounts", "--full", "extra"},
+	} {
+		code, out := captureStderr(t, func() int { return Root(args) })
+		if code != constants.ExitUsage || strings.Contains(out, "flag provided but not defined") ||
+			!strings.Contains(out, "[-f|--full]") {
+			t.Errorf("Root(%q) = %d, %q; want the command's own usage error", args, code, out)
+		}
+	}
+	for _, flag := range []string{"-f", "--full"} {
+		opts, ok := parseFullCommand("status", []string{flag})
+		if !ok || !opts.Full {
+			t.Errorf("parseFullCommand(%s) = %+v, %v", flag, opts, ok)
+		}
+	}
+	for _, cmd := range []string{"status", "s", "accounts", "ls"} {
+		got := flagCompletions(cmd)
+		if !slices.Contains(got, "--full") || !slices.Contains(got, "-f") {
+			t.Errorf("`kae %s -<TAB>` must offer --full and -f, got %v", cmd, got)
+		}
+	}
+	for _, cmd := range []string{"open", "cd", "doctor", "pin"} {
+		if got := flagCompletions(cmd); slices.Contains(got, "--full") || slices.Contains(got, "-f") {
+			t.Errorf("%s has no account table and must not take --full, got %v", cmd, got)
+		}
 	}
 }
 
@@ -242,5 +401,59 @@ func TestStatusReportsActiveAccountCredentialFreshness(t *testing.T) {
 	_, text := captureStdout(t, func() int { return runStatus(ctx, app, commonOpts{Format: formatText, NoColor: true}) })
 	if !strings.Contains(text, "Credential") || !strings.Contains(text, "2 day(s) left") {
 		t.Fatalf("status table lost the credential column:\n%s", text)
+	}
+}
+
+// isolateProcessEnv points the process environment at app's temp roots, for a
+// test that goes through Root and so builds its App with newApp: HOME and every
+// XDG root, and no inherited tool-home variable (scripts/smoke-run.sh clears the
+// same set). claude uses the file driver, so no keychain is read.
+func isolateProcessEnv(t *testing.T, app *App) {
+	t.Helper()
+	t.Setenv("HOME", app.Env.Home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(app.Paths.ConfigDir))
+	t.Setenv("XDG_DATA_HOME", filepath.Dir(app.Paths.DataDir))
+	t.Setenv("XDG_STATE_HOME", filepath.Dir(app.Paths.StateDir))
+	t.Setenv("XDG_RUNTIME_DIR", filepath.Dir(app.Paths.RuntimeDir))
+	t.Setenv(constants.EnvKaeClaudeDriver, "file")
+	for _, name := range []string{
+		"CODEX_HOME", "CLAUDE_CONFIG_DIR", "COPILOT_HOME", "CLAUDE_SECURESTORAGE_CONFIG_DIR",
+		"OPENCODE_AUTH_CONTENT", "MISE_CONFIG_DIR", "KAE_PROFILE", "KAE_FINGERPRINT",
+	} {
+		t.Setenv(name, "") // registers the restore
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// CmdLs carries --full from its own flag set into the account table: through
+// Root, -f and --full on ls account and ls <tool> add Identity and Driver, and
+// plain ls leaves them out.
+func TestLsFullThroughRoot(t *testing.T) {
+	chdirTemp(t)
+	app := testApp(t, nil)
+	seedIdentityAccount(t, app)
+	writeFile(t, app.ConfigPath, "[security]\nsecret_backend = \"file\"\n")
+	isolateProcessEnv(t, app)
+	cases := []struct {
+		args []string
+		full bool
+	}{
+		{[]string{"ls", "--full", "account", "--no-color"}, true},
+		{[]string{"ls", "-f", "account", "--no-color"}, true},
+		{[]string{"ls", "--full", "claude", "--no-color"}, true},
+		{[]string{"ls", "account", "--no-color"}, false},
+		{[]string{"ls", "claude", "--no-color"}, false},
+	}
+	for _, c := range cases {
+		code, out := captureStdout(t, func() int { return Root(c.args) })
+		mustExit(t, constants.ExitOK, code, out)
+		header := headerLine(t, out)
+		hasIdentity := strings.Contains(header, columnIdentity)
+		hasDriver := strings.Contains(header, columnDriver)
+		if hasIdentity != c.full || hasDriver != c.full {
+			t.Errorf("Root(%q) header %q: Identity %v, Driver %v, want %v", c.args, header, hasIdentity, hasDriver, c.full)
+		}
 	}
 }

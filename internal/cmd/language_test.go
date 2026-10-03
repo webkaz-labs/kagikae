@@ -330,6 +330,9 @@ func TestStageOneErrorsStayEnglishUnderJSONAndKaeLangEn(t *testing.T) {
 	if code != constants.ExitUsage || stderr != suggestion {
 		t.Errorf("JSON-mode usage error: exit %d, %q", code, stderr)
 	}
+	// Root selected English for its JSON-mode command line; select Japanese again
+	// so the JSON report below is English because of JSON mode, not the language.
+	l10n.Set(l10n.Japanese)
 	app := testApp(t, nil)
 	code, stdout := captureStdout(t, func() int {
 		return runSwitch(context.Background(), app, commonOpts{Format: formatJSON}, "claude", "side")

@@ -280,8 +280,8 @@ func warnModeUnboundTools(mode string, entries []isolationEntry) {
 	for _, e := range entries {
 		// Only the mode's own reason (bindMode.unboundReason): a tool with no isolation
 		// variable (agy) keeps its comment-only warning, as under -s and -i.
-		if e.Warning != "" && e.Warning == modeUnboundReason(m, e.Tool) {
-			warnMessage(modeUnboundMessage(m, e.Tool))
+		if reason := modeUnboundMessage(m, e.Tool); e.Warning != "" && e.Warning == reason.Error() {
+			warnMessage(reason)
 		}
 	}
 }

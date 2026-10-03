@@ -51,9 +51,9 @@ func warnText(text string) {
 	fmt.Fprintln(os.Stderr, "kae: warning: "+text)
 }
 
-// message is a fragment of a kae message carried as a value (l10n.Message): a
-// did-you-mean suffix or a remedy that another message embeds as an argument, so
-// a human sink renders it in the parent's language. It is not a failure and has
+// message is kae text carried as a value (l10n.Message): a whole warning, a refusal
+// reason, or a fragment (a did-you-mean suffix, a remedy) that another message embeds
+// as an argument, so a human sink renders it in the selected language. It is not a failure and has
 // no exit code. The zero message renders "" in every language.
 type message struct {
 	format  string

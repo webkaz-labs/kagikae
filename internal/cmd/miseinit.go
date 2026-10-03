@@ -317,7 +317,7 @@ func (m bindMode) unboundReason(tool string) string {
 }
 
 // modeUnboundReason is why mode m, which does not bind tool, leaves it on the real home:
-// the fragment's warning comment, the bind's stderr warning and the re-bind's refusal.
+// the English text the fragment's warning comment, uninstall's match and the re-bind's refusal read.
 func modeUnboundReason(m bindMode, tool string) string {
 	return modeUnboundMessage(m, tool).Error()
 }

@@ -67,11 +67,11 @@ func warningCases() []warningCase {
 		{
 			name: "a continuation line",
 			run: func(t *testing.T) {
-				warnRecaptureDeclined("claude", "main", msgf("kae cannot tell"), "", declinedByUse)
+				warnRecaptureDeclined("claude", "main", msgf("its identity names a different account"), "", declinedByUse)
 			},
-			en: "kae: warning: kae cannot tell; snapshot claude/main left unchanged\n" +
+			en: "kae: warning: its identity names a different account; snapshot claude/main left unchanged\n" +
 				"kae: kae could not preserve the live claude login it declined to adopt; it is lost once the previous state is restored\n",
-			ja: "kae: warning: kae cannot tell。スナップショット claude/main は変更していません。\n" +
+			ja: "kae: warning: ログイン中アカウントの記録が別のアカウントを示している。スナップショット claude/main は変更していません。\n" +
 				"kae: kae は、取り込まないと判断した現在の claude のログインを保全できませんでした。以前の状態を復元すると、そのログインは失われます。\n",
 		},
 		{
